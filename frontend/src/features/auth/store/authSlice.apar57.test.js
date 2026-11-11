@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { configureStore } from '@reduxjs/toolkit'
 
-// APAR57 — `logoutUser` désabonne l'appareil du push AVANT `/auth/logout/` et
-// transmet l'endpoint au serveur (qui supprime la PushSubscription). Simulé au
-// niveau de l'API navigateur (ServiceWorker + PushManager), le module
-// `features/pwa/pushSubscribe.js` est le VRAI (non mocké).
+// Décision fondateur 12/11/2026 (remplace APAR57) : `logoutUser` NE désabonne
+// PLUS l'appareil du push — les notifications continuent tant que l'appareil
+// est abonné. Simulé au niveau de l'API navigateur (ServiceWorker +
+// PushManager), le module `features/pwa/pushSubscribe.js` est le VRAI.
 
 const { post, get } = vi.hoisted(() => ({
   post: vi.fn(() => Promise.resolve({ data: {} })),
@@ -55,21 +55,17 @@ afterEach(() => {
   if (!hadNotification) delete window.Notification
 })
 
-describe('APAR57 — logoutUser désabonne le push de l\'appareil', () => {
-  it('désabonne PushManager puis poste /auth/logout/ avec push_endpoint', async () => {
+describe('logoutUser garde les notifications push de l\'appareil', () => {
+  it('ne désabonne pas PushManager et ne demande aucune suppression au serveur', async () => {
     installerNavigateurPush()
     const store = configureStore({ reducer: { auth: authReducer } })
     await store.dispatch(logoutUser())
 
-    expect(subscription.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(subscription.unsubscribe).not.toHaveBeenCalled()
     const urls = post.mock.calls.map((c) => c[0])
-    const iUnsub = urls.indexOf('/notifications/push/unsubscribe/')
-    const iLogout = urls.indexOf('/auth/logout/')
-    expect(iLogout).toBeGreaterThanOrEqual(0)
-    // Désabonnement AVANT la déconnexion (session encore valide).
-    expect(iUnsub).toBeGreaterThanOrEqual(0)
-    expect(iUnsub).toBeLessThan(iLogout)
-    expect(post.mock.calls[iLogout][1]).toEqual({ push_endpoint: EP })
+    expect(urls).not.toContain('/notifications/push/unsubscribe/')
+    const call = post.mock.calls.find((c) => c[0] === '/auth/logout/')
+    expect(call[1]).toEqual({})
     expect(store.getState().auth.isAuthenticated).toBe(false)
   })
 
@@ -83,8 +79,8 @@ describe('APAR57 — logoutUser désabonne le push de l\'appareil', () => {
   })
 })
 
-// 11/11/2026 — Meryem ne recevait plus aucun push : la déconnexion ci-dessus
-// désabonne l'appareil et rien ne le réabonnait à la connexion suivante.
+// 11/11/2026 — Meryem ne recevait plus aucun push : la déconnexion (APAR57,
+// retiré depuis) désabonnait l'appareil et rien ne le réabonnait ensuite.
 // `reabonnerPushSiAutorise` (appelé par le shell) refait l'abonnement quand la
 // permission est déjà accordée, sauf refus explicite de CET utilisateur.
 describe('réabonnement push à la connexion', () => {
@@ -141,6 +137,17 @@ describe('réabonnement push à la connexion', () => {
     expect(abonnementsPostes()).toHaveLength(0)
     // Poste partagé : le refus de l'un ne vaut pas pour l'autre.
     expect((await reabonnerPushSiAutorise(7)).ok).toBe(true)
+  })
+
+  it("poste partagé : celui qui a coupé le push ne reçoit pas les notifications du précédent", async () => {
+    installerReabonnement({ abonne: true })
+    const unsubscribe = vi.fn(() => Promise.resolve(true))
+    const reg = await navigator.serviceWorker.ready
+    reg.pushManager.getSubscription = vi.fn(() => Promise.resolve({ endpoint: EP, unsubscribe }))
+    noterChoixPush(false, 7)
+    expect((await reabonnerPushSiAutorise(7)).reason).toBe('refus')
+    expect(unsubscribe).toHaveBeenCalledTimes(1)
+    expect(post.mock.calls.map((c) => c[0])).toContain('/notifications/push/unsubscribe/')
   })
 
   it('le réactiver efface le refus', async () => {

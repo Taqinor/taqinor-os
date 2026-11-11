@@ -113,8 +113,13 @@ export async function subscribeToPush() {
  * (« granted », aucune invite affichée) et que CET utilisateur n'a pas
  * lui-même coupé le push sur CET appareil, l'abonnement est refait. Le refus
  * explicite est mémorisé par utilisateur et par appareil (poste partagé :
- * le choix de l'un ne vaut pas pour l'autre). La déconnexion désabonne
- * toujours (APAR57 intact) : aucun push n'arrive à un poste déconnecté. */
+ * le choix de l'un ne vaut pas pour l'autre).
+ *
+ * Décision fondateur 12/11/2026 : la déconnexion ne désabonne PLUS (APAR57
+ * retiré, `authSlice.logoutUser`) — les push continuent tant que l'appareil
+ * est abonné. Ce réabonnement reste utile : il répare les appareils coupés
+ * avant cette décision, et rattache l'abonnement à l'utilisateur qui se
+ * connecte (endpoint unique côté serveur, `update_or_create`). */
 const CLE_REFUS_PUSH = 'taqinor.push.refus'
 const dejaTente = new Set()
 // Utilisateur connecté sur cette page (posé par `reabonnerPushSiAutorise`,
@@ -154,7 +159,13 @@ export async function reabonnerPushSiAutorise(userId) {
   if (dejaTente.has(id)) return { ok: false, reason: 'deja' }
   dejaTente.add(id)
   if (Notification.permission !== 'granted') return { ok: false, reason: 'denied' }
-  if (lireRefus().includes(id)) return { ok: false, reason: 'refus' }
+  if (lireRefus().includes(id)) {
+    // L'appareil peut encore porter l'abonnement d'un AUTRE utilisateur (la
+    // déconnexion ne désabonne plus) : celui qui a coupé le push ici ne doit
+    // pas recevoir les notifications du précédent.
+    await unsubscribeFromPush()
+    return { ok: false, reason: 'refus' }
+  }
   return subscribeToPush()
 }
 

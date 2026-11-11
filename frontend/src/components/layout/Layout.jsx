@@ -83,9 +83,9 @@ export default function Layout({ children }) {
     if (!profile) dispatch(fetchProfile())
   }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps -- monté à chaque navigation de module : ne refetch session/profil que s'ils manquent au montage (D-ENF22)
 
-  // Push : la déconnexion désabonne l'appareil (APAR57) ; à la connexion, on
-  // le réabonne si la permission est déjà accordée et que l'utilisateur n'a
-  // pas coupé le push ici (une tentative par page, sans invite).
+  // Push : à la connexion, l'appareil est (ré)abonné au nom de l'utilisateur
+  // connecté si la permission est déjà accordée et qu'il n'a pas coupé le
+  // push ici (une tentative par page, sans invite) — pushSubscribe.js.
   useEffect(() => {
     if (!isAuthenticated || userId == null) return
     reabonnerPushSiAutorise(userId).catch(() => { /* best-effort */ })
