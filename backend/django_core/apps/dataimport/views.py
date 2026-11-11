@@ -390,6 +390,9 @@ def job_erreurs_csv(request, job_id):
         job = get_company_object(ImportJob, job_id, request.user)
     except Http404:
         return Response({'detail': 'Import introuvable.'}, status=404)
+    # ADRG74 — lignes SOURCE du fichier : son créateur ou l'administrateur.
+    if job.created_by_id != request.user.pk and not request.user.is_admin_role:
+        return Response({'detail': 'Import introuvable.'}, status=404)
     fieldnames, rows = services.erreurs_csv_rows(job)
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames or ['_motif'])

@@ -113,6 +113,45 @@ class TestImportJobLog(ImportBase):
         resp2 = other_api.get(f'/api/django/imports/jobs/{job_id}/erreurs.csv')
         self.assertEqual(resp2.status_code, 404)
 
+    def test_erreurs_csv_reserve_au_createur_ou_admin(self):
+        """ADRG74 — le fichier des lignes en échec (lignes SOURCE) ne sort qu'à
+        son créateur et à l'administrateur, jamais à un collègue."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+
+        def api(nom, permissions=None, user=None):
+            if user is None:
+                role = Role.objects.create(
+                    company=self.company, nom=f'{nom} ADRG74',
+                    permissions=list(permissions))
+                user = get_user_model().objects.create_user(
+                    username=f'adrg74-{nom}', password='x',
+                    company=self.company, role=role)
+            client = APIClient()
+            client.force_authenticate(user)
+            return client
+
+        Lead.objects.create(company=self.company, nom='Old', email='dup@x.ma')
+        a = api('a', COMMERCIAL_PERMISSIONS)
+        resp = a.post('/api/django/imports/commit/', {
+            'file': self._csv('Nom,Email\nDoublon,dup@x.ma\n'),
+            'target': 'leads'}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        url = f"/api/django/imports/jobs/{resp.data['job_id']}/erreurs.csv"
+        for client in (api('b', COMMERCIAL_PERMISSIONS),
+                       api('tech', TECHNICIEN_PERMISSIONS)):
+            refus = client.get(url)
+            self.assertEqual(refus.status_code, 404)
+            self.assertEqual(refus.data['detail'], 'Import introuvable.')
+        for client in (a, api('dir', user=self.directeur)):
+            ok = client.get(url)
+            self.assertEqual(ok.status_code, 200)
+            self.assertIn('dup@x.ma', ok.content.decode('utf-8'))
+
 
 class TestRollbackChoice(ImportBase):
     def test_default_partial_commit_keeps_successful_rows(self):
