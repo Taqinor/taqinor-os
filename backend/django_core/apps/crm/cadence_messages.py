@@ -387,6 +387,39 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False,
     return rendu
 
 
+def message_resume_associe(lead, devis, langue, *, user=None):
+    """AMSG12 — le texte du résumé à l'ASSOCIÉ (``resume_associe``), rendu
+    avec le contexte de relance qu'accepte ce texte (civilité, nom, prénom,
+    ville, référence, lien, conseiller, marque, société, date de visite) et la
+    règle MRY13 sur TOUS les placeholders rendus : une phrase dont le
+    placeholder n'a pas de valeur réelle est OMISE — jamais une accolade
+    brute chez l'associé. Même machinerie que ``message_visite_pour_lead``."""
+    from apps.parametres.models_messages import MessageTemplate
+    from apps.ventes.utils.client_links import url_proposition
+    from apps.ventes.utils.whatsapp import render_message_template
+
+    corps = MessageTemplate.get_corps(lead.company, 'resume_associe', langue) or ''
+    # CIQ503 — variante B2B par le mécanisme CAD126 (jamais un texte société).
+    corps = _corps_pour_segment(corps, 'resume_associe', lead, langue)
+    civilite, prenom = _civilite_et_prenom(lead, langue)
+    contexte = {
+        'civilite': civilite, 'nom': (lead.nom or '').strip(), 'prenom': prenom,
+        'ville': (lead.ville or '').strip(),
+        'reference': getattr(devis, 'reference', '') or '',
+        'lien': url_proposition(devis) or '',
+        'conseiller': _nom_affiche_conseiller(lead, user),
+        'marque': _nom_affiche_marque(lead),
+        'date_visite': _date_visite_francais(getattr(lead, 'visite_prevue_le', None)),
+        # CIQ503 — raison sociale ; vide ⇒ sa phrase est OMISE (MRY13).
+        'societe': _societe_du_lead(lead),
+    }
+    corps = _placer_civilite(corps, civilite)
+    manquants = [c for c in _PLACEHOLDERS_RENDUS
+                 if '{' + c + '}' in corps and not str(contexte.get(c, '')).strip()]
+    return render_message_template(
+        _omettre_phrases_incompletes(corps, manquants), contexte)
+
+
 #: CAD111 — les langues dans lesquelles le message de visite peut être ouvert
 #: (les deux corps que `message_visite_pour_lead` rend).
 LANGUES_MESSAGE_VISITE = ('fr', 'darija')

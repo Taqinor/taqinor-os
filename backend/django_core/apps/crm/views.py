@@ -866,20 +866,13 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         (ERR-ENF11-FUZZ-CRM). Effet : UNE ligne
         d'historique ; aucun statut, aucune date d'envoi, aucune cadence
         touchés (CAD144, règle #4 : le lien est la proposition existante)."""
-        from apps.parametres.models_messages import MessageTemplate
         from apps.ventes.selectors import devis_for_lead
-        from apps.ventes.utils.client_links import url_proposition
         from apps.ventes.utils.phone import normalize_phone_e164
-        from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+        from apps.ventes.utils.whatsapp import build_wa_url
 
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
-        from .cadence_messages import (
-            _corps_pour_segment, _nom_affiche_conseiller, garde_contact_du_lead,
-            _nom_affiche_marque,
-            _omettre_phrases_incompletes,
-            _societe_du_lead,
-        )
+        from .cadence_messages import garde_contact_du_lead, message_resume_associe
 
         if pii_masquee_pour(request.user):
             return Response(
@@ -918,23 +911,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                   or lead.langue_preferee or 'fr').strip()  # fuzz #1176 : non texte → 400 nommé
         if langue not in ('fr', 'darija'):
             langue = 'fr'
-        corps = MessageTemplate.get_corps(
-            lead.company, 'resume_associe', langue) or ''
-        # CIQ503 — variante B2B (« pour votre direction ou votre comité ») par
-        # le mécanisme CAD126 : jamais sur un texte personnalisé, jamais pour
-        # un agricole ou un résidentiel.
-        corps = _corps_pour_segment(corps, 'resume_associe', lead, langue)
-        contexte = {
-            'conseiller': _nom_affiche_conseiller(lead, request.user),
-            'marque': _nom_affiche_marque(lead),
-            'lien': url_proposition(devis) or '',
-            # CIQ503 — raison sociale ; vide ⇒ sa phrase est OMISE (MRY13).
-            'societe': _societe_du_lead(lead),
-        }
-        manquants = [cle for cle, valeur in contexte.items()
-                     if '{' + cle + '}' in corps and not str(valeur).strip()]
-        message = render_message_template(
-            _omettre_phrases_incompletes(corps, manquants), contexte)
+        message = message_resume_associe(lead, devis, langue, user=request.user)  # AMSG12
         nom = (lead.contact_secondaire_nom or '').strip() or 'l’associé'
         activity.creer_activite(
             company=lead.company, lead=lead, user=request.user,
