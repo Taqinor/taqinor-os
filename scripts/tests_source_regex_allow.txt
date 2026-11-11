@@ -37,7 +37,6 @@ backend/django_core/apps/calepinage/tests/test_models.py::UneSeuleMigrationTest.
 backend/django_core/apps/calepinage/tests/test_models.py::UneSeuleMigrationTest.test_les_quatre_modeles_y_sont  # ATST53 stock gele
 backend/django_core/apps/calepinage/tests/test_site_altitude.py::FuseauTest.test_le_fuseau_ne_peut_pas_etre_derive_de_la_longitude  # ATST53 stock gele
 backend/django_core/apps/crm/test_asec36_revue_signature_core.py::SignatureCoreTests.test_sav_n_importe_plus_le_prive_du_crm  # ATST53 stock gele
-backend/django_core/apps/crm/test_parcours_pa1.py::ParcoursPA1Tests.test_visite_d_une_autre_societe_ne_touche_pas_le_lead  # ATST53 stock gele
 backend/django_core/apps/crm/tests_alea_coutures_orphelines.py::CouturesOrphelinesTests.test_plus_de_deal_commission_due  # ATST53 stock gele
 backend/django_core/apps/crm/tests_alea_coutures_orphelines.py::CouturesOrphelinesTests.test_plus_de_recepteur_ao  # ATST53 stock gele
 backend/django_core/apps/crm/tests_cad145_type_installation_source.py::SourceUniqueTypeInstallationTests.test_scoring_et_services_ne_referencent_jamais_siteprofile  # ATST53 stock gele

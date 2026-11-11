@@ -11,7 +11,5 @@ backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violation
 backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violations_endpoint::paiement.valider  # ATST53 stock gele
 backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_warning_rule_does_not_block::achat.commander  # ATST53 stock gele
 backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_warning_rule_does_not_block::achat.receptionner  # ATST53 stock gele
-backend/django_core/apps/reporting/tests_aana_stock_achat.py::TestValorisationAchatGatee.test_valorisation_achat_gatee::stock_gerer  # ATST53 stock gele
-backend/django_core/apps/sav/tests_aud801_cout_gated.py::Aud801CoutGatedTests.setUp::tickets_gerer  # ATST53 stock gele
 backend/django_core/apps/uxviews/tests.py::UxParametresApiTests.test_roles_autorises_restreint_qui_pose_le_defaut::crm_gerer  # ATST53 stock gele
 backend/django_core/core/tests/test_aud801_gated_fields.py::Aud801GatedFieldsTests.setUpTestData::tickets_gerer  # ATST53 stock gele
