@@ -220,7 +220,8 @@ const config = {
       // NTOBS5 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/sauvegardes', label: 'Sauvegardes', icon: <DatabaseBackup size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS7 — nav ET route ensemble (motif PACT150).
-      { to: '/parametres/export-reversibilite', label: 'Export de réversibilité', icon: <HardDriveDownload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // APUB1 — Directeur/Administrateur seulement (l'historique sert le jeton du ZIP).
+      { to: '/parametres/export-reversibilite', label: 'Export de réversibilité', icon: <HardDriveDownload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // NTOBS8 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/limites-usage', label: 'Limites & usage', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS11 — nav ET route ensemble (motif PACT150).
@@ -258,7 +259,7 @@ const config = {
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sauvegardes', component: SauvegardesPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/export-reversibilite', component: ExportReversibilitePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/export-reversibilite', component: ExportReversibilitePage, roles: ['admin'] },
     { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },

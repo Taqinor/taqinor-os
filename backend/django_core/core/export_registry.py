@@ -31,7 +31,8 @@ from django.http import Http404, HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers, status
+
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import (
     api_view, authentication_classes, parser_classes, permission_classes,
@@ -298,11 +299,18 @@ def declencher_export_reversibilite(request):
 
 
 class ExportReversibiliteHistoriqueView(generics.ListAPIView):
-    """GET /api/django/core/export-reversibilite/historique/ — scopé société."""
+    """GET /api/django/core/export-reversibilite/historique/ — scopé société.
+    APUB1 — sert le jeton du ZIP de toute la société : réservé, comme le POST,
+    au Directeur et à l'Administrateur (403 aux autres rôles)."""
 
     serializer_class = ExportReversibiliteRunSerializer
     permission_classes = [IsAuthenticatedInterne]
     pagination_class = None
+
+    def list(self, request, *args, **kwargs):
+        if not _is_directeur_or_admin(request.user):
+            raise PermissionDenied()
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         return (
@@ -335,6 +343,11 @@ def telecharger_export_reversibilite(request, token):
     if resolu is None:
         raise Http404
     bucket, object_key = resolu
+    # APUB1 — ce lien public ne sert QUE le seau de réversibilité (un jeton
+    # d'export de stock ou de tout autre seau → 404, sans lecture MinIO).
+    from .tasks import REVERSIBILITE_BUCKET
+    if bucket != REVERSIBILITE_BUCKET:
+        raise Http404
     try:
         from .backup import _minio_client
         client = _minio_client()

@@ -63,9 +63,44 @@ class HistoriqueEndpointTest(TestCase):
         autre = Company.objects.create(nom='Autre', slug='autre-ntobs7b')
         ExportReversibiliteRun.objects.create(company=self.company)
         ExportReversibiliteRun.objects.create(company=autre)
-        resp = self.client.get('/api/django/core/export-reversibilite/historique/')
+        # APUB1 — l'historique est réservé au Directeur / à l'Administrateur.
+        directeur = User.objects.create_user(
+            'directeur7h', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Directeur'))
+        client_directeur = APIClient()
+        client_directeur.force_authenticate(directeur)
+        resp = client_directeur.get('/api/django/core/export-reversibilite/historique/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data), 1)
+
+    def test_historique_refuse_aux_roles_livres_non_lanceurs(self):
+        """APUB1 — Commercial et Commercial responsable livrés : 403, aucun
+        jeton servi ; Directeur livré : 200 avec le jeton du run prêt."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+            DIRECTEUR_PERMISSIONS,
+        )
+        ExportReversibiliteRun.objects.create(
+            company=self.company, statut=ExportReversibiliteRun.Statut.PRET,
+            token='jeton-apub1')
+        url = '/api/django/core/export-reversibilite/historique/'
+        for nom, perms, attendu in (
+                ('Commercial', COMMERCIAL_PERMISSIONS, 403),
+                ('Commercial responsable', COMMERCIAL_RESP_PERMISSIONS, 403),
+                ('Directeur', DIRECTEUR_PERMISSIONS, 200)):
+            user = User.objects.create_user(
+                f'apub1-{nom}', password='x', company=self.company,
+                role=Role.objects.create(
+                    company=self.company, nom=nom, permissions=list(perms)))
+            api = APIClient()
+            api.force_authenticate(user)
+            resp = api.get(url)
+            with self.subTest(role=nom):
+                self.assertEqual(resp.status_code, attendu, resp.data)
+                if attendu == 403:
+                    self.assertNotIn('jeton-apub1', str(resp.content))
+                else:
+                    self.assertEqual(resp.data[0]['token'], 'jeton-apub1')
 
     def test_declencher_creates_a_pending_history_row(self):
         role_directeur = Role.objects.create(
