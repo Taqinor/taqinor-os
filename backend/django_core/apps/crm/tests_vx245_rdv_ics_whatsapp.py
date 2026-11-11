@@ -87,7 +87,8 @@ class Vx245ConfirmationWhatsAppTests(TestCase):
             f'/api/django/crm/appointments/{self.appt.id}/confirmer-whatsapp/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(resp.data['wa_url'].startswith('https://wa.me/'))
-        self.assertIn('Bennani', resp.data['message'])
+        # AMSG11 — le gabarit validé `visite_confirmation` salue sans nom.
+        self.assertIn('on confirme la visite technique', resp.data['message'])
         self.assertIn(f'/crm/appointments/{self.appt.id}/ics/', resp.data['ics_url'])
         # N'envoie RIEN : aucune notification/message n'est créée par cet appel.
 
@@ -102,6 +103,49 @@ class Vx245ConfirmationWhatsAppTests(TestCase):
             self.assertNotIn('/ics/', texte)
             self.assertNotIn('/api/', texte)
         self.assertTrue(resp.data['ics_url'])
+
+    def test_confirmation_suit_le_gabarit_et_la_langue_du_lead(self):
+        # AMSG11 — gabarit société `visite_confirmation`, langue du lead, date
+        # parlée du rendez-vous, `{conseiller}` = responsable du lead.
+        import zoneinfo
+        from urllib.parse import unquote
+
+        from apps.crm.cadence_messages import _date_visite_francais
+        from apps.parametres.models_messages import MessageTemplate
+
+        conseiller = User.objects.create_user(
+            username='vx245_owner', password='pw', company=self.company,
+            role_legacy='commercial', first_name='Salma')
+        self.lead.owner = conseiller
+        self.lead.langue_preferee = 'darija'
+        self.lead.save(update_fields=['owner', 'langue_preferee'])
+        jour = _date_visite_francais(self.appt.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo('Africa/Casablanca')).date())
+        resp = _api(self.user).post(
+            f'/api/django/crm/appointments/{self.appt.id}/confirmer-whatsapp/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        message = resp.data['message']
+        self.assertIn('كنأكدو ليكم الزيارة التقنية', message)
+        self.assertIn(jour, message)
+        self.assertIn('Salma', message)
+        self.assertNotIn('je confirme notre rendez-vous', message)
+        self.assertEqual(unquote(resp.data['wa_url']).split('text=', 1)[1], message)
+        self.assertIn(f'/crm/appointments/{self.appt.id}/ics/', resp.data['ics_url'])
+
+        # Un lead français dont la société a personnalisé le texte : il part.
+        autre = Lead.objects.create(
+            company=self.company, nom='Alaoui', prenom='Karim',
+            telephone='+212611111111', langue_preferee='fr')
+        rdv = Appointment.objects.create(
+            company=self.company, lead=autre,
+            scheduled_at=timezone.now() + timedelta(days=2))
+        MessageTemplate.objects.create(
+            company=self.company, cle='visite_confirmation',
+            corps_fr='Texte maison : visite {date_visite}.')
+        resp = _api(self.user).post(
+            f'/api/django/crm/appointments/{rdv.id}/confirmer-whatsapp/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['message'].startswith('Texte maison : visite '))
 
     def test_no_phone_returns_409(self):
         # ERR-ENF11-FUZZ-CRM — le numéro vient de la fiche : refus d'état.

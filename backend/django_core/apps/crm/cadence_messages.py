@@ -312,7 +312,8 @@ def cles_message_visite_du_lead(lead):
     return cles
 
 
-def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
+def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False,
+                             date_visite=None):
     """VISITE-CADENCE — le message de visite d'un LEAD, rendu côté serveur.
 
     ``{'corps_fr': str, 'corps_darija': str}`` — les DEUX langues d'un coup :
@@ -346,8 +347,9 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     if not cle_message_visite_autorisee(lead, cle):
         return None
 
+    # AMSG11 — la date d'un rendez-vous précis prime sur `visite_prevue_le`.
     date_visite = _date_visite_francais(
-        getattr(lead, 'visite_prevue_le', None))
+        date_visite or getattr(lead, 'visite_prevue_le', None))
     rendu = {}
     for champ, langue in (('corps_fr', 'fr'), ('corps_darija', 'darija')):
         civilite, prenom = _civilite_et_prenom(lead, langue)

@@ -136,7 +136,8 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
 
 def build_appointment_confirmation_whatsapp(request, appointment):
     """VX245(b) — construit le message de CONFIRMATION WhatsApp d'un rendez-
-    vous : date/heure (Africa/Casablanca). ACVI45 — le lien `.ics` (route JWT,
+    vous ; AMSG11 : le gabarit société `visite_confirmation` dans la langue du
+    lead, à la date (Africa/Casablanca) du rendez-vous. ACVI45 — le lien `.ics` (route JWT,
     401 pour le client) n'entre plus dans le message ; il reste servi à l'ERP
     (VX245(a), `apps.crm.views.AppointmentViewSet.ics`). N'ENVOIE RIEN — même
     convention que `build_devis_whatsapp`/`build_facture_whatsapp` : ouvre
@@ -151,20 +152,18 @@ def build_appointment_confirmation_whatsapp(request, appointment):
 
     lead = appointment.lead
     phone = numero_joignable(lead)  # ACVI50
-    nom = f'{lead.prenom or ""} {lead.nom or ""}'.strip() or (lead.nom or '')
-    try:
-        local_dt = appointment.scheduled_at.astimezone(
-            zoneinfo.ZoneInfo(RAMADAN_TZ))
-        date_str = local_dt.strftime('%d/%m/%Y à %H:%M')
-    except Exception:  # pragma: no cover - défensif
-        logger.warning('%s : échec ignoré (dégradé)', 'build_appointment_confirmation_whatsapp', exc_info=True)
-        date_str = str(appointment.scheduled_at)
-
+    local_dt = appointment.scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
     ics_url = request.build_absolute_uri(
         f'/api/django/crm/appointments/{appointment.pk}/ics/')
-    salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
-    message = f'{salutation} je confirme notre rendez-vous le {date_str}.'
-    from .cadence_messages import refus_rendu_whatsapp  # ACVI111 — aucun lien à un refusé
+    # AMSG11 — le gabarit société `visite_confirmation`, dans la langue du lead.
+    from .cadence_messages import (
+        langue_relance_du_lead, message_visite_pour_lead, refus_rendu_whatsapp)
+    rendu = message_visite_pour_lead(
+        lead, 'visite_confirmation', user=getattr(request, 'user', None),
+        date_visite=local_dt.date())
+    langue = 'darija' if langue_relance_du_lead(lead) == 'darija' else 'fr'
+    message = rendu[f'corps_{langue}']
+    # ACVI111 — aucun lien à un refusé
     return message, (None if refus_rendu_whatsapp(lead) else build_wa_url(phone, message)), ics_url
 
 
