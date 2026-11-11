@@ -20,6 +20,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from .gardes_lecture import LectureFactures
+from apps.roles.permissions import DroitDeLaGrille  # ADRG10
 
 from .models import Facture
 import logging
@@ -41,7 +42,7 @@ def _scope(qs, user):
     responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
                409: SH.DetailResponse, 500: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([LectureFactures])  # AARG66
+@permission_classes([LectureFactures, DroitDeLaGrille('ventes_pdf')])  # AARG66, ADRG10
 def lettre_relance_premium(request, facture_id):
     """Lettre de relance premium pour une facture en retard.
 

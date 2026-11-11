@@ -600,6 +600,45 @@ class GestesArgentTests(TestCase):
         r = self._api(directeur).patch(url, corps[1], format='json')
         self.assertEqual(r.status_code, 200, r.data)
 
+    def test_pdf_documents_exigent_ventes_pdf(self):
+        """ADRG10 (C-ADRG-027) — le code ``ventes_pdf`` (« Générer PDF »)
+        garde les PDF de facturation : Viewer (``init_roles``, lecteur sans
+        ``ventes_pdf``) 403 sur le BC, le reçu de paiement et le bordereau de
+        remise ; le Commercial jamais 403. Mutant : retirer
+        ``DroitDeLaGrille('ventes_pdf')`` du reçu ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.ventes.models import BonCommande, Paiement, RemiseEncaissement
+        viewer = User.objects.create_user(
+            username=f'asec29-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.get(company=self.company, nom='Viewer'),
+            company=self.company)
+        self.assertNotIn('ventes_pdf', viewer.role.permissions)
+        commercial = self.users['Commercial']
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ADRG10-{_nxt()}',
+            client=self.client_obj, devis=self._devis(commercial),
+            statut=BonCommande.Statut.CONFIRME)
+        paiement = Paiement.objects.create(
+            company=self.company, facture=self._facture(commercial),
+            montant=Decimal('100'), date_paiement=date.today(),
+            mode='virement', created_by=commercial)
+        remise = RemiseEncaissement.objects.create(
+            company=self.company, technicien=commercial,
+            reference=f'REM-ADRG10-{_nxt()}', date_collecte=date.today(),
+            montant_declare=Decimal('100'), created_by=commercial)
+        base = '/api/django/ventes/'
+        urls = (f'{base}bons-commande/{bc.id}/pdf/',
+                f'{base}paiements/{paiement.id}/recu-pdf/',
+                f'{base}remises-encaissement/{remise.id}/pdf/')
+        for url in urls:
+            with self.subTest(role='Viewer', url=url):
+                r = self._api(viewer).get(url)
+                self.assertEqual(r.status_code, 403)
+                self.assertIn('ventes_pdf', str(r.data['detail']))
+            with self.subTest(role='Commercial', url=url):
+                self.assertNotEqual(
+                    self._api(commercial).get(url).status_code, 403)
+
     def test_get_permissions_respecte_action(self):
         from apps.facturation.views.facture import FactureViewSet
         from apps.facturation.views.facture_gardes import PeutEncaisser

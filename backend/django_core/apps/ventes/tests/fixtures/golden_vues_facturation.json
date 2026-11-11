@@ -182,7 +182,8 @@
    "HasPermissionOrLegacy_encaisser"
   ],
   "generer_pdf": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_pdf"
   ],
   "historique": [
    "LectureFactures"
@@ -238,7 +239,8 @@
    "HasPermissionOrLegacy_encaisser"
   ],
   "telecharger_pdf": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_pdf"
   ],
   "ubl": [
    "IsResponsableOrAdmin",

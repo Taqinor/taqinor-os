@@ -62,7 +62,6 @@ _ASEC50_SANS_ENDPOINT = (
 #: code -> raison. Décroissant : retirer la ligne dès que le code est consommé.
 EXEMPTIONS = {
     'stock_supprimer': _C040,
-    'ventes_pdf': _C040,
     # Un devis n'a pas de responsable propre (sa portée suit le lead) : aucun
     # endpoint ne réaffecte un devis — la réaffectation passe par le lead
     # (``crm_reassign``).

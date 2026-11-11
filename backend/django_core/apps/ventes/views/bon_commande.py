@@ -219,7 +219,9 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
                               ['devis__created_by'])
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['pdf']:
+        if self.action == 'pdf':  # ADRG10 — « Générer PDF »
+            return [LectureFactures(), DroitDeLaGrille('ventes_pdf')()]
+        if self.action in READ_ACTIONS:
             return [LectureFactures()]
         elif self.action in WRITE_ACTIONS + [
             'confirmer', 'marquer_livre', 'annuler', 'creer_facture',
