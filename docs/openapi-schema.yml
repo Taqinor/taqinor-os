@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7766, components: 3650}
+counts: {paths: 4966, operations: 7764, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3025,7 +3025,6 @@ operations:
 - get /api/django/stock/acomptes-fournisseur/ -> django_stock_acomptes_fournisseur_list
 - post /api/django/stock/acomptes-fournisseur/ -> django_stock_acomptes_fournisseur_create
 - get /api/django/stock/acomptes-fournisseur/ouverts/ -> django_stock_acomptes_fournisseur_ouverts_retrieve
-- delete /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_destroy
 - get /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_retrieve
 - patch /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_partial_update
 - put /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_update
@@ -6915,7 +6914,6 @@ operations:
 - get /api/v1/stock/acomptes-fournisseur/ -> v1_stock_acomptes_fournisseur_list
 - post /api/v1/stock/acomptes-fournisseur/ -> v1_stock_acomptes_fournisseur_create
 - get /api/v1/stock/acomptes-fournisseur/ouverts/ -> v1_stock_acomptes_fournisseur_ouverts_retrieve
-- delete /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_destroy
 - get /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_retrieve
 - patch /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_partial_update
 - put /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_update

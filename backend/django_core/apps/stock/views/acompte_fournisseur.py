@@ -9,7 +9,7 @@ from ..utils.params import id_requete_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import AcompteFournisseur
 from ..serializers import AcompteFournisseurSerializer
-from authentication.permissions import IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import HasPermissionOrLegacy
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -33,14 +33,14 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_versement', '-date_creation']
 
     parser_classes = [JSONParser]
+    # ASUP23 (C-ASUP-014) — un acompte versé (argent sorti) ne se supprime pas : DELETE ⇒ 405.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['ouverts']:
             # ASTK246 — montants réglés : règle UNIQUE des règlements fournisseur.
             from .paiement_fournisseur import PeutLirePaiementsFournisseur
             return [PeutLirePaiementsFournisseur()]
-        elif self.action == 'destroy':
-            return [IsAdminRole()]
         # ASTK19 (D-ASTK-3) — verser/imputer un acompte = « payer ».
         return [HasPermissionOrLegacy('achats_payer')()]
 
