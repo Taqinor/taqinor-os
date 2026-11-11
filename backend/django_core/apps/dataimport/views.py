@@ -22,8 +22,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from django.http import Http404
 
 from authentication.permissions import (
-    IsResponsableOrAdmin, HasPermissionAndRole,
+    IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
+    HasPermissionAndRole,
 )
+from apps.parametres.localisation import PeutGererLocalisation
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import _user_has_or_legacy
 from core.selectors import get_company_object
@@ -415,7 +417,7 @@ def export_traductions(request):
 @extend_schema(request={'multipart/form-data': IMPORT_TRADUCTIONS_REQUEST},
                responses={200: IMPORT_TRADUCTIONS_RESPONSE})
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])  # ADRG67
 @parser_classes([MultiPartParser, FormParser])
 def import_traductions(request):
     """NTI18N29 — ``POST traductions/import/`` (multipart ``file``) : réimporte
@@ -462,7 +464,7 @@ def export_feries(request):
 @extend_schema(request={'multipart/form-data': IMPORT_FERIES_REQUEST},
                responses={200: IMPORT_FERIES_RESPONSE})
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsAdminRole])  # ADRG67 — comme HolidayViewSet
 @parser_classes([MultiPartParser, FormParser])
 def import_feries(request):
     """NTI18N45 — ``POST feries/import/`` (multipart ``file``) : importe en
