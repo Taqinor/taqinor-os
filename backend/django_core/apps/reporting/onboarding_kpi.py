@@ -19,10 +19,12 @@ tâche planifiée).
   aucun champ secteur à ce jour (« si connu »).
 * ``adoption_tours`` (NTDMO42) — par tour du catalogue : utilisateurs actifs de
   sociétés non démo ayant un ``TourProgress.vu_le`` posé / utilisateurs actifs.
-  LIMITE DOCUMENTÉE : ``TourProgress`` ne distingue pas « terminé » de « fermé
-  prématurément » (``vu_le`` couvre les deux, cf. apps/onboarding/models.py) ;
-  le pourcentage est donc « tour vu ou fermé » et ``fin_vs_passe`` vaut
-  ``None`` jusqu'à ce que l'app onboarding journalise la distinction.
+  ``TourProgress.issue`` distingue « terminé » de « fermé avant la fin » : la
+  ligne porte ``termines`` et ``fermes_avant_la_fin`` (``fin_vs_passe`` =
+  terminés / (terminés + fermés), ``None`` sans donnée). Les lignes dont
+  ``issue`` est vide (historique) restent comptées « vu ou fermé »
+  (``vus_ou_fermes`` = TOUS les vus, ``sans_issue`` = l'historique) et la
+  limite n'est signalée (``fin_vs_passe_raison``) que tant qu'il en existe.
 """
 from statistics import median
 
@@ -32,9 +34,8 @@ CLE_CACHE = 'reporting:kpi_onboarding_interne'
 TTL_SECONDES = 26 * 3600
 
 RAISON_FIN_VS_PASSE = (
-    "TourProgress.vu_le couvre « terminé » ET « fermé » : la fin n'est pas "
-    "distinguable du passage prématuré tant que apps/onboarding ne journalise "
-    "pas la différence.")
+    "Certaines lignes historiques (TourProgress.issue vide) couvrent « terminé » "
+    "ET « fermé » : elles restent comptées « vu ou fermé », sans distinction.")
 
 
 def temps_jusqua_valeur():
@@ -83,25 +84,36 @@ def adoption_tours():
         is_active=True, company__isnull=False, company__est_demo=False).count()
     lignes = []
     for cle in tours:
-        vus = TourProgress.objects.filter(
+        vus_qs = TourProgress.objects.filter(
             tour_key=cle, vu_le__isnull=False, user__is_active=True,
-            company__est_demo=False).count()
+            company__est_demo=False)
+        vus = vus_qs.count()
+        termines = vus_qs.filter(issue='termine').count()
+        fermes = vus_qs.filter(issue='ferme').count()
         lignes.append({
             'tour_key': cle,
             'utilisateurs_eligibles': eligibles,
             'vus_ou_fermes': vus,
+            'termines': termines,
+            'fermes_avant_la_fin': fermes,
+            'sans_issue': vus - termines - fermes,
             'completion_pct': (
                 round(vus * 100 / eligibles, 1) if eligibles else None),
-            'fin_vs_passe': None,
+            'fin_vs_passe': (
+                round(termines * 100 / (termines + fermes), 1)
+                if termines + fermes else None),
         })
     return lignes
 
 
 def kpis_onboarding_internes():
+    lignes = adoption_tours()
     return {
         'temps_jusqua_valeur': temps_jusqua_valeur(),
-        'adoption_tours': adoption_tours(),
-        'fin_vs_passe_raison': RAISON_FIN_VS_PASSE,
+        'adoption_tours': lignes,
+        'fin_vs_passe_raison': (
+            RAISON_FIN_VS_PASSE
+            if any(t['sans_issue'] for t in lignes) else None),
     }
 
 

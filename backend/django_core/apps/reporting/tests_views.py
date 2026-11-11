@@ -172,3 +172,34 @@ class DemoResumeEtKpiOnboardingTests(TestCase):
         par_cle = {t['tour_key']: t for t in adoption_tours()}
         self.assertEqual(par_cle['devis']['completion_pct'], 100.0)
         self.assertEqual(par_cle['leads']['completion_pct'], 0.0)
+
+
+class AdoptionToursIssueTest(TestCase):
+    """Follow-up NTDMO42 — termines / fermes_avant_la_fin / sans_issue."""
+    setUp = DemoResumeEtKpiOnboardingTests.setUp
+
+    def test_compte_termines_fermes_et_historique(self):
+        from django.utils import timezone
+        from apps.onboarding.models import ProductTourStep, TourProgress
+        from apps.reporting.onboarding_kpi import (
+            RAISON_FIN_VS_PASSE, adoption_tours, kpis_onboarding_internes)
+        ProductTourStep.objects.get_or_create(
+            company=None, tour_key='devis', ordre=10,
+            defaults={'titre': 't', 'texte': 't', 'ecran_cible': '/x'})
+        TourProgress.objects.create(
+            company=self.reelle, user=self.u_reelle, tour_key='devis',
+            vu_le=timezone.now(), issue='termine')
+        ligne = {t['tour_key']: t for t in adoption_tours()}['devis']
+        self.assertEqual(ligne['termines'], 1)
+        self.assertEqual(ligne['fermes_avant_la_fin'], 0)
+        self.assertEqual(ligne['sans_issue'], 0)
+        self.assertEqual(ligne['fin_vs_passe'], 100.0)
+        self.assertIsNone(kpis_onboarding_internes()['fin_vs_passe_raison'])
+        TourProgress.objects.filter(tour_key='devis').update(issue='')
+        ligne = {t['tour_key']: t for t in adoption_tours()}['devis']
+        self.assertEqual(ligne['vus_ou_fermes'], 1)
+        self.assertEqual(ligne['sans_issue'], 1)
+        self.assertIsNone(ligne['fin_vs_passe'])
+        self.assertEqual(
+            kpis_onboarding_internes()['fin_vs_passe_raison'],
+            RAISON_FIN_VS_PASSE)

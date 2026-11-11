@@ -48,8 +48,10 @@ export function invalidateToursCache() {
   cachedToursPromise = null
 }
 
-export function markTourSeen(tourKey) {
-  return api.post(`/onboarding/tours/${tourKey}/vu/`)
+// `issue` : 'termine' (vu jusqu'au bout) ou 'ferme' (passé / fermé avant la fin).
+export function markTourSeen(tourKey, issue) {
+  const body = issue ? { issue } : {}
+  return api.post(`/onboarding/tours/${tourKey}/vu/`, body)
     .then((r) => { invalidateToursCache(); return r.data })
     .catch(() => null)
 }

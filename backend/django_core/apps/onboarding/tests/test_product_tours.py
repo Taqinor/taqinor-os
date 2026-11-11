@@ -112,3 +112,38 @@ class ProductTourEndpointTest(TestCase):
             TourProgress.objects.filter(
                 user=self.u1, tour_key='dashboard', vu_le__isnull=False)
             .exists())
+
+
+class TourIssueTest(TestCase):
+    """Follow-up NTDMO42 — ``TourProgress.issue`` (terminé vs fermé)."""
+    setUp = ProductTourEndpointTest.setUp
+    _client = ProductTourEndpointTest._client
+
+    def test_vu_enregistre_l_issue_envoyee(self):
+        c = self._client(self.u1)
+        r = c.post('/api/django/onboarding/tours/devis/vu/',
+                   {'issue': 'termine'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            TourProgress.objects.get(user=self.u1, tour_key='devis').issue,
+            'termine')
+        c.post('/api/django/onboarding/tours/leads/vu/',
+               {'issue': 'ferme'}, format='json')
+        self.assertEqual(
+            TourProgress.objects.get(user=self.u1, tour_key='leads').issue,
+            'ferme')
+
+    def test_issue_absente_ou_inconnue_reste_vide_et_revoir_la_efface(self):
+        c = self._client(self.u1)
+        c.post('/api/django/onboarding/tours/stock/vu/')
+        c.post('/api/django/onboarding/tours/dashboard/vu/',
+               {'issue': 'nimporte'}, format='json')
+        for cle in ('stock', 'dashboard'):
+            self.assertEqual(
+                TourProgress.objects.get(user=self.u1, tour_key=cle).issue, '')
+        c.post('/api/django/onboarding/tours/chantiers/vu/',
+               {'issue': 'termine'}, format='json')
+        c.post('/api/django/onboarding/tours/chantiers/revoir/')
+        self.assertEqual(
+            TourProgress.objects.get(
+                user=self.u1, tour_key='chantiers').issue, '')

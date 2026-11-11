@@ -198,12 +198,16 @@ class ProductTourViewSet(viewsets.ViewSet):
     def list(self, request):
         return Response(tours_pour_utilisateur(self._company(request), request.user))
 
-    @extend_schema(request=None, parameters=_CLE_TOUR,
-                   responses=_ProductTourSerializer(many=True))
+    @extend_schema(request=inline_serializer('TourVuCorps', {
+        'issue': drf_serializers.ChoiceField(
+            choices=['termine', 'ferme'], required=False)}),
+        parameters=_CLE_TOUR, responses=_ProductTourSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='vu',
             permission_classes=[IsAuthenticated])
     def vu(self, request, pk=None):
-        services.marquer_tour_vu(self._company(request), request.user, pk)
+        services.marquer_tour_vu(
+            self._company(request), request.user, pk,
+            issue=request.data.get('issue', ''))
         return Response(
             tours_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
