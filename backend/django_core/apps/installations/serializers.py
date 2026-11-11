@@ -21,7 +21,7 @@ from core.unicite import UniciteEn409Mixin
 
 from .listes_prechargees import totaux_temps_memo
 from .serializers_blocs import (
-    MasqueBudgetProjet, MasqueCoutPrevu, MasqueCoutTransport, MasqueLandedCost, MasqueMontant,
+    MasqueBudgetProjet, MasqueCoutPrevu, MasqueCoutTransport, MasqueLandedCost, MasqueMontant, MasqueMontantApprouve,
     MasquePrixConvenu, MasquePrixNegocie, bloc_avertissements_cloture, bloc_calepinage,
     bloc_dossier_8221_resume, bloc_regime_suggere)
 from .serializers_stage import (
@@ -1647,7 +1647,7 @@ class SeuilApprobationBCFSerializer(SeuilResponsableBorneMixin, ChampsStrictsMix
         return value
 
 
-class ApprobationBCFSerializer(SameCompanyFKSerializerMixin,
+class ApprobationBCFSerializer(MasqueMontantApprouve, SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     """FG312 — approbation d'un BCF (string-FK vers stock). Le palier, le montant
     approuvé, l'approbateur et la société sont posés CÔTÉ SERVEUR par l'action

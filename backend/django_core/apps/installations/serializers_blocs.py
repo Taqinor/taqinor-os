@@ -87,3 +87,8 @@ class MasqueCoutPrevu(MasqueMontantsAchatMixin):
 
 class MasqueCoutTransport(MasqueMontantsAchatMixin):
     champs_montants_achat = ('cout_transport',)
+
+
+class MasqueMontantApprouve(MasqueMontantsAchatMixin):
+    """ALEC8 — montant d'achat HT du BCF figé à l'approbation (masqué comme le BCF, ASTK10)."""
+    champs_montants_achat = ('montant_approuve',)
