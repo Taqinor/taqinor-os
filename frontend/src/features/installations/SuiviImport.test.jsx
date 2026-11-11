@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /* PACT56 — Import et douane : dossiers, frais, coût débarqué (FG315/FG316). */
@@ -28,12 +28,19 @@ vi.mock('../../api/installationsApi', () => ({ default: inst }))
 
 import SuiviImport from './SuiviImport'
 import { mockMatchMedia } from '../../test/matchMedia'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
+
+// ADRG31 — les écritures d'import suivent `achats_commander` (Directeur ;
+// le Technicien responsable ne le porte pas).
+const AUTH_DIRECTEUR = { role: 'admin', role_nom: 'Directeur', permissions: ['installations_voir', 'achats_commander'] }
+const AUTH_TECH_RESP = { role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installations_voir', 'installations_modifier'] }
+const renderSuivi = (auth = AUTH_DIRECTEUR) => renderAvecAuth(<SuiviImport />, auth, { routeur: false })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('SuiviImport (PACT56)', () => {
   it('charge les dossiers et affiche la fiche sélectionnée', async () => {
-    render(<SuiviImport />)
+    renderSuivi()
     expect((await screen.findAllByText('Conteneur panneaux Q3')).length).toBeGreaterThan(0)
     expect(await screen.findByRole('heading', { name: 'Conteneur panneaux Q3' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Frais' })).toBeInTheDocument()
@@ -42,13 +49,13 @@ describe('SuiviImport (PACT56)', () => {
 
   it('affiche l\'état vide quand aucun dossier n\'existe', async () => {
     inst.getDossiersImport.mockResolvedValueOnce({ data: { count: 0, results: [] } })
-    render(<SuiviImport />)
+    renderSuivi()
     expect((await screen.findAllByText("Aucun dossier d'import")).length).toBeGreaterThan(0)
   })
 
   it('crée un dossier d\'import', async () => {
     const user = userEvent.setup()
-    render(<SuiviImport />)
+    renderSuivi()
     await screen.findAllByText('Conteneur panneaux Q3')
     await user.click(screen.getAllByRole('button', { name: /Nouveau dossier/ })[0])
     await user.type(screen.getByLabelText('Désignation'), 'Conteneur onduleurs')
@@ -59,7 +66,7 @@ describe('SuiviImport (PACT56)', () => {
 
   it('fait avancer le statut douanier', async () => {
     const user = userEvent.setup()
-    render(<SuiviImport />)
+    renderSuivi()
     await screen.findAllByText('Conteneur panneaux Q3')
     await user.click(screen.getAllByRole('button', { name: 'Faire avancer' })[0])
     await waitFor(() => expect(inst.avancerDossierImport).toHaveBeenCalledWith(12))
@@ -67,7 +74,7 @@ describe('SuiviImport (PACT56)', () => {
 
   it('saisit un frais depuis l\'onglet Frais', async () => {
     const user = userEvent.setup()
-    render(<SuiviImport />)
+    renderSuivi()
     await screen.findAllByText('Conteneur panneaux Q3')
     await user.click(screen.getAllByRole('button', { name: /Nouveau frais/ })[0])
     await user.type(screen.getByLabelText('Montant (MAD)'), '8000')
@@ -81,7 +88,7 @@ describe('SuiviImport (PACT56)', () => {
       { id: 55, designation: 'Panneau 550W', quantite: 100, valeur_fob: 100000 },
     ] } })
     const user = userEvent.setup()
-    render(<SuiviImport />)
+    renderSuivi()
     await screen.findAllByText('Conteneur panneaux Q3')
     await user.click(screen.getByRole('tab', { name: 'Coût débarqué' }))
     expect(await screen.findByTestId('landed-ligne-55')).toBeInTheDocument()
@@ -89,5 +96,13 @@ describe('SuiviImport (PACT56)', () => {
     await waitFor(() => expect(inst.getLandedCostDossier).toHaveBeenCalledWith(12))
     expect(await screen.findByTestId('landed-totaux')).toHaveTextContent('108')
     expect(within(screen.getByTestId('landed-ligne-55')).getByText(/Débarqué/)).toBeInTheDocument()
+  })
+
+  it("ADRG31 — sans achats_commander, Suivi import n'offre aucune écriture", async () => {
+    renderSuivi(AUTH_TECH_RESP)
+    expect(await screen.findByRole('heading', { name: 'Conteneur panneaux Q3' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Nouveau dossier/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Faire avancer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Nouveau frais/ })).toBeNull()
   })
 })
