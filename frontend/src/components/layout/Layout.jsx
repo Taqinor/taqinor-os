@@ -18,6 +18,7 @@ import TrialExpiredBanner from './TrialExpiredBanner'
 import ImpersonationBanner from './ImpersonationBanner'
 import MaintenanceBanner from '../../ui/MaintenanceBanner'
 import coreApi from '../../api/coreApi'
+import { reabonnerPushSiAutorise } from '../../features/pwa/pushSubscribe'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
@@ -62,6 +63,7 @@ export default function Layout({ children }) {
   // hors media query). Fermé à chaque navigation.
   const [drawerOpen, setDrawerOpen] = useState(false)
   const isAuthenticated = useSelector(s => s.auth.isAuthenticated)
+  const userId = useSelector(s => s.auth.user?.id)
   const profile = useSelector(s => s.parametres.profile)
   const navigation = useNavigation()
   // VX57 — une fois `copilotOpen` vu vrai, on garde le panneau monté (le
@@ -80,6 +82,14 @@ export default function Layout({ children }) {
     if (!isAuthenticated) dispatch(fetchMe())
     if (!profile) dispatch(fetchProfile())
   }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps -- monté à chaque navigation de module : ne refetch session/profil que s'ils manquent au montage (D-ENF22)
+
+  // Push : la déconnexion désabonne l'appareil (APAR57) ; à la connexion, on
+  // le réabonne si la permission est déjà accordée et que l'utilisateur n'a
+  // pas coupé le push ici (une tentative par page, sans invite).
+  useEffect(() => {
+    if (!isAuthenticated || userId == null) return
+    reabonnerPushSiAutorise(userId).catch(() => { /* best-effort */ })
+  }, [isAuthenticated, userId])
 
   // SCA24 — thème white-label (TenantTheme) : posé une fois au montage du shell.
   // Résilient par construction : un échec réseau/permission ne doit JAMAIS

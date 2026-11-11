@@ -3,7 +3,7 @@ import PageHeader from '../../components/layout/PageHeader'
 import { Card, CardContent, Switch, Spinner, toast } from '../../ui'
 import notificationsApi from '../../api/notificationsApi'
 import {
-  pushSupported, subscribeToPush, unsubscribeFromPush,
+  pushSupported, subscribeToPush, unsubscribeFromPush, noterChoixPush,
 } from '../../features/pwa/pushSubscribe'
 
 // N75 — Préférences de notifications par événement et par canal.
@@ -34,6 +34,9 @@ function PushToggle() {
   const [enabled, setEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const supported = pushSupported()
+  // Le choix est mémorisé sur cet appareil pour l'utilisateur connecté :
+  // couper le push ici empêche le réabonnement automatique à la prochaine
+  // connexion (pushSubscribe.js).
 
   // Reflète l'état réel de l'abonnement de cet appareil au montage.
   useEffect(() => {
@@ -52,6 +55,7 @@ function PushToggle() {
       if (value) {
         const res = await subscribeToPush()
         if (res.ok) {
+          noterChoixPush(true)
           setEnabled(true)
           toast.success('Notifications push activées sur cet appareil.')
         } else if (res.reason === 'unconfigured') {
@@ -65,6 +69,7 @@ function PushToggle() {
         }
       } else {
         await unsubscribeFromPush()
+        noterChoixPush(false)
         setEnabled(false)
         toast.success('Notifications push désactivées sur cet appareil.')
       }

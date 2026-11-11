@@ -104,6 +104,63 @@ export async function subscribeToPush() {
   }
 }
 
+/* Réabonnement à la connexion (11/11/2026 — Meryem ne recevait plus rien).
+ * APAR57 désabonne l'appareil à chaque « Se déconnecter » ; rien ne le
+ * réabonnait ensuite : un seul logout sur le téléphone coupait le push pour
+ * de bon, jusqu'à un passage manuel dans Paramètres → Notifications.
+ *
+ * Désormais, à la connexion : si le navigateur a DÉJÀ la permission
+ * (« granted », aucune invite affichée) et que CET utilisateur n'a pas
+ * lui-même coupé le push sur CET appareil, l'abonnement est refait. Le refus
+ * explicite est mémorisé par utilisateur et par appareil (poste partagé :
+ * le choix de l'un ne vaut pas pour l'autre). La déconnexion désabonne
+ * toujours (APAR57 intact) : aucun push n'arrive à un poste déconnecté. */
+const CLE_REFUS_PUSH = 'taqinor.push.refus'
+const dejaTente = new Set()
+// Utilisateur connecté sur cette page (posé par `reabonnerPushSiAutorise`,
+// appelé par le shell à la connexion) : le réglage manuel s'y rattache.
+let utilisateurCourant = null
+
+function lireRefus() {
+  try {
+    const brut = JSON.parse(window.localStorage.getItem(CLE_REFUS_PUSH) || '[]')
+    return Array.isArray(brut) ? brut.map(String) : []
+  } catch {
+    return []
+  }
+}
+
+/* Mémorise le choix explicite de l'utilisateur sur CET appareil. */
+export function noterChoixPush(actif, userId = utilisateurCourant) {
+  if (userId == null) return
+  const id = String(userId)
+  const refus = lireRefus().filter((x) => x !== id)
+  if (!actif) refus.push(id)
+  try {
+    window.localStorage.setItem(CLE_REFUS_PUSH, JSON.stringify(refus))
+  } catch { /* stockage indisponible : le choix reste celui de la session */ }
+}
+
+/* Réabonne CET appareil pour `userId` si la permission est déjà accordée et
+ * que l'utilisateur n'a pas coupé le push ici. Une seule tentative par
+ * utilisateur et par chargement de page ; jamais d'invite, jamais d'erreur. */
+export async function reabonnerPushSiAutorise(userId) {
+  if (userId == null || !pushSupported()) return { ok: false, reason: 'unsupported' }
+  const id = String(userId)
+  utilisateurCourant = id
+  if (dejaTente.has(id)) return { ok: false, reason: 'deja' }
+  dejaTente.add(id)
+  if (Notification.permission !== 'granted') return { ok: false, reason: 'denied' }
+  if (lireRefus().includes(id)) return { ok: false, reason: 'refus' }
+  return subscribeToPush()
+}
+
+/* Tests uniquement : oublie les tentatives de la page. */
+export function _reinitialiserTentativesPush() {
+  dejaTente.clear()
+  utilisateurCourant = null
+}
+
 /* Désabonne CET appareil : retire l'abonnement local puis informe le serveur. */
 export async function unsubscribeFromPush() {
   if (!pushSupported()) return { ok: false, reason: 'unsupported' }
