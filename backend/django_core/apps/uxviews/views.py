@@ -9,7 +9,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminOrResponsableTier, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.conflit_etat import ConflitEtat
 from core.events import saved_view_shared
@@ -170,7 +170,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         if self.action == 'definir_par_defaut_role':
             return [IsResponsableOrAdmin(), PeutDefinirVueDefautRole()]
         if self.action in ('toutes_company', 'export_xlsx', 'importer'):
-            return [IsResponsableOrAdmin()]
+            return [IsAdminRole()]  # ADRG81 — Directeur/Admin, comme dit
         return [IsAnyRole()]
 
     def _verifier_partage_autorise(self, serializer, instance=None):
