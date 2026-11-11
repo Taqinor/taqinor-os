@@ -455,3 +455,32 @@ class MatricePermissionsDevis(TestCase):
         api.force_authenticate(commercial)
         r = api.post(base + 'atomic/', corps, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_suppression_liste_prix_et_preset_exige_ventes_supprimer(self):
+        """ADRG5 (C-ADRG-013) — le Commercial du registre (sans
+        ``ventes_supprimer``) reçoit 403 ``droit_manquant`` en supprimant une
+        liste de prix et un modèle de devis partagé, qui restent ; le
+        Commercial responsable : 204. Mutant : rendre ``[IsResponsableOrAdmin()]``
+        à ``destroy`` ⇒ échec."""
+        from apps.ventes.models import DevisPreset, ListePrix
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        responsable = self._compte('Commercial responsable',
+                                   registre.COMMERCIAL_RESP_PERMISSIONS)
+        liste = ListePrix.objects.create(company=self.company, nom='Grossistes')
+        preset = DevisPreset.objects.create(
+            company=self.company, nom='Villa 5 kWc', lignes_snapshot=[])
+        urls = (f'/api/django/ventes/listes-prix/{liste.pk}/',
+                f'/api/django/ventes/presets/{preset.pk}/')
+        api = APIClient()
+        api.force_authenticate(commercial)
+        for url in urls:
+            r = api.delete(url)
+            self.assertEqual(r.status_code, 403, (url, r.data))
+            self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+            self.assertIn('ventes_supprimer', r.data.get('detail', ''))
+        # CLAUSE PERSISTANCE — relus en base : les deux objets existent.
+        self.assertTrue(ListePrix.objects.filter(pk=liste.pk).exists())
+        self.assertTrue(DevisPreset.objects.filter(pk=preset.pk).exists())
+        api.force_authenticate(responsable)
+        for url in urls:
+            self.assertEqual(api.delete(url).status_code, 204, url)

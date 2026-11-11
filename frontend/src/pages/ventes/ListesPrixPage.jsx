@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Tags, Plus } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -255,6 +256,8 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
   const [busy, setBusy] = useState(false)
   const [erreur, setErreur] = useState(null)
   const [confirmSuppr, setConfirmSuppr] = useState(false)
+  // ADRG5 — supprimer une liste de prix exige `ventes_supprimer` (route DELETE).
+  const peutSupprimer = useHasPermission('ventes_supprimer')
 
   const echec = (err, repli) =>
     setErreur(err?.response?.data?.detail || repli)
@@ -331,10 +334,10 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
                         onClick={basculerArchive}>
                   {liste.archived ? 'Réactiver' : 'Archiver'}
                 </Button>
-                <Button type="button" size="sm" variant="destructive" disabled={busy}
+                {peutSupprimer && <Button type="button" size="sm" variant="destructive" disabled={busy}
                         onClick={() => setConfirmSuppr(true)}>
                   Supprimer
-                </Button>
+                </Button>}
               </div>
               <AlerteErreur error={erreur} />
             </div>

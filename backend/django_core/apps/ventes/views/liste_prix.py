@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ADRG5 — app fondation
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from . import openapi_docs as D
 from ..models import ListePrix, LignePrixListe
@@ -81,6 +82,8 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]  # APFS108
+        if self.action == 'destroy':  # ADRG5 — supprimer : ``ventes_supprimer``
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_supprimer')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

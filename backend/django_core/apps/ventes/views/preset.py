@@ -17,6 +17,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import IsResponsableOrAdmin
 from ..models import DevisPreset
 from ..serializers import DevisPresetSerializer
@@ -32,6 +33,11 @@ class DevisPresetViewSet(viewsets.GenericViewSet):
     serializer_class = DevisPresetSerializer
     pagination_class = None  # list() renvoie une liste brute
     permission_classes = [IsResponsableOrAdmin]
+
+    def get_permissions(self):
+        if self.action == 'destroy':  # ADRG5 — modèle PARTAGÉ : ``ventes_supprimer``
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_supprimer')()]
+        return super().get_permissions()
 
     def get_queryset(self):
         user = self.request.user
