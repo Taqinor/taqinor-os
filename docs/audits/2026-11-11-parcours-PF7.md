@@ -104,7 +104,7 @@ Porte : 4 réfutés / 30 retenus · 4 gravités revues · seconde lentille : auc
 
 ## 9. Coût et routage
 Coût : H0 S3 O9 F0 · jetons sous-agents ≈ 3,6 M · tâches 39 (M0 0 M1 10 M2 0 M3 26 GATED 3).
-Routage : DEPLOY 15 · DEVIS 7 · STOCK 3 · LEAD 3 · ANALYSE 2 · DOCUMENTS 2 · MOTEUR 2 · SECURITE 2 · GENERATEUR 1 · SAV 1 (`docs/plans/PLAN_AUDIT_<X>.md`) · WEB 1 (`docs/WEB_PLAN.md`) · acceptation ATST55 · PR à venir.
+Routage : DEPLOY 15 · DEVIS 7 · STOCK 3 · LEAD 3 · ANALYSE 2 · DOCUMENTS 2 · MOTEUR 2 · SECURITE 2 · GENERATEUR 1 · SAV 1 (`docs/plans/PLAN_AUDIT_<X>.md`) · WEB 1 (`docs/WEB_PLAN.md`) · acceptation ATST55 · PR #1364.
 Rapport : aucun S1. 9 tests d'argent, de droit ou de chiffre client ne prouvent rien seuls (S2, chacun avec une sonde jouée le 11/11).
 - Rôles fabriqués : un relâchement du droit passerait sur la revalorisation du stock, les plans de commission, le réglage des variantes, le PDF des factures fournisseur.
 - Balayage des prix d'achat aveugle sur deux routes ; garde d'isolement sans aucun test.
