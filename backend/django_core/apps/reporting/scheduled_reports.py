@@ -347,15 +347,15 @@ def _send_report_email(report, content, title, filename=None,
         subject = f'Rapport : {report.name}'[:300]
         body = (f'Bonjour,\n\nVeuillez trouver ci-joint le rapport « {report.name} » '
                 f'({title}).\n\nCordialement.')
-        connection = get_connection(fail_silently=True)
+        # AMSG80 — un backend qui lève est un ÉCHEC journalisé, jamais un « envoyé ».
+        connection = get_connection(fail_silently=False)
         msg = EmailMessage(
             subject=subject, body=body, from_email=from_email,
             to=recipients, connection=connection)
         msg.attach(
             filename or f'{report.target_kind}.xlsx', content,
             content_type or MIME_XLSX)
-        msg.send(fail_silently=True)
-        return True
+        return msg.send(fail_silently=False)  # nombre remis (0 ⇒ échec)
     except Exception:  # pragma: no cover - dépend du backend réel
         logger.warning('email_saved_reports: envoi en échec (rapport %s)',
                        report.pk, exc_info=True)

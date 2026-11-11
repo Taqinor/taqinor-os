@@ -103,8 +103,9 @@ def _exiger_version_en_jeu(devis, geste):
     quand ``geste`` (ENVOYER, RELANCER…) vise une version hors jeu."""
     from ..domain.modifiabilite import (
         corps_version_remplacee, geste_cycle_permis)
-    if not geste_cycle_permis(devis, geste)[0]:
-        raise _VersionRemplaceeConflit(corps_version_remplacee(devis))
+    permis, message = geste_cycle_permis(devis, geste)
+    if not permis:  # AMSG38 — le motif du prédicat (refusé / expiré compris)
+        raise _VersionRemplaceeConflit(corps_version_remplacee(devis, message))
 
 
 def _exiger_remise_envoi(devis, user, *, enregistrer=True):
@@ -170,10 +171,21 @@ def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
         except Exception as exc:  # noqa: BLE001 — traduit en refus nommé (D-ENF22-BLE001)
             logger.warning("devis_envoi._envoi_atomique : pièce jointe non rendue", exc_info=True)
             raise _refus_rendu(exc) from exc
-        ok, err = _send(dest, sujet, corps, attachment, nom)
+        ok, err = _send(dest, sujet, corps, attachment, nom, company=devis.company)
         if not ok:
             raise _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, f'Échec envoi email : {err}', err, nom)
     return nom
+
+
+def _message_relance(devis, langue, url):
+    """AMSG37 — « Relancer ce devis » : gabarit ``relance_devis`` de la société
+    (langue du lead, Darija vide ⇒ FR), rendu comme ``build_single_devis_whatsapp``."""
+    from apps.parametres.models import MessageTemplate
+    from ..utils.whatsapp import _nom_complet, marque_societe, render_message_template
+    personne = devis.client if devis.client_id else getattr(devis, 'lead', None)
+    return render_message_template(MessageTemplate.get_corps(devis.company, 'relance_devis', langue), {
+        'civilite': '', 'nom': _nom_complet(getattr(personne, 'prenom', ''), getattr(personne, 'nom', '')),
+        'reference': devis.reference, 'lien': url, 'marque': marque_societe(devis.company)})
 
 
 def _options_piece_jointe(devis, pdf_mode, token):
@@ -583,6 +595,7 @@ class DevisEnvoiActionsMixin:
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'url': link['url'],
+            'message_relance': _message_relance(devis, langue, link['url']),
             'devis_statut': devis.statut,  # inchangé
             'preview': True,
             # GAMME — de quoi afficher le choix « envoyer cette gamme seule /

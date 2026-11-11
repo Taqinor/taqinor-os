@@ -85,6 +85,24 @@ class WaitStepTests(TestCase):
         self.assertEqual(echeance.statut,
                          AutomationScheduledStep.Statut.REPRISE)
 
+    def test_reprise_ignore_societe_suspendue(self):
+        """AMSG79 (C-AMSG-040) — une échéance due d'une société ``actif=False``
+        reste en attente ; celle de la société active est reprise."""
+        self._sequence()
+        engine.run_action(self.rule, self.lead, self.co, context={'reference': 'DV-S'})
+        active = AutomationScheduledStep.objects.get(company=self.co)
+        active.run_at = timezone.now() - timedelta(minutes=1)
+        active.save(update_fields=['run_at'])
+        suspendue = AutomationScheduledStep.objects.get(pk=active.pk)
+        suspendue.pk = None
+        suspendue.company = Company.objects.create(nom='NTEXT7 S', slug='ntext7-s', actif=False)
+        suspendue.save()
+        self.assertEqual(process_due_automation_steps(), 1)
+        active.refresh_from_db()
+        suspendue.refresh_from_db()
+        self.assertEqual(active.statut, AutomationScheduledStep.Statut.REPRISE)
+        self.assertEqual(suspendue.statut, AutomationScheduledStep.Statut.EN_ATTENTE)
+
     def test_resume_is_idempotent(self):
         self._sequence()
         engine.run_action(self.rule, self.lead, self.co,

@@ -139,11 +139,11 @@ NOTER_LEAD = AgentAction(
 )
 
 
-# Action 4 — Préparer l'envoi WhatsApp d'un/de devis du lead. Endpoint réel :
-# POST /api/django/crm/leads/<id>/whatsapp-devis/ (LeadViewSet.whatsapp_devis).
-# N'ENVOIE RIEN : renvoie {wa_url, message, links} pour la carte de résultat ;
-# le commercial appuie lui-même sur Envoyer. Effet interne (préparation), donc
-# RISK_INTERNAL.
+# Action 4 — Préparer l'envoi WhatsApp d'un/de devis du lead. AMSG6 — endpoint :
+# l'APERÇU sans effet POST /api/django/crm/leads/<id>/whatsapp-devis-apercu/
+# (QJR538 : ni « envoyé », ni funnel, ni AuditLog), jamais le commit
+# `whatsapp-devis` ; renvoie {wa_url, message, links} pour la carte de résultat.
+# Le commercial appuie lui-même sur Envoyer. RISK_INTERNAL.
 PREPARER_ENVOI_WHATSAPP = AgentAction(
     key='crm.lead.whatsapp_prepare',
     label='Préparer un envoi WhatsApp de devis',
@@ -155,7 +155,7 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
         "Exemple : « Prépare le WhatsApp du devis 45 pour le lead 12 ». "
         "Résultat : {wa_url, message, links}."
     ),
-    endpoint='/api/django/crm/leads/{id}/whatsapp-devis/',
+    endpoint='/api/django/crm/leads/{id}/whatsapp-devis-apercu/',
     method='POST',
     inputs={
         'type': 'object',

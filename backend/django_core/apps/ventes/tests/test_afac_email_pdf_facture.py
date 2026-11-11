@@ -225,6 +225,32 @@ class EmailPdfFactureTests(TestCase):
         self.assertIn('PDF indisponible', relance.erreur)
         self.assertEqual(len(mail.outbox), 0)
 
+    def test_recu_et_releve_sans_pdf_refuses(self):
+        """AMSG42 (C-AMSG-030) — quittance et relevé dont le PDF « ci-joint »
+        n'a pas pu être produit : aucun message, EmailLog ``echec`` nommé ;
+        rendu réussi : l'envoi part avec la pièce."""
+        from apps.ventes.email_service import (
+            PDF_RECU_INDISPONIBLE, PDF_RELEVE_INDISPONIBLE, send_recu_email,
+            send_releve_email)
+        paiement = Paiement.objects.create(
+            company=self.company, facture=self.facture, montant=Decimal('300'),
+            date_paiement=date(2026, 9, 1), mode=Paiement.Mode.VIREMENT,
+            statut=Paiement.Statut.ENCAISSE)
+        with patch('apps.ventes.utils.pdf.generate_recu_pdf', side_effect=OSError('rendu')), \
+                patch('apps.ventes.utils.pdf.generate_releve_pdf', side_effect=OSError('rendu')):
+            recu = send_recu_email(paiement, user=self.user)
+            releve = send_releve_email(self.client_obj, {}, user=self.user)
+        self.assertEqual(len(mail.outbox), 0)
+        for log, motif in ((recu, PDF_RECU_INDISPONIBLE), (releve, PDF_RELEVE_INDISPONIBLE)):
+            log.refresh_from_db()
+            self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
+            self.assertEqual(log.erreur, motif)
+        with patch('apps.ventes.utils.pdf.generate_recu_pdf', return_value=b'%PDF'), \
+                patch('apps.ventes.utils.pdf.generate_releve_pdf', return_value=b'%PDF'):
+            self.assertEqual(send_recu_email(paiement).statut, EmailLog.Statut.ENVOYE)
+            self.assertEqual(send_releve_email(self.client_obj, {}).statut, EmailLog.Statut.ENVOYE)
+        self.assertEqual([len(m.attachments) for m in mail.outbox], [1, 1])
+
     def test_relance_sans_pdf_inchangee(self):
         """Le beat de relance (``attach_pdf`` False par défaut) n'est pas
         concerné : il part sans pièce jointe, même stockage en panne."""

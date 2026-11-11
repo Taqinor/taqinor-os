@@ -123,6 +123,24 @@ class ImputationAcompteTests(TestCase):
         acompte.refresh_from_db()
         self.assertEqual(acompte.facture_imputee_id, f2.id)
 
+    def test_delete_acompte_refuse_405(self):
+        """ASUP23 (C-ASUP-014) — DELETE d'un acompte versé et imputé : 405 pour
+        un Directeur ; acompte et imputation intacts ; la lecture reste servie."""
+        from django.core.management import call_command
+        call_command('init_roles', verbosity=0)
+        directeur = User.objects.create_user(
+            username='asup23-dir', password='x', company=self.company,
+            role=Role.objects.get(company=self.company, nom='Directeur'))
+        acompte = self._acompte(Decimal('1200'))
+        self._facturer(25)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(directeur)}')
+        url = f'/api/django/stock/acomptes-fournisseur/{acompte.id}/'
+        self.assertEqual(api.delete(url).status_code, 405)
+        self.assertTrue(AcompteFournisseur.objects.filter(pk=acompte.pk).exists())
+        self.assertEqual(acompte.imputations.count(), 1)
+        self.assertEqual(api.get(url).status_code, 200)
+
     def test_montant_verrouille_apres_imputation(self):
         acompte = self._acompte(Decimal('1200'))
         self._facturer(25)

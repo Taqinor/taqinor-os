@@ -417,8 +417,8 @@ def backend_email_envoie(backend=None):
     process) ; vrai pour tout autre backend (anymail, SMTP…). Prédicat de la
     fondation ``core``, réutilisable par les apps (jamais l'inverse).
     """
-    if backend is None:
-        backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
+    from .email_backends import backend_reel
+    backend = backend_reel(backend)  # AMSG61 — None ⇒ le réglage ; l'enveloppe ⇒ son backend réel
     return bool(backend) and backend not in BACKENDS_NON_ENVOYEURS
 
 

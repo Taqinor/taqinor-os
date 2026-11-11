@@ -47,3 +47,6 @@ INBOUND_REPLY_EMAIL = os.environ.get('INBOUND_REPLY_EMAIL', '')
 VENTES_EXPORT_ASYNC_ROW_THRESHOLD = int(os.environ.get('VENTES_EXPORT_ASYNC_ROW_THRESHOLD') or 2000)
 VENTES_COMPTA_ACCOUNT_CODES = {}
 VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY = {}
+# core.email_backends (AMSG61) : destinataires autorisés de l'enveloppe e-mail (virgules) ; vide = tous hors DEBUG.
+EMAIL_DESTINATAIRES_AUTORISES = [
+    a.strip().lower() for a in os.environ.get('EMAIL_DESTINATAIRES_AUTORISES', '').split(',') if a.strip()]

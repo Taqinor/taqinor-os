@@ -73,3 +73,27 @@ class Qx22WhatsappPreviewTests(TestCase):
         self.assertEqual(resp.status_code, 409)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.BROUILLON)
+
+    def test_message_relance_du_gabarit_societe(self):
+        """AMSG37 (C-AMSG-022) — ``message_relance`` = gabarit ``relance_devis``
+        rendu (nom, référence, lien, marque) ; société personnalisée : son texte ;
+        ``message`` (envoi) inchangé."""
+        from apps.parametres.models import MessageTemplate
+        from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS
+        self.assertIn('relance_devis', MESSAGE_TEMPLATE_DEFAULTS)
+        self.client_obj.prenom = 'Amina'
+        self.client_obj.save(update_fields=['prenom'])
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ENVOYE)
+        lien = f'/api/django/ventes/devis/{self.devis.id}/whatsapp-preview/'
+        resp = self.api.post(lien, {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        relance = resp.data['message_relance']
+        self.assertTrue(relance.startswith('Bonjour Amina Client, petit rappel concernant votre devis'))
+        for attendu in (self.devis.reference, resp.data['url'], 'QX22 Co'):
+            self.assertIn(attendu, relance)
+        self.assertNotEqual(relance, resp.data['message'])
+        MessageTemplate.objects.create(company=self.company, cle='relance_devis',
+                                       corps_fr='Rappel {nom} : {reference}')
+        resp = self.api.post(lien, {}, format='json')
+        self.assertEqual(resp.data['message_relance'],
+                         f'Rappel Amina Client : {self.devis.reference}')
