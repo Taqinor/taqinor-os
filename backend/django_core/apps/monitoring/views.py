@@ -937,6 +937,16 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=inst)
         return qs
 
+    def perform_destroy(self, instance):
+        # ASUP7 — une garantie commencée (ou dont l'installation a des
+        # relevés) fonde la compensation due : elle ne se supprime pas.
+        if (instance.start_year <= timezone.localdate().year
+                or ProductionReading.objects.filter(
+                    installation_id=instance.installation_id).exists()):
+            raise ConflitEtat('Garantie en cours : modifiez-la ou clôturez-la, '
+                              'elle fonde la compensation due.')
+        super().perform_destroy(instance)
+
     @extend_schema(
         parameters=[OpenApiParameter('year', _ANNEE, required=False)],
         responses=_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_STATUS_REPONSE)
