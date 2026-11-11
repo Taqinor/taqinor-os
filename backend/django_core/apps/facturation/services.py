@@ -22,13 +22,6 @@ touche au moteur de devis ni aux statuts du devis. ``facturation`` lit
 crm/ventes/stock QUE via leurs selectors/services ou par référence opaque.
 """
 from apps.ventes import services as _ventes
-# ASUP1 — rattrapage de l'instantané d'acheteur, lu par la commande
-# ``figer_identite_acheteur``, la garde d'effacement (ASUP3) et l'anonymisation
-# crm (ASUP2). Hors ``__all__`` : ``__all__`` ne liste que les noms aussi
-# exposés par ``apps.ventes.services`` (ODX18, test de la façade).
-from apps.ventes.domain.instantanes_facture import (  # noqa: F401 — ré-export de façade
-    figer_identite_acheteur_manquante,
-)
 
 # ── Émission et création de factures (``domain/facturation_ops.py``) ──────────
 StockInsuffisantError = _ventes.StockInsuffisantError
@@ -75,6 +68,19 @@ abandonner_solde_facture = _ventes.abandonner_solde_facture
 anomalies_emission_facture = _ventes.anomalies_emission_facture
 CreditHoldError = _ventes.CreditHoldError
 verifier_credit_hold = _ventes.verifier_credit_hold
+
+
+def figer_identite_acheteur_manquante(company=None, client_id=None,
+                                      appliquer=False):
+    """ASUP1 — point d'accès facturation au rattrapage de l'instantané
+    d'acheteur (corps : ``domain/instantanes_facture``), lu par la commande
+    ``figer_identite_acheteur`` et l'anonymisation crm (ASUP2). Hors
+    ``__all__`` : il ne liste que les noms aussi servis par
+    ``apps.ventes.services`` (ODX18)."""
+    from apps.ventes.domain.instantanes_facture import (
+        figer_identite_acheteur_manquante as figer)
+    return figer(company, client_id=client_id, appliquer=appliquer)
+
 
 __all__ = [
     'StockInsuffisantError', 'EmissionRefusee', 'emettre_facture',
