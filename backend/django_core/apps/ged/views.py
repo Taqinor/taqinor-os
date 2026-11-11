@@ -5205,7 +5205,7 @@ def _signataire_publique_payload(signataire):
     200: oa.PUBLIC_SIGNATAIRE, 410: oa.PUBLIC_ERREUR})
 @extend_schema(methods=['POST'], request=oa.PUBLIC_SIGNATAIRE_CORPS,
                responses={200: oa.PUBLIC_SIGNATAIRE_ACTION, 403: oa.PUBLIC_ERREUR,
-                          410: oa.PUBLIC_ERREUR})
+                          410: oa.PUBLIC_ERREUR, 429: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -5299,7 +5299,10 @@ def public_signataire(request, token):
         # ZGED2 — envoie (ou dégrade proprement) le code d'authentification
         # extra de CE destinataire avant qu'il ne débloque la signature.
         resultat = services.envoyer_code_otp_signataire(signataire)
-        return _ged_noindex(Response(resultat, status=status.HTTP_200_OK))
+        # APUB9 — renvoi dans le délai : 429 nommant l'attente, aucun envoi.
+        return _ged_noindex(Response(resultat, status=(
+            status.HTTP_429_TOO_MANY_REQUESTS if 'attente_s' in resultat
+            else status.HTTP_200_OK)))
 
     if action_demandee == 'valider-code':
         try:
