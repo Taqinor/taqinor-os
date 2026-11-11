@@ -4530,3 +4530,27 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
     taches: [ASUP48]
+
+  - id: D-ACNC-1
+    question: "Un second paiement identique sur une facture (même montant, même jour), saisi sans clé par une autre personne, par l'API ou par l'assistant, est aujourd'hui accepté en silence ; or deux chèques du même montant le même jour existent. Que fait l'ERP ?"
+    options:
+      - cle: accepter_apres_confirmation
+        texte: "L'accepter seulement après une confirmation explicite : « un paiement de 5 000 DH a déjà été enregistré aujourd'hui sur cette facture : confirmer ? »"
+      - cle: refuser
+        texte: "Le refuser (409) tant qu'un responsable ne force pas"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : accepter_apres_confirmation)"
+    taches: [ACNC4]
+
+  - id: D-ACNC-2
+    question: "Un encaissement groupé dont toutes les factures sont déjà soldées devient aujourd'hui, en entier, une avance client (AFAC8 l'a voulu pour un reliquat, sans viser ce cas). Que fait l'ERP ?"
+    options:
+      - cle: refuser
+        texte: "Le refuser : « ces factures sont déjà soldées ; pour une avance, utilisez Enregistrer une avance »"
+      - cle: garder_en_avance
+        texte: "Le garder en avance client, comme aujourd'hui"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ACNC10]
