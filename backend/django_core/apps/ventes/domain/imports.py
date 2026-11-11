@@ -187,6 +187,14 @@ def creer_facture_import(company, ligne, *, external_system=None, user=None):
     statut = _statut_facture(ligne.get('statut'))
     if statut is None:
         return ('erreur', f"statut source non reconnu : {ligne.get('statut')!r}", None)
+    # ADRG62 — le statut importé est borné au droit du geste qui le pose :
+    # hors brouillon = « Émettre » (`encaisser`, AARG9), « payée » = « Marquer
+    # payée » (administrateur). Refus AVANT tout numéro consommé.
+    from ..vente_facturation import peut_encaisser
+    if statut != Facture.Statut.BROUILLON and not peut_encaisser(user):
+        return ('erreur', "statut hors brouillon : droit « Encaisser » requis", None)
+    if statut == Facture.Statut.PAYEE and not getattr(user, 'is_admin_role', False):
+        return ('erreur', "statut « payée » réservé à l'administrateur", None)
 
     def _create(ref):
         return Facture.objects.create(
