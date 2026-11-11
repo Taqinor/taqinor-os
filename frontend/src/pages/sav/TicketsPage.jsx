@@ -37,7 +37,8 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 // `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
 // le `readOnly` piloté par le rôle.
 import TagChipInput from '../../components/TagChipInput'
-import { useCanListUsers, useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanListUsers, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier' // ACSV62 / ADRG39
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -252,15 +253,6 @@ export function TicketPremiereReponseChip({ ticket }) {
       1ʳᵉ réponse à faire
     </Badge>
   )
-}
-
-// ACSV62 / D-ACSV-3 — droit métier exigé en plus de `sav_gerer` : le code fin
-// quand le compte en porte, sinon le palier responsable (comptes hérités).
-function useDroitMetier(code) {
-  const fins = useSelector((s) => (s.auth.permissions || []).length > 0)
-  const parCode = useHasPermission(code)
-  const parPalier = useIsAdminOrResponsable()
-  return fins ? parCode : parPalier
 }
 
 export function TicketDetail({ ticket, onClose, onSaved }) {

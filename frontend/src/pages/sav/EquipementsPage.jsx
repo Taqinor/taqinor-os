@@ -9,6 +9,7 @@ import {
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
@@ -91,8 +92,9 @@ function frError(data, fallback) {
 
 export function EquipementDetail({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
-  // ASAV61 — mise au rebut / réactivation : responsable/admin (serveur).
-  const peutRebuter = useIsAdminOrResponsable()
+  // ASAV61 / ADRG39 — mise au rebut / réactivation : palier ET equipement_gerer (serveur).
+  const palierRebut = useIsAdminOrResponsable(), codeRebut = useDroitMetier('equipement_gerer')
+  const peutRebuter = palierRebut && codeRebut
   const initial = useMemo(() => ({
     numero_serie: equipement.numero_serie ?? '',
     date_pose: equipement.date_pose ?? '',
