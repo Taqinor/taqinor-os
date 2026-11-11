@@ -39,6 +39,8 @@ const ctxBase = {
   selectedIds: [], toggleSelect: () => {},
   pdfGenerating: {}, pdfDownloading: {}, waBusy: {}, payLinkBusy: {}, dgiBusy: {},
   actionId: null, histoCache: {}, canManage: true, isAdmin: true,
+  // ADRG18 — annuler une référence légale exige `encaisser` (ASEC90).
+  peutEncaisser: true,
 }
 
 const facture = {

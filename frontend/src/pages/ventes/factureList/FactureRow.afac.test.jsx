@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
@@ -19,6 +19,7 @@ const ctx = {
   selectedIds: [], toggleSelect: () => {},
   pdfGenerating: {}, pdfDownloading: {}, waBusy: {}, payLinkBusy: {}, dgiBusy: {},
   actionId: null, histoCache: {}, canManage: true, isAdmin: true, peutEncaisser: true,
+  peutModifier: true, peutPdf: true, peutExporter: true,
 }
 
 function rendre(facture, droits = {}) {
@@ -70,6 +71,37 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     unmount()
     rendre(CONTRAT.exemple, { peutEncaisser: false })
     expect(screen.queryByRole('button', { name: /Modifier l’échéance/ })).toBeNull()
+  })
+
+  it('ADRG18 — sans `encaisser` : ni Émettre ni Annuler la facture sur une référence légale', async () => {
+    rendre(CONTRAT.exemple_brouillon, { peutEncaisser: false })
+    expect(screen.queryByRole('button', { name: /Émettre/ })).toBeNull()
+    cleanup()
+    rendre({ ...CONTRAT.exemple, reference: 'FAC-2026-11-0001' }, { peutEncaisser: false })
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Note de débit/ })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Annuler la facture/ })).toBeNull()
+  })
+
+  it('ADRG18 — hors palier admin : ni Marquer payée ni Note de débit', async () => {
+    rendre(CONTRAT.exemple, { isAdmin: false })
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Annuler la facture/ })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Marquer payée/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /Note de débit/ })).toBeNull()
+  })
+
+  it('ADRG18 — lecteur seul : ni PDF, ni WhatsApp, ni UBL, ni Éditer', async () => {
+    rendre(CONTRAT.exemple_brouillon, { peutEncaisser: false, peutModifier: false, peutPdf: false, peutExporter: false, canManage: false, isAdmin: false })
+    expect(screen.queryByRole('button', { name: /Éditer/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /PDF/ })).toBeNull()
+    cleanup()
+    rendre(CONTRAT.exemple, { peutEncaisser: false, peutModifier: false, peutPdf: false, peutExporter: false, canManage: false, isAdmin: false })
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: /WhatsApp/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /UBL/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /Note de débit/ })).toBeNull()
   })
 
   it('ASEC64 — avec `encaisser` sans palier admin : Avoir visible', () => {

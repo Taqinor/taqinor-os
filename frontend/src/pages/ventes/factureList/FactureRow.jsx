@@ -96,6 +96,8 @@ export default function FactureRow({ f, ctx }) {
     canManage, peutEncaisser, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
+    // ADRG18 - chaque geste suit le code de sa route.
+    isAdmin, peutModifier, peutPdf, peutExporter,
   } = ctx
   // VNT46 - gestes de la facture (annuler / supprimer / reçu) : état local de la
   // ligne, erreur rendue SOUS la facture, aucun toast.
@@ -316,7 +318,7 @@ export default function FactureRow({ f, ctx }) {
               autres boutons présents/absents. Rendue ici UNE seule fois ;
               retirée de sa position historique plus bas pour ne jamais
               apparaître deux fois. */}
-          {nba === 'emettre' && (
+          {peutEncaisser && nba === 'emettre' && (
             <Button size="sm" variant="default" loading={busy}
                     onClick={() => doAction(emettreFacture, f.id)}
                     title={f.motif_non_encaissable || 'Action recommandée'}>
@@ -329,12 +331,12 @@ export default function FactureRow({ f, ctx }) {
               <Zap className="size-3.5" aria-hidden="true" /> Encaisser
             </Button>
           )}
-          {f.statut === 'brouillon' && (
+          {peutModifier && f.statut === 'brouillon' && (
             <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
               Éditer
             </Button>
           )}
-          {f.statut === 'brouillon' && nba !== 'emettre' && (
+          {peutEncaisser && f.statut === 'brouillon' && nba !== 'emettre' && (
             <Button size="sm" variant="outline"
                     loading={busy} onClick={() => doAction(emettreFacture, f.id)}
                     title={f.motif_non_encaissable || undefined}>
@@ -366,7 +368,7 @@ export default function FactureRow({ f, ctx }) {
               <CreditCard /> Payer en ligne
             </Button>
           )}
-          {f.fichier_pdf ? (
+          {!peutPdf ? null : f.fichier_pdf ? (
             <Button size="sm" variant="success" loading={isDownloading}
                     onClick={() => handleTelechargerPdf(f)} title="Télécharger le PDF">
               <Download /> PDF
@@ -396,7 +398,7 @@ export default function FactureRow({ f, ctx }) {
                     plus à côté d'Encaisser. Il DETRUIT mode/date/référence du
                     règlement : la confirmation l'explique au lieu de demander
                     « êtes-vous sûr ? ». */}
-                {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
+                {isAdmin && (f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
                   <DropdownMenuItem
                     data-testid="marquer-payee"
                     onSelect={(e) => { e.preventDefault(); openMarquerPayee(f) }}>
@@ -409,7 +411,7 @@ export default function FactureRow({ f, ctx }) {
                     <Eye /> Aperçu du PDF
                   </DropdownMenuItem>
                 )}
-                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                {peutModifier && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
                     disabled={isWaBusy || !waPhoneOk}
                     title={!waPhoneOk ? 'Numéro invalide' : undefined}
@@ -428,20 +430,20 @@ export default function FactureRow({ f, ctx }) {
                           : 'WhatsApp'}
                   </DropdownMenuItem>
                 )}
-                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                {peutExporter && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem onClick={() => handleUbl(f)}>
                     <Code2 /> Aperçu UBL
                   </DropdownMenuItem>
                 )}
                 {/* WIR103/ZFAC4 — note de débit (pendant de l'avoir) :
                     création + PDF, jusqu'ici serveur-only sans aucune UI. */}
-                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openNoteDebit(f) }}>
                     <ReceiptText /> Note de débit
                   </DropdownMenuItem>
                 )}
                 {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
-                {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                {peutExporter && dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
                     disabled={isDgiBusy}
                     onSelect={(e) => { e.preventDefault(); handleDgiExport(f) }}>
@@ -484,7 +486,8 @@ export default function FactureRow({ f, ctx }) {
                 )}
                 {/* VNT46 — annulation en 1 clic (avoir automatique) : palier
                     responsable/admin, comme le serveur (PEUT_ANNULER). */}
-                {canManage && f.statut !== 'annulee' && (
+                {canManage && f.statut !== 'annulee'
+                  && (peutEncaisser || String(f.reference || '').startsWith('BROUILLON-')) && (
                   <DropdownMenuItem
                     data-testid="annuler-facture"
                     onClick={() => {
