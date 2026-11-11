@@ -14,11 +14,11 @@ from .registry import restaurateur
 
 logger = logging.getLogger(__name__)
 
-# Drapeaux de soft-delete reconnus par le repli GÉNÉRIQUE de `restaurer` (les
-# conventions déjà en place dans le repo : `core.SoftDeleteModel.is_deleted`,
-# `is_archived`, `annule`). Résolus DYNAMIQUEMENT sur l'instance — jamais par un
-# import du modèle d'une autre app.
-DRAPEAUX_SOFT_DELETE = ('is_deleted', 'is_archived', 'annule')
+# Le SEUL drapeau de suppression reconnu par le repli GÉNÉRIQUE de `restaurer`
+# (`core.SoftDeleteModel.is_deleted`, résolu sur l'instance). ASUP10 —
+# l'archivage (`is_archived`) et l'annulation (`annule`) ne passent jamais par
+# la corbeille : un lead archivé puis supprimé revient archivé.
+DRAPEAUX_SOFT_DELETE = ('is_deleted',)
 
 
 class RestaurationImpossible(Exception):
@@ -79,17 +79,6 @@ def _restauration_generique(element):
     if obj is None:
         return None
 
-    # Un modèle peut porter PLUSIEURS mécanismes de soft-delete indépendants :
-    # `crm.Lead` hérite `core.SoftDeleteModel` (donc `is_deleted` + `restore()`)
-    # ET possède son propre `is_archived`. Préférer `restore()` sur le seul
-    # critère `hasattr` était donc faux : archiver un lead pose `is_archived`,
-    # mais `restore()` ne regarde que `is_deleted`, sort immédiatement quand il
-    # est déjà `False`, et rendait la restauration SILENCIEUSEMENT INEFFICACE —
-    # l'API répondait `restaure: true`, l'entrée se fermait, et la cible restait
-    # archivée (donnée irrécupérable depuis la corbeille).
-    #
-    # On lève donc TOUS les drapeaux réellement posés, `restore()` gardant la
-    # main sur `is_deleted` (il gère aussi la fermeture de son propre journal).
     connus = [d for d in DRAPEAUX_SOFT_DELETE if hasattr(obj, d)]
     if not connus and not hasattr(obj, 'restore'):
         raise RestaurationImpossible(
@@ -99,12 +88,6 @@ def _restauration_generique(element):
 
     if getattr(obj, 'is_deleted', False) and hasattr(obj, 'restore'):
         obj.restore()
-
-    champs = [d for d in connus if d != 'is_deleted' and getattr(obj, d, False)]
-    if champs:
-        for drapeau in champs:
-            setattr(obj, drapeau, False)
-        obj.save(update_fields=champs)
     return obj
 
 

@@ -55,9 +55,10 @@ def rows(resp):
 
 
 def archiver(lead, user=None, **extra):
-    """Simule ce que fera une app émettrice : soft-delete + émission."""
-    lead.is_archived = True
-    lead.save(update_fields=['is_archived'])
+    """Simule ce que fera une app émettrice : soft-delete + émission (ASUP10 —
+    la corbeille ne connaît que la suppression, jamais l'archivage)."""
+    lead.is_deleted = True
+    lead.save(update_fields=['is_deleted'])
     record_soft_deleted.send(
         sender=type(lead), instance=lead, company=lead.company, user=user, **extra)
     return lead
@@ -67,6 +68,7 @@ class CorbeilleBase(TestCase):
     BASE = '/api/django/trash/corbeille/'
 
     def setUp(self):
+        self._registre = dict(registry._RESTAURATEURS)
         self.co_a = make_company('trash-a', 'Trash A')
         self.co_b = make_company('trash-b', 'Trash B')
         self.directeur = make_user(self.co_a, 'trash-directeur', role_legacy='responsable')
@@ -76,8 +78,10 @@ class CorbeilleBase(TestCase):
 
     def tearDown(self):
         # Le registre est un état de PROCESSUS : un test qui enregistre un
-        # restaurateur ne doit pas contaminer les suivants.
+        # restaurateur ne doit pas contaminer les suivants — ni effacer ceux
+        # que les apps posent dans leur ``ready()`` (crm.lead, calepinage).
         registry._RESTAURATEURS.clear()
+        registry._RESTAURATEURS.update(self._registre)
 
 
 class JournalisationTests(CorbeilleBase):
@@ -213,7 +217,7 @@ class CorbeilleApiTests(CorbeilleBase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['restaure'])
         self.lead.refresh_from_db()
-        self.assertFalse(self.lead.is_archived)
+        self.assertFalse(self.lead.is_deleted)
         element.refresh_from_db()
         self.assertIsNotNone(element.restaure_le)
         # L'entrée quitte la corbeille active mais reste au journal.
@@ -418,10 +422,7 @@ class RestaurationTests(CorbeilleBase):
 
         def restaurateur_crm(element):
             appels.append(element.pk)
-            lead = Lead.objects.get(pk=element.object_id)
-            lead.is_archived = False
-            lead.save(update_fields=['is_archived'])
-            return lead
+            return Lead.all_objects.get(pk=element.object_id).restore()
 
         registry.enregistrer_restaurateur('crm.lead', restaurateur_crm)
         archiver(self.lead)
@@ -430,7 +431,25 @@ class RestaurationTests(CorbeilleBase):
         self.assertEqual(appels, [element.pk])
         self.assertEqual(obj.pk, self.lead.pk)
         self.lead.refresh_from_db()
-        self.assertFalse(self.lead.is_archived)
+        self.assertFalse(self.lead.is_deleted)
+
+    def test_repli_generique_ne_desarchive_pas(self):
+        """ASUP10 (C-ASUP-007) — un lead archivé PUIS supprimé, restauré par le
+        repli générique, revient non supprimé mais toujours archivé. Mutant :
+        remettre `is_archived` dans `DRAPEAUX_SOFT_DELETE` ⇒ désarchivé."""
+        registry._RESTAURATEURS.pop('crm.lead', None)
+        quand = timezone.now() - timedelta(days=2)
+        Lead.objects.filter(pk=self.lead.pk).update(
+            is_archived=True, archived_at=quand, archived_by=self.directeur)
+        Lead.objects.get(pk=self.lead.pk).soft_delete(user=self.directeur)
+        element = ElementSupprime.objects.get()
+        restaurer(element)
+        lead = Lead.all_objects.get(pk=self.lead.pk)
+        self.assertFalse(lead.is_deleted)
+        self.assertTrue(lead.is_archived)
+        self.assertEqual((lead.archived_at, lead.archived_by_id), (quand, self.directeur.pk))
+        element.refresh_from_db()
+        self.assertIsNotNone(element.restaure_le)
 
     def test_cible_disparue_ferme_lentree_sans_erreur(self):
         archiver(self.lead)
@@ -469,7 +488,7 @@ class PurgeTests(CorbeilleBase):
         archiver(self.lead)
         self._perimer(ElementSupprime.objects.get())
         purger_expires()
-        self.assertTrue(Lead.objects.filter(pk=self.lead.pk).exists())
+        self.assertTrue(Lead.all_objects.filter(pk=self.lead.pk).exists())
 
     def test_commande_purger_corbeille(self):
         # `purger_corbeille_transverse` : `purger_corbeille` tout court est déjà
