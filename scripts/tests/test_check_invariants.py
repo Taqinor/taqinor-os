@@ -36,5 +36,55 @@ class AbsenceTests(unittest.TestCase):
             self.assertEqual(ci.main(), 0)
 
 
+class ReferencesTests(unittest.TestCase):
+    """ATST44 (C-ATST-023) — la branche cœur : une référence qui ne résout
+    plus fait sortir 1 (registre et racine backend temporaires)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.racine = Path(tmp.name)
+        demo = self.racine / "apps" / "demo"
+        demo.mkdir(parents=True)
+        (demo / "tests.py").write_text(
+            "class DemoTests:\n    def test_ok(self):\n        pass\n", encoding="utf-8")
+        (demo / "casse.py").write_text("class X(:\n", encoding="utf-8")
+        for nom, valeur in (("INVARIANTS_FILE", self.racine / "invariants.md"),
+                            ("BACKEND_ROOT", self.racine)):
+            self.addCleanup(setattr, ci, nom, getattr(ci, nom))
+            setattr(ci, nom, valeur)
+
+    def _jouer(self, ligne):
+        ci.INVARIANTS_FILE.write_text(f"- {ligne}\n", encoding="utf-8")
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            rc = ci.main()
+        return rc, sortie.getvalue()
+
+    def test_reference_resolue_rend_zero(self):
+        rc, sortie = self._jouer("`apps/demo/tests.py::DemoTests::test_ok`")
+        self.assertEqual(rc, 0)
+        self.assertIn("1 reference(s)", sortie)
+
+    def test_methode_renommee_rend_un(self):
+        rc, sortie = self._jouer("`apps/demo/tests.py::DemoTests::test_absent`")
+        self.assertEqual(rc, 1)
+        self.assertIn("not found", sortie)
+
+    def test_fichier_absent_rend_un(self):
+        rc, sortie = self._jouer("`apps/demo/absent.py::X::y`")
+        self.assertEqual(rc, 1)
+        self.assertIn("file not found", sortie)
+
+    def test_fichier_illisible_rend_un(self):
+        rc, sortie = self._jouer("`apps/demo/casse.py::X::y`")
+        self.assertEqual(rc, 1)
+        self.assertIn("could not parse", sortie)
+
+    def test_registre_sans_reference_sort(self):
+        with self.assertRaises(SystemExit):
+            self._jouer("aucune référence ici")
+
+
 if __name__ == "__main__":
     unittest.main()
