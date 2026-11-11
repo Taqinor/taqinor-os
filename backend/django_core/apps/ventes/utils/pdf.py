@@ -236,14 +236,18 @@ def _appliquer_identite_figee(ctx, identite, company=None):
     return ctx
 
 
+#: AMSG41 — couleur vide (CSS jamais cassé) : le défaut du MODÈLE, pas un global.
+_COULEUR_DEFAUT = '#2563EB'
+
+
 def _identite_textes(profile):
-    """Textes d'identité vendeur du profil (avec les replis ``settings``)."""
+    """Textes d'identité vendeur du SEUL profil de la société (AMSG41,
+    D-APDF : jamais de repli sur les variables globales ``ENTREPRISE_*``)."""
     return {
-        'entreprise_nom': profile.nom or settings.ENTREPRISE_NOM,
-        'entreprise_adresse': profile.adresse or settings.ENTREPRISE_ADRESSE,
-        'entreprise_email': profile.email or settings.ENTREPRISE_EMAIL,
-        'entreprise_telephone': (
-            profile.telephone or settings.ENTREPRISE_TELEPHONE),
+        'entreprise_nom': profile.nom,
+        'entreprise_adresse': profile.adresse,
+        'entreprise_email': profile.email,
+        'entreprise_telephone': profile.telephone,
         'entreprise_siret': profile.siret,
         'entreprise_tva_intra': profile.tva_intra,
         'entreprise_ice': getattr(profile, 'ice', ''),
@@ -251,8 +255,7 @@ def _identite_textes(profile):
         'entreprise_rc': getattr(profile, 'rc', ''),
         'entreprise_patente': getattr(profile, 'patente', ''),
         'entreprise_cnss': getattr(profile, 'cnss', ''),
-        'couleur_principale': (
-            profile.couleur_principale or settings.ENTREPRISE_COULEUR),
+        'couleur_principale': profile.couleur_principale or _COULEUR_DEFAUT,
         'rib': profile.rib,
         'banque': profile.banque,
         'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
@@ -291,18 +294,11 @@ def _company_context(company=None):
     profile = CompanyProfile.get(company=company)
 
     ctx = {
-        'entreprise_nom': (
-            profile.nom or settings.ENTREPRISE_NOM
-        ),
-        'entreprise_adresse': (
-            profile.adresse or settings.ENTREPRISE_ADRESSE
-        ),
-        'entreprise_email': (
-            profile.email or settings.ENTREPRISE_EMAIL
-        ),
-        'entreprise_telephone': (
-            profile.telephone or settings.ENTREPRISE_TELEPHONE
-        ),
+        # AMSG41 — le SEUL profil de la société, sans repli ``ENTREPRISE_*``.
+        'entreprise_nom': profile.nom,
+        'entreprise_adresse': profile.adresse,
+        'entreprise_email': profile.email,
+        'entreprise_telephone': profile.telephone,
         'entreprise_siret':     profile.siret,
         'entreprise_tva_intra': profile.tva_intra,
         # Identifiants légaux marocains (l'ICE est obligatoire sur facture).
@@ -311,9 +307,7 @@ def _company_context(company=None):
         'entreprise_rc':        getattr(profile, 'rc', ''),
         'entreprise_patente':   getattr(profile, 'patente', ''),
         'entreprise_cnss':      getattr(profile, 'cnss', ''),
-        'couleur_principale': (
-            profile.couleur_principale or settings.ENTREPRISE_COULEUR
-        ),
+        'couleur_principale': profile.couleur_principale or _COULEUR_DEFAUT,
         'rib':    profile.rib,
         'banque': profile.banque,
         # Feature B — blocs paiement & conditions (rendus seulement si non-vides).

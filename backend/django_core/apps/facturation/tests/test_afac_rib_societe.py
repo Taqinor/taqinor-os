@@ -12,7 +12,7 @@ Run :
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 RIB = '011780000012345678901234'
 _CTR = [0]
@@ -83,3 +83,23 @@ class RibSocieteTests(TestCase):
         self.assertEqual(Decimal(payload['acompte_ttc']), ttc)
         montant = f'{ttc:,.2f}'.replace(',', ' ') + ' MAD'
         self.assertIn(montant, _acceptance_deposit_block(devis))
+
+    @override_settings(ENTREPRISE_TELEPHONE='+212599999999', ENTREPRISE_ADRESSE='Rue globale 1')
+    def test_identite_sans_repli_global(self):
+        """AMSG41 (C-AMSG-028, D-APDF) — une société au profil sans téléphone
+        ni adresse fige ces champs VIDES, jamais les ``ENTREPRISE_*`` globaux ;
+        la première société garde les siens."""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.utils.pdf import _company_context, identite_vendeur_courante
+        premiere, seconde = self._devis().company, self._devis().company
+        CompanyProfile.objects.filter(company=premiere).update(
+            nom='Première SARL', telephone='+212500000001', adresse='Rue A')
+        CompanyProfile.objects.filter(company=seconde).update(
+            nom='Seconde SARL', telephone='', adresse='')
+        for identite in (identite_vendeur_courante(seconde), _company_context(seconde)):
+            self.assertEqual(identite['entreprise_telephone'], '')
+            self.assertEqual(identite['entreprise_adresse'], '')
+            self.assertEqual(identite['entreprise_nom'], 'Seconde SARL')
+        a = identite_vendeur_courante(premiere)
+        self.assertEqual((a['entreprise_nom'], a['entreprise_telephone'], a['entreprise_adresse']),
+                         ('Première SARL', '+212500000001', 'Rue A'))
