@@ -246,6 +246,42 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
                 brouillon.refresh_from_db()
                 self.assertIsNone(brouillon.identite_acheteur)
 
+    def test_un_lead_en_corbeille_est_efface_aussi(self):
+        """ASUP8 (C-ASUP-005) — un lead mis à la corbeille est trouvé par
+        l'effacement, la rétention et le sélecteur des fournisseurs ; il reste
+        en corbeille ; l'autre société n'est jamais touchée."""
+        import datetime
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from apps.crm.dsr_provider import prospects_hors_duree
+        from apps.crm.leads_selectors import lead_ids_par_identifiant
+        tel = '+212600000088'
+        supprime = Lead.objects.create(
+            company=self.company, nom='Corbeille', email='corbeille@example.ma',
+            telephone=tel, gps_lat=Decimal('33.5'), gps_lng=Decimal('-7.5'),
+            note='Rappeler après 18h')
+        supprime.soft_delete()
+        vieux = Lead.objects.create(
+            company=self.company, nom='Vieux prospect', telephone='+212600000089')
+        vieux.soft_delete()
+        Lead.all_objects.filter(pk=vieux.pk).update(
+            date_creation=timezone.now() - datetime.timedelta(days=4 * 365))
+        autre = Company.objects.create(nom='Autre ASUP8', slug='autre-asup8')
+        vivant = Lead.objects.create(company=autre, nom='Vivant', telephone=tel)
+        self.assertEqual(lead_ids_par_identifiant(self.company, tel), [supprime.pk])
+        self.assertIn(vieux.pk, [le.pk for le in prospects_hors_duree()])
+        erase_crm(self.company, tel)
+        supprime = Lead.all_objects.get(pk=supprime.pk)
+        self.assertEqual(supprime.nom, 'Anonymisé')
+        for champ in ('email', 'telephone', 'gps_lat', 'gps_lng', 'note'):
+            with self.subTest(champ=champ):
+                self.assertIsNone(getattr(supprime, champ))
+        self.assertTrue(supprime.is_deleted)
+        vivant.refresh_from_db()
+        self.assertEqual(vivant.nom, 'Vivant')
+
     def test_le_tiers_miroir_est_vide(self):
         """ASOC100 (C-ASOC-060) — l'effacement traverse le Tiers miroir :
         identité vide, rôle client gardé, recherche par téléphone → rien."""

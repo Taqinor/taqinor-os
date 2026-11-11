@@ -92,7 +92,9 @@ def _matcher(company, subject_identifier):
     from .models import Client, Lead
     from .leads_doublons import normalize_email, normalize_phone
 
-    leads = Lead.objects.filter(company=company)
+    # ASUP8 (C-ASUP-005) — corbeille comprise (``all_objects``) : un lead
+    # supprimé reste en base et n'échappe pas à l'effacement.
+    leads = Lead.all_objects.filter(company=company)
     clients = Client.objects.filter(company=company)
     lead_q, client_q = _predicats(
         company, {normalize_email(subject_identifier)} - {''},
@@ -136,7 +138,7 @@ def _predicats(company, emails, phones):
         # normalise ce seul sous-ensemble — la couverture est identique à
         # l'ancien scan, le coût ne l'est plus.
         whatsapp_ids = [
-            pk for pk, whatsapp in Lead.objects
+            pk for pk, whatsapp in Lead.all_objects
             .filter(company=company)
             .exclude(whatsapp__isnull=True).exclude(whatsapp='')
             .values_list('pk', 'whatsapp')
@@ -510,7 +512,7 @@ def prospects_hors_duree(now=None):
     limite = now - datetime.timedelta(days=DUREE_CONSERVATION_PROSPECTS_JOURS)
     # ASOC74 (D-ASOC-4) — un client SANS facture reste un prospect (le
     # client est posé dès le premier devis) ; relation inverse à chaîne.
-    return (Lead.objects
+    return (Lead.all_objects  # ASUP8 — corbeille comprise
             .filter(Q(client__isnull=True) | Q(client__factures__isnull=True))
             .distinct()
             .exclude(stage=stages.SIGNED)
