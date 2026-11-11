@@ -379,6 +379,46 @@ class GestesArgentTests(TestCase):
                 if not peut[0]:
                     self.assertEqual(r.status_code, 403, r.data)
 
+    def test_drapeaux_vente_suivent_les_droits(self):
+        """ADRG17 (C-ADRG-045) — les drapeaux ``peut`` du panneau de vente
+        suivent le prédicat de leur route : Admin Ventes ``encaisser`` faux,
+        ``pdf`` vrai ; Viewer ``encaisser``/``pdf``/``envoyer``/``facturer_*``
+        faux ; Commercial tous vrais. Mutant : retirer ``ecrit`` du drapeau
+        ``pdf`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import etat_vente
+        viewer = User.objects.create_user(
+            username=f'asec29-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.get(company=self.company, nom='Viewer'),
+            company=self.company)
+        directeur = self.users['Directeur']
+        devis, facture = self._devis(directeur), self._facture(directeur)
+        Facture.objects.filter(pk=facture.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+        vierge = self._devis(directeur)  # accepté, aucune facture
+        attendus = {
+            'Admin Ventes': {'encaisser': False, 'pdf': True},
+            'Viewer': {'encaisser': False, 'pdf': False, 'envoyer': False},
+            'Commercial': {'encaisser': True, 'pdf': True, 'envoyer': True},
+        }
+        comptes = {'Admin Ventes': self.users['Admin Ventes'],
+                   'Viewer': viewer, 'Commercial': self.users['Commercial']}
+        for nom, user in comptes.items():
+            with self.subTest(role=nom):
+                etat = etat_vente(devis, user)
+                peut = etat['factures'][0]['peut']
+                for cle, valeur in attendus[nom].items():
+                    self.assertEqual(peut[cle], valeur, (nom, cle, peut))
+                gestes = etat_vente(vierge, user)['peut']
+                if nom == 'Viewer':
+                    for cle in ('facturer_acompte', 'facturer_solde',
+                                'facturer_complete'):
+                        self.assertFalse(etat['peut'][cle], cle)
+                        self.assertFalse(gestes[cle], cle)
+                else:
+                    self.assertTrue(gestes['facturer_complete'], gestes)
+
     def test_emettre_unitaire_et_lot_exigent_encaisser(self):
         """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
         ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon
