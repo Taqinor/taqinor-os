@@ -43,8 +43,7 @@ from ..services import enregistrer_reverification, lever_reserve_chantier
 from .. import field_services
 from .. import field_capture
 from .. import field_sync
-from . import _openapi as oa
-from .intervention_liens import CouperLienRapportMixin  # APUB6 (C20 : hors fichier-mur)
+from . import _openapi as oa, intervention_liens  # APUB6 : mixin hors fichier-mur (C20)
 from ..serializers import PhotoAnnotationSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -177,7 +176,8 @@ def _quantite_f11(request):
     p8=oa.qi('ticket'),
     p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'),
 )
-class InterventionViewSet(CouperLienRapportMixin, PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrechargeesListeMixin,
+                          oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
