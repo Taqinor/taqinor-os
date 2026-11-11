@@ -1,10 +1,10 @@
 # Core
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-python-multipart==0.0.31
-python-dotenv==1.2.2
-PyJWT==2.13.0
+fastapi==0.162.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.3
+python-multipart==0.0.33
+python-dotenv==1.2.4
+PyJWT==2.15.1
 
 # Base de fuseaux horaires (IANA) — EPINGLEE, et elle FAIT FOI (meme pin que
 # backend/django_core/requirements.txt : les deux services datent les memes
@@ -13,26 +13,26 @@ PyJWT==2.13.0
 # 29/06/2026, qui abroge le decret 2.18.855 de 2018. IANA l'encode depuis
 # tzdata 2026c ; l'image Debian peut etre EN RETARD (bookworm servait encore
 # 2026b le 21/09/2026), d'ou PYTHONTZPATH="" dans le Dockerfile.
-tzdata==2026.4
+tzdata==2026.6
 
 # Database
-sqlalchemy==2.0.36
-psycopg2-binary==2.9.10
-pgvector==0.3.6
+sqlalchemy==2.1.8
+psycopg2-binary==2.9.13
+pgvector==0.5.1
 # Parser SQL — validation single-SELECT + isolation tenant de l'agent NL->SQL
 # (ERR1/ERR2). Deja tire transitivement par langchain ; epingle ici car
 # importe directement par app/services/sql_agent_service.py.
 sqlparse>=0.5,<0.6
 # AANA2 (D-AANA-4) — arbre SQL de l'agent NL->SQL : chaque table lue est
 # REECRITE en sous-requete filtree sur la societe du jeton (jamais de regex).
-sqlglot==30.21.0
+sqlglot==30.30.0
 
 # Cache
 redis==5.2.1
 
 # AI - Agent SQL
 langchain==0.3.30
-langchain-community==0.3.27
+langchain-community==0.4.2
 langchain-groq==0.2.3
 langchain-openai==0.2.14
 # AIC3 — derniere 0.3.x (compatible langchain 0.3.30 / langchain-core 0.3) :
