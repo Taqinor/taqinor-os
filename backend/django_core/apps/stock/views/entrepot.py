@@ -69,9 +69,10 @@ def entrepot_cockpit_view(request):
     Paramètres facultatifs : ``?emplacement=``, ``?horizon_peremption=``
     (jours), ``?retard_heures=``.
     """
+    from ..permissions import PeutVoirPrixAchat
     from ..selectors_entrepot import cockpit_entrepot
 
-    return Response(cockpit_entrepot(
+    donnees = cockpit_entrepot(
         request.user.company,
         emplacement_id=entier_ou_400(
             request.query_params.get('emplacement'), 'emplacement'),
@@ -81,7 +82,12 @@ def entrepot_cockpit_view(request):
         retard_vague_heures=entier_ou_400(
             request.query_params.get('retard_heures'), 'retard_heures',
             24, 0, HORIZON_MAX),
-    ))
+    )
+    # ALEC11 — Σ coût réel des expéditions : un montant d'achat, null sans le droit.
+    if not PeutVoirPrixAchat().has_permission(request, None):
+        for ligne in donnees.get('expeditions_du_jour') or []:
+            ligne['cout_total'] = None
+    return Response(donnees)
 
 
 @extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=MOTIF_NON_BLANC_SANS_NUL),
