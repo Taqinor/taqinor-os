@@ -1664,8 +1664,8 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
         activity.log_note(ticket, user, f'Cl\u00f4tur\u00e9 sans facture : {forcage}')
     if old.statut != ticket.statut:
         # XSAV4 — notification client best-effort (toggle OFF = no-op).
-        from .notifications_client import notify_ticket_transition
-        notify_ticket_transition(ticket, ticket.statut, request=request)
+        from .notifications_client import notify_ticket_transition, remettre_brouillon_whatsapp
+        remettre_brouillon_whatsapp(ticket, notify_ticket_transition(ticket, ticket.statut, request=request), user)
         # ZSAV9 — notifie les suiveurs de la transition (best-effort).
         from apps.notifications.types_evenements import EventType
         notify_followers(
@@ -2622,6 +2622,9 @@ def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
         raise ValueError(
             'destinataire: aucune adresse e-mail — le client de ce ticket '
             "n'en a pas ; renseignez-la sur sa fiche ou saisissez-la ici.")
+    from apps.ventes.email_service import is_email_configured
+    if not is_email_configured():  # AMSG57 — jamais « envoyé » quand rien ne part
+        raise ValueError("detail: e-mail non configuré — rien n'est parti.")
 
     dernier = (TicketEmailThread.objects
                .filter(ticket=ticket,
@@ -2645,10 +2648,11 @@ def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
         email.extra_headers['In-Reply-To'] = f'<{dernier.message_id}>'
         email.extra_headers['References'] = f'<{thread_root}>'
     try:
-        email.send(fail_silently=True)
+        email.send(fail_silently=False)
     except Exception:  # noqa: BLE001 — un envoi raté ne casse jamais le ticket (D-ENF22-BLE001)
         logger.warning('NTSRV1: envoi e-mail sortant ticket %s échoué',
                        getattr(ticket, 'pk', '?'), exc_info=True)
+        raise ValueError("detail: l'envoi de l'e-mail a échoué — rien n'est parti.")
 
     ligne = enregistrer_message_email(
         ticket, message_id=message_id, thread_root=thread_root,

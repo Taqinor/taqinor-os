@@ -11,7 +11,7 @@ Run :
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -120,6 +120,8 @@ class SlaReponseTests(TestCase):
         self.assertEqual(t.sla_reponse_due_at, self.today + timedelta(days=1))
         self.assertEqual(t.sla_due_at, self.today + timedelta(days=7))
 
+    @override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'},  # AMSG57 — l'e-mail part
+                       EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_email_pose_premiere_reponse(self):
         t = self._creer()
         r = self.api.post(f'{BASE}/{t.pk}/repondre-email/', {
