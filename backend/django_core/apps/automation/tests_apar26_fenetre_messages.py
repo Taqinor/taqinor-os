@@ -10,22 +10,35 @@ Heure injectée : ``frozen`` prend une heure UTC — 22:30 UTC = 23:30 au Maroc.
 Test-du-test : retirer l'appel à ``reporter_hors_fenetre`` de
 ``actions._send_email`` ⇒ ``test_23h30_rien_avant_l_ouverture`` rouge.
 """
+from datetime import timedelta
+from decimal import Decimal
+
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.automation.beat_tasks import process_due_automation_steps
+from apps.automation.engine import run_action
 from apps.automation.models import (
     ActionType, AutomationRule, AutomationRun, AutomationScheduledStep,
     TriggerType,
 )
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
 from apps.crm.stages import CONTACTED, NEW
+from apps.ventes.models import Facture
 from authentication.models import Company
 from testkit.time import frozen
 
 NUIT = '2026-01-05 22:30:00'      # lundi 23:30 au Maroc
 LENDEMAIN = '2026-01-06 09:00:00'  # mardi 10:00 au Maroc
+
+
+def _facture_echue(company, reference):
+    client = Client.objects.create(
+        company=company, nom=f'Cli {reference}', email=f'{reference.lower()}@example.invalid')
+    return Facture.objects.create(
+        company=company, client=client, reference=reference, statut='emise',
+        montant_ttc=Decimal('100'), date_echeance=timezone.localdate() - timedelta(days=30))
 
 
 @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
@@ -81,3 +94,39 @@ class FenetreMessagesTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertFalse(AutomationScheduledStep.objects.filter(
             rule=self.regle).exists())
+
+    def test_email_reply_to_societe_et_porte_de_sortie_lead(self):
+        """AMSG65 — réponse vers la société ; un lead reçoit la porte de sortie
+        des cadences (darija selon sa langue) ; une facture n'en a aucune."""
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_messages import PORTE_DE_SORTIE_DARIJA
+        profil = CompanyProfile.get(company=self.co)
+        profil.email = 'contact@apar26.example'
+        profil.save()
+        self.lead.langue_preferee = 'darija'
+        self.lead.save(update_fields=['langue_preferee'])
+        facture = _facture_echue(self.co, 'FAC-AMSG65')
+        regle_facture = AutomationRule.objects.create(
+            company=self.co, nom='Relance', enabled=True, trigger_type=TriggerType.FACTURE_OVERDUE,
+            trigger_config={}, action_type=ActionType.SEND_EMAIL,
+            action_config={'subject': 'Relance', 'body': 'Votre facture'})
+        mail.outbox = []
+        with frozen(LENDEMAIN):
+            with self.captureOnCommitCallbacks(execute=True):
+                run_action(self.regle, self.lead, self.co)
+                run_action(regle_facture, facture, self.co)
+        au_lead, a_la_facture = mail.outbox
+        self.assertEqual(au_lead.reply_to, ['contact@apar26.example'])
+        self.assertTrue(au_lead.body.endswith(PORTE_DE_SORTIE_DARIJA), au_lead.body)
+        self.assertEqual(a_la_facture.reply_to, ['contact@apar26.example'])
+        self.assertNotIn('STOP', a_la_facture.body)
+        self.assertEqual(AutomationRun.objects.filter(
+            rule=self.regle, status=AutomationRun.Status.SUCCESS).count(), 1)
+
+        profil.email = ''
+        profil.save()
+        mail.outbox = []
+        with frozen(LENDEMAIN):
+            with self.captureOnCommitCallbacks(execute=True):
+                run_action(self.regle, self.lead, self.co)
+        self.assertEqual(mail.outbox[0].reply_to, [])

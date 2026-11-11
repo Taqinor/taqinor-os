@@ -460,20 +460,34 @@ def _send_email(rule, instance, company, context, user):
     # ENF15/ADEP20 — DEFAULT_FROM_EMAIL est déclaré (settings/base.py) ; l'ancien
     # repli CONTACT_FROM_EMAIL n'était déclaré nulle part (clé morte).
     from_email = settings.DEFAULT_FROM_EMAIL or 'no-reply@taqinor.ma'
+    # AMSG65 — les réponses vont à la société (patron AMON47) ; un lead reçoit
+    # la porte de sortie des cadences (loi 09-08 art. 10, CAD110).
+    from apps.parametres.selectors import company_identity
+    reply = company_identity(company).get('email') if company else ''
     try:
-        from django.core.mail import send_mail
+        from django.core.mail import EmailMessage
         # Honnête : on NE masque PAS l'échec (fail_silently=False) et on vérifie
         # le nombre de messages réellement remis. Un email perdu doit être
         # journalisé FAILED, jamais SUCCESS. En local le backend console remet
         # bien le message (compteur 1) : pas d'effet réseau, pas d'échec.
-        sent = send_mail(
-            subject, body or '', from_email, [to], fail_silently=False)
+        sent = EmailMessage(
+            subject, _porte_de_sortie(instance, body or ''), from_email, [to],
+            reply_to=[reply] if reply else None).send(fail_silently=False)
     except Exception as exc:
         logger.warning("actions._send_email : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Email non envoyé : {exc}'
     if not sent:
         return Status.FAILED, f'Email non remis à {to}.'
     return Status.SUCCESS, f'Email envoyé à {to}.'
+
+
+def _porte_de_sortie(instance, body):
+    """AMSG65 — e-mail à un lead : finit par la mention d'opposition (FR ou darija)."""
+    if getattr(getattr(instance, '_meta', None), 'label_lower', '') != 'crm.lead':
+        return body
+    from apps.parametres.models_messages import PORTE_DE_SORTIE_DARIJA, PORTE_DE_SORTIE_FR
+    porte = PORTE_DE_SORTIE_DARIJA if getattr(instance, 'langue_preferee', None) == 'darija' else PORTE_DE_SORTIE_FR
+    return body if body.rstrip().endswith(porte) else f'{body.rstrip()}\n\n{porte}'.lstrip()
 
 
 #: APAR6 — repli de sujet : la société, jamais « Taqinor » pour tout tenant.
