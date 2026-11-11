@@ -114,6 +114,8 @@ LISTE_BLANCHE: dict[str, str] = {
         _TRANSACTIONNEL,
     "backend/django_core/apps/ventes/domain/recouvrement.py::_build_wa_draft_url::wa.me": _AMONT_NUDGE,
     "backend/django_core/apps/ventes/domain/recouvrement.py::_send_nudge_email::email": _AMONT_NUDGE,
+    # AMSG29 — brouillon wa.me de relance de FACTURE remis au responsable (D-ACVI-10).
+    "backend/django_core/apps/ventes/scheduled.py::_dispatch_relance_canal::wa.me": _TRANSACTIONNEL,
     "backend/django_core/apps/ventes/email_service.py::_send::email": _PLOMBERIE,
     "backend/django_core/apps/ventes/utils/whatsapp.py::build_wa_url::wa.me": _PLOMBERIE,
     "backend/django_core/apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp_preview::wa.me":
