@@ -1,8 +1,25 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { GarantiePill } from './EquipementsPage.jsx'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import EquipementsPage, { GarantiePill } from './EquipementsPage.jsx'
 import { resolveScanTarget } from '../../features/sav/equipement'
 import { GARANTIE_ETATS, garantieLabel } from '../../features/sav/equipement'
+
+// ADRG66 — doublures réseau de l'écran des équipements (les briques pures
+// testées plus bas n'appellent aucune API).
+vi.mock('../../features/sav/store/equipementsSlice', () => ({
+  fetchEquipements: () => ({ type: 'equipements/fetch/noop' }),
+}))
+vi.mock('../../api/savApi', () => ({ default: { getTickets: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('../../api/installationsApi', () => ({ default: { getInstallations: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('../../api/stockApi', () => ({ default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('../../api/importApi', () => ({ default: {} }))
+vi.mock('./RegistreGarantiesDialog', () => ({ default: () => null }))
+vi.mock('./EquipementFiabilitePanel', () => ({ default: () => null }))
+vi.mock('../../components/ExcelImport', () => ({ default: () => null }))
 
 /* J144 — refonte SAV : le parc d'équipements passe à StatusPill + DataTable.
    On verrouille la brique de présentation de l'état de garantie : ton + libellé
@@ -74,5 +91,33 @@ describe('resolveScanTarget (NTMOB15 — décision pure post-résolution du scan
   it('liste locale vide/absente ne casse jamais la décision', () => {
     expect(resolveScanTarget({ type: 'equipement', id: 5 }, [])).toEqual({ action: 'fetch', id: 5 })
     expect(resolveScanTarget({ type: 'equipement', id: 5 }, undefined)).toEqual({ action: 'fetch', id: 5 })
+  })
+})
+
+/* ADRG66 (C-ADRG-009) — « Importer » crée des équipements : offert avec
+   `equipement_gerer` seulement (repli palier pour un compte hérité). Codes des
+   rôles LIVRÉS recopiés du registre (`apps/roles/permissions_registre.py`). */
+describe('EquipementsPage — ADRG66 bouton « Importer »', () => {
+  const monter = (auth) => render(
+    <Provider store={configureStore({ reducer: {
+      auth: (s = auth) => s,
+      equipements: (s = { items: [], loading: false, error: null }) => s,
+    } })}>
+      <MemoryRouter><ThemeProvider><EquipementsPage /></ThemeProvider></MemoryRouter>
+    </Provider>)
+
+  it('Importer caché sans equipement_gerer (Commercial)', () => {
+    monter({ role: 'normal', role_nom: 'Commercial', permissions: ['equipement_voir', 'sav_voir'] })
+    expect(screen.getByRole('button', { name: /Étiquettes QR internes/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Importer/ })).toBeNull()
+  })
+
+  it('Importer présent avec equipement_gerer (Technicien responsable) et au palier hérité', () => {
+    const { unmount } = monter({ role: 'responsable', role_nom: 'Technicien responsable',
+      permissions: ['equipement_voir', 'equipement_gerer', 'sav_voir', 'sav_gerer'] })
+    expect(screen.getByRole('button', { name: /Importer/ })).toBeInTheDocument()
+    unmount()
+    monter({ role: 'responsable', permissions: [] })
+    expect(screen.getByRole('button', { name: /Importer/ })).toBeInTheDocument()
   })
 })

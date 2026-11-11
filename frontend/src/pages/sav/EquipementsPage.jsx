@@ -438,6 +438,7 @@ export default function EquipementsPage() {
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
   // VX109 — import Excel/CSV du parc d'équipements.
   const [showImport, setShowImport] = useState(false)
+  const peutImporter = useDroitMetier('equipement_gerer') // ADRG66 — l'import crée des équipements
   // WIR116 — génération des étiquettes QR (lien public /e/<token>).
   const [labelsBusy, setLabelsBusy] = useState(false)
   // FG85/NTMOB15 — étiquettes QR INTERNES (EQUIP:<id>, scan staff), distinctes
@@ -637,9 +638,9 @@ export default function EquipementsPage() {
                     onClick={() => printLabels(false, setInternalLabelsBusy)}>
               {internalLabelsBusy ? <Spinner /> : <QrCode />} Étiquettes QR internes
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+            {peutImporter && <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
-            </Button>
+            </Button>}
             <BoutonExportExcel cible="equipements" ids={rows.map((r) => r.id)} />
           </div>
         </header>
