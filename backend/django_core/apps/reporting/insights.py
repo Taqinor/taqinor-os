@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
+from apps.audit.views import CanViewActivityLog  # ADRG69
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from .query_params import DATE_OU_VIDE, date_param, entier_param
 from apps.crm.exports import build_xlsx_response
@@ -219,7 +220,7 @@ _INSIGHTS_AUDIT_LOG_REPONSE = inline_serializer('InsightsAuditLogReponse', {
     ],
     responses={200: _INSIGHTS_AUDIT_LOG_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, CanViewActivityLog,
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def audit_log(request):
     """N70 + N95 — journal d'activité unifié, company-scopé, trié par date.

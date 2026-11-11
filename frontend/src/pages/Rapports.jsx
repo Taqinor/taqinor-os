@@ -26,6 +26,7 @@ import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { Table as SharedTable } from './reporting/Table'
 import { StateBlock } from '../components/StateBlock'
+import { useHasPermission } from '../hooks/useHasPermission'
 
 // L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
 const AUDIT_TYPES = [
@@ -452,6 +453,8 @@ export function Component() {
   const [auditUser, setAuditUser] = useState('')
   const [auditType, setAuditType] = useState('')
   const [auditSince, setAuditSince] = useState('')
+  // ADRG69 — le journal est réservé à `journal_activite_voir` (serveur : 403).
+  const peutJournal = useHasPermission('journal_activite_voir')
 
   const setCardStatus = useCallback((key, value) => {
     setStatus((s) => ({ ...s, [key]: value }))
@@ -523,8 +526,8 @@ export function Component() {
     if (auditUser.trim()) p.user = auditUser.trim()
     if (auditType) p.type = auditType
     if (auditSince) p.since = auditSince
-    load('audit', reportingApi.auditLog(p), setAudit)
-  }, [auditUser, auditType, auditSince, load])
+    if (peutJournal) load('audit', reportingApi.auditLog(p), setAudit)
+  }, [auditUser, auditType, auditSince, load, peutJournal])
 
   // Remet la carte Journal en « chargement » quand on change un filtre.
   const resetAuditCard = () => setStatus((s) => {
@@ -840,7 +843,7 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
-            <InsightCard title="Journal d'activité (qui a fait quoi)"
+            {peutJournal && <InsightCard title="Journal d'activité (qui a fait quoi)"
                          onExport={exportInsight('audit-log', auditParams)}
                          busy={insightExportBusy['audit-log']}>
               {/* L9 — filtres user / type / depuis pilotant l'endpoint et l'export. */}
@@ -873,7 +876,7 @@ export function Component() {
                          it.user || '—', it.type_label, auditRef(it), it.summary,
                        ])} />
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
-            </InsightCard>
+            </InsightCard>}
 
             <InsightCard title="Coût de revient par chantier"
                          note="(interne — visible owner/responsable)"
