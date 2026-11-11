@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7766, components: 3650}
+counts: {paths: 4966, operations: 7764, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3572,7 +3572,6 @@ operations:
 - get /api/django/ventes/balance-agee/ -> django_ventes_balance_agee_list
 - get /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_list
 - post /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_create
-- delete /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_destroy
 - get /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_retrieve
 - patch /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_partial_update
 - put /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_update
@@ -7459,7 +7458,6 @@ operations:
 - get /api/v1/ventes/balance-agee/ -> v1_ventes_balance_agee_list
 - get /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_list
 - post /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_create
-- delete /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_destroy
 - get /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_retrieve
 - patch /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_partial_update
 - put /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_update
