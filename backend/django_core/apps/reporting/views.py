@@ -9,6 +9,7 @@ from apps.ventes.models import Facture, LigneFacture, Devis
 from apps.stock.models import Produit
 from apps.crm.models import Client
 from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from core.analytics_db import analytics_queryset
 from .metriques_ca import _part_ht  # ASOC73 — déplacé (1 définition)
 from drf_spectacular.types import OpenApiTypes
@@ -105,7 +106,7 @@ _VIEWS_DASHBOARD_REPONSE = inline_serializer('ViewsDashboardReponse', {
     responses={(200, 'application/json'): _VIEWS_DASHBOARD_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, lecture_source('ventes')])
 def dashboard(request):
     """
     Retourne tous les agregats pour la page Reporting en un seul appel.

@@ -67,6 +67,42 @@ class TestSalesReport(ReportsBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['total_leads'], 1)
 
+    def test_technicien_sans_lecture_ventes_refuse(self):
+        """ADRG70 (C-ADRG-019) — les 11 rapports ventes / CRM exigent la
+        lecture du module SOURCE : Technicien livré 403 partout ; Commercial
+        responsable 200 partout ; Commercial 200 sauf l'export de la balance
+        (refus ``reporting_export`` inchangé)."""
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        Lead.objects.create(company=self.company, nom='L70', stage='NEW')
+        client = Client.objects.create(company=self.company, nom='C70')
+        base = '/api/django/reporting/'
+        routes = ['dashboard/', 'reports/sales/', 'insights/analytics/',
+                  'insights/sales-leaderboard/', f'archive/client/{client.pk}/',
+                  'balance-agee/export/', 'commercial/dashboard/',
+                  'commercial/win-loss-by-source/', 'pipeline/',
+                  'pipeline/velocity/', 'insights/cohorts/']
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def statuts(nom):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(roles[nom]))
+            user = User.objects.create_user(
+                username=f'adrg70-{nom}', password='x',
+                company=self.company, role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return {r: api.get(base + r).status_code for r in routes}
+
+        self.assertEqual(set(statuts('Technicien').values()), {403})
+        self.assertEqual(set(statuts('Commercial responsable').values()),
+                         {200})
+        commercial = statuts('Commercial')
+        self.assertEqual(commercial.pop('balance-agee/export/'), 403)
+        self.assertEqual(set(commercial.values()), {200}, commercial)
+
 
 class TestStockReport(ReportsBase):
     def test_valuation_includes_internal_buy(self):

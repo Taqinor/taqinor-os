@@ -21,6 +21,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.audit.views import CanViewActivityLog  # ADRG69
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
@@ -517,7 +518,7 @@ _INSIGHTS_ANALYTICS_REPONSE = inline_serializer('InsightsAnalyticsReponse', {
 @extend_schema(
     responses={200: _INSIGHTS_ANALYTICS_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('ventes'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def analytics(request):
     """N80 — analytics lecture seule.
@@ -778,7 +779,7 @@ _INSIGHTS_SALES_LEADERBOARD_REPONSE = inline_serializer('InsightsSalesLeaderboar
     ],
     responses={200: _INSIGHTS_SALES_LEADERBOARD_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('ventes'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def sales_leaderboard(request):
     """FG93 — Classement commerciaux (CA signé, taux de victoire, deal moyen,
@@ -964,7 +965,7 @@ _INSIGHTS_COHORTS_REPONSE = inline_serializer('InsightsCohortsReponse', {
     ],
     responses={200: _INSIGHTS_COHORTS_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('crm'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def cohorts(request):
     """FG98 — Cohortes de leads par mois d'acquisition.

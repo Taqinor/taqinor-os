@@ -17,6 +17,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.crm.models import Client
 from apps.ventes.models import Devis, Facture, Avoir, BonCommande
@@ -158,7 +159,7 @@ _ARCHIVE_ARCHIVE_CLIENT_REPONSE = inline_serializer('ArchiveArchiveClientReponse
     responses={(200, 'application/json'): _ARCHIVE_ARCHIVE_CLIENT_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('ventes'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def archive_client(request, pk):
     """Tous les documents d'un client. Lecture seule, scopé société."""

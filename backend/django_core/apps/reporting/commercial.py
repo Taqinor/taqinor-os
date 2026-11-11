@@ -25,6 +25,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.crm import stages as stage_mod
 # APRF14 — UNE seule valeur pipeline par lead : le helper de ``pipeline.py``
 # (survivant des deux copies), mémoïsé par lead quand ses devis sont préchargés.
@@ -83,7 +84,7 @@ _COMMERCIAL_COMMERCIAL_DASHBOARD_REPONSE = inline_serializer('CommercialCommerci
     ],
     responses={200: _COMMERCIAL_COMMERCIAL_DASHBOARD_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, lecture_source('crm')])
 def commercial_dashboard(request):
     """QJ18 — Tableau de bord commercial company-scopé.
 
@@ -284,7 +285,7 @@ _COMMERCIAL_WIN_LOSS_BY_SOURCE_REPONSE = inline_serializer('CommercialWinLossByS
     ],
     responses={200: _COMMERCIAL_WIN_LOSS_BY_SOURCE_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, lecture_source('crm')])
 def win_loss_by_source(request):
     """QJ19 — Taux de clôture par canal/source + top motifs de perte.
 
