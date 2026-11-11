@@ -4,7 +4,10 @@ Pure stdlib (unittest), no Django — mirrors the DB-free checker. Run:
     python -m unittest scripts.tests.test_check_read_modify_write -v
 """
 import ast
+import contextlib
+import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -15,18 +18,11 @@ import check_read_modify_write as crmw  # noqa: E402 — après sys.path/setup()
 
 
 def _findings(src):
-    """Parse a module source and run the file-level checker on its tree."""
-    tree = ast.parse(src)
-    findings = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if crmw._function_calls_select_for_update(node):
-            continue
-        for varname, attr in crmw._rmw_sites_in_function(node):
-            if crmw._function_saves_var(node, varname):
-                findings.append((node.name, f"{varname}.{attr}"))
-    return findings
+    """ATST43 — le VRAI ``check_file`` sur la source écrite (cible RMW seule)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / "services.py"
+        f.write_text(src, encoding="utf-8")
+        return [t for t in crmw.check_file(f) if not t[1].endswith(".statut")]
 
 
 BARE_RMW = '''
@@ -153,6 +149,43 @@ class TestStatutHorsVerrou(unittest.TestCase):
             f = Path(tmp) / "services.py"
             f.write_text(STATUT_HORS_VERROU, encoding="utf-8")
             self.assertIn(("valider", "retour.statut"), crmw.check_file(f))
+
+
+class MainSurArbreFautifTests(unittest.TestCase):
+    """ATST43 (C-ATST-022) — ``main()`` joué sur un arbre factice : mutants
+    « ``if offenders:`` → ``if False:`` » ou balayage vidé ⇒ rouge."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(dir=ROOT / "scripts" / "tests")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        self.svc = base / "apps" / "demo" / "services.py"
+        self.svc.parent.mkdir(parents=True)
+        self.allow = base / "allow.txt"
+        self.allow.write_text("", encoding="utf-8")
+        for nom in ("APPS_DIR", "CORE_DIR", "AUTH_DIR", "ALLOWLIST_PATH"):
+            self.addCleanup(setattr, crmw, nom, getattr(crmw, nom))
+        crmw.APPS_DIR, crmw.CORE_DIR = base / "apps", base / "core"
+        crmw.AUTH_DIR, crmw.ALLOWLIST_PATH = base / "authentication", self.allow
+
+    def _main(self, src):
+        self.svc.write_text(src, encoding="utf-8")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = crmw.main([])
+        return code, out.getvalue()
+
+    def test_services_fautif_rend_un(self):
+        code, out = self._main(BARE_RMW)
+        self.assertEqual(code, 1, out)
+        self.assertIn(f"{crmw._rel(self.svc)}::incr", out)
+        self.assertIn("apps/demo/services.py", out)
+
+    def test_allowlist_ou_verrou_rend_zero(self):
+        self.allow.write_text(f"{crmw._rel(self.svc)}::incr\n", encoding="utf-8")
+        self.assertEqual(self._main(BARE_RMW)[0], 0)
+        self.allow.write_text("", encoding="utf-8")
+        self.assertEqual(self._main(LOCKED_SELECT_FOR_UPDATE)[0], 0)
 
 
 if __name__ == "__main__":
