@@ -25,11 +25,11 @@ raison DATEE (AAAA-MM-JJ) et ATTRIBUEE (identifiant de tache ou "PR #NNN"),
 verifie par `check_allowlist_reasons()` - sinon la garde rougit.
 
 CRX41 - CLIQUET CRM : meme mecanique, seconde famille. `CRM_ALLOWLIST` gele
-le STOCK actuel (63 fichiers) des tests `pages/crm`+`features/crm` qui
+le STOCK actuel (50 fichiers) des tests `pages/crm`+`features/crm` qui
 utilisent encore le patron regex-sur-source (aucune contrainte de prefixe de
 nom, contrairement a `FAMILY_PREFIXES` cote ventes) ; `scan_crm()` interdit
 tout NOUVEAU fichier du meme genre sous ces deux arbres. C'est un CLIQUET
-SEUL : aucun des 63 fichiers geles n'est reecrit ici - la reecriture en
+SEUL : aucun des 50 fichiers geles n'est reecrit ici - la reecriture en
 tests comportementaux (montage DOM) est CRXB7 (gated, hors de cette garde).
 
 Usage :  python scripts/check_tests_source_regex.py
@@ -37,9 +37,16 @@ Sortie :  0 si propre, 1 sinon (fichiers fautifs listes).
 """
 from __future__ import annotations
 
+import argparse
+import ast
 import re
 import sys
 from pathlib import Path
+
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier` ou `fichier::symbole` (jamais un numero de ligne)
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN_ROOT = ROOT / "frontend" / "src"
@@ -150,7 +157,7 @@ REASON_ATTRIBUTION_RE = re.compile(r"\b[A-Z]{2,}[0-9]+\b|PR #\d+")
 # Contrairement a `SCAN_ROOT`/`FAMILY_PREFIXES` (portee : nom de fichier dans
 # tout `frontend/src`), la portee CRM est par ARBRE : tout fichier de test
 # sous `pages/crm` ou `features/crm`, quel que soit son nom. `CRM_ALLOWLIST`
-# gele le STOCK actuel (63 fichiers, recense le 2026-09-02) qui utilise
+# gele le STOCK actuel (50 fichiers, recense le 2026-09-02) qui utilise
 # encore le patron readFileSync+regex - composants React (workspace lead,
 # vues Kanban/Liste, popovers...) non importables purs sous `node --test`
 # (wiring Redux/API/Router reel), meme contrainte que la famille
@@ -304,7 +311,7 @@ def check_allowlist_reasons(
     d'armement de cette garde, sans date ni tache dans sa raison, jamais
     mentionnee au DONE LOG). CRX41 reutilise cette meme fonction pour
     `CRM_ALLOWLIST` avec `baseline=frozenset()` (socle neuf, aucune entree
-    grand-pere : les 63 sont dejaa datees/attribuees des leur creation)."""
+    grand-pere : les 50 sont dejaa datees/attribuees des leur creation)."""
     table = ALLOWLIST if allowlist is None else allowlist
     base = _BASELINE_ALLOWLIST_KEYS if baseline is None else baseline
     offenders: list[str] = []
@@ -320,12 +327,211 @@ def check_allowlist_reasons(
     return offenders
 
 
-def main() -> int:
+# ── ATST53 : cliquet de TOUT le depot (front + back) et des codes inventes ───
+# Les deux familles ci-dessus ne voyaient que 66 des 197 tests front qui lisent
+# un source ; le backend (276 tests, recompte du 11/11) et les codes de
+# permission inventes (role `['tickets_gerer']` : le test prouve un 403 qui
+# vient d'ailleurs - lecon n. 5 de docs/claude-memory/lecons-construction-qjr5.md)
+# n'avaient aucune garde. Bases gelees qui ne font que RETRECIR (`_cliquet`).
+TOUS_SUFFIXES_TEST = (".test.mjs", ".test.jsx", ".test.js", ".test.ts", ".test.tsx")
+BASELINE_SOURCE = ROOT / "scripts" / "tests_source_regex_allow.txt"
+BASELINE_CODES = ROOT / "scripts" / "tests_permissions_hors_registre_allow.txt"
+ENTETE_SOURCE = (
+    "# Base de check_tests_source_regex.py (ATST53) : tests qui lisent un source de\n"
+    "# production et l'assertent par motif. `fichier` (front) ou `fichier::Classe.test`\n"
+    "# (back). DETTE gelee : ne peut que RETRECIR (--write-baseline refuse d'ajouter).\n")
+ENTETE_CODES = (
+    "# Base de check_tests_source_regex.py (ATST53) : codes de `permissions=[...]` de\n"
+    "# tests absents du registre (`fichier::fonction::code`). Ne peut que RETRECIR.\n")
+RE_CHEMIN_SOURCE = re.compile(r"\.(?:py|jsx?|mjs)\b")
+LECTURES_SOURCE = {"read_text", "read_bytes", "open", "getsource"}
+ASSERTIONS_MOTIF = {"assertIn", "assertNotIn", "assertRegex", "assertNotRegex"}
+RE_CODE_DYNAMIQUE = re.compile(r"^custom_object\.[\w-]+\.\w+$")  # customfields/views.py
+
+
+def _back_root() -> Path:
+    return ROOT / "backend" / "django_core"
+
+
+def scan_tout_frontend() -> list[str]:
+    """Tout test front (5 suffixes) qui lit un source et l'asserte par regex,
+    hors des deux listes nominatives ci-dessus (cle = fichier)."""
+    racine = ROOT / "frontend" / "src"
+    connus = set(ALLOWLIST) | set(CRM_ALLOWLIST)
+    trouves = []
+    for path in sorted(racine.rglob("*.test.*")) if racine.exists() else ():
+        if path.is_file() and path.name.endswith(TOUS_SUFFIXES_TEST) and uses_pattern(path):
+            rel = path.relative_to(ROOT).as_posix()
+            if rel not in connus:
+                trouves.append(rel)
+    return trouves
+
+
+#: Pre-filtres TEXTUELS (sur-ensembles des criteres AST) : seuls les fichiers
+#: candidats sont parses (~4 000 modules de test, ast.parse est le cout dominant).
+_PRE_LECTURE = re.compile(r"getsource|read_text|read_bytes|open\(|ast\.parse")
+_PRE_CHEMIN = re.compile(r"""['"][^'"\n]*\.(?:py|jsx?|mjs)\b""")
+_PRE_ASSERT = re.compile(r"assert(?:Not)?(?:In|Regex)\(|re\.(?:search|findall|match)\(")
+_PRE_PERMISSIONS = re.compile(r"permissions\s*=\s*[\[({]")
+
+
+def _candidat_source(texte) -> bool:
+    return bool(_PRE_LECTURE.search(texte) and _PRE_ASSERT.search(texte)
+                and ("getsource" in texte or _PRE_CHEMIN.search(texte)))
+
+
+def _fichiers_test_backend(candidat=lambda texte: True):
+    racine = _back_root()
+    for path in sorted(racine.rglob("*.py")) if racine.exists() else ():
+        parts = path.relative_to(racine).parts
+        if "migrations" in parts or "node_modules" in parts:
+            continue
+        if path.name.startswith("test") or "tests" in parts[:-1]:
+            try:
+                texte = path.read_text(encoding="utf-8")
+                if candidat(texte):
+                    yield path.relative_to(ROOT).as_posix(), ast.parse(texte)
+            except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+                continue
+
+
+def _cite_un_source(noeud) -> bool:
+    return isinstance(noeud, ast.Constant) and isinstance(noeud.value, str) and bool(
+        RE_CHEMIN_SOURCE.search(noeud.value))
+
+
+def _noms_source(corps) -> set:
+    """Noms (module ou classe) assignes a une expression qui cite un chemin source."""
+    noms = set()
+    for noeud in corps:
+        if isinstance(noeud, ast.Assign) and any(_cite_un_source(c) for c in ast.walk(noeud.value)):
+            noms.update(t.id for t in noeud.targets if isinstance(t, ast.Name))
+    return noms
+
+
+def _lit_et_asserte(fonction, noms_source) -> bool:
+    appels = [n.func for n in ast.walk(fonction) if isinstance(n, ast.Call)]
+    attrs = {f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "") for f in appels}
+
+    def _de(module, noms):
+        return any(isinstance(f, ast.Attribute) and f.attr in noms
+                   and getattr(f.value, "id", "") == module for f in appels)
+    if not (attrs & ASSERTIONS_MOTIF or _de("re", ("search", "findall", "match"))):
+        return False
+    if "getsource" in attrs:
+        return True
+    if not (attrs & LECTURES_SOURCE or _de("ast", ("parse",))):
+        return False
+    return any(_cite_un_source(n) or (isinstance(n, ast.Name) and n.id in noms_source)
+               or (isinstance(n, ast.Attribute) and n.attr in noms_source) for n in ast.walk(fonction))
+
+
+def _fonctions_test(arbre):
+    """(qualname, noeud, noms source de la classe) des fonctions d'un module."""
+    for noeud in arbre.body:
+        if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield noeud.name, noeud, set()
+        elif isinstance(noeud, ast.ClassDef):
+            noms_classe = _noms_source(noeud.body)
+            for f in noeud.body:
+                if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    yield f"{noeud.name}.{f.name}", f, noms_classe
+
+
+def scan_backend() -> list[str]:
+    """Fonctions `test_*` qui lisent un source (.py/.js/.jsx/.mjs) puis l'assertent
+    par motif (cle = `fichier::Classe.test`)."""
+    trouves = []
+    for rel, arbre in _fichiers_test_backend(_candidat_source):
+        noms_module = _noms_source(arbre.body)
+        for qualname, fonction, noms_classe in _fonctions_test(arbre):
+            if fonction.name.startswith("test") and _lit_et_asserte(fonction, noms_module | noms_classe):
+                trouves.append(f"{rel}::{qualname}")
+    return trouves
+
+
+def _registre_permissions():
+    """(codes, motif `app_*_voir`) lus par AST du registre - sans importer Django."""
+    chemin = _back_root() / "apps" / "roles" / "permissions_registre.py"
+    codes, motif = set(), None
+    try:
+        arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return codes, motif
+    for noeud in arbre.body:
+        cible = noeud.targets[0] if isinstance(noeud, ast.Assign) and len(noeud.targets) == 1 else None
+        nom = getattr(cible, "id", "")
+        if nom == "ALL_PERMISSIONS" or re.fullmatch(r"PORTAIL_\w+_PERMISSIONS", nom):
+            codes.update(c.value for c in ast.walk(noeud.value)
+                         if isinstance(c, ast.Constant) and isinstance(c.value, str))
+        elif nom == "EST_PERMISSION_APP" and isinstance(noeud.value, ast.Call) and noeud.value.args:
+            motif = re.compile(ast.literal_eval(noeud.value.args[0]))
+    return codes, motif
+
+
+def _codes_cites(fonction):
+    """Codes litteraux des `permissions=[...]` d'une fonction."""
+    for appel in (n for n in ast.walk(fonction) if isinstance(n, ast.Call)):
+        for kw in appel.keywords:
+            if kw.arg == "permissions" and isinstance(kw.value, (ast.List, ast.Tuple, ast.Set)):
+                yield from (el.value for el in kw.value.elts
+                            if isinstance(el, ast.Constant) and isinstance(el.value, str))
+
+
+def codes_hors_registre() -> list[str]:
+    """`permissions=[...]` d'un test citant un code absent du registre
+    (cle = `fichier::fonction::code`) ; `app_*_voir` et `custom_object.<x>.<y>` admis."""
+    codes, motif = _registre_permissions()
+    trouves = set()
+    for rel, arbre in _fichiers_test_backend(_PRE_PERMISSIONS.search):
+        for qualname, fonction, _noms in _fonctions_test(arbre):
+            for code in _codes_cites(fonction):
+                if code not in codes and not RE_CODE_DYNAMIQUE.match(code) and not (motif and motif.match(code)):
+                    trouves.add(f"{rel}::{qualname}::{code}")
+    return sorted(trouves)
+
+
+def _ecrire_bases(sources, codes, autoriser_croissance) -> int:
+    for chemin, cles in ((BASELINE_SOURCE, sources), (BASELINE_CODES, codes)):
+        ajouts = set(cles) - _cliquet.charger(chemin)
+        if ajouts and chemin.is_file() and not autoriser_croissance:
+            print(f"REFUS : {chemin.name} ne peut que RETRECIR ; ajouts refusés : " + ", ".join(sorted(ajouts)))
+            return 1
+    for chemin, cles, entete in ((BASELINE_SOURCE, sources, ENTETE_SOURCE), (BASELINE_CODES, codes, ENTETE_CODES)):
+        _cliquet.ecrire(chemin, cles, entete, "ATST53 stock gele", autoriser_croissance=True)
+    print(f"Bases réécrites ({len(sources)} test(s) source, {len(codes)} code(s) hors registre).")
+    return 0
+
+
+def _cliquets_atst53(front, back, codes) -> list[str]:
+    erreurs = _cliquet.comparer(
+        front + back, _cliquet.charger(BASELINE_SOURCE), nom_fichier=BASELINE_SOURCE.name,
+        decrire=lambda c: f"{c} - NOUVEAU test qui lit un source de production et l'asserte par "
+                          f"motif (ATST53) : executez le code au lieu de lire son texte")
+    return erreurs + _cliquet.comparer(
+        codes, _cliquet.charger(BASELINE_CODES), nom_fichier=BASELINE_CODES.name,
+        decrire=lambda c: f"{c} - code de permission absent du registre (ATST53) : un role "
+                          f"invente prouve un refus qui vient d'ailleurs ; jouez un role livre")
+
+
+def main(argv=None) -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 — flux sans reconfigure (tests)
+        pass
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write-baseline", action="store_true")
+    ap.add_argument("--autoriser-croissance", action="store_true", help="fondateur seulement")
+    args = ap.parse_args([] if argv is None else argv)
+    front, back, codes = scan_tout_frontend(), scan_backend(), codes_hors_registre()
+    if args.write_baseline:
+        return _ecrire_bases(front + back, codes, args.autoriser_croissance)
     offenders = scan()
     offenders += scan_crm()
     offenders += check_allowlist_reasons()
     offenders += check_allowlist_reasons(
         CRM_ALLOWLIST, baseline=frozenset(), label="CRX41")
+    offenders += _cliquets_atst53(front, back, codes)
     if offenders:
         print("[check_tests_source_regex] ECHEC - nouveau test "
               "'regex sur code source' hors allowlist :")
@@ -343,8 +549,10 @@ def main() -> int:
           f"autoQuote*) + {len(CRM_ALLOWLIST)} fichiers (cliquet CRM CRX41, "
           f"pages/crm+features/crm) - aucun NOUVEAU test 'regex sur code "
           f"source' dans les deux perimetres.")
+    print(f"[check_tests_source_regex] ATST53 - stock gele : {len(front)} test(s) front, "
+          f"{len(back)} test(s) back, {len(codes)} code(s) de permission hors registre.")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

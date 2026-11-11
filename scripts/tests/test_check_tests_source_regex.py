@@ -160,6 +160,82 @@ class CheckTestsSourceRegexTests(unittest.TestCase):
     def test_main_sur_le_vrai_depot_est_vert(self):
         self.assertEqual(guard.main(), 0)
 
+    # ── ATST53 : tout le depot (front + back) et les codes hors registre ─────
+    REGISTRE = ("import re\n"
+                "EST_PERMISSION_APP = re.compile(r'^app_[a-z0-9][a-z0-9_]*_voir$')\n"
+                "ALL_PERMISSIONS = ['crm_voir']\n"
+                "PORTAIL_CLIENT_PERMISSIONS = ['portail_client_acces']\n")
+    FAUTIFS = {
+        "frontend/src/pages/ventes/FactureListNouveau.test.mjs": SOURCE_REGEX_PATTERN,
+        "backend/django_core/apps/ventes/tests/test_x.py": (
+            "from pathlib import Path\n\n\nclass XTests:\n"
+            "    def test_y(self):\n"
+            "        src = (Path(__file__).parent.parent / 'views' / 'devis.py').read_text()\n"
+            "        self.assertIn('generer', src)\n\n"
+            "    def test_z(self):\n"
+            "        Role(permissions=['tickets_gerer', 'app_crm_voir', 'portail_client_acces',\n"
+            "                          'custom_object.x.voir', 'crm_voir'])\n"),
+    }
+    CLES = ("frontend/src/pages/ventes/FactureListNouveau.test.mjs",
+            "backend/django_core/apps/ventes/tests/test_x.py::XTests.test_y",
+            "backend/django_core/apps/ventes/tests/test_x.py::XTests.test_z::tickets_gerer")
+
+    def _main_atst53(self, files, argv=(), bases=None):
+        """Arbre factice (registre compris) + bases ; rend (code, sortie, bases relues)."""
+        import contextlib
+        import io
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel, content in {"backend/django_core/apps/roles/permissions_registre.py": self.REGISTRE,
+                                 **files}.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(content, encoding="utf-8")
+            base_source, base_codes = root / "source_allow.txt", root / "codes_allow.txt"
+            for chemin, cles in zip((base_source, base_codes), bases or ()):
+                chemin.write_text("".join(f"{c}  # test\n" for c in cles), encoding="utf-8")
+            sortie = io.StringIO()
+            with mock.patch.object(guard, "ROOT", root), \
+                 mock.patch.object(guard, "SCAN_ROOT", root / "frontend" / "src"), \
+                 mock.patch.object(guard, "CRM_SCAN_ROOTS", (root / "frontend" / "src" / "pages" / "crm",)), \
+                 mock.patch.object(guard, "ALLOWLIST", {}), mock.patch.object(guard, "CRM_ALLOWLIST", {}), \
+                 mock.patch.object(guard, "BASELINE_SOURCE", base_source), \
+                 mock.patch.object(guard, "BASELINE_CODES", base_codes), \
+                 contextlib.redirect_stdout(sortie):
+                code = guard.main(list(argv))
+            relues = [guard._cliquet.charger(c) for c in (base_source, base_codes)]
+        return code, sortie.getvalue(), relues
+
+    def test_tout_test_qui_lit_le_source_hors_base_rougit(self):
+        code, sortie, _ = self._main_atst53(self.FAUTIFS)
+        self.assertEqual(code, 1, sortie)
+        for cle in self.CLES[:2]:
+            self.assertIn(f"{cle} - NOUVEAU test qui lit un source", sortie)
+
+    def test_code_de_permission_hors_registre_rougit(self):
+        code, sortie, _ = self._main_atst53(self.FAUTIFS)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn(f"{self.CLES[2]} - code de permission absent du registre", sortie)
+        for admis in ("app_crm_voir", "portail_client_acces", "custom_object.x.voir", "::crm_voir"):
+            self.assertNotIn(admis, sortie)
+
+    def test_entree_de_base_disparue_rougit(self):
+        code, sortie, _ = self._main_atst53(
+            self.FAUTIFS, bases=(self.CLES[:2] + ("frontend/src/Disparu.test.mjs",), self.CLES[2:]))
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("entrée MORTE de source_allow.txt : frontend/src/Disparu.test.mjs", sortie)
+
+    def test_base_amorcee_sort_zero_et_ne_peut_que_retrecir(self):
+        code, sortie, _ = self._main_atst53(self.FAUTIFS, bases=(self.CLES[:2], self.CLES[2:]))
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("1 test(s) front, 1 test(s) back, 1 code(s)", sortie)
+        code, _, relues = self._main_atst53(self.FAUTIFS, argv=["--write-baseline"])  # amorçage
+        self.assertEqual((code, relues), (0, [set(self.CLES[:2]), set(self.CLES[2:])]))
+        code, sortie, relues = self._main_atst53(
+            self.FAUTIFS, argv=["--write-baseline"], bases=(self.CLES[:1], self.CLES[2:]))
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("REFUS", sortie)
+        self.assertEqual(relues[0], set(self.CLES[:1]))
+
 
 if __name__ == "__main__":
     unittest.main()
