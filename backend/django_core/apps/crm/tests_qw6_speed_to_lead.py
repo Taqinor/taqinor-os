@@ -60,6 +60,27 @@ class RoundRobinOwnerTests(TestCase):
         second = pick_round_robin_owner(self.company)
         self.assertNotEqual(second, first)
 
+    def test_charge_ignore_leads_signes_archives_et_supprimes(self):
+        # ASUP51 — la charge du repli = leads OUVERTS : signés, archivés et
+        # supprimés ne comptent pas.
+        from apps.crm import stages
+
+        c1 = User.objects.create_user(
+            username='asup51_c1', password='x', company=self.company, role=self.role)
+        c2 = User.objects.create_user(
+            username='asup51_c2', password='x', company=self.company, role=self.role)
+        for i in range(5):
+            Lead.objects.create(company=self.company, nom=f'S{i}', owner=c1,
+                                stage=stages.SIGNED)
+        for i in range(2):
+            Lead.objects.create(company=self.company, nom=f'A{i}', owner=c1,
+                                is_archived=True)
+        Lead.objects.create(company=self.company, nom='D', owner=c1).soft_delete()
+        Lead.objects.create(company=self.company, nom='O', owner=c1)
+        for i in range(3):
+            Lead.objects.create(company=self.company, nom=f'B{i}', owner=c2)
+        self.assertEqual(default_responsable_for(self.company), c1)
+
     def test_company_scoped(self):
         other = Company.objects.create(nom='Autre QW6', slug='qw6-autre')
         other_role = Role.objects.create(

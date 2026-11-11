@@ -204,9 +204,8 @@ def pick_round_robin_owner(company):
     défaut » n'est configuré. Sans état dédié à maintenir : le tour revient à
     l'utilisateur ayant le MOINS de leads assignés (ties départagés par id,
     ordre stable) — équivalent d'une rotation, sans compteur externe. None si
-    la société n'a aucun utilisateur commercial actif."""
-    from django.db.models import Count
-
-    candidats = commerciaux_habilites(company).annotate(
-        nb_leads=Count('leads_assignes')).order_by('pk').distinct()
-    return rotation_equilibree(candidats, lambda u: u.nb_leads)
+    la société n'a aucun utilisateur commercial actif. ASUP51 — la charge est
+    celle des leads OUVERTS (``_leads_ouverts_count``), jamais tous les leads
+    jamais assignés (supprimés, archivés, perdus, signés compris)."""
+    candidats = commerciaux_habilites(company).order_by('pk').distinct()
+    return rotation_equilibree(candidats, _leads_ouverts_count)
