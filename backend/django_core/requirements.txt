@@ -90,7 +90,7 @@ httpx==0.28.1
 beautifulsoup4==4.14.2
 
 # Server
-gunicorn==22.0.0
+gunicorn==26.2.0
 
 # Web push (PWA) — N92/N109. Diffusion web-push + génération de paire VAPID
 # (py_vapid arrive en dépendance transitive). Le sdist http-ece se build
