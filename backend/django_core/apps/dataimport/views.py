@@ -74,9 +74,11 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
 #: ACVI1 — droit exigé par cible en plus du palier (l'aperçu montre, le commit réécrit).
-#: ADRG61 — factures : le code de création unitaire (numéro de série légale).
+#: ADRG61/ADRG65 — documents et référentiels : le code de création unitaire.
 DROIT_PAR_CIBLE = {'leads': 'crm_modifier', 'clients': 'crm_modifier',
-                   'factures': 'ventes_creer'}
+                   'factures': 'ventes_creer', 'devis': 'ventes_creer',
+                   'fournisseurs': 'stock_modifier',
+                   'equipements': 'equipement_gerer'}
 
 
 def _refus_droit_cible(request, target):

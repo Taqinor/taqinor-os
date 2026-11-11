@@ -478,6 +478,39 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['created'], 1)
 
+    def test_import_devis_fournisseurs_equipements_exige_le_code_de_creation(
+            self):
+        """ADRG65 — chaque cible exige le code de sa création unitaire."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, COMMERCIAL_TERRAIN_PERMISSIONS,
+            TECHNICIEN_RESP_PERMISSIONS)
+        from apps.sav.models import Equipement
+        from apps.stock.models import Fournisseur
+        from apps.ventes.models import Devis
+        commercial = self._api_role('com65', COMMERCIAL_PERMISSIONS)
+        terrain = self._api_role('ter65', COMMERCIAL_TERRAIN_PERMISSIONS)
+        refus = ((commercial, 'fournisseurs', 'nom\nFour A\n', 'stock_modifier'),
+                 (commercial, 'equipements', 'numero_serie\nSN-1\n',
+                  'equipement_gerer'),
+                 (terrain, 'devis', 'reference,client_nom\nS-1,X\n',
+                  'ventes_creer'))
+        for client, target, csv_text, code in refus:
+            for url in (DRY_RUN_URL, COMMIT_URL):
+                resp = client.post(
+                    url, {'file': self._csv(csv_text), 'target': target},
+                    format='multipart')
+                self.assertEqual(resp.status_code, 403, (target, resp.data))
+                self.assertEqual(resp.data['code'], 'droit_manquant')
+                self.assertIn(code, resp.data['detail'])
+        self.assertFalse(Fournisseur.objects.filter(company=self.company).exists())
+        self.assertFalse(Equipement.objects.filter(company=self.company).exists())
+        self.assertFalse(Devis.objects.filter(company=self.company).exists())
+        resp = self._commit('nom\nFour A\n', target='fournisseurs',
+                            client=self._api_role(
+                                'tresp65', TECHNICIEN_RESP_PERMISSIONS))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1)
+
     def test_upsert_contact_hors_portee_jamais_cree(self):
         """ERR-W33-IMPORT-DOUBLON — en ``upsert``, le contact d'un lead hors de
         portée n'est ni réécrit ni recréé : la ligne est ignorée, avec son motif,
