@@ -320,9 +320,13 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
       goStep(n, true);
     });
     // QX — l'étape carte exige un PROFIL choisi.
-    $('mt-next-0')?.addEventListener('click', () => {
+    // Deux boutons, un seul geste : celui sous les profils (WAUD43) et sa reprise
+    // sous la carte (`mt-next-0-bas`), pour qui vient de localiser son adresse.
+    const versFacture = () => {
       if (crochets.appeler('validateStep0')) goStep(1);
-    });
+    };
+    $('mt-next-0')?.addEventListener('click', versFacture);
+    $('mt-next-0-bas')?.addEventListener('click', versFacture);
     $('mt-back-1')?.addEventListener('click', () => goStep(0));
     // WJ61 — première entrée d'historique dès le chargement.
     history.replaceState({ mtStep: etat.step, mtRevealed: etat.revealed }, '', location.href);
