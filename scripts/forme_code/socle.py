@@ -26,7 +26,10 @@ import audit_tache  # noqa: E402 — empreinte AST du corps : empreinte_corps (D
 DJANGO = "backend/django_core/"
 SUFFIXES_CODE = (".py", ".js", ".jsx", ".mjs", ".ts", ".tsx")
 SUFFIXES_LUS = SUFFIXES_CODE + (".md", ".txt", ".yml", ".yaml", ".example")
-COCHE = re.compile(r"^- \[[xX]\] (\S+)(.*)$", re.M)
+# Une tâche « code livré, preuve en direct due » (CLAUDE.md 3-bis, check_acceptation) a son code DANS
+# la PR : son budget C20 compte comme celui d'une tâche cochée (sinon la remise en BLOCKED exigée par
+# l'acceptation ferait perdre le budget déclaré par la tâche — mesuré vague 12 du run 99392c).
+COCHE = re.compile(r"^- \[(?:[xX]|BLOCKED: code livré[^\]\n]*preuve en direct due[^\]\n]*)\] (\S+)(.*)$", re.M)
 BUDGET = re.compile(r"lignes nettes attendues\s*≤\s*([-−]?)\s*(\d[\d  ]*)")
 BACKTICKS = re.compile(r"`([^`\n]+)`")
 
