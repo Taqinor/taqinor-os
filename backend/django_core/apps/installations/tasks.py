@@ -59,55 +59,76 @@ def _rendre_rappel(interv, tpl, client):
     })
 
 
+def _corps_rappel_client(interv):
+    """AMSG56 — ``(client, corps)`` du rappel J-1 dans la langue du client."""
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    from apps.parametres.models import MessageTemplate
+
+    client = getattr(interv.installation, 'client', None)
+    if client is None:
+        return None, ''
+    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', resolve_langue_sortie(
+        client=client, company=interv.company))  # ASOC83 — langue du client
+    return client, _rendre_rappel(interv, tpl, client)
+
+
 def _wa_draft_for_intervention(interv):
     """Brouillon WhatsApp ``wa.me`` du rappel J-1, RÉDIGÉ POUR LE CLIENT et donc
     adressé au téléphone du CLIENT (APAR62 — il partait au technicien
     responsable), réutilisant le patron ``apps.ventes.utils.whatsapp``
     (normalisation téléphone). Renvoie l'URL, ou None si le client n'a aucun
     numéro exploitable."""
-    from apps.parametres.i18n_resolver import resolve_langue_sortie
-    from apps.parametres.models import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url
 
-    installation = interv.installation
-    client = getattr(installation, 'client', None)
+    client, corps = _corps_rappel_client(interv)
     phone = getattr(client, 'telephone', None) if client is not None else None
     if not phone:
         return None
-    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', resolve_langue_sortie(
-        client=client, company=interv.company))  # ASOC83 — langue du client
-    return build_wa_url(phone, _rendre_rappel(interv, tpl, client))
+    return build_wa_url(phone, corps)
+
+
+def _remettre_brouillon_whatsapp(interv, url):
+    """AMSG56 — l'e-mail n'est pas parti : le brouillon WhatsApp devient une
+    tâche « Envoyer ce WhatsApp » sur l'intervention (patron APAR25), au lieu
+    d'être compté puis jeté. Rend True si la tâche est créée."""
+    from apps.automation.actions import RESUME_TACHE_WHATSAPP, _creer_tache
+
+    _client, corps = _corps_rappel_client(interv)
+    try:
+        _creer_tache(interv, interv.company, None, RESUME_TACHE_WHATSAPP,
+                     f'{corps}\n\n{url}' if corps else url)
+        return True
+    except Exception:  # noqa: BLE001 — le balayage continue (journalisé)
+        logger.warning('AMSG56 : tâche WhatsApp non créée (intervention %s)',
+                       interv.id, exc_info=True)
+        return False
 
 
 def _envoyer_email_client(interv):
-    """Email de rappel J-1 au client (Brevo, key-gated — NO-OP sans clé,
-    jamais d'exception propagée). Réutilise directement le backend Django
-    configuré (comportement identique à ``apps.ventes.email_service`` :
-    sans BREVO_API_KEY, le backend console « envoie » sans appel réseau)."""
+    """Email de rappel J-1 au client. AMSG56 — rend le NOMBRE d'e-mails
+    réellement remis (0 ou 1) : 0 sans e-mail client, sans envoi opérationnel
+    (``is_email_configured`` — backend console de la prod) ou sur échec ;
+    jamais d'exception propagée."""
     from django.core.mail import send_mail
     from django.conf import settings
-    from apps.parametres.i18n_resolver import resolve_langue_sortie
-    from apps.parametres.models import MessageTemplate
+    from apps.notifications.services import _is_email_configured
 
-    installation = interv.installation
-    client = getattr(installation, 'client', None)
+    client, corps = _corps_rappel_client(interv)
     if client is None or not getattr(client, 'email', None):
-        return False
-    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', resolve_langue_sortie(
-        client=client, company=interv.company))  # ASOC83 — langue du client
-    corps = _rendre_rappel(interv, tpl, client)
+        return 0
+    if not _is_email_configured():
+        return 0
     try:
-        send_mail(
+        return send_mail(
             subject='Rappel de rendez-vous — demain',
             message=corps,
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', '')
             or 'noreply@erp.local',
             recipient_list=[client.email],
-            fail_silently=True)
-        return True
-    except Exception as exc:  # pragma: no cover - défensif
+            fail_silently=False) or 0
+    except Exception as exc:  # noqa: BLE001 — journalisé, compté 0
         logger.warning('XFSM6 : envoi email rappel RDV échoué : %s', exc)
-        return False
+        return 0
 
 
 @shared_task(name='installations.rappel_rdv_j1')
@@ -136,15 +157,19 @@ def rappel_rdv_j1():
                               'installation__technicien_responsable'))
         for interv in qs:
             cibles += 1
+            url = None
             try:
-                if _wa_draft_for_intervention(interv):
+                url = _wa_draft_for_intervention(interv)
+                if url:
                     wa_generes += 1
             except Exception as exc:  # pragma: no cover - défensif
                 logger.warning(
                     'XFSM6 : brouillon WhatsApp échoué (intervention %s) : '
                     '%s', interv.id, exc)
-            if _envoyer_email_client(interv):
-                emails_envoyes += 1
+            envoyes = _envoyer_email_client(interv)
+            emails_envoyes += envoyes
+            if not envoyes and url:  # AMSG56 — brouillon remis, pas jeté
+                _remettre_brouillon_whatsapp(interv, url)
 
     return {
         'jour_cible': str(demain), 'cibles': cibles,

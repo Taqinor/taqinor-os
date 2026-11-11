@@ -176,16 +176,17 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if statut == Livraison.Statut.EN_TRANSIT:
             if liv.notifie_transit_le is not None:
                 return
-            livraison_client_notify.notify_livraison_transition(
-                liv, 'en_transit', request=request)
-            liv.notifie_transit_le = timezone.now()
-            liv.save(update_fields=['notifie_transit_le'])
+            res = livraison_client_notify.notify_livraison_transition(
+                liv, 'en_transit', request=request, user=request.user)
+            if res.get('sent'):  # AMSG56 — e-mail parti ou tâche remise
+                liv.notifie_transit_le = timezone.now()
+                liv.save(update_fields=['notifie_transit_le'])
         elif statut == Livraison.Statut.LIVREE:
             # ACHT19 — une seule fois (horodatage persisté).
             if liv.notifie_livree_le is not None:
                 return
             livraison_client_notify.notify_livraison_transition(
-                liv, 'livree', request=request)
+                liv, 'livree', request=request, user=request.user)
 
     @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])

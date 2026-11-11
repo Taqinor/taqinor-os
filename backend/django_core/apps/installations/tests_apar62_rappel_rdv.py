@@ -25,7 +25,8 @@ from apps.crm.models import Client
 User = get_user_model()
 
 
-@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.'
+@override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},  # AMSG56
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.'
                                  'EmailBackend')
 class RappelRdvTests(TestCase):
     def setUp(self):
