@@ -123,6 +123,11 @@
   line-height: 0.98;
   letter-spacing: -0.018em;
 }
+/* WAUD90 — arabe vocalisé : à 0,98 (interligne latin) les signes de la 1re ligne touchent
+   ceux de la 2e. Règle limitée au RTL : FR et EN inchangés. */
+[dir='rtl'] .v2 .v2-hero-title {
+  line-height: 1.3;
+}
 /* Titre d'en-tête de page intérieure (héros à deux colonnes) — bump modéré */
 .v2 .v2-page-title {
   font-size: clamp(2.2rem, 5.4vw, 4.3rem);

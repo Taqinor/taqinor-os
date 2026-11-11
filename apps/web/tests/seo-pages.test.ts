@@ -738,11 +738,12 @@ describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « l
   const MONTANT = /\d[\d\s.,  ]*\s*(?:DH|MAD|dirhams?|درهم)/g;
   const chiffres = (s: string) => s.replace(/[\s.,  ]/g, '');
 
-  it('registre : subvention FR/EN/AR, kit FR, devis FR+AR ; les routes existent', () => {
+  it('registre : subvention, kit et devis FR/EN/AR (WAUD91) ; les routes existent', () => {
     expect(localesForPath(INFO_PAGE_PATHS.subvention)).toEqual(['fr', 'en', 'ar']);
-    expect(localesForPath(INFO_PAGE_PATHS.kit)).toEqual(['fr']);
-    expect(localesForPath(INFO_PAGE_PATHS.devis)).toEqual(['fr', 'ar']);
-    for (const f of ['subvention-panneaux-solaires-maroc', 'en/subvention-panneaux-solaires-maroc', 'ar/subvention-panneaux-solaires-maroc', 'kit-solaire-maroc', 'devis-panneaux-solaires-maroc', 'ar/devis-panneaux-solaires-maroc']) {
+    expect(localesForPath(INFO_PAGE_PATHS.kit)).toEqual(['fr', 'en', 'ar']);
+    expect(localesForPath(INFO_PAGE_PATHS.devis)).toEqual(['fr', 'en', 'ar']);
+    for (const id of ['kit', 'devis'] as const) expect(Object.keys(INFO_PAGES[id]).sort(), id).toEqual(['ar', 'en', 'fr']);
+    for (const f of ['subvention-panneaux-solaires-maroc', 'en/subvention-panneaux-solaires-maroc', 'ar/subvention-panneaux-solaires-maroc', 'kit-solaire-maroc', 'en/kit-solaire-maroc', 'ar/kit-solaire-maroc', 'devis-panneaux-solaires-maroc', 'en/devis-panneaux-solaires-maroc', 'ar/devis-panneaux-solaires-maroc']) {
       expect(lire(`src/pages/${f}.astro`), f).toContain('InfoPageBody');
     }
   });
@@ -783,7 +784,7 @@ describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « l
   });
   it('llms.txt référence les nouvelles pages (FR, EN, AR) ; liens vers /prix et 10-questions sans recopier', () => {
     const t = lire('public/llms.txt');
-    for (const u of ['https://taqinor.ma/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/en/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/kit-solaire-maroc/', 'https://taqinor.ma/devis-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/devis-panneaux-solaires-maroc/']) expect(t, u).toContain(u);
+    for (const u of ['https://taqinor.ma/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/en/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/kit-solaire-maroc/', 'https://taqinor.ma/en/kit-solaire-maroc/', 'https://taqinor.ma/ar/kit-solaire-maroc/', 'https://taqinor.ma/devis-panneaux-solaires-maroc/', 'https://taqinor.ma/en/devis-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/devis-panneaux-solaires-maroc/']) expect(t, u).toContain(u);
     const liens = INFO_PAGES.devis.fr!.blocks[2].links!.map((l) => l.href);
     expect(liens).toEqual(['/prix-panneaux-solaires-maroc', '/ressources/10-questions-avant-de-signer']);
   });

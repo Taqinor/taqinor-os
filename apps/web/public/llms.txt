@@ -130,6 +130,8 @@
 - [Blog](https://taqinor.ma/en/blog/): in-depth articles on solar in Morocco.
 - [FAQ](https://taqinor.ma/en/faq/): frequently asked questions.
 - [Subsidies and aid](https://taqinor.ma/en/subvention-panneaux-solaires-maroc/): what exists and what does not.
+- [Solar kit or custom](https://taqinor.ma/en/kit-solaire-maroc/): what a kit leaves out.
+- [Reading and comparing two quotes](https://taqinor.ma/en/devis-panneaux-solaires-maroc/): line-by-line inclusions table.
 - [Contact](https://taqinor.ma/en/contact/): get in touch.
 
 ## العربية (الصفحات الرئيسية، /ar/)
@@ -151,6 +153,7 @@
 - [المدوّنة](https://taqinor.ma/ar/blog/): مقالات معمّقة حول الطاقة الشمسية بالمغرب.
 - [الأسئلة الشائعة](https://taqinor.ma/ar/faq/): الأسئلة المتكرّرة.
 - [الدعم والمساعدات](https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/): ما هو موجود وما ليس موجوداً.
+- [عُدّة جاهزة أم حسب الطلب](https://taqinor.ma/ar/kit-solaire-maroc/): ما لا تتضمّنه العُدّة.
 - [مقارنة عرضين](https://taqinor.ma/ar/devis-panneaux-solaires-maroc/): جدول المشمولات سطراً بسطر.
 - [اتصل بنا](https://taqinor.ma/ar/contact/): تواصل معنا.
 

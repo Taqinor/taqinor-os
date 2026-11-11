@@ -347,6 +347,38 @@ class GestesArgentTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(Avoir.objects.count(), avoirs + 1)
 
+    def test_peut_encaisser_suit_la_route(self):
+        """ERR-ACC-ENCAISSER-OFFERT-REFUSE (acceptation ASEC90/91, rôle
+        système Admin Ventes) — ``peut.encaisser`` d'une facture émise de la
+        vente suit ``PeutEncaisser`` de ``enregistrer-paiement`` : Admin
+        Ventes faux, Directeur vrai, et pour CHAQUE rôle le drapeau vrai ⇔
+        la route répond 2xx (faux ⇔ 403). Mutant : ôter ``encaisse`` du
+        drapeau ⇒ échec."""
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import etat_vente
+        attendus = {'Admin Ventes': False, 'Directeur': True}
+        for nom in AUTORISES + REFUSES_JUMELLES:
+            with self.subTest(role=nom):
+                user = self.users[nom]
+                devis, facture = self._devis(user), self._facture(user)
+                Facture.objects.filter(pk=facture.pk).update(
+                    devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+                peut = [f['peut']['encaisser']
+                        for f in etat_vente(devis, user)['factures']]
+                self.assertEqual(len(peut), 1)
+                if nom in attendus:
+                    self.assertEqual(peut[0], attendus[nom])
+                r = self._api(user).post(
+                    f'/api/django/ventes/factures/{facture.id}/'
+                    'enregistrer-paiement/', {
+                        'montant': '100',
+                        'date_paiement': date.today().isoformat(),
+                        'mode': 'virement'}, format='json')
+                self.assertEqual(peut[0], r.status_code in (200, 201),
+                                 (r.status_code, r.data))
+                if not peut[0]:
+                    self.assertEqual(r.status_code, 403, r.data)
+
     def test_emettre_unitaire_et_lot_exigent_encaisser(self):
         """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
         ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon

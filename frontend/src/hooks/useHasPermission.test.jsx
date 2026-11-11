@@ -184,14 +184,16 @@ describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-L
     expect(parc(VIEWER)).toBe(false)
     expect(equipes(VIEWER)).toBe(false)
   })
-  it('Commercial (écriture crm) : parc et équipes', () => {
-    const c = { role: 'normal', role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer'] }
+  // ERR-ACC-SIDEBAR-CO2-403 — co2-fleet relève du module `sav` : le Commercial
+  // système porte `sav_voir` (COMMERCIAL_PERMISSIONS), d'où le parc.
+  it('Commercial (écriture crm + sav_voir) : parc et équipes', () => {
+    const c = { role: 'normal', role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer', 'sav_voir'] }
     expect(parc(c)).toBe(true)
     expect(equipes(c)).toBe(true)
   })
-  it("rôle d'écriture hors module crm (Commercial terrain) : parc oui, équipes non", () => {
+  it("rôle d'écriture hors modules crm et sav (Commercial terrain) : ni parc ni équipes", () => {
     const t = { role: 'normal', role_nom: 'Commercial terrain', permissions: ['visites_creer'] }
-    expect(parc(t)).toBe(true)
+    expect(parc(t)).toBe(false)
     expect(equipes(t)).toBe(false)
   })
   it('palier admin et compte hérité responsable : oui ; hérité normal : non', () => {
@@ -199,5 +201,10 @@ describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-L
     expect(equipes({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
     expect(equipes({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
     expect(parc({ role: 'normal', role_nom: null, permissions: [] })).toBe(false)
+  })
+  it('ERR-ACC-SIDEBAR-CO2-403 — Admin Ventes (responsable, aucun code sav) : pas de parc', () => {
+    const av = { role: 'responsable', role_nom: 'Admin Ventes', permissions: ['crm_creer', 'ventes_creer', 'stock_voir'] }
+    expect(parc(av)).toBe(false)
+    expect(parc({ ...av, permissions: [...av.permissions, 'equipement_voir'] })).toBe(true)
   })
 })

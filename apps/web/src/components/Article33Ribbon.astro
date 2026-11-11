@@ -27,8 +27,8 @@ const affiche = PAGES_DU_RUBAN.includes(chemin);
 {affiche && <a
   href={href}
   class="ribbon-link block px-4 py-1 text-center text-xs font-medium text-lune transition-colors hover:text-white"
-  aria-label={`${t('ribbon.badge')} — ${t('ribbon.text')}`}
 >
+  {/* WAUD92 — nom accessible = texte visible (badge + message), plus d'aria-label divergent. */}
   {/* Brass hairline top edge — réduit-motion safe : pas d'animation, pas de JS */}
   <span class="ribbon-seam" aria-hidden="true"></span>
 

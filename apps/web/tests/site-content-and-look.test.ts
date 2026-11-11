@@ -650,9 +650,25 @@ describe('WAUD63 — accessibilité et lisibilité', () => {
     expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout--warning \.callout__title \{\s*color: var\(--color-alert-600/);
   });
   it('le lien logo du header n’est plus en français sur EN/AR', () => {
-    expect(lireSrc('components/Header.astro')).toContain("aria-label={t('nav.homeLogo')}");
+    // WAUD92 : le suffixe traduit est un texte masqué (plus un aria-label qui écrase « TAQINOR »).
+    expect(lireSrc('components/Header.astro')).toContain(`<span class="sr-only"> — {t('nav.homeLogo')}</span>`);
     const ui = lireSrc('i18n/ui.ts');
-    expect(ui).toContain("'nav.homeLogo': 'TAQINOR — home'");
+    expect(ui).toContain("'nav.homeLogo': 'home'");
+  });
+  it('WAUD92 — noms accessibles qui contiennent le texte visible (FR/EN/AR) + carte avec un rôle', () => {
+    for (const pre of ['', 'en/', 'ar/']) {
+      const h = html(`${distClient}${pre}index.html`);
+      const logo = h.match(/<a href="[^"]*" class="site-logo-vt"[^>]*>/)?.[0] ?? '';
+      expect(logo, `${pre} logo`).not.toBe('');
+      expect(logo, `${pre} logo`).not.toContain('aria-label');
+      const summary = h.match(/<summary\b[^>]*>/)?.[0] ?? '';
+      expect(summary, `${pre} sélecteur de langue`).not.toContain('aria-label');
+      expect(h, `${pre} ruban`).not.toMatch(/<a\b[^>]*class="ribbon-link[^>]*aria-label/);
+      const carte = html(`${distClient}${pre}devis/mon-toit/index.html`).match(/<div id="rp9-map"[^>]*>/)?.[0] ?? '';
+      expect(carte, `${pre} carte`).toContain('role="region"');
+      expect(carte, `${pre} carte`).toContain('aria-label=');
+    }
+    expect(lireSrc('components/Article33Ribbon.astro')).not.toContain('aria-label=');
   });
   it('.v2-body est rangé en @layer : un utilitaire text-encre-soft gagne (contraste)', () => {
     const css = lireSrc('styles/global.css');
