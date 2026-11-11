@@ -3053,6 +3053,11 @@ def _envoyer_lien_signature(email, nom, demande, lien, *, relance=False,
             '(PUBLIC_BASE_URL) ni requête, lien non envoyé à %s.',
             demande.pk, email)
         return False
+    from apps.ventes.email_service import is_email_configured
+    if not is_email_configured():  # AMSG81 — rien ne partirait : jamais « envoyé »
+        logger.warning('AMSG81 — demande de signature %s : e-mail non configuré, '
+                       'lien non envoyé à %s.', demande.pk, email)
+        return False
     try:
         from django.conf import settings
         from django.core.mail import send_mail
@@ -4076,11 +4081,12 @@ def relancer_signataires_dus(company, *, now=None):
             continue
         if now - reference < timedelta(days=cadence):
             continue
+        if not _send_signataire_email(signataire, signataire.demande, relance=True):
+            continue  # AMSG81 — relance non partie : ni compteur ni date
         signataire.derniere_relance_le = now
         signataire.nb_relances = F('nb_relances') + 1  # ENF28 : incrément atomique
         signataire.save(update_fields=['derniere_relance_le', 'nb_relances', 'updated_at'])
         signataire.refresh_from_db(fields=['nb_relances'])
-        _send_signataire_email(signataire, signataire.demande, relance=True)
         relances.append(signataire)
     return relances
 

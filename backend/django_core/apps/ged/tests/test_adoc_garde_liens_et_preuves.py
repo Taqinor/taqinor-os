@@ -111,7 +111,7 @@ class InventaireCheminsTests(SimpleTestCase):
 
 
 @override_settings(
-    PUBLIC_BASE_URL=BASE, NUM_PROXIES=1,
+    PUBLIC_BASE_URL=BASE, NUM_PROXIES=1, ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'},
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class GardeLiensEtPreuvesBase(TestCase):
     def setUp(self):
@@ -213,6 +213,28 @@ class GardeLiensTests(GardeLiensEtPreuvesBase):
         signataire.save(update_fields=['notifie_le'])
         mail.outbox = []
         self.assertEqual(len(services.relancer_signataires_dus(self.co_a)), 1)
+
+    def test_sans_email_configure_relance_non_comptee(self):
+        """AMSG81 — e-mail non configuré : la relance ne part pas et n'est ni
+        comptée ni datée (motif journalisé) ; clé factice + locmem : 1 mail."""
+        demande = services.creer_demande_multi_signataires(
+            self._document('Relance AMSG81'),
+            destinataires=[{'nom': 'Z', 'email': 'z@x.ma'}],
+            company=self.co_a, relance_cadence_jours=3)
+        signataire = demande.signataires.get()
+        signataire.notifie_le = timezone.now() - timezone.timedelta(days=10)
+        signataire.save(update_fields=['notifie_le'])
+        mail.outbox = []
+        with override_settings(ANYMAIL={}),                 self.assertLogs('apps.ged.services', level='WARNING'):
+            self.assertEqual(services.relancer_signataires_dus(self.co_a), [])
+        self.assertEqual(mail.outbox, [])
+        signataire.refresh_from_db()
+        self.assertEqual(signataire.nb_relances, 0)
+        self.assertIsNone(signataire.derniere_relance_le)
+        self.assertEqual(len(services.relancer_signataires_dus(self.co_a)), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        signataire.refresh_from_db()
+        self.assertEqual(signataire.nb_relances, 1)
 
 
 class GardePreuvesTests(GardeLiensEtPreuvesBase):
