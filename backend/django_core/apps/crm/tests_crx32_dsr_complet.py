@@ -198,6 +198,54 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
         self.assertTrue(autre.telephone)
         self.assertEqual(api.post(url).status_code, 409)
 
+    def test_l_acheteur_des_factures_emises_survit_a_l_anonymisation(self):
+        """ASUP2 (C-ASUP-001) — « Anonymiser (RGPD) » (Directeur) puis un
+        effacement DSR figent d'abord l'acheteur des factures non brouillon ;
+        le brouillon reste sans instantané ; le client est anonymisé."""
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.ventes.domain.instantanes_facture import (
+            acheteur_de_la_facture)
+        from apps.ventes.models import Facture
+        call_command('init_roles', verbosity=0)
+        directeur = get_user_model().objects.create_user(
+            username='asup2-directeur', password='x', company=self.company,
+            role=Role.objects.get(company=self.company, nom='Directeur'))
+        api = APIClient()
+        api.force_authenticate(directeur)
+        identite = ('Benali', '001234567000089', '12345678', 'RC-98765',
+                    '12 rue des Palmiers, Casablanca')
+        second = Client.objects.create(
+            company=self.company, nom='Benali', email='second.asup2@example.ma',
+            ice=identite[1], if_fiscal=identite[2], rc=identite[3],
+            adresse=identite[4])
+        for client, geste in ((self.client_obj, 'action'), (second, 'dsr')):
+            with self.subTest(geste=geste):
+                emise, brouillon = (Facture.objects.create(
+                    company=self.company, reference=f'FAC-ASUP2-{geste}-{s}',
+                    client=client, statut=s, taux_tva=Decimal('20'))
+                    for s in ('emise', 'brouillon'))
+                if geste == 'action':
+                    r = api.post(f'/api/django/crm/clients/{client.id}/anonymize/')
+                    self.assertEqual(r.status_code, 200, r.data)
+                else:
+                    erase_crm(self.company, 'second.asup2@example.ma')
+                client.refresh_from_db()
+                self.assertTrue(client.is_anonymized)
+                self.assertIsNone(client.ice)
+                emise.refresh_from_db()
+                self.assertEqual(emise.identite_acheteur['ice'], identite[1])
+                a = acheteur_de_la_facture(emise)
+                self.assertEqual((a.nom, a.ice, a.if_fiscal, a.rc, a.adresse),
+                                 identite)
+                brouillon.refresh_from_db()
+                self.assertIsNone(brouillon.identite_acheteur)
+
     def test_le_tiers_miroir_est_vide(self):
         """ASOC100 (C-ASOC-060) — l'effacement traverse le Tiers miroir :
         identité vide, rôle client gardé, recherche par téléphone → rien."""

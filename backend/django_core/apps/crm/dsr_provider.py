@@ -373,7 +373,12 @@ def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None,
     délègue ici (ASOC61) : identité, contacts, identifiants fiscaux/
     administratifs, champs personnalisés et GPS/notes d'ombrage du profil de
     site. Les documents comptables restent intacts.
+
+    ASUP2 (C-ASUP-001) — l'acheteur des factures non brouillon du client est
+    FIGÉ d'abord (survivant ASUP1) : un échec lève avant tout scrub.
     """
+    from apps.facturation.services import figer_identite_acheteur_manquante
+    figer_identite_acheteur_manquante(company, client_id=cl.pk, appliquer=True)
     now = now or timezone.now()
     site = getattr(cl, 'site_profile', None)  # reverse 1-1 : None si absent
     if site is not None:
