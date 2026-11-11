@@ -109,6 +109,29 @@ class TestEnvoyerEmailAction(TestCase):
         self.assertEqual(log.company, self.company)
         self.assertIn('yasmine@test.ma', log.to_email)
 
+    def test_enveloppe_html_porte_la_societe(self):
+        """AMSG40 (C-AMSG-028) — l'alternative HTML de l'e-mail de devis et de
+        l'e-mail fournisseur porte l'identité de la société, jamais « TAQINOR »."""
+        from django.core import mail
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.services import log_supplier_email
+        CompanyProfile.objects.create(company=self.company, nom='Soleil Nord',
+                                      telephone='+212522112233')
+        devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',
+                           'DEV-QJ14-HTML')
+        resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ok, _log = log_supplier_email(company=self.company, to_email='f@test.ma',
+                                      sujet='BCF', corps='Bonjour', user=self.user)
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 2)
+        for message in mail.outbox:
+            html = [c for c, t in message.alternatives if t == 'text/html']
+            self.assertEqual(len(html), 1, message.subject)
+            self.assertIn('Soleil Nord', html[0])
+            self.assertIn('+212522112233', html[0])
+            self.assertNotIn('TAQINOR', html[0])
+
     def test_devis_marked_envoye_via_service(self):
         """The devis is flipped to « envoyé » through mark_devis_sent (rule #4)."""
         devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',

@@ -95,7 +95,7 @@ def log_supplier_email(
         log.erreur = 'Aucune adresse email destinataire.'
         log.save()
         return False, log
-    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    ok, err = _send(dest, sujet, corps, attachment, attachment_name, company=company)
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()

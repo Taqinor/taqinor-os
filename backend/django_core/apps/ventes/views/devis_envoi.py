@@ -171,7 +171,7 @@ def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
         except Exception as exc:  # noqa: BLE001 — traduit en refus nommé (D-ENF22-BLE001)
             logger.warning("devis_envoi._envoi_atomique : pièce jointe non rendue", exc_info=True)
             raise _refus_rendu(exc) from exc
-        ok, err = _send(dest, sujet, corps, attachment, nom)
+        ok, err = _send(dest, sujet, corps, attachment, nom, company=devis.company)
         if not ok:
             raise _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, f'Échec envoi email : {err}', err, nom)
     return nom
