@@ -26,6 +26,7 @@ import {
 import { PageHeader } from '../ui/PageHeader'
 import { Table } from './reporting/Table'
 import KpiP2pCard from '../features/reporting/KpiP2pCard'
+import { useHasPermission, useIsAdminOrResponsable } from '../hooks/useHasPermission'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
 // K149 — toutes les figures passent par les utilitaires F19 (Intl fr-MA / MAD).
@@ -191,6 +192,12 @@ function ClickableStat({ to, navigate, ...props }) {
 
 export function Component() {
   const dispatch = useDispatch()
+  // ADRG73 — l'export Excel exige `reporting_export` (serveur : DroitDeLaGrille,
+  // repli hérité : compte sans rôle fin au palier responsable/admin).
+  const aCodeExport = useHasPermission('reporting_export')
+  const palierResponsable = useIsAdminOrResponsable()
+  const sansRoleFin = !useSelector((s) => s.auth.role_nom)
+  const peutExporter = aCodeExport || (sansRoleFin && palierResponsable)
   const navigate = useNavigate()
   const { data, loading, error } = useSelector((s) => s.reporting)
 
@@ -282,9 +289,11 @@ export function Component() {
         icon={BarChart3}
         actions={(
           <>
-            <Button variant="outline" size="sm" onClick={exportDashboard}>
-              <Download /> Exporter Excel
-            </Button>
+            {peutExporter && (
+              <Button variant="outline" size="sm" onClick={exportDashboard}>
+                <Download /> Exporter Excel
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
               <RefreshCw /> Actualiser
             </Button>

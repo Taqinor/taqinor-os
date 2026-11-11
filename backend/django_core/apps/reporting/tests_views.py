@@ -62,6 +62,38 @@ class TestDashboardEndpoint(TestCase):
                 if getattr(resp, 'streaming', False) else resp.content)
         self.assertTrue(body.startswith(b'PK'))
 
+    def test_export_xlsx_exige_reporting_export(self):
+        """ADRG73 (C-ADRG-020) — Commercial livré (sans ``reporting_export``) :
+        403 ``droit_manquant`` sur l'export, 200 sur le JSON ; Commercial
+        responsable : un classeur."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        url = '/api/django/reporting/dashboard/'
+
+        def api_de(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom,
+                permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
+            user = User.objects.create_user(
+                username=f'adrg73-{nom}', password='x',
+                company=self.company, role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api
+
+        commercial = api_de('Commercial')
+        refus = commercial.get(url + '?export=xlsx')
+        self.assertEqual(refus.status_code, 403)
+        self.assertEqual(refus.data['code'], 'droit_manquant')
+        self.assertIn('reporting_export', refus.data['detail'])
+        self.assertEqual(commercial.get(url).status_code, 200)
+        resp = api_de('Commercial responsable').get(url + '?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = (b''.join(resp.streaming_content)
+                if getattr(resp, 'streaming', False) else resp.content)
+        self.assertTrue(body.startswith(b'PK'))
+
 
 class DemoResumeEtKpiOnboardingTests(TestCase):
     """NTDMO21/31/41/42 — résumé démo servi du cache, KPI internes d'onboarding."""
