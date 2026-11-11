@@ -513,6 +513,34 @@ class ConseillerTests(_Base):
         rendu = message_pour_etape(self._touche(), user=self.acteur)
         self.assertEqual(rendu['message'], 'Je suis Meryem.')
 
+    def test_responsable_desactive_repli_sur_le_responsable_par_defaut(self):
+        """AMSG14 — un compte désactivé ne signe jamais un message client :
+        repli sur le responsable par défaut ACTIF, sinon l'utilisateur
+        courant."""
+        parti = User.objects.create_user(
+            username=f'{self.slug}-parti', password='x',
+            company=self.company, first_name='Ancien', is_active=False)
+        defaut = User.objects.create_user(
+            username=f'{self.slug}-defaut', password='x',
+            company=self.company, first_name='Nadia')
+        self.lead.owner = parti
+        self.lead.save(update_fields=['owner'])
+        profile = CompanyProfile.objects.get(company=self.company)
+        profile.responsable_defaut_leads = defaut
+        profile.save(update_fields=['responsable_defaut_leads'])
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Je suis {conseiller}.')
+        touche = self._touche()
+        rendu = message_pour_etape(touche, user=self.acteur)
+        self.assertEqual(rendu['message'], 'Je suis Nadia.')
+
+        # Responsable par défaut désactivé lui aussi : l'utilisateur courant.
+        defaut.is_active = False
+        defaut.save(update_fields=['is_active'])
+        rendu = message_pour_etape(touche, user=self.acteur)
+        self.assertEqual(rendu['message'], 'Je suis Meryem.')
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # APAR56 — le texte personnalisé part identique en WhatsApp ET en e-mail

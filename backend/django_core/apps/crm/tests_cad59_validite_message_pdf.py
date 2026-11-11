@@ -132,6 +132,35 @@ class LeMessageJ9Tests(_Base):
         expire.refresh_from_db()
         self.assertIn('date_validite', self._message_j9(expire)['placeholders_manquants'])
 
+    def test_devis_hors_jeu_aucun_lien(self):
+        # AMSG13 — expiré, refusé ou version remplacée : ni phrase du lien, ni
+        # URL, ni jeton frappé ; un devis envoyé en jeu garde son lien.
+        from apps.parametres.models_messages import MessageTemplate
+        from apps.ventes.models import ShareLink
+
+        MessageTemplate.objects.create(
+            company=self.company, cle='j9_validite',
+            corps_fr='Bonjour. Votre proposition : {lien}. À bientôt.')
+        expire = self._devis(reference='DEV-AMSG13-EXP')
+        refuse = self._devis(reference='DEV-AMSG13-REF')
+        v1 = self._devis(reference='DEV-AMSG13-V1')
+        v2 = self._devis(reference='DEV-AMSG13-V2')
+        Devis.objects.filter(pk=expire.pk).update(statut='expire')
+        Devis.objects.filter(pk=refuse.pk).update(statut='refuse')
+        Devis.objects.filter(pk=v1.pk).update(is_active=False, superseded_by=v2)
+        for devis in (expire, refuse, v1):
+            devis.refresh_from_db()
+            with self.subTest(reference=devis.reference):
+                avant = ShareLink.objects.filter(devis=devis).count()
+                message = self._message_j9(devis)['message']
+                self.assertNotIn('Votre proposition', message)
+                self.assertNotIn('/proposition/', message)
+                self.assertEqual(
+                    ShareLink.objects.filter(devis=devis).count(), avant)
+        message = self._message_j9(v2)['message']
+        self.assertIn('Votre proposition : ', message)
+        self.assertIn('/proposition/', message)
+
     def test_le_message_et_le_PDF_citent_la_MEME_date(self):
         devis = self._devis(date_validite=None, reference='DEV-CAD59-PAIR')
         rendu = self._message_j9(devis)

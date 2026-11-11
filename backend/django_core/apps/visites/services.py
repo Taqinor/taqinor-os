@@ -398,6 +398,9 @@ def _poser_annulation(visite, user, date_prevue, motif=''):
     visite.date_prevue = None
     visite.statut = VisiteTerrain.Statut.ANNULEE
     visite.save(update_fields=['date_prevue', 'notes', 'statut'])
+    # AMSG16 — le rendez-vous d'agenda de cette visite est annulé avec elle.
+    from apps.crm.visites_rdv import annuler_rendez_vous_du_jour
+    annuler_rendez_vous_du_jour(visite.lead_id, date_prevue)
     if visite.commercial_id is not None and (
             user is None
             or visite.commercial_id != getattr(user, 'id', None)):

@@ -186,11 +186,13 @@ def _nom_affiche_conseiller(lead, user):
     — même lecture que ``default_responsable_for``, sans son round-robin : on
     rend un message, on n'assigne pas un lead) ; en dernier repli seulement,
     l'utilisateur courant."""
-    conseiller = getattr(lead, 'owner', None)
+    def _actif(compte):  # AMSG14 — un compte désactivé ne signe jamais
+        return compte if getattr(compte, 'is_active', False) else None
+    conseiller = _actif(getattr(lead, 'owner', None))
     if conseiller is None:
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=lead.company).first()
-        conseiller = profile.responsable_defaut_leads if profile else None
+        conseiller = _actif(profile.responsable_defaut_leads if profile else None)
     if conseiller is None:
         conseiller = user
     if conseiller is None:
@@ -312,7 +314,8 @@ def cles_message_visite_du_lead(lead):
     return cles
 
 
-def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
+def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False,
+                             date_visite=None):
     """VISITE-CADENCE — le message de visite d'un LEAD, rendu côté serveur.
 
     ``{'corps_fr': str, 'corps_darija': str}`` — les DEUX langues d'un coup :
@@ -346,8 +349,9 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     if not cle_message_visite_autorisee(lead, cle):
         return None
 
+    # AMSG11 — la date d'un rendez-vous précis prime sur `visite_prevue_le`.
     date_visite = _date_visite_francais(
-        getattr(lead, 'visite_prevue_le', None))
+        date_visite or getattr(lead, 'visite_prevue_le', None))
     rendu = {}
     for champ, langue in (('corps_fr', 'fr'), ('corps_darija', 'darija')):
         civilite, prenom = _civilite_et_prenom(lead, langue)
@@ -381,6 +385,39 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
                               if lien_permis else None)
     rendu['phone'] = phone
     return rendu
+
+
+def message_resume_associe(lead, devis, langue, *, user=None):
+    """AMSG12 — le texte du résumé à l'ASSOCIÉ (``resume_associe``), rendu
+    avec le contexte de relance qu'accepte ce texte (civilité, nom, prénom,
+    ville, référence, lien, conseiller, marque, société, date de visite) et la
+    règle MRY13 sur TOUS les placeholders rendus : une phrase dont le
+    placeholder n'a pas de valeur réelle est OMISE — jamais une accolade
+    brute chez l'associé. Même machinerie que ``message_visite_pour_lead``."""
+    from apps.parametres.models_messages import MessageTemplate
+    from apps.ventes.utils.client_links import url_proposition
+    from apps.ventes.utils.whatsapp import render_message_template
+
+    corps = MessageTemplate.get_corps(lead.company, 'resume_associe', langue) or ''
+    # CIQ503 — variante B2B par le mécanisme CAD126 (jamais un texte société).
+    corps = _corps_pour_segment(corps, 'resume_associe', lead, langue)
+    civilite, prenom = _civilite_et_prenom(lead, langue)
+    contexte = {
+        'civilite': civilite, 'nom': (lead.nom or '').strip(), 'prenom': prenom,
+        'ville': (lead.ville or '').strip(),
+        'reference': getattr(devis, 'reference', '') or '',
+        'lien': url_proposition(devis) or '',
+        'conseiller': _nom_affiche_conseiller(lead, user),
+        'marque': _nom_affiche_marque(lead),
+        'date_visite': _date_visite_francais(getattr(lead, 'visite_prevue_le', None)),
+        # CIQ503 — raison sociale ; vide ⇒ sa phrase est OMISE (MRY13).
+        'societe': _societe_du_lead(lead),
+    }
+    corps = _placer_civilite(corps, civilite)
+    manquants = [c for c in _PLACEHOLDERS_RENDUS
+                 if '{' + c + '}' in corps and not str(contexte.get(c, '')).strip()]
+    return render_message_template(
+        _omettre_phrases_incompletes(corps, manquants), contexte)
 
 
 #: CAD111 — les langues dans lesquelles le message de visite peut être ouvert
@@ -723,7 +760,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
                 if (validite and validite >= aujourd_hui_local()
                         and getattr(devis, 'statut', '') != 'expire'):
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
-                contexte['lien'] = url_proposition(devis) or ''
+                # AMSG13 — aucun lien (ni jeton frappé) pour un devis hors jeu.
+                if devis.is_active and devis.statut not in ('refuse', 'expire'):
+                    contexte['lien'] = url_proposition(devis) or ''
         except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé (D-ENF22-BLE001)
             logger.warning(
                 'MRY13: contexte devis illisible (étape #%s)',

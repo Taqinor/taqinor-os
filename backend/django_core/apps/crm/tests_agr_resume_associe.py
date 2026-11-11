@@ -120,6 +120,33 @@ class ResumeAssocieTests(TestCase):
         self.assertEqual((self.devis.statut, getattr(self.devis, 'date_envoi', None)), avant)
         self.assertEqual(self.lead.relance_etapes.count(), etapes_avant)
 
+    def test_texte_personnalise_jamais_d_accolade_brute(self):
+        """AMSG12 — un texte société avec tout le contexte de relance part
+        rempli ; un placeholder sans valeur (ville) fait omettre sa phrase."""
+        from apps.parametres.models_messages import MessageTemplate
+
+        self._envoyer()
+        Lead.objects.filter(pk=self.lead.pk).update(civilite='M.', ville='')
+        MessageTemplate.objects.create(
+            company=self.company, cle='resume_associe',
+            corps_fr=('Bonjour, à la demande de {civilite} {nom}, voici le '
+                      'résumé de la proposition {reference} : {lien}. '
+                      'Ville : {ville}. — {conseiller}'))
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+        resp = self._post()
+        self.assertEqual(resp.status_code, 200, resp.data)
+        message = resp.data['message']
+        self.assertIn('à la demande de M. Alaoui', message)
+        self.assertIn('proposition DEV-AGR534-1 : ', message)
+        self.assertIn('/proposition/', message)
+        self.assertNotIn('Ville :', message)
+        self.assertNotIn('{', message)
+        self.assertNotIn('}', message)
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=self.lead).count(), avant + 1)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'envoye')
+
     def test_lead_oppose_409_sans_lien(self):
         """ACVI104 (D-ACVI-7) — la proposition d'un opposé ne sort plus, même
         vers l'associé : 409 nommé, aucun lien, aucune ligne d'historique."""

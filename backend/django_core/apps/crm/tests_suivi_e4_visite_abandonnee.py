@@ -286,6 +286,43 @@ class AnnulerRendezVousServiceTests(_Base):
         self.assertIsNone(self.lead.visite_prevue_le)
         self.assertFalse(touches_ouvertes().exists())
 
+    def test_visite_annulee_annule_son_rendez_vous_et_son_rappel(self):
+        # AMSG16 — le rendez-vous d'agenda EST la visite (D-ACVI-8) : annuler
+        # la visite (date vidée, arrêt du suivi) annule le rendez-vous du jour
+        # et son « Rappel visite » ; un rendez-vous d'un autre jour reste.
+        from apps.crm.models import Appointment
+        from apps.crm.visites_rdv import (
+            book_appointment, send_due_appointment_reminders)
+
+        rdv = book_appointment(
+            lead=self.lead, scheduled_at=GEL + datetime.timedelta(minutes=45),
+            user=self.acteur)
+        autre_jour = Appointment.objects.create(
+            company=self.company, lead=self.lead,
+            scheduled_at=GEL + datetime.timedelta(days=2))
+        second = Lead.objects.create(
+            company=self.company, nom='Prospect E4 arrêt', owner=self.acteur,
+            stage=stages.CONTACTED, telephone='+212661409999')
+        rdv_second = book_appointment(
+            lead=second, scheduled_at=GEL + datetime.timedelta(minutes=30),
+            user=self.acteur)
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+
+        resp = self.api.patch(f'/api/django/visites/visites/{visite.pk}/',
+                              {'date_prevue': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            visites_services.annuler_rendez_vous(second, self.acteur), 1)
+
+        self.assertEqual(send_due_appointment_reminders(), 0)
+        self.assertFalse(Notification.objects.filter(
+            title__startswith='Rappel visite').exists())
+        for appt, statut in ((rdv, Appointment.Statut.ANNULE),
+                             (rdv_second, Appointment.Statut.ANNULE),
+                             (autre_jour, Appointment.Statut.PLANIFIE)):
+            appt.refresh_from_db()
+            self.assertEqual(appt.statut, statut)
+
     def test_un_motif_remplace_la_formule_du_client(self):
         visite = self._planifier()
         visites_services.annuler_rendez_vous(

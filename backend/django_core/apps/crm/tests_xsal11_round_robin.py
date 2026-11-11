@@ -116,6 +116,36 @@ class RoundRobinOnBalancedTests(TestCase):
         chosen = default_responsable_for(self.company)
         self.assertIn(chosen, (com_a, com_b))
 
+    def test_lead_archive_ne_compte_pas_dans_le_plafond(self):
+        # ASUP41 — archivés et supprimés ne sont pas des leads ouverts ; un
+        # lead restauré (désarchivé) compte de nouveau.
+        from apps.crm.dispatch import _ligne_membre
+
+        self.profile.round_robin_plafond_leads_ouverts = 3
+        self.profile.save(update_fields=['round_robin_plafond_leads_ouverts'])
+        com_1 = make_commercial(self.company, 'com_1_archive', self.role)
+        com_2 = make_commercial(self.company, 'com_2_archive', self.role)
+        archives = [Lead.objects.create(
+            company=self.company, nom=f'A{i}', owner=com_1, stage=stages.NEW,
+            is_archived=True) for i in range(3)]
+        Lead.objects.create(
+            company=self.company, nom='Ouvert', owner=com_1, stage=stages.NEW)
+        Lead.objects.create(
+            company=self.company, nom='Supprime', owner=com_1,
+            stage=stages.NEW).soft_delete()
+        for i in range(2):
+            Lead.objects.create(
+                company=self.company, nom=f'B{i}', owner=com_2, stage=stages.NEW)
+        ligne = _ligne_membre(com_1, 3)
+        self.assertEqual(ligne['leads_ouverts'], 1)
+        self.assertFalse(ligne['au_plafond'])
+        self.assertEqual(default_responsable_for(self.company), com_1)
+
+        Lead.objects.filter(pk__in=[a.pk for a in archives[:2]]).update(
+            is_archived=False)
+        self.assertEqual(_ligne_membre(com_1, 3)['leads_ouverts'], 3)
+        self.assertEqual(default_responsable_for(self.company), com_2)
+
     def test_tous_satures_fallback_responsable_defaut(self):
         explicite = make_commercial(self.company, 'explicite_satures', self.role)
         com_a = make_commercial(self.company, 'com_a_satures', self.role)

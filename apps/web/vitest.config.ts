@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 import { getViteConfig } from 'astro/config';
 
 /** Tests qui rendent un composant `.astro` (pipeline Astro, sans l'adaptateur). */
-const TESTS_RENDU = ['tests/propositionChaineTotauxATOT.test.ts'];
+const TESTS_RENDU = ['tests/propositionChaineTotauxATOT.test.ts', 'tests/propositionMontantsRendus.test.ts'];
 
 export default defineConfig({
   test: {
