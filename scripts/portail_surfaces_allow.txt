@@ -5,3 +5,7 @@
 # frontend/src/api/portailApi.js utilise par un fichier non-test de
 # frontend/src/features/portail/), sa ligne DOIT etre retiree, sinon la garde
 # echoue (« lignes inutiles »).
+# APUB45 (2026-11-11) - routes vues par l'extension de la garde (fournisseur/,
+# partenaire/, fournisseurs/ et public_urls.py) :
+fournisseurs/candidature  # aucun appelant front (candidature fournisseur publique)
+theme  # appelant portailApi.themePublic lu par pages/Login.jsx, hors features/portail

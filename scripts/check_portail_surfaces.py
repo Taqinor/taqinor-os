@@ -2,7 +2,10 @@
 """GARDE CI — ADOC147 : aucune surface portail livrée « côté serveur seulement ».
 
 Chaque route SELF-SERVICE de ``apps/portail/urls.py`` (``mes-*``, ``mon-*``,
-``ma-*``, ``client/*`` et ``ressources``) doit avoir (1) un appelant dans
+``ma-*``, ``client/*``, ``ressources`` et — APUB45 — ``fournisseur/*``,
+``partenaire/*``, ``fournisseurs/*``) et TOUTE route de ``apps/portail/public_urls.py``
+(appelant ``/public/portail/<route>`` ; un paramètre ``<...>`` de route et un
+``${...}`` d'URL JS se lisent tous deux ``<>``) doit avoir (1) un appelant dans
 ``frontend/src/api/portailApi.js`` — l'URL ``/portail/<route>`` y figure — et
 (2) cet appelant (sa propriété ``portailApi.<groupe>.<fonction>``) doit être
 UTILISÉ par au moins un fichier non-test de ``frontend/src/features/portail/``.
@@ -30,23 +33,25 @@ TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (ja
 
 ROOT = Path(__file__).resolve().parent.parent
 URLS_PATH = ROOT / "backend" / "django_core" / "apps" / "portail" / "urls.py"
+PUBLIC_URLS_PATH = URLS_PATH.with_name("public_urls.py")
 API_PATH = ROOT / "frontend" / "src" / "api" / "portailApi.js"
 FEATURES_DIR = ROOT / "frontend" / "src" / "features" / "portail"
 ALLOWLIST_PATH = ROOT / "scripts" / "portail_surfaces_allow.txt"
 
 _REGISTER_RE = re.compile(r"""register\(\s*r?['"]([^'"]+)['"]""")
 _PATH_RE = re.compile(r"""\bpath\(\s*['"]([^'"]+)['"]""")
-_SELF_SERVICE_RE = re.compile(r"^(?:mes-|mon-|ma-|client/|ressources$)")
+_SELF_SERVICE_RE = re.compile(r"^(?:mes-|mon-|ma-|client/|ressources$|fournisseur/|partenaire/|fournisseurs/)")
 
 
-def routes_self_service(texte: str) -> list:
+def routes_self_service(texte: str, toutes: bool = False) -> list:
     """Routes self-service déclarées (``router.register`` + ``path``), sans
-    barre finale, dans l'ordre du fichier, sans doublon."""
+    barre finale, dans l'ordre du fichier, sans doublon ; ``toutes`` (routes
+    publiques) : sans filtre de motif. Paramètre ``<...>`` → ``<>``."""
     vues, out = set(), []
     for rx in (_REGISTER_RE, _PATH_RE):
         for m in rx.finditer(texte):
-            route = m.group(1).strip("/")
-            if route and route not in vues and _SELF_SERVICE_RE.match(route):
+            route = re.sub(r"<[^>]*>", "<>", m.group(1)).strip("/")
+            if route and route not in vues and (toutes or _SELF_SERVICE_RE.match(route)):
                 vues.add(route)
                 out.append(route)
     return out
@@ -61,8 +66,9 @@ def proprietes_par_route(js: str) -> dict:
     ouvre = re.compile(r"^(\s*)(\w+):\s*\{\s*(?://.*)?$")
     ferme = re.compile(r"^(\s*)\},?\s*(?://.*)?$")
     cle = re.compile(r"^\s*(\w+):")
-    url = re.compile(r"/portail/([\w\-/]+)")
+    url = re.compile(r"/portail/([\w\-/<>]+)")
     for ligne in js.splitlines():
+        ligne = re.sub(r"\$\{[^}]*\}", "<>", ligne)  # APUB45 — `${token}` ≡ `<str:token>`
         m = ouvre.match(ligne)
         if m:
             pile.append((len(m.group(1)), m.group(2)))
@@ -113,6 +119,9 @@ def surfaces_sans_ecran() -> list:
     if not URLS_PATH.is_file():
         return []
     routes = routes_self_service(URLS_PATH.read_text(encoding="utf-8"))
+    if PUBLIC_URLS_PATH.is_file():  # APUB45 — routes publiques du portail, toutes
+        routes += [r for r in routes_self_service(PUBLIC_URLS_PATH.read_text(encoding="utf-8"), True)
+                   if r not in routes]
     api_js = API_PATH.read_text(encoding="utf-8") if API_PATH.is_file() else ""
     props = proprietes_par_route(api_js)
     texte = _texte_features()
