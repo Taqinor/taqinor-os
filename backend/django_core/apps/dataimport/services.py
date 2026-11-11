@@ -1289,6 +1289,8 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     skipped.append({'ligne': i, 'raison': erreur})
                     continue
                 f.setdefault('prix_vente', Decimal('0'))
+                if user is not None and not user.can_view_buy_prices:
+                    f.pop('prix_achat', None)  # ADRG78 — comme le create REST
                 produit = Produit.objects.create(
                     company=company, quantite_stock=0, **f)
                 if opening > 0:
