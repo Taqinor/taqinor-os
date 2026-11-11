@@ -407,6 +407,37 @@ class RolesEscalationGuardTest(TestCase):
         r.refresh_from_db()
         self.assertIn('paie_gerer', r.permissions)
 
+    def test_non_admin_ne_change_pas_le_perimetre_de_donnees(self):
+        """ADRG98 — le Commercial responsable (rôle système `init_roles`) ne
+        vide pas les entités visibles ni ne pose un périmètre sur son propre
+        rôle : 403, rien d'écrit ; le Directeur garde la main (200)."""
+        from django.core.management import call_command
+        from apps.entites.services import creer_entite
+        call_command('init_roles', verbosity=0)
+        sys_role = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        c_role = sys_role['Commercial responsable']
+        e1 = creer_entite(self.company, nom='Agence 1', code='E1')
+        c_role.entites_visibles.set([e1])
+        c = User.objects.create_user(
+            username='adrg98_c', password='x', role=c_role,
+            company=self.company)
+        d = User.objects.create_user(
+            username='adrg98_d', password='x', role=sys_role['Directeur'],
+            company=self.company)
+        url = f'/api/django/roles/{c_role.id}/'
+        for corps in ({'entites_visibles': []}, {'perimetre': 'ventes'}):
+            with self.subTest(corps=corps):
+                resp = self._api(c).patch(url, corps, format='json')
+                self.assertEqual(resp.status_code, 403, resp.data)
+                c_role.refresh_from_db()
+                self.assertEqual(
+                    list(c_role.entites_visibles.values_list('pk', flat=True)),
+                    [e1.pk])
+                self.assertIsNone(c_role.perimetre)
+        resp = self._api(d).patch(url, {'entites_visibles': []}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(c_role.entites_visibles.exists())
+
 
 class RevueAccesTest(TestCase):
     """XPLT12 — Rapport de revue d'accès & comptes dormants.

@@ -1,6 +1,7 @@
 import re
 
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from core.champs_stricts import ChampsStrictsMixin
 from core.conflit_etat import ConflitEtat
@@ -159,6 +160,19 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         # Directeur, etc. Sans cela un Responsable édite le rôle système qui le
         # porte (ou un autre) pour s'octroyer des droits.
         user = self._request_user()
+        if user is not None and not getattr(user, 'is_admin_role', False):
+            # ADRG98 — périmètre de données posé par l'admin seul (celui que la
+            # vue réimpose à un délégué passe par ``save(**extra)``).
+            inst = self.instance
+            avant_ent = sorted(inst.entites_visibles.values_list(
+                'pk', flat=True)) if inst is not None else []
+            if ('entites_visibles' in attrs and sorted(
+                    e.pk for e in attrs['entites_visibles']) != avant_ent) \
+                    or ('perimetre' in attrs and (attrs['perimetre'] or None)
+                        != (getattr(inst, 'perimetre', None) or None)):
+                raise PermissionDenied(
+                    "Seul un administrateur modifie le périmètre de données "
+                    "d'un rôle (entités visibles, périmètre).")
         if self.instance is not None and self.instance.est_systeme \
                 and user is not None \
                 and not getattr(user, 'is_admin_role', False):
