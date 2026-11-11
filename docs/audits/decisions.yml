@@ -4242,3 +4242,63 @@ decisions:
     date: "2026-11-10"
     source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : users_gerer) ; constat C-ADRG-061"
     taches: []
+
+  - id: D-ALEC-1
+    question: "Les tarifs de transport (prix de base d'un transporteur, offres de prix d'une expédition) sont servis sans masque à des rôles sans « voir les prix d'achat », alors que le coût réel d'une expédition et le coût de transport d'une livraison sont masqués. Un tarif de transport est-il un montant d'achat ?"
+    options:
+      - cle: masque_prix_achat
+        texte: "Oui : un tarif de transport est un prix payé à un fournisseur ; il est masqué sans le droit « voir les prix d'achat », comme le coût réel"
+      - cle: ouvert
+        texte: "Non : c'est un prix public du transporteur ; il reste visible de qui lit le stock et les chantiers"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat)"
+    taches: [ALEC5, ALEC6]
+
+  - id: D-ALEC-2
+    question: "Les tableaux de bord (accueil, ventes, rapports, objectifs) montrent à un commercial le chiffre d'affaires, le pipeline et l'objectif réalisé de chaque collègue nommé, et les plus gros débiteurs, alors que ses listes ne montrent que ses propres affaires. Les tableaux de bord suivent-ils la portée du rôle ?"
+    options:
+      - cle: portee_du_role
+        texte: "Oui : chacun ne voit que les chiffres de sa portée (les siens, son équipe, son sous-arbre) ; un classement peut nommer les collègues sans leurs montants"
+      - cle: societe_entiere
+        texte: "Non : les tableaux de bord restent à l'échelle de la société pour tout rôle qui lit les rapports"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : portee_du_role) ; D-ACVI-2 ne vise que le CRM"
+    taches: [ALEC22, ALEC23, ALEC24]
+
+  - id: D-ALEC-3
+    question: "Le journal des réglages (qui a changé quel réglage de la société, ancienne et nouvelle valeur) est lisible au palier responsable, sans le droit « Journal d'activité » réservé au Directeur. Faut-il ce droit ?"
+    options:
+      - cle: journal_activite_voir
+        texte: "Oui : le journal des réglages est un extrait du journal d'activité, il exige le droit « Journal d'activité »"
+      - cle: lecture_parametres
+        texte: "Non : il suffit de pouvoir lire les paramètres"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : journal_activite_voir)"
+    taches: [ALEC28]
+
+  - id: D-ALEC-4
+    question: "Quand la « vue restreinte » du calepinage est éteinte, un commercial voit les calepinages (nom et ville du lead) de tous ses collègues, alors que ses leads sont limités aux siens. Le calepinage suit-il la portée du rôle ?"
+    options:
+      - cle: portee_du_role
+        texte: "Oui : un calepinage se voit comme son lead, selon la portée du rôle (les siens, son équipe, son sous-arbre)"
+      - cle: reglage_seul
+        texte: "Non : seul le réglage « vue restreinte » décide, pour toute la société"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : portee_du_role)"
+    taches: [ALEC29]
+
+  - id: D-ALEC-5
+    question: "Trois montants internes sortent sans masque : les frais de livraison estimés d'un fournisseur, l'économie estimée d'un regroupement de bons de commande, la caution d'un matériel consigné. Sont-ils des montants d'achat à masquer ?"
+    options:
+      - cle: masque_prix_achat
+        texte: "Oui : ce sont des montants d'achat ; masqués sans le droit « voir les prix d'achat »"
+      - cle: ouvert
+        texte: "Non : ce sont des paramètres de travail, visibles de qui lit le stock et les chantiers"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat) ; aucune tâche tant qu'elle est ouverte"
+    taches: []
