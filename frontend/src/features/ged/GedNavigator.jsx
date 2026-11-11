@@ -11,6 +11,7 @@
 // permissions (responsable/admin) sont appliquées côté backend — un refus 403 se
 // traduit par un toast d'erreur, comme partout dans l'ERP.
 import { useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
@@ -38,6 +39,16 @@ import GedDocumentInsights from './GedDocumentInsights.jsx'
 import { DataTable } from '../../ui/datatable'
 import MenuActionsLigne from '../../ui/MenuActionsLigne'
 import ExternalLink from '../../ui/ExternalLink'
+import { useHasPermission, useHasRole } from '../../hooks/useHasPermission'
+
+// ADRG23/ADRG89 — un geste n'est offert qu'avec le code que sa route exige
+// (`HasPermissionOrLegacy` : un compte hérité sans rôle fin suit son palier).
+function useDroitGed(code) {
+  const droit = useHasPermission(code)
+  const palier = useHasRole(['admin', 'responsable'])
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  return droit || (palier && !roleNom)
+}
 
 // VX152 — colonnes structurelles seules : le rendu réel de l'en-tête et des
 // lignes passe par renderHeaderRow/renderRow (échappatoire ARC49 du moteur), ce
@@ -61,6 +72,7 @@ const LIFECYCLE_LABELS = {
 }
 
 export default function GedNavigator() {
+  const peutGerer = useDroitGed('ged_gerer')
   const [cabinets, setCabinets] = useState([])
   const [cabinetId, setCabinetId] = useState(null)
   const [folders, setFolders] = useState([])
@@ -373,9 +385,9 @@ export default function GedNavigator() {
             </Select>
           </div>
         )}
-        <Button variant="secondary" onClick={() => setCabinetDlg(true)}>
+        {peutGerer && <Button variant="secondary" onClick={() => setCabinetDlg(true)}>
           <Plus className="size-4" aria-hidden="true" /> Nouvelle armoire
-        </Button>
+        </Button>}
         <Button variant="secondary" onClick={() => loadFolders(cabinetId)} disabled={!hasCabinet}>
           <RefreshCw className="size-4" aria-hidden="true" /> Actualiser
         </Button>
@@ -409,7 +421,7 @@ export default function GedNavigator() {
         <EmptyState icon={Folder}
           title="Aucune armoire documentaire"
           description="Commencez par créer une armoire (cabinet), puis ajoutez-y des dossiers et téléversez vos documents."
-          action={<Button onClick={() => setCabinetDlg(true)}>
+          action={peutGerer && <Button onClick={() => setCabinetDlg(true)}>
             <Plus className="size-4" aria-hidden="true" /> Créer la première armoire
           </Button>} />
       ) : (
@@ -420,11 +432,11 @@ export default function GedNavigator() {
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {total} dossier{total > 1 ? 's' : ''}
               </span>
-              <Button size="sm" variant="ghost" className="ml-auto"
+              {peutGerer && <Button size="sm" variant="ghost" className="ml-auto"
                 onClick={() => setFolderDlg({ mode: 'create' })}
                 disabled={!hasCabinet}>
                 <FolderPlus className="size-4" aria-hidden="true" /> Dossier
-              </Button>
+              </Button>}
             </div>
             {visible.length === 0 ? (
               // U14 — état vide de l'arbre : CTA pour créer le premier dossier.
@@ -432,10 +444,10 @@ export default function GedNavigator() {
                 <p className="text-sm text-muted-foreground">
                   Aucun dossier dans cette armoire.
                 </p>
-                <Button size="sm" variant="secondary" className="mt-2"
+                {peutGerer && <Button size="sm" variant="secondary" className="mt-2"
                   onClick={() => setFolderDlg({ mode: 'create' })}>
                   <FolderPlus className="size-4" aria-hidden="true" /> Créer un dossier
-                </Button>
+                </Button>}
               </div>
             ) : (
               <ul className="flex flex-col" role="tree" aria-label="Dossiers">
@@ -486,7 +498,7 @@ export default function GedNavigator() {
                       {documents.length} document{documents.length > 1 ? 's' : ''}
                     </span>
                   )}
-                  <div className="ml-auto flex items-center gap-1">
+                  {peutGerer && <div className="ml-auto flex items-center gap-1">
                     <Button size="sm" variant="ghost"
                       onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
                       <Pencil className="size-4" aria-hidden="true" /> Renommer
@@ -507,7 +519,7 @@ export default function GedNavigator() {
                       onClick={() => setUploadDlg(true)}>
                       <Upload className="size-4" aria-hidden="true" /> Téléverser
                     </Button>
-                  </div>
+                  </div>}
                 </div>
                 {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
                 {selectedIds.size > 0 && (
@@ -521,7 +533,7 @@ export default function GedNavigator() {
                       </Button>
                       {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
                       {/* ADOC22 — seulement si TOUS les documents sélectionnés sont des PDF. */}
-                      {selectedIds.size >= 2 && documents
+                      {peutGerer && selectedIds.size >= 2 && documents
                         .filter((d) => selectedIds.has(d.id))
                         .every((d) => d.derniere_mime === 'application/pdf') && (
                         <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
@@ -535,14 +547,16 @@ export default function GedNavigator() {
                         Télécharger (.zip)
                       </Button>
                       {/* XGED14 — étiqueter/retirer/déplacer par lot (rapport d'erreurs). */}
-                      <Button size="sm" variant="outline" onClick={() => setBulkOpsDlg(true)}>
-                        <TagIcon className="size-4" aria-hidden="true" /> Étiqueter / Déplacer…
-                      </Button>
-                      <Button size="sm" variant="destructive"
-                        onClick={bulkCorbeille} disabled={bulkBusy}>
-                        {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
-                        Mettre en corbeille
-                      </Button>
+                      {peutGerer && <>
+                        <Button size="sm" variant="outline" onClick={() => setBulkOpsDlg(true)}>
+                          <TagIcon className="size-4" aria-hidden="true" /> Étiqueter / Déplacer…
+                        </Button>
+                        <Button size="sm" variant="destructive"
+                          onClick={bulkCorbeille} disabled={bulkBusy}>
+                          {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                          Mettre en corbeille
+                        </Button>
+                      </>}
                     </div>
                   </div>
                 )}
@@ -555,7 +569,7 @@ export default function GedNavigator() {
                   <EmptyState icon={Inbox}
                     title={`Dossier « ${selected.nom} »`}
                     description="Ce dossier ne contient aucun document. Téléversez-en un pour démarrer."
-                    action={<Button onClick={() => setUploadDlg(true)}>
+                    action={peutGerer && <Button onClick={() => setUploadDlg(true)}>
                       <Upload className="size-4" aria-hidden="true" /> Téléverser un document
                     </Button>} />
                 ) : (
@@ -647,11 +661,11 @@ export default function GedNavigator() {
                                 <Lock className="size-4" aria-hidden="true" /> Extraire
                               </Button>
                             )}
-                            <Button size="sm" variant="ghost"
+                            {peutGerer && <Button size="sm" variant="ghost"
                               aria-label={`Mettre ${d.nom} en corbeille`}
                               onClick={() => mettreEnCorbeille(d)}>
                               <Trash2 className="size-4" aria-hidden="true" />
-                            </Button>
+                            </Button>}
                             {/* GED33/ZGED9/GED17/XGED30/WIR249 — actions secondaires
                                 regroupées (OCR pièce, verrou d'avertissement, cycle de
                                 vie, éditeur Office) : la ligne reste lisible. */}
@@ -661,25 +675,27 @@ export default function GedNavigator() {
                                   <MoreVertical className="size-4" aria-hidden="true" />
                                 </Button>
                             }>
-                                <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
-                                  <Pencil /> Modifier…
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
-                                  <FileUp /> Nouvelle version…
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
-                                  <ScanText /> Extraire l'OCR
-                                </DropdownMenuItem>
+                                {peutGerer && <>
+                                  <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
+                                    <Pencil /> Modifier…
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
+                                    <FileUp /> Nouvelle version…
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
+                                    <ScanText /> Extraire l'OCR
+                                  </DropdownMenuItem>
+                                </>}
                                 <DropdownMenuItem onSelect={() => toggleVerrouAvertissement(d)}>
                                   {d.est_verrouille_avertissement ? <ShieldOff /> : <ShieldAlert />}
                                   {d.est_verrouille_avertissement ? 'Lever le verrou (avertissement)' : 'Verrouiller (avertissement)'}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setCycleVieDoc(d)}>
+                                {peutGerer && <DropdownMenuItem onSelect={() => setCycleVieDoc(d)}>
                                   <Workflow /> Cycle de vie…
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => officeOuvrirAction(d)}>
+                                </DropdownMenuItem>}
+                                {peutGerer && <DropdownMenuItem onSelect={() => officeOuvrirAction(d)}>
                                   <AppWindow /> Ouvrir dans l'éditeur (Office)
-                                </DropdownMenuItem>
+                                </DropdownMenuItem>}
                             </MenuActionsLigne>
                           </div>
                         </td>
@@ -871,6 +887,7 @@ function NouvelleVersionDialog({ document: doc, onClose, onDone }) {
 // proxy même-origine (versions/<id>/apercu/). Dégrade proprement en lien de
 // téléchargement si l'aperçu n'est pas disponible.
 function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
+  const peutGerer = useDroitGed('ged_gerer')
   const [version, setVersion] = useState(null)
   // XGED17 — toutes les versions (pour le comparateur), pas seulement la
   // plus récente affichée dans l'aperçu.
@@ -935,7 +952,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
         )}
         <DialogFooter>
           {/* XGED10 — scinder ce PDF en segments (nouveaux documents). */}
-          {isPdf && (
+          {isPdf && peutGerer && (
             <Button variant="outline" onClick={() => setSplitOpen(true)}>
               Scinder…
             </Button>
