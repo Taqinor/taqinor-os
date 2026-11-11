@@ -119,7 +119,7 @@ Porte : 0 réfuté en entier / 35 retenus · 7 gravités revues · seconde lenti
 ## 9. Coût et routage
 Coût : H0 S2 O14 F0 · jetons sous-agents ≈ 5,9 M · tâches 40 (M0 2 M1 20 M2 0 M3 11 GATED 7).
 Routage : PLAN_AUDIT_STOCK.md 6 · PLAN_AUDIT_ANALYSE.md 5 · PLAN_AUDIT_CHANTIERS.md 5 · PLAN_AUDIT_DOCUMENTS.md 5 · PLAN_AUDIT_LEAD.md 4 · PLAN_AUDIT_SECURITE.md 4 · PLAN_AUDIT_PARAMETRES.md 3 · PLAN_AUDIT_SAV.md 2 · PLAN_AUDIT_FACTURATION.md 2 · PLAN_AUDIT_CALEPINAGE.md 2 · PLAN_AUDIT_DEVIS.md 1 · PLAN_AUDIT_DEPLOY.md 1 ·
-acceptation ALEC40 · PR #NUM_PR.
+acceptation ALEC40 · PR #1362.
 Rapport : un défaut grave, confirmé par deux lectures indépendantes et une sonde exécutée.
 - Signature électronique (C-ALEC-001), exploitable aujourd'hui : tout employé qui voit un document lit le lien de signature envoyé au client et peut signer à sa place ; le lien global d'une signature à plusieurs personnes signe tout d'un coup, sans le code SMS. Le document devient « signé », avec un certificat au nom du client. → ALEC1, ALEC2 (P0).
 - Ensuite 23 défauts S2 : des coûts d'achat et des marges montrés à des rôles qui ne doivent pas les voir (kits, fil des commandes fournisseur, transport, remises, budgets, historique des devis, notification des réquisitions, assistant SQL) ; une GED et un répertoire des tiers ouverts à tous ; des tableaux de bord, lignes de factures et tournées qui ignorent la portée du commercial.

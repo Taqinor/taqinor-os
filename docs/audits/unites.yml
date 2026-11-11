@@ -923,7 +923,7 @@ unites:
     groupe: ALEC
     plan: docs/plans/PLAN_AUDIT_SECURITE.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
-    pr: 0
+    pr: 1362
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF6.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 1ea772d) : environ 360 routes de lecture et sources de données sensibles inventoriées en quatre lectures (prix d'achat stock et chantiers ; prix d'achat et marges ventes, client, assistant SQL, journaux ; données personnelles ; portée, journal, secrets) ; 35 constats, 24 prouvés par sonde hôte (vrai code, bouchons, aucune pile), 11 lus ; gravités 1 S1, 23 S2, 11 S3. S1 : tout compte interne lit le jeton de signature électronique d'un client et peut signer à sa place ; le jeton global d'une signature à plusieurs personnes signe tout le circuit sans code SMS (exploitable aujourd'hui : 2 Commercial et 1 Commercial responsable, dès qu'une demande est en attente). Porte : 0 réfuté, 7 gravités revues ; seconde lentille : S1 maintenu et élargi. D-ALEC-1..5 ouvertes. Tâches ALEC1-40 (40 posées, dont 7 GATED : STOCK 6, ANALYSE 5, CHANTIERS 5, DOCUMENTS 5, LEAD 4, SECURITE 4, PARAMETRES 3, SAV 2, FACTURATION 2, CALEPINAGE 2, DEVIS 1, DEPLOY 1)."
