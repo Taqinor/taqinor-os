@@ -36,7 +36,7 @@ from .models import (
     RevueCompte, SalleVente, SalleVenteItem, VisiteExterne,
 )
 from .parcage import ApporteursParquesMixin
-from .serializers import LeadActivitySerializer, masquer_pii_dict
+from .serializers import LeadActivitySerializer, masquer_pii_dict, pii_masquee_pour
 from .serializers_clients import (
     AppareilEquipeSerializer, ClientSerializer, PartenaireSerializer,
     SalleVenteSerializer, SalleVenteItemSerializer, ApporteurSerializer,
@@ -70,6 +70,15 @@ def _garde_ecriture(vue):
     if vue.action == 'destroy':
         return [IsResponsableOrAdmin(), DroitDeLaGrille('crm_supprimer')()]
     return [IsResponsableOrAdmin()]
+
+
+class _RechercheSansPii(filters.SearchFilter):
+    """ALEC32 — sans ``client_pii_voir``, ``?search=`` ignore e-mail, téléphone et CIN."""
+
+    def get_search_fields(self, view, request):
+        champs = super().get_search_fields(view, request) or []
+        masque = pii_masquee_pour(request.user)
+        return [c for c in champs if not (masque and c in ('email', 'telephone', 'cin'))]
 
 
 @extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE),
@@ -656,7 +665,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
     # created_by forcés serveur) SURCHARGENT la base : réponses inchangées.
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [_RechercheSansPii, filters.OrderingFilter]  # ALEC32
     search_fields = [
         'nom', 'prenom', 'email', 'telephone',
         'ice', 'if_fiscal', 'rc', 'cin',
@@ -798,7 +807,6 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
         # ACRM4 — sans ``client_pii_voir`` : export sans colonnes PII.
-        from .serializers import pii_masquee_pour
         return export_clients_xlsx(
             qs.order_by('nom'), masquer_pii=pii_masquee_pour(request.user))
 
