@@ -14,7 +14,7 @@ from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
 )
 from apps.ventes.views import openapi_docs as D
-from apps.ventes.models import Avoir, EmailLog, Facture
+from apps.ventes.models import Avoir, EmailLog, Facture, FactureActivity
 from apps.facturation.serializers import FactureListeSerializer, FactureSerializer
 from apps.ventes.utils.corps import valider_corps
 
@@ -144,10 +144,14 @@ class FactureCycleActionsMixin:
                 )
             # AARG23 (D-AARG-4 = garder_date) — envoyée au client ou passée à
             # la DGI : le retour en brouillon est fermé.
+            # ADRG101 — un lien WhatsApp généré (trace ``log_facture_whatsapp``) aussi.
             if (facture.dgi_statut != Facture.DgiStatut.A_TRANSMETTRE
                     or EmailLog.objects.filter(
                         facture=facture, direction=EmailLog.Direction.SORTANT,
-                        statut=EmailLog.Statut.ENVOYE).exists()):
+                        statut=EmailLog.Statut.ENVOYE).exists()
+                    or facture.activites.filter(
+                        kind=FactureActivity.Kind.NOTE,
+                        body__startswith='Lien WhatsApp').exists()):
                 return Response(
                     {'detail': 'Facture déjà envoyée au client : corrigez par '
                                'un avoir.'},

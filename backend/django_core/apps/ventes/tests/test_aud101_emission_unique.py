@@ -441,6 +441,32 @@ class DateEmissionTests(_BaseEmission):
         resp = self.api.post(url, {}, format='json')
         self.assertEqual(resp.status_code, 409, resp.data)
 
+    def test_refus_apres_partage_whatsapp(self):
+        """ADRG101 (C-ADRG-057, D-AARG-4) — un lien WhatsApp généré par la
+        VRAIE route ``whatsapp/`` ferme le retour en brouillon comme un e-mail
+        envoyé : 409, facture intacte ; sans partage préalable ⇒ 200.
+        Mutant : retirer la condition WhatsApp ⇒ échec."""
+        temoin = self._emettre(self._brouillon_ancien())
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{temoin.pk}/remettre-brouillon/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        facture = self._emettre(self._brouillon_ancien())
+        avant = (facture.reference, facture.identite_acheteur)
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{facture.pk}/whatsapp/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{facture.pk}/remettre-brouillon/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['detail'], 'Facture déjà envoyée au '
+                         'client : corrigez par un avoir.')
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.statut, Facture.Statut.EMISE)
+        self.assertEqual((relue.reference, relue.identite_acheteur), avant)
+
     def test_echeance_saisie_posterieure_conservee(self):
         saisie = self.aujourdhui + timedelta(days=60)
         relue = self._emettre(self._brouillon_ancien(date_echeance=saisie))
