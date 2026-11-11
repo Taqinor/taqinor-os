@@ -314,11 +314,31 @@ def appliquer_bascules_fiche(old, new_lead, user):
                            new_lead.pk, exc_info=True)
 
 
+def refus_restauration_lead(lead):
+    """ASUP9 — motif du refus de restaurer (absorbé par une fusion, doublon vivant), sinon ``None``."""
+    import re
+
+    from .leads_doublons import find_duplicates_by_contact
+    from .leads_fusion import NOTE_FUSION
+    if absorbant := re.findall(re.escape(NOTE_FUSION) + r'(\d+)', lead.note or ''):
+        return f'Restauration refusée : absorbé par le lead #{absorbant[-1]} (fusion).'
+    if vivants := [d for d in find_duplicates_by_contact(lead.company, phone=lead.telephone, email=lead.email,
+                                                         whatsapp=lead.whatsapp, exclude_pk=lead.pk)
+                   if not d.is_archived]:
+        return f'Restauration refusée : doublon vivant : lead #{vivants[0].pk}.'
+    return None
+
+
 def restaurer_lead(lead, user, *, note=None):
     """ACVI36 — LA restauration d'un lead archivé (fiche et lot) : écriture et
     chatter dans la même transaction (ALEA30), puis la prochaine étape.
-    ``note`` : le texte du lot, sinon la ligne de restauration de la fiche."""
+    ``note`` : le texte du lot, sinon la ligne de restauration de la fiche.
+    ASUP9 — refus 409 nommé (rien écrit) pour un absorbé ou un doublon."""
     from django.db import transaction
+
+    from core.conflit_etat import ConflitEtat
+    if refus := refus_restauration_lead(lead):
+        raise ConflitEtat(refus)
 
     from . import activity
     from .cadence_filet import assurer_prochaine_etape_apres_succes

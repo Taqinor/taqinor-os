@@ -603,7 +603,10 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                     unchanged += 1
                     continue
                 # QJ-INVARIANT, ACVI36 — la restauration partagée pose le filet.
-                from .fiche_ecritures import restaurer_lead
+                from .fiche_ecritures import refus_restauration_lead, restaurer_lead
+                if refus := refus_restauration_lead(lead):  # ASUP9 — même garde
+                    skip(lead, refus)
+                    continue
                 restaurer_lead(
                     lead, user,
                     note=f"Lead restauré en masse par {getattr(user, 'username', '?')}")

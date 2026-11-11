@@ -71,6 +71,55 @@ class TestArchiveRestore(ArchiveTestBase):
         self.assertTrue(RelanceEtape.objects.filter(
             lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE).exists())
 
+    def test_restaurer_refuse_absorbe_et_doublon_vivant(self):
+        """ASUP9 (C-ASUP-006) — un lead absorbé par une fusion ou dont le
+        contact est porté par un lead vivant n'est jamais restauré (409 nommé,
+        rien écrit) ; un archivé sans doublon l'est, à l'unité comme en lot.
+        Mutant : retirer le contrôle de doublon ⇒ C restauré."""
+        from datetime import timedelta
+
+        from apps.crm.leads_fusion import NOTE_FUSION
+        quand = timezone.now() - timedelta(days=3)
+        b = Lead.objects.create(company=self.company, nom='Survivant', stage='NEW')
+        a = Lead.objects.create(company=self.company, nom='Absorbe', stage='NEW',
+                                note=f'RAS\n{NOTE_FUSION}{b.pk} par x]')
+        c = Lead.objects.create(company=self.company, nom='Ancien', stage='NEW',
+                                telephone='0612345678')
+        e = Lead.objects.create(company=self.company, nom='Seul', stage='NEW',
+                                telephone='0699887766')
+        Lead.objects.filter(pk__in=[a.pk, c.pk, e.pk]).update(
+            is_archived=True, archived_at=quand)
+        d = Lead.objects.create(company=self.company, nom='Nouveau', stage='NEW',
+                                telephone='0612345678')
+        traces = {x: (LeadActivity.objects.filter(lead_id=x).count(),
+                      RelanceEtape.objects.filter(lead_id=x).count()) for x in (a.pk, c.pk)}
+        api = auth(self.resp)
+        r = api.post(f'/api/django/crm/leads/{a.id}/restaurer/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'absorbé par le lead #{b.pk}', r.data['detail'])
+        r = api.post(f'/api/django/crm/leads/{c.id}/restaurer/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'doublon vivant : lead #{d.pk}', r.data['detail'])
+        r = api.post(f'/api/django/crm/leads/{e.id}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['is_archived'])
+        Lead.objects.filter(pk=e.pk).update(is_archived=True, archived_at=quand)
+        r = api.post('/api/django/crm/leads/bulk/',
+                     {'action': 'unarchive', 'ids': [a.pk, c.pk, e.pk]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['updated'], 1)
+        motifs = {s['id']: s['reason'] for s in r.data['skipped']}
+        self.assertIn(f'#{b.pk}', motifs[a.pk])
+        self.assertIn(f'#{d.pk}', motifs[c.pk])
+        for x in (a, c):
+            x.refresh_from_db()
+            self.assertTrue(x.is_archived)
+            self.assertEqual(x.archived_at, quand)
+            self.assertEqual(traces[x.pk], (LeadActivity.objects.filter(lead_id=x.pk).count(),
+                                            RelanceEtape.objects.filter(lead_id=x.pk).count()))
+        e.refresh_from_db()
+        self.assertFalse(e.is_archived)
+
     def test_archive_hides_from_default_list_and_filters_bring_it_back(self):
         api = auth(self.resp)
         # Visible par défaut
