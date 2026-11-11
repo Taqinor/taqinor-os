@@ -405,17 +405,6 @@ class MarquePortailSerializer(serializers.Serializer):
     couleur_secondaire = serializers.CharField(allow_blank=True)
 
 
-class ReleveComptePortailSerializer(serializers.Serializer):
-    """Relevé self-service (``ventes.selectors.releve_client_portail``)."""
-    client = serializers.DictField()
-    lignes = serializers.ListField(child=serializers.DictField())
-    paiements = serializers.ListField(child=serializers.DictField())
-    avoirs = serializers.ListField(child=serializers.DictField())
-    totaux = serializers.DictField(child=serializers.CharField())
-    solde_courant = serializers.CharField()
-    balance_agee = serializers.DictField(child=serializers.CharField())
-
-
 class AccepterDevisPortailRequeteSerializer(serializers.Serializer):
     """Corps de ``POST mes-devis/{id}/accepter/`` (QX9, APDF35, CIQ321)."""
     nom = serializers.CharField()

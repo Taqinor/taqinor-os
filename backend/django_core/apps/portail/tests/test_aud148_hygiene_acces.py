@@ -100,21 +100,17 @@ class DerniereConnexionPortailTests(TestCase):
         self.compte.refresh_from_db()
         self.assertIsNotNone(self.compte.derniere_connexion)
 
-    def test_une_connexion_tokenisee_renseigne_la_derniere_connexion(self):
-        """ROUGE avant AUD148 : la colonne restait NULL.
-
-        Correctif CI SOLMVP — ``mon-releve`` vivait sous l'ancien préfixe
-        ``/api/django/compta/portail/`` (compta, coquillée depuis, n'expose
-        plus aucune url) ; il est nativement servi sous le préfixe public du
-        portail (``apps.portail.public_urls``)."""
+    def test_releve_par_jeton_retire_404(self):
+        """APUB43 (C-APUB-022) — le relevé de compte par jeton permanent n'est
+        plus servi sans compte : 404 pour le jeton d'un compte ACTIF comme pour
+        un jeton inconnu, et la lecture n'horodate plus rien (aucune route
+        tokenisée ne résout le compte). Mutant : remettre la route ⇒ 200."""
         public = APIClient()
-        res = public.get(
-            f'/api/django/public/portail/{self.compte.token_acces}'
-            '/mon-releve/')
-        self.assertEqual(res.status_code, 200, res.content)
-
+        for jeton in (self.compte.token_acces, 'jeton-inconnu'):
+            res = public.get(f'/api/django/public/portail/{jeton}/mon-releve/')
+            self.assertEqual(res.status_code, 404, res.content)
         self.compte.refresh_from_db()
-        self.assertIsNotNone(self.compte.derniere_connexion)
+        self.assertIsNone(self.compte.derniere_connexion)
 
     def test_lhorodatage_nest_pas_reecrit_a_chaque_requete(self):
         """Une écriture par GET transformerait chaque lecture en UPDATE."""

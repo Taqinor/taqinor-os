@@ -193,7 +193,7 @@ class JetonAccesPortailTests(TestCase):
         """ADRG96 (C-ADRG-053) — un compte au rôle système « Commercial » (semé
         comme ``init_roles``) PATCH ``{client: B}`` sur le compte de A ⇒ 400
         sur ``client``, le compte reste à A et le jeton de A sert toujours le
-        relevé de A ; renvoyer le MÊME client reste accepté. Mutant : retirer
+        client A ; renvoyer le MÊME client reste accepté. Mutant : retirer
         ``validate_client`` ⇒ échec (200, relevé de B par le jeton de A)."""
         from apps.roles.models import Role
         from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
@@ -214,8 +214,7 @@ class JetonAccesPortailTests(TestCase):
         res = self.api.patch(url, {'client': self.client_crm.id, 'actif': True},
                              format='json')
         self.assertEqual(res.status_code, 200, res.content)
+        # APUB43 — le relevé par jeton est retiré : l'oracle lit le compte
+        # que le jeton de A résout (même requête que ``selectors``).
         compte = compte_portail_par_token(self.compte.token_acces)
         self.assertEqual(compte.client_id, self.client_crm.id)
-        res = APIClient().get(
-            f'{RACINE_TOKENISEE}{self.compte.token_acces}/mon-releve/')
-        self.assertEqual(res.status_code, 200, res.content)

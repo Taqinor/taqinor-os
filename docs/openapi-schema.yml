@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4961, operations: 7759, components: 3650}
+counts: {paths: 4960, operations: 7758, components: 3649}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2581,7 +2581,6 @@ operations:
 - post /api/django/public/pay/{token}/webhook/ -> django_public_pay_webhook_create
 - post /api/django/public/portail/invitations/accepter/ -> django_public_portail_invitations_accepter_create
 - get /api/django/public/portail/theme/ -> django_public_portail_theme_retrieve
-- get /api/django/public/portail/{token}/mon-releve/ -> django_public_portail_mon_releve_retrieve
 - post /api/django/public/proposal/{token}/accept/ -> django_public_proposal_accept_create
 - post /api/django/public/proposal/{token}/activer-option/ -> django_public_proposal_activer_option_create
 - post /api/django/public/proposal/{token}/contact/ -> django_public_proposal_contact_create
@@ -12346,7 +12345,6 @@ components:
 - ReleveClientLigne
 - ReleveClientPaiement
 - ReleveClientTotaux
-- ReleveComptePortail
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
 - ReleveImportCommitRequestRequest
