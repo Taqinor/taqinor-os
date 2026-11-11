@@ -190,3 +190,28 @@ class PortalUserForbiddenOnInternalRoutesTests(_Base):
         api = self._client_for(self.u_client)
         resp = api.get('/api/django/auth/me/')
         self.assertEqual(resp.status_code, 200)
+
+
+class PortailFournisseurCoupeTests(_Base):
+    """APUB71 (C-APUB-037) — le compte portail d'un fournisseur dont l'accès
+    est FERMÉ (sélecteur stock : False) est refusé comme sa porte à jeton ;
+    aucun compte (None) n'est pas une révocation. Mutant : retirer la branche
+    ``portail_fournisseur`` d'``acces_portail_revoque`` ⇒ échec."""
+
+    def test_fournisseur_coupe_ferme_la_porte_compte(self):
+        from unittest.mock import patch
+
+        from apps.roles.permissions import IsPortalFournisseurUser
+        request = APIRequestFactory().get('/api/django/portail/x/')
+        request.user = self.u_fourn
+        cible = 'apps.stock.selectors.compte_fournisseur_portail_actif'
+        with patch(cible, return_value=False):
+            perm = IsPortalFournisseurUser()
+            self.assertFalse(perm.has_permission(request, None))
+            self.assertEqual(perm.message, perm.message_revoque)
+            resp = self._client_for(self.u_fourn).get(
+                '/api/django/portail/fournisseur/tableau-de-bord/')
+            self.assertEqual(resp.status_code, 403)
+            self.assertIn('révoqué', str(resp.data['detail']))
+        with patch(cible, return_value=None):
+            self.assertTrue(IsPortalFournisseurUser().has_permission(request, None))
