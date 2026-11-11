@@ -223,6 +223,42 @@ class EndpointProvisionnementTests(TestCase):
         for interdit in ('password', 'mot_de_passe', 'motdepasse'):
             self.assertNotIn(interdit, corps)
 
+    def test_sans_email_configure_identifiants_non_envoyes(self):
+        """AMSG58 — état de la prod (``locmem`` sans clé) : aucun e-mail ne
+        part, la réponse le dit (``email_envoye: false``), l'invitation
+        d'équipe ne se dit plus envoyée ; avec clé factice : envoyé."""
+        from django.core import mail
+        from django.test import override_settings
+        from apps.portail.services import (
+            _envoyer_invitation_portail, inviter_membre_portail,
+        )
+        self.api.force_authenticate(user=self._admin())
+        res = self.api.post(self.url, {}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data['cree'])
+        self.assertIs(res.data['email_envoye'], False)
+        self.assertEqual(
+            res.data['detail'], 'Accès portail créé — e-mail non '
+            'opérationnel : identifiants non envoyés.')
+        self.assertEqual(len(mail.outbox), 0)
+        user = CustomUser.objects.get(id=res.data['utilisateur_id'])
+        self.assertTrue(user.must_change_password)
+        invitation = inviter_membre_portail(
+            self.company, self.client_crm.id, 'equipe@example.invalid',
+            'lecture', base_url='https://erp.example.invalid')
+        self.assertFalse(_envoyer_invitation_portail(
+            invitation, self.company, base_url='https://erp.example.invalid'))
+        self.assertEqual(len(mail.outbox), 0)
+        autre = make_client(self.company)
+        with override_settings(
+                ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            _u, cree, envoye = provisionner_compte_portail_client(
+                self.company, autre.id, avec_envoi=True)
+        self.assertTrue(cree)
+        self.assertTrue(envoye)
+        self.assertEqual(len(mail.outbox), 1)
+
     def test_responsable_non_admin_refuse(self):
         self.api.force_authenticate(user=self._responsable())
         res = self.api.post(self.url, {}, format='json')

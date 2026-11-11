@@ -177,8 +177,8 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         """
         compte = self.get_object()
         try:
-            user, cree = services.provisionner_compte_portail_client(
-                request.user.company, compte.client_id)
+            user, cree, envoye = services.provisionner_compte_portail_client(
+                request.user.company, compte.client_id, avec_envoi=True)
         except services.ProvisionnementSansEmail as exc:
             # ADOC123 — refus NOMMÉ : aucun compte créé, aucun e-mail.
             return Response({'detail': str(exc)}, status=409)  # ENF11 : la fiche s'oppose
@@ -191,11 +191,14 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
             'email': user.email,
             'actif': user.is_active,
             'cree': cree,
+            # AMSG58 — « envoyé » seulement si l'e-mail est réellement parti.
+            'email_envoye': envoye,
             'detail': (
-                'Accès portail créé — mot de passe temporaire envoyé par '
-                'email.'
-                if cree else
-                'Un accès portail existe déjà pour ce client.'
+                'Un accès portail existe déjà pour ce client.' if not cree
+                else 'Accès portail créé — mot de passe temporaire envoyé '
+                'par email.' if envoye
+                else 'Accès portail créé — e-mail non opérationnel : '
+                'identifiants non envoyés.'
             ),
         })
 

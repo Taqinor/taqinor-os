@@ -249,12 +249,14 @@ def _envoyer_identifiants_portail(
     fatal. ``portee_libelle`` (« client »/« partenaire »/…) n'affecte que le
     libellé de l'email — jamais la logique d'accès.
 
-    Sans ``SENDGRID_API_KEY`` le backend email est la console (local) ou un
-    no-op : le provisionnement RÉUSSIT quand même (le mot de passe est alors
-    redéfini par le flux « mot de passe oublié » standard). On ne renvoie
-    jamais le mot de passe à l'appelant HTTP.
+    AMSG58 — rend True SEULEMENT si l'e-mail est réellement parti
+    (``is_email_configured`` : clé posée ET backend qui envoie) ; sans envoi
+    opérationnel (backend console de la prod) le provisionnement réussit
+    quand même mais l'appelant le SAIT (False). On ne renvoie jamais le mot de
+    passe à l'appelant HTTP.
     """
-    if not user.email:
+    from apps.notifications.services import _is_email_configured
+    if not user.email or not _is_email_configured():  # AMSG58 — envoi réel
         return False
     try:
         from django.conf import settings
@@ -266,7 +268,7 @@ def _envoyer_identifiants_portail(
         from .branding import marque_portail
         societe = (marque_portail(company).get('nom_affichage')
                    or 'votre prestataire')
-        send_mail(
+        return bool(send_mail(
             subject=f'Votre accès au portail {portee_libelle} {societe}',
             message=(
                 f'Bonjour,\n\n'
@@ -279,9 +281,8 @@ def _envoyer_identifiants_portail(
             ),
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
             recipient_list=[user.email],
-            fail_silently=True,
-        )
-        return True
+            fail_silently=False,
+        ))
     except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès (D-ENF22-BLE001)
         logger.warning("_envoyer_identifiants_portail : erreur absorbée, repli dégradé", exc_info=True)
         return False
@@ -298,15 +299,17 @@ MESSAGE_PROVISIONNEMENT_SANS_EMAIL = (
     "le mot de passe temporaire part par e-mail.")
 
 
-def provisionner_compte_portail_client(company, client_id):
+def provisionner_compte_portail_client(company, client_id, avec_envoi=False):
     """NTPRT2 — Crée (ou relie) le compte utilisateur portail d'un client.
 
     ADOC123 — un client SANS e-mail lève ``ProvisionnementSansEmail`` avant
     toute création (jamais un compte muet, sans mot de passe récupérable).
 
     Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
-    par CET appel. Le ``ComptePortailClient`` (avec son ``token_acces``) est
-    créé au besoin et laissé INTACT s'il existe déjà.
+    par CET appel — AMSG58 : ``avec_envoi=True`` rend ``(user, cree,
+    envoye)``, ``envoye`` vrai seulement si l'e-mail des identifiants est
+    réellement parti. Le ``ComptePortailClient`` (avec son ``token_acces``)
+    est créé au besoin et laissé INTACT s'il existe déjà.
 
     Le client est résolu via ``apps.crm.selectors`` (jamais un import de
     ``apps.crm.models`` — frontière cross-app CLAUDE.md) et doit appartenir à
@@ -328,11 +331,14 @@ def provisionner_compte_portail_client(company, client_id):
 
     from .models import ComptePortailClient
 
+    def _rendu(user, cree, envoye=False):
+        return (user, cree, envoye) if avec_envoi else (user, cree)
+
     if company is None or not client_id:
-        return None, False
+        return _rendu(None, False)
     client = get_company_client(company, client_id)
     if client is None:
-        return None, False
+        return _rendu(None, False)
 
     with transaction.atomic():
         # Le compte portail (porteur du token magic-link) reste la trace
@@ -352,7 +358,7 @@ def provisionner_compte_portail_client(company, client_id):
             portail_client_id=client.id,
         ).first()
         if existant is not None:
-            return existant, False
+            return _rendu(existant, False)
 
         email = (getattr(client, 'email', '') or '').strip()
         if not email:
@@ -384,8 +390,8 @@ def provisionner_compte_portail_client(company, client_id):
         user.set_password(mot_de_passe)
         user.save()
 
-    _envoyer_identifiants_portail(user, mot_de_passe, company)
-    return user, True
+    return _rendu(user, True,
+                  _envoyer_identifiants_portail(user, mot_de_passe, company))
 
 
 # ── NTPRT4 — Provisionnement d'un VRAI compte utilisateur portail partenaire ─
@@ -653,8 +659,9 @@ def _envoyer_invitation_portail(invitation, company, base_url=None):
     explicite (usage programmatique), AUCUN e-mail n'est envoyé plutôt
     qu'un lien vers un autre hôte.
     """
+    from apps.notifications.services import _is_email_configured
     base = (base_url or '').strip().rstrip('/')
-    if not base:
+    if not base or not _is_email_configured():  # AMSG58 — envoi réel seul
         return False
     try:
         from django.conf import settings
@@ -665,7 +672,7 @@ def _envoyer_invitation_portail(invitation, company, base_url=None):
                    or 'votre prestataire')
         lien = (f'{base}/portail/invitation/accepter'
                 f'?token={invitation.token_invitation}')
-        send_mail(
+        return bool(send_mail(
             subject=f"Invitation au portail {societe}",
             message=(
                 f'Bonjour,\n\n'
@@ -677,9 +684,8 @@ def _envoyer_invitation_portail(invitation, company, base_url=None):
             ),
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
             recipient_list=[invitation.email],
-            fail_silently=True,
-        )
-        return True
+            fail_silently=False,
+        ))
     except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'invitation (D-ENF22-BLE001)
         logger.warning("_envoyer_invitation_portail : erreur absorbée, repli dégradé", exc_info=True)
         return False
