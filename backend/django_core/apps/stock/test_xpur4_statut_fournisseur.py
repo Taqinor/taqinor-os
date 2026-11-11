@@ -118,6 +118,19 @@ class TestBcfBlockedStatuses(Xpur4Base):
                          BonCommandeFournisseur.Statut.BROUILLON)
         self.assertEqual(BonCommandeFournisseur.objects.filter(fournisseur=bloque).count(), 1)
 
+    def test_fournisseur_archive_refuse_409(self):
+        """ASUP47 (C-ASUP-021) — un fournisseur archivé ne reçoit aucun BCF :
+        409 nommé, rien écrit. Mutant : retirer le test d'archive ⇒ 201."""
+        from apps.stock.models import BonCommandeFournisseur
+        f = Fournisseur.objects.create(
+            company=self.company, nom='Archivé ASUP47', is_archived=True)
+        resp = self.api.post(
+            '/api/django/stock/bons-commande-fournisseur/',
+            self._bcf_payload(f), format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('archivé : désarchivez-le pour lui commander', resp.data['detail'])
+        self.assertFalse(BonCommandeFournisseur.objects.filter(fournisseur=f).exists())
+
     def test_bloque_total_refuses_bcf(self):
         f = Fournisseur.objects.create(
             company=self.company, nom='Bloqué Total',

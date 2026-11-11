@@ -473,7 +473,7 @@ def cheapest_prix_fournisseur(produit):
     from django.db.models import Q
     from django.utils import timezone
     jour = timezone.localdate()
-    return (produit.prix_fournisseurs.filter(prix_achat__gt=0)
+    return (produit.prix_fournisseurs.filter(prix_achat__gt=0, fournisseur__is_archived=False)  # ASUP47
             .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
             .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour))
             .select_related('fournisseur').order_by('prix_achat').first())
@@ -6055,6 +6055,8 @@ def exiger_fournisseur_commandable(company, fournisseur):
     Lève ``EtatIncompatible`` (409) ; no-op pour un fournisseur commandable."""
     if fournisseur is None:
         return
+    if fournisseur.is_archived:  # ASUP47 — l'archivage garde les prix, jamais la commande
+        raise EtatIncompatible('Fournisseur archivé : désarchivez-le pour lui commander.')
     try:
         check_fournisseur_statut_commande(fournisseur)
     except EtatIncompatible:
