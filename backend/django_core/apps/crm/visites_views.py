@@ -197,6 +197,10 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         appt = self.get_object()
         from .cadence_messages import garde_contact_du_lead
         garde_contact_du_lead(appt.lead)
+        from django.utils import timezone  # AMSG15 — rien à confirmer
+        if (appt.statut not in (Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME)
+                or appt.scheduled_at < timezone.now()):
+            raise ConflitEtat('Rendez-vous annulé, effectué, manqué ou passé : rien à confirmer.')
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
         if wa_url is None:

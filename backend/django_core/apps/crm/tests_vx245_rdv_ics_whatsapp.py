@@ -147,6 +147,29 @@ class Vx245ConfirmationWhatsAppTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(resp.data['message'].startswith('Texte maison : visite '))
 
+    def test_rdv_annule_effectue_manque_ou_passe_409(self):
+        # AMSG15 — rien à confirmer : 409 nommé, aucun `wa_url`.
+        S = Appointment.Statut
+        cas = [
+            (S.ANNULE, timedelta(days=2)), (S.EFFECTUE, timedelta(days=2)),
+            (S.NO_SHOW, timedelta(days=2)), (S.PLANIFIE, -timedelta(hours=1)),
+        ]
+        for statut, decalage in cas:
+            rdv = Appointment.objects.create(
+                company=self.company, lead=self.lead, statut=statut,
+                scheduled_at=timezone.now() + decalage)
+            with self.subTest(statut=statut, decalage=decalage):
+                resp = _api(self.user).post(
+                    f'/api/django/crm/appointments/{rdv.id}/confirmer-whatsapp/')
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(
+                    resp.data['detail'],
+                    'Rendez-vous annulé, effectué, manqué ou passé : rien à confirmer.')
+                self.assertNotIn('wa_url', resp.data)
+        resp = _api(self.user).post(
+            f'/api/django/crm/appointments/{self.appt.id}/confirmer-whatsapp/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_no_phone_returns_409(self):
         # ERR-ENF11-FUZZ-CRM — le numéro vient de la fiche : refus d'état.
         self.lead.telephone = ''
