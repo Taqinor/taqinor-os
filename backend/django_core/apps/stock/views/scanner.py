@@ -100,7 +100,7 @@ _REFERENCE_MAX = 100
 })
 @api_view(['POST'])
 @parser_classes([JSONParser])
-@permission_classes([HasPermissionOrLegacy('stock_modifier')])
+@permission_classes([HasPermissionOrLegacy('stock_mouvement')])  # ADRG45 : un mouvement
 def scanner_mouvement_view(request):
     """Pose un mouvement de stock SCANNÉ, casiers tracés.
 
