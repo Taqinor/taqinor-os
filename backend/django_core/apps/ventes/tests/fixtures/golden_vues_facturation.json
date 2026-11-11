@@ -221,7 +221,8 @@
    "LectureFactures"
   ],
   "remettre_brouillon": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "HasPermissionOrLegacy_encaisser"
   ],
   "reprendre_abandon": [
    "HasPermissionOrLegacy_encaisser"

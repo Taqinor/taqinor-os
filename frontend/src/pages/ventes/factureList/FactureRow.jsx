@@ -450,7 +450,7 @@ export default function FactureRow({ f, ctx }) {
                 {/* ── WIR183 — les quatre actions de FICHE, jusqu'ici sans
                     aucun point d'entrée (ZFAC1 / XFAC6 / XFAC13 / XPOS7).
                     Gestes d’argent : droit `encaisser` (ASEC64), comme le serveur. ── */}
-                {canManage && f.statut === 'emise' && (
+                {canManage && peutEncaisser && f.statut === 'emise' && (
                   <DropdownMenuItem
                     data-testid="remettre-brouillon"
                     disabled={wir183Busy}

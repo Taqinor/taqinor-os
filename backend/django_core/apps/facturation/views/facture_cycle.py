@@ -18,6 +18,8 @@ from apps.ventes.models import Avoir, EmailLog, Facture
 from apps.facturation.serializers import FactureListeSerializer, FactureSerializer
 from apps.ventes.utils.corps import valider_corps
 
+from .facture_gardes import PeutEncaisser
+
 #: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un
 #: brouillon : palier responsable/admin ET un code d'écriture ``ventes_*``.
 #: Jamais un Commercial (codes sans palier), ni un Technicien responsable ou
@@ -72,8 +74,9 @@ class FactureCycleActionsMixin:
         return Response(data)
 
     @extend_schema(request=None, responses=FactureListeSerializer)
+    # ADRG1 (D-AARG-3) — retirer la créance est un geste d'argent : ``encaisser``.
     @action(detail=True, methods=['post'], url_path='remettre-brouillon',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, PeutEncaisser])
     def remettre_brouillon(self, request, pk=None):
         """ZFAC1 — Reset to Draft.
 

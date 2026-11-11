@@ -51,6 +51,19 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(screen.queryByRole('button', { name: /^Avoir$/ })).toBeNull()
   })
 
+  it('ADRG1 — sans `encaisser` : aucune entrée « Remettre en brouillon » (comme la route)', async () => {
+    rendre(CONTRAT.exemple, { peutEncaisser: false })
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Note de débit/ })).toBeInTheDocument()
+    expect(document.querySelector('[data-testid="remettre-brouillon"]')).toBeNull()
+  })
+
+  it('ADRG1 — avec `encaisser` : « Remettre en brouillon » offert sur une émise', async () => {
+    rendre(CONTRAT.exemple)
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Remettre en brouillon/ })).toBeInTheDocument()
+  })
+
   it('ASEC64 — avec `encaisser` sans palier admin : Avoir visible', () => {
     rendre(CONTRAT.exemple, { isAdmin: false, canManage: false })
     expect(screen.getByRole('button', { name: /^Avoir$/ })).toBeInTheDocument()

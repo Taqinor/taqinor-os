@@ -472,6 +472,31 @@ class GestesArgentTests(TestCase):
                 r = commercial.get(url)
                 self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
 
+    def test_remettre_brouillon_exige_encaisser(self):
+        """ADRG1 (C-ADRG-002, D-AARG-3) — remettre en brouillon une facture
+        émise retire la créance : 403 sans ``encaisser`` (VRAIS rôles système
+        Admin Ventes et Responsable), statut ``emise`` et lien de paiement
+        actif inchangés ; le Directeur obtient 200. Mutant : retirer
+        ``PeutEncaisser`` de ``permission_classes`` ⇒ échec."""
+        from apps.ventes.models import Facture, PaymentLink
+        directeur = self.users['Directeur']
+        facture = self._facture(directeur)
+        lien = PaymentLink.objects.create(
+            company=self.company, facture=facture, montant=Decimal('1200'))
+        url = f'/api/django/ventes/factures/{facture.id}/remettre-brouillon/'
+        for nom in ('Admin Ventes', 'Responsable'):
+            with self.subTest(role=nom):
+                r = self._api(self.users[nom]).post(url, {}, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                facture.refresh_from_db()
+                lien.refresh_from_db()
+                self.assertEqual(facture.statut, Facture.Statut.EMISE)
+                self.assertEqual(lien.statut, PaymentLink.Statut.EN_ATTENTE)
+        r = self._api(directeur).post(url, {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+
     def test_get_permissions_respecte_action(self):
         from apps.facturation.views.facture import FactureViewSet
         from apps.facturation.views.facture_gardes import PeutEncaisser
