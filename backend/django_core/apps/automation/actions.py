@@ -349,6 +349,9 @@ def reporter_hors_fenetre(rule, instance, company, context):
         f'{quand:%d/%m/%Y à %H:%M}.')
 
 
+#: AMSG77 — actions qui passent par ``reporter_hors_fenetre``.
+ENVOIS_REPORTABLES = frozenset({ActionType.SEND_EMAIL, ActionType.SEND_WHATSAPP})
+
 #: AMSG68 — règle WhatsApp sans texte : aucune tâche « Envoyer ce WhatsApp » vide.
 MOTIF_CORPS_VIDE_WHATSAPP = 'Corps vide : tâche WhatsApp non créée.'
 
@@ -850,6 +853,27 @@ class _SubActionView:
         return getattr(self._rule, name)
 
 
+#: AMSG77 — champs de destinataire qu'un élément de boucle peut porter.
+CHAMPS_DESTINATAIRE = ('email', 'whatsapp', 'telephone')
+
+
+class _CibleElement:
+    """AMSG77 — la fiche déclencheuse, mais le destinataire de l'ÉLÉMENT de la
+    boucle quand il en porte un ; l'opposition du lead déclencheur reste lue."""
+
+    def __init__(self, instance, element):
+        self._instance, self._element = instance, element
+
+    @property
+    def lead(self):
+        return self._instance if _est_lead(self._instance) else getattr(self._instance, 'lead', None)
+
+    def __getattr__(self, name):
+        if name in CHAMPS_DESTINATAIRE and self._element.get(name):
+            return self._element[name]
+        return getattr(self._instance, name)
+
+
 def _for_each(rule, instance, company, context, user):
     """NTEXT6 — répète des SOUS-ACTIONS sur chaque élément d'une liste.
 
@@ -881,6 +905,12 @@ def _for_each(rule, instance, company, context, user):
     if not elements:
         return Status.NOOP, 'Liste vide : aucune itération.'
 
+    # AMSG77 — hors fenêtre, la boucle ENTIÈRE est reportée une fois (jamais une
+    # échéance par sous-action, que la reprise rejouerait toutes : N²).
+    if any(isinstance(spec, dict) and spec.get('action_type') in ENVOIS_REPORTABLES for spec in sous_actions):
+        report = reporter_hors_fenetre(rule, instance, company, context)
+        if report is not None:
+            return report
     faits = 0
     echecs = 0
     for index, element in enumerate(elements, start=1):
@@ -903,8 +933,11 @@ def _for_each(rule, instance, company, context, user):
                 rule, action_type, spec.get('action_config') or {})
             # APAR69 — même aiguillage que les actions de premier niveau :
             # point de sauvegarde, et un envoi attend le commit de l'émetteur.
+            cible = (_CibleElement(instance, element) if action_type in ENVOIS_REPORTABLES
+                     and isinstance(element, dict) and any(element.get(c) for c in CHAMPS_DESTINATAIRE)
+                     else instance)
             statut, _message = executer_action(
-                vue, instance, company, sous_contexte, user)
+                vue, cible, company, sous_contexte, user)
             if statut == Status.FAILED:
                 echecs += 1
             else:
