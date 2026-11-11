@@ -127,6 +127,32 @@ class TestAnalyseEcartsOrdre(TestCase):
         resp = api.get(f'{BASE}/ordres-assemblage/{ordre.id}/analyse/')
         self.assertEqual(resp.status_code, 403)
 
+    def test_analyse_exige_prix_achat_voir(self):
+        """ADRG100 (D-ASTK-2) — rôles du registre sans `prix_achat_voir` :
+        403 sans aucun montant ; Directeur et Administrateur : 200 + coût."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        ordre = OrdreAssemblage.objects.create(
+            company=self.company, reference='ASM-A4', kit=self.kit, quantite=1)
+        url = f'{BASE}/ordres-assemblage/{ordre.id}/analyse/'
+
+        def api_role(nom):
+            return auth(User.objects.create_user(
+                username=f'adrg100-{next(_seq)}', password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom)))
+        for nom in ('Technicien', 'Technicien responsable', 'Responsable'):
+            with self.subTest(role=nom):
+                resp = api_role(nom).get(url)
+                self.assertEqual(resp.status_code, 403)
+                self.assertNotIn('cout', resp.data)
+        for nom in ('Directeur', 'Administrateur'):
+            with self.subTest(role=nom):
+                resp = api_role(nom).get(url)
+                self.assertEqual(resp.status_code, 200, resp.content)
+                self.assertIn('reel', resp.data['cout'])
+
 
 class TestPanneauAtelier(TestCase):
     def setUp(self):

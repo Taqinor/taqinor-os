@@ -295,3 +295,30 @@ class TestFG295Tenant(TestCase):
         viewer = make_user(self.company, role='commercial')
         r = auth(viewer).get(f'{BASE}/programmes/{self.projet.id}/pnl/')
         self.assertEqual(r.status_code, 403)
+
+    def test_pnl_exige_prix_achat_voir(self):
+        """ADRG100 (D-ASTK-2) — le P&L sert des coûts d'achat : les rôles du
+        registre sans `prix_achat_voir` (Technicien, Technicien responsable,
+        Responsable) reçoivent 403 sans montant ; Directeur/Administrateur 200."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        make_facture_client(self.company, self.devis, '2000')
+        url = f'{BASE}/programmes/{self.projet.id}/pnl/'
+
+        def api_role(nom):
+            return auth(User.objects.create_user(
+                username=f'adrg100-{next(_seq)}', password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom)))
+        for nom in ('Technicien', 'Technicien responsable', 'Responsable'):
+            with self.subTest(role=nom):
+                r = api_role(nom).get(url)
+                self.assertEqual(r.status_code, 403)
+                self.assertNotIn('marge_brute', r.data)
+        for nom in ('Directeur', 'Administrateur'):
+            with self.subTest(role=nom):
+                r = api_role(nom).get(url)
+                self.assertEqual(r.status_code, 200, r.data)
+                self.assertEqual(r.data['revenu']['ht'], 2000.0)
+                self.assertIn('marge_brute', r.data)

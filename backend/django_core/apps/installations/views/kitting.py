@@ -17,7 +17,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsResponsableOrAdmin, LectureDuModule,
+)
 from core.champs_stricts import date_ou_400
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
@@ -449,6 +451,9 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
+        if self.action == 'analyse':  # ADRG100 (D-ASTK-2) : coûts d'achat servis
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('prix_achat_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

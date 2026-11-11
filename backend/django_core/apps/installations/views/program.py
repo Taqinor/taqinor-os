@@ -18,7 +18,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsResponsableOrAdmin, LectureDuModule,
+)
 from core.champs_stricts import entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -117,6 +119,9 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
+        if self.action == 'pnl':  # ADRG100 (D-ASTK-2) : coûts d'achat servis
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('prix_achat_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
