@@ -18,6 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.stock.permissions import PeutVoirPrixAchat
 from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin, LectureDuModule,
 )
@@ -439,6 +440,8 @@ class BudgetProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, Com
     serializer_class = BudgetProjetSerializer
 
     def get_permissions(self):
+        if self.action == 'synthese':  # ALEC9 (D-ASTK-2) : montants d'achat
+            return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

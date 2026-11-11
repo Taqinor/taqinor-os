@@ -133,3 +133,37 @@ class TestControleBudgetaire(TestCase):
             'montant': '5000', 'projet': projet_o.id,
         })
         self.assertEqual(r.data['controle'], 'non_configure')
+
+    def test_commercial_livre_403_directeur_200(self):
+        """ALEC9 (D-ASTK-2) — le reste d'un budget d'achat (contrôle et
+        synthèse) est réservé à `prix_achat_voir` : Commercial et Technicien
+        403 sans montant ; Directeur 200."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        projet = make_projet_budget(self.company, materiel=50000)
+        budget = BudgetProjet.objects.get(projet=projet)
+        controle = (f'{BASE}/controle-budgetaire/',
+                    {'montant': '0', 'projet': projet.id})
+        synthese = f'{BASE}/programme-budgets/{budget.id}/synthese/'
+
+        def api_role(nom):
+            return auth(User.objects.create_user(
+                username=f'alec9-{next(_seq)}', password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom)))
+        for nom in ('Commercial', 'Technicien'):
+            with self.subTest(role=nom):
+                api = api_role(nom)
+                r = api.get(*controle)
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertIn('detail', r.data)
+                self.assertNotIn('reste_categorie', r.data)
+                r = api.get(synthese)
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertNotIn('reste', r.data)
+        directeur = api_role('Directeur')
+        r = directeur.get(*controle)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['reste_categorie'], 50000.0)
+        self.assertEqual(directeur.get(synthese).status_code, 200)

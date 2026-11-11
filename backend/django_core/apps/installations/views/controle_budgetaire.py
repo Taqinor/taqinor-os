@@ -9,8 +9,8 @@ appelle avant l'envoi.
 GET /installations/controle-budgetaire/?montant=...&projet=...&categorie=materiel
 
 Multi-tenant : la société vient de ``request.user.company`` (jamais du corps). Le
-programme ciblé est implicitement scopé société par le sélecteur. Lecture tout
-rôle (consultation), comme les autres lectures budget.
+programme ciblé est implicitement scopé société par le sélecteur. Lecture
+réservée à ``prix_achat_voir`` (ALEC9, D-ASTK-2).
 """
 from decimal import Decimal
 
@@ -22,6 +22,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.stock.permissions import PeutVoirPrixAchat
 from authentication.permissions import IsAnyRole
 from core.champs_stricts import nombre_ou_400
 
@@ -46,9 +47,10 @@ _ControleBudgetaireSerializer = inline_serializer(
 
 
 class ControleBudgetaireCommandeView(APIView):
-    """FG313 — contrôle budgétaire consultatif avant commande. Lecture tout
-    rôle ; aucune écriture. Société posée serveur."""
-    permission_classes = [IsAnyRole]
+    """FG313 — contrôle budgétaire consultatif avant commande. Aucune
+    écriture. Société posée serveur. ALEC9 (D-ASTK-2) : le reste d'un budget
+    d'ACHAT se déduit des réponses → réservé à ``prix_achat_voir``."""
+    permission_classes = [IsAnyRole, PeutVoirPrixAchat]
 
     @extend_schema(
         parameters=[
