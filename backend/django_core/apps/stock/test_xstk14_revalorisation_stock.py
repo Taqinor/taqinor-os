@@ -219,13 +219,37 @@ class ValiderRevalorisationTests(Xstk14Base):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['statut'], 'validee')
 
-    def test_endpoint_admin_only(self):
-        non_admin = _user(
-            self.company, 'xstk14-nonadmin', is_admin=False,
-            permissions=['stock_voir'])
-        api = _api(non_admin)
-        resp = api.post(
-            '/api/django/stock/revalorisations-stock/',
-            {'produit': self.produit.pk, 'nouveau_cout': '1200',
-             'motif': 'Test'}, format='json')
-        self.assertEqual(resp.status_code, 403)
+    def test_endpoint_admin_only_roles_livres(self):
+        # ATST1 — les 8 rôles livrés non administrateurs qui lisent le stock :
+        # 403 sur liste, création, validation (mutant `IsResponsableOrAdmin`
+        # ⇒ Commercial lit les coûts, Technicien crée) ; Directeur : passe.
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        brouillon = creer_revalorisation(
+            company=self.company, produit=self.produit,
+            nouveau_cout='1200', motif='Test', user=self.admin)
+        base = '/api/django/stock/revalorisations-stock/'
+        corps = {'produit': self.produit.pk, 'nouveau_cout': '1200', 'motif': 'Test'}
+
+        def api_du(nom):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(perms[nom]))
+            return _api(User.objects.create_user(
+                username=f'xstk14-{nom.lower().replace(" ", "-")}',
+                password='x', company=self.company, role=role))
+        for nom in ('Commercial responsable', 'Commercial', 'Technicien responsable',
+                    'Technicien', 'Viewer', 'Responsable', 'Utilisateur', 'Admin Ventes'):
+            api = api_du(nom)
+            self.assertEqual(api.get(base).status_code, 403, nom)
+            self.assertEqual(api.post(base, corps, format='json').status_code, 403, nom)
+            self.assertEqual(api.post(f'{base}{brouillon.pk}/valider/').status_code, 403, nom)
+        self.assertEqual(RevalorisationStock.objects.count(), 1)
+        brouillon.refresh_from_db()
+        self.assertEqual(brouillon.statut, RevalorisationStock.Statut.BROUILLON)
+        self.assertIsNone(brouillon.date_validation)
+        directeur = api_du('Directeur')
+        self.assertEqual(directeur.get(base).status_code, 200)
+        self.assertEqual(directeur.post(base, corps, format='json').status_code, 201)
+        resp = directeur.post(f'{base}{brouillon.pk}/valider/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['statut'], 'validee')
