@@ -910,10 +910,9 @@ def _avec_noms_de_fichier(preparer):
     if getattr(preparer, '_noms_de_fichier', False):
         return preparer
 
-    # Schemathesis >= 4.33 ajoute ``media_type`` avant ``selected_content_types`` :
-    # on transmet les arguments tels quels, quelle que soit la signature.
-    def preparation(operation, form_data, *args, **kwargs):
-        fichiers, donnees = preparer(operation, form_data, *args, **kwargs)
+    def preparation(operation, form_data, selected_content_types=None):
+        fichiers, donnees = preparer(
+            operation, form_data, selected_content_types)
         noms = _noms_de_fichiers(operation) if fichiers else set()
         if not noms:
             return fichiers, donnees

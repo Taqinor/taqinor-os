@@ -42,7 +42,7 @@ Jinja2==3.1.6
 
 # Premium quote-PDF engine (apps.ventes.quote_engine) — ROI/savings charts
 numpy==1.26.4
-matplotlib==3.11.2
+matplotlib==3.9.2
 
 # FG361 — Prévision de ventes / demande (séries temporelles). Holt-Winters /
 # lissage exponentiel. Importé défensivement dans core/forecast.py (repli pur
