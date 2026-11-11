@@ -44,6 +44,7 @@ from .. import field_services
 from .. import field_capture
 from .. import field_sync
 from . import _openapi as oa
+from .intervention_liens import CouperLienRapportMixin  # APUB6 (C20 : hors fichier-mur)
 from ..serializers import PhotoAnnotationSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -176,7 +177,7 @@ def _quantite_f11(request):
     p8=oa.qi('ticket'),
     p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'),
 )
-class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InterventionViewSet(CouperLienRapportMixin, PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
@@ -2210,16 +2211,6 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'path': path,
             'url': request.build_absolute_uri(path),
         })
-
-    @oa.extend_schema(request=None, responses=oa.OBJ)
-    @action(detail=True, methods=['post'], url_path='couper-lien-rapport',
-            permission_classes=[IsResponsableOrAdmin])
-    def couper_lien_rapport(self, request, pk=None):
-        """APUB6 — coupe le lien public du compte-rendu : page, PDF et photos
-        rendent 404 sur l'ancien jeton ; ``lien-rapport`` en pose un neuf."""
-        interv = self.get_object()
-        interv.couper_lien_rapport()
-        return Response({'coupe': True})
 
     # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
     @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
