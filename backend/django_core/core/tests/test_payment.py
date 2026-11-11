@@ -82,6 +82,23 @@ class PaymentTransactionFlowTests(TestCase):
         self.assertIsNotNone(tx.paye_le)
         self.assertEqual(received, [tx.pk])
 
+    def test_delete_transaction_refuse_405(self):
+        """ASUP22 — une transaction de paiement ne se supprime jamais par l'API."""
+        from rest_framework.test import APIClient
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        role = Role.objects.create(company=self.company, nom='Directeur',
+                                   permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Directeur']))
+        directeur = User.objects.create_user(
+            username='asup22-dir', password='x', company=self.company, role=role)
+        tx = payment_infra.creer_transaction(self.company, montant=Decimal('900.00'))
+        payment_infra.marquer_paye(tx, external_ref='PSP-ASUP22')
+        api = APIClient()
+        api.force_authenticate(directeur)
+        resp = api.delete(f'/api/django/core/paiements-en-ligne/{tx.pk}/')
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertTrue(PaymentTransaction.objects.filter(pk=tx.pk).exists())
+
 
 class PaymentTransactionViewSetTests(TestCase):
     @classmethod
