@@ -426,6 +426,7 @@ def process_due_automation_steps():
     dues = list(AutomationScheduledStep.objects.filter(
         statut=AutomationScheduledStep.Statut.EN_ATTENTE,
         run_at__lte=timezone.now(),
+        company__in=_companies(),  # AMSG79 — société suspendue : rien n'est repris
     ).order_by('run_at', 'id')[:MAX_REPRISES_PAR_PASSAGE])
     total = 0
     for echeance in dues:
