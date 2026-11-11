@@ -170,14 +170,15 @@ def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
     message = (
         f"Merci pour votre confiance {client_nom} ! Voici le lien de votre "
         f"installation, à partager autour de vous : {url}").strip()
+    from .cadence_messages import refus_rendu_whatsapp
     wa_url = 'https://wa.me/?text=' + quote(message)
     corps = '\n'.join([
         (f'Le devis {reference} de {client_nom} est signé.'
          if client_nom else f'Le devis {reference} est signé.'),
         'Lien « mon installation » à faire suivre au client :',
         url,
-        f'Envoyer en WhatsApp : {wa_url}',
-    ])
+    ] + ([] if refus_rendu_whatsapp(getattr(devis, 'lead', None))  # AMSG8 — lead opposé/perdu
+         else [f'Envoyer en WhatsApp : {wa_url}']))
     company = getattr(devis, 'company', None)
     lien_interne = f'/ventes/devis/{devis.pk}'
 

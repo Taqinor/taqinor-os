@@ -53,12 +53,6 @@ LISTE_BLANCHE: dict[str, str] = {
     "backend/django_core/apps/automation/actions.py::preparer_whatsapp::wa.me":
         "garde en amont : le handler appelle _refus_opposition avant preparer_whatsapp (partage avec la simulation)",
     "backend/django_core/apps/crm/fiche_bulk.py::_lien_reactivation::wa.me": _LOT_FILTRE,
-    "backend/django_core/apps/crm/receivers_clients.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
-        "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au "
-        "lead",
-    "backend/django_core/apps/crm/leads_notifications.py::_build_lead_wa_reply_url::wa.me":
-        "A CORRIGER (ACRM, session crm) : lien wa.me vers le prospect construit sans consulter peut_contacter ; "
-        "brouillon que le vendeur clique, mais l'opposition n'est pas visible",
     "backend/django_core/apps/crm/visites_rdv.py::dispatch_appointment_reminder::wa.me":
         "A CORRIGER (ACRM, session crm) : brouillon wa.me de rappel RDV vers le lead sans garde de contact (opposition "
         "non verifiee)",
