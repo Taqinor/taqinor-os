@@ -353,3 +353,4 @@
 - 2026-11-11 — run all plans 99392c, vague 12, lanes W12L3 et W12L7 : ADRG5/7/21/61/63/65/67/69/70/71/73/74/78/79/81/82/97/99/103, ALEC1/15/16/17/27/31/34/36/38/39, APUB33/34/51/71 construites ; 20 à preuve en direct due (voir les lignes).
 - 2026-11-11 — run all plans 99392c, vague 12, lane W12L4 : ALEC2/18/21/26/11, APUB9/40/8/37/12, ADRG23/85/89/31/19/14/83 construites ; 14 à preuve en direct due (voir les lignes).
 - 2026-11-11 — run all plans 99392c, vague 12, lane W12L5 : ADRG72/22/39/40/47/66/87/96/64/42/62/20/84, APUB43/47, ALEC4/30 construites ; 12 à preuve en direct due (voir les lignes).
+- 2026-11-12 — run all plans 99392c, vague 13 (8 lanes, 121 tâches AMSG/ATST/ASUP + APUB3) : construites ; les tâches à preuve en direct restent « code livré, preuve en direct due » (voir les lignes).

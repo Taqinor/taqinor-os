@@ -668,3 +668,4 @@ Contre-visite de clôture `vérifie APRF` du 04/11/2026 (base `e62ca97aa`, dossi
 - 2026-11-11 — run all plans 99392c, vague 12, lane W12L4 : ALEC2/18/21/26/11, APUB9/40/8/37/12, ADRG23/85/89/31/19/14/83 construites ; 14 à preuve en direct due (voir les lignes).
 - 2026-11-11 — run all plans 99392c, vague 12, lane W12L1 : ADRG1/2/3/8/10/17/18/24/32/34/35/36/37/44/45/101, ALEC3/7/12/25/33, APUB32/46/70/72 construites ; 15 à preuve en direct due (voir les lignes).
 - 2026-11-11 — run all plans 99392c, vague 12, lane W12L5 : ADRG72/22/39/40/47/66/87/96/64/42/62/20/84, APUB43/47, ALEC4/30 construites ; 12 à preuve en direct due (voir les lignes).
+- 2026-11-12 — run all plans 99392c, vague 13 (8 lanes, 121 tâches AMSG/ATST/ASUP + APUB3) : construites ; les tâches à preuve en direct restent « code livré, preuve en direct due » (voir les lignes).

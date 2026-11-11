@@ -498,3 +498,4 @@ Contre-visite de clôture n° 2 du groupe APDF (dossier `docs/audits/2026-11-01-
 - 2026-11-10 — ASOC92, ASOC96 — ACCEPTÉES en direct (enregistrement docs/audits/acceptation/ASOC/2026-11-10-c97df310d, PASS) : sondes du dossier d'audit rejouées (repro faux) + sondes C-LIVE-* (Given/When/Then) + écrans Playwright sur une pile privée accept-apfs-asoc au code c97df310d ; traces docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/.
 - 2026-11-10 — AMOT128 (puissances batterie lues avec le devis aux deux appels), AMOT129 (économie TTC imprimée quand servie — rendu seul, règle #4) — run 99392c vague 5.
 - 2026-11-10 — run all plans 99392c, vague 10 (lanes W10A-F) : ADCG113 (violations QUOTE_BUILD d'un devis archivé résolues).
+- 2026-11-12 — run all plans 99392c, vague 13 (8 lanes, 121 tâches AMSG/ATST/ASUP + APUB3) : construites ; les tâches à preuve en direct restent « code livré, preuve en direct due » (voir les lignes).
