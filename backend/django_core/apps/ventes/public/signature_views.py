@@ -694,7 +694,7 @@ def proposal_activate_option(request, token):
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     try:
         ligne_id = int(request.data.get('ligne_id'))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # APUB37 — inf
         return _noindex(Response(
             {'detail': 'Option invalide.'},
             status=status.HTTP_400_BAD_REQUEST))
