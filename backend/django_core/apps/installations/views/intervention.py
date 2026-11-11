@@ -359,8 +359,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'generer_devis_reserve',
             # XFSM7 — lien public « technicien en route ».
             'lien_client',
-            # ZFSM2 — lien public tokenisé du compte-rendu signé.
-            'lien_rapport',
+            # ZFSM2 — lien public tokenisé du compte-rendu signé (APUB6 : coupure).
+            'lien_rapport', 'couper_lien_rapport',
             # ZFSM4 — facturation directe d'une intervention hors contrat.
             'generer_facture',
             # ZFSM5 — devis d'upsell créé sur place depuis l'intervention.
@@ -2210,6 +2210,16 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'path': path,
             'url': request.build_absolute_uri(path),
         })
+
+    @oa.extend_schema(request=None, responses=oa.OBJ)
+    @action(detail=True, methods=['post'], url_path='couper-lien-rapport',
+            permission_classes=[IsResponsableOrAdmin])
+    def couper_lien_rapport(self, request, pk=None):
+        """APUB6 — coupe le lien public du compte-rendu : page, PDF et photos
+        rendent 404 sur l'ancien jeton ; ``lien-rapport`` en pose un neuf."""
+        interv = self.get_object()
+        interv.couper_lien_rapport()
+        return Response({'coupe': True})
 
     # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
     @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})

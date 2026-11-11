@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4961, operations: 7759, components: 3650}
+counts: {paths: 4963, operations: 7761, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1922,6 +1922,7 @@ operations:
 - post /api/django/installations/interventions/{id}/confirmer-rdv/ -> django_installations_interventions_confirmer_rdv_create
 - post /api/django/installations/interventions/{id}/confirmer-tool-return/ -> django_installations_interventions_confirmer_tool_return_create
 - get /api/django/installations/interventions/{id}/consommation/ -> django_installations_interventions_consommation_retrieve
+- post /api/django/installations/interventions/{id}/couper-lien-rapport/ -> django_installations_interventions_couper_lien_rapport_create
 - get /api/django/installations/interventions/{id}/crew-time/ -> django_installations_interventions_crew_time_retrieve
 - post /api/django/installations/interventions/{id}/depart-depot/ -> django_installations_interventions_depart_depot_create
 - post /api/django/installations/interventions/{id}/enregistrer-reverification/ -> django_installations_interventions_enregistrer_reverification_create
@@ -5843,6 +5844,7 @@ operations:
 - post /api/v1/installations/interventions/{id}/confirmer-rdv/ -> v1_installations_interventions_confirmer_rdv_create
 - post /api/v1/installations/interventions/{id}/confirmer-tool-return/ -> v1_installations_interventions_confirmer_tool_return_create
 - get /api/v1/installations/interventions/{id}/consommation/ -> v1_installations_interventions_consommation_retrieve
+- post /api/v1/installations/interventions/{id}/couper-lien-rapport/ -> v1_installations_interventions_couper_lien_rapport_create
 - get /api/v1/installations/interventions/{id}/crew-time/ -> v1_installations_interventions_crew_time_retrieve
 - post /api/v1/installations/interventions/{id}/depart-depot/ -> v1_installations_interventions_depart_depot_create
 - post /api/v1/installations/interventions/{id}/enregistrer-reverification/ -> v1_installations_interventions_enregistrer_reverification_create

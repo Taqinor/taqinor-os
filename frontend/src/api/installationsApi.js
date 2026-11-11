@@ -187,6 +187,9 @@ const installationsApi = {
     api.get(`/installations/interventions/${id}/lien-client/`),
   getLienRapportIntervention: (id) =>
     api.get(`/installations/interventions/${id}/lien-rapport/`),
+  // APUB6 — coupe le lien public du compte-rendu (jeton vidé ; le suivant est neuf).
+  couperLienRapportIntervention: (id) =>
+    api.post(`/installations/interventions/${id}/couper-lien-rapport/`),
   // Les DEUX pages publiques lisent leur payload SANS session (aucun loader
   // d'auth) : le jeton EST l'autorisation.
   getInterventionPublique: (token) =>
