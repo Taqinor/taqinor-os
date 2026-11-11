@@ -125,6 +125,53 @@ class TestCreationRest(QG4Base):
         r = api.delete(f'{URL_PRODUITS}{produit.id}/')
         self.assertIn(r.status_code, (200, 204), r.status_code)
 
+    def test_suppression_suit_stock_supprimer(self):
+        """ADRG44 (C-ADRG-033) — la suppression d'un référentiel stock suit
+        la case ``stock_supprimer`` (en plus du palier administrateur) : Admin
+        Ventes (case cochée) 204 ; Responsable (sans la case) et compte hérité
+        responsable 403, objet intact ; Directeur, Administrateur et hérité
+        admin 204. Mutant : retirer ``HasPermission('stock_supprimer')`` ⇒
+        échec."""
+        from apps.stock.models import Categorie, EmplacementStock, Marque
+        self.assertIn('stock_supprimer', self.roles['Admin Ventes'].permissions)
+        self.assertNotIn('stock_supprimer', self.roles['Responsable'].permissions)
+        n = iter(range(1000))
+
+        def objets():
+            i = next(n)
+            return {
+                'marques': Marque.objects.create(company=self.company, nom=f'M-{i}'),
+                'categories': Categorie.objects.create(company=self.company, nom=f'C-{i}'),
+                'emplacements': EmplacementStock.objects.create(
+                    company=self.company, nom=f'E-{i}', is_principal=False),
+                'produits': Produit.objects.create(
+                    company=self.company, nom=f'P-{i}', sku=f'ADRG44-{i}',
+                    prix_vente=10, quantite_stock=0),
+            }
+
+        def herite(legacy, nom):
+            return User.objects.create_user(
+                username=nom, password='x', company=self.company,
+                role_legacy=legacy)
+        comptes = [
+            (self.user_for('Admin Ventes', 'adrg44_av'), 204),
+            (self.user_for('Responsable', 'adrg44_resp'), 403),
+            (herite('responsable', 'adrg44_her_resp'), 403),
+            (self.user_for('Directeur', 'adrg44_dir'), 204),
+            (self.user_for('Administrateur', 'adrg44_adm'), 204),
+            (herite('admin', 'adrg44_her_adm'), 204),
+        ]
+        for user, attendu in comptes:
+            api = api_for(user)
+            for route, obj in objets().items():
+                with self.subTest(user=user.username, route=route):
+                    r = api.delete(f'/api/django/stock/{route}/{obj.pk}/')
+                    self.assertEqual(r.status_code, attendu,
+                                     getattr(r, 'data', None))
+                    self.assertEqual(
+                        type(obj).objects.filter(pk=obj.pk).exists(),
+                        attendu == 403)
+
 
 class TestImportDonnees(QG4Base):
     """Porte d'entrée n°2 : le commit d'import de données (cible products)."""

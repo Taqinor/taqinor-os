@@ -23,6 +23,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     LectureDuModule, IsAdminRole, HasPermissionOrLegacy,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 
 from ..models import KitProduit
 from ..serializers import KitComposantSerializer, KitProduitSerializer
@@ -101,7 +102,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
             # XMFG18 — `dupliquer` EST une écriture (crée un kit) : même
             # garde que create/update.
             return [HasPermissionOrLegacy('stock_modifier')()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     @extend_schema(parameters=[P('quantite', NUM, False, 'Quantité de kits (défaut 1)', vide=True)],
                    responses=corps('KitExploserReponse', kit_id=serializers.IntegerField(),

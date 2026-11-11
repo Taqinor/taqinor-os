@@ -6,6 +6,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Categorie
 from ..serializers import CategorieSerializer
 from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
+from ..permissions import PeutSupprimerStock  # ADRG44
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -41,7 +42,7 @@ class CategorieViewSet(CompanyScopedModelViewSet):
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            return [PeutSupprimerStock()]  # ADRG44
         return [IsAdminRole()]
 
     def destroy(self, request, *args, **kwargs):

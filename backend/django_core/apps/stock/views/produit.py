@@ -417,14 +417,13 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 'bulk', 'rebuter', 'decoupes', 'photo']:
             # XSTK16/ADRG45 — rebut et découpe sont des MOUVEMENTS (`stock_mouvement`) ; `get_permissions`
             # prime sur le `permission_classes` de l'@action (sinon repli IsAdminRole).
-            # APX18 — `photo` (poser/retirer la photo produit) EST une
-            # écriture catalogue : même garde `stock_modifier`. Sans ce cas
-            # explicite, elle retomberait sur IsAdminRole — un responsable
-            # stock ne pourrait plus photographier son catalogue.
+            # APX18 — `photo` (poser/retirer la photo produit) EST une écriture catalogue :
+            # même garde `stock_modifier` (sinon repli IsAdminRole, photo impossible).
             return [HasPermissionOrLegacy('stock_mouvement' if self.action in ('rebuter', 'decoupes')
                                           else 'stock_modifier')()]
-        elif self.action in ('destroy', 'force_delete'):
-            return [IsAdminRole()]
+        elif self.action in ('destroy', 'force_delete'):  # ADRG44 : destroy suit `stock_supprimer`
+            from ..permissions import PeutSupprimerStock
+            return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]
         elif self.action == 'emplacements':
             # AAPV74 (rejeu 08/11) — la ventilation par emplacement alimente le
             # dialogue « Transférer » : même droit que le transfert lui-même

@@ -11,6 +11,7 @@ from ..utils.params import MOTIF_IDS, choix_ou_400, corps_objet, etiquette_optio
 from ..models import Produit, EmplacementStock, TransfertStock
 from ..serializers import EmplacementStockSerializer, TransfertStockSerializer
 from authentication.permissions import LectureDuModule, IsAdminRole
+from ..permissions import PeutSupprimerStock  # ADRG44
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             return [LectureDuModule()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         """NTWMS19 — filtre `?type_proprietaire=interne|chez_tiers|de_tiers`

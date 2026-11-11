@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin
@@ -83,7 +84,7 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         # Filtrage MANUEL (aucun DjangoFilterBackend branché ici).

@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -91,7 +92,7 @@ class PlanEchantillonnageViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()

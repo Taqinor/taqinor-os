@@ -6,6 +6,7 @@ from rest_framework import serializers
 from authentication.permissions import (
     IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..openapi_helpers import ID_OU_VIDE, P, STR
@@ -58,7 +59,7 @@ class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         # Filtrage MANUEL : aucun DjangoFilterBackend n'est branché ici, donc

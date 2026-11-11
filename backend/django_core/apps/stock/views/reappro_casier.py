@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 from core.champs_stricts import IdInconnu404Mixin, TexteLie
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import INT, P, STR
@@ -67,7 +68,7 @@ class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         # Filtrage MANUEL (aucun DjangoFilterBackend branché ici).
@@ -97,7 +98,7 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['executer']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()

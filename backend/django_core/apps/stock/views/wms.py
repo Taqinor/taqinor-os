@@ -28,6 +28,7 @@ from ..erreurs_achats import (
 from authentication.permissions import (
     IsAnyRole, LectureDuModule, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 
 from ..models_wms import (
     AlerteRappel, BlocageQualite, ExpeditionTransporteur, LigneRetourClient, MouvementRebut,
@@ -175,7 +176,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         if self.action in WRITE_ACTIONS + [
                 'lancer', 'prelever', 'configurer_liberation']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -300,7 +301,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 'sceller', 'ajouter_ligne', 'controler_scan', 'deplacer',
                 'import_asn']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -582,7 +583,7 @@ class QuaiViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['planning']:
             return [LectureDuModule()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -635,7 +636,7 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -706,7 +707,7 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['generer_etiquette']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     @extend_schema(responses={(200, 'application/pdf'): bytes})
     @action(detail=True, methods=['get'], url_path='cmr-pdf',
@@ -844,7 +845,7 @@ class AlerteRappelViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['cloturer']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -921,7 +922,7 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def list(self, request, *args, **kwargs):
         from ..services import assurer_plans_comptage_tournant
@@ -961,7 +962,7 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
             return [IsResponsableOrAdmin()]
         if self.action in ['lever', 'lever_quarantaine_bin']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1063,7 +1064,7 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['ajouter_unite']:
             return [IsResponsableOrAdmin()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
         qs = super().get_queryset()
