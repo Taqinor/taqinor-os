@@ -16,6 +16,7 @@ from datetime import date
 
 from apps.crm.exports import build_xlsx_response
 from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -140,7 +141,7 @@ _TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE = inline_serializer(
     responses={(200, 'application/json'): _TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('installations'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def technicien_scorecard(request):
     """XFSM17 — Scorecard technicien (`insights/technicien-scorecard/`).

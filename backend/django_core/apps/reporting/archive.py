@@ -205,7 +205,7 @@ _ARCHIVE_ARCHIVE_CHANTIER_REPONSE = inline_serializer('ArchiveArchiveChantierRep
     responses={(200, 'application/json'): _ARCHIVE_ARCHIVE_CHANTIER_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('installations'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def archive_chantier(request, pk):
     """Tous les documents d'un chantier. Lecture seule, scopé société."""

@@ -89,7 +89,7 @@ _INSIGHTS_RECURRING_REVENUE_REPONSE = inline_serializer('InsightsRecurringRevenu
     responses={(200, 'application/json'): _INSIGHTS_RECURRING_REVENUE_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('sav'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def recurring_revenue(request):
     """N49 — revenu récurrent des contrats de maintenance actifs.
