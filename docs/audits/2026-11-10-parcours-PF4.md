@@ -153,7 +153,7 @@ Porte : 0 réfuté en entier, 2 en partie / 65 retenus · 9 gravités revues · 
 
 ## 9. Coût et routage
 Coût : H0 S0 O19 F0 · jetons sous-agents ≈ 9 M · tâches 80 (M0 0 M1 38 M2 0 M3 30 GATED 12).
-Routage : ANALYSE 13 · CHANTIERS 9 · STOCK 9 · SAV 8 · DOCUMENTS 7 · FACTURATION 7 · LEAD 6 · DEVIS 4 · PARAMETRES 4 · TRANSVERSE 4 · CALEPINAGE 3 · SECURITE 3 · DEPLOY 2 (`docs/plans/PLAN_AUDIT_<X>.md`) · acceptation ADRG105 · PR #NUM_PR.
+Routage : ANALYSE 13 · CHANTIERS 9 · STOCK 9 · SAV 8 · DOCUMENTS 7 · FACTURATION 7 · LEAD 6 · DEVIS 4 · PARAMETRES 4 · TRANSVERSE 4 · CALEPINAGE 3 · SECURITE 3 · DEPLOY 2 (`docs/plans/PLAN_AUDIT_<X>.md`) · acceptation ADRG105 · PR #1360.
 Rapport : deux défauts graves, chacun confirmé par deux lectures indépendantes ; leurs deux sondes exigent une pile et ne sont pas jouées. Les défauts S2 ont chacun une sonde hôte jouée le 11/11 (défaut reproduit).
 - Portail client (C-ADRG-053), exploitable aujourd'hui : un commercial peut rattacher l'accès portail du client A au client B ; le lien de A affiche alors le relevé de compte de B. Il peut aussi rouvrir un accès coupé par l'administrateur. Les 3 comptes commerciaux réels le peuvent ; 1 compte portail est actif. → ADRG96, ADRG97 (P0).
 - Import de factures (C-ADRG-001), pas exploitable aujourd'hui : un rôle sans droit de vente peut, par l'import de données, consommer un numéro de la série légale des factures, qui ne se supprime plus. Aucun compte Technicien ou RH n'existe et aucun import n'a jamais été fait. → ADRG61, ADRG62 (P0).

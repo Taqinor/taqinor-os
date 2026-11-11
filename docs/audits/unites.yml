@@ -901,7 +901,7 @@ unites:
     groupe: ADRG
     plan: docs/plans/PLAN_AUDIT_SECURITE.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
-    pr: 0
+    pr: 1360
     date: 2026-11-10
     dossier: docs/audits/2026-11-10-parcours-PF4.md
     notes: "Onzième audit de PARCOURS (L2, 10/11/2026, base 7e845af, fraîcheur 29787bc) : environ 1 650 routes d'écriture et d'export et gestes d'écran confrontés au code de la grille des rôles ; 65 constats, tous lus (aucune pile ne servait main : aucune sonde jouée, aucun test exécuté ; rôles livrés calculés sur le registre, refaits par chaque vérificateur) ; gravités 2 S1, 24 S2, 39 S3. S1 : un commercial lie l'accès portail du client A au client B (exploitable aujourd'hui : 3 comptes commerciaux réels, 1 compte portail actif) ; l'import de factures consomme un numéro légal pour un rôle sans droit de vente (non exploitable aujourd'hui : aucun compte visé, aucun import). Deux sondes écrites, non rejouées (ADRG105). D-ADRG-1..14 ouvertes. Tâches ADRG1-105 (80 posées : ANALYSE 13, STOCK 9, CHANTIERS 9, SAV 8, FACTURATION 7, DOCUMENTS 7, LEAD 6, DEVIS 4, PARAMETRES 4, TRANSVERSE 4, CALEPINAGE 3, SECURITE 3, DEPLOY 3)."
