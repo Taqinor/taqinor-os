@@ -35,6 +35,15 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     useSelector(s => s.auth.role))
   // ASEC64 — gestes d'argent : le droit `encaisser`, comme le serveur.
   const peutEncaisser = useHasPermission('encaisser')
+  // ADRG18 — les autres gestes de la ligne suivent aussi le code de leur route ;
+  // compte hérité sans rôle fin : le palier (repli serveur `HasPermissionOrLegacy`).
+  const roleFin = useSelector(s => (s.auth.permissions || []).length > 0)
+  const viaModifier = useHasPermission('ventes_modifier')
+  const viaPdf = useHasPermission('ventes_pdf')
+  const viaExport = useHasPermission('ventes_export')
+  const peutModifier = roleFin ? viaModifier : canManage
+  const peutPdf = roleFin ? viaPdf : canManage
+  const peutExporter = roleFin ? viaExport : canManage
   const [wir183Busy, setWir183Busy] = useState(false)
   const erreurServeur = (err, repli) =>
     toast.error(err?.response?.data?.detail ?? repli)
@@ -342,6 +351,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
 
   return {
     canManage, peutEncaisser, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
+    peutModifier, peutPdf, peutExporter,
     MOTIFS_ABANDON, abandonTarget, setAbandonTarget, abandonMotif, setAbandonMotif,
     openAbandonSolde, handleAbandonnerSolde,
     retourTarget, setRetourTarget, retourMotif, setRetourMotif, retourRestocker,

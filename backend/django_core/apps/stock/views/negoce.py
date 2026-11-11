@@ -150,7 +150,11 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         if self.action in WRITE_ACTIONS + ['declarer_consommation',
                                            'export_xlsx']:
             return [IsResponsableOrAdmin(), *droits_de_la_grille(
-                self, export_xlsx=[DroitDeLaGrille('stock_export')])]  # ASEC92
+                self, export_xlsx=[DroitDeLaGrille('stock_export')],  # ASEC92
+                # ADRG34 — déclarer = créer une facture brouillon : `ventes_creer`.
+                declarer_consommation=[DroitDeLaGrille('ventes_creer')],
+                # ADRG35 — poser/modifier un dépôt sort du stock : `stock_mouvement`.
+                **dict.fromkeys(WRITE_ACTIONS, [DroitDeLaGrille('stock_mouvement')]))]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -364,8 +368,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
 class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
                                      CompanyScopedRelationsMixin,
                                      ChampsTexteBooleenStricts, serializers.ModelSerializer):
-    # ERR-STK-PRIX-ACHAT-SUITE — seuil de CA d'achat et montant fixe.
-    champs_montants_achat = ('seuil_ca_achat', 'montant_fixe')
+    # ERR-STK-PRIX-ACHAT-SUITE — seuil de CA d'achat et montant fixe ; ALEC7 — le taux aussi.
+    champs_montants_achat = ('seuil_ca_achat', 'taux_pct', 'montant_fixe')
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     avoir_deja_genere = serializers.BooleanField(read_only=True)
@@ -435,7 +439,9 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action == 'calcul':
             # ERR-STK-PRIX-ACHAT-SUITE — CA d'achat et montant dû : prix_achat_voir.
             return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
-        if self.action in READ_ACTIONS + WRITE_ACTIONS:
+        if self.action in WRITE_ACTIONS:  # ADRG32 — écrire un accord RFA = « commander »
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('achats_commander')()]
+        if self.action in READ_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 

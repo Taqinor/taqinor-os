@@ -5,7 +5,7 @@ import { formatMAD } from '../../lib/format'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import useVoitPrixAchat from '../../features/stock/useVoitPrixAchat'
+import useVoitPrixAchat, { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, DataTable, Badge, Input, FormField,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -81,6 +81,8 @@ function DocumentsExpirants() {
 
 // ── Liste de conformité + export Excel ──────────────────────────────────────
 function ListeConformite({ voitMontants }) {
+  // ADRG24 — l'export serveur exige `stock_export` (ASEC92) ; compte hérité : repli serveur.
+  const peutExporter = usePermissionAchats('stock_export')
   const [debut, setDebut] = useState('')
   const [fin, setFin] = useState('')
   const [rows, setRows] = useState(null)
@@ -154,9 +156,11 @@ function ListeConformite({ voitMontants }) {
         <FormField label="Au" htmlFor="cf-fin">
           <Input id="cf-fin" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
         </FormField>
-        <Button type="button" variant="outline" loading={export_} onClick={exporter}>
-          <Download className="size-4" aria-hidden="true" /> Exporter en Excel
-        </Button>
+        {peutExporter && (
+          <Button type="button" variant="outline" loading={export_} onClick={exporter}>
+            <Download className="size-4" aria-hidden="true" /> Exporter en Excel
+          </Button>
+        )}
       </div>
       <AlerteErreurStock error={error} />
       <DataTable

@@ -417,8 +417,10 @@ def render_bcf_pdf_by_id(bc_id):
     PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR (le jeton l'y
     autorise) — il n'est jamais servi à un client final."""
     bcf = get_bcf_by_id(bc_id)
-    if bcf is None:
+    if bcf is None or bcf.statut == bcf.Statut.ANNULE:  # APUB32 : annulé => 404
         return None, None
+    if compte_fournisseur_portail_actif(bcf.company_id, bcf.fournisseur_id) is False:
+        return None, None  # APUB72 : accès portail fermé (révoqué ou coupé)
     from .utils.pdf_fournisseur import generate_bcf_pdf
     pdf_bytes = generate_bcf_pdf(bcf)
     from apps.ventes.utils.filenames import document_filename
@@ -1593,13 +1595,23 @@ def bcf_portail_fournisseur(company, fournisseur_id):
     return lignes
 
 
+def fournisseur_coupe_du_portail(fournisseur):
+    """APUB70 (ASTK179) — LA règle « fournisseur coupé du portail » (porte à
+    jeton ET compte) : absent, archivé, bloqué « total » ou candidature rejetée."""
+    from .models import Fournisseur
+    return (fournisseur is None or fournisseur.is_archived
+            or fournisseur.statut == Fournisseur.Statut.BLOQUE_TOTAL
+            or fournisseur.statut_validation == Fournisseur.StatutValidation.REJETE)
+
+
 def compte_fournisseur_portail_actif(company_id, fournisseur_id):
     """NTPRT3 — l'accès portail de ce fournisseur est-il OUVERT ?
 
     Trois réponses distinctes, et la distinction compte :
 
     * ``True``  — un compte existe et son accès est ouvert ;
-    * ``False`` — un compte existe et son accès a été RÉVOQUÉ ;
+    * ``False`` — accès RÉVOQUÉ (compte fermé) OU fournisseur coupé (APUB70 :
+      archivé, bloqué « total », candidature rejetée — avec ou sans compte) ;
     * ``None``  — aucun compte enregistré. Ce n'est PAS une révocation : un
       fournisseur qui n'a jamais eu de compte portail ne doit pas être traité
       comme un accès retiré (le chemin tokenisé XPUR22 reste le sien).
@@ -1610,8 +1622,12 @@ def compte_fournisseur_portail_actif(company_id, fournisseur_id):
     if not company_id or not fournisseur_id:
         return None
 
-    from .models import CompteFournisseurPortail
+    from .models import CompteFournisseurPortail, Fournisseur
 
+    fournisseur = Fournisseur.objects.filter(
+        company_id=company_id, pk=fournisseur_id).first()
+    if fournisseur is not None and fournisseur_coupe_du_portail(fournisseur):
+        return False
     etat = (CompteFournisseurPortail.objects
             .filter(company_id=company_id, fournisseur_id=fournisseur_id)
             .values_list('actif', flat=True)

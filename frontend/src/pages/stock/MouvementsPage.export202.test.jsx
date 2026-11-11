@@ -47,10 +47,10 @@ beforeEach(() => {
   installJsdomPolyfills()
 })
 
-function renderPage() {
+function renderPage(permissions = []) {
   const store = configureStore({
     reducer: {
-      auth: (s = { role: 'admin', permissions: [] }) => s,
+      auth: (s = { role: 'admin', permissions }) => s,
       stock: (s = { mouvements: [], produits: [], loading: false, error: null }) => s,
     },
   })
@@ -85,5 +85,13 @@ describe('APRF34 — export des mouvements : 202 = en préparation', () => {
     fireEvent.click(screen.getByRole('button', { name: /Exporter Excel/ }))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(blob, 'mouvements-stock.xlsx'))
     expect(screen.queryByText(/Export en préparation/)).toBeNull()
+  })
+
+  it('ADRG24 — rôle fin sans `stock_export` : pas d’Exporter Excel ; avec le code : présent', () => {
+    const { unmount } = renderPage(['stock_voir', 'stock_modifier', 'stock_mouvement'])
+    expect(screen.queryByRole('button', { name: /Exporter Excel/ })).toBeNull()
+    unmount()
+    renderPage(['stock_voir', 'stock_mouvement', 'stock_export'])
+    expect(screen.getByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
   })
 })

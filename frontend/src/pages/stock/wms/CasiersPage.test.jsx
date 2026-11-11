@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { makeAuthStore, renderStockPage } from '../stockPage.testHelpers'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -37,7 +37,9 @@ function brancherLectures({ taches = TACHES } = {}) {
   })
 }
 
-const monter = () => render(<MemoryRouter><CasiersPage /></MemoryRouter>)
+// ADRG35 — les gestes d'entrepôt suivent `stock_mouvement` : le store de test le porte.
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement']) =>
+  renderStockPage(CasiersPage, makeAuthStore({ permissions }))
 
 beforeEach(() => { vi.clearAllMocks(); brancherLectures() })
 afterEach(() => { cleanup() })

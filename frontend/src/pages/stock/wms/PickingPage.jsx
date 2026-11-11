@@ -4,6 +4,7 @@ import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import pickingApi from '../../../features/stock/api/pickingApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 import TableauDefilant from '../../../ui/TableauDefilant'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 
 /* ASTK217 — Picking : créer une vague, la lancer, configurer sa libération,
    prélever ligne par ligne, tâche-retour ; onglets Comptages tournants
@@ -43,7 +44,9 @@ function Onglets({ onglet, onChange }) {
 
 function LigneVague({ vague, ligne, onPrelever, occupe }) {
   const [qte, setQte] = useState('')
-  const lancee = vague.statut === 'lancee'
+  // ADRG35 — prélever est un mouvement : `stock_mouvement`, comme le serveur.
+  const peut = usePeutEcrireStock('stock_mouvement')
+  const lancee = vague.statut === 'lancee' && peut
   return (
     <tr className="border-t border-[var(--border)]">
       <td className="px-2 py-1.5 text-sm">{ligne.produit_nom}</td>
@@ -73,13 +76,15 @@ function LigneVague({ vague, ligne, onPrelever, occupe }) {
 function CarteVague({ vague, geste, occupe }) {
   const [mode, setMode] = useState(vague.mode_liberation)
   const [seuil, setSeuil] = useState(vague.seuil_lignes ?? '')
+  const peut = usePeutEcrireStock('stock_mouvement')  // ADRG35
+  const brouillon = vague.statut === 'brouillon' && peut
   return (
     <div className="rounded-md border border-[var(--border)] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
         <strong>{vague.reference}</strong>
         <span>{STATUTS[vague.statut] ?? vague.statut}</span>
         <span className="text-[var(--muted-foreground)]">{vague.nb_lignes} ligne(s)</span>
-        {vague.statut === 'brouillon' && (
+        {brouillon && (
           <Button size="sm" disabled={occupe}
             onClick={() => geste(() => pickingApi.lancerVague(vague.id), 'Lancement impossible.')}>
             Lancer la vague
@@ -102,7 +107,7 @@ function CarteVague({ vague, geste, occupe }) {
           ))}
         </tbody>
       </TableauDefilant>
-      {vague.statut === 'brouillon' && (
+      {brouillon && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Mode de libération</span>
@@ -137,6 +142,7 @@ function CarteVague({ vague, geste, occupe }) {
 }
 
 export default function PickingPage() {
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')  // ADRG35
   const [onglet, setOnglet] = useState('vagues')
   const [vagues, setVagues] = useState([])
   const [produits, setProduits] = useState([])
@@ -249,6 +255,7 @@ export default function PickingPage() {
 
       {onglet === 'vagues' && (
         <>
+          {peutMouvement && (
           <Carte titre="Nouvelle vague">
             <div className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col gap-1 text-xs">
@@ -271,6 +278,7 @@ export default function PickingPage() {
               </ul>
             )}
           </Carte>
+          )}
 
           <Carte titre="Vagues">
             {vagues.length === 0 ? <Vide>Aucune vague.</Vide> : (

@@ -18,6 +18,8 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from ..permissions import PeutSupprimerStock  # ADRG36 (règle ADRG44)
+from apps.roles.permissions import DroitDeLaGrille  # ADRG36
 from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import BINARY, ID_OU_VIDE, OBJET, P, choix_ou_vide, corps
@@ -106,7 +108,9 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
             return [IsResponsableOrAdmin(), PeutValiderDossierFournisseur()]
         if self.action in ('list', 'retrieve'):
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        if self.action == 'destroy':  # ADRG36 — suppression : règle stock (ADRG44)
+            return [PeutSupprimerStock()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG36
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -220,7 +224,9 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'telecharger'):
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        if self.action == 'destroy':  # ADRG36 — suppression : règle stock (ADRG44)
+            return [PeutSupprimerStock()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG36
 
     def get_queryset(self):
         qs = super().get_queryset()

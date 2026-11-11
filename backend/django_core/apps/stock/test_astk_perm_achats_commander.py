@@ -137,3 +137,68 @@ class PermAchatsCommanderTests(TestCase):
                 rep = api.post(f'{MODELES}{self.modele.pk}/generer/', {},
                                format='json')
                 self.assertEqual(rep.status_code, 201, rep.data)
+
+    def test_rfa_et_budgets_exigent_achats_commander(self):
+        """ADRG32 (C-ADRG-006) — écrire un accord RFA ou une enveloppe de
+        budget d'achat exige ``achats_commander`` : les cinq rôles livrés sans
+        le code reçoivent 403 « Droit … manquant (achats_commander) », rien
+        n'est créé ni modifié ; Directeur, Administrateur et compte hérité
+        responsable : 201/200. Mutant : retirer la garde des budgets ⇒ échec."""
+        from datetime import date
+
+        from apps.stock.models import AccordRFAFournisseur, BudgetDepartement
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            if nom in self.users:
+                return self.users[nom]
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'adrg32-{nom.lower().replace(" ", "-")}',
+                password='x', company=self.company, role=role)
+        accord = AccordRFAFournisseur.objects.create(
+            company=self.company, fournisseur=self.fournisseur,
+            periode_debut=date(2026, 1, 1), periode_fin=date(2026, 12, 31),
+            seuil_ca_achat=Decimal('50000'), taux_pct=Decimal('3'))
+        budget = BudgetDepartement.objects.create(
+            company=self.company, annee=2030, montant_alloue=Decimal('1000'))
+        rfa = '/api/django/stock/accords-rfa-fournisseur/'
+        bud = '/api/django/stock/budgets-departement/'
+
+        def gestes(api, n):
+            fournisseur = Fournisseur.objects.create(
+                company=self.company, nom=f'F-ADRG32-{n}')
+            return {
+                'rfa_post': api.post(rfa, {
+                    'fournisseur': fournisseur.id, 'periode_debut': '2026-01-01',
+                    'periode_fin': '2026-12-31', 'seuil_ca_achat': '1000',
+                    'taux_pct': '3'}, format='json'),
+                'rfa_patch': api.patch(f'{rfa}{accord.pk}/', {'note': f'n{n}'},
+                                       format='json'),
+                'budget_post': api.post(bud, {
+                    'periodicite': 'annuelle', 'annee': 2040 + n, 'mois': 0,
+                    'montant_alloue': '500.00'}, format='json'),
+                'budget_patch': api.patch(f'{bud}{budget.pk}/', {'note': f'n{n}'},
+                                          format='json'),
+            }
+        for n, nom in enumerate(('Commercial responsable', 'Technicien responsable',
+                                 'Technicien', 'Responsable', 'Admin Ventes')):
+            self.assertNotIn('achats_commander', perms[nom])
+            avant = (AccordRFAFournisseur.objects.count(),
+                     BudgetDepartement.objects.count())
+            for geste, rep in gestes(_api(compte(nom)), n).items():
+                with self.subTest(role=nom, geste=geste):
+                    self.assertEqual(rep.status_code, 403, rep.data)
+                    self.assertIn('achats_commander', str(rep.data['detail']))
+            self.assertEqual((AccordRFAFournisseur.objects.count(),
+                              BudgetDepartement.objects.count()), avant)
+            accord.refresh_from_db()
+            budget.refresh_from_db()
+            self.assertEqual((accord.note, budget.note), ('', ''))
+        for n, user in enumerate((compte('Directeur'), self.users['Administrateur'],
+                                  self.legacy), start=10):
+            for geste, rep in gestes(_api(user), n).items():
+                with self.subTest(user=user.username, geste=geste):
+                    self.assertIn(rep.status_code, (200, 201), rep.data)

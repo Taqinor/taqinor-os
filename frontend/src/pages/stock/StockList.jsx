@@ -720,6 +720,9 @@ export default function StockList() {
   const canWriteViaPerm = useHasPermission('stock_modifier')
   const canWriteViaRole = useIsAdminOrResponsable()
   const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  // ADRG24 — l'export serveur de la sélection exige `stock_export` (ASEC70).
+  const canExportViaPerm = useHasPermission('stock_export')
+  const canExport = hasFinePermissions ? canExportViaPerm : canWriteViaRole
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
   const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
   const canDelete = useIsAdmin()
@@ -1414,7 +1417,7 @@ export default function StockList() {
           labelsBusy={labelsBusy}
           kanbanBusy={kanbanBusy}
           onAction={runBulk}
-          onExport={exportSelection}
+          onExport={canExport ? exportSelection : null}
           onPrintLabels={printLabels}
           onPrintKanban={filterEmplacement ? printKanban : null}
           onClear={clearSelection}

@@ -530,6 +530,19 @@ def peut_encaisser(user) -> bool:
         SimpleNamespace(user=user, method='POST'), None)
 
 
+def peut_ecrire_la_vente(user) -> bool:
+    """ADRG17 — écriture ventes (``IsResponsableOrAdmin`` seul, module
+    ventes) : PDF, envoyer, facturer ; même prédicat que les routes."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    from types import SimpleNamespace
+
+    from authentication.permissions import IsResponsableOrAdmin
+    return IsResponsableOrAdmin().has_permission(
+        SimpleNamespace(user=user, method='POST'),
+        SimpleNamespace(permission_module='ventes'))
+
+
 def _nature(facture, ids) -> str:
     if facture.bon_commande_id:
         return 'bc'
@@ -538,7 +551,8 @@ def _nature(facture, ids) -> str:
     return facture.type_facture
 
 
-def _facture_etat(facture, ids, palier, actionnable, encaisse=False) -> dict:
+def _facture_etat(facture, ids, palier, actionnable, encaisse=False,
+                  ecrit=False) -> dict:
     from core.numbering import est_reference_provisoire
     statut = facture.statut
     emise = statut in STATUTS_EMIS
@@ -562,8 +576,8 @@ def _facture_etat(facture, ids, palier, actionnable, encaisse=False) -> dict:
         'paiements': paiements,
         'peut': {
             'emettre': brouillon and actionnable,
-            'pdf': True,
-            'envoyer': emise,
+            'pdf': ecrit,  # ADRG17
+            'envoyer': emise and ecrit,
             'encaisser': encaisse and statut in ('emise', 'en_retard')
             and _d(facture.montant_du) > 0,  # ERR-ACC-ENCAISSER-OFFERT-REFUSE
             'annuler': emise and palier and (encaisse or est_reference_provisoire(facture.reference)),  # ASEC90
@@ -626,7 +640,7 @@ def _raison_bloquee(devis, tete, revision, brouillon_tranche) -> str:
             'brouillon : émettez-la.')
 
 
-def _gestes_vente(plan, actionnable, palier) -> tuple:
+def _gestes_vente(plan, actionnable, palier, ecrit=False) -> tuple:
     """(prochaine_action, prochaines tranches à faire, ``peut``)."""
     tranches = plan['tranches']
     a_venir = [t for t in tranches
@@ -639,7 +653,7 @@ def _gestes_vente(plan, actionnable, palier) -> tuple:
         prochaine = str(brouillon['type'])
     else:
         prochaine = str(a_venir[0]['type']) if a_venir else 'aucune'
-    libre = actionnable and brouillon is None
+    libre = actionnable and ecrit and brouillon is None  # ADRG17
     premiere = tranches[0] if tranches else None
     emises = any(f.statut in STATUTS_EMIS for f, _r in plan['factures_parts'])
     # VNT62 / VNT82 (nocturne #726) — le brouillon d'acompte AUTOMATIQUE de
@@ -647,7 +661,7 @@ def _gestes_vente(plan, actionnable, palier) -> tuple:
     # (même brouillon, AMET4, ``_facturer_acompte``). Un autre brouillon
     # (tranche intermédiaire, solde) ferme toujours le geste.
     acompte_en_brouillon = bool(
-        actionnable and brouillon is not None and premiere is not None
+        actionnable and ecrit and brouillon is not None and premiere is not None
         and brouillon['cle'] == premiere['cle']
         and str(premiere['type']) == 'acompte')
     peut = {
@@ -685,10 +699,11 @@ def etat_vente(devis, user=None) -> dict:
     chaîne (+ BC + part de consolidée) ; ``peut`` = gestes autorisés pour
     ``user`` (palier :func:`peut_gerer_la_vente`) ; une version remplacée ou
     une révision en cours ferme tous les gestes de facturation."""
-    return _etat_vente(devis, peut_gerer_la_vente(user), peut_encaisser(user))
+    return _etat_vente(devis, peut_gerer_la_vente(user), peut_encaisser(user),
+                       peut_ecrire_la_vente(user))
 
 
-def _etat_vente(devis, palier, encaisse=False) -> dict:
+def _etat_vente(devis, palier, encaisse=False, ecrit=False) -> dict:
     """:func:`etat_vente` pour un palier déjà résolu (une fois par liste)."""
     chaine = chaine_vente(devis)
     tete, revision = _tete_de_vente(chaine)
@@ -696,7 +711,7 @@ def _etat_vente(devis, palier, encaisse=False) -> dict:
     ids = {d.pk for d in chaine}
     est_tete = tete.pk == devis.pk
     actionnable = est_tete and revision is None and tete.statut == 'accepte'
-    prochaine, a_venir, peut = _gestes_vente(plan, actionnable, palier)
+    prochaine, a_venir, peut = _gestes_vente(plan, actionnable, palier, ecrit)
     brouillon = next((t for t in plan['tranches']
                       if t['statut'] == 'brouillon'), None)
     avoir = _avoir_revision_a_confirmer(tete, plan) if (
@@ -709,7 +724,8 @@ def _etat_vente(devis, palier, encaisse=False) -> dict:
             'confirmez-le pour ramener la facturation au prix convenu.')]))
     return {
         **_montants_vente(plan),
-        'factures': [_facture_etat(f, ids, palier, actionnable and encaisse, encaisse)
+        'factures': [_facture_etat(f, ids, palier, actionnable and encaisse,
+                                   encaisse, ecrit)
                      for f, _r in plan['factures_parts']],
         'versions': [{'id': d.pk, 'reference': d.reference,
                       'version': d.version, 'statut': d.statut,
@@ -742,11 +758,12 @@ def etat_vente_map(rows, user=None, soldes=None) -> dict:
     from apps.ventes.utils.echeancier import solde_devis
     rows = list(rows)
     palier, encaisse = peut_gerer_la_vente(user), peut_encaisser(user)
+    ecrit = peut_ecrire_la_vente(user)
     with ventes_prechargees(rows):
         if soldes is not None:
             soldes.update({d.pk: {k: str(v) for k, v in solde_devis(d).items()}
                            for d in rows})
-        return {d.pk: _etat_vente(d, palier, encaisse) for d in rows}
+        return {d.pk: _etat_vente(d, palier, encaisse, ecrit) for d in rows}
 
 
 # ── Le lot d'une liste de devis (VNT68) ──────────────────────────────────────

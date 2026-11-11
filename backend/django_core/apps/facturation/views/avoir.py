@@ -83,6 +83,8 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [IsAdminRole()]
         if self.action == 'dgi_export':  # AARG41 — comme la facture (ASEC50)
             return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
+        if self.action == 'telecharger_pdf':  # ADRG10 — « Générer PDF »
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_pdf')()]
         return [IsResponsableOrAdmin()]
 
     @staticmethod

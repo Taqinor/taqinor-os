@@ -219,7 +219,9 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
                               ['devis__created_by'])
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['pdf']:
+        if self.action == 'pdf':  # ADRG10 — « Générer PDF »
+            return [LectureFactures(), DroitDeLaGrille('ventes_pdf')()]
+        if self.action in READ_ACTIONS:
             return [LectureFactures()]
         elif self.action in WRITE_ACTIONS + [
             'confirmer', 'marquer_livre', 'annuler', 'creer_facture',
@@ -772,7 +774,7 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
                     bc.devis, user=request.user,
                     motif='Remplacé par la facture du bon de commande')
             facture = create_provisoire(_create_facture)
-        data = FactureSerializer(facture).data
+        data = FactureSerializer(facture, context={'request': request}).data
         # FG51 — avertissement DOUX (jamais bloquant) : on facture la livraison
         # de matériel sans preuve de livraison (PV/signature). Le facturier voit
         # le message mais la facture est bien créée (201).

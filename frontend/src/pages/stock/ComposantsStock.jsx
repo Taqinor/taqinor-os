@@ -40,11 +40,14 @@ export function BoutonsModifierSupprimer({ onModifier, onSupprimer }) {
       <IconButton size="sm" variant="ghost" label="Modifier" onClick={onModifier}>
         <Pencil className="size-4" aria-hidden="true" />
       </IconButton>
-      <IconButton size="sm" variant="ghost" label="Supprimer"
-                  className="text-destructive hover:text-destructive"
-                  onClick={onSupprimer}>
-        <Trash2 className="size-4" aria-hidden="true" />
-      </IconButton>
+      {/* ADRG37 — « Supprimer » seulement si l'écran le fournit (droit de suppression). */}
+      {onSupprimer && (
+        <IconButton size="sm" variant="ghost" label="Supprimer"
+                    className="text-destructive hover:text-destructive"
+                    onClick={onSupprimer}>
+          <Trash2 className="size-4" aria-hidden="true" />
+        </IconButton>
+      )}
     </>
   )
 }

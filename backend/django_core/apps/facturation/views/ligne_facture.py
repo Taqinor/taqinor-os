@@ -41,7 +41,10 @@ class LigneFactureViewSet(CompanyScopedModelViewSet):
         qs = viewsets.ModelViewSet.get_queryset(self)
         user = self.request.user
         if user.company_id:
-            return qs.filter(facture__company=user.company)
+            # ALEC25 — portée de la facture (même champ que FactureViewSet).
+            from core.scoping import scope_queryset
+            return scope_queryset(qs.filter(facture__company=user.company),
+                                  user, ['facture__created_by'])
         if user.is_superuser:
             return qs
         return qs.none()

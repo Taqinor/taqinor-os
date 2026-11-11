@@ -175,6 +175,68 @@ class BcfPublicPdfTests(BcfSendBase):
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertIn('noindex', resp['X-Robots-Tag'])
 
+    def test_bcf_annule_404(self):
+        """APUB32 (C-APUB-013) — un BCF annulé ne se lit plus par son lien
+        public : 200 PDF tant qu'il est envoyé, 404 neutre (noindex) une fois
+        annulé. Mutant : retirer le test de statut ⇒ échec."""
+        self.bcf.statut = BonCommandeFournisseur.Statut.ENVOYE
+        self.bcf.save(update_fields=['statut'])
+        link = ShareLink.for_bon_commande_fournisseur(self.bcf)
+        public = APIClient()
+        url = f'/api/django/public/bcf/{link.token}/'
+        resp = public.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.bcf.statut = BonCommandeFournisseur.Statut.ANNULE
+        self.bcf.save(update_fields=['statut'])
+        resp = public.get(url)
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('noindex', resp['X-Robots-Tag'])
+
+    def test_acces_fournisseur_ferme_coupe_le_pdf_public(self):
+        """APUB72 (C-APUB-037) — accès portail fermé ⇒ le lien public du BCF
+        répond 404 (même corps que « jeton inconnu ») : après « Révoquer
+        l'accès » du compte, et pour un fournisseur sans compte passé
+        « bloqué total » ; « bloqué commandes » et fournisseur actif sans
+        compte gardent leur PDF. Mutant : retirer le test du sélecteur dans
+        ``render_bcf_pdf_by_id`` ⇒ échec."""
+        from apps.stock.services import provisionner_compte_fournisseur
+        public = APIClient()
+        inconnu = public.get('/api/django/public/bcf/pas-un-jeton/').data
+        url = (f'/api/django/public/bcf/'
+               f'{ShareLink.for_bon_commande_fournisseur(self.bcf).token}/')
+        provisionner_compte_fournisseur(self.company, self.fournisseur.id)
+        self.assertEqual(public.get(url).status_code, 200)
+        admin = User.objects.create_user(
+            username='qs3-admin', password='x', company=self.company,
+            role_legacy='admin')
+        resp = _api(admin).post(
+            f'/api/django/stock/fournisseurs/{self.fournisseur.id}/'
+            'revoquer-acces/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = public.get(url)
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.data, inconnu)
+        autre = Fournisseur.objects.create(
+            company=self.company, nom='Sans compte')
+        bcf2 = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-QS3-0002', fournisseur=autre,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bcf2, produit=self.produit,
+            quantite=1, prix_achat_unitaire=Decimal('600'))
+        url2 = (f'/api/django/public/bcf/'
+                f'{ShareLink.for_bon_commande_fournisseur(bcf2).token}/')
+        for statut, attendu in ((Fournisseur.Statut.ACTIF, 200),
+                                (Fournisseur.Statut.BLOQUE_TOTAL, 404),
+                                (Fournisseur.Statut.BLOQUE_COMMANDES, 200)):
+            with self.subTest(statut=statut):
+                Fournisseur.objects.filter(pk=autre.pk).update(statut=statut)
+                resp = public.get(url2)
+                self.assertEqual(resp.status_code, attendu)
+                if attendu == 200:
+                    self.assertEqual(resp['Content-Type'], 'application/pdf')
+
     def test_invalid_token_404(self):
         public = APIClient()
         resp = public.get('/api/django/public/bcf/pas-un-jeton/')

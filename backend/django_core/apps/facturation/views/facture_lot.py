@@ -115,7 +115,7 @@ class FactureLotActionsMixin:
             return Response(exc.detail, status=_statut_refus_consolidation(
                 exc.detail))
         return Response(
-            FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
+            FactureSerializer(facture, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=D.BulkRequest, responses=D.BulkResponse)
     @action(detail=False, methods=['post'], url_path='bulk',

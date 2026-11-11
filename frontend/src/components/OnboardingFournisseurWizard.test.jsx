@@ -10,6 +10,8 @@ import { ThemeProvider } from '../design/ThemeProvider.jsx'
    montre un statut PAR document, et un dossier complet débloque l'étape 3.
    ========================================================================== */
 
+// ADRG36 — le wizard lit `stock_modifier` : ce compte le porte.
+vi.mock('../pages/stock/usePeutEcrireStock', () => ({ default: () => true }))
 vi.mock('../api/stockApi', () => ({
   default: {
     getOnboardingFournisseur: vi.fn(),

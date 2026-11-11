@@ -46,3 +46,15 @@ describe('BulkProductBar — Cartes kanban (WIR268/XSTK20)', () => {
     expect(screen.getByRole('button', { name: /Cartes kanban/ })).toBeDisabled()
   })
 })
+
+describe('BulkProductBar — export serveur (ADRG24)', () => {
+  it('sans onExport (pas de `stock_export`) : pas d’Exporter Excel', () => {
+    render(<BulkProductBar {...baseProps} onExport={null} />)
+    expect(screen.queryByRole('button', { name: /Exporter Excel/ })).toBeNull()
+  })
+
+  it('avec onExport : Exporter Excel présent', () => {
+    render(<BulkProductBar {...baseProps} />)
+    expect(screen.getByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
+  })
+})

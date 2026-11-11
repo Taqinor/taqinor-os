@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 /* AFAC63 — le compteur d'avoirs lit TOUTES les pages de /avoirs/ (55 avoirs,
    50 par page, forme DRF réelle {count, next, results}). */
 
-vi.mock('../../hooks/useHasPermission', () => ({ useIsAdmin: () => false }))
+vi.mock('../../hooks/useHasPermission', () => ({ useIsAdmin: () => false, useHasPermission: () => true }))
 
 const TOUS = Array.from({ length: 55 }, (_, i) => ({
   id: i + 1, reference: `AV-${i + 1}`, statut: 'emise', total_ttc: '100.00',

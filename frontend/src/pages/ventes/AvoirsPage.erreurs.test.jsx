@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 /* AFAC61 — un échec de chargement des avoirs affiche une ERREUR, plus jamais
    « Aucun avoir — Créez-en un ». */
 
-vi.mock('../../hooks/useHasPermission', () => ({ useIsAdmin: () => true }))
+vi.mock('../../hooks/useHasPermission', () => ({ useIsAdmin: () => true, useHasPermission: () => true }))
 vi.mock('../../api/ventesApi', () => ({
   default: {
     getAvoirs: vi.fn(),

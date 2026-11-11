@@ -7,6 +7,9 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    nomenclatures (Default/GS1) + leurs règles motif → type d'entité.
    ========================================================================== */
 
+// ADRG36 — l'écran lit les droits stock : ce compte les porte tous.
+vi.mock('../stock/usePeutEcrireStock', () => ({ default: () => true }))
+vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => true, useIsAdmin: () => true }))
 vi.mock('../../api/stockApi', () => ({
   default: {
     getNomenclaturesCodeBarres: vi.fn(),

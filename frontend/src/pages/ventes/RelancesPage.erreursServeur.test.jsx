@@ -22,6 +22,8 @@ vi.mock('../../api/ventesApi', () => ({
   },
 }))
 vi.mock('../../api/axios', async () => (await import('../../test/mocksVentesEcrans.js')).axiosNu())
+// ADRG2 — la promesse exige `encaisser` : ce compte le porte.
+vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
 vi.mock('../../ui/confirm', async () => (await import('../../test/mocksVentesEcrans.js')).confirmAccepte())
 
 import api from '../../api/axios'

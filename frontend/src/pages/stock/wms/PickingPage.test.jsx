@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { makeAuthStore, renderStockPage } from '../stockPage.testHelpers'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -34,12 +34,23 @@ function brancher() {
   })
 }
 
-const monter = () => render(<MemoryRouter><PickingPage /></MemoryRouter>)
+// ADRG35 — les gestes d'entrepôt suivent `stock_mouvement` : le store de test le porte.
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement']) =>
+  renderStockPage(PickingPage, makeAuthStore({ permissions }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
 afterEach(() => { cleanup() })
 
 describe('ASTK217 — PickingPage', () => {
+  it('ADRG35 — sans `stock_mouvement` : ni création, ni lancement, ni prélèvement', async () => {
+    etatVagues = { ...VAGUES, results: [...VAGUES.results, { ...VAGUE_LANCEE, id: 999 }] }
+    monter(['stock_voir', 'stock_modifier', 'stock_creer'])
+    expect((await screen.findAllByText(/ligne\(s\)/)).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: /Créer la vague/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Lancer la vague/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Prélever/i })).toBeNull()
+  })
+
   it('crée puis lance une vague', async () => {
     api.post.mockImplementation((url) => {
       if (url === '/stock/vagues-picking/') return Promise.resolve({ data: R.vagues_picking.exemple_element })

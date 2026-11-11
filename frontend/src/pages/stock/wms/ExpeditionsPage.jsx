@@ -7,6 +7,7 @@ import {
 } from '../../../features/stock/api/erreurs'
 import { Section, Vide } from './ElementsEcran'
 import useGesteEcran from './useGesteEcran'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 import { SELECT_CLS, enListe, champDe } from './constantesEcran'
 
 /* ASTK220 — Expéditions : unités logistiques (lignes, scan, déplacement,
@@ -34,6 +35,8 @@ const ETATS = { revendable: 'Revendable', a_reparer: 'À réparer', rebut: 'Rebu
 const VIDE_LIGNE = { produit: '', quantite: '' }
 
 export default function ExpeditionsPage() {
+  // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
   const [unites, setUnites] = useState([])
   const [plans, setPlans] = useState([])
   const [expeditions, setExpeditions] = useState([])
@@ -213,6 +216,7 @@ export default function ExpeditionsPage() {
       <BandeauxStock erreur={erreur} info={info} />
 
       <Section id="unites-logistiques" titre="Unités logistiques">
+        {peutMouvement && (
         <form onSubmit={creerUnite} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Type d&apos;unité</span>
@@ -231,7 +235,9 @@ export default function ExpeditionsPage() {
           </label>
           <Button type="submit" disabled={occupe}>Créer l&apos;unité</Button>
         </form>
+        )}
 
+        {peutMouvement && (
         <form onSubmit={ajouterLigne} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Unité à remplir</span>
@@ -262,6 +268,7 @@ export default function ExpeditionsPage() {
             Déplacer l&apos;unité
           </Button>
         </form>
+        )}
 
         {unites.length === 0 ? <Vide>Aucune unité logistique.</Vide> : (
           <ul className="space-y-2 text-sm">
@@ -274,7 +281,7 @@ export default function ExpeditionsPage() {
                   <label className="flex items-center gap-1 text-xs">
                     <span>Dimensions de l&apos;unité {u.sscc}</span>
                     <Input
-                      defaultValue={u.dimensions} disabled={u.est_figee || occupe} className="w-28"
+                      defaultValue={u.dimensions} disabled={!peutMouvement || u.est_figee || occupe} className="w-28"
                       onBlur={(e) => {
                         if (e.target.value !== (u.dimensions ?? '')) {
                           geste(() => expeditionsApi.modifierUnite(u.id, { dimensions: e.target.value }),
@@ -283,7 +290,7 @@ export default function ExpeditionsPage() {
                       }}
                     />
                   </label>
-                  {!u.est_figee && (
+                  {peutMouvement && !u.est_figee && (
                     <Button size="sm" disabled={occupe} aria-label={`Sceller l'unité ${u.sscc}`}
                       onClick={() => geste(() => expeditionsApi.sceller(u.id), "Scellage impossible.",
                         'Unité scellée.')}>
@@ -310,6 +317,7 @@ export default function ExpeditionsPage() {
       </Section>
 
       <Section id="plans-chargement" titre="Plans de chargement">
+        {peutMouvement && (
         <form onSubmit={creerPlan} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Capacité (kg)</span>
@@ -321,6 +329,8 @@ export default function ExpeditionsPage() {
           </label>
           <Button type="submit" disabled={occupe}>Créer le plan</Button>
         </form>
+        )}
+        {peutMouvement && (
         <form onSubmit={rattacherUnite} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Plan de chargement</span>
@@ -340,6 +350,7 @@ export default function ExpeditionsPage() {
           </label>
           <Button type="submit" disabled={occupe}>Ajouter au plan</Button>
         </form>
+        )}
         {plans.length === 0 ? <Vide>Aucun plan de chargement.</Vide> : (
           <ul className="space-y-1 text-sm">
             {plans.map((p) => (
@@ -366,6 +377,7 @@ export default function ExpeditionsPage() {
       </Section>
 
       <Section id="expeditions" titre="Expéditions transporteur">
+        {peutMouvement && (
         <form onSubmit={creerExpedition} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Unité à expédier</span>
@@ -384,6 +396,7 @@ export default function ExpeditionsPage() {
           </label>
           <Button type="submit" disabled={occupe}>Créer l&apos;expédition</Button>
         </form>
+        )}
         {expeditions.length === 0 ? <Vide>Aucune expédition.</Vide> : (
           <ul className="space-y-1 text-sm">
             {expeditions.map((x) => (
@@ -391,11 +404,13 @@ export default function ExpeditionsPage() {
                 <strong>{x.numero_suivi || `Expédition ${x.id}`}</strong>
                 <span>{x.destination || '—'}</span>
                 <span>{STATUTS_EXPEDITION[x.statut] ?? x.statut}</span>
-                <Button size="sm" disabled={occupe} aria-label={`Générer l'étiquette de l'expédition ${x.id}`}
-                  onClick={() => geste(() => expeditionsApi.genererEtiquette(x.id),
-                    "L'étiquette n'a pas pu être générée.", 'Étiquette générée.')}>
-                  Générer l&apos;étiquette
-                </Button>
+                {peutMouvement && (
+                  <Button size="sm" disabled={occupe} aria-label={`Générer l'étiquette de l'expédition ${x.id}`}
+                    onClick={() => geste(() => expeditionsApi.genererEtiquette(x.id),
+                      "L'étiquette n'a pas pu être générée.", 'Étiquette générée.')}>
+                    Générer l&apos;étiquette
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" aria-label={`CMR de l'expédition ${x.id}`}
                   onClick={() => ouvrirPdf(() => expeditionsApi.cmrPdf(x.id), 'CMR indisponible.')}>
                   CMR
@@ -432,6 +447,7 @@ export default function ExpeditionsPage() {
       </Section>
 
       <Section id="retours-client" titre="Retours client">
+        {peutMouvement && (
         <form onSubmit={creerRetour} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Client du retour</span>
@@ -451,6 +467,7 @@ export default function ExpeditionsPage() {
           </label>
           <Button type="submit" disabled={occupe}>Enregistrer le retour</Button>
         </form>
+        )}
         {retours.length === 0 ? <Vide>Aucun retour client.</Vide> : (
           <ul className="space-y-1 text-sm">
             {retours.map((r) => (
@@ -458,14 +475,14 @@ export default function ExpeditionsPage() {
                 <strong>{r.reference}</strong>
                 <span>{r.client_nom}</span>
                 <span>{STATUTS_RETOUR[r.statut] ?? r.statut}</span>
-                {['demande', 'en_transit'].includes(r.statut) && (
+                {peutMouvement && ['demande', 'en_transit'].includes(r.statut) && (
                   <Button size="sm" disabled={occupe} aria-label={`Réceptionner le retour ${r.reference}`}
                     onClick={() => geste(() => expeditionsApi.receptionnerRetour(r.id),
                       'Réception impossible.', 'Retour réceptionné.')}>
                     Réceptionner
                   </Button>
                 )}
-                {r.statut === 'receptionne' && (
+                {peutMouvement && r.statut === 'receptionne' && (
                   <Button size="sm" disabled={occupe} aria-label={`Inspecter le retour ${r.reference}`}
                     onClick={() => geste(() => expeditionsApi.inspecterRetour(r.id, {
                       lignes: (r.lignes ?? []).map((l) => ({ ligne: l.id, etat_constate: l.etat_constate })),
@@ -483,6 +500,7 @@ export default function ExpeditionsPage() {
       </Section>
 
       <Section id="rebuts" titre="Rebuts">
+        {peutMouvement && (
         <form onSubmit={declarerRebut} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           {selectProduit(rebutForm.produit, champRebut('produit'), 'Produit du rebut')}
           <label className="flex flex-col gap-1 text-xs">
@@ -497,6 +515,7 @@ export default function ExpeditionsPage() {
           </label>
           <Button type="submit" disabled={occupe}>Déclarer le rebut</Button>
         </form>
+        )}
         {rebuts.length === 0 ? <Vide>Aucun rebut déclaré.</Vide> : (
           <ul className="space-y-1 text-sm">
             {rebuts.map((r) => (

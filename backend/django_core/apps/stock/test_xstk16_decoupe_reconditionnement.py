@@ -59,6 +59,7 @@ class Xstk16Base(TestCase):
         self.user = _user(
             self.company, 'xstk16-user',
             permissions=['stock_modifier', 'stock_voir',
+                         'stock_mouvement',  # ADRG45 : rebut/découpe = mouvement
                          # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
                          'achats_commander', 'achats_receptionner',
                          'achats_payer', 'catalogue_prix_modifier'])

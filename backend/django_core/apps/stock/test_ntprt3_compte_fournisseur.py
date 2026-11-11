@@ -313,3 +313,41 @@ class EtatAccesPortailFournisseurTests(TestCase):
             compte_fournisseur_portail_actif(None, self.fournisseur.id))
         self.assertIsNone(
             compte_fournisseur_portail_actif(self.company.id, None))
+
+    def test_fournisseur_coupe_renvoie_false(self):
+        """APUB70 (C-APUB-037, ASTK179) — un fournisseur archivé, bloqué
+        « total » ou à candidature rejetée a l'accès portail FERMÉ (False),
+        avec ou sans compte ; un « bloqué commandes » reste ouvert ; la porte
+        à jeton lit la même règle. Mutant : retirer l'appel du prédicat dans
+        ``compte_fournisseur_portail_actif`` ⇒ échec."""
+        from apps.stock.models import Fournisseur
+        from apps.stock.services import (
+            generer_token_portail_fournisseur,
+            resoudre_token_portail_fournisseur)
+        provisionner_compte_fournisseur(self.company, self.fournisseur.id)
+        alpha = Fournisseur.objects.filter(pk=self.fournisseur.pk)
+        jeton = generer_token_portail_fournisseur(
+            self.company, self.fournisseur, None)
+        coupes = ({'statut': Fournisseur.Statut.BLOQUE_TOTAL},
+                  {'is_archived': True},
+                  {'statut_validation': Fournisseur.StatutValidation.REJETE})
+        for etat in coupes:
+            with self.subTest(etat=etat):
+                alpha.update(**etat)
+                self.assertIs(compte_fournisseur_portail_actif(
+                    self.company.id, self.fournisseur.id), False)
+                self.assertIsNone(
+                    resoudre_token_portail_fournisseur(jeton.token))
+                alpha.update(
+                    statut=Fournisseur.Statut.ACTIF, is_archived=False,
+                    statut_validation=Fournisseur.StatutValidation.VALIDE)
+        alpha.update(statut=Fournisseur.Statut.BLOQUE_COMMANDES)
+        self.assertIs(compte_fournisseur_portail_actif(
+            self.company.id, self.fournisseur.id), True)
+        beta = make_fournisseur(self.company, 'Beta')
+        self.assertIsNone(
+            compte_fournisseur_portail_actif(self.company.id, beta.id))
+        Fournisseur.objects.filter(pk=beta.pk).update(
+            statut=Fournisseur.Statut.BLOQUE_TOTAL)
+        self.assertIs(
+            compte_fournisseur_portail_actif(self.company.id, beta.id), False)
