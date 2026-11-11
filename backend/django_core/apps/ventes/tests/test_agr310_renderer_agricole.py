@@ -385,3 +385,19 @@ class Agr310PdfReelTests(SimpleTestCase):
 
     def test_douze_lignes_six_options_trois_pages(self):
         self._verifier(data_complete(nb_lignes_extra=8, nb_options=6))
+
+
+class Agr310PdfLongFusionTests(SimpleTestCase):
+    """ATST26 (C-ATST-014) — NON tagué, sans saut (PyMuPDF et WeasyPrint sont
+    dans requirements.txt) : la tenue en 3 pages d'un devis LONG repose sur la
+    boucle densité → regroupement de ``render_pdf_bytes`` ; seul un PDF réel
+    voit une page physique de trop. Joué à chaque fusion."""
+
+    def test_quarante_lignes_trois_pages_sans_debord(self):
+        pdf = renderer.render_pdf_bytes(data_complete(nb_lignes_extra=40))
+        self.assertEqual(pages_et_debordements(pdf), (3, []))
+        doc = fitz.open(stream=pdf, filetype='pdf')
+        page3 = doc[2].get_text()
+        doc.close()
+        self.assertIn('TTC', page3)
+        self.assertIn('BON POUR ACCORD', page3.upper())
