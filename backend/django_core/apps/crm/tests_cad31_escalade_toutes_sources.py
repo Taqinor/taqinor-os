@@ -112,6 +112,20 @@ class ToutesLesSourcesTests(_Base):
         self.assertEqual(escalader_premier_contact(now=CONTROLE), 0)
         self.assertEqual(self._notifs().count(), 0)
 
+    def test_un_lead_ne_plus_contacter_n_escalade_pas(self):
+        """AMSG9 (C-AMSG-017) — un lead né opposé, jamais contacté : ni
+        notification ni marqueur, même au second passage ; le témoin escalade.
+        Mutant : retirer le filtre ``ne_plus_contacter`` ⇒ 2 escalades."""
+        self._lead(nom='Temoin')
+        oppose = self._lead(nom='Oppose', ne_plus_contacter=True)
+        self.assertEqual(escalader_premier_contact(now=CONTROLE), 1)
+        self.assertEqual(escalader_premier_contact(now=CONTROLE), 0)
+        self.assertEqual(self._notifs(self.commerciale).count(), 1)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=oppose, body__startswith=MARQUEUR).exists())
+        self.assertFalse(self._notifs().filter(title__contains='Oppose').exists())
+        self.assertFalse(self._notifs().filter(body__contains='Oppose').exists())
+
 
 class LEtapeNeFiltrePlusTests(_Base):
     """Ce qui compte est « jamais contacté », pas « encore au premier
