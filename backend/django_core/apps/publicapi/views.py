@@ -56,8 +56,9 @@ def portees_non_detenues(user, scopes=(), events=()):
             ('scopes', scopes, CODE_DE_PORTEE.get, 'Portée non détenue'),
             ('events', events, lambda e: CODE_DE_PREFIXE_EVENEMENT.get(str(e).split('.')[0]),
              'Évènement non détenu')):
-        refus = [f'{libelle} : {v}' for v in valeurs
-                 if code_de(v) and not _user_has_or_legacy(user, code_de(v))]
+        refus = [f'{libelle} : {v}' for v in valeurs if any(  # APUB50 : tuple = tous
+            not _user_has_or_legacy(user, c) for c in (
+                (code_de(v),) if isinstance(code_de(v), str) else code_de(v) or ()))]
         if refus:
             erreurs[champ] = refus
     return erreurs
