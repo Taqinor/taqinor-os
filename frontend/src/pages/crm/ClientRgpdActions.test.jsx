@@ -20,9 +20,9 @@ import { mockMatchMedia } from '../../test/matchMedia'
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-const renderWithRole = (role, client = { id: 7, is_anonymized: false }, props = {}) => {
+const renderWithRole = (role, client = { id: 7, is_anonymized: false }, props = {}, permissions) => {
   const store = configureStore({
-    reducer: { auth: (state = { role }) => state },
+    reducer: { auth: (state = { role, permissions }) => state },
   })
   return render(
     <Provider store={store}>
@@ -41,6 +41,19 @@ describe('ClientRgpdActions (WR9/FG26)', () => {
     renderWithRole('responsable')
     expect(screen.getByRole('button', { name: /Export RGPD/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Anonymiser/ })).not.toBeInTheDocument()
+  })
+
+  it("sans crm_export : pas d'export (ADRG88, Technicien responsable)", () => {
+    renderWithRole('responsable', undefined, {}, ['installation_voir', 'stock_voir', 'client_pii_voir'])
+    expect(screen.queryByRole('button', { name: /Export RGPD/ })).not.toBeInTheDocument()
+  })
+
+  it('avec crm_export : export offert au Commercial et au Directeur (ADRG88)', () => {
+    renderWithRole('normal', undefined, {}, ['crm_voir', 'crm_export'])
+    expect(screen.getByRole('button', { name: /Export RGPD/ })).toBeInTheDocument()
+    cleanup()
+    renderWithRole('admin', undefined, {}, ['crm_voir', 'crm_export', 'roles_gerer'])
+    expect(screen.getByRole('button', { name: /Export RGPD/ })).toBeInTheDocument()
   })
 
   it('admin : anonymisation derrière une confirmation AlertDialog', async () => {
