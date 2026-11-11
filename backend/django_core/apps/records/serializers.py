@@ -214,6 +214,9 @@ class ActivitySerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         company = getattr(getattr(request, 'user', None), 'company', None)
         if company is None:
             return None
+        # ALEC34 — le numéro de la cible est une donnée personnelle du client.
+        if not getattr(request.user, 'can_view_client_pii', True):
+            return None
         # ERR-PERF-CRM-N1 — carte EN LOT posée par une liste (« Ma file ») :
         # mêmes valeurs que l'appel unitaire ci-dessous, sans requête par ligne.
         carte = self.context.get('target_phone_map')
