@@ -139,6 +139,53 @@ class TestPublicLink(DashboardPartageBase):
         self.assertEqual(relu.status_code, 200, relu.data)
         self.assertEqual(relu.data['results'][0]['expires_at'], rendu)
 
+    def test_lien_public_borne_aux_tableaux_visibles(self):
+        """ADRG102 — un « Commercial » (rôle système du registre) ne crée,
+        ne révoque ni ne supprime le lien public du tableau PERSONNEL d'un
+        collègue (404, rien d'écrit) ; un tableau ``partage=True`` reste
+        publiable ; le propriétaire garde la main (201 / 200 / 204)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)['Commercial']
+        commercial = User.objects.create_user(
+            username='adrg102_commercial', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial', permissions=list(perms)))
+        api_b = APIClient()
+        api_b.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
+        url = '/api/django/core/dashboards-partages/'
+        lien_a = PartageDashboard.objects.create(
+            company=self.company, dashboard=self.dashboard,
+            created_by=self.owner)
+        nb = PartageDashboard.objects.count()
+
+        r = api_b.post(url, {'dashboard': self.dashboard.id}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = api_b.patch(f'{url}{lien_a.id}/', {'actif': False}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = api_b.delete(f'{url}{lien_a.id}/')
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(PartageDashboard.objects.count(), nb)
+        lien_a.refresh_from_db()
+        self.assertTrue(lien_a.actif)
+        liste = api_b.get(url)
+        self.assertEqual(liste.status_code, 200, liste.data)
+        self.assertNotIn(lien_a.id, [p['id'] for p in liste.data['results']])
+
+        societe = Dashboard.objects.create(
+            company=self.company, owner=self.owner, titre='Tableau société',
+            partage=True, layout={})
+        r = api_b.post(url, {'dashboard': societe.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+        r = self.api.post(url, {'dashboard': self.dashboard.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.patch(f'{url}{lien_a.id}/', {'actif': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.delete(f'{url}{lien_a.id}/')
+        self.assertEqual(r.status_code, 204)
+
 
 class TestInternalSharing(DashboardPartageBase):
     def test_non_shared_user_cannot_view_personal_dashboard(self):
