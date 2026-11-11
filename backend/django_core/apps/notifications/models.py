@@ -94,6 +94,9 @@ class Notification(models.Model):
     # échéance puis remet le champ à NULL. NULL = notification livrée
     # (comportement historique de toutes les lignes existantes).
     programmee_pour = models.DateTimeField(null=True, blank=True)
+    # AMSG78 — l'émetteur gère LUI-MÊME l'e-mail (``skip_email``) : le drapeau
+    # survit au report, le réveil livre cloche/push/WhatsApp sans e-mail.
+    sans_email = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Notification'

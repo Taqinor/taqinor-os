@@ -525,8 +525,7 @@ def notify_many(recipients, event_type, title, body='', link=None, company=None,
     return created
 
 
-def _report_hors_fenetre(event_type, company, respect_quiet_hours,
-                         skip_email=False):
+def _report_hors_fenetre(event_type, company, respect_quiet_hours):
     """N1 — l'instant où une notification émise MAINTENANT doit être livrée,
     ou ``None`` si elle part tout de suite.
 
@@ -545,16 +544,15 @@ def _report_hors_fenetre(event_type, company, respect_quiet_hours,
         heure (alertes de SÉCURITÉ : connexion depuis un nouvel appareil,
         break-glass, anomalie d'identité, compte dormant désactivé) ;
       * un type listé dans ``NOTIFICATIONS_TOUJOURS_IMMEDIATES`` (VIDE par
-        défaut — l'exception future se décide là, pas dans le code) ;
-      * ``skip_email=True`` — l'appelant gère LUI-MÊME l'e-mail de cet
-        événement : le drapeau ne survit pas au report, et le réveil
-        enverrait un e-mail déjà envoyé.
+        défaut — l'exception future se décide là, pas dans le code).
+    AMSG78 — ``skip_email`` ne court-circuite plus le report : il survit dans
+    ``Notification.sans_email`` et le réveil livre sans e-mail.
     La sévérité n'exempte PLUS rien : un événement « critique » attend lui
     aussi l'ouverture (décision fondateur, « aux heures de travail »).
     Best-effort : toute erreur retombe sur ``None`` (envoi immédiat) — une
     notification n'est jamais perdue pour une histoire d'horaires."""
     from django.conf import settings
-    if not respect_quiet_hours or skip_email or not getattr(
+    if not respect_quiet_hours or not getattr(
             settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
         return None
     immediates = getattr(settings, 'NOTIFICATIONS_TOUJOURS_IMMEDIATES', ())
@@ -688,15 +686,15 @@ def notify(user, event_type, title, body='', link=None, company=None,
     from .models import NotificationReason
     reason = reason if reason in NotificationReason.values else ''
     programmee_pour = _report_hors_fenetre(
-        event_type, company, respect_quiet_hours, skip_email=skip_email)
+        event_type, company, respect_quiet_hours)
 
     if programmee_pour is not None:
         # N1 — hors fenêtre : la ligne est créée MAINTENANT (rien ne se perd)
         # mais porte son instant de livraison. Si l'in-app est coupé pour cet
         # événement, elle ne sert que de SUPPORT à la diffusion hors-app du
         # réveil, puis disparaît (`_livrer_differee`).
-        hors_app = bool(prefs.get('email') or prefs.get('whatsapp')
-                        or prefs.get('push'))
+        hors_app = bool((prefs.get('email') and not skip_email)
+                        or prefs.get('whatsapp') or prefs.get('push'))
         if not (prefs.get('in_app') or hors_app):
             return None
         try:
@@ -708,7 +706,8 @@ def notify(user, event_type, title, body='', link=None, company=None,
                     title=str(title)[:255],
                     body=str(body or '')[:MAX_BODY_LEN],
                     link=str(link or '')[:512], reason=reason,
-                    programmee_pour=programmee_pour)
+                    programmee_pour=programmee_pour,
+                    sans_email=bool(skip_email))
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification différée échouée : %s', exc)
             return None
@@ -808,7 +807,8 @@ def _livrer_differee(pk, maintenant):
     _diffuser_hors_app(
         user, company, event_type, ligne.title, ligne.body,
         ligne.link or None, prefs,
-        instance=ligne if prefs.get('in_app') else None)
+        instance=ligne if prefs.get('in_app') else None,
+        skip_email=ligne.sans_email)
     if not prefs.get('in_app'):
         ligne.delete()
     return True
