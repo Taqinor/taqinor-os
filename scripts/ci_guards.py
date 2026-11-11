@@ -590,6 +590,11 @@ GARDES = {
         ('Check aucun instantané anonymisé suivi par git (var/anon, *.anon.json.gz)',
          'python scripts/check_no_anon_snapshot.py',
          '.'),
+        # ATST52 — la garde elle-même : neutraliser `offending()` ou avaler un
+        # échec de `git ls-files` rougit ce module.
+        ('Tests de la garde des instantanés anonymisés (ATST52)',
+         'python -m unittest scripts.tests.test_check_no_anon_snapshot -v',
+         '.'),
         # 30/09/2026 (PR #743) — deux apps définissaient `export_anonymise` :
         # Django n'en exécute qu'une, l'autre est masquée sans erreur.
         ('Check aucun nom de commande de gestion partagé entre deux apps',
