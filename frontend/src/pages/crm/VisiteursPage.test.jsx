@@ -10,8 +10,11 @@ import { MemoryRouter } from 'react-router-dom'
 beforeAll(polyfillResizeObserver)
 
 const isAdminOrResponsableMock = vi.fn(() => false)
+// ADRG4 — « Retirer » suit le code crm_supprimer (useHasPermission).
+const hasPermissionMock = vi.fn(() => true)
 vi.mock('../../hooks/useHasPermission', () => ({
   useIsAdminOrResponsable: () => isAdminOrResponsableMock(),
+  useHasPermission: (code) => hasPermissionMock(code),
 }))
 
 const {
@@ -84,6 +87,7 @@ const VISITE_LEAD_1 = {
 
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(false)
+  hasPermissionMock.mockImplementation(() => true)
   getAppareilsVisites.mockResolvedValue({ data: { results: [APPAREIL_SUSPECT, APPAREIL_EQUIPE] } })
   getAppareilsEquipe.mockResolvedValue({
     data: { results: [{ id: 5, appareil_id: 'ffff0000aaaa', libelle: 'Téléphone Reda', created_at: '2026-08-01T00:00:00Z' }] },
@@ -160,6 +164,17 @@ describe('VisiteursPage (VIS1)', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'Retirer' })[0])
     await waitFor(() => expect(deleteAppareilEquipe).toHaveBeenCalledWith(5))
+  })
+
+  it('masque « Retirer » sans crm_supprimer, même au responsable (ADRG4)', async () => {
+    isAdminOrResponsableMock.mockReturnValue(true)
+    hasPermissionMock.mockImplementation((code) => code !== 'crm_supprimer')
+    mount()
+    await screen.findByText('Appareils équipe')
+    expect(screen.getByText('Téléphone Reda')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retirer de l’équipe' })).not.toBeInTheDocument()
+    expect(hasPermissionMock).toHaveBeenCalledWith('crm_supprimer')
   })
 
   it('déplie le détail des visites récentes d’un appareil', async () => {

@@ -141,7 +141,8 @@ class PlaybookEnfantsScopeTests(TestCase):
             nom='Taqinor CRX14 autre', slug='taqinor-crx14-autre')
         self.role = Role.objects.create(
             company=self.company, nom='Responsable',
-            permissions=['crm_creer', 'crm_modifier'])
+            # ADRG4 — supprimer une tâche/étape exige crm_supprimer.
+            permissions=['crm_creer', 'crm_modifier', 'crm_supprimer'])
         self.user = User.objects.create_user(
             username='resp_crx14', password='x', company=self.company,
             role=self.role)
