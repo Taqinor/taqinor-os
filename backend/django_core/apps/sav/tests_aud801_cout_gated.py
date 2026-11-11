@@ -22,6 +22,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.crm.models import Client
 from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.sav.bi_datasets import DATASET_NAME, GATED_FIELDS
 from apps.sav.models import Ticket
 from authentication.models import Company
@@ -35,12 +36,13 @@ class Aud801CoutGatedTests(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
             slug='aud801-sav-co', defaults={'nom': 'AUD801 SAV Co'})[0]
+        # ATST14 — rôles LIVRÉS du registre (Technicien : sav_voir sans
+        # prix_achat_voir ; Directeur : avec), jamais un code inventé.
+        livres = dict(CANONICAL_SYSTEM_ROLES)
         self.role_sans = Role.objects.create(
-            company=self.company, nom='AUD801 sans prix achat',
-            permissions=['tickets_gerer', 'sav_voir'])  # APFS104
+            company=self.company, nom='AUD801 Technicien', permissions=list(livres['Technicien']))
         self.role_avec = Role.objects.create(
-            company=self.company, nom='AUD801 avec prix achat',
-            permissions=['tickets_gerer', 'sav_voir', 'prix_achat_voir'])
+            company=self.company, nom='AUD801 Directeur', permissions=list(livres['Directeur']))
         self.sans_droit = User.objects.create_user(
             username='aud801_sav_sans', password='x', company=self.company,
             role=self.role_sans)
