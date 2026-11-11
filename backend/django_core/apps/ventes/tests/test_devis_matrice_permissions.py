@@ -66,7 +66,7 @@ FIGEE = {
     'prefill_site': LECTURE, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': (PORTAIL, 'LectureVentesHorsPortail'),
-    'ajouter_boq_electrique': RESP,
+    'ajouter_boq_electrique': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     'composition': RESP, 'conception_electrique': RESP,
     'contacter_superieur': RESP, 'convertir_en_bc': RESP,
     'design_context': RESP, 'dupliquer': RESP, 'dupliquer_variante': RESP,
@@ -382,6 +382,42 @@ class MatricePermissionsDevis(TestCase):
         api.force_authenticate(commercial)
         r = api.post(url, corps, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_ajouter_boq_electrique_exige_ventes_modifier(self):
+        """ASEC94 — un rôle = Commercial du registre SANS ``ventes_modifier``
+        reçoit 403 ``droit_manquant`` à ``POST ajouter-boq-electrique``, lignes
+        intactes ; le Commercial du registre : 200, 5 lignes. Mutant : ôter
+        ``DroitDeLaGrille`` ⇒ échec."""
+        from decimal import Decimal
+
+        from apps.ventes.models import LigneDevis
+        client = Client.objects.create(company=self.company, nom='ASEC94')
+        prive = self._compte('Commercial sans modifier', [
+            c for c in registre.COMMERCIAL_PERMISSIONS if c != 'ventes_modifier'])
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        bom = [{'designation': d, 'quantite': 1, 'spec': ''} for d in (
+            'Câble solaire H1Z2Z2-K 6,0 mm²', 'Parafoudre DC Type 2',
+            'Disjoncteur AC bipolaire 32 A', 'Coffret AC')]
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASEC94-1', client=client,
+            statut=Devis.Statut.BROUILLON, created_by=prive, electrical_design={'bom': bom})
+        LigneDevis.objects.create(
+            devis=devis, designation='Panneau', quantite=Decimal('1'),
+            prix_unitaire=Decimal('100'), remise=Decimal('0'))
+        url = '/api/django/ventes/devis/%s/ajouter-boq-electrique/' % devis.pk
+        api = APIClient()
+        api.force_authenticate(prive)
+        r = api.post(url, {}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        # CLAUSE PERSISTANCE — relu en base : « Panneau » seule.
+        self.assertEqual(list(LigneDevis.objects.filter(devis=devis)
+                              .values_list('designation', flat=True)), ['Panneau'])
+        Devis.objects.filter(pk=devis.pk).update(created_by=commercial)
+        api.force_authenticate(commercial)
+        r = api.post(url, {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(LigneDevis.objects.filter(devis=devis).count(), 5)
 
     def test_atomic_et_auto_exigent_ventes_creer(self):
         """ASEC87 (C-ASEC-VER5-074, D-ASEC-4) — un rôle = Commercial du

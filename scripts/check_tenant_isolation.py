@@ -79,7 +79,7 @@ APPELS_FILTRANTS = frozenset({"filter", "get", "exclude",
 #: APFS121 — seuls ces appels rendent un queryset ou un objet DÉJÀ borné à la
 #: société (core/mixins.py, core/selectors.py, audit/views.py, records/views.py) ;
 #: un nom d'appel qui contient « company » ne suffit pas.
-APPELS_DE_PORTEE = frozenset({"company_qs", "get_company_object", "_company_qs", "_scoped"})
+APPELS_DE_PORTEE = frozenset({"company_qs", "get_company_object", "_company_qs", "_scoped", "portee_membres"})
 
 #: APFS64 — dette GELÉE (``--list``, 09/11/2026) : ne fait que décroître.
 DETTE_FILTRE_EFFECTIF = frozenset({
@@ -135,7 +135,6 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/ged/views.py::public_partage",
     "backend/django_core/apps/sav/public_views.py::ticket_public_satisfaction",
     "backend/django_core/core/export_registry.py::declencher_export_reversibilite",
-    "backend/django_core/authentication/views.py::UserViewSet",
     # APFS121 (10/11/2026) — portée par un seul nom d'appel « company » ; ne fait que décroître.
     "backend/django_core/apps/crm/public_chat_views.py::open_chat_session",
     "backend/django_core/apps/facturation/recouvrement.py::lettre_relance_pdf",
@@ -143,6 +142,11 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/parametres/views_tariff.py::update_tariff_settings",
     "backend/django_core/apps/reporting/search.py::notifications",
     "backend/django_core/apps/ventes/extra_docs_views.py::lettre_relance_premium",
+    # APFS123 (10/11/2026) — classes de vues hors fichiers « vues », bornées par
+    # `_scope` (company=user.company) ; ne fait que décroître.
+    "backend/django_core/apps/facturation/recouvrement.py::FollowupLevelViewSet",
+    "backend/django_core/apps/facturation/recouvrement.py::ParametrageRelanceClientViewSet",
+    "backend/django_core/apps/facturation/recouvrement.py::PromessePaiementViewSet",
 })
 
 
@@ -185,7 +189,7 @@ def _iter_view_files():
 
 def _iter_fichiers_api_view():
     """APFS118 — tout autre ``*.py`` (hors tests/migrations et hors fichiers
-    déjà rendus par ``_iter_view_files``) : seules ses ``@api_view`` sont lues."""
+    déjà rendus par ``_iter_view_files``) : lu en entier (APFS123)."""
     deja = set(_iter_view_files())
     for app_dir in _app_dirs_and_foundation():
         if not app_dir.is_dir():
@@ -322,7 +326,7 @@ def _subscript_key(node):
     return None
 
 
-def check_view_file(path: Path, fonctions_seules=False):
+def check_view_file(path: Path):
     """Return (views, findings). views = [(cls, compliant_bool)]."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -341,8 +345,7 @@ def check_view_file(path: Path, fonctions_seules=False):
                     "API_VIEW_COMPANY_FILTER_MISSING", f"{rel}::{node.name}",
                     f"@api_view {node.name} reads the ORM without an "
                     "effective company filter (company=… / company_qs)."))
-        if fonctions_seules or not (
-                isinstance(node, ast.ClassDef) and _is_view(node)):
+        if not (isinstance(node, ast.ClassDef) and _is_view(node)):
             continue
         key = f"{rel}::{node.name}"
         model_backed = _is_model_backed(node)
@@ -484,11 +487,9 @@ def main(argv):
     offenders = _morts_offenders(allow)
     dette_vue = set()
 
-    sources = ([(p, False) for p in _iter_view_files()]
-               + [(p, True) for p in _iter_fichiers_api_view()])
-    for path, seules in sources:
+    for path in [*_iter_view_files(), *_iter_fichiers_api_view()]:
         rel = _rel(path)
-        views, findings = check_view_file(path, fonctions_seules=seules)
+        views, findings = check_view_file(path)
         for cls, scoped in views:
             all_views.append(f"{rel}::{cls} scoped={scoped}")
         for code, key, msg in findings:

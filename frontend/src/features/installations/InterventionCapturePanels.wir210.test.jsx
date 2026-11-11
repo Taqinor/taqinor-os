@@ -223,3 +223,31 @@ describe('FichePanel', () => {
     expect(container.textContent).toBe('')
   })
 })
+
+describe('FichePanel — saisie pendant un envoi', () => {
+  it('une saisie faite pendant un envoi survit à la relecture', async () => {
+    const user = userEvent.setup()
+    const releve = {
+      id: 1,
+      valeurs: [
+        { id: 21, champ_libelle: 'Tension', champ_type: 'mesure', champ_unite: 'V', champ_obligatoire: false, valeur: '' },
+        { id: 22, champ_libelle: 'Courant', champ_type: 'mesure', champ_unite: 'A', champ_obligatoire: false, valeur: '' },
+      ],
+    }
+    api.getFiche.mockResolvedValue({ data: releve })
+    let fin
+    api.renseignerFiche.mockImplementationOnce(() => new Promise((res) => { fin = () => res({ data: releve }) }))
+    api.renseignerFiche.mockResolvedValue({ data: releve })
+    render(<FichePanel intervention={INTERVENTION} />)
+    await user.type(await screen.findByLabelText(/Tension/), '230')
+    await user.tab()
+    await waitFor(() => expect(api.renseignerFiche).toHaveBeenCalledWith(42, 21, '230'))
+    const b = screen.getByLabelText(/Courant/)
+    await user.type(b, '12')
+    fin()
+    await waitFor(() => expect(api.getFiche.mock.calls.length).toBeGreaterThan(1))
+    expect(screen.getByLabelText(/Courant/).value).toBe('12')
+    await user.tab()
+    await waitFor(() => expect(api.renseignerFiche).toHaveBeenCalledWith(42, 22, '12'))
+  })
+})

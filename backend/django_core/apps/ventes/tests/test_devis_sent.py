@@ -248,6 +248,35 @@ class TestWhatsAppDevisFlipsSent(TestCase):
         self.assertEqual(
             DevisActivity.objects.filter(devis=self.d1).count(), before)
 
+    def test_un_devis_refuse_n_envoie_aucun_devis(self):
+        """ADVS51 — partage multi-devis tout-ou-rien : A (12 kWh mesurés, sans
+        garde) puis B (kWh déclaré contredit) ⇒ 409, A et B brouillons, lead à
+        son étape, aucun lien ni AuditLog WHATSAPP ; [A] seul : 200, A envoyé."""
+        from decimal import Decimal
+        from django.apps import apps as django_apps
+        from apps.ventes.horaire.conso import CODE_KWH_INCOHERENT
+        from apps.ventes.models import ShareLink
+        AuditLog = django_apps.get_model('audit', 'AuditLog')
+        Lead.objects.filter(pk=self.lead.pk).update(
+            conso_mensuelle_kwh=Decimal('46'), facture_hiver=Decimal('10000'), ete_differente=False)
+        Devis.objects.filter(pk=self.d1.pk).update(etude_params={'conso_kwh_mensuelles': [300] * 12})
+        d2 = Devis.objects.create(
+            company=self.company, reference='DEV-U4-2', client=self.client_obj, lead=self.lead)
+        resp = self.api.post(self._url(), {'devis_ids': [self.d1.id, d2.id]}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(str(resp.data['code']), CODE_KWH_INCOHERENT)
+        for d in (self.d1, d2):
+            d.refresh_from_db()
+            self.assertEqual((d.statut, d.date_envoi), (Devis.Statut.BROUILLON, None))
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.NEW)
+        self.assertFalse(ShareLink.objects.filter(devis__in=[self.d1, d2]).exists())
+        self.assertFalse(AuditLog.objects.filter(action=AuditLog.Action.WHATSAPP).exists())
+        resp = self.api.post(self._url(), {'devis_ids': [self.d1.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.d1.refresh_from_db()
+        self.assertEqual(self.d1.statut, Devis.Statut.ENVOYE)
+
 
 class TestCrossTenantIsolation(TestCase):
     """Un devis d'une autre société n'est jamais marqué envoyé via ce chemin."""

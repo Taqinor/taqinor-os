@@ -771,7 +771,7 @@ export function FichePanel({ intervention, onChanged }) {
   const [brouillons, setBrouillons] = useState({})
 
   const load = useCallback(() => installationsApi.getFiche(id)
-    .then((r) => { setReleve(r.data); setBrouillons({}) })
+    .then((r) => { setReleve(r.data) })
     .catch(() => setReleve(null))
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
@@ -781,6 +781,7 @@ export function FichePanel({ intervention, onChanged }) {
       await installationsApi.renseignerFiche(id, v.id, valeur)
       setErreurs((e) => ({ ...e, [v.id]: null }))
       await load()
+      setBrouillons((b) => { const { [v.id]: _, ...reste } = b; return reste })
       onChanged?.()
     } catch (err) { setErreurs((e) => ({ ...e, [v.id]: apiErrorMessage(err, 'Enregistrement impossible.') })) }
   }

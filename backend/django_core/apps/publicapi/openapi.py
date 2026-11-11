@@ -240,6 +240,9 @@ def _bulk_operation(entry):
             "possible côté tableur (=IMPORTDATA())."),
     }] if query_token else []
     content_type = 'text/csv' if entry.get('response_csv') else 'application/json'
+    schema = {'type': 'string' if content_type == 'text/csv' else 'object'}
+    if entry.get('response_fichier'):  # APRF46 — livrable d'un job (pièce jointe)
+        content_type, schema = 'application/octet-stream', {'type': 'string', 'format': 'binary'}
     operation = {
         'summary': entry['description'],
         'security': security,
@@ -248,7 +251,7 @@ def _bulk_operation(entry):
             entry['success_status']: {
                 'description': entry['description'],
                 'headers': _RATE_LIMIT_HEADERS,
-                'content': {content_type: {'schema': {'type': 'string' if content_type == 'text/csv' else 'object'}}},
+                'content': {content_type: {'schema': schema}},
             },
             **_common_error_responses(),
         },

@@ -153,24 +153,18 @@ class RevisionParTauxTests(TestCase):
         ``encaisser``, hors palier) ⇒ 403 inchangé ; le compte qui encaisse
         ⇒ 200, avoir 11 000,00 TTC. Mutant : ôter ``PeutEncaisser`` ⇒
         échec."""
-        from django.contrib.auth import get_user_model
         from rest_framework.test import APIClient
 
-        from apps.roles.models import Role
         from apps.roles.permissions_registre import (
             ADMIN_VENTES_PERMISSIONS, COMMERCIAL_PERMISSIONS)
         self.v1 = self._accepter(self.v1)
         self._facturer_tout(self.v1)
         v2 = self._v2({A10: '30000'})
         url = f'/api/django/ventes/devis/{v2.pk}/confirmer-avoir-revision/'
-        comptes = {nom: get_user_model().objects.create_user(
-            username=f'asec85_{n}', password='x', company=self.company,
-            role_legacy=legacy, role=Role.objects.create(
-                company=self.company, nom=nom, est_systeme=True,
-                permissions=list(codes)))
-            for n, (nom, legacy, codes) in enumerate((
-                ('Admin Ventes', 'responsable', ADMIN_VENTES_PERMISSIONS),
-                ('Commercial', 'normal', COMMERCIAL_PERMISSIONS)))}
+        comptes = {nom: self._compte_role(f'asec85_{n}', nom, legacy, codes)
+                   for n, (nom, legacy, codes) in enumerate((
+                       ('Admin Ventes', 'responsable', ADMIN_VENTES_PERMISSIONS),
+                       ('Commercial', 'normal', COMMERCIAL_PERMISSIONS)))}
         self.assertNotIn('encaisser', ADMIN_VENTES_PERMISSIONS)
         api = APIClient()
         for nom, compte in comptes.items():
@@ -184,6 +178,26 @@ class RevisionParTauxTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(Avoir.objects.get(company=self.company).montant_ttc,
                          Decimal('11000.00'))
+
+    def _compte_role(self, username, nom, legacy, codes):
+        from django.contrib.auth import get_user_model
+        from apps.roles.models import Role
+        return get_user_model().objects.create_user(
+            username=username, password='x', company=self.company, role_legacy=legacy, role=Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True, permissions=list(codes)))
+
+    def test_confirmer_avoir_revision_role_directeur_200(self, *_):
+        """ASEC95 — le succès joué par le VRAI rôle système Directeur (porte ``encaisser``)."""
+        from rest_framework.test import APIClient
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+        self.v1 = self._accepter(self.v1)
+        self._facturer_tout(self.v1)
+        v2 = self._v2({A10: '30000'})
+        api = APIClient()
+        api.force_authenticate(self._compte_role('asec95', 'Directeur', 'admin', DIRECTEUR_PERMISSIONS))
+        resp = api.post(f'/api/django/ventes/devis/{v2.pk}/confirmer-avoir-revision/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(Avoir.objects.get(company=self.company).montant_ttc, Decimal('11000.00'))
 
     def test_complement_revision_ventile(self, *_):
         self.v1 = self._accepter(self.v1)

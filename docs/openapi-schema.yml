@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4947, operations: 7745, components: 3644}
+counts: {paths: 4949, operations: 7747, components: 3644}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3915,7 +3915,9 @@ operations:
 - post /api/public/v1/imports/ -> public_v1_imports_create
 - get /api/public/v1/jobs/ -> public_v1_jobs_list
 - get /api/public/v1/jobs/{id}/ -> public_v1_jobs_retrieve
+- get /api/public/v1/jobs/{id}/erreurs/ -> public_v1_jobs_erreurs_retrieve
 - post /api/public/v1/jobs/{id}/relancer/ -> public_v1_jobs_relancer_create
+- get /api/public/v1/jobs/{id}/resultat/ -> public_v1_jobs_resultat_retrieve
 - post /api/public/v1/leads-write/ -> public_v1_leads_write_create
 - patch /api/public/v1/leads-write/{id}/ -> public_v1_leads_write_partial_update
 - post /api/public/v1/leads-write/{id}/activites/ -> public_v1_leads_write_activites_create

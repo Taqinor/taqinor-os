@@ -2,6 +2,9 @@
 ``services.notifier_reception_solde_a_facturer`` (YSERV7). Module à part :
 ``services.py`` est un mur (≥ 2 000 lignes)."""
 
+# ACSV113 — clé interne de ``custom_data`` (jamais écrivable par le PATCH).
+CLE_RECEPTION_DEFAITE = 'date_reception_defaite'
+
 
 def defaire_jalons_quittes(installation, canon_old, canon_new):
     """Recul de statut ⇒ les jalons des statuts QUITTÉS vers l'arrière ne sont
@@ -38,7 +41,7 @@ def defaire_jalons_quittes(installation, canon_old, canon_new):
 def _defaire_dates_reception(installation):
     """ACSV31 — recul depuis « Réceptionné » : ``date_reception`` et
     ``date_reception_definitive`` remises à nul (le diff du chatter les trace),
-    l'ancienne réception gardée dans ``custom_data['date_reception_defaite']``
+    l'ancienne réception gardée dans ``custom_data[CLE_RECEPTION_DEFAITE]``
     pour recaler le parc à la prochaine réception (``_apply_reception_handover``)."""
     from . import activity
     ancienne = installation.date_reception
@@ -46,7 +49,7 @@ def _defaire_dates_reception(installation):
         return
     if ancienne is not None:
         installation.custom_data = {**(installation.custom_data or {}),
-                                    'date_reception_defaite': ancienne.isoformat()}
+                                    CLE_RECEPTION_DEFAITE: ancienne.isoformat()}
         activity.log_note(installation, None, f'Réception du {ancienne:%d/%m/%Y} défaite.')
     installation.date_reception = installation.date_reception_definitive = None
     installation.save(update_fields=['date_reception', 'date_reception_definitive', 'custom_data'])

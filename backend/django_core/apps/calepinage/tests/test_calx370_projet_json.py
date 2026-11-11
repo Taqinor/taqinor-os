@@ -78,6 +78,9 @@ class ContratPartageTest(unittest.TestCase):
                   / 'projet_json.py').read_text(encoding='utf-8')
         self.assertIn("url_path='import-projet'", source)
 
+    # ACON94 — l'aperçu résout le lead comme l'import réel : ces tests de FORME le
+    # supposent trouvé (le refus 404 est prouvé par test_acal_creation_porte_unique).
+    @mock.patch('apps.calepinage.services.creation.lead_en_portee', new=lambda *a, **k: SimpleNamespace(pk=1))
     def test_l_apercu_de_l_exemple_committe_est_l_exemple_apercu(self):
         apercu = importer_projet(fichier(), None, lead_id=12, apercu=True)
         self.assertEqual(apercu, CONTRAT['exemple_apercu'])
@@ -287,6 +290,9 @@ class ValidationTest(unittest.TestCase):
                     importer_projet(fichier(), None, apercu=True, **cibles)
                 self.assertEqual(capture.exception.champ, 'lead')
 
+    # ACON94 — l'aperçu résout le lead comme l'import réel : ces tests de FORME le
+    # supposent trouvé (le refus 404 est prouvé par test_acal_creation_porte_unique).
+    @mock.patch('apps.calepinage.services.creation.lead_en_portee', new=lambda *a, **k: SimpleNamespace(pk=1))
     def test_l_apercu_n_ecrit_rien(self):
         with mock.patch('apps.calepinage.services.creation.ouvrir_ou_creer_pour_lead'
                         ) as creation, \

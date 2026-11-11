@@ -2750,7 +2750,8 @@ def consommations_appliquees_du_ticket(company, ticket_id):
     lignes = (ConsommationLigne.objects
               .filter(company=company, consommation__intervention__ticket_id=ticket_id,
                       consommation__intervention__annulee=False,
-                      stock_applique=True, produit__isnull=False)
+                      stock_applique=True, produit__isnull=False,
+                      quantite_utilisee__gt=0)
               .select_related('produit').order_by('pk'))
     return [SimpleNamespace(produit=li.produit, quantite=li.quantite_utilisee)
             for li in lignes]

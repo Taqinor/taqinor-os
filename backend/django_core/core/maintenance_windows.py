@@ -279,10 +279,10 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
     poser ``company=None`` (annonce système large) ou une autre société.
 
     La LISTE (GET) suit le même patron que ``SlaCreditsDusListView``
-    (``core.sla``) : un Directeur/Administrateur voit TOUTES les sociétés
-    (pilotage cross-tenant, inchangé) ; un compte ``fiabilite_voir`` non-admin
-    reste BORNÉ à SA société + aux fenêtres SYSTÈME (``company__isnull``,
-    annonces larges — toujours visibles de tous)."""
+    (``core.sla``, AMON20) : seul le superutilisateur voit TOUTES les sociétés ;
+    tout autre compte (Directeur/Administrateur compris — AMON110) reste BORNÉ
+    à SA société + aux fenêtres SYSTÈME (``company__isnull``, annonces larges
+    — toujours visibles de tous)."""
 
     serializer_class = MaintenanceWindowSerializer
     permission_classes = [IsAuthenticated, FiabilitePermission]
@@ -291,7 +291,7 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = MaintenanceWindow.objects.all().order_by('-debute_le')
-        if not _est_admin(self.request.user):
+        if not getattr(self.request.user, 'is_superuser', False):
             qs = qs.filter(
                 Q(company=self.request.user.company) | Q(company__isnull=True))
         return qs

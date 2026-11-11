@@ -4,6 +4,7 @@
 couvre le succès (BackupRun termine, object_key/bytes_taille posés), l'échec
 pg_dump (code retour non nul → statut echec, exit non nul de la commande de
 gestion), et l'échec d'upload MinIO."""
+from datetime import timedelta
 from io import BytesIO, StringIO
 from unittest import mock
 
@@ -176,6 +177,30 @@ class DumpDatabaseTests(TestCase):
         self.assertEqual(run.statut, BackupRun.STATUT_ECHEC)
         self.assertIn('erp-uploads', run.detail['message'])
         self.assertIn('disque plein', run.detail['message'])
+
+    def test_echec_copie_fichiers_garde_la_cle_et_se_purge(self):
+        """ADCG111 — le dump déposé par un run en échec de copie reste nommé
+        et la purge le supprime hors fenêtre quotidienne (jamais dedans)."""
+        client = _FauxS3({'erp-uploads': {'a': (b'a', 'e')}})
+        client.copy_object = mock.Mock(side_effect=RuntimeError('disque plein'))
+        client.delete_object = mock.Mock()
+        run = self._dump_avec(client)
+        run.refresh_from_db()
+        self.assertEqual(run.statut, BackupRun.STATUT_ECHEC)
+        self.assertTrue(run.object_key.startswith('pg_dumps/'))
+        self.assertEqual(run.bytes_taille, len(b'dump'))
+        sans_cle = self._make_run()
+        with mock.patch('subprocess.run', return_value=_fake_completed_process(returncode=1)):
+            backup.dump_database(sans_cle)
+        with mock.patch.object(backup, '_minio_client', return_value=client):
+            backup.purger_backups(now=run.created_at + timedelta(days=1), apply_=True)
+            client.delete_object.assert_not_called()
+            backup.purger_backups(now=run.created_at + timedelta(days=8), apply_=True)
+        client.delete_object.assert_called_once_with(Bucket='erp-backups', Key=run.object_key)
+        run.refresh_from_db()
+        sans_cle.refresh_from_db()
+        self.assertTrue(run.purge_is_deleted)
+        self.assertFalse(sans_cle.purge_is_deleted)
 
     def test_dump_pousse_les_fichiers_vers_la_cible_distante(self):
         client = _FauxS3({'erp-pdf': {'devis/1.pdf': (b'p', 'e3')}})

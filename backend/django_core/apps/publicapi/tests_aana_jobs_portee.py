@@ -64,8 +64,9 @@ class JobsPorteeTest(TestCase):
     def test_cle_creatrice_200_avec_lien(self):
         resp = self._get(self.brute_leads, f'/api/public/v1/jobs/{self.job.id}/')
         self.assertEqual(resp.status_code, 200)
+        # APRF46 — chemin de l'API publique gardé par la clé, jamais MinIO.
         self.assertEqual(resp.data['resultat_url'],
-                         'https://minio.example.test/leads.csv')
+                         f'/api/public/v1/jobs/{self.job.id}/resultat/')
 
     def test_la_liste_ne_montre_pas_le_job_d_une_autre_entite(self):
         resp = self._get(self.brute_stock, '/api/public/v1/jobs/')
