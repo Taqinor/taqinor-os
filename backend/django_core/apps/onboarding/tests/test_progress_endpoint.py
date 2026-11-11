@@ -203,6 +203,45 @@ class OnboardingTextesCsvNTDMO36Test(TestCase):
         # Le catalogue global n"est pas modifiable par un admin de société.
         self.assertEqual(r.data["mis_a_jour"], 1)
 
+    def test_surcharge_societe_exportee_seule_et_jamais_ecrasee(self):
+        """Item global + surcharge société de la même clé : UNE ligne
+        ``item:<key>`` (la surcharge) ; le réimport du fichier tel quel ne
+        remet jamais le texte global sur la surcharge."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        globale = OnboardingChecklistItem.objects.create(
+            company=None, key="item-36-g", libelle="Texte global", ordre=500)
+        surcharge = OnboardingChecklistItem.objects.create(
+            company=self.company, key="item-36-g", libelle="Texte societe",
+            ordre=1)
+        texte = self._client(self.admin).get(
+            self.url_export).content.decode("utf-8-sig")
+        lignes = [x for x in texte.splitlines()
+                  if x.startswith("item:item-36-g,")]
+        self.assertEqual(lignes, ["item:item-36-g,,Texte societe"])
+        r = self._client(self.admin).post(
+            self.url_import,
+            {"fichier": SimpleUploadedFile("t.csv", texte.encode("utf-8"))},
+            format="multipart")
+        self.assertEqual(r.status_code, 200, r.content)
+        surcharge.refresh_from_db()
+        globale.refresh_from_db()
+        self.assertEqual(surcharge.libelle, "Texte societe")
+        self.assertEqual(globale.libelle, "Texte global")
+        self.assertEqual(r.data["mis_a_jour"], 0)
+
+    def test_fichier_inexploitable_409(self):
+        """ENF11 — octets non UTF-8 ou en-tête absent : fichier conforme au
+        schéma (binaire) mais inexploitable → 409, rien n'est écrit."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        for nom, octets in (("bin.csv", bytes([0x50, 0x4B, 0x03, 0xB1, 0xFF])),
+                            ("entete.csv", "a,b\r\n1,2\r\n".encode())):
+            r = self._client(self.admin).post(
+                self.url_import,
+                {"fichier": SimpleUploadedFile(nom, octets)},
+                format="multipart")
+            self.assertEqual(r.status_code, 409, (nom, r.content))
+            self.assertIn("detail", r.data)
+
     def test_import_sans_fichier_400(self):
         self.assertEqual(self._client(self.admin).post(
             self.url_import, {}, format="multipart").status_code, 400)

@@ -229,6 +229,12 @@
    "required": false
   },
   {
+   "classe": "IntegerField",
+   "nom": "lock_version",
+   "read_only": true,
+   "required": false
+  },
+  {
    "classe": "ChoiceField",
    "nom": "mode_pompe",
    "read_only": false,

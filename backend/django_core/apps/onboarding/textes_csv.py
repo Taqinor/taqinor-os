@@ -43,11 +43,19 @@ def _portee(qs, company):
 
 
 def lignes_export(company):
-    """Lignes ``[cle_stable, ecran_cible, texte_fr]`` ordonnées."""
-    lignes = []
+    """Lignes ``[cle_stable, ecran_cible, texte_fr]`` ordonnées.
+
+    UNE ligne par clé stable : quand la société surcharge un item du
+    catalogue global (même ``key``), seule sa surcharge est exportée — deux
+    lignes ``item:<key>`` se résoudraient sur la même surcharge à la
+    réimportation et le texte global écraserait la modification de la
+    société. (Les étapes de tour sont uniques par ``tour_key``/``ordre``.)"""
+    items = {}
     for it in _portee(OnboardingChecklistItem.objects.all(), company).order_by(
             'ordre', 'key'):
-        lignes.append([f'item:{it.key}', it.lien, it.libelle])
+        if it.key not in items or it.company_id is not None:
+            items[it.key] = it  # la surcharge société l'emporte, place gardée
+    lignes = [[f'item:{it.key}', it.lien, it.libelle] for it in items.values()]
     for st in _portee(ProductTourStep.objects.all(), company).order_by(
             'tour_key', 'ordre'):
         base = f'tour:{st.tour_key}#{st.ordre}'

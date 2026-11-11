@@ -1,4 +1,4 @@
-"""NTDMO41/42 — KPI INTERNES d'onboarding produit (équipe TAQINOR uniquement).
+"""NTDMO41/42 — KPI INTERNES d'onboarding produit (l'équipe produit uniquement).
 
 Même patron que ``i18n_kpi.py`` / ``p2p_kpi.py`` : un module d'agrégation qui
 lit ce qui existe (modèles ``apps.onboarding``, lecture directe — onboarding

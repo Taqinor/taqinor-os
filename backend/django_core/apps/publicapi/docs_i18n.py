@@ -181,6 +181,7 @@ EVENEMENTS_EN = {
     'incident_opened': 'Incident — opened',
     'incident_resolved': 'Incident — resolved',
     'maintenance_window_announced': 'Maintenance window — announced',
+    'onboarding.item_complete': 'Onboarding — checklist item completed',
 }
 
 # ── Descriptions d'endpoints (clé = chemin, inchangé) ───────────────────────

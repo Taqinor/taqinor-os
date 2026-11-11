@@ -9,6 +9,8 @@ Endpoints (company + user scopés côté serveur, jamais lus du corps) :
   coche manuellement un item SANS ``event_key`` (aucun déclencheur
   automatique adapté sans importer une app métier — alternative explicite).
 """
+import csv
+
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -300,12 +302,13 @@ class OnboardingTextesImportView(APIView):
 
     @extend_schema(request=inline_serializer("OnboardingTextesImport", {
         "fichier": drf_serializers.FileField()}),
-        responses=inline_serializer("OnboardingTextesImportReponse", {
+        responses={200: inline_serializer("OnboardingTextesImportReponse", {
             "mis_a_jour": drf_serializers.IntegerField(),
             "inchanges": drf_serializers.IntegerField(),
             "ignorees": drf_serializers.IntegerField(),
             "inconnues": drf_serializers.ListField(
-                child=drf_serializers.CharField())}))
+                child=drf_serializers.CharField())}),
+            409: OpenApiTypes.OBJECT})
     def post(self, request):
         fichier = request.FILES.get("fichier")
         if fichier is None:
@@ -316,7 +319,10 @@ class OnboardingTextesImportView(APIView):
             res = textes_csv.importer_csv(
                 fichier.read(), request.user.company,
                 peut_ecrire_global=est_operateur_plateforme(request.user))
-        except (ValueError, UnicodeDecodeError) as exc:
+        except (ValueError, UnicodeDecodeError, csv.Error) as exc:
+            # ENF11 — le fichier reçu est conforme au schéma (binaire) mais
+            # inexploitable (pas de l'UTF-8, pas l'en-tête attendu) : 409,
+            # comme l'import CSV des demandes d'achat ; 400 = champ manquant.
             return Response({"detail": str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(res)

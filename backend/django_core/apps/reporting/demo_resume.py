@@ -1,7 +1,7 @@
 """NTDMO21/31 — résumé « Ce que vous avez accompli ce mois-ci » (société démo).
 
 Widget du Dashboard réservé aux sociétés de DÉMONSTRATION (``Company.est_demo``) :
-une phrase qui aide un commercial TAQINOR à raconter une histoire cohérente en
+une phrase qui aide un commercial de l'opérateur plateforme à raconter une histoire cohérente en
 rendez-vous. AUCUNE nouvelle agrégation : on réutilise les sélecteurs existants
 (``ventes.selectors.devis_envoyes_periode``, ``installations.selectors.
 chantiers_receptionnes``, ``reporting.metriques_ca.ca_ht`` = LE CA HT net

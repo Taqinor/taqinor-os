@@ -219,9 +219,21 @@ class TestWarrantyReportData(TestCase):
                 'Dérive anormale vs courbe garantie : recours fabricant à '
                 'étudier.', build_om_report_data(
                     self.inst, today=fin)['recommendations'])
+        # AMON105 — le garanti ne court que jusqu'au dernier jour COUVERT par
+        # un relevé : pour juger « au 31/12 le garanti égale l'annuel
+        # complet », l'année doit être relevée jusqu'au 31/12 (sinon il reste
+        # proraté au 13/05, 4 149,69 kWh — comportement voulu d'AMON105).
+        while jour <= date(2026, 12, 31):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst, date=jour,
+                period_days=1,
+                energy_kwh=attendu_entre(12000, jour, jour).quantize(
+                    Decimal('0.01')))
+            jour += timedelta(days=1)
         st = production_warranty_status(
             self.inst, year=2026, today=date(2026, 12, 31))
         self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
+        self.assertEqual(st['compensation_mad'], Decimal('0.00'))
 
     def test_releve_a_cheval_au_prorata(self):
         """AMON106 — un relevé de 30 j / 300 kWh daté du 07/12/2025 apporte

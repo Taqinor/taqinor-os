@@ -42,20 +42,20 @@ with no rate column at all — mono-MAD in practice.
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
-| crm | Lead | `apps/crm/models.py:223` | montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2381` | cout |
+| crm | Lead | `apps/crm/models.py:224` | montant_estime, tva_recuperable |
+| crm | PointContact | `apps/crm/models.py:2384` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:219` | total |
-| crm | CommissionPartenaire | `apps/crm/models_clients.py:277` | base_ht, montant |
-| crm | DealEnregistre | `apps/crm/models_clients.py:555` | montant_commission_du, montant_commission_estime |
-| crm | Client | `apps/crm/models_clients.py:790` | tva_recuperable |
-| crm | ForecastEntry | `apps/crm/models_clients.py:1577` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models_clients.py:1638` | montant_total |
+| crm | CommissionPartenaire | `apps/crm/models_clients.py:278` | base_ht, montant |
+| crm | DealEnregistre | `apps/crm/models_clients.py:556` | montant_commission_du, montant_commission_estime |
+| crm | Client | `apps/crm/models_clients.py:791` | tva_recuperable |
+| crm | ForecastEntry | `apps/crm/models_clients.py:1580` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models_clients.py:1641` | montant_total |
 | crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
-| facturation | LigneFacture | `apps/facturation/models.py:829` | prix_unitaire, remise, taux_tva |
-| facturation | Paiement | `apps/facturation/models.py:896` | escompte_montant, montant |
-| facturation | Avoir | `apps/facturation/models.py:1120` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| facturation | LigneAvoir | `apps/facturation/models.py:1238` | prix_unitaire, remise, taux_tva |
+| facturation | LigneFacture | `apps/facturation/models.py:833` | prix_unitaire, remise, taux_tva |
+| facturation | Paiement | `apps/facturation/models.py:900` | escompte_montant, montant |
+| facturation | Avoir | `apps/facturation/models.py:1124` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| facturation | LigneAvoir | `apps/facturation/models.py:1242` | prix_unitaire, remise, taux_tva |
 | ged | ModeleDocument | `apps/ged/models.py:2393` | corps_html |
 | ged | LotEnvoi | `apps/ged/models.py:3351` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
@@ -72,34 +72,34 @@ with no rate column at all — mono-MAD in practice.
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:76` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:543` | total |
-| sav | Ticket | `apps/sav/models.py:671` | cout |
-| sav | WarrantyClaim | `apps/sav/models.py:1455` | cout_recupere |
-| sav | ContratMaintenance | `apps/sav/models.py:1573` | prix |
-| sav | PrestationContrat | `apps/sav/models.py:1902` | prix_ht |
+| sav | Ticket | `apps/sav/models.py:674` | cout |
+| sav | WarrantyClaim | `apps/sav/models.py:1460` | cout_recupere |
+| sav | ContratMaintenance | `apps/sav/models.py:1578` | prix |
+| sav | PrestationContrat | `apps/sav/models.py:1907` | prix_ht |
 | statuspage | UptimeDayBucket | `apps/statuspage/models.py:164` | echantillons_total |
-| stock | AchatsParametres | `apps/stock/models.py:426` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
-| stock | ToleranceRapprochementCategorie | `apps/stock/models.py:576` | tolerance_prix_absolu_mad, tolerance_prix_pct |
-| stock | Produit | `apps/stock/models.py:704` | paliers_prix_vente, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, tva |
-| stock | MouvementStock | `apps/stock/models.py:1302` | cout_unitaire |
-| stock | PalierPrixFournisseur | `apps/stock/models.py:1669` | prix |
-| stock | EcheanceFactureFournisseur | `apps/stock/models.py:1702` | montant |
-| stock | AcompteFournisseur | `apps/stock/models.py:1737` | montant, montant_consomme |
-| stock | AvoirFournisseur | `apps/stock/models.py:1798` | montant_ht, montant_impute, montant_ttc, montant_tva |
-| stock | ImputationAvoirFournisseur | `apps/stock/models.py:1859` | montant, montant_ras_tva |
-| stock | InventaireAnnuel | `apps/stock/models.py:1960` | total_valeur |
-| stock | RevalorisationStock | `apps/stock/models.py:1999` | ancien_cout, nouveau_cout |
-| stock | BudgetDepartement | `apps/stock/models.py:2338` | montant_alloue |
-| stock | EngagementBudget | `apps/stock/models.py:2398` | montant |
+| stock | AchatsParametres | `apps/stock/models.py:427` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
+| stock | ToleranceRapprochementCategorie | `apps/stock/models.py:577` | tolerance_prix_absolu_mad, tolerance_prix_pct |
+| stock | Produit | `apps/stock/models.py:705` | paliers_prix_vente, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, tva |
+| stock | MouvementStock | `apps/stock/models.py:1303` | cout_unitaire |
+| stock | PalierPrixFournisseur | `apps/stock/models.py:1670` | prix |
+| stock | EcheanceFactureFournisseur | `apps/stock/models.py:1703` | montant |
+| stock | AcompteFournisseur | `apps/stock/models.py:1738` | montant, montant_consomme |
+| stock | AvoirFournisseur | `apps/stock/models.py:1799` | montant_ht, montant_impute, montant_ttc, montant_tva |
+| stock | ImputationAvoirFournisseur | `apps/stock/models.py:1860` | montant, montant_ras_tva |
+| stock | InventaireAnnuel | `apps/stock/models.py:1961` | total_valeur |
+| stock | RevalorisationStock | `apps/stock/models.py:2000` | ancien_cout, nouveau_cout |
+| stock | BudgetDepartement | `apps/stock/models.py:2339` | montant_alloue |
+| stock | EngagementBudget | `apps/stock/models.py:2399` | montant |
 | stock | IncidentQualiteFournisseur | `apps/stock/models_incident_fournisseur.py:18` | cout_impact_mad |
 | stock | ParametresNegoce | `apps/stock/models_negoce_params.py:16` | cout_rupture_jour_mad |
 | stock | AccordRFAFournisseur | `apps/stock/models_rfa.py:16` | montant_fixe |
 | stock | ExpeditionTransporteur | `apps/stock/models_wms.py:477` | cout_reel |
-| ventes | LigneDevis | `apps/ventes/models.py:596` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
-| ventes | AvenantDevis | `apps/ventes/models.py:927` | taux_remise_global |
-| ventes | DevisPreset | `apps/ventes/models.py:1734` | remise_globale, taux_tva |
-| ventes | LignePrixListe | `apps/ventes/models.py:2080` | prix_unitaire |
-| ventes | PalierRemiseVolume | `apps/ventes/models.py:2169` | remise_pct |
-| ventes | PlanCommission | `apps/ventes/models.py:2229` | montant_par_kwc |
+| ventes | LigneDevis | `apps/ventes/models.py:599` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
+| ventes | AvenantDevis | `apps/ventes/models.py:930` | taux_remise_global |
+| ventes | DevisPreset | `apps/ventes/models.py:1737` | remise_globale, taux_tva |
+| ventes | LignePrixListe | `apps/ventes/models.py:2083` | prix_unitaire |
+| ventes | PalierRemiseVolume | `apps/ventes/models.py:2172` | remise_pct |
+| ventes | PlanCommission | `apps/ventes/models.py:2232` | montant_par_kwc |
 | ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
 | ventes | AffectationPaiement | `apps/ventes/models_facturation.py:418` | montant |
 | ventes | NoteDebit | `apps/ventes/models_facturation.py:452` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
@@ -116,7 +116,7 @@ with no rate column at all — mono-MAD in practice.
 | App | Model | File | Money fields | Has exchange rate? |
 | --- | --- | --- | --- | --- |
 | achats | FactureFournisseur | `apps/achats/models.py:472` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
-| crm | ConcurrentPerte | `apps/crm/models_clients.py:1264` | concurrent_prix | no |
-| facturation | Facture | `apps/facturation/models.py:33` | abandon_montant, acompte_auto_le, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, total_ht_stocke, total_ttc_stocke, ventilation_tva | yes |
+| crm | ConcurrentPerte | `apps/crm/models_clients.py:1267` | concurrent_prix | no |
+| facturation | Facture | `apps/facturation/models.py:35` | abandon_montant, acompte_auto_le, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, total_ht_stocke, total_ttc_stocke, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:15` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
-| ventes | Devis | `apps/ventes/models.py:36` | penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |
+| ventes | Devis | `apps/ventes/models.py:37` | penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |

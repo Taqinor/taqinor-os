@@ -255,12 +255,11 @@ def reancrer_relances_demo(today=None, rng=None):
     import datetime
     import random
 
-    from django.utils import timezone
-
     from apps.crm.models import Lead
+    from core.dates import aujourd_hui_local
 
     rng = rng or random
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()  # CRX26 — date marocaine, jamais UTC
     n = 0
     qs = Lead.objects.filter(
         company__est_demo=True, perdu=False, relance_date__lt=today)

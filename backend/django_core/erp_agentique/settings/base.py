@@ -1296,6 +1296,7 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
+    'reporting.recalcul_nocturne_onboarding': {'queue': 'scheduled'},  # NTDMO41/42
     # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
     'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.

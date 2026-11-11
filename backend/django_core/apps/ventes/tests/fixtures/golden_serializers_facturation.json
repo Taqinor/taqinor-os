@@ -844,6 +844,13 @@
      null,
      true
     ],
+    "lock_version": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
     "mentions_manquantes": [
      "ListField",
      true,
@@ -1362,6 +1369,13 @@
     "libelle": [
      "ChaineStricte",
      false,
+     false,
+     null,
+     false
+    ],
+    "lock_version": [
+     "IntegerField",
+     true,
      false,
      null,
      false
