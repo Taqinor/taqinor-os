@@ -66,9 +66,10 @@ def rotation_equilibree(candidats, charge, plafond=None):
 def _leads_ouverts_count(commercial):
     """XSAL11 — Nombre de leads OUVERTS assignés à un commercial : stage NON
     SIGNED/COLD (clés STAGES.py — jamais codées en dur) et jamais perdu. Sert
-    de plafond de saturation pour la rotation round-robin équilibrée."""
+    de plafond de saturation pour la rotation round-robin équilibrée.
+    ASUP41 — un lead ARCHIVÉ n'est pas ouvert (même prédicat que le cockpit)."""
     return Lead.objects.filter(
-        owner=commercial, perdu=False,
+        owner=commercial, perdu=False, is_archived=False,
     ).exclude(stage__in=[stages.SIGNED, stages.COLD]).count()
 
 
