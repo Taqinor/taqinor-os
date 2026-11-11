@@ -3,10 +3,13 @@
 Pure stdlib (unittest), no Django. Run:
     python -m unittest scripts.tests.test_check_unique_scoping -v
 """
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -165,6 +168,41 @@ class TestUniqueScoping(unittest.TestCase):
             "apps/ventes/models_x.py::Client.code_parrainage", allow))
         self.assertFalse(cus._autorise(
             "apps/crm/autre.py::Client.code_parrainage", allow))
+
+
+class MainTests(unittest.TestCase):
+    """ATST47 (C-ATST-025) — ``main()`` joué sur un arbre fautif. Mutants
+    ``if offenders:`` → ``if False:``, balayage vidé, ``if True: continue``
+    ⇒ ``test_unique_non_scope_fait_sortir_un`` échoue."""
+
+    setUp = TestSurfaceEnumeration.setUp
+    _restore = TestSurfaceEnumeration._restore
+
+    def _main(self, src, allow=""):
+        (self.app_dir / "models.py").write_text(src, encoding="utf-8")
+        liste = Path(self._tmp.name) / "allow.txt"
+        liste.write_text(allow, encoding="utf-8")
+        sortie = io.StringIO()
+        with mock.patch.object(cus, "ALLOWLIST_PATH", liste), contextlib.redirect_stdout(sortie):
+            return cus.main([]), sortie.getvalue()
+
+    def test_unique_non_scope_fait_sortir_un(self):
+        rc, sortie = self._main(BARE_UNIQUE)
+        self.assertEqual(rc, 1, sortie)
+        self.assertIn("[UNIQUE_NOT_COMPANY_SCOPED]", sortie)
+        self.assertIn("Devis.reference", sortie)
+
+    def test_unique_scope_passe(self):
+        self.assertEqual(self._main(COMPANY_SCOPED)[0], 0)
+
+    def test_cle_autorisee_passe(self):
+        cle = cus._rel(self.app_dir / "models.py") + "::Devis.reference"
+        self.assertEqual(self._main(BARE_UNIQUE, allow=cle + "\n")[0], 0)
+
+    def test_depot_reel_vert(self):
+        self._restore()
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertEqual(cus.main([]), 0, sortie.getvalue()[-2000:])
 
 
 if __name__ == "__main__":
