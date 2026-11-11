@@ -158,6 +158,43 @@ class TestFactureBulk(TestCase):
         self.assertFalse(r.data[f.id]['ok'])
         self.assertEqual(RelanceLog.objects.filter(company=self.company).count(), 0)
 
+    # ── Envoyer par email ─────────────────────────────────────────────────────
+
+    def test_bulk_envoyer_email_annulee_et_brouillon_refusees(self):
+        """AMSG31 (C-AMSG-011) — lot puis unitaire : annulée et brouillon
+        refusées (motif de statut, 409 en unitaire), 0 EmailLog pour elles ;
+        seule l'émise part. Mutant : retirer `facture_envoyable` ⇒ échec."""
+        from unittest.mock import patch
+        from django.core import mail
+        from django.test import override_settings
+        from apps.ventes.models import EmailLog
+        a = self._facture(statut=Facture.Statut.ANNULEE)
+        b = self._facture(statut=Facture.Statut.BROUILLON)
+        e = self._facture(statut=Facture.Statut.EMISE)
+        mail.outbox = []
+        with override_settings(
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'), \
+                patch('apps.ventes.email_service._document_pdf',
+                      return_value=(b'%PDF-1.4', 'f.pdf')):
+            r = self.api.post(self._url(), {
+                'action': 'envoyer-email', 'ids': [a.id, b.id, e.id]},
+                format='json')
+            unitaire = self.api.post(
+                f'/api/django/ventes/factures/{a.id}/envoyer-email/', {},
+                format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data[a.id], {'ok': False, 'detail': (
+            'Statut Annulée : seule une facture émise, payée ou en retard '
+            'part au client.')})
+        self.assertFalse(r.data[b.id]['ok'])
+        self.assertIn('Statut Brouillon', r.data[b.id]['detail'])
+        self.assertTrue(r.data[e.id]['ok'], r.data[e.id])
+        self.assertEqual(unitaire.status_code, 409, unitaire.data)
+        self.assertEqual(unitaire.data['detail'], r.data[a.id]['detail'])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(EmailLog.objects.filter(
+            facture__in=[a, b]).count(), 0)
+
     # ── Company scoping ───────────────────────────────────────────────────────
 
     def test_bulk_cross_company_invisible(self):

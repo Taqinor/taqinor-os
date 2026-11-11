@@ -53,6 +53,8 @@ def sonde(ctx=None):
     try:
         g = {"logger": logging.getLogger("sonde")}
         exec(extraire("apps/ventes/domain/recouvrement.py", "_nudge_suppressed"), g)
+        if "def _lead_ecarte" in (DJ / "apps/ventes/domain/recouvrement.py").read_text(encoding="utf-8"):
+            exec(extraire("apps/ventes/domain/recouvrement.py", "_lead_ecarte"), g)  # ASUP42 — garde extraite
         f, co = g["_nudge_suppressed"], Obj(pk=1)
         base = dict(is_archived=False, perdu=False, ne_plus_contacter=False)
         r = {nom: _jouer(f, co, **{**base, **kw}) for nom, kw in (

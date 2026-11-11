@@ -200,6 +200,12 @@ class FactureDocumentsActionsMixin:
                 status=status.HTTP_409_CONFLICT,
             )
         modele, langue = saisie.get('modele', 'facture'), saisie.get('langue', 'fr')
+        if modele == 'relance' and getattr(facture, 'contestee_le', None):
+            # AMSG27 — D-AFAC-89 : une contestée ne se relance par AUCUN canal
+            # (motif de facture_relancable servi tel quel) ; le document reste envoyable.
+            from apps.facturation.recouvrement import facture_relancable
+            return Response({'detail': facture_relancable(facture)[1]},
+                            status=status.HTTP_409_CONFLICT)
         message, link = build_facture_whatsapp(request, facture, modele, langue)
         # L856 — trace l'action dans le chatter de la facture (Historique).
         # Acteur et société posés côté serveur, jamais lus du corps de requête.
@@ -224,6 +230,11 @@ class FactureDocumentsActionsMixin:
         être surchargés dans le body de la requête."""
         from apps.ventes.email_service import send_document_email
         facture = self.get_object()
+        from apps.facturation.recouvrement import facture_envoyable
+        envoyable, motif_refus = facture_envoyable(facture)  # AMSG31
+        if not envoyable:
+            return Response({'detail': motif_refus},
+                            status=status.HTTP_409_CONFLICT)
         saisie = valider_corps(request, D.EnvoyerEmailFactureRequest)
         log = send_document_email(
             facture, user=request.user,

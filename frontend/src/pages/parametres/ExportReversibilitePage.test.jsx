@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
 beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
-  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+  return render(<MemoryRouter><ThemeProvider><ConfirmProvider>{ui}</ConfirmProvider></ThemeProvider></MemoryRouter>)
 }
 
 /* NTOBS7 — écran de téléchargement de l'export de réversibilité + historique
@@ -17,6 +18,7 @@ vi.mock('../../api/parametresApi', () => ({
   default: {
     getHistoriqueExportReversibilite: vi.fn(),
     declencherExportReversibilite: vi.fn(),
+    couperLienExportReversibilite: vi.fn(),
   },
 }))
 
@@ -57,6 +59,28 @@ describe('ExportReversibilitePage (NTOBS7)', () => {
     const lien = screen.getByRole('link', { name: /Télécharger/ })
     expect(lien).toHaveAttribute(
       'href', '/api/django/core/export-reversibilite/telecharger/abc123/')
+  })
+
+  it('APUB3 — coupe le lien d’un export prêt après confirmation', async () => {
+    const user = userEvent.setup()
+    const pret = {
+      id: 7, statut: 'pret', taille_octets: 2048, token: 'abc',
+      expire_le: '2026-07-01T00:00:00Z', created_at: '2026-06-24T00:00:00Z',
+    }
+    parametresApi.getHistoriqueExportReversibilite.mockResolvedValue({ data: [pret] })
+    parametresApi.couperLienExportReversibilite.mockResolvedValue({ data: { ...pret, statut: 'expire' } })
+    renderPage(<ExportReversibilitePage />)
+    await user.click(await screen.findByRole('button', { name: /Couper le lien/ }))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    expect(parametresApi.couperLienExportReversibilite).not.toHaveBeenCalled()
+    parametresApi.getHistoriqueExportReversibilite.mockResolvedValue({ data: [{ ...pret, statut: 'expire' }] })
+    await user.click(screen.getByRole('button', { name: /Couper le lien/ }))
+    const dialogue = await screen.findByRole('alertdialog')
+    await user.click(within(dialogue).getByRole('button', { name: 'Couper le lien' }))
+    await waitFor(() => expect(screen.getByText('Expiré')).toBeInTheDocument())
+    expect(parametresApi.couperLienExportReversibilite).toHaveBeenCalledTimes(1)
+    expect(parametresApi.couperLienExportReversibilite).toHaveBeenCalledWith(7)
+    expect(screen.queryByRole('link', { name: /Télécharger/ })).not.toBeInTheDocument()
   })
 
   it('un export en_cours ne montre pas de lien de téléchargement', async () => {

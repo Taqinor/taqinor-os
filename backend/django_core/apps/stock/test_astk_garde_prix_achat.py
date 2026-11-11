@@ -110,6 +110,20 @@ def cles_interdites(payload):
     return trouvees
 
 
+#: ATST4 — en-têtes d'achat d'un export XLSX (1re ligne de chaque feuille).
+RE_ENTETES_ACHAT = re.compile(r"^(Coût|Valeur|Prix d'achat|Montant)", re.IGNORECASE)
+
+
+def entetes_achat(contenu):
+    """ATST4 — en-têtes d'achat (triés) de la ligne d'en-tête d'un classeur."""
+    from io import BytesIO
+    from openpyxl import load_workbook
+    classeur = load_workbook(BytesIO(contenu), read_only=True)
+    return sorted({str(c) for ws in classeur.worksheets
+                   for c in next(ws.iter_rows(max_row=1, values_only=True), ())
+                   if c and RE_ENTETES_ACHAT.match(str(c))})
+
+
 def _api(user):
     api = APIClient()
     api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
@@ -181,7 +195,12 @@ def balayer(api, routes, utilisateur, fixtures=None, attendues=None):
             if reponse.status_code != 403 or not refus_declare(cible, utilisateur):
                 erreurs.append(f'GET {cible} -> HTTP {reponse.status_code} {getattr(reponse, "data", "")}')
             return None
-        # Règle d'exemption nommée : réponse non JSON (PDF, XLSX, HTML).
+        # ATST4 — un XLSX est OUVERT : sa ligne d'en-tête passe au détecteur.
+        if 'spreadsheetml' in (reponse.get('Content-Type') or ''):
+            if entetes := entetes_achat(reponse.content):
+                violations.append(f'GET {cible} -> {entetes}')
+            return None
+        # Règle d'exemption nommée : réponse non JSON (PDF, HTML).
         if 'json' not in (reponse.get('Content-Type') or ''):
             return None
         nb_json += 1
@@ -325,6 +344,9 @@ class GardePrixAchat(TestCase):
         LandedCostLigne.objects.create(
             company=self.company, dossier=dossier, produit=self.produit,
             quantite=10, valeur_fob=Decimal('8000'))
+        # ATST4 — un inventaire FIGÉ (exercice clos) : liste, détail et XLSX atteints.
+        from apps.stock.services import figer_inventaire_annuel
+        figer_inventaire_annuel(self.company, 2025, self.admin)
 
     def test_introspection_non_vide(self):
         """Le balayage découvre bien les routes (garde contre une
@@ -420,6 +442,9 @@ class GardePrixAchat(TestCase):
             _api(self.admin), routes_get(), self.admin, self)
         self.assertTrue(violations, "l'admin ne voit aucune clé d'achat : jeu "
                                     'de données vide ou garde aveugle')
+        texte = '\n'.join(violations)  # ATST4 — inventaire valorisé + XLSX vus
+        self.assertRegex(texte, r'inventaires-annuels/ -> .*total_valeur')
+        self.assertIn('Coût moyen (HT)', texte)
 
     def test_serialiseurs_achat_installations_masques(self):
         """APFS29 — chaque sérialiseur d'achat d'`installations` masque toute clé d'achat déclarée."""
@@ -454,3 +479,9 @@ class GardePrixAchat(TestCase):
             'marge', 'taux_pct', 'reste_categorie', 'reste_total'})
         self.assertEqual(cles_interdites({'quantite': 1, 'prix_vente': 2}),
                          set())
+        from io import BytesIO
+        from openpyxl import Workbook
+        classeur, flux = Workbook(), BytesIO()
+        classeur.active.append(['Produit', 'Quantité', 'Coût moyen (HT)'])
+        classeur.save(flux)
+        self.assertEqual(entetes_achat(flux.getvalue()), ['Coût moyen (HT)'])

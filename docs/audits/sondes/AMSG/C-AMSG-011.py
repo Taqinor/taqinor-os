@@ -82,7 +82,8 @@ def sonde(ctx=None):
           "PeutEncaisser": lambda: NS(has_permission=lambda r, v: True), "MOTIF_SANS_ENCAISSER": "encaisser requis",
           "valider_corps": lambda r, schema: dict(r.data), "D": NS(EnvoyerEmailFactureRequest=None)}
     reel("core/checks.py", {"BACKENDS_NON_ENVOYEURS", "CLES_ENVOI", "backend_email_envoie", "cles_envoi_posees"}, ns)
-    reel("apps/facturation/recouvrement.py", {"STATUTS_NON_RELANCABLES", "facture_relancable", "montant_exigible"}, ns)
+    reel("apps/facturation/recouvrement.py", {"STATUTS_NON_RELANCABLES", "facture_relancable", "montant_exigible",
+                                              "STATUTS_HORS_RELEVE", "facture_envoyable"}, ns)  # AMSG31 — prédicat du correctif
     reel("apps/ventes/email_service.py", {"is_email_configured", "_from_email", "_reply_to_address", "_send",
                                           "_refuser_sans_pdf_facture", "send_document_email"}, ns)
     reel("apps/facturation/views/facture_lot.py", {"bulk"}, ns, "FactureLotActionsMixin")

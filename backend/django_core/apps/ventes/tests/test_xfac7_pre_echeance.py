@@ -123,3 +123,42 @@ class XFAC7PreEcheanceTests(TestCase):
                 date_echeance=today + timedelta(days=jours))
             self.assertEqual(pre_echeance_reminders(), 0)
             self.assertFalse(EmailLog.objects.filter(facture=autre).exists())
+
+    def test_contestee_manuel_promesse_exclues(self):
+        """AMSG32 (C-AMSG-012) — mêmes exclusions que la relance : contestée,
+        client MANUEL de sa société, promesse active ⇒ aucun rappel ; seul le
+        témoin part ; la contestation levée, elle part au passage suivant.
+        Mutant : retirer `facture_relancable` ⇒ la contestée part."""
+        from django.core import mail
+        from apps.ventes.models import ParametrageRelanceClient
+        today = casablanca_today()
+        self.facture.date_echeance = today + timedelta(days=2)
+        self.facture.save(update_fields=['date_echeance'])
+
+        def emise(n, client, **kw):
+            return Facture.objects.create(
+                company=self.company, reference=f'FAC-{MONTH}-09{n}',
+                client=client, statut=Facture.Statut.EMISE,
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'),
+                date_echeance=today + timedelta(days=2), **kw)
+        contestee = emise(1, self.client_obj,
+                          contestee_le=today - timedelta(days=1),
+                          motif_contestation='Travaux non finis')
+        manuel = make_client(self.company, email='manuel@example.com')
+        ParametrageRelanceClient.objects.create(
+            company=self.company, client=manuel,
+            mode=ParametrageRelanceClient.Mode.MANUEL)
+        f_manuel = emise(2, manuel)
+        promesse = emise(3, self.client_obj,
+                         exclu_relances_jusquau=today + timedelta(days=10))
+        mail.outbox = []
+        self.assertEqual(pre_echeance_reminders(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertFalse(EmailLog.objects.filter(
+            facture__in=[contestee, f_manuel, promesse],
+            reference__endswith='::pre_echeance').exists())
+        Facture.objects.filter(pk=contestee.pk).update(contestee_le=None)
+        self.assertEqual(pre_echeance_reminders(), 1)
+        self.assertEqual(EmailLog.objects.filter(
+            reference__endswith='::pre_echeance').count(), 2)

@@ -68,3 +68,103 @@ class NudgeOppositionTests(TestCase):
         self.assertEqual(send_devis_followup_nudges(), 1)
         self.assertEqual(DevisNudgeLog.objects.filter(
             devis=self.devis_oppose).count(), 1)
+
+    def _devis_archive_et_perdu(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import Devis
+        leads = [Lead.objects.create(
+            company=self.company, nom=nom, stage=stages.QUOTE_SENT,
+            telephone=tel, **etat) for nom, tel, etat in (
+                ('Archive', '+212612340010', {'is_archived': True}),
+                ('Perdu', '+212612340011', {'perdu': True}))]
+        return leads, [Devis.objects.create(
+            company=self.company, reference=f'DEV-ASUP42-{n}',
+            client=self.devis_normal.client, lead=lead,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+            for n, lead in enumerate(leads)]
+
+    def test_lead_archive_ou_perdu_ne_recoit_aucune_relance(self):
+        """ASUP42 (C-ASUP-016) — lead archivé ou perdu : aucun DevisNudgeLog,
+        aucune notification ; le témoin part ; lead restauré ⇒ le palier part.
+        Mutant : retirer `is_archived` du prédicat ⇒ échec."""
+        from apps.notifications.models import Notification
+        from apps.ventes.models import DevisNudgeLog
+        from apps.ventes.services import send_devis_followup_nudges
+        (archive, perdu), ecartes = self._devis_archive_et_perdu()
+        self.assertEqual(send_devis_followup_nudges(), 1)
+        self.assertEqual(DevisNudgeLog.objects.filter(
+            devis=self.devis_normal).count(), 1)
+        for d in ecartes:
+            self.assertFalse(DevisNudgeLog.objects.filter(devis=d).exists())
+            self.assertFalse(Notification.objects.filter(
+                link=f'/ventes/devis?devis={d.id}').exists())
+        archive.is_archived = False
+        archive.save(update_fields=['is_archived'])
+        self.assertEqual(send_devis_followup_nudges(), 1)
+        self.assertTrue(DevisNudgeLog.objects.filter(devis=ecartes[0]).exists())
+
+    def test_moteur_d_engagement_saute_le_lead_archive(self):
+        """ASUP42 — `engagement_followup_engine` 25 h+ après l'envoi, lien jamais
+        ouvert : rien pour les leads archivé et perdu, le témoin est signalé."""
+        from apps.notifications.models import Notification
+        from apps.ventes.models import ShareLink
+        from apps.ventes.scheduled import engagement_followup_engine
+        _leads, ecartes = self._devis_archive_et_perdu()
+        for d in [self.devis_normal, *ecartes]:
+            ShareLink.for_devis(d)
+        engagement_followup_engine()
+        self.assertTrue(Notification.objects.filter(
+            link=f'/ventes/devis?devis={self.devis_normal.id}').exists())
+        for d in ecartes:
+            self.assertFalse(Notification.objects.filter(
+                link=f'/ventes/devis?devis={d.id}').exists())
+            self.assertFalse(ShareLink.objects.get(devis=d).engagement_triggers_fired)
+
+    def test_brouillon_client_texte_client_numero_e164(self):
+        """AMSG39 (C-AMSG-027) — le brouillon wa.me de la notification vise le
+        numéro E.164 du client et porte le gabarit CLIENT `devis_unique` de la
+        société (jamais le mot au vendeur ni « TAQINOR ») ; numéro non
+        normalisable ⇒ pas de brouillon. Mutant : remettre `msg_fr` ⇒ échec."""
+        import urllib.parse
+        from apps.crm.models import Client
+        from apps.notifications.models import Notification
+        from apps.parametres.models_company import CompanyProfile
+        from apps.ventes.domain import recouvrement
+        from apps.ventes.models import Devis
+        from apps.ventes.services import send_devis_followup_nudges
+        from apps.ventes.utils.whatsapp import build_single_devis_whatsapp
+        profil = CompanyProfile.get(company=self.company)
+        profil.nom = 'Soleil Nord'
+        profil.save()
+        envoi = self.devis_normal.date_envoi
+
+        def devis(n, tel):
+            client = Client.objects.create(
+                company=self.company, nom=f'Tel{n}', prenom='AMSG39',
+                email=f'amsg39-{n}@example.invalid', telephone=tel)
+            return Devis.objects.create(
+                company=self.company, reference=f'DEV-AMSG39-{n}',
+                client=client, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), date_envoi=envoi,
+                created_by=self.vendeur)
+        valide, invalide = devis(1, '0600000058'), devis(2, '12')
+        send_devis_followup_nudges()
+
+        def corps(d):
+            return Notification.objects.get(
+                recipient=self.vendeur,
+                link=f'/ventes/devis?devis={d.id}').body
+        prefixe = 'Brouillon WhatsApp : https://wa.me/212600000058?text='
+        ligne = next(x for x in corps(valide).splitlines()
+                     if x.startswith('Brouillon WhatsApp'))
+        self.assertTrue(ligne.startswith(prefixe), ligne)
+        texte = urllib.parse.unquote(ligne[len(prefixe):])
+        self.assertEqual(texte, build_single_devis_whatsapp(None, valide)[0])
+        self.assertIn('DEV-AMSG39-1', texte)
+        self.assertNotIn('Pensez à relancer', texte)
+        self.assertNotIn('TAQINOR', texte)
+        self.assertNotIn('Brouillon WhatsApp', corps(invalide))
+        for gabarit in (recouvrement._NUDGE_MSG_FR, recouvrement._NUDGE_MSG_AR):
+            self.assertNotIn('TAQINOR', gabarit)
+            self.assertIn('{signature}', gabarit)

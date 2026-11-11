@@ -142,8 +142,13 @@ def amorcer_cadence(facture, *, echeance=None, niveaux=None, save=True):
         echeance = _echeance_effective(facture, casablanca_today())
     if echeance is None:
         return False
-    facture.prochaine_relance = echeance + timedelta(
-        days=niveaux[0].delai_jours or 0)
+    cible = echeance + timedelta(days=niveaux[0].delai_jours or 0)
+    try:  # AMSG43 — DC19 : le 1er niveau tombe aussi sur un jour ouvré
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
+        cible = prochain_jour_ouvre(cible, facture.company)
+    except Exception:  # noqa: BLE001 — calendrier absent → date brute (D-ENF22-BLE001)
+        logger.warning("recouvrement.amorcer_cadence : erreur ignorée (mode dégradé)", exc_info=True)
+    facture.prochaine_relance = cible
     if save:
         facture.save(update_fields=['prochaine_relance'])
     return True
@@ -569,7 +574,7 @@ _NUDGE_MSG_FR = (
     "Le devis {ref} envoyé à {client_nom} il y a {jours} jours est toujours "
     "en attente de validation.\n\n"
     "Pensez à relancer votre client :\n{wa_url}\n\n"
-    "Cordialement,\nL'équipe TAQINOR"
+    "Cordialement,\n{signature}"
 )
 
 _NUDGE_MSG_AR = (
@@ -581,14 +586,16 @@ _NUDGE_MSG_AR = (
     "يُرجى متابعة "
     "العميل:\n{wa_url}\n\n"
     "مع التحيات،\n"
-    "فريق TAQINOR"
+    "{signature}"
 )
 
 
 def _build_wa_draft_url(phone, text):
-    """Construit un lien wa.me pré-rempli. phone peut inclure '+' ou non."""
+    """Construit un lien wa.me pré-rempli vers un numéro E.164 (AMSG39 :
+    ``normalize_phone_e164``, jamais les chiffres bruts) ; sinon None."""
     import urllib.parse
-    digits = ''.join(c for c in (phone or '') if c.isdigit())
+    from apps.ventes.utils.phone import normalize_phone_e164
+    digits = normalize_phone_e164(phone)
     if not digits:
         return None
     encoded = urllib.parse.quote(text)
@@ -600,6 +607,19 @@ def _get_nudge_days():
     from django.conf import settings
     from apps.ventes.models import DEVIS_NUDGE_DEFAULT_DAYS
     return getattr(settings, 'DEVIS_NUDGE_DAYS', DEVIS_NUDGE_DEFAULT_DAYS)
+
+
+def _lead_ecarte(devis):
+    """CADV8 + ASUP42 (D-ACVI-7) — le lead du devis est « ne plus contacter »
+    (loi 09-08 art. 9, ACRM17), perdu ou archivé : ni notification, ni wa.me,
+    ni DevisNudgeLog ; lead restauré ⇒ le palier part au passage suivant."""
+    if not getattr(devis, 'lead_id', None):
+        return False
+    from apps.crm import selectors as crm_sel
+    lead = crm_sel.get_company_lead(devis.company, devis.lead_id)
+    return lead is not None and (
+        not crm_sel.peut_contacter(lead) or bool(getattr(lead, 'perdu', False))
+        or bool(getattr(lead, 'is_archived', False)))
 
 
 def _nudge_suppressed(devis, today, engagement_days=3):
@@ -617,14 +637,9 @@ def _nudge_suppressed(devis, today, engagement_days=3):
     effort : toute erreur → False (on ne bloque jamais une relance par bug)."""
     from datetime import timedelta
     try:
-        # CADV8 — lead « ne plus contacter » (loi 09-08 art. 9) : aucune
-        # relance, ni notification ni wa.me ni DevisNudgeLog ; opposition
-        # levée ⇒ le palier part au passage suivant. Source unique ACRM17.
-        if getattr(devis, 'lead_id', None):
-            from apps.crm import selectors as crm_sel
-            oppose = crm_sel.get_company_lead(devis.company, devis.lead_id)
-            if oppose is not None and not crm_sel.peut_contacter(oppose):
-                return True
+        # CADV8 / ASUP42 — lead opposé, perdu ou archivé : aucune relance.
+        if _lead_ecarte(devis):
+            return True
         # MRY7 — QUATRIÈME signal, et le plus fort : ce devis porte-t-il une
         # cadence de relance MRY encore ouverte ? Si oui, le moteur de Meryem
         # s'en occupe déjà — laisser passer la relance vendeur enverrait DEUX
@@ -776,17 +791,19 @@ def send_devis_followup_nudges():
                     "recouvrement.send_devis_followup_nudges : erreur ignorée (mode dégradé)", exc_info=True)
                 proposal_url = ''
 
+            from apps.ventes.email_service import _signature
+            signature = _signature(devis.company)  # AMSG39 — jamais « TAQINOR »
             msg_fr = _NUDGE_MSG_FR.format(
                 ref=devis.reference,
                 client_nom=client_nom or 'votre client',
                 jours=jours,
-                wa_url=proposal_url,
+                wa_url=proposal_url, signature=signature,
             )
             msg_ar = _NUDGE_MSG_AR.format(
                 ref=devis.reference,
                 client_nom=client_nom or 'عميلك',
                 jours=jours,
-                wa_url=proposal_url,
+                wa_url=proposal_url, signature=signature,
             )
 
             canal = DevisNudgeLog.Canal.WA_DRAFT
@@ -808,8 +825,17 @@ def send_devis_followup_nudges():
                 # partager), et non le téléphone du vendeur.
                 client_phone = (getattr(client, 'telephone', '') or ''
                                 if client else '')
-                wa_url = (_build_wa_draft_url(client_phone, msg_fr)
-                          or proposal_url)
+                # AMSG39 — le brouillon porte le texte DESTINÉ AU CLIENT
+                # (gabarit `devis_unique` de la société), pas le mot au vendeur.
+                wa_url = None
+                try:
+                    from apps.ventes.utils.whatsapp import (
+                        build_single_devis_whatsapp)
+                    texte_client, _lien = build_single_devis_whatsapp(None, devis)
+                    wa_url = _build_wa_draft_url(client_phone, texte_client)
+                except Exception:  # noqa: BLE001 — pas de brouillon (D-ENF22-BLE001)
+                    logger.warning('QJ4: brouillon client indisponible devis %s',
+                                   devis.reference, exc_info=True)
                 logger.info(
                     'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
                     devis.reference, idx, jours,

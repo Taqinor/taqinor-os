@@ -225,6 +225,29 @@ class TestScheduledJobs(TestCase):
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.EN_RETARD)
 
+    def test_aucun_envoi_client_planifie_le_week_end(self):
+        """AMSG43 (C-AMSG-032) — 1er niveau tombant un dimanche (échéance
+        01/03/2026 + 7 j = dim. 08/03) ⇒ lundi 09/03 ; les trois beats de
+        messages client ne courent que du lundi au vendredi. Mutant : retirer
+        `prochain_jour_ouvre` d'`amorcer_cadence` ⇒ dimanche posé."""
+        from apps.ventes.models import FollowupLevel
+        from apps.ventes.scheduled import check_overdue_factures
+        from erp_agentique.celery import app
+        FollowupLevel.objects.create(
+            company=self.company, ordre=1, nom='Rappel', delai_jours=7)
+        f = self._facture('FAC-WE-0001', date(2026, 3, 1))
+        self.assertEqual(check_overdue_factures(), 1)
+        f.refresh_from_db()
+        self.assertEqual(f.prochaine_relance, date(2026, 3, 9))
+        beats = app.conf.beat_schedule
+        semaine = {1, 2, 3, 4, 5}  # crontab : 0 = dimanche
+        for cle in ('ventes-relance-reminders', 'ventes-pre-echeance-reminders',
+                    'ventes-releve-mensuel-reminders'):
+            self.assertEqual(beats[cle]['schedule'].day_of_week, semaine, cle)
+        self.assertEqual(
+            beats['ventes-releve-mensuel-reminders']['schedule'].day_of_month,
+            {1, 2, 3})
+
     def test_overdue_job_is_idempotent(self):
         from apps.ventes.scheduled import check_overdue_factures
         self._facture('FAC-OV-0002', date.today() - timedelta(days=5))

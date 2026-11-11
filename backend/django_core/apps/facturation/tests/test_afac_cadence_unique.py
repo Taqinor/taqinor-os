@@ -193,9 +193,10 @@ class CadenceUniqueTests(TestCase):
                          motif='Chèque impayé', user=self.admin)
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.EN_RETARD)
-        self.assertEqual(
-            f.prochaine_relance,
-            f.date_echeance + timedelta(days=self.niveaux[0].delai_jours))
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
+        self.assertEqual(f.prochaine_relance, prochain_jour_ouvre(  # AMSG43
+            f.date_echeance + timedelta(days=self.niveaux[0].delai_jours),
+            self.company))
         check_overdue_factures()
         relance_reminders()
         logs = list(RelanceLog.objects.filter(facture=f).order_by('id'))

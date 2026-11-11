@@ -72,9 +72,12 @@ class TestAud131CadenceDemarreSeule(_Base):
 
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EN_RETARD)
+        # AMSG43 — le 1er niveau est posé au jour ouvré (DC19).
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
         self.assertEqual(
             facture.prochaine_relance,
-            facture.date_echeance + timedelta(days=7))
+            prochain_jour_ouvre(facture.date_echeance + timedelta(days=7),
+                                self.company))
 
     def test_le_beat_relance_ensuite_sans_intervention_humaine(self):
         FollowupLevel.objects.create(
@@ -256,6 +259,36 @@ class TestAud131PredicatPartage(_Base):
         self.assertEqual(RelanceLog.objects.filter(facture=facture).count(), 1)
         facture.refresh_from_db()
         self.assertNotEqual(facture.prochaine_relance, date.today())
+
+    def test_whatsapp_relance_d_une_contestee_409(self):
+        """AMSG27 (C-AMSG-006) — le WhatsApp « relance » d'une contestée est
+        refusé (409, motif de ``facture_relancable``), rien n'est écrit ; la
+        jumelle non contestée garde son lien ; le modèle « facture » reste
+        servi (D-ACVI-10). Mutant : retirer la garde ⇒ 200 + wa_url."""
+        from apps.ventes.models import FactureActivity, ShareLink
+        contestee = self._facture(statut=Facture.Statut.EN_RETARD)
+        Facture.objects.filter(pk=contestee.pk).update(
+            contestee_le=date.today(), motif_contestation='Travaux non finis')
+        jumelle = self._facture(statut=Facture.Statut.EN_RETARD)
+
+        def post(facture, modele):
+            return self.api.post(
+                f'/api/django/ventes/factures/{facture.id}/whatsapp/',
+                {'modele': modele}, format='json')
+
+        resp = post(contestee, 'relance')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data, {
+            'detail': 'Facture contestée : la relance est suspendue.'})
+        self.assertFalse(ShareLink.objects.filter(facture=contestee).exists())
+        self.assertFalse(
+            FactureActivity.objects.filter(facture=contestee).exists())
+        resp = post(jumelle, 'relance')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['wa_url'])
+        resp = post(contestee, 'facture')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['wa_url'])
 
     def test_facture_soldee_n_est_pas_relancable(self):
         from apps.ventes.recouvrement import facture_relancable

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, HardDriveDownload } from 'lucide-react'
+import { Download, HardDriveDownload, Unlink } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import coreApi from '../../api/coreApi'
 import { formatDateTime } from '../../lib/format'
+import { useConfirmDialog } from '../../ui/confirm'
 import {
   Badge, Button, Card, CardContent, Spinner, toast, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -54,6 +55,7 @@ export default function ExportReversibilitePage() {
   const [loading, setLoading] = useState(true)
   const [lancement, setLancement] = useState(false)
   const previousStatuts = useRef({})
+  const { confirm } = useConfirmDialog()
 
   // NTOBS20 — assistant 2 étapes. `datasets` : catalogue chargé à la première
   // ouverture (jamais rechargé ensuite, un aller-retour au clavier ne doit
@@ -107,6 +109,19 @@ export default function ExportReversibilitePage() {
     const interval = setInterval(() => { if (active) charger() }, POLL_INTERVAL_MS)
     return () => { active = false; clearInterval(interval) }
   }, [charger])
+
+  // APUB3 — le Directeur coupe le lien transmis avant ses 7 jours.
+  const couperLien = async (run) => {
+    const ok = await confirm({
+      title: 'Couper le lien de cet export ?',
+      description: 'Le lien de téléchargement cessera de fonctionner pour tous ceux qui l’ont reçu.',
+      confirmLabel: 'Couper le lien',
+    })
+    if (!ok) return
+    parametresApi.couperLienExportReversibilite(run.id)
+      .then(() => { toast.success('Lien coupé.'); charger() })
+      .catch((err) => toast.error(err?.response?.data?.detail || 'Impossible de couper le lien.'))
+  }
 
   const lancerExport = () => {
     // Tout coché → `undefined` (comportement par défaut inchangé côté
@@ -234,6 +249,12 @@ export default function ExportReversibilitePage() {
                     <Download className="h-4 w-4" aria-hidden="true" />
                     Télécharger
                   </a>
+                )}
+                {run.statut === 'pret' && run.token && (
+                  <Button size="sm" variant="outline" onClick={() => couperLien(run)}>
+                    <Unlink className="mr-1 h-4 w-4" aria-hidden="true" />
+                    Couper le lien
+                  </Button>
                 )}
               </div>
             </li>

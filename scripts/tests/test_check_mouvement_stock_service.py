@@ -3,6 +3,8 @@
 Stdlib pur (unittest), sans Django — miroir de la garde DB-free. Run :
     python -m unittest scripts.tests.test_check_mouvement_stock_service -v
 """
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -184,6 +186,39 @@ class AllowlistTests(unittest.TestCase):
     def test_le_depot_est_propre(self):
         """La garde passe sur le dépôt réel (aucun site hors allowlist)."""
         self.assertEqual(guard.main([]), 0)
+
+
+class MainSurArbreFautifTests(unittest.TestCase):
+    """ATST50 — ``main()`` sur un arbre HORS ``tests`` (mutants : offenders, balayage vidé)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        self.vue = base / 'apps' / 'demo' / 'views.py'
+        self.vue.parent.mkdir(parents=True)
+        self.allow = base / 'allow.txt'
+        for nom in ('ROOT', 'SCAN_ROOTS', 'ALLOWLIST_PATH', '_SER_CACHE'):
+            self.addCleanup(setattr, guard, nom, getattr(guard, nom))
+        guard.ROOT, guard.SCAN_ROOTS = base, [base / 'apps']
+        guard.ALLOWLIST_PATH, guard._SER_CACHE = self.allow, None
+
+    def _main(self, src):
+        self.vue.write_text(src, encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            return guard.main([]), out.getvalue()
+
+    def test_create_direct_fait_sortir_un(self):
+        code, out = self._main(CREATE_DIRECT)
+        self.assertEqual(code, 1, out)
+        self.assertRegex(out, r'apps/demo/views\.py:\d+\s+MouvementStock\.objects\.create')
+
+    def test_via_le_service_rend_zero(self):
+        self.assertEqual(self._main(CREATE_VIA_SERVICE)[0], 0)
+
+    def test_chemin_en_allowlist_rend_zero(self):
+        self.allow.write_text('apps/demo/views.py\n', encoding='utf-8')
+        self.assertEqual(self._main(CREATE_DIRECT)[0], 0)
 
 
 if __name__ == '__main__':
