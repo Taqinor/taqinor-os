@@ -27,7 +27,7 @@ from core.champs_stricts import (
     DecimalSouple, EntierStrict, IdInconnu404Mixin, MOTIF_NON_BLANC_SANS_NUL,
 )
 from core.conflit_etat import ConflitEtat
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.unicite import UniciteEn409Mixin
 from apps.ventes.domain.bornes import (
     MOTIF_MONTANT_POSITIF, montant_saisi, pourcentage_saisi,
@@ -488,7 +488,7 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Facture
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
                             'updated_at', 'updated_by',  # VX98 — server-side only
                             # ARRONDI-100 — hérités du devis côté serveur.
@@ -548,6 +548,7 @@ _MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
 
 class FactureWriteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, _BornesArgentMixin,
                              SameCompanyFKSerializerMixin,
+                             VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                              serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -601,7 +602,7 @@ class FactureWriteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, _BornesArgent
             'fichier_ubl', 'devise', 'taux_change', 'dgi_statut',
             'dgi_reference', 'dgi_motif_rejet', 'periode_service_debut',
             'periode_service_fin', 'updated_at', 'updated_by', 'entite',
-            'company',
+            'company', 'lock_version',  # NTPLT17 — lecture seule
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par

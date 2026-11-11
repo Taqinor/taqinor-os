@@ -61,7 +61,11 @@ Q_DEPENSE = 'combien_dépensez-vous_en_carburant_pour_la_pompe_par_mois_?'
 _MASQUE_IDS = re.compile(r'(#|lead=|/leads?/|/devis/|/clients?/)\d+')
 
 #: Champs volatils ou purement techniques exclus de l'instantané.
-_EXCLUS = frozenset({'id', 'password', 'last_login'})
+#: NTPLT17/NTPLT32 : ``lock_version`` (compteur de save()) et ``search_vector``
+#: (index plein-texte recalcule hors du save) sont techniques, comme dans
+#: apps/audit/signals.py — ils ne disent rien du comportement des services.
+_EXCLUS = frozenset({'id', 'password', 'last_login', 'lock_version',
+                     'search_vector'})
 
 
 def _fonction(nom):

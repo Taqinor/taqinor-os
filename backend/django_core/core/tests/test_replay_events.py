@@ -11,8 +11,12 @@ from core.models import OutboxEvent, ProcessedEvent
 
 class ReplayEventsCommandTests(TestCase):
     def setUp(self):
+        # NTPLT11 — on RESTAURE les handlers des apps (webhooks publicapi,
+        # notifications) au lieu de vider le registre pour la suite du
+        # processus de test.
+        self.addCleanup(events.restore_durable_handlers,
+                        events.snapshot_durable_handlers())
         events.clear_durable_handlers()
-        self.addCleanup(events.clear_durable_handlers)
         self.calls = []
 
     def _make_event(self, name='devis_accepted'):
@@ -83,3 +87,89 @@ class ReplayEventsCommandTests(TestCase):
                      '--handler', 'h_ok', '--company', '999',
                      stdout=StringIO())
         self.assertEqual(self.calls, [])  # aucune ligne pour company 999
+
+
+class EnqueueDurableTests(TestCase):
+    """NTPLT11 — ``enqueue_durable`` : effet confié à l'outbox, tentative
+    immédiate, rejeu par le worker sans perte ni doublon."""
+
+    EFFET = 'test.ntplt11'
+
+    def setUp(self):
+        self.addCleanup(events.restore_durable_handlers,
+                        events.snapshot_durable_handlers())
+        self.effets = []
+        self.panne = True
+
+        def handler(evt):
+            if self.panne:
+                raise ConnectionError('Redis indisponible')
+            self.effets.append(evt.payload['n'])
+
+        events.subscribe_durable(self.EFFET, handler, handler_name='h11')
+
+    def _plus_tard(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        return timezone.now() + timedelta(hours=2)
+
+    def test_panne_a_l_emission_puis_rejeu_unique(self):
+        from core import dispatch_outbox
+        ligne = events.enqueue_durable(
+            self.EFFET, {'n': 1}, immediat=events.IMMEDIAT_TRANSACTION)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_FAILED)
+        self.assertEqual(self.effets, [])
+        self.panne = False
+        dispatch_outbox.dispatch_pending(now=self._plus_tard())
+        dispatch_outbox.dispatch_pending(now=self._plus_tard())
+        self.assertEqual(self.effets, [1])
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_DELIVERED)
+
+    def test_succes_immediat_au_commit(self):
+        self.panne = False
+        with self.captureOnCommitCallbacks(execute=False) as rappels:
+            ligne = events.enqueue_durable(self.EFFET, {'n': 2})
+            self.assertEqual(self.effets, [])  # rien avant le commit
+        for rappel in rappels:
+            rappel()
+        self.assertEqual(self.effets, [2])
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_DELIVERED)
+
+    def test_rollback_de_l_emetteur_annule_l_effet(self):
+        from django.db import transaction
+        self.panne = False
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(RuntimeError):
+                with transaction.atomic():
+                    events.enqueue_durable(self.EFFET, {'n': 3})
+                    raise RuntimeError('geste annulé')
+        self.assertEqual(self.effets, [])
+        self.assertFalse(OutboxEvent.objects.filter(
+            event_name=self.EFFET).exists())
+
+    def test_effets_partiels_gardent_les_marques(self):
+        from core import dispatch_outbox
+        faits = []
+
+        def partiel(evt):
+            for cle in ('a', 'b'):
+                if dispatch_outbox.effet_deja_applique(evt, cle):
+                    continue
+                if cle == 'b' and self.panne:
+                    raise dispatch_outbox.EffetsPartiels('b en panne')
+                faits.append(cle)
+                dispatch_outbox.marquer_effet_applique(evt, cle)
+
+        events.subscribe_durable('test.partiel', partiel,
+                                 handler_name='h_partiel')
+        ligne = events.enqueue_durable(
+            'test.partiel', {}, immediat=events.IMMEDIAT_TRANSACTION)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_FAILED)
+        self.assertEqual(faits, ['a'])
+        self.panne = False
+        dispatch_outbox.dispatch_pending(now=self._plus_tard())
+        self.assertEqual(faits, ['a', 'b'])  # « a » jamais refait

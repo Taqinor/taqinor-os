@@ -47,6 +47,26 @@
   {
    "args": [],
    "kwargs": {
+    "default": 0,
+    "editable": false,
+    "help_text": "Verrou optimiste (NTPLT17) : +1 à chaque enregistrement."
+   },
+   "nom": "lock_version",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "editable": false,
+    "null": true
+   },
+   "nom": "search_vector",
+   "type": "SearchVectorField"
+  },
+  {
+   "args": [],
+   "kwargs": {
     "blank": true,
     "choices": [
      [

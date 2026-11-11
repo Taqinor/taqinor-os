@@ -1,10 +1,14 @@
 """Tests for the CRM Lead/Opportunity model and API."""
+import datetime
+from django.conf import settings
+from django.utils import timezone
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from apps.crm.tasks import reancrer_relances_demo
 from apps.crm.models import Client, Lead
 from apps.crm import stages
 
@@ -137,6 +141,38 @@ class TestLeadAPI(TestCase):
         lead.refresh_from_db()
         self.assertAlmostEqual(float(lead.gps_lat), 33.5)
         self.assertAlmostEqual(float(lead.gps_lng), -7.6)
+
+    def test_verrou_optimiste_lock_version_opt_in(self):
+        """NTPLT17 — ``lock_version`` servi en lecture ; sans lui dans le corps,
+        le PATCH reste inchangé ; avec une version périmée : 409 et rien
+        d'écrit ; avec la version à jour : l'écriture passe."""
+        lead = Lead.objects.create(company=self.company, nom='Verrou', ville='Oujda')
+        url = f'/api/django/crm/leads/{lead.id}/'
+        v0 = self.api.get(url).data['lock_version']
+        resp = self.api.patch(url, {'ville': 'Rabat'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Rabat')
+        self.assertGreater(lead.lock_version, v0)
+        resp = self.api.patch(url, {'ville': 'Fes', 'lock_version': v0}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        corps = resp.json()
+        self.assertEqual(corps['code'], 'conflit_version')
+        self.assertEqual(corps['error']['code'], 'version_conflict')
+        self.assertEqual(corps['lock_version'], lead.lock_version)
+        self.assertEqual(corps['actuel']['ville'], 'Rabat')
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Rabat')
+        resp = self.api.patch(
+            url, {'ville': 'Fes', 'lock_version': lead.lock_version}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Fès')  # ville normalisée par le référentiel (VREF)
+        # Écriture bornée par ``update_fields`` : la version avance quand même.
+        avant = lead.lock_version
+        lead.save(update_fields=['ville'])
+        lead.refresh_from_db()
+        self.assertEqual(lead.lock_version, avant + 1)
 
 
 class TestClientAPI(TestCase):
@@ -1219,3 +1255,46 @@ class ChargementStagesSilencieuxTests(TestCase):
             with self.assertNoLogs('apps.crm.stages', level='WARNING'):
                 module = stages._load_stages_module()
         self.assertTrue(hasattr(module, 'STAGES'))
+
+
+# NTDMO29 — tâche quotidienne : relances des leads de société démo ré-ancrées.
+class ReancrerRelancesDemoTest(TestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        passe = self.today - datetime.timedelta(days=20)
+        self.demo = Company.objects.create(
+            nom='Démo 29', slug='demo-29', est_demo=True)
+        self.reelle = Company.objects.create(nom='Réelle 29', slug='reelle-29')
+        self.leads_demo = [
+            Lead.objects.create(company=self.demo, nom=f'D{i}',
+                                relance_date=passe) for i in range(4)]
+        self.lead_reel = Lead.objects.create(
+            company=self.reelle, nom='R', relance_date=passe)
+
+    def test_demo_a_au_moins_trois_relances_futures(self):
+        n = reancrer_relances_demo(today=self.today)
+        self.assertEqual(n, 4)
+        futures = Lead.objects.filter(
+            company=self.demo, relance_date__gt=self.today).count()
+        self.assertGreaterEqual(futures, 3)
+        for lead in Lead.objects.filter(company=self.demo):
+            self.assertLessEqual(
+                lead.relance_date, self.today + datetime.timedelta(days=5))
+
+    def test_societe_non_demo_jamais_touchee(self):
+        avant = self.lead_reel.relance_date
+        reancrer_relances_demo(today=self.today)
+        self.lead_reel.refresh_from_db()
+        self.assertEqual(self.lead_reel.relance_date, avant)
+
+    def test_idempotent(self):
+        reancrer_relances_demo(today=self.today)
+        self.assertEqual(reancrer_relances_demo(today=self.today), 0)
+
+    def test_beat_et_route_declares(self):
+        from erp_agentique.celery import app
+        taches = {v['task'] for v in app.conf.beat_schedule.values()}
+        self.assertIn('crm.reancrer_relances_demo', taches)
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES['crm.reancrer_relances_demo']['queue'],
+            'scheduled')

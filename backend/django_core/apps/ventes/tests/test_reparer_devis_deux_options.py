@@ -231,3 +231,17 @@ class TestReparerDevisDeuxOptions(TestCase):
         sortie = self._run('--refs', devis.reference)
         self.assertIn('non concerné', sortie)
         self.assertIn('déjà un onduleur réseau', sortie)
+
+    def test_adcg45_jamais_un_micro_onduleur_pose_en_reparation(self):
+        """ADCG45 (revue) — un micro-onduleur tarifé MOINS CHER que l'onduleur
+        réseau n'est jamais posé comme l'onduleur réseau d'un système de
+        4,4 kWc : la réparation pose le vrai onduleur réseau."""
+        Produit.objects.create(
+            company=self.company, nom='Micro-onduleur 800W', sku='REP-MICRO',
+            prix_vente=Decimal('1490'), prix_achat=Decimal('1'),
+            quantite_stock=100)
+        devis = self._devis()
+        self._run('--apply')
+        self.assertTrue(devis.lignes.filter(designation=RESEAU).exists())
+        self.assertFalse(
+            devis.lignes.filter(designation__icontains='micro').exists())

@@ -7,7 +7,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { appartientAuPanierAvec, appartientAuPanierSans, isPompe, ROLES_DEVIS } from './classification.js'
+import {
+  appartientAuPanierAvec, appartientAuPanierSans, isAnyInverter, isHybridInverter,
+  isOffgridInverter, isPompe, isReseauInverter, ROLES_DEVIS,
+} from './classification.js'
 import { optionTotalsTTC } from './totaux.js'
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..')
@@ -58,4 +61,28 @@ test('ADVS46 — ROLES_DEVIS est le vocabulaire de core/product_roles.py', () =>
   const roles = [...bloc.matchAll(/^\s*(?:'[a-z_]+',?\s*)+/gm)]
     .flatMap(m => [...m[0].matchAll(/'([a-z_]+)'/g)].map(x => x[1]))
   assert.deepEqual([...ROLES_DEVIS], roles)
+})
+
+// ADCG45 (D-ADCG-3 = réseau) — un micro-onduleur injecte au réseau, comme
+// `solar_classification.py::is_reseau_inverter` (contrat classification_lignes.json).
+test('ADCG45 — un micro-onduleur est un onduleur réseau (graphies, exclusions)', () => {
+  for (const nom of ['Micro-onduleur 800W', 'MICRO ONDULEUR 800W', 'Microonduleur 600W',
+    'micro_onduleur 800W', 'Micro-inverter 800W', 'Micro-ondûleur 800W']) {
+    assert.equal(isReseauInverter(nom), true, nom)
+    assert.equal(isHybridInverter(nom), false, nom)
+    assert.equal(isOffgridInverter(nom), false, nom)
+    assert.equal(isAnyInverter(nom), true, nom)
+  }
+  assert.equal(isReseauInverter('Micro-onduleur hybride 800W'), false)
+  assert.equal(isHybridInverter('Micro-onduleur hybride 800W'), true)
+  for (const cable of ['Câble micro-onduleur', 'cable micro onduleur 2 m']) {
+    assert.equal(isReseauInverter(cable), false, cable)
+    assert.equal(isAnyInverter(cable), false, cable)
+  }
+  assert.equal(isReseauInverter('Micro-onduleur off-grid 800W'), false)
+  assert.equal(isOffgridInverter('Micro-onduleur off-grid 800W'), true)
+  // Panier : la ligne micro-onduleur va dans « sans », jamais dans « avec ».
+  const micro = { designation: 'Micro-onduleur 800W', variante: '' }
+  assert.equal(appartientAuPanierSans(micro), true)
+  assert.equal(appartientAuPanierAvec(micro), false)
 })

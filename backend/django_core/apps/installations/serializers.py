@@ -16,7 +16,7 @@ from core.champs_stricts import (  # ENF11
     TexteLie,
 )
 from core.conflit_etat import ConflitEtat
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.unicite import UniciteEn409Mixin
 
 from .listes_prechargees import totaux_temps_memo
@@ -295,6 +295,7 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
 
 class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                              ChampsTexteStrictsMixin,  # api-fuzz-full 26/10 : NUL
+                             VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                              serializers.ModelSerializer):
     # ASEC32 — un technicien / une équipe d'une autre société reçoit la
     # réponse d'un id absent (400), à la création comme au PATCH.
@@ -629,7 +630,7 @@ class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id
 
     class Meta:
         model = Installation
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # company/reference/created_by posés côté serveur — jamais du corps.
         read_only_fields = [
             'company', 'reference', 'created_by',

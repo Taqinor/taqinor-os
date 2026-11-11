@@ -16,6 +16,9 @@ Cet enum est une liste FERMÉE, en ordre d'entonnoir. « annulé » n'est PAS un
 """
 from django.conf import settings
 from django.db import models
+
+from core.champs_plateforme import VerrouOptimisteMixin
+
 from .models_installation import Installation
 
 # NOTE: découpage de l'ancien models.py monolithe (un fichier par
@@ -56,7 +59,7 @@ class InterventionQuerySet(models.QuerySet):
         return self.filter(annulee=False)
 
 
-class Intervention(models.Model):
+class Intervention(VerrouOptimisteMixin, models.Model):
     objects = InterventionQuerySet.as_manager()
 
     class Type(models.TextChoices):

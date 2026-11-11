@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4949, operations: 7747, components: 3644}
+counts: {paths: 4961, operations: 7759, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2373,11 +2373,14 @@ operations:
 - post /api/django/offlinesync/operations/batch/ -> django_offlinesync_operations_batch_create
 - get /api/django/offlinesync/operations/{id}/ -> django_offlinesync_operations_retrieve
 - post /api/django/offlinesync/operations/{id}/resoudre/ -> django_offlinesync_operations_resoudre_create
+- get /api/django/onboarding/export-textes.csv -> django_onboarding_export_textes.csv_retrieve
+- post /api/django/onboarding/import-textes.csv -> django_onboarding_import_textes.csv_create
 - get /api/django/onboarding/items-masques/ -> django_onboarding_items_masques_list
 - post /api/django/onboarding/items-masques/{id}/demasquer/ -> django_onboarding_items_masques_demasquer_create
 - post /api/django/onboarding/items-masques/{id}/masquer/ -> django_onboarding_items_masques_masquer_create
 - get /api/django/onboarding/progress/ -> django_onboarding_progress_retrieve
 - post /api/django/onboarding/progress/ignorer-tout/ -> django_onboarding_progress_ignorer_tout_create
+- get /api/django/onboarding/progress/resume/ -> django_onboarding_progress_resume_retrieve
 - post /api/django/onboarding/progress/{id}/ignorer/ -> django_onboarding_progress_ignorer_create
 - post /api/django/onboarding/progress/{id}/marquer-fait/ -> django_onboarding_progress_marquer_fait_create
 - get /api/django/onboarding/tours/ -> django_onboarding_tours_list
@@ -2708,6 +2711,7 @@ operations:
 - patch /api/django/reporting/dashboard-config/{id}/ -> django_reporting_dashboard_config_partial_update
 - put /api/django/reporting/dashboard-config/{id}/ -> django_reporting_dashboard_config_update
 - get /api/django/reporting/dashboard/ -> django_reporting_dashboard_retrieve
+- get /api/django/reporting/demo-resume/ -> django_reporting_demo_resume_retrieve
 - get /api/django/reporting/envois-rapports/ -> django_reporting_envois_rapports_list
 - get /api/django/reporting/envois-rapports/{id}/ -> django_reporting_envois_rapports_retrieve
 - get /api/django/reporting/geo/ -> django_reporting_geo_retrieve
@@ -2732,6 +2736,7 @@ operations:
 - get /api/django/reporting/kpi-alertes/{id}/ -> django_reporting_kpi_alertes_retrieve
 - patch /api/django/reporting/kpi-alertes/{id}/ -> django_reporting_kpi_alertes_partial_update
 - put /api/django/reporting/kpi-alertes/{id}/ -> django_reporting_kpi_alertes_update
+- get /api/django/reporting/kpi-onboarding-interne/ -> django_reporting_kpi_onboarding_interne_retrieve
 - get /api/django/reporting/notifications/ -> django_reporting_notifications_retrieve
 - get /api/django/reporting/p2p/kpi/ -> django_reporting_p2p_kpi_retrieve
 - get /api/django/reporting/pipeline/ -> django_reporting_pipeline_retrieve
@@ -2761,6 +2766,7 @@ operations:
 - patch /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_partial_update
 - put /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_update
 - get /api/django/reporting/search/ -> django_reporting_search_retrieve
+- get /api/django/reporting/search/suggest/ -> django_reporting_search_suggest_retrieve
 - post /api/django/reporting/vitals/ -> django_reporting_vitals_create
 - get /api/django/reporting/vitals/p75/ -> django_reporting_vitals_p75_retrieve
 - get /api/django/roles/ -> django_roles_list
@@ -6288,11 +6294,14 @@ operations:
 - post /api/v1/offlinesync/operations/batch/ -> v1_offlinesync_operations_batch_create
 - get /api/v1/offlinesync/operations/{id}/ -> v1_offlinesync_operations_retrieve
 - post /api/v1/offlinesync/operations/{id}/resoudre/ -> v1_offlinesync_operations_resoudre_create
+- get /api/v1/onboarding/export-textes.csv -> v1_onboarding_export_textes.csv_retrieve
+- post /api/v1/onboarding/import-textes.csv -> v1_onboarding_import_textes.csv_create
 - get /api/v1/onboarding/items-masques/ -> v1_onboarding_items_masques_list
 - post /api/v1/onboarding/items-masques/{id}/demasquer/ -> v1_onboarding_items_masques_demasquer_create
 - post /api/v1/onboarding/items-masques/{id}/masquer/ -> v1_onboarding_items_masques_masquer_create
 - get /api/v1/onboarding/progress/ -> v1_onboarding_progress_retrieve
 - post /api/v1/onboarding/progress/ignorer-tout/ -> v1_onboarding_progress_ignorer_tout_create
+- get /api/v1/onboarding/progress/resume/ -> v1_onboarding_progress_resume_retrieve
 - post /api/v1/onboarding/progress/{id}/ignorer/ -> v1_onboarding_progress_ignorer_create
 - post /api/v1/onboarding/progress/{id}/marquer-fait/ -> v1_onboarding_progress_marquer_fait_create
 - get /api/v1/onboarding/tours/ -> v1_onboarding_tours_list
@@ -6588,6 +6597,7 @@ operations:
 - patch /api/v1/reporting/dashboard-config/{id}/ -> v1_reporting_dashboard_config_partial_update
 - put /api/v1/reporting/dashboard-config/{id}/ -> v1_reporting_dashboard_config_update
 - get /api/v1/reporting/dashboard/ -> v1_reporting_dashboard_retrieve
+- get /api/v1/reporting/demo-resume/ -> v1_reporting_demo_resume_retrieve
 - get /api/v1/reporting/envois-rapports/ -> v1_reporting_envois_rapports_list
 - get /api/v1/reporting/envois-rapports/{id}/ -> v1_reporting_envois_rapports_retrieve
 - get /api/v1/reporting/geo/ -> v1_reporting_geo_retrieve
@@ -6612,6 +6622,7 @@ operations:
 - get /api/v1/reporting/kpi-alertes/{id}/ -> v1_reporting_kpi_alertes_retrieve
 - patch /api/v1/reporting/kpi-alertes/{id}/ -> v1_reporting_kpi_alertes_partial_update
 - put /api/v1/reporting/kpi-alertes/{id}/ -> v1_reporting_kpi_alertes_update
+- get /api/v1/reporting/kpi-onboarding-interne/ -> v1_reporting_kpi_onboarding_interne_retrieve
 - get /api/v1/reporting/notifications/ -> v1_reporting_notifications_retrieve
 - get /api/v1/reporting/p2p/kpi/ -> v1_reporting_p2p_kpi_retrieve
 - get /api/v1/reporting/pipeline/ -> v1_reporting_pipeline_retrieve
@@ -6641,6 +6652,7 @@ operations:
 - patch /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_partial_update
 - put /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_update
 - get /api/v1/reporting/search/ -> v1_reporting_search_retrieve
+- get /api/v1/reporting/search/suggest/ -> v1_reporting_search_suggest_retrieve
 - post /api/v1/reporting/vitals/ -> v1_reporting_vitals_create
 - get /api/v1/reporting/vitals/p75/ -> v1_reporting_vitals_p75_retrieve
 - get /api/v1/roles/ -> v1_roles_list
@@ -8316,6 +8328,7 @@ query_params:
   get /api/django/reporting/reports/stock/: export from to
   get /api/django/reporting/saved-reports/: ordering page page_size search
   get /api/django/reporting/search/: q
+  get /api/django/reporting/search/suggest/: q
   get /api/django/reporting/vitals/p75/: route
   get /api/django/roles/: ordering page page_size search
   get /api/django/roles/departements/: ordering page page_size search
@@ -9114,6 +9127,7 @@ query_params:
   get /api/v1/reporting/reports/stock/: export from to
   get /api/v1/reporting/saved-reports/: ordering page page_size search
   get /api/v1/reporting/search/: q
+  get /api/v1/reporting/search/suggest/: q
   get /api/v1/reporting/vitals/p75/: route
   get /api/v1/roles/: ordering page page_size search
   get /api/v1/roles/departements/: ordering page page_size search
@@ -10259,6 +10273,7 @@ components:
 - DemandeTransfert
 - DemandeTransfertRequest
 - DemandeTransfertStatutEnum
+- DemoResumeReponse
 - DemoWizardCreateRequestRequest
 - DemoWizardStatut
 - DensiteEnum
@@ -10876,6 +10891,7 @@ components:
 - KpiAlerteRequest
 - KpiAlerteSourceEnum
 - KpiEnum
+- KpiOnboardingInterneReponse
 - LandedCostLigne
 - LandedCostLigneRequest
 - LanguageEnum
@@ -11154,6 +11170,9 @@ components:
 - OnboardingItemMasquable
 - OnboardingLocalisationRequestRequest
 - OnboardingLocalisationResponse
+- OnboardingResumePublic
+- OnboardingTextesImportReponse
+- OnboardingTextesImportRequest
 - OndLimitationExportEnum
 - OndPhasesEnum
 - OndRelaisDecouplageEnum
@@ -12547,6 +12566,7 @@ components:
 - ScopesEnum
 - SearchGlobalSearchReponse
 - SearchNotificationsReponse
+- SearchSuggestReponse
 - SearchTypeEnum
 - SecretsRotation
 - SegmentEnum

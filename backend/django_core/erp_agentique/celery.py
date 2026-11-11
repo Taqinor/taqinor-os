@@ -331,6 +331,12 @@ app.conf.beat_schedule = {
         'task': 'crm.snapshot_forecast_hebdo',
         'schedule': crontab(hour=5, minute=0, day_of_week=1),
     },
+    # NTDMO29 — ré-ancre les relances passées des leads des sociétés DÉMO
+    # (est_demo=True strictement) sur 1-5 jours futurs ; quotidien, idempotent.
+    'crm-reancrer-relances-demo': {
+        'task': 'crm.reancrer_relances_demo',
+        'schedule': crontab(hour=5, minute=30),
+    },
     # XPLT6 — évalue les alertes de seuil sur KPI agrégés (dédup interne).
     'reporting-evaluate-kpi-alertes': {
         'task': 'reporting.evaluate_kpi_alertes',
@@ -350,6 +356,13 @@ app.conf.beat_schedule = {
     'reporting-controle-integrite-hebdo': {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
+    },
+    # NTDMO31/41/42 — recalcul nocturne (UN job) du résumé « Ce que vous avez
+    # accompli ce mois-ci » des sociétés démo + des KPI internes d'onboarding,
+    # servis ensuite depuis le cache (apps/reporting/demo_resume.py).
+    'reporting-recalcul-nocturne-onboarding': {
+        'task': 'reporting.recalcul_nocturne_onboarding',
+        'schedule': crontab(hour=2, minute=40),
     },
     # XFAC25 — relevé de compte mensuel automatique (opt-in par client),
     # 1er du mois 08:00 Africa/Casablanca.

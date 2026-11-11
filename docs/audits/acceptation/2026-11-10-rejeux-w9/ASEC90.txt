@@ -1,0 +1,39 @@
+# Preuve en direct ASEC90 — rejeu accept-w9, code joué 8fd07618c (origin/dev-all-99392c-w9, vague 9 #1354), 2026-11-10
+# Pile : voir _pile.txt (projet compose privé accept-w9, base jetable, fixtures FIX-W9, comptes aux VRAIS rôles système
+# de seed_demo : acc_w9_adv = Admin Ventes, acc_w9_resp = Responsable, demo_admin = Directeur ; ni l'un ni l'autre des deux
+# premiers n'a `encaisser` dans ses permissions, relu au montage).
+# HTTP : curl sur 127.0.0.1:8041 (vraies routes, connexion POST /api/django/token/ par compte, cookies).
+# Verdict : PASS
+
+== API (scratchpad http_asec.sh ; réponses complètes des 200 omises, statut et champs relus ci-dessous)
+login acc_w9_adv 200 ; login acc_w9_resp 200 ; login demo_admin 200
+avoirs 0 []
+POST /ventes/factures/7/annuler/ (FAC-ACCW9B-0902 émise, 1 000 HT, TVA 20 % = 1 200 TTC, sans paiement) as acc_w9_adv
+  ⇒ HTTP 403 {"detail":"Annuler une facture numérotée (avoir de contre-passation) exige le droit d'encaissement."}
+même POST as acc_w9_resp ⇒ HTTP 403, même detail
+relu : facture 7 FAC-ACCW9B-0902 emise ; avoirs 0
+POST /ventes/factures/8/annuler/ (BROUILLON-8) as acc_w9_adv ⇒ HTTP 200, statut « annulee », "avoir": null ; avoirs 0
+peut.annuler (bloc `vente` de GET /ventes/devis/7/, FAC-ACCW9B-0901 émise de la vente) :
+  acc_w9_adv  [('BROUILLON-5', False), ('FAC-ACCW9B-0901', False)]
+  acc_w9_resp [('BROUILLON-5', False), ('FAC-ACCW9B-0901', False)]
+  demo_admin  [('BROUILLON-5', False), ('FAC-ACCW9B-0901', True)]
+POST /ventes/bons-commande/3/creer-facture/ (BC-ACCW9B-0091 confirmé, vente portant FAC-ACCW9B-0904 brouillon remis à
+  référence légale) as acc_w9_adv ⇒ HTTP 403 {"detail":"Remplacer une facture numérotée (avoir de contre-passation)
+  exige le droit d'encaissement."} ; relu : facture 10 FAC-ACCW9B-0904 brouillon (inchangée), avoirs 0, factures 13
+POST /ventes/factures/7/annuler/ as demo_admin (Directeur, témoin) ⇒ HTTP 200, facture 7 « annulee »,
+  "avoir": {"reference":"AVO-202611-0001","montant":"1200.00"} ; avoirs 1 (AVO-202611-0001 sur la facture 7)
+
+== Écran (Playwright MCP, front du commit joué sur 127.0.0.1:5263)
+acc_w9_adv, /ventes/devis → puce « Vente de DEV-ACCW9B-0090 » ⇒ panneau de vente, ligne facture-vente-6
+  FAC-ACCW9B-0901 (Émise, 1 200,00 MAD) : boutons [Encaisser, PDF, WhatsApp, E-mail] — PAS de « Annuler » ;
+  BROUILLON-5 : [PDF, Modifier le montant, Supprimer].
+Témoin demo_admin, même panneau : FAC-ACCW9B-0901 [Encaisser, PDF, WhatsApp, E-mail, Annuler].
+Capture : ASEC90-adv-panneau-vente.png
+Oracles : aucune requête ≥ 500 ; 403 attendus = les gestes refusés par curl (hors écran). Hors périmètre observé (même
+  précédent qu'AARG72 du rejeu mopup) : en Admin Ventes, la barre latérale appelle GET /monitoring/configs/co2-fleet/ ⇒
+  403 (console.error) à chaque chargement — frère non corrigé d'ERR-ACC-ACCUEIL-403-LECTEUR (Sidebar.jsx monte
+  ImpactPastille sur `peutLireParc`, vrai pour ce rôle, alors que la route lui répond 403), sans lien avec le geste.
+  Observation séparée signalée au rapport : sur ce même écran, « Encaisser » est proposé à l'Admin Ventes
+  (`peut.encaisser` = statut émis + reste dû, sans `encaisse`, `vente_facturation.py::_facture_etat`) alors que POST
+  /ventes/factures/6/enregistrer-paiement/ lui répond 403 « Vous n'avez pas la permission… » — même classe qu'ASEC91,
+  hors du texte d'ASEC90.

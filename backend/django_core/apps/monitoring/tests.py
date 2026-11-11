@@ -862,10 +862,10 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
     3400 → « Compensation due » ≈ 4760 MAD affichée CHAQUE JOUR tant que
     l'année n'est pas finie, sur un système qui ne doit RIEN.
 
-    LE FIX. Le garanti comparé au 3 septembre (jour 246/365 de 2026) est
-    prorata-t-isé : 12000 × 246/365 ≈ 8087.67 kWh. 8000 kWh est alors
-    LARGEMENT dans la tolérance (franchise 5 % ≈ 404.38 kWh sur un manque de
-    seulement ≈ 87.67 kWh) → compensation = 0.00, within_tolerance = True.
+    LE FIX. Le garanti comparé au 3 septembre est prorata-t-isé AU PROFIL
+    MENSUEL (AMON107, D-AMON-3) : 12000 × Σ poids ≈ 9008.66 kWh. 9000 kWh
+    est dans la tolérance (franchise ≈ 450.43 kWh, manque ≈ 8.66 kWh) →
+    compensation = 0.00, within_tolerance = True.
     """
 
     def setUp(self):
@@ -883,14 +883,14 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
     def test_systeme_conforme_aucune_compensation_en_cours_annee(self):
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 1, 1), period_days=246, energy_kwh=Decimal('8000'))
+            date=date(2026, 1, 1), period_days=246, energy_kwh=Decimal('9000'))
         from apps.monitoring.services import production_warranty_status
         st = production_warranty_status(
             self.inst, year=2026, today=self.today)
         self.assertTrue(st['has_warranty'])
         self.assertTrue(st['year_in_progress'])
-        self.assertEqual(st['guaranteed_kwh'], Decimal('8087.67'))
-        self.assertEqual(st['shortfall_kwh'], Decimal('87.67'))
+        self.assertEqual(st['guaranteed_kwh'], Decimal('9008.66'))
+        self.assertEqual(st['shortfall_kwh'], Decimal('8.66'))
         self.assertTrue(st['within_tolerance'])
         # LE CŒUR DE LA PREUVE — avant le fix ce montant valait 4760.00 MAD.
         self.assertEqual(st['compensation_mad'], Decimal('0.00'))
@@ -905,7 +905,7 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
         st = production_warranty_status(
             self.inst, year=2026, today=self.today)
         self.assertFalse(st['within_tolerance'])
-        self.assertEqual(st['compensation_mad'], Decimal('3756.60'))
+        self.assertEqual(st['compensation_mad'], Decimal('4981.52'))
 
     def test_annee_terminee_reste_non_proratee(self):
         """Non-régression — une année déjà CLOSE garde le garanti annuel
@@ -950,7 +950,7 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
                 date=date(2026, 9, 8) + timedelta(days=i), period_days=1,
                 energy_kwh=Decimal('32.88'))
         st = production_warranty_status(inst, year=2026, today=aujourdhui)
-        self.assertEqual(st['guaranteed_kwh'], Decimal('2005.48'))
+        self.assertEqual(st['guaranteed_kwh'], Decimal('1801.66'))
         self.assertEqual(st['compensation_mad'], Decimal('0.00'))
         self.assertTrue(st['within_tolerance'])
         courbe = warranty_curve_overlay(inst, today=aujourdhui)
@@ -1112,7 +1112,7 @@ class TestWarrantyCurveOverlay(TestCase):
     def test_anomalous_drift_flags_recourse(self):
         # AUD508 — le point 2026 (année EN COURS relativement à `self.today`
         # = 30/06/2026) compare désormais au garanti PRORATÉ au jour écoulé
-        # (≈ 5920.93 kWh au jour 181/365), pas à l'objectif annuel complet
+        # (≈ 6268.60 kWh au profil mensuel, AMON107), pas à l'objectif annuel complet
         # (11940) : 3000 kWh reste un VRAI manque sous ce garanti prorata-tisé
         # (l'ancienne valeur 8000 aurait été AU-DESSUS du garanti proraté —
         # donc non anomale sous le fix, ce qui aurait été correct : un système

@@ -65,7 +65,7 @@ _MENTION_LEGALE = (
     "garanti est dégradé annuellement selon le taux contractuel et comparé "
     "à la production réellement mesurée. Une franchise contractuelle "
     "(tolérance) s'applique avant tout calcul de compensation. Les montants "
-    "affichés pour l'année en cours sont PROVISOIRES (prorata temporis) et "
+    "affichés pour l'année en cours sont PROVISOIRES (prorata au profil mensuel de production) et "
     "ne deviennent définitifs qu'à la clôture de l'exercice."
 )
 

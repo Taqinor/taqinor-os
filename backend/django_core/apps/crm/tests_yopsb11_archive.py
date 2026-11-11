@@ -131,3 +131,68 @@ class Yopsb11ArchiveTests(TestCase):
         self.assertEqual(
             LeadActivityArchive.objects.filter(
                 company_id=self.company_b.id).count(), 4000)
+
+
+class Ntplt38ArchiveUnionTests(TestCase):
+    """NTPLT38 — ``?archive=1`` sur /leads/<id>/historique/ : UNION vif +
+    archive, keyset, scoping société ; sans le paramètre, comportement
+    inchangé (live seul, liste brute)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.company = _make_company('ntplt38-a', 'Société 38 A')
+        self.autre = _make_company('ntplt38-b', 'Société 38 B')
+        user = get_user_model().objects.create_user(
+            username='ntplt38_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='L', prenom='38', stage='NEW')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        self.url = f'/api/django/crm/leads/{self.lead.id}/historique/'
+        now = timezone.now()
+        # 3 vives récentes + 4 déplacées vers l'archive (plus anciennes).
+        # Les anciennes D'ABORD : le vieillissement de ``_bulk_activities``
+        # touche toutes les notes ``n*`` du lead, il vieillissait aussi les 3
+        # récentes (7 archivées, 0 vive).
+        _bulk_activities(self.company, self.lead, 4, age_days=400)
+        _bulk_activities(self.company, self.lead, 3, age_days=None)
+        fiche_archivage.archiver_anciens(now, 90, apply_=True)
+        # Archive d'une AUTRE société pour le même id de lead : jamais vue.
+        LeadActivityArchive.objects.create(
+            original_id=999999, company_id=self.autre.id,
+            lead_id=self.lead.id, kind='note', body='intrus',
+            created_at=now - timezone.timedelta(days=500))
+
+    def test_sans_archive_comportement_inchange(self):
+        resp = self.api.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsInstance(resp.json(), list)
+        self.assertEqual(len(resp.json()), 3)
+
+    def test_archive_union_complete_et_scopee(self):
+        resp = self.api.get(self.url + '?archive=1')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data['results']), 7)
+        self.assertEqual(sum(1 for r in data['results'] if r['archive']), 4)
+        self.assertNotIn('intrus', [r['body'] for r in data['results']])
+        self.assertFalse(data['has_next'])
+        dates = [r['created_at'] for r in data['results']]
+        self.assertEqual(dates, sorted(dates, reverse=True))
+
+    def test_archive_pagination_keyset_sans_doublon(self):
+        vus = []
+        url = self.url + '?archive=1&page_size=3'
+        while True:
+            data = self.api.get(url).json()
+            vus += [r['id'] for r in data['results']]
+            if not data['has_next']:
+                break
+            url = (self.url + '?archive=1&page_size=3&cursor='
+                   + data['next_cursor'])
+        self.assertEqual(len(vus), 7)
+        self.assertEqual(len(set(vus)), 7)

@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.db import models
 
+from core.champs_plateforme import VerrouOptimisteMixin
 from core.models import TenantModel  # SCA4 — socle multi-tenant
 # STKCAT21 — LE vocabulaire de rôles de devis. Il vit dans ``core`` (couche de
 # FONDATION) et PAS dans ``apps.ventes`` : ce module ne peut pas importer une
@@ -701,7 +702,7 @@ class Marque(models.Model):
         return self.nom
 
 
-class Produit(models.Model):
+class Produit(VerrouOptimisteMixin, models.Model):
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)

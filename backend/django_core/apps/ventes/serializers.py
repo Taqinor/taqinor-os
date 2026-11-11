@@ -9,7 +9,7 @@ from core.champs_stricts import (
     DecimalStricte,
     DecimalSoupleMixin, IdInconnu404Mixin, TexteLie,
 )
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
 from core.serializer_mixins import _user_may_see
 from core.serializers import (
@@ -1071,7 +1071,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
 
     class Meta:
         model = Devis
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
         # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
         # du corps de requête (même régime interne que prix_achat, qui n'est
@@ -1092,6 +1092,7 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
                            SameCompanyFKSerializerMixin,
                            TiersPayeurValidationMixin,
                            EcheancierValidationMixin,
+                           VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                            serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -1184,8 +1185,9 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
             'prix_cible_kwc', 'prix_par_kwc', 'remise_approuvee',
             # ADEV33 — profondeur de remise approuvée (lecture seule).
             'remise_approuvee_pct',
-            # Versionnage / cycle de vie technique.
-            'version', 'is_active', 'custom_data', 'devise', 'taux_change',
+            # Versionnage / cycle de vie technique. ``lock_version`` : verrou
+            # optimiste NTPLT17 (lecture seule, ``version`` = révision V1/V2).
+            'version', 'lock_version', 'is_active', 'custom_data', 'devise', 'taux_change',
             # Calepinage 3D + rendus. ``roof_layout`` et ``layout_hash`` sont
             # posés par ``POST /devis/<id>/layout/``, jamais par ce corps.
             'roof_layout', 'roof_image', 'layout_hash', 'pdf_render_meta',

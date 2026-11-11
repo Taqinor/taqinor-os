@@ -9,22 +9,34 @@ Endpoints (company + user scopés côté serveur, jamais lus du corps) :
   coche manuellement un item SANS ``event_key`` (aucun déclencheur
   automatique adapté sans importer une app métier — alternative explicite).
 """
+import csv
+
+from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from authentication.permissions import IsAdminOrResponsableTier
+from authentication.permissions import (
+    IsAdminOrResponsableTier, IsAdminRole, est_operateur_plateforme,
+)
 from core.openapi_operations import SchemaObjetUnique
 
-from . import services
+from apps.publicapi.auth import (
+    ApiKeyAuthentication, ApiKeyRateThrottle, HasApiScope,
+)
+from apps.publicapi.portees import SCOPE_READ_LICENCE
+
+from . import services, textes_csv
 from .selectors import (
-    items_masquables_pour_societe, resume_pour_utilisateur,
-    tours_pour_utilisateur,
+    items_masquables_pour_societe, pourcentage_activation_societe,
+    resume_pour_utilisateur, tours_pour_utilisateur,
 )
 
 
@@ -102,11 +114,31 @@ _CLE_TOUR = [OpenApiParameter(
 class OnboardingProgressViewSet(viewsets.ViewSet):
     """Checklist « Premiers pas » de l'utilisateur courant (company-scopée)."""
     permission_classes = [IsAuthenticated]
+    #: NTDMO35 — scope lu par ``HasApiScope`` pour l'action ``resume`` seule
+    #: (statut d'adoption agrégé de la société : même famille que le statut
+    #: de licence, ``read:licence`` ; aucun nouveau scope dans le registre).
+    required_scope = SCOPE_READ_LICENCE
     #: ``list`` rend le résumé (UN objet), pas un tableau d'items.
     schema = SchemaObjetUnique()
 
     def _company(self, request):
         return getattr(request.user, 'company', None)
+
+    @extend_schema(responses=inline_serializer('OnboardingResumePublic', {
+        'pourcentage': drf_serializers.IntegerField()}))
+    @action(detail=False, methods=['get'], url_path='resume',
+            authentication_classes=[ApiKeyAuthentication],
+            permission_classes=[HasApiScope],
+            throttle_classes=[ApiKeyRateThrottle])
+    def resume(self, request):
+        """NTDMO35 — ``GET onboarding/progress/resume/`` : pourcentage
+        d'activation AGRÉGÉ de la société de la clé, pour un badge externe.
+        Authentifié par clé d'API (``publicapi.ApiKey``, jamais un nouveau
+        mécanisme) ; 401 sans clé, 403 sans le scope. Lecture seule, un
+        entier — jamais le détail des items ni de PII."""
+        return Response({
+            'pourcentage': pourcentage_activation_societe(
+                request.auth.company)})
 
     @extend_schema(responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE)
     def list(self, request):
@@ -243,3 +275,56 @@ class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
         return Response(
             items_masquables_pour_societe(self._company(request)),
             status=status.HTTP_200_OK)
+
+
+# NTDMO36 — export/réimport CSV des textes FR (admin société uniquement).
+class OnboardingTextesExportView(APIView):
+    """``GET /api/django/onboarding/export-textes.csv`` — libellés FR des tours
+    et de la checklist (clé stable, écran cible, texte FR)."""
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(responses={(200, "text/csv"): OpenApiTypes.STR})
+    def get(self, request):
+        reponse = HttpResponse(
+            textes_csv.exporter_csv(request.user.company),
+            content_type="text/csv; charset=utf-8")
+        reponse["Content-Disposition"] = (
+            "attachment; filename=\"onboarding-textes.csv\"")
+        return reponse
+
+
+class OnboardingTextesImportView(APIView):
+    """``POST /api/django/onboarding/import-textes.csv`` (multipart, champ
+    ``fichier``) — met à jour les textes existants par clé stable, sans doublon
+    ni création. Les lignes du catalogue global exigent l'opérateur plateforme."""
+    permission_classes = [IsAdminRole]
+    parser_classes = [MultiPartParser]
+
+    @extend_schema(request=inline_serializer("OnboardingTextesImport", {
+        "fichier": drf_serializers.FileField()}),
+        responses={200: inline_serializer("OnboardingTextesImportReponse", {
+            "mis_a_jour": drf_serializers.IntegerField(),
+            "inchanges": drf_serializers.IntegerField(),
+            "ignorees": drf_serializers.IntegerField(),
+            "inconnues": drf_serializers.ListField(
+                child=drf_serializers.CharField())}),
+            409: OpenApiResponse(description=(
+                "Fichier inexploitable (pas de l'UTF-8, en-tête absent) : "
+                "corps ``{detail}``."))})
+    def post(self, request):
+        fichier = request.FILES.get("fichier")
+        if fichier is None:
+            return Response(
+                {"detail": "Fichier CSV manquant (champ « fichier »)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            res = textes_csv.importer_csv(
+                fichier.read(), request.user.company,
+                peut_ecrire_global=est_operateur_plateforme(request.user))
+        except (ValueError, UnicodeDecodeError, csv.Error) as exc:
+            # ENF11 — le fichier reçu est conforme au schéma (binaire) mais
+            # inexploitable (pas de l'UTF-8, pas l'en-tête attendu) : 409,
+            # comme l'import CSV des demandes d'achat ; 400 = champ manquant.
+            return Response({"detail": str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        return Response(res)

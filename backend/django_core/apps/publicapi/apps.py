@@ -22,6 +22,14 @@ class PublicApiConfig(AppConfig):
         # métier (nouveau lead, devis accepté, chantier clôturé, facture payée).
         from . import signals
         signals.connect()
+        # NTPLT11 — la mise en file des webhooks est un effet DURABLE de
+        # l'outbox (`delivery.dispatch_event` → `core.events.enqueue_durable`)
+        # : un broker/Redis coupé à l'émission ne perd plus rien, le worker
+        # `core.dispatch_outbox` rejoue la ligne au redémarrage.
+        from core.events import subscribe_durable
+        from . import delivery
+        subscribe_durable(delivery.EFFET_WEBHOOK, delivery.livrer_effet_webhook,
+                          handler_name=delivery.EFFET_WEBHOOK)
         # NTUX32 — abonnés aux évènements des objets UX du bus `core.events`
         # (`saved_view_shared`/`record_restored`), jamais un import direct
         # `apps.uxviews`/`apps.trash` -> `apps.publicapi`.

@@ -1272,6 +1272,8 @@ CELERY_TASK_ROUTES = {
     'crm.recalculer_scores_obsoletes': {'queue': 'scheduled'},
     # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
+    # NTDMO29 — ré-ancrage quotidien des relances des leads démo.
+    'crm.reancrer_relances_demo': {'queue': 'scheduled'},
     # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
     'crm.sync_odoo_leads': {'queue': 'scheduled'},
     # MRY17 — digest 08:30 des touches dues + escalade premier contact.
@@ -1294,6 +1296,7 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
+    'reporting.recalcul_nocturne_onboarding': {'queue': 'scheduled'},  # NTDMO41/42
     # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
     'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.

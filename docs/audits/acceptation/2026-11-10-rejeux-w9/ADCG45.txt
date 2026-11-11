@@ -1,0 +1,40 @@
+# Preuve en direct ADCG45 — rejeu accept-w9, code joué 8fd07618c (origin/dev-all-99392c-w9, vague 9 #1354), 2026-11-10
+# Pile : voir _pile.txt (projet compose privé accept-w9, base jetable seed_demo, aucune ressource partagée touchée).
+# Verdict : PASS
+
+== Données (seed_demo, base jetable)
+DEV-DEMO-0004 (id 4, statut refuse, société démo) : lignes « Panneau poly 330W » × 6 (produit PAN-330P) et
+« Micro-onduleur 800W » × 6 (produit OND-800M) — le devis exact cité par la tâche.
+
+== Classifieur serveur (manage.py shell sur accept-w9-dj-1, apps.ventes.solar_classification)
+Micro-onduleur 800W     is_reseau_inverter=True  is_hybrid_inverter=False is_any_inverter=True
+Micro-onduleur hybride  is_reseau_inverter=False is_hybrid_inverter=True  is_any_inverter=True
+câble micro-onduleur    is_reseau_inverter=False is_hybrid_inverter=False is_any_inverter=False
+Micro onduleur 800 W    is_reseau_inverter=True  is_hybrid_inverter=False is_any_inverter=True
+
+== /proposal (vraie route, vrai compte)
+POST /api/django/token/ demo_admin ⇒ 200 (cookies) ;
+GET /api/django/ventes/devis/4/proposal/ ⇒ 200 application/pdf, 337 295 octets, 3 pages
+  (sha256 c8ff2515bea1f99fee27c4cb688c5652597680e416afa95333ed56b9d26be2b8).
+Texte (pypdf), extrait page 1-2 :
+  V O T R E  I N S T A L L A T I O N
+  Sans batterie
+  20 000,00 MAD
+  soit 10 101 MAD/kWc · TTC
+  6 panneaux 330 W
+  6 × Micro-onduleur 800W
+  …
+  DÉSIGNATION QTÉ P.U. HT TVA TOTAL HT
+  Panneau poly 330W 6 1 290,00 20% 7 740,00
+  Micro-onduleur 800W 6 1 490,00 20% 8 940,00
+  Total — Sans batterie
+Comptes : « Sans batterie » × 3, « Micro-onduleur » × 2, « aucune option » × 0 (le refus « aucune option ne contient
+d'onduleur » du constat C-ADCG-026 n'apparaît plus). Oracle 7 : prix d'achat des deux produits (980,00 / 1 100,00)
+absents du texte du PDF (0 occurrence de 980, 1100, 1 100).
+
+== Classifieur générateur (frontend/src/features/ventes/calc/classification.js, node, même worktree)
+node -e import(...).isReseauInverter : « Micro-onduleur 800W » true (hybride false) ; « Micro-onduleur hybride » false
+(hybride true) ; « câble micro-onduleur » false/false.
+node --test src/features/ventes/classifieurs.parite.test.mjs ⇒ tests 162, pass 162, fail 0 (dont
+« QJR91 écran — « Micro-onduleur 800W » » ✔, cas de fixture `classification_lignes.json` lu par les deux côtés).
+Écran : 0 écran exigé par la preuve (la tâche nomme la route /proposal et la fonction du générateur).

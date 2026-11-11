@@ -85,6 +85,29 @@ class ConcurrentIndexMigrationTests(SimpleTestCase):
         self.assertIsNot(m1, m2)
         self.assertEqual(m2.operations[0].model_name, 'devis')
 
+    def test_index_class_gin_pour_le_plein_texte(self):
+        """NTPLT32 — même pose concurrente pour un index GIN (search_vector) ;
+        sans ``index_class``, l'index reste un B-tree (inchangé)."""
+        from django.contrib.postgres.indexes import GinIndex
+        from django.db import models
+        gin = concurrent_index_migration(
+            app_label='crm', dependencies=[('crm', '0158_ntplt32_search_vector')],
+            model_name='lead', fields=['search_vector'],
+            index_name='crm_lead_fts_gin', index_class=GinIndex)
+        self.assertFalse(gin.atomic)
+        self.assertIsInstance(gin.operations[0].index, GinIndex)
+        self.assertEqual(gin.operations[0].index.fields, ['search_vector'])
+        self.assertIs(type(self._build().operations[0].index), models.Index)
+        # NTPLT33 — index PARTIEL des lignes non indexées (même pose).
+        from django.db.models import Q
+        from core.champs_plateforme import index_fts_attente
+        partiel = concurrent_index_migration(
+            app_label='crm', dependencies=[('crm', '0161_ntplt34_trgm_lead_client')],
+            model_name='lead', fields=['id'], index_name='crm_lead_fts_null',
+            condition=Q(search_vector__isnull=True)).operations[0].index
+        self.assertEqual(partiel, index_fts_attente('crm_lead_fts_null'))
+        self.assertIsNone(self._build().operations[0].index.condition)
+
 
 class LockTimeoutRemisTests(SimpleTestCase):
     """Finding #11 — le réglage ne fuit plus sur la suite du plan."""
@@ -133,3 +156,57 @@ class LockTimeoutRemisTests(SimpleTestCase):
             with self.assertRaises(ValueError):
                 self._operation().database_forwards(
                     'crm', _EditeurCasse(), None, None)
+
+
+class TrigramIndexMigrationTests(SimpleTestCase):
+    """NTPLT34 — index trigramme : jamais d'échec de ``migrate``, index posé
+    concurremment seulement si pg_trgm est là, lock_timeout toujours remis."""
+
+    CIBLES = [('lead', 'nom', 'crm_lead_nom_trgm')]
+
+    class _Editeur(_FauxSchemaEditor):
+        def __init__(self, refuse_extension=False, index_casse=False):
+            super().__init__()
+            self.refuse_extension, self.index_casse = refuse_extension, index_casse
+            self.index_poses = []
+
+        def execute(self, sql, params=()):
+            if self.refuse_extension and 'EXTENSION' in str(sql):
+                raise RuntimeError('permission denied to create extension')
+            super().execute(sql, params)
+
+        def add_index(self, model, index, concurrently=False):
+            if self.index_casse:
+                raise RuntimeError('verrou tenu')
+            self.index_poses.append((index.name, list(index.opclasses), concurrently))
+
+    def _jouer(self, editeur, presente=True, existe=False):
+        from core import migrations_utils as mu
+        apps = mock.Mock()
+        apps.get_model.return_value._meta.db_table = 'crm_lead'
+        migration = mu.trigram_index_migration(
+            'crm', [('crm', '0160_ntplt32_client_fts_gin')], self.CIBLES)
+        self.assertFalse(migration.atomic)
+        with mock.patch.object(mu, '_extension_trgm_presente', return_value=presente), \
+                mock.patch.object(mu, '_index_existe', return_value=existe):
+            migration.operations[0].code(apps, editeur)
+
+    def test_pose_concurrente_avec_opclass_et_lock_timeout_remis(self):
+        editeur = self._Editeur()
+        self._jouer(editeur)
+        self.assertEqual(editeur.index_poses,
+                         [('crm_lead_nom_trgm', ['gin_trgm_ops'], True)])
+        self.assertEqual(editeur.sql[-1], 'RESET lock_timeout;')
+
+    def test_extension_refusee_ou_absente_ne_fait_jamais_echouer(self):
+        editeur = self._Editeur(refuse_extension=True)
+        self._jouer(editeur, presente=False)
+        self.assertEqual(editeur.index_poses, [])
+        casse = self._Editeur(index_casse=True)
+        self._jouer(casse)  # l'échec de l'index est journalisé, jamais levé
+        self.assertEqual(casse.sql[-1], 'RESET lock_timeout;')
+
+    def test_index_existant_ignore(self):
+        editeur = self._Editeur()
+        self._jouer(editeur, existe=True)
+        self.assertEqual(editeur.index_poses, [])

@@ -14,7 +14,7 @@ from core.champs_stricts import (
 )
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ObjetJSON
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.serializers import (
     model_is_company_scoped,
     request_company_id,
@@ -499,6 +499,7 @@ _MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)
 
 class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
+                     VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                      serializers.ModelSerializer):
     # api-fuzz #1022 — ``custom_data`` publié comme OBJET nullable (un tableau
     # « conforme » au JSON libre était refusé 400 « Format invalide. »).
@@ -1269,7 +1270,7 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Lead
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # company/source/external refs are set server-side, never trusted from
         # input. The lead→client link is resolved server-side too (no-duplicate
         # rules in services.py), never accepted from the browser.

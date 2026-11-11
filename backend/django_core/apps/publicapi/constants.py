@@ -62,6 +62,14 @@ EVENT_LANGUE_CHANGED = 'langue_changed'
 EVENT_INCIDENT_OPENED = 'incident_opened'
 EVENT_INCIDENT_RESOLVED = 'incident_resolved'
 EVENT_MAINTENANCE_WINDOW_ANNOUNCED = 'maintenance_window_announced'
+# NTDMO34 — un item de la checklist « Premiers pas » vient d'être COMPLÉTÉ
+# (`OnboardingProgress.complete_le` passe de NULL à une date), pour qu'un
+# outil externe suive l'activation des nouveaux tenants. Émis par
+# `apps.publicapi.services.notify_onboarding_item_complete`, appelé depuis
+# `apps.onboarding.services.marquer_item_complete` (le SEUL point qui coche).
+# Charge utile minimale : company_id, user_id, item_key, complete_le — jamais
+# de PII au-delà de l'ID utilisateur.
+EVENT_ONBOARDING_ITEM_COMPLETE = 'onboarding.item_complete'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -88,6 +96,7 @@ EVENT_CHOICES = [
     (EVENT_INCIDENT_OPENED, 'Incident — ouvert'),
     (EVENT_INCIDENT_RESOLVED, 'Incident — résolu'),
     (EVENT_MAINTENANCE_WINDOW_ANNOUNCED, 'Fenêtre de maintenance — annoncée'),
+    (EVENT_ONBOARDING_ITEM_COMPLETE, 'Premiers pas — étape complétée'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

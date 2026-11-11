@@ -1027,6 +1027,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         complet d'un lead), et le CONTEXTE est propagé au sérialiseur, sans
         quoi le masquage PII du chatter ne s'appliquerait pas ici."""
         lead = self.get_object()
+        from core.archive_union import archive_demandee
+        if archive_demandee(request):
+            from .views_archive import historique_avec_archive
+            return historique_avec_archive(request, lead)
         activites = (
             lead.activites
             .select_related('user', 'attachment')

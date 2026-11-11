@@ -157,3 +157,27 @@ class BatDiffResynchro(_Base):
                             SCENARIO_SANS_BATTERIE)
         data = build_quote_data(devis)
         self.assertEqual(data['nb_options'], 2)
+
+
+class MicroOnduleurDocumentAOptions(_Base):
+    """ADCG45 (D-ADCG-3 = réseau) — 6 panneaux + 6 « Micro-onduleur 800W » :
+    le document à options est RENDU (option « sans batterie », micro-onduleurs
+    listés) au lieu du refus « aucune option ne contient d'onduleur ».
+    Règle #4 : le moteur ne fait que rendre — le statut reste brouillon."""
+
+    def test_option_sans_batterie_rendue(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.tests._quote_engine_common import make_devis
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Module PV 330 W', '6', '900'),
+            ('Micro-onduleur 800W', '6', '1500'),
+        ], reference='DEV-ADCG45-0001')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertTrue(data['sans_ok'])
+        self.assertFalse(data['avec_ok'])
+        self.assertEqual(data['variantes_servables'], ['sans'])
+        sans = [it['designation'] for it in data['sans_items']]
+        self.assertIn('Micro-onduleur 800W', sans)
+        self.assertEqual(data['nb_panneaux'], 6)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
