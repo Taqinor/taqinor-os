@@ -725,7 +725,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
                 if (validite and validite >= aujourd_hui_local()
                         and getattr(devis, 'statut', '') != 'expire'):
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
-                contexte['lien'] = url_proposition(devis) or ''
+                # AMSG13 — aucun lien (ni jeton frappé) pour un devis hors jeu.
+                if devis.is_active and devis.statut not in ('refuse', 'expire'):
+                    contexte['lien'] = url_proposition(devis) or ''
         except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé (D-ENF22-BLE001)
             logger.warning(
                 'MRY13: contexte devis illisible (étape #%s)',
