@@ -1984,7 +1984,7 @@ def metrics_view(request):
             auth_result = None
         if auth_result is not None:
             user, _token = auth_result
-            admin_ok = bool(getattr(user, 'is_admin_role', False))
+            admin_ok = bool(user.is_superuser)  # APUB48 — plateforme : superutilisateur seul (_IsSuperUser)
 
     if not (ip_ok or admin_ok):
         return Response({'detail': 'Accès /metrics non autorisé.'}, status=403)
