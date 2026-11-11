@@ -7977,7 +7977,7 @@ def confirmer_bcf_portail_fournisseur(
     d'origine (`date_livraison_prevue`) n'est jamais écrasée (préserve
     l'OTD). Isolation stricte : le BCF DOIT appartenir au fournisseur
     porteur du jeton, sinon lève ValueError (jamais d'accès croisé)."""
-    bc = _appliquer_confirmation_bcf_fournisseur(
+    bc, change = _appliquer_confirmation_bcf_fournisseur(
         token_obj.company, token_obj.fournisseur_id, bcf_id,
         date_confirmee=date_confirmee,
         numero_confirmation=numero_confirmation)
@@ -7986,7 +7986,8 @@ def confirmer_bcf_portail_fournisseur(
     token_obj.last_used_at = timezone.now()
     token_obj.save(update_fields=['last_used_at'])
 
-    notify_bcf_confirmation_fournisseur(bc)
+    if change:
+        notify_bcf_confirmation_fournisseur(bc)
     return bc
 
 
@@ -8084,11 +8085,16 @@ def _appliquer_confirmation_bcf_fournisseur(
         date_confirmee, numero_confirmation)
     if not bcf_confirmable_par_fournisseur(bc):
         raise ConfirmationBcfRefusee(MSG_CONFIRMATION_BCF_REFUSEE)
-    bc.date_confirmee_fournisseur = date_confirmee
-    bc.numero_confirmation_fournisseur = numero_confirmation
-    bc.save(update_fields=[
-        'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
-    return bc
+    # APUB46 — une confirmation identique à la précédente est sans effet ;
+    # rend (bc, changé) : les portes ne notifient que sur un changement.
+    change = (bc.date_confirmee_fournisseur, bc.numero_confirmation_fournisseur) != (
+        date_confirmee, numero_confirmation)
+    if change:
+        bc.date_confirmee_fournisseur = date_confirmee
+        bc.numero_confirmation_fournisseur = numero_confirmation
+        bc.save(update_fields=[
+            'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
+    return bc, change
 
 
 def confirmer_bcf_compte_fournisseur(
@@ -8103,10 +8109,11 @@ def confirmer_bcf_compte_fournisseur(
     chemin. L'isolation est la même : un BCF d'un autre fournisseur (ou d'une
     autre société) lève ``ValueError``, jamais d'accès croisé.
     """
-    bc = _appliquer_confirmation_bcf_fournisseur(
+    bc, change = _appliquer_confirmation_bcf_fournisseur(
         company, fournisseur_id, bcf_id, date_confirmee=date_confirmee,
         numero_confirmation=numero_confirmation)
-    notify_bcf_confirmation_fournisseur(bc)
+    if change:  # APUB46
+        notify_bcf_confirmation_fournisseur(bc)
     return bc
 
 

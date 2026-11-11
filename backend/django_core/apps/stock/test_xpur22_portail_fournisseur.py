@@ -178,6 +178,45 @@ class TestConfirmationArrivee(Xpur22Base):
         self.assertEqual(
             bc.date_livraison_prevue, datetime.date(2026, 7, 1))
 
+    def test_reconfirmation_identique_sans_notification(self):
+        """APUB46 (C-APUB-025) — une confirmation identique à la précédente
+        n'écrit ni ne notifie (porte à jeton ET porte à compte) ; une date
+        différente est enregistrée et notifiée. Mutant : notifier sans
+        condition ⇒ échec."""
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Comment
+        from apps.stock import services
+        from apps.stock.services import confirmer_bcf_compte_fournisseur
+        bc = self._bcf(self.fournisseur)
+        token_obj = generer_token_portail_fournisseur(
+            self.company, self.fournisseur, self.user)
+        commentaires = Comment.objects.filter(
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur), object_id=bc.pk)
+        with mock.patch.object(
+                services, 'notify_bcf_confirmation_fournisseur',
+                wraps=services.notify_bcf_confirmation_fournisseur) as notif:
+            for date in ('2026-12-01', '2026-12-01'):
+                confirmer_bcf_portail_fournisseur(
+                    token_obj, bc.id, date_confirmee=date,
+                    numero_confirmation='C-1')
+            confirmer_bcf_compte_fournisseur(
+                self.company, self.fournisseur.id, bc.id,
+                date_confirmee='2026-12-01', numero_confirmation='C-1')
+            self.assertEqual(notif.call_count, 1)
+            self.assertEqual(commentaires.count(), 1)
+            confirmer_bcf_portail_fournisseur(
+                token_obj, bc.id, date_confirmee='2026-12-05',
+                numero_confirmation='C-1')
+            self.assertEqual(notif.call_count, 2)
+            self.assertEqual(commentaires.count(), 2)
+        bc.refresh_from_db()
+        self.assertEqual(str(bc.date_confirmee_fournisseur), '2026-12-05')
+        self.assertEqual(bc.numero_confirmation_fournisseur, 'C-1')
+
     def test_confirmer_bcf_autre_fournisseur_refuse(self):
         bc_autre = self._bcf(self.autre_fournisseur)
         token_obj = generer_token_portail_fournisseur(
