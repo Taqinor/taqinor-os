@@ -1015,3 +1015,25 @@ unites:
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF10.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base 3acfee4, fraîcheur bbb283e) : 1 596 clés étrangères (856 en cascade), 343 routes de suppression, 132 champs d'archivage, trois corbeilles et l'effacement loi 09-08 inventoriés en trois lectures ; 27 constats, 17 prouvés par sonde hôte (vrai code, bouchons, aucune pile), 10 lus ; gravités 1 S1, 16 S2, 10 S3. S1 : « Anonymiser (RGPD) » d'un client facturé efface l'identité légale de l'acheteur sur ses factures émises (exploitable aujourd'hui : 2 Directeur ; prod lue le 11/11 : 10 factures émises sur 10 sans copie de l'acheteur). D-ASUP-1..6 ouvertes. Tâches ASUP1-ASUP55 (38 posées, dont 8 GATED : LEAD 11, SECURITE 9, STOCK 5, FACTURATION 4, SAV 2, PARAMETRES 2, DEVIS 2, CHANTIERS 1, TRANSVERSE 1, ANALYSE 1)."
+
+  - id: PF11
+    rang: 37
+    declencheur: taches-planifiees
+    titre: "Parcours PF11 « Tâches planifiées et travaux en arrière-plan » : tout ce qui tourne sans geste d'un utilisateur (planning Celery, tâches hors planning, configuration Celery, commandes du déploiement, récepteurs lourds, service IA) est-il borné par société, idempotent face au chevauchement et au rejeu, visible quand il échoue, vivant, juste dans le temps et tenable en charge"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/erp_agentique/celery.py, backend/django_core/erp_agentique/settings/base.py (Celery), backend/django_core/**/tasks*.py, scheduled.py, beat_tasks.py, sweeps.py, digests.py, scheduled_reports.py et les services qu'ils appellent, apps/*/receivers*.py, apps/*/signals*.py, core/events.py, scripts/auto-deploy.sh, docker-compose*.yml, backend/fastapi_ia/**"
+    coutures:
+      - "entrée du planning ↔ tâche enregistrée ↔ file consommée ; tâche ↔ société traitée (active, suspendue, démo) ; marqueur ou verrou ↔ rejeu après redémarrage du worker (acks_late) ; échec ↔ journal des problèmes ; réglage à l'écran ↔ tâche qui le lit ; limite de temps ↔ durée du travail"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: audité
+    groupe: ACEL
+    plan: docs/plans/PLAN_AUDIT_DEPLOY.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_SAV.md]
+    pr: 1369
+    date: 2026-11-11
+    dossier: docs/audits/2026-11-11-parcours-PF11.md
+    notes: "Audit de PARCOURS (L2, 11/11/2026, base 3acfee4) : 126 entrées du planning et 150 tâches Celery inventoriées par script ast, puis quatre lectures (argent, stock, chantiers, SAV ; CRM, notifications, GED, publicité ; plateforme et configuration Celery ; tâches mortes, signaux, déploiement, service IA), quatre vérificateurs frais et une critique ; mécanique Celery rejouée sur la vraie version 5.4.0 ; 37 constats, 4 prouvés par sonde hôte (toutes repro), 33 lus ou rejoués hors dépôt ; gravités 0 S1, 4 S2, 33 S3 ; aucun mélange de sociétés, aucun numéro ni montant dupliqué par une tâche planifiée. D-ACEL-1..3 ouvertes. Tâches ACEL1-18, ACEL31-48, ACEL61-80 (56 posées, dont 8 GATED : DEPLOY 9, SECURITE 9, ANALYSE 8, STOCK 6, DOCUMENTS 5, LEAD 4, ACQUISITION 3, FACTURATION 3, PARAMETRES 3, CHANTIERS 2, DEVIS 2, SAV 2)."
