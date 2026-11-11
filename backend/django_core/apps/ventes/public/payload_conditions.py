@@ -9,11 +9,6 @@ relatifs locaux change), prouvé par ``tests/golden/split_pv_conditions.json``.
 
 import logging
 
-#: PREVIEW-V3-FIX (audit C6) — les backends d'e-mail qui n'envoient nulle part :
-#: AMSG28 — la constante vit dans ``email_service`` (``_send`` la lit) ;
-#: ré-exportée ici, survivant unique.
-from ..email_service import EMAIL_BACKENDS_SANS_ENVOI  # noqa: F401
-
 logger = logging.getLogger(__name__)
 
 
