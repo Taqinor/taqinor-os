@@ -1083,12 +1083,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             # ``technicien_responsable`` au PUT/PATCH est la même réaffectation
             # que ``reaffecter-equipe`` / ``actions-groupees`` op ``technicien`` :
             # ``sav_reassign``.
+            # ADRG40 — la CRÉATION d'un ticket déjà affecté est la même réaffectation.
+            reaffecter = [DroitDeLaGrille('sav_reassign', champ=c) for c in ('equipe', 'technicien_responsable')]
             return [HasPermissionOrLegacy('sav_gerer')()] + droits_de_la_grille(
-                self,
-                update=[DroitDeLaGrille('sav_reassign', champ='equipe'),
-                        DroitDeLaGrille('sav_reassign', champ='technicien_responsable')],
-                partial_update=[DroitDeLaGrille('sav_reassign', champ='equipe'),
-                                DroitDeLaGrille('sav_reassign', champ='technicien_responsable')])
+                self, update=reaffecter, partial_update=reaffecter, create=reaffecter)
         # destroy, et toute action non listée : palier administrateur.
         return [IsAdminRole()]
 

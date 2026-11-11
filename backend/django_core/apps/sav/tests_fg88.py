@@ -195,6 +195,50 @@ class TestPlanifierTournee(TestCase):
         t1.refresh_from_db()
         self.assertIsNone(t1.date_tournee)
 
+    def test_technicien_livre_403_si_technicien(self):
+        """ADRG40 (C-ADRG-015) — affecter un technicien en planifiant une
+        tournée exige ``sav_reassign`` : le rôle LIVRÉ Technicien reçoit 403
+        dès que le corps nomme un technicien (tickets relus inchangés), 200
+        sans ; Responsable et Commercial responsable gardent 200. Mutant :
+        retirer la garde de ``planifier_tournee`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+
+        def api_du_role(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True,
+                permissions=list(livres[nom]))
+            u = User.objects.create_user(
+                username=f'adrg40_{nom.replace(" ", "_").lower()}',
+                password='x', role_legacy='normal', company=self.company,
+                role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(u)}')
+            return api
+
+        t1 = _preventif(self.company, self.client_obj, self.inst, 'SAV-1')
+        t2 = _preventif(self.company, self.client_obj, self.inst, 'SAV-2')
+        when = (date.today() + timedelta(days=2)).isoformat()
+        corps = {'ticket_ids': [t1.id, t2.id], 'date_tournee': when}
+        technicien = api_du_role('Technicien')
+        r = technicien.post(PLANIFIER, {**corps, 'technicien_id': self.tech.id},
+                            format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn('sav_reassign', str(r.data))
+        for t in (t1, t2):
+            t.refresh_from_db()
+            self.assertIsNone(t.technicien_responsable_id)
+            self.assertIsNone(t.date_tournee)
+        self.assertEqual(
+            technicien.post(PLANIFIER, corps, format='json').status_code, 200)
+        for nom in ('Responsable', 'Commercial responsable'):
+            r = api_du_role(nom).post(
+                PLANIFIER, {**corps, 'technicien_id': self.tech.id},
+                format='json')
+            self.assertEqual(r.status_code, 200, (nom, r.data))
+
     def test_foreign_ticket_ids_ignored(self):
         other = Company.objects.get_or_create(
             slug='fg88p-other2', defaults={'nom': 'Other2'})[0]

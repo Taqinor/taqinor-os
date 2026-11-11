@@ -26,6 +26,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from apps.roles.permissions import DroitDeLaGrille
 from core.openapi_operations import mots_operation
 from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON
@@ -271,6 +272,9 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):
             return [LectureDuModule()]
+        if self.action == 'planifier_tournee':
+            # ADRG40 — affecter un technicien en lot = réaffectation (sav_reassign).
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('sav_reassign', champ='technicien_id')()]
         return [IsResponsableOrAdmin()]
 
     def _check_tenant(self, serializer):
