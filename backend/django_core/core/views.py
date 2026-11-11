@@ -989,7 +989,7 @@ class DataExplorerDatasetsView(APIView):
         if name:
             try:
                 return Response(
-                    data_explorer.describe_dataset(name, request.user))
+                    data_explorer.describe_dataset(name, request.user, exiger_lecture=True))  # APUB55
             except data_explorer.DatasetInconnu as exc:
                 return Response({'detail': str(exc)},
                                 status=status.HTTP_404_NOT_FOUND)

@@ -283,6 +283,10 @@ def list_datasets(user=None):
     """
     out = []
     for name, d in _DATASETS.items():
+        try:  # APUB55 — avec ``user``, le catalogue ne propose que les jeux lisibles
+            exiger_lecture_dataset(name, user)
+        except DatasetNonAutorise:
+            continue
         champs = _champs_decrits(d, user)
         noms = [c['name'] for c in champs]
         out.append({
@@ -295,11 +299,14 @@ def list_datasets(user=None):
     return out
 
 
-def describe_dataset(name, user=None):
+def describe_dataset(name, user=None, exiger_lecture=False):
     """NTDATA5 — schéma DÉTAILLÉ d'un seul dataset (endpoint de détail).
 
-    Lève ``DatasetInconnu`` si le dataset n'existe pas.
+    Lève ``DatasetInconnu`` si le dataset n'existe pas ; APUB55 —
+    ``exiger_lecture`` (endpoint de détail) : ``DatasetNonAutorise`` (403).
     """
+    if exiger_lecture:
+        exiger_lecture_dataset(name, user)
     dataset = get_dataset(name)
     champs = _champs_decrits(dataset, user)
     return {
