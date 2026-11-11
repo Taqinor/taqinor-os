@@ -49,10 +49,10 @@ def lead_photo_toit(request, lead_id):
     """
     from apps.visites import selectors  # noqa: PLC0415 — frontière M3 (D-ENF22)
 
-    from .models import Lead  # noqa: PLC0415 — import différé (cycle/coût de démarrage) (D-ENF22)
+    from .portee_selectors import leads_visibles  # noqa: PLC0415 — import différé (D-ENF22)
 
-    lead = Lead.objects.filter(pk=lead_id,
-                               company=request.user.company).first()
+    # ALEC39 — dans la PORTÉE du rôle, comme la fiche du lead (même 404).
+    lead = leads_visibles(request.user, request.user.company).filter(pk=lead_id).first()
     if lead is None:
         raise NotFound('Lead introuvable.')
     return Response(selectors.texture_toit_pour_lead(lead))

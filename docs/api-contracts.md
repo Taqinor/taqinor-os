@@ -218,8 +218,6 @@
     active_sessions:inconnu, dormant_accounts:inconnu, expired_secrets:inconnu, ip_allowlist_active:inconnu, items_faibles:inconnu, mfa_pct:inconnu, overdue_review_campaigns:inconnu, score:inconnu, soc2_iso27001_ready:booleen, sod_open_violations:inconnu, sso_configured:inconnu
 - frontend/src/api/importApi.js :: getExportObjects -> /api/django/imports/export-objects
     default_format:inconnu, formats:liste, objects:inconnu
-- frontend/src/api/importApi.js :: saveMapping -> /api/django/imports/mapping
-    detail:texte, id:inconnu, mapping:inconnu, nom:inconnu, target:inconnu
 - frontend/src/api/installationsApi.js :: accepterConsentementGps -> /api/django/installations/gps-consentements/mon-consentement/accepter
     accepte_le:inconnu, actif:booleen, existe:booleen, notice:inconnu, statut:inconnu
 - frontend/src/api/installationsApi.js :: ajouterPhoto -> /api/django/installations/interventions/<>/ajouter-photo

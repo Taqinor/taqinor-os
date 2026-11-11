@@ -219,3 +219,28 @@ class FeriesEndpointTests(TestCase):
         resp = self._client_for(self.normal).post(
             self.IMPORT_URL, {'file': fichier}, format='multipart')
         self.assertEqual(resp.status_code, 403)
+
+    def test_import_reserve_a_l_administrateur(self):
+        """ADRG67 — même garde que ``HolidayViewSet`` (administrateur)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_RESP_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+        for nom, permissions, attendu in (
+                ('cresp', COMMERCIAL_RESP_PERMISSIONS, 403),
+                ('dir', DIRECTEUR_PERMISSIONS, 200)):
+            role = Role.objects.create(company=self.company, nom=f'{nom} 67',
+                                       permissions=list(permissions))
+            user = User.objects.create_user(
+                username=f'adrg67-fe-{nom}', password='x',
+                company=self.company, role=role)
+            fichier = SimpleUploadedFile(
+                'feries.csv', b'pays,date,libelle\nFR,2026-07-14,x\n',
+                content_type='text/csv')
+            resp = self._client_for(user).post(
+                self.IMPORT_URL, {'file': fichier}, format='multipart')
+            self.assertEqual(resp.status_code, attendu, resp.content)
+            if attendu == 403:
+                self.assertFalse(ImportJob.objects.filter(
+                    company=self.company).exists())
+                self.assertFalse(Holiday.objects.filter(
+                    company=self.company).exists())

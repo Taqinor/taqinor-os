@@ -205,6 +205,36 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.cout, Decimal('100.00'))
 
+    def test_cout_masque_sans_prix_achat_voir(self):
+        """ALEC17 (C-ALEC-015) — le coût interne d'un ticket ne sort qu'avec
+        ``prix_achat_voir`` : Technicien sans la clé ``cout`` (détail et
+        liste), Directeur « 300.00 ». Mutant : vider ``champs_montants_achat``."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.a, nom=f'{nom} ALEC17',
+                                       permissions=list(permissions))
+            return User.objects.create_user(
+                username=f'alec17-{nom}', password='x', company=self.a, role=role)
+        tech, directeur = (compte('tech', TECHNICIEN_PERMISSIONS),
+                           compte('dir', DIRECTEUR_PERMISSIONS))
+        Ticket.objects.filter(pk=self.ticket.pk).update(
+            cout=Decimal('300.00'), technicien_responsable=tech)
+        for user, attendu in ((tech, None), (directeur, '300.00')):
+            api = _api(user)
+            detail = api.get(f'{URL}{self.ticket.id}/')
+            self.assertEqual(detail.status_code, 200, detail.data)
+            liste = api.get(URL)
+            self.assertEqual(liste.status_code, 200, liste.data)
+            lignes = liste.data.get('results', liste.data)
+            (ligne,) = [t for t in lignes if t['id'] == self.ticket.id]
+            for donnees in (detail.data, ligne):
+                self.assertEqual(donnees.get('cout'), attendu)
+                if attendu is None:
+                    self.assertNotIn('cout', donnees)
+
     def test_ids_societe_ok(self):
         r = self._patch({
             'technicien_responsable': self.tech_a.id,

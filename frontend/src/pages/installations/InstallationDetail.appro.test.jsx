@@ -45,7 +45,7 @@ const rendre = (installation) => render(
   <Provider store={configureStore({
     reducer: {
       stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
-      auth: (state = { permissions: [], role_nom: 'admin' }) => state,
+      auth: (state = { permissions: ['installation_gerer', 'intervention_gerer', 'achats_commander'], role_nom: 'admin' }) => state, // ADRG21
     },
   })}>
     <MemoryRouter initialEntries={['/chantiers']}>

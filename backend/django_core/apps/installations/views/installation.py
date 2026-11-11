@@ -8,7 +8,7 @@ from authentication.permissions import (
     IsAnyRole, LectureDuModule, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy, codes_du_module,
 )
 from core.viewsets import CompanyScopedModelViewSet
-from apps.roles.permissions import DroitDeLaGrille  # ASEC75
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC75
 from django.utils import timezone
 
 from .. import activity
@@ -315,7 +315,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # CIQ633 — import en lot des numéros de série.
             'series_lot',
         ]:  # ASEC75 — écritures du chantier : ``installation_gerer`` (grille).
-            return [IsResponsableOrAdmin(), DroitDeLaGrille('installation_gerer')()]
+            # ADRG99 — (ré)affecter le technicien responsable : ``technicien_assign``.
+            affecter = [DroitDeLaGrille('technicien_assign', champ='technicien_responsable')]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('installation_gerer')()] + droits_de_la_grille(
+                self, create=affecter, update=affecter, partial_update=affecter)
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]

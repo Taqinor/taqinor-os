@@ -4,7 +4,7 @@
 //
 // Run : npx vitest run src/pages/ventes/DevisPresetPanel.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../api/ventesApi', () => ({
@@ -17,6 +17,11 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import DevisPresetPanel from './DevisPresetPanel'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
+
+// ADRG5 — la corbeille d'un modèle PARTAGÉ suit `ventes_supprimer`.
+const rendre = (ui, permissions = ['ventes_supprimer']) =>
+  renderAvecAuth(ui, { permissions }, { routeur: false })
 
 const PRESET = {
   id: 5, nom: 'Standard 6 kWc', mode_installation: 'industriel',
@@ -34,7 +39,7 @@ beforeEach(() => {
 
 async function ouvrirEtAppliquer(props) {
   const onApplied = vi.fn()
-  render(<DevisPresetPanel {...props} onApplied={onApplied} />)
+  rendre(<DevisPresetPanel {...props} onApplied={onApplied} />)
   await userEvent.click(screen.getByRole('button', { name: /Modèles de devis/ }))
   await userEvent.click(await screen.findByRole('button', { name: 'Appliquer' }))
   return onApplied
@@ -65,7 +70,7 @@ describe('QJR546 — le modèle s’applique à l’écran', () => {
 
 describe('QJR547 — « Enregistrer comme modèle » photographie l’écran', () => {
   async function enregistrer(avantEnregistrement) {
-    render(<DevisPresetPanel devisId={42} onApplied={vi.fn()}
+    rendre(<DevisPresetPanel devisId={42} onApplied={vi.fn()}
                              avantEnregistrement={avantEnregistrement} />)
     await userEvent.click(screen.getByRole('button', { name: /Modèles de devis/ }))
     await userEvent.type(screen.getByLabelText('Nom du modèle'), 'Mon modèle')
@@ -87,5 +92,20 @@ describe('QJR547 — « Enregistrer comme modèle » photographie l’écran', (
     await waitFor(() => expect(avant).toHaveBeenCalled())
     expect(await screen.findByText(/le modèle n'a pas été créé/)).toBeTruthy()
     expect(ventesApi.savePreset).not.toHaveBeenCalled()
+  })
+})
+
+describe('ADRG5 — supprimer un modèle partagé exige ventes_supprimer', () => {
+  it('sans le droit : aucune corbeille ; avec : présente', async () => {
+    rendre(<DevisPresetPanel devisId={42} onApplied={vi.fn()} />, ['ventes_voir', 'ventes_creer'])
+    await userEvent.click(screen.getByRole('button', { name: /Modèles de devis/ }))
+    expect(await screen.findByRole('button', { name: 'Appliquer' })).toBeInTheDocument()
+    expect(screen.queryByTitle('Supprimer ce modèle')).toBeNull()
+  })
+
+  it('avec le droit : la corbeille est offerte', async () => {
+    rendre(<DevisPresetPanel devisId={42} onApplied={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Modèles de devis/ }))
+    expect(await screen.findByTitle('Supprimer ce modèle')).toBeInTheDocument()
   })
 })

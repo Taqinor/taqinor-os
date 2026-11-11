@@ -46,6 +46,19 @@ class EcrasementBase(ImportBase):
         payload.update(options)
         return (client or self.api).post(COMMIT_URL, payload, format='multipart')
 
+    def _api_role(self, nom, permissions):
+        """Client authentifié d'un compte au rôle LIVRÉ ``permissions``."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=f'{nom} ADRG', permissions=list(permissions))
+        client = APIClient()
+        client.force_authenticate(get_user_model().objects.create_user(
+            username=f'adrg-{nom}', password='x', company=self.company, role=role))
+        return client
+
 
 class TestApercuEcrasements(EcrasementBase):
     """L'aperçu doit rendre VISIBLE ce qu'un tableur périmé détruirait."""
@@ -132,6 +145,31 @@ class TestApercuEcrasements(EcrasementBase):
         self.assertEqual(conflit['cible'], 'stock.produit')
         champs = {e['champ'] for e in conflit['ecrasements']}
         self.assertEqual(champs, {'nom', 'prix_vente'})
+
+    def test_apercu_produits_masque_le_prix_d_achat_sans_droit(self):
+        """ADRG63 (D-ASTK-2) — sans ``prix_achat_voir``, l'aperçu ne livre ni
+        le champ ``prix_achat`` ni sa valeur actuelle ; le Directeur la voit."""
+        from apps.roles.permissions_registre import COMMERCIAL_RESP_PERMISSIONS
+        Produit.objects.create(company=self.company, nom='Panneau',
+                               sku='SKU-1', prix_vente=1200, prix_achat=900)
+        payload = {'target': 'products'}
+        csv_text = 'Nom,SKU,prix_achat\nPanneau,SKU-1,950\n'
+        resp = self._api_role('cresp63', COMMERCIAL_RESP_PERMISSIONS).post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **payload},
+            format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for conflit in resp.data['conflits']:
+            self.assertNotIn('prix_achat', conflit['remplissages'])
+            self.assertNotIn('prix_achat',
+                             [e['champ'] for e in conflit['ecrasements']])
+        self.assertNotIn('900', str(resp.data))
+        resp = self.api_dir.post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **payload},
+            format='multipart')
+        (conflit,) = resp.data['conflits']
+        (prix,) = [e for e in conflit['ecrasements']
+                   if e['champ'] == 'prix_achat']
+        self.assertIn('900', prix['ancienne'])
 
     def test_apercu_refuse_le_meme_mode_que_le_commit(self):
         """Un mode refusé à l'écriture doit l'être aussi à l'aperçu (sinon
@@ -418,6 +456,60 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         self.assertEqual(propre.status_code, 200, propre.data)
         lead.refresh_from_db()
         self.assertEqual(lead.email, 'b@y.ma')
+
+    def test_import_factures_exige_ventes_creer(self):
+        """ADRG61 — un Technicien n'importe aucune facture (série légale)."""
+        from apps.crm.models import Client
+        from apps.facturation.models import Facture
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        Client.objects.create(company=self.company, nom='Alaoui', email='a@x.ma')
+        csv_text = 'client_email,statut\na@x.ma,emise\n'
+        tech = self._api_role('tech61', TECHNICIEN_PERMISSIONS)
+        for url in (DRY_RUN_URL, COMMIT_URL):
+            resp = tech.post(url, {'file': self._csv(csv_text), 'target': 'factures'},
+                             format='multipart')
+            self.assertEqual(resp.status_code, 403, resp.data)
+            self.assertEqual(resp.data['code'], 'droit_manquant')
+            self.assertIn('ventes_creer', resp.data['detail'])
+        self.assertFalse(Facture.objects.filter(company=self.company).exists())
+        resp = self._commit(csv_text, target='factures',
+                            client=self._api_role('com61', COMMERCIAL_PERMISSIONS))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1)
+
+    def test_import_devis_fournisseurs_equipements_exige_le_code_de_creation(
+            self):
+        """ADRG65 — chaque cible exige le code de sa création unitaire."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, COMMERCIAL_TERRAIN_PERMISSIONS,
+            TECHNICIEN_RESP_PERMISSIONS)
+        from apps.sav.models import Equipement
+        from apps.stock.models import Fournisseur
+        from apps.ventes.models import Devis
+        commercial = self._api_role('com65', COMMERCIAL_PERMISSIONS)
+        terrain = self._api_role('ter65', COMMERCIAL_TERRAIN_PERMISSIONS)
+        refus = ((commercial, 'fournisseurs', 'nom\nFour A\n', 'stock_modifier'),
+                 (commercial, 'equipements', 'numero_serie\nSN-1\n',
+                  'equipement_gerer'),
+                 (terrain, 'devis', 'reference,client_nom\nS-1,X\n',
+                  'ventes_creer'))
+        for client, target, csv_text, code in refus:
+            for url in (DRY_RUN_URL, COMMIT_URL):
+                resp = client.post(
+                    url, {'file': self._csv(csv_text), 'target': target},
+                    format='multipart')
+                self.assertEqual(resp.status_code, 403, (target, resp.data))
+                self.assertEqual(resp.data['code'], 'droit_manquant')
+                self.assertIn(code, resp.data['detail'])
+        self.assertFalse(Fournisseur.objects.filter(company=self.company).exists())
+        self.assertFalse(Equipement.objects.filter(company=self.company).exists())
+        self.assertFalse(Devis.objects.filter(company=self.company).exists())
+        resp = self._commit('nom\nFour A\n', target='fournisseurs',
+                            client=self._api_role(
+                                'tresp65', TECHNICIEN_RESP_PERMISSIONS))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1)
 
     def test_upsert_contact_hors_portee_jamais_cree(self):
         """ERR-W33-IMPORT-DOUBLON — en ``upsert``, le contact d'un lead hors de

@@ -115,6 +115,34 @@ class CycleLienPaiementTests(TestCase):
         self.lien.refresh_from_db()
         self.assertEqual(self.lien.statut, 'annule')
 
+    def test_page_lien_ferme_sans_nom_ni_montant(self):
+        """APUB33 (C-APUB-014) — un lien annulé puis un lien expiré ne livrent
+        plus le nom du client, le montant d'origine ni le RIB ; les clés du
+        contrat restent présentes ; un lien en attente garde nom et montant."""
+        import json
+        from datetime import timedelta
+        from pathlib import Path
+
+        from apps.ventes.domain.encaissements import create_payment_link
+        from apps.ventes.models import PaymentLink
+        contrat = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'paiement_public.json').read_text(encoding='utf-8'))
+        ouvert = self._page()
+        self.assertTrue(ouvert['client_name'])
+        self.assertNotEqual(ouvert['montant_initial'], '0.00')
+        PaymentLink.objects.filter(pk=self.lien.pk).update(statut='annule')
+        expire = create_payment_link(facture=self.facture)
+        PaymentLink.objects.filter(pk=expire.pk).update(
+            expires_at=timezone.now() - timedelta(days=1))
+        for lien, cle, attendu in ((self.lien, 'statut', 'annule'),
+                                   (expire, 'expire', True)):
+            page = self.public.get(f'/api/django/public/pay/{lien.token}/').data
+            self.assertEqual(page[cle], attendu)
+            self.assertEqual(set(page), set(contrat['exemple_ferme']))
+            self.assertEqual(page['client_name'], '')
+            self.assertEqual(page['montant_initial'], '0.00')
+            self.assertIsNone(page['rib'])
+
     def test_solde_manuel_ferme_lien(self):
         r = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/enregistrer-paiement/',

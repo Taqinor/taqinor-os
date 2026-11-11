@@ -15,6 +15,7 @@ from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import TypageStrictMixin
 from core.serializers import CompanyScopedRelationsMixin
 
+from apps.stock.permissions import MasqueMontantsAchatMixin
 from .champs_corps import TexteSansSubstitut, sans_substituts
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
@@ -467,8 +468,9 @@ class TicketListSerializer(serializers.ListSerializer):
                 c, a, lus, registre_cache)
 
 
-class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
-                       serializers.ModelSerializer):
+class TicketSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin,
+                       SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    champs_montants_achat = ('cout',)  # ALEC17 — coût interne : ``prix_achat_voir``
     # api-fuzz-full 24/10 — textes de modèle STRICTS (chaîne JSON seulement) :
     # leur motif publié exclut le caractère nul que DRF refuse (400).
     serializer_field_mapping = {

@@ -83,6 +83,33 @@ class TestCommit(ImportBase):
         p = Produit.objects.get(sku='SKU-9')
         self.assertEqual(str(p.prix_vente), '1200.50')
 
+    def test_produit_importe_sans_prix_achat_voir_garde_le_prix_d_achat_par_defaut(
+            self):
+        """ADRG78 (D-ASTK-2) — sans ``prix_achat_voir``, la colonne prix
+        d'achat du fichier n'est pas écrite (comme le create REST)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_RESP_PERMISSIONS
+        role = Role.objects.create(
+            company=self.company, nom='Commercial responsable',
+            permissions=list(COMMERCIAL_RESP_PERMISSIONS))
+        cresp = User.objects.create_user(
+            username='imp_cresp78', password='x', role=role,
+            company=self.company)
+        api = APIClient()
+        api.force_authenticate(cresp)
+        for client, sku, attendu in ((api, 'SKU-N1', '0.00'),
+                                     (self.api_dir, 'SKU-N2', '6000.00')):
+            f = self._csv(f'Nom,SKU,prix_vente,prix_achat\n'
+                          f'Onduleur 5kW,{sku},9000,6000\n')
+            resp = client.post('/api/django/imports/commit/',
+                               {'file': f, 'target': 'products'},
+                               format='multipart')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data['created'], 1)
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(str(produit.prix_achat), attendu)
+            self.assertEqual(str(produit.prix_vente), '9000.00')
+
     def test_commit_clients(self):
         f = self._csv('Nom,Email\nSociété A,a@a.ma\n')
         resp = self.api.post('/api/django/imports/commit/',

@@ -20,7 +20,7 @@ import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
 import { toast, useConfirmDialog } from '../../ui/confirm'
-import { useCanListAssignableUsers, useCanLireVentes } from '../../hooks/useHasPermission'
+import { useCanListAssignableUsers, useCanLireVentes, useHasPermission } from '../../hooks/useHasPermission'
 // VX156 — le moment « chantier terminé » (mise en service) porte la voix Taqinor.
 import { voice } from '../../lib/voice'
 import { telHref } from '../../lib/contactLinks'
@@ -287,7 +287,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
   const peutListerUsers = useCanListAssignableUsers()
-  const peutLireVentes = useCanLireVentes() // ADVS23 — jamais un lien vers un refus
+  const [peutLireVentes, peutGerer, peutInterv, peutEquip] = [useCanLireVentes(), useHasPermission('installation_gerer'), useHasPermission('intervention_gerer'), useHasPermission('equipement_gerer')] // ADVS23 — jamais un lien vers un refus ; ADRG21 — gestes selon la grille
   const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
@@ -936,7 +936,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       title: 'Chantier annulé.',
       body: current.motif_annulation ? `Motif : ${current.motif_annulation}` : null,
       action: (
-        <Button size="sm" variant="outline" onClick={reactiver}>Réactiver</Button>
+        peutGerer && <Button size="sm" variant="outline" onClick={reactiver}>Réactiver</Button>
       ),
     },
     actionError && {
@@ -1429,7 +1429,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               </FormField>
               {/* ACHT3 — le serveur refuse la mise en service avant « Installé » :
                   le geste n'est offert que lorsqu'il est actionnable. */}
-              {canRecordCommissioning(current.statut, current.annule) ? (
+              {!peutGerer ? null : canRecordCommissioning(current.statut, current.annule) ? (
                 <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
                   Enregistrer la mise en service
                 </Button>
@@ -1447,7 +1447,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         PV de réception définitive
                       </Button>
                     </>
-                  ) : (
+                  ) : peutGerer && (
                     <Button variant="outline" loading={receptionBusy}
                             onClick={prononcerReceptionDefinitive} className="self-start">
                       Prononcer la réception définitive
@@ -1539,7 +1539,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                           </span>
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          {editing ? (
+                          {!peutEquip ? null : editing ? (
                             <span className="flex gap-1">
                               <Button size="sm" loading={editEquipBusy} onClick={saveEditEquip}>
                                 Enregistrer
@@ -1602,9 +1602,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <Input id="eq-dp" type="date" value={equip.date_pose}
                          onChange={(e) => setEquip(s => ({ ...s, date_pose: e.target.value }))} />
                 </FormField>
-                <Button variant="outline" loading={equipBusy} disabled={!equip.produit} onClick={addEquipement}>
+                {peutEquip && <Button variant="outline" loading={equipBusy} disabled={!equip.produit} onClick={addEquipement}>
                   Ajouter
-                </Button>
+                </Button>}
               </div>
               {garantieManquante && (
                 <p className="text-xs text-warning-foreground">
@@ -1634,7 +1634,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               title="Interventions"
               action={(
                 <span className="flex flex-wrap items-center gap-2">
-                  <Button
+                  {peutInterv && <Button
                     size="sm"
                     variant="outline"
                     loading={standardBusy}
@@ -1645,7 +1645,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     onClick={creerInterventionsStandard}
                   >
                     Créer les interventions standard
-                  </Button>
+                  </Button>}
                   <Button size="sm" variant="ghost" onClick={() => navigate('/planification')}>
                     Ouvrir la planification
                   </Button>
@@ -1696,7 +1696,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                           ) : (iv.compte_rendu ?? '—')}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          {editing ? (
+                          {!peutInterv ? null : editing ? (
                             <span className="flex gap-1">
                               <Button size="sm" loading={editIntervBusy} onClick={saveEditInterv}>
                                 Enregistrer
@@ -1752,10 +1752,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <Input id="iv-cr" value={interv.compte_rendu}
                          onChange={(e) => setInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
                 </FormField>
-                <Button variant="outline" loading={intervBusy} disabled={!interv.type_intervention}
+                {peutInterv && <Button variant="outline" loading={intervBusy} disabled={!interv.type_intervention}
                         onClick={addIntervention}>
                   Ajouter
-                </Button>
+                </Button>}
               </div>
             </Section>
             {/* ── Tickets SAV ── */}
@@ -1851,11 +1851,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   Bon de livraison
                 </Button>
                 {/* NTMOB16 — signature client tracée, jointe au PDF ci-dessus. */}
-                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                {peutGerer && <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                         onClick={() => setSignatureOpen(true)}>
                   <PenLine className="size-4" aria-hidden="true" />
                   {current.signe_le ? 'Signature de réception (signé)' : 'Signer la réception'}
-                </Button>
+                </Button>}
                 <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                         onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`, 'Dossier de remise')}>
                   Dossier de remise
@@ -1889,7 +1889,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Input placeholder="Écrire une note…"
                        value={noteBody} onChange={(e) => setNoteBody(e.target.value)}
                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
-                <Button variant="outline" onClick={postNote}><Send /> Noter</Button>
+                {peutGerer && <Button variant="outline" onClick={postNote}><Send /> Noter</Button>}
               </div>
               <div className="flex flex-col gap-2">
                 {historique.length === 0 && <Hint>Aucune activité pour le moment.</Hint>}
@@ -1917,22 +1917,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         </div>
 
         <FormActions>
-          {!current.annule && (
+          {peutGerer && !current.annule && (
             <Button variant="destructive" className="sm:mr-auto"
                     onClick={() => { setAnnulerMotif(''); setAnnulerParcConfirm(false); setAnnulerOpen(true) }}>
               Annuler le chantier
             </Button>
           )}
-          {!current.annule && canonicalStatus(current.statut) === 'installe'
+          {peutGerer && !current.annule && canonicalStatus(current.statut) === 'installe'
             && canMoveStatus(current.statut, 'receptionne') && (
             <Button variant="success" loading={receptBusy} onClick={marquerReceptionne}>
               Marquer réceptionné
             </Button>
           )}
           <Button variant="outline" onClick={onClose}>Fermer</Button>
-          <Button loading={saving} onClick={handleSave}>
+          {peutGerer && <Button loading={saving} onClick={handleSave}>
             {saving ? 'Enregistrement…' : 'Mettre à jour'}
-          </Button>
+          </Button>}
         </FormActions>
       </SheetContent>
 
