@@ -435,7 +435,7 @@ const ventesApi = {
   patchFacture: (id, data) => api.patch(`/ventes/factures/${id}/`, data),
   genererPdfFacture: (id) => api.post(`/ventes/factures/${id}/generer-pdf/`),
   telechargerPdfFacture: (id) => api.get(`/ventes/factures/${id}/telecharger-pdf/`, { responseType: 'blob' }),
-  envoyerEmailFacture: (id, email) => api.post(`/ventes/factures/${id}/envoyer-email/`, { email }),
+  envoyerEmailFacture: (id, email) => api.post(`/ventes/factures/${id}/envoyer-email/`, email ? { to_email: email } : {}),  // AMSG34 — la clé que le serveur lit
   // Envoyer par WhatsApp : lien wa.me prêt à envoyer (modele 'facture'/'relance').
   whatsappFacture: (id, payload = {}) => api.post(`/ventes/factures/${id}/whatsapp/`, payload),
   // N38 — export structuré UBL 2.1 (aperçu BROUILLON, jamais transmis) en XML.
