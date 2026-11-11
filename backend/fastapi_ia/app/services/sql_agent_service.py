@@ -898,11 +898,22 @@ _FORBIDDEN_COLUMNS = (
     "marge",
     "marge_snapshot",      # ventes.Devis — marge HT figee (manager-only)
     "cout_unitaire",       # ASTK44 : cout interne d'une entree de production (stock.MouvementStock)
+    "cout",                # ALEC15 : cout interne d'un ticket (sav.Ticket.cout)
 )
 
 # Tables autorisees portant un prix d'achat ou une marge (verifie sur les
 # modeles Django : stock.Produit.prix_achat, ventes.Devis.marge_snapshot).
-_PRICE_TABLES = ("stock_produit", "ventes_devis", "stock_mouvementstock")  # ASTK44 : cout interne
+_PRICE_TABLES = ("stock_produit", "ventes_devis", "stock_mouvementstock",  # ASTK44 : cout interne
+                 "sav_ticket")  # ALEC15 : sav.Ticket.cout
+
+# ALEC15 (C-ALEC-013) — montants et lignes des factures fournisseur de toute la
+# societe (contourne APFS46) : refusee a TOUTE mention sans `prix_achat_voir`.
+_PRICE_ONLY_TABLES = frozenset({"ia_ocr_document"})
+
+# ALEC15 — colonnes personnelles de `crm_client`, refusees sans `client_pii_voir`
+# (`allow_pii`), comme la projection ligne entiere de la table.
+_PII_TABLE = "crm_client"
+_PII_COLUMNS = ("email", "telephone", "adresse", "cin")
 
 # Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
 # le LLM la verbalise alors proprement, sans jamais voir la donnee.
@@ -932,7 +943,8 @@ def _select_sources(select: exp.Select) -> list:
     return sources
 
 
-def _references_forbidden_column(sql: str, allow_price: bool = False) -> bool:
+def _references_forbidden_column(sql: str, allow_price: bool = False,
+                                 allow_pii: bool = True) -> bool:
     """True si la requete peut RESTITUER une colonne confidentielle — secret de
     compte (toujours) ou prix d'achat / marge (sauf `allow_price`) — qu'elle
     soit NOMMEE ou emportee par une projection LIGNE ENTIERE d'une table qui la
@@ -949,6 +961,12 @@ def _references_forbidden_column(sql: str, allow_price: bool = False) -> bool:
     if not allow_price:
         colonnes |= set(_FORBIDDEN_COLUMNS)
         tables |= set(_PRICE_TABLES)
+    noms = {t.name.lower() for t in tree.find_all(exp.Table)}
+    if not allow_price and noms & _PRICE_ONLY_TABLES:
+        return True
+    if not allow_pii and _PII_TABLE in noms:
+        colonnes |= set(_PII_COLUMNS)
+        tables.add(_PII_TABLE)
 
     # 1. Colonne NOMMEE (identifiant, quel que soit le contexte ou la casse).
     for ident in tree.find_all(exp.Identifier):
@@ -1000,7 +1018,8 @@ def _references_secret_column(sql: str) -> bool:
 
 
 def _validate_and_secure(sql: str, company_id: int,
-                         allow_price: bool = False) -> str:
+                         allow_price: bool = False,
+                         allow_pii: bool = True) -> str:
     """Point d'entree unique de securisation d'une requete generee :
       ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
       AANA3 : refuse toute fonction hors liste blanche ;
@@ -1022,6 +1041,10 @@ def _validate_and_secure(sql: str, company_id: int,
         raise SQLSecurityError(
             "Colonne confidentielle (prix d'achat / marge) — lecture refusee."
         )
+    if not allow_pii and _references_forbidden_column(
+            sql, allow_price=True, allow_pii=False):
+        raise SQLSecurityError(
+            "Donnee personnelle du client (client_pii_voir) — lecture refusee.")
     return _inject_company_filter(sql, company_id)
 
 
@@ -1079,7 +1102,8 @@ def _apply_tenant_guc(db, company_id: int) -> None:
 # ── Outil SQL securise ────────────────────────────────────────────────────────
 
 
-def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = False):
+def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = False,
+                            allow_pii: bool = True):
     """
     Retourne un QuerySQLDataBaseTool qui :
       1. BLOQUE toute requete touchant le prix d'achat / la marge quand
@@ -1091,6 +1115,7 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
 
     _cid = company_id  # capture par closure — immune aux reinitialisations Pydantic
     _allow_price = allow_purchase_price
+    _allow_pii = allow_pii
 
     class _SecureQueryTool(QuerySQLDataBaseTool):
         def _run(self, query: str, run_manager=None) -> str:
@@ -1109,7 +1134,8 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
             # pas prouve sur est refuse sans jamais etre execute.
             try:
                 secured = _validate_and_secure(
-                    query, _cid, allow_price=_allow_price)
+                    query, _cid, allow_price=_allow_price,
+                    allow_pii=_allow_pii)
             except SQLSecurityError as exc:
                 logger.warning(
                     "SECURITE: requete refusee (%s). SQL: %s",
@@ -1454,9 +1480,14 @@ class SQLAgentService:
 
         # 4. Toolkit → remplacement de l'outil sql_db_query par la version securisee
         # On compare par nom d'outil (fiable) et non par classe (nom instable selon version)
+        # ALEC15 — donnees personnelles du client : `client_pii_voir` (meme
+        # chemin `resolve_caller_permissions` que `prix_achat_voir`).
+        allow_pii = bool(action_ctx is not None and (
+            action_ctx.is_superuser
+            or "client_pii_voir" in action_ctx.permissions))
         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
         tools = [
-            _make_secure_query_tool(db, company_id, allow_price)
+            _make_secure_query_tool(db, company_id, allow_price, allow_pii)
             if t.name == "sql_db_query"
             else t
             for t in toolkit.get_tools()

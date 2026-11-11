@@ -74,6 +74,29 @@ class MarginGuardTests(unittest.TestCase):
             if original is not None:
                 parent._run = original
 
+    def test_cout_ticket_ocr_et_pii_client_refuses_sans_droit(self):
+        """ALEC15 (C-ALEC-013) — sans `prix_achat_voir` ni `client_pii_voir` :
+        `sav_ticket.cout`, `ia_ocr_document` et les colonnes personnelles de
+        `crm_client` sont refuses ; `count(*)` reste lisible ; un Directeur
+        (les deux droits) lit les quatre, filtrees par societe."""
+        refusees = (
+            "SELECT cout FROM sav_ticket",
+            "SELECT donnees_structurees FROM ia_ocr_document",
+            "SELECT email, telephone FROM crm_client",
+            "SELECT * FROM sav_ticket",
+        )
+        for sql in refusees:
+            with self.assertRaises(svc.SQLSecurityError, msg=sql):
+                svc._validate_and_secure(sql, 7, allow_price=False, allow_pii=False)
+            out = svc._validate_and_secure(sql, 7, allow_price=True, allow_pii=True)
+            self.assertIn("company_id", out, sql)
+        for sql in ("SELECT cin FROM crm_client", "SELECT * FROM crm_client c",
+                    "SELECT count(*) FROM ia_ocr_document"):
+            with self.assertRaises(svc.SQLSecurityError, msg=sql):
+                svc._validate_and_secure(sql, 7, allow_price=False, allow_pii=False)
+        self.assertIn("company_id", svc._validate_and_secure(
+            "SELECT count(*) FROM crm_client", 7, allow_price=False, allow_pii=False))
+
     def test_detects_prix_achat_in_sql(self):
         sql = "SELECT nom, prix_achat FROM stock_produit"
         self.assertTrue(svc._references_forbidden_column(sql))
