@@ -10,6 +10,7 @@ import ventesApi from '../../api/ventesApi'
 // dédié : il est lu/écrit directement sur son endpoint REST company-scopé
 // (`company` est TOUJOURS imposée par le serveur, jamais envoyée d'ici).
 import api from '../../api/axios'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import PaiementDialog from './PaiementDialog'
 import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -54,6 +55,9 @@ function ageBucket(joursRetard) {
 export default function RelancesPage() {
   // APX17 — confirmations maison (AlertDialog Radix), jamais la popup du système.
   const { confirm } = useConfirmDialog()
+  // ADRG2 — « Exclure » et « Promesse de paiement » suspendent la relance :
+  // geste d'argent, droit `encaisser`, comme le serveur.
+  const peutEncaisser = useHasPermission('encaisser')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [target, setTarget] = useState(null)  // facture being relancée
@@ -690,10 +694,12 @@ export default function RelancesPage() {
               </DropdownMenuItem>
               {/* PACT45 — engagement de paiement du client : suspend la
                   relance automatique jusqu'à la date promise. */}
-              <DropdownMenuItem onSelect={() => openPromesse(r)}>
-                <HandCoins className="size-3.5" aria-hidden="true" />
-                Promesse de paiement
-              </DropdownMenuItem>
+              {peutEncaisser && (
+                <DropdownMenuItem onSelect={() => openPromesse(r)}>
+                  <HandCoins className="size-3.5" aria-hidden="true" />
+                  Promesse de paiement
+                </DropdownMenuItem>
+              )}
               {/* PACT44 — règle le mode (auto/manuel) et le responsable de
                   relance DU CLIENT, pas de la facture. */}
               <DropdownMenuItem onSelect={() => openParametrage(r)}>
@@ -713,9 +719,11 @@ export default function RelancesPage() {
                 <Mail className="size-3.5" aria-hidden="true" />
                 Niveau 3 — mise en demeure
               </DropdownMenuItem>
-              <DropdownMenuItem destructive onSelect={() => exclure(r)}>
-                Exclure
-              </DropdownMenuItem>
+              {peutEncaisser && (
+                <DropdownMenuItem destructive onSelect={() => exclure(r)}>
+                  Exclure
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

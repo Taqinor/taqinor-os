@@ -497,6 +497,27 @@ class GestesArgentTests(TestCase):
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
 
+    def test_exclure_relance_exige_encaisser(self):
+        """ADRG2 (C-ADRG-003, D-ASEC-VER-1) — exclure une facture des
+        relances (sans limite de durée, comme une promesse non plafonnée) :
+        403 sans ``encaisser`` (Admin Ventes, Responsable), ``exclu_relances``
+        reste faux ; le Directeur obtient 200. Mutant : retirer
+        ``PeutEncaisser`` ⇒ échec."""
+        directeur = self.users['Directeur']
+        facture = self._facture(directeur)
+        url = f'/api/django/ventes/factures/{facture.id}/exclure-relance/'
+        for nom in ('Admin Ventes', 'Responsable'):
+            with self.subTest(role=nom):
+                r = self._api(self.users[nom]).post(
+                    url, {'exclu': True}, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                facture.refresh_from_db()
+                self.assertFalse(facture.exclu_relances)
+        r = self._api(directeur).post(url, {'exclu': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        facture.refresh_from_db()
+        self.assertTrue(facture.exclu_relances)
+
     def test_get_permissions_respecte_action(self):
         from apps.facturation.views.facture import FactureViewSet
         from apps.facturation.views.facture_gardes import PeutEncaisser

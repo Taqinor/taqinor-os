@@ -21,6 +21,8 @@ from apps.facturation.serializers import (
     RelancerFactureSerializer,
 )
 
+from .facture_gardes import PeutEncaisser
+
 
 class FactureRecouvrementActionsMixin:
     """Le suivi d'une créance : relances, journaux et historique."""
@@ -130,8 +132,10 @@ class FactureRecouvrementActionsMixin:
     # ENF11 (nocturne 15/10) — hors du détail, les blocs de vente (VNT91) ne
     # sont pas servis : la réponse est celle de la LISTE (schéma sans eux).
     @extend_schema(request=D.ExclureRelanceRequest, responses=FactureListeSerializer)
+    # ADRG2 (D-ASEC-VER-1) — suspendre la relance sans limite : geste
+    # d'argent, comme la promesse de paiement (``encaisser``).
     @action(detail=True, methods=['post'], url_path='exclure-relance',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, PeutEncaisser])
     def exclure_relance(self, request, pk=None):
         """Bascule l'exclusion de la facture des listes d'impayés."""
         facture = self.get_object()

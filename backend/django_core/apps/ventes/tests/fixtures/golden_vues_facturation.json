@@ -175,7 +175,8 @@
    "IsResponsableOrAdmin"
   ],
   "exclure_relance": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "HasPermissionOrLegacy_encaisser"
   ],
   "facturer_penalites": [
    "HasPermissionOrLegacy_encaisser"
