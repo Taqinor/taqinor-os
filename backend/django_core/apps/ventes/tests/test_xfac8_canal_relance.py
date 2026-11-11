@@ -11,6 +11,7 @@ Run :
         apps.ventes.tests.test_xfac8_canal_relance -v 2
 """
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -20,6 +21,8 @@ from apps.ventes.models import EmailLog, Facture, FollowupLevel, RelanceLog
 from apps.ventes.scheduled import relance_reminders
 
 MONTH = timezone.now().strftime('%Y%m')
+# AMSG29 — la lettre doit exister pour consommer le niveau : MinIO simulé.
+UPLOAD_OK = patch('apps.ventes.utils.pdf._upload_pdf', return_value=None)
 
 
 def make_company(slug='xfac8-co', nom='XFAC8 Co'):
@@ -78,13 +81,55 @@ class XFAC8CanalRelanceTests(TestCase):
             delai_jours=0, canal=FollowupLevel.Canal.COURRIER,
         )
         facture = make_facture(self.company, self.client_obj)
-        sent = relance_reminders()
+        with UPLOAD_OK:
+            sent = relance_reminders()
         self.assertEqual(sent, 1)
         log = RelanceLog.objects.get(facture=facture)
         self.assertEqual(log.canal, 'courrier')
-        # PDF best-effort : la clé peut être vide si MinIO indisponible en
-        # test, mais le canal DOIT être tracé et aucun email envoyé.
+        # AMSG29 — une RelanceLog courrier porte TOUJOURS la clé de sa lettre.
+        self.assertTrue(log.courrier_pdf_key.startswith('relances/courrier/'))
         self.assertEqual(EmailLog.objects.filter(facture=facture).count(), 0)
+
+    def test_courrier_sans_lettre_ne_consomme_pas_le_niveau(self):
+        """AMSG29 — lettre impossible (MinIO en panne) : niveau gardé."""
+        FollowupLevel.objects.create(
+            company=self.company, ordre=0, nom='Mise en demeure',
+            delai_jours=0, canal=FollowupLevel.Canal.COURRIER,
+        )
+        facture = make_facture(self.company, self.client_obj)
+        with patch('apps.ventes.utils.pdf._upload_pdf',
+                   side_effect=OSError('minio down')):
+            self.assertEqual(relance_reminders(), 0)
+        self.assertFalse(RelanceLog.objects.filter(facture=facture).exists())
+
+    def test_whatsapp_brouillon_remis_au_responsable(self):
+        """AMSG29 (C-AMSG-008) — le brouillon wa.me n'est plus jeté : une
+        activité assignée au responsable le porte, PUIS la RelanceLog ; sans
+        téléphone, aucun brouillon ⇒ niveau gardé. Mutant : jeter le
+        brouillon (ancien code) ⇒ aucune activité."""
+        from django.contrib.auth import get_user_model
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity
+        resp = get_user_model().objects.create_user(
+            username='amsg29-resp', password='x', role_legacy='responsable',
+            company=self.company)
+        FollowupLevel.objects.create(
+            company=self.company, ordre=0, nom='Rappel WA', delai_jours=0,
+            canal=FollowupLevel.Canal.WHATSAPP)
+        facture = make_facture(self.company, self.client_obj)
+        Facture.objects.filter(pk=facture.pk).update(created_by=resp)
+        sans_tel = make_facture(
+            self.company, make_client(self.company, telephone=''))
+        ct = ContentType.objects.get_for_model(Facture)
+        self.assertEqual(relance_reminders(), 1)
+        act = Activity.objects.get(content_type=ct, object_id=facture.id)
+        self.assertEqual(act.assigned_to, resp)
+        self.assertIn('https://wa.me/212600000056?text=', act.note)
+        self.assertEqual(RelanceLog.objects.get(facture=facture).canal,
+                         'whatsapp')
+        self.assertFalse(RelanceLog.objects.filter(facture=sans_tel).exists())
+        self.assertFalse(Activity.objects.filter(
+            content_type=ct, object_id=sans_tel.id).exists())
 
     def test_appel_canal_creates_records_activity(self):
         FollowupLevel.objects.create(
@@ -120,5 +165,6 @@ class XFAC8CanalRelanceTests(TestCase):
                 company=company, ordre=0, nom=f'Niveau {canal}',
                 delai_jours=0, canal=canal)
             make_facture(company, client_obj)
-            sent = relance_reminders()
+            with UPLOAD_OK:
+                sent = relance_reminders()
             self.assertGreaterEqual(sent, 1)
