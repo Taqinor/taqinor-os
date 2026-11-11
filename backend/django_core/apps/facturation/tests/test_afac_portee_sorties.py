@@ -119,6 +119,42 @@ class PorteeSortiesTests(TestCase):
             annule=False, statut=Installation.Statut.RECEPTIONNE)
         self.assertEqual(self._api(self.admin).get(url).status_code, 200)
 
+    def test_fiche_remise_exige_la_lecture_du_chantier(self):
+        """ADRG8 (C-ADRG-022, D-APFS-4) — la fiche de remise d'un chantier
+        installé : 403 sans PDF pour un rôle sans lecture du module chantiers
+        ni ``ventes_voir`` (Commercial terrain, Admin RH) ; le Responsable
+        (dans la portée de la fiche chantier) obtient toujours le PDF.
+        Mutant : retirer la garde de lecture ⇒ échec."""
+        from apps.installations.models import Installation
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_TERRAIN_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS)
+
+        def compte(nom, permissions, legacy):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(permissions),
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'adrg8_{nom}', password='x', role=role,
+                role_legacy=legacy, company=self.company)
+
+        responsable = compte('Responsable', RESPONSABLE_PERMISSIONS,
+                             'responsable')
+        chantier = Installation.objects.create(
+            company=self.company, reference='CH-ADRG8', client=self.client_b,
+            statut=Installation.Statut.RECEPTIONNE, created_by=responsable)
+        url = f'/api/django/ventes/chantiers/{chantier.id}/fiche-remise-premium/'
+        for nom, perms in (('Terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
+                           ('AdminRH', ADMIN_RH_PERMISSIONS)):
+            with self.subTest(role=nom):
+                r = self._api(compte(nom, perms, 'normal')).get(url)
+                self.assertEqual(r.status_code, 403)
+                self.assertNotEqual(r.get('Content-Type'), 'application/pdf')
+        r = self._api(responsable).get(url)
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+
     def test_admin_inchange(self):
         self.assertIn('FAC-AFAC54-B', self._cash_flow_refs(self.admin))
         self.assertEqual(self._credit(self.admin).status_code, 200)

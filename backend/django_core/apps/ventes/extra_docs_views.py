@@ -90,10 +90,18 @@ def lettre_relance_premium(request, facture_id):
 @permission_classes([IsAnyRole])
 def fiche_remise_premium(request, chantier_id):
     """Fiche de remise / garantie après-vente (une page) pour un chantier."""
+    # ADRG8 (D-APFS-4) — lecture du module chantiers ou octroi ``ventes_voir``,
+    # puis la portée de la fiche chantier (``_scope_chantier``).
+    from authentication.permissions import peut_lire_module
+    if not (peut_lire_module(request.user, 'installations')
+            or request.user.has_erp_permission('ventes_voir')):
+        return Response({'detail': 'Accès réservé aux rôles du module.'},
+                        status=status.HTTP_403_FORBIDDEN)
     # Lecture seule du chantier d'une autre app, via son sélecteur (jamais modifié).
     from apps.installations.selectors import installation_qs_for_remise
-    qs = installation_qs_for_remise()
-    chantier = _scope(qs, request.user).filter(pk=chantier_id).first()
+    from apps.documents.views import _scope_chantier
+    qs = _scope(installation_qs_for_remise(), request.user)
+    chantier = _scope_chantier(qs, request.user).filter(pk=chantier_id).first()
     if chantier is None:
         return Response({'detail': 'Chantier introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
