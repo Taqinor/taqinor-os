@@ -1,8 +1,9 @@
 """Constat C-AERR-027 (parametres/securite, S2, C2) : pages/parametres/DocumentsSection.jsx::DocumentsSection, pages/parametres/TarificationSection.jsx::
-TarificationSection, pages/admin/SecuriteIdentitePage.jsx::BanniereTab : un chargement raté pose un formulaire vide/par défaut éditable (le .catch
+TarificationSection, pages/admin/SecuriteIdentitePage.jsx::BanniereTab, pages/parametres/ReliabilitySettingsPage.jsx::ReliabilitySettingsPage,
+pages/parametres/UxParametresPage.jsx::UxParametresPage : un chargement raté pose un formulaire vide/par défaut éditable (le .catch
 du chargement ne pose aucun drapeau d'échec), puis « Enregistrer » écrase la vraie configuration. Le détecteur lit le premier .catch de chaque composant."""
 SONDE = {"constat": "C-AERR-027", "sha": "3acfee471",
-         "attendu": ".catch du chargement sans drapeau d'échec (ni setForm(null)) dans les 3 composants"}
+         "attendu": ".catch du chargement sans drapeau d'échec (ni setForm(null)) dans les 5 composants"}
 import pathlib, re
 RACINE = pathlib.Path(__file__).resolve().parents[4]
 SRC = RACINE / "frontend/src"
@@ -106,7 +107,9 @@ def sonde(ctx=None):
     rest, intr, det = [], [], {}
     for rel, comp in (("pages/parametres/DocumentsSection.jsx", "DocumentsSection"),
                       ("pages/parametres/TarificationSection.jsx", "TarificationSection"),
-                      ("pages/admin/SecuriteIdentitePage.jsx", "BanniereTab")):
+                      ("pages/admin/SecuriteIdentitePage.jsx", "BanniereTab"),
+                      ("pages/parametres/ReliabilitySettingsPage.jsx", "ReliabilitySettingsPage"),
+                      ("pages/parametres/UxParametresPage.jsx", "UxParametresPage")):
         t = lire(rel)
         sec = section(t, comp) if t else None
         cs = catchs(sec) if sec else []
