@@ -86,8 +86,10 @@ class CreativeBatchApprovalTests(TestCase):
 class BacklogAndFlightTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Fl Co', slug='fl-co')
+        # APUB12 — plans et phases de vol exigent `adsengine_flightplan_manage`.
         self.manager = make_user(
-            self.company, 'flmgr', ['adsengine_view', 'adsengine_manage'])
+            self.company, 'flmgr', ['adsengine_view', 'adsengine_manage',
+                                    'adsengine_flightplan_manage'])
 
     def test_backlog_rejects_cross_company_asset(self):
         other = Company.objects.create(nom='Other', slug='other-fl')

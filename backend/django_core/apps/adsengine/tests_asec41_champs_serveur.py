@@ -28,7 +28,8 @@ BASE = '/api/django/adsengine'
 def _user(company, username):
     role = Role.objects.create(
         company=company, nom=username + '-role',
-        permissions=['adsengine_view', 'adsengine_manage'])
+        permissions=['adsengine_view', 'adsengine_manage',
+                     'adsengine_flightplan_manage'])  # APUB12 — plans de vol
     return User.objects.create_user(
         username=username, password='x', role=role, company=company)
 
