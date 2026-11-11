@@ -4302,3 +4302,63 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat) ; aucune tâche tant qu'elle est ouverte"
     taches: []
+
+  - id: D-APUB-1
+    question: "Une demande de « rappel » faite depuis le lien du devis lève aujourd'hui l'opposition loi 09-08 de la personne (elle redevient joignable) et l'inscrit « à la demande du client », sans preuve que c'est bien elle. Faut-il garder cette levée directe ?"
+    options:
+      - cle: confirmer_par_commercial
+        texte: "Non : la demande crée une tâche de rappel ; l'opposition n'est levée que par le commercial, après l'appel, à son nom"
+      - cle: levee_directe
+        texte: "Oui : la demande faite depuis le lien lève l'opposition tout de suite, comme aujourd'hui"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : confirmer_par_commercial)"
+    taches: [APUB39]
+
+  - id: D-APUB-2
+    question: "Le chat public du site (livechat) est ouvert à tous mais aucun écran ni le site ne l'utilisent ; un visiteur anonyme peut créer des leads et écrire dans l'historique d'un lead existant. Faut-il le fermer ?"
+    options:
+      - cle: parquer
+        texte: "Oui : il est fermé par défaut derrière un réglage (404), comme le formulaire de contact ; on le rouvre le jour où un écran l'utilise"
+      - cle: garder_ouvert
+        texte: "Non : il reste ouvert, avec un anti-robot et sans écriture dans un lead existant"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : parquer)"
+    taches: [APUB10]
+
+  - id: D-APUB-3
+    question: "L'API publique par clé (46 routes) n'est pas servie par le serveur de production : elle est injoignable, alors qu'une clé existe. Faut-il l'ouvrir ?"
+    options:
+      - cle: ouvrir_apres_correctifs
+        texte: "Oui : ouvrir la route dans le serveur, après correction de la sortie de « Signé » par l'API et des exports CSV"
+      - cle: parquer
+        texte: "Non : la déclarer parquée et retirer ses deux appels de l'écran Paramètres"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : ouvrir_apres_correctifs)"
+    taches: [APUB15]
+
+  - id: D-APUB-4
+    question: "Le lien public du compte-rendu d'intervention (photos du domicile, numéros de série, signataire) ne s'arrête jamais. Combien de temps doit-il rester ouvert ?"
+    options:
+      - cle: expire_90j_revocable
+        texte: "90 jours après la clôture de l'intervention, avec en plus un bouton « Couper le lien » pour le responsable"
+      - cle: revocable_seul
+        texte: "Sans limite de durée : seulement le bouton « Couper le lien »"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : expire_90j_revocable)"
+    taches: [APUB7]
+
+  - id: D-APUB-5
+    question: "Le site public (taqinor.ma, www) a le droit d'appeler l'ERP avec la session de l'employé connecté : un script piégé sur le site pourrait lire et écrire l'ERP en son nom. Le site n'en a pas besoin (il passe par ses relais). Faut-il retirer ce droit ?"
+    options:
+      - cle: sans_identifiants
+        texte: "Oui : le site ne peut plus appeler l'ERP avec la session de l'employé (ou seulement les routes publiques)"
+      - cle: garder
+        texte: "Non : garder le réglage actuel"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : sans_identifiants)"
+    taches: [APUB73]

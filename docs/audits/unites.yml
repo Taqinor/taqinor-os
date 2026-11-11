@@ -927,3 +927,25 @@ unites:
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF6.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 1ea772d) : environ 360 routes de lecture et sources de données sensibles inventoriées en quatre lectures (prix d'achat stock et chantiers ; prix d'achat et marges ventes, client, assistant SQL, journaux ; données personnelles ; portée, journal, secrets) ; 35 constats, 24 prouvés par sonde hôte (vrai code, bouchons, aucune pile), 11 lus ; gravités 1 S1, 23 S2, 11 S3. S1 : tout compte interne lit le jeton de signature électronique d'un client et peut signer à sa place ; le jeton global d'une signature à plusieurs personnes signe tout le circuit sans code SMS (exploitable aujourd'hui : 2 Commercial et 1 Commercial responsable, dès qu'une demande est en attente). Porte : 0 réfuté, 7 gravités revues ; seconde lentille : S1 maintenu et élargi. D-ALEC-1..5 ouvertes. Tâches ALEC1-40 (40 posées, dont 7 GATED : STOCK 6, ANALYSE 5, CHANTIERS 5, DOCUMENTS 5, LEAD 4, SECURITE 4, PARAMETRES 3, SAV 2, FACTURATION 2, CALEPINAGE 2, DEVIS 1, DEPLOY 1)."
+
+  - id: PF5
+    rang: 31
+    declencheur: acces-publics
+    titre: "Parcours PF5 « Accès publics et à lien » : tout ce qui s'ouvre sans compte interne — devis public, paiement, signature, interventions et SAV publics, portail client et fournisseur, GED à lien, liens signés, ICS, partages, formulaires et chat publics, API publique et clés, webhooks, pages d'état — et les droits des apps hors PF4, le routage, CORS et le site public (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "91 vues AllowAny (backend/django_core/core/public_endpoint_scan.py) + vues à authentification propre (jeton du portail, clé d'API, webhooks, ICS, liens signés) ; apps adsengine, customfields, tiers, entites, adminops, accessreview, statuspage, outillage, onboarding, explorateur de données, gestion des clés ; backend/nginx, backend/caddy, réglages CORS, apps/web"
+    coutures:
+      - "lien ou jeton ↔ durée et révocation ; route publique ↔ plafond de débit ; compte du portail ↔ état du tiers ; clé d'API ↔ codes de l'émetteur ; route servie ↔ proxy de production ; site public ↔ cookies de session de l'ERP"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L2
+    statut: audité
+    groupe: APUB
+    plan: docs/plans/PLAN_AUDIT_SECURITE.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_ACQUISITION.md]
+    pr: 1363
+    date: 2026-11-11
+    dossier: docs/audits/2026-11-11-parcours-PF5.md
+    notes: "Douzième audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 1ea772d) : ≈ 260 routes publiques ou à jeton et 280 routes d'écriture des apps hors PF4 ; 38 constats, 11 prouvés par sonde hôte (vrai code extrait, bouchons d'ORM et de DRF ; aucune pile ne servait main, aucun test Django ni rejeu par l'API) et 27 lus ; gravités 2 S1, 11 S2, 25 S3 ; S1 : l'historique de l'export de réversibilité donne à 10 rôles sur 12 (dont les 3 commerciaux réels) le lien sans compte, 7 jours, du ZIP de toute la base, et une revue d'accès « Révoquer » retire le rôle du propriétaire puis du Directeur lui-même, laissant la société sans administrateur (2 Directeur réels) ; CORS réel, routage nginx de /api/public/, export récent, SMS et RELAIS_API_SECRET non vérifiés en prod ; D-APUB-1..5 ouvertes ; tâches APUB1-74 (48 posées : SECURITE 11, ANALYSE 7, CHANTIERS 5, DEPLOY 4, DOCUMENTS 4, STOCK 4, DEVIS 3, LEAD 3, PARAMETRES 2, SAV 2, TRANSVERSE 2, ACQUISITION 1)."
