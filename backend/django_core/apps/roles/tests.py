@@ -914,28 +914,36 @@ class CodesGrilleAppliquesTests(TestCase):
         (``?export=xlsx|pdf``, export de la balance âgée) exige
         ``reporting_export`` ; la lecture JSON reste ouverte."""
         r = '/api/django/reporting/'
-        responsable = (['reporting_voir', 'crm_modifier'], (
+        # ADRG68 — chaque chemin porte la lecture de son module SOURCE (et
+        # `journal_activite_voir` pour le journal) : le test reste vert avant
+        # ET après la garde de lecture des rapports (ADRG69-ADRG71).
+        b = ['reporting_voir', 'crm_modifier']
+        ventes = (b + ['ventes_voir'], (
             'reports/sales/?export=xlsx', 'reports/sales/?export=pdf',
-            'reports/stock/?export=xlsx', 'reports/service/?export=xlsx',
-            'insights/recurring-revenue/?export=xlsx',
-            'insights/audit-log/?export=xlsx',
             'insights/analytics/?export=xlsx',
             'insights/sales-leaderboard/?export=xlsx',
-            'insights/cf-group-by/?export=xlsx',
-            'insights/cohorts/?export=xlsx',
             f'archive/client/{self.client_obj.pk}/?export=xlsx',
-            f'archive/chantier/{self.chantier.pk}/?export=xlsx',
-            'reports/field/?export=xlsx', 'insights/sav-sla/?export=xlsx',
-            'insights/technicien-scorecard/?export=xlsx',
             'balance-agee/export/'))
-        # APFS4 — le pivot lit le jeu ``sav_tickets`` : un code du module sav est requis.
-        lecteur_sav = (['reporting_voir', 'crm_modifier', 'sav_voir'], (
-            'insights/sav-tickets-pivot/?export=xlsx',))
+        chantiers = (b + ['installation_voir'], (
+            'reports/service/?export=xlsx', 'reports/field/?export=xlsx',
+            'insights/technicien-scorecard/?export=xlsx',
+            f'archive/chantier/{self.chantier.pk}/?export=xlsx'))
+        sav = (b + ['sav_voir'], (
+            'insights/sav-sla/?export=xlsx',
+            'insights/recurring-revenue/?export=xlsx',
+            # APFS4 — le pivot lit le jeu ``sav_tickets``.
+            'insights/sav-tickets-pivot/?export=xlsx'))
+        stock = (b + ['stock_voir'], ('reports/stock/?export=xlsx',))
+        journal = (b + ['journal_activite_voir'], (
+            'insights/audit-log/?export=xlsx',))
+        reporting = (b, ('insights/cf-group-by/?export=xlsx',
+                         'insights/cohorts/?export=xlsx'))
         admin = (['reporting_voir', 'roles_gerer'], (
             'insights/job-costing/?export=xlsx',
             'insights/commissions/?export=xlsx',
             'insights/profitability/?export=xlsx'))
-        for base, chemins in (responsable, lecteur_sav, admin):
+        for base, chemins in (ventes, chantiers, sav, stock, journal,
+                              reporting, admin):
             sans, avec = self._paire(base, 'reporting_export')
             for chemin in chemins:
                 with self.subTest(url=chemin):
@@ -943,7 +951,7 @@ class CodesGrilleAppliquesTests(TestCase):
                     if not chemin.endswith('export=pdf'):
                         self.assertNotEqual(
                             avec.get(r + chemin).status_code, 403)
-        sans, _avec = self._paire(responsable[0], 'reporting_export')
+        sans, _avec = self._paire(ventes[0], 'reporting_export')
         self.assertEqual(sans.get(r + 'reports/sales/').status_code, 200)
 
     def test_sav_reassign_technicien_actions_groupees_et_patch(self):
