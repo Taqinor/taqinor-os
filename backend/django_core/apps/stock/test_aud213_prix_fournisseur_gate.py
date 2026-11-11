@@ -93,6 +93,53 @@ class Aud213ViewSetTests(Aud213Base):
         self.assertIn('prix_achat', lignes[0])
         self.assertEqual(len(lignes[0]['paliers']), 1)
 
+    def test_suppression_reservee_admin_roles_livres(self):
+        """ADRG37 (C-ADRG-011) — supprimer un conditionnement ou un prix
+        fournisseur suit la règle des suppressions stock (palier admin ou
+        ``stock_supprimer``, ADRG44) : Technicien responsable et Responsable
+        livrés 403, compte hérité responsable 403, objets présents ;
+        Directeur et Administrateur 204. Mutant : remettre ``stock_modifier``
+        sur un ``destroy`` ⇒ échec."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.stock.models import ConditionnementProduit
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        n = iter(range(100))
+
+        def objets():
+            i = next(n)
+            return (
+                ConditionnementProduit.objects.create(
+                    company=self.company, produit=self.produit,
+                    nom=f'Carton {i}', facteur=Decimal('10')),
+                PrixFournisseur.objects.create(
+                    company=self.company, produit=self.produit,
+                    fournisseur=Fournisseur.objects.create(
+                        company=self.company, nom=f'F-ADRG37-{i}'),
+                    prix_achat=Decimal('800.00')))
+
+        def livre(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'adrg37-{nom.lower().replace(" ", "-")}', password='x',
+                company=self.company, role=role)
+        herite = User.objects.create_user(
+            username='adrg37-herite', password='x', company=self.company,
+            role_legacy='responsable')
+        cas = ((livre('Technicien responsable'), 403), (livre('Responsable'), 403),
+               (herite, 403), (livre('Directeur'), 204),
+               (livre('Administrateur'), 204))
+        for user, attendu in cas:
+            cond, prix = objets()
+            for url, obj in ((f'/api/django/stock/conditionnements/{cond.pk}/', cond),
+                             (f'{URL_LISTE}{prix.pk}/', prix)):
+                with self.subTest(user=user.username, url=url):
+                    rep = _api(user).delete(url)
+                    self.assertEqual(rep.status_code, attendu)
+                    self.assertEqual(type(obj).objects.filter(pk=obj.pk).exists(),
+                                     attendu == 403)
+
 
 class Aud213ActionProduitTests(Aud213Base):
     """`produits/<id>/prix-fournisseurs/` : même gate que le ViewSet."""

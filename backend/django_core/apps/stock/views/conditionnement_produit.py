@@ -5,6 +5,7 @@ from ..openapi_helpers import INT, P
 from ..models import ConditionnementProduit
 from ..serializers import ConditionnementProduitSerializer
 from authentication.permissions import LectureDuModule, HasPermissionOrLegacy
+from ..permissions import PeutSupprimerStock  # ADRG37
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -25,6 +26,8 @@ class ConditionnementProduitViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
+        if self.action == 'destroy':  # ADRG37 — comme toute suppression stock (ADRG44)
+            return [PeutSupprimerStock()]
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):
