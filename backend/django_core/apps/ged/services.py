@@ -4059,11 +4059,12 @@ def relancer_signataires_dus(company, *, now=None):
     from datetime import timedelta
 
     from django.utils import timezone
-    from .models import SIGNATAIRE_NOTIFIE, SignataireDemande
+    from .models import SIGNATAIRE_NOTIFIE, SIGNATURE_EN_ATTENTE, SignataireDemande
 
     now = now or timezone.now()
     candidats = (SignataireDemande.objects
                  .filter(company=company, statut=SIGNATAIRE_NOTIFIE,
+                         demande__statut=SIGNATURE_EN_ATTENTE,  # AMSG74 — demande close : jamais relancée
                          demande__relance_cadence_jours__isnull=False)
                  .exclude(demande__relance_cadence_jours=0)
                  .select_related('demande'))
