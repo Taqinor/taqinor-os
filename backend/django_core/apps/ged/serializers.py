@@ -664,6 +664,17 @@ class DemandeApprobationSerializer(ChampsStrictsSansDecimalMixin,
         ]
 
 
+def voit_le_secret(context, created_by_id):
+    """ADOC6 / ALEC1 — un secret d'accès (jeton, lien de signature) n'est
+    montré qu'à son créateur et à l'administrateur (règle unique)."""
+    user = getattr(context.get('request'), 'user', None)
+    if user is None or not user.is_authenticated:
+        return False
+    if user.is_superuser or getattr(user, 'is_admin_role', False):
+        return True
+    return created_by_id is not None and created_by_id == user.id
+
+
 class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                            serializers.ModelSerializer):
     """GED20 — Partage public d'un document par lien tokenisé.
@@ -740,13 +751,7 @@ class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     def _voit_le_secret(self, obj):
         """ADOC6 — le jeton (le secret d'accès) n'est montré qu'au créateur
         du partage et à l'administrateur."""
-        request = self.context.get('request')
-        user = getattr(request, 'user', None)
-        if user is None or not user.is_authenticated:
-            return False
-        if user.is_superuser or getattr(user, 'is_admin_role', False):
-            return True
-        return obj.created_by_id is not None and obj.created_by_id == user.id
+        return voit_le_secret(self.context, obj.created_by_id)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -1013,6 +1018,17 @@ class DemandeSignatureDocumentSerializer(ChampsStrictsSansDecimalMixin,
             return None
         return services.url_publique_signature(
             obj.token, 'demande', request=self.context.get('request')) or None
+
+    def to_representation(self, instance):
+        """ALEC1 — jeton et lien hors créateur / administrateur ; le jeton
+        global d'une demande à destinataires n'est jamais servi."""
+        data = super().to_representation(instance)
+        if data.get('signataires'):
+            data.pop('token', None)
+        if not voit_le_secret(self.context, instance.created_by_id):
+            data.pop('token', None)
+            data.pop('lien_signature', None)
+        return data
 
 
 class ChampSignatureSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
@@ -1295,6 +1311,14 @@ class SignataireDemandeSerializer(ChampsStrictsSansDecimalMixin,
         return services.url_publique_signature(
             obj.token, 'signataire',
             request=self.context.get('request')) or None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # ALEC1 — le lien de CE destinataire signe à sa place : créateur de
+        # la demande et administrateur seulement.
+        if not voit_le_secret(self.context, instance.demande.created_by_id):
+            data.pop('lien_signature', None)
+        return data
 
 
 class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
