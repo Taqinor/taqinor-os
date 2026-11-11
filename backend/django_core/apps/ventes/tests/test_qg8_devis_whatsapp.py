@@ -129,6 +129,25 @@ class DevisWhatsappActionTests(TestCase):
         devis = self._devis(client=client_no_phone, lead=lead)
         self.assertEqual(devis_recipient_phone(devis), '0698765432')
 
+    def test_numero_du_lead_prime_sur_le_client(self):
+        """AMSG33 — lead (WhatsApp A) lié à un client (téléphone B) : l'aperçu
+        vise A ; lead sans numéro ou devis sans lead : téléphone du client."""
+        client_b = Client.objects.create(
+            company=self.company, nom='ClientB', telephone='+212600000002')
+        lead_a = Lead.objects.create(
+            company=self.company, nom='LeadA', whatsapp='+212600000001')
+        devis = self._devis(client=client_b, lead=lead_a)
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/whatsapp-preview/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['phone'], '+212600000001')
+        sans_num = Lead.objects.create(company=self.company, nom='SansNum')
+        self.assertEqual(devis_recipient_phone(
+            self._devis(client=client_b, lead=sans_num)), '+212600000002')
+        self.assertEqual(devis_recipient_phone(
+            self._devis(client=client_b)), '+212600000002')
+
     def test_lead_oppose_tout_envoi_409(self):
         """ACVI102 (D-ACVI-7) — les six gestes d'envoi d'un devis de lead opposé :
         409 nommé, 0 mail, 0 EmailLog, brouillon ; déjà envoyé : 409 aussi."""
