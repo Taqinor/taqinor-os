@@ -155,6 +155,44 @@ class PorteeSortiesTests(TestCase):
         self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
         self.assertEqual(r['Content-Type'], 'application/pdf')
 
+    def test_lignes_facture_hors_portee_404(self):
+        """ALEC25 (C-ALEC-021) — les lignes de facture suivent la portée de
+        ``FactureViewSet`` sur les deux routes montées : A ne liste pas la
+        ligne de la facture brouillon de B, détail et PATCH 404, ligne
+        inchangée ; l'admin lit (200). Mutant : retirer ``scope_queryset``
+        ⇒ échec."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import Facture, LigneFacture
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit ALEC25', sku='ALEC25-K',
+            prix_vente=Decimal('1000'), quantite_stock=0)
+        brouillon = Facture.objects.create(
+            company=self.company, reference='BROUILLON-ALEC25',
+            client=self.client_b, statut=Facture.Statut.BROUILLON,
+            taux_tva=Decimal('20'), created_by=self.b)
+        ligne = LigneFacture.objects.create(
+            facture=brouillon, produit=produit, designation='Ligne de B',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+        api = self._api(self.a)
+        for base in ('/api/django/ventes/factures-lignes/',
+                     '/api/django/facturation/factures-lignes/'):
+            with self.subTest(base=base):
+                r = api.get(base)
+                self.assertEqual(r.status_code, 200, r.data)
+                lignes = (r.data['results'] if isinstance(r.data, dict)
+                          else r.data)
+                self.assertNotIn(ligne.pk, [x['id'] for x in lignes])
+                self.assertEqual(api.get(f'{base}{ligne.pk}/').status_code,
+                                 404)
+        r = api.patch(f'/api/django/ventes/factures-lignes/{ligne.pk}/',
+                      {'designation': 'Pirate'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.designation, 'Ligne de B')
+        r = self._api(self.admin).get(
+            f'/api/django/ventes/factures-lignes/{ligne.pk}/')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_admin_inchange(self):
         self.assertIn('FAC-AFAC54-B', self._cash_flow_refs(self.admin))
         self.assertEqual(self._credit(self.admin).status_code, 200)
