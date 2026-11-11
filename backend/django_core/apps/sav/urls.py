@@ -7,7 +7,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.routers import DefaultRouter
 from rest_framework.decorators import api_view, permission_classes
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50 / D-ASEC-50
 
 from .views import (
@@ -62,7 +62,7 @@ router.register(r'problemes', ProblemeViewSet)
         'qte_suggere_reappro': drf_serializers.FloatField(),
     }, many=True))
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureDuModule])  # ADRG72
 def parts_forecast_view(request):
     """FG89 — Prévision de pièces SAV (interne, pas de prix achat)."""
     return sav_parts_forecast(request)
@@ -82,7 +82,7 @@ def parts_forecast_view(request):
             child=drf_serializers.DictField()),
     }))
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureDuModule])  # ADRG72
 def pareto_pannes_view(request):
     """XSAV14 — Pareto des pannes par modèle de produit / fournisseur."""
     return sav_pareto_pannes(request)
@@ -96,7 +96,7 @@ def pareto_pannes_view(request):
         'couts_inclus': drf_serializers.BooleanField(),
     }))
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureDuModule])  # ADRG72
 def fiabilite_insight_view(request):
     """XSAV15 — MTBF/MTTR/coût cumulé, vue d'ensemble du parc."""
     return sav_fiabilite_insight(request)
