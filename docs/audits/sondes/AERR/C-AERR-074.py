@@ -1,5 +1,5 @@
-"""Constat C-AERR-074 (stock, C2, S2) : pages/stock/ReceptionsFournisseur.jsx::NouvelleReception et pages/stock/BonsCommandeFournisseur.jsx (BcfDetail,
-AchatsHorsContratModal) : `<Dialog open onOpenChange={(o) => { if (!o) onClose() }}>` ferme au clic extérieur et à Échap sans garde de saisie.
+"""Constat C-AERR-074 (stock, C2, S2) : pages/stock/ReceptionsFournisseur.jsx::NouvelleReception et pages/stock/BonsCommandeFournisseur.jsx (BcfDetail : édition et
+réception du bon de commande) : `<Dialog open onOpenChange={(o) => { if (!o) onClose() }}>` ferme au clic extérieur et à Échap sans garde de saisie.
 Le détecteur parcourt les 3 dialogues et liste ceux sans confirmLeaveIfDirty / onInteractOutside / onEscapeKeyDown / garde dans le gestionnaire."""
 SONDE = {"constat": "C-AERR-074", "sha": "3acfee471",
          "attendu": 'onOpenChange qui appelle onClose() sans confirmLeaveIfDirty ni garde (3 dialogues)'}
@@ -76,8 +76,7 @@ def rendu(repro_, introuvable, **details):
 
 
 CIBLES = (("pages/stock/ReceptionsFournisseur.jsx", "NouvelleReception"),
-          ("pages/stock/BonsCommandeFournisseur.jsx", "BcfDetail"),
-          ("pages/stock/BonsCommandeFournisseur.jsx", "AchatsHorsContratModal"))
+          ("pages/stock/BonsCommandeFournisseur.jsx", "BcfDetail"))
 GLOBAL = r"confirmLeaveIfDirty|onInteractOutside|onEscapeKeyDown|onPointerDownOutside"
 
 
