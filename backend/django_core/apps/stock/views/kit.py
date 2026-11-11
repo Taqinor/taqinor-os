@@ -21,7 +21,7 @@ from ..serializers import RevisionKitSerializer
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
-    LectureDuModule, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
+    LectureDuModule, IsAdminRole, HasPermissionOrLegacy,
 )
 
 from ..models import KitProduit
@@ -139,8 +139,8 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         """XMFG5 — nomenclature indentée + disponibilité + kits assemblables.
         XMFG17 — traverse récursivement les sous-kits (chaque ligne porte
         `niveau`) ; un cycle ou une profondeur excessive renvoie un 400 clair.
-        Coût/marge RÉSERVÉS responsable/admin — retirés de la réponse pour
-        les autres rôles (jamais client-facing)."""
+        Coût RÉSERVÉ à ``prix_achat_voir``, marge à ``marge_voir`` — retirés
+        de la réponse pour les autres rôles (jamais client-facing)."""
         from ..services import structure_kit, KitCycleError
         kit = self.get_object()
         try:
@@ -148,13 +148,16 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         except (KitCycleError, ValueError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        peut_voir_cout = IsResponsableOrAdmin().has_permission(request, self)
+        # ALEC3 (D-ASTK-2) — coûts sur ``prix_achat_voir``, marge sur ``marge_voir``.
+        from ..permissions import PeutVoirPrixAchat
+        peut_voir_cout = PeutVoirPrixAchat().has_permission(request, self)
+        if not (peut_voir_cout and request.user.can_view_marge):
+            data.pop('marge', None)
         if not peut_voir_cout:
             for ligne in data['composants']:
                 ligne.pop('cout_unitaire', None)
                 ligne.pop('cout_total', None)
             data.pop('cout_total_roll_up', None)
-            data.pop('marge', None)
         else:
             # Le contrat d'API expose ces montants roll-up en CHAÎNE à 2
             # décimales ('9500.00') ; un Decimal brut serait rendu en nombre
