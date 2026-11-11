@@ -220,6 +220,22 @@ def _motif_facture(facture):
         reste = None
     if reste is not None and reste <= 0:
         return 'Facture soldée : relance sans objet.'
+    # AMSG63 — garde UNIQUE (contestée, AARG22) puis exclusions de relance_reminders (ZFAC8).
+    from apps.facturation.recouvrement import facture_relancable
+    ok, motif = facture_relancable(facture) if reste is not None else (True, '')
+    if not ok:
+        return motif
+    if getattr(facture, 'exclu_relances', False):
+        return 'Facture exclue des relances : relance suspendue.'
+    from apps.ventes.scheduled import casablanca_today
+    jusquau = getattr(facture, 'exclu_relances_jusquau', None)
+    if jusquau and jusquau >= casablanca_today():
+        return 'Promesse de paiement active : relance suspendue.'
+    from apps.ventes.models import ParametrageRelanceClient
+    if ParametrageRelanceClient.objects.filter(
+            company_id=facture.company_id, client_id=facture.client_id,
+            mode=ParametrageRelanceClient.Mode.MANUEL).exists():
+        return 'Client en relance manuelle : relance automatique suspendue.'
     return None
 
 
