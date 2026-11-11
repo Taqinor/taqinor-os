@@ -67,6 +67,18 @@ class TestCheapest(PrixFournisseurBase):
             fournisseur=self.f_eco, prix_achat=Decimal('0'))
         self.assertIsNone(cheapest_prix_fournisseur(self.produit))
 
+    def test_ignore_le_fournisseur_archive(self):
+        """ASUP47 (C-ASUP-021) — l'archivage garde les prix négociés : le moins
+        cher ARCHIVÉ n'est jamais proposé. Mutant : retirer le filtre ⇒ f_eco."""
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit,
+            fournisseur=self.f_eco, prix_achat=Decimal('1200'))
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit,
+            fournisseur=self.f_cher, prix_achat=Decimal('1350'))
+        Fournisseur.objects.filter(pk=self.f_eco.pk).update(is_archived=True)
+        self.assertEqual(cheapest_prix_fournisseur(self.produit).fournisseur_id, self.f_cher.id)
+
 
 class TestRecordPurchasePrice(PrixFournisseurBase):
     def test_upsert(self):

@@ -473,7 +473,7 @@ def cheapest_prix_fournisseur(produit):
     from django.db.models import Q
     from django.utils import timezone
     jour = timezone.localdate()
-    return (produit.prix_fournisseurs.filter(prix_achat__gt=0)
+    return (produit.prix_fournisseurs.filter(prix_achat__gt=0, fournisseur__is_archived=False)  # ASUP47
             .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
             .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour))
             .select_related('fournisseur').order_by('prix_achat').first())
@@ -6038,12 +6038,14 @@ def apply_devise_facture(montant_ttc_devise, devise, taux_change):
 def check_fournisseur_statut_commande(fournisseur):
     """XPUR4 — lève ValueError si le fournisseur est bloqué pour les
     COMMANDES (bloque_commandes ou bloque_total). No-op pour 'actif' et
-    'bloque_paiements' (comportement historique préservé)."""
+    'bloque_paiements' (comportement historique préservé). ASUP47 — un
+    fournisseur ARCHIVÉ (l'archivage ne pose pas ``statut``) est refusé d'abord."""
     from .models import Fournisseur
-    if fournisseur.statut in (
+    if fournisseur.is_archived or fournisseur.statut in (
         Fournisseur.Statut.BLOQUE_COMMANDES, Fournisseur.Statut.BLOQUE_TOTAL,
     ):
         raise ValueError(
+            'Fournisseur archivé : désarchivez-le pour lui commander.' if fournisseur.is_archived else
             f"Impossible de créer un bon de commande : {fournisseur.nom} est "
             f"{fournisseur.get_statut_display().lower()}"
             f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
@@ -8227,9 +8229,11 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
     Sans ``SENDGRID_API_KEY`` le backend email est la console (local) ou un
     no-op : le provisionnement RÉUSSIT quand même (le mot de passe est alors
     redéfini par le flux « mot de passe oublié » standard). Le mot de passe
-    n'est jamais renvoyé à l'appelant HTTP.
+    n'est jamais renvoyé à l'appelant HTTP. AMSG59 — rend True SEULEMENT si
+    l'e-mail est réellement parti (envoi configuré, aucune erreur).
     """
-    if not user.email:
+    from apps.ventes.email_service import is_email_configured
+    if not user.email or not is_email_configured():
         return False
     try:
         from django.conf import settings as dj_settings
@@ -8249,7 +8253,7 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
             ),
             from_email=getattr(dj_settings, 'DEFAULT_FROM_EMAIL', None),
             recipient_list=[user.email],
-            fail_silently=True,
+            fail_silently=False,
         )
         return True
     except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès (D-ENF22-BLE001)
@@ -8261,9 +8265,10 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
 def provisionner_compte_fournisseur(company, fournisseur_id):
     """NTPRT3 — crée (ou renvoie) le compte portail RÉEL d'un fournisseur.
 
-    Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé par
-    CET appel. Un ``fournisseur_id`` absent, ou d'une AUTRE société, renvoie
-    ``(None, False)`` — jamais un compte croisé.
+    Renvoie ``(user, cree, envoye)`` où ``cree`` dit si un ``CustomUser`` a été
+    créé par CET appel et ``envoye`` si ses identifiants sont réellement partis
+    par e-mail (AMSG59). Un ``fournisseur_id`` absent, ou d'une AUTRE société,
+    renvoie ``(None, False, False)`` — jamais un compte croisé.
 
     Le compte porte ``portail_fournisseur_id = fournisseur.id`` : c'est CE
     champ que lisent les gardes (``roles.permissions.IsPortalFournisseurUser``)
@@ -8282,11 +8287,11 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
     from .models import CompteFournisseurPortail, Fournisseur
 
     if company is None or not fournisseur_id:
-        return None, False
+        return None, False, False
     fournisseur = (Fournisseur.objects
                    .filter(company=company, pk=fournisseur_id).first())
     if fournisseur is None:
-        return None, False
+        return None, False, False
 
     with transaction.atomic():
         # Idempotence : un compte déjà rattaché à CE fournisseur dans CETTE
@@ -8297,7 +8302,7 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
                     .filter(company=company, fournisseur=fournisseur)
                     .first())
         if existant is not None:
-            return existant.utilisateur, False
+            return existant.utilisateur, False, False
 
         role, _ = Role.objects.get_or_create(
             company=company,
@@ -8328,8 +8333,7 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
         CompteFournisseurPortail.objects.create(
             company=company, fournisseur=fournisseur, utilisateur=user)
 
-    _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company)
-    return user, True
+    return user, True, _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company)
 
 
 def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif,

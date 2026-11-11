@@ -220,6 +220,10 @@ entite_deactivated = django.dispatch.Signal()
 # ``libelle`` (snapshot d'affichage — à défaut ``str(instance)``), ``donnees``
 # (dict best-effort, AFFICHAGE SEUL, jamais réinjecté à la restauration).
 record_soft_deleted = django.dispatch.Signal()
+# ASUP15 — jumeau de ``record_soft_deleted`` : émis par ``SoftDeleteModel.restore``
+# (« Annuler », corbeille core) pour que la corbeille commune ferme SON entrée.
+# Arguments : ``instance`` (l'objet restauré), ``company`` (peut être None).
+record_soft_restored = django.dispatch.Signal()
 
 # ODY25 — une app est INSTALLÉE ou DÉSINSTALLÉE pour une société (bascule réelle
 # d'un ``core.ModuleToggle``, franchissement uniquement). Arguments : toggle,

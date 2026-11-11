@@ -5,8 +5,10 @@ journalisation d'une suppression, restauration, purge de rétention.
 """
 import logging
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from core.conflit_etat import ConflitEtat
 from core.events import record_restored
 
 from .models import ElementSupprime
@@ -14,11 +16,11 @@ from .registry import restaurateur
 
 logger = logging.getLogger(__name__)
 
-# Drapeaux de soft-delete reconnus par le repli GÉNÉRIQUE de `restaurer` (les
-# conventions déjà en place dans le repo : `core.SoftDeleteModel.is_deleted`,
-# `is_archived`, `annule`). Résolus DYNAMIQUEMENT sur l'instance — jamais par un
-# import du modèle d'une autre app.
-DRAPEAUX_SOFT_DELETE = ('is_deleted', 'is_archived', 'annule')
+# Le SEUL drapeau de suppression reconnu par le repli GÉNÉRIQUE de `restaurer`
+# (`core.SoftDeleteModel.is_deleted`, résolu sur l'instance). ASUP10 —
+# l'archivage (`is_archived`) et l'annulation (`annule`) ne passent jamais par
+# la corbeille : un lead archivé puis supprimé revient archivé.
+DRAPEAUX_SOFT_DELETE = ('is_deleted',)
 
 
 class RestaurationImpossible(Exception):
@@ -79,17 +81,6 @@ def _restauration_generique(element):
     if obj is None:
         return None
 
-    # Un modèle peut porter PLUSIEURS mécanismes de soft-delete indépendants :
-    # `crm.Lead` hérite `core.SoftDeleteModel` (donc `is_deleted` + `restore()`)
-    # ET possède son propre `is_archived`. Préférer `restore()` sur le seul
-    # critère `hasattr` était donc faux : archiver un lead pose `is_archived`,
-    # mais `restore()` ne regarde que `is_deleted`, sort immédiatement quand il
-    # est déjà `False`, et rendait la restauration SILENCIEUSEMENT INEFFICACE —
-    # l'API répondait `restaure: true`, l'entrée se fermait, et la cible restait
-    # archivée (donnée irrécupérable depuis la corbeille).
-    #
-    # On lève donc TOUS les drapeaux réellement posés, `restore()` gardant la
-    # main sur `is_deleted` (il gère aussi la fermeture de son propre journal).
     connus = [d for d in DRAPEAUX_SOFT_DELETE if hasattr(obj, d)]
     if not connus and not hasattr(obj, 'restore'):
         raise RestaurationImpossible(
@@ -99,13 +90,19 @@ def _restauration_generique(element):
 
     if getattr(obj, 'is_deleted', False) and hasattr(obj, 'restore'):
         obj.restore()
-
-    champs = [d for d in connus if d != 'is_deleted' and getattr(obj, d, False)]
-    if champs:
-        for drapeau in champs:
-            setattr(obj, drapeau, False)
-        obj.save(update_fields=champs)
     return obj
+
+
+def _vivant_en_conflit(element):
+    """ASUP16 — l'enregistrement vivant qui porte déjà les valeurs uniques de la cible, sinon ``None``."""
+    modele = element.content_type.model_class()
+    obj = getattr(modele, 'all_objects', modele._default_manager).filter(pk=element.object_id).first()
+    for c in (modele._meta.constraints if obj else ()):
+        valeurs = {f: getattr(obj, f) for f in getattr(c, 'fields', ())}
+        if valeurs and None not in valeurs.values() and (
+                autre := modele._default_manager.filter(**valeurs).exclude(pk=obj.pk).first()):
+            return autre
+    return None
 
 
 def restaurer(element, *, user=None, now=None):
@@ -120,11 +117,14 @@ def restaurer(element, *, user=None, now=None):
     """
     if element.restaure_le is not None:
         return None
-    fonction = restaurateur(element.cle_modele)
-    if fonction is not None:
-        obj = fonction(element)
-    else:
-        obj = _restauration_generique(element)
+    fonction = restaurateur(element.cle_modele) or _restauration_generique
+    try:
+        with transaction.atomic():
+            obj = fonction(element)
+    except IntegrityError:  # ASUP16 — une contrainte d'unicité refuse : 409 nommé, jamais un 500
+        autre = _vivant_en_conflit(element)
+        raise ConflitEtat("Restauration impossible : un élément vivant porte déjà le même identifiant"
+                          + (f" — « {autre} » (#{autre.pk})." if autre else "."))
     element.restaure_le = now or timezone.now()
     element.save(update_fields=['restaure_le', 'updated_at'])
     # NTUX32 — webhook sortant (jamais sur le no-op « déjà restauré » ci-dessus,
@@ -154,7 +154,17 @@ def purger_expires(*, now=None, company=None):
     par_company = {}
     for company_id, object_id in qs.values_list('company_id', 'id'):
         par_company[company_id] = par_company.get(company_id, 0) + 1
+    from core.trash import purger_deletion_records
+    purger_deletion_records(now=now, company=company)  # ASUP15 — même rétention que la corbeille commune
     if par_company:
+        # ASUP16 — une pièce jointe RETIRÉE (jamais restaurée) perd son binaire par l'API de stockage de la pièce
+        # (une clé encore tenue ailleurs est conservée) ; la ligne métier reste.
+        from apps.records.models import Attachment
+        from apps.records.storage import delete_attachment
+        for piece in Attachment.objects.filter(pk__in=qs.filter(
+                restaure_le__isnull=True, content_type__app_label='records',
+                content_type__model='attachment').values('object_id')):
+            delete_attachment(piece.file_key, liberee_par=(piece,))
         qs.delete()
         logger.info('purger_corbeille: %d entrée(s) purgée(s) sur %d société(s).',
                     sum(par_company.values()), len(par_company))

@@ -273,6 +273,11 @@ CATALOG = {
         "Un enregistrement métier est soft-supprimé (archivé/annulé) — "
         "alimente la corbeille transverse 30 jours.",
         ['instance', 'company', 'user', 'type_libelle', 'libelle', 'donnees']),
+    # ASUP15 — « Annuler » ferme aussi l'entrée de la corbeille commune.
+    'record_soft_restored': _e(
+        "Un enregistrement soft-supprimé est restauré (restore()) — ferme son "
+        "entrée de corbeille transverse.",
+        ['instance', 'company']),
     # ODY25 — émis par ``core.feature_flags`` aux DEUX seuls sites qui écrivent
     # un ``ModuleToggle`` (activer_module / desactiver_module), sur
     # FRANCHISSEMENT uniquement et une fois PAR module réellement basculé (donc

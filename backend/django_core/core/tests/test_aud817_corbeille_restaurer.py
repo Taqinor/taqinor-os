@@ -111,6 +111,35 @@ class Aud817CorbeilleRestaurerTests(TestCase):
         resp = TrashViewSet.as_view({'post': 'restaurer'})(req, pk=record_b.pk)
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_annuler_ferme_aussi_l_entree_de_la_corbeille_commune(self):
+        """ASUP15 (C-ASUP-011) — « Annuler » (core.trash.restaurer) ferme aussi
+        l'entrée de /parametres/corbeille ; la purge retire les DeletionRecord
+        de plus de 30 jours, restaurés ou non. Mutant : ne pas s'abonner ⇒
+        l'entrée commune reste ouverte."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.trash import purger_deletion_records, restaurer
+        Lead = django_apps.get_model('crm', 'Lead')  # core n'importe aucune app
+        ElementSupprime = django_apps.get_model('trash', 'ElementSupprime')
+        lead = Lead.objects.create(company=self.company, nom='Lead ASUP15')
+        lead.soft_delete(user=self.responsable)
+        entree = ElementSupprime.objects.get(object_id=lead.pk, restaure_le__isnull=True)
+        ct = ContentType.objects.get_for_model(Company)
+        il_y_a_31j = timezone.now() - timedelta(days=31)
+        vieux = [DeletionRecord.objects.create(company=self.company, content_type=ct,
+                                               object_id=self.company.pk, label=f'vieux {i}') for i in range(2)]
+        DeletionRecord.objects.filter(pk=vieux[0].pk).update(created_at=il_y_a_31j, restored_at=il_y_a_31j)
+        DeletionRecord.objects.filter(pk=vieux[1].pk).update(created_at=il_y_a_31j)
+        restaurer(DeletionRecord.objects.get(object_id=lead.pk, content_type__model='lead'))
+        entree.refresh_from_db()
+        self.assertIsNotNone(entree.restaure_le)
+        self.assertEqual(purger_deletion_records(), 2)
+        self.assertFalse(DeletionRecord.objects.filter(pk__in=[v.pk for v in vieux]).exists())
+        self.assertTrue(DeletionRecord.objects.filter(object_id=lead.pk, content_type__model='lead').exists())
+        self.assertFalse(Lead.all_objects.get(pk=lead.pk).is_deleted)
+
     def test_liste_reste_ouverte_au_viewer(self):
         req = self.factory.get('/corbeille/')
         force_authenticate(req, user=self.viewer)

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 #: ANNULEE (CKP1 : annulation MOTEUR, jamais un saut humain) — sans quoi la
 #: fusion compterait autant de manquements d'adhérence que de touches.
 FUSION_TOUCHE_NOTE = 'annulée — fusion de fiches'
+NOTE_FUSION = '[Fusionné dans le lead #'  # ASUP9 — relu par la garde de restauration du lead
 
 
 def relances_ouvertes_de(lead):
@@ -283,7 +284,7 @@ def merge_leads(survivor, others, user):
             absorbed.archived_by = user
             absorbed.archived_at = timezone.now()
             absorbed.note = ((absorbed.note or '') +
-                             f'\n[Fusionné dans le lead #{survivor.id} '
+                             f'\n{NOTE_FUSION}{survivor.id} '
                              f'par {getattr(user, "username", "?")}]').strip()
             absorbed.save()
             creer_activite(

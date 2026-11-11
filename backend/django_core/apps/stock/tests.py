@@ -263,9 +263,9 @@ class TestSeedCatalogue(TestCase):
 
     def test_pvlv2_les_doublons_basse_tension_ne_renaissent_jamais(self):
         """PVLV2 — les SKU « Basse Tension » du 18/08 étaient des DOUBLONS nés
-        d'une fausse identification : une base neuve ne les crée plus, et une
-        base ancienne qui les porte encore les voit ARCHIVÉS par le seeder
-        (``ARTEFACTS_ONDULEUR_SKUS``), jamais supprimés."""
+        d'une fausse identification : une base neuve ne les crée plus ; une
+        fiche EXISTANTE n'est plus ré-archivée par le seeder (ASUP55 : seuls
+        les placeholders nés du passage le sont), jamais supprimée."""
         legacy = Produit.objects.create(
             company=self.company,
             nom='Onduleur hybride Deye 15kW Triphasé Basse Tension',
@@ -273,7 +273,7 @@ class TestSeedCatalogue(TestCase):
             quantite_stock=0)
         seed(self.company)
         legacy.refresh_from_db()
-        self.assertTrue(legacy.is_archived)
+        self.assertFalse(legacy.is_archived)
         self.assertFalse(Produit.objects.filter(
             company=self.company, sku='OND-DEY-20K-LV').exists())
 
@@ -850,15 +850,15 @@ class TestSeedCatalogue(TestCase):
         self.assertNotIn('BAT-DYN-HV-16', skus_batterie)
 
     def test_placeholder_coffrets_archived_prices_intact(self):
-        # Un ancien coffret placeholder existant est archivé par le seeder
-        # (autorisation fondateur) — jamais supprimé, prix jamais modifié.
+        # ASUP55 — un coffret placeholder EXISTANT n'est plus ré-archivé par le
+        # seeder (désarchivage humain respecté) — jamais supprimé, prix intact.
         old = Produit.objects.create(
             company=self.company, nom='Variateur pompage solaire 5.5 CV Triphasé (coffret complet)',
             sku='VFD-PMP-5.5T', prix_vente=Decimal('5416.67'), quantite_stock=20,
         )
         seed(self.company)
         old.refresh_from_db()
-        self.assertTrue(old.is_archived)
+        self.assertFalse(old.is_archived)
         self.assertEqual(old.prix_vente, Decimal('5416.67'))
         # Et le seeder ne les recrée jamais
         self.assertEqual(

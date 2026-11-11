@@ -314,11 +314,34 @@ def appliquer_bascules_fiche(old, new_lead, user):
                            new_lead.pk, exc_info=True)
 
 
-def restaurer_lead(lead, user, *, note=None):
+def refus_restauration_lead(lead):
+    """ASUP9 — motif du refus de restaurer (absorbé par une fusion, doublon vivant), sinon ``None``."""
+    import re
+
+    from .leads_doublons import find_duplicates_by_contact
+    from .leads_fusion import NOTE_FUSION
+    if absorbant := re.findall(re.escape(NOTE_FUSION) + r'(\d+)', lead.note or ''):
+        return f'Restauration refusée : absorbé par le lead #{absorbant[-1]} (fusion).'
+    if vivants := [d for d in find_duplicates_by_contact(lead.company, phone=lead.telephone, email=lead.email,
+                                                         whatsapp=lead.whatsapp, exclude_pk=lead.pk)
+                   if not d.is_archived]:
+        return f'Restauration refusée : doublon vivant : lead #{vivants[0].pk}.'
+    return None
+
+
+def restaurer_lead(lead, user, *, note=None, sur_refus=None):
     """ACVI36 — LA restauration d'un lead archivé (fiche et lot) : écriture et
     chatter dans la même transaction (ALEA30), puis la prochaine étape.
-    ``note`` : le texte du lot, sinon la ligne de restauration de la fiche."""
+    ``note`` : le texte du lot, sinon la ligne de restauration de la fiche.
+    ASUP9 — refus 409 nommé (rien écrit) pour un absorbé ou un doublon ; le lot
+    passe ``sur_refus(motif)`` et reçoit ``None`` au lieu du 409."""
     from django.db import transaction
+
+    from core.conflit_etat import ConflitEtat
+    if refus := refus_restauration_lead(lead):
+        if sur_refus is None:
+            raise ConflitEtat(refus)
+        return sur_refus(refus)
 
     from . import activity
     from .cadence_filet import assurer_prochaine_etape_apres_succes
@@ -334,3 +357,13 @@ def restaurer_lead(lead, user, *, note=None):
             activity.log_restore(lead, user)
     assurer_prochaine_etape_apres_succes(lead, user)
     return lead
+
+
+def restaurer_lead_corbeille(element):
+    """ASUP11 — restaurateur ``crm.lead`` de la corbeille commune : la garde d'ASUP9 (409 nommé), puis ``restore()``
+    (ligne « restauré » et prochaine étape suivent, ASOC86) ; l'archivage n'est jamais touché."""
+    from core.conflit_etat import ConflitEtat
+    lead = Lead.all_objects.filter(pk=element.object_id, company_id=element.company_id).first()
+    if lead is not None and (refus := refus_restauration_lead(lead)):
+        raise ConflitEtat(refus)
+    return lead.restore() if lead is not None else None
