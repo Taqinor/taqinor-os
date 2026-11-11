@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gedApi from '../../../api/gedApi'
 import CorbeillePage from './CorbeillePage.jsx'
@@ -22,9 +24,17 @@ vi.mock('../../../ui', async (importOriginal) => {
   return { ...actual, toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }
 })
 
-function renderPage() {
+// ADRG85 — purge et legal holds suivent `ged_gouvernance` (Directeur ;
+// le Commercial responsable ne le porte pas).
+const AUTH_DIRECTEUR = { role: 'admin', role_nom: 'Directeur', permissions: ['ged_voir', 'ged_gerer', 'ged_gouvernance'] }
+const AUTH_COMMERCIAL_RESP = { role: 'responsable', role_nom: 'Commercial responsable', permissions: ['ged_voir', 'ged_gerer'] }
+
+function renderPage(auth = AUTH_DIRECTEUR) {
+  const store = configureStore({ reducer: { auth: (state = auth) => state } })
   return render(
-    <MemoryRouter><ThemeProvider><CorbeillePage /></ThemeProvider></MemoryRouter>,
+    <Provider store={store}>
+      <MemoryRouter><ThemeProvider><CorbeillePage /></ThemeProvider></MemoryRouter>
+    </Provider>,
   )
 }
 
@@ -60,5 +70,12 @@ describe('GED26 CorbeillePage', () => {
       await within(dialog).findByRole('button', { name: 'Supprimer définitivement' }))
 
     await waitFor(() => expect(gedApi.purgerDocument).toHaveBeenCalledWith(3))
+  })
+
+  it('ADRG85 — palier responsable sans ged_gouvernance : pas de purge', async () => {
+    renderPage(AUTH_COMMERCIAL_RESP)
+    await screen.findAllByText('ancien.pdf')
+    expect(screen.getAllByRole('button', { name: 'Restaurer' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Supprimer définitivement' })).toBeNull()
   })
 })
