@@ -39,21 +39,21 @@ export const TEXTES_CARTE: Record<Langue, TextesCarte> = {
   fr: {
     tracer: 'Tracez le contour de votre toit : appuyez sur chaque coin, puis « Terminer le tracé ».',
     pointer: 'Appuyez sur votre toit pour y poser le repère.',
-    confirme: 'Repère confirmé. Continuez avec vos coordonnées ci-dessous.',
+    confirme: 'Repère confirmé. Appuyez sur « Continuer ».',
     ajuster: 'Appuyez sur le bon endroit de votre toit pour déplacer le repère.',
     apercu3dIndisponible: 'Aperçu 3D indisponible sur cet appareil',
   },
   ar: {
     tracer: 'ارسموا محيط سطحكم: اضغطوا على كل زاوية، ثم « إنهاء الرسم ».',
     pointer: 'اضغطوا على سطحكم لوضع العلامة عليه.',
-    confirme: 'تم تأكيد العلامة. تابعوا بمعلومات الاتصال أدناه.',
+    confirme: 'تم تأكيد العلامة. اضغطوا على « متابعة ».',
     ajuster: 'اضغطوا على المكان الصحيح من سطحكم لتحريك العلامة.',
     apercu3dIndisponible: 'المعاينة ثلاثية الأبعاد غير متوفرة',
   },
   en: {
     tracer: 'Trace your roof outline: tap each corner, then "Finish tracing".',
     pointer: 'Tap your roof to drop the pin on it.',
-    confirme: 'Pin confirmed. Carry on with your contact details below.',
+    confirme: 'Pin confirmed. Press "Continue".',
     ajuster: 'Tap the right spot on your roof to move the pin.',
     apercu3dIndisponible: '3D preview unavailable on this device',
   },
@@ -320,6 +320,9 @@ function construireCarte(ctx: ContexteCarte) {
     etat.confirmedPinKey = pinKey(etat.capturePin);
     syncPinConfirm();
     setMapStatus(statut().confirme);
+    // Le repère confirmé, le visiteur a fini cet écran : on l'emmène à la facture.
+    // Sans profil choisi, `validateStep0` affiche l'erreur et y ramène l'écran.
+    if (ctx.crochets.appeler('validateStep0')) ctx.crochets.appeler('goStep', 1);
   });
   $('mt-pin-confirm-adjust')?.addEventListener('click', () => {
     // On ne SUPPRIME pas le repère : le visiteur en pose simplement un autre.
