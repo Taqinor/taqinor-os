@@ -386,6 +386,35 @@ class TestDispatchLeads(TestCase):
             'villes': 'Casablanca'}, format='json')
         self.assertEqual(r.status_code, 201, r.content)
 
+    def test_file_attente_masque_la_pii_sans_droit(self):
+        """ALEC35 (C-ALEC-032) — file partagée : un Commercial terrain membre
+        (sans `client_pii_voir`) reçoit téléphone, WhatsApp et e-mail à null ;
+        un Commercial membre lit les valeurs."""
+        from django.core.management import call_command
+        from apps.crm.models import Lead
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        Lead.objects.filter(pk=self.lead.pk).update(
+            telephone='+212600000035', whatsapp='+212600000035',
+            email='alec35@example.invalid')
+        EquipeCommerciale.objects.filter(pk=self.equipe.pk).update(
+            file_a_prendre=True)
+
+        def membre(nom):
+            u = User.objects.create_user(
+                username='alec35-' + nom.replace(' ', '-'), password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom))
+            self.equipe.membres.add(u)
+            self.auth_as(u)
+            r = self.api.get('/api/django/crm/dispatch/')
+            self.assertEqual(r.status_code, 200, r.content)
+            ligne = r.json()['leads'][0]
+            return [ligne[c] for c in ('telephone', 'whatsapp', 'email')]
+        self.assertEqual(membre('Commercial terrain'), [None, None, None])
+        self.assertEqual(membre('Commercial'), [
+            '+212600000035', '+212600000035', 'alec35@example.invalid'])
+
     def test_file_reservee_au_responsable_et_a_la_direction(self):
         from apps.roles.models import Role
         rh = Role.objects.create(company=self.company, nom='Admin RH',
