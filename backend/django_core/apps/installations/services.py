@@ -14,7 +14,7 @@ from decimal import Decimal
 from apps.ventes.utils.references import create_with_reference
 from core.verrous import sous_verrou
 from .listes_prechargees import relation
-from .jalon_reception import defaire_jalons_quittes
+from .jalon_reception import CLE_RECEPTION_DEFAITE, defaire_jalons_quittes
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
@@ -5806,7 +5806,7 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
         return None
     from apps.sav.services import sweep_bom_to_parc
     from apps.stock.selectors import get_produit_scoped
-    defaite = (inst.custom_data or {}).pop('date_reception_defaite', None)  # ACSV31
+    defaite = (inst.custom_data or {}).pop(CLE_RECEPTION_DEFAITE, None)  # ACSV31
     if defaite:
         inst.save(update_fields=['custom_data'])
         recaler_parc_apres_correction_reception(inst, _dt.date.fromisoformat(defaite), user)

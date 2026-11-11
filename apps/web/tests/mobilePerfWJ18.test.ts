@@ -179,3 +179,13 @@ describe('WAUD54 — vidéos d’ambiance : ordinateur + 4G seulement', () => {
     }
   });
 });
+
+describe('WAUD89 — /ar/ : la graisse 700 arabe ne déclenche plus une remise en page complète', () => {
+  // Trace (CPU ×4, 412 px) : noto-sans-arabic-700 découverte à la 1re mise en page, arrivée après →
+  // relayout de presque tout le document déjà construit (1212/1275 objets) + décalages du H1.
+  // Préchargée comme la 400, elle arrive avant la 1re mise en page.
+  it('Layout.astro précharge noto-sans-arabic-700 sur /ar/ seulement, en priorité basse', () => {
+    const layout = readFileSync(root('../src/layouts/Layout.astro'), 'utf-8');
+    expect(layout).toMatch(/lang === 'ar' && <link rel="preload" as="font" type="font\/woff2" href="\/fonts\/noto-sans-arabic-700\.woff2" fetchpriority="low" crossorigin \/>/);
+  });
+});

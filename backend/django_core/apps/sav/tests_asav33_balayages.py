@@ -163,6 +163,68 @@ class BalayagesSavTests(TestCase):
             ticket=t,
             body__contains='Clôturé sans facture : geste commercial').exists())
 
+    def test_cloture_refusee_avec_consommation_f11(self):
+        """ACSV111 : la seule pièce est un fusible validé en F11 (fiche
+        d'intervention) ⇒ « Clôturer » rend 409 `ticket_non_facture`, le
+        balayage le laisse Résolu ; F11 à quantité 0 ⇒ 200 ; après
+        `facturer` ⇒ 200. ROUGE AVANT : 200, clos sans facture."""
+        from decimal import Decimal
+
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.installations.models import (
+            ConsommationLigne, MaterielConsommation,
+        )
+        from apps.stock.models import Produit
+        fusible = Produit.objects.create(
+            company=self.active, nom='Fusible ACSV111', sku='FUS-ACSV111',
+            prix_vente=Decimal('40'), prix_achat=Decimal('4'))
+
+        def ticket_f11(quantite):
+            t = self._resolu_dormant(self.active)
+            iv = Intervention.objects.create(
+                company=self.active, installation=self.active._inst, ticket=t,
+                type_intervention=Intervention.Type.DEPANNAGE,
+                created_by=self.active._tech)
+            Intervention.objects.filter(pk=iv.pk).update(
+                statut=Intervention.Statut.TERMINEE)
+            conso = MaterielConsommation.objects.create(
+                company=self.active, intervention=iv, valide=True)
+            ConsommationLigne.objects.create(
+                company=self.active, consommation=conso, produit=fusible,
+                designation='Fusible', quantite_utilisee=Decimal(quantite),
+                justification='remplacé', stock_applique=True)
+            TicketActivity.objects.filter(ticket=t).update(
+                created_at=timezone.now() - timedelta(days=2))
+            Ticket.objects.filter(pk=t.pk).update(
+                couverture='facturable', heures_main_oeuvre=0,
+                date_modification=timezone.now() - timedelta(days=2))
+            return t
+
+        t = ticket_f11('1')
+        self.assertFalse(t.pieces.exists())
+        self.assertEqual(tasks.scan_auto_cloture_tickets_resolus(), 0)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION='Bearer %s' % AccessToken.for_user(
+            self.active._tech))
+        r = api.post(f'/api/django/sav/tickets/{t.pk}/cloturer/', {},
+                     format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'ticket_non_facture')
+        t.refresh_from_db()
+        self.assertEqual(t.statut, Ticket.Statut.RESOLU)
+        self.assertFalse(t.facture_id_ext)
+        r = api.post(f'/api/django/sav/tickets/{t.pk}/facturer/')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = api.post(f'/api/django/sav/tickets/{t.pk}/cloturer/', {},
+                     format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        t0 = ticket_f11('0')
+        r = api.post(f'/api/django/sav/tickets/{t0.pk}/cloturer/', {},
+                     format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_entree_beat(self):
         from django.conf import settings
 

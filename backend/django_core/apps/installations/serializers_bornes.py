@@ -6,6 +6,7 @@ collecte ``_declared_fields`` que sur des bases qui en portent.
 """
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte, DecimalBornee
@@ -46,3 +47,20 @@ class PrixEstimeNonNegatifMixin:
             raise ConflitEtat(
                 {'prix_estime': ['Le prix estimé ne peut pas être négatif.']})
         return value
+
+
+@extend_schema_field({'type': 'object', 'additionalProperties': True, 'nullable': True})
+class CustomDataObjet(serializers.JSONField):
+    """``custom_data`` d'un chantier : un OBJET ou ``null`` (sa clé interne
+    ``date_reception_defaite`` y est reprise, ACSV113) — un tableau est refusé
+    400 au lieu d'un 500 (api-fuzz, PR #1355)."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError('Objet « clé : valeur » attendu.')
+        return super().to_internal_value(data)
+
+
+class CustomDataObjetMixin(serializers.Serializer):
+    """Publie et valide ``custom_data`` comme un objet (voir ci-dessus)."""
+    custom_data = CustomDataObjet(required=False, allow_null=True)

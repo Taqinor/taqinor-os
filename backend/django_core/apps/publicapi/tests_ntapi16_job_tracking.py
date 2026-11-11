@@ -77,7 +77,45 @@ class Ntapi16JobTrackingTests(TestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('Retry-After', resp.headers)
-        self.assertEqual(resp.data['resultat_url'], 'https://minio/x')
+        # APRF46 — chemin de l'API publique, jamais l'URL MinIO présignée.
+        self.assertEqual(resp.data['resultat_url'], f'/api/public/v1/jobs/{job.id}/resultat/')
+
+    def test_livrable_servi_par_l_api_publique(self):
+        """APRF46 (C-APRF-OPT1-000) — `resultat_url`/`erreurs_url` sont des
+        chemins de l'API publique : 200 + octets + attachment à la clé
+        créatrice, 404 à une clé `read:stock` ; job non terminé ⇒ null + 404."""
+        import io
+
+        from apps.records import storage
+
+        from .portees import SCOPE_READ_STOCK
+        depot = {'exports/1/leads.csv': b'id\n1\n', 'exports/1/erreurs.csv': b'ligne\n2\n',
+                 'exports/1/partiel.csv': b'id\n'}
+        job = BulkJob.objects.create(
+            company=self.co_a, api_key=self.api_key_a, type=BulkJob.TYPE_EXPORT, entite='leads',
+            params={}, statut=BulkJob.STATUT_TERMINE, resultat_file_key='exports/1/leads.csv',
+            erreurs_file_key='exports/1/erreurs.csv')
+        en_cours = BulkJob.objects.create(
+            company=self.co_a, api_key=self.api_key_a, type=BulkJob.TYPE_EXPORT, entite='leads',
+            params={}, statut=BulkJob.STATUT_EN_COURS, resultat_file_key='exports/1/partiel.csv')
+        _cle, brute_stock = _key(self.co_a, scopes=[SCOPE_READ_STOCK])
+        createur, autre = _client(self.raw_a), _client(brute_stock)
+        with mock.patch.object(storage, 'get_minio_client') as get_client:
+            get_client.return_value.get_object.side_effect = (
+                lambda Bucket, Key: {'Body': io.BytesIO(depot[Key])})
+            get_client.return_value.generate_presigned_url.return_value = 'https://minio/x'
+            detail = createur.get(f'/api/public/v1/jobs/{job.id}/').data
+            self.assertEqual(detail['resultat_url'], f'/api/public/v1/jobs/{job.id}/resultat/')
+            self.assertEqual(detail['erreurs_url'], f'/api/public/v1/jobs/{job.id}/erreurs/')
+            for url, cle in ((detail['resultat_url'], 'exports/1/leads.csv'),
+                             (detail['erreurs_url'], 'exports/1/erreurs.csv')):
+                resp = createur.get(url)
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(resp.content, depot[cle])
+                self.assertTrue(resp['Content-Disposition'].startswith('attachment'))
+                self.assertEqual(autre.get(url).status_code, 404)
+            self.assertIsNone(createur.get(f'/api/public/v1/jobs/{en_cours.id}/').data['resultat_url'])
+            self.assertEqual(createur.get(f'/api/public/v1/jobs/{en_cours.id}/resultat/').status_code, 404)
 
     def test_cross_tenant_job_is_404_not_leaked(self):
         job_b = BulkJob.objects.create(

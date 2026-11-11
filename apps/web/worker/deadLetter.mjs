@@ -125,7 +125,12 @@ export async function resendDeadLetters(env, fetchFn = fetch, log = console.log,
       if (res.ok) {
         await kv.delete(name);
         delivered += 1;
-      } else if (name.startsWith(DEAD_LETTER_REFUSED_PREFIX)) {
+      } else if (name.startsWith(DEAD_LETTER_REFUSED_PREFIX)
+        // ADCG114 — un lead: refusé en 4xx (hors 429) AU RENVOI passe sous lead-refuse: sans
+        // expiration ; l'ancienne clé n'est supprimée qu'une fois la nouvelle écrite.
+        || (res.status >= 400 && res.status < 500 && res.status !== 429
+          && (await storeDeadLetter(kv, JSON.parse(body), log, res.status)))) {
+        if (!name.startsWith(DEAD_LETTER_REFUSED_PREFIX)) await kv.delete(name);
         refusParStatut.set(res.status, (refusParStatut.get(res.status) || 0) + 1);
       } else {
         failed += 1;

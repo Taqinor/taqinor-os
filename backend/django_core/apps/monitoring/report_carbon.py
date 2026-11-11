@@ -147,6 +147,8 @@ def _build_html(data, *, entreprise_nom=''):
     sous_titre = (
         f'Système {_v(data.get("reference"))}' if data['scope'] == 'site'
         else f'{_v(data.get("systems_count"))} système(s) · client #{_v(data.get("client"))}')
+    if data.get('mention'):  # AMON111 — certificat annulé
+        sous_titre = f'{escape(data["mention"])} · {sous_titre}'
 
     if not data['has_data']:
         corps_vide = (
@@ -241,6 +243,9 @@ def render_certificat_pdf(certificat):
             _facteur_imprime(company, None), periode_label),
         'date_edition': timezone.localdate().isoformat(),
     }
+    if certificat.statut == certificat.Statut.ANNULE:  # AMON111
+        le = f' le {timezone.localtime(certificat.annule_le):%d/%m/%Y}' if certificat.annule_le else ''
+        data['mention'] = f'ANNULÉ{le} — {certificat.motif_annulation}'
     entreprise_nom = getattr(company, 'nom', '') or ''
     return render_pdf(html=_build_html(data, entreprise_nom=entreprise_nom))
 
@@ -274,7 +279,9 @@ def deposer_certificat_ged(certificat, pdf):
 
 def pdf_certificat(certificat):
     """AMON94 — octets du PDF du certificat : la version GED en vigueur, ou
-    (absente) un rendu re-déposé."""
+    (absente) un rendu re-déposé ; annulé : rendu avec la mention, sans dépôt."""
+    if certificat.statut == certificat.Statut.ANNULE:  # AMON111 — jamais la version GED d'émission
+        return render_certificat_pdf(certificat)
     from apps.ged import services as ged_services
     document = ged_services.find_document_by_source(
         certificat.company, source_type=SOURCE_GED_CERTIFICAT,

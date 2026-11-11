@@ -279,6 +279,29 @@ class TestStatusAndMES(TestCase):
         for equipement in self.inst.equipements.all():
             self.assertEqual(equipement.date_pose, datetime.date(2026, 10, 20))
 
+    def test_mise_en_service_future_ou_invalide_400(self):
+        """ACSV114 (C-ACSV-OPT1-021) — date future ou non ISO : 400 nommant
+        `date_mise_en_service`, chantier inchangé ; la date du jour passe.
+        ROUGE AVANT : 200, réception datée de l'an prochain."""
+        import datetime
+        from django.utils import timezone
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
+        url = f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/'
+        futur = (timezone.localdate() + datetime.timedelta(days=366)).isoformat()
+        for mauvaise in (futur, '2026-13-40'):
+            r = self.api.post(url, {'date_mise_en_service': mauvaise}, format='json')
+            self.assertEqual(r.status_code, 400, r.data)
+            self.assertIn('date_mise_en_service', r.data)
+            self.inst.refresh_from_db()
+            self.assertEqual(self.inst.statut, 'installe')
+            self.assertIsNone(self.inst.date_reception)
+        aujourdhui = timezone.localdate()
+        r = self.api.post(
+            url, {'date_mise_en_service': aujourdhui.isoformat()}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.date_reception, aujourdhui)
+
     def test_cancel_is_a_flag_with_reason(self):
         r = self.api.post(
             f'/api/django/installations/chantiers/{self.inst.id}/annuler/',

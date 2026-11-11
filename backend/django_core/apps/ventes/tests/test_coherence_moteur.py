@@ -147,6 +147,32 @@ class TestCycleDeVie(_Base):
         ligne.refresh_from_db()
         self.assertIsNotNone(ligne.resolved_at)
 
+    def test_rendu_refuse_puis_devis_archive_se_resout(self):
+        """ADCG113 (C-ADCG-OPT1-044) — le QUOTE_BUILD d'un devis archivé se
+        résout à la passe suivante ; celui d'un devis actif encore refusé reste
+        ouvert (1 violation) ; sans rendu tenté, il reste inconnu (non résolu)."""
+        company, user, client, produit = self.societe()
+        archive, actif = (self.devis(company, user, client, produit) for _ in range(2))
+
+        def constructeur(devis, options):
+            raise ValueError(
+                f"Devis {devis.reference} : aucune option ne contient d'onduleur — "
+                "génération du PDF à options refusée (règle de sécurité).")
+        regles = ['DOC_TOTAUX_IMPRIMES']
+
+        moteur.run_audit(company=company, constructeur=constructeur, rules=regles)
+        ouvertes = ViolationCoherence.objects.filter(company=company, rule_id=moteur.REGLE_RENDU)
+        self.assertEqual(ouvertes.filter(resolved_at__isnull=True).count(), 2)
+
+        Devis.objects.filter(pk=archive.pk).update(is_active=False)
+        moteur.run_audit(company=company, constructeur=constructeur, rules=regles)
+        self.assertIsNotNone(ouvertes.get(object_id=archive.pk).resolved_at)
+        self.assertIsNone(ouvertes.get(object_id=actif.pk).resolved_at)
+        self.assertEqual(ouvertes.filter(object_id=actif.pk).count(), 1)
+
+        moteur.run_audit(company=company, constructeur=constructeur, rules=[REGLE])
+        self.assertIsNone(ouvertes.get(object_id=actif.pk).resolved_at)
+
     def test_regle_non_executee_ne_resout_rien(self):
         company, user, client, produit = self.societe()
         self.devis(company, user, client, produit)

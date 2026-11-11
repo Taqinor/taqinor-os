@@ -92,7 +92,10 @@ export default function SauvegardesPage() {
               <Badge tone="warning" className="mt-2">Copie hors serveur : non configurée</Badge>
             )}
             {copie?.etat === 'echec' && (
-              <Badge tone="danger" className="mt-2">Copie hors serveur en échec le {formatDate(copie.date)}</Badge>
+              <Badge tone="danger" className="mt-2">
+                {/* ADCG115 — la cause servie par l'API (tronquée à 200 caractères) */}
+                Copie hors serveur en échec le {formatDate(copie.date)}{copie.message ? ` : ${String(copie.message).slice(0, 200)}` : ''}
+              </Badge>
             )}
             {copie?.etat === 'ok' && (
               <p className="mt-1 text-xs text-muted-foreground">Copie hors serveur réussie le {formatDate(copie.date)}</p>

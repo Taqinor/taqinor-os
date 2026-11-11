@@ -102,7 +102,7 @@ from .models import (
     GeofenceAlert,
 )
 from .serializers_bornes import (
-    CautionUnitaireBorneMixin, MontantProvisionBorneMixin, MotifSansNulMixin,
+    CautionUnitaireBorneMixin, CustomDataObjetMixin, MontantProvisionBorneMixin, MotifSansNulMixin,
     PrixEstimeNonNegatifMixin, SeuilResponsableBorneMixin,
 )
 
@@ -564,7 +564,7 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
 
 
 class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id inconnu → 404 (ENF11)
-                             SameCompanyFKSerializerMixin,
+                             SameCompanyFKSerializerMixin, CustomDataObjetMixin,  # ACSV113
                              serializers.ModelSerializer):
     # ASEC32 — technicien responsable d'une autre société = id absent (400).
     # ENF17 — + client, lead (FK cross-app bornées).
