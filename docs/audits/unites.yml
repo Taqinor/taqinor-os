@@ -967,7 +967,29 @@ unites:
     groupe: ATST
     plan: docs/plans/PLAN_AUDIT_DEPLOY.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/WEB_PLAN.md]
-    pr: 0
+    pr: 1364
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF7.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 5a93b0d) : 4 261 modules de test Python et 1 512 front passés aux détecteurs (1 927 candidats), puis quatre lectures (droits et isolement ; argent ; chiffres client ; gardes et preuves annoncées) ; 30 constats, 9 prouvés par sonde hôte jouée le 11/11 (toutes repro), 21 lus ; gravités 0 S1, 9 S2, 21 S3 ; aucun défaut de production : le code testé est correct, le risque est une régression qui passerait la CI verte. 4 réfutés ; 14 mutants annoncés dans des commits rejoués, tous tués. D-ATST-1..2 ouvertes. Tâches ATST1-14, ATST21-30, ATST41-55 (39 posées, dont 3 GATED : DEPLOY 15, DEVIS 7, STOCK 3, LEAD 3, ANALYSE 2, DOCUMENTS 2, MOTEUR 2, SECURITE 2, GENERATEUR 1, SAV 1, WEB 1)."
+
+  - id: PF8
+    rang: 34
+    declencheur: messages-sortants
+    titre: "Parcours PF8 « Messages envoyés aux clients » : tout ce que l'ERP envoie ou prépare pour l'extérieur (e-mails, WhatsApp pré-remplis, relances, rappels, notifications, liens, conversions Meta) part-il à la bonne personne, jamais à une personne opposée, avec le bon contenu, au bon moment, et la trace dit-elle la vérité sur ce qui est parti"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/apps/** (envois, notifications, tâches planifiées, automatisations, gardes de contact), backend/django_core/core/**, backend/django_core/erp_agentique/celery.py, backend/fastapi_ia/** (actions de l'assistant), frontend/src/** (liens assemblés par l'écran), scripts/check_garde_contact.py"
+    coutures:
+      - "message ↔ opposition, perte ou archivage du lead ↔ fiches sœurs aux mêmes coordonnées ; envoi ↔ trace (EmailLog, RelanceLog, marqueurs) ↔ backend qui n'envoie rien ; texte ↔ gabarit société et langue ; heure ↔ fenêtre des messages ; jeu de démonstration ↔ adresses réelles"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: audité
+    groupe: AMSG
+    plan: docs/plans/PLAN_AUDIT_LEAD.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SAV.md]
+    pr: 1365
+    date: 2026-11-11
+    dossier: docs/audits/2026-11-11-parcours-PF8.md
+    notes: "Audit de PARCOURS (L2, 11/11/2026, base 63b1e02, fraîcheur 3acfee4) : environ 130 points d'envoi ou de préparation de messages vers l'extérieur inventoriés en quatre lectures (suivi commercial ; envois manuels, opposition, effacement ; documents et argent ; moteur d'envoi, 124 tâches planifiées, terrain et après-vente), quatre vérificateurs frais, une critique de complétude et la vérification de ses trous ; 43 constats, 12 prouvés par sonde hôte jouée le 11/11 (toutes repro), 31 lus ; gravités 0 S1, 12 S2 (9 réels aujourd'hui, 3 latents à corriger avant d'allumer l'e-mail), 31 S3. Fait de production : l'e-mail est éteint (backend console) mais l'ERP journalise des envois (12 relances consignées sur 4 factures dont les 3 niveaux sont consommés, 10 e-mails « envoyés ») ; aucun envoi fautif constaté. D-AMSG-1..6 ouvertes. Tâches AMSG1-17, AMSG27-45, AMSG56-83 (64 posées, dont 8 GATED : LEAD 14, DEVIS 9, FACTURATION 9, PARAMETRES 7, DOCUMENTS 5, CHANTIERS 4, SECURITE 4, TRANSVERSE 4, ACQUISITION 2, STOCK 2, ANALYSE 1, DEPLOY 1, SAV 1 ; acceptation AMSG83)."
