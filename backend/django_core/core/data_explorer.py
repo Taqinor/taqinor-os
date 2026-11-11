@@ -228,6 +228,21 @@ def exiger_lecture_dataset(name, user):
         raise DatasetNonAutorise()
 
 
+def exiger_export_dataset(name, user):
+    """ADRG76 — planifier/exporter un extrait : la lecture du jeu ET un code
+    ``*_export`` de son module (module sans code d'export, superuser, palier
+    administrateur, compte hérité ou ``user=None`` : la lecture suffit)."""
+    exiger_lecture_dataset(name, user)
+    if user is None or getattr(user, 'is_admin_role', True) or not getattr(user, 'role_id', None):
+        return
+    from authentication.permissions import codes_du_module, module_du_chemin
+    dataset = get_dataset(name)
+    module = dataset.get('module') or module_du_chemin(dataset.get('chemin'))
+    exports = {c for c in codes_du_module(module) if c.endswith('_export')} if module else set()
+    if exports and not exports & set(user.role.permissions or []):
+        raise DatasetNonAutorise()
+
+
 #: APFS4 — FK utilisateur de TRAÇAGE : jamais un critère de portée « soi / équipe ».
 _FK_TRACE = frozenset({'updated_by', 'archived_by', 'deleted_by'})
 
