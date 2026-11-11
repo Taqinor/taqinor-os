@@ -14,7 +14,7 @@ import csv
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
@@ -308,7 +308,9 @@ class OnboardingTextesImportView(APIView):
             "ignorees": drf_serializers.IntegerField(),
             "inconnues": drf_serializers.ListField(
                 child=drf_serializers.CharField())}),
-            409: OpenApiTypes.OBJECT})
+            409: OpenApiResponse(description=(
+                "Fichier inexploitable (pas de l'UTF-8, en-tête absent) : "
+                "corps ``{detail}``."))})
     def post(self, request):
         fichier = request.FILES.get("fichier")
         if fichier is None:

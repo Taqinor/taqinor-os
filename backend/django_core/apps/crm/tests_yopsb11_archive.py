@@ -155,8 +155,11 @@ class Ntplt38ArchiveUnionTests(TestCase):
         self.url = f'/api/django/crm/leads/{self.lead.id}/historique/'
         now = timezone.now()
         # 3 vives récentes + 4 déplacées vers l'archive (plus anciennes).
-        _bulk_activities(self.company, self.lead, 3, age_days=1)
+        # Les anciennes D'ABORD : le vieillissement de ``_bulk_activities``
+        # touche toutes les notes ``n*`` du lead, il vieillissait aussi les 3
+        # récentes (7 archivées, 0 vive).
         _bulk_activities(self.company, self.lead, 4, age_days=400)
+        _bulk_activities(self.company, self.lead, 3, age_days=None)
         fiche_archivage.archiver_anciens(now, 90, apply_=True)
         # Archive d'une AUTRE société pour le même id de lead : jamais vue.
         LeadActivityArchive.objects.create(

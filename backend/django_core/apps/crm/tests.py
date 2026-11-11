@@ -167,7 +167,7 @@ class TestLeadAPI(TestCase):
             url, {'ville': 'Fes', 'lock_version': lead.lock_version}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         lead.refresh_from_db()
-        self.assertEqual(lead.ville, 'Fes')
+        self.assertEqual(lead.ville, 'Fès')  # ville normalisée par le référentiel (VREF)
         # Écriture bornée par ``update_fields`` : la version avance quand même.
         avant = lead.lock_version
         lead.save(update_fields=['ville'])

@@ -70,7 +70,8 @@ CHAMPS_CYCLE_DE_VIE = ('statut', 'date_envoi', 'date_acceptation',
 
 #: Jamais exposés à l'écriture (la référence est numérotée côté serveur, le PDF
 #: est un artefact de rendu).
-JAMAIS_EXPOSES = ('reference', 'fichier_pdf')
+JAMAIS_EXPOSES = ('reference', 'fichier_pdf',
+                  'search_vector')  # NTPLT32 — index plein-texte, jamais écrit
 
 
 # ═══════════════════════════════════════════════════════════════════════════
