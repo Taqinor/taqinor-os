@@ -533,6 +533,13 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
             secret=Webhook.generate_secret(),
         )
 
+    def perform_update(self, serializer):
+        # APUB52 — PATCH/PUT : même refus par évènement que `create`.
+        if 'events' in serializer.validated_data and (refus := portees_non_detenues(
+                self.request.user, events=serializer.validated_data['events'] or [])):
+            raise ValidationError(refus)
+        serializer.save()
+
     @extend_schema(request=WebhookSerializer,
                    responses={201: WebhookSecretSerializer})
     def create(self, request, *args, **kwargs):

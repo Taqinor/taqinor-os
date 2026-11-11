@@ -168,3 +168,37 @@ class Ntapi26TestLiveKeysTests(TestCase):
             r = directeur.post('/api/django/publicapi/keys/',
                                {'label': 'k', 'scopes': [portee]}, format='json')
             self.assertEqual(r.status_code, 201, r.data)
+
+    def test_modification_webhook_bornee_aux_evenements_detenus(self):
+        """APUB52 (C-APUB-031) — PATCH/PUT d'un webhook vers un évènement dont
+        l'acteur ne porte pas le code : 400 nommant l'évènement, rien d'écrit ;
+        un évènement détenu reste modifiable (200 ; « lead.updated » de la tâche
+        n'existe pas au catalogue → lead.lost)."""
+        from unittest import mock
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        from .models import Webhook
+        call_command('init_roles', verbosity=0)
+        perso = Role.objects.create(
+            company=self.co, nom='Intégrateur APUB52',
+            permissions=['users_voir', 'integrations_gerer', 'crm_voir'])
+        api = _session_client(User.objects.create_user(
+            username='apub52-perso', password='x', company=self.co, role=perso))
+        corps = {'label': 'h', 'target_url': 'https://example.test/hook',
+                 'events': ['lead.created']}
+        with mock.patch('apps.publicapi.serializers.validate_webhook_target_url',
+                        side_effect=lambda u: u):
+            r = api.post('/api/django/publicapi/webhooks/', corps, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            url = f"/api/django/publicapi/webhooks/{r.data['id']}/"
+            refus = ['Évènement non détenu : facture.created']
+            r = api.patch(url, {'events': ['facture.created']}, format='json')
+            self.assertEqual((r.status_code, r.data.get('events')), (400, refus))
+            r = api.put(url, dict(corps, events=['facture.created']), format='json')
+            self.assertEqual((r.status_code, r.data.get('events')), (400, refus))
+            hook = Webhook.objects.get(company=self.co, label='h')
+            self.assertEqual(hook.events, ['lead.created'])
+            r = api.patch(url, {'events': ['lead.lost']}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            hook.refresh_from_db()
+            self.assertEqual(hook.events, ['lead.lost'])
