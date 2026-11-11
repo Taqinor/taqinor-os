@@ -888,6 +888,7 @@ function NouvelleVersionDialog({ document: doc, onClose, onDone }) {
 // téléchargement si l'aperçu n'est pas disponible.
 function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
   const peutGerer = useDroitGed('ged_gerer')
+  const peutGouverner = useDroitGed('ged_gouvernance')
   const [version, setVersion] = useState(null)
   // XGED17 — toutes les versions (pour le comparateur), pas seulement la
   // plus récente affichée dans l'aperçu.
@@ -971,7 +972,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           )}
           {/* XGED24 — caviarder une COPIE (PDF uniquement, l'original n'est
               jamais modifié). */}
-          {isPdf && (
+          {isPdf && peutGouverner && (
             <Button variant="outline" onClick={() => setRedactOpen(true)}>
               <EyeOff /> Caviarder…
             </Button>

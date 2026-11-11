@@ -109,6 +109,8 @@ const paginer = (items, taille = 50) => (params = {}) => {
 // (porteur du code) par défaut, store du Viewer (lecture seule) à la demande.
 const AUTH_COMMERCIAL = { role: 'responsable', role_nom: 'Commercial', permissions: ['ged_voir', 'ged_gerer'] }
 const AUTH_VIEWER = { role: 'normal', role_nom: 'Viewer', permissions: ['ged_voir'] }
+// ADRG89 — « Caviarder… » suit `ged_gouvernance` (Directeur).
+const AUTH_DIRECTEUR = { role: 'admin', role_nom: 'Directeur', permissions: ['ged_voir', 'ged_gerer', 'ged_gouvernance'] }
 const renderGed = (auth = AUTH_COMMERCIAL) =>
   render(
     <Provider store={configureStore({ reducer: { auth: (state = auth) => state } })}>
@@ -244,7 +246,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
-    renderGed()
+    renderGed(AUTH_DIRECTEUR)
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
     await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
@@ -369,7 +371,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
-    renderGed()
+    renderGed(AUTH_DIRECTEUR)
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
     await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
@@ -859,6 +861,33 @@ describe('GedNavigator — écriture (U14)', () => {
     renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     for (const nom of gestes) expect(await screen.findByRole('button', { name: nom })).toBeInTheDocument()
+  })
+
+  it('ADRG89 — sans ged_gouvernance : pas de Caviarder ; le Directeur le voit', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+    const ouvrirApercu = async () => {
+      await userEvent.click(await screen.findByText('Docs'))
+      await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+      await screen.findByRole('button', { name: /Scinder…/i })
+    }
+
+    const vue = renderGed()
+    await ouvrirApercu()
+    expect(screen.queryByRole('button', { name: /Caviarder…/i })).toBeNull()
+    vue.unmount()
+
+    renderGed(AUTH_DIRECTEUR)
+    await ouvrirApercu()
+    expect(screen.getByRole('button', { name: /Caviarder…/i })).toBeInTheDocument()
   })
 
   it('FG352/XKB20/WIR249 — assistant documentaire (DocQA)', async () => {
