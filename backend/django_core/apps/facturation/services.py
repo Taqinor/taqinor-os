@@ -22,6 +22,13 @@ touche au moteur de devis ni aux statuts du devis. ``facturation`` lit
 crm/ventes/stock QUE via leurs selectors/services ou par référence opaque.
 """
 from apps.ventes import services as _ventes
+# ASUP1 — rattrapage de l'instantané d'acheteur, lu par la commande
+# ``figer_identite_acheteur``, la garde d'effacement (ASUP3) et l'anonymisation
+# crm (ASUP2). Hors ``__all__`` : ``__all__`` ne liste que les noms aussi
+# exposés par ``apps.ventes.services`` (ODX18, test de la façade).
+from apps.ventes.domain.instantanes_facture import (  # noqa: F401 — ré-export de façade
+    figer_identite_acheteur_manquante,
+)
 
 # ── Émission et création de factures (``domain/facturation_ops.py``) ──────────
 StockInsuffisantError = _ventes.StockInsuffisantError

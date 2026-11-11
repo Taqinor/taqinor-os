@@ -148,3 +148,34 @@ def figer_a_l_emission(facture):
         facture.garanties = garanties_du_devis(
             devis, langue_de_la_facture(facture))
     return None
+
+
+def figer_identite_acheteur_manquante(company=None, client_id=None,
+                                      appliquer=False):
+    """ASUP1 (C-ASUP-001) — fige ``identite_acheteur`` des factures NON
+    brouillon qui n'en ont pas (émises avant AARG27) : sans instantané,
+    « Anonymiser (RGPD) » effacerait l'acheteur de leur PDF, UBL et export DGI.
+
+    Rend ``(a_figer, identite_perdue)`` (factures, ordre pk) ; un client déjà
+    anonymisé n'a plus d'identité à figer → ``identite_perdue``. ``appliquer``
+    écrit par ``update`` filtré ``identite_acheteur__isnull`` : un instantané
+    posé n'est jamais réécrit (aucun ``save``). ``company=None`` = toutes les
+    sociétés (commande de rattrapage)."""
+    from apps.ventes.models import Facture
+    qs = (Facture.objects.filter(identite_acheteur__isnull=True,
+                                 client__isnull=False)
+          .exclude(statut=Facture.Statut.BROUILLON)
+          .select_related('client', 'company').order_by('pk'))
+    if company is not None:
+        qs = qs.filter(company=company)
+    if client_id is not None:
+        qs = qs.filter(client_id=client_id)
+    a_figer, perdues = [], []
+    for facture in qs:
+        (perdues if facture.client.is_anonymized else a_figer).append(facture)
+    if appliquer:
+        for facture in a_figer:
+            Facture.objects.filter(
+                pk=facture.pk, identite_acheteur__isnull=True).update(
+                identite_acheteur=identite_acheteur_courante(facture))
+    return a_figer, perdues

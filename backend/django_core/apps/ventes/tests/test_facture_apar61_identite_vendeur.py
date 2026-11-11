@@ -125,6 +125,70 @@ class IdentiteVendeurFigeeTests(TestCase):
         self.assertIsNone(
             Facture.objects.get(pk=suivante.pk).identite_acheteur)
 
+    def test_commande_figer_identite_acheteur_dry_run_puis_appliquer(self):
+        """ASUP1 (C-ASUP-001) — dry-run sans écriture, ``--appliquer`` fige
+        les 4 non brouillon sans instantané ; brouillon, figée et client déjà
+        anonymisé inchangés ; l'ICE survit à « Anonymiser (RGPD) »."""
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from apps.crm.dsr_provider import anonymiser_client
+        from apps.crm.models import Client
+        from apps.ventes.domain.instantanes_facture import (
+            acheteur_de_la_facture)
+        from apps.ventes.models import Facture
+        ice = '001234567000089'
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            nom='X SARL', prenom='', type_client='entreprise', ice=ice,
+            if_fiscal='IF-1', rc='RC-1', adresse='Casablanca')
+        self.client_obj.refresh_from_db()
+        cibles = [self._facture(f'FAC-ASUP1-{s}', statut=s)
+                  for s in ('emise', 'payee', 'en_retard', 'annulee')]
+        brouillon = self._facture('FAC-ASUP1-brouillon')
+        figee = self._facture('FAC-ASUP1-figee', statut='emise')
+        Facture.objects.filter(pk=figee.pk).update(
+            identite_acheteur={'nom': 'Figé', 'ice': 'ICE-FIGE'})
+        perdu = Client.objects.create(company=self.company, nom='Anonymisé',
+                                      is_anonymized=True)
+        perdue = Facture.objects.create(
+            company=self.company, reference='FAC-ASUP1-perdue', client=perdu,
+            statut='emise', taux_tva=Decimal('20'))
+
+        def jouer(*args):
+            out = StringIO()
+            call_command('figer_identite_acheteur', *args, stdout=out)
+            return out.getvalue()
+
+        sortie = jouer()
+        for f in cibles:
+            self.assertIn(f'{f.reference} | X SARL | {f.statut}', sortie)
+        avant, _, apres = sortie.partition('identité déjà perdue')
+        self.assertIn('FAC-ASUP1-perdue', apres)
+        self.assertNotIn('FAC-ASUP1-perdue', avant)
+        for ref in ('FAC-ASUP1-brouillon', 'FAC-ASUP1-figee'):
+            self.assertNotIn(ref, sortie)
+        self.assertFalse(Facture.objects.filter(
+            pk__in=[f.pk for f in cibles],
+            identite_acheteur__isnull=False).exists())
+        jouer('--appliquer')
+        for f in cibles:
+            self.assertEqual(Facture.objects.get(pk=f.pk)
+                             .identite_acheteur['ice'], ice)
+        self.assertIsNone(Facture.objects.get(pk=brouillon.pk).identite_acheteur)
+        self.assertIsNone(Facture.objects.get(pk=perdue.pk).identite_acheteur)
+        self.assertEqual(Facture.objects.get(pk=figee.pk).identite_acheteur,
+                         {'nom': 'Figé', 'ice': 'ICE-FIGE'})
+        anonymiser_client(self.company, self.client_obj, motif='t')
+        for f in cibles:
+            acheteur = acheteur_de_la_facture(Facture.objects.get(pk=f.pk))
+            self.assertEqual((acheteur.nom, acheteur.ice, acheteur.if_fiscal,
+                              acheteur.rc, acheteur.adresse),
+                             ('X SARL', ice, 'IF-1', 'RC-1', 'Casablanca'))
+        rejeu = jouer()
+        for f in cibles:
+            self.assertNotIn(f.reference, rejeu)
+
     def test_rib_fige_a_l_emission(self):
         f120 = self._emettre(self._facture('FAC-APAR61-0120'))
         self.assertIn(R1, self._pdf(f120))
