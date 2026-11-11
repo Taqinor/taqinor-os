@@ -37,8 +37,9 @@ from apps.stock.models import (
 from apps.stock.models import BudgetDepartement, EngagementBudget
 from apps.stock.models_incident_fournisseur import IncidentQualiteFournisseur
 from apps.stock.models_rfa import AccordRFAFournisseur
-from apps.installations.models import (AppelCommande, CommandeCadre, CommandeCadreLigne, ContratPrixFournisseur,
-                                       ContratPrixLigne, DossierImport, FraisImport, LandedCostLigne)
+from apps.installations.models import (AppelCommande, ApprobationBCF, BudgetProjet, CommandeCadre,
+                                       CommandeCadreLigne, ContratPrixFournisseur, ContratPrixLigne,
+                                       DossierImport, FraisImport, LandedCostLigne, Projet)
 from apps.stock.models_wms import UniteLogistique
 from authentication.models import Company
 
@@ -58,12 +59,27 @@ CLES_EXACTES = {
     'motif_ecart',
     'prix_negocie', 'valeur_fob', 'budget_materiel', 'budget_main_oeuvre',  # APFS29
     'budget_sous_traitance', 'budget_divers', 'budget_total',
+    'marge', 'taux_pct', 'reste_categorie', 'reste_total',  # ALEC30 (C-ALEC-026)
 }
 PREFIXES_CLES = ('prix_achat_', 'total_achat', 'montant_', 'cout_')
 RE_PK = re.compile(r'\(\?P<pk>[^)]*\)')
 #: ERR-STK-PRIX-ACHAT-SUITE — chemins SIMPLES (hors routeur) balayés aussi.
 CHEMINS_SIMPLES = ('/api/django/stock/tableau-bord-achats/',
-                   '/api/django/stock/entrepot/pertes/')
+                   '/api/django/stock/entrepot/pertes/',
+                   '/api/django/stock/entrepot/cockpit/',  # ALEC30
+                   '/api/django/installations/controle-budgetaire/')
+#: ALEC30 — routes dont le correctif n'est pas sur `main` au build : leur fuite
+#: est RAPPORTÉE sans faire échouer ; une entrée qui ne fuit plus fait échouer
+#: la garde (la retirer). Gabarit de route → constat (tâche du correctif).
+EN_ATTENTE = {
+    '/api/django/stock/kits/{pk}/structure/': 'C-ALEC-002 (ALEC3)',
+    '/api/django/stock/accords-rfa-fournisseur/': 'C-ALEC-005 (ALEC7)',
+    '/api/django/stock/accords-rfa-fournisseur/{pk}/': 'C-ALEC-005 (ALEC7)',
+    '/api/django/installations/approbations-bcf/': 'C-ALEC-006 (ALEC8)',
+    '/api/django/installations/approbations-bcf/{pk}/': 'C-ALEC-006 (ALEC8)',
+    '/api/django/installations/controle-budgetaire/': 'C-ALEC-007 (ALEC9)',
+    '/api/django/stock/entrepot/cockpit/': 'C-ALEC-009 (ALEC11)',
+}
 #: ASTK243 — paramètres VALIDES (objets de démo du ``setUp``) des routes qui
 #: répondent 400 sans eux : suffixe de gabarit → fabrique(test).
 PARAMETRES_PAR_ROUTE = {
@@ -82,6 +98,8 @@ PARAMETRES_PAR_ROUTE = {
     'etiquettes-kanban/': lambda t: {'ids': t.produit.id, 'sortie': 'html'},
     'unites-logistiques/{pk}/etiquette-pdf/': lambda t: {'sortie': 'html'},
     'interventions/suggestions-creation/': lambda t: {'type_intervention': 'installation'},
+    'kits/{pk}/composition-au/': lambda t: {'date': t.aujourdhui},  # ALEC30
+    'controle-budgetaire/': lambda t: {'montant': '0', 'projet': t.projet.id},
 }
 
 
@@ -154,7 +172,7 @@ def refus_declare(cible, utilisateur):
                for p in vue.get_permissions())
 
 
-def balayer(api, routes, utilisateur, fixtures=None):
+def balayer(api, routes, utilisateur, fixtures=None, attendues=None):
     """GET de chaque route avec ses paramètres VALIDES (``fixtures`` = le test,
     lu par ``PARAMETRES_PAR_ROUTE``) ; renvoie (violations, nb_json_200,
     erreurs) — ``erreurs`` nomme chaque non-200 qui n'est pas un refus
@@ -176,8 +194,9 @@ def balayer(api, routes, utilisateur, fixtures=None):
         nb_json += 1
         donnees = reponse.json()
         trouvees = cles_interdites(donnees)
-        if trouvees:
-            violations.append(f'GET {cible} -> {sorted(trouvees)}')
+        if trouvees:  # ALEC30 — une route EN_ATTENTE est rapportée à part.
+            (attendues if attendues is not None and gabarit in EN_ATTENTE
+             else violations).append(f'GET {cible} -> {sorted(trouvees)}  [{gabarit}]')
         return donnees
 
     # 1) listes d'abord : elles fournissent un pk réel par ressource.
@@ -271,8 +290,22 @@ class GardePrixAchat(TestCase):
             company=self.company, annee=2026, montant_alloue=Decimal('50000'))
         EngagementBudget.objects.create(
             company=self.company, budget=budget, montant=Decimal('820'))
-        creer_expedition_transporteur(
+        expedition = creer_expedition_transporteur(
             company=self.company, unite=self.unite, cout_reel=Decimal('180'))
+        # ALEC30 — l'expédition est DU JOUR (cockpit), un kit à composant (et sa
+        # révision), une approbation de BCF et un budget de programme.
+        from django.utils import timezone
+        from apps.stock.models import KitComposant, KitProduit
+        from apps.stock.services import snapshot_revision_kit
+        type(expedition).objects.filter(pk=expedition.pk).update(date_expedition=timezone.now())
+        self.aujourdhui = timezone.localdate().isoformat()
+        kit = KitProduit.objects.create(company=self.company, nom='Kit ALEC30', sku='KIT-ALEC30')
+        KitComposant.objects.create(kit=kit, produit=self.produit, quantite=2)
+        snapshot_revision_kit(kit)
+        ApprobationBCF.objects.create(company=self.company, bcf=bcf, palier='responsable',
+                                      montant_approuve=Decimal('10000'))
+        self.projet = Projet.objects.create(company=self.company, reference='PRJ-ALEC30', nom='Programme')
+        BudgetProjet.objects.create(company=self.company, projet=self.projet, budget_materiel=Decimal('50000'))
         IncidentQualiteFournisseur.objects.create(
             company=self.company, fournisseur=self.fournisseur,
             date_incident=datetime.date(2026, 9, 2), cout_impact_mad=Decimal('300'))
@@ -310,10 +343,10 @@ class GardePrixAchat(TestCase):
         self.assertTrue(any('factures-fournisseur' in u for u in urls))
 
     def test_aucune_route_ne_sert_de_prix(self):
-        routes = routes_get()
+        routes, attendues = routes_get(), []
         for utilisateur in (self.commercial, self.viewer):
             violations, nb_json, erreurs = balayer(
-                _api(utilisateur), routes, utilisateur, self)
+                _api(utilisateur), routes, utilisateur, self, attendues)
             self.assertGreater(nb_json, 5, utilisateur.username)
             self.assertEqual(
                 violations, [],
@@ -321,6 +354,11 @@ class GardePrixAchat(TestCase):
                 "d'achat :\n" + '\n'.join(violations))
             self.assertEqual(erreurs, [], f'{utilisateur.username} : réponses '
                              'non-200 du balayage :\n' + '\n'.join(erreurs))
+        if attendues:  # ALEC30 — rapportées, jamais muettes.
+            print('\nGarde prix d\'achat — fuites EN_ATTENTE :\n' + '\n'.join(attendues))
+        rapportees = {ligne.rsplit('[', 1)[-1].rstrip(']') for ligne in attendues}
+        self.assertEqual(sorted(set(EN_ATTENTE) - rapportees), [],
+                         "entrée d'EN_ATTENTE qui ne fuit plus : la retirer")
 
     def test_suggestions_bcf_sans_montant_et_balayage_sans_non_200(self):
         """ASTK243 — `suggestions-bcf` balayée AVEC un fournisseur valide :
@@ -414,10 +452,12 @@ class GardePrixAchat(TestCase):
                                            'prix_unitaire_ht': 6}],
                                'paiements': [], 'montant_achete': 7,
                                'montant_total': 8, 'cout_retard': 9,
-                               'montant': 10}]}
+                               'montant': 10, 'marge': 11, 'taux_pct': 12,
+                               'reste_categorie': 13, 'reste_total': 14}]}
         self.assertEqual(cles_interdites(plante), {
             'prix_achat', 'prix_achat_devise', 'total_achats_ht',
             'prix_convenu', 'frais_annexes', 'prix_unitaire_ht', 'paiements',
-            'montant_achete', 'montant_total', 'cout_retard', 'montant'})
+            'montant_achete', 'montant_total', 'cout_retard', 'montant',
+            'marge', 'taux_pct', 'reste_categorie', 'reste_total'})
         self.assertEqual(cles_interdites({'quantite': 1, 'prix_vente': 2}),
                          set())
