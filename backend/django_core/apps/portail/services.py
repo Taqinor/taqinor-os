@@ -679,8 +679,8 @@ def _envoyer_invitation_portail(invitation, company, base_url=None):
                 f"Vous êtes invité·e à rejoindre l'équipe du portail client "
                 f'de {societe}.\n\n'
                 f'Ouvrez ce lien pour créer votre mot de passe :\n{lien}\n\n'
-                f'Ce lien expire le '
-                f'{invitation.expire_le:%d/%m/%Y %H:%M}.\n'
+                f'Ce lien expire le '  # AMSG71 — heure de Casablanca
+                f'{timezone.localtime(invitation.expire_le):%d/%m/%Y %H:%M}.\n'
             ),
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
             recipient_list=[invitation.email],
