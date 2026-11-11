@@ -1079,6 +1079,11 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
 
         ecrasements, remplissages = (
             ([], []) if masquee else _diff_fields(existing, f))
+        if (target == 'products' and user is not None
+                and not user.can_view_buy_prices):
+            # ADRG63 (D-ASTK-2) — le prix d'achat actuel reste derrière son droit.
+            ecrasements = [e for e in ecrasements if e['champ'] != 'prix_achat']
+            remplissages = [r for r in remplissages if r['champ'] != 'prix_achat']
         if action == 'mise_a_jour' and ecrasements:
             lignes_ecrasees += 1
             ecrasements_total += len(ecrasements)

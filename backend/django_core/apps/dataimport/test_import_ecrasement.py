@@ -46,6 +46,19 @@ class EcrasementBase(ImportBase):
         payload.update(options)
         return (client or self.api).post(COMMIT_URL, payload, format='multipart')
 
+    def _api_role(self, nom, permissions):
+        """Client authentifié d'un compte au rôle LIVRÉ ``permissions``."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=f'{nom} ADRG', permissions=list(permissions))
+        client = APIClient()
+        client.force_authenticate(get_user_model().objects.create_user(
+            username=f'adrg-{nom}', password='x', company=self.company, role=role))
+        return client
+
 
 class TestApercuEcrasements(EcrasementBase):
     """L'aperçu doit rendre VISIBLE ce qu'un tableur périmé détruirait."""
@@ -132,6 +145,31 @@ class TestApercuEcrasements(EcrasementBase):
         self.assertEqual(conflit['cible'], 'stock.produit')
         champs = {e['champ'] for e in conflit['ecrasements']}
         self.assertEqual(champs, {'nom', 'prix_vente'})
+
+    def test_apercu_produits_masque_le_prix_d_achat_sans_droit(self):
+        """ADRG63 (D-ASTK-2) — sans ``prix_achat_voir``, l'aperçu ne livre ni
+        le champ ``prix_achat`` ni sa valeur actuelle ; le Directeur la voit."""
+        from apps.roles.permissions_registre import COMMERCIAL_RESP_PERMISSIONS
+        Produit.objects.create(company=self.company, nom='Panneau',
+                               sku='SKU-1', prix_vente=1200, prix_achat=900)
+        payload = {'target': 'products'}
+        csv_text = 'Nom,SKU,prix_achat\nPanneau,SKU-1,950\n'
+        resp = self._api_role('cresp63', COMMERCIAL_RESP_PERMISSIONS).post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **payload},
+            format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for conflit in resp.data['conflits']:
+            self.assertNotIn('prix_achat', conflit['remplissages'])
+            self.assertNotIn('prix_achat',
+                             [e['champ'] for e in conflit['ecrasements']])
+        self.assertNotIn('900', str(resp.data))
+        resp = self.api_dir.post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **payload},
+            format='multipart')
+        (conflit,) = resp.data['conflits']
+        (prix,) = [e for e in conflit['ecrasements']
+                   if e['champ'] == 'prix_achat']
+        self.assertIn('900', prix['ancienne'])
 
     def test_apercu_refuse_le_meme_mode_que_le_commit(self):
         """Un mode refusé à l'écriture doit l'être aussi à l'aperçu (sinon
@@ -418,19 +456,6 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         self.assertEqual(propre.status_code, 200, propre.data)
         lead.refresh_from_db()
         self.assertEqual(lead.email, 'b@y.ma')
-
-    def _api_role(self, nom, permissions):
-        """Client authentifié d'un compte au rôle LIVRÉ ``permissions``."""
-        from django.contrib.auth import get_user_model
-        from rest_framework.test import APIClient
-
-        from apps.roles.models import Role
-        role = Role.objects.create(
-            company=self.company, nom=f'{nom} ADRG', permissions=list(permissions))
-        client = APIClient()
-        client.force_authenticate(get_user_model().objects.create_user(
-            username=f'adrg-{nom}', password='x', company=self.company, role=role))
-        return client
 
     def test_import_factures_exige_ventes_creer(self):
         """ADRG61 — un Technicien n'importe aucune facture (série légale)."""
