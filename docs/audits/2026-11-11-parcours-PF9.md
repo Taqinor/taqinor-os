@@ -120,7 +120,7 @@ Porte : 8 pistes écartées ou réfutées / 33 retenus · seconde lentille : 5 c
 
 ## 9. Coût et routage
 Coût : H0 S3 O15 F0 · jetons sous-agents ≈ 5,7 M · tâches 48 (M0 0 M1 11 M2 8 M3 27 GATED 2).
-Routage : `PLAN_AUDIT_FACTURATION.md` 14 · `PLAN_AUDIT_STOCK.md` 7 · `PLAN_AUDIT_SAV.md` 5 · `PLAN_AUDIT_ANALYSE.md` 4 · `PLAN_AUDIT_CHANTIERS.md` 4 · `PLAN_AUDIT_DEPLOY.md` 3 · `PLAN_AUDIT_SECURITE.md` 3 · `PLAN_AUDIT_ACQUISITION.md` 2 · `PLAN_AUDIT_DEVIS.md` 2 · `PLAN_AUDIT_LEAD.md` 2 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation ACNC56 · PR à venir.
+Routage : `PLAN_AUDIT_FACTURATION.md` 14 · `PLAN_AUDIT_STOCK.md` 7 · `PLAN_AUDIT_SAV.md` 5 · `PLAN_AUDIT_ANALYSE.md` 4 · `PLAN_AUDIT_CHANTIERS.md` 4 · `PLAN_AUDIT_DEPLOY.md` 3 · `PLAN_AUDIT_SECURITE.md` 3 · `PLAN_AUDIT_ACQUISITION.md` 2 · `PLAN_AUDIT_DEVIS.md` 2 · `PLAN_AUDIT_LEAD.md` 2 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation ACNC56 · PR #1373.
 Rapport : aucun défaut grave (S1), 7 défauts sérieux (S2), tous réels aujourd'hui ; aucun doublon d'argent constaté en production.
 - Un paiement partiel, une note de débit, un avoir ou un retour renvoyé après un délai ou depuis deux onglets s'enregistre deux fois → ACNC1 à ACNC3.
 - « Supprimer » pendant « Émettre » peut effacer une facture émise ; deux annulations croisées d'une vente perdent le retour de stock → ACNC5, ACNC8.
