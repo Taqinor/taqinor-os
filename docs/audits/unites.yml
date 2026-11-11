@@ -883,3 +883,25 @@ unites:
     date: 2026-11-10
     dossier: docs/audits/2026-11-10-parcours-PF3.md
     notes: "vérifie ADCG du 10/11/2026, clôture (76/80 constructibles ; dossier docs/audits/2026-11-10-deploy-ci-gardes-verifie.md, qui remplace celui de midi) : 24 tâches de plus (graine f46afed2b, les 13 prioritaires cochées depuis midi + 11 tirées), soit 43 relues sur 76 — 39 ok, 4 partielles (2 déjà corrigées par ADCG101-102) ; le deploy unique et son retour arrière tiennent (banc et sondes rejoués) ; procédure de restauration corrigée dans la PR (nom de service faux) ; cinq restes S3 → ADCG105 à ADCG109 ; six sondes périmées réalignées dans la journée ; aucun écart S1-S2 ⇒ ADCG « vérifié » pour sa part construite. vérifie ADCG du 10/11/2026, mi-parcours (48/52 constructibles ; dossier docs/audits/2026-11-10-deploy-ci-gardes-verifie.md) : 19 tâches relues (graine 9f030f350, dont les 9 P0 / P1) — 17 ok, 2 partielles ; ADCG82 (garde jumelle des tests sautés non traitée) → ADCG101, ADCG96 (la procédure de reconstruction du serveur démarre le deploy automatique avant la restauration) → ADCG102, tous deux S3 ; aucun écart S1-S2 ; quatre sondes périmées réalignées et rejouées ; clôture due à 95 %. Dixième et dernier audit de PARCOURS (L2, 10/11/2026, base dc496b2, fraîcheur ce4e5fc) : 62 constats, 20 prouvés par sonde hôte (vrais scripts, fausses commandes) et 42 lus ; gravités 2 S1, 18 S2, 42 S3. S1 : les fichiers (pièces, PDF : 271 Mo en prod) ne sont jamais sauvegardés ; aucune copie des sauvegardes hors du serveur. S2 : pas de retour arrière effectif, code servi avant les migrations, contrôle de santé vert quand il ne peut pas s'exécuter, deux séquences de deploy divergées, configuration du proxy jamais validée, audit des dépendances qui ne peut pas échouer (31 vulnérabilités graves imprimées, étapes vertes), agrégateur du fuzz toujours à 0, alerte de restauration muette, pas de procédure de restauration ni de reconstruction du serveur, QA nocturne du poste mort depuis le 14/10, disque du serveur non surveillé, alarmes décidées jamais armées. Porte : 27 constats vérifiés, 0 réfuté en entier, 2 en partie, 4 gravités revues. Prod lue le 10/11 (lecture seule) : à jour, 0 migration en attente, 38 sauvegardes réussies depuis le 09/10 (incident prod-sans-sauvegarde clos), copie distante off, 42 exceptions en 24 h dans le worker. D-ADCG-1..3 ouvertes (copie hors serveur, fusion automatique des correctifs Dependabot, classement du micro-onduleur). 1 critique opus (6 trous). Tâches ADCG1-100 (93 posées : DEPLOY 65, SECURITE 14, TRANSVERSE 4, WEB 3, ANALYSE 2, DEVIS 1, FACTURATION 1, LEAD 1, MOTEUR 1, PARAMETRES 1)."
+
+  - id: PF4
+    rang: 30
+    declencheur: droits-grille
+    titre: "Parcours PF4 « Droits de la grille des rôles » : chaque route d'écriture et d'export lit-elle le code de la grille de son geste, et chaque geste d'écran suit-il la garde de sa route (ventes, CRM, facturation, stock, achats, chantiers, SAV, GED, imports, exports, rapports, rôles, portail)"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/apps/** (vues, sérialiseurs, services), backend/django_core/authentication/permissions.py, backend/django_core/apps/roles/permissions_registre.py, backend/django_core/core/**, frontend/src/**"
+    coutures:
+      - "case de la grille ↔ garde de la route ↔ bouton de l'écran ; import et export ↔ droit de la cible ; rapport ↔ lecture du module servi ; rôle livré ↔ comptes réels"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L2
+    statut: audité
+    groupe: ADRG
+    plan: docs/plans/PLAN_AUDIT_SECURITE.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 0
+    date: 2026-11-10
+    dossier: docs/audits/2026-11-10-parcours-PF4.md
+    notes: "Onzième audit de PARCOURS (L2, 10/11/2026, base 7e845af, fraîcheur 29787bc) : environ 1 650 routes d'écriture et d'export et gestes d'écran confrontés au code de la grille des rôles ; 65 constats, tous lus (aucune pile ne servait main : aucune sonde jouée, aucun test exécuté ; rôles livrés calculés sur le registre, refaits par chaque vérificateur) ; gravités 2 S1, 24 S2, 39 S3. S1 : un commercial lie l'accès portail du client A au client B (exploitable aujourd'hui : 3 comptes commerciaux réels, 1 compte portail actif) ; l'import de factures consomme un numéro légal pour un rôle sans droit de vente (non exploitable aujourd'hui : aucun compte visé, aucun import). Deux sondes écrites, non rejouées (ADRG105). D-ADRG-1..14 ouvertes. Tâches ADRG1-105 (80 posées : ANALYSE 13, STOCK 9, CHANTIERS 9, SAV 8, FACTURATION 7, DOCUMENTS 7, LEAD 6, DEVIS 4, PARAMETRES 4, TRANSVERSE 4, CALEPINAGE 3, SECURITE 3, DEPLOY 3)."
