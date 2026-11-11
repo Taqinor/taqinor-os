@@ -194,7 +194,7 @@ const config = {
         to: '/parametres/vues',
         label: 'Vues sauvegardées',
         icon: <LayoutList size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ['responsable', 'admin'],
+        roles: ['admin'], // ADRG82 — l'écran n'appelle que des routes administrateur
       },
       { to: '/parametres/tiers-doublons', label: 'Doublons tiers', icon: <Copy size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
@@ -245,7 +245,7 @@ const config = {
     { path: '/parametres/export', component: ExportSauvegarde },
     { path: '/parametres/notifications', component: NotificationsPreferences },
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['admin'] }, // ADRG82
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats/cloture', component: ClotureAchatsWizardPage, roles: ['responsable', 'admin'] },
