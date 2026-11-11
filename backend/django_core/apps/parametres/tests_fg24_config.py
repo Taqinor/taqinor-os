@@ -60,6 +60,27 @@ class FG24ConfigTest(TestCase):
         self.assertTrue(any(r2['nom'] == 'Rôle perso'
                             for r2 in bundle['roles']))
 
+    def test_export_config_exige_parametres_voir(self):
+        """ADRG83 — rôle LIVRÉ Admin Ventes (palier par `users_voir`, sans
+        `parametres_voir`) : 403 ; Directeur : 200."""
+        from apps.roles.permissions_registre import (
+            ADMIN_VENTES_PERMISSIONS, DIRECTEUR_PERMISSIONS,
+        )
+        statuts = {}
+        for nom, perms in (('Admin Ventes', ADMIN_VENTES_PERMISSIONS),
+                           ('Directeur', DIRECTEUR_PERMISSIONS)):
+            role = Role.objects.create(
+                company=self.src, nom=f'{nom} adrg83', permissions=list(perms))
+            user = User.objects.create_user(
+                username=f'adrg83-{len(statuts)}', password='pw',
+                company=self.src, role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            statuts[nom] = api.get(
+                '/api/django/parametres/config-export/').status_code
+        self.assertEqual(statuts, {'Admin Ventes': 403, 'Directeur': 200})
+
     def test_import_merge_creates_into_target_company(self):
         bundle = self.api_src.get(
             '/api/django/parametres/config-export/').data
