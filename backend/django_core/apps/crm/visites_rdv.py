@@ -132,6 +132,26 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
     return appointment
 
 
+def annuler_rendez_vous_du_jour(lead_id, jour):
+    """AMSG16 — la visite technique du ``jour`` est annulée : le rendez-vous
+    d'agenda qui EST cette visite (D-ACVI-8) passe ANNULÉ, et son rappel ne part
+    plus. Seuls les rendez-vous PLANIFIÉ/CONFIRMÉ du lead dont la date locale
+    est ``jour``. Renvoie le nombre de rendez-vous annulés."""
+    import zoneinfo
+
+    from .models import Appointment
+
+    if jour is None:
+        return 0
+    debut = datetime.datetime.combine(
+        jour, datetime.time.min, tzinfo=zoneinfo.ZoneInfo(RAMADAN_TZ))
+    return Appointment.objects.filter(
+        lead_id=lead_id, scheduled_at__gte=debut,
+        scheduled_at__lt=debut + datetime.timedelta(days=1),
+        statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
+    ).update(statut=Appointment.Statut.ANNULE)
+
+
 # ── VX245(b) — confirmation WhatsApp POST-RDV (aperçu date/heure + .ics) ────
 
 def build_appointment_confirmation_whatsapp(request, appointment):
