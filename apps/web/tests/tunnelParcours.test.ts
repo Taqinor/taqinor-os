@@ -27,7 +27,7 @@ function monter() {
       <div id="mt-raison-sociale-wrap"></div>
       <input id="mt-city" data-ph-ville="ville" data-ph-repere="carte"><span id="mt-city-hint" hidden></span>
       <input type="radio" id="mt-contact-phone"><input type="radio" id="mt-contact-whatsapp"><div id="mt-callback-sla"></div>
-      <button id="mt-next-0"></button><button id="mt-back-1"></button>
+      <button id="mt-next-0"></button><button id="mt-next-0-bas"></button><button id="mt-back-1"></button>
       <span data-i18n data-ar="مرحبا">Bonjour</span>
     </section>`;
 }
@@ -74,6 +74,16 @@ describe.each(LOCALES)('parcours — %s', (locale) => {
     const pressed = [...document.querySelectorAll<HTMLElement>('.mt-mode')].filter((b) => b.getAttribute('aria-pressed') === 'true');
     expect(pressed.map((b) => b.dataset.mode)).toEqual(mode ? [mode] : []);
     expect(ctx.etat.mode).toBe(mode);
+  });
+
+  it('« Continuer » du haut et sa reprise sous la carte mènent tous deux à la facture', () => {
+    for (const id of ['mt-next-0', 'mt-next-0-bas']) {
+      monter();
+      const { ctx, p } = installer(locale, 'residentiel');
+      p.brancherEtapes();
+      document.getElementById(id)!.click();
+      expect(ctx.etat.step).toBe(1);
+    }
   });
 
   it('goStep pousse history.state ; popstate revient en arrière', () => {
