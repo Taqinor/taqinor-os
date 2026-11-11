@@ -41,7 +41,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import (
-    IsAdminOrResponsableTier,
+    EcritureRefuseeLectureSeule, IsAdminOrResponsableTier,
     HasPermissionOrLegacy, IsAdminRole, IsAuthenticatedInterne,
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -722,7 +722,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DashboardSerializer
-    permission_classes = [IsAuthenticatedInterne]
+    permission_classes = [IsAuthenticatedInterne, EcritureRefuseeLectureSeule]  # APUB13
     queryset = Dashboard.objects.all()
     pagination_class = None  # petite liste par utilisateur — renvoyée à plat.
 
@@ -883,7 +883,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = SavedQuerySerializer
-    permission_classes = [IsAuthenticatedInterne]
+    permission_classes = [IsAuthenticatedInterne, EcritureRefuseeLectureSeule]  # APUB13
     queryset = SavedQuery.objects.all()
     pagination_class = None
     #: ENF11 — ``POST …/run/`` (ad-hoc) et ``POST …/{id}/run/`` ont les mêmes

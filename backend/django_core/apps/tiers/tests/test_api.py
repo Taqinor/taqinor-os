@@ -146,6 +146,32 @@ class TiersApiTests(TenantAPITestCase):
             {client.id, fournisseur.id, partenaire.id} - set(rows), set())
         self.assertEqual(rows[client.id]['cin'], 'AB123456')
 
+    def test_roles_livres_lecture_seule_n_ecrivent_pas(self):
+        """APUB13 — Viewer et Utilisateur (grilles 100 % lecture) reçoivent
+        403 en création, modification et suppression, rien d'écrit ; le
+        Commercial crée toujours."""
+        from apps.roles import permissions_registre as reg
+        tiers = Tiers.objects.create(
+            company=self.company, nom='Partenaire', is_partenaire=True)
+        for nom, perms in (('Viewer', reg.VIEWER_PERMISSIONS),
+                           ('Utilisateur', reg.UTILISATEUR_PERMISSIONS)):
+            api = self.client_as(user=self._role_user(nom, perms))
+            with self.subTest(role=nom):
+                self.assertEqual(api.post(
+                    URL, {'nom': 'Pirate'}, format='json').status_code, 403)
+                self.assertEqual(api.patch(
+                    f'{URL}{tiers.id}/', {'nom': 'Pirate'},
+                    format='json').status_code, 403)
+                self.assertEqual(
+                    api.delete(f'{URL}{tiers.id}/').status_code, 403)
+        tiers.refresh_from_db()
+        self.assertEqual(tiers.nom, 'Partenaire')
+        self.assertFalse(Tiers.objects.filter(nom='Pirate').exists())
+        vendeur = self._role_user('Commercial', reg.COMMERCIAL_PERMISSIONS)
+        self.assertEqual(self.client_as(user=vendeur).post(
+            URL, {'nom': 'Nouveau', 'is_partenaire': True},
+            format='json').status_code, 201)
+
     def test_nom_complet_particulier(self):
         t = Tiers.objects.create(
             company=self.company, type_tiers='particulier',

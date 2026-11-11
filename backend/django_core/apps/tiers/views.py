@@ -11,7 +11,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
-from authentication.permissions import IsAdminRole, peut_lire_module
+from authentication.permissions import (
+    EcritureRefuseeLectureSeule, IsAdminRole, peut_lire_module)
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 from core.scoping import record_scope_for
@@ -49,6 +50,10 @@ class TiersViewSet(
     # + scopé société suffit (le repli légacy reste géré par ScopedPermission).
     read_permission = None
     write_permission = None
+
+    def get_permissions(self):
+        # APUB13 — un rôle en lecture seule n'écrit pas le répertoire.
+        return [*super().get_permissions(), EcritureRefuseeLectureSeule()]
 
     def get_queryset(self):
         """ALEC20 — lecture bornée au droit du lecteur (hors palier admin) :
