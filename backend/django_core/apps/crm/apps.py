@@ -109,3 +109,8 @@ class CrmConfig(AppConfig):
         # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
         # (l'import câble le récepteur post_save ; pont réversible).
         importlib.import_module(f'{self.name}.tiers_bridge')
+        # ASUP11 — la corbeille commune restaure un lead par SA garde (absorbé,
+        # doublon vivant), jamais par le repli générique.
+        from apps.trash.registry import enregistrer_restaurateur
+        from .fiche_ecritures import restaurer_lead_corbeille
+        enregistrer_restaurateur('crm.lead', restaurer_lead_corbeille)

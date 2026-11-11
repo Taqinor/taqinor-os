@@ -296,6 +296,38 @@ class TestSoftDelete(ArchiveTestBase):
         touche.refresh_from_db()
         self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
 
+    def test_corbeille_commune_passe_par_la_garde_du_lead(self):
+        """ASUP11 (C-ASUP-007) — /parametres/corbeille restaure un lead par la
+        garde du lead : doublon vivant ⇒ 409 nommé, lead toujours supprimé,
+        entrée ouverte ; sinon vivant, archivage inchangé, une ligne « restauré »,
+        entrée fermée. Mutant : ne pas enregistrer le restaurateur ⇒ restauré."""
+        from apps.trash.models import ElementSupprime
+        doublon = Lead.objects.create(company=self.company, nom='Ancien', stage='NEW',
+                                      telephone='0611223344')
+        doublon.soft_delete(user=self.admin)
+        vivant = Lead.objects.create(company=self.company, nom='Nouveau', stage='NEW',
+                                     telephone='0611223344')
+        Lead.objects.filter(pk=self.lead.pk).update(is_archived=True)
+        Lead.objects.get(pk=self.lead.pk).soft_delete(user=self.admin)
+        api = auth(self.resp)
+        entree = ElementSupprime.objects.get(object_id=doublon.pk, restaure_le__isnull=True)
+        r = api.post(f'/api/django/trash/corbeille/{entree.pk}/restaurer/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'doublon vivant : lead #{vivant.pk}', r.data['detail'])
+        self.assertTrue(Lead.all_objects.get(pk=doublon.pk).is_deleted)
+        entree.refresh_from_db()
+        self.assertIsNone(entree.restaure_le)
+        entree = ElementSupprime.objects.get(object_id=self.lead.pk, restaure_le__isnull=True)
+        r = api.post(f'/api/django/trash/corbeille/{entree.pk}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead = Lead.all_objects.get(pk=self.lead.pk)
+        self.assertFalse(lead.is_deleted)
+        self.assertTrue(lead.is_archived)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__startswith='Lead restauré').count(), 1)
+        entree.refresh_from_db()
+        self.assertIsNotNone(entree.restaure_le)
+
     def test_restore_is_scoped_to_company(self):
         """La corbeille d'une autre société n'est jamais restaurable ici."""
         api = auth(self.admin)

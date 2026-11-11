@@ -354,3 +354,13 @@ def restaurer_lead(lead, user, *, note=None):
             activity.log_restore(lead, user)
     assurer_prochaine_etape_apres_succes(lead, user)
     return lead
+
+
+def restaurer_lead_corbeille(element):
+    """ASUP11 — restaurateur ``crm.lead`` de la corbeille commune : la garde d'ASUP9 (409 nommé), puis ``restore()``
+    (ligne « restauré » et prochaine étape suivent, ASOC86) ; l'archivage n'est jamais touché."""
+    from core.conflit_etat import ConflitEtat
+    lead = Lead.all_objects.filter(pk=element.object_id, company_id=element.company_id).first()
+    if lead is not None and (refus := refus_restauration_lead(lead)):
+        raise ConflitEtat(refus)
+    return lead.restore() if lead is not None else None
