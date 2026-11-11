@@ -12,6 +12,7 @@ Test-du-test : remettre ``.exclude(statut='payee')`` seul dans
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.core import mail
 from django.test import TestCase
 from django.utils import timezone
 
@@ -23,7 +24,7 @@ from apps.automation.models import (
     ActionType, AutomationApproval, AutomationRule, AutomationRun, TriggerType,
 )
 from apps.crm.models import Client
-from apps.ventes.models import Devis, Facture
+from apps.ventes.models import Devis, Facture, ParametrageRelanceClient
 from authentication.models import Company
 
 
@@ -107,6 +108,41 @@ class PredicatsEtatTests(TestCase):
             f.statut = statut
             self.assertTrue(
                 engine.motif_etat_metier(TriggerType.FACTURE_OVERDUE, f))
+
+    def test_contestee_promesse_exclue_manuel_ne_relancent_pas(self):
+        """AMSG63 — mêmes refus que ``facture_relancable`` et ``relance_reminders``."""
+        AutomationRule.objects.create(
+            company=self.co, nom='Relance e-mail', enabled=True,
+            trigger_type=TriggerType.FACTURE_OVERDUE, trigger_config={},
+            action_type=ActionType.SEND_EMAIL,
+            action_config={'subject': 'Relance', 'body': 'Facture en retard'})
+        manuel = Client.objects.create(
+            company=self.co, nom='Cli manuel', email='amsg63m@example.invalid')
+        ParametrageRelanceClient.objects.create(
+            company=self.co, client=manuel,
+            mode=ParametrageRelanceClient.Mode.MANUEL)
+        mail.outbox = []
+        today = timezone.localdate()
+        attendus = {
+            'FAC-AMSG63-C': ({'contestee_le': today}, 'Facture contestée : la relance est suspendue.'),
+            'FAC-AMSG63-X': ({'exclu_relances': True}, 'Facture exclue des relances'),
+            'FAC-AMSG63-P': ({'exclu_relances_jusquau': today + timedelta(days=5)}, 'Promesse de paiement'),
+            'FAC-AMSG63-M': ({'client': manuel}, 'Client en relance manuelle'),
+        }
+        with self.captureOnCommitCallbacks(execute=True):  # signal puis balayage
+            factures = {ref: Facture.objects.create(**{
+                'company': self.co, 'client': self.client_obj, 'reference': ref,
+                'statut': Facture.Statut.EN_RETARD, 'date_echeance': self.echue,
+                'montant_ttc': Decimal('900'), **champs}) for ref, (champs, _) in attendus.items()}
+            temoin = self._facture('FAC-AMSG63-T', Facture.Statut.EN_RETARD)
+            _trigger_facture_overdue(self.co)
+        for ref, (_, motif) in attendus.items():
+            self.assertIn(motif, engine.motif_etat_metier(
+                TriggerType.FACTURE_OVERDUE, factures[ref]) or '', ref)
+            self.assertFalse(_runs_action(self.co, factures[ref].pk).exists(), ref)
+        self.assertIsNone(engine.motif_etat_metier(TriggerType.FACTURE_OVERDUE, temoin))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['apar7@example.invalid'])
 
     # ── DATE_ECHEANCE_CHAMP sur devis ─────────────────────────────────────
 

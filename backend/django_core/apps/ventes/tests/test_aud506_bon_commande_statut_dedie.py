@@ -243,3 +243,27 @@ class ConvertirEnBcTests(TestCase):
         r = self.api.patch(f'/api/django/ventes/bons-commande/{attente.id}/',
                            {'devis': d2.id}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_delete_bon_commande_refuse_405(self):
+        """ASUP19 — aucun DELETE de BC (même pour un Directeur, rôle livré) :
+        405, le BC et le lien de sa facture émise restent intacts."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.ventes.models import Facture
+        role = Role.objects.create(company=self.company, nom='Directeur',
+                                   permissions=dict(CANONICAL_SYSTEM_ROLES)['Directeur'])
+        directeur = User.objects.create_user(username='asup19_dir', password='x', company=self.company, role=role)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(directeur)}')
+        bc = BonCommande.objects.create(
+            company=self.company, reference='BC-ASUP19-0001', client=self.client_obj,
+            devis=self.devis, statut=BonCommande.Statut.CONFIRME)
+        facture = Facture.objects.create(
+            company=self.company, client=self.client_obj, reference='FAC-ASUP19-0001',
+            statut=Facture.Statut.EMISE, bon_commande=bc, montant_ttc=Decimal('1200'))
+        r = api.delete(f'/api/django/ventes/bons-commande/{bc.id}/')
+        self.assertEqual(r.status_code, 405, getattr(r, 'data', r.content))
+        self.assertTrue(BonCommande.objects.filter(pk=bc.pk).exists())
+        facture.refresh_from_db()
+        self.assertEqual(facture.bon_commande_id, bc.pk)
+        self.assertEqual(self.api.get(f'/api/django/ventes/bons-commande/{bc.id}/').status_code, 200)

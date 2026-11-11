@@ -20,6 +20,9 @@ from .models import (
     IncomingWebhookTrigger, TriggerType, record_state_change_targets,
 )
 
+#: AMSG68 — clés d'``action_config`` qui portent le texte d'un e-mail.
+CLES_CORPS_EMAIL = ('body', 'message', 'template')
+
 #: APAR9 — message unique (création et modification d'un webhook entrant).
 WEBHOOK_REGLE_INCOMPATIBLE = (
     "Un webhook entrant ne s'attache qu'à une règle au déclencheur "
@@ -67,6 +70,19 @@ class SeuilDecimal(DecimalSouple):
 
 class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
                                serializers.ModelSerializer):
+    def _valider_corps_email(self, attrs):
+        """AMSG68 — une action ``send_email`` porte son texte (``body``,
+        ``message`` ou ``template``) : sans corps, l'e-mail partirait vide. Publié
+        au corps de création (``views.REGLE_CORPS_CREATION``, même prédicat)."""
+        if 'action_config' not in attrs and 'action_type' not in attrs:
+            return
+        if attrs.get('action_type', getattr(self.instance, 'action_type', None)) != ActionType.SEND_EMAIL:
+            return
+        cfg = attrs.get('action_config', getattr(self.instance, 'action_config', None)) or {}
+        if not any(isinstance(cfg.get(cle), str) and cfg.get(cle) for cle in CLES_CORPS_EMAIL):
+            self._refus_config('action_config', (
+                'Envoyer un e-mail : corps obligatoire (texte du message ou modèle).'))
+
     def _refus_config(self, champ, message):
         """ENF11 — à la CRÉATION la règle tient au corps seul (publiée au schéma :
         ``REGLE_CORPS_CREATION``) -> 400. À la MODIFICATION elle lit aussi la
@@ -134,6 +150,7 @@ class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
             raise serializers.ValidationError({'trigger_type': (
                 'Déclencheur indisponible (module parqué) : rien ne peut '
                 'plus le déclencher.')})
+        self._valider_corps_email(attrs)
         trigger_type = attrs.get(
             'trigger_type', getattr(self.instance, 'trigger_type', None))
         if trigger_type != TriggerType.RECORD_STATE_CHANGE:

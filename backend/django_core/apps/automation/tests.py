@@ -544,7 +544,7 @@ class SendEmailHonestyTests(TestCase):
             company=self.co, reference='DEV-MAIL', statut='brouillon',
             client=client)
         # send_mail renvoie 0 (aucun message remis) → FAILED honnête.
-        with mock.patch('django.core.mail.send_mail', return_value=0):
+        with mock.patch('django.core.mail.EmailMessage.send', return_value=0):
             status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.FAILED)
 
@@ -558,7 +558,7 @@ class SendEmailHonestyTests(TestCase):
         devis = Devis.objects.create(
             company=self.co, reference='DEV-MAIL2', statut='brouillon',
             client=client)
-        with mock.patch('django.core.mail.send_mail',
+        with mock.patch('django.core.mail.EmailMessage.send',
                         side_effect=RuntimeError('SMTP down')):
             status, msg = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.FAILED)

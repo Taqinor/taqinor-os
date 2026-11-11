@@ -187,5 +187,55 @@ class TestDepotReel(unittest.TestCase):
         self.assertEqual(cow.main(), 0)
 
 
+class MainSurArbreFautifTests(unittest.TestCase):
+    """ATST46 — ``main()`` joué sur le corpus RÉEL + UN fichier fautif : chaque
+    vérificateur qu'il appelle (et le ``if echecs:``) est prouvé branché."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Le corpus réel est lu UNE fois : chaque ``main()`` relit des textes en mémoire.
+        cls.reels = {}
+        for rel, path in cow._fichiers_python():
+            try:  # mêmes fichiers que ``main()`` (il saute l'illisible)
+                cls.reels[rel] = path.read_text(encoding='utf-8')
+            except (UnicodeDecodeError, OSError):
+                continue
+
+    def _main(self, fautifs):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        from unittest import mock
+        textes = {**self.reels, **fautifs}
+        corpus = [(rel, SimpleNamespace(read_text=lambda encoding=None, t=t: t)) for rel, t in textes.items()]
+        sortie = io.StringIO()
+        with mock.patch.object(cow, '_fichiers_python', lambda: iter(corpus)), \
+                contextlib.redirect_stdout(sortie):
+            code = cow.main()
+        return code, sortie.getvalue()
+
+    def _rougit(self, fautifs, constat):
+        code, sortie = self._main(fautifs)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn(constat, sortie)
+
+    def test_ecriture_non_declaree_fait_sortir_un(self):
+        self._rougit({'apps/crm/ailleurs.py': "odoo_call(cfg, 'res.partner', 'write', {'vals': {}})"},
+                     'res.partner.write')
+
+    def test_allowlist_absente_fait_sortir_un(self):
+        reel = (cow.BACKEND / ODOO_SYNC).read_text(encoding='utf-8')
+        self._rougit({ODOO_SYNC: reel.replace('_WRITE_ALLOWED', '_AUTORISE_RENOMME')}, '_WRITE_ALLOWED')
+
+    def test_nouveau_transport_fait_sortir_un(self):
+        self._rougit({'apps/compta/pont_odoo.py': "url = base + '/json/2/account.move/create'"}, 'pont_odoo.py')
+
+    def test_module_dormant_appele_fait_sortir_un(self):
+        self._rougit({'apps/compta/services_atst46.py': 'from core import odoo_accounting'}, 'plus dormant')
+
+    def test_corpus_reel_seul_sort_zero(self):
+        self.assertEqual(self._main({})[0], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

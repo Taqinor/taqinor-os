@@ -167,6 +167,55 @@ class NotifyDevisOpenedTests(TestCase):
         n = Notification.objects.filter(recipient=self.owner).first()
         self.assertEqual(n.company, self.company)
 
+    def test_lead_oppose_aucun_lien_wa(self):
+        """AMSG8 — nouveau lead, devis ouvert, demande de contact WhatsApp d'un
+        lead « ne plus contacter » : notifications créées, AUCUN wa.me ; témoin
+        inchangé ; un rappel demandé lève d'abord l'opposition (D-ACRM-5 (3))."""
+        from apps.crm.cadence_signaux import notify_client_contact_request
+        oppose = _make_lead(self.company, owner=self.owner, nom='Oppose')
+        Lead.objects.filter(pk=oppose.pk).update(ne_plus_contacter=True)
+        oppose.refresh_from_db()
+        notify_new_lead(oppose)
+        notify_devis_opened('DEV-AMSG8-1', oppose)
+        notify_client_contact_request('DEV-AMSG8-1', oppose, canal='whatsapp')
+        corps = list(Notification.objects.filter(recipient=self.owner).values_list('body', flat=True))
+        self.assertGreaterEqual(len(corps), 3)
+        self.assertFalse([c for c in corps if 'wa.me' in (c or '')], corps)
+
+        temoin = _make_lead(self.company, owner=self.owner, nom='Temoin', telephone='0655555556')
+        Notification.objects.all().delete()
+        notify_devis_opened('DEV-AMSG8-2', temoin)
+        self.assertIn('wa.me', Notification.objects.get(recipient=self.owner).body)
+
+        Notification.objects.all().delete()
+        notify_client_contact_request('DEV-AMSG8-1', oppose, canal='rappel')
+        demande = Notification.objects.get(recipient=self.owner, event_type='client_contact_request')
+        self.assertIn('wa.me', demande.body)
+
+    def test_parrainage_lead_oppose_sans_lien_wa(self):
+        """AMSG8 — la notification de parrainage d'un devis accepté d'un lead
+        opposé garde le lien « mon installation » mais perd « Envoyer en WhatsApp »."""
+        from django.utils import timezone
+
+        from apps.crm.models import Client
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.models import Devis
+        from core.events import devis_accepted
+        CompanyProfile.objects.update_or_create(company=self.company, defaults={'referral_enabled': True})
+        lead = _make_lead(self.company, owner=self.owner, nom='Oppose')
+        Lead.objects.filter(pk=lead.pk).update(ne_plus_contacter=True)
+        client = Client.objects.create(company=self.company, nom='Oppose', email='amsg8@example.invalid')
+        devis = Devis.objects.create(
+            company=self.company, reference=f"DEV-{timezone.now():%Y%m}-AMSG801", client=client,
+            lead=Lead.objects.get(pk=lead.pk), statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+        Notification.objects.all().delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            devis_accepted.send(sender=None, devis=devis, user=None, ancien_statut='envoye')
+        parrainage = [n for n in Notification.objects.all() if 'Lien de parrainage prêt' in n.title]
+        self.assertEqual(len(parrainage), 1)
+        self.assertNotIn('wa.me', parrainage[0].body)
+        self.assertNotIn('Envoyer en WhatsApp', parrainage[0].body)
+
 
 # ── (c) acceptance — _notify_seller_accepted + wa.me ─────────────────────────
 

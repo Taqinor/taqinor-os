@@ -220,6 +220,22 @@ def _motif_facture(facture):
         reste = None
     if reste is not None and reste <= 0:
         return 'Facture soldée : relance sans objet.'
+    # AMSG63 — garde UNIQUE (contestée, AARG22) puis exclusions de relance_reminders (ZFAC8).
+    from apps.facturation.recouvrement import facture_relancable
+    ok, motif = facture_relancable(facture) if reste is not None else (True, '')
+    if not ok:
+        return motif
+    if getattr(facture, 'exclu_relances', False):
+        return 'Facture exclue des relances : relance suspendue.'
+    from apps.ventes.scheduled import casablanca_today
+    jusquau = getattr(facture, 'exclu_relances_jusquau', None)
+    if jusquau and jusquau >= casablanca_today():
+        return 'Promesse de paiement active : relance suspendue.'
+    from apps.ventes.models import ParametrageRelanceClient
+    if ParametrageRelanceClient.objects.filter(
+            company_id=facture.company_id, client_id=facture.client_id,
+            mode=ParametrageRelanceClient.Mode.MANUEL).exists():
+        return 'Client en relance manuelle : relance automatique suspendue.'
     return None
 
 
@@ -720,6 +736,16 @@ def resume_scheduled_step(scheduled, *, user=None):
         return AutomationRun.Status.SKIPPED, message
     steps = _rule_steps(rule)
     contexte = dict(scheduled.context or {})
+    # AMSG75 — comme ``run_approved`` : l'état métier (facture payée), le module
+    # et le déclencheur ont pu changer entre la suspension et la reprise.
+    module = _rule_disabled_module(rule, instance, company)
+    motif = motif_etat_metier(rule.trigger_type, instance) or (
+        f'Module désactivé ({module}) : automatisation ignorée.' if module else None)
+    if not motif and not _trigger_matches(rule, instance, contexte):
+        motif = 'Déclencheur plus satisfait : reprise ignorée.'
+    if motif:
+        _log_run(rule, company, instance, AutomationRun.Status.SKIPPED, motif)
+        return AutomationRun.Status.SKIPPED, motif
     if contexte.pop(CLE_REPORT_FENETRE, False):
         # APAR26 — reprise d'UNE action reportée hors de la fenêtre des
         # messages (``actions.reporter_hors_fenetre``) : seule cette action

@@ -81,6 +81,22 @@ class NoteCalculProposalTests(TestCase):
         self.assertIs(self._options_transmises(
             '?include_note_calcul=0')['include_note_calcul'], False)
 
+    def test_parametres_booleens_lus_par_la_route(self):
+        """ATST29 — chaque lecture booléenne de ``proposal`` est JOUÉE : inverser
+        une comparaison (``in`` ↔ ``not in``) rougit (la garde de clés ci-dessous
+        ne lit que le texte de la vue)."""
+        valeurs = ('1', 'true', '0', 'false', None)
+        attendus = {
+            'show_monthly': (True, True, False, False, True),  # défaut : affiché
+            'include_etude': (True, True, False, False, False),
+            'devis_final': (True, True, False, False, False),
+        }
+        for parametre, sorties in attendus.items():
+            for valeur, attendu in zip(valeurs, sorties):
+                query = '' if valeur is None else f'?{parametre}={valeur}'
+                with self.subTest(parametre=parametre, valeur=valeur):
+                    self.assertIs(self._options_transmises(query)[parametre], attendu)
+
     def test_chaque_option_a_un_point_d_entree(self):
         vue = VUE_PDF.read_text(encoding='utf-8')
         sans_entree = [

@@ -197,6 +197,22 @@ class TestPeriodComparison(ReportsBase):
         self.assertIn('ca_paye', c)
         self.assertIn('nb_leads', c)
 
+    def test_compare_dashboard_ignore_les_leads_archives(self):
+        """ASUP50 — la comparaison du tableau de bord compte comme le rapport
+        commercial : les leads archivés n'entrent dans aucune des deux périodes."""
+        from datetime import date
+        jours = {'courante': date(2026, 3, 5), 'precedente': date(2026, 2, 25)}  # bornes 01-10/03
+        for periode, n, archives in (('courante', 3, 1), ('precedente', 2, 1)):
+            for i in range(n):
+                lead = Lead.objects.create(
+                    company=self.company, nom=f'{periode}-{i}', stage='NEW', is_archived=i < archives)
+                Lead.objects.filter(pk=lead.pk).update(date_creation=jours[periode])
+        bornes = '?compare=prev&from=2026-03-01&to=2026-03-10'
+        c = self.api.get(f'/api/django/reporting/dashboard/{bornes}').data['comparison']
+        self.assertEqual((c['nb_leads']['current'], c['nb_leads']['previous']), (2, 1))
+        rapport = self.api.get(f'/api/django/reporting/reports/sales/{bornes}').data['comparison']
+        self.assertEqual(rapport['total_leads'], c['nb_leads'])
+
 
 class TestPDFExport(ReportsBase):
     """FG95 — ?export=pdf rend un PDF branded sans prix d'achat."""

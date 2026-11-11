@@ -71,6 +71,31 @@ class AttentionCountersTests(TestCase):
         self.assertEqual(item['category'], 'qhse')
         self.assertTrue(item['is_action'])
 
+    def test_badge_et_tout_lu_ignorent_les_archivees(self):
+        """ASUP43 — 12 non-lues ARCHIVÉES par la purge (70 j) + 3 récentes : la
+        cloche compte 3 comme la liste, « tout lu » ne touche que ces 3 ; le
+        lien profond d'une archivée répond toujours."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+        anciennes = [Notification.objects.create(
+            company=self.company, recipient=self.user, event_type=EventType.LEAD_ASSIGNED,
+            title=f'Ancienne {i}', archived=True) for i in range(12)]
+        Notification.objects.filter(pk__in=[n.pk for n in anciennes]).update(
+            created_at=timezone.now() - timedelta(days=70))
+        recentes = [Notification.objects.create(
+            company=self.company, recipient=self.user, event_type=EventType.LEAD_ASSIGNED,
+            title=f'Récente {i}') for i in range(3)]
+        base = '/api/django/notifications/notifications/'
+        self.assertEqual(self.api.get(f'{base}unread-count/').data['unread'], 3)
+        liste = self.api.get(base).data
+        self.assertEqual(len(liste.get('results', liste)), 3)
+        resp = self.api.post(f'{base}read-all/')
+        self.assertCountEqual(resp.data['ids'], [n.id for n in recentes])
+        self.assertEqual(Notification.objects.filter(pk__in=[n.pk for n in anciennes], read=False).count(), 12)
+        self.assertEqual(self.api.get(f'{base}unread-count/').data['unread'], 0)
+        self.assertEqual(self.api.get(f'{base}{anciennes[0].pk}/').status_code, 200)
+
     def test_read_all_returns_exact_ids_for_undo(self):
         n1 = Notification.objects.create(
             company=self.company, recipient=self.user,

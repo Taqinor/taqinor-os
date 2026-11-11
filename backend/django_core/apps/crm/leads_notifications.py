@@ -20,6 +20,12 @@ def _build_lead_wa_reply_url(lead):
     """
     try:
         import urllib.parse
+
+        # AMSG8 — la garde DANS le constructeur (ACVI44, D-ACVI-7) : aucun lien
+        # vers un lead opposé, perdu ou archivé, quel que soit l'appelant.
+        from .cadence_messages import refus_rendu_whatsapp
+        if refus_rendu_whatsapp(lead):
+            return None
         phone_raw = (
             getattr(lead, 'whatsapp', None)
             or getattr(lead, 'telephone', None)

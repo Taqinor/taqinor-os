@@ -78,41 +78,33 @@ class TestSavTicketsCoutGating(SavPivotBase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn('rows', resp.data)
 
-    def test_cout_hidden_without_permission(self):
-        # Une permission d'écriture (pour passer IsResponsableOrAdmin) SANS
-        # prix_achat_voir -> can_view_buy_prices doit rester False.
+    def _api_role_livre(self, nom):
+        """ATST6 — rôle LIVRÉ du registre (jamais un code inventé)."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
         role = Role.objects.create(
-            company=self.company, nom='SansPrixAchat',
-            permissions=['tickets_gerer'])
-        restricted = User.objects.create_user(
-            username='zsav7_restricted', password='x', company=self.company,
-            role=role)
+            company=self.company, nom=nom, permissions=dict(CANONICAL_SYSTEM_ROLES)[nom])
+        user = User.objects.create_user(
+            username=f'zsav7_{nom.lower()}', password='x', company=self.company, role=role)
         api = APIClient()
-        api.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(restricted)}')
-        resp = api.get(
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_cout_hidden_without_permission(self):
+        # Commercial livré : reporting_voir + sav_voir + codes d'écriture, SANS
+        # prix_achat_voir -> le refus vient du contrôle explicite de la vue.
+        resp = self._api_role_livre('Commercial').get(
             '/api/django/reporting/insights/sav-tickets-cout-moyen/')
         self.assertEqual(resp.status_code, 403)
+        self.assertIn('prix_achat_voir', str(resp.data['detail']))
 
     def test_cout_visible_with_permission(self):
-        role = Role.objects.create(
-            company=self.company, nom='AvecPrixAchat',
-            # ASEC11 — module reporting : un code reporting est désormais requis.
-            # APFS4 — jeu ``sav_tickets`` : un code du module sav aussi.
-            permissions=['tickets_gerer', 'prix_achat_voir', 'reporting_voir',
-                         'sav_voir'])
-        allowed = User.objects.create_user(
-            username='zsav7_allowed', password='x', company=self.company,
-            role=role)
         Ticket.objects.create(
             company=self.company, reference='ZP-6', client=self.client_obj,
             technicien_responsable=self.tech, cout=Decimal('300'))
-        api = APIClient()
-        api.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(allowed)}')
-        resp = api.get(
+        resp = self._api_role_livre('Directeur').get(
             '/api/django/reporting/insights/sav-tickets-cout-moyen/')
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Decimal(str(resp.data['rows'][0]['cout_moyen'])), Decimal('300'))
 
 
 class TestSavPivotSchemaEtDates(SavPivotBase):

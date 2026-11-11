@@ -178,6 +178,9 @@ def _erreur_lignes_livraison(lignes, date_livraison):
 
 class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
+    # ASUP19 — aucun DELETE : un BC (confirmé, livré, facturé) ne s'efface pas
+    # (livraisons en cascade, liens facture/chantier perdus) ; il s'ANNULE.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/get_permissions
     # SURCHARGENT la base : le scoping société et la matrice 401/403/404 restent
