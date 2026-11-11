@@ -112,6 +112,34 @@ class LienSuitLaValidite(TestCase):
             lien.expires_at,
             timezone.now() + datetime.timedelta(days=SHARE_LINK_TTL_DAYS))
 
+    def test_f_lien_facture_brouillon_ou_annulee_404(self):
+        """APUB31 — le lien public d'une facture brouillon puis annulée rend le
+        404 neutre des liens expirés ; une facture émise reste servie."""
+        from unittest.mock import patch
+        from apps.ventes.models import Facture
+        from apps.ventes.public.noyau import LINK_EXPIRED_MESSAGE
+        devis = self._devis(J + datetime.timedelta(days=45))
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-APUB31-0001',
+            client=self.client_obj, devis=devis, statut='brouillon',
+            taux_tva=Decimal('20'))
+        lien = ShareLink.for_facture(facture)
+        url = f'/api/django/public/document/{lien.token}/'
+        with patch('apps.ventes.public_views.cle_facture_pdf_a_jour',
+                   return_value='factures/APUB31.pdf'), \
+                patch('apps.ventes.public_views.download_pdf',
+                      return_value=b'%PDF-1.4 apub31'):
+            for statut in ('brouillon', 'annulee'):
+                Facture.objects.filter(pk=facture.pk).update(statut=statut)
+                resp = APIClient().get(url)
+                self.assertEqual(resp.status_code, 404, statut)
+                self.assertEqual(resp.data['detail'], LINK_EXPIRED_MESSAGE, statut)
+                self.assertIn('noindex', resp.get('X-Robots-Tag', ''), statut)
+            Facture.objects.filter(pk=facture.pk).update(statut='emise')
+            resp = APIClient().get(url)
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp['Content-Type'], 'application/pdf')
+
     def test_e_lien_expire_meme_reponse_neutre(self):
         devis = self._devis(J + datetime.timedelta(days=45))
         lien = ShareLink.for_devis(devis)

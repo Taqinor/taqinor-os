@@ -120,3 +120,85 @@ class DashboardViewSetTests(TestCase):
         dash.refresh_from_db()
         self.assertEqual(dash.titre, 'X modifié')
         self.assertEqual(dash.owner, self.user)  # owner inchangé.
+
+    def _role(self, nom, perms):
+        from django.apps import apps as django_apps
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+        return User.objects.create_user(
+            username=f'{nom}-{role.pk}', password='x', company=self.company, role=role)
+
+    def _appel(self, vue, methode, action, user, corps=None, pk=None):
+        req = getattr(self.factory, methode)('/x/', corps or {}, format='json')
+        force_authenticate(req, user=user)
+        kwargs = {'pk': pk} if pk else {}
+        return vue.as_view({methode: action})(req, **kwargs).status_code
+
+    def test_collegue_ne_modifie_ni_supprime_le_tableau_partage(self):
+        """APUB14 — le tableau partagé du Directeur A : 403 au Commercial B
+        (dé-partage, suppression) et au Directeur C ; tableau société (sans
+        propriétaire) : 403 à B, 200 à C ; A garde ses gestes."""
+        from importlib import import_module
+        reg = import_module('apps.roles.permissions_registre')
+        a = self._role('dir-a', reg.DIRECTEUR_PERMISSIONS)
+        b = self._role('com-b', reg.COMMERCIAL_PERMISSIONS)
+        c = self._role('dir-c', reg.DIRECTEUR_PERMISSIONS)
+        dash = Dashboard.objects.create(
+            company=self.company, owner=a, titre='De A', partage=True)
+        societe = Dashboard.objects.create(
+            company=self.company, owner=None, titre='Société', partage=True)
+        appel = self._appel
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', b,
+                               {'partage': False}, dash.pk), 403)
+        self.assertEqual(appel(DashboardViewSet, 'delete', 'destroy', b, pk=dash.pk), 403)
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', c,
+                               {'titre': 'Pris'}, dash.pk), 403)
+        dash.refresh_from_db()
+        self.assertEqual((dash.partage, dash.titre), (True, 'De A'))
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', b,
+                               {'titre': 'S2'}, societe.pk), 403)
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', c,
+                               {'titre': 'S2'}, societe.pk), 200)
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', a,
+                               {'titre': 'De A v2'}, dash.pk), 200)
+        self.assertEqual(appel(DashboardViewSet, 'delete', 'destroy', a, pk=dash.pk), 204)
+
+    def test_viewer_n_ecrit_ni_tableau_ni_requete(self):
+        """APUB13 — les rôles LIVRÉS lecture seule (Viewer, Utilisateur) ne
+        créent, ne modifient ni ne suppriment un tableau ou une requête ; ils
+        exécutent toujours ``run/`` ; le Commercial crée."""
+        from importlib import import_module
+        from core import data_explorer
+        from core.models import SavedQuery
+        from core.views import SavedQueryViewSet
+        reg = import_module('apps.roles.permissions_registre')
+        data_explorer.register_dataset(
+            'apub13_societes', 'Sociétés', ['id', 'nom'],
+            lambda company, user: Company.objects.filter(pk=company.pk))
+        dash = Dashboard.objects.create(
+            company=self.company, owner=self.user, titre='Partagé', partage=True)
+        requete = SavedQuery.objects.create(
+            company=self.company, owner=self.user, titre='Q', dataset='apub13_societes',
+            spec={'select': ['nom']}, partage=True)
+        appel = self._appel
+        for nom, perms in (('viewer', reg.VIEWER_PERMISSIONS),
+                           ('utilisateur', reg.UTILISATEUR_PERMISSIONS)):
+            lecteur = self._role(nom, perms)
+            for vue, obj, corps in (
+                    (DashboardViewSet, dash, {'titre': 'Pirate'}),
+                    (SavedQueryViewSet, requete, {'titre': 'Pirate', 'dataset': 'x'})):
+                with self.subTest(role=nom, vue=vue.__name__):
+                    self.assertEqual(appel(vue, 'post', 'create', lecteur, corps), 403)
+                    self.assertEqual(
+                        appel(vue, 'patch', 'partial_update', lecteur, corps, obj.pk), 403)
+                    self.assertEqual(appel(vue, 'delete', 'destroy', lecteur, pk=obj.pk), 403)
+            self.assertEqual(appel(SavedQueryViewSet, 'post', 'run', lecteur, pk=requete.pk), 200)
+        dash.refresh_from_db()
+        requete.refresh_from_db()
+        self.assertEqual((dash.titre, requete.titre), ('Partagé', 'Q'))
+        self.assertFalse(Dashboard.objects.filter(titre='Pirate').exists())
+        self.assertFalse(SavedQuery.objects.filter(titre='Pirate').exists())
+        vendeur = self._role('commercial', reg.COMMERCIAL_PERMISSIONS)
+        self.assertEqual(appel(DashboardViewSet, 'post', 'create', vendeur, {'titre': 'C'}), 201)
+        self.assertEqual(appel(SavedQueryViewSet, 'post', 'create', vendeur,
+                               {'titre': 'C', 'dataset': 'apub13_societes'}), 201)

@@ -29,6 +29,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from core.throttling import ip_de_requete
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -88,15 +90,6 @@ def _tracer_acces(report, ip):
         logging.getLogger(__name__).warning(
             'AUD803 : trace d\'accès non écrite (rapport %s)', report.pk,
             exc_info=True)
-
-
-def _ip_appelant(request):
-    """IP du demandeur — ``X-Forwarded-For`` d'abord (le service est derrière
-    Caddy/nginx), sinon ``REMOTE_ADDR``. Jamais d'exception."""
-    if request is None:
-        return None
-    transmise = (request.META.get('HTTP_X_FORWARDED_FOR') or '').split(',')[0]
-    return (transmise.strip() or request.META.get('REMOTE_ADDR') or '') or None
 
 
 def lien_rapport(report, base_url=''):
@@ -176,7 +169,8 @@ def rapport_partage_public(request, token):
     renvoie le MÊME 404 générique : jamais d'indice sur l'existence du rapport
     ni sur le motif du refus. Chaque résolution réussie laisse une trace
     (IP + horodatage)."""
-    report = resolve_report_token(token, ip=_ip_appelant(request))
+    # APUB42 — la lecture UNIQUE du dépôt (dernier saut de confiance, QJR416).
+    report = resolve_report_token(token, ip=ip_de_requete(request) or None)
     if report is None:
         return Response({'detail': 'Lien invalide ou expiré.'},
                         status=status.HTTP_404_NOT_FOUND)

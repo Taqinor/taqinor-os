@@ -173,6 +173,30 @@ class SavedQueryViewSetTests(TestCase):
         resp = SavedQueryViewSet.as_view({'post': 'run'})(req, pk=requete.pk)
         self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
 
+    def test_collegue_ne_supprime_pas_la_requete_partagee(self):
+        """APUB14 — la requête partagée d'un Directeur : un Commercial ne la
+        dé-partage ni ne la supprime (403, rien d'écrit)."""
+        from django.apps import apps as django_apps
+        from importlib import import_module
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        reg = import_module('apps.roles.permissions_registre')
+
+        def compte(nom, perms):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(username=nom, password='x', company=self.company, role=role)
+        a = compte('apub14-dir', reg.DIRECTEUR_PERMISSIONS)
+        b = compte('apub14-com', reg.COMMERCIAL_PERMISSIONS)
+        requete = SavedQuery.objects.create(
+            company=self.company, owner=a, titre='De A', dataset='x', partage=True)
+        for methode, action, corps in (('patch', 'partial_update', {'partage': False}),
+                                       ('delete', 'destroy', {})):
+            req = getattr(self.factory, methode)('/saved-queries/', corps, format='json')
+            force_authenticate(req, user=b)
+            resp = SavedQueryViewSet.as_view({methode: action})(req, pk=requete.pk)
+            self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, methode)
+        requete.refresh_from_db()
+        self.assertTrue(requete.partage)
+
     def test_run_adhoc_unknown_dataset_is_404(self):
         req = self.factory.post(
             '/saved-queries/run/', {'dataset': 'nope'}, format='json')

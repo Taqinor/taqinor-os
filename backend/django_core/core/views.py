@@ -41,7 +41,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import (
-    IsAdminOrResponsableTier,
+    EcritureRefuseeLectureSeule, IsAdminOrResponsableTier,
     HasPermissionOrLegacy, IsAdminRole, IsAuthenticatedInterne,
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -711,6 +711,13 @@ def _conformite_xlsx_response(rapport):
     return resp
 
 
+def _exiger_proprietaire(user, instance, quoi):
+    """APUB14 — modifier/supprimer : le propriétaire seul ; objet société (sans
+    propriétaire) : palier administrateur seul (patron ``apps/uxviews``)."""
+    if not ((instance.owner_id == user.id) if instance.owner_id else user.is_admin_role):
+        raise PermissionDenied(f'Vous ne pouvez modifier que vos propres {quoi}.')
+
+
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 
@@ -722,7 +729,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DashboardSerializer
-    permission_classes = [IsAuthenticatedInterne]
+    permission_classes = [IsAuthenticatedInterne, EcritureRefuseeLectureSeule]  # APUB13
     queryset = Dashboard.objects.all()
     pagination_class = None  # petite liste par utilisateur — renvoyée à plat.
 
@@ -741,8 +748,13 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
                         owner=self.request.user)
 
     def perform_update(self, serializer):
+        _exiger_proprietaire(self.request.user, serializer.instance, 'tableaux')  # APUB14
         # Ne jamais réécrire company/owner depuis le corps.
         serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        _exiger_proprietaire(self.request.user, instance, 'tableaux')  # APUB14
+        super().perform_destroy(instance)
 
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
@@ -883,7 +895,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = SavedQuerySerializer
-    permission_classes = [IsAuthenticatedInterne]
+    permission_classes = [IsAuthenticatedInterne, EcritureRefuseeLectureSeule]  # APUB13
     queryset = SavedQuery.objects.all()
     pagination_class = None
     #: ENF11 — ``POST …/run/`` (ad-hoc) et ``POST …/{id}/run/`` ont les mêmes
@@ -902,7 +914,12 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
                         owner=self.request.user)
 
     def perform_update(self, serializer):
+        _exiger_proprietaire(self.request.user, serializer.instance, 'requêtes')  # APUB14
         serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        _exiger_proprietaire(self.request.user, instance, 'requêtes')  # APUB14
+        super().perform_destroy(instance)
 
     @extend_schema(responses={200: _LISTE_OBJETS})
     @action(detail=False, methods=['get'])
@@ -972,7 +989,7 @@ class DataExplorerDatasetsView(APIView):
         if name:
             try:
                 return Response(
-                    data_explorer.describe_dataset(name, request.user))
+                    data_explorer.describe_dataset(name, request.user, exiger_lecture=True))  # APUB55
             except data_explorer.DatasetInconnu as exc:
                 return Response({'detail': str(exc)},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -1967,7 +1984,7 @@ def metrics_view(request):
             auth_result = None
         if auth_result is not None:
             user, _token = auth_result
-            admin_ok = bool(getattr(user, 'is_admin_role', False))
+            admin_ok = bool(user.is_superuser)  # APUB48 — plateforme : superutilisateur seul (_IsSuperUser)
 
     if not (ip_ok or admin_ok):
         return Response({'detail': 'Accès /metrics non autorisé.'}, status=403)

@@ -464,12 +464,13 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
             # `prix_achat`) + objet — pour ne plus approuver « à l'aveugle »
             # depuis l'email seul (jamais de bouton « Approuver » par lien
             # email — pas de mutation non-authentifiée).
-            montant = instance.montant_estime
-            body = (
-                f'La réquisition {instance.reference} attend votre '
-                f'approbation.\nMontant estimé : {montant} DH.\n'
-                f'Objet : {instance.objet}')
+            montant = f'\nMontant estimé : {instance.montant_estime} DH.'
             for approver in _managers(company, EventType.APPROVAL_REQUESTED):
+                # ALEC13 — le montant (prix d'achat estimés) aux seuls
+                # destinataires qui voient les prix d'achat (règle d'ACHT16).
+                voit = getattr(approver, 'can_view_buy_prices', False)
+                body = (f'La réquisition {instance.reference} attend votre approbation.'
+                        f'{montant if voit else ""}\nObjet : {instance.objet}')
                 notify(
                     approver, EventType.APPROVAL_REQUESTED, title, body=body,
                     link=link, company=company, reason=resolve_recipients_reason(

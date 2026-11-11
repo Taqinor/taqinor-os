@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4961, operations: 7759, components: 3650}
+counts: {paths: 4963, operations: 7763, components: 3651}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2765,6 +2765,7 @@ operations:
 - get /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_retrieve
 - patch /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_partial_update
 - put /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_update
+- post /api/django/reporting/saved-reports/{id}/couper-partage/ -> django_reporting_saved_reports_couper_partage_create
 - get /api/django/reporting/search/ -> django_reporting_search_retrieve
 - get /api/django/reporting/search/suggest/ -> django_reporting_search_suggest_retrieve
 - post /api/django/reporting/vitals/ -> django_reporting_vitals_create
@@ -3005,6 +3006,7 @@ operations:
 - post /api/django/statuspage/public/abonner/ -> django_statuspage_public_abonner_create
 - get /api/django/statuspage/public/confirmer/{token}/ -> django_statuspage_public_confirmer_retrieve
 - get /api/django/statuspage/public/desabonner/{token}/ -> django_statuspage_public_desabonner_retrieve
+- post /api/django/statuspage/public/desabonner/{token}/ -> django_statuspage_public_desabonner_create
 - get /api/django/statuspage/public/incidents/ -> django_statuspage_public_incidents_list
 - get /api/django/statuspage/public/incidents/{id}/ -> django_statuspage_public_incidents_retrieve
 - get /api/django/statuspage/public/uptime-90j/ -> django_statuspage_public_uptime_90j_retrieve
@@ -6651,6 +6653,7 @@ operations:
 - get /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_retrieve
 - patch /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_partial_update
 - put /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_update
+- post /api/v1/reporting/saved-reports/{id}/couper-partage/ -> v1_reporting_saved_reports_couper_partage_create
 - get /api/v1/reporting/search/ -> v1_reporting_search_retrieve
 - get /api/v1/reporting/search/suggest/ -> v1_reporting_search_suggest_retrieve
 - post /api/v1/reporting/vitals/ -> v1_reporting_vitals_create
@@ -6891,6 +6894,7 @@ operations:
 - post /api/v1/statuspage/public/abonner/ -> v1_statuspage_public_abonner_create
 - get /api/v1/statuspage/public/confirmer/{token}/ -> v1_statuspage_public_confirmer_retrieve
 - get /api/v1/statuspage/public/desabonner/{token}/ -> v1_statuspage_public_desabonner_retrieve
+- post /api/v1/statuspage/public/desabonner/{token}/ -> v1_statuspage_public_desabonner_create
 - get /api/v1/statuspage/public/incidents/ -> v1_statuspage_public_incidents_list
 - get /api/v1/statuspage/public/incidents/{id}/ -> v1_statuspage_public_incidents_retrieve
 - get /api/v1/statuspage/public/uptime-90j/ -> v1_statuspage_public_uptime_90j_retrieve
@@ -12547,6 +12551,7 @@ components:
 - SavedQueryRequest
 - SavedQueryRows
 - SavedReport
+- SavedReportPartageCoupe
 - SavedReportRequest
 - SavedView
 - SavedViewImportRequeteRequest

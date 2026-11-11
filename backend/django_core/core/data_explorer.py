@@ -228,6 +228,21 @@ def exiger_lecture_dataset(name, user):
         raise DatasetNonAutorise()
 
 
+def exiger_export_dataset(name, user):
+    """ADRG76 — planifier/exporter un extrait : la lecture du jeu ET un code
+    ``*_export`` de son module (module sans code d'export, superuser, palier
+    administrateur, compte hérité ou ``user=None`` : la lecture suffit)."""
+    exiger_lecture_dataset(name, user)
+    if user is None or getattr(user, 'is_admin_role', True) or not getattr(user, 'role_id', None):
+        return
+    from authentication.permissions import codes_du_module, module_du_chemin
+    dataset = get_dataset(name)
+    module = dataset.get('module') or module_du_chemin(dataset.get('chemin'))
+    exports = {c for c in codes_du_module(module) if c.endswith('_export')} if module else set()
+    if exports and not exports & set(user.role.permissions or []):
+        raise DatasetNonAutorise()
+
+
 #: APFS4 — FK utilisateur de TRAÇAGE : jamais un critère de portée « soi / équipe ».
 _FK_TRACE = frozenset({'updated_by', 'archived_by', 'deleted_by'})
 
@@ -283,6 +298,10 @@ def list_datasets(user=None):
     """
     out = []
     for name, d in _DATASETS.items():
+        try:  # APUB55 — avec ``user``, le catalogue ne propose que les jeux lisibles
+            exiger_lecture_dataset(name, user)
+        except DatasetNonAutorise:
+            continue
         champs = _champs_decrits(d, user)
         noms = [c['name'] for c in champs]
         out.append({
@@ -295,11 +314,14 @@ def list_datasets(user=None):
     return out
 
 
-def describe_dataset(name, user=None):
+def describe_dataset(name, user=None, exiger_lecture=False):
     """NTDATA5 — schéma DÉTAILLÉ d'un seul dataset (endpoint de détail).
 
-    Lève ``DatasetInconnu`` si le dataset n'existe pas.
+    Lève ``DatasetInconnu`` si le dataset n'existe pas ; APUB55 —
+    ``exiger_lecture`` (endpoint de détail) : ``DatasetNonAutorise`` (403).
     """
+    if exiger_lecture:
+        exiger_lecture_dataset(name, user)
     dataset = get_dataset(name)
     champs = _champs_decrits(dataset, user)
     return {

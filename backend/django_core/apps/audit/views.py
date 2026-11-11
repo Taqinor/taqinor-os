@@ -29,7 +29,7 @@ from core.champs_stricts import entier_ou_400
 
 from .models import AuditLog
 from .selectors import reconstruct_as_of
-from .serializers import AuditLogSerializer
+from .serializers import AuditLogSerializer, ligne_entierement_cachee
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_view
 from rest_framework import serializers as drf_serializers
@@ -452,7 +452,9 @@ def object_history(request, content_type, object_id):
           .filter(content_type=ct, object_id=str(object_id))
           .order_by('-timestamp'))
     limit = _limite(request.query_params)
-    data = AuditLogSerializer(qs[:limit], many=True).data
+    # ALEC14 — marge / coût d'achat retirés pour un lecteur sans le droit.
+    entrees = [e for e in qs[:limit] if not ligne_entierement_cachee(e, user)]
+    data = AuditLogSerializer(entrees, many=True, context={'request': request}).data
     return Response({'count': len(data), 'results': data})
 
 

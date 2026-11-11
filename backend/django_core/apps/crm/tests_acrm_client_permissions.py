@@ -24,7 +24,8 @@ from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
-    ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+    ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+    RESPONSABLE_PERMISSIONS,
     COMMERCIAL_TERRAIN_PERMISSIONS, TECHNICIEN_PERMISSIONS,
     VIEWER_PERMISSIONS)
 
@@ -161,3 +162,67 @@ class ClientPermissionsTests(TestCase):
         resp = api.post(f'{BASE}{self.client_c.pk}/relancer-dormance/')
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(self._nb_activites(), avant + 1)
+
+    def _objets_satellites(self, owner):
+        """ADRG4 — un objet par route DELETE satellite non parquée (12)."""
+        import datetime
+        import secrets
+        from apps.crm import models_clients as m
+        jour = datetime.date(2026, 11, 11)
+        lead = Lead.objects.create(company=self.company, nom='ADRG4', owner=owner)
+        client = Client.objects.create(company=self.company, nom='ADRG4 Client')
+        plan = m.PlanCompte.objects.create(company=self.company, client=client)
+        playbook = m.Playbook.objects.create(company=self.company, nom='PB ADRG4')
+        stage = m.PlaybookEtape._meta.get_field('stage').choices[0][0]  # règle #2
+        etape = m.PlaybookEtape.objects.create(playbook=playbook, stage=stage)
+        return {
+            'parrainages': m.Parrainage.objects.create(
+                company=self.company, parrain=client),
+            'concurrents-perte': m.ConcurrentPerte.objects.create(
+                company=self.company, lead=lead, concurrent_nom='X'),
+            'plans-activite': m.PlanActivite.objects.create(
+                company=self.company, nom='Plan ADRG4'),
+            'forecast-entries': m.ForecastEntry.objects.create(
+                company=self.company, lead=lead),
+            'plans-compte': plan,
+            'revues-compte': m.RevueCompte.objects.create(plan=plan, date_revue=jour),
+            'playbook-taches': m.PlaybookTache.objects.create(etape=etape, libelle='T'),
+            'playbook-etapes': etape,
+            'playbooks': playbook,
+            'defis': m.Defi.objects.create(
+                company=self.company, nom='Défi', periode_debut=jour, periode_fin=jour,
+                metrique=m.ObjectifCommercial.Metric.NB_LEADS),
+            'partenaires': m.Partenaire.objects.create(
+                company=self.company, nom='Partenaire', token_acces=secrets.token_hex(16)),
+            'appareils-equipe': m.AppareilEquipe.objects.create(
+                company=self.company, appareil_id='adrg4-appareil'),
+        }
+
+    def test_suppressions_satellites_exigent_crm_supprimer(self):
+        """ADRG4 — Commercial et Responsable LIVRÉS : 403 ``crm_supprimer`` et
+        objet présent sur les 12 routes ; Commercial responsable : passe la
+        garde (204 sur les objets non bornés par la portée lead/client)."""
+        for nom, perms in (('Responsable', RESPONSABLE_PERMISSIONS),
+                           ('Commercial responsable', COMMERCIAL_RESP_PERMISSIONS)):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms), est_systeme=True)
+            self.users[nom] = User.objects.create_user(
+                username=f'adrg4-{nom.replace(" ", "-").lower()}', password='x',
+                company=self.company, role=role)
+        objets = self._objets_satellites(self.users['Commercial responsable'])
+        for nom in ('Commercial', 'Responsable'):
+            api = self._api(nom)
+            for route, obj in objets.items():
+                resp = api.delete(f'/api/django/crm/{route}/{obj.pk}/')
+                self.assertEqual(resp.status_code, 403, f'{nom} {route}')
+                self.assertIn('crm_supprimer', str(resp.data), f'{nom} {route}')
+                self.assertTrue(type(obj).objects.filter(pk=obj.pk).exists(), route)
+        api = self._api('Commercial responsable')
+        portee = {'parrainages', 'concurrents-perte', 'forecast-entries',
+                  'plans-compte', 'revues-compte'}  # bornés par lead/client
+        for route, obj in objets.items():
+            code = api.delete(f'/api/django/crm/{route}/{obj.pk}/').status_code
+            if route in portee:
+                self.assertNotEqual(code, 403, route)
+            else:
+                self.assertEqual(code, 204, route)

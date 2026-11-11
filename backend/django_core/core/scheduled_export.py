@@ -601,7 +601,7 @@ def _cause_suspension(export):
     if not createur.is_active:
         return "Créateur de l'extrait désactivé : extrait suspendu."
     try:
-        data_explorer.exiger_lecture_dataset(export.dataset, createur)
+        data_explorer.exiger_export_dataset(export.dataset, createur)  # ADRG76
     except data_explorer.DatasetNonAutorise:
         return "Le créateur de l'extrait n'a plus le droit du module du jeu : extrait suspendu."
     return ''

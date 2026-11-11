@@ -116,13 +116,44 @@ class MetricsEndpointAccessTests(TestCase):
         resp = metrics_view(req)
         self.assertEqual(resp.status_code, 403)
 
-    def test_admin_cookie_jwt_allowed(self):
+    def _get(self, user, **extra):
         from rest_framework_simplejwt.tokens import AccessToken
-        token = str(AccessToken.for_user(self.admin))
-        req = self.factory.get('/metrics/')
-        req.COOKIES['access_token'] = token
-        resp = metrics_view(req)
-        self.assertEqual(resp.status_code, 200)
+        req = self.factory.get('/metrics/', **extra)
+        if user is not None:
+            req.COOKIES['access_token'] = str(AccessToken.for_user(user))
+        return metrics_view(req)
+
+    def test_admin_cookie_jwt_allowed(self):
+        # APUB48 — /metrics expose TOUTE la plateforme : superutilisateur seul ;
+        # l'administrateur d'une société (role_legacy='admin') reçoit 403.
+        su = User.objects.create_superuser(
+            username='yhard6_su', password='x', company=self.company)
+        self.assertEqual(self._get(su).status_code, 200)
+        self.assertEqual(self._get(self.admin).status_code, 403)
+
+    def test_directeur_de_societe_403(self):
+        """APUB48 — le Directeur LIVRÉ d'une société B ne lit pas les compteurs
+        de la société A ; superutilisateur et IP autorisée gardent 200."""
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        DIRECTEUR_PERMISSIONS = import_module(
+            'apps.roles.permissions_registre').DIRECTEUR_PERMISSIONS
+        autre = Company.objects.create(nom='APUB48 B')
+        metrics.record_http_request(self.company.pk, 200, 10)
+        role = Role.objects.create(
+            company=autre, nom='Directeur', permissions=DIRECTEUR_PERMISSIONS)
+        directeur = User.objects.create_user(
+            username='apub48_dir', password='x', company=autre, role=role)
+        resp = self._get(directeur)
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.data['detail'], 'Accès /metrics non autorisé.')
+        su = User.objects.create_superuser(
+            username='apub48_su', password='x', company=autre)
+        self.assertEqual(self._get(su).status_code, 200)
+        with self.settings(METRICS_ALLOWED_IPS=['203.0.113.9']):
+            self.assertEqual(
+                self._get(None, REMOTE_ADDR='203.0.113.9').status_code, 200)
 
     def test_non_admin_cookie_jwt_forbidden(self):
         from rest_framework_simplejwt.tokens import AccessToken

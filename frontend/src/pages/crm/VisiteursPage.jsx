@@ -7,7 +7,7 @@ import {
   Card, CardContent, Badge, Spinner, Button, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, toast,
 } from '../../ui'
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { frenchError } from '../../lib/frenchError'
 import { formatDateTime } from '../../lib/format'
 import { TableauNu } from '../../ui/TableauDefilant'
@@ -75,6 +75,8 @@ const MAX_LEADS_AFFICHES = 5
 
 export default function VisiteursPage() {
   const isResponsableOuAdmin = useIsAdminOrResponsable()
+  // ADRG4 — « Retirer » un appareil = DELETE, qui exige crm_supprimer.
+  const peutRetirer = useHasPermission('crm_supprimer')
   const [searchParams, setSearchParams] = useSearchParams()
   const appareilFiltre = searchParams.get('appareil') || ''
   // VIS-LEAD — `?lead=<id>` bascule tout l'écran en mode « historique des
@@ -316,7 +318,7 @@ export default function VisiteursPage() {
                       {isResponsableOuAdmin && (
                         <td>
                           {v.appareil_id && (
-                            estEquipe ? (
+                            estEquipe ? (peutRetirer && (
                               <Button
                                 variant="outline" size="sm"
                                 disabled={busyAppareil === v.appareil_id}
@@ -324,7 +326,7 @@ export default function VisiteursPage() {
                               >
                                 Retirer
                               </Button>
-                            ) : (
+                            )) : (
                               <Button
                                 variant="outline" size="sm"
                                 onClick={() => ouvrirDialogueEquipe(v.appareil_id)}
@@ -463,7 +465,7 @@ export default function VisiteursPage() {
                       <td>{formatDateTime(a.derniere)}</td>
                       <td>
                         {isResponsableOuAdmin && (
-                          a.equipe ? (
+                          a.equipe ? (peutRetirer && (
                             <Button
                               variant="outline" size="sm"
                               disabled={busyAppareil === a.appareil_id}
@@ -471,7 +473,7 @@ export default function VisiteursPage() {
                             >
                               Retirer de l’équipe
                             </Button>
-                          ) : (
+                          )) : (
                             <Button
                               variant="outline" size="sm"
                               onClick={() => ouvrirDialogueEquipe(a.appareil_id)}
@@ -556,13 +558,15 @@ export default function VisiteursPage() {
                     <td title={e.appareil_id}>{raccourcirAppareil(e.appareil_id)}</td>
                     <td>{formatDateTime(e.created_at)}</td>
                     <td>
-                      <Button
-                        variant="ghost" size="sm"
-                        disabled={busyAppareil === e.appareil_id}
-                        onClick={() => retirerDeLEquipe(e.appareil_id)}
-                      >
-                        Retirer
-                      </Button>
+                      {peutRetirer && (
+                        <Button
+                          variant="ghost" size="sm"
+                          disabled={busyAppareil === e.appareil_id}
+                          onClick={() => retirerDeLEquipe(e.appareil_id)}
+                        >
+                          Retirer
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

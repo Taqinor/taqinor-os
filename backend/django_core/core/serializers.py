@@ -735,10 +735,10 @@ class ScheduledExportSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
         ]
 
     def validate_dataset(self, value):
-        """APFS103 — le lecteur doit avoir le droit du module du jeu (403 sinon)."""
+        """APFS103/ADRG76 — le créateur doit avoir le droit d'EXPORT du module du jeu (403 sinon)."""
         from core import data_explorer
         try:
-            data_explorer.exiger_lecture_dataset(value, getattr(self.context.get('request'), 'user', None))
+            data_explorer.exiger_export_dataset(value, getattr(self.context.get('request'), 'user', None))
         except data_explorer.DatasetInconnu:
             pass  # jeu inconnu : comportement d'avant (l'exécution le signale, 409)
         return value

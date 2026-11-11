@@ -48,12 +48,12 @@ import stockApi from '../../api/stockApi'
 import DemandesAchatList from './DemandesAchatList.jsx'
 import { erreurLigne } from './demandeAchatLigne'
 
-function makeWrapper({ role = 'responsable', permissions = [], initialEntries = ['/chantiers/demandes-achat'] } = {}) {
+function makeWrapper({ role = 'responsable', permissions = [], roleNom = 'Directeur', initialEntries = ['/chantiers/demandes-achat'] } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role, role_nom: 'Directeur', permissions,
+        user: { id: 1 }, role, role_nom: roleNom, permissions,
         isAuthenticated: true, loading: false,
       },
     },
@@ -191,6 +191,26 @@ describe('DemandesAchatList (FG310)', () => {
     await screen.findAllByText('Fixations chantier Anfa')
     expect(screen.queryByRole('button', { name: /Approuver/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Refuser/i })).not.toBeInTheDocument()
+  })
+
+  it('sans approuver_demande_achat : pas de bouton Approuver (ADRG86)', async () => {
+    // Technicien responsable : palier responsable, codes fins SANS le droit d'approuver.
+    render(<DemandesAchatList />, { wrapper: makeWrapper({
+      role: 'responsable', roleNom: 'Technicien responsable', permissions: ['installation_voir', 'stock_voir'],
+    }) })
+    fireEvent.click((await screen.findAllByText('DA-202607-0007'))[0])
+    await screen.findAllByText('Fixations chantier Anfa')
+    expect(screen.queryByRole('button', { name: /Approuver/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Refuser/i })).not.toBeInTheDocument()
+  })
+
+  it('avec approuver_demande_achat : Approuver et Refuser présents (ADRG86)', async () => {
+    render(<DemandesAchatList />, { wrapper: makeWrapper({
+      role: 'admin', permissions: ['approuver_demande_achat', 'installation_voir'],
+    }) })
+    fireEvent.click((await screen.findAllByText('DA-202607-0007'))[0])
+    expect(await screen.findByRole('button', { name: /Approuver/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Refuser/i })).toBeInTheDocument()
   })
 
   // VX227 — pré-remplissage depuis une intervention : arriver sur
