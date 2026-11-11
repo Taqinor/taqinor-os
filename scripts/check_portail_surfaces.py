@@ -5,12 +5,15 @@ Chaque route SELF-SERVICE de ``apps/portail/urls.py`` (``mes-*``, ``mon-*``,
 ``ma-*``, ``client/*``, ``ressources`` et — APUB45 — ``fournisseur/*``,
 ``partenaire/*``, ``fournisseurs/*``) et TOUTE route de ``apps/portail/public_urls.py``
 (appelant ``/public/portail/<route>`` ; un paramètre ``<...>`` de route et un
-``${...}`` d'URL JS se lisent tous deux ``<>``) doit avoir (1) un appelant dans
+``${...}`` d'URL JS se lisent tous deux ``<>`` ; son écran peut vivre partout
+dans ``frontend/src`` — connexion, acceptation d'invitation) doit avoir (1) un appelant dans
 ``frontend/src/api/portailApi.js`` — l'URL ``/portail/<route>`` y figure — et
 (2) cet appelant (sa propriété ``portailApi.<groupe>.<fonction>``) doit être
 UTILISÉ par au moins un fichier non-test de ``frontend/src/features/portail/``.
 Sinon la route est une surface sans écran (au rapport d'audit : 264 « sans écran
-par oubli » dont celles du portail).
+par oubli » dont celles du portail). Une ``path(...)`` précédée du marqueur
+d'intention ``# headless: <raison>`` (convention de ``rapport_backend_sombre``)
+est volontairement sans écran : ignorée.
 
 ``check_ecrans_atteignables`` voit « écran ↔ menu », pas « route ↔ appelant API » ;
 ``rapport_backend_sombre`` est NON bloquant. Ce script est la porte BLOQUANTE du
@@ -41,13 +44,14 @@ ALLOWLIST_PATH = ROOT / "scripts" / "portail_surfaces_allow.txt"
 _REGISTER_RE = re.compile(r"""register\(\s*r?['"]([^'"]+)['"]""")
 _PATH_RE = re.compile(r"""\bpath\(\s*['"]([^'"]+)['"]""")
 _SELF_SERVICE_RE = re.compile(r"^(?:mes-|mon-|ma-|client/|ressources$|fournisseur/|partenaire/|fournisseurs/)")
+_HEADLESS_RE = re.compile(r"""#\s*headless\s*:\s*\S.{2,}\n\s*path\(\s*['"]([^'"]+)['"]""")
 
 
 def routes_self_service(texte: str, toutes: bool = False) -> list:
     """Routes self-service déclarées (``router.register`` + ``path``), sans
     barre finale, dans l'ordre du fichier, sans doublon ; ``toutes`` (routes
     publiques) : sans filtre de motif. Paramètre ``<...>`` → ``<>``."""
-    vues, out = set(), []
+    vues, out = {m.group(1).strip("/") for m in _HEADLESS_RE.finditer(texte)}, []
     for rx in (_REGISTER_RE, _PATH_RE):
         for m in rx.finditer(texte):
             route = re.sub(r"<[^>]*>", "<>", m.group(1)).strip("/")
@@ -93,10 +97,11 @@ def proprietes_par_route(js: str) -> dict:
     return {r: sorted(p) for r, p in out.items()}
 
 
-def _texte_features() -> str:
+def _texte_features(racine=None) -> str:
+    racine = FEATURES_DIR if racine is None else racine
     morceaux = []
-    if FEATURES_DIR.is_dir():
-        for chemin in sorted(FEATURES_DIR.rglob("*")):
+    if racine.is_dir():
+        for chemin in sorted(racine.rglob("*")):
             if chemin.suffix not in (".js", ".jsx", ".mjs"):
                 continue
             if ".test." in chemin.name or chemin.name.endswith(".test.mjs"):
@@ -119,18 +124,19 @@ def surfaces_sans_ecran() -> list:
     if not URLS_PATH.is_file():
         return []
     routes = routes_self_service(URLS_PATH.read_text(encoding="utf-8"))
+    publiques = []
     if PUBLIC_URLS_PATH.is_file():  # APUB45 — routes publiques du portail, toutes
-        routes += [r for r in routes_self_service(PUBLIC_URLS_PATH.read_text(encoding="utf-8"), True)
-                   if r not in routes]
+        publiques = [r for r in routes_self_service(PUBLIC_URLS_PATH.read_text(encoding="utf-8"), True)
+                     if r not in routes]
     api_js = API_PATH.read_text(encoding="utf-8") if API_PATH.is_file() else ""
     props = proprietes_par_route(api_js)
-    texte = _texte_features()
+    texte, texte_front = _texte_features(), _texte_features(API_PATH.parent.parent)
     out = []
-    for route in routes:
+    for route in routes + publiques:
         chemins = props.get(route, [])
         if not chemins:
             out.append((route, "aucun appelant dans portailApi.js"))
-        elif not any(propriete_utilisee(c, texte) for c in chemins):
+        elif not any(propriete_utilisee(c, texte_front if route in publiques else texte) for c in chemins):
             out.append((route, "appelant portailApi.js jamais utilisé par un écran "
                                f"({', '.join(chemins)})"))
     return out

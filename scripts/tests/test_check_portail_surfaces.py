@@ -164,6 +164,32 @@ class TestSurfaces(Depot):
         code, out = self._main()
         self.assertEqual(code, 0, out)
 
+    def test_headless_et_ecran_public_hors_features(self):
+        """APUB45 — une ``path`` marquée ``# headless: <raison>`` est ignorée ;
+        l'écran d'une route PUBLIQUE peut vivre hors ``features/portail``
+        (page de connexion) ; une route self-service, non."""
+        urls = URLS.replace(
+            "    path('', include(router.urls)),",
+            "    # headless: auto-inscription publique, aucun ecran ERP\n"
+            "    path('fournisseurs/candidature/', candidature, name='k'),\n"
+            "    path('', include(router.urls)),")
+        api = API.replace(
+            "  fournisseur: {",
+            "  themePublic: () => api.get('/public/portail/theme/'),\n"
+            "  fournisseur: {")
+        self._monter(urls=urls, api=api,
+                     public_urls="path('theme/', theme, name='t'),\n")
+        login = guard.API_PATH.parent.parent / "pages" / "Login.jsx"
+        login.parent.mkdir(parents=True)
+        login.write_text("portailApi.themePublic()\n", encoding="utf-8")
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("fournisseurs/candidature", out)
+        login.unlink()
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("theme", out)
+
     def test_ligne_devenue_inutile_fait_echouer(self):
         self._monter(allow="mes-demandes-sav\n")
         code, out = self._main()
