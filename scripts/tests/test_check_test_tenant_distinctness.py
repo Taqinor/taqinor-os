@@ -209,7 +209,23 @@ class T:
 """), [])
 
 
+#: ATST51 (C-ATST-026) — sorties de ``django.utils.text.slugify`` (Django
+#: 5.2.18, ``allow_unicode=False``) figées : jouée à chaque fusion, sans Django.
+TABLE_DJANGO = (
+    ("Test PDF Co", "test-pdf-co"), ("Société A", "societe-a"), ("A  B", "a-b"),
+    ("Chat Co", "chat-co"), ("Co", "co"), ("WIR165 Co", "wir165-co"),
+    ("Éé-Àà", "ee-aa"), ("Co_", "co"), ("_x_", "x"), ("-a-", "a"),
+    ("a__b", "a__b"), ("ÉCOLE Ç", "ecole-c"), ("a\tb", "a-b"),
+    ("L'Atelier", "latelier"),
+)
+
+
 class Slugify(unittest.TestCase):
+    def test_table_django_figee(self):
+        for valeur, attendu in TABLE_DJANGO:
+            with self.subTest(valeur=valeur):
+                self.assertEqual(guard.slugify(valeur), attendu)
+
     def test_matches_django_for_the_cases_we_resolve(self):
         self.assertEqual(guard.slugify("Test PDF Co"), "test-pdf-co")
         # Django transliterates accents before slugifying.
@@ -225,6 +241,8 @@ class Slugify(unittest.TestCase):
                       "Co", "WIR165 Co", "Éé-Àà"):
             self.assertEqual(guard.slugify(value), django_slugify(value),
                              f"divergence on {value!r}")
+        for valeur, attendu in TABLE_DJANGO:  # ATST51 — la table elle-même
+            self.assertEqual(django_slugify(valeur), attendu, f"table : {valeur!r}")
 
 
 class RepositoryIsClean(unittest.TestCase):

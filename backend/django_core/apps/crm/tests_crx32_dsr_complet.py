@@ -146,6 +146,142 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
         self.assertIsNone(site.gps_lat)
         self.assertIsNone(site.ombrage_notes)
 
+    def _api_admin(self, username):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        admin = get_user_model().objects.create_user(
+            username=username, password='x', role_legacy='admin',
+            company=self.company)
+        api = APIClient()
+        api.force_authenticate(admin)
+        return api
+
+    def test_l_action_anonymize_scrube_aussi_les_leads_lies(self):
+        """AMSG4 (C-AMSG-004) — « Anonymiser » efface aussi les leads du
+        client (identité, cadence) ; le WhatsApp du devis n'a plus de numéro ;
+        le lead d'un autre client est intact."""
+        from django.utils import timezone
+
+        from apps.crm.models import RelanceEtape
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.whatsapp import devis_recipient_phone
+        lead = Lead.objects.create(
+            company=self.company, nom='Benali', client=self.client_obj,
+            email='lead.amsg4@example.ma', telephone='+212600000044',
+            whatsapp='+212600000045')
+        touche = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.APPEL, libelle='Appeler',
+            due_date=timezone.localdate())
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AMSG4-0001',
+            client=self.client_obj, lead=lead, statut='envoye')
+        autre_client = Client.objects.create(company=self.company, nom='Autre')
+        autre = Lead.objects.create(
+            company=self.company, nom='Témoin', client=autre_client,
+            telephone='+212600000046')
+        api = self._api_admin('amsg4-admin')
+        url = f'/api/django/crm/clients/{self.client_obj.id}/anonymize/'
+        r = api.post(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.nom, 'Anonymisé')
+        for champ in ('email', 'telephone', 'whatsapp'):
+            with self.subTest(champ=champ):
+                self.assertIsNone(getattr(lead, champ))
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(devis_recipient_phone(
+            Devis.objects.select_related('client', 'lead').get(pk=devis.pk)), '')
+        autre.refresh_from_db()
+        self.assertEqual(autre.nom, 'Témoin')
+        self.assertTrue(autre.telephone)
+        self.assertEqual(api.post(url).status_code, 409)
+
+    def test_l_acheteur_des_factures_emises_survit_a_l_anonymisation(self):
+        """ASUP2 (C-ASUP-001) — « Anonymiser (RGPD) » (Directeur) puis un
+        effacement DSR figent d'abord l'acheteur des factures non brouillon ;
+        le brouillon reste sans instantané ; le client est anonymisé."""
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.ventes.domain.instantanes_facture import (
+            acheteur_de_la_facture)
+        from apps.ventes.models import Facture
+        call_command('init_roles', verbosity=0)
+        directeur = get_user_model().objects.create_user(
+            username='asup2-directeur', password='x', company=self.company,
+            role=Role.objects.get(company=self.company, nom='Directeur'))
+        api = APIClient()
+        api.force_authenticate(directeur)
+        identite = ('Benali', '001234567000089', '12345678', 'RC-98765',
+                    '12 rue des Palmiers, Casablanca')
+        second = Client.objects.create(
+            company=self.company, nom='Benali', email='second.asup2@example.ma',
+            ice=identite[1], if_fiscal=identite[2], rc=identite[3],
+            adresse=identite[4])
+        for client, geste in ((self.client_obj, 'action'), (second, 'dsr')):
+            with self.subTest(geste=geste):
+                emise, brouillon = (Facture.objects.create(
+                    company=self.company, reference=f'FAC-ASUP2-{geste}-{s}',
+                    client=client, statut=s, taux_tva=Decimal('20'))
+                    for s in ('emise', 'brouillon'))
+                if geste == 'action':
+                    r = api.post(f'/api/django/crm/clients/{client.id}/anonymize/')
+                    self.assertEqual(r.status_code, 200, r.data)
+                else:
+                    erase_crm(self.company, 'second.asup2@example.ma')
+                client.refresh_from_db()
+                self.assertTrue(client.is_anonymized)
+                self.assertIsNone(client.ice)
+                emise.refresh_from_db()
+                self.assertEqual(emise.identite_acheteur['ice'], identite[1])
+                a = acheteur_de_la_facture(emise)
+                self.assertEqual((a.nom, a.ice, a.if_fiscal, a.rc, a.adresse),
+                                 identite)
+                brouillon.refresh_from_db()
+                self.assertIsNone(brouillon.identite_acheteur)
+
+    def test_un_lead_en_corbeille_est_efface_aussi(self):
+        """ASUP8 (C-ASUP-005) — un lead mis à la corbeille est trouvé par
+        l'effacement, la rétention et le sélecteur des fournisseurs ; il reste
+        en corbeille ; l'autre société n'est jamais touchée."""
+        import datetime
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from apps.crm.dsr_provider import prospects_hors_duree
+        from apps.crm.leads_selectors import lead_ids_par_identifiant
+        tel = '+212600000088'
+        supprime = Lead.objects.create(
+            company=self.company, nom='Corbeille', email='corbeille@example.ma',
+            telephone=tel, gps_lat=Decimal('33.5'), gps_lng=Decimal('-7.5'),
+            note='Rappeler après 18h')
+        supprime.soft_delete()
+        vieux = Lead.objects.create(
+            company=self.company, nom='Vieux prospect', telephone='+212600000089')
+        vieux.soft_delete()
+        Lead.all_objects.filter(pk=vieux.pk).update(
+            date_creation=timezone.now() - datetime.timedelta(days=4 * 365))
+        autre = Company.objects.create(nom='Autre ASUP8', slug='autre-asup8')
+        vivant = Lead.objects.create(company=autre, nom='Vivant', telephone=tel)
+        self.assertEqual(lead_ids_par_identifiant(self.company, tel), [supprime.pk])
+        self.assertIn(vieux.pk, [le.pk for le in prospects_hors_duree()])
+        erase_crm(self.company, tel)
+        supprime = Lead.all_objects.get(pk=supprime.pk)
+        self.assertEqual(supprime.nom, 'Anonymisé')
+        for champ in ('email', 'telephone', 'gps_lat', 'gps_lng', 'note'):
+            with self.subTest(champ=champ):
+                self.assertIsNone(getattr(supprime, champ))
+        self.assertTrue(supprime.is_deleted)
+        vivant.refresh_from_db()
+        self.assertEqual(vivant.nom, 'Vivant')
+
     def test_le_tiers_miroir_est_vide(self):
         """ASOC100 (C-ASOC-060) — l'effacement traverse le Tiers miroir :
         identité vide, rôle client gardé, recherche par téléphone → rien."""

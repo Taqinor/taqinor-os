@@ -524,7 +524,7 @@ def lead_ids_par_identifiant(company, identifiant):
 
     email = normalize_email(identifiant)
     phone = normalize_phone(identifiant)
-    qs = Lead.objects.filter(company=company)
+    qs = Lead.all_objects.filter(company=company)  # ASUP8 — corbeille comprise
 
     ids = set()
     if email:

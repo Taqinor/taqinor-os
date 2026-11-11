@@ -23,7 +23,8 @@ from authentication.models import Company
 from apps.ged import services
 from apps.ged.models import (
     CHAMP_TYPE_CASE, CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_TEXTE, Cabinet,
-    ChampSignature, Document, DocumentVersion, Folder, SIGNATURE_SIGNE,
+    ChampSignature, Document, DocumentVersion, Folder, SIGNATURE_EN_ATTENTE,
+    SIGNATURE_SIGNE,
 )
 
 User = get_user_model()
@@ -191,14 +192,23 @@ class PublicApiTests(XGed3Base):
         self.assertEqual(resp.data['champs'], [])
 
     def test_post_signer_missing_required_champ_400(self):
-        ChampSignature.objects.create(
+        champ = ChampSignature.objects.create(
             company=self.co_a, demande=self.demande,
             type_champ=CHAMP_TYPE_TEXTE, page=0, requis=True)
+        url = f'/api/django/ged/signature/{self.demande.token}/'
         resp = self.client.post(
-            f'/api/django/ged/signature/{self.demande.token}/',
-            {'action': 'signer', 'consentement': True,
-             'signature_texte': 'Jean'}, content_type='application/json')
+            url, {'action': 'signer', 'consentement': True,
+                  'signature_texte': 'Jean'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
+        # ATST9 (C-ATST-018) — le refus n'a rien écrit : demande en attente.
+        self.demande.refresh_from_db()
+        self.assertEqual(self.demande.statut, SIGNATURE_EN_ATTENTE)
+        self.assertEqual(self.demande.signature_texte, '')
+        self.assertIsNone(self.demande.date_signature)
+        self.assertFalse(self.demande.consentement_explicite)
+        champ.refresh_from_db()
+        self.assertEqual(champ.valeur, '')
+        self.assertEqual(self.client.get(url).status_code, 200)
 
     def test_post_signer_with_valeurs_champs_succeeds(self):
         champ = ChampSignature.objects.create(

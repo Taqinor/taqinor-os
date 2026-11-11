@@ -105,6 +105,46 @@ class DecisionDeReportTests(TestCase):
             self._report(NUIT, event_type=EventType.INCIDENT_CRITICAL))
 
     @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
+    def test_skip_email_reporte_sans_email_au_reveil(self):
+        """AMSG78 (C-AMSG-039) — ticket SAV clos à 22:30 : cloche et push du
+        portail client reportés (0 push la nuit) puis livrés à l'ouverture,
+        sans e-mail (``skip_email`` survit au report)."""
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+
+        from apps.crm.models import Client
+        from apps.notifications.models import Notification
+        User = get_user_model()
+        client = Client.objects.create(company=self.company, nom='AMSG78')
+        compte = User.objects.create_user(
+            username='amsg78-portail', password='x', company=self.company,
+            portee=User.PORTEE_PORTAIL_CLIENT, portail_client_id=client.pk)
+        soir = datetime.datetime(2026, 9, 15, 21, 30, tzinfo=datetime.timezone.utc)
+        prefs = {'in_app': True, 'email': True, 'whatsapp': False, 'push': True}
+        with mock.patch.object(services, 'resolve_prefs', return_value=prefs), \
+                mock.patch.object(services, '_dispatch_email') as email, \
+                mock.patch.object(services, '_dispatch_webpush') as push:
+            gel = self.frozen(soir)
+            gel.start()
+            try:
+                self.assertEqual(services.notifier_portail_client(
+                    self.company, client.pk, EventType.PORTAIL_TICKET_MAJ,
+                    'Ticket clos', skip_email=True), 1)
+            finally:
+                gel.stop()
+            ligne = Notification.objects.get(recipient=compte)
+            self.assertIsNotNone(ligne.programmee_pour)
+            self.assertTrue(ligne.sans_email)
+            push.assert_not_called()
+            self.assertEqual(services.livrer_notifications_differees(
+                now=ligne.programmee_pour), 1)
+            push.assert_called_once()
+            email.assert_not_called()
+        ligne.refresh_from_db()
+        self.assertIsNone(ligne.programmee_pour)
+
+    @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
     def test_un_appelant_qui_refuse_le_report_est_respecte(self):
         self.assertIsNone(self._report(NUIT, respect=False))
 

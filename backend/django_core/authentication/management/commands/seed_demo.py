@@ -176,12 +176,12 @@ class Command(BaseCommand):
         f_sunpro = Fournisseur.objects.create(
             company=company, nom='SunPro Maroc',
             contact_personne='Hassan Benjelloun',
-            email='contact@sunpro.ma', telephone='+212 5 22 11 22 33',
+            email='sunpro@example.invalid', telephone='+212600000601',
             adresse='Zone industrielle Ain Sebaâ, Casablanca')
         f_electra = Fournisseur.objects.create(
             company=company, nom='Electra Distribution',
             contact_personne='Nadia El Fassi',
-            email='ventes@electra.ma', telephone='+212 5 37 44 55 66',
+            email='electra@example.invalid', telephone='+212600000602',
             adresse='Quartier industriel, Salé')
 
         produits_data = [
@@ -239,15 +239,15 @@ class Command(BaseCommand):
 
         # ── Clients ────────────────────────────────────────────────────
         clients_data = [
-            ('Alaoui', 'Karim', 'k.alaoui@gmail.com', '+212 6 61 11 22 33',
+            ('Alaoui', 'Karim', 'k.alaoui@example.invalid', '+212600000611',
              'Hay Riad, Rabat'),
-            ('Bennani', 'Salma', 's.bennani@menara.ma', '+212 6 62 22 33 44',
+            ('Bennani', 'Salma', 's.bennani@example.invalid', '+212600000612',
              'Maarif, Casablanca'),
-            ('Tazi', 'Omar', 'omar.tazi@outlook.com', '+212 6 63 33 44 55',
+            ('Tazi', 'Omar', 'omar.tazi@example.invalid', '+212600000613',
              'Guéliz, Marrakech'),
-            ('Chraibi', 'Fatima-Zahra', 'fz.chraibi@gmail.com',
-             '+212 6 64 44 55 66', 'Centre-ville, Tanger'),
-            ('Berrada', 'Youssef', 'y.berrada@yahoo.fr', '+212 6 65 55 66 77',
+            ('Chraibi', 'Fatima-Zahra', 'fz.chraibi@example.invalid',
+             '+212600000614', 'Centre-ville, Tanger'),
+            ('Berrada', 'Youssef', 'y.berrada@example.invalid', '+212600000615',
              'Agdal, Rabat'),
         ]
         clients = []
@@ -343,9 +343,9 @@ class Command(BaseCommand):
         # ── Leads (native demo, distinct from any future Odoo test import) ──
         from apps.crm.stages import NEW
         leads_data = [
-            ('Idrissi', 'Mehdi', 'Idrissi Toitures', '+212 6 70 11 22 33', 'Casablanca'),
-            ('El Amrani', 'Sara', '', '+212 6 71 22 33 44', 'Rabat'),
-            ('Bouazza', 'Hamid', 'Ferme Bouazza', '+212 6 72 33 44 55', 'Béni Mellal'),
+            ('Idrissi', 'Mehdi', 'Idrissi Toitures', '+212600000621', 'Casablanca'),
+            ('El Amrani', 'Sara', '', '+212600000622', 'Rabat'),
+            ('Bouazza', 'Hamid', 'Ferme Bouazza', '+212600000623', 'Béni Mellal'),
         ]
         for nom, prenom, societe, tel, ville in leads_data:
             Lead.objects.get_or_create(

@@ -977,16 +977,34 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """FG26 — droit à l'effacement : scrube les PII du client tout en
         PRÉSERVANT l'intégrité comptable (devis/factures conservés, liés à une
         identité neutralisée). Admin uniquement, irréversible, idempotent."""
-        from .dsr_provider import anonymiser_client
+        from .dsr_provider import LEAD_NOM_ANONYMISE, anonymiser_client, anonymiser_lead
         client = self.get_object()
         if client.is_anonymized:
             # ERR-ENF11-FUZZ-CRM : refus d'ÉTAT (fiche déjà effacée) = 409.
             return Response(
                 {'detail': 'Ce client est déjà anonymisé.'},
                 status=status.HTTP_409_CONFLICT)
+        # ASUP12 (C-ASUP-008) — le chemin COMMUN d'effacement (``core.dsr`` :
+        # leads, e-mails journalisés, calepinages…) sur l'e-mail puis le
+        # téléphone lus AVANT le scrub ; acheteur des factures figé (ASUP2)
+        # puis gardes d'effacement (ASUP3) d'abord.
+        from apps.facturation.services import figer_identite_acheteur_manquante
+        from core import dsr
+        identifiants = [v for v in (client.email, client.telephone) if (v or '').strip()]
+        figer_identite_acheteur_manquante(client.company, client_id=client.pk, appliquer=True)
+        try:
+            for identifiant in identifiants:
+                dsr.verifier_gardes_effacement(client.company, identifiant)
+        except dsr.EffacementBloque as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        for identifiant in identifiants:
+            dsr.effacer(client.company, identifiant)
         # ASOC61 — LE scrub unique du DSR (profil de site compris).
         anonymiser_client(client.company, client, nom=f'Client anonymisé #{client.id}',
                           motif='Anonymisation RGPD (action fiche client)')
+        # AMSG4 (C-AMSG-004) — ses leads aussi, même scrub que le DSR (cadence arrêtée).
+        for lead in client.leads.exclude(nom=LEAD_NOM_ANONYMISE):
+            anonymiser_lead(client.company, lead, motif='Anonymisation RGPD (action fiche client)')
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.UPDATE, instance=client,
