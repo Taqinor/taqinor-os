@@ -293,14 +293,22 @@ def figer_clauses_devis(devis):
     return True
 
 
+MOTIF_LEAD_PERDU_ARCHIVE = 'Envoi refusé : le lead de ce devis est perdu ou archivé.'
+
+
 def exiger_contact_permis(devis):
     """ACVI102 (D-ACVI-7 = refus 409, D-ACVI-10) — aucun geste d'envoi d'un
     devis dont le lead est ``ne_plus_contacter`` : 409 ``MOTIF_CONTACT_REFUSE``
-    (la règle de ``apps.crm.selectors.peut_contacter``)."""
+    (la règle de ``apps.crm.selectors.peut_contacter``). AMSG35 — lead
+    ``perdu`` ou ``is_archived`` : 409 nommé aussi (même règle que
+    ``crm.cadence_messages.refus_rendu_whatsapp``)."""
     from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter
     from core.conflit_etat import ConflitEtat
     if not peut_contacter(devis):
         raise ConflitEtat(MOTIF_CONTACT_REFUSE)
+    lead = getattr(devis, 'lead', None)
+    if getattr(lead, 'perdu', False) or getattr(lead, 'is_archived', False):
+        raise ConflitEtat(MOTIF_LEAD_PERDU_ARCHIVE)
 
 
 def mark_devis_sent(*, devis, user=None, paire=True):

@@ -801,7 +801,10 @@ class TestAvancerStagePourDevis(TestCase):
         self.lead.perdu = True
         self.lead.save(update_fields=['perdu'])
         devis_id, _ = self._create_devis(self.lead)
-        self._envoyer(devis_id)
+        # AMSG35 — l'envoi même d'un devis de lead perdu est refusé (409).
+        from core.conflit_etat import ConflitEtat
+        with self.assertRaises(ConflitEtat):
+            self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.NEW)
         self.assertEqual(self._stage_acts().count(), 0)
