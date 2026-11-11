@@ -15,7 +15,7 @@ import { useEffect, useEffectEvent, useState } from 'react'
 import savApi from '../../api/savApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { Combobox } from '../../ui'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 
 const STATUT_LABELS = {
   identifie: 'Identifié',
@@ -55,9 +55,8 @@ const liste = (reponse) => {
 export default function ProblemesPage() {
   // ASAV61 — l'écriture d'un problème exige `sav_probleme_gerer` (comptes
   // hérités sans rôle fin : repli responsable/admin, comme le serveur).
-  const permProbleme = useHasPermission('sav_probleme_gerer')
-  const respOuAdmin = useIsAdminOrResponsable()
-  const peutGerer = permProbleme || respOuAdmin
+  // ADRG87 — code fin pour un rôle fin ; repli palier SEULEMENT sans rôle fin.
+  const peutGerer = useDroitMetier('sav_probleme_gerer')
   const [problemes, setProblemes] = useState([])
   const [groupes, setGroupes] = useState([])
   const [chargement, setChargement] = useState(true)

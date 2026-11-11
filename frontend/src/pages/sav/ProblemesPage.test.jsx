@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* NTSRV31 — assistant de création d'un Problème depuis un regroupement
    suggéré (NTSRV17).
@@ -34,7 +36,14 @@ const PROBLEME = {
 
 // ASAV61 — les gestes d'écriture dépendent du rôle ; ces tests historiques
 // exercent les gestes eux-mêmes (rôle responsable simulé, sans store d'auth).
-vi.mock('../../hooks/useHasPermission', async (io) => (await import('./__tests__/permissionsMock.js')).permissionsResponsable(await io()))
+// ADRG87 — `droitsReels.actif` rend les VRAIS hooks (store d'auth fourni).
+const droitsReels = vi.hoisted(() => ({ actif: false }))
+vi.mock('../../hooks/useHasPermission', async (io) => {
+  const reel = await io()
+  const simule = (await import('./__tests__/permissionsMock.js')).permissionsResponsable(reel)
+  const choisir = (nom) => (...a) => (droitsReels.actif ? reel : simule)[nom](...a)
+  return { ...simule, useHasPermission: choisir('useHasPermission'), useIsAdminOrResponsable: choisir('useIsAdminOrResponsable') }
+})
 
 vi.mock('../../api/savApi', () => ({
   default: {
@@ -165,5 +174,35 @@ describe('ProblemesPage (NTSRV16/NTSRV17/NTSRV31)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Créer le problème' }))
     expect(await screen.findByText('ticket_ids : Ticket inconnu.'))
       .toBeInTheDocument()
+  })
+})
+
+/* ADRG87 (C-ADRG-050) — l'écriture des problèmes exige `sav_probleme_gerer`
+   pour un rôle fin : le palier responsable ne suffit plus (la route répond 403).
+   Codes des rôles LIVRÉS recopiés du registre. */
+describe('ProblemesPage — ADRG87 droits selon le rôle', () => {
+  const monter = (auth) => {
+    droitsReels.actif = true
+    avecRegroupement()
+    return render(<Provider store={configureStore({ reducer: { auth: (s = auth) => s } })}>
+      <ProblemesPage />
+    </Provider>)
+  }
+  afterEach(() => { droitsReels.actif = false })
+
+  it('rôle fin sans sav_probleme_gerer : lecture seule (Commercial responsable)', async () => {
+    monter({ role: 'responsable', role_nom: 'Commercial responsable',
+      permissions: ['sav_voir', 'sav_gerer', 'sav_reassign', 'equipement_voir'] })
+    expect(await screen.findByText(/Onduleur X — Surchauffe/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Créer le problème' })).toBeNull()
+  })
+
+  it('Technicien responsable (code porté) et compte hérité responsable : gestes présents', async () => {
+    const { unmount } = monter({ role: 'responsable', role_nom: 'Technicien responsable',
+      permissions: ['sav_voir', 'sav_gerer', 'sav_probleme_gerer'] })
+    expect(await screen.findByRole('button', { name: 'Créer le problème' })).toBeInTheDocument()
+    unmount()
+    monter({ role: 'responsable', permissions: [] })
+    expect(await screen.findByRole('button', { name: 'Créer le problème' })).toBeInTheDocument()
   })
 })
