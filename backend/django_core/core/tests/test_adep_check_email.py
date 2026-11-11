@@ -70,3 +70,38 @@ class CheckEmailTests(SimpleTestCase):
         self.assertTrue(checks.expediteur_non_verifiable('noreply@erp.local'))
         self.assertTrue(checks.expediteur_non_verifiable('ERP <a@b.local>'))
         self.assertFalse(checks.expediteur_non_verifiable('contact@taqinor.ma'))
+
+
+ENVELOPPE = 'core.email_backends.EnveloppeEmailBackend'
+LOCMEM = 'django.core.mail.backends.locmem.EmailBackend'
+
+
+class EnveloppeDestinatairesTests(SimpleTestCase):
+    """AMSG61 (C-AMSG-010) — l'enveloppe ne remet qu'aux destinataires permis."""
+
+    def _envoyer(self, adresse):
+        from django.core import mail
+        avant = len(mail.outbox)
+        mail.send_mail('Sujet', 'Corps', 'erp@taqinor.ma', [adresse])
+        return len(mail.outbox) - avant
+
+    @override_settings(EMAIL_BACKEND=ENVELOPPE, EMAIL_BACKEND_REEL=LOCMEM, DEBUG=True,
+                       EMAIL_DESTINATAIRES_AUTORISES=['equipe@taqinor.ma'])
+    def test_enveloppe_ne_remet_qu_aux_destinataires_autorises(self):
+        with self.assertLogs('core.email_backends', level='WARNING') as journal:
+            self.assertEqual(self._envoyer('client.reel@gmail.com'), 0)
+        self.assertNotIn('client.reel', ''.join(journal.output))  # destinataire masqué
+        self.assertNotIn('Corps', ''.join(journal.output))  # aucun contenu journalisé
+        self.assertEqual(self._envoyer('quelqu.un@example.invalid'), 0)
+        self.assertEqual(self._envoyer('Equipe <equipe@taqinor.ma>'), 1)
+        with self.settings(DEBUG=False, EMAIL_DESTINATAIRES_AUTORISES=[]):
+            self.assertEqual(self._envoyer('client.reel@gmail.com'), 1)
+            self.assertEqual(self._envoyer('quelqu.un@example.invalid'), 0)
+            self.assertEqual(self._envoyer('demo@example.com'), 0)
+
+    def test_backend_email_envoie_juge_le_backend_reel(self):
+        with self.settings(EMAIL_BACKEND=ENVELOPPE, EMAIL_BACKEND_REEL=CONSOLE):
+            self.assertFalse(checks.backend_email_envoie())
+            self.assertFalse(checks.backend_email_envoie(ENVELOPPE))
+        with self.settings(EMAIL_BACKEND=ENVELOPPE, EMAIL_BACKEND_REEL=BREVO):
+            self.assertTrue(checks.backend_email_envoie())

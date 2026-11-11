@@ -1508,6 +1508,14 @@ EMAIL_BACKEND = os.environ.get(
     'django.core.mail.backends.console.EmailBackend'  # console en dev, anymail en prod
 )
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+# AMSG61 — enveloppe de destinataires (core/email_backends.py) : EMAIL_BACKEND la
+# désigne, elle délègue au backend RÉEL ci-dessous. Hors production (DEBUG) ou dès
+# qu'une liste est posée, seuls ses destinataires sont remis ; un domaine réservé
+# (.invalid, .test, example.com…) jamais. Liste : adresses séparées par des virgules.
+EMAIL_BACKEND_REEL = EMAIL_BACKEND
+EMAIL_BACKEND = 'core.email_backends.EnveloppeEmailBackend'
+EMAIL_DESTINATAIRES_AUTORISES = [
+    a.strip().lower() for a in os.environ.get('EMAIL_DESTINATAIRES_AUTORISES', '').split(',') if a.strip()]
 CONTACT_EMAIL = os.environ.get('CONTACT_EMAIL', 'reda.kasri@taqinor.ma')
 
 # N88 — Capture des emails entrants. Sans secret/host configuré, la capture est

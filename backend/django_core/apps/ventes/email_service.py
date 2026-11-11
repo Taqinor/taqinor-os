@@ -153,7 +153,8 @@ def _send(to_email, sujet, corps, attachment=None, attachment_name=None,
     ``text/plain`` inchangé) ; une alternative ``text/html`` brandée
     (wrapper logo/en-tête navy/pied) est ajoutée quand le rendu réussit —
     additif, jamais cassant."""
-    if str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip() in EMAIL_BACKENDS_SANS_ENVOI:
+    from core.email_backends import backend_reel  # AMSG61 — sous l'enveloppe : le backend réel
+    if backend_reel() in EMAIL_BACKENDS_SANS_ENVOI:
         logger.warning('Envoi email refusé vers %s : %s', to_email, EMAIL_NON_OPERATIONNEL)
         return False, EMAIL_NON_OPERATIONNEL
     try:

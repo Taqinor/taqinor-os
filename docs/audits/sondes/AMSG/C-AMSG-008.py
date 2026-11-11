@@ -91,6 +91,7 @@ def scenario(canal):
           "FollowupLevel": NS(Canal=NS(EMAIL="email", WHATSAPP="whatsapp", COURRIER="courrier", APPEL="appel")),
           "build_facture_whatsapp_draft": lambda f, modele="": brouillons.append(modele) or "https://wa.me/212600000000?text=…"}
     reel("core/checks.py", {"BACKENDS_NON_ENVOYEURS", "CLES_ENVOI", "backend_email_envoie", "cles_envoi_posees"}, ns)
+    reel("core/email_backends.py", {"ENVELOPPE_EMAIL", "backend_reel"}, ns)  # AMSG61 : lus par backend_email_envoie et _send
     reel("apps/facturation/recouvrement.py", {"STATUTS_NON_RELANCABLES", "facture_relancable", "montant_exigible"}, ns)
     reel("apps/ventes/domain/recouvrement.py", {"prochain_niveau"}, ns)
     reel("apps/ventes/email_service.py", {"EMAIL_BACKENDS_SANS_ENVOI", "EMAIL_NON_OPERATIONNEL",  # AMSG28 : lues par _send
