@@ -5182,7 +5182,8 @@ def _signataire_publique_payload(signataire):
         'document_nom': demande.document.nom,
         'document_id': demande.document_id,
         # ADOC67 — aperçu du document PAR LE JETON du destinataire.
-        'apercu_url': f'/api/django/ged/signataire/{signataire.token}/document/',
+        'apercu_url': (None if signataire.otp_requis_et_non_valide  # APUB40
+                       else f'/api/django/ged/signataire/{signataire.token}/document/'),
         'apercu_mime': getattr(version, 'mime', '') or '',
         'nom': signataire.nom,
         'role': signataire.role,
@@ -5426,4 +5427,6 @@ def public_signataire_document(request, token):
         return _ged_noindex(Response(
             {'detail': _SIGNATURE_DOC_INTROUVABLE},
             status=status.HTTP_404_NOT_FOUND))
+    if signataire.otp_requis_et_non_valide:  # APUB40 — code d'abord
+        return _ged_noindex(Response({'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     return _servir_document_a_signer(request, demande)

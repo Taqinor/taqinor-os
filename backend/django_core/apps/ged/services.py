@@ -3880,6 +3880,10 @@ def refuser_signataire(signataire, *, motif):
     from django.utils import timezone
     from .models import SIGNATAIRE_REFUSE, SIGNATURE_REFUSE
 
+    if signataire.otp_requis_et_non_valide:  # APUB40 — même garde que signer
+        raise ValueError(
+            "Authentification supplémentaire requise avant de refuser : "
+            "saisissez le code reçu.")
     motif = (motif or '').strip()
     if not motif:
         raise ValueError("Le motif de refus est requis.")
