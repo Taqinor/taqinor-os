@@ -105,7 +105,7 @@ def _valider_sous_notes(brut):
         libelle = TicketSatisfaction.SOUS_NOTES_LIBELLES.get(cle, cle)
         try:
             note = int(valeur)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):  # APUB38 : 1e400
             return None, (f'{libelle} : note invalide (entier de 1 à 5 '
                           'attendu).')
         if note < 1 or note > 5:
@@ -234,7 +234,7 @@ def ticket_public_satisfaction(request, token):
 
     try:
         note = int(request.data.get('note'))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # APUB38 : 1e400
         return _noindex(Response(
             {'detail': 'Note invalide (entier de 1 à 5 attendu).'},
             status=status.HTTP_400_BAD_REQUEST))
@@ -242,7 +242,11 @@ def ticket_public_satisfaction(request, token):
         return _noindex(Response(
             {'detail': 'Note invalide (entier de 1 à 5 attendu).'},
             status=status.HTTP_400_BAD_REQUEST))
-    commentaire = (request.data.get('commentaire') or '').strip()[:4000]
+    commentaire = request.data.get('commentaire') or ''
+    if not isinstance(commentaire, str):  # APUB38 : jamais un 500
+        return _noindex(Response({'commentaire': ['Texte attendu.']},
+                                 status=status.HTTP_400_BAD_REQUEST))
+    commentaire = commentaire.strip()[:4000]
 
     # NTSRV23 — sous-notes détaillées, UNIQUEMENT si la société les a
     # activées. Flag OFF = elles sont simplement IGNORÉES (jamais un refus
