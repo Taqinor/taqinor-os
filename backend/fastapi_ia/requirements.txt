@@ -4,7 +4,7 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 python-multipart==0.0.31
 python-dotenv==1.2.2
-PyJWT==2.13.0
+PyJWT==2.15.0
 
 # Base de fuseaux horaires (IANA) — EPINGLEE, et elle FAIT FOI (meme pin que
 # backend/django_core/requirements.txt : les deux services datent les memes
