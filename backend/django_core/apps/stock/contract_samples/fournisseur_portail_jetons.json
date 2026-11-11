@@ -102,14 +102,24 @@
     },
     "fournisseur_provisionner_acces": {
       "endpoint": "POST /api/django/stock/fournisseurs/<id>/provisionner-acces/",
-      "pourquoi": "NTPRT3 — ouvre le compte portail RÉEL du fournisseur (ADMIN ; views/fournisseur.py:284). Idempotent : un 2e appel renvoie le compte existant sans réinitialiser son mot de passe ni réactiver un accès révoqué (`cree` false, 200). 201 à la création. Le mot de passe temporaire ne figure JAMAIS dans la réponse (il part par e-mail). 400 {detail:'Ce fournisseur n'a pas pu être résolu.'} si introuvable pour la société. `detail` : « Accès portail ouvert : les identifiants ont été envoyés par email. » (cree) ou « Ce fournisseur avait déjà un accès portail — rien n'a été modifié. ».",
+      "pourquoi": "NTPRT3 — ouvre le compte portail RÉEL du fournisseur (ADMIN ; views/fournisseur.py:284). Idempotent : un 2e appel renvoie le compte existant sans réinitialiser son mot de passe ni réactiver un accès révoqué (`cree` false, 200). 201 à la création. Le mot de passe temporaire ne figure JAMAIS dans la réponse (il part par e-mail). 400 {detail:'Ce fournisseur n'a pas pu être résolu.'} si introuvable pour la société. `email_envoye` (AMSG59) : vrai SEULEMENT si l'e-mail des identifiants est réellement parti (envoi configuré) ; faux sinon et sur un compte existant. `detail` : « Accès portail ouvert : les identifiants ont été envoyés par email. » (cree + envoyé), « Accès portail ouvert — e-mail non opérationnel : identifiants non envoyés. » (cree, e-mail non parti) ou « Ce fournisseur avait déjà un accès portail — rien n'a été modifié. ».",
       "exemple": {
         "fournisseur_id": 5,
         "utilisateur_id": 41,
         "username": "contact@import-solar.ma",
         "email": "contact@import-solar.ma",
         "cree": true,
+        "email_envoye": true,
         "detail": "Accès portail ouvert : les identifiants ont été envoyés par email."
+      },
+      "exemple_email_non_envoye": {
+        "fournisseur_id": 5,
+        "utilisateur_id": 41,
+        "username": "contact@import-solar.ma",
+        "email": "contact@import-solar.ma",
+        "cree": true,
+        "email_envoye": false,
+        "detail": "Accès portail ouvert — e-mail non opérationnel : identifiants non envoyés."
       }
     },
     "fournisseur_revoquer_acces": {
