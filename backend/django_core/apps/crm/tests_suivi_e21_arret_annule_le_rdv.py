@@ -178,6 +178,38 @@ class ArretParLaFicheTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self._assert_annule(visite, cadence_visite.CAUSE_RDV_NE_PLUS_CONTACTER)
 
+    def test_suppression_du_lead_annule_le_rendez_vous(self):
+        # ASUP44 — corbeille (unitaire puis en masse) : même annulation que
+        # l'archivage ; un lead sans visite : aucune note.
+        admin = User.objects.create_user(
+            username=f'{self.acteur.username}-admin', password='x',
+            role_legacy='admin', company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        cause = 'le lead est supprimé'
+
+        visite = self._planifier()
+        resp = api.delete(f'/api/django/crm/leads/{self.lead.pk}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self._assert_annule(visite, cause)
+
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Prospect E21 masse',
+            stage=stages.CONTACTED, owner=self.acteur,
+            telephone='+212662219999')
+        visite = self._planifier()
+        sans_visite = Lead.objects.create(
+            company=self.company, nom='Prospect E21 sans visite',
+            stage=stages.CONTACTED, owner=self.acteur)
+        resp = api.post('/api/django/crm/leads/bulk/', {
+            'action': 'delete', 'ids': [self.lead.pk, sans_visite.pk]},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self._assert_annule(visite, cause)
+        self.assertFalse(sans_visite.activites.filter(
+            body__startswith=NOTE_RDV).exists())
+
 
 class VisitePasseeTests(_Base):
 

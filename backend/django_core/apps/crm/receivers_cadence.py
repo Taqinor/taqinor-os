@@ -395,6 +395,8 @@ def _arreter_cadence_on_archive(sender, instance, update_fields=None, **kwargs):
         logger.warning(
             "CADV61 : arrêt de cadence échoué à l'archivage du lead #%s",
             getattr(instance, 'pk', '?'), exc_info=True)
+    if motif == 'lead supprimé':  # ASUP44 — comme archiver_lead ; ne lève jamais
+        annuler_rendez_vous_sur_arret(instance, None, cause='le lead est supprimé')
 
 
 def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
