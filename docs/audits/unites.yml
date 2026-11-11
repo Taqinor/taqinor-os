@@ -927,3 +927,25 @@ unites:
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF6.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 1ea772d) : environ 360 routes de lecture et sources de données sensibles inventoriées en quatre lectures (prix d'achat stock et chantiers ; prix d'achat et marges ventes, client, assistant SQL, journaux ; données personnelles ; portée, journal, secrets) ; 35 constats, 24 prouvés par sonde hôte (vrai code, bouchons, aucune pile), 11 lus ; gravités 1 S1, 23 S2, 11 S3. S1 : tout compte interne lit le jeton de signature électronique d'un client et peut signer à sa place ; le jeton global d'une signature à plusieurs personnes signe tout le circuit sans code SMS (exploitable aujourd'hui : 2 Commercial et 1 Commercial responsable, dès qu'une demande est en attente). Porte : 0 réfuté, 7 gravités revues ; seconde lentille : S1 maintenu et élargi. D-ALEC-1..5 ouvertes. Tâches ALEC1-40 (40 posées, dont 7 GATED : STOCK 6, ANALYSE 5, CHANTIERS 5, DOCUMENTS 5, LEAD 4, SECURITE 4, PARAMETRES 3, SAV 2, FACTURATION 2, CALEPINAGE 2, DEVIS 1, DEPLOY 1)."
+
+  - id: PF7
+    rang: 33
+    declencheur: preuves-de-test
+    titre: "Parcours PF7 « Tests qui ne prouvent rien » : les tests qui protègent l'argent, les droits et l'isolement, les chiffres montrés au client et la persistance jouent-ils vraiment le comportement (source lu par motif, rôle fabriqué, assertion affaiblie, simulation de la chose testée, preuve annoncée jamais jouée, garde sans cas d'échec)"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/**/test*.py, scripts/tests/**, scripts/check_*.py, frontend/src/**/*.test.*, frontend/e2e/**, apps/web/tests/**, .github/workflows/ci.yml, .github/workflows/release-verify.yml, backend/django_core/apps/roles/permissions_registre.py"
+    coutures:
+      - "test ↔ comportement de production qu'il prétend protéger ; rôle du test ↔ rôle livré du registre ; tag pdf/slow ↔ portes de fusion ; garde ↔ son cas d'échec ; mutant annoncé ↔ mutant rejoué"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: audité
+    groupe: ATST
+    plan: docs/plans/PLAN_AUDIT_DEPLOY.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/WEB_PLAN.md]
+    pr: 0
+    date: 2026-11-11
+    dossier: docs/audits/2026-11-11-parcours-PF7.md
+    notes: "Audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 5a93b0d) : 4 261 modules de test Python et 1 512 front passés aux détecteurs (1 927 candidats), puis quatre lectures (droits et isolement ; argent ; chiffres client ; gardes et preuves annoncées) ; 30 constats, 9 prouvés par sonde hôte jouée le 11/11 (toutes repro), 21 lus ; gravités 0 S1, 9 S2, 21 S3 ; aucun défaut de production : le code testé est correct, le risque est une régression qui passerait la CI verte. 4 réfutés ; 14 mutants annoncés dans des commits rejoués, tous tués. D-ATST-1..2 ouvertes. Tâches ATST1-14, ATST21-30, ATST41-55 (39 posées, dont 3 GATED : DEPLOY 15, DEVIS 7, STOCK 3, LEAD 3, ANALYSE 2, DOCUMENTS 2, MOTEUR 2, SECURITE 2, GENERATEUR 1, SAV 1, WEB 1)."

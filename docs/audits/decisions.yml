@@ -4302,3 +4302,27 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat) ; aucune tâche tant qu'elle est ouverte"
     taches: []
+
+  - id: D-ATST-1
+    question: "Un rôle qui porte un code de droit absent du registre (faute de frappe, code inventé dans un test : « tickets_gerer », « stock_gerer ») est compté aujourd'hui comme un rôle qui écrit, donc « responsable ». Un code absent du registre doit-il n'accorder aucun palier ?"
+    options:
+      - cle: code_inconnu_n_accorde_rien
+        texte: "Oui : seul un code du registre compte ; un code inconnu n'accorde aucun palier, et les tests à codes inventés passent aux vrais codes"
+      - cle: garder
+        texte: "Non : tout code autre qu'une lecture continue de valoir écriture (comportement actuel)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : code_inconnu_n_accorde_rien) ; aucun rôle réel ne porte de code inconnu (5 comptes, rôles livrés)"
+    taches: [ATST13]
+
+  - id: D-ATST-2
+    question: "Les trois tests navigateur de la page publique de proposition (français et arabe) sont toujours sautés : l'adresse du site n'est donnée à aucun run. Faut-il servir le site dans le run de bout en bout et y vérifier les montants, ou retirer ces trois tests ?"
+    options:
+      - cle: servir_le_site
+        texte: "Servir le site public dans le run de bout en bout et vérifier les montants affichés de la proposition, en français et en arabe"
+      - cle: retirer
+        texte: "Retirer les trois tests ; la page reste prouvée par les tests du site et la parité écran / données"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : servir_le_site)"
+    taches: [ATST30, ATST54]
