@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { useConfirmDialog } from '../../ui/confirm'
 
 /* État commun des sections Paramètres « liste éditable par un admin »
@@ -13,7 +13,8 @@ import { useConfirmDialog } from '../../ui/confirm'
    un endpoint paginé, api.get(url) pour un endpoint non paginé. */
 export default function useSectionListeAdmin(lire) {
   const { confirmDelete } = useConfirmDialog()
-  const canManage = useIsAdminOrResponsable()
+  // ADRG84 — `core/branded-templates/` exige `parametres_modifier` (APAR38).
+  const canManage = useCanModifierParametres()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
