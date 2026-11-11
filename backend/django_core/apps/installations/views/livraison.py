@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -86,10 +87,12 @@ def _exiger_transition_livraison(liv, cible):
     p3=oa.qi('depot'),
     p4=oa.qi('installation'),
 )
-class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
+                       CompanyScopedModelViewSet):
     """FG329 — livraisons planifiées. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `installation`, `statut`, `depot`,
-    `date_prevue`."""
+    `date_prevue`. ASUP20 — une livraison livrée ou à preuve signée ne se
+    supprime plus (409) : la cascade emportait la preuve signée."""
     queryset = Livraison.objects.select_related(
         'installation', 'depot', 'created_by').prefetch_related(
         'lignes__produit').all()
@@ -99,6 +102,17 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
+
+    def destroy_guard_message(self, liv):
+        from .pod import PreuveLivraisonViewSet
+        preuve = getattr(liv, 'preuve', None)  # OneToOne inverse, ou None
+        message = preuve and PreuveLivraisonViewSet().destroy_guard_message(preuve)
+        if message:  # garde survivante de la preuve (AUD302), réutilisée
+            return message
+        if liv.statut == Livraison.Statut.LIVREE:
+            return ("Cette livraison est livrée : elle atteste la remise au "
+                    "client et ne peut plus être supprimée.")
+        return None
 
     def get_queryset(self):
         qs = super().get_queryset()

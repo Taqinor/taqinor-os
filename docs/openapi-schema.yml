@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7766, components: 3650}
+counts: {paths: 4966, operations: 7762, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1881,7 +1881,6 @@ operations:
 - post /api/django/installations/gps-consentements/ -> django_installations_gps_consentements_create
 - get /api/django/installations/gps-consentements/mon-consentement/ -> django_installations_gps_consentements_mon_consentement_retrieve
 - post /api/django/installations/gps-consentements/mon-consentement/accepter/ -> django_installations_gps_consentements_mon_consentement_accepter_create
-- delete /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_destroy
 - get /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_retrieve
 - patch /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_partial_update
 - put /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_update
@@ -2143,7 +2142,6 @@ operations:
 - post /api/django/installations/putaways/{id}/ranger/ -> django_installations_putaways_ranger_create
 - get /api/django/installations/receptions-non-facturees/ -> django_installations_receptions_non_facturees_list
 - post /api/django/installations/receptions-non-facturees/ -> django_installations_receptions_non_facturees_create
-- delete /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_destroy
 - get /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_retrieve
 - patch /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_partial_update
 - put /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_update
@@ -5805,7 +5803,6 @@ operations:
 - post /api/v1/installations/gps-consentements/ -> v1_installations_gps_consentements_create
 - get /api/v1/installations/gps-consentements/mon-consentement/ -> v1_installations_gps_consentements_mon_consentement_retrieve
 - post /api/v1/installations/gps-consentements/mon-consentement/accepter/ -> v1_installations_gps_consentements_mon_consentement_accepter_create
-- delete /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_destroy
 - get /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_retrieve
 - patch /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_partial_update
 - put /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_update
@@ -6067,7 +6064,6 @@ operations:
 - post /api/v1/installations/putaways/{id}/ranger/ -> v1_installations_putaways_ranger_create
 - get /api/v1/installations/receptions-non-facturees/ -> v1_installations_receptions_non_facturees_list
 - post /api/v1/installations/receptions-non-facturees/ -> v1_installations_receptions_non_facturees_create
-- delete /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_destroy
 - get /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_retrieve
 - patch /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_partial_update
 - put /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_update
