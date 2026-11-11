@@ -1,6 +1,6 @@
 ---
 import Faq from '../../components/Faq.astro';
-import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
+import { TABLEAU_GARANTIES_EN } from '../../lib/warranty';
 import { pageLocale } from '../../lib/pageCtx';
 /**
  * EN — Our warranties (W67). Faithful translation of /garanties ; EVERY figure
@@ -36,15 +36,7 @@ import { whatsappLink } from '../../lib/whatsapp';
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 const waClaim = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like to make a claim on my Taqinor warranty.');
 
-const warranties = [
-  { item: 'Photovoltaic panels (product)', years: '12 years' },
-  { item: 'Photovoltaic panels (performance)', years: '30 years', note: 'linear, ≥ 87.4 % of initial power at 30 years' },
-  { item: 'Deye hybrid inverters', years: `${DEYE_INVERTER_WARRANTY_YEARS} years` },
-  { item: 'Huawei grid-tied inverters', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} years` },
-  { item: 'Dyness LFP batteries', years: `${BATTERY_WARRANTY_YEARS} years`, note: '≥ 70 % of capacity' },
-  { item: 'Galvanised steel structure', years: '20 years' },
-  { item: 'Taqinor installation and workmanship', years: '2 years' },
-];
+const warranties = TABLEAU_GARANTIES_EN; // WAUD91 — source unique (lib/warranty.ts)
 
 const engagements = [
   {

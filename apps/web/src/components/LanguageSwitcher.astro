@@ -69,11 +69,13 @@ const chipClass = (loc: Locale) =>
       <details class="lang-compact relative xl:hidden">
         <summary
           class="flex min-h-[44px] min-w-[44px] cursor-pointer select-none items-center gap-1 px-2 text-xs font-bold uppercase leading-none text-lune-soft transition-colors hover:text-white"
-          aria-label={t('lang.label')}
           title={t('lang.label')}
         >
+          {/* WAUD92 — nom accessible = libellé masqué + code visible (« Choisir la langue FR ») :
+              il contient le texte visible, plus d'aria-label qui l'écrase. */}
+          <span class="sr-only">{t('lang.label')}</span>
           <Fragment set:html={globe} />
-          <span aria-hidden="true">{LOCALE_SHORT[current]}</span>
+          <span>{LOCALE_SHORT[current]}</span>
           <svg class="lang-caret opacity-70 transition-transform" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
         </summary>
         <nav

@@ -127,6 +127,17 @@ export const TABLEAU_GARANTIES_AR = [
   { item: 'التركيب واليد العاملة لتاكينور', years: 'سنتان' },
 ];
 
+/** WAUD91 — le même tableau en anglais (/en/garanties ET /en/devis-panneaux-solaires-maroc). */
+export const TABLEAU_GARANTIES_EN = [
+  { item: 'Photovoltaic panels (product)', years: '12 years' },
+  { item: 'Photovoltaic panels (performance)', years: '30 years', note: 'linear, ≥ 87.4 % of initial power at 30 years' },
+  { item: 'Deye hybrid inverters', years: `${DEYE_INVERTER_WARRANTY_YEARS} years` },
+  { item: 'Huawei grid-tied inverters', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} years` },
+  { item: 'Dyness LFP batteries', years: `${BATTERY_WARRANTY_YEARS} years`, note: '≥ 70 % of capacity' },
+  { item: 'Galvanised steel structure', years: '20 years' },
+  { item: 'Taqinor installation and workmanship', years: '2 years' },
+];
+
 /** ERR-W33-GARANTIES-NOTE — une durée ne s'affiche jamais sans son seuil (« 30 ans » sans « ≥ 87,4 % à 30 ans »). */
 export function lignesGaranties(tableau: readonly { item: string; years: string; note?: string }[]): string[][] {
   return tableau.map((g) => [g.item, g.note ? `${g.years} (${g.note})` : g.years]);
