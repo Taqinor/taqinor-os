@@ -228,6 +228,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         navigateur ou un log d'accès HTTP. Réservée à l'administrateur, et
         journalisée (qui, quand, quel compte — jamais le jeton lui-même).
         """
+        from apps.ventes.services import public_url
         compte = self.get_object()
         logger.info(
             'AUD141 lien-acces revele — compte=%s client=%s societe=%s par=%s',
@@ -237,7 +238,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
             # ERR-QAH-PORTAIL-LIEN-ACCES-404 — `/portail-contrats/<jeton>`
             # (module contrats parqué) renvoyait 404 : le lien pointe vers
             # l'espace client VIVANT (`/portail/client`, route du routeur).
-            'lien': request.build_absolute_uri(LIEN_ESPACE_CLIENT),
+            'lien': public_url(LIEN_ESPACE_CLIENT, request),  # AMSG69
             'detail': ("Lien d'accès révélé — cette demande est journalisée."),
         })
 

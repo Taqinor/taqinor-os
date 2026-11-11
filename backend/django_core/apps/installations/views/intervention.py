@@ -864,12 +864,13 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
             return Response(
                 {'detail': field_services.MESSAGE_INTERVENTION_ANNULEE},
                 status=status.HTTP_409_CONFLICT)
+        from apps.ventes.services import public_url
         token = interv.ensure_lien_client_token()
         path = f'/intervention/{token}'
         return Response({
             'token': token,
             'path': path,
-            'url': request.build_absolute_uri(path),
+            'url': public_url(path, request),  # AMSG69 — base publique
         })
 
     @oa.extend_schema(
@@ -2204,12 +2205,13 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
         pointe désormais vers la PAGE publique
         `/intervention-rapport/<token>`."""
         interv = self.get_object()
+        from apps.ventes.services import public_url
         token = interv.ensure_lien_rapport_token()
         path = f'/intervention-rapport/{token}'
         return Response({
             'token': token,
             'path': path,
-            'url': request.build_absolute_uri(path),
+            'url': public_url(path, request),  # AMSG69 — base publique
         })
 
     # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────

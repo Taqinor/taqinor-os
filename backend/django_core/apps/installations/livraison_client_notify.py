@@ -30,10 +30,10 @@ def _livraison_lien(livraison, request=None):
     jamais existé côté front (404 systématique) : le portail est déjà
     authentifié côté client, la LISTE (scopée serveur à CE client) est la
     cible réelle — jamais un id de livraison fabriqué dans l'URL."""
-    path = '/portail/client/livraisons'
-    if request is not None:
-        return request.build_absolute_uri(path)
-    return path
+    from apps.ventes.services import public_url
+    # AMSG69 — base publique unique (PUBLIC_BASE_URL) d'abord, jamais l'hôte
+    # par lequel l'employé est entré ; repli sur la requête puis le chemin.
+    return public_url('/portail/client/livraisons', request)
 
 
 def notify_livraison_transition(livraison, statut, *, request=None, user=None):
