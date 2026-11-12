@@ -358,7 +358,7 @@ class InterventionSerializer(SansJetonsPublicsMixin,  # ALEC37
 
     class Meta:
         model = Intervention
-        fields = '__all__'
+        exclude = ['lien_client_token', 'lien_rapport_token']  # ALEC37 : hors schéma (api-fuzz)
         # company/created_by posés côté serveur — jamais depuis le corps. Les
         # horodatages F6 et les coordonnées d'arrivée sont posés par leurs
         # endpoints dédiés (check-in/départ/retour), pas par un PATCH générique.
