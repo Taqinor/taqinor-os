@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.roles.serializers import MOTIF_CODE_PERMISSION
 from core.conflit_etat import ConflitEtat
 
 from .models import ConfigPackage, ConfigPackageApplication
@@ -25,6 +26,8 @@ _INT_MAX = 2147483647
 #: tel quel, ``"é…"`` / ``type: ""`` étaient ensuite SERVIS hors schéma par
 #: ``custom-fields/definitions/`` (« Response violates schema »).
 MOTIF_CODE_CHAMP = r'^[-a-zA-Z0-9_]+$'
+#: Longueur max du ``module`` d'un champ importé : celle de ``CustomFieldDefSerializer``.
+MODULE_MAX = 20
 TYPES_CHAMP = ('text', 'number', 'date', 'choice', 'boolean', 'relation',
                'fichier', 'ia', 'formula', 'rollup')
 
@@ -59,9 +62,15 @@ SCHEMA_CONTENU = {
     'properties': {
         '_nom': {'type': 'string', 'maxLength': 150},
         '_version': {'type': 'integer', 'minimum': 0, 'maximum': _INT_MAX},
+        # api-fuzz PR #1370 (APUB53) — chaque permission suit le motif publié
+        # par ``RoleSerializer`` (``""`` « conforme » était refusé en 400).
         'roles_custom': _objets('nom', {'nom': 100}, {'permissions': {
-            'type': 'array', 'items': {'type': 'string'}}}),
-        'custom_fields': _objets('code', {'module': 60, 'libelle': 120}, {
+            'type': 'array', 'items': {
+                'type': 'string', 'pattern': MOTIF_CODE_PERMISSION}}}),
+        # api-fuzz PR #1370 — ``module`` borné comme ``CustomFieldDefSerializer``
+        # (20) : un module de 59 signes importé était ensuite SERVI hors schéma
+        # par ``custom-fields/definitions/`` (« Response violates schema »).
+        'custom_fields': _objets('code', {'module': MODULE_MAX, 'libelle': 120}, {
             'code': {'type': 'string', 'maxLength': 50,
                      'pattern': MOTIF_CODE_CHAMP},
             'type': {'type': 'string', 'enum': list(TYPES_CHAMP)}}),
@@ -94,7 +103,7 @@ def valider_contenu_import(contenu):
     for categorie, cle, textes in (
             ('roles_custom', 'nom', {'nom': 100}),
             ('custom_fields', 'code',
-             {'code': 50, 'module': 60, 'type': 12, 'libelle': 120}),
+             {'code': 50, 'module': MODULE_MAX, 'type': 12, 'libelle': 120}),
             ('message_templates', 'cle',
              {'cle': 40, 'corps_fr': None, 'corps_darija': None})):
         liste = contenu.get(categorie, [])

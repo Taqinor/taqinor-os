@@ -191,7 +191,7 @@ class JetonAccesPortailTests(TestCase):
 
     def test_le_client_d_un_compte_ne_se_reaffecte_pas(self):
         """ADRG96 (C-ADRG-053) — un compte au rôle système « Commercial » (semé
-        comme ``init_roles``) PATCH ``{client: B}`` sur le compte de A ⇒ 400
+        comme ``init_roles``) PATCH ``{client: B}`` sur le compte de A ⇒ 409
         sur ``client``, le compte reste à A et le jeton de A sert toujours le
         client A ; renvoyer le MÊME client reste accepté. Mutant : retirer
         ``validate_client`` ⇒ échec (200, relevé de B par le jeton de A)."""
@@ -207,7 +207,7 @@ class JetonAccesPortailTests(TestCase):
         url = f'{RACINE}{self.compte.id}/'
         for api in (commercial, self.api):
             res = api.patch(url, {'client': client_b.id}, format='json')
-            self.assertEqual(res.status_code, 400, res.content)
+            self.assertEqual(res.status_code, 409, res.content)  # api-fuzz PR #1370
             self.assertIn('client', res.data)
         self.compte.refresh_from_db()
         self.assertEqual(self.compte.client_id, self.client_crm.id)

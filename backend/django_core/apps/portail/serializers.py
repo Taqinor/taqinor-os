@@ -19,6 +19,7 @@ from core.champs_stricts import ChaineStricte
 from core.champs_stricts import ChampsStrictsMixin
 from core.champs_stricts import EntierNullableEnLecture
 from core.champs_stricts import EntierStrict
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 
 from apps.records.storage import AttachmentSerializerMixin
@@ -140,9 +141,10 @@ class ComptePortailClientSerializer(SameCompanyFKSerializerMixin,
     def validate_client(self, value):
         """ADRG96 (C-ADRG-053) — le client d'un compte portail est FIGÉ après la
         création : son jeton servirait sinon le relevé d'un autre client. Un
-        accès pour un autre client se crée par provisionnement."""
+        accès pour un autre client se crée par provisionnement. api-fuzz PR #1370 :
+        refus d'ÉTAT (le compte est déjà lié), que le schéma ne peut pas dire : 409."""
         if self.instance is not None and getattr(value, 'pk', value) != self.instance.client_id:
-            raise serializers.ValidationError("Le client d'un compte portail ne se modifie pas.")
+            raise ConflitEtat({'client': ["Le client d'un compte portail ne se modifie pas."]})
         return value
 
 
