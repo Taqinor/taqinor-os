@@ -153,7 +153,8 @@ class TestScopeRole(TestCase):
 
     def test_technicien_sans_prix_achat_403(self):
         """AAPV61 — rôles système sans `prix_achat_voir`/`achats_payer` : 403
-        partout ; `prix_achat_voir` lit sans écrire ; Administrateur 200/204."""
+        partout ; `prix_achat_voir` lit sans écrire ; Administrateur 200, et son
+        DELETE 405 (ASUP20 : la provision GR/IR n'a plus de suppression)."""
         from django.core.management import call_command
         from apps.roles.models import Role
         call_command('init_roles', verbosity=0)
@@ -194,7 +195,9 @@ class TestScopeRole(TestCase):
             payeur.post(f'{url}{prov.id}/lettrer/', {}).status_code, 200)
         admin = api_role('Administrateur')
         self.assertEqual(admin.get(url).status_code, 200)
-        self.assertEqual(admin.delete(f'{url}{prov.id}/').status_code, 204)
+        self.assertEqual(admin.delete(f'{url}{prov.id}/').status_code, 405)
+        self.assertTrue(
+            ReceptionNonFacturee.objects.filter(pk=prov.pk).exists())
 
     def test_scope_isolation(self):
         other = make_company()

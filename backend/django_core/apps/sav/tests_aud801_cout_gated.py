@@ -51,12 +51,16 @@ class Aud801CoutGatedTests(TestCase):
             role=self.role_avec)
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client AUD801')
+        # Le Technicien livré porte la portée « soi » (APFS4) : ses tickets
+        # sont ceux dont il est le technicien responsable.
         Ticket.objects.create(
             company=self.company, reference='AUD801-1',
-            client=self.client_obj, cout=Decimal('150.00'))
+            client=self.client_obj, cout=Decimal('150.00'),
+            technicien_responsable=self.sans_droit)
         Ticket.objects.create(
             company=self.company, reference='AUD801-2',
-            client=self.client_obj, cout=Decimal('850.00'))
+            client=self.client_obj, cout=Decimal('850.00'),
+            technicien_responsable=self.sans_droit)
         self.factory = APIRequestFactory()
 
     def test_le_dataset_declare_le_champ_gated(self):

@@ -99,10 +99,13 @@ class ServiceInvitationTests(TestCase):
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_heure_d_expiration_locale_dans_l_email(self):
         """AMSG71 — l'e-mail d'invitation annonce l'heure de Casablanca
-        (TIME_ZONE), jamais l'heure UTC stockée : 23:00 UTC ⇒ 00:00 locale."""
+        (TIME_ZONE), jamais l'heure UTC stockée : 23:00 UTC ⇒ 00:00 locale.
+        Ancre AVANT le 20/09/2026 : le Maroc est depuis à UTC+0 permanent
+        (décret 2.26.530, tzdata épinglée) — après, les deux heures coïncident
+        et le test ne départagerait plus rien."""
         import datetime as dt
         from django.core import mail
-        ancre = dt.datetime(2026, 11, 15, 23, 0, tzinfo=dt.timezone.utc)
+        ancre = dt.datetime(2026, 9, 1, 23, 0, tzinfo=dt.timezone.utc)
         with frozen(ancre):
             invitation = inviter_membre_portail(
                 self.company, self.client_crm.id, 'heure@example.invalid',
@@ -110,8 +113,8 @@ class ServiceInvitationTests(TestCase):
         self.assertEqual(invitation.expire_le.astimezone(dt.timezone.utc)
                          .strftime('%H:%M'), '23:00')
         corps = mail.outbox[-1].body
-        self.assertIn('23/11/2026 00:00', corps)
-        self.assertNotIn('22/11/2026 23:00', corps)
+        self.assertIn('09/09/2026 00:00', corps)
+        self.assertNotIn('08/09/2026 23:00', corps)
 
     def test_inviter_role_invalide_retombe_sur_lecture(self):
         invitation = inviter_membre_portail(
