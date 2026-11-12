@@ -46,6 +46,10 @@
    {
     "attrs": {},
     "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_supprimer"
    }
   ]
  },
