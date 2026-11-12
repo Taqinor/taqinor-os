@@ -304,9 +304,9 @@ def _clients_manuels():
 def _email_sans_envoi():
     """AMSG29 — le backend chargé n'envoie rien (console/dummy) : aucun
     e-mail ne consomme alors un niveau ni ne pose un marqueur."""
-    from django.conf import settings
-    from .public.payload_conditions import EMAIL_BACKENDS_SANS_ENVOI
-    return getattr(settings, 'EMAIL_BACKEND', '') in EMAIL_BACKENDS_SANS_ENVOI
+    from core.email_backends import backend_reel  # AMSG61 : le backend RÉEL sous l'enveloppe
+    from .email_service import EMAIL_BACKENDS_SANS_ENVOI  # AMSG28 : constante déplacée ici
+    return backend_reel() in EMAIL_BACKENDS_SANS_ENVOI
 
 
 def _email_parti(log):
