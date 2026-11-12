@@ -691,8 +691,14 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         request=MonitoringEmailOmReportSerializer,
-        responses=inline_serializer('MonitoringEmailOmReportReponse', {
-            'sent': serializers.BooleanField()}))
+        responses={
+            200: inline_serializer('MonitoringEmailOmReportReponse', {
+                'sent': serializers.BooleanField()}),
+            # ASAV68 — l'e-mail n'est pas parti : 502 servi, désormais publié
+            # (api-fuzz #1377, « Undocumented HTTP status code »).
+            502: inline_serializer('MonitoringEmailOmReportEchec', {
+                'detail': serializers.CharField()}),
+        })
     @action(detail=True, methods=['post'], url_path='email-om-report',
             permission_classes=[IsResponsableOrAdmin])
     def email_om_report(self, request, pk=None):

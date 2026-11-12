@@ -22,7 +22,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import MethodNotAllowed, NotFound
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
@@ -272,9 +272,9 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     #: ont les mêmes jetons de chemin : la vue d'ensemble est ``…_list``.
     schema = mots_operation(rentabilite_liste='list')
 
-    def destroy(self, request, *args, **kwargs):
-        """ASUP21 — un contrat client (prestations) ne se supprime pas : 405."""
-        raise MethodNotAllowed(request.method)
+    #: ASUP21 — un contrat client (prestations) ne se supprime pas : DELETE hors
+    #: ``http_method_names`` ⇒ 405, et la route n'est plus publiée (api-fuzz #1377).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):

@@ -1676,19 +1676,50 @@ class ConfigSchemathesisTests(unittest.TestCase):
         with open(ROOT / 'schemathesis.toml', 'rb') as fh:
             config = tomllib.load(fh)
         visees = [op for op in config['operations']
-                  if 'not_a_server_error' in op.get('checks', {})]
+                  if 'not_a_server_error' in op.get('checks', {})
+                  and op.get('include-name') == 'POST /api/django/crm/leads/scan-carte/']
         self.assertEqual(len(visees), 1)
         op = visees[0]
         self.assertEqual(
             {k for k in op if k.startswith(('include-', 'exclude-'))},
             {'include-name'})
-        self.assertEqual(op['include-name'],
-                         'POST /api/django/crm/leads/scan-carte/')
         self.assertNotIn('enabled', op)
         attendus = op['checks']['not_a_server_error']['expected-statuses']
         # Les défauts de Schemathesis 4.28 gardés, 503 ajouté.
         self.assertEqual(sorted(str(s) for s in attendus),
                          ['2xx', '3xx', '4xx', '503'])
+
+    def test_not_a_server_error_relache_sur_les_seules_routes_nommees(self):
+        # Liste FIGÉE : scan-carte (503, XSAL8) + PR #1377 (12/11/2026) — six
+        # envois d'e-mail dont le 502 « l'e-mail n'est pas parti » est voulu
+        # (AMSG28/AMSG61). Jamais un motif, jamais un 500.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        visees = [op for op in config['operations']
+                  if 'not_a_server_error' in op.get('checks', {})]
+        self.assertEqual(sorted(op.get('include-name') for op in visees), [
+            'POST /api/django/achats/bons-commande-fournisseur/{id}/envoyer-email/',
+            'POST /api/django/crm/leads/scan-carte/',
+            'POST /api/django/facturation/factures/{id}/relancer/',
+            'POST /api/django/monitoring/configs/{id}/email-om-report/',
+            'POST /api/django/stock/bons-commande-fournisseur/{id}/envoyer-email/',
+            'POST /api/django/ventes/devis/{id}/envoyer-email/',
+            'POST /api/django/ventes/factures/{id}/relancer/'])
+        for op in visees:
+            with self.subTest(operation=op['include-name']):
+                self.assertEqual(
+                    {k for k in op if k.startswith(('include-', 'exclude-'))},
+                    {'include-name'})
+                self.assertNotIn('enabled', op)
+                self.assertEqual(set(op['checks']), {'not_a_server_error'})
+                attendus = [str(s) for s in
+                            op['checks']['not_a_server_error']['expected-statuses']]
+                self.assertNotIn('500', attendus)
+                self.assertNotIn('5xx', attendus)
+                if op['include-name'] != 'POST /api/django/crm/leads/scan-carte/':
+                    self.assertEqual(sorted(attendus), ['2xx', '3xx', '4xx', '502'])
 
 
 if __name__ == '__main__':
