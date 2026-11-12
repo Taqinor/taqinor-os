@@ -315,7 +315,9 @@ class EnfSchemaValidationTests(TestCase):
         base = '/api/django/adminops/config-packages/appliquer/'
         for champ in ({'code': 'é÷d', 'module': 'lead'},
                       {'code': 'ok_1', 'module': 'lead', 'type': ''},
-                      {'code': 'ok_1', 'module': 'lead', 'type': 'xx'}):
+                      {'code': 'ok_1', 'module': 'lead', 'type': 'xx'},
+                      # api-fuzz PR #1370 — module borné à 20 comme la définition.
+                      {'code': 'ok_1', 'module': '0' * 21, 'type': 'text'}):
             resp = self.client_api.post(base, {'contenu': {
                 'custom_fields': [champ]}}, format='json')
             self.assertEqual(resp.status_code, 400, (champ, resp.content))
