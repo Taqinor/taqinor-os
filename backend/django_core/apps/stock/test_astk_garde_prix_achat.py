@@ -431,7 +431,8 @@ class GardePrixAchat(TestCase):
                     'LandedCostLigne', 'Livraison', 'OrdreAssemblage', 'BudgetProjet'):
             classe = getattr(ser, f'{nom}Serializer')
             self.assertTrue(issubclass(classe, MasqueMontantsAchatMixin), nom)
-            declarees = cles_interdites({c: None for c in classe.Meta.fields})
+            # Valeur NON nulle : le détecteur ignore une clé servie à null (ALEC30).
+            declarees = cles_interdites({c: 1 for c in classe.Meta.fields})
             self.assertTrue(declarees, nom)
             self.assertLessEqual(declarees, set(classe.champs_montants_achat), nom)
         url = '/api/django/installations/contrats-prix-fournisseur/prix-convenu/'
