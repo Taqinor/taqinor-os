@@ -120,6 +120,8 @@ export default function FactureRow({ f, ctx }) {
   const isWaBusy = waBusy[f.id]
   // L853 — téléphone client normalisable (miroir backend).
   const waPhoneOk = !!normalizePhoneE164(f.client_telephone)
+  // AMSG27 — une facture contestée ne se relance plus (409 serveur, D-AFAC-89).
+  const relanceSuspendue = f.statut === 'en_retard' && !!f.contestee_le
   const nba = nextBestAction(f)
   const isPayLinkBusy = payLinkBusy[f.id]
   const isDgiBusy = dgiBusy[f.id]
@@ -413,8 +415,9 @@ export default function FactureRow({ f, ctx }) {
                 )}
                 {peutModifier && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
-                    disabled={isWaBusy || !waPhoneOk}
-                    title={!waPhoneOk ? 'Numéro invalide' : undefined}
+                    disabled={isWaBusy || !waPhoneOk || relanceSuspendue}
+                    title={relanceSuspendue ? 'Facture contestée : la relance est suspendue.'
+                      : !waPhoneOk ? 'Numéro invalide' : undefined}
                     onSelect={(e) => {
                       e.preventDefault()
                       // VX245(c) — une facture EN RETARD envoie le gabarit
@@ -425,6 +428,7 @@ export default function FactureRow({ f, ctx }) {
                     }}>
                     <MessageCircle />
                     {isWaBusy ? 'Préparation…'
+                      : relanceSuspendue ? 'Relance suspendue (contestée)'
                       : !waPhoneOk ? 'WhatsApp (numéro invalide)'
                         : f.statut === 'en_retard' ? 'Relancer par WhatsApp'
                           : 'WhatsApp'}

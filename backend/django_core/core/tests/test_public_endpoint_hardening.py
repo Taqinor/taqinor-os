@@ -304,10 +304,31 @@ class VuesPubliquesSansJwtTests(TestCase):
         self.assertEqual(sorted(fautives), [])
 
     def test_bearer_perime_sur_lien_public_ne_donne_pas_401(self):
-        api = APIClient()
+        """ATST10 (C-ATST-019) — statut EXACT, égal à l'appel anonyme : 404
+        pour les inconnus, 200 pour un vrai lien GED. Mutant : 403 sur
+        `ticket_public_status` quand `Authorization` est présent ⇒ rouge."""
+        from authentication.models import Company
+        from importlib import import_module
+        ged = import_module('apps.ged.services')  # core n'importe aucune app
+        Cabinet, Document, DocumentVersion, Folder = (
+            django_apps.get_model('ged', nom)
+            for nom in ('Cabinet', 'Document', 'DocumentVersion', 'Folder'))
+        co = Company.objects.create(nom='ATST10', slug='atst10')
+        doc = Document.objects.create(company=co, nom='Contrat', folder=Folder.objects.create(
+            company=co, nom='D', cabinet=Cabinet.objects.create(company=co, nom='C')))
+        DocumentVersion.objects.create(company=co, document=doc, version=1, file_key='ged/atst10.pdf',
+                                       filename='atst10.pdf', mime='application/pdf')
+        demande = ged.demander_signature(doc, signataire_nom='Jean', signataire_email='j@example.com',
+                                         company=co, created_by=None, notifier=False)
+        api, anonyme = APIClient(), APIClient()
         api.credentials(HTTP_AUTHORIZATION='Bearer jeton.perime.invalide')
-        for url in ('/api/django/public/sav/ticket/inconnu/',
-                    '/api/django/ged/signature/inconnu/',
-                    '/api/django/statuspage/public/incidents/999999/'):
+        for url, attendu in (('/api/django/public/sav/ticket/inconnu/', 404),
+                             ('/api/django/ged/signature/inconnu/', 404),
+                             ('/api/django/statuspage/public/incidents/999999/', 404),
+                             (f'/api/django/ged/signature/{demande.token}/', 200)):
             with self.subTest(url=url):
-                self.assertNotEqual(api.get(url).status_code, 401)
+                resp = api.get(url)
+                self.assertEqual(resp.status_code, attendu)
+                self.assertEqual(resp.status_code, anonyme.get(url).status_code)
+                if attendu == 200:
+                    self.assertNotIn('company', resp.data)

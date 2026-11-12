@@ -120,6 +120,7 @@ class VariablesRecettesTests(TestCase):
         self.assertIn('Votre facture FAC-APAR6', envoi.body)
         self.assertIn("L'équipe APAR6 SARL", envoi.body)
         self.assertNotIn('{', envoi.subject + envoi.body)
+        self.assertNotIn('STOP', envoi.body)  # AMSG65 — porte de sortie réservée aux leads
         run = AutomationRun.objects.get(rule=regle)
         self.assertEqual(run.status, AutomationRun.Status.SUCCESS)
 

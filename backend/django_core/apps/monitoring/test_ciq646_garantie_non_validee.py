@@ -83,3 +83,54 @@ class GarantieNonValideeTest(TestCase):
             data = build_om_report_data(self.inst, today=date(2026, 6, 30))
         self.assertTrue(any('courbe garantie' in reco
                             for reco in data['recommendations']))
+
+
+class SuppressionGarantieTests(TestCase):
+    """ASUP7 — une garantie commencée (ou à relevés) ne se supprime pas
+    (sibling de ``tests.py::TestProductionWarranty``, ce fichier-là est au mur
+    des 2 000 lignes)."""
+
+    def test_suppression_refusee_si_garantie_en_cours(self):
+        from django.utils import timezone
+
+        from apps.monitoring.models import ProductionReading
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        company = Company.objects.create(slug='asup7-co', nom='ASUP7 Co')
+        role = Role.objects.create(
+            company=company, nom='Technicien', est_systeme=True,
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Technicien']))
+        tech = User.objects.create_user(
+            username='asup7_tech', password='x', role_legacy='normal',
+            company=company, role=role)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(tech)}')
+        client = Client.objects.create(
+            company=company, nom='Cli', email='asup7@example.invalid')
+        annee = timezone.localdate().year
+        url = '/api/django/monitoring/warranties/{}/'
+        # (début, relevé) : commencée et/ou relevée ⇒ 409 ; chaque condition
+        # seule suffit (mutant : retirer l'une d'elles ⇒ échec).
+        for i, (debut, releve, statut) in enumerate((
+                (annee, True, 409), (annee, False, 409),
+                (annee + 1, True, 409), (annee + 1, False, 204))):
+            inst = Installation.objects.create(
+                company=company, reference=f'ASUP7-{i}', client=client,
+                puissance_installee_kwc=Decimal('10'))
+            garantie = ProductionWarranty.objects.create(
+                company=company, installation=inst, start_year=debut,
+                guaranteed_year1_kwh=Decimal('12000'),
+                degradation_pct_per_year=Decimal('0'))
+            if releve:
+                ProductionReading.objects.create(
+                    company=company, installation=inst, date=date(annee, 1, 1),
+                    period_days=1, energy_kwh=Decimal('40'))
+            r = api.delete(url.format(garantie.pk))
+            self.assertEqual(r.status_code, statut, (i, getattr(r, 'data', None)))
+            if statut == 409:
+                self.assertEqual(r.data['detail'], 'Garantie en cours : modifiez-la '
+                                 'ou clôturez-la, elle fonde la compensation due.')
+                garantie.refresh_from_db()
+                self.assertEqual(garantie.start_year, debut)
+        self.assertFalse(ProductionWarranty.objects.filter(pk=garantie.pk).exists())
+        self.assertEqual(ProductionWarranty.objects.filter(company=company).count(), 3)

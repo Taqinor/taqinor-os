@@ -222,11 +222,23 @@ class PublicSignatureApiTests(XGed1Base):
                  'signature_texte': 'Jean'}, content_type='application/json')
         self.assertEqual(resp.status_code, 410)
 
+    def _demande_intacte(self):
+        """ATST8 — après un refus 400 : rien d'écrit, lien encore consultable."""
+        self.demande.refresh_from_db()
+        d = self.demande
+        self.assertEqual((d.statut, d.motif_refus, d.refuse_le, d.signature_texte,
+                          d.date_signature, d.consentement_explicite),
+                         (SIGNATURE_EN_ATTENTE, '', None, '', None, False))
+        self.assertEqual(self.client.get(
+            self.URL_TMPL.format(token=d.token)).status_code, 200)
+
     def test_post_refuser_missing_motif_400(self):
+        """Mutant : `statut=refuse` + save() avant le contrôle du motif ⇒ rouge."""
         resp = self.client.post(
             self.URL_TMPL.format(token=self.demande.token),
             {'action': 'refuser'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
+        self._demande_intacte()
 
     def test_post_refuser_success(self):
         resp = self.client.post(
@@ -242,6 +254,7 @@ class PublicSignatureApiTests(XGed1Base):
             self.URL_TMPL.format(token=self.demande.token),
             {'action': 'danser'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
+        self._demande_intacte()
 
     def test_public_payload_never_leaks_other_company(self):
         """Le token ne référence qu'une seule demande d'une seule société ;

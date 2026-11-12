@@ -93,6 +93,26 @@ def _lever_perdu_sur_signature(devis, ancien_statut, user):
         body=f"relevé de Perdu : devis signé {devis.reference}")
 
 
+def _lever_archive_sur_signature(devis, ancien_statut, user):
+    """ASUP49 — jumelle de ``_lever_perdu_sur_signature`` : le lead ARCHIVÉ
+    d'un devis qui vient d'être accepté est désarchivé (les 3 champs de
+    ``fiche_ecritures.restaurer_lead``, sans prochaine étape : il est signé),
+    avec UNE entrée « désarchivé : devis signé <référence> »."""
+    if getattr(devis, 'statut', None) == ancien_statut:
+        return
+    lead = getattr(devis, 'lead', None)
+    if lead is None or not lead.is_archived:
+        return
+    lead.is_archived, lead.archived_by, lead.archived_at = False, None, None
+    lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+    creer_activite(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='is_archived', field_label='Archivé',
+        old_value='Oui', new_value='Non',
+        body=f"désarchivé : devis signé {devis.reference}")
+
+
 @receiver(devis_accepted, dispatch_uid="crm_advance_stage_on_devis_accepted")
 def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
                                      **kwargs):
@@ -106,6 +126,7 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     # PERDU lève « Perdu » AVANT l'avancée d'étape (qui ignore les perdus) :
     # le lead passe à Signé, avec une entrée de chatter.
     _lever_perdu_sur_signature(devis, ancien_statut, user)
+    _lever_archive_sur_signature(devis, ancien_statut, user)  # ASUP49
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
 
 

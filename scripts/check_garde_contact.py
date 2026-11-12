@@ -20,6 +20,7 @@ Usage : python scripts/check_garde_contact.py
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -53,15 +54,6 @@ LISTE_BLANCHE: dict[str, str] = {
     "backend/django_core/apps/automation/actions.py::preparer_whatsapp::wa.me":
         "garde en amont : le handler appelle _refus_opposition avant preparer_whatsapp (partage avec la simulation)",
     "backend/django_core/apps/crm/fiche_bulk.py::_lien_reactivation::wa.me": _LOT_FILTRE,
-    "backend/django_core/apps/crm/receivers_clients.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
-        "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au "
-        "lead",
-    "backend/django_core/apps/crm/leads_notifications.py::_build_lead_wa_reply_url::wa.me":
-        "A CORRIGER (ACRM, session crm) : lien wa.me vers le prospect construit sans consulter peut_contacter ; "
-        "brouillon que le vendeur clique, mais l'opposition n'est pas visible",
-    "backend/django_core/apps/crm/visites_rdv.py::dispatch_appointment_reminder::wa.me":
-        "A CORRIGER (ACRM, session crm) : brouillon wa.me de rappel RDV vers le lead sans garde de contact (opposition "
-        "non verifiee)",
     "backend/django_core/apps/crm/cadence_filet.py::_poser_etape_de_filet::touche":
         "A CORRIGER (LSVC5-5) : pose de filet sans garde propre ; liste blanche « appelants gardes » OU garde a "
         "ajouter, decision du proprietaire crm",
@@ -114,6 +106,8 @@ LISTE_BLANCHE: dict[str, str] = {
         _TRANSACTIONNEL,
     "backend/django_core/apps/ventes/domain/recouvrement.py::_build_wa_draft_url::wa.me": _AMONT_NUDGE,
     "backend/django_core/apps/ventes/domain/recouvrement.py::_send_nudge_email::email": _AMONT_NUDGE,
+    # AMSG29 — brouillon wa.me de relance de FACTURE remis au responsable (D-ACVI-10).
+    "backend/django_core/apps/ventes/scheduled.py::_dispatch_relance_canal::wa.me": _TRANSACTIONNEL,
     "backend/django_core/apps/ventes/email_service.py::_send::email": _PLOMBERIE,
     "backend/django_core/apps/ventes/utils/whatsapp.py::build_wa_url::wa.me": _PLOMBERIE,
     "backend/django_core/apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp_preview::wa.me":
@@ -124,6 +118,55 @@ LISTE_BLANCHE: dict[str, str] = {
 }
 
 GENRE_TOUCHE, GENRE_WAME, GENRE_MAIL = "touche", "wa.me", "email"
+
+# AMSG64 — liens wa.me PRÉ-REMPLIS assemblés par l'ÉCRAN (le serveur ne rend que le texte).
+FRONT_DIR, GENRE_WAME_FRONT = ROOT / "frontend" / "src", "wa.me-front"
+_SERVEUR = "garde serveur : ventes/devis/<id>/{}/ refuse 409 avant de servir le texte (exiger_contact_permis)"
+LISTE_BLANCHE_FRONT: dict[str, str] = {f"frontend/src/{k}::wa.me-front": v for k, v in {
+    "features/crm/workspace/QuestionnaireDialog.jsx::envoyerWhatsApp": "A CORRIGER (AMSG1)",
+    "pages/ventes/DevisActionBoardPage.jsx::DevisActionBoardPage": "A CORRIGER (AMSG2)",
+    "features/crm/workspace/useEnvoiDevis.js::envoyerWhatsAppUnique": _SERVEUR.format("share-link (envoi)"),
+    "pages/ventes/devisList/devisListHelpers.js::buildRelanceWaUrl": _SERVEUR.format("whatsapp-preview"),
+    "features/adsengine/ConsentScreen.jsx::whatsappLink": "sans numero (wa.me/?text=) : contact choisi a l'envoi",
+    "lib/contactLinks.js::buildWaUrl": _PLOMBERIE, "lib/contactLinks.js::waHref": _PLOMBERIE}.items()}
+#: Plafond GELÉ (AMSG64, 11/11/2026) des raisons « A CORRIGER » sans identifiant de tâche : il ne peut que baisser.
+PLAFOND_A_CORRIGER_SANS_TACHE = 7
+_TACHE = re.compile(r"A CORRIGER \([A-Z]+[0-9]+\)")
+#: ``waHref``/``buildWaUrl`` à 2e argument non vide (1er argument : un niveau de parenthèses).
+_APPEL_FRONT = re.compile(r"(?<!function )\b(?:waHref|buildWaUrl)\s*\([^,()]*(?:\([^()]*\)[^,()]*)*,"
+                          r"(?!\s*(?:\)|['\"`]{2}\s*\)|null\b|undefined\b))")
+_TEXTE_FRONT = re.compile(r"[?&]text=(?:\$\{|['\"]\s*\+)")
+_PARAMS = r"\([^()]*(?:\([^()]*\)[^()]*)*\)"
+_FONCTION_FRONT = re.compile(
+    rf"function\s+(\w+)\s*{_PARAMS}|(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?(?:{_PARAMS}|\w+)\s*=>")
+
+
+def _fichiers_front(front_dir: Path = FRONT_DIR):
+    for p in sorted([*front_dir.rglob("*.js"), *front_dir.rglob("*.jsx")]) if front_dir.is_dir() else []:
+        if not ({"test", "tests", "__tests__"} & set(p.parts) or ".test." in p.name or ".spec." in p.name):
+            yield p
+
+
+def _englobe(code: str, debut: int, pos: int) -> bool:
+    bal = ouvert = 0  # le corps ouvert après ``debut`` l'est-il encore à ``pos`` ?
+    for c in code[debut:pos]:
+        bal += (c in "([{") - (c in ")]}")
+        ouvert = ouvert or bal > 0
+        if ouvert and bal <= 0:
+            return False
+    return bal > 0
+
+
+def analyser_front(source: str, rel: str):
+    """AMSG64 — (cle, ligne, fonction, genre) des liens wa.me à texte assemblés par l'écran."""
+    code = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group().count("\n"), source, flags=re.S)
+    code = re.sub(r"(^|\s)//.*", r"\1", code)
+    out = {}
+    for pos in sorted(m.start() for r in (_APPEL_FRONT, _TEXTE_FRONT) for m in r.finditer(code)):
+        noms = [m.group(1) or m.group(2) for m in _FONCTION_FRONT.finditer(code, 0, pos)
+                if _englobe(code, m.end(), pos)]  # la fonction ENGLOBANTE la plus proche
+        out.setdefault(f"{rel}::{noms[-1] if noms else '<module>'}::{GENRE_WAME_FRONT}", code.count("\n", 0, pos) + 1)
+    return [(cle, ligne, cle.split("::")[1], GENRE_WAME_FRONT) for cle, ligne in out.items()]
 
 
 def _fichiers(apps_dir: Path = APPS_DIR):
@@ -249,20 +292,26 @@ def main(argv=None, sources_en_plus=()) -> int:
     """``sources_en_plus`` : ``(rel, source)`` analyses en plus du depot (tests)."""
     violations = []
     utilises = set()
-    sources = [(_rel(p), p.read_text(encoding="utf-8")) for p in _fichiers()]
+    sources = [(_rel(p), p.read_text(encoding="utf-8")) for p in [*_fichiers(), *_fichiers_front()]]
+    blanche = {**LISTE_BLANCHE, **LISTE_BLANCHE_FRONT}
     for rel, source in [*sources, *sources_en_plus]:
-        for cle, ligne, fonction, genre in analyser_source(source, rel):
-            if cle in LISTE_BLANCHE:
+        analyse = analyser_front if rel.endswith((".js", ".jsx")) else analyser_source
+        for cle, ligne, fonction, genre in analyse(source, rel):
+            if cle in blanche:
                 utilises.add(cle)
                 continue
             violations.append((rel, ligne, fonction, genre))
-    perimees = sorted(set(LISTE_BLANCHE) - utilises)
-    if violations or perimees:
+    perimees = sorted(set(blanche) - utilises)
+    sans_tache = [c for c, r in blanche.items() if "A CORRIGER" in r and not _TACHE.search(r)]
+    if violations or perimees or len(sans_tache) > PLAFOND_A_CORRIGER_SANS_TACHE:
         for f, l, fn, g in violations:
             print(f"{f}:{l}: {fn}() - {g} sans garde de contact "
                   f"(peut_contacter/_lead_relancable/motif_de_refus) ni liste blanche")
         for c in perimees:
             print(f"liste blanche perimee (plus aucun site) : {c}")
+        if len(sans_tache) > PLAFOND_A_CORRIGER_SANS_TACHE:
+            print(f"{len(sans_tache)} raisons « A CORRIGER » sans identifiant de tache "
+                  f"(plafond gele {PLAFOND_A_CORRIGER_SANS_TACHE}) : nommez la tache, « A CORRIGER (XXXn) »")
         return 1
     print("check_garde_contact : OK")
     return 0

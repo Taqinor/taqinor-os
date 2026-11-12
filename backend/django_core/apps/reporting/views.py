@@ -281,7 +281,7 @@ def dashboard(request):
         try:
             from apps.crm.models import Lead
             prev_leads = Lead.objects.filter(
-                **co, date_creation__date__gte=p_start,
+                **co, is_archived=False, date_creation__date__gte=p_start,
                 date_creation__date__lte=p_end).count()
         except Exception:
             logger.warning("dashboard : échec ignoré, comportement dégradé", exc_info=True)
@@ -294,7 +294,7 @@ def dashboard(request):
         if curr_to:
             curr_fqs_f = curr_fqs_f.filter(date_emission__lte=curr_to)
         curr_ca = _ca_encaisse_ht(curr_fqs_f.filter(statut__in=_STATUTS_CA))
-        curr_leads = Lead.objects.filter(**co)
+        curr_leads = Lead.objects.filter(**co, is_archived=False)  # ASUP50 — comme les rapports
         if curr_from:
             curr_leads = curr_leads.filter(date_creation__date__gte=curr_from)
         if curr_to:

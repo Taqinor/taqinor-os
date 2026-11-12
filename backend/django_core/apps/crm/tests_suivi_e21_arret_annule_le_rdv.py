@@ -178,6 +178,68 @@ class ArretParLaFicheTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self._assert_annule(visite, cadence_visite.CAUSE_RDV_NE_PLUS_CONTACTER)
 
+    def test_archivage_annule_l_appointment_a_venir(self):
+        # ASUP46 — archiver annule les rendez-vous d'agenda À VENIR du lead
+        # (passés intouchés) ; restaurer ne les ressuscite pas.
+        from apps.crm.models import Appointment
+
+        S = Appointment.Statut
+        a_venir = Appointment.objects.create(
+            company=self.company, lead=self.lead,
+            scheduled_at=GEL + datetime.timedelta(days=3))
+        confirme = Appointment.objects.create(
+            company=self.company, lead=self.lead, statut=S.CONFIRME,
+            scheduled_at=GEL + datetime.timedelta(days=4))
+        passe = Appointment.objects.create(
+            company=self.company, lead=self.lead,
+            scheduled_at=GEL - datetime.timedelta(days=1))
+
+        resp = self.api.post(f'/api/django/crm/leads/{self.lead.pk}/archiver/',
+                             {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for appt, statut in ((a_venir, S.ANNULE), (confirme, S.ANNULE),
+                             (passe, S.PLANIFIE)):
+            appt.refresh_from_db()
+            self.assertEqual(appt.statut, statut)
+
+        resp = self.api.post(f'/api/django/crm/leads/{self.lead.pk}/restaurer/',
+                             {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        a_venir.refresh_from_db()
+        self.assertEqual(a_venir.statut, S.ANNULE)
+
+    def test_suppression_du_lead_annule_le_rendez_vous(self):
+        # ASUP44 — corbeille (unitaire puis en masse) : même annulation que
+        # l'archivage ; un lead sans visite : aucune note.
+        admin = User.objects.create_user(
+            username=f'{self.acteur.username}-admin', password='x',
+            role_legacy='admin', company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        cause = 'le lead est supprimé'
+
+        visite = self._planifier()
+        resp = api.delete(f'/api/django/crm/leads/{self.lead.pk}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self._assert_annule(visite, cause)
+
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Prospect E21 masse',
+            stage=stages.CONTACTED, owner=self.acteur,
+            telephone='+212662219999')
+        visite = self._planifier()
+        sans_visite = Lead.objects.create(
+            company=self.company, nom='Prospect E21 sans visite',
+            stage=stages.CONTACTED, owner=self.acteur)
+        resp = api.post('/api/django/crm/leads/bulk/', {
+            'action': 'delete', 'ids': [self.lead.pk, sans_visite.pk]},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self._assert_annule(visite, cause)
+        self.assertFalse(sans_visite.activites.filter(
+            body__startswith=NOTE_RDV).exists())
+
 
 class VisitePasseeTests(_Base):
 

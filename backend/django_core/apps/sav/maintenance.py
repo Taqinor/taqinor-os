@@ -272,6 +272,10 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     #: ont les mêmes jetons de chemin : la vue d'ensemble est ``…_list``.
     schema = mots_operation(rentabilite_liste='list')
 
+    #: ASUP21 — un contrat client (prestations) ne se supprime pas : DELETE hors
+    #: ``http_method_names`` ⇒ 405, et la route n'est plus publiée (api-fuzz #1377).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
+
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):
             return [LectureDuModule()]

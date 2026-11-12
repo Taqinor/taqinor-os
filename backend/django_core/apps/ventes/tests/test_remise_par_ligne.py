@@ -340,9 +340,8 @@ class TestChargeUtileMoteurPdf(TestCase):
         self.assertEqual(self._centimes(pose['total_ht_remise']), 380000)
 
 
-@tag('pdf')  # rendu WeasyPrint complet — lourd → palier release-verify
-class TestRenduPdfRemiseParLigne(TestCase):
-    """Le document : prix barrés, phrase d'explication, pages inchangées."""
+class _DevisRemise:
+    """Données communes des deux classes de rendu (HTML / pages)."""
 
     # Montants ronds : 5 % de n'importe quel sous-ensemble tombe au centime,
     # donc la valeur remisée d'une ligne ne dépend pas du découpage d'options.
@@ -375,6 +374,86 @@ class TestRenduPdfRemiseParLigne(TestCase):
                           self.LIGNES, remise_globale=remise_globale,
                           reference=reference, **kwargs)
 
+
+class TestHtmlRemiseParLigne(_DevisRemise, TestCase):
+    """ATST23 — NON taguée : joue à chaque fusion le prix catalogue barré et
+    le prix remisé sur le HTML rendu par le moteur (``render_html_for``), en
+    premium et en une page (seule mesure WeasyPrint : celle du une-page)."""
+
+    def _render(self, devis, pdf_options=None):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.builder import build_quote_data
+        return G.render_html_for(build_quote_data(devis, pdf_options))
+
+    def _cellule(self, html):
+        self.assertIn(self.BARRE, html)
+        # 4 000,00 barré, 3 800,00 en chiffre principal, dans la MÊME cellule.
+        # Le séparateur de milliers du HTML rendu est l'espace fine insécable
+        # de la maison (``FINE``), pas l'espace simple.
+        self.assertRegex(html, re.compile(
+            re.escape(self.BARRE) + '4' + self.FINE + r'000,00</span>\s*'
+            r'<span style="white-space:nowrap;">3' + self.FINE + '800,00</span>'))
+        # La chaîne de totaux est intacte : Sous-total CATALOGUE → Remise → net.
+        self.assertIn('Sous-total HT', html)
+        self.assertIn('Remise (5', html)
+
+    def test_premium_et_une_page_montrent_le_prix_barre_et_le_prix_remise(self):
+        """La cellule de ``_cellule_prix_remise`` sur ses deux appelants :
+        ``generate_devis_premium.equip_rows`` (premium) et
+        ``legacy_onepage.page_onepage`` (une page)."""
+        premium = self._render(
+            self._devis('5', 'DEV-REM-P3', etude_params=DEUX_OPTIONS))
+        self._cellule(premium)
+        self.assertIn('Total TTC', premium)
+        self._cellule(self._render(self._devis('5', 'DEV-REM-1P'),
+                                   {'pdf_mode': 'onepage'}))
+
+    def test_la_phrase_explique_le_tableau_quand_il_y_a_une_remise(self):
+        """UNE phrase, sur les deux formats — et aucun nombre de plus qu'elle."""
+        devis = self._devis('5', 'DEV-REM-NOTE', etude_params=DEUX_OPTIONS)
+        for opts in (None, {'pdf_mode': 'onepage'}):
+            with self.subTest(opts=opts):
+                html = self._render(devis, opts)
+                self.assertIn(self.PHRASE, html)
+                self.assertIn('Remise de 5' + self.FINE + '%', html)
+
+    def test_sans_remise_ni_prix_barre_ni_phrase(self):
+        """Remise nulle ⇒ le document est celui d'avant : aucun prix barré de
+        ligne, aucune phrase ajoutée."""
+        devis = self._devis('0', 'DEV-REM-NULLE', etude_params=DEUX_OPTIONS)
+        for opts in (None, {'pdf_mode': 'onepage'}):
+            with self.subTest(opts=opts):
+                html = self._render(devis, opts)
+                self.assertNotIn(self.BARRE, html)
+                self.assertNotIn(self.PHRASE, html)
+
+    def test_le_prix_achat_ne_fuite_jamais_avec_une_remise(self):
+        """Règle #4 — ``Produit.prix_achat`` reste GÉNÉRATEUR-ONLY, y compris
+        sur un document remisé (la remise touche des prix : c'est exactement le
+        moment où une marge peut fuiter)."""
+        # La RÉFÉRENCE ne porte pas le mot « achat » : elle est imprimée (titre,
+        # en-tête, pied) et ferait un faux positif sur le marqueur ci-dessous.
+        devis = self._devis('5', 'DEV-REM-MARGE', etude_params=DEUX_OPTIONS)
+        for ligne in devis.lignes.all():
+            ligne.produit.prix_achat = Decimal('9876.54')
+            ligne.produit.save(update_fields=['prix_achat'])
+        for opts in ({'pdf_mode': 'onepage'}, None):
+            with self.subTest(opts=opts):
+                html = self._render(devis, opts)
+                for marqueur in ('9876', '9 876', '9 876',
+                                 '9&#8239;876'):
+                    self.assertNotIn(marqueur, html.lower())
+                # « achat » MOT ENTIER : « rachat » (tarif de rachat 82-21,
+                # texte légitime) n'est pas un prix d'achat.
+                self.assertIsNone(
+                    re.search(r'\bachat\b', html.lower()),
+                    'le mot « achat » est imprimé dans le document client')
+
+
+@tag('pdf')  # rendu WeasyPrint complet — lourd → palier release-verify
+class TestRenduPdfRemiseParLigne(_DevisRemise, TestCase):
+    """Le document PDF : pages inchangées avec une remise."""
+
     def _render(self, devis, pdf_options=None):
         from weasyprint import HTML
 
@@ -406,49 +485,14 @@ class TestRenduPdfRemiseParLigne(TestCase):
                 devis.id, pdf_options=pdf_options, persist=False)
         return len(fitz.open(stream=up.call_args[0][0], filetype='pdf'))
 
-    def test_le_detail_trois_pages_montre_le_prix_barre_et_le_prix_remise(self):
+    def test_trois_pages_et_une_page_avec_une_remise(self):
+        """Comptes de pages seulement : le HTML est joué, non tagué, par
+        ``TestHtmlRemiseParLigne`` (ATST23)."""
         devis = self._devis('5', 'DEV-REM-P3', etude_params=DEUX_OPTIONS)
-        html, doc = self._render(devis)
-        self.assertEqual(len(doc.pages), 3)
-        self.assertIn(self.BARRE, html)
-        # 4 000,00 barré, 3 800,00 en chiffre principal, dans la MÊME cellule.
-        self.assertRegex(html, re.compile(
-            re.escape(self.BARRE) + r'4 000,00</span>\s*'
-            r'<span style="white-space:nowrap;">3 800,00</span>'))
-        # La chaîne de totaux est intacte : Sous-total CATALOGUE → Remise → net.
-        self.assertIn('Sous-total HT', html)
-        self.assertIn('Remise (5', html)
-        self.assertIn('Total TTC', html)
-
-    def test_le_une_page_montre_le_prix_barre_et_le_prix_remise(self):
+        self.assertEqual(len(self._render(devis)[1].pages), 3)
         devis = self._devis('5', 'DEV-REM-1P')
-        html, doc = self._render(devis, {'pdf_mode': 'onepage'})
-        self.assertEqual(len(doc.pages), 1)
-        self.assertIn(self.BARRE, html)
-        self.assertRegex(html, re.compile(
-            re.escape(self.BARRE) + r'4 000,00</span>\s*'
-            r'<span style="white-space:nowrap;">3 800,00</span>'))
-        self.assertIn('Sous-total HT', html)
-        self.assertIn('Remise (5', html)
-
-    def test_la_phrase_explique_le_tableau_quand_il_y_a_une_remise(self):
-        """UNE phrase, sur les deux formats — et aucun nombre de plus qu'elle."""
-        devis = self._devis('5', 'DEV-REM-NOTE', etude_params=DEUX_OPTIONS)
-        for opts in (None, {'pdf_mode': 'onepage'}):
-            with self.subTest(opts=opts):
-                html, _ = self._render(devis, opts)
-                self.assertIn(self.PHRASE, html)
-                self.assertIn('Remise de 5' + self.FINE + '%', html)
-
-    def test_sans_remise_ni_prix_barre_ni_phrase(self):
-        """Remise nulle ⇒ le document est celui d'avant : aucun prix barré de
-        ligne, aucune phrase ajoutée."""
-        devis = self._devis('0', 'DEV-REM-NULLE', etude_params=DEUX_OPTIONS)
-        for opts in (None, {'pdf_mode': 'onepage'}):
-            with self.subTest(opts=opts):
-                html, _ = self._render(devis, opts)
-                self.assertNotIn(self.BARRE, html)
-                self.assertNotIn(self.PHRASE, html)
+        self.assertEqual(
+            len(self._render(devis, {'pdf_mode': 'onepage'})[1].pages), 1)
 
     def test_les_pages_ne_bougent_pas_avec_une_remise(self):
         """4 pages (industriel premium, D-QJR5-12), 4 avec étude (moteur
@@ -481,25 +525,3 @@ class TestRenduPdfRemiseParLigne(TestCase):
                     self._pages_servies(devis, {'include_etude': True}), 4)
                 self.assertEqual(
                     self._pages_servies(devis, {'pdf_mode': 'onepage'}), 1)
-
-    def test_le_prix_achat_ne_fuite_jamais_avec_une_remise(self):
-        """Règle #4 — ``Produit.prix_achat`` reste GÉNÉRATEUR-ONLY, y compris
-        sur un document remisé (la remise touche des prix : c'est exactement le
-        moment où une marge peut fuiter)."""
-        # La RÉFÉRENCE ne porte pas le mot « achat » : elle est imprimée (titre,
-        # en-tête, pied) et ferait un faux positif sur le marqueur ci-dessous.
-        devis = self._devis('5', 'DEV-REM-MARGE', etude_params=DEUX_OPTIONS)
-        for ligne in devis.lignes.all():
-            ligne.produit.prix_achat = Decimal('9876.54')
-            ligne.produit.save(update_fields=['prix_achat'])
-        for opts in ({'pdf_mode': 'onepage'}, None):
-            with self.subTest(opts=opts):
-                html, _ = self._render(devis, opts)
-                for marqueur in ('9876', '9 876', '9 876',
-                                 '9&#8239;876'):
-                    self.assertNotIn(marqueur, html.lower())
-                # « achat » MOT ENTIER : « rachat » (tarif de rachat 82-21,
-                # texte légitime) n'est pas un prix d'achat.
-                self.assertIsNone(
-                    re.search(r'\bachat\b', html.lower()),
-                    'le mot « achat » est imprimé dans le document client')

@@ -73,6 +73,32 @@ class SignatureLeadPerduTests(TestCase):
         self.assertEqual(notes.count(), 1)
         self.assertIn(devis.reference, notes.first().body)
 
+    def test_signature_desarchive_le_lead(self):
+        """ASUP49 — le lead ARCHIVÉ d'un devis signé est désarchivé (3 champs),
+        passe Signé, avec UNE entrée ; non archivé ou second accepté : rien."""
+        from apps.crm.selectors import est_lead_signe
+        lead, devis = self._devis(perdu=False, num=3)
+        Lead.objects.filter(pk=lead.pk).update(
+            is_archived=True, archived_by=self.user, archived_at=timezone.now())
+        self._accepter(devis)
+        lead.refresh_from_db()
+        self.assertEqual((lead.is_archived, lead.archived_by, lead.archived_at),
+                         (False, None, None))
+        self.assertEqual(lead.stage, stages.SIGNED)
+        self.assertTrue(est_lead_signe(lead))
+        notes = LeadActivity.objects.filter(lead=lead, body__contains='désarchivé : devis signé')
+        self.assertEqual([n.body for n in notes], [f'désarchivé : devis signé {devis.reference}'])
+        self.assertIn(lead, Lead.objects.filter(is_archived=False))
+        from apps.crm.receivers import _avancer_stage_on_devis_accepted
+        Lead.objects.filter(pk=lead.pk).update(is_archived=True)
+        devis.refresh_from_db()  # second accepté sans changement de statut : rien
+        _avancer_stage_on_devis_accepted(None, devis=devis, user=self.user, ancien_statut=devis.statut)
+        self.assertTrue(Lead.objects.get(pk=lead.pk).is_archived)
+        autre, devis2 = self._devis(perdu=False, num=4)
+        self._accepter(devis2)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead__in=[lead, autre], body__contains='désarchivé').count(), 1)
+
     def test_lead_non_perdu_sans_entree(self):
         lead, devis = self._devis(perdu=False, num=2)
         self._accepter(devis)

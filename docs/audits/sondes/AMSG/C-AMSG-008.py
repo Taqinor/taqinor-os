@@ -91,12 +91,16 @@ def scenario(canal):
           "FollowupLevel": NS(Canal=NS(EMAIL="email", WHATSAPP="whatsapp", COURRIER="courrier", APPEL="appel")),
           "build_facture_whatsapp_draft": lambda f, modele="": brouillons.append(modele) or "https://wa.me/212600000000?text=…"}
     reel("core/checks.py", {"BACKENDS_NON_ENVOYEURS", "CLES_ENVOI", "backend_email_envoie", "cles_envoi_posees"}, ns)
+    reel("core/email_backends.py", {"ENVELOPPE_EMAIL", "backend_reel"}, ns)  # AMSG61 : lus par backend_email_envoie et _send
     reel("apps/facturation/recouvrement.py", {"STATUTS_NON_RELANCABLES", "facture_relancable", "montant_exigible"}, ns)
     reel("apps/ventes/domain/recouvrement.py", {"prochain_niveau"}, ns)
-    reel("apps/ventes/email_service.py", {"is_email_configured", "_from_email", "_reply_to_address", "_send",
+    reel("apps/ventes/email_service.py", {"EMAIL_BACKENDS_SANS_ENVOI", "EMAIL_NON_OPERATIONNEL",  # AMSG28 : lues par _send
+                                          "is_email_configured", "_from_email", "_reply_to_address", "_send",
                                           "_refuser_sans_pdf_facture", "send_relance_email"}, ns)
+    reel("apps/ventes/public/payload_conditions.py", {"EMAIL_BACKENDS_SANS_ENVOI"}, ns)  # AMSG29 — prédicat du correctif
     reel("apps/ventes/scheduled.py", {"_dispatch_relance_canal", "_email_parti", "_reporter_relance", "_promesse_honoree",
-                                      "_check_promesses_expirees", "relance_reminders"}, ns)
+                                      "_check_promesses_expirees", "relance_reminders", "_email_sans_envoi",
+                                      "_activite_relance", "_clients_manuels"}, ns)
     compte = ns["relance_reminders"]()
     return {"is_email_configured": ns["is_email_configured"](), "relances_comptees": compte,
             "messages_imprimes_par_le_backend_console": len(console), "emaillog_statuts": [l.statut for l in emaillogs],

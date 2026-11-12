@@ -228,14 +228,14 @@ class SoftDeleteModel(models.Model):
         """Restaure un objet soft-supprimé + ferme l'entrée de corbeille."""
         if not self.is_deleted:
             return self
-        self.is_deleted = False
-        self.deleted_at = None
-        self.deleted_by = None
+        self.is_deleted, self.deleted_at, self.deleted_by = False, None, None
         self.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
         ct = ContentType.objects.get_for_model(type(self))
         (DeletionRecord.objects
          .filter(content_type=ct, object_id=self.pk, restored_at__isnull=True)
          .update(restored_at=timezone.now()))
+        from core.events import record_soft_restored  # ASUP15 — les deux corbeilles d'accord
+        record_soft_restored.send(sender=type(self), instance=self, company=getattr(self, 'company', None))
         return self
 
 

@@ -61,7 +61,7 @@ class RevocationTests(TestCase):
             statut=BonCommandeFournisseur.Statut.ENVOYE)
         self.bc.lignes.create(
             produit=produit, quantite=2, prix_achat_unitaire=Decimal('100'))
-        self.user_portail, _ = provisionner_compte_fournisseur(
+        self.user_portail, _, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         self.jeton = generer_token_portail_fournisseur(
             self.company, self.fournisseur, self.admin)

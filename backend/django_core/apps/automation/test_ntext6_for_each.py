@@ -6,7 +6,7 @@ sous-actions par élément, avec une borne dure anti-DoS (200 itérations,
 troncature dite dans le message du run).
 """
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from authentication.models import Company
 from apps.crm.models import Lead
@@ -120,6 +120,47 @@ class ForEachActionTests(TestCase):
             rule, self.lead, self.co, context={'lignes': [{'a': 1}]})
         self.assertEqual(status, AutomationRun.Status.FAILED)
         self.assertEqual(CustomRecord.objects.count(), 0)
+
+    @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
+    def test_envoi_vise_l_element_et_un_seul_report(self):
+        """AMSG77 — 3 éléments à e-mail distinct : 3 e-mails à 3 adresses en
+        journée ; de nuit 0 puis 3 à la reprise (1 échéance) ; en étape de nuit
+        0 e-mail et 1 échéance posée sur la vraie règle."""
+        from django.core import mail
+
+        from apps.automation.beat_tasks import process_due_automation_steps
+        from apps.automation.models import AutomationScheduledStep, AutomationStep
+        from testkit.time import frozen
+        nuit, jour = '2026-01-05 22:30:00', '2026-01-06 09:00:00'  # 23:30 / 10:00 au Maroc
+        adresses = [f'amsg77-{i}@example.invalid' for i in range(3)]
+        cfg = {'source': 'contexte:lignes', 'sous_actions': [{
+            'action_type': ActionType.SEND_EMAIL, 'action_config': {'subject': 'Info', 'body': 'Bonjour'}}]}
+        contexte = {'lignes': [{'email': a} for a in adresses]}
+        rule = self._rule(**cfg)
+
+        def envoyer(regle, quand):
+            mail.outbox = []
+            with frozen(quand):
+                with self.captureOnCommitCallbacks(execute=True):
+                    engine.run_action(regle, self.lead, self.co, context=contexte)
+
+        envoyer(rule, jour)
+        self.assertEqual(sorted(m.to[0] for m in mail.outbox), adresses)
+        envoyer(rule, nuit)
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(AutomationScheduledStep.objects.filter(rule=rule).count(), 1)
+        with frozen(jour):
+            with self.captureOnCommitCallbacks(execute=True):
+                process_due_automation_steps()
+        self.assertEqual(sorted(m.to[0] for m in mail.outbox), adresses)
+
+        etape = self._rule()
+        etape.action_type = ActionType.WAIT
+        etape.save(update_fields=['action_type'])
+        AutomationStep.objects.create(rule=etape, ordre=1, action_type=ActionType.FOR_EACH, action_config=cfg)
+        envoyer(etape, nuit)
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(AutomationScheduledStep.objects.filter(rule=etape).count(), 1)
 
     def test_custom_object_source_is_company_scoped(self):
         CustomRecord.objects.create(

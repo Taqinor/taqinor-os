@@ -104,6 +104,20 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(screen.queryByRole('menuitem', { name: /Note de débit/ })).toBeNull()
   })
 
+  it('AMSG27 — relance WhatsApp désactivée sur une contestée', async () => {
+    const enRetard = { ...CONTRAT.exemple, statut: 'en_retard', client_telephone: '+212600000000' }
+    rendre({ ...enRetard, contestee_le: '2026-11-02' })
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    const entree = await screen.findByRole('menuitem', { name: /Relance suspendue/ })
+    expect(entree).toHaveAttribute('aria-disabled', 'true')
+    expect(entree).toHaveAttribute('title', 'Facture contestée : la relance est suspendue.')
+    expect(screen.queryByRole('menuitem', { name: /Relancer par WhatsApp/ })).toBeNull()
+    cleanup()
+    rendre(enRetard)
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Relancer par WhatsApp/ })).toBeInTheDocument()
+  })
+
   it('ASEC64 — avec `encaisser` sans palier admin : Avoir visible', () => {
     rendre(CONTRAT.exemple, { isAdmin: false, canManage: false })
     expect(screen.getByRole('button', { name: /^Avoir$/ })).toBeInTheDocument()

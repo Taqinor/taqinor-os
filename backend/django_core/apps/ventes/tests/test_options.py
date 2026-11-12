@@ -173,7 +173,7 @@ class TestOptionDownstream(TestCase):
             company=self.company, nom='Client', prenom='Opt',
             email='opt@example.com', telephone='+212600000009')
 
-    def _two_option_devis(self, num=40):
+    def _two_option_devis(self, num=40, lignes=None):
         # PV86 — un document à DEUX options déclare son alternative dans
         # ``etude_params['scenario']`` (ce que le générateur persiste
         # toujours). Sans déclaration, deux onduleurs en lignes non
@@ -185,14 +185,14 @@ class TestOptionDownstream(TestCase):
             client=self.client_obj, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20'),
             etude_params={'scenario': 'Les deux (Sans + Avec)'})
-        lignes = [
+        lignes = lignes or [
             ('Onduleur réseau', '1', '11700'),
             ('Onduleur hybride', '1', '24000'),
             ('Panneau mono 550W', '14', '1100'),
             ('Batterie 5 kWh', '1', '14000'),
             ('Installation', '1', '4000'),
         ]
-        for desig, qty, pu in lignes:
+        for desig, qty, pu, *role in lignes:
             produit = Produit.objects.create(
                 company=self.company, nom=desig, sku=f'{num}-{desig[:10]}',
                 prix_vente=Decimal(pu), prix_achat=Decimal('1'),
@@ -200,8 +200,24 @@ class TestOptionDownstream(TestCase):
             LigneDevis.objects.create(
                 devis=devis, produit=produit, designation=desig,
                 quantite=Decimal(qty), prix_unitaire=Decimal(pu),
-                remise=Decimal('0'))
+                remise=Decimal('0'), role_devis=(role or [None])[0])
         return devis
+
+    def test_detail_ci_garde_le_panier_du_niveau_du_devis(self):
+        """ATST25 (C-ATST-013) — ``lignes_pour_economie_ci`` joué sur un devis
+        en base : au niveau 9 Dyness (sans mot-clé) reste dans « sans » ; au
+        niveau 10 panneau et onduleur réseau seuls (filtre pur au même niveau)."""
+        from apps.ventes.economie_ci import lignes_pour_economie_ci
+        roles = [(li.designation, '1', '1000', li.role_devis)
+                 for li in TestPureFilter._lignes_a_roles()]
+        devis = self._two_option_devis(num=25, lignes=roles)
+        for niveau, attendu in (
+                (9, ['Panneau Jinko 550W', 'Onduleur réseau 5kW', 'Dyness BX51100']),
+                (10, ['Panneau Jinko 550W', 'Onduleur réseau 5kW'])):
+            Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+            with self.subTest(niveau=niveau):
+                self.assertEqual([li['designation'] for li in lignes_pour_economie_ci(
+                    Devis.objects.get(pk=devis.pk), 'sans_batterie')], attendu)
 
     def _single_option_devis(self, num=50):
         devis = Devis.objects.create(

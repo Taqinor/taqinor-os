@@ -203,14 +203,25 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
     message = rendre_message_relance(niveau, facture)
 
     if canal == FollowupLevel.Canal.WHATSAPP:
+        # AMSG29 — le brouillon est REMIS au responsable (activité portant le
+        # lien wa.me) ; sans brouillon (tél. absent), le niveau est gardé.
+        envoye = False
         try:
-            from .utils.whatsapp import build_facture_whatsapp_draft
-            build_facture_whatsapp_draft(facture, modele='relance')
-        except Exception:  # pragma: no cover — best-effort, ex. tél. absent
+            from .utils.phone import normalize_phone_e164
+            from .utils.whatsapp import build_facture_whatsapp_draft, build_wa_url
+            telephone = facture.client.telephone if facture.client_id else ''
+            if normalize_phone_e164(telephone):
+                texte, _lien = build_facture_whatsapp_draft(
+                    facture, modele='relance')
+                envoye = _activite_relance(
+                    facture, 'WhatsApp', '💬',
+                    f'Relance WhatsApp à envoyer — facture {facture.reference}',
+                    build_wa_url(telephone, texte))
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'relance_reminders: brouillon WhatsApp indisponible pour '
-                'facture %s', facture.id)
-        return {'canal': canal, 'courrier_pdf_key': ''}
+                'facture %s', facture.id, exc_info=True)
+        return {'canal': canal, 'courrier_pdf_key': '', 'envoye': envoye}
 
     if canal == FollowupLevel.Canal.COURRIER:
         courrier_key = ''
@@ -220,43 +231,23 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
                 'ordre': getattr(niveau, 'ordre', None), 'nom': niveau_nom,
                 'delai_jours': getattr(niveau, 'delai_jours', None),
             } if niveau is not None else None, message)
-            courrier_key = (
+            cle = (
                 f'relances/courrier/{facture.company_id}/'
                 f'{facture.reference}-{casablanca_today().isoformat()}.pdf')
-            _upload_pdf(pdf_bytes, courrier_key)
-        except Exception:  # pragma: no cover — best-effort
+            _upload_pdf(pdf_bytes, cle)
+            courrier_key = cle  # AMSG29 — clé posée seulement si la lettre existe
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'relance_reminders: lettre courrier indisponible pour '
-                'facture %s', facture.id)
-        return {'canal': canal, 'courrier_pdf_key': courrier_key}
+                'facture %s', facture.id, exc_info=True)
+        return {'canal': canal, 'courrier_pdf_key': courrier_key,
+                'envoye': bool(courrier_key)}
 
     if canal == FollowupLevel.Canal.APPEL:
-        try:
-            from django.contrib.contenttypes.models import ContentType
-            from apps.records.models import Activity, ActivityType
-            ct = ContentType.objects.get_for_model(facture.__class__)
-            atype = ActivityType.objects.filter(
-                company=facture.company, nom='Appel').first()
-            if atype is None:
-                atype = ActivityType.objects.create(
-                    company=facture.company, nom='Appel', icone='📞',
-                    ordre=45, est_systeme=True)
-            assigned_to = (
-                getattr(facture.client, 'owner', None)
-                or getattr(facture.client, 'created_by', None)
-                or facture.created_by)
-            Activity.objects.create(
-                company=facture.company, content_type=ct,
-                object_id=facture.id, activity_type=atype,
-                summary=f'Relance téléphonique — facture {facture.reference}',
-                note=message, due_date=casablanca_today(),
-                assigned_to=assigned_to,
-            )
-        except Exception:  # pragma: no cover — best-effort
-            logger.warning(
-                'relance_reminders: activité appel indisponible pour '
-                'facture %s', facture.id)
-        return {'canal': canal, 'courrier_pdf_key': ''}
+        envoye = _activite_relance(
+            facture, 'Appel', '📞',
+            f'Relance téléphonique — facture {facture.reference}', message)
+        return {'canal': canal, 'courrier_pdf_key': '', 'envoye': envoye}
 
     # Défaut / email. AFAC45 (C-AFAC-033) — le résultat RÉEL de l'envoi est
     # rendu : un `EmailLog` en échec (adresse absente, SMTP en panne) ne
@@ -266,6 +257,56 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
         attach_pdf=True)  # AARG58 — comme la relance manuelle
     return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': '',
             'envoye': _email_parti(log)}
+
+
+def _activite_relance(facture, nom_type, icone, summary, note):
+    """XFAC8/AMSG29 — activité assignée au responsable du client (appel ou
+    brouillon WhatsApp à envoyer) ; False si elle n'a pas pu être créée."""
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity, ActivityType
+        atype = ActivityType.objects.filter(
+            company=facture.company, nom=nom_type).first()
+        if atype is None:
+            atype = ActivityType.objects.create(
+                company=facture.company, nom=nom_type, icone=icone,
+                ordre=45, est_systeme=True)
+        Activity.objects.create(
+            company=facture.company,
+            content_type=ContentType.objects.get_for_model(facture.__class__),
+            object_id=facture.id, activity_type=atype, summary=summary,
+            note=note, due_date=casablanca_today(),
+            assigned_to=(getattr(facture.client, 'owner', None)
+                         or getattr(facture.client, 'created_by', None)
+                         or facture.created_by))
+        return True
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+        logger.warning('relance_reminders: activité %s indisponible pour '
+                       'facture %s', nom_type, facture.id, exc_info=True)
+        return False
+
+
+def _clients_manuels():
+    """ZFAC8 — un client en mode MANUEL est ignoré par les crons automatiques
+    (son responsable le suit via la liste manuelle). AFAC47 (C-AFAC-035) —
+    couples (société, client) : un paramétrage « manuel » d'une AUTRE société
+    ne coupe jamais le client d'un voisin. AMSG32 — partagé par la relance et
+    le rappel avant échéance."""
+    from authentication.selectors import active_company_ids
+    from .models import ParametrageRelanceClient
+    # AUD415 — les deux crons ne balaient que les sociétés actives (SCA19).
+    return set(ParametrageRelanceClient.objects.filter(
+        mode=ParametrageRelanceClient.Mode.MANUEL,
+        company_id__in=active_company_ids(),
+    ).values_list('company_id', 'client_id'))
+
+
+def _email_sans_envoi():
+    """AMSG29 — le backend chargé n'envoie rien (console/dummy) : aucun
+    e-mail ne consomme alors un niveau ni ne pose un marqueur."""
+    from core.email_backends import backend_reel  # AMSG61 : le backend RÉEL sous l'enveloppe
+    from .email_service import EMAIL_BACKENDS_SANS_ENVOI  # AMSG28 : constante déplacée ici
+    return backend_reel() in EMAIL_BACKENDS_SANS_ENVOI
 
 
 def _email_parti(log):
@@ -324,22 +365,14 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import Facture, ParametrageRelanceClient, RelanceLog
+    from .models import Facture, FollowupLevel, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
     _check_promesses_expirees(today)
     sent = 0
-    # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
-    # responsable le suit via la liste manuelle, pas cet envoi programmé).
-    # AFAC47 (C-AFAC-035) — couples (société, client) : un paramétrage
-    # « manuel » d'une AUTRE société (ligne corrompue) ne coupe jamais les
-    # relances du client d'un locataire voisin.
-    clients_manuels = set(
-        ParametrageRelanceClient.objects.filter(
-            mode=ParametrageRelanceClient.Mode.MANUEL,
-        ).values_list('company_id', 'client_id')
-    )
+    sans_envoi = _email_sans_envoi()  # AMSG29 — lu une fois par passage
+    clients_manuels = _clients_manuels()
     # AUD131 — MÊME liste de statuts que la vue `relancer` et que la liste des
     # impayés : un seul propriétaire de la définition (`recouvrement`).
     from .recouvrement import STATUTS_NON_RELANCABLES, facture_relancable
@@ -380,6 +413,8 @@ def relance_reminders():
         from .domain.recouvrement import niveaux_cadence, prochain_niveau
         levels = niveaux_cadence(facture.company)
         if not levels:
+            if sans_envoi:
+                continue  # AMSG29 — rien ne partirait : niveau intact
             # Aucun niveau configuré : envoi générique unique, puis stop.
             log = send_relance_email(
                 facture, niveau_nom='', message='', user=None,
@@ -405,6 +440,8 @@ def relance_reminders():
             facture.save(update_fields=['prochaine_relance'])
             continue
         idx = levels.index(niveau)
+        if sans_envoi and niveau.canal == FollowupLevel.Canal.EMAIL:
+            continue  # AMSG29 — e-mail qui ne partirait pas : rien consommé
 
         # XFAC8 — route selon le canal configuré sur CE niveau (email par
         # défaut = comportement historique inchangé).
@@ -526,18 +563,28 @@ def pre_echeance_reminders():
 
     today = casablanca_today()
     sent = 0
-    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    if _email_sans_envoi():  # AMSG29 — aucun rappel ne partirait
+        return sent
+    # AFAC43 — sociétés suspendues ignorées (SCA19). AMSG32 — mêmes
+    # exclusions que la relance : promesse active, client MANUEL, contestée.
     from authentication.selectors import active_company_ids
+    from .recouvrement import facture_relancable
     candidates = Facture.objects.filter(
         statut=Facture.Statut.EMISE, exclu_relances=False,
         date_echeance__isnull=False,
         company_id__in=active_company_ids(),
+    ).exclude(
+        exclu_relances_jusquau__gte=today,
     ).select_related('client', 'company').prefetch_related(
         *RELATIONS_MONTANT_DU)
+    clients_manuels = _clients_manuels()
 
     profiles_cache = {}
     for facture in candidates:
-        if facture.montant_exigible <= 0:  # CIQ214 — exigible seulement
+        if (facture.company_id, facture.client_id) in clients_manuels:
+            continue
+        # CIQ214 (exigible seulement) + AARG22 (contestée) : LE prédicat.
+        if not facture_relancable(facture)[0]:
             continue
         company_id = facture.company_id
         if company_id not in profiles_cache:
@@ -600,6 +647,8 @@ def releve_mensuel_reminders():
     mois = today.strftime('%Y%m')
     marker = f'{RELEVE_MENSUEL_MARKER}-{mois}'
     sent = 0
+    if _email_sans_envoi():  # AMSG29 — aucun relevé ne partirait
+        return sent
 
     # AFAC43 — sociétés suspendues ignorées (SCA19).
     from authentication.selectors import active_company_ids
@@ -737,6 +786,9 @@ def engagement_followup_engine():
         devis = link.devis
         if getattr(devis, 'created_by', None) is None:
             continue
+        from .domain.recouvrement import _lead_ecarte
+        if _lead_ecarte(devis):
+            continue  # ASUP42 — lead opposé, perdu ou archivé : lien sauté
         # ASOC90 — vendeur inactif ⇒ responsable actif du lead, sinon managers.
         from apps.notifications.services import destinataire_actif
         vendeur = destinataire_actif(devis.created_by, lead=devis.lead)

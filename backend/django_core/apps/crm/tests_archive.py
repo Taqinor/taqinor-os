@@ -71,6 +71,55 @@ class TestArchiveRestore(ArchiveTestBase):
         self.assertTrue(RelanceEtape.objects.filter(
             lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE).exists())
 
+    def test_restaurer_refuse_absorbe_et_doublon_vivant(self):
+        """ASUP9 (C-ASUP-006) — un lead absorbé par une fusion ou dont le
+        contact est porté par un lead vivant n'est jamais restauré (409 nommé,
+        rien écrit) ; un archivé sans doublon l'est, à l'unité comme en lot.
+        Mutant : retirer le contrôle de doublon ⇒ C restauré."""
+        from datetime import timedelta
+
+        from apps.crm.leads_fusion import NOTE_FUSION
+        quand = timezone.now() - timedelta(days=3)
+        b = Lead.objects.create(company=self.company, nom='Survivant', stage='NEW')
+        a = Lead.objects.create(company=self.company, nom='Absorbe', stage='NEW',
+                                note=f'RAS\n{NOTE_FUSION}{b.pk} par x]')
+        c = Lead.objects.create(company=self.company, nom='Ancien', stage='NEW',
+                                telephone='0612345678')
+        e = Lead.objects.create(company=self.company, nom='Seul', stage='NEW',
+                                telephone='0699887766')
+        Lead.objects.filter(pk__in=[a.pk, c.pk, e.pk]).update(
+            is_archived=True, archived_at=quand)
+        d = Lead.objects.create(company=self.company, nom='Nouveau', stage='NEW',
+                                telephone='0612345678')
+        traces = {x: (LeadActivity.objects.filter(lead_id=x).count(),
+                      RelanceEtape.objects.filter(lead_id=x).count()) for x in (a.pk, c.pk)}
+        api = auth(self.resp)
+        r = api.post(f'/api/django/crm/leads/{a.id}/restaurer/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'absorbé par le lead #{b.pk}', r.data['detail'])
+        r = api.post(f'/api/django/crm/leads/{c.id}/restaurer/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'doublon vivant : lead #{d.pk}', r.data['detail'])
+        r = api.post(f'/api/django/crm/leads/{e.id}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['is_archived'])
+        Lead.objects.filter(pk=e.pk).update(is_archived=True, archived_at=quand)
+        r = api.post('/api/django/crm/leads/bulk/',
+                     {'action': 'unarchive', 'ids': [a.pk, c.pk, e.pk]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['updated'], 1)
+        motifs = {s['id']: s['reason'] for s in r.data['skipped']}
+        self.assertIn(f'#{b.pk}', motifs[a.pk])
+        self.assertIn(f'#{d.pk}', motifs[c.pk])
+        for x in (a, c):
+            x.refresh_from_db()
+            self.assertTrue(x.is_archived)
+            self.assertEqual(x.archived_at, quand)
+            self.assertEqual(traces[x.pk], (LeadActivity.objects.filter(lead_id=x.pk).count(),
+                                            RelanceEtape.objects.filter(lead_id=x.pk).count()))
+        e.refresh_from_db()
+        self.assertFalse(e.is_archived)
+
     def test_archive_hides_from_default_list_and_filters_bring_it_back(self):
         api = auth(self.resp)
         # Visible par défaut
@@ -246,6 +295,38 @@ class TestSoftDelete(ArchiveTestBase):
         self.assertFalse(ouvertes.filter(pk__in=avant).exists())
         touche.refresh_from_db()
         self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+
+    def test_corbeille_commune_passe_par_la_garde_du_lead(self):
+        """ASUP11 (C-ASUP-007) — /parametres/corbeille restaure un lead par la
+        garde du lead : doublon vivant ⇒ 409 nommé, lead toujours supprimé,
+        entrée ouverte ; sinon vivant, archivage inchangé, une ligne « restauré »,
+        entrée fermée. Mutant : ne pas enregistrer le restaurateur ⇒ restauré."""
+        from apps.trash.models import ElementSupprime
+        doublon = Lead.objects.create(company=self.company, nom='Ancien', stage='NEW',
+                                      telephone='0611223344')
+        doublon.soft_delete(user=self.admin)
+        vivant = Lead.objects.create(company=self.company, nom='Nouveau', stage='NEW',
+                                     telephone='0611223344')
+        Lead.objects.filter(pk=self.lead.pk).update(is_archived=True)
+        Lead.objects.get(pk=self.lead.pk).soft_delete(user=self.admin)
+        api = auth(self.resp)
+        entree = ElementSupprime.objects.get(object_id=doublon.pk, restaure_le__isnull=True)
+        r = api.post(f'/api/django/trash/corbeille/{entree.pk}/restaurer/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'doublon vivant : lead #{vivant.pk}', r.data['detail'])
+        self.assertTrue(Lead.all_objects.get(pk=doublon.pk).is_deleted)
+        entree.refresh_from_db()
+        self.assertIsNone(entree.restaure_le)
+        entree = ElementSupprime.objects.get(object_id=self.lead.pk, restaure_le__isnull=True)
+        r = api.post(f'/api/django/trash/corbeille/{entree.pk}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead = Lead.all_objects.get(pk=self.lead.pk)
+        self.assertFalse(lead.is_deleted)
+        self.assertTrue(lead.is_archived)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__startswith='Lead restauré').count(), 1)
+        entree.refresh_from_db()
+        self.assertIsNotNone(entree.restaure_le)
 
     def test_restore_is_scoped_to_company(self):
         """La corbeille d'une autre société n'est jamais restaurable ici."""

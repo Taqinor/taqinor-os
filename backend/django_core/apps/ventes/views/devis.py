@@ -294,8 +294,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         """QJR639 (D-QJR5-2) — un devis ACCEPTÉ ne se supprime pas : le DELETE
         effaçait en cascade sa signature électronique (DevisSignature), son
         lien client (ShareLink), ses lignes et son chatter, et orphelinait son
-        BC. 409 sans rien effacer ; l'archivage (PATCH ``is_active=False``) ou
-        la révision restent ouverts. Le statut est LU, jamais écrit (règle #4).
+        BC. 409 sans rien effacer ; seule la révision reste ouverte (ASUP54 :
+        la désactivation d'un accepté est refusée). Le statut est LU, jamais écrit (règle #4).
 
         QJR661 (décision fondateur 01/10 — archivage seul) : SEUL un brouillon
         se supprime. Un envoyé / refusé / expiré a un lien client (ShareLink)
@@ -304,7 +304,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         if devis.statut == Devis.Statut.ACCEPTE:
             return Response(
                 {'detail': 'Devis accepté : il ne se supprime pas — '
-                           'archivez-le (désactivation) ou révisez-le.'},
+                           'révisez-le.'},  # ASUP54 — ne se désactive pas
                 status=status.HTTP_409_CONFLICT)
         if devis.statut != Devis.Statut.BROUILLON:
             return Response(

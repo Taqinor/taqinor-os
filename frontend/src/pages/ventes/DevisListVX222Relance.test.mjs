@@ -49,9 +49,9 @@ test('VX222 : la relance est consignée au chatter du devis (noterDevis) et jama
   assert.match(openBody, /\.catch\(\(\) => \{\}\)/)
 })
 
-test('VX222 : le message de rappel réutilise le lien public déjà émis (waData.url), pas de nouvel appel', () => {
+test('AMSG37 : le message de rappel est le texte SERVI (waData.message_relance), jamais un texte codé', () => {
   const helper = SRC.slice(SRC.indexOf('function buildRelanceMessage'),
     SRC.indexOf('function buildRelanceMessage') + 500)
-  assert.match(helper, /waData\?\.url/)
-  assert.match(helper, /petit rappel concernant votre devis/)
+  assert.match(helper, /waData\?\.message_relance/)
+  assert.doesNotMatch(helper, /petit rappel concernant votre devis/)
 })

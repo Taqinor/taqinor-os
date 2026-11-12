@@ -104,6 +104,26 @@ class TestSeedDemoProdGuard(TestCase):
         except CommandError as exc:
             self.fail(f'--force ne devrait pas être bloqué : {exc}')
 
+    @override_settings(DEBUG=True)
+    def test_seed_demo_ne_seme_que_des_adresses_reservees(self):
+        """AMSG60 (C-AMSG-010) — clients, fournisseurs et leads de la démo :
+        e-mail ``@example.invalid`` (ou vide), téléphone fictif
+        ``+212600000NNN`` (ou vide) ; jamais une adresse délivrable."""
+        import re
+
+        from apps.crm.models import Client, Lead
+        from apps.stock.models import Fournisseur
+        call_command('seed_demo')
+        company = Company.objects.get(slug='taqinor-demo')
+        fiches = [(m.__name__, f.email, f.telephone)
+                  for m in (Client, Fournisseur, Lead)
+                  for f in m.objects.filter(company=company)]
+        self.assertTrue(fiches)
+        for modele, email, telephone in fiches:
+            with self.subTest(modele=modele, email=email):
+                self.assertTrue(not email or email.endswith('@example.invalid'))
+                self.assertTrue(not telephone or re.fullmatch(r'\+212600000\d{3}', telephone))
+
 
 class TestLoginAuditActorNormalization(TestCase):
     """ERR92 — sur un login réussi, actor_username vient du compte résolu, pas

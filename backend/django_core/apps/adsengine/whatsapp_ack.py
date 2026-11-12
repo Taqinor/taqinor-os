@@ -60,7 +60,7 @@ def _accuse_du(company, lead, created_time):
     from apps.crm import selectors as crm
 
     societe_du_numero = getattr(settings, 'WHATSAPP_CLOUD_COMPANY_ID', None)
-    if societe_du_numero and str(societe_du_numero) != str(company.pk):
+    if not societe_du_numero or str(societe_du_numero) != str(company.pk):  # AMSG7
         return False
     if lead.whatsapp_opt_in is not True or lead.first_contacted_at:
         return False

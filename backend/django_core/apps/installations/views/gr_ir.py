@@ -40,6 +40,8 @@ class ReceptionNonFactureeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         'reception', 'bon_commande', 'facture', 'created_by').all()
     serializer_class = ReceptionNonFactureeSerializer
     permission_classes = [IsResponsableOrAdmin]
+    # ASUP20 — une provision GR/IR (même lettrée) ne s'efface pas.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_permissions(self):
         # AAPV61 (D-ASTK-2/3) — montants internes : lecture `prix_achat_voir`,

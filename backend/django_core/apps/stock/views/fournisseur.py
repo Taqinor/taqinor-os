@@ -364,7 +364,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         """
         from ..services import provisionner_compte_fournisseur
         fournisseur = self.get_object()
-        user, cree = provisionner_compte_fournisseur(
+        user, cree, envoye = provisionner_compte_fournisseur(
             request.user.company, fournisseur.pk)
         if user is None:
             return Response(
@@ -377,9 +377,13 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                 'username': user.username,
                 'email': user.email or '',
                 'cree': cree,
+                # AMSG59 — « envoyés » seulement si l'e-mail est réellement parti.
+                'email_envoye': envoye,
                 'detail': (
-                    'Accès portail ouvert : les identifiants ont été envoyés '
-                    'par email.' if cree else
+                    ('Accès portail ouvert : les identifiants ont été envoyés '
+                     'par email.' if envoye else
+                     'Accès portail ouvert — e-mail non opérationnel : '
+                     'identifiants non envoyés.') if cree else
                     'Ce fournisseur avait déjà un accès portail — rien n\'a '
                     'été modifié.'),
             },

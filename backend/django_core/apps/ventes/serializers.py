@@ -1507,6 +1507,8 @@ CODE_PRODUIT_INCONNU = 'does_not_exist'
 #: api-fuzz-full 28/10 (ENF11) — produit existant mais sans prix : état du
 #: catalogue, refus 409 (seul ; à côté d'un id inconnu, le 404 l'emporte).
 CODE_PRODUIT_SANS_PRIX = 'sans_prix'
+#: ASUP53 — produit archivé : même refus d'état (409) que sans prix.
+CODE_PRODUIT_ARCHIVE = 'archive'
 
 
 class OffreTailleConfigSerializer(serializers.Serializer):
@@ -1631,6 +1633,11 @@ class OffreTailleConfigSerializer(serializers.Serializer):
                     'Produit introuvable dans votre catalogue.',
                     code=CODE_PRODUIT_INCONNU)
                 continue
+            if produit.is_archived:
+                erreurs[role] = serializers.ErrorDetail(
+                    'Ce produit est archivé : choisissez un produit actif du catalogue.',
+                    code=CODE_PRODUIT_ARCHIVE)
+                continue
             if not (produit.prix_vente or 0) > 0:
                 erreurs[role] = serializers.ErrorDetail(
                     'Ce produit n\'a pas encore de prix de vente : il ne peut '
@@ -1666,7 +1673,7 @@ class OffreTailleEcritureSerializer(serializers.Serializer):
                          for details in config['equipements'].values()
                          for d in (details if isinstance(details, list)
                                    else [details])}
-            if codes and codes <= {CODE_PRODUIT_INCONNU, CODE_PRODUIT_SANS_PRIX}:
+            if codes and codes <= {CODE_PRODUIT_INCONNU, CODE_PRODUIT_SANS_PRIX, CODE_PRODUIT_ARCHIVE}:
                 if CODE_PRODUIT_INCONNU in codes:
                     raise NotFound(self.errors)
                 raise ConflitEtat(self.errors)

@@ -223,6 +223,7 @@ def escalader_premier_contact(dry_run=False, now=None):
         candidats = Lead.objects.filter(
             company=company,
             first_contacted_at__isnull=True, perdu=False, is_archived=False,
+            ne_plus_contacter=False,  # AMSG9 — un opposé n'est jamais pressé d'être appelé
         ).exclude(
             source=Lead.Source.ODOO_IMPORT_TEST,
         ).exclude(stage__in=[SIGNED, COLD]).annotate(

@@ -5,11 +5,10 @@ rendu avec les règles d'origine ; un devis neuf naît aux règles corrigées.
 """
 import importlib
 from decimal import Decimal
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.domain.regles_calcul import (
     REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_CORRIGEES,
@@ -328,13 +327,43 @@ class ReglesCalculTests(SimpleTestCase):
             'apps.ventes.migrations.0138_regles_calcul_devis_envoyes')
         self.assertTrue(callable(mod.figer_devis_envoyes))
 
-    def test_commande_dryrun_sans_ecriture(self):
-        """La commande annule sa transaction : aucun mode d'écriture."""
-        cmd = importlib.import_module(
-            'apps.ventes.management.commands.regles_calcul_ecarts_dryrun')
-        src = Path(cmd.__file__).read_text(encoding='utf-8')
-        self.assertIn('set_rollback(True)', src)
-        self.assertNotIn('.save(', src)
+
+class ReglesCalculDryrunCommandeTests(TestCase):
+    """ATST24 (C-ATST-012) — la commande jouée sur des devis en base, seul le
+    builder doublé. Mutants : ``!=`` → ``==`` dans ``ecarts_du_devis``, ou un
+    ``.update(regles_calcul=…)`` après le bloc atomique ⇒ rouge."""
+
+    def test_sortie_et_aucune_ecriture(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.ventes.management.commands.regles_calcul_ecarts_dryrun import ecarts_du_devis
+        from apps.ventes.models import Devis
+        from apps.ventes.tests.test_l_niv_niveau import make_client, make_company, make_devis, make_user
+        co = make_company('atst24')
+        user, client = make_user(co), make_client(co)
+        a, b, c = (make_devis(co, user, client, f'DEV-ATST24-{n}') for n in 'ABC')
+        Devis.objects.filter(pk__in=[a.pk, b.pk]).update(regles_calcul=REGLES_ORIGINE)
+        a.refresh_from_db()
+
+        def faux_builder(devis, opts):
+            if devis.reference.endswith('B'):
+                raise ValueError('illisible')
+            return {'display_total': 100 if devis.regles_calcul == REGLES_ORIGINE else 120,
+                    'puissance_kwc': 5}
+        buf = StringIO()
+        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data', faux_builder):
+            call_command('regles_calcul_ecarts_dryrun', '--detail', stdout=buf)
+            self.assertEqual(ecarts_du_devis(a), {'display_total': (100, 120)})
+        self.assertEqual(a.regles_calcul, REGLES_ORIGINE)
+        out = buf.getvalue()
+        self.assertIn("2 devis aux règles d'origine ; 1 changeraient", out)
+        self.assertIn('DEV-ATST24-A [envoye] : display_total\n', out)
+        self.assertIn('display_total: 100 -> 120', out)
+        self.assertIn('DEV-ATST24-B : rendu impossible (ValueError)', out)
+        self.assertNotIn('DEV-ATST24-C', out)
+        relus = dict(Devis.objects.filter(pk__in=[a.pk, b.pk, c.pk]).values_list('reference', 'regles_calcul'))
+        self.assertEqual(relus, {'DEV-ATST24-A': REGLES_ORIGINE, 'DEV-ATST24-B': REGLES_ORIGINE,
+                                 'DEV-ATST24-C': REGLES_COURANTES})
 
 
 class FormateursReglesOrigineTests(SimpleTestCase):

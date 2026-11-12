@@ -191,6 +191,8 @@ class GpsConsentRecordViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     queryset = GpsConsentRecord.objects.select_related(
         'technicien', 'recorded_by').all()
     serializer_class = GpsConsentRecordSerializer
+    # ASUP20 — la preuve de consentement ne s'efface pas : `revoquer/` existe.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_permissions(self):
         # Revue chantier 26/10/2026 — seules les deux actions « mon

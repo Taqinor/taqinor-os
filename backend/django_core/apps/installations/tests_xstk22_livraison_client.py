@@ -16,7 +16,7 @@ Run :
 import itertools
 
 from django.core import mail
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -26,6 +26,10 @@ from apps.installations.models import (
 
 _seq = itertools.count(1)
 BASE = '/api/django/installations'
+# AMSG56 — une clé factice + ``locmem`` = l'envoi est opérationnel.
+AVEC_CLE = override_settings(
+    ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 
 
 def make_company(slug=None, nom=None):
@@ -94,6 +98,7 @@ class TestNotificationTransit(TestCase):
             company=self.company, installation=self.inst,
             reference='LIV-XSTK22-2')
 
+    @AVEC_CLE
     def test_expedier_sends_notification_once(self):
         r = self.api.post(f'{BASE}/livraisons/{self.liv.id}/expedier/')
         self.assertEqual(r.status_code, 200, r.data)
@@ -111,6 +116,7 @@ class TestNotificationTransit(TestCase):
         self.assertEqual(self.liv.notifie_transit_le, first_notified_at)
         self.assertEqual(len(mail.outbox), 1)
 
+    @AVEC_CLE
     def test_client_arabe_recoit_la_livraison_en_arabe(self):
         """ASOC83 — client ``langue_document='ar'`` : e-mail et WhatsApp de
         livraison en transit dans l'arabe de la société ; vide → repli FR."""
@@ -133,6 +139,24 @@ class TestNotificationTransit(TestCase):
         self.assertEqual(mail.outbox[-1].subject, 'شحنة LIV-XSTK22-2')
         self.assertIn('في الطريق LIV-XSTK22-2', mail.outbox[-1].body)
         self.assertIn('واتساب LIV-XSTK22-2', unquote(result['wa_draft_url']))
+
+    def test_sans_email_configure_brouillon_remis(self):
+        """AMSG56 — état de la prod (``locmem`` sans clé) : rien ne part,
+        ``email_sent`` faux, le brouillon WhatsApp devient une tâche
+        « Envoyer ce WhatsApp » sur la livraison, marqueur de transit posé."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity
+        r = self.api.post(f'{BASE}/livraisons/{self.liv.id}/expedier/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(mail.outbox), 0)
+        self.liv.refresh_from_db()
+        self.assertIsNotNone(self.liv.notifie_transit_le)
+        taches = Activity.objects.filter(
+            content_type=ContentType.objects.get_for_model(Livraison),
+            object_id=self.liv.pk, summary='Envoyer ce WhatsApp')
+        self.assertEqual(taches.count(), 1)
+        self.assertIn('wa.me/', taches.get().note)
+        self.assertIn('LIV-XSTK22-2', taches.get().note)
 
     def test_no_client_no_crash(self):
         """Chantier sans client email/tel → aucune exception, pas d'envoi."""

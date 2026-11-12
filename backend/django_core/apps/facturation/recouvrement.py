@@ -143,6 +143,16 @@ STATUTS_NON_RELANCABLES = ('payee', 'annulee', 'brouillon')
 STATUTS_HORS_RELEVE = ('brouillon', 'annulee')
 
 
+def facture_envoyable(facture):
+    """AMSG31 — ``(True, '')`` si la facture peut partir au client par e-mail
+    (émise, payée, en retard), sinon ``(False, motif)`` : un document
+    ``STATUTS_HORS_RELEVE`` n'existe pas pour le client."""
+    if getattr(facture, 'statut', '') in STATUTS_HORS_RELEVE:
+        return False, (f'Statut {facture.get_statut_display()} : seule une facture '
+                       'émise, payée ou en retard part au client.')
+    return True, ''
+
+
 def facture_relancable(facture):
     """``(True, '')`` si ``facture`` peut être relancée, sinon ``(False, motif)``.
 

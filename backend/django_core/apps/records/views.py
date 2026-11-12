@@ -282,6 +282,16 @@ def pieces_visibles(qs, user, garder=None):
     return qs.exclude(hors & ~garder if garder is not None else hors)
 
 
+def sans_cibles_archivees(qs):
+    """ASUP45 — retire les à-faire dont le lead cible est archivé ou supprimé
+    (Ma file, Calendrier, flux ICS) ; restaurer le lead les fait réapparaître."""
+    from django.contrib.contenttypes.models import ContentType
+
+    ct = ContentType.objects.get(app_label='crm', model='lead')
+    vivants = ct.model_class().objects.filter(is_archived=False).values('pk')
+    return qs.exclude(models.Q(content_type=ct) & ~models.Q(object_id__in=vivants))
+
+
 def _company(request):
     return request.user.company if request.user.company_id else None
 
@@ -504,9 +514,9 @@ class ActivityViewSet(viewsets.ModelViewSet):
         # ── 1) Activités de l'utilisateur (les 3 buckets) ──────────────────
         # ERR-PERF-CRM-N1 — assigné, cible (GFK) et téléphone des cibles
         # chargés EN LOT : avant, 2 à 3 requêtes PAR activité.
-        acts = _scoped(Activity.objects.select_related(
+        acts = sans_cibles_archivees(_scoped(Activity.objects.select_related(  # ASUP45
             'activity_type', 'content_type', 'assigned_to'),
-            request.user).filter(assigned_to=request.user, done=False)
+            request.user).filter(assigned_to=request.user, done=False))
         # VX85(a) — même exclusion snooze que `mine` : une file cohérente.
         acts = list(acts.filter(
             models.Q(snoozed_until__isnull=True)

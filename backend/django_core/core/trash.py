@@ -16,6 +16,7 @@ from django.utils import timezone
 # tant que l'entrée n'est pas restaurée ; cette fenêtre sert au bandeau « annuler
 # la suppression » côté UI.
 UNDO_WINDOW_MINUTES = 30
+RETENTION_JOURS = 30  # ASUP15 — un DeletionRecord ne survit pas à la rétention de la corbeille commune
 
 
 def corbeille(company):
@@ -61,3 +62,11 @@ def restaurer(record):
             restored_at=timezone.now())
     record.refresh_from_db()
     return obj
+
+
+def purger_deletion_records(*, now=None, company=None):
+    """ASUP15 — supprime les ``DeletionRecord`` de plus de ``RETENTION_JOURS``, restaurés ou non (renvoie le nombre)."""
+    from .models import DeletionRecord
+    qs = DeletionRecord.objects.filter(
+        created_at__lt=(now or timezone.now()) - timedelta(days=RETENTION_JOURS))
+    return (qs.filter(company=company) if company is not None else qs).delete()[0]

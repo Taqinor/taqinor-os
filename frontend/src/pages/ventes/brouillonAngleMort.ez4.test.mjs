@@ -17,17 +17,9 @@ const hook = readFileSync(path.join(__dirname, '..', '..', 'ui', 'useDraftAutosa
 
 const dirtyBloc = gen.slice(gen.indexOf('const lignesSaisies'), gen.indexOf('useDirtyGuard(dirty)'))
 
-test('les champs de l’angle mort entrent dans le prédicat `dirty`', () => {
-  // AGNR28 — `tvaModifiee` est sorti du prédicat : le taux d'en-tête n'est
-  // plus saisissable (chaque ligne porte son taux).
-  for (const signal of ['lignesSaisies', 'remiseSaisie', 'villasSaisies']) {
-    assert.ok(dirtyBloc.includes(signal), `${signal} absent du prédicat`)
-  }
-  assert.ok(!/tvaModifiee/.test(dirtyBloc), 'tvaModifiee ne doit plus salir le formulaire')
-  // Une LIGNE compte dès qu'elle porte un produit, une désignation ou un prix.
-  assert.match(dirtyBloc, /lines\.some\(/)
-  assert.match(dirtyBloc, /l\.produit \|\| \(l\.designation \|\| ''\)\.trim\(\) \|\| parseFloat\(l\.prix_unit_ttc\) > 0/)
-})
+// ATST27 — la présence des signaux dans le prédicat est prouvée par un RENDU
+// (DevisGenerator.agnrBrouillonConditions.test.jsx › « création ») : la
+// tranche du source ne rougissait pas quand `|| lignesSaisies` était retiré.
 
 test('les signaux restent HONNÊTES : aucun défaut ne rend le formulaire sale', () => {
   // `villaGroups` porte des libellés PAR DÉFAUT : le signal utile est le mode

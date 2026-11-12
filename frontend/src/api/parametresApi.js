@@ -104,6 +104,9 @@ const parametresApi = {
     api.post('/core/export-reversibilite/', datasets ? { datasets } : {}),
   getHistoriqueExportReversibilite: () =>
     api.get('/core/export-reversibilite/historique/'),
+  // APUB3 — coupe le lien public d'un export avant ses 7 jours (APUB2).
+  couperLienExportReversibilite: (id) =>
+    api.post(`/core/export-reversibilite/${id}/couper-lien/`),
   // NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
   getUsageLimites: () => api.get('/core/usage-limites/'),
   // NTOBS3/NTOBS16 — rapport SLA mensuel (historique 12 mois, scopé société).

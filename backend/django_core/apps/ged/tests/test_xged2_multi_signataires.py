@@ -265,6 +265,37 @@ class RelancesTests(XGed2Base):
         relances2 = services.relancer_signataires_dus(self.co_a)
         self.assertEqual(len(relances2), 0)
 
+    def test_demande_close_n_est_plus_relancee(self):
+        """AMSG74 — seuls les signataires d'une demande EN ATTENTE sont
+        relancés : annulée, refusée ou signée ⇒ aucune relance, compteur 0."""
+        from apps.ged.models import DemandeSignatureDocument, SignataireDemande
+        alices = {}
+        for statut in ('en_attente', SIGNATURE_ANNULE, SIGNATURE_REFUSE,
+                       SIGNATURE_SIGNE):
+            doc = Document.objects.create(
+                company=self.co_a, folder=self.folder_a, nom=f'Doc {statut}')
+            demande = services.creer_demande_multi_signataires(
+                doc, destinataires=self._destinataires(),
+                company=self.co_a, relance_cadence_jours=3)
+            alice = demande.signataires.get(nom='Alice')
+            SignataireDemande.objects.filter(pk=alice.pk).update(
+                statut=SIGNATAIRE_NOTIFIE,
+                notifie_le=timezone.now() - timezone.timedelta(days=10))
+            # Les gestes de clôture ne touchent que la demande (constat).
+            DemandeSignatureDocument.objects.filter(pk=demande.pk).update(
+                statut=statut)
+            alices[statut] = alice
+        with mock.patch('apps.ged.services._send_signataire_email',
+                        return_value=True) as mocked:
+            relances = services.relancer_signataires_dus(self.co_a)
+        self.assertEqual([r.id for r in relances], [alices['en_attente'].id])
+        self.assertEqual(mocked.call_count, 1)
+        for statut, alice in alices.items():
+            alice.refresh_from_db()
+            self.assertEqual(alice.nb_relances, 1 if statut == 'en_attente' else 0)
+            if statut != 'en_attente':
+                self.assertIsNone(alice.derniere_relance_le)
+
 
 class ScopingApiTests(XGed2Base):
     def test_signataire_scoped_by_company(self):

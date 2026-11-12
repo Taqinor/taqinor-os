@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7766, components: 3652}
+counts: {paths: 4966, operations: 7752, components: 3653}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -798,7 +798,6 @@ operations:
 - post /api/django/core/outbox/{id}/rejouer/ -> django_core_outbox_rejouer_create
 - get /api/django/core/paiements-en-ligne/ -> django_core_paiements_en_ligne_list
 - post /api/django/core/paiements-en-ligne/ -> django_core_paiements_en_ligne_create
-- delete /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_destroy
 - get /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_retrieve
 - patch /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_partial_update
 - put /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_update
@@ -1881,7 +1880,6 @@ operations:
 - post /api/django/installations/gps-consentements/ -> django_installations_gps_consentements_create
 - get /api/django/installations/gps-consentements/mon-consentement/ -> django_installations_gps_consentements_mon_consentement_retrieve
 - post /api/django/installations/gps-consentements/mon-consentement/accepter/ -> django_installations_gps_consentements_mon_consentement_accepter_create
-- delete /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_destroy
 - get /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_retrieve
 - patch /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_partial_update
 - put /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_update
@@ -2143,7 +2141,6 @@ operations:
 - post /api/django/installations/putaways/{id}/ranger/ -> django_installations_putaways_ranger_create
 - get /api/django/installations/receptions-non-facturees/ -> django_installations_receptions_non_facturees_list
 - post /api/django/installations/receptions-non-facturees/ -> django_installations_receptions_non_facturees_create
-- delete /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_destroy
 - get /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_retrieve
 - patch /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_partial_update
 - put /api/django/installations/receptions-non-facturees/{id}/ -> django_installations_receptions_non_facturees_update
@@ -2843,7 +2840,6 @@ operations:
 - post /api/django/sav/contrats-maintenance/planifier-tournee/ -> django_sav_contrats_maintenance_planifier_tournee_create
 - get /api/django/sav/contrats-maintenance/rentabilite/ -> django_sav_contrats_maintenance_rentabilite_list
 - get /api/django/sav/contrats-maintenance/tournee/ -> django_sav_contrats_maintenance_tournee_retrieve
-- delete /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_destroy
 - get /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_retrieve
 - patch /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_partial_update
 - put /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_update
@@ -2921,7 +2917,6 @@ operations:
 - post /api/django/sav/tickets/ -> django_sav_tickets_create
 - post /api/django/sav/tickets/actions-groupees/ -> django_sav_tickets_actions_groupees_create
 - get /api/django/sav/tickets/file-action/ -> django_sav_tickets_file_action_retrieve
-- delete /api/django/sav/tickets/{id}/ -> django_sav_tickets_destroy
 - get /api/django/sav/tickets/{id}/ -> django_sav_tickets_retrieve
 - patch /api/django/sav/tickets/{id}/ -> django_sav_tickets_partial_update
 - put /api/django/sav/tickets/{id}/ -> django_sav_tickets_update
@@ -3025,7 +3020,6 @@ operations:
 - get /api/django/stock/acomptes-fournisseur/ -> django_stock_acomptes_fournisseur_list
 - post /api/django/stock/acomptes-fournisseur/ -> django_stock_acomptes_fournisseur_create
 - get /api/django/stock/acomptes-fournisseur/ouverts/ -> django_stock_acomptes_fournisseur_ouverts_retrieve
-- delete /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_destroy
 - get /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_retrieve
 - patch /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_partial_update
 - put /api/django/stock/acomptes-fournisseur/{id}/ -> django_stock_acomptes_fournisseur_update
@@ -3572,7 +3566,6 @@ operations:
 - get /api/django/ventes/balance-agee/ -> django_ventes_balance_agee_list
 - get /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_list
 - post /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_create
-- delete /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_destroy
 - get /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_retrieve
 - patch /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_partial_update
 - put /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_update
@@ -4722,7 +4715,6 @@ operations:
 - post /api/v1/core/outbox/{id}/rejouer/ -> v1_core_outbox_rejouer_create
 - get /api/v1/core/paiements-en-ligne/ -> v1_core_paiements_en_ligne_list
 - post /api/v1/core/paiements-en-ligne/ -> v1_core_paiements_en_ligne_create
-- delete /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_destroy
 - get /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_retrieve
 - patch /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_partial_update
 - put /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_update
@@ -5805,7 +5797,6 @@ operations:
 - post /api/v1/installations/gps-consentements/ -> v1_installations_gps_consentements_create
 - get /api/v1/installations/gps-consentements/mon-consentement/ -> v1_installations_gps_consentements_mon_consentement_retrieve
 - post /api/v1/installations/gps-consentements/mon-consentement/accepter/ -> v1_installations_gps_consentements_mon_consentement_accepter_create
-- delete /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_destroy
 - get /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_retrieve
 - patch /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_partial_update
 - put /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_update
@@ -6067,7 +6058,6 @@ operations:
 - post /api/v1/installations/putaways/{id}/ranger/ -> v1_installations_putaways_ranger_create
 - get /api/v1/installations/receptions-non-facturees/ -> v1_installations_receptions_non_facturees_list
 - post /api/v1/installations/receptions-non-facturees/ -> v1_installations_receptions_non_facturees_create
-- delete /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_destroy
 - get /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_retrieve
 - patch /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_partial_update
 - put /api/v1/installations/receptions-non-facturees/{id}/ -> v1_installations_receptions_non_facturees_update
@@ -6733,7 +6723,6 @@ operations:
 - post /api/v1/sav/contrats-maintenance/planifier-tournee/ -> v1_sav_contrats_maintenance_planifier_tournee_create
 - get /api/v1/sav/contrats-maintenance/rentabilite/ -> v1_sav_contrats_maintenance_rentabilite_list
 - get /api/v1/sav/contrats-maintenance/tournee/ -> v1_sav_contrats_maintenance_tournee_retrieve
-- delete /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_destroy
 - get /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_retrieve
 - patch /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_partial_update
 - put /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_update
@@ -6811,7 +6800,6 @@ operations:
 - post /api/v1/sav/tickets/ -> v1_sav_tickets_create
 - post /api/v1/sav/tickets/actions-groupees/ -> v1_sav_tickets_actions_groupees_create
 - get /api/v1/sav/tickets/file-action/ -> v1_sav_tickets_file_action_retrieve
-- delete /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_destroy
 - get /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_retrieve
 - patch /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_partial_update
 - put /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_update
@@ -6915,7 +6903,6 @@ operations:
 - get /api/v1/stock/acomptes-fournisseur/ -> v1_stock_acomptes_fournisseur_list
 - post /api/v1/stock/acomptes-fournisseur/ -> v1_stock_acomptes_fournisseur_create
 - get /api/v1/stock/acomptes-fournisseur/ouverts/ -> v1_stock_acomptes_fournisseur_ouverts_retrieve
-- delete /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_destroy
 - get /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_retrieve
 - patch /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_partial_update
 - put /api/v1/stock/acomptes-fournisseur/{id}/ -> v1_stock_acomptes_fournisseur_update
@@ -7459,7 +7446,6 @@ operations:
 - get /api/v1/ventes/balance-agee/ -> v1_ventes_balance_agee_list
 - get /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_list
 - post /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_create
-- delete /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_destroy
 - get /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_retrieve
 - patch /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_partial_update
 - put /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_update
@@ -11109,6 +11095,7 @@ components:
 - MonitoringAbonnementResilierRequest
 - MonitoringConfig
 - MonitoringConfigRequest
+- MonitoringEmailOmReportEchec
 - MonitoringEmailOmReportReponse
 - MonitoringEmailOmReportRequest
 - MonitoringHistory

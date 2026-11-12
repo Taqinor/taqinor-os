@@ -93,7 +93,7 @@ class ProvisionnementCompteFournisseurTests(TestCase):
             self.company, 'Alpha', email='contact@alpha-ntprt3.ma')
 
     def test_cree_un_compte_portee_fournisseur_rattache(self):
-        user, cree = provisionner_compte_fournisseur(
+        user, cree, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
 
         self.assertTrue(cree)
@@ -109,8 +109,41 @@ class ProvisionnementCompteFournisseurTests(TestCase):
         self.assertIsNone(user.portail_client_id)
         self.assertIsNone(user.portail_partenaire_id)
 
+    def test_sans_email_configure_identifiants_non_envoyes(self):
+        """AMSG59 (C-AMSG-009) — sans clé d'envoi : 201, rien ne part,
+        ``email_envoye`` faux et un ``detail`` qui le dit ; avec une clé
+        (locmem) : 1 e-mail et le ``detail`` d'aujourd'hui. Mutant : remettre
+        ``return True`` sans tester l'envoi ⇒ ``email_envoye`` vrai à tort."""
+        from django.core import mail
+        from django.test import override_settings
+        admin = CustomUser.objects.create_user(
+            username='amsg59-admin', password='x', company=self.company,
+            role_legacy='admin')
+        api = api_jwt(admin)
+        url = '/api/django/stock/fournisseurs/{}/provisionner-acces/'
+        locmem = 'django.core.mail.backends.locmem.EmailBackend'
+        with override_settings(ANYMAIL={}, EMAIL_BACKEND=locmem):
+            rep = api.post(url.format(self.fournisseur.id))
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertFalse(rep.json()['email_envoye'])
+        self.assertEqual(
+            rep.json()['detail'],
+            'Accès portail ouvert — e-mail non opérationnel : identifiants non envoyés.')
+        self.assertEqual(mail.outbox, [])
+        self.assertTrue(CompteFournisseurPortail.objects.filter(
+            company=self.company, fournisseur=self.fournisseur).exists())
+        autre = make_fournisseur(self.company, 'Beta', email='contact@beta-ntprt3.ma')
+        with override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+                               EMAIL_BACKEND=locmem):
+            rep = api.post(url.format(autre.id))
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertTrue(rep.json()['email_envoye'])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(rep.json()['detail'],
+                         'Accès portail ouvert : les identifiants ont été envoyés par email.')
+
     def test_mot_de_passe_temporaire_a_changer_et_jamais_rendu(self):
-        user, _ = provisionner_compte_fournisseur(
+        user, _, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         self.assertTrue(user.must_change_password)
         # Le mot de passe n'est PAS renvoyé : la fonction ne rend que le
@@ -120,7 +153,7 @@ class ProvisionnementCompteFournisseurTests(TestCase):
         self.assertFalse(user.check_password(''))
 
     def test_la_ligne_de_rattachement_est_creee(self):
-        user, _ = provisionner_compte_fournisseur(
+        user, _, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         compte = CompteFournisseurPortail.objects.get(
             company=self.company, fournisseur=self.fournisseur)
@@ -128,10 +161,10 @@ class ProvisionnementCompteFournisseurTests(TestCase):
         self.assertTrue(compte.actif)
 
     def test_idempotent_sans_effet_de_bord(self):
-        premier, cree1 = provisionner_compte_fournisseur(
+        premier, cree1, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         avant = premier.password
-        second, cree2 = provisionner_compte_fournisseur(
+        second, cree2, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
 
         self.assertTrue(cree1)
@@ -144,11 +177,11 @@ class ProvisionnementCompteFournisseurTests(TestCase):
         self.assertEqual(nb_comptes, 1)
 
     def test_re_provisionner_ne_reactive_jamais_un_acces_revoque(self):
-        user, _ = provisionner_compte_fournisseur(
+        user, _, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         revoquer_acces_compte_fournisseur(self.company, self.fournisseur.id)
 
-        rendu, cree = provisionner_compte_fournisseur(
+        rendu, cree, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         self.assertFalse(cree)
         self.assertEqual(rendu.id, user.id)
@@ -164,7 +197,7 @@ class ProvisionnementCompteFournisseurTests(TestCase):
 
         self.assertEqual(
             provisionner_compte_fournisseur(self.company, etranger.id),
-            (None, False))
+            (None, False, False))
         self.assertEqual(
             CompteFournisseurPortail.objects.filter(
                 fournisseur=etranger).count(), 0)
@@ -172,10 +205,10 @@ class ProvisionnementCompteFournisseurTests(TestCase):
     def test_arguments_manquants_renvoient_rien(self):
         self.assertEqual(
             provisionner_compte_fournisseur(None, self.fournisseur.id),
-            (None, False))
+            (None, False, False))
         self.assertEqual(
             provisionner_compte_fournisseur(self.company, None),
-            (None, False))
+            (None, False, False))
 
 
 class IsolationCroiseeComptesFournisseurTests(TestCase):
@@ -204,7 +237,7 @@ class IsolationCroiseeComptesFournisseurTests(TestCase):
         """Provisionne puis simule « le mot de passe temporaire a été
         changé » : sans cela la garde AUD139 refuse tout écran portail et on
         ne testerait pas l'isolation mais le rappel de mot de passe."""
-        user, _ = provisionner_compte_fournisseur(company, fournisseur.id)
+        user, _, _ = provisionner_compte_fournisseur(company, fournisseur.id)
         user.must_change_password = False
         user.save(update_fields=['must_change_password'])
         return user
@@ -245,7 +278,7 @@ class RevocationAccesFournisseurTests(TestCase):
         self.company = make_company('ntprt3-rev-co', 'NTPRT3 Révocation')
         self.fournisseur = make_fournisseur(self.company, 'Alpha')
         make_bcf(self.company, self.fournisseur)
-        self.user, _ = provisionner_compte_fournisseur(
+        self.user, _, _ = provisionner_compte_fournisseur(
             self.company, self.fournisseur.id)
         self.user.must_change_password = False
         self.user.save(update_fields=['must_change_password'])

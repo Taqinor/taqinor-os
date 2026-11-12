@@ -109,7 +109,7 @@ def _envoyer_notification_abonnes(incident, evenement):
                 f'{corps}{lien}',
                 getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local'),
                 [abonne.email],
-                fail_silently=True,
+                fail_silently=False,  # AMSG80 — l'échec est journalisé ci-dessous
             )
         except Exception:  # noqa: BLE001 — un envoi KO n'affecte pas les autres (D-ENF22-BLE001)
             logger.exception(

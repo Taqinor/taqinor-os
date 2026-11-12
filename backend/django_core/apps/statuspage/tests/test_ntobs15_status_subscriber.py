@@ -1,6 +1,7 @@
 """NTOBS15 — abonnement aux notifications d'incidents (e-mail à l'ouverture/
 résolution) pour la page de statut publique."""
 from django.core import mail
+from django.core.mail.backends.base import BaseEmailBackend
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -8,6 +9,13 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from ..models import IncidentPublic, StatusSubscriber
+
+
+class BackendQuiLeve(BaseEmailBackend):
+    """AMSG80 — double d'un backend en panne : chaque envoi lève."""
+
+    def send_messages(self, email_messages):
+        raise ConnectionError('relais SMTP injoignable')
 
 
 class PublicAbonnerTest(TestCase):
@@ -95,6 +103,18 @@ class IncidentNotificationTest(TestCase):
             titre='Panne API', company=None, debute_le=timezone.now())
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ['d@example.com'])
+
+    @override_settings(
+        EMAIL_BACKEND='apps.statuspage.tests.test_ntobs15_status_subscriber.BackendQuiLeve')
+    def test_echec_d_envoi_journalise(self):
+        """AMSG80 (C-AMSG-041) — un backend qui lève laisse une trace d'échec
+        par abonné ; l'incident est créé quand même."""
+        StatusSubscriber.objects.create(email='k@example.com', confirme=True)
+        with self.assertLogs('apps.statuspage.receivers', level='ERROR') as journal:
+            IncidentPublic.objects.create(
+                titre='Panne API', company=None, debute_le=timezone.now())
+        self.assertTrue(any('k@example.com' in ligne for ligne in journal.output))
+        self.assertTrue(IncidentPublic.objects.filter(titre='Panne API').exists())
 
     def test_unconfirmed_subscriber_never_notified(self):
         StatusSubscriber.objects.create(email='e@example.com', confirme=False)

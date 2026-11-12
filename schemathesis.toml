@@ -182,3 +182,38 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 
 [[operations]]
 include-name = 'POST /api/django/ventes/devis/{id}/layout/'
 checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 428, 429, "5xx"]
+
+# ── 11. E-mail qui ne part pas : le 502 est la réponse VOULUE (AMSG28/AMSG61) ─
+# PR #1377 (12/11/2026). Vague 13 : le backend console/dummy n'est plus un faux
+# « envoyé » (AMSG28 : `EMAIL_BACKENDS_SANS_ENVOI`) et l'enveloppe AMSG61
+# (`core/email_backends.py`) ne remet, sous `DEBUG`, qu'aux destinataires de la
+# liste autorisée — l'état du serveur de fuzz. Ces six envois répondent alors
+# 502 Bad Gateway `{detail}` (« l'e-mail n'est pas parti », déclaré au schéma :
+# AARG69, AAPV46, ASAV68), sans changer le statut du document : c'est leur
+# contrat, lu par le front, jamais un faux succès. Comme la § 5 (503 OCR, XSAL8),
+# 502 est AJOUTÉ aux statuts attendus de `not_a_server_error` pour CES SEULES
+# opérations (un filtre `include-name` par entrée) ; le check reste actif partout
+# ailleurs, et un vrai crash (500) reste rouge sur elles aussi.
+[[operations]]
+include-name = 'POST /api/django/ventes/devis/{id}/envoyer-email/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
+
+[[operations]]
+include-name = 'POST /api/django/achats/bons-commande-fournisseur/{id}/envoyer-email/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
+
+[[operations]]
+include-name = 'POST /api/django/stock/bons-commande-fournisseur/{id}/envoyer-email/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
+
+[[operations]]
+include-name = 'POST /api/django/facturation/factures/{id}/relancer/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
+
+[[operations]]
+include-name = 'POST /api/django/ventes/factures/{id}/relancer/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
+
+[[operations]]
+include-name = 'POST /api/django/monitoring/configs/{id}/email-om-report/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]

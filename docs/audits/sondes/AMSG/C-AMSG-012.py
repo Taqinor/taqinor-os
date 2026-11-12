@@ -115,7 +115,9 @@ def sonde(ctx=None):
             "CompanyProfile": NS(get=lambda company: NS(rappel_pre_echeance_jours=5)),
             "ParametrageRelanceClient": NS(objects=parametrages, Mode=Mode),
             "PromessePaiement": NS(objects=promesses, Statut=NS(EN_COURS="en_cours", TENUE="tenue", ROMPUE="rompue")),
-            "Paiement": NS(STATUTS_NON_COMPTES=("rejete",))}
+            "Paiement": NS(STATUTS_NON_COMPTES=("rejete",)),
+            # AMSG29 — le beat lit le backend e-mail : la sonde joue l'e-mail ALLUMÉ (constat latent).
+            "settings": NS(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")}
     base["facture_relancable"] = espace("apps/facturation/recouvrement.py", base)["facture_relancable"]  # la garde RÉELLE
     compte = espace("apps/ventes/scheduled.py", base)["pre_echeance_reminders"]()
     a_tort = [m for m in envois if m != "témoin"]

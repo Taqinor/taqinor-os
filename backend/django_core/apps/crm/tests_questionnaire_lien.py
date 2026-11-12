@@ -356,6 +356,36 @@ class MintTests(TestCase):
             body__startswith='Lien questionnaire')
         self.assertEqual(toutes.count(), 1)
 
+    def test_lead_oppose_perdu_ou_archive_409_sans_lien(self):
+        """AMSG1 (C-AMSG-001, D-ACVI-7) — opposé, perdu, archivé : 409 nommé,
+        aucun lien frappé, aucune note ; le témoin garde son 200 + url.
+        Mutant : retirer `garde_contact_du_lead` ⇒ 200 + url."""
+        # Un contact PAR lead : l'opposition (« ne plus contacter ») suit la
+        # personne par empreinte e-mail/téléphone (D-ACVI-6, ACRM62) — un même
+        # contact ferait naître les leads suivants opposés.
+        for n, extra, motif in (
+                (71, {'ne_plus_contacter': True}, 'ne plus contacter'),
+                (73, {'perdu': True}, 'perdu/archivé'),
+                (74, {'is_archived': True}, 'perdu/archivé')):
+            self.lead = lead_complet(
+                self.company, telephone=f'+2126000000{n}',
+                email=f'amina{n}@example.ma', **extra)
+            res = self._post()
+            self.assertEqual(res.status_code, 409, res.content)
+            # L'enveloppe d'erreur de la plateforme (`error`) accompagne le
+            # `detail` nommé : on vérifie le motif et son code, pas l'absence
+            # de l'enveloppe.
+            corps = res.json()
+            self.assertEqual(corps['detail'], f'Message refusé : {motif}.')
+            self.assertEqual(corps['error']['code'], 'state_conflict')
+            self.assertFalse(QuestionnaireLien.objects.filter(lead=self.lead).exists())
+            self.assertFalse(LeadActivity.objects.filter(
+                lead=self.lead, body__startswith='Lien questionnaire').exists())
+        self.lead = lead_complet(self.company, telephone='+212600000072')
+        res = self._post()
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertIn('/questionnaire/', res.json()['url'])
+
     def test_company_scope_un_intrus_ne_voit_pas_le_lead(self):
         autre = Company.objects.create(nom='Autre', slug='autre-lquest')
         intrus = User.objects.create_user(

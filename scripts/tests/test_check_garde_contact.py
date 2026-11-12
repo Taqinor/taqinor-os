@@ -3,6 +3,7 @@ import contextlib
 import io
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -87,6 +88,36 @@ class GardeContactTests(unittest.TestCase):
         for nom in ("garde_contact_du_lead", "_refuser_si_oppose", "_refus_opposition"):
             src = f"def f(lead):\n    {nom}(lead)\n    return build_wa_url(lead.telephone, 'x')\n"
             self.assertEqual(garde.analyser_source(src, "f.py"), [], nom)
+
+    def test_lien_wa_front_a_texte_detecte(self):
+        """AMSG64 — un lien wa.me PRÉ-REMPLI assemblé par l'écran rougit la garde
+        (fichier, fonction, genre) ; sans texte, il ne la rougit pas. Mutant :
+        ne plus balayer ``frontend/src`` ⇒ les sites front de la liste blanche
+        sont périmés et ``x.jsx`` n'est jamais lu."""
+        rel = "frontend/src/x.jsx"
+        src = ("export function Relance({ lead }) {\n"
+               "  return waHref(lead.telephone, 'Bonjour')\n}\n"
+               "function Fiche({ tel }) {\n  return waHref(tel)\n}\n")
+        self.assertEqual([(c, li, fn, g) for c, li, fn, g in garde.analyser_front(src, rel)],
+                         [(f"{rel}::Relance::wa.me-front", 2, "Relance", "wa.me-front")])
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = garde.main([], sources_en_plus=[(rel, src)])
+        self.assertEqual(code, 1)
+        self.assertIn(f"{rel}:2: Relance() - wa.me-front", sortie.getvalue())
+        lus = {garde._rel(p) for p in garde._fichiers_front()}
+        self.assertIn("frontend/src/pages/ventes/DevisActionBoardPage.jsx", lus)
+
+    def test_a_corriger_sans_tache_plafonne(self):
+        """AMSG64 — le décompte des « A CORRIGER » sans identifiant de tâche ne
+        peut que baisser : une raison de plus fait échouer la garde."""
+        cle = next(c for c, r in garde.LISTE_BLANCHE.items() if "A CORRIGER" not in r)
+        with mock.patch.dict(garde.LISTE_BLANCHE, {cle: "A CORRIGER (session crm) : nouvelle dette"}):
+            code, sortie = _lancer()
+        self.assertEqual(code, 1)
+        self.assertIn("sans identifiant de tache", sortie)
+        with mock.patch.dict(garde.LISTE_BLANCHE, {cle: "A CORRIGER (AMSG99) : dette nommee"}):
+            self.assertEqual(_lancer()[0], 0)
 
     def test_test_du_test_garde_retiree_rougit(self):
         sauve = set(garde.GARDES_RECONNUES)

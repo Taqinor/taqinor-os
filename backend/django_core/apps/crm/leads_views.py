@@ -436,8 +436,9 @@ class LeadIntakeActionsMixin:
         déclenche rien et n'écrit rien). Contrat :
         ``apps/crm/contract_samples/questionnaire_lead.json``."""
         from . import questionnaire as quest
+        from .cadence_messages import garde_contact_du_lead
 
-        lead = self.get_object()
+        garde_contact_du_lead(lead := self.get_object())  # AMSG1 (D-ACVI-7) — opposé/perdu/archivé : 409
         try:
             questions = quest.valider_questions(
                 corps_objet(request).get('questions'), lead)

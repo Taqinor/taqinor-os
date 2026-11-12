@@ -200,6 +200,12 @@ class FactureDocumentsActionsMixin:
                 status=status.HTTP_409_CONFLICT,
             )
         modele, langue = saisie.get('modele', 'facture'), saisie.get('langue', 'fr')
+        if modele == 'relance' and getattr(facture, 'contestee_le', None):
+            # AMSG27 — D-AFAC-89 : une contestée ne se relance par AUCUN canal
+            # (motif de facture_relancable servi tel quel) ; le document reste envoyable.
+            from apps.facturation.recouvrement import facture_relancable
+            return Response({'detail': facture_relancable(facture)[1]},
+                            status=status.HTTP_409_CONFLICT)
         message, link = build_facture_whatsapp(request, facture, modele, langue)
         # L856 — trace l'action dans le chatter de la facture (Historique).
         # Acteur et société posés côté serveur, jamais lus du corps de requête.
@@ -224,6 +230,11 @@ class FactureDocumentsActionsMixin:
         être surchargés dans le body de la requête."""
         from apps.ventes.email_service import send_document_email
         facture = self.get_object()
+        from apps.facturation.recouvrement import facture_envoyable
+        envoyable, motif_refus = facture_envoyable(facture)  # AMSG31
+        if not envoyable:
+            return Response({'detail': motif_refus},
+                            status=status.HTTP_409_CONFLICT)
         saisie = valider_corps(request, D.EnvoyerEmailFactureRequest)
         log = send_document_email(
             facture, user=request.user,
@@ -235,11 +246,14 @@ class FactureDocumentsActionsMixin:
             # ENF11 (nocturne 15/10) — corps conforme mais client SANS adresse
             # (aucune n'est saisie) : c'est la fiche qui s'oppose, 409 ; un
             # autre échec d'envoi garde son 400 (même corps).
-            sans_adresse = not log.to_email
+            # api-fuzz #1377 (AMSG28) — e-mail non opérationnel (backend sans
+            # envoi) : c'est l'ÉTAT du serveur qui s'oppose, pas le corps → 409.
+            from apps.ventes.email_service import EMAIL_NON_OPERATIONNEL
+            refus_etat = not log.to_email or log.erreur == EMAIL_NON_OPERATIONNEL
             return Response(
                 {'detail': log.erreur or 'Envoi impossible.',
                  'email_log_id': log.id},
-                status=status.HTTP_409_CONFLICT if sans_adresse else status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT if refus_etat else status.HTTP_400_BAD_REQUEST)
         return Response(
             {'detail': 'Email envoyé.', 'email_log_id': log.id,
              'to_email': log.to_email},

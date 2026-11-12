@@ -132,11 +132,32 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
     return appointment
 
 
+def annuler_rendez_vous_du_jour(lead_id, jour):
+    """AMSG16 — la visite technique du ``jour`` est annulée : le rendez-vous
+    d'agenda qui EST cette visite (D-ACVI-8) passe ANNULÉ, et son rappel ne part
+    plus. Seuls les rendez-vous PLANIFIÉ/CONFIRMÉ du lead dont la date locale
+    est ``jour``. Renvoie le nombre de rendez-vous annulés."""
+    import zoneinfo
+
+    from .models import Appointment
+
+    if jour is None:
+        return 0
+    debut = datetime.datetime.combine(
+        jour, datetime.time.min, tzinfo=zoneinfo.ZoneInfo(RAMADAN_TZ))
+    return Appointment.objects.filter(
+        lead_id=lead_id, scheduled_at__gte=debut,
+        scheduled_at__lt=debut + datetime.timedelta(days=1),
+        statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
+    ).update(statut=Appointment.Statut.ANNULE)
+
+
 # ── VX245(b) — confirmation WhatsApp POST-RDV (aperçu date/heure + .ics) ────
 
 def build_appointment_confirmation_whatsapp(request, appointment):
     """VX245(b) — construit le message de CONFIRMATION WhatsApp d'un rendez-
-    vous : date/heure (Africa/Casablanca). ACVI45 — le lien `.ics` (route JWT,
+    vous ; AMSG11 : le gabarit société `visite_confirmation` dans la langue du
+    lead, à la date (Africa/Casablanca) du rendez-vous. ACVI45 — le lien `.ics` (route JWT,
     401 pour le client) n'entre plus dans le message ; il reste servi à l'ERP
     (VX245(a), `apps.crm.views.AppointmentViewSet.ics`). N'ENVOIE RIEN — même
     convention que `build_devis_whatsapp`/`build_facture_whatsapp` : ouvre
@@ -151,20 +172,18 @@ def build_appointment_confirmation_whatsapp(request, appointment):
 
     lead = appointment.lead
     phone = numero_joignable(lead)  # ACVI50
-    nom = f'{lead.prenom or ""} {lead.nom or ""}'.strip() or (lead.nom or '')
-    try:
-        local_dt = appointment.scheduled_at.astimezone(
-            zoneinfo.ZoneInfo(RAMADAN_TZ))
-        date_str = local_dt.strftime('%d/%m/%Y à %H:%M')
-    except Exception:  # pragma: no cover - défensif
-        logger.warning('%s : échec ignoré (dégradé)', 'build_appointment_confirmation_whatsapp', exc_info=True)
-        date_str = str(appointment.scheduled_at)
-
+    local_dt = appointment.scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
     ics_url = request.build_absolute_uri(
         f'/api/django/crm/appointments/{appointment.pk}/ics/')
-    salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
-    message = f'{salutation} je confirme notre rendez-vous le {date_str}.'
-    from .cadence_messages import refus_rendu_whatsapp  # ACVI111 — aucun lien à un refusé
+    # AMSG11 — le gabarit société `visite_confirmation`, dans la langue du lead.
+    from .cadence_messages import (
+        langue_relance_du_lead, message_visite_pour_lead, refus_rendu_whatsapp)
+    rendu = message_visite_pour_lead(
+        lead, 'visite_confirmation', user=getattr(request, 'user', None),
+        date_visite=local_dt.date())
+    langue = 'darija' if langue_relance_du_lead(lead) == 'darija' else 'fr'
+    message = rendu[f'corps_{langue}']
+    # ACVI111 — aucun lien à un refusé
     return message, (None if refus_rendu_whatsapp(lead) else build_wa_url(phone, message)), ics_url
 
 
@@ -368,9 +387,9 @@ def _notifier_reservation_publique(appointment):
 def dispatch_appointment_reminder(appointment) -> bool:
     """QJ20 — Envoie le rappel de visite pour un rendez-vous à venir.
 
-    Canaux (par priorité) :
-      1. WhatsApp wa.me draft (log uniquement — pas d'API WhatsApp gated).
-      2. Notifications in-app via notifications.services.notify.
+    Canal : notification in-app via notifications.services.notify. AMSG17 —
+    plus de brouillon wa.me client (personne ne le lisait ; il écrivait le
+    numéro et le texte du client au journal).
 
     RAMADAN-AWARE PACING : si le drapeau est actif pour la société ET que
     l'heure du rappel tombe dans la plage iftar-sensible (18h–21h Casablanca),
@@ -393,36 +412,8 @@ def dispatch_appointment_reminder(appointment) -> bool:
             return False
 
     lead = appointment.lead
-    phone = (
-        getattr(lead, 'whatsapp', '') or getattr(lead, 'telephone', '') or ''
-    ).strip()
 
-    # 1) wa.me draft logged (no WhatsApp API dependency).
-    try:
-        import urllib.parse
-        import zoneinfo
-        local = appointment.scheduled_at.astimezone(
-            zoneinfo.ZoneInfo(RAMADAN_TZ))
-        date_str = local.strftime('%d/%m/%Y à %H:%M')
-        msg = (
-            f'Rappel : votre visite est prévue le {date_str}. '
-            f'Notre équipe sera présente. Merci !'
-        )
-        # ACRM39 — même normaliseur E.164 que les autres liens wa.me ;
-        # numéro non normalisable ⇒ aucun lien.
-        from apps.ventes.utils.phone import normalize_phone_e164
-        digits = normalize_phone_e164(phone) if phone else None
-        if digits:
-            wa_url = (f'https://wa.me/{digits}?text='
-                      f'{urllib.parse.quote(msg)}')
-            _appt_logger.info(
-                'QJ20 rappel wa.me RDV #%d lead %s → %s',
-                appointment.pk, lead.pk, wa_url)
-    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-        _appt_logger.warning(
-            'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
-
-    # 2) Notification in-app — ACRM42 : au responsable du lead ET à son
+    # Notification in-app — ACRM42 : au responsable du lead ET à son
     # supérieur (``lead_notification_recipients`` : repli managers quand l'un
     # manque). Un lead SANS responsable n'est plus un rappel perdu.
     notifies = 0
@@ -501,6 +492,9 @@ def send_due_appointment_reminders() -> int:
         scheduled_at__gte=now,
         scheduled_at__lte=horizon,
         reminder_sent=False,
+        # ASUP46 — jamais le rappel d'un rendez-vous d'un lead archivé, perdu
+        # ou supprimé.
+        lead__is_archived=False, lead__is_deleted=False, lead__perdu=False,
     ).select_related('lead', 'lead__owner', 'company')
 
     pacing = {}

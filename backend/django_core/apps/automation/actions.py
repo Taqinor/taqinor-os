@@ -349,6 +349,12 @@ def reporter_hors_fenetre(rule, instance, company, context):
         f'{quand:%d/%m/%Y à %H:%M}.')
 
 
+#: AMSG77 — actions qui passent par ``reporter_hors_fenetre``.
+ENVOIS_REPORTABLES = frozenset({ActionType.SEND_EMAIL, ActionType.SEND_WHATSAPP})
+
+#: AMSG68 — règle WhatsApp sans texte : aucune tâche « Envoyer ce WhatsApp » vide.
+MOTIF_CORPS_VIDE_WHATSAPP = 'Corps vide : tâche WhatsApp non créée.'
+
 #: APAR25 — résumé de la tâche qui porte le lien WhatsApp préparé.
 RESUME_TACHE_WHATSAPP = 'Envoyer ce WhatsApp'
 
@@ -367,6 +373,8 @@ def preparer_whatsapp(rule, instance, company, context):
     body, manquantes = rendre_texte(_texte_brut(rule, company), instance, company, context)
     if manquantes:
         return motif_variables(manquantes, 'tâche WhatsApp non créée'), phone, None, ''
+    if not (body or '').strip():  # AMSG68 — jumeau de l'e-mail : jamais une tâche vide
+        return MOTIF_CORPS_VIDE_WHATSAPP, phone, None, ''
     try:
         from apps.ventes.utils.whatsapp import build_wa_url
         url = build_wa_url(phone, body or '')
@@ -415,7 +423,8 @@ def _send_whatsapp(rule, instance, company, context, user):
     motif, phone, url, body = preparer_whatsapp(
         rule, instance, company, context)
     if motif:  # APAR91 — variable non résolue : SKIPPED, comme l'e-mail
-        return (Status.SKIPPED if motif.startswith('Variable(s) non résolue(s)') else Status.NOOP), motif
+        return (Status.SKIPPED if motif.startswith(('Variable(s) non résolue(s)', MOTIF_CORPS_VIDE_WHATSAPP))
+                else Status.NOOP), motif
     report = reporter_hors_fenetre(rule, instance, company, context)
     if report is not None:  # APAR26 — jamais en pleine nuit
         return report
@@ -454,26 +463,42 @@ def _send_email(rule, instance, company, context, user):
     if manquantes:
         return Status.SKIPPED, motif_variables(
             manquantes, 'e-mail non envoyé')
+    if not (body or '').strip():  # AMSG68 — jamais un e-mail sans corps
+        return Status.SKIPPED, 'Corps vide : e-mail non envoyé.'
     report = reporter_hors_fenetre(rule, instance, company, context)
     if report is not None:  # APAR26 — aucun e-mail client en pleine nuit
         return report
     # ENF15/ADEP20 — DEFAULT_FROM_EMAIL est déclaré (settings/base.py) ; l'ancien
     # repli CONTACT_FROM_EMAIL n'était déclaré nulle part (clé morte).
     from_email = settings.DEFAULT_FROM_EMAIL or 'no-reply@taqinor.ma'
+    # AMSG65 — les réponses vont à la société (patron AMON47) ; un lead reçoit
+    # la porte de sortie des cadences (loi 09-08 art. 10, CAD110).
+    from apps.parametres.selectors import company_identity
+    reply = company_identity(company).get('email') if company else ''
     try:
-        from django.core.mail import send_mail
+        from django.core.mail import EmailMessage
         # Honnête : on NE masque PAS l'échec (fail_silently=False) et on vérifie
         # le nombre de messages réellement remis. Un email perdu doit être
         # journalisé FAILED, jamais SUCCESS. En local le backend console remet
         # bien le message (compteur 1) : pas d'effet réseau, pas d'échec.
-        sent = send_mail(
-            subject, body or '', from_email, [to], fail_silently=False)
+        sent = EmailMessage(
+            subject, _porte_de_sortie(instance, body or ''), from_email, [to],
+            reply_to=[reply] if reply else None).send(fail_silently=False)
     except Exception as exc:
         logger.warning("actions._send_email : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Email non envoyé : {exc}'
     if not sent:
         return Status.FAILED, f'Email non remis à {to}.'
     return Status.SUCCESS, f'Email envoyé à {to}.'
+
+
+def _porte_de_sortie(instance, body):
+    """AMSG65 — e-mail à un lead : finit par la mention d'opposition (FR ou darija)."""
+    if getattr(getattr(instance, '_meta', None), 'label_lower', '') != 'crm.lead':
+        return body
+    from apps.parametres.models_messages import PORTE_DE_SORTIE_DARIJA, PORTE_DE_SORTIE_FR
+    porte = PORTE_DE_SORTIE_DARIJA if getattr(instance, 'langue_preferee', None) == 'darija' else PORTE_DE_SORTIE_FR
+    return body if body.rstrip().endswith(porte) else f'{body.rstrip()}\n\n{porte}'.lstrip()
 
 
 #: APAR6 — repli de sujet : la société, jamais « Taqinor » pour tout tenant.
@@ -828,6 +853,27 @@ class _SubActionView:
         return getattr(self._rule, name)
 
 
+#: AMSG77 — champs de destinataire qu'un élément de boucle peut porter.
+CHAMPS_DESTINATAIRE = ('email', 'whatsapp', 'telephone')
+
+
+class _CibleElement:
+    """AMSG77 — la fiche déclencheuse, mais le destinataire de l'ÉLÉMENT de la
+    boucle quand il en porte un ; l'opposition du lead déclencheur reste lue."""
+
+    def __init__(self, instance, element):
+        self._instance, self._element = instance, element
+
+    @property
+    def lead(self):
+        return self._instance if _est_lead(self._instance) else getattr(self._instance, 'lead', None)
+
+    def __getattr__(self, name):
+        if name in CHAMPS_DESTINATAIRE and self._element.get(name):
+            return self._element[name]
+        return getattr(self._instance, name)
+
+
 def _for_each(rule, instance, company, context, user):
     """NTEXT6 — répète des SOUS-ACTIONS sur chaque élément d'une liste.
 
@@ -859,6 +905,12 @@ def _for_each(rule, instance, company, context, user):
     if not elements:
         return Status.NOOP, 'Liste vide : aucune itération.'
 
+    # AMSG77 — hors fenêtre, la boucle ENTIÈRE est reportée une fois (jamais une
+    # échéance par sous-action, que la reprise rejouerait toutes : N²).
+    if any(isinstance(spec, dict) and spec.get('action_type') in ENVOIS_REPORTABLES for spec in sous_actions):
+        report = reporter_hors_fenetre(rule, instance, company, context)
+        if report is not None:
+            return report
     faits = 0
     echecs = 0
     for index, element in enumerate(elements, start=1):
@@ -881,8 +933,11 @@ def _for_each(rule, instance, company, context, user):
                 rule, action_type, spec.get('action_config') or {})
             # APAR69 — même aiguillage que les actions de premier niveau :
             # point de sauvegarde, et un envoi attend le commit de l'émetteur.
+            cible = (_CibleElement(instance, element) if action_type in ENVOIS_REPORTABLES
+                     and isinstance(element, dict) and any(element.get(c) for c in CHAMPS_DESTINATAIRE)
+                     else instance)
             statut, _message = executer_action(
-                vue, instance, company, sous_contexte, user)
+                vue, cible, company, sous_contexte, user)
             if statut == Status.FAILED:
                 echecs += 1
             else:

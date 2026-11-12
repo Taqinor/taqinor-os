@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.mail.backends.base import BaseEmailBackend
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -37,6 +38,13 @@ except Exception:  # pragma: no cover
     TZ = None
 
 QUAND = datetime(2026, 6, 17, 6, 0, tzinfo=TZ)
+
+
+class BackendQuiLeve(BaseEmailBackend):
+    """AMSG80 — double d'un backend en panne : chaque envoi lève."""
+
+    def send_messages(self, email_messages):
+        raise ConnectionError('relais SMTP injoignable')
 
 
 def _lancer():
@@ -90,6 +98,32 @@ class JournalDiffusionTests(TestCase):
         envoi = EnvoiRapport.objects.get(saved_report=rapport)
         self.assertEqual(envoi.statut, 'echec')
         self.assertIn('refusé', envoi.erreur)
+
+    @override_settings(
+        EMAIL_BACKEND='apps.reporting.tests_ntdata40_envois.BackendQuiLeve',
+        ANYMAIL={'SENDINBLUE_API_KEY': 'test-key'})
+    def test_backend_qui_leve_trace_un_echec(self):
+        """AMSG80 (C-AMSG-041) — le backend lève : EnvoiRapport en échec avec
+        son motif, abonnement en ``erreur`` ; aucun « envoyé »."""
+        from . import rapport_abonnements as ab
+        from .models import RapportAbonnement, RapportDefinition
+        rapport = self._rapport()
+        self.assertEqual(_lancer(), 0)
+        envoi = EnvoiRapport.objects.get(saved_report=rapport)
+        self.assertEqual(envoi.statut, 'echec')
+        self.assertIn('refusé', envoi.erreur)
+        definition = RapportDefinition.objects.create(
+            company=self.company, titre='Pipeline', dataset='x', spec={})
+        abonnement = RapportAbonnement.objects.create(
+            company=self.company, rapport_def=definition, cron='0 8 * * 1',
+            destinataires={'emails': ['a@example.com']})
+        with mock.patch.object(ab, 'rendre_abonnement',
+                               return_value=('r.xlsx', b'x', 'application/octet-stream')):
+            statut = ab.executer_abonnement(abonnement, QUAND)
+        self.assertEqual(statut, RapportAbonnement.Statut.ERREUR)
+        abonnement.refresh_from_db()
+        self.assertEqual(abonnement.dernier_statut, RapportAbonnement.Statut.ERREUR)
+        self.assertIn('injoignable', abonnement.dernier_detail['detail'])
 
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',

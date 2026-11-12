@@ -153,7 +153,8 @@ export default function BulkProductBar({
           <Input list="bpb-marques" className="h-9 w-60"
                  placeholder="Marque" value={marque} onChange={(e) => setMarque(e.target.value)} />
           <datalist id="bpb-marques">
-            {marques.map((m) => <option key={m.id} value={m.nom} />)}
+            {/* ASUP52 — jamais une marque archivée en suggestion (saisie libre conservée). */}
+            {marques.filter((m) => !m.archived).map((m) => <option key={m.id} value={m.nom} />)}
           </datalist>
           <Button size="sm" onClick={() => run('set_brand', { marque })}>
             Appliquer

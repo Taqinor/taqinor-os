@@ -172,6 +172,24 @@ class LAvalEstDansLaMemeTransaction(_BaseAcceptation):
         self.assertEqual(
             DevisSignature.objects.filter(devis=self.racine).count(), 1)
 
+    def test_adresse_en_echec_non_servie(self):
+        """AMSG45 (C-AMSG-041) — ``send_document_email`` ne lève pas sur un
+        échec : seule l'adresse dont l'EmailLog est ``envoye`` est rendue."""
+        from types import SimpleNamespace
+        from apps.ventes.domain.confirmation_acceptation import envoyer_confirmations
+        self._accepter(devis=self.racine, user=None, nom='M. Client')
+        self.racine.refresh_from_db()
+
+        def envoi(devis, *, to_email, **_kw):
+            statut = EmailLog.Statut.ECHEC if to_email.startswith('ko') else EmailLog.Statut.ENVOYE
+            return SimpleNamespace(statut=statut)
+
+        with patch('apps.ventes.domain.confirmation_acceptation.destinataires_client',
+                   return_value=['ko@example.com', 'ok@example.com']), \
+                patch('apps.ventes.email_service.send_document_email', side_effect=envoi):
+            servies = envoyer_confirmations(devis=self.racine, user=None)
+        self.assertEqual(servies, ['ok@example.com'])
+
 
 class LeGroupeDeVariantesEstVerrouille(_BaseAcceptation):
     """ES14 — deux POST concurrents sur deux jetons du même groupe."""

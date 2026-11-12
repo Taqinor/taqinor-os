@@ -488,6 +488,48 @@ class ActionRequiseBorneTests(TestCase):
         self.assertEqual(ligne(temoin), attendu)
         self.assertEqual(ligne(self.user), attendu)
 
+    def test_lead_refuse_sans_brouillon_ni_numero(self):
+        """AMSG2 (C-AMSG-002, D-ACVI-7) — devis envoyés à un lead opposé,
+        perdu ou archivé : restent dans « engagement_relance », sans
+        brouillon WhatsApp ni numéro servi ; le témoin garde les siens."""
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        from apps.ventes.models import ShareLink
+        role = Role.objects.create(company=self.company, nom='Responsable',
+                                   permissions=list(RESPONSABLE_PERMISSIONS),
+                                   est_systeme=False)
+        responsable = User.objects.create_user(
+            username='amsg2_resp', password='x', role=role,
+            role_legacy='responsable', company=self.company)
+        devis = {}
+        for i, (cle, drapeaux) in enumerate((
+                ('oppose', {'ne_plus_contacter': True}), ('perdu', {'perdu': True}),
+                ('archive', {'is_archived': True}), ('temoin', {}))):
+            lead = Lead.objects.create(
+                company=self.company, nom=f'AMSG2 {cle}', client=self.client_obj,
+                telephone=f'+21266100002{i}', whatsapp=f'+21266200002{i}')
+            Lead.objects.filter(pk=lead.pk).update(**drapeaux)
+            devis[cle] = self._devis(statut=Devis.Statut.ENVOYE, lead=lead,
+                                     date_envoi=timezone.now() - timedelta(days=2))
+            ShareLink.objects.create(
+                company=self.company, devis=devis[cle],
+                engagement_triggers_fired={'not_opened_24h': timezone.now().isoformat()})
+        api = APIClient()
+        api.force_authenticate(responsable)
+        r = api.get(URL)
+        self.assertEqual(r.status_code, 200, r.content[:300])
+        data = r.json()
+        self.assertEqual(sorted(data['buckets']['engagement_relance']['ids']),
+                         sorted(d.id for d in devis.values()))
+        self.assertEqual(list(data['wa_drafts']), [str(devis['temoin'].id)])
+        for cle in ('oppose', 'perdu', 'archive'):
+            ligne = data['devis'][str(devis[cle].id)]
+            with self.subTest(lead=cle):
+                self.assertIsNone(ligne['client_telephone'])
+                self.assertIsNone(ligne['client_whatsapp'])
+        temoin = data['devis'][str(devis['temoin'].id)]
+        self.assertEqual((temoin['client_telephone'], temoin['client_whatsapp']),
+                         ('+212600000909', '+212662000023'))
+
     def test_details_vingt_premiers(self):
         n = _details_du_contrat()
         refuses = self._refuses(n + 5)

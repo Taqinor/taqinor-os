@@ -363,7 +363,7 @@
 - frontend/src/api/portailApi.js :: photos -> /api/django/portail/mes-chantiers/<>/photos
     detail:texte, results:inconnu
 - frontend/src/api/portailApi.js :: provisionnerAcces -> /api/django/portail/comptes-portail/<>/provisionner-acces
-    actif:inconnu, cree:inconnu, detail:texte, email:inconnu, username:inconnu, utilisateur_id:inconnu
+    actif:inconnu, cree:inconnu, detail:texte, email:inconnu, email_envoye:inconnu, username:inconnu, utilisateur_id:inconnu
 - frontend/src/api/portailApi.js :: recherche -> /api/django/portail/client/recherche
     groups:inconnu, query:inconnu
 - frontend/src/api/portailApi.js :: regenererJeton -> /api/django/portail/comptes-portail/<>/regenerer-jeton
@@ -527,7 +527,7 @@
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
     disponible:inconnu, entrees_attendues:inconnu, produit_id:inconnu, solde_projete:inconnu, sorties_attendues:inconnu, timeline:inconnu
 - frontend/src/api/stockApi.js :: provisionnerAccesFournisseur -> /api/django/stock/fournisseurs/<>/provisionner-acces
-    cree:inconnu, detail:texte, email:texte, fournisseur_id:inconnu, username:inconnu, utilisateur_id:inconnu
+    cree:inconnu, detail:texte, email:texte, email_envoye:inconnu, fournisseur_id:inconnu, username:inconnu, utilisateur_id:inconnu
 - frontend/src/api/stockApi.js :: rebuterProduit -> /api/django/stock/produits/<>/rebuter
     detail:texte, mouvement_id:inconnu, valeur_perdue:texte
 - frontend/src/api/stockApi.js :: resolveCode -> /api/django/stock/produits/resolve
@@ -571,7 +571,7 @@
 - frontend/src/api/ventesApi.js :: envoyerEmailDevis -> /api/django/ventes/devis/<>/envoyer-email
     code:inconnu, detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
 - frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
-    detail:texte, email_log_id:inconnu, to_email:inconnu
+    detail:inconnu, email_log_id:inconnu, to_email:inconnu
 - frontend/src/api/ventesApi.js :: etatPdfDevis -> /api/django/ventes/devis/<>/etat-pdf
     date:inconnu, devis:inconnu, erreur:inconnu, fichier_pdf:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: etudeCiPreview -> /api/django/ventes/etude-ci/preview
@@ -621,9 +621,9 @@
 - frontend/src/api/ventesApi.js :: whatsappDevis -> /api/django/ventes/devis/<>/whatsapp
     detail:texte, devis_statut:inconnu, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappFacture -> /api/django/ventes/factures/<>/whatsapp
-    detail:texte, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
+    detail:inconnu, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
-    detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
+    detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, message_relance:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
     date:texte, en_retard_count:nombre, visites:liste
 - frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>

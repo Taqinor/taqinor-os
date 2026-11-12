@@ -121,14 +121,17 @@ class CompanyAdminDeleteGuardTests(TestCase):
                 request, Company.objects.filter(pk=self.company.pk))
         self._tout_survit()
 
-    def test_garde_cible_un_utilisateur_reste_supprimable(self):
-        """Le garde ne désactive PAS la suppression partout : un objet jetable
-        (ici un utilisateur sans dépendance) part normalement."""
-        jetable = UserFactory(company=self.company, username='jetable-guard')
+    def test_custom_user_admin_sans_suppression(self):
+        """ASUP22 — l'admin des comptes n'offre ni bouton ni action de
+        suppression (un compte se désactive) ; un POST direct ne supprime rien."""
+        technicien = UserFactory(company=self.company, username='asup22-tech')
+        user_admin = django_admin.site._registry[CustomUser]
+        request = self._request()
+        self.assertFalse(user_admin.has_delete_permission(request, technicien))
+        self.assertNotIn('delete_selected', user_admin.get_actions(request))
+        self.assertTrue(user_admin.has_change_permission(request, technicien))
         url = reverse('admin:authentication_customuser_delete',
-                      args=[jetable.pk])
-        response = self.http.post(url, {'post': 'yes'})
-
-        self.assertEqual(response.status_code, 302)
-        self.assertFalse(CustomUser.objects.filter(pk=jetable.pk).exists())
+                      args=[technicien.pk])
+        self.assertEqual(self.http.post(url, {'post': 'yes'}).status_code, 403)
+        self.assertTrue(CustomUser.objects.filter(pk=technicien.pk).exists())
         self._tout_survit()

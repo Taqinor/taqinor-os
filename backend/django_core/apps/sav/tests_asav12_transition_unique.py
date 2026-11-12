@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -37,6 +37,8 @@ from core.events import ticket_resolu
 User = get_user_model()
 
 
+@override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'},  # AMSG57 — l'e-mail part
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class TransitionUniqueTests(TestCase):
 
     def setUp(self):

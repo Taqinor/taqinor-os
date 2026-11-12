@@ -1,0 +1,15 @@
+# Base de check_tests_source_regex.py (ATST53) : codes de `permissions=[...]` de
+# tests absents du registre (`fichier::fonction::code`). Ne peut que RETRECIR.
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_critical_rule_blocks_role_assignment::facture.saisir  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_critical_rule_blocks_role_assignment::paiement.valider  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_no_violation_when_only_one_permission::facture.saisir  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_report_scoped_to_company::a  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_report_scoped_to_company::b  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violation_detected::facture.saisir  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violation_detected::paiement.valider  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violations_endpoint::facture.saisir  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violations_endpoint::paiement.valider  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_warning_rule_does_not_block::achat.commander  # ATST53 stock gele
+backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_warning_rule_does_not_block::achat.receptionner  # ATST53 stock gele
+backend/django_core/apps/uxviews/tests.py::UxParametresApiTests.test_roles_autorises_restreint_qui_pose_le_defaut::crm_gerer  # ATST53 stock gele
+backend/django_core/core/tests/test_aud801_gated_fields.py::Aud801GatedFieldsTests.setUpTestData::tickets_gerer  # ATST53 stock gele

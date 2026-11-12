@@ -179,7 +179,7 @@ class SimulationTests(TestCase):
         from apps.automation.views import (
             REGLE_CORPS_CREATION, REGLE_CORPS_RESSERRE)
         self.assertNotIn('allOf', REGLE_CORPS_RESSERRE)
-        etat, assignable = REGLE_CORPS_CREATION['allOf']
+        etat, assignable, _corps_email = REGLE_CORPS_CREATION['allOf']  # AMSG68 : 3e règle
         couples = {
             (b['properties']['trigger_config']['properties']['model']['enum'][0],
              b['properties']['trigger_config']['properties']['field']['enum'][0])

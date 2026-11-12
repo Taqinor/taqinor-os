@@ -59,6 +59,42 @@ class FG26GdprTest(TestCase):
         self.assertNotEqual(self.client_obj.nom, 'Jean Soleil')
         self.assertIsNotNone(self.client_obj.anonymized_at)
 
+    def test_anonymize_efface_aussi_les_leads_du_client(self):
+        """ASUP12 (C-ASUP-008) — « Anonymiser » passe par le chemin commun
+        d'effacement : ses 2 leads (dont 1 archivé), l'e-mail journalisé et le
+        calepinage sont effacés ; le lead d'une autre société est intact."""
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.ventes.models import EmailLog
+        lead = Lead.objects.create(company=self.company, nom='Jean',
+                                   client=self.client_obj, telephone='0612345678')
+        archive = Lead.objects.create(
+            company=self.company, nom='Jean (archivé)', client=self.client_obj,
+            email='jean.archive@example.com', is_archived=True)
+        mail = EmailLog.objects.create(
+            company=self.company, client=self.client_obj, direction='sortant',
+            statut='envoye', to_email='jean@example.com', corps='Bonjour Jean')
+        calepinage = Calepinage.objects.create(
+            company=self.company, client_id=self.client_obj.pk, titre='1 rue X')
+        ailleurs = Lead.objects.create(company=_company('fg26-autre', 'Autre'),
+                                       nom='Ailleurs', telephone='0612345678')
+        r = self.api.post(
+            f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
+        self.assertEqual(r.status_code, 200, r.content)
+        for fiche in (lead, archive):
+            fiche.refresh_from_db()
+            with self.subTest(lead=fiche.pk):
+                self.assertEqual(fiche.nom, 'Anonymisé')
+                self.assertIsNone(fiche.telephone)
+                self.assertIsNone(fiche.email)
+        mail.refresh_from_db()
+        self.assertEqual((mail.to_email, mail.corps), ('', ''))
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.titre, '')
+        ailleurs.refresh_from_db()
+        self.assertEqual(ailleurs.nom, 'Ailleurs')
+        self.assertTrue(ailleurs.telephone)
+
     def test_anonymize_idempotent_guard(self):
         self.api.post(
             f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')

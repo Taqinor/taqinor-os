@@ -69,6 +69,19 @@ anomalies_emission_facture = _ventes.anomalies_emission_facture
 CreditHoldError = _ventes.CreditHoldError
 verifier_credit_hold = _ventes.verifier_credit_hold
 
+
+def figer_identite_acheteur_manquante(company=None, client_id=None,
+                                      appliquer=False):
+    """ASUP1 — point d'accès facturation au rattrapage de l'instantané
+    d'acheteur (corps : ``domain/instantanes_facture``), lu par la commande
+    ``figer_identite_acheteur`` et l'anonymisation crm (ASUP2). Hors
+    ``__all__`` : il ne liste que les noms aussi servis par
+    ``apps.ventes.services`` (ODX18)."""
+    from apps.ventes.domain.instantanes_facture import (
+        figer_identite_acheteur_manquante as figer)
+    return figer(company, client_id=client_id, appliquer=appliquer)
+
+
 __all__ = [
     'StockInsuffisantError', 'EmissionRefusee', 'emettre_facture',
     'reserver_stock_devis_facture', 'creer_facture_contrat',

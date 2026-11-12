@@ -173,6 +173,7 @@ REFUSER = 'REFUSER'
 ENVOYER = 'ENVOYER'
 RELANCER = 'RELANCER'
 GESTES_CYCLE = frozenset({ACCEPTER, REFUSER, ENVOYER, RELANCER})
+MESSAGE_HORS_JEU = "Ce devis n'est plus en jeu : un devis refusé ou expiré ne s'envoie plus."
 CODE_VERSION_REMPLACEE = 'version_remplacee'
 
 
@@ -211,6 +212,9 @@ def geste_cycle_permis(devis, geste):
         raise ValueError(f'Geste de cycle de vie inconnu : {geste!r}.')
     if not bool(getattr(devis, 'is_active', True)):
         return False, message_version_remplacee(devis)
+    # AMSG38 — un devis refusé ou expiré ne s'ENVOIE ni ne se RELANCE plus.
+    if geste in (ENVOYER, RELANCER) and getattr(devis, 'statut', '') in ('refuse', 'expire'):
+        return False, MESSAGE_HORS_JEU
     return True, ''
 
 

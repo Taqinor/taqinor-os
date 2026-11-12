@@ -212,6 +212,26 @@ class TestDispatchReminder(TestCase):
         appt.refresh_from_db()
         self.assertTrue(appt.reminder_sent)
 
+    def test_aucun_numero_ni_lien_client_au_journal(self):
+        """AMSG17 — le rappel ne fabrique plus de brouillon wa.me client et
+        n'écrit ni le numéro ni le texte du client au journal ; la notification
+        interne au responsable reste."""
+        from apps.notifications.models import Notification
+
+        self.lead.telephone = '+212661234567'
+        self.lead.save(update_fields=['telephone'])
+        appt = self._make_appt(minutes=45)
+        with self.assertLogs('apps.crm.visites_rdv', level='DEBUG') as journal:
+            self.assertTrue(dispatch_appointment_reminder(appt))
+        texte = ' | '.join(journal.output)
+        for interdit in ('661234567', 'wa.me'):
+            self.assertNotIn(interdit, texte)
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.lead.owner,
+            title__startswith='Rappel visite').exists())
+        appt.refresh_from_db()
+        self.assertTrue(appt.reminder_sent)
+
 
 class TestSendDueReminders(TestCase):
     """send_due_appointment_reminders filters correctly."""
@@ -274,6 +294,32 @@ class TestSendDueReminders(TestCase):
 
         sent = send_due_appointment_reminders()
         self.assertEqual(sent, 0)
+
+    def test_lead_archive_perdu_ou_supprime_non_rappele(self):
+        """ASUP46 — aucun rappel pour le rendez-vous d'un lead archivé, perdu
+        ou supprimé ; le témoin (lead actif) est rappelé."""
+        from apps.notifications.models import Notification
+
+        morts = []
+        for etat in ({'is_archived': True}, {'perdu': True}, {'is_deleted': True}):
+            lead = Lead.objects.create(
+                company=self.co, nom='Mort', stage='NEW',
+                owner=self.lead.owner, **etat)
+            morts.append(Appointment.objects.create(
+                company=self.co, lead=lead,
+                scheduled_at=timezone.now() + timedelta(minutes=20)))
+        temoin = Appointment.objects.create(
+            company=self.co, lead=self.lead,
+            scheduled_at=timezone.now() + timedelta(minutes=20))
+
+        self.assertEqual(send_due_appointment_reminders(), 1)
+        temoin.refresh_from_db()
+        self.assertTrue(temoin.reminder_sent)
+        for appt in morts:
+            appt.refresh_from_db()
+            self.assertFalse(appt.reminder_sent)
+            self.assertFalse(Notification.objects.filter(
+                body__contains=f'(RDV #{appt.pk})').exists())
 
 
 class TestAppointmentCompanyScoping(TestCase):

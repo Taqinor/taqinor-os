@@ -62,7 +62,8 @@ class EnvExempleTests(SimpleTestCase):
         acheve = subprocess.run(
             [sys.executable, '-c',
              'from django.conf import settings; '
-             'print("EMAIL_BACKEND=" + settings.EMAIL_BACKEND)'],
+             # AMSG61 — sous l'enveloppe de destinataires : le backend RÉEL.
+             'print("EMAIL_BACKEND=" + getattr(settings, "EMAIL_BACKEND_REEL", settings.EMAIL_BACKEND))'],
             cwd=str(settings.BASE_DIR), env=environnement,
             capture_output=True, text=True, encoding='utf-8', errors='replace')
         sortie = (acheve.stdout or '') + (acheve.stderr or '')

@@ -16,7 +16,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core import mail
 
 from apps.crm.models import Client, Lead
@@ -28,6 +28,10 @@ from apps.parametres.models import MessageTemplate
 
 User = get_user_model()
 _seq = itertools.count(1)
+# AMSG56 — une clé factice + ``locmem`` = l'envoi est opérationnel.
+AVEC_CLE = override_settings(
+    ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 
 
 def make_company(slug=None, nom=None):
@@ -110,6 +114,7 @@ class TestRappelRdvJ1(TestCase):
                  interv.rdv_reschedule_count)
         self.assertEqual(avant, apres)
 
+    @AVEC_CLE
     def test_email_client_envoye_backend_test(self):
         Intervention.objects.create(
             company=self.company, installation=self.inst,
@@ -119,6 +124,80 @@ class TestRappelRdvJ1(TestCase):
         self.assertEqual(result['emails_envoyes'], 1)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('demain', mail.outbox[0].subject.lower())
+        from apps.records.models import Activity
+        self.assertFalse(Activity.objects.filter(  # AMSG56 — e-mail parti
+            summary='Envoyer ce WhatsApp').exists())
+
+    @AVEC_CLE
+    def test_sujet_suit_la_langue_du_client(self):
+        """AMSG66 — sujet du rappel lu du modèle d'e-mail ``rappel_rdv`` de
+        la société, dans la langue du client ; sans langue : sujet d'avant."""
+        from apps.parametres.models_email import EmailTemplate
+        EmailTemplate.objects.create(
+            company=self.company, cle='rappel_rdv',
+            sujet_ar='تذكير بموعد الغد {reference}')
+        arabe = make_chantier(self.company, self.user,
+                              client_email='ar@example.invalid')
+        arabe.client.langue_document = 'ar'
+        arabe.client.save(update_fields=['langue_document'])
+        for inst in (self.inst, arabe):
+            Intervention.objects.create(
+                company=self.company, installation=inst,
+                type_intervention='pose', created_by=self.user,
+                date_prevue=self.demain, rdv_confirme=False)
+        rappel_rdv_j1()
+        sujets = {m.to[0]: m.subject for m in mail.outbox}
+        self.assertEqual(sujets['ar@example.invalid'],
+                         f'تذكير بموعد الغد {arabe.reference}')
+        self.assertEqual(sujets['client@example.invalid'],
+                         'Rappel de rendez-vous — demain')
+
+    @AVEC_CLE
+    def test_balayage_rejoue_n_envoie_pas_deux_fois(self):
+        """AMSG76 — un balayage rejoué le même jour (worker tué) ne renvoie
+        pas le rappel : le marqueur est posé une fois après l'envoi ; un
+        marqueur d'un jour passé (RDV replanifié) ne bloque pas."""
+        from django.utils import timezone
+        premiere = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user,
+            date_prevue=self.demain, rdv_confirme=False)
+        rappel_rdv_j1()
+        premiere.refresh_from_db()
+        marque = premiere.rappel_j1_traite_le
+        self.assertIsNotNone(marque)
+        autre = make_chantier(self.company, self.user,
+                              client_email='autre@example.invalid')
+        Intervention.objects.create(
+            company=self.company, installation=autre,
+            type_intervention='pose', created_by=self.user,
+            date_prevue=self.demain, rdv_confirme=False,
+            rappel_j1_traite_le=timezone.now() - timedelta(days=3))
+        rappel_rdv_j1()
+        destinataires = sorted(m.to[0] for m in mail.outbox)
+        self.assertEqual(destinataires, ['autre@example.invalid',
+                                         'client@example.invalid'])
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.rappel_j1_traite_le, marque)
+
+    def test_sans_email_configure_rien_n_est_compte_et_brouillon_remis(self):
+        """AMSG56 — état de la prod (``locmem`` sans clé) : aucun e-mail
+        compté, le brouillon WhatsApp devient une tâche sur l'intervention."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity
+        interv = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user,
+            date_prevue=self.demain, rdv_confirme=False)
+        result = rappel_rdv_j1()
+        self.assertEqual(result['emails_envoyes'], 0)
+        self.assertEqual(len(mail.outbox), 0)
+        taches = Activity.objects.filter(
+            content_type=ContentType.objects.get_for_model(Intervention),
+            object_id=interv.pk, summary='Envoyer ce WhatsApp')
+        self.assertEqual(taches.count(), 1)
+        self.assertIn('wa.me/', taches.get().note)
+        self.assertIn(self.inst.reference, taches.get().note)
 
     def test_no_op_propre_sans_email_client(self):
         inst_sans_email = make_chantier(
@@ -131,6 +210,7 @@ class TestRappelRdvJ1(TestCase):
         self.assertEqual(result['cibles'], 1)
         self.assertEqual(result['emails_envoyes'], 0)
 
+    @AVEC_CLE
     def test_template_editable_rappel_rdv(self):
         MessageTemplate.objects.create(
             company=self.company, cle='rappel_rdv',

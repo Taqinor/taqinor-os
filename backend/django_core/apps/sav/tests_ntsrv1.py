@@ -123,7 +123,7 @@ class NTSRV1ThreadingTest(TestCase):
         self.assertEqual(fautifs, [], f'imaplib trouvé dans apps/sav : {fautifs}')
 
 
-@override_settings(EMAIL_BACKEND=LOCMEM)
+@override_settings(EMAIL_BACKEND=LOCMEM, ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'})  # AMSG57
 class NTSRV1ReponseSortanteTest(TestCase):
     def setUp(self):
         self.company = make_company(slug='sav-ntsrv1-out', nom='Sav Out')
@@ -149,6 +149,20 @@ class NTSRV1ReponseSortanteTest(TestCase):
         repondre_par_email(self.ticket, corps='Bonjour', user=None)
         self.assertEqual(TicketActivity.objects.filter(
             ticket=self.ticket, kind=TicketActivity.Kind.EMAIL).count(), 2)
+
+    def test_sans_email_configure_refus_sans_fil(self):
+        """AMSG57 — sans clé d'envoi : refus nommé, aucun e-mail, aucun fil
+        SORTANT, aucune note « E-mail envoyé »."""
+        notes = TicketActivity.objects.filter(ticket=self.ticket, kind=TicketActivity.Kind.EMAIL).count()
+        with override_settings(ANYMAIL={}), self.assertRaises(ValueError) as ctx:
+            repondre_par_email(self.ticket, corps='Nous intervenons demain.')
+        self.assertTrue(str(ctx.exception).startswith('detail:'))
+        self.assertIn("rien n'est parti", str(ctx.exception))
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(TicketEmailThread.objects.filter(
+            ticket=self.ticket, direction=TicketEmailThread.Direction.SORTANT).exists())
+        self.assertEqual(TicketActivity.objects.filter(
+            ticket=self.ticket, kind=TicketActivity.Kind.EMAIL).count(), notes)
 
     def test_corps_vide_refuse_en_nommant_le_champ(self):
         with self.assertRaises(ValueError) as ctx:

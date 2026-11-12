@@ -136,6 +136,41 @@ class RelanceEchecEnvoiTests(TestCase):
             company=self.company).order_by('delai_jours', 'ordre').first()
         self.assertEqual(logs[0].niveau, premier.ordre)
 
+    def test_backend_console_ne_consomme_ni_niveau_ni_marqueur(self):
+        """AMSG29 (C-AMSG-008) — sous le backend console (la prod), rien ne
+        part : 0 RelanceLog, 0 EmailLog, `prochaine_relance` intacte, aucun
+        marqueur ni alerte AARG42, retour 0 pour les trois beats. Mutant :
+        retirer le prédicat ⇒ EmailLog « envoye » + niveau 1 consommé."""
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import Notification
+        from apps.ventes.models import EmailLog, RelanceLog
+        from apps.ventes.scheduled import (
+            pre_echeance_reminders, relance_reminders,
+            releve_mensuel_reminders)
+        createur = get_user_model().objects.create_user(
+            username=f'amsg29-{_nxt()}', password='x',
+            role_legacy='responsable', company=self.company)
+        client = self._client(email=f'amsg29-{_nxt()}@example.invalid')
+        retard = self._facture(client, created_by=createur,
+                               prochaine_relance=self.today)
+        emise = self._facture(client, statut='emise',
+                              echeance=self.today + timedelta(days=2))
+        with self.settings(
+                EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend'):
+            for _ in range(3):
+                self.assertEqual(relance_reminders(), 0)
+            self.assertEqual(pre_echeance_reminders(), 0)
+            self.assertEqual(releve_mensuel_reminders(), 0)
+        retard.refresh_from_db()
+        emise.refresh_from_db()
+        self.assertEqual(retard.prochaine_relance, self.today)
+        self.assertFalse(RelanceLog.objects.filter(
+            facture__in=[retard, emise]).exists())
+        self.assertFalse(EmailLog.objects.filter(
+            company=self.company).exists())
+        self.assertFalse(Notification.objects.filter(
+            recipient=createur).exists())
+
     def test_pre_echeance_retente_apres_echec(self):
         from apps.ventes.models import EmailLog
         from apps.ventes.scheduled import pre_echeance_reminders

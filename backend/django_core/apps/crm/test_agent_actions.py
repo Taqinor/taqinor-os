@@ -197,6 +197,34 @@ class CrmAgentWhatsappPrepareTest(TestCase):
         self.assertIn('links', resp.data)
         self.assertTrue(resp.data['wa_url'])
 
+    def test_whatsapp_prepare_laisse_le_devis_brouillon(self):
+        """AMSG6 (C-AMSG-007) — l'action d'assistant joue l'APERÇU : devis
+        brouillon sans date d'envoi, lead à son étape, aucune trace d'envoi."""
+        from apps.audit.models import AuditLog
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='Client AG6 B')
+        devis = Devis.objects.create(
+            company=self.company, lead=self.lead, client=client,
+            statut='brouillon', reference='DEV-AG6-0002')
+        # Le profil société naît (et s'audite) au premier rendu du message :
+        # créé AVANT le comptage, il ne passe pas pour une trace d'envoi.
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.get(company=self.company)
+        etape, audits = self.lead.stage, AuditLog.objects.count()
+        activites = self.lead.activites.count()
+        resp = auth(self.user).post(
+            PREPARER_ENVOI_WHATSAPP.endpoint.format(id=self.lead.id),
+            {'devis_ids': [devis.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue({'wa_url', 'message', 'links'} <= set(resp.data))
+        devis.refresh_from_db()
+        self.lead.refresh_from_db()
+        self.assertEqual((devis.statut, devis.date_envoi), ('brouillon', None))
+        self.assertEqual(self.lead.stage, etape)
+        self.assertEqual(AuditLog.objects.count(), audits)
+        self.assertEqual(self.lead.activites.count(), activites)
+
 
 class CrmAgentARelancerTest(TestCase):
     """AIC30 — ``crm.leads.a_relancer`` sert la file du cockpit, pas une copie."""

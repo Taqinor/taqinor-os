@@ -725,11 +725,8 @@ class M1GhiSourceUniqueTests(SimpleTestCase):
         self.assertEqual(constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS, attendu)
 
 
-@tag('pdf')
-class M10SectionsMasqueesTests(TestCase):
-    """ADVS18 — lien public « Synthèse d'économies » décochée : le PDF n'imprime
-    ni avant/après, ni économie annuelle, ni −N % (patron de la sonde C-ADVS-023).
-    Rendu RÉEL, comparé à un témoin sans l'option."""
+class _DevisSectionsMasquees:
+    """ATST22 — devis partagé PDF tagué / HTML non tagué (`tag` s'hérite)."""
 
     def setUp(self):
         from decimal import Decimal
@@ -763,16 +760,23 @@ class M10SectionsMasqueesTests(TestCase):
                 quantite=Decimal(qte), prix_unitaire=Decimal(prix),
                 remise=Decimal('0'), ordre=ordre)
 
+    @staticmethod
+    def _montant_present(montant, texte):
+        return str(int(round(montant))) in re.sub(r'[\s.,]', '', texte)
+
+
+@tag('pdf')
+class M10SectionsMasqueesTests(_DevisSectionsMasquees, TestCase):
+    """ADVS18 — lien public « Synthèse d'économies » décochée : le PDF n'imprime
+    ni avant/après, ni économie annuelle, ni −N % (patron de la sonde C-ADVS-023).
+    Rendu RÉEL, comparé à un témoin sans l'option."""
+
     def _texte(self, options):
         import fitz
 
         from apps.ventes.tests.test_pdf_apdf_identite import rendre_pdf
         doc = fitz.open(stream=rendre_pdf(self.devis, options), filetype='pdf')
         return '\n'.join(page.get_text() for page in doc)
-
-    @staticmethod
-    def _montant_present(montant, texte):
-        return str(int(round(montant))) in re.sub(r'[\s.,]', '', texte)
 
     def test_economies_decochees_aucun_montant_au_pdf(self):
         from apps.ventes.quote_engine.builder import build_quote_data
@@ -812,3 +816,34 @@ class M10SectionsMasqueesTests(TestCase):
         # Drapeau de GABARIT posé sur un lien décoché seul : un rendu sans option
         # reste octet-identique (goldens du moteur, décision du 08/10/2026).
         self.assertNotIn('economies_masquees_lien', rendu)
+
+
+class M10SectionsMasqueesHtmlTests(_DevisSectionsMasquees, TestCase):
+    """ATST22 — NON tagué (chaque fusion) : HTML résidentiel sans économies."""
+
+    @staticmethod
+    def _noeuds_html(data):
+        import html
+        from apps.ventes.quote_engine.residential import render, renderer
+        brut = render.build_html(renderer._augment(data))
+        brut = re.sub(r'(?is)<(style|script)\b.*?</\1>', '', brut)
+        return [html.unescape(t) for t in re.split(r'<[^>]+>', brut)]
+
+    def test_economies_decochees_aucun_montant_au_html(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import synthese_economies
+        temoin = {'pdf_mode': 'full'}
+        masque = dict(temoin, sections_masquees=['economies'])
+        data_temoin = build_quote_data(self.devis, temoin)
+        synth = synthese_economies(data_temoin)
+        montants = (synth['annual_before'], synth['annual_after'],
+                    synth['eco_mensuelles_total'])
+        pct = re.compile(r'[-−–]\s*%d\s*%%' % synth['pct_cut'])
+        data_masque = build_quote_data(self.devis, masque)
+        self.assertIs(data_masque['masquer_economies'], True)
+        for data, present in ((data_temoin, True), (data_masque, False)):
+            noeuds = self._noeuds_html(data)
+            for montant in montants:
+                self.assertIs(any(self._montant_present(montant, n) for n in noeuds),
+                              present, (present, montant))
+            self.assertIs(bool(pct.search(''.join(noeuds))), present)

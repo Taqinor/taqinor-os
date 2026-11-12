@@ -87,3 +87,24 @@ describe('AGNR30 — conditions, échéancier, tarif et éco C&I dans le brouill
     }, { timeout: 4000 })
   }, 15000)
 })
+
+// ATST27 (C-ATST-015) — EZ4 prouvé par le RENDU : en création, une ligne saisie
+// SEULE arme la garde de sortie et écrit le brouillon. Mutant : retirer
+// `|| lignesSaisies` de `formulaireNonVierge` ⇒ rouge.
+describe('ATST27 — création', () => {
+  it('création : une ligne saisie seule arme la garde et écrit le brouillon', async () => {
+    const NOUVEAU = 'taqinor:draft:devis:new'
+    window.localStorage.removeItem(NOUVEAU)
+    renderGenerateurPage('/ventes/devis/nouveau')
+    const ajouter = await screen.findByRole('button', { name: /Ajouter ligne/ })
+    await new Promise(r => setTimeout(r, 1700))
+    // NB : pas de contrôle « vierge = non armé » ici — les lignes de composition
+    // par défaut portent déjà une désignation (signalé à l'orchestrateur, ATST27).
+    fireEvent.click(ajouter)
+    const derniere = [...document.querySelectorAll('tr[data-line-key]')].at(-1)
+    fireEvent.change(derniere.querySelector('input'), { target: { value: 'Câble solaire 6 mm²' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(NOUVEAU) || 'null')?.data.lines
+      .map(l => l.designation)).toContain('Câble solaire 6 mm²'), { timeout: 4000 })
+  }, 15000)
+})

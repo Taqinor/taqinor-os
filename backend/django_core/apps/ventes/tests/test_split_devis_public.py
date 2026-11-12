@@ -94,7 +94,8 @@ class DeplacementsTests(SimpleTestCase):
             for nom in symboles:
                 self.assertNotIn(nom, vus, f'{nom} dans {region} et {vus.get(nom)}')
                 vus[nom] = region
-        self.assertEqual(len(vus), 99)
+        # AMSG28 — EMAIL_BACKENDS_SANS_ENVOI repart dans email_service (98).
+        self.assertEqual(len(vus), 98)
 
     def test_regions_en_attente_identiques_a_la_source(self):
         for region, (golden, _cible, spl, actif) in DEPLACEMENTS.items():

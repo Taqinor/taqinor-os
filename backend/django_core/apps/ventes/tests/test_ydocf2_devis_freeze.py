@@ -89,15 +89,26 @@ class TestDevisFreezeOnUpdate(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.note, 'edit ok')
 
-    def test_deactivating_accepted_devis_still_allowed(self):
-        """Superseded revision path (reviser) must remain possible."""
+    def test_desactiver_un_accepte_refuse_409(self):
+        """ASUP54 — un accepté ne sort du CA signé que par révision (le
+        service désactive la V1) : le PATCH ``is_active=false`` est refusé ;
+        un envoyé se désactive comme avant."""
         devis = self._devis(5, Devis.Statut.ACCEPTE)
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'is_active': False},
             format='json')
-        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['is_active'],
+                         'Devis accepté : il ne se désactive pas — révisez-le.')
         devis.refresh_from_db()
-        self.assertFalse(devis.is_active)
+        self.assertTrue(devis.is_active)
+        envoye = self._devis(10, Devis.Statut.ENVOYE)
+        r = self.api.patch(
+            f'/api/django/ventes/devis/{envoye.id}/', {'is_active': False},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        envoye.refresh_from_db()
+        self.assertFalse(envoye.is_active)
 
     def test_patch_ligne_of_accepted_devis_rejected(self):
         devis = self._devis(6, Devis.Statut.ACCEPTE)

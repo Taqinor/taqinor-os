@@ -143,7 +143,8 @@ app.conf.beat_schedule = {
     },
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',
-        'schedule': crontab(hour=7, minute=0),
+        # AMSG43 — jamais un message client le week-end.
+        'schedule': crontab(hour=7, minute=0, day_of_week='mon-fri'),
     },
     'ventes-devis-followup-nudges': {
         'task': 'ventes.devis_followup_nudges',
@@ -368,7 +369,9 @@ app.conf.beat_schedule = {
     # 1er du mois 08:00 Africa/Casablanca.
     'ventes-releve-mensuel-reminders': {
         'task': 'ventes.releve_mensuel_reminders',
-        'schedule': crontab(hour=8, minute=0, day_of_month=1),
+        # AMSG43 — 1er jour ouvré parmi 1-3 (marqueur mensuel : un seul envoi).
+        'schedule': crontab(hour=8, minute=0, day_of_month='1-3',
+                            day_of_week='mon-fri'),
     },
     # XFSM6 — rappel client J-1 (interventions non confirmées, demain).
     'installations-rappel-rdv-j1': {
@@ -542,7 +545,7 @@ app.conf.beat_schedule = {
     # XFAC7 — rappels J-N avant échéance de tranche (devis accepté).
     'ventes-pre-echeance-reminders': {
         'task': 'ventes.pre_echeance_reminders',
-        'schedule': crontab(hour=7, minute=20),
+        'schedule': crontab(hour=7, minute=20, day_of_week='mon-fri'),  # AMSG43
     },
     # ZFAC12 — « accepté mais jamais facturé » : nudge le facturier.
     'ventes-devis-a-facturer-reminder': {
