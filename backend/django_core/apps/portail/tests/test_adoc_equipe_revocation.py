@@ -69,7 +69,8 @@ class EquipeRevocationTests(TestCase):
 
         self.resp = CustomUser.objects.create_user(
             username=f'adoc115-resp-{n}', password='motdepasse-test-1234',
-            company=self.co, role_legacy='responsable')
+            # ADRG97 — la RÉACTIVATION est réservée au palier admin.
+            company=self.co, role_legacy='admin')
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.resp)}')

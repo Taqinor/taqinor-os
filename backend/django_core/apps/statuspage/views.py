@@ -14,6 +14,7 @@ from django.db import models
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
@@ -410,9 +411,12 @@ def public_confirmer_abonnement(request, token):
     return Response({'detail': 'Abonnement confirmé.'})
 
 
-@extend_schema(responses=inline_serializer('PublicDesabonnerReponse', {
-    'detail': drf_serializers.CharField(),
-}))
+@extend_schema(methods=['GET'], request=None,
+               responses={(200, 'text/html'): OpenApiTypes.STR})  # APUB49 — page sans effet
+@extend_schema(methods=['POST'], request=None,
+               responses=inline_serializer('PublicDesabonnerReponse', {
+                   'detail': drf_serializers.CharField(),
+               }))
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])

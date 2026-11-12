@@ -96,6 +96,9 @@ def dashboards_visibles_q(user, prefix=''):
     les siens, ceux partagés à la société, ceux sans propriétaire ; ``prefix``
     = chemin vers le ``Dashboard`` (``'dashboard__'`` depuis un partage)."""
     from django.db.models import Q
+    if not getattr(user, 'is_authenticated', False):
+        # Anonyme (génération du schéma OpenAPI, sans requête réelle) : aucun tableau.
+        return Q(**{f'{prefix}pk__in': []})
     return Q(**{f'{prefix}owner': user}) | Q(**{f'{prefix}partage': True}) | Q(**{f'{prefix}owner__isnull': True})
 
 

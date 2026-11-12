@@ -62,9 +62,6 @@ EXEMPTIONS = {
     # endpoint ne réaffecte un devis — la réaffectation passe par le lead
     # (``crm_reassign``).
     'ventes_reassign': _ASEC50_SANS_ENDPOINT,
-    'adsengine_flightplan_manage': (
-        "A CORRIGER (adsengine, session propriétaire) : plans de vol ADSENG47 "
-        "gérés par un palier, aucun littéral du code côté serveur"),
     'emettre_carte_achat': (
         "geste de l'app frais (parquée, cartes d'achat) rangé sous le module stock "
         "du catalogue : aucune vue ne le sert tant que frais est parquée"),

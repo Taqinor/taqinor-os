@@ -230,8 +230,11 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.assertEqual(Ticket.objects.count(), avant)
         self.assertEqual(
             technicien.post(URL, base, format='json').status_code, 201)
-        for api in (compte('Responsable'), compte(None, 'responsable')):
-            r = api.post(URL, {**base, 'technicien_responsable': self.tech_a.id,
+        # Descriptions distinctes : l'anti-doublon de création (409
+        # ``ticket_en_double``) refuse deux tickets identiques rapprochés.
+        for i, api in enumerate((compte('Responsable'), compte(None, 'responsable'))):
+            r = api.post(URL, {**base, 'description': f'panne {i}',
+                               'technicien_responsable': self.tech_a.id,
                                'equipe': equipe.id}, format='json')
             self.assertEqual(r.status_code, 201, r.data)
 

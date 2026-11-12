@@ -150,10 +150,14 @@ class DeclarationEndpointTest(TestCase):
         for nom, perms in (('Commercial terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
                            ('Admin RH', ADMIN_RH_PERMISSIONS)):
             _user, api = compte(nom, perms)
-            for params in ({}, {'format': 'pdf'}):
-                with self.subTest(role=nom, params=params):
-                    resp = api.get(self.url, params)
-                    self.assertEqual(resp.status_code, 403, resp.content)
+            resp = api.get(self.url)
+            self.assertEqual(resp.status_code, 403, (nom, resp.content))
+            # ``?format=pdf`` est capté AVANT les permissions par la négociation
+            # de format de DRF (``URL_FORMAT_OVERRIDE``, aucun rendu « pdf ») :
+            # 404, jamais un PDF rendu.
+            resp = api.get(self.url, {'format': 'pdf'})
+            self.assertIn(resp.status_code, (403, 404), (nom, resp.content))
+            self.assertNotEqual(resp.get('Content-Type'), 'application/pdf')
         commercial, api = compte('Commercial', COMMERCIAL_PERMISSIONS)
         Devis.objects.filter(pk=self.devis.pk).update(created_by=commercial)
         resp = api.get(self.url)

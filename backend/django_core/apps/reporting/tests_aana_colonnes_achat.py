@@ -117,10 +117,11 @@ class TestColonnesAchat(TestCase):
             dataset='stock_produits', spec={'select': ['nom', 'valeur_achat']},
             partage=RapportDefinition.Partage.SOCIETE)
         # ASEC50 — ``reporting_export`` : le lecteur a le droit d'exporter,
-        # la sonde éprouve le retrait des colonnes d'achat.
+        # la sonde éprouve le retrait des colonnes d'achat. ADRG76 — un jeu
+        # stock s'exporte aussi avec ``stock_export`` (code du module du jeu).
         role = Role.objects.create(
             company=self.company, nom='Lecteur stock',
-            permissions=['stock_voir', 'reporting_export'])
+            permissions=['stock_voir', 'stock_export', 'reporting_export'])
         lecteur = User.objects.create_user(
             username='aana25_lecteur', password='x', company=self.company,
             role=role)

@@ -237,8 +237,12 @@ class Ntwms38ApiTests(Ntwms38Base):
         herite = User.objects.create_user(
             username='adrg36-herite', password='x', company=self.company,
             role_legacy='responsable')
+        from apps.stock.models_qualite_reception import PlanEchantillonnage
         for user in (livre('Technicien responsable'), herite):
             api = auth(user)
+            # Le POST vide du compte précédent a créé LE plan par défaut de la
+            # société (contrainte unique partielle) : on repart sans lui.
+            PlanEchantillonnage.objects.filter(company=self.company).delete()
             for methode, url in ecritures:
                 with self.subTest(user=user.username, url=url):
                     rep = getattr(api, methode)(url, {}, format='json')

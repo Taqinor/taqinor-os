@@ -303,7 +303,8 @@ class TestSortieSigneApiPublique(SortieSigneBase):
         self.assertIn(ref, str(ctx.exception.detail['detail']))
         inchange(lead, devis)
 
-        # 3. PATCH public : même 409, ``detail`` nommant la facture.
+        # 3. PATCH public : même 409 ; l'enveloppe publique (Stripe-like,
+        #    ``publicapi.errors``) porte le message dans ``error.message``.
         _, brute = ApiKey.issue(
             company=self.company, label='apub11', scopes=[SCOPE_WRITE_LEADS])
         api = APIClient()
@@ -311,7 +312,7 @@ class TestSortieSigneApiPublique(SortieSigneBase):
         r = api.patch(f'/api/public/v1/leads-write/{lead.pk}/', froid,
                       format='json')
         self.assertEqual(r.status_code, 409, r.data)
-        self.assertIn(ref, r.data['detail'])
+        self.assertIn(ref, r.data['error']['message'])
         inchange(lead, devis)
 
         # 4. Import upsert : la ligne bloquée est en erreur au même message,

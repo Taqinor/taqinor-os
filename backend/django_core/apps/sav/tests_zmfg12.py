@@ -200,21 +200,25 @@ class ZMFG12MiseAuRebutTest(TestCase):
             company=self.company, nom='Onduleurs')
 
         def compte(nom):
+            """(client API, utilisateur) — l'équipement est créé PAR le compte :
+            un rôle à portée (Technicien responsable) ne voit que son parc."""
             if nom is None:
-                return auth(User.objects.create_user(
+                user = User.objects.create_user(
                     username='adrg39_herite', password='x',
-                    role_legacy='responsable', company=self.company))
+                    role_legacy='responsable', company=self.company)
+                return auth(user), self._equip(created_by=user)
             role = Role.objects.create(
                 company=self.company, nom=nom, est_systeme=True,
                 permissions=list(livres[nom]))
-            return auth(User.objects.create_user(
+            user = User.objects.create_user(
                 username=f'adrg39_{nom.replace(" ", "_").lower()}',
                 password='x', role_legacy='normal', company=self.company,
-                role=role))
+                role=role)
+            return auth(user), self._equip(created_by=user)
 
         base = '/api/django/sav/'
         for nom in ('Commercial responsable', 'Technicien', 'Responsable'):
-            api, eq = compte(nom), self._equip()
+            api, eq = compte(nom)
             r = api.post(f'{base}equipements/{eq.id}/mettre-au-rebut/',
                          {'motif': 'Casse définitive'}, format='json')
             self.assertEqual(r.status_code, 403, (nom, r.data))
@@ -237,7 +241,7 @@ class ZMFG12MiseAuRebutTest(TestCase):
             self.assertEqual(cat.nom, 'Onduleurs', nom)
         for nom in ('Technicien responsable', 'Directeur', 'Administrateur',
                     None):
-            api, eq = compte(nom), self._equip()
+            api, eq = compte(nom)
             r = api.post(f'{base}equipements/{eq.id}/mettre-au-rebut/',
                          {'motif': 'Casse définitive'}, format='json')
             self.assertEqual(r.status_code, 200, (nom, r.data))

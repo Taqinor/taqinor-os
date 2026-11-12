@@ -406,11 +406,13 @@ UNGUARDED_ACTION_BASELINE = {
     # comme sa voisine `doublons` (elle, admin-only via un
     # `permission_classes=` par action, donc déjà créditée par le scanner).
     # Dette apparente, pas un trou (0 → 1).
-    "tiers": 1,
+    # Vague 12 (APUB13) — 1 → 0 : `TiersViewSet.get_permissions` local, crédité.
+    "tiers": 0,
     # WIR281 (2026-08-26) : +1 @action `resoudre` de PlanCommissionViewSet —
     # gardée au niveau CLASSE (`permission_classes` prix_achat_voir/admin sur
     # tout le viewset, testée 403) ; dette apparente, pas un trou (1 → 2).
-    "ventes": 1,
+    # Vague 12 — 1 → 0 : la dernière @action non gardée par action l'est désormais.
+    "ventes": 0,
 }
 
 
