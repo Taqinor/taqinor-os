@@ -113,7 +113,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
 
     def perform_update(self, serializer):
         if serializer.instance.verrouillee:  # ACSV19 — PV signé : fiche figée
-            raise ValidationError({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
+            # api-fuzz #1377 — refus d'ÉTAT sur un corps conforme : 409 (ENF11).
+            raise ConflitEtat({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
         self._check_installation_tenant(serializer)
         self._check_instrument_etalonnage(serializer)
         serializer.save(company=self.request.user.company)
@@ -131,8 +132,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         serveur."""
         from ..services import compute_iv_ecart
         record = self.get_object()
-        if record.verrouillee:  # ACSV19
-            raise ValidationError({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
+        if record.verrouillee:  # ACSV19 — refus d'état : 409 (ENF11)
+            raise ConflitEtat({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
         serializer = CommissioningIVReadingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         reading = CommissioningIVReading(
@@ -205,8 +206,8 @@ class RecettePompageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         recette = self.get_object()
-        if recette.verrouillee:
-            raise ValidationError({'verrouillee': MESSAGE_RECETTE_VERROUILLEE})
+        if recette.verrouillee:  # PV signé — refus d'état : 409 (ENF11, api-fuzz #1377)
+            raise ConflitEtat({'verrouillee': MESSAGE_RECETTE_VERROUILLEE})
         # AGR609 (a) — la promesse du devis est FIGÉE à la première écriture
         # (une V2 du devis ne réécrit jamais une recette).
         from ..services import figer_promesse_recette

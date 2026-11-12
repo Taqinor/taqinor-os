@@ -235,7 +235,7 @@ class CommissioningApiTests(TestCase):
 
     def test_fiche_verrouillee_apres_pv_signe(self):
         """ACSV19 (C-ACSV-024) — PV du chantier signé : la fiche IEC est
-        figée (PATCH, ajouter-iv : 400 ``verrouillee`` ; DELETE refusé), le
+        figée (PATCH, ajouter-iv : 409 ``verrouillee`` ; DELETE refusé), le
         résultat reste conforme ; servie avec ``verrouillee: true``.
         ROUGE AVANT : PATCH 200, résultat non conforme."""
         from django.utils import timezone
@@ -248,11 +248,11 @@ class CommissioningApiTests(TestCase):
         Installation.objects.filter(pk=inst.pk).update(signe_le=timezone.now())
         msg = 'Recette IEC 62446-1 verrouillée : le PV de réception est signé.'
         r = self.api.patch(url, {'isolement_ok': False}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : refus d'état
         self.assertEqual(r.data['verrouillee'], msg)
         corps_iv = {'string_label': 'S1', 'pmax_mesure_w': '800', 'pmax_attendu_w': '1000'}
         r = self.api.post(f'{url}ajouter-iv/', corps_iv, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(self.api.delete(url).status_code, (400, 409))
         rec.refresh_from_db()
         self.assertEqual(rec.resultat, 'conforme')

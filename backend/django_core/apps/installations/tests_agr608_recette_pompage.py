@@ -127,7 +127,7 @@ class RecettePompageApiTests(TestCase):
         inst.save(update_fields=['signe_le'])
         r = self.api.patch(f'{BASE}/recettes-pompage/{rec.id}/',
                            {'debit_mesure_m3h': 12.5}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : refus d'état
         self.assertIn('verrouillee', r.data)
         rec.refresh_from_db()
         self.assertIsNone(rec.debit_mesure_m3h)
