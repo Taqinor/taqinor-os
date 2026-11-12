@@ -1,7 +1,7 @@
 // AMON93 — annulation d'un certificat carbone depuis le registre (motif
 // obligatoire), puis ligne barrée « annulé le … par … ».
 // Nouveau fichier car : la section n'avait aucun test (dit par la tâche AMON93).
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, onTestFinished } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -22,6 +22,11 @@ vi.mock('../../../api/monitoringApi', () => ({
     getCertificatCarbonePdf: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF']) })),
   },
 }))
+
+// ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
+// vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
+const droit = vi.hoisted(() => ({ ecrire: true }))
+vi.mock('../useDroitMetier', () => ({ default: () => droit.ecrire }))
 
 import monitoringApi from '../../../api/monitoringApi'
 import CertificatsCarboneSection from './CertificatsCarboneSection'
@@ -73,5 +78,14 @@ describe('CertificatsCarboneSection (AMON93 — annulation)', () => {
     await waitFor(() => expect(monitoringApi.annulerCertificatCarbone).toHaveBeenCalledWith(4, 'Relevé corrigé'))
     expect(await screen.findByText(/annulé le .* par Responsable SAV/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument()
+  })
+
+  it('ADRG47 — un Commercial ne voit ni Émettre ni Annuler (PDF reste)', async () => {
+    droit.ecrire = false
+    onTestFinished(() => { droit.ecrire = true })
+    render(<MemoryRouter><ThemeProvider><CertificatsCarboneSection systems={[]} loadingSystems={false} /></ThemeProvider></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Émettre le certificat/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
   })
 })

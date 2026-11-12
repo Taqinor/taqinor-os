@@ -3,6 +3,7 @@ import { Check, CircleAlert, Upload } from 'lucide-react'
 import stockApi from '../api/stockApi'
 import { cn } from '../lib/cn'
 import { Button } from '../ui'
+import usePeutEcrireStock from '../pages/stock/usePeutEcrireStock'
 
 /* NTP2P29 — Wizard d'onboarding fournisseur guidé (sur NTP2P7).
 
@@ -41,6 +42,8 @@ function frErr(err, fallback) {
 
 export default function OnboardingFournisseurWizard({ fournisseur }) {
   const fournisseurId = fournisseur?.id
+  // ADRG36 — ouvrir, téléverser, soumettre : `stock_modifier`, comme le serveur.
+  const peutEcrire = usePeutEcrireStock()
   const [etape, setEtape] = useState(0)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -139,9 +142,11 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
           Aucun dossier d&apos;entrée en relation n&apos;est ouvert pour ce
           fournisseur.
         </p>
-        <Button type="button" onClick={ouvrirDossier} disabled={busy}>
-          Ouvrir un dossier d&apos;onboarding
-        </Button>
+        {peutEcrire && (
+          <Button type="button" onClick={ouvrirDossier} disabled={busy}>
+            Ouvrir un dossier d&apos;onboarding
+          </Button>
+        )}
       </div>
     )
   }
@@ -220,13 +225,15 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
                   className="hidden"
                   onChange={(e) => televerser(type, e.target.files?.[0])}
                 />
-                <Button
-                  type="button" variant="outline" size="sm" disabled={busy}
-                  onClick={() => fileInputs.current[type]?.click()}
-                >
-                  <Upload className="mr-1 size-3.5" aria-hidden="true" />
-                  {recu ? 'Remplacer' : 'Téléverser'}
-                </Button>
+                {peutEcrire && (
+                  <Button
+                    type="button" variant="outline" size="sm" disabled={busy}
+                    onClick={() => fileInputs.current[type]?.click()}
+                  >
+                    <Upload className="mr-1 size-3.5" aria-hidden="true" />
+                    {recu ? 'Remplacer' : 'Téléverser'}
+                  </Button>
+                )}
               </li>
             )
           })}
@@ -239,9 +246,11 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
             Dossier <strong>{dossier.statut_display}</strong> — {recus.length} pièce·s
             reçue·s sur {requis.length}.
           </p>
-          <Button type="button" onClick={soumettre} disabled={busy || !complet}>
-            Soumettre pour validation
-          </Button>
+          {peutEcrire && (
+            <Button type="button" onClick={soumettre} disabled={busy || !complet}>
+              Soumettre pour validation
+            </Button>
+          )}
         </div>
       )}
 

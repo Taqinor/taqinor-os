@@ -101,3 +101,29 @@ class SignalementIdempotentTests(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
         self.assertNotEqual(r.data['reference'], ancien.reference)
         self.assertEqual(self._nb(), 2)
+
+    def test_plafond_par_equipement_sur_24h(self):
+        """APUB5 (C-APUB-003) — au 4e signalement en 24 h (texte différent,
+        photo valide) : 200 avec la référence du 3e, aucun ticket ni photo
+        stockée ; 24 h plus tard, 201."""
+        from apps.records.models import Attachment
+        refs = []
+        for i in range(3):
+            r = self.api.post(self.url, {'description': f'p{i}'})
+            self.assertEqual(r.status_code, 201, r.content)
+            refs.append(r.data['reference'])
+        png = SimpleUploadedFile('p.png', b'\x89PNG\r\n\x1a\n' + b'\x00' * 32,
+                                 content_type='image/png')
+        with mock.patch('apps.records.storage.store_attachment') as stocker:
+            r = self.api.post(self.url, {'description': 'p3', 'photo': png},
+                              format='multipart')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['reference'], refs[2])
+        stocker.assert_not_called()
+        self.assertEqual(self._nb(), 3)
+        self.assertFalse(Attachment.objects.filter(company=self.company).exists())
+        Ticket.objects.filter(equipement=self.equip).update(
+            date_creation=timezone.now() - timedelta(hours=24, minutes=1))
+        r = self.api.post(self.url, {'description': 'p4'})
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(self._nb(), 4)

@@ -229,7 +229,7 @@ class DevisFacturationActionsMixin:
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT,
             )
         return Response(
-            FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
+            FactureSerializer(facture, context={'request': request}).data, status=status.HTTP_201_CREATED,
         )
 
     # api-only: VNT86-94 (14/10/2026) — porte manuelle fermée : plus d'appelant

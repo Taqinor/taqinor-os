@@ -175,6 +175,31 @@ class GardePiiTests(TestCase):
                 appels.append((action.__name__, verbe, url, charge))
         return appels
 
+    def test_recherche_client_sans_pii_ne_revele_pas_le_numero(self):
+        """ALEC32 — sans ``client_pii_voir``, ``?search=`` n'interroge ni le
+        téléphone ni la CIN (vide), le nom trouve toujours le client ; un
+        Commercial livré le trouve par le téléphone."""
+        url = '/api/django/crm/clients/'
+        Client.objects.filter(pk=self.client_c.pk).update(cin='ZZ998877')
+
+        def ids(api, terme):
+            r = api.get(url, {'search': terme})
+            self.assertEqual(r.status_code, 200, r.content)
+            lignes = r.data['results'] if isinstance(r.data, dict) else r.data
+            return {ligne['id'] for ligne in lignes}
+        self.assertEqual(ids(self.api, TEMOIN), set())
+        self.assertEqual(ids(self.api, 'ZZ998877'), set())
+        self.assertIn(self.client_c.pk, ids(self.api, 'Temoin'))
+        commercial = User.objects.create_user(
+            username='alec32-commercial', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Commercial',
+                                     permissions=list(COMMERCIAL_PERMISSIONS)))
+        Lead.objects.create(company=self.company, nom='Temoin', owner=commercial,
+                            stage=stages.CONTACTED, client=self.client_c)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
+        self.assertIn(self.client_c.pk, ids(api, TEMOIN))
+
     def test_exclusions_a_jour(self):
         noms = {(vs.__name__, a.__name__)
                 for vs in (LeadViewSet, ClientViewSet)

@@ -257,6 +257,7 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         try:
             # AANA25 — l'export s'exécute au nom du LECTEUR (sa portée, ses
             # permissions), jamais du propriétaire de la définition.
+            data_explorer.exiger_export_dataset(obj.dataset, request.user)  # ADRG76
             rows, pivot = executer_definition(obj, lecteur=request.user)
         except data_explorer.DatasetInconnu as exc:  # ENF11 : la définition existe
             return Response({'detail': str(exc)},

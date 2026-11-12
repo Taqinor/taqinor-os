@@ -51,6 +51,40 @@ class TestTechnicienScorecard(ScorecardBase):
         resp = api.get(URL, {'technicien': self.tech.id})
         self.assertEqual(resp.status_code, 403)
 
+    def test_technicien_livre_refuse_et_portee_du_responsable(self):
+        """ALEC27 (C-ALEC-023) — Technicien livré : 403 sur la fiche d'un
+        collègue ; Technicien responsable sans subordonné : 404 ; Directeur :
+        200."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom, username):
+            role, _ = Role.objects.get_or_create(
+                company=self.company, nom=nom,
+                defaults={'permissions': list(roles[nom])})
+            return User.objects.create_user(
+                username=username, password='x', company=self.company,
+                role=role)
+
+        t1 = compte('Technicien', 'alec27_t1')
+        t2 = compte('Technicien', 'alec27_t2')
+        responsable = compte('Technicien responsable', 'alec27_r')
+        directeur = compte('Directeur', 'alec27_d')
+        self._intervention(technicien=t2)
+
+        def statut(user):
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api.get(URL, {'technicien': t2.id})
+
+        self.assertEqual(statut(t1).status_code, 403)
+        refus = statut(responsable)
+        self.assertEqual(refus.status_code, 404)
+        self.assertEqual(refus.data['detail'], 'Technicien introuvable.')
+        self.assertEqual(statut(directeur).status_code, 200)
+
     def test_technicien_required(self):
         resp = self.api.get(URL)
         self.assertEqual(resp.status_code, 400)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link2, Copy, Check, FileText } from 'lucide-react'
+import { Link2, Copy, Check, FileText, Unlink } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import { Button, Input, toast } from '../../ui'
 
@@ -15,7 +15,7 @@ import { Button, Input, toast } from '../../ui'
    `intervention_public_payload` / `intervention_rapport_public_payload`). */
 
 function LienPublic({
-  titre, aide, icone, libelleBouton, charger, testId,
+  titre, aide, icone, libelleBouton, charger, couper, testId,
 }) {
   const [lien, setLien] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -28,6 +28,21 @@ function LienPublic({
       setLien(r.data?.url ?? r.data?.path ?? null)
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Lien indisponible — réessayez.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // APUB6 — coupe le lien public : l'ancien jeton rend « introuvable », le
+  // prochain « Générer » en pose un neuf.
+  const couperLien = async () => {
+    setBusy(true)
+    try {
+      await couper()
+      setLien(null)
+      toast.success('Lien coupé — l’ancien lien ne s’ouvre plus.')
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Coupure impossible — réessayez.')
     } finally {
       setBusy(false)
     }
@@ -68,6 +83,14 @@ function LienPublic({
           </Button>
         </div>
       )}
+      {couper && (
+        <div>
+          <Button type="button" size="sm" variant="ghost" loading={busy}
+                  onClick={couperLien} data-testid={`${testId}-couper`}>
+            <Unlink /> Couper le lien
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -94,6 +117,7 @@ export default function InterventionLiensPublicsPanel({ intervention }) {
         icone={<FileText className="size-4 text-muted-foreground" aria-hidden="true" />}
         libelleBouton="Générer le lien du compte-rendu"
         charger={() => installationsApi.getLienRapportIntervention(id)}
+        couper={() => installationsApi.couperLienRapportIntervention(id)}
       />
     </div>
   )

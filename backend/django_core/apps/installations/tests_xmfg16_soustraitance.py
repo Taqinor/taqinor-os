@@ -175,6 +175,61 @@ class TestReceptionEtCoutFacon(TestCase):
             f'{BASE}/ordres-assemblage/{ordre.id}/cout-soustraitance/')
         self.assertEqual(resp.status_code, 403)
 
+    def test_technicien_livre_403_et_depuis_devis_sans_cout_prevu(self):
+        """ALEC10 (D-ASTK-2) — rôle « Technicien » du registre : 403 sur le
+        coût du composite sous-traité, et `depuis-devis` lui répond sans
+        `cout_prevu` (le sérialiseur reçoit enfin la requête) ; Directeur :
+        200 (650) et `cout_prevu` servi. La création n'est pas bloquée."""
+        from django.core.management import call_command
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        from apps.ventes.models import Devis, LigneDevis
+        call_command('init_roles', verbosity=0)
+        ordre = OrdreAssemblage.objects.create(
+            company=self.company, reference='ASM-ST10', kit=self.kit,
+            quantite=1, sous_traitant=self.sous_traitant,
+            ordre_sous_traitance=self.ost, created_by=self.user)
+        client = Client.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            email=f'alec10-{next(_seq)}@example.invalid')
+
+        def devis_kit():
+            devis = Devis.objects.create(
+                company=self.company, reference=f'DEV-ALEC10-{next(_seq)}',
+                client=client, statut=Devis.Statut.ACCEPTE,
+                taux_tva=Decimal('20'), mode_installation='residentiel')
+            LigneDevis.objects.create(
+                devis=devis, produit=self.composite, designation='Coffret',
+                quantite=Decimal('1'), prix_unitaire=Decimal('300'))
+            return devis
+
+        def api_role(nom):
+            return auth(User.objects.create_user(
+                username=f'alec10-{next(_seq)}', password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom)))
+        cout = f'{BASE}/ordres-assemblage/{ordre.id}/cout-soustraitance/'
+        depuis = f'{BASE}/ordres-assemblage/depuis-devis/'
+        tech = api_role('Technicien')
+        r = tech.get(cout)
+        self.assertEqual(r.status_code, 403)
+        self.assertNotIn('cout_composite', r.data)
+        devis_t = devis_kit()
+        r = tech.post(depuis, {'devis': devis_t.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data)
+        for o in r.data:
+            self.assertNotIn('cout_prevu', o)
+        self.assertTrue(OrdreAssemblage.objects.filter(
+            company=self.company, devis_id=devis_t.id).exists())
+        directeur = api_role('Directeur')
+        r = directeur.get(cout)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertAlmostEqual(r.data['cout_composite'], 650.0)
+        r = directeur.post(depuis, {'devis': devis_kit().id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIn('cout_prevu', r.data[0])
+
 
 class TestRapportSousTraitants(TestCase):
     def setUp(self):

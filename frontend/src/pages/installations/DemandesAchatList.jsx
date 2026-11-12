@@ -71,6 +71,9 @@ export default function DemandesAchatList() {
   const isManager = useIsAdminOrResponsable()
   // F3 — « Générer le BCF » crée un bon de commande : réservé à `achats_commander`.
   const peutCommander = usePermissionAchats('achats_commander')
+  // ADRG86 — Approuver/Refuser : la route exige `approuver_demande_achat` (repli hérité sans codes).
+  const aDroitApprobation = usePermissionAchats('approuver_demande_achat')
+  const peutApprouver = isManager && aDroitApprobation
   // VX227 — pré-remplissage depuis une intervention : un tap dans la
   // préparation ouvre la DA avec le chantier (et l'intervention) déjà
   // renseignés dans l'objet, pour ne pas ressaisir le contexte terrain.
@@ -742,7 +745,7 @@ export default function DemandesAchatList() {
                     <Send /> Soumettre pour approbation
                   </Button>
                 )}
-                {detail.statut === 'soumise' && isManager && !refusing && (
+                {detail.statut === 'soumise' && peutApprouver && !refusing && (
                   <>
                     <Button variant="outline" onClick={() => setRefusing(true)} disabled={acting}>
                       <X /> Refuser
@@ -752,7 +755,7 @@ export default function DemandesAchatList() {
                     </Button>
                   </>
                 )}
-                {detail.statut === 'soumise' && isManager && refusing && (
+                {detail.statut === 'soumise' && peutApprouver && refusing && (
                   <>
                     <Button variant="ghost" onClick={() => { setRefusing(false); setMotifRefus('') }} disabled={acting}>
                       Annuler
@@ -765,7 +768,7 @@ export default function DemandesAchatList() {
                 {detail.statut === 'approuvee' && isManager && peutCommander && !detail.bon_commande && (
                   <Button onClick={genererBcf} loading={acting}>Générer le BCF</Button>
                 )}
-                {!(detail.statut === 'brouillon' || (detail.statut === 'soumise' && isManager)) && (
+                {!(detail.statut === 'brouillon' || (detail.statut === 'soumise' && peutApprouver)) && (
                   <Button variant="ghost" onClick={() => setDetail(null)}>Fermer</Button>
                 )}
               </DialogFooter>

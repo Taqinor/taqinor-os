@@ -108,7 +108,7 @@ class FactureEncaissementActionsMixin:
             return Response({'detail': exc.motif},
                             status=status.HTTP_409_CONFLICT)
         return Response(
-            FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
+            FactureSerializer(facture, context={'request': request}).data, status=status.HTTP_201_CREATED,
         )
 
     @extend_schema(request=D.AbandonnerSoldeRequest,
@@ -161,7 +161,7 @@ class FactureEncaissementActionsMixin:
                                 status=status.HTTP_409_CONFLICT)
             locked.refresh_from_db()
         return Response(
-            {**FactureSerializer(locked).data, 'montant_abandonne': montant},
+            {**FactureSerializer(locked, context={'request': request}).data, 'montant_abandonne': montant},
         )
 
     @extend_schema(request=D.ReprendreAbandonRequest,
@@ -224,7 +224,7 @@ class FactureEncaissementActionsMixin:
             return Response({'detail': exc.motif},
                             status=status.HTTP_409_CONFLICT)
         facture.refresh_from_db()
-        return Response({**FactureSerializer(facture).data,
+        return Response({**FactureSerializer(facture, context={'request': request}).data,
                          'abandon_repris': abandon.id,
                          'montant_repris': str(abandon.montant)})
 
@@ -271,7 +271,7 @@ class FactureEncaissementActionsMixin:
         from apps.ventes.domain.encaissements import recalculer_statut_paiement
         recalculer_statut_paiement(facture, user=request.user,
                                    source='liberer_retenue')
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)
 
     @extend_schema(request=D.LienPaiementRequest, responses={201: D.LienPaiementResponse})
     @action(detail=True, methods=['post'], url_path='lien-paiement',

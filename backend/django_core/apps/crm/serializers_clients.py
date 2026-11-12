@@ -347,7 +347,7 @@ class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
 
     # FG20 — coordonnées personnelles masquées quand le rôle n'a pas
     # ``client_pii_voir``. Source unique des champs PII partagée avec le Lead.
-    PII_FIELDS = ('telephone', 'email', 'adresse')
+    PII_FIELDS = ('telephone', 'email', 'adresse', 'cin', 'adresse_siege')  # ALEC31
 
     def get_validators(self):
         # ENF15 — l'unicité (société, code_parrainage) est contrôlée par

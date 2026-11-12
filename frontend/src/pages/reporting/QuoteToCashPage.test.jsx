@@ -125,7 +125,8 @@ describe('Reporting — tunnel de conversion', () => {
       conversion: { ...contrat.conversion, nb_devis: 10, nb_acceptes: 3, nb_factures: 15 },
     }
     const store = configureStore({
-      reducer: { reporting: () => ({ data, loading: false, error: null }) },
+      // ADRG73 — la page lit `state.auth` (bouton Exporter sous `reporting_export`).
+      reducer: { reporting: () => ({ data, loading: false, error: null }), auth: (s = { role: 'admin' }) => s },
     })
     render(
       <Provider store={store}><MemoryRouter><Reporting /></MemoryRouter></Provider>,

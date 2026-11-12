@@ -3,6 +3,7 @@
 `GET /api/public/v1/changelog/` : une entrée « breaking v2 » apparaît dans le
 fil et le endpoint JSON, filtrable par ``?version=``.
 """
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -25,6 +26,22 @@ class Ntapi24ChangelogTests(TestCase):
             titre='Brouillon', corps='...', version='v2',
             categorie=ChangelogEntry.CAT_NOUVEAUTE, breaking=False,
             publie=False)
+
+    def test_debit_anonyme_par_ip_429(self):
+        """APUB51 (C-APUB-030) — 61 GET anonymes depuis la même IP : 200
+        jusqu'au taux (60/minute), 429 ensuite, sur le changelog ET sur le
+        catalogue d'erreurs."""
+        try:
+            for url in ('/api/public/v1/changelog/', '/api/public/v1/errors/'):
+                cache.clear()
+                client = APIClient()
+                statuts = [client.get(url).status_code for _ in range(61)]
+                self.assertEqual(set(statuts[:60]), {200}, url)
+                self.assertEqual(statuts[60], 429, url)
+        finally:
+            # Le seau vit dans le cache local du worker : ne jamais faire
+            # tomber en 429 un test suivant du même processus.
+            cache.clear()
 
     def test_breaking_entry_appears_in_feed(self):
         resp = APIClient().get('/api/public/v1/changelog/')

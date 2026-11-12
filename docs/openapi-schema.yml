@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4961, operations: 7759, components: 3650}
+counts: {paths: 4966, operations: 7766, components: 3652}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -749,6 +749,7 @@ operations:
 - post /api/django/core/export-reversibilite/ -> django_core_export_reversibilite_create
 - get /api/django/core/export-reversibilite/historique/ -> django_core_export_reversibilite_historique_list
 - get /api/django/core/export-reversibilite/telecharger/{token}/ -> django_core_export_reversibilite_telecharger_retrieve
+- post /api/django/core/export-reversibilite/{id}/couper-lien/ -> django_core_export_reversibilite_couper_lien_create
 - get /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_retrieve
 - patch /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_partial_update
 - get /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_list
@@ -1922,6 +1923,7 @@ operations:
 - post /api/django/installations/interventions/{id}/confirmer-rdv/ -> django_installations_interventions_confirmer_rdv_create
 - post /api/django/installations/interventions/{id}/confirmer-tool-return/ -> django_installations_interventions_confirmer_tool_return_create
 - get /api/django/installations/interventions/{id}/consommation/ -> django_installations_interventions_consommation_retrieve
+- post /api/django/installations/interventions/{id}/couper-lien-rapport/ -> django_installations_interventions_couper_lien_rapport_create
 - get /api/django/installations/interventions/{id}/crew-time/ -> django_installations_interventions_crew_time_retrieve
 - post /api/django/installations/interventions/{id}/depart-depot/ -> django_installations_interventions_depart_depot_create
 - post /api/django/installations/interventions/{id}/enregistrer-reverification/ -> django_installations_interventions_enregistrer_reverification_create
@@ -2581,7 +2583,6 @@ operations:
 - post /api/django/public/pay/{token}/webhook/ -> django_public_pay_webhook_create
 - post /api/django/public/portail/invitations/accepter/ -> django_public_portail_invitations_accepter_create
 - get /api/django/public/portail/theme/ -> django_public_portail_theme_retrieve
-- get /api/django/public/portail/{token}/mon-releve/ -> django_public_portail_mon_releve_retrieve
 - post /api/django/public/proposal/{token}/accept/ -> django_public_proposal_accept_create
 - post /api/django/public/proposal/{token}/activer-option/ -> django_public_proposal_activer_option_create
 - post /api/django/public/proposal/{token}/contact/ -> django_public_proposal_contact_create
@@ -2765,6 +2766,7 @@ operations:
 - get /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_retrieve
 - patch /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_partial_update
 - put /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_update
+- post /api/django/reporting/saved-reports/{id}/couper-partage/ -> django_reporting_saved_reports_couper_partage_create
 - get /api/django/reporting/search/ -> django_reporting_search_retrieve
 - get /api/django/reporting/search/suggest/ -> django_reporting_search_suggest_retrieve
 - post /api/django/reporting/vitals/ -> django_reporting_vitals_create
@@ -3005,6 +3007,7 @@ operations:
 - post /api/django/statuspage/public/abonner/ -> django_statuspage_public_abonner_create
 - get /api/django/statuspage/public/confirmer/{token}/ -> django_statuspage_public_confirmer_retrieve
 - get /api/django/statuspage/public/desabonner/{token}/ -> django_statuspage_public_desabonner_retrieve
+- post /api/django/statuspage/public/desabonner/{token}/ -> django_statuspage_public_desabonner_create
 - get /api/django/statuspage/public/incidents/ -> django_statuspage_public_incidents_list
 - get /api/django/statuspage/public/incidents/{id}/ -> django_statuspage_public_incidents_retrieve
 - get /api/django/statuspage/public/uptime-90j/ -> django_statuspage_public_uptime_90j_retrieve
@@ -4670,6 +4673,7 @@ operations:
 - post /api/v1/core/export-reversibilite/ -> v1_core_export_reversibilite_create
 - get /api/v1/core/export-reversibilite/historique/ -> v1_core_export_reversibilite_historique_list
 - get /api/v1/core/export-reversibilite/telecharger/{token}/ -> v1_core_export_reversibilite_telecharger_retrieve
+- post /api/v1/core/export-reversibilite/{id}/couper-lien/ -> v1_core_export_reversibilite_couper_lien_create
 - get /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_retrieve
 - patch /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_partial_update
 - get /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_list
@@ -5843,6 +5847,7 @@ operations:
 - post /api/v1/installations/interventions/{id}/confirmer-rdv/ -> v1_installations_interventions_confirmer_rdv_create
 - post /api/v1/installations/interventions/{id}/confirmer-tool-return/ -> v1_installations_interventions_confirmer_tool_return_create
 - get /api/v1/installations/interventions/{id}/consommation/ -> v1_installations_interventions_consommation_retrieve
+- post /api/v1/installations/interventions/{id}/couper-lien-rapport/ -> v1_installations_interventions_couper_lien_rapport_create
 - get /api/v1/installations/interventions/{id}/crew-time/ -> v1_installations_interventions_crew_time_retrieve
 - post /api/v1/installations/interventions/{id}/depart-depot/ -> v1_installations_interventions_depart_depot_create
 - post /api/v1/installations/interventions/{id}/enregistrer-reverification/ -> v1_installations_interventions_enregistrer_reverification_create
@@ -6651,6 +6656,7 @@ operations:
 - get /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_retrieve
 - patch /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_partial_update
 - put /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_update
+- post /api/v1/reporting/saved-reports/{id}/couper-partage/ -> v1_reporting_saved_reports_couper_partage_create
 - get /api/v1/reporting/search/ -> v1_reporting_search_retrieve
 - get /api/v1/reporting/search/suggest/ -> v1_reporting_search_suggest_retrieve
 - post /api/v1/reporting/vitals/ -> v1_reporting_vitals_create
@@ -6891,6 +6897,7 @@ operations:
 - post /api/v1/statuspage/public/abonner/ -> v1_statuspage_public_abonner_create
 - get /api/v1/statuspage/public/confirmer/{token}/ -> v1_statuspage_public_confirmer_retrieve
 - get /api/v1/statuspage/public/desabonner/{token}/ -> v1_statuspage_public_desabonner_retrieve
+- post /api/v1/statuspage/public/desabonner/{token}/ -> v1_statuspage_public_desabonner_create
 - get /api/v1/statuspage/public/incidents/ -> v1_statuspage_public_incidents_list
 - get /api/v1/statuspage/public/incidents/{id}/ -> v1_statuspage_public_incidents_retrieve
 - get /api/v1/statuspage/public/uptime-90j/ -> v1_statuspage_public_uptime_90j_retrieve
@@ -10862,6 +10869,7 @@ components:
 - IpAllowRule
 - IpAllowRuleRequest
 - IrrigationMethodeEnum
+- IssueEnum
 - JalonChantierPortail
 - JeuEnum
 - JournalAcces
@@ -12346,7 +12354,6 @@ components:
 - ReleveClientLigne
 - ReleveClientPaiement
 - ReleveClientTotaux
-- ReleveComptePortail
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
 - ReleveImportCommitRequestRequest
@@ -12547,6 +12554,7 @@ components:
 - SavedQueryRequest
 - SavedQueryRows
 - SavedReport
+- SavedReportPartageCoupe
 - SavedReportRequest
 - SavedView
 - SavedViewImportRequeteRequest
@@ -12799,6 +12807,7 @@ components:
 - ToleranceRapprochementCategorie
 - ToleranceRapprochementCategorieRequest
 - ToolReturn
+- TourVuCorpsRequest
 - TourneeLivraisonResultat
 - TourneeReponse
 - TourneeVisiteDue

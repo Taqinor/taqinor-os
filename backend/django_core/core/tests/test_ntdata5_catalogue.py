@@ -137,6 +137,44 @@ class CatalogueEndpointTests(TestCase):
         self.assertEqual(reponse.data['mesures'], ['id'])
         self.assertEqual(reponse.data['dimensions'], ['username'])
 
+    def test_catalogue_borne_aux_modules_lisibles(self):
+        """APUB55 — un Commercial terrain livré ne voit au catalogue (liste de
+        l'explorateur ET des requêtes sauvegardées, détail) aucun jeu que
+        ``run_query`` lui refuse ; le Directeur les voit tous."""
+        from importlib import import_module
+        from core.views import SavedQueryViewSet
+        reg = import_module('apps.roles.permissions_registre')
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        data_explorer.register_dataset(
+            'apub55_stock', 'Stock', ['id'], _provider, module='stock')
+
+        def compte(nom, perms):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(
+                username=f'apub55-{role.pk}', password='x', company=self.company, role=role)
+        terrain = compte('Commercial terrain', reg.COMMERCIAL_TERRAIN_PERMISSIONS)
+        directeur = compte('Directeur', reg.DIRECTEUR_PERMISSIONS)
+        for user in (terrain, directeur):
+            self.user = user
+            noms = {d['name'] for d in self._get(
+                '/api/django/core/data-explorer/datasets/').data['datasets']}
+            request = self.factory.get('/api/django/core/saved-queries/datasets/')
+            force_authenticate(request, user=user)
+            noms_sq = {d['name'] for d in SavedQueryViewSet.as_view(
+                {'get': 'datasets'})(request).data}
+            self.assertEqual(noms, noms_sq)
+            for nom in noms:  # aucun jeu proposé que run_query refuserait
+                data_explorer.exiger_lecture_dataset(nom, user)
+            detail = self._get(
+                '/api/django/core/data-explorer/datasets/apub55_stock/', name='apub55_stock')
+            if user is terrain:
+                self.assertNotIn('apub55_stock', noms)
+                self.assertEqual(detail.status_code, status.HTTP_403_FORBIDDEN)
+            else:
+                self.assertIn('apub55_stock', noms)
+                self.assertEqual(noms, set(data_explorer._DATASETS))
+                self.assertEqual(detail.status_code, status.HTTP_200_OK)
+
     def test_detail_dataset_inconnu_404(self):
         reponse = self._get(
             '/api/django/core/data-explorer/datasets/absent/', name='absent')

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, onTestFinished } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -33,13 +33,12 @@ vi.mock('../../api/monitoringApi', () => ({
   },
 }))
 
-vi.mock('../../api/installationsApi', () => ({
-  default: {
-    getInstallations: vi.fn(() => Promise.resolve({
-      data: [{ id: 11, reference: 'INST-2026-001', client_nom: 'Amrani' }],
-    })),
-  },
-}))
+vi.mock('../../api/installationsApi', async () => (await import('./monitoring.testHelpers.js')).installationsApiAmrani())
+
+// ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
+// vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
+const droit = vi.hoisted(() => ({ ecrire: true }))
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: () => droit.ecrire }))
 
 import monitoringApi from '../../api/monitoringApi'
 import OmReportPage from './OmReportPage'
@@ -85,5 +84,14 @@ describe('OmReportPage (WR7 — rapport O&M)', () => {
 
     await waitFor(() => expect(erreur).toHaveBeenCalledWith(
       'Le rapport ne part qu’aux adresses du client du système.'))
+  })
+
+  it('ADRG47 — un Commercial lit le rapport sans « Envoyer par e-mail »', async () => {
+    droit.ecrire = false
+    onTestFinished(() => { droit.ecrire = true })
+    renderPage(<OmReportPage />)
+    expect(await screen.findByTestId('om-report')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Télécharger le PDF/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Envoyer par e-mail/ })).toBeNull()
   })
 })

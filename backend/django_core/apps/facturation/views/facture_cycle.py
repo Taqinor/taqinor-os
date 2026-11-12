@@ -14,9 +14,11 @@ from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
 )
 from apps.ventes.views import openapi_docs as D
-from apps.ventes.models import Avoir, EmailLog, Facture
+from apps.ventes.models import Avoir, EmailLog, Facture, FactureActivity
 from apps.facturation.serializers import FactureListeSerializer, FactureSerializer
 from apps.ventes.utils.corps import valider_corps
+
+from .facture_gardes import PeutEncaisser
 
 #: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un
 #: brouillon : palier responsable/admin ET un code d'écriture ``ventes_*``.
@@ -66,14 +68,15 @@ class FactureCycleActionsMixin:
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)
-        data = FactureSerializer(facture).data
+        data = FactureSerializer(facture, context={'request': request}).data
         if anomalies:
             data['anomalies'] = anomalies
         return Response(data)
 
     @extend_schema(request=None, responses=FactureListeSerializer)
+    # ADRG1 (D-AARG-3) — retirer la créance est un geste d'argent : ``encaisser``.
     @action(detail=True, methods=['post'], url_path='remettre-brouillon',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, PeutEncaisser])
     def remettre_brouillon(self, request, pk=None):
         """ZFAC1 — Reset to Draft.
 
@@ -141,10 +144,14 @@ class FactureCycleActionsMixin:
                 )
             # AARG23 (D-AARG-4 = garder_date) — envoyée au client ou passée à
             # la DGI : le retour en brouillon est fermé.
+            # ADRG101 — un lien WhatsApp généré (trace ``log_facture_whatsapp``) aussi.
             if (facture.dgi_statut != Facture.DgiStatut.A_TRANSMETTRE
                     or EmailLog.objects.filter(
                         facture=facture, direction=EmailLog.Direction.SORTANT,
-                        statut=EmailLog.Statut.ENVOYE).exists()):
+                        statut=EmailLog.Statut.ENVOYE).exists()
+                    or facture.activites.filter(
+                        kind=FactureActivity.Kind.NOTE,
+                        body__startswith='Lien WhatsApp').exists()):
                 return Response(
                     {'detail': 'Facture déjà envoyée au client : corrigez par '
                                'un avoir.'},
@@ -159,7 +166,7 @@ class FactureCycleActionsMixin:
             revoquer_lien_paiement(facture=facture, user=request.user)
         from apps.ventes import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)
 
     @extend_schema(request=D.MarquerPayeeRequest, responses=FactureListeSerializer)
     @action(detail=True, methods=['post'], url_path='marquer-payee',
@@ -240,7 +247,7 @@ class FactureCycleActionsMixin:
         # AUD124 — trace systématique : qui, quand, pourquoi.
         from apps.ventes import activity
         activity.log_facture_marquee_payee(facture, request.user, motif)
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)
 
     @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee,
                    extensions=D.CORPS_ANNULER_CIBLE_SI_TRANSFERT)
@@ -287,7 +294,7 @@ class FactureCycleActionsMixin:
             # directive, cible d'un autre devis ou soldée, rien à rendre)
             # → 409, corps inchangé (``code`` lu par l'écran).
             return Response(refus.corps, status=status.HTTP_409_CONFLICT)
-        return Response({**FactureSerializer(facture).data,
+        return Response({**FactureSerializer(facture, context={'request': request}).data,
                          'avoir': avoir_annulation_corps(facture)})
 
     # api-only: l'écran arrive avec le panneau de vente (VNT75/VNT79).
@@ -311,4 +318,4 @@ class FactureCycleActionsMixin:
                 user=request.user)
         except FacturationVenteRefusee as exc:
             return Response(exc.corps, status=exc.status)
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)

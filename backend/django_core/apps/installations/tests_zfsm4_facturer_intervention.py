@@ -174,3 +174,49 @@ class TestGenererFactureIntervention(TestCase):
             client_id=self.inst.client_id).exists())
         self.interv.refresh_from_db()
         self.assertIsNone(self.interv.facture_id)
+
+    def test_technicien_livre_403_sans_ventes_creer(self):
+        """ADRG33 — facture, devis d'upsell et devis de réserve créent un
+        document de vente : ``ventes_creer`` exigé (Technicien et Technicien
+        responsable livrés : 403 nommé, rien de créé) ; Directeur : 201."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+            TECHNICIEN_RESP_PERMISSIONS,
+        )
+        from apps.ventes.models import Devis
+
+        def compte(nom, perms):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(
+                username=f'zfsm4-{next(_seq)}', password='x',
+                company=self.company, role=role)
+
+        nb_factures, nb_devis = Facture.objects.count(), Devis.objects.count()
+        for nom, perms in (('Technicien', TECHNICIEN_PERMISSIONS),
+                           ('Technicien responsable',
+                            TECHNICIEN_RESP_PERMISSIONS)):
+            user = compte(nom, perms)
+            self.interv.technicien = user
+            self.interv.save(update_fields=['technicien'])
+            api = auth(user)
+            for route in ('generer-facture', 'generer-devis',
+                          'generer-devis-reserve'):
+                with self.subTest(role=nom, route=route):
+                    r = api.post(
+                        f'{BASE}/interventions/{self.interv.id}/{route}/',
+                        format='json')
+                    self.assertEqual(r.status_code, 403, r.content)
+                    self.assertIn('ventes_creer', str(r.data))
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.facture_id)
+        self.assertIsNone(self.interv.devis_upsell_id)
+        self.assertEqual(Facture.objects.count(), nb_factures)
+        self.assertEqual(Devis.objects.count(), nb_devis)
+
+        directeur = compte('Directeur', DIRECTEUR_PERMISSIONS)
+        r = auth(directeur).post(
+            f'{BASE}/interventions/{self.interv.id}/generer-facture/',
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)

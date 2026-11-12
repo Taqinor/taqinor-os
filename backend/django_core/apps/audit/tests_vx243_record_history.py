@@ -109,3 +109,33 @@ class TestObjectHistoryScoped(TestCase):
             'content_type': 'bogus.model', 'object_id': '1'})
         resp = auth(self.directeur).get(url)
         self.assertEqual(resp.status_code, 404)
+
+    def test_createur_sans_marge_voir_ne_lit_pas_la_marge(self):
+        """ALEC14 — le Commercial créateur d'un devis lit son historique sans
+        aucun changement ``marge_snapshot`` (la ligne qui n'avait que lui
+        disparaît) ; le Directeur lit la marge."""
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='Client ALEC14')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ALEC14', client=client,
+            created_by=self.owner)
+        ct = ContentType.objects.get_for_model(Devis)
+        for changes in (
+                [{'field': 'statut', 'old': 'brouillon', 'new': 'envoye'},
+                 {'field': 'marge_snapshot', 'old': None, 'new': '4000.00'}],
+                [{'field': 'marge_snapshot', 'old': '4000.00', 'new': '4100.00'}]):
+            AuditLog.objects.create(
+                company=self.company, action=AuditLog.Action.UPDATE,
+                content_type=ct, object_id=str(devis.pk), changes=changes)
+        url = reverse('audit-object-history', kwargs={
+            'content_type': 'ventes.devis', 'object_id': str(devis.pk)})
+        self.assertFalse(self.owner.can_view_marge)
+        resp = auth(self.owner).get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['count'], 1)
+        self.assertIn('envoye', resp.data['results'][0]['detail'])
+        self.assertNotIn('4000.00', str(resp.data))
+        resp = auth(self.directeur).get(url)
+        self.assertEqual(resp.data['count'], 2)
+        self.assertIn('→ 4000.00', str(resp.data))

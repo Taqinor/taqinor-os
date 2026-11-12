@@ -31,6 +31,7 @@ import statistics
 from datetime import timedelta
 
 from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from core.dates import aujourd_hui_local
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -391,7 +392,7 @@ def _segment_serializer(name='PilotageChantiersSegment'):
             }),
     }))
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, lecture_source('installations')])
 def pilotage_chantiers_report(request):
     """CHT27 — Cockpit KPI chantier (`reports/chantier/`). Filtres optionnels
     `?from=&to=` (fenêtre de création des chantiers pour le cycle time) et

@@ -9,6 +9,28 @@ from .models import AuditLog
 
 CASABLANCA = ZoneInfo('Africa/Casablanca')
 
+#: ALEC14 — champs du journal générique sous droit : (app, modèle, champ) →
+#: propriété de l'utilisateur qui en autorise la lecture (table unique).
+CHAMPS_SOUS_DROIT = {
+    ('ventes', 'devis', 'marge_snapshot'): 'can_view_marge',
+    ('sav', 'ticket', 'cout'): 'can_view_buy_prices',
+    ('stock', 'mouvementstock', 'cout_unitaire'): 'can_view_buy_prices',
+}
+
+
+def champs_caches(entree, user):
+    """ALEC14 — champs de ``entree`` que ``user`` n'a pas le droit de lire."""
+    ct = entree.content_type if user is not None and entree.content_type_id else None
+    return {champ for (app, modele, champ), prop in CHAMPS_SOUS_DROIT.items()
+            if ct and (app, modele) == (ct.app_label, ct.model) and not getattr(user, prop, True)}
+
+
+def ligne_entierement_cachee(entree, user):
+    """ALEC14 — une ligne dont le diff ne porte QUE des champs cachés disparaît."""
+    caches, ch = champs_caches(entree, user), entree.changes
+    return bool(caches and isinstance(ch, list) and ch) and all(
+        isinstance(c, dict) and c.get('field') in caches for c in ch)
+
 
 class AuditLogSerializer(serializers.ModelSerializer):
     utilisateur = serializers.SerializerMethodField()
@@ -45,9 +67,11 @@ class AuditLogSerializer(serializers.ModelSerializer):
         rend « Champ : ancien → nouveau » au lieu de « — »."""
         if obj.detail or not isinstance(obj.changes, list):
             return obj.detail or ''
+        caches = champs_caches(obj, getattr(self.context.get('request'), 'user', None))  # ALEC14
+        changes = [c for c in obj.changes if not (isinstance(c, dict) and c.get('field') in caches)]
         modele = obj.content_type.model_class() if obj.content_type_id else None
         morceaux = []
-        for c in obj.changes[:5]:
+        for c in changes[:5]:
             if not isinstance(c, dict):
                 continue
             nom = c.get('field') or ''
@@ -58,8 +82,8 @@ class AuditLogSerializer(serializers.ModelSerializer):
             ancien, nouveau = c.get('old'), c.get('new')
             morceaux.append(f'{nom} : {"—" if ancien in (None, "") else ancien} → '
                             f'{"—" if nouveau in (None, "") else nouveau}')
-        if len(obj.changes) > 5:
-            morceaux.append(f'… (+{len(obj.changes) - 5})')
+        if len(changes) > 5:
+            morceaux.append(f'… (+{len(changes) - 5})')
         return ' ; '.join(morceaux)
 
     def get_timestamp_local(self, obj) -> Optional[str]:

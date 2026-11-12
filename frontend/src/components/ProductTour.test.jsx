@@ -122,7 +122,7 @@ describe('ProductTour (NTDMO15)', () => {
     // donc renvoyée à chaque essai du `waitFor` jusqu'à l'appel vu/.
     await waitFor(() => {
       if (!api.post.mock.calls.length) fireEvent.keyDown(window, { key: 'Escape' })
-      expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/')
+      expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/', { issue: 'ferme' })
     }, { timeout: 15000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
@@ -187,7 +187,7 @@ describe('ProductTour (NTDMO15)', () => {
     // même classe de flake « rendu à froid sous charge CI parallèle » déjà
     // documentée par `testTimeout: 20000` dans vitest.config.js — `waitFor`
     // a son propre délai, non couvert par ce réglage.
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 15000 })
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/', { issue: 'ferme' }), { timeout: 15000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 
@@ -248,7 +248,7 @@ describe('ProductTour (NTDMO15)', () => {
     // …et sa fermeture marque « devis », jamais « leads ».
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
+      expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/', { issue: 'ferme' }))
   })
 
   // NTDMO27 — toggle société « Visites guidées actives » (Paramètres → Démo &
@@ -270,6 +270,18 @@ describe('ProductTour (NTDMO15)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Suivant/ }))
     expect(await screen.findByText('Ajoutez vos produits')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Terminer/ }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/', { issue: 'termine' }))
+  })
+})
+
+// Follow-up NTDMO42 — l'émetteur transmet l'issue (termine/ferme) au serveur.
+describe('markTourSeen — issue du tour', () => {
+  it("envoie l'issue dans le corps, ou un corps vide sans issue", async () => {
+    const { markTourSeen } = await import('../features/onboarding/productTours')
+    api.post.mockResolvedValue({ data: [] })
+    await markTourSeen('devis', 'termine')
+    expect(api.post).toHaveBeenLastCalledWith('/onboarding/tours/devis/vu/', { issue: 'termine' })
+    await markTourSeen('devis')
+    expect(api.post).toHaveBeenLastCalledWith('/onboarding/tours/devis/vu/', {})
   })
 })

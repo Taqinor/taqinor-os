@@ -5,10 +5,13 @@ l'utilisateur, `company` est FORCÉE côté serveur (jamais lue du corps), `owne
 est posé sur l'utilisateur courant. Aucun prix d'achat / marge n'apparaît ici
 (rien que des métadonnées de rapport).
 """
+from django.utils import timezone
 from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
 from core.champs_stricts import ChampsStrictsEntiersMixin
 from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
@@ -16,7 +19,7 @@ from core.parseurs import ObjetJSON
 
 from .models import EnvoiRapport, SavedReport
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser
 
 
@@ -127,6 +130,20 @@ class SavedReportViewSet(TenantMixin, viewsets.ModelViewSet):
                            "société : votre compte n'en a pas."})
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
+
+    @extend_schema(request=None, responses=inline_serializer(
+        'SavedReportPartageCoupe', {'partage_revoque_le': serializers.DateTimeField()}))
+    @action(detail=True, methods=['post'], url_path='couper-partage',
+            permission_classes=[IsResponsableOrAdmin, HasPermissionOrLegacy('reporting_export')])  # ADRG79
+    def couper_partage(self, request, pk=None):
+        """APUB41 — coupe le lien public du rapport (``resolve_report_token`` rend
+        alors 404). Idempotent : la première date reste ; aucune route ne la
+        remet à nul, un ancien jeton ne revit donc jamais."""
+        rapport = self.get_object()
+        if rapport.partage_revoque_le is None:
+            rapport.partage_revoque_le = timezone.now()
+            rapport.save(update_fields=['partage_revoque_le'])
+        return Response({'partage_revoque_le': rapport.partage_revoque_le})
 
 
 class EnvoiRapportSerializer(serializers.ModelSerializer):

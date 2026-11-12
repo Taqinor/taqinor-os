@@ -63,6 +63,7 @@ class Xstk10Base(TestCase):
         self.user = _user(
             self.company, 'xstk10-user',
             permissions=['stock_modifier', 'stock_voir',
+                         'stock_mouvement',  # ADRG45 : rebut/découpe = mouvement
                          # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
                          'achats_commander', 'achats_receptionner',
                          'achats_payer', 'catalogue_prix_modifier'])
@@ -178,6 +179,50 @@ class TestEndpoints(Xstk10Base):
         self.assertEqual(resp.data['valeur_perdue'], '3000.00')
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 7)
+
+    def test_technicien_livre_rebute_decoupe_et_scanne(self):
+        """ADRG45 (C-ADRG-034) — rebut, découpe et mouvement scanné sont des
+        MOUVEMENTS : le Technicien livré (``stock_mouvement`` sans
+        ``stock_modifier``) les pose ; la grille Responsable amputée du seul
+        ``stock_mouvement`` reçoit 403, stock inchangé. Mutant : remettre
+        ``stock_modifier`` sur ``rebuter`` ⇒ échec."""
+        from apps.roles.permissions_registre import (
+            RESPONSABLE_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        coupe = Produit.objects.create(
+            company=self.company, nom='Coupe X10', sku='CPE-X10',
+            prix_achat=Decimal('100'), prix_vente=Decimal('150'),
+            quantite_stock=0)
+        sans = _user(self.company, 'xstk10-sans-mvt', permissions=[
+            p for p in RESPONSABLE_PERMISSIONS if p != 'stock_mouvement'])
+        tech = _user(self.company, 'xstk10-tech', role_legacy='normal',
+                     permissions=list(TECHNICIEN_PERMISSIONS))
+        self.assertNotIn('stock_modifier', tech.role.permissions)
+        rebut = f'/api/django/stock/produits/{self.produit.id}/rebuter/'
+        decoupe = '/api/django/stock/produits/decoupes/'
+        scan = '/api/django/stock/scanner/mouvement/'
+        corps_decoupe = {'produit_source': self.produit.id,
+                         'quantite_consommee': 1, 'produit_cible': coupe.id,
+                         'quantite_produite': 2}
+        corps_scan = {'produit': self.produit.id, 'type_mouvement': 'entree',
+                      'quantite': 1}
+        api = _api(sans)
+        for url, corps in ((rebut, {'quantite': 1, 'motif': 'casse'}),
+                           (decoupe, corps_decoupe), (scan, corps_scan)):
+            with self.subTest(role='sans stock_mouvement', url=url):
+                self.assertEqual(api.post(url, corps, format='json')
+                                 .status_code, 403)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 10)
+        api = _api(tech)
+        resp = api.post(rebut, {'quantite': 1, 'motif': 'casse'},
+                        format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 9)
+        resp = api.post(decoupe, corps_decoupe, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = api.post(scan, corps_scan, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_endpoint_rebuter_sans_motif_400(self):
         resp = self.api.post(

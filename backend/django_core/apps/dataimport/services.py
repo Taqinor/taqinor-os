@@ -941,6 +941,16 @@ def _nombre_saisi(valeur):
     return nombre if nombre.is_finite() else None
 
 
+def _champs_creation_produit(f, user):
+    """Champs d'un produit créé par import : prix de vente par défaut 0 ;
+    ADRG78 (D-ASTK-2) — le prix d'achat du fichier n'est écrit qu'avec
+    ``prix_achat_voir``, comme le create REST (``ProduitSerializer.get_fields``)."""
+    from decimal import Decimal
+    f.setdefault('prix_vente', Decimal('0'))
+    if user is not None and not user.can_view_buy_prices:
+        f.pop('prix_achat', None)
+
+
 def _valider_ligne_produit(f):
     """AANA12 — valide une ligne d'import produit SANS rien coercer en silence.
 
@@ -1079,6 +1089,11 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
 
         ecrasements, remplissages = (
             ([], []) if masquee else _diff_fields(existing, f))
+        if (target == 'products' and user is not None
+                and not user.can_view_buy_prices):
+            # ADRG63 (D-ASTK-2) — le prix d'achat actuel reste derrière son droit.
+            ecrasements = [e for e in ecrasements if e['champ'] != 'prix_achat']
+            remplissages = [r for r in remplissages if r['champ'] != 'prix_achat']
         if action == 'mise_a_jour' and ecrasements:
             lignes_ecrasees += 1
             ecrasements_total += len(ecrasements)
@@ -1258,7 +1273,6 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 created += 1
 
         elif target == 'products':
-            from decimal import Decimal
             from apps.stock.models import MouvementStock, Produit
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
@@ -1283,7 +1297,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 if erreur:
                     skipped.append({'ligne': i, 'raison': erreur})
                     continue
-                f.setdefault('prix_vente', Decimal('0'))
+                _champs_creation_produit(f, user)  # ADRG78
                 produit = Produit.objects.create(
                     company=company, quantite_stock=0, **f)
                 if opening > 0:

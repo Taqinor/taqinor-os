@@ -631,6 +631,6 @@ class FactureRectificatifsActionsMixin:
         activity.log_facture_penalite_facturee(
             facture, request.user, facture_penalite, penalite)
         return Response(
-            FactureSerializer(facture_penalite).data,
+            FactureSerializer(facture_penalite, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )

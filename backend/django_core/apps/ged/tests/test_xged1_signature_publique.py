@@ -250,3 +250,31 @@ class PublicSignatureApiTests(XGed1Base):
             self.URL_TMPL.format(token=self.demande.token))
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('company', resp.data)
+
+    def test_jeton_global_d_une_demande_a_destinataires_404(self):
+        """ALEC2 — le jeton GLOBAL d'une demande à destinataires n'ouvre pas
+        la route mono : 404 en GET et POST, demande laissée `en_attente`,
+        aucune version figée ; la demande mono reste signable (inchangé)."""
+        multi = services.creer_demande_multi_signataires(
+            self.doc_a, destinataires=[
+                {'nom': 'Alice', 'email': 'alice@example.com'},
+                {'nom': 'Bob', 'email': 'bob@example.com'},
+            ], company=self.co_a, created_by=self.admin_a)
+        url = self.URL_TMPL.format(token=multi.token)
+        self.assertEqual(self.client.get(url).status_code, 404)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'data', None)):
+            resp = self.client.post(
+                url, {'action': 'signer', 'consentement': True,
+                      'signature_texte': 'Client'},
+                content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+        multi.refresh_from_db()
+        self.assertEqual(multi.statut, SIGNATURE_EN_ATTENTE)
+        self.assertIsNone(multi.version_signee_id)
+        self.assertEqual(
+            services.resolve_signature_publique(multi.token),
+            (services.SIGNATURE_PUBLIQUE_INTROUVABLE, None))
+        # La demande mono passe toujours par son jeton.
+        mono_url = self.URL_TMPL.format(token=self.demande.token)
+        self.assertEqual(self.client.get(mono_url).status_code, 200)

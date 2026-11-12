@@ -73,7 +73,7 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
             company=self.company, role_legacy='responsable')
         role = Role.objects.create(
             company=self.company, nom='Restreint écriture',
-            permissions=[SCOPE_TEAM, 'installations_modifier'])
+            permissions=[SCOPE_TEAM, 'installation_gerer'])  # ALEC19 : code réel
         self.restreint = User.objects.create_user(
             username=f'adoc80-r-{n}', password='x', company=self.company,
             role=role)

@@ -1352,6 +1352,38 @@ class IncomingWebhookTriggerTests(TestCase):
             data=json.dumps({}), content_type='application/json')
         self.assertEqual(resp.status_code, 404)
 
+    def test_lecture_sans_secret_ni_jeton_en_clair(self):
+        """ALEC38 (C-ALEC-034) — liste et détail : pas de `hmac_secret`,
+        `token` et `url_path` masqués ; rotation (et création) : complets une
+        fois ; la base garde secret et jeton."""
+        from .services import masquer_secret
+        self.trigger.hmac_secret = 'secret-hmac-alec38'
+        self.trigger.save(update_fields=['hmac_secret'])
+        api = auth(self.admin)
+        base = '/api/django/automation/incoming-webhooks/'
+        liste = api.get(base).data
+        lignes = liste['results'] if isinstance(liste, dict) else liste
+        detail = api.get(f'{base}{self.trigger.pk}/').data
+        for ligne in (lignes[0], detail):
+            self.assertNotIn('hmac_secret', ligne)
+            self.assertEqual(ligne['token'], masquer_secret(self.trigger.token))
+            self.assertTrue(ligne['url_path'].startswith('••••'))
+            self.assertNotIn(self.trigger.token, ligne['url_path'])
+        rot = api.post(f'{base}{self.trigger.pk}/rotate/', {}, format='json')
+        self.trigger.refresh_from_db()
+        self.assertEqual(rot.data['token'], self.trigger.token)
+        self.assertIn(self.trigger.token, rot.data['url_path'])
+        self.assertEqual(self.trigger.hmac_secret, 'secret-hmac-alec38')
+        regle = AutomationRule.objects.create(
+            company=self.co, nom='Autre webhook',
+            trigger_type=TriggerType.WEBHOOK_INBOUND, trigger_config={},
+            action_type=ActionType.CREATE_ACTIVITY, action_config={})
+        cree = api.post(base, {'rule': regle.pk}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        jeton = IncomingWebhookTrigger.objects.get(rule=regle).token
+        self.assertEqual(cree.data['token'], jeton)
+        self.assertIn(jeton, cree.data['url_path'])
+
     def test_rotation_invalidates_old_token(self):
         old_token = self.trigger.token
         api = auth(self.admin)

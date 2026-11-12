@@ -121,3 +121,34 @@ class StructureKitEndpointTests(Xmfg5Base):
         # La disponibilité reste visible pour tous les rôles.
         self.assertIn('quantite_disponible', data['composants'][0])
         self.assertEqual(data['disponibilite_potentielle'], 2)
+
+    def test_commercial_livre_ne_voit_ni_cout_ni_marge(self):
+        """ALEC3 (C-ALEC-002, D-ASTK-2) — coûts sur ``prix_achat_voir`` et
+        marge sur ``marge_voir`` (plus le palier responsable) : Commercial et
+        Technicien livrés lisent la nomenclature sans les 4 clés ; le
+        Directeur les reçoit. Mutant : remettre ``IsResponsableOrAdmin`` ⇒
+        échec."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS,
+            TECHNICIEN_PERMISSIONS)
+        url = f'/api/django/stock/kits/{self.kit.pk}/structure/'
+        for nom, perms in (('commercial', COMMERCIAL_PERMISSIONS),
+                           ('technicien', TECHNICIEN_PERMISSIONS)):
+            with self.subTest(role=nom):
+                user = _user(self.company, f'alec3-{nom}',
+                             role_legacy='normal', permissions=list(perms))
+                resp = _api(user).get(url)
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertNotIn('cout_total_roll_up', data)
+                self.assertNotIn('marge', data)
+                for ligne in data['composants']:
+                    self.assertNotIn('cout_unitaire', ligne)
+                    self.assertNotIn('cout_total', ligne)
+                self.assertEqual(data['disponibilite_potentielle'], 2)
+        directeur = _user(self.company, 'alec3-directeur',
+                          permissions=list(DIRECTEUR_PERMISSIONS))
+        data = _api(directeur).get(url).json()
+        self.assertEqual(data['cout_total_roll_up'], '9500.00')
+        self.assertIn('marge', data)
+        self.assertIn('cout_unitaire', data['composants'][0])

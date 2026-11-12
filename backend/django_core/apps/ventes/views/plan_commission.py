@@ -96,6 +96,13 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
     serializer_class = PlanCommissionSerializer
     permission_classes = [PLAN_COMMISSION_PERMISSION]
 
+    def get_permissions(self):
+        # ADRG14 — lire (et `resoudre`) : `prix_achat_voir` ; écrire exige en
+        # plus un code d'ÉCRITURE, `parametres_modifier`.
+        if self.action in ('list', 'retrieve', 'resoudre'):
+            return [PLAN_COMMISSION_PERMISSION()]
+        return [PLAN_COMMISSION_PERMISSION(), HasPermissionOrLegacy('parametres_modifier')()]
+
     def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()

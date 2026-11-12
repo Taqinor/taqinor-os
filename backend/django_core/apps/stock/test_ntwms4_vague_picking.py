@@ -264,3 +264,66 @@ class TestEndpointsVague(Ntwms4Base):
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
         resp = self.api.post(url, {'besoins': [ok], 'note': None}, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_ecritures_entrepot_exigent_stock_mouvement(self):
+        """ADRG35 (C-ADRG-010) — les écritures d'entrepôt au seul palier stock
+        exigent ``stock_mouvement`` : le Commercial responsable livré (palier
+        franchi par ``stock_creer``) reçoit 403 « Droit … manquant
+        (stock_mouvement) » partout, aucun mouvement écrit ; Technicien et
+        compte hérité responsable passent la garde (jamais 403). La garde
+        précède toute lecture d'objet : des ids absents suffisent.
+        Mutant : retirer la garde de ``BlocageQualiteViewSet`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.stock.models import MouvementStock
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'adrg35-{nom.lower().replace(" ", "-")}',
+                password='x', company=self.company, role=role)
+        s = '/api/django/stock/'
+        n = 999999
+        ecritures = [
+            ('post', 'lots-entrepot/'), ('patch', f'lots-entrepot/{n}/'),
+            ('post', f'lots-entrepot/{n}/sortir/'),
+            ('post', 'consignations/'), ('patch', f'consignations/{n}/'),
+            ('post', 'vagues-picking/'), ('post', f'vagues-picking/{n}/lancer/'),
+            ('post', f'vagues-picking/{n}/configurer-liberation/'),
+            ('post', f'vagues-picking/{n}/lignes/{n}/prelever/'),
+            ('post', 'unites-logistiques/'), ('post', f'unites-logistiques/{n}/lignes/'),
+            ('post', f'unites-logistiques/{n}/controler-scan/'),
+            ('post', f'unites-logistiques/{n}/deplacer/'),
+            ('post', f'unites-logistiques/{n}/sceller/'),
+            ('post', 'unites-logistiques/import-asn/'),
+            ('post', 'expeditions/'), ('post', f'expeditions/{n}/generer-etiquette/'),
+            ('post', 'plans-chargement/'), ('post', f'plans-chargement/{n}/unites/'),
+            ('post', 'retours-client/'), ('post', f'retours-client/{n}/receptionner/'),
+            ('post', f'retours-client/{n}/inspecter/'),
+            ('post', 'blocages-qualite/'), ('post', f'blocages-qualite/{n}/lever/'),
+            ('post', 'blocages-qualite/lever-quarantaine/'),
+            ('post', 'taches-reappro-interne/'),
+            ('post', f'taches-reappro-interne/{n}/executer/'),
+            ('post', 'casiers-a-reapprovisionner/'),
+        ]
+        self.assertNotIn('stock_mouvement', perms['Commercial responsable'])
+        avant = MouvementStock.objects.count()
+        api = auth(compte('Commercial responsable'))
+        for methode, route in ecritures:
+            with self.subTest(role='Commercial responsable', route=route):
+                rep = getattr(api, methode)(s + route, {}, format='json')
+                self.assertEqual(rep.status_code, 403, rep.content)
+                self.assertIn('stock_mouvement', str(rep.data['detail']))
+        self.assertEqual(MouvementStock.objects.count(), avant)
+        legacy = User.objects.create_user(
+            username='adrg35-legacy', password='x', company=self.company,
+            role_legacy='responsable')
+        for user in (compte('Technicien'), legacy):
+            api = auth(user)
+            for methode, route in ecritures:
+                with self.subTest(user=user.username, route=route):
+                    rep = getattr(api, methode)(s + route, {}, format='json')
+                    self.assertNotEqual(rep.status_code, 403, rep.content)

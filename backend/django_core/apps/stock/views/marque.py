@@ -6,6 +6,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Marque
 from ..serializers import MarqueSerializer
 from authentication.permissions import LectureDuModule, IsAdminRole
+from ..permissions import PeutSupprimerStock  # ADRG44
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -41,7 +42,7 @@ class MarqueViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsAdminRole()]
+        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def list(self, request, *args, **kwargs):
         if request.user.company_id:

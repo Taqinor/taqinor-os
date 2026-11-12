@@ -9,6 +9,7 @@ prix d'achat, marge, ou tout autre champ interne.
 Protections : X-Robots-Tag noindex sur chaque réponse publique ; throttle
 cache-based par IP (30 req/min) sans dépendance externe.
 """
+from datetime import timedelta
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 MAX_PIECES_JOINTES_PORTAIL = 5
 # ASAV24 — fenêtre de rejeu d'un signalement public identique (5 min).
 FENETRE_REJEU_SIGNALEMENT_S = 300
+# APUB5 — au plus 3 signalements QR par équipement sur 24 h glissantes.
+PLAFOND_SIGNALEMENTS_QR_24H = 3
 # ASAV30 — motif posé par la fusion (``TicketViewSet.fusionner``).
 PREFIXE_MOTIF_DOUBLON = 'Doublon de '
 
@@ -102,7 +105,7 @@ def _valider_sous_notes(brut):
         libelle = TicketSatisfaction.SOUS_NOTES_LIBELLES.get(cle, cle)
         try:
             note = int(valeur)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):  # APUB38 : 1e400
             return None, (f'{libelle} : note invalide (entier de 1 à 5 '
                           'attendu).')
         if note < 1 or note > 5:
@@ -231,7 +234,7 @@ def ticket_public_satisfaction(request, token):
 
     try:
         note = int(request.data.get('note'))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # APUB38 : 1e400
         return _noindex(Response(
             {'detail': 'Note invalide (entier de 1 à 5 attendu).'},
             status=status.HTTP_400_BAD_REQUEST))
@@ -239,7 +242,11 @@ def ticket_public_satisfaction(request, token):
         return _noindex(Response(
             {'detail': 'Note invalide (entier de 1 à 5 attendu).'},
             status=status.HTTP_400_BAD_REQUEST))
-    commentaire = (request.data.get('commentaire') or '').strip()[:4000]
+    commentaire = request.data.get('commentaire') or ''
+    if not isinstance(commentaire, str):  # APUB38 : jamais un 500
+        return _noindex(Response({'commentaire': ['Texte attendu.']},
+                                 status=status.HTTP_400_BAD_REQUEST))
+    commentaire = commentaire.strip()[:4000]
 
     # NTSRV23 — sous-notes détaillées, UNIQUEMENT si la société les a
     # activées. Flag OFF = elles sont simplement IGNORÉES (jamais un refus
@@ -270,6 +277,14 @@ def ticket_public_satisfaction(request, token):
 
 
 # ── XSAV19 — Page publique « Signaler un problème » via QR équipement ────────
+
+def _ticket_si_plafond_atteint(equipement):
+    """APUB5 — plus récent ticket de l'équipement si le plafond 24 h est atteint."""
+    recents = Ticket.objects.filter(
+        company=equipement.company, equipement=equipement,
+        date_creation__gte=timezone.now() - timedelta(hours=24)).order_by('-date_creation')
+    return recents.first() if recents.count() >= PLAFOND_SIGNALEMENTS_QR_24H else None
+
 
 _SignalerReponse = inline_serializer('SavPublicSignalerReponse', {
     'reference': drf_serializers.CharField(required=False),
@@ -356,6 +371,9 @@ def equipement_public_signaler(request, token):
     corps = description
     if telephone:
         corps += f'\n\nTéléphone communiqué : {telephone}'
+    if (dernier := _ticket_si_plafond_atteint(equipement)) is not None:
+        return _noindex(Response(
+            {'reference': dernier.reference}, status=status.HTTP_200_OK))
 
     # ASAV28 — la photo est validée (format, taille) et stockée AVANT de
     # créer le ticket : un refus donne 400 sous ``photo``, sans ticket ni

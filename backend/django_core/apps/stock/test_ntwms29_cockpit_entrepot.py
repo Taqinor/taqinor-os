@@ -202,3 +202,38 @@ class Ntwms29EndpointTests(Ntwms29Base):
         self.assertEqual(res.status_code, 400, res.content)
         res = api.get(self.URL + '?horizon_peremption=87600')
         self.assertEqual(res.status_code, 200, res.content)
+
+    def test_commercial_livre_cout_total_null(self):
+        """ALEC11 — une seule expédition du jour (`cout_reel` 420) : le
+        Commercial (rôle LIVRÉ, sans `prix_achat_voir`) lit `cout_total`
+        null et `nb` inchangé ; le Directeur lit le montant
+        (`_fmt_dec` : « 420 »)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.stock.models_wms import (
+            ExpeditionTransporteur, UniteLogistique,
+        )
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+        palette = UniteLogistique.objects.create(
+            company=self.company, type_unite=UniteLogistique.TypeUnite.PALETTE,
+            sscc='300000000000000049')
+        ExpeditionTransporteur.objects.create(
+            company=self.company, unite_logistique=palette,
+            transporteur_provider=ExpeditionTransporteur.Provider.AMANA,
+            cout_reel=Decimal('420'), date_expedition=timezone.now())
+
+        def expeditions(nom):
+            role = Role.objects.create(
+                company=self.company, nom=f'{nom} alec11',
+                permissions=list(roles[nom]))
+            user = User.objects.create_user(
+                username=f'alec11-{nom}', password='x', company=self.company,
+                role=role)
+            res = auth(user).get(self.URL)
+            self.assertEqual(res.status_code, 200, res.content)
+            return res.data['expeditions_du_jour']
+
+        self.assertEqual(expeditions('Commercial'), [
+            {'transporteur': 'amana', 'nb': 1, 'cout_total': None}])
+        self.assertEqual(
+            expeditions('Directeur')[0]['cout_total'], '420')

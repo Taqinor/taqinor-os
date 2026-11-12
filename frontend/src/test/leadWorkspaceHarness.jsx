@@ -12,14 +12,15 @@ import LeadWorkspace from '../features/crm/workspace/LeadWorkspace'
    (utilisateur connecté) + routeur mémoire autour du vrai `LeadWorkspace`.
    Importe `leadWorkspaceMocks` d'abord, donc les neutralisations communes sont
    enregistrées avant le chargement du composant. */
-export function makeStore(userId = 42) {
-  return configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: userId } }) => s } })
+export function makeStore(userId = 42, auth = {}) {
+  return configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: userId }, ...auth }) => s } })
 }
 
-/** Monte `LeadWorkspace` (onClose/onSaved neutres, surchargeables via `props`). */
-export function renderLeadWorkspace(props = {}, userId = 42) {
+/** Monte `LeadWorkspace` (onClose/onSaved neutres, surchargeables via `props`) ;
+    `auth` complète `state.auth` (ex. `permissions` d'un rôle du registre). */
+export function renderLeadWorkspace(props = {}, userId = 42, auth = {}) {
   return render(
-    <Provider store={makeStore(userId)}>
+    <Provider store={makeStore(userId, auth)}>
       <MemoryRouter>
         <LeadWorkspace onClose={vi.fn()} onSaved={vi.fn()} {...props} />
       </MemoryRouter>

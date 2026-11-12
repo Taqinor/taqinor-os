@@ -431,8 +431,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 # admin (spec : action motivée, pas une simple écriture de
                 # champ).
                 'mettre_au_rebut', 'reactiver_rebut']:
-            if self.action in ('mettre_au_rebut', 'reactiver_rebut'):
-                return [IsResponsableOrAdmin()]
+            if self.action in ('mettre_au_rebut', 'reactiver_rebut'):  # ADRG39 : + equipement_gerer
+                return [IsResponsableOrAdmin(), HasPermissionOrLegacy('equipement_gerer')()]
             return [HasPermissionOrLegacy('equipement_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -1083,12 +1083,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
             # ``technicien_responsable`` au PUT/PATCH est la même réaffectation
             # que ``reaffecter-equipe`` / ``actions-groupees`` op ``technicien`` :
             # ``sav_reassign``.
-            return [HasPermissionOrLegacy('sav_gerer')()] + droits_de_la_grille(
-                self,
-                update=[DroitDeLaGrille('sav_reassign', champ='equipe'),
-                        DroitDeLaGrille('sav_reassign', champ='technicien_responsable')],
-                partial_update=[DroitDeLaGrille('sav_reassign', champ='equipe'),
-                                DroitDeLaGrille('sav_reassign', champ='technicien_responsable')])
+            return [HasPermissionOrLegacy('sav_gerer')()] + droits_de_la_grille(  # ADRG40 : + create (ticket affecté)
+                self, **dict.fromkeys(('create', 'update', 'partial_update'), [
+                    DroitDeLaGrille('sav_reassign', champ=c) for c in ('equipe', 'technicien_responsable')]))
         # destroy, et toute action non listée : palier administrateur.
         return [IsAdminRole()]
 
@@ -3430,7 +3427,7 @@ class CategorieEquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('equipement_gerer')()]  # ADRG39
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

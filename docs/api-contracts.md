@@ -218,8 +218,6 @@
     active_sessions:inconnu, dormant_accounts:inconnu, expired_secrets:inconnu, ip_allowlist_active:inconnu, items_faibles:inconnu, mfa_pct:inconnu, overdue_review_campaigns:inconnu, score:inconnu, soc2_iso27001_ready:booleen, sod_open_violations:inconnu, sso_configured:inconnu
 - frontend/src/api/importApi.js :: getExportObjects -> /api/django/imports/export-objects
     default_format:inconnu, formats:liste, objects:inconnu
-- frontend/src/api/importApi.js :: saveMapping -> /api/django/imports/mapping
-    detail:texte, id:inconnu, mapping:inconnu, nom:inconnu, target:inconnu
 - frontend/src/api/installationsApi.js :: accepterConsentementGps -> /api/django/installations/gps-consentements/mon-consentement/accepter
     accepte_le:inconnu, actif:booleen, existe:booleen, notice:inconnu, statut:inconnu
 - frontend/src/api/installationsApi.js :: ajouterPhoto -> /api/django/installations/interventions/<>/ajouter-photo
@@ -398,6 +396,8 @@
     action_mix:inconnu, daily_counts:inconnu, detail:texte, failed_logins:inconnu, from:texte, object_churn:inconnu, to:texte, top_users:inconnu, total_entries:inconnu, window_days:inconnu
 - frontend/src/api/reportingApi.js :: commercialDashboard -> /api/django/reporting/commercial/dashboard
     detail:texte, funnel:inconnu, leaderboard:inconnu, sales_velocity:inconnu, time_in_stage:inconnu, time_to_first_touch:inconnu, total_leads:nombre, total_signes:inconnu, win_rate_pct:inconnu
+- frontend/src/api/reportingApi.js :: couperPartageSavedReport -> /api/django/reporting/saved-reports/<>/couper-partage
+    partage_revoque_le:inconnu
 - frontend/src/api/reportingApi.js :: effectiveDashboardConfig -> /api/django/reporting/dashboard-config/effective
     cards:inconnu, config_id:inconnu, menu_tier:inconnu, source:texte
 - frontend/src/api/reportingApi.js :: executerRapportDefinition -> /api/django/reporting/rapport-definitions/<>/executer
@@ -419,7 +419,7 @@
 - frontend/src/api/reportingApi.js :: kpiFederes -> /api/django/reporting/reports/kpi-federes
     badges:inconnu, count:nombre, tuiles:inconnu
 - frontend/src/api/reportingApi.js :: kpiP2p -> /api/django/reporting/p2p/kpi
-    budgets_departement:inconnu, conformite_fournisseur_moyenne:inconnu, debut:inconnu, delai_demande_bcf_jours:inconnu, fin:inconnu, taux_conversion_pct:inconnu
+    budgets_departement:liste, conformite_fournisseur_moyenne:inconnu, debut:inconnu, delai_demande_bcf_jours:inconnu, fin:inconnu, taux_conversion_pct:inconnu
 - frontend/src/api/reportingApi.js :: rafraichirClasseur -> /api/django/reporting/classeurs/<>/rafraichir
     cellules:inconnu
 - frontend/src/api/reportingApi.js :: regenererCalendarSubscription -> /api/django/reporting/calendar/subscription

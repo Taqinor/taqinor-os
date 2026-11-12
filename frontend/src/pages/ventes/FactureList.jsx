@@ -164,6 +164,7 @@ export default function FactureList() {
   const gestes = useFactureGestes({ dispatch, confirm, lot })
   const {
     canManage, peutEncaisser, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
+    peutModifier, peutPdf, peutExporter,
     openAbandonSolde, openRetourClient, openConsolider, openEncaissementGroupe,
     openAvoirModal, actionId, doAction, demanderAnnulation,
     payeeSecheTarget, setPayeeSecheTarget, payeeSecheMotif, setPayeeSecheMotif, openMarquerPayee,
@@ -416,6 +417,8 @@ export default function FactureList() {
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
     demanderAnnulation,
+    // ADRG18 - gestes de la ligne au code de leur route.
+    peutModifier, peutPdf, peutExporter,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
@@ -478,6 +481,7 @@ export default function FactureList() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
+            {peutExporter && (
             <DropdownMenuItem
               disabled={xlsxBusy}
               onSelect={() => {
@@ -490,6 +494,7 @@ export default function FactureList() {
               }}>
               {xlsxBusy ? <Spinner className="size-3.5" /> : <Download className="size-3.5" aria-hidden="true" />} Exporter Excel
             </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
               <BookText className="size-3.5" aria-hidden="true" /> Journal comptable…
             </DropdownMenuItem>
@@ -763,7 +768,8 @@ export default function FactureList() {
                 <strong className="tabular-nums">{selectedIds.length}</strong> facture{selectedIds.length > 1 ? 's' : ''} sélectionnée{selectedIds.length > 1 ? 's' : ''}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                {Object.entries(BULK_LABELS).map(([action, label]) => (
+                {/* ADRG18 — « Émettre » en masse exige `encaisser` (AARG9). */}
+                {Object.entries(BULK_LABELS).filter(([action]) => action !== 'emettre' || peutEncaisser).map(([action, label]) => (
                   <button
                     key={action}
                     type="button" disabled={bulkBusy}

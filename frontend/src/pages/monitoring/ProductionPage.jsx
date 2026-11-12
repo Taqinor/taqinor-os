@@ -24,6 +24,7 @@ import { ModuleDashboard } from '../../ui/module'
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import { buildProductionChartData, debutParDefaut } from './ProductionPage.helpers'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { ChargementPage } from '../../ui/ChargementPage'
 
 // FG84 — historique mensuel : réponse `{ data: [...] }` d'une action NON liste
@@ -32,6 +33,7 @@ const lireHistorique = (configId) => monitoringApi.getHistory(configId, { months
   .then((r) => r.data?.data ?? [])
 
 export default function ProductionPage() {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { confirmDelete } = useConfirmDialog()
   const [systems, setSystems] = useState([])
   const [loadingSystems, setLoadingSystems] = useState(true)
@@ -232,7 +234,7 @@ export default function ProductionPage() {
     {
       id: 'actions', header: '', width: 70, align: 'right',
       accessor: () => '',
-      cell: (v, r) => (
+      cell: (v, r) => peutEcrire && (
         <IconButton variant="ghost" label="Supprimer" onClick={() => removeReading(r)}>
           <Trash2 />
         </IconButton>
@@ -243,7 +245,7 @@ export default function ProductionPage() {
   // figée sur l'installation du premier rendu (`[]`) rechargerait le mauvais
   // système, ou aucun (`reloadReadings` sort tôt si `id` est vide).
   // eslint-disable-next-line react-hooks/exhaustive-deps -- removeReading recréé par rendu (D-ENF22)
-  ], [selectedId])
+  ], [selectedId, peutEcrire])
 
   // WIR122 — historique mensuel : la DataTable expose déjà un export CSV
   // client (H33, aucun bouton dédié à réinventer) dès que `hideable` reste
@@ -330,14 +332,14 @@ export default function ProductionPage() {
                     Sans fournisseur configuré, la production se saisit à la main.
                   </div>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={syncNow} disabled={syncing || !config?.id}>
+                {peutEcrire && <Button type="button" size="sm" variant="outline" onClick={syncNow} disabled={syncing || !config?.id}>
                   <RefreshCw className={syncing ? 'animate-spin' : ''} /> Synchroniser maintenant
-                </Button>
+                </Button>}
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[14rem]">
                   <Label>Fournisseur</Label>
-                  <Select value={config?.provider ?? 'noop'} onValueChange={(v) => saveConfig({ provider: v })}>
+                  <Select value={config?.provider ?? 'noop'} onValueChange={(v) => saveConfig({ provider: v })} disabled={!peutEcrire}>
                     <SelectTrigger aria-label="Fournisseur de supervision"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {providers.map((p) => (
@@ -350,7 +352,7 @@ export default function ProductionPage() {
                   </Select>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
-                  <Switch checked={!!config?.enabled} onCheckedChange={(v) => saveConfig({ enabled: v })} />
+                  <Switch checked={!!config?.enabled} onCheckedChange={(v) => saveConfig({ enabled: v })} disabled={!peutEcrire} />
                   Activée
                 </label>
               </div>
@@ -358,7 +360,7 @@ export default function ProductionPage() {
           </Card>
 
           {/* Saisie manuelle (N51) */}
-          <Card>
+          {peutEcrire && <Card>
             <CardContent className="p-4">
               <div className="mb-3 text-sm font-semibold">Saisir un relevé</div>
               <form onSubmit={addReading} noValidate className="flex flex-wrap items-end gap-3">
@@ -383,7 +385,7 @@ export default function ProductionPage() {
                 <Button type="submit"><Plus /> Ajouter</Button>
               </form>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Tendance de production (VX148) */}
           {!loadingReadings && readings.length > 0 && (

@@ -13,6 +13,8 @@ import {
 } from '../../ui'
 import { SectionTitle } from './peComponents'
 import toutesLesPages from './toutesLesPages'
+import usePeutEcrireStock from '../stock/usePeutEcrireStock'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 
 const TYPES = [
   { value: 'default', label: 'Défaut (EAN/UPC)' },
@@ -37,6 +39,10 @@ function frErr(err, fallback = "L'opération a échoué.") {
 // ── Règles d'une nomenclature (motif → type d'entité, triées par priorité) ──
 function ReglesTable({ nomenclature, onChanged }) {
   const { confirmDelete } = useConfirmDialog()
+  // ADRG36 — écrire : `stock_modifier` ; supprimer : admin ou `stock_supprimer` (ADRG44).
+  const peutEcrire = usePeutEcrireStock()
+  const estAdmin = useIsAdmin()
+  const peutSupprimer = useHasPermission('stock_supprimer') || estAdmin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [nouvelle, setNouvelle] = useState({ motif: '', est_regex: false, encode: 'produit', priorite: 100 })
@@ -80,13 +86,15 @@ function ReglesTable({ nomenclature, onChanged }) {
           <Badge tone="neutral">{r.est_regex ? 'Regex' : 'Préfixe'}</Badge>
           <Badge tone="primary">{ENCODES.find((e) => e.value === r.encode)?.label ?? r.encode}</Badge>
           <span className="text-xs text-muted-foreground">priorité {r.priorite}</span>
-          <IconButton label="Supprimer la règle" variant="ghost" size="icon" className="ml-auto size-7"
-                      onClick={() => supprimer(r.id)}>
-            <Trash2 className="size-3.5 text-destructive" />
-          </IconButton>
+          {peutSupprimer && (
+            <IconButton label="Supprimer la règle" variant="ghost" size="icon" className="ml-auto size-7"
+                        onClick={() => supprimer(r.id)}>
+              <Trash2 className="size-3.5 text-destructive" />
+            </IconButton>
+          )}
         </div>
       ))}
-      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      {peutEcrire && <div className="mt-1 flex flex-wrap items-center gap-1.5">
         <Input className="h-8 w-32 text-sm" placeholder="Motif (ex. 22)"
                value={nouvelle.motif}
                onChange={(e) => setNouvelle((n) => ({ ...n, motif: e.target.value }))} />
@@ -102,7 +110,7 @@ function ReglesTable({ nomenclature, onChanged }) {
         <Button type="button" size="sm" disabled={busy} onClick={ajouter}>
           <Plus className="size-3.5" /> Ajouter
         </Button>
-      </div>
+      </div>}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
@@ -110,6 +118,10 @@ function ReglesTable({ nomenclature, onChanged }) {
 
 export default function NomenclaturesCodeBarresSection() {
   const { confirmDelete } = useConfirmDialog()
+  // ADRG36 — écrire : `stock_modifier` ; supprimer : admin ou `stock_supprimer` (ADRG44).
+  const peutEcrire = usePeutEcrireStock()
+  const estAdmin = useIsAdmin()
+  const peutSupprimer = useHasPermission('stock_supprimer') || estAdmin
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -180,14 +192,18 @@ export default function NomenclaturesCodeBarresSection() {
                   <Badge tone="neutral">{TYPES.find((t) => t.value === item.type_nomenclature)?.label}</Badge>
                   <Badge tone={item.actif ? 'success' : 'neutral'}>{item.actif ? 'Active' : 'Inactive'}</Badge>
                   <div className="ml-auto flex items-center gap-1.5">
-                    <Button type="button" size="sm" variant="outline" onClick={() => toggleActif(item)}>
-                      {item.actif ? 'Désactiver' : 'Activer'}
-                    </Button>
-                    <IconButton label="Supprimer la nomenclature" variant="outline" size="sm"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => supprimer(item)}>
-                      <Trash2 className="size-4" />
-                    </IconButton>
+                    {peutEcrire && (
+                      <Button type="button" size="sm" variant="outline" onClick={() => toggleActif(item)}>
+                        {item.actif ? 'Désactiver' : 'Activer'}
+                      </Button>
+                    )}
+                    {peutSupprimer && (
+                      <IconButton label="Supprimer la nomenclature" variant="outline" size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => supprimer(item)}>
+                        <Trash2 className="size-4" />
+                      </IconButton>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2.5">
@@ -198,7 +214,7 @@ export default function NomenclaturesCodeBarresSection() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        {peutEcrire && <div className="flex flex-wrap items-center gap-1.5">
           <Input className="h-9 flex-1" placeholder="Nom de la nomenclature"
                  value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); creer() } }} />
@@ -211,7 +227,7 @@ export default function NomenclaturesCodeBarresSection() {
           <Button type="button" disabled={busy} onClick={creer}>
             <Plus className="size-4" /> Créer
           </Button>
-        </div>
+        </div>}
         {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
       </CardContent>
     </Card>

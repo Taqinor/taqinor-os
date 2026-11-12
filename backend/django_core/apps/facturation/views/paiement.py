@@ -28,6 +28,7 @@ from apps.facturation.serializers import (  # ENF11 : utilisé par @extend_schem
 )
 from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.gardes_lecture import LectureFactures
+from apps.roles.permissions import DroitDeLaGrille  # ADRG10
 from .facture_gardes import PeutEncaisser
 from core.permissions import declared_action_permissions
 import logging
@@ -425,7 +426,8 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             'paiement': PaiementSerializer(paiement).data,
             'retenue': RetenueSubieSerializer(retenue).data,
             'facture': FactureSerializer(facture.__class__.objects.get(
-                pk=facture.pk, company_id=facture.company_id)).data,
+                pk=facture.pk, company_id=facture.company_id),
+                context={'request': request}).data,  # ALEC33
         }, status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=RetenueSubieSerializer(many=True))
@@ -483,7 +485,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
                               409: D.ErreurDetail})
     @action(detail=True, methods=['get'], url_path='recu-pdf',
-            permission_classes=[LectureFactures])
+            permission_classes=[LectureFactures, DroitDeLaGrille('ventes_pdf')])  # ADRG10
     def recu_pdf(self, request, pk=None):
         """XFAC9 — quittance (reçu de paiement) PDF pour CE paiement.
 

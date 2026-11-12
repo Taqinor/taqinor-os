@@ -40,8 +40,10 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.proprietaire_seul import ProprietaireSeulMixin
+
 from authentication.permissions import (
-    IsAdminOrResponsableTier,
+    EcritureRefuseeLectureSeule, IsAdminOrResponsableTier,
     HasPermissionOrLegacy, IsAdminRole, IsAuthenticatedInterne,
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -711,7 +713,7 @@ def _conformite_xlsx_response(rapport):
     return resp
 
 
-class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
+class DashboardViewSet(ProprietaireSeulMixin, TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 
     Multi-tenant : ``TenantMixin`` filtre déjà par société et impose
@@ -722,7 +724,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DashboardSerializer
-    permission_classes = [IsAuthenticatedInterne]
+    permission_classes = [IsAuthenticatedInterne, EcritureRefuseeLectureSeule]  # APUB13
     queryset = Dashboard.objects.all()
     pagination_class = None  # petite liste par utilisateur — renvoyée à plat.
 
@@ -740,9 +742,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
 
-    def perform_update(self, serializer):
-        # Ne jamais réécrire company/owner depuis le corps.
-        serializer.save(company=self.request.user.company)
+    proprietaire_quoi = 'tableaux'  # APUB14 — perform_update/destroy : ProprietaireSeulMixin
 
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
@@ -868,7 +868,7 @@ _REQUETE_ADHOC = inline_serializer('SavedQueryAdhocRequest', {
 })
 
 
-class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
+class SavedQueryViewSet(ProprietaireSeulMixin, TenantMixin, viewsets.ModelViewSet):
     """FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
 
     Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
@@ -883,7 +883,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = SavedQuerySerializer
-    permission_classes = [IsAuthenticatedInterne]
+    permission_classes = [IsAuthenticatedInterne, EcritureRefuseeLectureSeule]  # APUB13
     queryset = SavedQuery.objects.all()
     pagination_class = None
     #: ENF11 — ``POST …/run/`` (ad-hoc) et ``POST …/{id}/run/`` ont les mêmes
@@ -901,8 +901,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
 
-    def perform_update(self, serializer):
-        serializer.save(company=self.request.user.company)
+    proprietaire_quoi = 'requêtes'  # APUB14 — perform_update/destroy : ProprietaireSeulMixin
 
     @extend_schema(responses={200: _LISTE_OBJETS})
     @action(detail=False, methods=['get'])
@@ -972,7 +971,7 @@ class DataExplorerDatasetsView(APIView):
         if name:
             try:
                 return Response(
-                    data_explorer.describe_dataset(name, request.user))
+                    data_explorer.describe_dataset(name, request.user, exiger_lecture=True))  # APUB55
             except data_explorer.DatasetInconnu as exc:
                 return Response({'detail': str(exc)},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -1967,7 +1966,7 @@ def metrics_view(request):
             auth_result = None
         if auth_result is not None:
             user, _token = auth_result
-            admin_ok = bool(getattr(user, 'is_admin_role', False))
+            admin_ok = bool(user.is_superuser)  # APUB48 — plateforme : superutilisateur seul (_IsSuperUser)
 
     if not (ip_ok or admin_ok):
         return Response({'detail': 'Accès /metrics non autorisé.'}, status=403)

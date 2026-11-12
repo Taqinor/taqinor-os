@@ -31,7 +31,7 @@ def demo_resume_view(request):
     'temps_jusqua_valeur': drf_serializers.DictField(),
     'adoption_tours': drf_serializers.ListField(
         child=drf_serializers.DictField()),
-    'fin_vs_passe_raison': drf_serializers.CharField(),
+    'fin_vs_passe_raison': drf_serializers.CharField(allow_null=True),
 }))
 @api_view(['GET'])
 @permission_classes([IsAuthenticatedInterne])  # ASEC51 : jamais un compte portail

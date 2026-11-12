@@ -175,7 +175,8 @@ class TelechargerExportEndpointTest(TestCase):
         fake_client.get_object.return_value = {
             'Body': mock.MagicMock(read=lambda: b'PK\x03\x04fake-zip'),
         }
-        lien = signed_download.creer_lien(self.company, 'bucket', 'key.zip')
+        lien = signed_download.creer_lien(
+            self.company, 'erp-reversibilite', 'key.zip')
         with mock.patch('core.backup._minio_client', return_value=fake_client):
             resp = APIClient().get(
                 f'/api/django/core/export-reversibilite/telecharger/'
@@ -187,3 +188,25 @@ class TelechargerExportEndpointTest(TestCase):
         resp = APIClient().get(
             '/api/django/core/export-reversibilite/telecharger/bogus/')
         self.assertEqual(resp.status_code, 404)
+
+    def test_jeton_hors_seau_reversibilite_404(self):
+        """APUB1 — le lien public ne sert que le seau de réversibilité : un
+        jeton d'un autre seau (export de stock, ``erp-uploads``) rend 404
+        sans aucune lecture MinIO."""
+        from core.tasks import REVERSIBILITE_BUCKET
+        fake_client = mock.MagicMock()
+        fake_client.get_object.return_value = {
+            'Body': mock.MagicMock(read=lambda: b'PK\x03\x04fake-zip'),
+        }
+        reversibilite = signed_download.creer_lien(
+            self.company, REVERSIBILITE_BUCKET, 'export.zip')
+        autre = signed_download.creer_lien(
+            self.company, 'erp-uploads', 'exports/stock.csv')
+        base = '/api/django/core/export-reversibilite/telecharger/'
+        with mock.patch('core.backup._minio_client', return_value=fake_client):
+            resp = APIClient().get(f'{base}{autre.token}/')
+            self.assertEqual(resp.status_code, 404)
+            fake_client.get_object.assert_not_called()
+            resp = APIClient().get(f'{base}{reversibilite.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/zip')

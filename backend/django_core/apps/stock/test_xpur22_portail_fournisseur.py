@@ -61,6 +61,7 @@ class Xpur22Base(TestCase):
         self.user = _user(
             self.company, 'xpur22-user',
             permissions=['stock_modifier', 'stock_voir',
+                         'prix_achat_voir',  # ALEC12 : jetons = montants d'achat
                          # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
                          'achats_commander', 'achats_receptionner',
                          'achats_payer', 'catalogue_prix_modifier'])
@@ -177,6 +178,45 @@ class TestConfirmationArrivee(Xpur22Base):
         self.assertEqual(
             bc.date_livraison_prevue, datetime.date(2026, 7, 1))
 
+    def test_reconfirmation_identique_sans_notification(self):
+        """APUB46 (C-APUB-025) — une confirmation identique à la précédente
+        n'écrit ni ne notifie (porte à jeton ET porte à compte) ; une date
+        différente est enregistrée et notifiée. Mutant : notifier sans
+        condition ⇒ échec."""
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Comment
+        from apps.stock import services
+        from apps.stock.services import confirmer_bcf_compte_fournisseur
+        bc = self._bcf(self.fournisseur)
+        token_obj = generer_token_portail_fournisseur(
+            self.company, self.fournisseur, self.user)
+        commentaires = Comment.objects.filter(
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur), object_id=bc.pk)
+        with mock.patch.object(
+                services, 'notify_bcf_confirmation_fournisseur',
+                wraps=services.notify_bcf_confirmation_fournisseur) as notif:
+            for date in ('2026-12-01', '2026-12-01'):
+                confirmer_bcf_portail_fournisseur(
+                    token_obj, bc.id, date_confirmee=date,
+                    numero_confirmation='C-1')
+            confirmer_bcf_compte_fournisseur(
+                self.company, self.fournisseur.id, bc.id,
+                date_confirmee='2026-12-01', numero_confirmation='C-1')
+            self.assertEqual(notif.call_count, 1)
+            self.assertEqual(commentaires.count(), 1)
+            confirmer_bcf_portail_fournisseur(
+                token_obj, bc.id, date_confirmee='2026-12-05',
+                numero_confirmation='C-1')
+            self.assertEqual(notif.call_count, 2)
+            self.assertEqual(commentaires.count(), 2)
+        bc.refresh_from_db()
+        self.assertEqual(str(bc.date_confirmee_fournisseur), '2026-12-05')
+        self.assertEqual(bc.numero_confirmation_fournisseur, 'C-1')
+
     def test_confirmer_bcf_autre_fournisseur_refuse(self):
         bc_autre = self._bcf(self.autre_fournisseur)
         token_obj = generer_token_portail_fournisseur(
@@ -239,3 +279,32 @@ class TestGestionTokensInterne(Xpur22Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         token_obj.refresh_from_db()
         self.assertTrue(token_obj.revoked)
+
+    def test_admin_ventes_livre_403_get_et_post(self):
+        """ALEC12 (C-ALEC-010, D-ASTK-2) — lire ou créer un jeton portail
+        (qui ouvre des montants d'achat) exige ``prix_achat_voir`` en plus de
+        ``stock_modifier`` : Admin Ventes et Responsable livrés 403, aucun
+        jeton créé ; Directeur 200 puis 201 ; la révocation reste à
+        ``stock_modifier``. Mutant : retirer ``PeutVoirPrixAchat`` ⇒ échec."""
+        from apps.roles.permissions_registre import (
+            ADMIN_VENTES_PERMISSIONS, DIRECTEUR_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS)
+        generer_token_portail_fournisseur(
+            self.company, self.fournisseur, self.user)
+        url = (f'/api/django/stock/fournisseurs/{self.fournisseur.id}/'
+               'portail-tokens/')
+        for nom, perms in (('admin-ventes', ADMIN_VENTES_PERMISSIONS),
+                           ('responsable', RESPONSABLE_PERMISSIONS)):
+            with self.subTest(role=nom):
+                api = _api(_user(self.company, f'alec12-{nom}', list(perms)))
+                self.assertEqual(api.get(url).status_code, 403)
+                self.assertEqual(api.post(url).status_code, 403)
+                self.assertEqual(self.fournisseur.portail_tokens.count(), 1)
+        api = _api(_user(self.company, 'alec12-directeur',
+                         list(DIRECTEUR_PERMISSIONS)))
+        resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data), 1)
+        resp = api.post(url)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(self.fournisseur.portail_tokens.count(), 2)

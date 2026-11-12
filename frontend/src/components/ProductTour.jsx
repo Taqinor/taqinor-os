@@ -91,16 +91,19 @@ export default function ProductTour() {
   const etapes = useMemo(() => tour?.etapes ?? [], [tour])
   const current = etapes[step]
 
-  const finish = useCallback(() => {
+  // `issue` : 'termine' (dernière étape) ou 'ferme' (Passer / Échap / ✕ / clic
+  // hors bulle) — alimente le KPI d'adoption (NTDMO42).
+  const finishWith = useCallback((issue) => {
     setOpen(false)
     setStep(0)
-    if (activeKey) markTourSeen(activeKey)
+    if (activeKey) markTourSeen(activeKey, issue)
   }, [activeKey])
+  const finish = useCallback(() => finishWith('ferme'), [finishWith])
 
   const next = useCallback(() => {
-    if (step >= etapes.length - 1) finish()
+    if (step >= etapes.length - 1) finishWith('termine')
     else setStep((s) => s + 1)
-  }, [step, etapes.length, finish])
+  }, [step, etapes.length, finishWith])
 
   const prev = useCallback(() => setStep((s) => Math.max(0, s - 1)), [])
 

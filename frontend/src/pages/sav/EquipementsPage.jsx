@@ -9,6 +9,7 @@ import {
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
@@ -91,8 +92,9 @@ function frError(data, fallback) {
 
 export function EquipementDetail({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
-  // ASAV61 — mise au rebut / réactivation : responsable/admin (serveur).
-  const peutRebuter = useIsAdminOrResponsable()
+  // ASAV61 / ADRG39 — mise au rebut / réactivation : palier ET equipement_gerer (serveur).
+  const palierRebut = useIsAdminOrResponsable(), codeRebut = useDroitMetier('equipement_gerer')
+  const peutRebuter = palierRebut && codeRebut
   const initial = useMemo(() => ({
     numero_serie: equipement.numero_serie ?? '',
     date_pose: equipement.date_pose ?? '',
@@ -436,6 +438,7 @@ export default function EquipementsPage() {
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
   // VX109 — import Excel/CSV du parc d'équipements.
   const [showImport, setShowImport] = useState(false)
+  const peutImporter = useDroitMetier('equipement_gerer') // ADRG66 — l'import crée des équipements
   // WIR116 — génération des étiquettes QR (lien public /e/<token>).
   const [labelsBusy, setLabelsBusy] = useState(false)
   // FG85/NTMOB15 — étiquettes QR INTERNES (EQUIP:<id>, scan staff), distinctes
@@ -635,9 +638,9 @@ export default function EquipementsPage() {
                     onClick={() => printLabels(false, setInternalLabelsBusy)}>
               {internalLabelsBusy ? <Spinner /> : <QrCode />} Étiquettes QR internes
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+            {peutImporter && <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
-            </Button>
+            </Button>}
             <BoutonExportExcel cible="equipements" ids={rows.map((r) => r.id)} />
           </div>
         </header>

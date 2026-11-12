@@ -18,7 +18,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from .gardes_lecture import LectureVentes
 from .models import Devis
 from .connection_declaration import (
     build_declaration_data, render_declaration_pdf)
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
         503: SH.DetailResponse,
     })
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureVentes])  # ADRG9 — lecture du module ventes (D-APFS-4)
 def declaration_raccordement(request, pk):
     """GET /ventes/devis/<id>/declaration-raccordement/
 
@@ -54,10 +54,6 @@ def declaration_raccordement(request, pk):
                             ['created_by'])
     elif not user.is_superuser:
         qs = qs.none()
-    # ADEV41 — portée équipe (mêmes ``owner_fields`` que ADEV21) : un devis
-    # hors portée répond 404, comme sur ``DevisViewSet``.
-    from core.scoping import scope_queryset
-    qs = scope_queryset(qs, user, ['created_by'])
     try:
         devis = qs.prefetch_related('lignes').get(pk=pk)
     except Devis.DoesNotExist:

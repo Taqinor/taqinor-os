@@ -13,6 +13,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from ..permissions import PeutSupprimerStock  # ADRG36 (règle ADRG44)
+from apps.roles.permissions import DroitDeLaGrille  # ADRG36
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from ..openapi_helpers import BOOL, ID_OU_VIDE, P
@@ -60,7 +62,9 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        if self.action == 'destroy':  # ADRG36 — suppression : règle stock (ADRG44)
+            return [PeutSupprimerStock()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG36
 
     def get_queryset(self):
         qs = super().get_queryset()

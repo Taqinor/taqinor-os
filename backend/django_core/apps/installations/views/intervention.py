@@ -43,7 +43,7 @@ from ..services import enregistrer_reverification, lever_reserve_chantier
 from .. import field_services
 from .. import field_capture
 from .. import field_sync
-from . import _openapi as oa
+from . import _openapi as oa, intervention_liens  # APUB6 : mixin hors fichier-mur (C20)
 from ..serializers import PhotoAnnotationSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -176,7 +176,8 @@ def _quantite_f11(request):
     p8=oa.qi('ticket'),
     p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'),
 )
-class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrechargeesListeMixin,
+                          oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
@@ -359,8 +360,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'generer_devis_reserve',
             # XFSM7 — lien public « technicien en route ».
             'lien_client',
-            # ZFSM2 — lien public tokenisé du compte-rendu signé.
-            'lien_rapport',
+            # ZFSM2 — lien public tokenisé du compte-rendu signé (APUB6 : coupure).
+            'lien_rapport', 'couper_lien_rapport',
             # ZFSM4 — facturation directe d'une intervention hors contrat.
             'generer_facture',
             # ZFSM5 — devis d'upsell créé sur place depuis l'intervention.
@@ -380,7 +381,11 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                 update=[DroitDeLaGrille('technicien_assign', champ='technicien')],
                 partial_update=[
                     DroitDeLaGrille('technicien_assign', champ='technicien')],
-                replanifier_en_masse=[DroitDeLaGrille('technicien_assign')])
+                replanifier_en_masse=[DroitDeLaGrille('technicien_assign')],
+                # ADRG33 — créer une facture / un devis : ``ventes_creer``.
+                generer_facture=[DroitDeLaGrille('ventes_creer')],
+                generer_devis=[DroitDeLaGrille('ventes_creer')],
+                generer_devis_reserve=[DroitDeLaGrille('ventes_creer')])
         return [IsAdminRole()]
 
     def _check_tenant(self, serializer):

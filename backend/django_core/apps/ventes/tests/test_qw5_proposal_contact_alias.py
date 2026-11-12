@@ -165,6 +165,26 @@ class PerChannelIdempotencyLockTests(QW5AliasBase):
         self.assertFalse(r1.data['already_sent'])
         self.assertTrue(r2.data['already_sent'])
 
+    def test_canal_hors_vocabulaire_refuse_sans_note(self):
+        """APUB8 — un `channel` hors vocabulaire : 400 sous `canal`, sans note
+        ni notification ; `whatsapp` et l'absence de canal passent."""
+        from apps.crm.cadence_signaux import _CONTACT_CANAL_LABELS
+        from apps.ventes.public.signature_views import CANAUX_CONTACT_PUBLIC
+        self.assertEqual(CANAUX_CONTACT_PUBLIC, set(_CONTACT_CANAL_LABELS))
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE)
+        for i in range(10):
+            resp = self._post_ventes_mount(body={'channel': f'c{i}'})
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn('canal', resp.data)
+        self.assertEqual(notes.count(), 0)
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+        self.assertEqual(self._post_ventes_mount(
+            body={'channel': 'whatsapp'}).status_code, 200)
+        self.assertEqual(self._post_ventes_mount(body={}).status_code, 200)
+        self.assertEqual(notes.count(), 2)
+
 
 class RappelChannelCallbackObligationTests(QW5AliasBase):
     """QW5 <-> QW4 — un canal 'rappel' depuis la proposition pose

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from rest_framework.permissions import BasePermission
 
+from authentication.permissions import HasPermission, IsAdminRole
 from core.permissions import _user_has_or_legacy
 
 #: Code fin NTP2P36 — inscrit au catalogue ``roles.ALL_PERMISSIONS``.
@@ -58,6 +59,11 @@ class PeutVoirPrixAchat(BasePermission):
         if getattr(user, 'portee', 'interne') != 'interne':
             return False
         return bool(getattr(user, 'can_view_buy_prices', False))
+
+
+#: ADRG44 — suppression d'un référentiel stock : palier administrateur OU la
+#: case ``stock_supprimer`` d'un rôle fin (compte hérité : administrateur seul).
+PeutSupprimerStock = IsAdminRole | HasPermission('stock_supprimer')
 
 
 class MasqueMontantsAchatMixin:

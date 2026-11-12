@@ -379,6 +379,46 @@ class GestesArgentTests(TestCase):
                 if not peut[0]:
                     self.assertEqual(r.status_code, 403, r.data)
 
+    def test_drapeaux_vente_suivent_les_droits(self):
+        """ADRG17 (C-ADRG-045) — les drapeaux ``peut`` du panneau de vente
+        suivent le prédicat de leur route : Admin Ventes ``encaisser`` faux,
+        ``pdf`` vrai ; Viewer ``encaisser``/``pdf``/``envoyer``/``facturer_*``
+        faux ; Commercial tous vrais. Mutant : retirer ``ecrit`` du drapeau
+        ``pdf`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import etat_vente
+        viewer = User.objects.create_user(
+            username=f'asec29-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.get(company=self.company, nom='Viewer'),
+            company=self.company)
+        directeur = self.users['Directeur']
+        devis, facture = self._devis(directeur), self._facture(directeur)
+        Facture.objects.filter(pk=facture.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+        vierge = self._devis(directeur)  # accepté, aucune facture
+        attendus = {
+            'Admin Ventes': {'encaisser': False, 'pdf': True},
+            'Viewer': {'encaisser': False, 'pdf': False, 'envoyer': False},
+            'Commercial': {'encaisser': True, 'pdf': True, 'envoyer': True},
+        }
+        comptes = {'Admin Ventes': self.users['Admin Ventes'],
+                   'Viewer': viewer, 'Commercial': self.users['Commercial']}
+        for nom, user in comptes.items():
+            with self.subTest(role=nom):
+                etat = etat_vente(devis, user)
+                peut = etat['factures'][0]['peut']
+                for cle, valeur in attendus[nom].items():
+                    self.assertEqual(peut[cle], valeur, (nom, cle, peut))
+                gestes = etat_vente(vierge, user)['peut']
+                if nom == 'Viewer':
+                    for cle in ('facturer_acompte', 'facturer_solde',
+                                'facturer_complete'):
+                        self.assertFalse(etat['peut'][cle], cle)
+                        self.assertFalse(gestes[cle], cle)
+                else:
+                    self.assertTrue(gestes['facturer_complete'], gestes)
+
     def test_emettre_unitaire_et_lot_exigent_encaisser(self):
         """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
         ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon
@@ -471,6 +511,133 @@ class GestesArgentTests(TestCase):
             with self.subTest(role='Commercial', url=url):
                 r = commercial.get(url)
                 self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+
+    def test_remettre_brouillon_exige_encaisser(self):
+        """ADRG1 (C-ADRG-002, D-AARG-3) — remettre en brouillon une facture
+        émise retire la créance : 403 sans ``encaisser`` (VRAIS rôles système
+        Admin Ventes et Responsable), statut ``emise`` et lien de paiement
+        actif inchangés ; le Directeur obtient 200. Mutant : retirer
+        ``PeutEncaisser`` de ``permission_classes`` ⇒ échec."""
+        from apps.ventes.models import Facture, PaymentLink
+        directeur = self.users['Directeur']
+        facture = self._facture(directeur)
+        lien = PaymentLink.objects.create(
+            company=self.company, facture=facture, montant=Decimal('1200'))
+        url = f'/api/django/ventes/factures/{facture.id}/remettre-brouillon/'
+        for nom in ('Admin Ventes', 'Responsable'):
+            with self.subTest(role=nom):
+                r = self._api(self.users[nom]).post(url, {}, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                facture.refresh_from_db()
+                lien.refresh_from_db()
+                self.assertEqual(facture.statut, Facture.Statut.EMISE)
+                self.assertEqual(lien.statut, PaymentLink.Statut.EN_ATTENTE)
+        r = self._api(directeur).post(url, {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+
+    def test_exclure_relance_exige_encaisser(self):
+        """ADRG2 (C-ADRG-003, D-ASEC-VER-1) — exclure une facture des
+        relances (sans limite de durée, comme une promesse non plafonnée) :
+        403 sans ``encaisser`` (Admin Ventes, Responsable), ``exclu_relances``
+        reste faux ; le Directeur obtient 200. Mutant : retirer
+        ``PeutEncaisser`` ⇒ échec."""
+        directeur = self.users['Directeur']
+        facture = self._facture(directeur)
+        url = f'/api/django/ventes/factures/{facture.id}/exclure-relance/'
+        for nom in ('Admin Ventes', 'Responsable'):
+            with self.subTest(role=nom):
+                r = self._api(self.users[nom]).post(
+                    url, {'exclu': True}, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                facture.refresh_from_db()
+                self.assertFalse(facture.exclu_relances)
+        r = self._api(directeur).post(url, {'exclu': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        facture.refresh_from_db()
+        self.assertTrue(facture.exclu_relances)
+
+    def test_patch_champs_relance_emise_exige_encaisser(self):
+        """ADRG3 (C-ADRG-003, D-ASEC-VER-1) — sur une facture ÉMISE, changer
+        un champ qui suspend ou décale la relance exige ``encaisser`` : 403
+        nommant ``encaisser`` pour l'Admin Ventes, rien d'écrit ; le même
+        PATCH sur un brouillon : 200 ; le Directeur reporte l'échéance (200).
+        Mutant : retirer ``exclu_relances_jusquau`` de
+        ``FACTURE_CHAMPS_RELANCE`` ⇒ échec."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Facture, FactureActivity
+        directeur, admin_ventes = (self.users['Directeur'],
+                                   self.users['Admin Ventes'])
+        emise = self._facture(directeur)
+        Facture.objects.filter(pk=emise.pk).update(
+            date_echeance=date.today() - timedelta(days=10))
+        emise.refresh_from_db()
+        url = f'/api/django/ventes/factures/{emise.id}/'
+        corps = ({'exclu_relances_jusquau':
+                  (date.today() + timedelta(days=365)).isoformat()},
+                 {'date_echeance':
+                  (date.today() + timedelta(days=30)).isoformat()})
+        activites = FactureActivity.objects.filter(facture=emise).count()
+        for c in corps:
+            with self.subTest(corps=c):
+                r = self._api(admin_ventes).patch(url, c, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertIn('encaisser', str(r.data['detail']))
+        relue = Facture.objects.get(pk=emise.pk)
+        self.assertIsNone(relue.exclu_relances_jusquau)
+        self.assertEqual(relue.date_echeance, emise.date_echeance)
+        self.assertEqual(
+            FactureActivity.objects.filter(facture=emise).count(), activites)
+        brouillon = self._facture(directeur)
+        Facture.objects.filter(pk=brouillon.pk).update(
+            statut=Facture.Statut.BROUILLON, reference=f'BROUILLON-{_nxt()}')
+        r = self._api(admin_ventes).patch(
+            f'/api/django/ventes/factures/{brouillon.id}/', corps[0],
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self._api(directeur).patch(url, corps[1], format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
+    def test_pdf_documents_exigent_ventes_pdf(self):
+        """ADRG10 (C-ADRG-027) — le code ``ventes_pdf`` (« Générer PDF »)
+        garde les PDF de facturation : Viewer (``init_roles``, lecteur sans
+        ``ventes_pdf``) 403 sur le BC, le reçu de paiement et le bordereau de
+        remise ; le Commercial jamais 403. Mutant : retirer
+        ``DroitDeLaGrille('ventes_pdf')`` du reçu ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.ventes.models import BonCommande, Paiement, RemiseEncaissement
+        viewer = User.objects.create_user(
+            username=f'asec29-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.get(company=self.company, nom='Viewer'),
+            company=self.company)
+        self.assertNotIn('ventes_pdf', viewer.role.permissions)
+        commercial = self.users['Commercial']
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ADRG10-{_nxt()}',
+            client=self.client_obj, devis=self._devis(commercial),
+            statut=BonCommande.Statut.CONFIRME)
+        paiement = Paiement.objects.create(
+            company=self.company, facture=self._facture(commercial),
+            montant=Decimal('100'), date_paiement=date.today(),
+            mode='virement', created_by=commercial)
+        remise = RemiseEncaissement.objects.create(
+            company=self.company, technicien=commercial,
+            reference=f'REM-ADRG10-{_nxt()}', date_collecte=date.today(),
+            montant_declare=Decimal('100'), created_by=commercial)
+        base = '/api/django/ventes/'
+        urls = (f'{base}bons-commande/{bc.id}/pdf/',
+                f'{base}paiements/{paiement.id}/recu-pdf/',
+                f'{base}remises-encaissement/{remise.id}/pdf/')
+        for url in urls:
+            with self.subTest(role='Viewer', url=url):
+                r = self._api(viewer).get(url)
+                self.assertEqual(r.status_code, 403)
+                self.assertIn('ventes_pdf', str(r.data['detail']))
+            with self.subTest(role='Commercial', url=url):
+                self.assertNotEqual(
+                    self._api(commercial).get(url).status_code, 403)
 
     def test_get_permissions_respecte_action(self):
         from apps.facturation.views.facture import FactureViewSet

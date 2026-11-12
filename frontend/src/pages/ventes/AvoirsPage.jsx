@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import { FileX2, FileText, Search } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -26,6 +26,7 @@ const STATUT_TABS = [
 
 export default function AvoirsPage() {
   const isAdmin = useIsAdmin()
+  const peutPdf = useHasPermission('ventes_pdf')  // ADRG18 — code de la route PDF
   const navigate = useNavigate()
   const [avoirs, setAvoirs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -158,9 +159,11 @@ export default function AvoirsPage() {
                 align: 'right',
                 cell: (a) => (
                   <div className="flex items-center justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => download(a)}>
-                      <FileText /> PDF
-                    </Button>
+                    {peutPdf && (
+                      <Button size="sm" variant="outline" onClick={() => download(a)}>
+                        <FileText /> PDF
+                      </Button>
+                    )}
                     {isAdmin && a.statut !== 'annulee' && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>

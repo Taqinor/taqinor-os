@@ -125,6 +125,24 @@ class RapportExportTests(TestCase):
         res = self.api.get(f'{URL}{etranger.id}/export/?format=csv')
         self.assertEqual(res.status_code, 404)
 
+    def test_export_jeu_stock_exige_stock_export(self):
+        """ADRG76 — exporter un rapport sur un jeu stock exige ``stock_export`` :
+        403 au Responsable LIVRÉ (lecture stock sans export), 200 au Directeur."""
+        from apps.roles.models import Role
+        from apps.roles import permissions_registre as registre
+        obj = self._definition(
+            titre='Stock', dataset='stock_produits', spec={'select': ['id']},
+            partage=RapportDefinition.Partage.SOCIETE)
+        for nom, perms, attendu in (
+                ('Responsable', registre.RESPONSABLE_PERMISSIONS, 403),
+                ('Directeur', registre.DIRECTEUR_PERMISSIONS, 200)):
+            user = User.objects.create_user(
+                username=f'adrg76-{nom}', password='x', company=self.company,
+                role=Role.objects.create(
+                    company=self.company, nom=nom, permissions=list(perms)))
+            res = _auth(user).get(f'{URL}{obj.id}/export/?format=csv')
+            self.assertEqual(res.status_code, attendu, nom)
+
     def test_purchase_price_columns_are_stripped(self):
         entetes = ['produit', 'prix_achat', 'Marge', 'total']
         lignes = [['Panneau', 100, 40, 140]]

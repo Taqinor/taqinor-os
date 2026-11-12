@@ -4,7 +4,7 @@ import { Button, Input } from '../../../ui'
 import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import rfaApi from '../../../features/stock/api/rfaApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
-import { useVoitPrixAchat } from '../../../features/stock/useVoitPrixAchat'
+import { usePermissionAchats, useVoitPrixAchat } from '../../../features/stock/useVoitPrixAchat'
 
 /* ASTK222 — Remises arrière fournisseur (RFA) : accords, calcul de
    progression, génération de l'avoir — UNE seule fois.
@@ -39,6 +39,8 @@ export default function RfaPage() {
   // ERR-STK-PRIX-ACHAT-SUITE — calcul (CA d'achat, montant dû) réservé à
   // prix_achat_voir : jamais un bouton que le serveur refuse (403).
   const voitPrix = useVoitPrixAchat()
+  // ADRG32 — créer un accord RFA = « commander » (`achats_commander`), comme le serveur.
+  const peutCommander = usePermissionAchats('achats_commander')
 
   const charger = useCallback(async () => {
     try {
@@ -100,6 +102,7 @@ export default function RfaPage() {
       />
       <BandeauxStock erreur={erreur} />
 
+      {peutCommander && (
       <Carte titre="Nouvel accord">
         <form onSubmit={creer} noValidate className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
@@ -132,6 +135,7 @@ export default function RfaPage() {
           <Button type="submit" disabled={occupe}>Créer l&apos;accord</Button>
         </form>
       </Carte>
+      )}
 
       <Carte titre="Accords">
         {accords.length === 0 ? (
@@ -149,9 +153,9 @@ export default function RfaPage() {
                     <span>{fmtDate(a.periode_debut)} → {fmtDate(a.periode_fin)}</span>
                     <span>{a.statut === 'actif' ? 'Actif' : 'Clos'}</span>
                     <span>
-                      {/* Clé absente = montant masqué sans prix_achat_voir (jamais « undefined »). */}
-                      {a.taux_pct != null ? `${a.taux_pct} %` : (a.montant_fixe != null ? `${a.montant_fixe} fixe`
-                        : ('montant_fixe' in a ? '—' : 'Montant fixe'))}
+                      {/* Clé absente = montant masqué sans prix_achat_voir (jamais « undefined ») ;
+                          ALEC7 — taux et montant fixe masqués : « — ». */}
+                      {a.taux_pct != null ? `${a.taux_pct} %` : (a.montant_fixe != null ? `${a.montant_fixe} fixe` : '—')}
                     </span>
                     <Link className="underline" to={`/stock/fournisseurs/${a.fournisseur}/360`}>Fiche fournisseur</Link>
                   </div>

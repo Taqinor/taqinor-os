@@ -5,6 +5,7 @@ import qualiteApi from '../../../features/stock/api/qualiteApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 import { Section, Vide } from './ElementsEcran'
 import useGesteEcran from './useGesteEcran'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 import { SELECT_CLS, enListe, champDe } from './constantesEcran'
 
 /* ASTK224 — Qualité & rappels : alertes de rappel (impact, blocages créés,
@@ -22,6 +23,10 @@ const CLASSES_DANGER = {
 }
 
 export default function QualitePage() {
+  // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
+  // ADRG36 — référentiels (rappels, plans d'échantillonnage, hazmat) : `stock_modifier`.
+  const peutReferentiel = usePeutEcrireStock()
   const [rappels, setRappels] = useState([])
   const [blocages, setBlocages] = useState([])
   const [plans, setPlans] = useState([])
@@ -119,6 +124,7 @@ export default function QualitePage() {
       <BandeauxStock erreur={erreur} info={info} />
 
       <Section id="rappels" titre="Alertes de rappel">
+        {peutReferentiel && (
         <form onSubmit={declarerRappel} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Produit du rappel</span>
@@ -137,6 +143,7 @@ export default function QualitePage() {
           </label>
           <Button type="submit" disabled={occupe}>Déclarer le rappel</Button>
         </form>
+        )}
         {rappels.length === 0 ? <Vide>Aucun rappel.</Vide> : (
           <ul className="space-y-2 text-sm">
             {rappels.map((r) => (
@@ -148,7 +155,7 @@ export default function QualitePage() {
                   <span className="text-[var(--muted-foreground)]">{r.motif}</span>
                   <Button size="sm" variant="outline" aria-label={`Impact du rappel ${r.id}`}
                     onClick={() => voirImpact(r.id)}>Impact</Button>
-                  {r.statut === 'en_cours' && (
+                  {peutReferentiel && r.statut === 'en_cours' && (
                     <Button size="sm" disabled={occupe} aria-label={`Clôturer le rappel ${r.id}`}
                       onClick={() => geste(() => qualiteApi.cloturerRappel(r.id),
                         'Clôture impossible.', 'Rappel clôturé.')}>
@@ -183,6 +190,7 @@ export default function QualitePage() {
       </Section>
 
       <Section id="blocages" titre="Blocages qualité">
+        {peutMouvement && (
         <form onSubmit={leverQuarantaine} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Casier en quarantaine</span>
@@ -194,6 +202,7 @@ export default function QualitePage() {
           </label>
           <Button type="submit" variant="outline" disabled={occupe}>Lever la quarantaine du casier</Button>
         </form>
+        )}
         {blocages.length === 0 ? <Vide>Aucun blocage.</Vide> : (
           <ul className="space-y-1 text-sm">
             {blocages.map((b) => (
@@ -203,7 +212,7 @@ export default function QualitePage() {
                 <span>{b.bin_code || '—'}</span>
                 <span>{STATUTS_BLOCAGE[b.statut] ?? b.statut}</span>
                 <span className="text-[var(--muted-foreground)]">{b.motif}</span>
-                {b.statut === 'en_quarantaine' && (
+                {peutMouvement && b.statut === 'en_quarantaine' && (
                   <Button size="sm" disabled={occupe} aria-label={`Lever le blocage ${b.id}`}
                     onClick={() => geste(() => qualiteApi.leverBlocage(b.id),
                       'Levée impossible.', 'Blocage levé.')}>
@@ -217,6 +226,7 @@ export default function QualitePage() {
       </Section>
 
       <Section id="echantillonnage" titre="Plans d'échantillonnage">
+        {peutReferentiel && (
         <form onSubmit={creerPlan} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Catégorie contrôlée</span>
@@ -232,6 +242,7 @@ export default function QualitePage() {
           </label>
           <Button type="submit" disabled={occupe}>Enregistrer le plan</Button>
         </form>
+        )}
         {plans.length === 0 ? <Vide>Aucun plan d&apos;échantillonnage.</Vide> : (
           <ul className="space-y-1 text-sm">
             {plans.map((p) => (
@@ -244,6 +255,7 @@ export default function QualitePage() {
       </Section>
 
       <Section id="hazmat" titre="Casiers compatibles par classe de danger">
+        {peutReferentiel && (
         <form onSubmit={declarerHazmat} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Casier compatible</span>
@@ -260,6 +272,7 @@ export default function QualitePage() {
           </label>
           <Button type="submit" disabled={occupe}>Déclarer le casier compatible</Button>
         </form>
+        )}
         {hazmat.length === 0 ? <Vide>Aucun casier déclaré compatible.</Vide> : (
           <ul className="space-y-1 text-sm">
             {hazmat.map((h) => (

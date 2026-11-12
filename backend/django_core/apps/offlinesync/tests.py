@@ -229,7 +229,8 @@ class OfflineOperationJournalTests(TestCase):
         self.api = auth(self.user)
         OfflineOperation.objects.create(
             company=self.co_a, module='crm', op_type='crm.lead.noter',
-            client_op_id='j-a', statut=OfflineOperation.Statut.APPLIQUEE)
+            client_op_id='j-a', statut=OfflineOperation.Statut.APPLIQUEE,
+            user=self.user)  # ALEC21 — le journal est borné à l'auteur
         OfflineOperation.objects.create(
             company=self.co_b, module='crm', op_type='crm.lead.noter',
             client_op_id='j-b', statut=OfflineOperation.Statut.REJETEE)
@@ -268,6 +269,48 @@ class OfflineOperationJournalTests(TestCase):
         resp = self.api.post(JOURNAL, {'module': 'crm', 'op_type': 'x',
                                        'client_op_id': 'z'}, format='json')
         self.assertIn(resp.status_code, (403, 405))
+
+    def test_commercial_ne_lit_que_ses_operations(self):
+        """ALEC21 — deux Commerciaux (rôle LIVRÉ) et un Directeur : A ne
+        lit ni ne résout l'opération de B (404) ; le Directeur lit tout."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom, username):
+            role = Role.objects.create(
+                company=self.co_a, nom=f'{nom} {username}',
+                permissions=list(roles[nom]))
+            return User.objects.create_user(
+                username=username, password='x', company=self.co_a, role=role)
+
+        a = compte('Commercial', 'alec21-a')
+        b = compte('Commercial', 'alec21-b')
+        directeur = compte('Directeur', 'alec21-dir')
+        op_a = OfflineOperation.objects.create(
+            company=self.co_a, module='visites', op_type='visite.mesures',
+            client_op_id='alec21-a', user=a,
+            statut=OfflineOperation.Statut.CONFLIT)
+        op_b = OfflineOperation.objects.create(
+            company=self.co_a, module='visites', op_type='visite.mesures',
+            client_op_id='alec21-b', user=b,
+            statut=OfflineOperation.Statut.CONFLIT)
+
+        api_a = auth(a)
+        ids = {ligne['id'] for ligne in self.rows(api_a.get(JOURNAL))}
+        self.assertEqual(ids, {op_a.pk})
+        self.assertEqual(api_a.get(f'{JOURNAL}{op_b.pk}/').status_code, 404)
+        resp = api_a.post(f'{JOURNAL}{op_b.pk}/resoudre/',
+                          {'choix': 'serveur'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        op_b.refresh_from_db()
+        self.assertEqual(op_b.statut, OfflineOperation.Statut.CONFLIT)
+
+        api_dir = auth(directeur)
+        ids = {ligne['id'] for ligne in self.rows(api_dir.get(JOURNAL))}
+        self.assertTrue({op_a.pk, op_b.pk} <= ids)
+        self.assertEqual(
+            api_dir.get(f'{JOURNAL}{op_b.pk}/').status_code, 200)
 
 
 class RegistryTests(TestCase):
@@ -579,7 +622,8 @@ class ConflitSynchroTests(TestCase):
 
     def test_le_journal_expose_le_conflit_filtrable(self):
         self._en_conflit()
-        resp = self.api_a.get(JOURNAL, {'statut': 'conflit'})
+        # ALEC21 — le conflit est lu par SON auteur (B) : le journal est borné.
+        resp = self.api_b.get(JOURNAL, {'statut': 'conflit'})
         data = resp.data
         lignes = data['results'] if isinstance(data, dict) and 'results' in data else data
         self.assertEqual(len(lignes), 1)

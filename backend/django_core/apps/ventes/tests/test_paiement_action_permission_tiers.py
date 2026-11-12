@@ -81,12 +81,17 @@ def _action_methods():
     return out
 
 
-def _tier_name(action):
+def _tier_names(action):
+    """Classes des permissions que ``get_permissions()`` rend pour ``action``."""
     view = PaiementViewSet()
     view.action = action
-    perms = view.get_permissions()
+    return [type(p).__name__ for p in view.get_permissions()]
+
+
+def _tier_name(action):
+    perms = _tier_names(action)
     assert len(perms) == 1, f"{action}: {len(perms)} permission(s)"
-    return type(perms[0]).__name__
+    return perms[0]
 
 
 class PaiementActionPermissionTierTests(TestCase):
@@ -100,8 +105,10 @@ class PaiementActionPermissionTierTests(TestCase):
             "PaiementViewSet — test cassé ?")
         for name, declared in decorated.items():
             with self.subTest(action=name):
-                expected = declared[0].__name__
-                actual = _tier_name(name)
+                # ADRG10 — une action peut cumuler plusieurs gardes (recu_pdf :
+                # lecture du module + code ``ventes_pdf``) : TOUTES sont rendues.
+                expected = [c.__name__ for c in declared]
+                actual = _tier_names(name)
                 self.assertEqual(
                     actual, expected,
                     f"@action '{name}' déclare {expected} mais "
@@ -125,7 +132,9 @@ class PaiementActionPermissionTierTests(TestCase):
         """Le durcissement ne doit PAS sur-restreindre : recu-pdf reste une
         LECTURE — depuis AARG12, la garde de lecture du module Ventes
         (``LectureFactures``), jamais le palier responsable des écritures."""
-        self.assertEqual(_tier_name('recu_pdf'), 'LectureFactures')
+        # ADRG10 — plus le code ``ventes_pdf`` (« Générer PDF ») de la grille.
+        self.assertEqual(_tier_names('recu_pdf'),
+                         ['LectureFactures', 'DroitDeLaGrille_ventes_pdf'])
 
 
 class PaiementActionRoleGateHTTPTests(TestCase):

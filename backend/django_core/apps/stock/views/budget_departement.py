@@ -17,6 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ADRG32
 from core.mixins import TenantMixin
 from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin
@@ -111,7 +112,8 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in ('list', 'retrieve', 'disponible'):
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        # ADRG32 — écrire une enveloppe de budget d'achat = « commander ».
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('achats_commander')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

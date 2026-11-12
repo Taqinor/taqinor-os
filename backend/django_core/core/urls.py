@@ -36,8 +36,8 @@ from .maintenance_windows import (
 from .degraded_mode import degraded_mode_status_view
 from .trust_center import trust_center_public
 from .export_registry import (
-    ExportReversibiliteHistoriqueView, declencher_export_reversibilite,
-    telecharger_export_reversibilite,
+    ExportReversibiliteHistoriqueView, couper_lien_export_reversibilite,
+    declencher_export_reversibilite, telecharger_export_reversibilite,
 )
 from .rules_api import RegleOperateursView, RegleValiderView
 from .sla import (
@@ -272,6 +272,10 @@ urlpatterns = router.urls + [
     path('export-reversibilite/historique/',
          ExportReversibiliteHistoriqueView.as_view(),
          name='export-reversibilite-historique'),
+    # APUB2 — coupure du lien public d'un export avant ses 7 jours.
+    path('export-reversibilite/<int:pk>/couper-lien/',
+         couper_lien_export_reversibilite,
+         name='export-reversibilite-couper-lien'),
     # NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
     # NOTE : `usage/` est DÉJÀ pris par `TenantUsageSnapshotViewSet` (NTPLT6,
     # router ci-dessus, SUPERUSER only, sémantique différente — metering

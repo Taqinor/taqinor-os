@@ -48,9 +48,6 @@ _NOMS_EXCLUS = {'agent_actions.py'}         # ASEC73 — registre d'agent par ap
 
 _C015 = ('A CORRIGER (C-ASEC-015, D-ASEC-4) : code affiché dans la grille mais jamais '
          'vérifié côté serveur ; la garde est posée par ASEC70 (lane non foldée ici)')
-#: ASEC73 — révélés par l'exclusion des registres d'agent (S4, sans tâche).
-_C040 = ("A CORRIGER (C-ASEC-VER4-040, S4) : lu seulement par un registre d'agent "
-         "(agent_actions.py), aucune vue ne l'applique ; révélé par ASEC73, sans tâche")
 
 #: ASEC50 — code appliqué par ``DroitDeLaGrille`` dès son PREMIER endpoint ;
 #: aucun endpoint de ce geste n'existe aujourd'hui (inventaire du 14/10/2026 :
@@ -61,15 +58,10 @@ _ASEC50_SANS_ENDPOINT = (
 
 #: code -> raison. Décroissant : retirer la ligne dès que le code est consommé.
 EXEMPTIONS = {
-    'stock_supprimer': _C040,
-    'ventes_pdf': _C040,
     # Un devis n'a pas de responsable propre (sa portée suit le lead) : aucun
     # endpoint ne réaffecte un devis — la réaffectation passe par le lead
     # (``crm_reassign``).
     'ventes_reassign': _ASEC50_SANS_ENDPOINT,
-    'adsengine_flightplan_manage': (
-        "A CORRIGER (adsengine, session propriétaire) : plans de vol ADSENG47 "
-        "gérés par un palier, aucun littéral du code côté serveur"),
     'emettre_carte_achat': (
         "geste de l'app frais (parquée, cartes d'achat) rangé sous le module stock "
         "du catalogue : aucune vue ne le sert tant que frais est parquée"),

@@ -23,15 +23,20 @@ class AccessReviewItemSerializer(SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     # ENF17 — campagne / compte d'une AUTRE société = id absent (400).
     same_company_fields = ('campagne', 'user')
+    # APUB4 — l'écran nomme le compte avant de révoquer (lecture seule).
+    user_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = AccessReviewItem
         fields = [
-            'id', 'campagne', 'user', 'role_snapshot', 'reviewer',
+            'id', 'campagne', 'user', 'user_nom', 'role_snapshot', 'reviewer',
             'decision', 'commentaire', 'decided_at', 'created_at',
         ]
         read_only_fields = [
             'id', 'role_snapshot', 'reviewer', 'decided_at', 'created_at']
+
+    def get_user_nom(self, obj) -> str:
+        return obj.user.get_full_name() or obj.user.username
 
 
 class AccessReviewCampaignSerializer(ChampsStrictsMixin,

@@ -10,6 +10,7 @@ from ..utils.params import corps_objet
 from ..models import LotEntrepot
 from ..serializers import LotEntrepotSerializer
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ADRG35
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -39,7 +40,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['fefo']:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
 
     def get_queryset(self):
         qs = super().get_queryset()

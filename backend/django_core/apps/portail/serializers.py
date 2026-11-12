@@ -19,6 +19,7 @@ from core.champs_stricts import ChaineStricte
 from core.champs_stricts import ChampsStrictsMixin
 from core.champs_stricts import EntierNullableEnLecture
 from core.champs_stricts import EntierStrict
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 
 from apps.records.storage import AttachmentSerializerMixin
@@ -136,6 +137,15 @@ class ComptePortailClientSerializer(SameCompanyFKSerializerMixin,
         liste, jamais assez pour s'en servir."""
         token = getattr(obj, 'token_acces', '') or ''
         return f'••••{token[-4:]}' if token else ''
+
+    def validate_client(self, value):
+        """ADRG96 (C-ADRG-053) — le client d'un compte portail est FIGÉ après la
+        création : son jeton servirait sinon le relevé d'un autre client. Un
+        accès pour un autre client se crée par provisionnement. api-fuzz PR #1370 :
+        refus d'ÉTAT (le compte est déjà lié), que le schéma ne peut pas dire : 409."""
+        if self.instance is not None and getattr(value, 'pk', value) != self.instance.client_id:
+            raise ConflitEtat({'client': ["Le client d'un compte portail ne se modifie pas."]})
+        return value
 
 
 class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
@@ -395,17 +405,6 @@ class MarquePortailSerializer(serializers.Serializer):
     logo_url = serializers.CharField(allow_blank=True)
     couleur_primaire = serializers.CharField(allow_blank=True)
     couleur_secondaire = serializers.CharField(allow_blank=True)
-
-
-class ReleveComptePortailSerializer(serializers.Serializer):
-    """Relevé self-service (``ventes.selectors.releve_client_portail``)."""
-    client = serializers.DictField()
-    lignes = serializers.ListField(child=serializers.DictField())
-    paiements = serializers.ListField(child=serializers.DictField())
-    avoirs = serializers.ListField(child=serializers.DictField())
-    totaux = serializers.DictField(child=serializers.CharField())
-    solde_courant = serializers.CharField()
-    balance_agee = serializers.DictField(child=serializers.CharField())
 
 
 class AccepterDevisPortailRequeteSerializer(serializers.Serializer):

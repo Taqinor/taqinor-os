@@ -21,7 +21,9 @@ from drf_spectacular.utils import (
 )
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import MethodNotAllowed, ValidationError
+from rest_framework.exceptions import (
+    MethodNotAllowed, PermissionDenied, ValidationError,
+)
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -133,6 +135,12 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         ferme (ou rouvre) les DEUX portes dans la même transaction.
         """
         avant = bool(getattr(serializer.instance, 'actif', True))
+        # ADRG97 — rouvrir un accès révoqué est une action ADMIN (comme la
+        # création, le provisionnement et le lien) ; révoquer reste au palier.
+        if (not avant and serializer.validated_data.get('actif')
+                and not getattr(self.request.user, 'is_admin_role', False)):
+            raise PermissionDenied(
+                "Réactivation réservée à l'administrateur.")
         # ``super()`` = ``TenantMixin.perform_update`` : la société reste forcée
         # côté serveur (jamais lue du corps) — on ajoute un effet, on n'en
         # retire aucun.

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gedApi from '../../../api/gedApi'
+import { renderAvecAuth } from '../../../test/renderAvecAuth.jsx'
+import { AUTH_COMMERCIAL_RESP, AUTH_DIRECTEUR } from './gedPage.testHelpers.jsx'
 import CorbeillePage from './CorbeillePage.jsx'
 
 /* GED26 — Corbeille : liste des documents supprimés, restauration + purge
@@ -22,10 +22,10 @@ vi.mock('../../../ui', async (importOriginal) => {
   return { ...actual, toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }
 })
 
-function renderPage() {
-  return render(
-    <MemoryRouter><ThemeProvider><CorbeillePage /></ThemeProvider></MemoryRouter>,
-  )
+// ADRG85 — purge et legal holds suivent `ged_gouvernance` (Directeur ;
+// le Commercial responsable ne le porte pas) : comptes partagés du harnais GED.
+function renderPage(auth = AUTH_DIRECTEUR) {
+  return renderAvecAuth(<CorbeillePage />, auth, { theme: true })
 }
 
 beforeEach(() => {
@@ -60,5 +60,12 @@ describe('GED26 CorbeillePage', () => {
       await within(dialog).findByRole('button', { name: 'Supprimer définitivement' }))
 
     await waitFor(() => expect(gedApi.purgerDocument).toHaveBeenCalledWith(3))
+  })
+
+  it('ADRG85 — palier responsable sans ged_gouvernance : pas de purge', async () => {
+    renderPage(AUTH_COMMERCIAL_RESP)
+    await screen.findAllByText('ancien.pdf')
+    expect(screen.getAllByRole('button', { name: 'Restaurer' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Supprimer définitivement' })).toBeNull()
   })
 })

@@ -162,7 +162,9 @@ export default function ListView({
 }) {
   // L10 — action groupée en cours ('statut' | 'technicien' | null) + lignes ciblées.
   const [bulk, setBulk] = useState(null) // { kind, rows, clear }
-  const canBulk = typeof onChangeStatus === 'function' && typeof onReassign === 'function'
+  const canBulk = typeof onChangeStatus === 'function'
+  // ADRG99 — sans fonction de réaffectation (droit `technicien_assign`), pas d'action « Installateur ».
+  const peutReaffecter = typeof (onReassignStrict ?? onReassign) === 'function'
 
   // NTMOB24 — modifications encore en file pour CE chantier (checklist cochée
   // hors réseau, etc.). Une seule lecture pour toute la liste, jamais un hook
@@ -257,12 +259,12 @@ export default function ListView({
         icon: GitBranch,
         onClick: () => setBulk({ kind: 'statut', rows, clear }),
       },
-      {
+      ...(peutReaffecter ? [{
         id: 'technicien',
         label: "Réassigner l'installateur",
         icon: UserCog,
         onClick: () => setBulk({ kind: 'technicien', rows, clear }),
-      },
+      }] : []),
     ]
     : undefined
 

@@ -10,25 +10,27 @@ import { verifierEntreeMenu } from '../../test/navItemModule'
    routes-only (documenté en tête de module.config.jsx) : ce test ne vérifie
    donc pas de parité totale route↔nav, seulement cet ajout. */
 describe.each([
-  ['WIR14', '/parametres/playbooks', 'Playbooks'],
+  ['WIR14', '/parametres/playbooks', 'Playbooks', ['responsable', 'admin']],
   // WIR21 — /parametres/vues (NTUX23) existait en route sans lien de menu ;
   // le rapport de gouvernance des vues sauvegardées n'a de données qu'une
   // fois les 4 écrans (devis/tickets/produits/factures) basculés au système
   // serveur (`uxviews.SavedView`), fait dans le même lot.
-  ['WIR21', '/parametres/vues', 'Vues sauvegardées'],
-])('parametres — module.config (%s %s)', (_task, path, label) => {
-  it(`déclare ${path} en route ET en entrée de menu, gatées responsable/admin`, async () => {
+  // ADRG82 — « /parametres/vues réservé admin » : l'écran n'appelle que des
+  // routes réservées à l'administrateur (route ET menu).
+  ['WIR21', '/parametres/vues', 'Vues sauvegardées', ['admin']],
+])('parametres — module.config (%s %s)', (_task, path, label, roles) => {
+  it(`déclare ${path} en route ET en entrée de menu, gatées ${roles.join('/')}`, async () => {
     const { default: config } = await import('./module.config.jsx')
     expect(config.key).toBe('parametres')
 
     const route = config.routes.find((r) => r.path === path)
     expect(route).toBeTruthy()
-    expect(route.roles).toEqual(['responsable', 'admin'])
+    expect(route.roles).toEqual(roles)
 
     const navItem = config.nav.items.find((i) => i.to === path)
     expect(navItem).toBeTruthy()
     expect(navItem.label).toBe(label)
-    expect(navItem.roles).toEqual(['responsable', 'admin'])
+    expect(navItem.roles).toEqual(roles)
     expect(navItem.icon).toBeTruthy()
   })
 })

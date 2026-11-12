@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gedApi from '../../../api/gedApi'
+import { renderAvecAuth } from '../../../test/renderAvecAuth.jsx'
+import { AUTH_COMMERCIAL_RESP, AUTH_DIRECTEUR } from './gedPage.testHelpers.jsx'
 import { toast } from '../../../ui'
 import RetentionPage from './RetentionPage.jsx'
 
@@ -22,6 +22,7 @@ vi.mock('../../../api/gedApi', () => ({
     ] })),
     getArchivagesLegaux: vi.fn(() => Promise.resolve({ data: [] })),
     getLegalHolds: vi.fn(() => Promise.resolve({ data: [] })),
+    leverLegalHold: vi.fn(() => Promise.resolve({ data: { leves: 1 } })),
     getPartages: vi.fn(() => Promise.resolve({ data: [] })),
     getJournalAcces: vi.fn(() => Promise.resolve({ data: [] })),
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
@@ -41,10 +42,10 @@ vi.mock('../../../ui', async (importOriginal) => {
   return { ...actual, toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }
 })
 
-function renderPage() {
-  return render(
-    <MemoryRouter><ThemeProvider><RetentionPage /></ThemeProvider></MemoryRouter>,
-  )
+// ADRG85 — purge et legal holds suivent `ged_gouvernance` (Directeur ;
+// le Commercial responsable ne le porte pas) : comptes partagés du harnais GED.
+function renderPage(auth = AUTH_DIRECTEUR) {
+  return renderAvecAuth(<RetentionPage />, auth, { theme: true })
 }
 
 beforeEach(() => {
@@ -143,5 +144,25 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     // donc sur le contenu du dialogue, ce qui est justement ce qui compte.
     const dialogue = await screen.findByRole('dialog')
     expect(dialogue.textContent).toContain('Devis (365 j)')
+  })
+
+  it('ADRG85 — legal holds : absents pour un Commercial responsable, présents pour un Directeur', async () => {
+    const hold = {
+      id: 7, document: 3, document_nom: 'Contrat.pdf', motif: 'Litige',
+      actif: true, date_pose: '2026-06-01T10:00:00Z', place_par_nom: 'Reda',
+    }
+    gedApi.getLegalHolds.mockResolvedValue({ data: [hold] })
+
+    const vue = renderPage(AUTH_COMMERCIAL_RESP)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Legal holds' }))
+    expect((await screen.findAllByText('Contrat.pdf')).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Lever le hold' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Poser un hold/ })).toBeNull()
+    vue.unmount()
+
+    renderPage(AUTH_DIRECTEUR)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Legal holds' }))
+    expect((await screen.findAllByRole('button', { name: 'Lever le hold' })).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /Poser un hold/ })).toBeInTheDocument()
   })
 })

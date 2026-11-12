@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, onTestFinished } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -42,6 +42,11 @@ vi.mock('../../api/monitoringApi', () => ({
     classerDrapeau: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
+
+// ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
+// vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
+const droit = vi.hoisted(() => ({ ecrire: true }))
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: () => droit.ecrire }))
 
 import monitoringApi from '../../api/monitoringApi'
 import FleetPage from './FleetPage'
@@ -140,5 +145,19 @@ describe('FleetPage (WR6 — vue parc)', () => {
     expect(await screen.findByText('Aucune alerte de sous-performance ouverte.')).toBeInTheDocument()
     expect(screen.getByText('Aucune alerte ouverte')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Classer' })).not.toBeInTheDocument()
+  })
+
+  it('ADRG47 — un Commercial voit les alertes sans le geste « Classer »', async () => {
+    droit.ecrire = false
+    onTestFinished(() => { droit.ecrire = true })
+    monitoringApi.getDrapeaux.mockResolvedValueOnce({
+      data: { count: 1, results: [{
+        id: 12, installation: 11, reference: 'INST-2026-001', ratio_pct: '60.00',
+        date_creation: '2026-11-07T02:15:00Z', ticket: null, is_open: true,
+      }] },
+    })
+    renderPage(<FleetPage />)
+    expect(await screen.findByRole('region', { name: 'Alertes de sous-performance' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Classer' })).toBeNull()
   })
 })

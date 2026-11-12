@@ -28,6 +28,11 @@ vi.mock('../../api/ventesApi', () => ({
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
 }))
+// ADRG2 — la page lit le droit `encaisser` (Exclure, Promesse de paiement).
+const droits = vi.hoisted(() => ({ encaisser: true }))
+vi.mock('../../hooks/useHasPermission', () => ({
+  useHasPermission: (code) => !!droits[code],
+}))
 vi.mock('../../ui/confirm', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
   useConfirmDialog: () => ({
@@ -51,6 +56,7 @@ const defaultGet = (url) => {
 }
 
 beforeEach(() => {
+  droits.encaisser = true
   api.get.mockImplementation(defaultGet)
   ventesApi.getRelances.mockResolvedValue({ data: ROWS })
   ventesApi.relancerFacture.mockResolvedValue({ data: {} })
@@ -195,6 +201,18 @@ describe('RelancesPage (PACT45 — promesses de paiement)', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/ventes/promesses-paiement/',
       expect.objectContaining({ facture: 1, montant_promis: '1000' })))
+  })
+
+  it('ADRG2 — sans `encaisser` : ni « Exclure » ni « Promesse de paiement »', async () => {
+    droits.encaisser = false
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('ACME SARL')
+
+    await user.click(screen.getByRole('button', { name: /Plus d'actions — FAC-001/ }))
+    expect(await screen.findByRole('menuitem', { name: /Historique/ })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Promesse de paiement/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /^Exclure$/ })).toBeNull()
   })
 })
 

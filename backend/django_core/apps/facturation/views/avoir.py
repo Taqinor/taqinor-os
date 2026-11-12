@@ -83,6 +83,8 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [IsAdminRole()]
         if self.action == 'dgi_export':  # AARG41 — comme la facture (ASEC50)
             return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
+        if self.action == 'telecharger_pdf':  # ADRG10 — « Générer PDF »
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_pdf')()]
         return [IsResponsableOrAdmin()]
 
     @staticmethod
@@ -185,6 +187,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         from core.events import avoir_annule
 
         with transaction.atomic():
+            # AARG74 — relu SOUS VERROU : une annulation concurrente déjà
+            # commitée ⇒ la même réponse idempotente, sans second événement.
+            avoir = Avoir.objects.select_for_update().get(pk=avoir.pk)
+            if avoir.statut == Avoir.Statut.ANNULEE:
+                return Response(AvoirSerializer(avoir).data)
             # AFAC28 (C-AFAC-025) — un avoir de RETOUR re-stocké a posé une
             # ENTRÉE de stock : l'annuler la contre-passe (SORTIE miroir,
             # référence = l'avoir), en premier et avant toute autre écriture ;

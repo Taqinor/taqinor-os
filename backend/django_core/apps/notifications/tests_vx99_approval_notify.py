@@ -55,6 +55,35 @@ class DemandeAchatNotifyTests(TestCase):
             recipient=self.approver, event_type=EventType.APPROVAL_REQUESTED)
         self.assertEqual(notifs.count(), 1)
 
+    def test_montant_reserve_aux_destinataires_a_prix_achat(self):
+        """ALEC13 — « Montant estimé » seulement au destinataire qui voit les
+        prix d'achat : le Commercial responsable LIVRÉ reçoit la référence et
+        l'objet sans le montant, le Directeur LIVRÉ avec."""
+        from decimal import Decimal
+        from unittest import mock
+        from apps.installations.models import DemandeAchat
+        from apps.roles.models import Role
+        from apps.roles import permissions_registre as reg
+
+        def compte(nom, perms):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(
+                username=f'alec13-{role.pk}', password='pw', company=self.company, role=role)
+        cr = compte('Commercial responsable', reg.COMMERCIAL_RESP_PERMISSIONS)
+        directeur = compte('Directeur', reg.DIRECTEUR_PERMISSIONS)
+        da = self._make_da('DA-ALEC13')
+        Notification.objects.all().delete()
+        with mock.patch.object(DemandeAchat, 'montant_estime', new_callable=mock.PropertyMock,
+                               return_value=Decimal('1640.00')):
+            da.statut = DemandeAchat.Statut.SOUMISE
+            da.save()
+        corps = {n.recipient_id: n.body for n in Notification.objects.filter(
+            event_type=EventType.APPROVAL_REQUESTED)}
+        self.assertIn('DA-ALEC13', corps[cr.pk])
+        self.assertIn('Onduleurs', corps[cr.pk])
+        self.assertNotIn('Montant estimé', corps[cr.pk])
+        self.assertIn('Montant estimé : 1640.00 DH.', corps[directeur.pk])
+
     def test_approval_decision_notifies_requester(self):
         from apps.installations.models import DemandeAchat
         da = self._make_da('DA-VX99-2')

@@ -194,3 +194,36 @@ class ConsignationTests(TestCase):
         self.depot.refresh_from_db()
         self.assertEqual(self.depot.quantite_consommee_declaree, 0)
         self.assertEqual(self._factures().count(), 0)
+
+    def test_declaration_exige_ventes_creer_roles_livres(self):
+        """ADRG34 (C-ADRG-008) — déclarer une consommation crée une facture
+        brouillon : ``ventes_creer`` exigé. Technicien et Technicien
+        responsable livrés : 403 « Droit … manquant (ventes_creer) », dépôt et
+        factures inchangés ; Directeur et compte hérité responsable : 201 avec
+        ``facture_id``. Mutant : retirer l'entrée ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'adrg34-{nom.lower().replace(" ", "-")}',
+                password='x', company=self.company, role=role)
+        url = f'{URL}{self.depot.id}/declarer-consommation/'
+        corps = {'quantite': 1, 'date_declaration': JOUR_CONSO.isoformat()}
+        for nom in ('Technicien', 'Technicien responsable'):
+            with self.subTest(role=nom):
+                rep = auth(compte(nom)).post(url, corps, format='json')
+                self.assertEqual(rep.status_code, 403, rep.content)
+                self.assertIn('ventes_creer', str(rep.json()['detail']))
+                self.depot.refresh_from_db()
+                self.assertEqual(self.depot.quantite_consommee_declaree, 0)
+                self.assertEqual(self._factures().count(), 0)
+        for user in (compte('Directeur'), self.resp):
+            with self.subTest(user=user.username):
+                rep = auth(user).post(url, corps, format='json')
+                self.assertEqual(rep.status_code, 201, rep.content)
+                self.assertIn('facture_id', rep.json())

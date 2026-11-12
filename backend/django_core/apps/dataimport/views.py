@@ -22,8 +22,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from django.http import Http404
 
 from authentication.permissions import (
-    IsResponsableOrAdmin, HasPermissionAndRole,
+    IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
+    HasPermissionAndRole,
 )
+from apps.parametres.localisation import PeutGererLocalisation
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import _user_has_or_legacy
 from core.selectors import get_company_object
@@ -74,14 +76,18 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
 #: ACVI1 — droit exigé par cible en plus du palier (l'aperçu montre, le commit réécrit).
-DROIT_PAR_CIBLE = {'leads': 'crm_modifier', 'clients': 'crm_modifier'}
+#: ADRG61/ADRG65 — documents et référentiels : le code de création unitaire.
+DROIT_PAR_CIBLE = {'leads': 'crm_modifier', 'clients': 'crm_modifier',
+                   'factures': 'ventes_creer', 'devis': 'ventes_creer',
+                   'fournisseurs': 'stock_modifier',
+                   'equipements': 'equipement_gerer'}
 
 
 def _refus_droit_cible(request, target):
     code = DROIT_PAR_CIBLE.get(target)
     if code is None or _user_has_or_legacy(request.user, code):
         return None
-    return Response({'detail': "Droit « Modifier » du CRM manquant.",
+    return Response({'detail': f"Droit « {code} » manquant pour cet import.",
                      'code': 'droit_manquant'}, status=403)
 
 
@@ -349,6 +355,8 @@ def save_mapping(request):
     # (la lecture à la main levait AttributeError → 500).
     corps = corps_valide(request, _MAPPING_REQUETE)
     target, nom, mapping = corps['target'], corps['nom'], corps['mapping']
+    if refus := _refus_droit_cible(request, target):  # ADRG103
+        return refus
     if not mapping:
         return Response(
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
@@ -384,6 +392,9 @@ def job_erreurs_csv(request, job_id):
         job = get_company_object(ImportJob, job_id, request.user)
     except Http404:
         return Response({'detail': 'Import introuvable.'}, status=404)
+    # ADRG74 — lignes SOURCE du fichier : son créateur ou l'administrateur.
+    if job.created_by_id != request.user.pk and not request.user.is_admin_role:
+        return Response({'detail': 'Import introuvable.'}, status=404)
     fieldnames, rows = services.erreurs_csv_rows(job)
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames or ['_motif'])
@@ -411,7 +422,7 @@ def export_traductions(request):
 @extend_schema(request={'multipart/form-data': IMPORT_TRADUCTIONS_REQUEST},
                responses={200: IMPORT_TRADUCTIONS_RESPONSE})
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])  # ADRG67
 @parser_classes([MultiPartParser, FormParser])
 def import_traductions(request):
     """NTI18N29 — ``POST traductions/import/`` (multipart ``file``) : réimporte
@@ -458,7 +469,7 @@ def export_feries(request):
 @extend_schema(request={'multipart/form-data': IMPORT_FERIES_REQUEST},
                responses={200: IMPORT_FERIES_RESPONSE})
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsAdminRole])  # ADRG67 — comme HolidayViewSet
 @parser_classes([MultiPartParser, FormParser])
 def import_feries(request):
     """NTI18N45 — ``POST feries/import/`` (multipart ``file``) : importe en

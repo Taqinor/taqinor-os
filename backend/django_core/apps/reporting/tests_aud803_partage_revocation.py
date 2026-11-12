@@ -16,7 +16,7 @@ Après correctif : ``SavedReport.partage_revoque_le`` coupe le lien
 immédiatement (même 404 générique — jamais d'indice sur le motif), et chaque
 résolution RÉUSSIE écrit une ligne ``AccesRapportPartage`` (IP + horodatage).
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from authentication.models import Company
@@ -76,11 +76,15 @@ class Aud803RevocationDuLienPublicTests(TestCase):
         self.assertEqual(trace.company, self.company)
         self.assertIsNotNone(trace.consulte_le)
 
-    def test_la_trace_porte_l_ip_transmise_par_le_proxy(self):
+    @override_settings(NUM_PROXIES=1)
+    def test_la_trace_ignore_le_premier_saut_fourni(self):
+        """APUB42 — l'IP tracée est celle de ``ip_de_requete`` (dernier saut de
+        confiance), jamais le premier saut choisi par l'appelant."""
         self.client.get(URL.format(token=self.token),
                         HTTP_X_FORWARDED_FOR='203.0.113.7, 10.0.0.1')
         trace = AccesRapportPartage.objects.get(saved_report=self.report)
-        self.assertEqual(trace.ip, '203.0.113.7')
+        self.assertEqual(trace.ip, '10.0.0.1')
+        self.assertNotEqual(trace.ip, '203.0.113.7')
 
     def test_un_jeton_invalide_n_ecrit_aucune_trace(self):
         self.client.get(URL.format(token='pas-un-jeton'))
@@ -91,3 +95,35 @@ class Aud803RevocationDuLienPublicTests(TestCase):
         self.report.save(update_fields=['partage_revoque_le'])
         self.client.get(URL.format(token=self.token))
         self.assertEqual(AccesRapportPartage.objects.count(), 0)
+
+    # ── APUB41 — geste « Couper le lien public » ──────────────────────────
+    def test_couper_partage_par_l_api_rend_404(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        def api(company, nom):
+            user = get_user_model().objects.create_user(
+                username=nom, password='x', company=company,
+                role_legacy='responsable')
+            client = APIClient()
+            client.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return client
+        couper = f'/api/django/reporting/saved-reports/{self.report.pk}/couper-partage/'
+        autre = Company.objects.create(nom='APUB41 B')
+        self.assertEqual(api(autre, 'apub41-b').post(couper).status_code, 404)
+        self.report.refresh_from_db()
+        self.assertIsNone(self.report.partage_revoque_le)
+        responsable = api(self.company, 'apub41-a')
+        res = responsable.post(couper)
+        self.assertEqual(res.status_code, 200, res.content)
+        self.report.refresh_from_db()
+        date = self.report.partage_revoque_le
+        self.assertIsNotNone(date)
+        self.assertIn('partage_revoque_le', res.json())
+        self.assertEqual(self.client.get(URL.format(token=self.token)).status_code, 404)
+        self.assertEqual(AccesRapportPartage.objects.count(), 0)
+        self.assertEqual(responsable.post(couper).status_code, 200)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.partage_revoque_le, date)  # idempotent

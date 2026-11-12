@@ -19,6 +19,9 @@ vi.mock('../../../api/portailApi', () => ({
     },
   },
 }))
+// ADRG97 — palier administrateur pilotable (défaut : admin, comme avant).
+const etatAdmin = vi.hoisted(() => ({ admin: true }))
+vi.mock('../../../hooks/useHasPermission', () => ({ useIsAdmin: () => etatAdmin.admin }))
 vi.mock('../../../api/crmApi', () => ({
   default: { getClients: vi.fn(() => Promise.resolve({ data: [] })) },
 }))
@@ -29,7 +32,7 @@ import ComptesPortailAdmin from './ComptesPortailAdmin'
 import { enveloppe, pagine } from './paginationTest'
 
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); etatAdmin.admin = true })
 
 // DataTable lit la densité via useDensity → <ThemeProvider> et persiste ses
 // filtres via useSearchParams → <Router> (même patron que WarrantyClaimsPage.test.jsx).
@@ -95,6 +98,22 @@ describe('ComptesPortailAdmin — PACT96', () => {
     fireEvent.click(screen.getAllByRole('switch')[0])
     await waitFor(() => expect(portailApi.admin.comptes.patch)
       .toHaveBeenCalledWith(3, { actif: false }))
+  })
+
+  it("ADRG97 — hors administrateur, l'interrupteur d'un compte révoqué est grisé", async () => {
+    etatAdmin.admin = false
+    portailApi.admin.comptes.liste.mockResolvedValue({
+      data: enveloppe([
+        { id: 4, client: 14, email: 'revoque@exemple.ma', actif: false },
+        { id: 5, client: 15, email: 'actif@exemple.ma', actif: true },
+      ]),
+    })
+    renderPage(<ComptesPortailAdmin />)
+    await waitFor(() => expect(screen.getAllByRole('switch').length).toBeGreaterThanOrEqual(2))
+    const revoque = screen.getAllByRole('switch', { name: /Activer le compte revoque@exemple\.ma/ })[0]
+    const actif = screen.getAllByRole('switch', { name: /Révoquer le compte actif@exemple\.ma/ })[0]
+    expect(revoque).toBeDisabled()
+    expect(actif).not.toBeDisabled()
   })
 
   it('provisionne un accès et affiche le message renvoyé par le serveur', async () => {

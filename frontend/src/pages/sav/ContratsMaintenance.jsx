@@ -17,6 +17,7 @@ import installationsApi from '../../api/installationsApi'
 import api from '../../api/axios'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { useHasPermission } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import {
   TooltipProvider,
   Button,
@@ -261,6 +262,8 @@ export function Component() {
   // n'apparaît même pas dans le Segmented sans la permission (unmount total,
   // jamais un simple masquage CSS — cf. EquipementFiabilitePanel).
   const canSeeCouts = useHasPermission('prix_achat_voir')
+  // ADRG40 — affecter un technicien à la tournée = `sav_reassign` (serveur).
+  const peutReassigner = useDroitMetier('sav_reassign')
 
   // WIR230 — Tournée préventive (FG88) : file des visites dues avec GPS,
   // triée par proximité SERVEUR (jamais recalculée côté écran).
@@ -328,7 +331,7 @@ export function Component() {
       await savApi.planifierTournee({
         ticket_ids: [...tourneeSelected],
         date_tournee: tourneeDate,
-        technicien_id: tourneeTechnicien || null,
+        technicien_id: (peutReassigner && tourneeTechnicien) || null,
       })
       toast.success('Tournée planifiée.')
       setTourneeSelected(new Set())
@@ -823,7 +826,7 @@ export function Component() {
                 <Input type="date" value={tourneeDate} aria-label="Date de tournée"
                        onChange={(e) => setTourneeDate(e.target.value)} />
               </FormField>
-              <FormField label="Technicien (optionnel)">
+              {peutReassigner && <FormField label="Technicien (optionnel)">
                 <Select value={tourneeTechnicien || '__none'}
                         onValueChange={(v) => setTourneeTechnicien(v === '__none' ? '' : v)}>
                   <SelectTrigger className="w-48" aria-label="Technicien (optionnel)">
@@ -836,7 +839,7 @@ export function Component() {
                     ))}
                   </SelectContent>
                 </Select>
-              </FormField>
+              </FormField>}
               <Button
                 disabled={!tourneeSelected.size || !tourneeDate}
                 loading={tourneeBusy}

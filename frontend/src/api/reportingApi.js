@@ -48,6 +48,8 @@ const reportingApi = {
   updateSavedReport: (id, data) =>
     api.patch(`/reporting/saved-reports/${id}/`, data),
   deleteSavedReport: (id) => api.delete(`/reporting/saved-reports/${id}/`),
+  // APUB41 — coupe le lien public du rapport (idempotent, sans retour).
+  couperPartageSavedReport: (id) => api.post(`/reporting/saved-reports/${id}/couper-partage/`),
   // AANA45 / D-AANA-036-BRANCHER — historique de diffusion des rapports
   // programmés (lecture seule ; ?saved_report=, ?statut=) et KPI achats →
   // paiement (?debut=&fin=, contrats kpi_p2p.json / rapports_programmes.json, envois_rapports.json).

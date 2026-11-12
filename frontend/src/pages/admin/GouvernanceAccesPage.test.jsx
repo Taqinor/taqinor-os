@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 // PACT13 : la forme serveur vient du contrat partagé, jamais d'un mock écrit à la main.
 import REVUE_ACCES from '../../../../backend/django_core/apps/roles/contract_samples/revue_acces.json'
 
@@ -12,7 +13,7 @@ const H = vi.hoisted(() => ({
   campList: vi.fn(() => Promise.resolve({ data: [
     { id: 1, nom: 'Q3 2026', statut: 'ouverte', items: [
       // Forme serveur : accessreview.services.generate_items fige un objet.
-      { id: 10, user: 5, role_snapshot: { role_id: 3, role_nom: 'Commercial' }, decision: 'en_attente' },
+      { id: 10, user: 5, user_nom: 'Sami', role_snapshot: { role_id: 3, role_nom: 'Commercial' }, decision: 'en_attente' },
     ] },
   ] })),
   campGet: vi.fn(() => Promise.resolve({ data: { id: 1, nom: 'Q3 2026', statut: 'ouverte', items: [
@@ -35,7 +36,7 @@ vi.mock('../../api/accessReviewApi', () => ({
 
 import GouvernanceAccesPage from './GouvernanceAccesPage'
 
-const renderPage = () => render(<ThemeProvider><GouvernanceAccesPage /></ThemeProvider>)
+const renderPage = () => render(<ThemeProvider><ConfirmProvider><GouvernanceAccesPage /></ConfirmProvider></ThemeProvider>)
 
 beforeEach(() => {
   Object.values(H).forEach((f) => f.mockClear())
@@ -51,12 +52,26 @@ describe('WIR135 GouvernanceAccesPage', () => {
     expect(await screen.findByText('Q3 2026')).toBeInTheDocument()
   })
 
-  it('révoque un item de campagne (retire le rôle via le serveur)', async () => {
+  it('révoquer un item demande confirmation ; « Annuler » ne retire rien', async () => {
     renderPage()
     fireEvent.click(await screen.findByText('Q3 2026'))
     // Le rôle figé s'affiche par son libellé (jamais l'objet brut : React #31).
     expect(await screen.findByText('Commercial')).toBeInTheDocument()
+    // APUB4 — confirmation maison nommant le compte ; « Annuler » n'appelle rien.
     fireEvent.click(await screen.findByText('Révoquer'))
+    expect(await screen.findByText(/Sami \(Compte #5\) perd le rôle « Commercial »/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByText(/perd le rôle/)).toBeNull())
+    expect(H.attester).not.toHaveBeenCalled()
+  })
+
+  it('APUB4 — « Révoquer l’accès » confirmé retire le rôle via le serveur', async () => {
+    // Rendu neuf : rouvrir la même AlertDialog Radix juste après « Annuler »
+    // n'est pas fiable sous jsdom (2 échecs sur 3 en local, rouge en CI).
+    renderPage()
+    fireEvent.click(await screen.findByText('Q3 2026'))
+    fireEvent.click(await screen.findByText('Révoquer'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Révoquer l’accès' }))
     await waitFor(() => expect(H.attester).toHaveBeenCalledWith(1,
       expect.objectContaining({ item: 10, decision: 'revoque' })))
   })

@@ -162,3 +162,42 @@ class TestAUD127AvoirAnnule(TestCase):
         self.assertEqual(avoir.statut, Avoir.Statut.ANNULEE)
         # UNE seule émission : une seconde extourne doublerait le grand livre.
         self.assertEqual(len(self.listener.calls), 1)
+
+    def test_annulation_lue_perimee_un_seul_avoir_annule(self):
+        """AARG74 (C-AARG-OPT1-000) — une seconde annulation dont l'instance a
+        été lue AVANT le commit de la première (course simulée : ``get_object``
+        rend l'avoir encore « émis ») relit l'avoir sous verrou : 200, aucun
+        second ``avoir_annule``, facture et paiements inchangés."""
+        from unittest import mock
+
+        from apps.ventes.models import Paiement
+        from apps.ventes.views import AvoirViewSet
+        # 1 × 1 000 HT à 20 % = 1 200 TTC.
+        avoir = self._creer_avoir(
+            {'motif': 'Retour partiel',
+             'lignes': [{'produit': self.panneau.id,
+                         'designation': 'Panneau PV', 'quantite': '1',
+                         'prix_unitaire': '1000', 'taux_tva': '20'}]})
+        self.assertEqual(avoir.total_ttc, Decimal('1200.00'))
+        perime = Avoir.objects.get(pk=avoir.pk)
+        r1 = self._annuler(avoir)
+        self.assertEqual(r1.status_code, 200, r1.data)
+        self.facture.refresh_from_db()
+        du_apres_premiere = self.facture.montant_du
+        paiements = list(Paiement.objects.filter(
+            facture=self.facture).values_list('id', 'montant'))
+
+        self.assertEqual(perime.statut, Avoir.Statut.EMISE)
+        with mock.patch.object(AvoirViewSet, 'get_object', return_value=perime):
+            r2 = self._annuler(avoir)
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertEqual(r2.data['statut'], Avoir.Statut.ANNULEE)
+        # Une seule extourne au total.
+        self.assertEqual(len(self.listener.calls), 1)
+        avoir.refresh_from_db()
+        self.assertEqual(avoir.statut, Avoir.Statut.ANNULEE)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.montant_du, du_apres_premiere)
+        self.assertEqual(self.facture.montant_du, Decimal('24000.00'))
+        self.assertEqual(list(Paiement.objects.filter(
+            facture=self.facture).values_list('id', 'montant')), paiements)

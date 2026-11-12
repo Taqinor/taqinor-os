@@ -768,8 +768,13 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
         services.journaliser_config(  # APAR27 — jeton/secret masqués
             request.user, f'webhook:{trigger.pk}', 'Webhook entrant créé',
             new=services.resume_webhook(trigger))
-        return Response(
-            self.get_serializer(trigger).data, status=201)
+        return Response(  # ALEC38 — l'URL complète, une seule fois
+            self._montrer_une_fois(trigger), status=201)
+
+    def _montrer_une_fois(self, trigger):
+        return self.get_serializer(
+            trigger, context={**self.get_serializer_context(),
+                              'montrer_secret': True}).data
 
     def perform_update(self, serializer):
         ancien = services.resume_webhook(serializer.instance)
@@ -797,7 +802,7 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
             request.user, f'webhook:{trigger.pk}',
             'Jeton du webhook entrant régénéré', old=ancien,
             new=services.masquer_secret(trigger.token))
-        return Response(self.get_serializer(trigger).data)
+        return Response(self._montrer_une_fois(trigger))  # ALEC38
 
 
 # ─────────────────────────────────────────────────────────────────────────────

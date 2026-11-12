@@ -57,6 +57,8 @@ export default function FlightPlanScreen() {
   // PUB10 — permission de composition (valider/simuler un plan).
   const { has } = useAdsPermissions()
   const canManage = has('adsengine_manage')
+  // APUB12 — enregistrer (plans-vol / phases-vol) exige le code de la grille.
+  const canSavePlan = has('adsengine_flightplan_manage')
   const [templates, setTemplates] = useState([])
   const [arms, setArms] = useState([])
   const [preflight, setPreflight] = useState({ pret: false, portes: [], manquantes: [] })
@@ -337,8 +339,8 @@ export default function FlightPlanScreen() {
                   ce bouton, fermer l'onglet perdait tout le plan composé. */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.75rem' }}>
                 <button type="button" className="btn btn-primary" data-testid="ae-fp-save"
-                  disabled={saving || !nom.trim() || !composed || !canManage}
-                  title={!canManage ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
+                  disabled={saving || !nom.trim() || !composed || !canSavePlan}
+                  title={!canSavePlan ? 'Nécessite la permission « gérer les plans de vol » (adsengine_flightplan_manage).' : undefined}
                   onClick={savePlan}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                   <Save size={14} aria-hidden="true" /> Enregistrer le plan

@@ -157,10 +157,19 @@ def acces_portail_revoque(user):
 
     Lecture via ``apps.portail.selectors`` (jamais ``apps.portail.models``) et
     import FONCTION-LOCAL : ``apps.roles`` reste sans dépendance de démarrage.
-    Seule la portée ``portail_client`` porte un ``ComptePortailClient`` — les
-    portées fournisseur/partenaire ne sont donc jamais concernées.
+
+    APUB71 — la portée ``portail_fournisseur`` lit la MÊME règle que sa porte à
+    jeton : ``apps.stock.selectors.compte_fournisseur_portail_actif`` (False =
+    accès fermé ; None = aucun compte, pas une révocation). Le partenaire n'est
+    pas concerné.
     """
-    if getattr(user, 'portee', PORTEE_INTERNE) != 'portail_client':
+    portee = getattr(user, 'portee', PORTEE_INTERNE)
+    if portee == 'portail_fournisseur':
+        from apps.stock.selectors import compte_fournisseur_portail_actif
+        return compte_fournisseur_portail_actif(
+            getattr(user, 'company_id', None),
+            getattr(user, 'portail_fournisseur_id', None)) is False
+    if portee != 'portail_client':
         return False
     from apps.portail.selectors import compte_portail_client_actif
     etat = compte_portail_client_actif(

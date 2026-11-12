@@ -17,7 +17,10 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from apps.stock.permissions import PeutVoirPrixAchat
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsResponsableOrAdmin, LectureDuModule,
+)
 from core.champs_stricts import date_ou_400
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
@@ -449,6 +452,11 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
+        if self.action == 'analyse':  # ADRG100 (D-ASTK-2) : coûts d'achat servis
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('prix_achat_voir')()]
+        if self.action == 'cout_soustraitance':  # ALEC10 (D-ASTK-2)
+            return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -622,7 +630,8 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     ordre, user=request.user)
             ordres.append(ordre)
         return Response(
-            OrdreAssemblageSerializer(ordres, many=True).data,
+            OrdreAssemblageSerializer(  # ALEC10 : contexte → MasqueCoutPrevu
+                ordres, many=True, context={'request': request}).data,
             status=201 if any_created else 200)
 
     @oa.extend_schema(responses=oa.OBJ)
@@ -786,7 +795,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='cout-soustraitance',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, PeutVoirPrixAchat])
     def cout_soustraitance(self, request, pk=None):
         """XMFG16 — coût du composite sous-traité (composants + façon OST) :
         responsable/admin uniquement (coûts d'achat), JAMAIS client-facing."""

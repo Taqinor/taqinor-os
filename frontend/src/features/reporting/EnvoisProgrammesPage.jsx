@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Mail, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Link2Off, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import { getApiError } from '../../lib/apiError'
 import { formatDateTime } from '../../lib/format'
@@ -105,7 +105,7 @@ function dateFr(iso) {
 }
 
 export default function EnvoisProgrammesPage() {
-  const { confirmDelete } = useConfirmDialog()
+  const { confirm, confirmDelete } = useConfirmDialog()
   const [rapports, setRapports] = useState([])
   const [envois, setEnvois] = useState({ lignes: [], total: 0 })
   const [chargement, setChargement] = useState(true)
@@ -194,6 +194,22 @@ export default function EnvoisProgrammesPage() {
       recharger()
     } catch (err) {
       toast.error(getApiError(err, 'Suppression impossible.').message)
+    }
+  }
+
+  // APUB41 — coupe le lien public déjà transféré (l'ancien lien rend 404).
+  const couperLien = async (rapport) => {
+    const ok = await confirm({
+      title: 'Couper le lien public ?',
+      description: `Le lien partagé du rapport « ${rapport.name} » ne s'ouvrira plus.`,
+      confirmLabel: 'Couper le lien',
+    })
+    if (!ok) return
+    try {
+      await reportingApi.couperPartageSavedReport(rapport.id)
+      toast.success('Lien public coupé.')
+    } catch (err) {
+      toast.error(getApiError(err, 'Impossible de couper le lien.').message)
     }
   }
 
@@ -406,6 +422,9 @@ export default function EnvoisProgrammesPage() {
                               >
                                 <Pencil />
                               </Button>
+                              {r.canal === 'whatsapp' && (
+                                <Button variant="ghost" size="sm" onClick={() => couperLien(r)} aria-label={`Couper le lien public de ${r.name}`}><Link2Off /></Button>
+                              )}
                               <Button variant="ghost" size="sm" onClick={() => supprimer(r)} aria-label={`Supprimer ${r.name}`}><Trash2 /></Button>
                             </div>
                           </td>

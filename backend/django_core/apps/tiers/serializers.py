@@ -74,3 +74,16 @@ class TiersSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'date_creation', 'date_modification',
         ]
+
+    #: ALEC20 — coordonnées personnelles retirées sans ``client_pii_voir``.
+    CLES_PERSONNELLES = ('telephone', 'whatsapp', 'email', 'adresse',
+                         'gps_lat', 'gps_lng', 'cin', 'rib')
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_client_pii', True):
+            for cle in self.CLES_PERSONNELLES:
+                data.pop(cle, None)
+        return data

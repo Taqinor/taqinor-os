@@ -185,6 +185,73 @@ class ZMFG12MiseAuRebutTest(TestCase):
             {'motif': 'x'}, format='json')
         self.assertEqual(r.status_code, 403, r.data)
 
+    def test_rebut_exige_equipement_gerer_roles_livres(self):
+        """ADRG39 (C-ADRG-014) — rebut, réactivation et écriture des catégories
+        d'équipement exigent ``equipement_gerer`` EN PLUS du palier : les rôles
+        LIVRÉS Commercial responsable, Technicien, Responsable ⇒ 403 (état
+        relu inchangé) ; Technicien responsable, Directeur, Administrateur et le
+        compte hérité responsable ⇒ 200/201. Mutant : retirer le code de la
+        branche ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.sav.models import CategorieEquipement
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+        cat = CategorieEquipement.objects.create(
+            company=self.company, nom='Onduleurs')
+
+        def compte(nom):
+            """(client API, utilisateur) — l'équipement est créé PAR le compte :
+            un rôle à portée (Technicien responsable) ne voit que son parc."""
+            if nom is None:
+                user = User.objects.create_user(
+                    username='adrg39_herite', password='x',
+                    role_legacy='responsable', company=self.company)
+                return auth(user), self._equip(created_by=user)
+            role = Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True,
+                permissions=list(livres[nom]))
+            user = User.objects.create_user(
+                username=f'adrg39_{nom.replace(" ", "_").lower()}',
+                password='x', role_legacy='normal', company=self.company,
+                role=role)
+            return auth(user), self._equip(created_by=user)
+
+        base = '/api/django/sav/'
+        for nom in ('Commercial responsable', 'Technicien', 'Responsable'):
+            api, eq = compte(nom)
+            r = api.post(f'{base}equipements/{eq.id}/mettre-au-rebut/',
+                         {'motif': 'Casse définitive'}, format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.data))
+            eq.refresh_from_db()
+            self.assertFalse(eq.mis_au_rebut, nom)
+            eq.mis_au_rebut, eq.motif_rebut = True, 'x'
+            eq.save(update_fields=['mis_au_rebut', 'motif_rebut'])
+            r = api.post(f'{base}equipements/{eq.id}/reactiver-rebut/', {},
+                         format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.data))
+            eq.refresh_from_db()
+            self.assertTrue(eq.mis_au_rebut, nom)
+            r = api.post(f'{base}categories-equipement/', {'nom': 'N'},
+                         format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.data))
+            r = api.patch(f'{base}categories-equipement/{cat.id}/',
+                          {'nom': 'Renommée'}, format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.data))
+            cat.refresh_from_db()
+            self.assertEqual(cat.nom, 'Onduleurs', nom)
+        for nom in ('Technicien responsable', 'Directeur', 'Administrateur',
+                    None):
+            api, eq = compte(nom)
+            r = api.post(f'{base}equipements/{eq.id}/mettre-au-rebut/',
+                         {'motif': 'Casse définitive'}, format='json')
+            self.assertEqual(r.status_code, 200, (nom, r.data))
+            r = api.post(f'{base}equipements/{eq.id}/reactiver-rebut/', {},
+                         format='json')
+            self.assertEqual(r.status_code, 200, (nom, r.data))
+            r = api.post(f'{base}categories-equipement/', {'nom': f'C {nom}'},
+                         format='json')
+            self.assertEqual(r.status_code, 201, (nom, r.data))
+
     def test_equipement_au_rebut_ne_genere_plus_de_preventif(self):
         equip = self._equip(entretien_toutes_les_heures=Decimal('500'))
         self.api.post(

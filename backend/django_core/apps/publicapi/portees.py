@@ -131,7 +131,10 @@ CODE_DE_PORTEE = {
     SCOPE_READ_CHANTIERS: 'installation_voir', SCOPE_READ_STOCK: 'stock_voir',
     SCOPE_READ_CALEPINAGES: 'calepinage_voir',
     SCOPE_READ_FIABILITE: 'fiabilite_voir',
-    SCOPE_WRITE_LEADS: 'crm_creer', SCOPE_WRITE_ACTIVITIES: 'crm_modifier',
+    # APUB50 — un tuple = TOUS ces codes exigés (`leads:write` modifie aussi) ;
+    # `lecture_achats` sert `montant_estime` (prix d'achat estimé).
+    SCOPE_WRITE_LEADS: ('crm_creer', 'crm_modifier'),
+    SCOPE_WRITE_ACTIVITIES: 'crm_modifier', SCOPE_READ_ACHATS: 'prix_achat_voir',
     SCOPE_WRITE_DEVIS: 'ventes_creer', SCOPE_WRITE_TICKETS: 'sav_gerer',
 }
 # Même règle pour l'abonnement webhook : préfixe d'évènement → code de lecture.

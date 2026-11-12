@@ -95,6 +95,14 @@ class FormeCodeTests(unittest.TestCase):
         code, sortie = d.scenario({SERVICES: mur(40), PLAN: tache("ZZ1", f"`{SERVICES}` lignes nettes attendues ≤ 30")})
         self.assertEqual(code, 1, sortie)
         self.assertIn("+40 lignes logiques nettes > budget 30 (ZZ1 ≤ 30)", sortie)
+        # Tâche « code livré, preuve en direct due » : son code est dans la PR, son budget compte.
+        code, sortie = d.scenario({SERVICES: mur(40), PLAN: "- [BLOCKED: code livré run X, preuve en direct due] ZZ3 — "
+                                                            f"**t** : `{SERVICES}` lignes nettes attendues ≤ 50\n"})
+        self.assertEqual(code, 0, sortie)
+        # Mais un autre BLOCKED (vrai blocage) ne porte aucun budget.
+        code, sortie = d.scenario({SERVICES: mur(40), PLAN: "- [BLOCKED: attend ZZ9] ZZ4 — "
+                                                            f"**t** : `{SERVICES}` lignes nettes attendues ≤ 50\n"})
+        self.assertEqual(code, 1, sortie)
         # Budget porte par une tache NON cochee par la PR : sans effet.
         code, sortie = d.scenario({SERVICES: mur(40), PLAN: tache("ZZ2", f"`{SERVICES}` lignes nettes attendues ≤ 99",
                                                                   coche=False)})

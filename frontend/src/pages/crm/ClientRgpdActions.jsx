@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useSelector } from 'react-redux'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Download, ShieldOff } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
@@ -19,7 +20,9 @@ export default function ClientRgpdActions({ client, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  const canExport = useIsAdminOrResponsable()
+  const palier = useIsAdminOrResponsable()
+  const aCrmExport = useHasPermission('crm_export')
+  const canExport = useSelector((s) => (s.auth.permissions || []).length) ? aCrmExport : palier // ADRG88 : crm_export, repli hérité
   const canAnonymize = useIsAdmin()
   if (!canExport && !canAnonymize) return null
 

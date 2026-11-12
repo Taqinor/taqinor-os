@@ -509,6 +509,8 @@ class TestAucuneActionClientViaJetonInterne(TestCase):
             notifs_avant)
 
     def test_virement_public_notifie_toujours_le_vendeur(self):
+        # APUB34 — un virement d'acompte ne se déclare qu'après l'acceptation.
+        type(self.devis).objects.filter(pk=self.devis.pk).update(statut='accepte')
         notifs_avant = Notification.objects.filter(
             recipient=self.owner).count()
         resp = self._post('virement/', self.link.token)

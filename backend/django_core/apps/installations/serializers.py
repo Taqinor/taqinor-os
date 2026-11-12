@@ -21,8 +21,8 @@ from core.unicite import UniciteEn409Mixin
 
 from .listes_prechargees import totaux_temps_memo
 from .serializers_blocs import (
-    MasqueBudgetProjet, MasqueCoutPrevu, MasqueCoutTransport, MasqueLandedCost, MasqueMontant,
-    MasquePrixConvenu, MasquePrixNegocie, bloc_avertissements_cloture, bloc_calepinage,
+    MasqueBudgetProjet, MasqueCoutPrevu, MasqueCoutTransport, MasqueLandedCost, MasqueMontant, MasqueMontantApprouve,
+    MasquePrixConvenu, MasquePrixNegocie, SansJetonsPublicsMixin, bloc_avertissements_cloture, bloc_calepinage,
     bloc_dossier_8221_resume, bloc_regime_suggere)
 from .serializers_stage import (
     CautionTotaleMixin, refus_protege, valider_unicite_societe)
@@ -293,7 +293,8 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class InterventionSerializer(SansJetonsPublicsMixin,  # ALEC37
+                             InterventionGpsChampsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                              ChampsTexteStrictsMixin,  # api-fuzz-full 26/10 : NUL
                              VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                              serializers.ModelSerializer):
@@ -357,7 +358,7 @@ class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, Same
 
     class Meta:
         model = Intervention
-        fields = '__all__'
+        exclude = ['lien_client_token', 'lien_rapport_token']  # ALEC37 : hors schéma (api-fuzz)
         # company/created_by posés côté serveur — jamais depuis le corps. Les
         # horodatages F6 et les coordonnées d'arrivée sont posés par leurs
         # endpoints dédiés (check-in/départ/retour), pas par un PATCH générique.
@@ -1647,7 +1648,7 @@ class SeuilApprobationBCFSerializer(SeuilResponsableBorneMixin, ChampsStrictsMix
         return value
 
 
-class ApprobationBCFSerializer(SameCompanyFKSerializerMixin,
+class ApprobationBCFSerializer(MasqueMontantApprouve, SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     """FG312 — approbation d'un BCF (string-FK vers stock). Le palier, le montant
     approuvé, l'approbateur et la société sont posés CÔTÉ SERVEUR par l'action

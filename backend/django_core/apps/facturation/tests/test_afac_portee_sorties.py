@@ -119,6 +119,80 @@ class PorteeSortiesTests(TestCase):
             annule=False, statut=Installation.Statut.RECEPTIONNE)
         self.assertEqual(self._api(self.admin).get(url).status_code, 200)
 
+    def test_fiche_remise_exige_la_lecture_du_chantier(self):
+        """ADRG8 (C-ADRG-022, D-APFS-4) — la fiche de remise d'un chantier
+        installé : 403 sans PDF pour un rôle sans lecture du module chantiers
+        ni ``ventes_voir`` (Commercial terrain, Admin RH) ; le Responsable
+        (dans la portée de la fiche chantier) obtient toujours le PDF.
+        Mutant : retirer la garde de lecture ⇒ échec."""
+        from apps.installations.models import Installation
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_TERRAIN_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS)
+
+        def compte(nom, permissions, legacy):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(permissions),
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'adrg8_{nom}', password='x', role=role,
+                role_legacy=legacy, company=self.company)
+
+        responsable = compte('Responsable', RESPONSABLE_PERMISSIONS,
+                             'responsable')
+        chantier = Installation.objects.create(
+            company=self.company, reference='CH-ADRG8', client=self.client_b,
+            statut=Installation.Statut.RECEPTIONNE, created_by=responsable)
+        url = f'/api/django/ventes/chantiers/{chantier.id}/fiche-remise-premium/'
+        for nom, perms in (('Terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
+                           ('AdminRH', ADMIN_RH_PERMISSIONS)):
+            with self.subTest(role=nom):
+                r = self._api(compte(nom, perms, 'normal')).get(url)
+                self.assertEqual(r.status_code, 403)
+                self.assertNotEqual(r.get('Content-Type'), 'application/pdf')
+        r = self._api(responsable).get(url)
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+
+    def test_lignes_facture_hors_portee_404(self):
+        """ALEC25 (C-ALEC-021) — les lignes de facture suivent la portée de
+        ``FactureViewSet`` sur les deux routes montées : A ne liste pas la
+        ligne de la facture brouillon de B, détail et PATCH 404, ligne
+        inchangée ; l'admin lit (200). Mutant : retirer ``scope_queryset``
+        ⇒ échec."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import Facture, LigneFacture
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit ALEC25', sku='ALEC25-K',
+            prix_vente=Decimal('1000'), quantite_stock=0)
+        brouillon = Facture.objects.create(
+            company=self.company, reference='BROUILLON-ALEC25',
+            client=self.client_b, statut=Facture.Statut.BROUILLON,
+            taux_tva=Decimal('20'), created_by=self.b)
+        ligne = LigneFacture.objects.create(
+            facture=brouillon, produit=produit, designation='Ligne de B',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+        api = self._api(self.a)
+        for base in ('/api/django/ventes/factures-lignes/',
+                     '/api/django/facturation/factures-lignes/'):
+            with self.subTest(base=base):
+                r = api.get(base)
+                self.assertEqual(r.status_code, 200, r.data)
+                lignes = (r.data['results'] if isinstance(r.data, dict)
+                          else r.data)
+                self.assertNotIn(ligne.pk, [x['id'] for x in lignes])
+                self.assertEqual(api.get(f'{base}{ligne.pk}/').status_code,
+                                 404)
+        r = api.patch(f'/api/django/ventes/factures-lignes/{ligne.pk}/',
+                      {'designation': 'Pirate'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.designation, 'Ligne de B')
+        r = self._api(self.admin).get(
+            f'/api/django/ventes/factures-lignes/{ligne.pk}/')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_admin_inchange(self):
         self.assertIn('FAC-AFAC54-B', self._cash_flow_refs(self.admin))
         self.assertEqual(self._credit(self.admin).status_code, 200)
@@ -165,3 +239,59 @@ class PorteeSortiesTests(TestCase):
         self.assertEqual(telephones(sans), [None] * 3)
         self.assertEqual(telephones(temoin), ['0661028028'] * 3)
         self.assertEqual(telephones(self.admin), ['0661028028'] * 3)
+
+    def test_releve_et_emission_masquent_les_coordonnees(self):
+        """ALEC33 (C-ALEC-030) — sans ``client_pii_voir`` : e-mail, téléphone
+        et adresse du relevé à ``null`` et ``client_telephone`` à ``null``
+        dans la réponse d'émission (sérialiseur rendu AVEC la requête) ; un
+        Responsable témoin les reçoit ; le relevé interne (``user=None``)
+        inchangé. Mutant : retirer ``context=`` d'``emettre`` ⇒ échec."""
+        from apps.crm.models import Client
+        from apps.facturation.recouvrement import _releve_data
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        from apps.stock.models import Produit
+        from apps.ventes.models import Facture, LigneFacture
+        Client.objects.filter(pk=self.client_b.pk).update(
+            telephone='0661028028', adresse='12 rue ALEC33')
+        self.client_b.refresh_from_db()
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit ALEC33', sku='ALEC33-K',
+            prix_vente=Decimal('1000'), quantite_stock=100)
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=permissions + ['encaisser'],
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'alec33_{len(nom)}', password='x', role=role,
+                role_legacy='responsable', company=self.company)
+        sans = compte('Responsable sans client_pii_voir', [
+            p for p in RESPONSABLE_PERMISSIONS if p != 'client_pii_voir'])
+        temoin = compte('Responsable', list(RESPONSABLE_PERMISSIONS))
+        url = f'/api/django/facturation/clients/{self.client_b.id}/releve/'
+        attendus = ((sans, None), (temoin, '0661028028'))
+        for user, tel in attendus:
+            with self.subTest(user=user.username):
+                r = self._api(user).get(url)
+                self.assertEqual(r.status_code, 200, r.data)
+                coord = r.data['client']
+                self.assertEqual(coord['telephone'], tel)
+                self.assertEqual(coord['email'] is None, tel is None)
+                self.assertEqual(coord['adresse'] is None, tel is None)
+                brouillon = Facture.objects.create(
+                    company=self.company, reference=f'BROUILLON-A33-{user.pk}',
+                    client=self.client_b, statut=Facture.Statut.BROUILLON,
+                    taux_tva=Decimal('20'), created_by=user)
+                LigneFacture.objects.create(
+                    facture=brouillon, produit=produit, designation='Kit',
+                    quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+                r = self._api(user).post(
+                    f'/api/django/ventes/factures/{brouillon.id}/emettre/')
+                self.assertEqual(r.status_code, 200, r.data)
+                self.assertEqual(r.data['client_telephone'], tel)
+                self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
+                                 Facture.Statut.EMISE)
+        interne = _releve_data(self.client_b)['client']
+        self.assertEqual(interne['telephone'], '0661028028')
+        self.assertEqual(interne['adresse'], '12 rue ALEC33')

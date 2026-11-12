@@ -15,7 +15,9 @@ techniciens actifs sur la période).
 from datetime import date
 
 from apps.crm.exports import build_xlsx_response
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import (IsAdminOrResponsableTier,  # ALEC27
+                                        IsResponsableOrAdmin)
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -140,7 +142,8 @@ _TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE = inline_serializer(
     responses={(200, 'application/json'): _TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, IsAdminOrResponsableTier,
+                     lecture_source('installations'),
                      DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def technicien_scorecard(request):
     """XFSM17 — Scorecard technicien (`insights/technicien-scorecard/`).
@@ -166,6 +169,10 @@ def technicien_scorecard(request):
     try:
         technicien = User.objects.get(id=technicien_id, company=request.user.company)
     except (User.DoesNotExist, ValueError):
+        return Response({'detail': 'Technicien introuvable.'}, status=404)
+    # ALEC27 — le responsable ne lit que les techniciens de sa portée.
+    visibles = request.user.visible_user_ids()
+    if visibles is not None and technicien.id not in visibles:
         return Response({'detail': 'Technicien introuvable.'}, status=404)
 
     start = _qdate(request.query_params.get('from'))

@@ -224,3 +224,38 @@ class Ntdst5ApiTests(Ntdst5Base):
 
     def test_lecture_refusee_a_un_role_normal_car_montants_dachat(self):
         self.assertEqual(auth(self.normal).get(self.URL).status_code, 403)
+
+    def test_commercial_livre_ne_lit_pas_le_taux(self):
+        """ALEC7 (C-ALEC-005, D-ASTK-2) — sans ``prix_achat_voir`` le taux
+        d'un accord RFA est masqué comme le seuil et le montant fixe :
+        Commercial livré 200 sans ``taux_pct`` / ``seuil_ca_achat`` /
+        ``montant_fixe`` (liste et détail) ; Directeur : 3 % et 5 000 fixe.
+        Mutant : retirer ``taux_pct`` de la liste ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        pct = self._accord()
+        fixe = self._accord(fournisseur=Fournisseur.objects.create(
+            company=self.company, nom='Fixe ALEC7'), taux_pct=None,
+            montant_fixe=Decimal('5000'))
+
+        def livre(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'alec7-{nom.lower()}', password='x',
+                company=self.company, role=role)
+        api = auth(livre('Commercial'))
+        res = api.get(self.URL)
+        self.assertEqual(res.status_code, 200, res.content)
+        lignes = res.data['results'] if isinstance(res.data, dict) else res.data
+        detail = api.get(f'{self.URL}{pct.id}/')
+        self.assertEqual(detail.status_code, 200, detail.content)
+        for ligne in [*lignes, detail.data]:
+            for cle in ('taux_pct', 'seuil_ca_achat', 'montant_fixe'):
+                self.assertNotIn(cle, ligne)
+        res = auth(livre('Directeur')).get(self.URL)
+        lignes = {x['id']: x for x in (res.data['results'] if isinstance(res.data, dict) else res.data)}
+        self.assertEqual(Decimal(lignes[pct.id]['taux_pct']), Decimal('3'))
+        self.assertEqual(Decimal(lignes[fixe.id]['montant_fixe']), Decimal('5000'))

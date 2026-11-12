@@ -35,6 +35,24 @@ class PublicPhotoThrottle(PublicTokenThrottle):
         return '300/min'
 
 
+# APUB36 — réponse publique d'intervention (200 comme 404) : jamais indexée ni
+# gardée en cache partagé ; PDF et photos : ``nosniff``.
+def _entetes_publics(response, nosniff=False):
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    response['Cache-Control'] = 'private, no-store'
+    if nosniff:
+        response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+class _EntetesPublicsMixin:  # APUB36 — ``_entetes_publics`` sur toute réponse de la vue.
+    nosniff = False
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        return _entetes_publics(response, self.nosniff)
+
+
 #: ENF11 — formes des deux pages publiques tokenisées (reflets EXACTS de
 #: ``selectors.intervention_public_payload`` / ``intervention_rapport_public_payload``).
 _SuiviInterventionPublic = inline_serializer('InterventionSuiviPublic', {
@@ -67,7 +85,7 @@ _RapportInterventionPublic = inline_serializer('InterventionRapportPublic', {
 })
 
 
-class InterventionLienClientPublicView(APIView):
+class InterventionLienClientPublicView(_EntetesPublicsMixin, APIView):
     """XFSM7 — page publique tokenisée « technicien en route » : statut
     courant, technicien (nom + avatar), fenêtre promise (XFSM5) et ETA
     indicative. Token inconnu, révoqué ou expiré → 404 (jamais 403 : on ne
@@ -98,7 +116,7 @@ def _rapport_publiable(interv):
         Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
 
 
-class InterventionRapportPublicView(APIView):
+class InterventionRapportPublicView(_EntetesPublicsMixin, APIView):
     """ZFSM2 — page publique tokenisée du compte-rendu d'intervention signé
     (F19) : photos avant/après, réserves, matériel consommé SANS prix
     d'achat ni marge, signature, + lien de téléchargement PDF. Token inconnu
@@ -124,11 +142,12 @@ class InterventionRapportPublicView(APIView):
         return Response(intervention_rapport_public_payload(interv, request))
 
 
-class InterventionRapportPhotoPublicView(APIView):
+class InterventionRapportPhotoPublicView(_EntetesPublicsMixin, APIView):
     """APDF38 — une photo de la page publique du compte-rendu, servie par le
     MÊME jeton : la pièce doit appartenir à l'intervention du jeton (photo de
     créneau, image) — une pièce étrangère, un jeton inconnu ou un rapport
     rouvert répondent 404 (jamais 403 : on ne confirme rien à un tiers)."""
+    nosniff = True
     authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [PublicPhotoThrottle]
@@ -145,7 +164,12 @@ class InterventionRapportPhotoPublicView(APIView):
         from . import field_services
         att = (field_services.intervention_photos(interv)
                .filter(pk=att_id, mime__startswith='image/').first())
-        if att is None:
+        # APUB30 — seules les photos que la page publie (créneau ACTIF, règle
+        # de ``intervention_pdf._photos_payload``) ; plaque, image sans créneau → 404.
+        par_creneau = field_services.photos_by_slot(interv)
+        publiees = {a.pk for slot in field_services.active_shotlist(interv.company)
+                    for a in par_creneau.get(slot.cle, [])}
+        if att is None or att.pk not in publiees:
             return Response(
                 {'detail': 'Lien invalide ou expiré.'},
                 status=status.HTTP_404_NOT_FOUND)
@@ -160,10 +184,11 @@ class InterventionRapportPhotoPublicView(APIView):
         return HttpResponse(data, content_type=att.mime or 'image/jpeg')
 
 
-class InterventionRapportPdfPublicView(APIView):
+class InterventionRapportPdfPublicView(_EntetesPublicsMixin, APIView):
     """ZFSM2 — téléchargement du PDF du compte-rendu signé, via le MÊME jeton
     public que la page ci-dessus. Réutilise le rendu F19 existant
     (`intervention_pdf.compte_rendu_pdf`) — aucune donnée interne."""
+    nosniff = True
     permission_classes = [AllowAny]
     authentication_classes = []
     throttle_classes = [PublicTokenThrottle]

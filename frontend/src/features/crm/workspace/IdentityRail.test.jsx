@@ -39,10 +39,14 @@ vi.mock('../../../api/crmApi', () => ({
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
 // AssigneePicker mocké en bouton cliquable pour tester le PATCH du responsable.
 vi.mock('../../../components/AssigneePicker', () => ({
-  default: ({ value, onChange }) => (
-    <button type="button" data-testid="assignee" onClick={() => onChange(9)}>{String(value ?? '')}</button>
+  default: ({ value, onChange, disabled }) => (
+    <button type="button" data-testid="assignee" disabled={disabled} onClick={() => onChange(9)}>{String(value ?? '')}</button>
   ),
 }))
+// ADRG20 — droits des gestes (code fin, sinon palier) : tous accordés par
+// défaut ; un cas les retire pour simuler un store du registre.
+const droitsRefuses = vi.hoisted(() => new Set())
+vi.mock('../../sav/useDroitMetier', () => ({ default: (code) => !droitsRefuses.has(code) }))
 // DatePicker (relance) → input date natif pour émettre onChange(Date) simplement.
 // Le reste du barrel ui reste RÉEL (Button/Badge/Avatar/FieldSavedPulse).
 vi.mock('../../../ui', async (importOriginal) => {
@@ -674,5 +678,39 @@ describe('IdentityRail — CIQ419 bandeaux de segment C&I', () => {
     render(<IdentityRail state={makeState(lead)} onAction={vi.fn()} users={[]} />)
     expect(screen.queryByTestId('lw-incoherence-segment')).toBeNull()
     expect(screen.queryByTestId('lw-segment-suggere')).toBeNull()
+  })
+})
+
+/* ADRG20 (C-ADRG-047) — la fiche n'offre que les gestes que la route accepte :
+   réaffecter (`owner`) exige `crm_reassign` ; convertir / archiver / relances
+   exigent `crm_modifier`. Store Commercial du registre : `crm_modifier` sans
+   `crm_reassign` ; Viewer : ni l'un ni l'autre. */
+describe('ADRG20 — droits de la fiche lead', () => {
+  afterEach(() => { droitsRefuses.clear() })
+
+  it('sans crm_reassign : le sélecteur « Responsable » est inerte (Commercial)', () => {
+    droitsRefuses.add('crm_reassign')
+    const onAction = vi.fn()
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[{ id: 9, username: 'Meriem' }]} />)
+    const picker = screen.getByTestId('assignee')
+    expect(picker).toBeDisabled()
+    fireEvent.click(picker)
+    expect(onAction).not.toHaveBeenCalled()
+  })
+
+  it('avec crm_reassign : le sélecteur reste actif', () => {
+    render(<IdentityRail state={makeState()} onAction={vi.fn()} users={[]} />)
+    expect(screen.getByTestId('assignee')).not.toBeDisabled()
+  })
+
+  it('sans crm_modifier : ni Convertir, ni Archiver, ni relances actifs (Viewer)', async () => {
+    droitsRefuses.add('crm_reassign')
+    droitsRefuses.add('crm_modifier')
+    render(<IdentityRail state={makeState()} onAction={vi.fn()} users={[]} />)
+    ouvrirPlus()
+    await screen.findByRole('menuitem', { name: /Concevoir la toiture/ })
+    for (const nom of [/Convertir en client/, /^Archiver$/, /Relancer la cadence/, /Arrêter la cadence/]) {
+      expect(screen.getByRole('menuitem', { name: nom })).toHaveAttribute('aria-disabled', 'true')
+    }
   })
 })

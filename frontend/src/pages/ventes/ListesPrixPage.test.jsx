@@ -3,7 +3,7 @@
 // écran appelle juste l'API, la garde serveur reste la seule qui compte.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // Radix Select ne s'ouvre pas de façon fiable sous jsdom (portail + pointer
 // events) — pattern établi (pages/monitoring/ClientPortalPage.test.jsx) :
@@ -32,6 +32,11 @@ vi.mock('../../api/stockApi', () => ({
 import ventesApi from '../../api/ventesApi'
 import stockApi from '../../api/stockApi'
 import ListesPrixPage from './ListesPrixPage'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
+
+// ADRG5 — « Supprimer » suit `ventes_supprimer` (route DELETE) : store qui le porte.
+const rendre = (permissions = ['ventes_supprimer']) =>
+  renderAvecAuth(<ListesPrixPage />, { permissions }, { routeur: false })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -45,7 +50,7 @@ describe('ListesPrixPage', () => {
     ventesApi.getListesPrix.mockResolvedValue({
       data: [{ id: 1, nom: 'Revendeur', devise: 'MAD', archived: false, lignes: [], regles: [] }],
     })
-    render(<ListesPrixPage />)
+    rendre()
     expect(await screen.findByText('Revendeur')).toBeInTheDocument()
   })
 
@@ -58,7 +63,7 @@ describe('ListesPrixPage', () => {
         ? { count: 60, next: null, results: p2 }
         : { count: 60, next: '?page=2', results: p1 },
     }))
-    render(<ListesPrixPage />)
+    rendre()
     expect(await screen.findByText('Liste 60')).toBeInTheDocument()
     expect(screen.getByText('Liste 1')).toBeInTheDocument()
     expect(ventesApi.getListesPrix).toHaveBeenCalledTimes(2)
@@ -66,14 +71,14 @@ describe('ListesPrixPage', () => {
 
   it('état vide quand aucune liste', async () => {
     ventesApi.getListesPrix.mockResolvedValue({ data: [] })
-    render(<ListesPrixPage />)
+    rendre()
     expect(await screen.findByText('Aucune liste de prix')).toBeInTheDocument()
   })
 
   it('crée une nouvelle liste via le dialogue', async () => {
     ventesApi.getListesPrix.mockResolvedValue({ data: [] })
     ventesApi.createListePrix.mockResolvedValue({ data: { id: 2, nom: 'Export' } })
-    render(<ListesPrixPage />)
+    rendre()
     await screen.findByText('Aucune liste de prix')
     fireEvent.click(screen.getByRole('button', { name: /Nouvelle liste/ }))
     const dialog = await screen.findByRole('dialog')
@@ -87,7 +92,7 @@ describe('ListesPrixPage', () => {
     ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
     ventesApi.getListePrix.mockResolvedValue({ data: liste })
     ventesApi.setLignePrixListe.mockResolvedValue({ data: { id: 5, produit: 1, prix_unitaire: '850.00' } })
-    render(<ListesPrixPage />)
+    rendre()
     fireEvent.click(await screen.findByText('Revendeur'))
     const dialog = await screen.findByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: /Ajouter un prix/ }))
@@ -115,10 +120,10 @@ describe('ListesPrixPage — WIR226 : CRUD complet', () => {
     lignes: [], regles: [],
   }
 
-  const ouvrirDetail = async (liste = LISTE) => {
+  const ouvrirDetail = async (liste = LISTE, permissions) => {
     ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
     ventesApi.getListePrix.mockResolvedValue({ data: liste })
-    render(<ListesPrixPage />)
+    rendre(permissions)
     fireEvent.click(await screen.findByText(liste.nom))
     return screen.findByRole('dialog')
   }
@@ -179,6 +184,12 @@ describe('ListesPrixPage — WIR226 : CRUD complet', () => {
       .toBeGreaterThan(1))
   })
 
+  it('sans ventes_supprimer : aucun bouton « Supprimer »', async () => {
+    const dialog = await ouvrirDetail(LISTE, ['ventes_voir', 'ventes_creer'])
+    expect(within(dialog).getByRole('button', { name: 'Archiver' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Supprimer' })).toBeNull()
+  })
+
   it('un refus serveur est affiché tel quel', async () => {
     ventesApi.patchListePrix.mockRejectedValue({
       response: { data: { detail: 'Une liste porte déjà ce nom.' } },
@@ -191,7 +202,7 @@ describe('ListesPrixPage — WIR226 : CRUD complet', () => {
   it('la création accepte aussi segment et dates, sans champ vide envoyé', async () => {
     ventesApi.getListesPrix.mockResolvedValue({ data: [] })
     ventesApi.createListePrix.mockResolvedValue({ data: { id: 2 } })
-    render(<ListesPrixPage />)
+    rendre()
     await screen.findByText('Aucune liste de prix')
     fireEvent.click(screen.getByRole('button', { name: /Nouvelle liste/ }))
     const dialog = await screen.findByRole('dialog')
@@ -211,7 +222,7 @@ describe('ListesPrixPage — unité HT', () => {
     const liste = { id: 1, nom: 'Revendeur', devise: 'MAD', archived: false, lignes: [], regles: [] }
     ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
     ventesApi.getListePrix.mockResolvedValue({ data: liste })
-    render(<ListesPrixPage />)
+    rendre()
     fireEvent.click(await screen.findByText('Revendeur'))
     const dialog = await screen.findByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: /Ajouter un prix/ }))

@@ -20,6 +20,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
+from ..permissions import PeutSupprimerStock  # ADRG44
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC92
 import logging
 
@@ -88,6 +89,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             # XPUR22 — gestion des jetons portail fournisseur : écriture Stock,
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
+            # ALEC12 (D-ASTK-2) — le jeton ouvre des montants d'achat : lire ou
+            # créer exige aussi `prix_achat_voir` ; la révocation reste à `stock_modifier`.
+            if self.action == 'portail_tokens':
+                from ..permissions import PeutVoirPrixAchat
+                return [HasPermissionOrLegacy('stock_modifier')(), PeutVoirPrixAchat()]
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('onboarding', 'score_risque',
                              'export_conformite', 'documents_expirants'):
@@ -124,7 +130,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
-            return [IsAdminRole()]
+            return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -717,7 +723,7 @@ class ContactFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            return [PeutSupprimerStock()]  # ADRG44
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):
@@ -747,7 +753,7 @@ class CategorieFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            return [PeutSupprimerStock()]  # ADRG44
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def perform_create(self, serializer):

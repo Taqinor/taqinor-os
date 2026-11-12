@@ -218,6 +218,51 @@ class TestSuppressionFacture(TestCase):
         self.assertEqual(
             Facture.objects.get(pk=legale.pk).reference, 'FAC-0012')
 
+    # ── ACSV112 (C-ACSV-OPT1-057) — supprimer le brouillon de facture d'un
+    # ticket SAV émet ``facture_annulee`` comme son annulation : le ticket est
+    # libéré, sa clôture redevient gardée (409 ``ticket_non_facture``). ──────
+
+    def test_suppression_brouillon_libere_le_ticket_sav(self):
+        from apps.installations.models import Installation
+        from apps.sav.models import PieceConsommee, Ticket, TicketActivity
+        inst = Installation.objects.create(
+            company=self.company, reference=f'CHT-ACSV112-{_nxt()}',
+            client=self.client_obj)
+        piece = Produit.objects.create(
+            company=self.company, nom='Câble ACSV112', sku=f'CAB-ACSV112-{_nxt()}',
+            prix_vente=Decimal('50'), prix_achat=Decimal('20'))
+        ticket = Ticket.objects.create(
+            company=self.company, reference=f'SAV-ACSV112-{_nxt()}',
+            client=self.client_obj, installation=inst,
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.RESOLU,
+            sous_garantie=Ticket.SousGarantie.NON, created_by=self.superuser)
+        Ticket.objects.filter(pk=ticket.pk).update(couverture='facturable')
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=piece,
+            quantite=Decimal('1'), created_by=self.superuser)
+        r = self.api_su.post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(r.status_code, 201, getattr(r, 'data', r))
+        brouillon = Facture.objects.get(pk=r.data['facture_id'])
+        self.assertEqual(brouillon.statut, Facture.Statut.BROUILLON)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.facture_id_ext, brouillon.pk)
+
+        resp = self.api_su.delete(self._url(brouillon))
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
+        self.assertFalse(Facture.objects.filter(pk=brouillon.pk).exists())
+        ticket.refresh_from_db()  # CLAUSE PERSISTANCE
+        self.assertIsNone(ticket.facture_id_ext)
+        self.assertTrue(TicketActivity.objects.filter(
+            ticket=ticket,
+            body=f'Facture {brouillon.reference} annulée : le ticket est à refacturer.').exists())
+        r = self.api_su.post(f'/api/django/sav/tickets/{ticket.id}/cloturer/',
+                             {}, format='json')
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))
+        self.assertEqual(r.data['code'], 'ticket_non_facture')
+        # Facture émise : la suppression reste refusée (inchangé).
+        emise = self._facture(statut=Facture.Statut.EMISE)
+        self.assertEqual(self.api_su.delete(self._url(emise)).status_code, 409)
+
 
 class TestPaiementProtege(TestCase):
     """Le filet CÔTÉ MODÈLE : PROTECT, pas CASCADE (admin Django, shell…)."""

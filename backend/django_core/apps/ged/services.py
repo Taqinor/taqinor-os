@@ -3243,7 +3243,7 @@ def resolve_signature_publique(token):
                .select_related('document', 'document__company', 'company')
                .filter(token=token)
                .first())
-    if demande is None:
+    if demande is None or demande.signataires.exists():
         return SIGNATURE_PUBLIQUE_INTROUVABLE, None
     if demande.statut == SIGNATURE_ANNULE or demande.is_expired:
         return SIGNATURE_PUBLIQUE_EXPIREE, demande
@@ -3663,6 +3663,7 @@ def notifier_prochains_signataires(demande, *, request=None):
 # ── ZGED2 — Authentification extra du signataire (SMS/OTP email, key-gated) ─
 
 OTP_EXPIRATION_MINUTES = 10
+OTP_DELAI_RENVOI_S = 60  # APUB9 — délai minimal entre deux envois de code
 OTP_MAX_ESSAIS = 3
 
 
@@ -3714,6 +3715,7 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
     'detail'}` — jamais d'exception (toujours un résultat exploitable par la
     vue publique)."""
     import datetime
+    import math
 
     from django.utils import timezone
 
@@ -3721,6 +3723,15 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
     if mode == 'aucune':
         return {'envoye': False, 'mode': 'aucune',
                 'detail': "Aucune authentification extra requise."}
+    # APUB9 — dernier envoi déduit de l'expiration : aucun renvoi avant le délai.
+    if signataire.otp_expires_at:
+        dernier_envoi = signataire.otp_expires_at - datetime.timedelta(
+            minutes=OTP_EXPIRATION_MINUTES)
+        attente = math.ceil(
+            OTP_DELAI_RENVOI_S - (timezone.now() - dernier_envoi).total_seconds())
+        if attente > 0:
+            return {'envoye': False, 'mode': mode, 'attente_s': attente,
+                    'detail': f'Code déjà envoyé : réessayez dans {attente} s.'}
 
     if mode == 'sms':
         from core.sms import send_sms
@@ -3869,6 +3880,10 @@ def refuser_signataire(signataire, *, motif):
     from django.utils import timezone
     from .models import SIGNATAIRE_REFUSE, SIGNATURE_REFUSE
 
+    if signataire.otp_requis_et_non_valide:  # APUB40 — même garde que signer
+        raise ValueError(
+            "Authentification supplémentaire requise avant de refuser : "
+            "saisissez le code reçu.")
     motif = (motif or '').strip()
     if not motif:
         raise ValueError("Le motif de refus est requis.")

@@ -139,6 +139,34 @@ class PublicEndpointTests(XGed7Base):
 
 
 class GestionViewsetTests(XGed7Base):
+    def test_jeton_reserve_au_createur_et_admin(self):
+        """ALEC36 (C-ALEC-033) — le Commercial livré ne relit pas le `token`
+        d'un lien de dépôt créé par un Directeur ; le Directeur, si."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(company=self.co_a, nom=nom,
+                                       permissions=list(roles[nom]))
+            return User.objects.create_user(
+                username=f'alec36-{nom}', password='x', company=self.co_a,
+                role=role)
+
+        directeur, commercial = compte('Directeur'), compte('Commercial')
+        cree = auth(directeur).post('/api/django/ged/depots-publics/', {
+            'folder': self.folder_a.pk}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        self.assertIn('token', cree.data)
+        for user, voit in ((commercial, False), (directeur, True)):
+            api = auth(user)
+            liste = api.get('/api/django/ged/depots-publics/').data
+            lignes = liste['results'] if isinstance(liste, dict) else liste
+            detail = api.get(
+                f"/api/django/ged/depots-publics/{cree.data['id']}/").data
+            for ligne in (lignes[0], detail):
+                self.assertEqual('token' in ligne, voit, user.username)
+
     def test_create_and_revoke(self):
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/depots-publics/', {

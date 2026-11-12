@@ -62,6 +62,38 @@ class TestDashboardEndpoint(TestCase):
                 if getattr(resp, 'streaming', False) else resp.content)
         self.assertTrue(body.startswith(b'PK'))
 
+    def test_export_xlsx_exige_reporting_export(self):
+        """ADRG73 (C-ADRG-020) — Commercial livré (sans ``reporting_export``) :
+        403 ``droit_manquant`` sur l'export, 200 sur le JSON ; Commercial
+        responsable : un classeur."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        url = '/api/django/reporting/dashboard/'
+
+        def api_de(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom,
+                permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
+            user = User.objects.create_user(
+                username=f'adrg73-{nom}', password='x',
+                company=self.company, role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api
+
+        commercial = api_de('Commercial')
+        refus = commercial.get(url + '?export=xlsx')
+        self.assertEqual(refus.status_code, 403)
+        self.assertEqual(refus.data['code'], 'droit_manquant')
+        self.assertIn('reporting_export', refus.data['detail'])
+        self.assertEqual(commercial.get(url).status_code, 200)
+        resp = api_de('Commercial responsable').get(url + '?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = (b''.join(resp.streaming_content)
+                if getattr(resp, 'streaming', False) else resp.content)
+        self.assertTrue(body.startswith(b'PK'))
+
 
 class DemoResumeEtKpiOnboardingTests(TestCase):
     """NTDMO21/31/41/42 — résumé démo servi du cache, KPI internes d'onboarding."""
@@ -172,3 +204,34 @@ class DemoResumeEtKpiOnboardingTests(TestCase):
         par_cle = {t['tour_key']: t for t in adoption_tours()}
         self.assertEqual(par_cle['devis']['completion_pct'], 100.0)
         self.assertEqual(par_cle['leads']['completion_pct'], 0.0)
+
+
+class AdoptionToursIssueTest(TestCase):
+    """Follow-up NTDMO42 — termines / fermes_avant_la_fin / sans_issue."""
+    setUp = DemoResumeEtKpiOnboardingTests.setUp
+
+    def test_compte_termines_fermes_et_historique(self):
+        from django.utils import timezone
+        from apps.onboarding.models import ProductTourStep, TourProgress
+        from apps.reporting.onboarding_kpi import (
+            RAISON_FIN_VS_PASSE, adoption_tours, kpis_onboarding_internes)
+        ProductTourStep.objects.get_or_create(
+            company=None, tour_key='devis', ordre=10,
+            defaults={'titre': 't', 'texte': 't', 'ecran_cible': '/x'})
+        TourProgress.objects.create(
+            company=self.reelle, user=self.u_reelle, tour_key='devis',
+            vu_le=timezone.now(), issue='termine')
+        ligne = {t['tour_key']: t for t in adoption_tours()}['devis']
+        self.assertEqual(ligne['termines'], 1)
+        self.assertEqual(ligne['fermes_avant_la_fin'], 0)
+        self.assertEqual(ligne['sans_issue'], 0)
+        self.assertEqual(ligne['fin_vs_passe'], 100.0)
+        self.assertIsNone(kpis_onboarding_internes()['fin_vs_passe_raison'])
+        TourProgress.objects.filter(tour_key='devis').update(issue='')
+        ligne = {t['tour_key']: t for t in adoption_tours()}['devis']
+        self.assertEqual(ligne['vus_ou_fermes'], 1)
+        self.assertEqual(ligne['sans_issue'], 1)
+        self.assertIsNone(ligne['fin_vs_passe'])
+        self.assertEqual(
+            kpis_onboarding_internes()['fin_vs_passe_raison'],
+            RAISON_FIN_VS_PASSE)

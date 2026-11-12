@@ -120,12 +120,32 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
   it('assignable-users : aucun appel pour un Technicien, appel pour un admin', async () => {
     const appel = vi.spyOn(crmApi, 'getAssignableUsers')
     rendre({ id: 8, reference: 'CH-8', statut: 'installe', annule: false },
-      { role: 'technicien', role_nom: 'Technicien', permissions: ['chantiers_voir'] })
+      { role: 'technicien', role_nom: 'Technicien', permissions: ['chantiers_voir', 'installation_gerer', 'intervention_gerer'] })
     expect(await screen.findByLabelText('Statut')).toBeEnabled()
     expect(appel).not.toHaveBeenCalled()
     cleanup()
     rendre({ id: 9, reference: 'CH-9', statut: 'installe', annule: false })
     await waitFor(() => expect(appel).toHaveBeenCalled())
     appel.mockRestore()
+  })
+
+  // ADRG21 — la fiche n'offre que les gestes que la grille du rôle autorise.
+  it('Commercial (lecture par ventes_voir) : aucun geste d’écriture ; Technicien : gestes présents', async () => {
+    const user = userEvent.setup()
+    rendre({ id: 11, reference: 'CH-11', statut: 'installe', annule: false },
+      { role: 'normal', role_nom: 'Commercial', permissions: ['ventes_voir', 'ventes_creer', 'crm_voir'] })
+    await screen.findByLabelText('Statut')
+    expect(screen.queryByRole('button', { name: 'Mettre à jour' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Annuler le chantier' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Marquer réceptionné' })).toBeNull()
+    await ouvrirJalons(user)
+    expect(screen.queryByRole('button', BTN)).toBeNull()
+    cleanup()
+    rendre({ id: 12, reference: 'CH-12', statut: 'installe', annule: false },
+      { role: 'normal', role_nom: 'Technicien', permissions: ['chantiers_voir', 'installation_gerer', 'intervention_gerer'] })
+    expect(await screen.findByRole('button', { name: 'Mettre à jour' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Annuler le chantier' })).toBeInTheDocument()
+    await ouvrirJalons(user)
+    expect(screen.getByRole('button', BTN)).toBeInTheDocument()
   })
 })

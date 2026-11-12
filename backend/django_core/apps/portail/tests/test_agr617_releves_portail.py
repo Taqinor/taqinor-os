@@ -119,6 +119,41 @@ class RelevesPompagePortailTests(TestCase):
         self.assertEqual(r.data['omissions'][0]['cle'],
                          'm3_jour_estime_devis')
 
+    def test_membre_lecture_seule_403(self):
+        """APUB44 (NTPRT6) — un membre invité en rôle « lecture » ne saisit
+        aucun relevé (403 nommé, 0 relevé) mais lit toujours ; un membre
+        « ecriture » garde son 201."""
+        from apps.portail.services import (
+            accepter_invitation_portail, inviter_membre_portail,
+            provisionner_compte_portail_client,
+        )
+        provisionner_compte_portail_client(self.company, self.client_a.id)
+
+        def membre(role):
+            invitation = inviter_membre_portail(
+                self.company, self.client_a.id,
+                f'apub44-{role}@example.invalid', role)
+            user = accepter_invitation_portail(
+                invitation.token_invitation, f'motdepasse-apub44-{role}-1')
+            api = APIClient()
+            api.force_authenticate(user=user)
+            return api
+
+        lecteur = membre('lecture')
+        r = lecteur.post(self._url(self.chantier), {
+            'equipement': self.pompe.id, 'type': 'm3', 'valeur': '12'},
+            format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(
+            r.data['detail'], "Votre accès est en lecture seule : vous ne "
+                              "pouvez pas saisir de relevé.")
+        self.assertFalse(ReleveCompteurEquipement.objects.exists())
+        self.assertEqual(lecteur.get(self._url(self.chantier)).status_code, 200)
+        r = membre('ecriture').post(self._url(self.chantier), {
+            'equipement': self.pompe.id, 'type': 'm3', 'valeur': '12'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_chantier_d_un_autre_client_404(self):
         autre = Installation.objects.create(
             company=self.company, reference='CH-AGR617-2',

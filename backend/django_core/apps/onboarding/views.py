@@ -24,7 +24,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import (
-    IsAdminOrResponsableTier, IsAdminRole, est_operateur_plateforme,
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAdminRole,
+    est_operateur_plateforme,
 )
 from core.openapi_operations import SchemaObjetUnique
 
@@ -198,12 +199,16 @@ class ProductTourViewSet(viewsets.ViewSet):
     def list(self, request):
         return Response(tours_pour_utilisateur(self._company(request), request.user))
 
-    @extend_schema(request=None, parameters=_CLE_TOUR,
-                   responses=_ProductTourSerializer(many=True))
+    @extend_schema(request=inline_serializer('TourVuCorps', {
+        'issue': drf_serializers.ChoiceField(
+            choices=['termine', 'ferme'], required=False)}),
+        parameters=_CLE_TOUR, responses=_ProductTourSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='vu',
             permission_classes=[IsAuthenticated])
     def vu(self, request, pk=None):
-        services.marquer_tour_vu(self._company(request), request.user, pk)
+        services.marquer_tour_vu(
+            self._company(request), request.user, pk,
+            issue=request.data.get('issue', ''))
         return Response(
             tours_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
@@ -239,8 +244,10 @@ _ID_PATH_PARAMETER = [OpenApiParameter(
 
 class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
     """NTDMO28 — masquage PAR SOCIÉTÉ d'items du catalogue « Premiers pas »
-    (jamais une suppression du catalogue global — réversible, admin
-    uniquement, Paramètres → Démo & Onboarding).
+    (jamais une suppression du catalogue global — réversible, Paramètres →
+    Démo & Onboarding). APUB57 — la LISTE reste au palier ; ``masquer`` /
+    ``demasquer`` (réglage de toute la société) exigent en plus
+    ``parametres_modifier`` (patron D-ASEC-4/5).
 
     * ``GET  /api/django/onboarding/items-masques/`` — catalogue global +
       statut masqué/visible pour la société courante ;
@@ -259,7 +266,8 @@ class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
     @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True),
                    parameters=_ID_PATH_PARAMETER)
     @action(detail=True, methods=['post'], url_path='masquer',
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=[IsAdminOrResponsableTier,
+                                HasPermissionOrLegacy('parametres_modifier')])
     def masquer(self, request, pk=None):
         services.masquer_item_pour_societe(self._company(request), pk)
         return Response(
@@ -269,7 +277,8 @@ class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
     @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True),
                    parameters=_ID_PATH_PARAMETER)
     @action(detail=True, methods=['post'], url_path='demasquer',
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=[IsAdminOrResponsableTier,
+                                HasPermissionOrLegacy('parametres_modifier')])
     def demasquer(self, request, pk=None):
         services.demasquer_item_pour_societe(self._company(request), pk)
         return Response(

@@ -90,6 +90,29 @@ class XSAV10SatisfactionTest(TestCase):
         resp2 = self.public_api.post(self._url(), {'note': 0}, format='json')
         self.assertEqual(resp2.status_code, 400)
 
+    def test_corps_hostile_400_jamais_500(self):
+        """APUB38 (C-APUB-018) — note `1e400`, commentaire non texte ou
+        sous-note `1e400` : 400 nommé, aucune satisfaction ; un POST valide
+        ensuite reste accepté."""
+        from unittest import mock
+
+        def brut(corps):
+            return self.public_api.post(
+                self._url(), data=corps, content_type='application/json')
+        r = brut('{"note": 1e400}')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.data['detail'], 'Note invalide (entier de 1 à 5 attendu).')
+        r = brut('{"note": 4, "commentaire": 5}')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('commentaire', r.data)
+        with mock.patch('apps.sav.public_views._csat_detaille_actif', return_value=True):
+            r = brut('{"note": 4, "sous_notes": {"rapidite": 1e400}}')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('note invalide', r.data['detail'])
+        self.assertFalse(TicketSatisfaction.objects.filter(ticket=self.ticket).exists())
+        r = brut('{"note": 4, "commentaire": "ok"}')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_aucune_donnee_interne_dans_la_reponse(self):
         resp = self.public_api.post(
             self._url(), {'note': 5, 'commentaire': 'ok'}, format='json')

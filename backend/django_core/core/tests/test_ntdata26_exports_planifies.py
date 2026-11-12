@@ -268,3 +268,30 @@ class ScheduledExportCrudTests(TestCase):
         self.assertEqual(reponse.status_code, status.HTTP_200_OK)
         identifiants = [ligne['id'] for ligne in reponse.data]
         self.assertNotIn(self.etranger.pk, identifiants)
+
+    def test_jeu_stock_exige_stock_export(self):
+        """ADRG76 — planifier un extrait d'un jeu stock exige ``stock_export`` :
+        le Responsable LIVRÉ (lecture stock, sans export) est refusé, rien
+        n'est créé ; le Directeur crée."""
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        registre = import_module('apps.roles.permissions_registre')
+
+        def compte(nom, perms):
+            return User.objects.create_user(
+                username=f'adrg76-{nom}', password='x', company=self.company, role_legacy='responsable',
+                role=Role.objects.create(company=self.company, nom=nom, permissions=list(perms)))
+        responsable = compte('Responsable', registre.RESPONSABLE_PERMISSIONS)
+        directeur = compte('Directeur', registre.DIRECTEUR_PERMISSIONS)
+        avant = ScheduledExport.objects.filter(company=self.company).count()
+        corps = {'titre': 'Stock', 'dataset': 'stock_produits', 'cron': '0 2 * * *'}
+        for user, attendu in ((responsable, status.HTTP_403_FORBIDDEN),
+                              (directeur, status.HTTP_201_CREATED)):
+            requete = APIRequestFactory().post(
+                '/api/django/core/scheduled-exports/', corps, format='json')
+            force_authenticate(requete, user=user)
+            reponse = ScheduledExportViewSet.as_view({'post': 'create'})(requete)
+            self.assertEqual(reponse.status_code, attendu, (user.username, reponse.data))
+        self.assertEqual(ScheduledExport.objects.filter(company=self.company).count(), avant + 1)
+        self.assertFalse(ScheduledExport.objects.filter(created_by=responsable).exists())

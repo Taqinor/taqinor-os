@@ -14,6 +14,7 @@ from ..models import Produit, Fournisseur, PrixFournisseur
 from ..serializers import PrixFournisseurSerializer
 from ..utils.params import booleen_formulaire_ou_400
 from authentication.permissions import HasPermissionOrLegacy
+from ..permissions import PeutSupprimerStock  # ADRG37
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
             # `prix_achat_voir` requis EN PLUS de `stock_modifier`.
             return [HasPermissionOrLegacy('stock_modifier')(),
                     HasPermissionOrLegacy('prix_achat_voir')()]
+        if self.action == 'destroy':  # ADRG37 — comme toute suppression stock (ADRG44)
+            return [PeutSupprimerStock()]
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):

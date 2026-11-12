@@ -489,8 +489,8 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     def _check_object_permission(self, action_kind):
         user = self.request.user
         role = getattr(user, 'role', None)
-        if user.is_superuser or role is None:
-            return  # compat : superuser ou compte hérité sans rôle fin.
+        if user.is_superuser or role is None or user.is_admin_role:
+            return  # compat : superuser, hérité sans rôle fin ; APUB54 : admin.
         code = _object_permission_code(self.kwargs['object_code'], action_kind)
         if not user.has_erp_permission(code):
             raise PermissionDenied(

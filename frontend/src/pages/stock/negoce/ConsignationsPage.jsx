@@ -7,6 +7,7 @@ import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 
 /* ASTK221 — Consignation : dépôts chez les clients, déclaration de
    consommation (la facture brouillon créée est affichée avec son lien),
@@ -56,6 +57,8 @@ function Declaration({ d }) {
 }
 
 function CarteDepot({ depot, onGeste, occupe, onErreur }) {
+  // ADRG34 — déclarer crée une facture brouillon : `ventes_creer`, comme le serveur.
+  const peutDeclarer = usePeutEcrireStock('ventes_creer')
   const [qte, setQte] = useState('')
   const [erreurQte, setErreurQte] = useState(null)
 
@@ -91,7 +94,7 @@ function CarteDepot({ depot, onGeste, occupe, onErreur }) {
           {depot.declarations.map((d) => <Declaration key={d.id} d={d} />)}
         </ul>
       )}
-      {depot.statut === 'actif' && (
+      {depot.statut === 'actif' && peutDeclarer && (
         <div className="flex flex-wrap items-start gap-2">
           <div className="flex flex-col gap-1">
             <Input
@@ -149,6 +152,8 @@ function Reglages({ onErreur }) {
 }
 
 export default function ConsignationsPage() {
+  // ADRG35 — poser un dépôt sort du stock : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
   const [onglet, setOnglet] = useState('depots')
   const [depots, setDepots] = useState([])
   const [clients, setClients] = useState([])
@@ -217,6 +222,7 @@ export default function ConsignationsPage() {
 
       {onglet === 'depots' && (
         <div role="tabpanel" className="space-y-4">
+          {peutMouvement && (
           <Carte titre="Nouveau dépôt">
             <form onSubmit={creer} noValidate className="flex flex-wrap items-start gap-2">
               <label className="flex flex-col gap-1 text-xs">
@@ -248,6 +254,7 @@ export default function ConsignationsPage() {
               <Button type="submit" disabled={occupe} className="mt-5">Créer le dépôt</Button>
             </form>
           </Carte>
+          )}
 
           <Carte titre="Dépôts chez les clients">
             <div className="mb-3">

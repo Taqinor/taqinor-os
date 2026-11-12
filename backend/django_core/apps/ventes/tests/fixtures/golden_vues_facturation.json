@@ -175,13 +175,15 @@
    "IsResponsableOrAdmin"
   ],
   "exclure_relance": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "HasPermissionOrLegacy_encaisser"
   ],
   "facturer_penalites": [
    "HasPermissionOrLegacy_encaisser"
   ],
   "generer_pdf": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_pdf"
   ],
   "historique": [
    "LectureFactures"
@@ -221,7 +223,8 @@
    "LectureFactures"
   ],
   "remettre_brouillon": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "HasPermissionOrLegacy_encaisser"
   ],
   "reprendre_abandon": [
    "HasPermissionOrLegacy_encaisser"
@@ -236,7 +239,8 @@
    "HasPermissionOrLegacy_encaisser"
   ],
   "telecharger_pdf": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_pdf"
   ],
   "ubl": [
    "IsResponsableOrAdmin",

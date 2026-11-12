@@ -34,6 +34,8 @@ export function DevisPageHeader({
   xlsxBusy,
   setXlsxBusy,
   openNew,
+  peutExporter = true,
+  peutCreer = true,
 }) {
   return (
     <EnteteVentes
@@ -46,7 +48,7 @@ export function DevisPageHeader({
       }
       actions={(
         <>
-          <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
+          {peutExporter && <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
                   onClick={() => {
                     const pending = downloadBlobInGesture()
                     setXlsxBusy(true)
@@ -56,13 +58,13 @@ export function DevisPageHeader({
                       .finally(() => setXlsxBusy(false))
                   }}>
             {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-          </Button>
+          </Button>}
           {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
               noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
           <Button size="sm" variant="outline" onClick={() => window.print()}>
             <Printer /> Imprimer
           </Button>
-          <Button onClick={openNew}><Plus /> Nouveau devis</Button>
+          {peutCreer && <Button onClick={openNew}><Plus /> Nouveau devis</Button>}
         </>
       )}
     />

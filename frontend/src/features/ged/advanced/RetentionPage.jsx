@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
 import {
   Plus, Trash2, Archive, Lock, Unlock, Link2, XCircle, ShieldAlert,
   CheckCircle2, PlayCircle, FileCheck2,
@@ -16,6 +17,7 @@ import { ActionEcheance, errMessage, formatOctets, toutesLesPages } from './shar
 import { ChampDocument, PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import DecisionDialogue from './DecisionDialogue.jsx'
+import { useHasPermission, useHasRole } from '../../../hooks/useHasPermission'
 
 /* ============================================================================
    UX46 — Rétention, archivage légal & partage.
@@ -57,6 +59,11 @@ export default function RetentionPage() {
   const [showPolitique, setShowPolitique] = useState(false)
   const [showPartage, setShowPartage] = useState(false)
   const [showHold, setShowHold] = useState(false)
+  // ADRG85 — purge / legal holds : `ged_gouvernance` (repli hérité : palier sans rôle fin).
+  const droitGouvernance = useHasPermission('ged_gouvernance')
+  const palierEcriture = useHasRole(['admin', 'responsable'])
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const peutGouverner = droitGouvernance || (palierEcriture && !roleNom)
   const [showArchivage, setShowArchivage] = useState(false)
   const [showDisposition, setShowDisposition] = useState(false)
   const [decisionDisposition, setDecisionDisposition] = useState(null) // { demande, type:'approuver'|'rejeter' }
@@ -175,7 +182,7 @@ export default function RetentionPage() {
     },
   ], [])
 
-  const holdActions = (r) => (r.actif ? [
+  const holdActions = (r) => (r.actif && peutGouverner ? [
     {
       id: 'lever', label: 'Lever le hold', icon: Unlock,
       onClick: async () => {
@@ -326,7 +333,7 @@ export default function RetentionPage() {
           <ListShell
             title="Rétentions légales (legal holds)"
             subtitle="Gel anti-suppression : un document sous hold ne peut être supprimé."
-            actions={<Button onClick={() => setShowHold(true)}><Lock /> Poser un hold</Button>}
+            actions={peutGouverner && <Button onClick={() => setShowHold(true)}><Lock /> Poser un hold</Button>}
             columns={holdColumns} rows={holds} loading={loading} error={error}
             rowActions={holdActions} searchable exportName="legal-holds"
             emptyTitle="Aucune rétention" emptyDescription="Placez un legal hold sur un document."

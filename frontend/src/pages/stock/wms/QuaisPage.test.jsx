@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { makeAuthStore, renderStockPage } from '../stockPage.testHelpers'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -34,7 +34,9 @@ function brancher() {
   })
 }
 
-const monter = () => render(<MemoryRouter><QuaisPage /></MemoryRouter>)
+// ADRG36 — les rendez-vous suivent `stock_modifier` : le store de test le porte.
+const monter = (permissions = ['stock_voir', 'stock_modifier']) =>
+  renderStockPage(QuaisPage, makeAuthStore({ permissions }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
 afterEach(() => { cleanup() })

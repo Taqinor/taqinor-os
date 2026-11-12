@@ -64,6 +64,9 @@ export default function MouvementsPage() {
   const canPostViaPerm = useHasPermission('stock_mouvement')
   const canPostViaRole = useIsAdminOrResponsable()
   const canPostMouvement = hasFinePermissions ? canPostViaPerm : canPostViaRole
+  // ADRG24 — les exports serveur (liste, pivot) exigent `stock_export` (ASEC70/88).
+  const canExportViaPerm = useHasPermission('stock_export')
+  const canExport = hasFinePermissions ? canExportViaPerm : canPostViaRole
 
   const [activeTab, setActiveTab] = useState('tous')
   // Pré-filtre par produit (lien « historique » depuis le catalogue) + saisie
@@ -342,13 +345,13 @@ export default function MouvementsPage() {
               {vuePivot ? 'Vue liste' : 'Vue groupée'}
             </Button>
           )}
-          {!isTransferts && !vuePivot && (
+          {canExport && !isTransferts && !vuePivot && (
             <Button variant="outline" size="sm" loading={exportBusy} onClick={exportXlsx}
                     title="Exporter la liste (filtrée) des mouvements en Excel">
               <Download /> Exporter Excel
             </Button>
           )}
-          {!isTransferts && vuePivot && (
+          {canExport && !isTransferts && vuePivot && (
             <Button variant="outline" size="sm" loading={pivotExportBusy} onClick={exportPivotXlsx}
                     title="Exporter l'agrégation affichée en Excel">
               <Download /> Exporter Excel

@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gedApi from '../../../api/gedApi'
+import { renderAvecAuth } from '../../../test/renderAvecAuth.jsx'
 import { toast } from '../../../ui'
 import ApprobationPage from './ApprobationPage.jsx'
 import RetentionPage from './RetentionPage.jsx'
@@ -83,12 +82,10 @@ vi.mock('../../../ui', async (importOriginal) => {
   }
 })
 
+// ADRG85 — RetentionPage lit `state.auth` (legal holds sous `ged_gouvernance`) :
+// compte hérité au palier admin, qui garde tous les gestes.
 function renderPage(ui) {
-  return render(
-    <MemoryRouter>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </MemoryRouter>,
-  )
+  return renderAvecAuth(ui, { role: 'admin' }, { theme: true })
 }
 
 beforeEach(() => {

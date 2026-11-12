@@ -37,7 +37,8 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 // `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
 // le `readOnly` piloté par le rôle.
 import TagChipInput from '../../components/TagChipInput'
-import { useCanListUsers, useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanListUsers, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier' // ACSV62 / ADRG39
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -254,15 +255,6 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
-// ACSV62 / D-ACSV-3 — droit métier exigé en plus de `sav_gerer` : le code fin
-// quand le compte en porte, sinon le palier responsable (comptes hérités).
-function useDroitMetier(code) {
-  const fins = useSelector((s) => (s.auth.permissions || []).length > 0)
-  const parCode = useHasPermission(code)
-  const parPalier = useIsAdminOrResponsable()
-  return fins ? parCode : parPalier
-}
-
 export function TicketDetail({ ticket, onClose, onSaved }) {
   const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
@@ -275,7 +267,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
-  const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement')
+  const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement'), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
   const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
@@ -855,7 +847,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <strong>Ticket annulé.</strong>
               {current.motif_annulation ? ` Motif : ${current.motif_annulation}` : ''}
             </span>
-            <Button size="sm" variant="outline" onClick={reactiver}>Réactiver</Button>
+            {peutGerer && <Button size="sm" variant="outline" onClick={reactiver}>Réactiver</Button>}
           </div>
         )}
 
@@ -913,7 +905,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input value={formatDateFR(current.date_ouverture)} readOnly />
             </FormField>
             <FormField label="Statut">
-              <Select value={fields.statut} onValueChange={(v) => set('statut', v)}>
+              <Select value={fields.statut} onValueChange={(v) => set('statut', v)} disabled={!peutGerer}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {statutsProposes.map((k) => (
@@ -1018,7 +1010,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <FormSection title="Suivi">
             <FormField label="Technicien responsable">
               <Select value={fields.technicien_responsable ? String(fields.technicien_responsable) : '__none'}
-                      onValueChange={(v) => set('technicien_responsable', v === '__none' ? '' : v)}>
+                      onValueChange={(v) => set('technicien_responsable', v === '__none' ? '' : v)} disabled={!peutReassigner}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Non assigné —</SelectItem>
@@ -1095,7 +1087,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           />
           {/* XSAV5 — pause/reprise SLA « en attente client ». */}
           <div className="flex items-center gap-2">
-            {current.en_attente_client ? (
+            {!peutGerer ? null : current.en_attente_client ? (
               <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={reprendreApresAttente}>
                 Reprendre après attente client
               </Button>
@@ -1137,12 +1129,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         {/* ── Interventions (L313 — repliable) ── */}
         <CollapsibleSection icon={Wrench} title="Interventions">
           {/* WIR29 — création one-click depuis le ticket ; formulaire manuel conservé en option ci-dessous. */}
-          <div>
+          {peutGerer && <div>
             <Button type="button" variant="outline" size="sm"
                     loading={planBusy} onClick={planifierUnClic}>
               <Zap /> Planifier une intervention en un clic
             </Button>
-          </div>
+          </div>}
           {interventions.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucune intervention rattachée.</p>
           ) : (
@@ -1181,12 +1173,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                         onChange={(e) => setInterv((s) => ({ ...s, compte_rendu: e.target.value }))} />
             </FormField>
           </div>
-          <div>
+          {peutGerer && <div>
             <Button type="button" variant="outline" size="sm"
                     loading={intervBusy} disabled={!interv.type_intervention} onClick={addIntervention}>
               <Plus /> Ajouter une intervention
             </Button>
-          </div>
+          </div>}
         </CollapsibleSection>
 
         {/* ── Pièces consommées (N46) — L313 repliable ── */}
@@ -1201,9 +1193,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                     {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''} × {p.quantite}
                     {p.stock_decremente && <Badge tone="info" className="ml-2">stock −</Badge>}
                   </span>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p.id)}>
+                  {peutGerer && <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p.id)}>
                     <Trash2 /> Retirer
-                  </Button>
+                  </Button>}
                 </li>
               ))}
             </ul>
@@ -1250,12 +1242,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </label>
             )}
           </div>
-          <div>
+          {peutGerer && <div>
             <Button type="button" variant="outline" size="sm"
                     loading={pieceBusy} disabled={!pieceForm.produit} onClick={addPiece}>
               <Plus /> Ajouter la pièce
             </Button>
-          </div>
+          </div>}
         </CollapsibleSection>
 
         {/* ── Pièces du ticket (WIR232/ZMFG8) : vue unifiée Ajout/Retrait/
@@ -1331,12 +1323,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input aria-label="N° de série du neuf" value={retirerForm.serie_neuve}
                      onChange={(e) => setRetirerForm((s) => ({ ...s, serie_neuve: e.target.value }))} />
             </FormField>
-            <div className="sm:col-span-full">
+            {peutGerer && <div className="sm:col-span-full">
               <Button type="button" variant="outline" size="sm"
                       loading={retirerBusy} disabled={!retirerForm.produit} onClick={retirerPiece}>
                 <Trash2 /> Retirer une pièce
               </Button>
-            </div>
+            </div>}
           </div>
           {equipementNeuf && (
             <p className="mt-2 text-sm" data-testid="equipement-neuf">
@@ -1379,7 +1371,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <Input placeholder="Écrire une note…" value={noteBody}
                    onChange={(e) => setNoteBody(e.target.value)}
                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
-            <Button type="button" variant="outline" onClick={postNote}>Noter</Button>
+            {peutGerer && <Button type="button" variant="outline" onClick={postNote}>Noter</Button>}
           </div>
           <div className="flex flex-col gap-2">
             {historique.length === 0 && <p className="text-sm text-muted-foreground">Aucune activité pour le moment.</p>}
@@ -1421,14 +1413,14 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         )}
 
         <FormActions sticky={false} className="sm:flex-wrap" data-testid="ticket-actions">
-          {!current.annule && (
+          {!current.annule && peutGerer && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
               <Trash2 /> Annuler le ticket
             </Button>
           )}
           {/* XSAV3 — devis de réparation hors garantie (refusé côté serveur
               si le ticket est sous garantie calculée). */}
-          {peutVentes && current.sous_garantie_effectif !== 'oui' && (
+          {peutGerer && peutVentes && current.sous_garantie_effectif !== 'oui' && (
             current.devis_id_ext ? (
               <Badge tone="success">Devis créé</Badge>
             ) : (
@@ -1442,7 +1434,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               générique sinon. Idempotent (facture_id_ext déjà posé). */}
           {current.facture_id_ext ? (
             <Badge tone="success">Facture générée</Badge>
-          ) : peutVentes && (
+          ) : peutGerer && peutVentes && (
             <>
               <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(false)}>
                 <FileText /> Facturer
@@ -1458,7 +1450,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <FileText /> Rapport d'intervention (PDF)
           </Button>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
-          <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
+          {peutGerer && <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>}
         </FormActions>
 
         <Dialog open={!!clotureCible} onOpenChange={(o) => { if (!o) setClotureCible(null) }}>
@@ -1886,7 +1878,7 @@ export default function TicketsPage() {
   const { createView: createTicketView } = useServerSavedViews(TP_ECRAN)
   // PACT174 — l'assistant ne propose « Partagée à l'équipe » qu'aux rôles qui
   // ont réellement ce droit (SavedViewViewSet répond 403 sinon).
-  const peutPartagerVue = useIsAdminOrResponsable()
+  const peutPartagerVue = useIsAdminOrResponsable(), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
   const saveCurrentTicketView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
     const trimmed = (name || '').trim()
@@ -2380,27 +2372,27 @@ export default function TicketsPage() {
                   // VX246(c) — « Copier » la sélection en TSV (colle en colonnes dans Excel).
                   buildCopyTSVAction({ rows: selRows, filteredRows: selRows, columns }),
                   // L317 — assignation technicien en lot.
-                  ...[...technicienById.entries()].map(([tid, nom]) => ({
+                  ...(peutGerer && peutReassigner ? [...technicienById.entries()] : []).map(([tid, nom]) => ({
                     id: `tech-${tid}`,
                     label: `Assigner à ${nom}`,
                     icon: Wrench,
                     onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
                   })),
                   // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
-                  ...TICKET_PRIORITES.map((p) => ({
+                  ...(peutGerer ? TICKET_PRIORITES : []).map((p) => ({
                     id: `priorite-${p.value}`,
                     label: prioriteBulkLabel(p),
                     onClick: () => bulkAction(selKeys, 'priorite', { priorite: p.value }, clear),
                   })),
                   // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
-                  {
+                  ...(peutGerer ? [{
                     id: 'annuler',
                     label: 'Annuler',
                     onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
-                  },
+                  }] : []),
                 ]}
-                bulkEdit={ticketsBulkEdit}
-                bulkNote={ticketsBulkNote}
+                bulkEdit={peutGerer ? ticketsBulkEdit : undefined}
+                bulkNote={peutGerer ? ticketsBulkNote : undefined}
                 viewBuilder={ticketsViewBuilder}
               />
             )}

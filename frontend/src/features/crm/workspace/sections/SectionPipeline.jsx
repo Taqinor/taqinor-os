@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import { formatDate } from '../../../../lib/format'
 import AssigneePicker from '../../../../components/AssigneePicker'
+import useDroitMetier from '../../../sav/useDroitMetier' // ADRG20 — code fin, sinon palier
 import crmApi from '../../../../api/crmApi'
 import ventesApi from '../../../../api/ventesApi'
 import { toast, toastPromise } from '../../../../ui/confirm'
@@ -360,6 +361,7 @@ const CONTACT_PREFERENCES = { whatsapp_only: 'WhatsApp uniquement', phone_ok: 'R
 // LW11 — Suivi commercial SANS le select d'étape (remplacé par StageControl
 // LW16, rail identité). Port 1:1 des autres champs pipeline + verrous perdu/motif.
 export default function SectionPipeline({ state, setField, errors = {}, refData = {} }) {
+  const peutReassigner = useDroitMetier('crm_reassign') // ADRG20 — le PATCH d'owner l'exige
   const v = (k) => getField(state, k) ?? ''
   // F4 — `relanceVersion` (LeadWorkspace, bumpé par les raccourcis « ⋯ » du
   // rail identité — hors de cette section) est COMBINÉ au compteur local
@@ -454,7 +456,7 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
           <label className="form-label" htmlFor="lf-owner">Responsable</label>
           <div id="lf-owner" data-field-anchor="lf-owner" tabIndex={-1} className={ownerSuggested ? 'vx-suggested-field inline-block rounded-full' : undefined}>
             <AssigneePicker
-              users={users}
+              users={users} disabled={!peutReassigner}
               value={v('owner')}
               onChange={(id) => setField('owner', id ?? '')}
             />

@@ -15,7 +15,8 @@ from ..serializers import (
     DocumentConformiteFournisseurSerializer, AchatsParametresSerializer,
     ToleranceRapprochementCategorieSerializer,
 )
-from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, HasPermissionOrLegacy
+from ..permissions import PeutSupprimerStock  # ADRG44
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -41,7 +42,7 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            return [PeutSupprimerStock()]  # ADRG44
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):
@@ -142,5 +143,5 @@ class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):  # head
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            return [PeutSupprimerStock()]  # ADRG44
         return [HasPermissionOrLegacy('stock_modifier')()]

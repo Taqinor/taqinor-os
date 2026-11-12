@@ -12,6 +12,7 @@ import { TableauStock, OptionsProduits, BoutonsModifierSupprimer } from './Compo
 import { EnteteStock } from './EnteteStock'
 import { AlerteErreurStock } from './BandeauxListeStock'
 import usePeutEcrireStock from './usePeutEcrireStock'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
@@ -96,6 +97,9 @@ function ConditionnementForm({ produits, conditionnement, onClose, onSaved }) {
 export default function ConditionnementsProduit() {
   const [confirmer, dialogueConfirmation] = useConfirmation()
   const canWrite = usePeutEcrireStock()
+  // ADRG37 — supprimer suit la règle des suppressions stock (admin ou `stock_supprimer`).
+  const estAdmin = useIsAdmin()
+  const canDelete = useHasPermission('stock_supprimer') || estAdmin
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -141,13 +145,13 @@ export default function ConditionnementsProduit() {
         canWrite ? (
           <div className="flex items-center justify-end gap-1">
             <BoutonsModifierSupprimer onModifier={() => setSelected(c)}
-                                      onSupprimer={() => supprimer(c)} />
+                                      onSupprimer={canDelete ? () => supprimer(c) : undefined} />
           </div>
         ) : null
       ) },
   // canWrite stable au sein d'une session ; reload via closure stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `canWrite` stable au sein d'une session ; reload via closure stable (D-ENF22)
-  ], [canWrite])
+  ], [canWrite, canDelete])
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">

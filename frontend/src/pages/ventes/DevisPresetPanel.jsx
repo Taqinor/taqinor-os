@@ -29,6 +29,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { BookmarkPlus, BookOpen, Trash2, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import { Button, Input, Label, Badge } from '../../ui'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -121,6 +122,8 @@ function ApplySection({ onApplied }) {
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(null)  // preset id being applied
   const [deleting, setDeleting] = useState(null)  // preset id being deleted
+  // ADRG5 — un modèle est PARTAGÉ par la société : supprimer exige `ventes_supprimer`.
+  const peutSupprimer = useHasPermission('ventes_supprimer')
   const [status, setStatus] = useState(null)
 
   const load = useCallback(() => {
@@ -213,7 +216,7 @@ function ApplySection({ onApplied }) {
                 ? <Check className="size-3 text-success" aria-hidden="true" />
                 : 'Appliquer'}
             </Button>
-            <button
+            {peutSupprimer && <button
               onClick={() => handleDelete(preset)}
               disabled={deleting === preset.id}
               className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
@@ -221,7 +224,7 @@ function ApplySection({ onApplied }) {
               type="button"
             >
               <Trash2 className="size-3.5" aria-hidden="true" />
-            </button>
+            </button>}
           </li>
         ))}
       </ul>

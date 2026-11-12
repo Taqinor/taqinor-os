@@ -42,7 +42,8 @@ class TestValorisationAchatGatee(TestCase):
         role = Role.objects.create(
             company=self.company, nom='Responsable stock sans achat',
             # ASEC11 — module reporting : un code reporting est désormais requis.
-            permissions=['stock_gerer', 'reporting_voir'])
+            # ADRG71 — le rapport stock exige aussi la lecture du module stock.
+            permissions=['stock_gerer', 'stock_voir', 'reporting_voir'])
         responsable = User.objects.create_user(
             username='aana26_resp', password='x', company=self.company,
             role=role)

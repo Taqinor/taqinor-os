@@ -19,7 +19,7 @@ import PlanificationPage, { OutilsChantierTab } from './PlanificationPage'
 import { moveInterventionLocal } from './PlanificationPage.helpers'
 import { renderAvecAuth } from '../../test/renderAvecAuth'
 
-const renderPage = (role = 'responsable') => renderAvecAuth(<PlanificationPage />, { role }, { routeur: false })
+const renderPage = (role = 'responsable', permissions = []) => renderAvecAuth(<PlanificationPage />, { role, permissions }, { routeur: false })
 
 const renderOutils = (role = 'responsable') => renderAvecAuth(<OutilsChantierTab />, { role }, { routeur: false })
 
@@ -92,16 +92,18 @@ describe('VX251 · moveInterventionLocal (réaffectation dispatch)', () => {
 })
 
 describe('VX251 · onglet dispatch (glisser-déposer)', () => {
+  const calendrier = () => api.getCalendrierInterventions.mockResolvedValue({
+    data: [
+      { technicien: { id: 1, nom: 'Ali' }, interventions: [
+        { id: 10, installation_reference: 'CH-010', client_nom: 'Client A', date_prevue: '2026-07-15' },
+      ] },
+      { technicien: { id: 2, nom: 'Sara' }, interventions: [] },
+    ],
+  })
+
   it('rend des cartes intervention déplaçables + l’invite de réaffectation', async () => {
-    api.getCalendrierInterventions.mockResolvedValue({
-      data: [
-        { technicien: { id: 1, nom: 'Ali' }, interventions: [
-          { id: 10, installation_reference: 'CH-010', client_nom: 'Client A', date_prevue: '2026-07-15' },
-        ] },
-        { technicien: { id: 2, nom: 'Sara' }, interventions: [] },
-      ],
-    })
-    renderPage()
+    calendrier()
+    renderPage('responsable', ['technicien_assign'])
     // Bascule sur l'onglet « Calendrier techniciens ».
     await userEvent.click(screen.getByText('Calendrier techniciens'))
     await waitFor(() => expect(api.getCalendrierInterventions).toHaveBeenCalled())
@@ -109,5 +111,15 @@ describe('VX251 · onglet dispatch (glisser-déposer)', () => {
       expect(screen.getByText(/Glissez une intervention vers un autre technicien/)).toBeInTheDocument())
     // La carte porte une poignée de déplacement accessible.
     expect(screen.getByLabelText(/Déplacer l'intervention CH-010/)).toBeInTheDocument()
+  })
+
+  // ADRG21 — glisser une carte change son technicien : `technicien_assign`.
+  it('sans technicien_assign : cartes non glissables, lecture seule', async () => {
+    calendrier()
+    renderPage('normal', ['installation_gerer', 'intervention_gerer'])
+    await userEvent.click(screen.getByText('Calendrier techniciens'))
+    await waitFor(() => expect(screen.getByText(/Assigner techniciens/)).toBeInTheDocument())
+    expect(screen.queryByText(/Glissez une intervention vers un autre technicien/)).toBeNull()
+    expect(screen.queryByLabelText(/Déplacer l'intervention CH-010/)).toBeNull()
   })
 })

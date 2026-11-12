@@ -232,7 +232,7 @@ def public_document(request, token):
                 'Devis', devis.reference,
                 client=devis.client if devis.client_id else None,
                 company=devis.company)
-        elif link.facture_id:
+        elif link.facture_id and link.facture.statut not in ('brouillon', 'annulee'):  # APUB31
             facture = link.facture
             # PVFRESH (fondateur, 19/08/2026) — la clé stockée n'est plus
             # servie sans vérifier sa fraîcheur (même contrat que le devis

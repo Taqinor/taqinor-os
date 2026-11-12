@@ -191,3 +191,66 @@ class Ntwms38ApiTests(Ntwms38Base):
         res = auth(self.admin).get(self.URL)
         resultats = res.data.get('results', res.data)
         self.assertEqual(len(resultats), 1)
+
+    def test_referentiels_exigent_stock_modifier_et_suppression_admin(self):
+        """ADRG36 (C-ADRG-010) — les référentiels d'entrepôt et de
+        fournisseurs : écrire exige ``stock_modifier`` (Commercial responsable
+        et Technicien livrés : 403 « Droit … manquant (stock_modifier) ») ;
+        leurs 5 suppressions suivent la règle stock (Technicien responsable,
+        hérité responsable : 403 ; Directeur : jamais 403). La garde précède
+        toute lecture d'objet : ids absents. Le profil saisonnier relu reste
+        présent. Mutant : rendre ``destroy`` au palier pour les profils
+        saisonniers ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def livre(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'adrg36-{nom.lower().replace(" ", "-")}',
+                password='x', company=self.company, role=role)
+        s, n = '/api/django/stock/', 999999
+        ecritures = [('post', s + r) for r in (
+            'incidents-qualite-fournisseur/', 'casiers-hazmat/',
+            'nomenclatures-code-barres/', 'regles-code-barres/',
+            'dossiers-onboarding-fournisseur/', 'documents-fournisseur/',
+            'profils-saisonniers/', 'plans-echantillonnage/',
+            'seuils-reappro-casier/', 'alertes-rappel/',
+            'rendez-vous-transporteur/')] + [
+            ('patch', f'{s}profils-saisonniers/{n}/'),
+            ('post', f'{s}alertes-rappel/{n}/cloturer/')]
+        suppressions = [f'{s}{r}/{n}/' for r in (
+            'nomenclatures-code-barres', 'regles-code-barres',
+            'dossiers-onboarding-fournisseur', 'documents-fournisseur',
+            'profils-saisonniers')]
+        for nom in ('Commercial responsable', 'Technicien'):
+            self.assertNotIn('stock_modifier', perms[nom])
+            api = auth(livre(nom))
+            for methode, url in ecritures:
+                with self.subTest(role=nom, url=url):
+                    rep = getattr(api, methode)(url, {}, format='json')
+                    self.assertEqual(rep.status_code, 403, rep.content)
+                    self.assertIn('stock_modifier', str(rep.data['detail']))
+        herite = User.objects.create_user(
+            username='adrg36-herite', password='x', company=self.company,
+            role_legacy='responsable')
+        from apps.stock.models_qualite_reception import PlanEchantillonnage
+        for user in (livre('Technicien responsable'), herite):
+            api = auth(user)
+            # Le POST vide du compte précédent a créé LE plan par défaut de la
+            # société (contrainte unique partielle) : on repart sans lui.
+            PlanEchantillonnage.objects.filter(company=self.company).delete()
+            for methode, url in ecritures:
+                with self.subTest(user=user.username, url=url):
+                    rep = getattr(api, methode)(url, {}, format='json')
+                    self.assertNotEqual(rep.status_code, 403, rep.content)
+            for url in suppressions:
+                with self.subTest(user=user.username, suppression=url):
+                    self.assertEqual(api.delete(url).status_code, 403)
+        api = auth(livre('Directeur'))
+        for url in suppressions:
+            with self.subTest(user='Directeur', suppression=url):
+                self.assertNotEqual(api.delete(url).status_code, 403)

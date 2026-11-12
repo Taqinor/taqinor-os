@@ -13,6 +13,8 @@ from .facture_lot import FactureLotActionsMixin
 from .facture_recouvrement import FactureRecouvrementActionsMixin
 from .facture_rectificatifs import FactureRectificatifsActionsMixin
 from .facture_portes import refuser_portes_fermees  # AFAC66 / VNT89
+from .facture_gardes import PeutEncaisser  # ADRG3
+from rest_framework.exceptions import PermissionDenied
 from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from authentication.permissions import (
     IsAnyRole,
@@ -21,6 +23,7 @@ from authentication.permissions import (
 )
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50 / D-ASEC-50
 from core.conflit_etat import ConflitEtat
+from core.events import facture_annulee  # ACSV112
 from core.permissions import declared_action_permissions
 
 # ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
@@ -49,6 +52,10 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     # AARG49 — imprimés sur le PDF envoyé (objet ; art. 145 CGI).
     'libelle', 'date_livraison',
 ])
+#: ADRG3 (D-ASEC-VER-1) — hors brouillon, suspendre/décaler la relance exige ``encaisser``.
+FACTURE_CHAMPS_RELANCE = frozenset([
+    'exclu_relances', 'exclu_relances_jusquau', 'contestee_le',
+    'motif_contestation', 'prochaine_relance', 'date_echeance'])
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
     '(ou remettez la facture en brouillon).')
@@ -264,6 +271,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'effacerait des encaissements réels. Annulez-la ou rejetez '
                 'd\'abord ses paiements.'
             )})
+        pk = instance.pk  # ACSV112 — Django remet ``pk`` à nul à la suppression
         try:
             instance.delete()
         except ProtectedError:
@@ -272,6 +280,8 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'avoir, une note de débit ou un paiement du portail client. '
                 'Annulez-la plutôt que de la supprimer.'
             )})
+        instance.pk = pk  # ACSV112 — mêmes abonnés que l'annulation d'un brouillon (sav, installations)
+        facture_annulee.send(sender=Facture, instance=instance, company=instance.company)
 
     def perform_update(self, serializer):
         # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
@@ -290,6 +300,14 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
             })
+        relance_touchee = argent_modifie(
+            facture, serializer.validated_data, FACTURE_CHAMPS_RELANCE)
+        if (facture.statut != Facture.Statut.BROUILLON and relance_touchee
+                and not PeutEncaisser().has_permission(self.request, self)):
+            raise PermissionDenied({'detail': (  # ADRG3
+                "Suspendre ou décaler la relance d'une facture émise exige le "
+                "droit d'encaissement (encaisser)."),
+                'champs_refuses': sorted(relance_touchee)})
         # AARG56 — l'échéance posée d'une émise se reporte, elle ne s'efface pas.
         if (facture.statut != Facture.Statut.BROUILLON and facture.date_echeance
                 and serializer.validated_data.get(

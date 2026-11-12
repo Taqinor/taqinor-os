@@ -30,6 +30,7 @@ from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
+from ..permissions import PeutSupprimerStock, PeutVoirPrixAchat
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
     LectureDuModule,
@@ -415,17 +416,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return [PRODUIT_CREATE_PERMISSION()]
         elif self.action in WRITE_ACTIONS + [
                 'bulk', 'rebuter', 'decoupes', 'photo']:
-            # XSTK16 — la découpe/reconditionnement modifie le stock, même
-            # garde que les autres écritures Stock (`get_permissions` prime
-            # sur le `permission_classes` de l'@action, d'où ce cas explicite
-            # — sinon repli IsAdminRole).
-            # APX18 — `photo` (poser/retirer la photo produit) EST une
-            # écriture catalogue : même garde `stock_modifier`. Sans ce cas
-            # explicite, elle retomberait sur IsAdminRole — un responsable
-            # stock ne pourrait plus photographier son catalogue.
-            return [HasPermissionOrLegacy('stock_modifier')()]
-        elif self.action in ('destroy', 'force_delete'):
-            return [IsAdminRole()]
+            # XSTK16/ADRG45 — rebut et découpe sont des MOUVEMENTS (`stock_mouvement`) ; `get_permissions`
+            # prime sur le `permission_classes` de l'@action (sinon repli IsAdminRole).
+            # APX18 — `photo` (poser/retirer la photo produit) EST une écriture catalogue :
+            # même garde `stock_modifier` (sinon repli IsAdminRole, photo impossible).
+            return [HasPermissionOrLegacy('stock_mouvement' if self.action in ('rebuter', 'decoupes')
+                                          else 'stock_modifier')()]
+        elif self.action in ('destroy', 'force_delete'):  # ADRG44 : destroy suit `stock_supprimer`
+            return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]
         elif self.action == 'emplacements':
             # AAPV74 (rejeu 08/11) — la ventilation par emplacement alimente le
             # dialogue « Transférer » : même droit que le transfert lui-même
@@ -455,7 +453,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # permission_classes de l'@action, d'où ce cas explicite —
             # sinon repli IsAdminRole). ERR-STK-PRIX-ACHAT-3-ROUTES — montants
             # et prix d'achat (prix_nu, engagements) : `prix_achat_voir` EN PLUS.
-            from ..permissions import PeutVoirPrixAchat
             return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
         # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
         # interne, jamais client-facing) via le repli ci-dessous.
@@ -718,7 +715,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                          produit_cible_quantite_stock=serializers.IntegerField(),
                                          numero_lot=serializers.CharField(allow_null=True))})
     @action(detail=False, methods=['post'], url_path='decoupes',  # headless: D-ENF15-STOCK-22
-            permission_classes=[HasPermissionOrLegacy('stock_modifier')])
+            permission_classes=[HasPermissionOrLegacy('stock_mouvement')])
     def decoupes(self, request):
         """XSTK16 — découpe/reconditionnement : débite `produit_source` et
         crédite `produit_cible` (peut être le même SKU) en transférant la

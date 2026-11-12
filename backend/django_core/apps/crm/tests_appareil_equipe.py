@@ -55,7 +55,8 @@ def make_responsable(company, username):
     from apps.roles.models import Role
     role, _ = Role.objects.get_or_create(
         company=company, nom='Responsable-QJEQ2',
-        defaults={'permissions': ['crm_creer', 'crm_modifier']})
+        # ADRG4 — « Retirer » un appareil exige crm_supprimer.
+        defaults={'permissions': ['crm_creer', 'crm_modifier', 'crm_supprimer']})
     return User.objects.create_user(
         username=username, password='x', role=role, company=company)
 

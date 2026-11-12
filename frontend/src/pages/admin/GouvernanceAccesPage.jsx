@@ -9,6 +9,7 @@ import {
 } from '../../ui'
 import { formatDate } from '../../lib/format'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { useConfirmDialog } from '../../ui/confirm'
 
 /* ============================================================================
    WIR135 — Écran d'administration « Gouvernance des accès ».
@@ -37,6 +38,7 @@ function CampagnesTab() {
   const [perimetre, setPerimetre] = useState('all')
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
+  const { confirm } = useConfirmDialog()
 
   // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
   const load = () => fetchAllPages((page, o) => accessReviewApi.campaigns.list({ page, ...o })
@@ -51,7 +53,12 @@ function CampagnesTab() {
       setNom(''); load(); toast.success('Campagne lancée.')
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Lancement impossible.') }
   }
+  const nomCompte = (it) => (it.user_nom ? `${it.user_nom} (Compte #${it.user})` : `Compte #${it.user}`)
   const attester = async (campaign, item, decision) => {
+    // APUB4 — révoquer retire le rôle : confirmation nommant le compte et le rôle.
+    if (decision === 'revoque' && !(await confirm({ title: 'Révoquer cet accès ?',
+      description: `${nomCompte(item)} perd le rôle « ${libelleRole(item.role_snapshot)} ».`,
+      confirmLabel: 'Révoquer l’accès', cancelLabel: 'Annuler' }))) return
     try {
       await accessReviewApi.campaigns.attester(campaign.id, { item: item.id, decision })
       const r = await accessReviewApi.campaigns.get(campaign.id)
@@ -94,7 +101,7 @@ function CampagnesTab() {
                 {(c.items ?? []).length === 0 && <p className="text-sm text-muted-foreground">Aucun item.</p>}
                 {(c.items ?? []).map((it) => (
                   <div key={it.id} className="flex items-center gap-2 py-1 text-sm">
-                    <span>Compte #{it.user}</span>
+                    <span>{nomCompte(it)}</span>
                     <span className="text-muted-foreground">{libelleRole(it.role_snapshot)}</span>
                     <Badge tone={it.decision === 'revoque' ? 'danger' : it.decision === 'maintenu' ? 'success' : 'neutral'}>
                       {it.decision}

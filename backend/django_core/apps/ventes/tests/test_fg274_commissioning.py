@@ -136,6 +136,51 @@ class CommissioningApiTest(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(ids(r), {dossier1.pk})
 
+    def test_suppression_dossier_exige_ventes_supprimer(self):
+        """ADRG6 (C-ADRG-013) — supprimer un dossier réglementaire, une pièce,
+        un échange, une subvention ou une régularisation 82-21 exige
+        `ventes_supprimer` : Commercial livré 403 (rien supprimé), Commercial
+        responsable 204."""
+        from datetime import date
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        from apps.ventes.models_regulatory import (
+            DossierChecklistItem, DossierExchange, Regularisation8221,
+            RegulatoryDossier, SubventionDossier)
+        call_command('init_roles', verbosity=0)
+        dossier = RegulatoryDossier.objects.create(
+            company=self.company, devis=self.devis)
+        objets = [
+            ('dossiers-checklist', DossierChecklistItem.objects.create(
+                company=self.company, dossier=dossier, code='cin', libelle='CIN')),
+            ('dossiers-echanges', DossierExchange.objects.create(
+                company=self.company, dossier=dossier, date_echange=date.today())),
+            ('subventions', SubventionDossier.objects.create(
+                company=self.company, devis=self.devis)),
+            ('regularisations-8221', Regularisation8221.objects.create(
+                company=self.company, devis=self.devis)),
+            ('dossiers-reglementaires', dossier),
+        ]
+
+        def api_role(nom):
+            api = APIClient()
+            api.force_authenticate(User.objects.create_user(
+                username='adrg6_' + nom.replace(' ', '_'), password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom)))
+            return api
+        commercial = api_role('Commercial')
+        responsable = api_role('Commercial responsable')
+        for route, obj in objets:
+            url = f'/api/django/ventes/{route}/{obj.pk}/'
+            with self.subTest(route=route):
+                r = commercial.delete(url)
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertIn('ventes_supprimer', str(r.data))
+                self.assertTrue(type(obj).objects.filter(pk=obj.pk).exists())
+                self.assertEqual(responsable.delete(url).status_code, 204)
+                self.assertFalse(type(obj).objects.filter(pk=obj.pk).exists())
+
     def test_result_derived_server_side(self):
         # ENF11 — texte strict : ``observations: 0`` n'est plus converti.
         refus = self.api.post(self.url, {

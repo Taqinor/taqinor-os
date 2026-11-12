@@ -722,11 +722,14 @@ def _releve_data(client, user=None):
          'montant': _s(p.montant_disponible)}
         for p in avances_qs if p.montant_disponible > 0]
     total_avances = sum((Decimal(a['montant']) for a in avances), Decimal('0'))
+    # ALEC33 — coordonnées masquées pour un rôle sans ``client_pii_voir``.
+    pii = user is None or user.can_view_client_pii
     return {
         'client': {'id': client.id,
                    'nom': f"{client.nom} {client.prenom or ''}".strip(),
-                   'email': client.email, 'telephone': client.telephone,
-                   'adresse': client.adresse},
+                   'email': client.email if pii else None,
+                   'telephone': client.telephone if pii else None,
+                   'adresse': client.adresse if pii else None},
         'lignes': lignes,
         'paiements': paiements,
         'avoirs': avoirs,

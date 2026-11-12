@@ -115,6 +115,11 @@ class OfflineOperationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        user = self.request.user
+        # ALEC21 — hors superuser et palier administrateur, les seules
+        # opérations de l'appelant (payload : notes, mesures de visite).
+        if not (user.is_superuser or getattr(user, 'is_admin_role', False)):
+            qs = qs.filter(user=user)
         # Énumérations publiées : une autre valeur -> 400 (liste vide avant).
         statut = choix_ou_400(
             self.request, 'statut', list(OfflineOperation.Statut.values))

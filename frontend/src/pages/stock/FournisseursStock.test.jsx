@@ -529,7 +529,8 @@ describe('ConformiteFournisseurs (ENF15)', () => {
 
   it("exporte l'Excel avec la période choisie", async () => {
     stockApi.exportConformiteFournisseursXlsx.mockResolvedValue({ data: new Blob(['x']) })
-    renderStockPage(ConformiteFournisseurs, makeStore({ role: 'responsable', permissions: PERMS }))
+    // ADRG24 — l'export serveur exige `stock_export`.
+    renderStockPage(ConformiteFournisseurs, makeStore({ role: 'responsable', permissions: [...PERMS, 'stock_export'] }))
     await screen.findByRole('grid', { name: 'Conformité des fournisseurs' })
     await userEvent.type(screen.getByLabelText('Du'), '2026-01-01')
     await userEvent.click(screen.getByRole('button', { name: /Exporter en Excel/ }))

@@ -107,3 +107,44 @@ class OtpObligatoireTests(OtpObligatoireBase):
         self.assertEqual(self.signataire.otp_code_hash, '')
         self.assertFalse(self.anon.get(self.url).data['otp_requis'])
         self.assertEqual(self._signer().status_code, 200)
+
+    def test_refus_et_apercu_exigent_le_code(self):
+        """APUB40 — sans code validé : refus 400 (demande `en_attente`),
+        document 403 `otp_required`, `apercu_url` nul ; après le code : refus
+        200 et document servi."""
+        from apps.ged.models import DocumentVersion, SIGNATURE_EN_ATTENTE
+        DocumentVersion.objects.create(
+            company=self.co_a, document=self.doc, version=1,
+            file_key='ged/apub40/contrat.pdf', filename='contrat.pdf',
+            mime='application/pdf')
+        doc_url = f'{self.url}document/'
+        refus = {'action': 'refuser', 'motif': 'x'}
+        resp = self.anon.post(self.url, refus, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            resp.data['detail'], 'Authentification supplémentaire requise '
+            'avant de refuser : saisissez le code reçu.')
+        self.signataire.demande.refresh_from_db()
+        self.assertEqual(self.signataire.demande.statut, SIGNATURE_EN_ATTENTE)
+        apercu = self.anon.get(doc_url)
+        self.assertEqual(apercu.status_code, 403)
+        self.assertEqual(apercu.data['detail'], 'otp_required')
+        self.assertIsNone(self.anon.get(self.url).data['apercu_url'])
+
+        captured = {}
+
+        def _envoi(company, to, message):
+            captured['code'] = message.split(':')[-1].strip()
+            return _SmsEnvoye()
+
+        with mock.patch('core.sms.send_sms', side_effect=_envoi):
+            self.anon.post(self.url, {'action': 'envoyer-code'},
+                           format='json')
+        self.assertEqual(self.anon.post(self.url, {
+            'action': 'valider-code', 'code': captured['code']},
+            format='json').status_code, 200)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'%PDF-1.4', None)):
+            self.assertEqual(self.anon.get(doc_url).status_code, 200)
+        self.assertEqual(self.anon.post(self.url, refus,
+                                        format='json').status_code, 200)

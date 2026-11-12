@@ -36,7 +36,7 @@ from .models import (
     RevueCompte, SalleVente, SalleVenteItem, VisiteExterne,
 )
 from .parcage import ApporteursParquesMixin
-from .serializers import LeadActivitySerializer, masquer_pii_dict
+from .serializers import LeadActivitySerializer, masquer_pii_dict, pii_masquee_pour
 from .serializers_clients import (
     AppareilEquipeSerializer, ClientSerializer, PartenaireSerializer,
     SalleVenteSerializer, SalleVenteItemSerializer, ApporteurSerializer,
@@ -62,6 +62,23 @@ from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _garde_ecriture(vue):
+    """ADRG4 — écriture d'un objet autonome du CRM ; ``destroy`` exige en plus
+    ``crm_supprimer`` (règle de ``ClientViewSet``, ASEC50)."""
+    if vue.action == 'destroy':
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('crm_supprimer')()]
+    return [IsResponsableOrAdmin()]
+
+
+class _RechercheSansPii(filters.SearchFilter):
+    """ALEC32 — sans ``client_pii_voir``, ``?search=`` ignore e-mail, téléphone et CIN."""
+
+    def get_search_fields(self, view, request):
+        champs = super().get_search_fields(view, request) or []
+        masque = pii_masquee_pour(request.user)
+        return [c for c in champs if not (masque and c in ('email', 'telephone', 'cin'))]
 
 
 @extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE),
@@ -90,7 +107,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return declared_action_permissions(self) or _garde_ecriture(self)  # ADRG4
 
     def get_queryset(self):
         # ACRM65 (D-ACRM-6 (ii)=(b)) — salles PARQUÉES quand le réglage
@@ -175,6 +192,9 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['nom', 'date_creation']
 
+    def get_permissions(self):
+        return declared_action_permissions(self) or _garde_ecriture(self)  # ADRG4
+
     def perform_create(self, serializer):
         import secrets
         serializer.save(
@@ -237,7 +257,7 @@ class ApporteurViewSet(ApporteursParquesMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
 
 class DealEnregistreViewSet(ApporteursParquesMixin, _PorteeEnfantsMixin,
@@ -264,7 +284,7 @@ class DealEnregistreViewSet(ApporteursParquesMixin, _PorteeEnfantsMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'a_payer':
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return declared_action_permissions(self) or _garde_ecriture(self)  # ADRG4
 
     @extend_schema(request=None, responses=DealEnregistreSerializer)
     @action(detail=True, methods=['post'], url_path='approuver',
@@ -322,7 +342,7 @@ class DefiViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'classement':
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     @extend_schema(responses=sd.liste('CrmClassementDefi'))
     @action(detail=True, methods=['get'], url_path='classement',
@@ -497,7 +517,7 @@ class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
             return [IsAnyRole()]
         if self.action == 'list':
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     @extend_schema(responses={200: AppareilEquipeSerializer,
                               201: AppareilEquipeSerializer})
@@ -645,7 +665,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
     # created_by forcés serveur) SURCHARGENT la base : réponses inchangées.
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [_RechercheSansPii, filters.OrderingFilter]  # ALEC32
     search_fields = [
         'nom', 'prenom', 'email', 'telephone',
         'ice', 'if_fiscal', 'rc', 'cin',
@@ -787,7 +807,6 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
         # ACRM4 — sans ``client_pii_voir`` : export sans colonnes PII.
-        from .serializers import pii_masquee_pour
         return export_clients_xlsx(
             qs.order_by('nom'), masquer_pii=pii_masquee_pour(request.user))
 
@@ -1271,7 +1290,7 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['stats']:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def perform_create(self, serializer):
         company = self.request.user.company
@@ -1323,7 +1342,7 @@ class PlanActiviteViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
 
 class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
@@ -1544,7 +1563,7 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1599,7 +1618,7 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1724,7 +1743,7 @@ class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedM
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def perform_create(self, serializer):
         from apps.records.models import Activity
@@ -1771,7 +1790,7 @@ class RevueCompteViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def get_queryset(self):
         # RevueCompte n'a PAS de champ `company` propre (scopée via son plan
@@ -1799,7 +1818,7 @@ class PlaybookViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
 
 class _PlaybookEnfantViewSetMixin:
@@ -1877,7 +1896,7 @@ class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def base_queryset(self):
         return PlaybookEtape.objects.select_related(
@@ -1898,7 +1917,7 @@ class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return _garde_ecriture(self)  # ADRG4
 
     def base_queryset(self):
         return PlaybookTache.objects.select_related('etape__playbook')

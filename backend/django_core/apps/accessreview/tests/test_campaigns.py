@@ -112,6 +112,49 @@ class AccessReviewTests(TenantAPITestCase):
         self.assertIsNotNone(item.reviewer_id)
         self.assertIsNotNone(item.decided_at)
 
+    def test_revoquer_le_proprietaire_protege_ou_le_dernier_refuse(self):
+        """APUB4 (C-APUB-002) — la révocation passe la garde de rang de
+        l'écran Comptes : fondateur protégé puis dernier propriétaire 403,
+        rien d'écrit ; un Commercial reste révocable (200, « Utilisateur »)."""
+        from apps.roles import permissions_registre as registre
+        from authentication.role_tiers import CODE_RANG_CIBLE, MESSAGES_REFUS_GESTION
+        directeur = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=list(registre.DIRECTEUR_PERMISSIONS))
+        commercial = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=list(registre.COMMERCIAL_PERMISSIONS))
+        fondateur = UserFactory(company=self.company, username='apub4-f',
+                                role=directeur, is_protected=True)
+        d2 = UserFactory(company=self.company, username='apub4-d2', role=directeur)
+        com = UserFactory(company=self.company, username='apub4-c', role=commercial)
+        campaign = AccessReviewCampaign.objects.create(
+            company=self.company, nom='c', perimetre='all')
+        generate_items(campaign)
+        api = self.client_as(user=d2)
+        url = f'{self.BASE}{campaign.id}/attester/'
+
+        def revoquer(cible):
+            item = AccessReviewItem.objects.get(campagne=campaign, user=cible)
+            return item, api.post(url, {'item': item.id, 'decision': 'revoque'},
+                                  format='json')
+        item, r = revoquer(fondateur)
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.json()['detail'], MESSAGES_REFUS_GESTION[CODE_RANG_CIBLE])
+        CustomUser.objects.filter(pk=fondateur.pk).update(is_active=False)
+        item_d2, r = revoquer(d2)
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertIn('dernier propriétaire', r.json()['detail'])
+        for it, user in ((item, fondateur), (item_d2, d2)):
+            it.refresh_from_db()
+            user.refresh_from_db()
+            self.assertEqual((it.decision, user.role_id), ('en_attente', directeur.pk))
+        _, r = revoquer(com)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['user_nom'], 'apub4-c')
+        com.refresh_from_db()
+        self.assertEqual(com.role.nom, 'Utilisateur')
+
     def test_attester_maintien_keeps_role(self):
         role = Role.objects.create(company=self.company, nom='Compta')
         member = UserFactory(

@@ -216,8 +216,9 @@ class Intervention(VerrouOptimisteMixin, models.Model):
     # QUE le suivi de visite, jamais le compte-rendu final (F19). Même patron
     # (secrets.token_urlsafe(32), lazy, unique). Généré à la validation de
     # l'intervention (statut « Validée ») — n'expire jamais par date (le
-    # compte-rendu d'une intervention ancienne reste consultable), mais reste
-    # révocable en vidant le champ.
+    # compte-rendu d'une intervention ancienne reste consultable). APUB6 —
+    # coupé par ``couper_lien_rapport`` (action ``couper-lien-rapport``) : le
+    # lien suivant (``lien-rapport``, re-clôture) porte un jeton NEUF.
     lien_rapport_token = models.CharField(
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien compte-rendu signé (ZFSM2).")
@@ -291,11 +292,10 @@ class Intervention(VerrouOptimisteMixin, models.Model):
     @property
     def lien_client_expire(self):
         """XFSM7 — le lien expire le lendemain de la date prévue (une visite
-        d'un jour passé n'a plus de sens à suivre « en route »). Sans date
-        prévue, le lien n'expire jamais par cette règle (couvert par le
-        statut : une intervention VALIDEE/TERMINEE cesse d'avoir un ETA)."""
+        d'un jour passé n'a plus de sens à suivre « en route »). APUB35 —
+        sans date prévue, le lien expire à la clôture (TERMINEE/VALIDEE)."""
         if not self.date_prevue:
-            return False
+            return self.statut in (self.Statut.TERMINEE, self.Statut.VALIDEE)
         from datetime import timedelta
 
         from django.utils import timezone
@@ -330,6 +330,12 @@ class Intervention(VerrouOptimisteMixin, models.Model):
         self.lien_rapport_token = token
         self.save(update_fields=['lien_rapport_token'])
         return self.lien_rapport_token
+
+    def couper_lien_rapport(self):
+        """APUB6 — coupe le lien public du compte-rendu (page, PDF, photos) :
+        l'ancien jeton rend 404 ; ``ensure_lien_rapport_token`` en pose un neuf."""
+        self.lien_rapport_token = None
+        self.save(update_fields=['lien_rapport_token'])
 
 
 class InterventionActivity(models.Model):

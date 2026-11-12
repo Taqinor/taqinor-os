@@ -207,3 +207,48 @@ class OtpViewTests(ZGed2Base):
             {'action': 'signer', 'consentement': True,
              'signature_texte': 'Client A'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_renvoi_dans_la_minute_refuse_sans_envoi(self):
+        """APUB9 — un second `envoyer-code` dans la minute : 429 nommant
+        l'attente, aucun e-mail, essais non remis à zéro ; 61 s après : 200."""
+        from django.core import mail
+        role = RoleSignataire.objects.create(
+            company=self.co_a, nom='Client e-mail', auth_extra='email_otp')
+        demande = services.creer_demande_multi_signataires(
+            self.doc, destinataires=[
+                {'nom': 'Client B', 'email': 'b@example.com',
+                 'role_signataire': role.pk},
+            ], company=self.co_a, created_by=self.admin_a)
+        signataire = demande.signataires.get()
+        url = f'/api/django/ged/signataire/{signataire.token}/'
+        t0 = timezone.now()
+
+        def envoyer(secondes):
+            with mock.patch('django.utils.timezone.now',
+                            return_value=t0 + datetime.timedelta(
+                                seconds=secondes)):
+                return self.client.post(url, {'action': 'envoyer-code'},
+                                        content_type='application/json')
+
+        mail.outbox = []
+        self.assertEqual(envoyer(0).status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        code = mail.outbox[0].body.split(':')[-1].strip()
+        faux = '000000' if code != '000000' else '111111'
+        self.client.post(url, {'action': 'valider-code', 'code': faux},
+                         content_type='application/json')
+        signataire.refresh_from_db()
+        expiration = signataire.otp_expires_at
+        self.assertEqual(signataire.otp_essais, 1)
+
+        refus = envoyer(20)
+        self.assertEqual(refus.status_code, 429, refus.data)
+        self.assertEqual(refus.data['attente_s'], 40)
+        self.assertIn('réessayez dans 40 s', refus.data['detail'])
+        self.assertEqual(len(mail.outbox), 1)
+        signataire.refresh_from_db()
+        self.assertEqual(signataire.otp_essais, 1)
+        self.assertEqual(signataire.otp_expires_at, expiration)
+
+        self.assertEqual(envoyer(61).status_code, 200)
+        self.assertEqual(len(mail.outbox), 2)

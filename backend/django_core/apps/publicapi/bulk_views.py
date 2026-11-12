@@ -41,6 +41,7 @@ from .bulk import (
     _export_registry, _serialize_row,
 )
 from .portees import EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
+from apps.records.xlsx import neutralize_csv_cell  # APUB47 — ENF12, définition unique
 from .models import ApiKey, BulkJob
 from .public_response import PublicApiResponseMixin
 from .public_serializers import BulkJobSerializer, cle_du_livrable
@@ -321,7 +322,7 @@ class PublicCsvPullExportView(PublicApiResponseMixin, APIView):
             if writer is None:
                 writer = csv.DictWriter(buf, fieldnames=list(row.keys()))
                 writer.writeheader()
-            writer.writerow(row)
+            writer.writerow({k: neutralize_csv_cell(v) for k, v in row.items()})
         if writer is None:
             # Aucune ligne : CSV STABLE quand même (en-têtes seuls, jamais un
             # corps vide qui casserait IMPORTDATA — « toujours une forme

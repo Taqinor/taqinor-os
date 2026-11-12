@@ -478,13 +478,10 @@ etape('P6.1', ['AFAC99'], async ({ page, suivi, testInfo }) => {
   // Portail client (compte tokenisé ; lien révélé par l'action tracée lien-acces).
   const compte = await lireJson(await page.request.post(`${API}/portail/comptes-portail/`, { ...T, data: { client: d.client } }), 'compte portail')
   const acces = await lireJson(await page.request.post(`${API}/portail/comptes-portail/${compte.id}/lien-acces/`, { ...T, data: {} }), 'lien-acces')
-  const portail = await lireJson(await page.request.get(`${API}/public/portail/${acces.token_acces}/mon-releve/`, T), 'relevé portail')
-  const tp = portail.totaux || portail
-  for (const k of ['facture', 'notes_debit', 'paye', 'avoirs', 'du']) {
-    if (tp[k] !== undefined) expect(f2(tp[k]), `portail ${k} = API`).toBe(f2(t[k]))
-  }
-  expect(f2(tp.du ?? tp.solde ?? NaN), 'portail : solde dû = API').toBe(f2(t.du))
-  sansPrixAchat(JSON.stringify(portail), 'portail')
+  // APUB43 (11/11/2026) : le relevé par jeton `mon-releve/` est RETIRÉ (fuite de données sans
+  // session) — le rejeu vérifie désormais qu'il répond 404 au lieu de comparer ses totaux.
+  const ancien = await page.request.get(`${API}/public/portail/${acces.token_acces}/mon-releve/`, T)
+  expect(ancien.status(), 'APUB43 : relevé par jeton retiré').toBe(404)
   await ecranEgalApi(page, page.request, f0.id)
   suivi.verifie(7)
 })

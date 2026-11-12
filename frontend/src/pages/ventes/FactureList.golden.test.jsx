@@ -45,7 +45,8 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
 // ASEC64 — gestes d'argent sur le droit `encaisser` (store sans permissions).
 vi.mock('../../hooks/useHasPermission', async (importOriginal) => ({
   ...(await importOriginal()),
-  useHasPermission: (c) => c === 'encaisser',
+  // ADRG18 — les codes ventes du Directeur (golden HTML inchangé).
+  useHasPermission: (c) => ['encaisser', 'ventes_modifier', 'ventes_pdf', 'ventes_export'].includes(c),
 }))
 
 vi.mock('../../api/ventesApi', async (importOriginal) =>

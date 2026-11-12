@@ -11,9 +11,10 @@ from datetime import timedelta
 
 from django.core.cache import cache
 from django.db import models
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
@@ -410,18 +411,35 @@ def public_confirmer_abonnement(request, token):
     return Response({'detail': 'Abonnement confirmé.'})
 
 
-@extend_schema(responses=inline_serializer('PublicDesabonnerReponse', {
-    'detail': drf_serializers.CharField(),
-}))
-@api_view(['GET'])
+@extend_schema(methods=['GET'], request=None,
+               responses={(200, 'text/html'): OpenApiTypes.STR})  # APUB49 — page sans effet
+@extend_schema(methods=['POST'], request=None,
+               responses=inline_serializer('PublicDesabonnerReponse', {
+                   'detail': drf_serializers.CharField(),
+               }))
+@api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
 def public_desabonner(request, token):
-    """GET /api/django/statuspage/public/desabonner/<token>/ — un clic, sans
-    authentification (le jeton EST l'accès)."""
-    deleted, _ = StatusSubscriber.objects.filter(
-        token_desabonnement=token).delete()
+    """…/statuspage/public/desabonner/<token>/ — sans authentification (le
+    jeton EST l'accès). APUB49 : GET = page de confirmation SANS effet (l'analyse
+    de liens d'une messagerie suit les GET) ; POST = désabonnement."""
+    abonnes = StatusSubscriber.objects.filter(token_desabonnement=token)
+    if request.method == 'GET':
+        if not abonnes.exists():
+            raise Http404
+        page = HttpResponse(_PAGE_DESABONNER, content_type='text/html; charset=utf-8')
+        page['X-Robots-Tag'] = 'noindex'
+        return page
+    deleted, _ = abonnes.delete()
     if not deleted:
         raise Http404
     return Response({'detail': 'Désabonnement effectué.'})
+
+
+_PAGE_DESABONNER = (
+    '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+    '<meta name="robots" content="noindex"><title>Se désabonner</title></head><body>'
+    '<p>Ne plus recevoir les e-mails d’incident ?</p>'
+    '<form method="post"><button type="submit">Me désabonner</button></form></body></html>')

@@ -209,3 +209,39 @@ class GardesInlineTests(TestCase):
         r = self._api(tech).post(reserves, {'description': 'Fissure', 'bloquante': True},
                                  format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_reaffectation_chantier_exige_technicien_assign(self):
+        """ADRG99 (C-ADRG-055) — le Technicien du registre (sans
+        ``technicien_assign``) ne réaffecte pas le chantier : 403
+        ``droit_manquant``, titulaire inchangé ; ses autres modifications
+        passent ; le Technicien responsable du registre réaffecte. Mutant :
+        retirer la garde par champ ⇒ échec."""
+        from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
+
+        def _compte(nom, perms):
+            return User.objects.create_user(
+                username=f'adrg99-{nom}', password='x', company=self.company,
+                role=Role.objects.create(company=self.company, nom=f'{nom} ADRG99',
+                                         permissions=list(perms)))
+        tech = _compte('tech', TECHNICIEN_PERMISSIONS)
+        chef = _compte('chef', TECHNICIEN_RESP_PERMISSIONS)
+        collegue = _compte('collegue', TECHNICIEN_PERMISSIONS)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            technicien_responsable=tech)
+        url = f'{BASE}/chantiers/{self.chantier.id}/'
+        api = self._api(tech)
+        r = api.patch(url, {'technicien_responsable': collegue.pk}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        self.assertIn('technicien_assign', r.data.get('detail', ''))
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.technicien_responsable_id, tech.pk)
+        r = api.patch(url, {'acces_instructions': 'Portail bleu'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            technicien_responsable=chef)
+        r = self._api(chef).patch(
+            url, {'technicien_responsable': collegue.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.technicien_responsable_id, collegue.pk)

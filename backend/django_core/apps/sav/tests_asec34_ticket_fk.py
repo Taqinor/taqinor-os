@@ -199,11 +199,80 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.assertEqual((ticket.couverture, ticket.date_ouverture),
                          ('garantie', date(2020, 1, 1)))
 
+    def test_creation_affectee_exige_sav_reassign(self):
+        """ADRG40 (C-ADRG-015) — créer un ticket DÉJÀ affecté (technicien ou
+        équipe) est la même réaffectation que le PATCH : le rôle LIVRÉ
+        Technicien reçoit 403 et aucun ticket n'est créé ; sans affectation,
+        201 ; le rôle livré Responsable et le compte hérité responsable
+        créent affecté (201). Mutant : retirer l'entrée ``create`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom, legacy='normal'):
+            role = None if nom is None else Role.objects.create(
+                company=self.a, nom=nom, est_systeme=True,
+                permissions=list(livres[nom]))
+            return _api(User.objects.create_user(
+                username=f'adrg40_{(nom or "herite").replace(" ", "_").lower()}',
+                password='x', role_legacy=legacy, company=self.a, role=role))
+
+        equipe = EquipeMaintenance.objects.create(company=self.a, nom='Équipe A')
+        base = {'client': self.client_a.id, 'type': 'correctif',
+                'description': 'panne'}
+        technicien = compte('Technicien')
+        avant = Ticket.objects.count()
+        for extra in ({'technicien_responsable': self.tech_a.id},
+                      {'equipe': equipe.id}):
+            r = technicien.post(URL, {**base, **extra}, format='json')
+            self.assertEqual(r.status_code, 403, (extra, r.data))
+            self.assertIn('sav_reassign', str(r.data))
+        self.assertEqual(Ticket.objects.count(), avant)
+        self.assertEqual(
+            technicien.post(URL, base, format='json').status_code, 201)
+        # Descriptions distinctes : l'anti-doublon de création (409
+        # ``ticket_en_double``) refuse deux tickets identiques rapprochés.
+        for i, api in enumerate((compte('Responsable'), compte(None, 'responsable'))):
+            r = api.post(URL, {**base, 'description': f'panne {i}',
+                               'technicien_responsable': self.tech_a.id,
+                               'equipe': equipe.id}, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+
     def test_cout_fige(self):
         r = self._patch({'cout': '999.00'})
         self.assertEqual(r.status_code, 200, r.data)
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.cout, Decimal('100.00'))
+
+    def test_cout_masque_sans_prix_achat_voir(self):
+        """ALEC17 (C-ALEC-015) — le coût interne d'un ticket ne sort qu'avec
+        ``prix_achat_voir`` : Technicien sans la clé ``cout`` (détail et
+        liste), Directeur « 300.00 ». Mutant : vider ``champs_montants_achat``."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.a, nom=f'{nom} ALEC17',
+                                       permissions=list(permissions))
+            return User.objects.create_user(
+                username=f'alec17-{nom}', password='x', company=self.a, role=role)
+        tech, directeur = (compte('tech', TECHNICIEN_PERMISSIONS),
+                           compte('dir', DIRECTEUR_PERMISSIONS))
+        Ticket.objects.filter(pk=self.ticket.pk).update(
+            cout=Decimal('300.00'), technicien_responsable=tech)
+        for user, attendu in ((tech, None), (directeur, '300.00')):
+            api = _api(user)
+            detail = api.get(f'{URL}{self.ticket.id}/')
+            self.assertEqual(detail.status_code, 200, detail.data)
+            liste = api.get(URL)
+            self.assertEqual(liste.status_code, 200, liste.data)
+            lignes = liste.data.get('results', liste.data)
+            (ligne,) = [t for t in lignes if t['id'] == self.ticket.id]
+            for donnees in (detail.data, ligne):
+                self.assertEqual(donnees.get('cout'), attendu)
+                if attendu is None:
+                    self.assertNotIn('cout', donnees)
 
     def test_ids_societe_ok(self):
         r = self._patch({

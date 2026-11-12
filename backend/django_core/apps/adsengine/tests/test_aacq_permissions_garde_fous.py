@@ -162,3 +162,41 @@ class PermissionsGardeFousTests(TestCase):
             'template_key': 'frequency_high', 'enabled': True,
             'mode': 'auto', 'dry_run': False}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
+
+    # ── APUB12 — plans de vol ─────────────────────────────────────────────
+    def test_plan_de_vol_exige_flightplan_manage(self):
+        """Rôles LIVRÉS : le Commercial (sans `adsengine_flightplan_manage`)
+        reçoit 403 aux quatre écritures, rien d'écrit ; le Commercial
+        responsable (porteur du code) passe."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+        )
+        from apps.adsengine.models import FlightPhase, FlightPlan
+        commercial = make_user(
+            self.company, 'apub12-com', list(COMMERCIAL_PERMISSIONS))
+        resp_com = make_user(
+            self.company, 'apub12-resp', list(COMMERCIAL_RESP_PERMISSIONS))
+        plan = FlightPlan.objects.create(company=self.company, name='Plan')
+        phase = FlightPhase.objects.create(
+            company=self.company, plan=plan, name='Phase 1')
+
+        def ecritures(user):
+            api = auth(user)
+            return [
+                api.post(f'{BASE}/plans-vol/', {'name': 'Neuf'},
+                         format='json').status_code,
+                api.patch(f'{BASE}/plans-vol/{plan.pk}/', {'name': 'Renommé'},
+                          format='json').status_code,
+                api.patch(f'{BASE}/phases-vol/{phase.pk}/',
+                          {'name': 'Phase renommée'},
+                          format='json').status_code,
+                api.delete(f'{BASE}/phases-vol/{phase.pk}/').status_code,
+            ]
+
+        self.assertEqual(ecritures(commercial), [403, 403, 403, 403])
+        plan.refresh_from_db()
+        phase.refresh_from_db()
+        self.assertEqual((plan.name, phase.name), ('Plan', 'Phase 1'))
+        self.assertEqual(
+            FlightPlan.objects.filter(company=self.company).count(), 1)
+        self.assertEqual(ecritures(resp_com), [201, 200, 200, 204])

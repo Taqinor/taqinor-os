@@ -36,10 +36,12 @@ class SyncPorteeTests(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
             slug='co-acht27', defaults={'nom': 'Co ACHT27'})
+        # ADRG42 — le rôle porte les deux codes des gestes rejoués
+        # (`installation_gerer` pour la checklist, comme le Technicien livré).
         role = Role.objects.create(
             company=self.company, nom='technicien-equipe-acht27',
-            permissions=['installation_voir', 'intervention_gerer',
-                         SCOPE_TEAM])
+            permissions=['installation_voir', 'installation_gerer',
+                         'intervention_gerer', SCOPE_TEAM])
         self.chef = User.objects.create_user(
             username='acht27-chef', password='x', company=self.company,
             role_legacy='responsable')
@@ -110,6 +112,58 @@ class SyncPorteeTests(TestCase):
                          ['applied', 'applied', 'applied'], res)
         self.iv.refresh_from_db()
         self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+
+    def test_op_refusee_sans_code_du_geste(self):
+        """ADRG42 (C-ADRG-031) — la synchro vérifie le code de CHAQUE geste
+        rejoué : un Technicien dont la grille a perdu le seul
+        ``intervention_gerer`` (copie de ``TECHNICIEN_PERMISSIONS`` moins ce
+        code) voit ses deux ops d'intervention refusées une à une (aucun effet,
+        aucun ``FieldOp`` : rejouables), la checklist appliquée ; le Technicien
+        complet applique tout. Mutant : inverser préfixe → code ⇒ échec."""
+        from apps.installations.models import FieldOp
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        amputee = [c for c in TECHNICIEN_PERMISSIONS if c != 'intervention_gerer']
+        self.assertIn('installation_gerer', amputee)
+        tech = User.objects.create_user(
+            username='adrg42-tech', password='x', company=self.company,
+            role_legacy='normal', role=Role.objects.create(
+                company=self.company, nom='Technicien sans intervention_gerer',
+                permissions=amputee))
+        self.inst.technicien_responsable = tech
+        self.inst.save(update_fields=['technicien_responsable'])
+        self.iv.technicien = tech
+        self.iv.save(update_fields=['technicien'])
+        ops = [self._op('intervention.checkin', intervention=self.iv.id),
+               self._op('intervention.terminer', intervention=self.iv.id),
+               self._op('chantier.cocher_checklist', chantier=self.inst.id,
+                        cle='acht27', fait=True)]
+        res = self._sync(tech, ops)
+        self.assertEqual([r['status'] for r in res],
+                         ['error', 'error', 'applied'], res)
+        for r in res[:2]:
+            self.assertIn('intervention_gerer', r['error'])
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.SUR_SITE)
+        self.assertFalse(FieldOp.objects.filter(
+            client_op_id__in=[o['client_op_id'] for o in ops[:2]]).exists())
+        complet = User.objects.create_user(
+            username='adrg42-complet', password='x', company=self.company,
+            role_legacy='normal', role=Role.objects.create(
+                company=self.company, nom='Technicien ADRG42',
+                permissions=list(TECHNICIEN_PERMISSIONS)))
+        self.iv.technicien = complet
+        self.iv.save(update_fields=['technicien'])
+        self.inst.technicien_responsable = complet
+        self.inst.save(update_fields=['technicien_responsable'])
+        res = self._sync(complet, [
+            self._op('intervention.signer_client', intervention=self.iv.id,
+                     signature_client='data:image/png;base64,AA',
+                     signataire_nom='Client'),
+            self._op('chantier.cocher_checklist', chantier=self.inst.id,
+                     cle='acht27', fait=False),
+            self._op('intervention.terminer', intervention=self.iv.id)])
+        self.assertEqual([r['status'] for r in res],
+                         ['applied', 'applied', 'applied'], res)
 
 
 class LectureChantierTechnicienInterventionTests(TestCase):

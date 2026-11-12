@@ -31,8 +31,8 @@ const MODELES = [
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function renderAvecRole(role) {
-  const store = configureStore({ reducer: { auth: (state = { role }) => state } })
+function renderAvecRole(role, auth = { role }) {
+  const store = configureStore({ reducer: { auth: (state = auth) => state } })
   return render(<Provider store={store}><ModelesBrandesSection /></Provider>)
 }
 
@@ -127,5 +127,17 @@ describe('ModelesBrandesSection (PACT117)', () => {
     renderAvecRole('admin')
     expect(await screen.findByText(/Impossible de charger les modèles brandés/))
       .toBeInTheDocument()
+  })
+
+  it('ADRG84 — palier responsable sans parametres_modifier : lecture seule', async () => {
+    get.mockResolvedValue({ data: MODELES })
+    renderAvecRole('responsable', { role: 'responsable', role_nom: 'Commercial responsable', permissions: ['parametres_voir', 'users_voir', 'crm_voir', 'crm_modifier'] })
+    await screen.findByTestId('modele-brande-email-relance_devis')
+    expect(screen.queryByRole('button', { name: /Créer le modèle/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Supprimer le modèle/ })).toBeNull()
+    cleanup()
+    renderAvecRole('admin', { role: 'admin', role_nom: 'Directeur', permissions: ['parametres_voir', 'parametres_modifier', 'roles_gerer'] })
+    await screen.findByTestId('modele-brande-email-relance_devis')
+    expect(screen.getAllByRole('button', { name: /Supprimer le modèle/ }).length).toBeGreaterThan(0)
   })
 })

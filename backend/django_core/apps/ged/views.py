@@ -32,7 +32,7 @@ from apps.records.storage import fetch_attachment, store_attachment
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
 )
 # SCA4 — base transverse UNIQUE des viewsets scopés société : tout NOUVEAU
 # ModelViewSet inscriptible part d'ici (scoping + forçage de `company` garantis).
@@ -458,18 +458,18 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS or self.action in (
                 'recherche', 'semantique', 'historique', 'demandes',
                 'corbeille', 'comparer', 'timeline', 'docqa'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
         if self.action in ('check_out', 'check_in'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # ZGED7 — favoriser/défavoriser est personnel, ouvert à tout rôle.
         if self.action == 'favori':
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # ZGED9 — verrouiller/déverrouiller (avertissement léger) : tout rôle
         # peut poser/lever SON PROPRE verrou ; la garde gestionnaire pour le
         # forçage est appliquée dans `services.deverrouiller_avertissement`.
         if self.action in ('verrouiller', 'deverrouiller'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # XGED14 — le téléchargement ZIP est une lecture (lisible par tout rôle) ;
         # les autres opérations de lot restent réservées aux responsables/admins.
         # CI #998 api-fuzz — un corps qui n'est pas un objet JSON (liste,
@@ -478,7 +478,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if (self.action == 'operations_lot'
                 and isinstance(self.request.data, Mapping)
                 and self.request.data.get('operation') == 'telecharger_zip'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # WIR174 — GOUVERNANCE documentaire (legal hold, caviardage définitif) :
         # direction seule. Placé APRÈS toutes les branches `IsAnyRole` (aucune
         # de ces trois actions n'y figure) pour ne rien élargir NI resserrer de
@@ -2205,7 +2205,7 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
         # donc ouverte à tout rôle authentifié comme list/retrieve — même motif
         # que les actions de lecture custom des viewsets frères.
         if self.action in READ_ACTIONS or self.action in ('apercu', 'pages'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # AUD810 — effacer une VERSION est un effacement RÉEL (pas de
         # corbeille pour les versions) qui peut détruire une preuve sous
         # legal hold (GED24) : même palier de gouvernance (WIR174) que
@@ -3762,7 +3762,7 @@ class DepotPublicViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3832,7 +3832,7 @@ class DemandeDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -5182,7 +5182,8 @@ def _signataire_publique_payload(signataire):
         'document_nom': demande.document.nom,
         'document_id': demande.document_id,
         # ADOC67 — aperçu du document PAR LE JETON du destinataire.
-        'apercu_url': f'/api/django/ged/signataire/{signataire.token}/document/',
+        'apercu_url': (None if signataire.otp_requis_et_non_valide  # APUB40
+                       else f'/api/django/ged/signataire/{signataire.token}/document/'),
         'apercu_mime': getattr(version, 'mime', '') or '',
         'nom': signataire.nom,
         'role': signataire.role,
@@ -5205,7 +5206,7 @@ def _signataire_publique_payload(signataire):
     200: oa.PUBLIC_SIGNATAIRE, 410: oa.PUBLIC_ERREUR})
 @extend_schema(methods=['POST'], request=oa.PUBLIC_SIGNATAIRE_CORPS,
                responses={200: oa.PUBLIC_SIGNATAIRE_ACTION, 403: oa.PUBLIC_ERREUR,
-                          410: oa.PUBLIC_ERREUR})
+                          410: oa.PUBLIC_ERREUR, 429: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -5299,7 +5300,10 @@ def public_signataire(request, token):
         # ZGED2 — envoie (ou dégrade proprement) le code d'authentification
         # extra de CE destinataire avant qu'il ne débloque la signature.
         resultat = services.envoyer_code_otp_signataire(signataire)
-        return _ged_noindex(Response(resultat, status=status.HTTP_200_OK))
+        # APUB9 — renvoi dans le délai : 429 nommant l'attente, aucun envoi.
+        return _ged_noindex(Response(resultat, status=(
+            status.HTTP_429_TOO_MANY_REQUESTS if 'attente_s' in resultat
+            else status.HTTP_200_OK)))
 
     if action_demandee == 'valider-code':
         try:
@@ -5423,4 +5427,6 @@ def public_signataire_document(request, token):
         return _ged_noindex(Response(
             {'detail': _SIGNATURE_DOC_INTROUVABLE},
             status=status.HTTP_404_NOT_FOUND))
+    if signataire.otp_requis_et_non_valide:  # APUB40 — code d'abord
+        return _ged_noindex(Response({'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     return _servir_document_a_signer(request, demande)

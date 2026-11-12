@@ -264,10 +264,11 @@ def seed_default_tour_steps(model=None):
             obj.save()
 
 
-def marquer_tour_vu(company, user, tour_key):
+def marquer_tour_vu(company, user, tour_key, issue=''):
     """NTDMO16 — marque un tour comme vu/fermé pour ``user`` (idempotent,
     company-scopé). Renvoie le ``TourProgress`` ou None si company/user
-    manquent."""
+    manquent. ``issue`` ('termine'/'ferme', sinon ignorée) n'est posée qu'à la
+    1re fois : un tour déjà vu garde son issue d'origine."""
     if company is None or user is None or not getattr(user, 'pk', None):
         return None
     from django.utils import timezone
@@ -279,7 +280,8 @@ def marquer_tour_vu(company, user, tour_key):
             company=company, user=user, tour_key=tour_key)
     if progress.vu_le is None:
         progress.vu_le = timezone.now()
-        progress.save(update_fields=['vu_le'])
+        progress.issue = issue if issue in ('termine', 'ferme') else ''
+        progress.save(update_fields=['vu_le', 'issue'])
     return progress
 
 
@@ -294,5 +296,6 @@ def reinitialiser_tour(company, user, tour_key):
         company=company, user=user, tour_key=tour_key).first()
     if progress is not None and progress.vu_le is not None:
         progress.vu_le = None
-        progress.save(update_fields=['vu_le'])
+        progress.issue = ''
+        progress.save(update_fields=['vu_le', 'issue'])
     return progress

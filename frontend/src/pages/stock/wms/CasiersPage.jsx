@@ -8,6 +8,8 @@ import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
 import TableauDefilant from '../../../ui/TableauDefilant'
+import usePeutEcrireStock from '../usePeutEcrireStock'
+import { useHasPermission, useIsAdmin } from '../../../hooks/useHasPermission'
 
 /* ASTK215 — Casiers de l'entrepôt : seuils de réappro par casier, tâches de
    réappro (« Exécuter »), casiers sous seuil, historique d'un casier,
@@ -51,6 +53,12 @@ const toutesLesPages = (appel, params = {}) => fetchAllPages(
 ).then((data) => ({ data }))
 
 export default function CasiersPage() {
+  // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
+  // ADRG36 — seuils = référentiel : `stock_modifier` ; suppression : admin ou `stock_supprimer` (ADRG44).
+  const peutReferentiel = usePeutEcrireStock()
+  const estAdmin = useIsAdmin()
+  const peutSupprimer = useHasPermission('stock_supprimer') || estAdmin
   const [seuils, setSeuils] = useState([])
   const [taches, setTaches] = useState([])
   const [sousSeuil, setSousSeuil] = useState([])
@@ -164,7 +172,7 @@ export default function CasiersPage() {
 
       <Section id="casiers-sous-seuil" titre="Casiers à réapprovisionner">
         <div className="mb-3">
-          <Button onClick={generer} disabled={enCours === 'gen'}>Générer les tâches</Button>
+          {peutMouvement && <Button onClick={generer} disabled={enCours === 'gen'}>Générer les tâches</Button>}
         </div>
         {sousSeuil.length === 0 ? <Vide>Aucun casier sous son seuil.</Vide> : (
           <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[40rem]">
@@ -223,7 +231,7 @@ export default function CasiersPage() {
                   <TD>{t.bin_source_code ?? '—'}</TD><TD>{t.bin_cible_code}</TD>
                   <TD>{t.quantite}</TD><TD>{STATUTS_TACHE[t.statut] ?? t.statut}</TD>
                   <TD>
-                    {t.statut === 'a_faire' && (
+                    {peutMouvement && t.statut === 'a_faire' && (
                       <Button size="sm" disabled={enCours === `exec-${t.id}`}
                         onClick={() => executer(t.id)}>
                         Exécuter
@@ -238,6 +246,7 @@ export default function CasiersPage() {
       </Section>
 
       <Section id="seuils-reappro" titre="Seuils de réappro par casier">
+        {peutReferentiel && (
         <form onSubmit={ajouterSeuil} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Casier</span>
@@ -263,6 +272,7 @@ export default function CasiersPage() {
           </label>
           <Button type="submit" disabled={enCours === 'seuil'}>Ajouter le seuil</Button>
         </form>
+        )}
         {seuils.length === 0 ? <Vide>Aucun seuil défini.</Vide> : (
           <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[32rem]">
             <thead><tr>
@@ -285,7 +295,7 @@ export default function CasiersPage() {
                           Annuler
                         </Button>
                       </span>
-                    ) : (
+                    ) : peutReferentiel && (
                       <span className="flex gap-1">
                         <Button size="sm" variant="outline"
                           onClick={() => geste(`act-${s.id}`,
@@ -293,9 +303,11 @@ export default function CasiersPage() {
                             'Modification impossible.')}>
                           {s.actif ? 'Désactiver' : 'Activer'}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => setConfirmeSeuil(s.id)}>
-                          Supprimer
-                        </Button>
+                        {peutSupprimer && (
+                          <Button size="sm" variant="outline" onClick={() => setConfirmeSeuil(s.id)}>
+                            Supprimer
+                          </Button>
+                        )}
                       </span>
                     )}
                   </TD>

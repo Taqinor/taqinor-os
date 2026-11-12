@@ -245,6 +245,98 @@ class TestSortieSigneMasse(SortieSigneBase):
         self.assertFalse(Installation.objects.get(devis=devis_ko).annule)
 
 
+class TestSortieSigneApiPublique(SortieSigneBase):
+    def test_api_publique_desaccepte_ou_409(self):
+        """APUB11 — l'API publique qui sort un lead de « Signé » dés-accepte
+        son devis (règle du 08/10, comme l'écran) ; une facture émise rend
+        409 nommant la facture, rien d'écrit — service, PATCH public et
+        import upsert."""
+        from core.conflit_etat import ConflitEtat
+
+        from apps.crm.fiche_api_publique import update_lead_from_public_api
+        from apps.publicapi import bulk
+        from apps.publicapi.models import ApiKey
+        from apps.publicapi.portees import SCOPE_WRITE_LEADS
+
+        froid = {'stage': stages.COLD, 'parc_raison': 'doublon'}
+
+        def bloque(lead, devis, n):
+            Facture.objects.create(
+                company=self.company, reference=f'FAC-{MONTH}-88{n}',
+                devis=devis, client=self.client_obj,
+                statut=Facture.Statut.EMISE, type_facture='acompte',
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'), created_by=self.user)
+            return f'FAC-{MONTH}-88{n}'
+
+        def inchange(lead, devis):
+            lead.refresh_from_db()
+            devis.refresh_from_db()
+            self.assertEqual(lead.stage, stages.SIGNED)
+            self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+
+        # 1. Service : sans suite → devis « envoyé », événement émis.
+        lead, devis = self._lead_et_devis()
+        self._accepter(devis)
+        recus = []
+        devis_acceptation_annulee.connect(
+            lambda sender, devis, **kw: recus.append(devis.pk),
+            dispatch_uid='t_apub11', weak=False)
+        try:
+            update_lead_from_public_api(
+                company=self.company, lead_id=lead.pk, fields=froid)
+        finally:
+            devis_acceptation_annulee.disconnect(dispatch_uid='t_apub11')
+        lead.refresh_from_db()
+        devis.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(recus, [devis.pk])
+
+        # 2. Service : facture émise → 409 nommant la facture, rien d'écrit.
+        lead, devis = self._lead_et_devis()
+        self._accepter(devis)
+        ref = bloque(lead, devis, 11)
+        with self.assertRaises(ConflitEtat) as ctx:
+            update_lead_from_public_api(
+                company=self.company, lead_id=lead.pk, fields=froid)
+        self.assertIn(ref, str(ctx.exception.detail['detail']))
+        inchange(lead, devis)
+
+        # 3. PATCH public : même 409 ; l'enveloppe publique (Stripe-like,
+        #    ``publicapi.errors``) porte le message dans ``error.message``.
+        _, brute = ApiKey.issue(
+            company=self.company, label='apub11', scopes=[SCOPE_WRITE_LEADS])
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Api-Key {brute}')
+        r = api.patch(f'/api/public/v1/leads-write/{lead.pk}/', froid,
+                      format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(ref, r.data['error']['message'])
+        inchange(lead, devis)
+
+        # 4. Import upsert : la ligne bloquée est en erreur au même message,
+        #    la suivante passe.
+        lead_ok, devis_ok = self._lead_et_devis()
+        for un_lead, email in ((lead, 'bloque@example.com'),
+                               (lead_ok, 'libre@example.com')):
+            un_lead.refresh_from_db()
+            un_lead.email = email  # save() recalcule ``email_normalise`` (dédup)
+            un_lead.save()
+        self._accepter(devis_ok)
+        with self.assertRaises(ConflitEtat) as ctx:
+            bulk._process_lead_row(self.company, 'upsert', 'email',
+                                   {'email': 'bloque@example.com', **froid})
+        self.assertIn(ref, str(ctx.exception))
+        inchange(lead, devis)
+        bulk._process_lead_row(self.company, 'upsert', 'email',
+                               {'email': 'libre@example.com', **froid})
+        lead_ok.refresh_from_db()
+        devis_ok.refresh_from_db()
+        self.assertEqual(lead_ok.stage, stages.COLD)
+        self.assertEqual(devis_ok.statut, Devis.Statut.ENVOYE)
+
+
 class TestSortieSigneMultiTenant(SortieSigneBase):
     def test_autre_tenant_ne_desaccepte_rien(self):
         lead, devis = self._lead_et_devis()

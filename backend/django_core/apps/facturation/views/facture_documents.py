@@ -27,7 +27,7 @@ class FactureDocumentsActionsMixin:
 
     @extend_schema(request=None, responses={202: D.PdfTaskResponse})
     @action(detail=True, methods=['post'], url_path='generer-pdf',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_pdf')])  # ADRG10
     def generer_pdf(self, request, pk=None):
         facture = self.get_object()
         from apps.ventes.tasks import task_generate_facture_pdf
@@ -42,7 +42,7 @@ class FactureDocumentsActionsMixin:
 
     @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='telecharger-pdf',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_pdf')])  # ADRG10
     def telecharger_pdf(self, request, pk=None):
         facture = self.get_object()
         # AFAC41 (C-AFAC-042) — le téléchargement interne (et l'aperçu inline

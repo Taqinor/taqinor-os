@@ -127,6 +127,45 @@ class TestTourneePreventive(TestCase):
         refs = {row['reference'] for row in r.data['results']}
         self.assertEqual(refs, {'SAV-MINE'})
 
+    def test_tournee_bornee_a_la_portee(self):
+        """ALEC26 — deux Commerciaux (rôle LIVRÉ) et un Directeur : A ne voit
+        que son ticket préventif (aucune clé de celui de B : ni client, ni
+        GPS) ; le Directeur voit les deux."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom, username):
+            role = Role.objects.create(
+                company=self.company, nom=f'{nom} {username}',
+                permissions=list(roles[nom]))
+            return User.objects.create_user(
+                username=username, password='x', company=self.company,
+                role=role)
+
+        a = compte('Commercial', 'alec26-a')
+        b = compte('Commercial', 'alec26-b')
+        directeur = compte('Directeur', 'alec26-dir')
+        client_b = Client.objects.create(company=self.company, nom='Client B')
+        _preventif(self.company, self.client_obj, self.casa, 'SAV-A',
+                   created_by=a)
+        _preventif(self.company, client_b, self.rabat, 'SAV-B', created_by=b)
+
+        def tournee(user):
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            r = api.get(TOURNEE)
+            self.assertEqual(r.status_code, 200, r.data)
+            return r.data['results']
+
+        lignes_a = tournee(a)
+        self.assertEqual([x['reference'] for x in lignes_a], ['SAV-A'])
+        self.assertNotIn('Client B', str(lignes_a))
+        self.assertNotIn('34.020882', str(lignes_a))
+        self.assertEqual({x['reference'] for x in tournee(directeur)},
+                         {'SAV-A', 'SAV-B'})
+
 
 class TestPlanifierTournee(TestCase):
     def setUp(self):
@@ -194,6 +233,50 @@ class TestPlanifierTournee(TestCase):
         self.assertEqual(absent.data['detail'], 'Technicien inconnu.')
         t1.refresh_from_db()
         self.assertIsNone(t1.date_tournee)
+
+    def test_technicien_livre_403_si_technicien(self):
+        """ADRG40 (C-ADRG-015) — affecter un technicien en planifiant une
+        tournée exige ``sav_reassign`` : le rôle LIVRÉ Technicien reçoit 403
+        dès que le corps nomme un technicien (tickets relus inchangés), 200
+        sans ; Responsable et Commercial responsable gardent 200. Mutant :
+        retirer la garde de ``planifier_tournee`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+
+        def api_du_role(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True,
+                permissions=list(livres[nom]))
+            u = User.objects.create_user(
+                username=f'adrg40_{nom.replace(" ", "_").lower()}',
+                password='x', role_legacy='normal', company=self.company,
+                role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(u)}')
+            return api
+
+        t1 = _preventif(self.company, self.client_obj, self.inst, 'SAV-1')
+        t2 = _preventif(self.company, self.client_obj, self.inst, 'SAV-2')
+        when = (date.today() + timedelta(days=2)).isoformat()
+        corps = {'ticket_ids': [t1.id, t2.id], 'date_tournee': when}
+        technicien = api_du_role('Technicien')
+        r = technicien.post(PLANIFIER, {**corps, 'technicien_id': self.tech.id},
+                            format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn('sav_reassign', str(r.data))
+        for t in (t1, t2):
+            t.refresh_from_db()
+            self.assertIsNone(t.technicien_responsable_id)
+            self.assertIsNone(t.date_tournee)
+        self.assertEqual(
+            technicien.post(PLANIFIER, corps, format='json').status_code, 200)
+        for nom in ('Responsable', 'Commercial responsable'):
+            r = api_du_role(nom).post(
+                PLANIFIER, {**corps, 'technicien_id': self.tech.id},
+                format='json')
+            self.assertEqual(r.status_code, 200, (nom, r.data))
 
     def test_foreign_ticket_ids_ignored(self):
         other = Company.objects.get_or_create(

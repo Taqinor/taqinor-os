@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.crm.exports import build_xlsx_response
 from apps.crm import stages as stage_mod
@@ -136,7 +137,7 @@ _REPORTS_SALES_REPORT_REPONSE = inline_serializer('ReportsSalesReportReponse', {
                (200, 'application/pdf'): OpenApiTypes.BINARY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('ventes'),
                      DroitDeLaGrille('reporting_export', export=('xlsx', 'pdf'))])
 def sales_report(request):
     """T13 — ventes/pipeline : funnel par étape, par responsable, par canal,
@@ -279,7 +280,7 @@ _REPORTS_STOCK_REPORT_REPONSE = inline_serializer('ReportsStockReportReponse', {
                (200, 'application/pdf'): OpenApiTypes.BINARY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('stock'),
                      DroitDeLaGrille('reporting_export', export=('xlsx', 'pdf'))])
 def stock_report(request):
     """T14 — stock : valorisation (vente + achat interne), bas stock, par
@@ -396,7 +397,7 @@ _REPORTS_SERVICE_REPORT_REPONSE = inline_serializer('ReportsServiceReportReponse
                (200, 'application/pdf'): OpenApiTypes.BINARY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin,
+@permission_classes([IsResponsableOrAdmin, lecture_source('installations'),
                      DroitDeLaGrille('reporting_export', export=('xlsx', 'pdf'))])
 def service_report(request):
     """T15 — service : chantiers par statut, activité technicien, SAV ouverts

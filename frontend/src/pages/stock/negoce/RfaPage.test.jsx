@@ -127,13 +127,17 @@ describe('ASTK222 — RfaPage', () => {
    `seuil_ca_achat`/`montant_fixe` et refuse le calcul (403) : l'écran n'offre
    pas « Voir le calcul » et nomme « Montant fixe » sans chiffre. */
 describe('ERR-STK-PRIX-ACHAT-SUITE — RfaPage sans prix_achat_voir', () => {
-  it('ni bouton de calcul ni « undefined » ; « Montant fixe » nommé', async () => {
-    const masque = { ...ACCORDS.results[0], taux_pct: null }
+  it('ni bouton de calcul ni « undefined » ; taux et montant masqués : « — » (ALEC7)', async () => {
+    const masque = { ...ACCORDS.results[0] }
+    delete masque.taux_pct
     delete masque.seuil_ca_achat
     delete masque.montant_fixe
     etat = { ...ACCORDS, results: [masque] }
     monter(['stock_voir', 'stock_modifier'])
-    expect(await screen.findByText('Montant fixe')).toBeInTheDocument()
+    expect(await screen.findByText(masque.fournisseur_nom)).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Montant fixe')).toBeNull()
+    expect(screen.queryByText(/ %$/)).toBeNull()
     expect(screen.queryByRole('button', { name: /Voir le calcul/i })).toBeNull()
     expect(document.body.textContent).not.toMatch(/undefined/)
     expect(api.get).not.toHaveBeenCalledWith('/stock/accords-rfa-fournisseur/3/calcul/')

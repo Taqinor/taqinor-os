@@ -28,6 +28,20 @@ class IsAuthenticatedInterne(BasePermission):
         return getattr(user, 'portee', interne) == interne
 
 
+class EcritureRefuseeLectureSeule(BasePermission):
+    """APUB13 — refuse les écritures CRUD à un rôle fin sans aucune écriture
+    (Viewer, Utilisateur) ; ``run``/``donnees`` restent des lectures."""
+
+    ACTIONS = frozenset({'create', 'update', 'partial_update', 'destroy'})
+    message = 'Votre rôle est en lecture seule.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if getattr(view, 'action', None) not in self.ACTIONS or not getattr(user, 'role_id', None):
+            return True
+        return user.is_superuser or user._role_grants_write(user.role.permissions or [])
+
+
 class IsAdminRole(BasePermission):
     """Admin role or superuser only."""
     def has_permission(self, request, view):

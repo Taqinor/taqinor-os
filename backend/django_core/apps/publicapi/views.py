@@ -56,8 +56,9 @@ def portees_non_detenues(user, scopes=(), events=()):
             ('scopes', scopes, CODE_DE_PORTEE.get, 'Portée non détenue'),
             ('events', events, lambda e: CODE_DE_PREFIXE_EVENEMENT.get(str(e).split('.')[0]),
              'Évènement non détenu')):
-        refus = [f'{libelle} : {v}' for v in valeurs
-                 if code_de(v) and not _user_has_or_legacy(user, code_de(v))]
+        refus = [f'{libelle} : {v}' for v in valeurs if any(  # APUB50 : tuple = tous
+            not _user_has_or_legacy(user, c) for c in (
+                (code_de(v),) if isinstance(code_de(v), str) else code_de(v) or ()))]
         if refus:
             erreurs[champ] = refus
     return erreurs
@@ -531,6 +532,13 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
             created_by=self.request.user,
             secret=Webhook.generate_secret(),
         )
+
+    def perform_update(self, serializer):
+        # APUB52 — PATCH/PUT : même refus par évènement que `create`.
+        if 'events' in serializer.validated_data and (refus := portees_non_detenues(
+                self.request.user, events=serializer.validated_data['events'] or [])):
+            raise ValidationError(refus)
+        serializer.save()
 
     @extend_schema(request=WebhookSerializer,
                    responses={201: WebhookSecretSerializer})

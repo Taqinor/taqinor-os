@@ -140,3 +140,65 @@ class Ntapi26TestLiveKeysTests(TestCase):
         self.assertEqual([r.status_code for r in appels('Directeur')], [201, 201])
         legacy = _session_client(self.admin)
         self.assertEqual(legacy.post('/api/django/publicapi/keys/', cle, format='json').status_code, 201)
+
+    def test_portees_achats_et_ecriture_leads_exigent_leurs_codes(self):
+        """APUB50 (C-APUB-029) — `lecture_achats` exige `prix_achat_voir` et
+        `leads:write` exige `crm_creer` ET `crm_modifier` : refus par champ
+        nommant la portée, aucune clé ; le Directeur livré garde 201."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        perso = Role.objects.create(
+            company=self.co, nom='Intégrateur APUB50',
+            permissions=['users_voir', 'integrations_gerer', 'crm_voir', 'crm_creer'])
+
+        def api_de(role, nom):
+            return _session_client(User.objects.create_user(
+                username=nom, password='x', company=self.co, role=role))
+        api = api_de(perso, 'apub50-perso')
+        for portee in ('lecture_achats', 'leads:write'):
+            with self.subTest(portee=portee):
+                r = api.post('/api/django/publicapi/keys/',
+                             {'label': 'k', 'scopes': [portee]}, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.data['scopes'], [f'Portée non détenue : {portee}'])
+        self.assertFalse(ApiKey.objects.filter(company=self.co).exists())
+        directeur = api_de(Role.objects.get(company=self.co, nom='Directeur'), 'apub50-dir')
+        for portee in ('lecture_achats', 'leads:write'):
+            r = directeur.post('/api/django/publicapi/keys/',
+                               {'label': 'k', 'scopes': [portee]}, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+
+    def test_modification_webhook_bornee_aux_evenements_detenus(self):
+        """APUB52 (C-APUB-031) — PATCH/PUT d'un webhook vers un évènement dont
+        l'acteur ne porte pas le code : 400 nommant l'évènement, rien d'écrit ;
+        un évènement détenu reste modifiable (200 ; « lead.updated » de la tâche
+        n'existe pas au catalogue → lead.lost)."""
+        from unittest import mock
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        from .models import Webhook
+        call_command('init_roles', verbosity=0)
+        perso = Role.objects.create(
+            company=self.co, nom='Intégrateur APUB52',
+            permissions=['users_voir', 'integrations_gerer', 'crm_voir'])
+        api = _session_client(User.objects.create_user(
+            username='apub52-perso', password='x', company=self.co, role=perso))
+        corps = {'label': 'h', 'target_url': 'https://example.test/hook',
+                 'events': ['lead.created']}
+        with mock.patch('apps.publicapi.serializers.validate_webhook_target_url',
+                        side_effect=lambda u: u):
+            r = api.post('/api/django/publicapi/webhooks/', corps, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            url = f"/api/django/publicapi/webhooks/{r.data['id']}/"
+            refus = ['Évènement non détenu : facture.created']
+            r = api.patch(url, {'events': ['facture.created']}, format='json')
+            self.assertEqual((r.status_code, r.data.get('events')), (400, refus))
+            r = api.put(url, dict(corps, events=['facture.created']), format='json')
+            self.assertEqual((r.status_code, r.data.get('events')), (400, refus))
+            hook = Webhook.objects.get(company=self.co, label='h')
+            self.assertEqual(hook.events, ['lead.created'])
+            r = api.patch(url, {'events': ['lead.lost']}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            hook.refresh_from_db()
+            self.assertEqual(hook.events, ['lead.lost'])

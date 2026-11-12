@@ -305,10 +305,10 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                               aria-label="Modifier le prix" onClick={() => startEdit(r)}>
                         <Pencil className="size-3.5" />
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" className="size-7"
-                              aria-label="Supprimer" onClick={() => remove(r.id)}>
+                      {isAdmin && <Button type="button" variant="ghost" size="icon" className="size-7"
+                              aria-label="Supprimer" onClick={() => remove(r.id)}>{/* ADRG37 : admin seul */}
                         <Trash2 className="text-destructive" />
-                      </Button>
+                      </Button>}
                     </span>
                   )}
                 </td>

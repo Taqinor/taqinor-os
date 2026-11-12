@@ -13,6 +13,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAuthenticatedInterne, IsResponsableOrAdmin
+from .gardes_lecture import lecture_source  # ADRG70
 from apps.crm import stages as stage_mod
 from core.score_params import NOM_WIN_PROBA, resoudre
 from core.win_probability import (
@@ -259,7 +260,7 @@ _PIPELINE_PIPELINE_REPONSE = inline_serializer('PipelinePipelineReponse', {
 @extend_schema(
     responses={200: _PIPELINE_PIPELINE_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, lecture_source('crm')])
 def pipeline(request):
     co = _co_filter(request.user)
     if co is None:
@@ -357,7 +358,7 @@ _PIPELINE_FUNNEL_VELOCITY_REPONSE = inline_serializer('PipelineFunnelVelocityRep
 @extend_schema(
     responses={200: _PIPELINE_FUNNEL_VELOCITY_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, lecture_source('crm')])
 def funnel_velocity(request):
     """Temps moyen de séjour par étape du pipeline (FG29).
 
