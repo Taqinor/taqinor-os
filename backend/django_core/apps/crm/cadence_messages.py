@@ -703,11 +703,21 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         profile = CompanyProfile.objects.filter(company=lead.company).first()
         contexte['lien_google'] = (
             (profile.lien_avis_google if profile else '') or '').strip()
-    if etape.devis_id:
+    # 11/11/2026 — une touche après-devis créée SANS devis rattaché (13 sur
+    # 113 « Garanties fabricants » en prod) perdait son lien : le client
+    # recevait « Ces garanties… » sans rien à ouvrir. Repli sur le dernier
+    # devis ENVOYÉ et encore relançable du lead (même règle que le filet,
+    # `cadence_filet`) ; jamais un brouillon, jamais un devis inventé.
+    besoin_devis = any(
+        '{' + cle + '}' in (corps or '') or '{' + cle + '}' in objet_gabarit
+        for cle in ('lien', 'reference', 'date_validite'))
+    if etape.devis_id or besoin_devis:
         try:
-            from apps.ventes.selectors import get_devis_by_pk
+            from apps.ventes.selectors import (
+                dernier_devis_relancable_du_lead, get_devis_by_pk)
             from apps.ventes.utils.client_links import url_proposition
-            devis = get_devis_by_pk(etape.devis_id)
+            devis = (get_devis_by_pk(etape.devis_id) if etape.devis_id
+                     else dernier_devis_relancable_du_lead(lead))
             if devis is not None:
                 contexte['reference'] = getattr(devis, 'reference', '') or ''
                 # CAD59 — le message applique le MÊME repli que le PDF :

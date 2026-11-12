@@ -347,6 +347,17 @@ describe('PV80 — token depuis la route catch-all (le token est le DERNIER segm
     expect(tokenFromSegments('/')).toBe('');
   });
 
+  it('ignore la ponctuation collée au lien par le téléphone (« … : {lien}. »)', () => {
+    const tok = '_b_hld_oEKExmEFR5lafq5xJiG5cYcVvMAL1dRGxHnY';
+    expect(tokenFromSegments(`${tok}.`)).toBe(tok);
+    expect(tokenFromSegments(`${tok}).`)).toBe(tok);
+    expect(tokenFromSegments(`${tok},`)).toBe(tok);
+    expect(tokenFromSegments(`client/${tok}…`)).toBe(tok);
+    // Les caractères du token (tiret, souligné) ne sont jamais rognés.
+    expect(tokenFromSegments('abc-_')).toBe('abc-_');
+    expect(tokenFromSegments('.')).toBe('');
+  });
+
   it('tolère les slashs superflus sans jamais changer le token', () => {
     expect(tokenFromSegments('/villa-anfa//a1b2c3/')).toBe('a1b2c3');
     expect(proposalPathSegments('/villa-anfa//a1b2c3/')).toEqual(['villa-anfa', 'a1b2c3']);
