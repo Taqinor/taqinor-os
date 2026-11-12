@@ -990,7 +990,22 @@ class TicketViewSet(CompanyScopedModelViewSet):
         'reference', 'date_creation', 'date_ouverture', 'priorite', 'statut',
     ]
     ordering = ['-date_creation']
-    def destroy(self, request, *args, **kwargs): raise MethodNotAllowed(request.method)  # ASUP21 : pas de DELETE
+
+    @extend_schema(exclude=True)
+    def destroy(self, request, *args, **kwargs):
+        """ASUP21 — un ticket ne se supprime pas : 405. Hors schéma (api-fuzz
+        #1377) ; ``http_method_names`` ne convient pas : ``pieces/{piece_id}/``
+        sert son propre DELETE."""
+        raise MethodNotAllowed(request.method)
+
+    def _allowed_methods(self):
+        """ASUP21 — l'en-tête ``Allow`` de ``tickets/{id}/`` n'annonce plus DELETE
+        (même motif que CalepinageViewSet) ; une sous-route garde le sien."""
+        action_map = getattr(self, 'action_map', None) or {}
+        methodes = super()._allowed_methods()
+        if action_map.get('delete') == 'destroy':
+            methodes = [m for m in methodes if m != 'DELETE']
+        return methodes
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1970,7 +1985,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         retombe sur le backend console (no-op réseau silencieux) — le fil est
         journalisé dans tous les cas."""
         ticket = self.get_object()
-        from .services import repondre_par_email
+        from .services import EmailNonConfigure, repondre_par_email
 
         entree = SavRepondreEmailRequete(data=request.data)
         entree.is_valid(raise_exception=True)
@@ -1984,7 +1999,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 user=request.user)
         except ValueError as exc:
             champ, _, detail = str(exc).partition(': ')
-            return Response({champ: detail or str(exc)}, status=400)
+            # api-fuzz #1377 — e-mail non configuré : l'état du serveur s'oppose
+            # à un corps conforme → 409 (ENF11) ; un autre refus garde son 400.
+            code = 409 if isinstance(exc, EmailNonConfigure) else 400
+            return Response({champ: detail or str(exc)}, status=code)
         # ASAV19 — un e-mail envoyé au client pose la première réponse.
         from .services import poser_premiere_reponse
         poser_premiere_reponse(ticket)

@@ -2587,6 +2587,11 @@ def _notifier_demande_contrat_maintenance(contrat, titre):
             getattr(contrat, 'pk', '?'), exc_info=True)
 
 
+class EmailNonConfigure(ValueError):
+    """AMSG57 / api-fuzz #1377 — refus d'ÉTAT (aucun e-mail ne part sur ce
+    serveur) : la vue le sert en 409, les autres ``ValueError`` restent 400."""
+
+
 def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
                        user=None):
     """NTSRV1 — envoie une réponse e-mail depuis un ticket et logue le fil.
@@ -2624,7 +2629,7 @@ def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
             "n'en a pas ; renseignez-la sur sa fiche ou saisissez-la ici.")
     from apps.ventes.email_service import is_email_configured
     if not is_email_configured():  # AMSG57 — jamais « envoyé » quand rien ne part
-        raise ValueError("detail: e-mail non configuré — rien n'est parti.")
+        raise EmailNonConfigure("detail: e-mail non configuré — rien n'est parti.")
 
     dernier = (TicketEmailThread.objects
                .filter(ticket=ticket,

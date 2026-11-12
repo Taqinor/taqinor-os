@@ -246,11 +246,14 @@ class FactureDocumentsActionsMixin:
             # ENF11 (nocturne 15/10) — corps conforme mais client SANS adresse
             # (aucune n'est saisie) : c'est la fiche qui s'oppose, 409 ; un
             # autre échec d'envoi garde son 400 (même corps).
-            sans_adresse = not log.to_email
+            # api-fuzz #1377 (AMSG28) — e-mail non opérationnel (backend sans
+            # envoi) : c'est l'ÉTAT du serveur qui s'oppose, pas le corps → 409.
+            from apps.ventes.email_service import EMAIL_NON_OPERATIONNEL
+            refus_etat = not log.to_email or log.erreur == EMAIL_NON_OPERATIONNEL
             return Response(
                 {'detail': log.erreur or 'Envoi impossible.',
                  'email_log_id': log.id},
-                status=status.HTTP_409_CONFLICT if sans_adresse else status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT if refus_etat else status.HTTP_400_BAD_REQUEST)
         return Response(
             {'detail': 'Email envoyé.', 'email_log_id': log.id,
              'to_email': log.to_email},

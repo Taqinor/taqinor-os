@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7756, components: 3652}
+counts: {paths: 4966, operations: 7752, components: 3653}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2840,7 +2840,6 @@ operations:
 - post /api/django/sav/contrats-maintenance/planifier-tournee/ -> django_sav_contrats_maintenance_planifier_tournee_create
 - get /api/django/sav/contrats-maintenance/rentabilite/ -> django_sav_contrats_maintenance_rentabilite_list
 - get /api/django/sav/contrats-maintenance/tournee/ -> django_sav_contrats_maintenance_tournee_retrieve
-- delete /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_destroy
 - get /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_retrieve
 - patch /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_partial_update
 - put /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_update
@@ -2918,7 +2917,6 @@ operations:
 - post /api/django/sav/tickets/ -> django_sav_tickets_create
 - post /api/django/sav/tickets/actions-groupees/ -> django_sav_tickets_actions_groupees_create
 - get /api/django/sav/tickets/file-action/ -> django_sav_tickets_file_action_retrieve
-- delete /api/django/sav/tickets/{id}/ -> django_sav_tickets_destroy
 - get /api/django/sav/tickets/{id}/ -> django_sav_tickets_retrieve
 - patch /api/django/sav/tickets/{id}/ -> django_sav_tickets_partial_update
 - put /api/django/sav/tickets/{id}/ -> django_sav_tickets_update
@@ -6725,7 +6723,6 @@ operations:
 - post /api/v1/sav/contrats-maintenance/planifier-tournee/ -> v1_sav_contrats_maintenance_planifier_tournee_create
 - get /api/v1/sav/contrats-maintenance/rentabilite/ -> v1_sav_contrats_maintenance_rentabilite_list
 - get /api/v1/sav/contrats-maintenance/tournee/ -> v1_sav_contrats_maintenance_tournee_retrieve
-- delete /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_destroy
 - get /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_retrieve
 - patch /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_partial_update
 - put /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_update
@@ -6803,7 +6800,6 @@ operations:
 - post /api/v1/sav/tickets/ -> v1_sav_tickets_create
 - post /api/v1/sav/tickets/actions-groupees/ -> v1_sav_tickets_actions_groupees_create
 - get /api/v1/sav/tickets/file-action/ -> v1_sav_tickets_file_action_retrieve
-- delete /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_destroy
 - get /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_retrieve
 - patch /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_partial_update
 - put /api/v1/sav/tickets/{id}/ -> v1_sav_tickets_update
@@ -11099,6 +11095,7 @@ components:
 - MonitoringAbonnementResilierRequest
 - MonitoringConfig
 - MonitoringConfigRequest
+- MonitoringEmailOmReportEchec
 - MonitoringEmailOmReportReponse
 - MonitoringEmailOmReportRequest
 - MonitoringHistory
