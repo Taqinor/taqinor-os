@@ -26,6 +26,7 @@ vi.mock('../../features/pwa/pushSubscribe', () => ({
   pushSupported: () => false,
   subscribeToPush: vi.fn(),
   unsubscribeFromPush: vi.fn(),
+  noterChoixPush: vi.fn(),
 }))
 
 import NotificationsPreferences from './NotificationsPreferences'
