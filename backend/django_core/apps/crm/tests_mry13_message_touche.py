@@ -178,6 +178,27 @@ class AucunChiffreInventeTests(_Base):
         from apps.ventes.utils.client_links import url_proposition
         self.assertIn(url_proposition(devis), rendu['message'])
 
+    def test_garanties_sans_devis_rattache_prend_le_devis_envoye_du_lead(self):
+        """11/11/2026 — 13 « Garanties fabricants » sur 113 en prod partaient
+        sans lien : la touche n'avait pas de devis rattaché alors que le lead
+        en avait un ENVOYÉ. Repli sur ce devis (même règle que le filet)."""
+        devis = self._devis('DEV-MRY13-0004')
+        rendu = message_pour_etape(
+            self._touche(template_cle='j6_garanties', devis=None),
+            user=self.acteur)
+        from apps.ventes.utils.client_links import url_proposition
+        self.assertIn(url_proposition(devis), rendu['message'])
+        self.assertNotIn('lien', rendu['placeholders_manquants'])
+
+    def test_garanties_jamais_un_lien_vers_un_brouillon(self):
+        devis = self._devis('DEV-MRY13-0005')
+        Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
+        rendu = message_pour_etape(
+            self._touche(template_cle='j6_garanties', devis=None),
+            user=self.acteur)
+        self.assertNotIn('/proposition/', rendu['message'])
+        self.assertIn('lien', rendu['placeholders_manquants'])
+
     def test_aucun_chiffre_de_prix_ne_peut_etre_un_placeholder(self):
         """Prix, kWc et économies restent dans le devis : un `{prix}` laissé
         dans un gabarit ne serait JAMAIS rempli — il resterait visible, ce que

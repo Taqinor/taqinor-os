@@ -3582,9 +3582,9 @@ decisions:
         texte: "Non : hors session rien n'est envoyé ; les erreurs serveur de ces flux sont couvertes par Sentry backend"
       - cle: oui
         texte: "Oui : endpoint anonyme bridé par IP et par jeton de page"
-    reponse: ouverte
-    date: "2026-11-03"
-    source: "session 2026-11-03 revue L3 journal : non posée (défaut recommandé : non)"
+    reponse: non
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : session 2026-11-03 revue L3 journal : non posée (défaut recommandé : non)"
     taches: []
 
   - id: D-JPB-7
@@ -4082,9 +4082,9 @@ decisions:
         texte: "Non : le geste reste au droit de vente ; la profondeur de la remise est déjà bornée par le seuil d'approbation"
       - cle: exiger_encaisser
         texte: "Oui : toute baisse du prix d'une vente signée exige le droit « Encaisser »"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : palier_vente) ; hors tableau des constats"
+    reponse: palier_vente
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : palier_vente) ; hors tableau des constats"
     taches: []
 
   - id: D-ADRG-2
@@ -4094,9 +4094,9 @@ decisions:
         texte: "C'est modifier le lead : le droit « Modifier » du CRM suffit, comme pour retirer une ligne d'un devis"
       - cle: crm_supprimer
         texte: "C'est supprimer : la case « Supprimer » du CRM est exigée"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : crm_modifier) ; constat C-ADRG-013 (3 emplacements)"
+    reponse: crm_modifier
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : crm_modifier) ; constat C-ADRG-013 (3 emplacements)"
     taches: []
 
   - id: D-ADRG-3
@@ -4106,9 +4106,9 @@ decisions:
         texte: "Oui : elle exige « Gérer » chantier ; le Technicien la saisit, le Commercial non"
       - cle: ventes
         texte: "Non : elle reste sous les droits de vente"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : chantiers) ; constats C-ADRG-040 et C-ADRG-013"
+    reponse: chantiers
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : chantiers) ; constats C-ADRG-040 et C-ADRG-013"
     taches: [ADRG16]
 
   - id: D-ADRG-4
@@ -4118,9 +4118,9 @@ decisions:
         texte: "Oui : décocher « Exporter » cache aussi ce bouton dans les tableaux du module"
       - cle: copie_ecran
         texte: "Non : c'est une copie de l'écran, le bouton reste"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : suit_la_case) ; constat C-ADRG-026"
+    reponse: suit_la_case
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : suit_la_case) ; constat C-ADRG-026"
     taches: [ADRG77]
 
   - id: D-ADRG-5
@@ -4130,9 +4130,9 @@ decisions:
         texte: "Le droit « Modifier » des paramètres, comme les autres réglages de la société ; l'ordre des lignes réglé depuis le générateur reste au droit de vente"
       - cle: gerer_du_module
         texte: "Le droit « Gérer » du module concerné"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : parametres_modifier) ; constats C-ADRG-012, C-ADRG-036, C-ADRG-037"
+    reponse: parametres_modifier
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : parametres_modifier) ; constats C-ADRG-012, C-ADRG-036, C-ADRG-037"
     taches: [ADRG11, ADRG12, ADRG13, ADRG38, ADRG46]
 
   - id: D-ADRG-6
@@ -4142,9 +4142,9 @@ decisions:
         texte: "La consigner ET exiger en plus un droit d'écriture du CRM : un Lecteur nommé responsable d'équipe ne fixe plus d'objectifs"
       - cle: consigner_telle_quelle
         texte: "La consigner telle que codée : le rôle ne compte pas"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : consigner_et_code_crm) ; constat C-ADRG-039"
+    reponse: consigner_et_code_crm
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : consigner_et_code_crm) ; constat C-ADRG-039"
     taches: [ADRG15]
 
   - id: D-ADRG-7
@@ -4154,9 +4154,9 @@ decisions:
         texte: "Seuls ceux qui ont « Gérer » les documents (verrouiller, c'est s'apprêter à modifier)"
       - cle: tout_lecteur
         texte: "Tout lecteur du document, comme aujourd'hui"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : ged_gerer) ; constat C-ADRG-024"
+    reponse: ged_gerer
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : ged_gerer) ; constat C-ADRG-024"
     taches: [ADRG75]
 
   - id: D-ADRG-8
@@ -4166,9 +4166,9 @@ decisions:
         texte: "Le droit « Gouvernance » de la GED"
       - cle: ged_gerer
         texte: "Le droit « Gérer » de la GED, comme aujourd'hui"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : ged_gouvernance) ; constat C-ADRG-035"
+    reponse: ged_gouvernance
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : ged_gouvernance) ; constat C-ADRG-035"
     taches: [ADRG80]
 
   - id: D-ADRG-9
@@ -4178,9 +4178,9 @@ decisions:
         texte: "Non : c'est de l'organisation du suivi, le droit de vente suffit"
       - cle: exiger_encaisser
         texte: "Oui : le droit « Encaisser » est exigé"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : palier_vente) ; constat C-ADRG-023"
+    reponse: palier_vente
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : palier_vente) ; constat C-ADRG-023"
     taches: []
 
   - id: D-ADRG-10
@@ -4190,9 +4190,9 @@ decisions:
         texte: "Le droit « Modifier » du stock, comme leurs jumeaux du stock (au moins pour les sous-traitants, qui créent un fournisseur, et les kits)"
       - cle: gerer_chantier
         texte: "Le droit « Gérer » chantier, comme aujourd'hui"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : stock_modifier) ; constat C-ADRG-017"
+    reponse: stock_modifier
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : stock_modifier) ; constat C-ADRG-017"
     taches: [ADRG41]
 
   - id: D-ADRG-11
@@ -4202,9 +4202,9 @@ decisions:
         texte: "Aligner sur le stock : l'ajustement est réservé à l'administrateur (il change la valeur du stock)"
       - cle: mouvement_grille
         texte: "Garder le droit « Mouvement » du stock, comme le dit la grille"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : admin_comme_stock) ; constat C-ADRG-032"
+    reponse: admin_comme_stock
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : admin_comme_stock) ; constat C-ADRG-032"
     taches: [ADRG43]
 
   - id: D-ADRG-12
@@ -4214,9 +4214,9 @@ decisions:
         texte: "Non : il faut aussi le droit d'écriture du module de l'élément (CRM pour un lead, « Gérer » calepinage pour un calepinage)"
       - cle: code_corbeille
         texte: "Oui : le droit « corbeille » de la grille suffit"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : droit_du_module) ; constat C-ADRG-058"
+    reponse: droit_du_module
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : droit_du_module) ; constat C-ADRG-058"
     taches: []
 
   - id: D-ADRG-13
@@ -4226,9 +4226,9 @@ decisions:
         texte: "Le droit de traiter les demandes RGPD, comme pour les demandes elles-mêmes"
       - cle: palier_responsable
         texte: "Le niveau responsable suffit, comme aujourd'hui"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : dsr_traiter) ; constat C-ADRG-060"
+    reponse: dsr_traiter
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : dsr_traiter) ; constat C-ADRG-060"
     taches: []
 
   - id: D-ADRG-14
@@ -4238,9 +4238,9 @@ decisions:
         texte: "Oui : écrire un rôle exige « Gérer les utilisateurs » (seul l'Admin Ventes est touché)"
       - cle: palier_responsable
         texte: "Non : le niveau responsable suffit, avec les bornes actuelles"
-    reponse: ouverte
-    date: "2026-11-10"
-    source: "audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : users_gerer) ; constat C-ADRG-061"
+    reponse: users_gerer
+    date: "2026-11-11"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : users_gerer) ; constat C-ADRG-061"
     taches: []
 
   - id: D-ALEC-1
@@ -4250,9 +4250,9 @@ decisions:
         texte: "Oui : un tarif de transport est un prix payé à un fournisseur ; il est masqué sans le droit « voir les prix d'achat », comme le coût réel"
       - cle: ouvert
         texte: "Non : c'est un prix public du transporteur ; il reste visible de qui lit le stock et les chantiers"
-    reponse: ouverte
+    reponse: masque_prix_achat
     date: "2026-11-11"
-    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat)"
     taches: [ALEC5, ALEC6]
 
   - id: D-ALEC-2
@@ -4262,9 +4262,9 @@ decisions:
         texte: "Oui : chacun ne voit que les chiffres de sa portée (les siens, son équipe, son sous-arbre) ; un classement peut nommer les collègues sans leurs montants"
       - cle: societe_entiere
         texte: "Non : les tableaux de bord restent à l'échelle de la société pour tout rôle qui lit les rapports"
-    reponse: ouverte
+    reponse: portee_du_role
     date: "2026-11-11"
-    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : portee_du_role) ; D-ACVI-2 ne vise que le CRM"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : portee_du_role) ; D-ACVI-2 ne vise que le CRM"
     taches: [ALEC22, ALEC23, ALEC24]
 
   - id: D-ALEC-3
@@ -4274,9 +4274,9 @@ decisions:
         texte: "Oui : le journal des réglages est un extrait du journal d'activité, il exige le droit « Journal d'activité »"
       - cle: lecture_parametres
         texte: "Non : il suffit de pouvoir lire les paramètres"
-    reponse: ouverte
+    reponse: journal_activite_voir
     date: "2026-11-11"
-    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : journal_activite_voir)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : journal_activite_voir)"
     taches: [ALEC28]
 
   - id: D-ALEC-4
@@ -4286,9 +4286,9 @@ decisions:
         texte: "Oui : un calepinage se voit comme son lead, selon la portée du rôle (les siens, son équipe, son sous-arbre)"
       - cle: reglage_seul
         texte: "Non : seul le réglage « vue restreinte » décide, pour toute la société"
-    reponse: ouverte
+    reponse: portee_du_role
     date: "2026-11-11"
-    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : portee_du_role)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : portee_du_role)"
     taches: [ALEC29]
 
   - id: D-ALEC-5
@@ -4298,9 +4298,9 @@ decisions:
         texte: "Oui : ce sont des montants d'achat ; masqués sans le droit « voir les prix d'achat »"
       - cle: ouvert
         texte: "Non : ce sont des paramètres de travail, visibles de qui lit le stock et les chantiers"
-    reponse: ouverte
+    reponse: masque_prix_achat
     date: "2026-11-11"
-    source: "audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat) ; aucune tâche tant qu'elle est ouverte"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF6 (11/11/2026) : non posée (défaut recommandé : masque_prix_achat) ; aucune tâche tant qu'elle est ouverte"
     taches: []
 
   - id: D-APUB-1
@@ -4310,9 +4310,9 @@ decisions:
         texte: "Non : la demande crée une tâche de rappel ; l'opposition n'est levée que par le commercial, après l'appel, à son nom"
       - cle: levee_directe
         texte: "Oui : la demande faite depuis le lien lève l'opposition tout de suite, comme aujourd'hui"
-    reponse: ouverte
+    reponse: confirmer_par_commercial
     date: "2026-11-11"
-    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : confirmer_par_commercial)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : confirmer_par_commercial)"
     taches: [APUB39]
 
   - id: D-APUB-2
@@ -4322,9 +4322,9 @@ decisions:
         texte: "Oui : il est fermé par défaut derrière un réglage (404), comme le formulaire de contact ; on le rouvre le jour où un écran l'utilise"
       - cle: garder_ouvert
         texte: "Non : il reste ouvert, avec un anti-robot et sans écriture dans un lead existant"
-    reponse: ouverte
+    reponse: parquer
     date: "2026-11-11"
-    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : parquer)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : parquer)"
     taches: [APUB10]
 
   - id: D-APUB-3
@@ -4334,9 +4334,9 @@ decisions:
         texte: "Oui : ouvrir la route dans le serveur, après correction de la sortie de « Signé » par l'API et des exports CSV"
       - cle: parquer
         texte: "Non : la déclarer parquée et retirer ses deux appels de l'écran Paramètres"
-    reponse: ouverte
+    reponse: ouvrir_apres_correctifs
     date: "2026-11-11"
-    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : ouvrir_apres_correctifs)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : ouvrir_apres_correctifs)"
     taches: [APUB15]
 
   - id: D-APUB-4
@@ -4346,9 +4346,9 @@ decisions:
         texte: "90 jours après la clôture de l'intervention, avec en plus un bouton « Couper le lien » pour le responsable"
       - cle: revocable_seul
         texte: "Sans limite de durée : seulement le bouton « Couper le lien »"
-    reponse: ouverte
+    reponse: expire_90j_revocable
     date: "2026-11-11"
-    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : expire_90j_revocable)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : expire_90j_revocable)"
     taches: [APUB7]
 
   - id: D-APUB-5
@@ -4358,9 +4358,9 @@ decisions:
         texte: "Oui : le site ne peut plus appeler l'ERP avec la session de l'employé (ou seulement les routes publiques)"
       - cle: garder
         texte: "Non : garder le réglage actuel"
-    reponse: ouverte
+    reponse: sans_identifiants
     date: "2026-11-11"
-    source: "audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : sans_identifiants)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF5 (11/11/2026) : non posée (défaut recommandé : sans_identifiants)"
     taches: [APUB73]
 
   - id: D-ATST-1
@@ -4370,9 +4370,9 @@ decisions:
         texte: "Oui : seul un code du registre compte ; un code inconnu n'accorde aucun palier, et les tests à codes inventés passent aux vrais codes"
       - cle: garder
         texte: "Non : tout code autre qu'une lecture continue de valoir écriture (comportement actuel)"
-    reponse: ouverte
+    reponse: code_inconnu_n_accorde_rien
     date: "2026-11-11"
-    source: "audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : code_inconnu_n_accorde_rien) ; aucun rôle réel ne porte de code inconnu (5 comptes, rôles livrés)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : code_inconnu_n_accorde_rien) ; aucun rôle réel ne porte de code inconnu (5 comptes, rôles livrés)"
     taches: [ATST13]
 
   - id: D-ATST-2
@@ -4382,9 +4382,9 @@ decisions:
         texte: "Servir le site public dans le run de bout en bout et vérifier les montants affichés de la proposition, en français et en arabe"
       - cle: retirer
         texte: "Retirer les trois tests ; la page reste prouvée par les tests du site et la parité écran / données"
-    reponse: ouverte
+    reponse: servir_le_site
     date: "2026-11-11"
-    source: "audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : servir_le_site)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : servir_le_site)"
     taches: [ATST30, ATST54]
 
   - id: D-AMSG-1
@@ -4394,9 +4394,9 @@ decisions:
         texte: "Oui : même fenêtre que les messages commerciaux, à partir de 08:30, jours ouvrés, report au créneau suivant"
       - cle: heures_actuelles
         texte: "Non : garder les heures actuelles, ce sont des messages contractuels"
-    reponse: ouverte
+    reponse: fenetre_commerciale
     date: "2026-11-11"
-    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : fenetre_commerciale)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : fenetre_commerciale)"
     taches: [AMSG44, AMSG72, AMSG73]
 
   - id: D-AMSG-2
@@ -4406,9 +4406,9 @@ decisions:
         texte: "Oui : au STOP, toutes les fiches vivantes de la société aux mêmes coordonnées deviennent « ne plus contacter », et c'est relu à chaque changement de coordonnées"
       - cle: nouvelles_fiches_seulement
         texte: "Non : seules les fiches créées ou fusionnées après le STOP en héritent"
-    reponse: ouverte
+    reponse: toutes_les_fiches
     date: "2026-11-11"
-    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : toutes_les_fiches)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : toutes_les_fiches)"
     taches: [AMSG3]
 
   - id: D-AMSG-3
@@ -4418,9 +4418,9 @@ decisions:
         texte: "Non : rien n'est envoyé à Meta pour une personne opposée"
       - cle: envoyer_quand_meme
         texte: "Oui : la conversion part quand même, pour mesurer les campagnes"
-    reponse: ouverte
+    reponse: rien_vers_meta
     date: "2026-11-11"
-    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : rien_vers_meta)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : rien_vers_meta)"
     taches: [AMSG10, AMSG36]
 
   - id: D-AMSG-4
@@ -4430,9 +4430,9 @@ decisions:
         texte: "Seulement un responsable ou un administrateur, avec un motif obligatoire"
       - cle: tout_role_trace
         texte: "Tout rôle qui modifie la fiche, comme aujourd'hui, avec la trace"
-    reponse: ouverte
+    reponse: responsable_avec_motif
     date: "2026-11-11"
-    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : responsable_avec_motif)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : responsable_avec_motif)"
     taches: []
 
   - id: D-AMSG-5
@@ -4442,9 +4442,9 @@ decisions:
         texte: "Oui : après une liste des 4 factures montrée au fondateur, leur relance repart au niveau 1 (elles partiront quand l'e-mail sera allumé ; celle du client de démonstration attend D-AMSG-6)"
       - cle: laisser_consommees
         texte: "Non : les laisser telles quelles, relance à la main"
-    reponse: ouverte
+    reponse: remettre_niveau_1
     date: "2026-11-11"
-    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : remettre_niveau_1)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : remettre_niveau_1)"
     taches: [AMSG30]
 
   - id: D-AMSG-6
@@ -4454,9 +4454,9 @@ decisions:
         texte: "Après une liste montrée au fondateur, remplacer leurs e-mails et téléphones par des valeurs qui ne peuvent rien recevoir, sauf ceux que le fondateur confirme réels"
       - cle: garder
         texte: "Les garder telles quelles"
-    reponse: ouverte
+    reponse: neutraliser_sauf_confirmes
     date: "2026-11-11"
-    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : neutraliser_sauf_confirmes)"
+    source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : neutraliser_sauf_confirmes)"
     taches: [AMSG62]
 
   - id: D-ASUP-1
@@ -4530,3 +4530,89 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
     taches: [ASUP48]
+
+  - id: D-ACEL-1
+    question: "L'écran « Envois programmés » laisse choisir l'heure d'envoi d'un rapport, mais la tâche ne passe qu'à 6 h : un rapport réglé à une autre heure ne part jamais. Faut-il respecter l'heure choisie, ou tout envoyer à 6 h et retirer le champ ?"
+    options:
+      - cle: heure_respectee
+        texte: "Respecter l'heure choisie : la tâche passe chaque heure de 6 h à 23 h et envoie le rapport dès que son heure est atteinte, une fois par jour ; sans heure, il part à 6 h"
+      - cle: tout_a_6h
+        texte: "Tout part à 6 h : retirer le champ « Heure d'envoi » de l'écran"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : heure_respectee)"
+    taches: [ACEL1, ACEL31]
+
+  - id: D-ACEL-2
+    question: "Des réglages allument une tâche planifiée mais n'ont aucun écran (relance automatique des commandes fournisseur en retard, délai de désactivation des comptes dormants, relevé de compte mensuel automatique d'un client, récurrences d'intervention) : personne ne peut les allumer. Faut-il les montrer dans l'ERP, ou les retirer avec leurs tâches ?"
+    options:
+      - cle: montrer_dans_parametres
+        texte: "Les montrer : chaque réglage reçoit son interrupteur ou son champ à l'écran (paramètres, fiche client, fiche chantier)"
+      - cle: retirer
+        texte: "Les retirer, avec les tâches planifiées qui en dépendent"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : montrer_dans_parametres)"
+    taches: [ACEL13, ACEL42, ACEL43, ACEL46, ACEL78]
+
+  - id: D-ACEL-3
+    question: "La page d'état publique et son taux de disponibilité sont calculés par le worker lui-même : si le worker s'arrête, la page reste « opérationnel » à 100 %. Faut-il afficher « données périmées » quand le dernier contrôle a plus de 15 minutes ?"
+    options:
+      - cle: donnees_perimees
+        texte: "Oui : au-delà de 15 minutes sans contrôle, la page dit « inconnu, données périmées » et la disponibilité du jour n'est plus comptée à 100 %"
+      - cle: garder
+        texte: "Non : garder l'affichage actuel"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : donnees_perimees)"
+    taches: [ACEL36]
+
+  - id: D-ACNC-1
+    question: "Un second paiement identique sur une facture (même montant, même jour), saisi sans clé par une autre personne, par l'API ou par l'assistant, est aujourd'hui accepté en silence ; or deux chèques du même montant le même jour existent. Que fait l'ERP ?"
+    options:
+      - cle: accepter_apres_confirmation
+        texte: "L'accepter seulement après une confirmation explicite : « un paiement de 5 000 DH a déjà été enregistré aujourd'hui sur cette facture : confirmer ? »"
+      - cle: refuser
+        texte: "Le refuser (409) tant qu'un responsable ne force pas"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : accepter_apres_confirmation)"
+    taches: [ACNC4]
+
+  - id: D-ACNC-2
+    question: "Un encaissement groupé dont toutes les factures sont déjà soldées devient aujourd'hui, en entier, une avance client (AFAC8 l'a voulu pour un reliquat, sans viser ce cas). Que fait l'ERP ?"
+    options:
+      - cle: refuser
+        texte: "Le refuser : « ces factures sont déjà soldées ; pour une avance, utilisez Enregistrer une avance »"
+      - cle: garder_en_avance
+        texte: "Le garder en avance client, comme aujourd'hui"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ACNC10]
+
+  - id: D-AERR-1
+    question: "Une action publicitaire approuvée par erreur, pas encore appliquée chez Meta, ne peut plus revenir à « proposée » : l'approbation est définitive depuis l'écran, alors que la touche « a » l'approuve d'un seul geste. Doit-elle pouvoir revenir à « proposée » ?"
+    options:
+      - cle: desapprouver
+        texte: "Oui : une route de retour tant que l'action n'est pas appliquée, un bouton « Retirer l'approbation » sur la carte et un toast « Annuler » juste après l'approbation par la touche « a »"
+      - cle: garder
+        texte: "Non : l'approbation reste définitive ; seule la confirmation avant la touche « a » est ajoutée"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : desapprouver)"
+    taches: [AERR24]
+
+  - id: D-AERR-2
+    question: "Changer l'étape d'un lead au clavier (touches 1 à 4 de la fiche) ou par la palette ⌘K fait avancer le lead sans confirmation ni retour, alors que le kanban offre un toast « Annuler ». Faut-il une confirmation, ou un toast « Annuler » comme sur le kanban ?"
+    options:
+      - cle: annuler_comme_kanban
+        texte: "Toast nommé « Lead X → étape Y » avec « Annuler », comme sur le kanban ; une confirmation seulement vers « Signé »"
+      - cle: confirmation_toujours
+        texte: "Une confirmation qui nomme le lead et l'étape avant chaque changement d'étape par la touche ou la palette"
+      - cle: garder
+        texte: "Ne rien changer : le changement d'étape au clavier et par la palette reste immédiat"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : annuler_comme_kanban)"
+    taches: [AERR69, AERR119]
