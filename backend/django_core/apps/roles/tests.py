@@ -957,8 +957,11 @@ class CodesGrilleAppliquesTests(TestCase):
             'balance-agee/export/'))
         chantiers = (b + ['installation_voir'], (
             'reports/service/?export=xlsx', 'reports/field/?export=xlsx',
-            'insights/technicien-scorecard/?export=xlsx',
             f'archive/chantier/{self.chantier.pk}/?export=xlsx'))
+        # ALEC27 — la fiche technicien exige en plus le palier responsable
+        # (``users_voir`` le donne) : sans lui, le refus n'est pas celui du code.
+        scorecard = (b + ['installation_voir', 'users_voir'], (
+            'insights/technicien-scorecard/?export=xlsx',))
         sav = (b + ['sav_voir'], (
             'insights/sav-sla/?export=xlsx',
             'insights/recurring-revenue/?export=xlsx',
@@ -973,8 +976,8 @@ class CodesGrilleAppliquesTests(TestCase):
             'insights/job-costing/?export=xlsx',
             'insights/commissions/?export=xlsx',
             'insights/profitability/?export=xlsx'))
-        for base, chemins in (ventes, chantiers, sav, stock, journal,
-                              reporting, admin):
+        for base, chemins in (ventes, chantiers, scorecard, sav, stock,
+                              journal, reporting, admin):
             sans, avec = self._paire(base, 'reporting_export')
             for chemin in chemins:
                 with self.subTest(url=chemin):

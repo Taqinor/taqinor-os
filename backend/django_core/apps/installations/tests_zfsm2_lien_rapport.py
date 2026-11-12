@@ -157,9 +157,15 @@ class TestLienRapportToken(TestCase):
         for user in (commercial, directeur):
             api = auth(user)
             r = api.get(f'{BASE}/interventions/{self.interv.id}/')
-            self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
-            self.assertNotIn('lien_client_token', r.data)
-            self.assertNotIn('lien_rapport_token', r.data)
+            if user is commercial:
+                # Le Commercial ne lit le module chantiers que par l'octroi
+                # ``ventes_voir`` sur le CHANTIER (OCTROIS_LECTURE) : la fiche
+                # intervention elle-même lui est refusée (LectureDuModule).
+                self.assertEqual(r.status_code, 403, r.content)
+            else:
+                self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
+                self.assertNotIn('lien_client_token', r.data)
+                self.assertNotIn('lien_rapport_token', r.data)
             r = api.get(f'{BASE}/chantiers/{self.inst.id}/')
             self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
             imbriquees = [i for i in r.data['interventions']

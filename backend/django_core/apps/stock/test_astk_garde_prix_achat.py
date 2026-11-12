@@ -97,11 +97,13 @@ PARAMETRES_PAR_ROUTE = {
 
 
 def cles_interdites(payload):
-    """Ensemble des clés d'achat présentes (récursif)."""
+    """Ensemble des clés d'achat présentes (récursif). Une clé servie à
+    ``null`` ne porte aucun montant : c'est le masque voulu (ALEC11,
+    ``cout_total`` null sans ``prix_achat_voir``), pas une fuite."""
     trouvees = set()
     if isinstance(payload, dict):
         for cle, valeur in payload.items():
-            if cle in CLES_EXACTES or cle.startswith(PREFIXES_CLES):
+            if valeur is not None and (cle in CLES_EXACTES or cle.startswith(PREFIXES_CLES)):
                 trouvees.add(cle)
             trouvees |= cles_interdites(valeur)
     elif isinstance(payload, list):
@@ -485,3 +487,6 @@ class GardePrixAchat(TestCase):
         classeur.active.append(['Produit', 'Quantité', 'Coût moyen (HT)'])
         classeur.save(flux)
         self.assertEqual(entetes_achat(flux.getvalue()), ['Coût moyen (HT)'])
+        # ALEC11 — masque à null : rien de servi ; 0 reste un montant nommé.
+        self.assertEqual(cles_interdites({'cout_total': None}), set())
+        self.assertEqual(cles_interdites({'cout_total': 0}), {'cout_total'})
