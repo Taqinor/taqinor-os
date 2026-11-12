@@ -4566,3 +4566,53 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : donnees_perimees)"
     taches: [ACEL36]
+
+  - id: D-ACNC-1
+    question: "Un second paiement identique sur une facture (même montant, même jour), saisi sans clé par une autre personne, par l'API ou par l'assistant, est aujourd'hui accepté en silence ; or deux chèques du même montant le même jour existent. Que fait l'ERP ?"
+    options:
+      - cle: accepter_apres_confirmation
+        texte: "L'accepter seulement après une confirmation explicite : « un paiement de 5 000 DH a déjà été enregistré aujourd'hui sur cette facture : confirmer ? »"
+      - cle: refuser
+        texte: "Le refuser (409) tant qu'un responsable ne force pas"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : accepter_apres_confirmation)"
+    taches: [ACNC4]
+
+  - id: D-ACNC-2
+    question: "Un encaissement groupé dont toutes les factures sont déjà soldées devient aujourd'hui, en entier, une avance client (AFAC8 l'a voulu pour un reliquat, sans viser ce cas). Que fait l'ERP ?"
+    options:
+      - cle: refuser
+        texte: "Le refuser : « ces factures sont déjà soldées ; pour une avance, utilisez Enregistrer une avance »"
+      - cle: garder_en_avance
+        texte: "Le garder en avance client, comme aujourd'hui"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ACNC10]
+
+  - id: D-AERR-1
+    question: "Une action publicitaire approuvée par erreur, pas encore appliquée chez Meta, ne peut plus revenir à « proposée » : l'approbation est définitive depuis l'écran, alors que la touche « a » l'approuve d'un seul geste. Doit-elle pouvoir revenir à « proposée » ?"
+    options:
+      - cle: desapprouver
+        texte: "Oui : une route de retour tant que l'action n'est pas appliquée, un bouton « Retirer l'approbation » sur la carte et un toast « Annuler » juste après l'approbation par la touche « a »"
+      - cle: garder
+        texte: "Non : l'approbation reste définitive ; seule la confirmation avant la touche « a » est ajoutée"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : desapprouver)"
+    taches: [AERR24]
+
+  - id: D-AERR-2
+    question: "Changer l'étape d'un lead au clavier (touches 1 à 4 de la fiche) ou par la palette ⌘K fait avancer le lead sans confirmation ni retour, alors que le kanban offre un toast « Annuler ». Faut-il une confirmation, ou un toast « Annuler » comme sur le kanban ?"
+    options:
+      - cle: annuler_comme_kanban
+        texte: "Toast nommé « Lead X → étape Y » avec « Annuler », comme sur le kanban ; une confirmation seulement vers « Signé »"
+      - cle: confirmation_toujours
+        texte: "Une confirmation qui nomme le lead et l'étape avant chaque changement d'étape par la touche ou la palette"
+      - cle: garder
+        texte: "Ne rien changer : le changement d'étape au clavier et par la palette reste immédiat"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : annuler_comme_kanban)"
+    taches: [AERR69, AERR119]

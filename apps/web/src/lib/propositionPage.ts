@@ -569,7 +569,13 @@ export function proposalPathSegments(param: string | string[] | null | undefined
  */
 export function tokenFromSegments(param: string | string[] | null | undefined): string {
   const segments = proposalPathSegments(param);
-  return segments.length > 0 ? segments[segments.length - 1] : '';
+  const dernier = segments.length > 0 ? segments[segments.length - 1] : '';
+  // 11/11/2026 — le WhatsApp « Garanties fabricants » finit par « … : {lien}. »
+  // et le téléphone du client colle le point au lien : `…/<token>.` tombait sur
+  // « Proposition indisponible » (404). Un token (`secrets.token_urlsafe`) ne
+  // contient QUE [A-Za-z0-9_-] : la ponctuation finale n'en fait jamais partie,
+  // on la retire (corrige aussi les messages déjà envoyés).
+  return dernier.replace(/[^A-Za-z0-9_-]+$/, '');
 }
 
 /** Le préfixe décoratif (vide quand l'URL ne porte que le token). */

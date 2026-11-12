@@ -104,6 +104,77 @@ export async function subscribeToPush() {
   }
 }
 
+/* Réabonnement à la connexion (11/11/2026 — Meryem ne recevait plus rien).
+ * APAR57 désabonne l'appareil à chaque « Se déconnecter » ; rien ne le
+ * réabonnait ensuite : un seul logout sur le téléphone coupait le push pour
+ * de bon, jusqu'à un passage manuel dans Paramètres → Notifications.
+ *
+ * Désormais, à la connexion : si le navigateur a DÉJÀ la permission
+ * (« granted », aucune invite affichée) et que CET utilisateur n'a pas
+ * lui-même coupé le push sur CET appareil, l'abonnement est refait. Le refus
+ * explicite est mémorisé par utilisateur et par appareil (poste partagé :
+ * le choix de l'un ne vaut pas pour l'autre).
+ *
+ * Décision fondateur 12/11/2026 : la déconnexion ne désabonne PLUS (APAR57
+ * retiré, `authSlice.logoutUser`) — les push continuent tant que l'appareil
+ * est abonné. Ce réabonnement reste utile : il répare les appareils coupés
+ * avant cette décision, et rattache l'abonnement à l'utilisateur qui se
+ * connecte (endpoint unique côté serveur, `update_or_create`). */
+const CLE_REFUS_PUSH = 'taqinor.push.refus'
+const dejaTente = new Set()
+// Utilisateur connecté sur cette page (posé par `reabonnerPushSiAutorise`,
+// appelé par le shell à la connexion) : le réglage manuel s'y rattache.
+let utilisateurCourant = null
+
+function lireRefus() {
+  try {
+    const brut = JSON.parse(window.localStorage.getItem(CLE_REFUS_PUSH) || '[]')
+    return Array.isArray(brut) ? brut.map(String) : []
+  } catch {
+    return []
+  }
+}
+
+/* Mémorise le choix explicite de l'utilisateur sur CET appareil. */
+export function noterChoixPush(actif, userId = utilisateurCourant) {
+  if (userId == null) return
+  const id = String(userId)
+  const refus = lireRefus().filter((x) => x !== id)
+  if (!actif) refus.push(id)
+  try {
+    window.localStorage.setItem(CLE_REFUS_PUSH, JSON.stringify(refus))
+  } catch (err) {
+    // Stockage indisponible (navigation privée…) : le choix ne survit pas.
+    console.warn('pushSubscribe.noterChoixPush : stockage indisponible', err)
+  }
+}
+
+/* Réabonne CET appareil pour `userId` si la permission est déjà accordée et
+ * que l'utilisateur n'a pas coupé le push ici. Une seule tentative par
+ * utilisateur et par chargement de page ; jamais d'invite, jamais d'erreur. */
+export async function reabonnerPushSiAutorise(userId) {
+  if (userId == null || !pushSupported()) return { ok: false, reason: 'unsupported' }
+  const id = String(userId)
+  utilisateurCourant = id
+  if (dejaTente.has(id)) return { ok: false, reason: 'deja' }
+  dejaTente.add(id)
+  if (Notification.permission !== 'granted') return { ok: false, reason: 'denied' }
+  if (lireRefus().includes(id)) {
+    // L'appareil peut encore porter l'abonnement d'un AUTRE utilisateur (la
+    // déconnexion ne désabonne plus) : celui qui a coupé le push ici ne doit
+    // pas recevoir les notifications du précédent.
+    await unsubscribeFromPush()
+    return { ok: false, reason: 'refus' }
+  }
+  return subscribeToPush()
+}
+
+/* Tests uniquement : oublie les tentatives de la page. */
+export function _reinitialiserTentativesPush() {
+  dejaTente.clear()
+  utilisateurCourant = null
+}
+
 /* Désabonne CET appareil : retire l'abonnement local puis informe le serveur. */
 export async function unsubscribeFromPush() {
   if (!pushSupported()) return { ok: false, reason: 'unsupported' }
