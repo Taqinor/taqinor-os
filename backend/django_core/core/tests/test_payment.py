@@ -85,8 +85,12 @@ class PaymentTransactionFlowTests(TestCase):
     def test_delete_transaction_refuse_405(self):
         """ASUP22 — une transaction de paiement ne se supprime jamais par l'API."""
         from rest_framework.test import APIClient
-        from apps.roles.models import Role
-        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from importlib import import_module
+
+        from django.apps import apps as django_apps
+        Role = django_apps.get_model('roles', 'Role')  # core n'importe aucune app
+        CANONICAL_SYSTEM_ROLES = import_module(
+            'apps.roles.permissions_registre').CANONICAL_SYSTEM_ROLES
         role = Role.objects.create(company=self.company, nom='Directeur',
                                    permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Directeur']))
         directeur = User.objects.create_user(

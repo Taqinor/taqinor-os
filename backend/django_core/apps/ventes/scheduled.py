@@ -292,9 +292,12 @@ def _clients_manuels():
     couples (société, client) : un paramétrage « manuel » d'une AUTRE société
     ne coupe jamais le client d'un voisin. AMSG32 — partagé par la relance et
     le rappel avant échéance."""
+    from authentication.selectors import active_company_ids
     from .models import ParametrageRelanceClient
+    # AUD415 — les deux crons ne balaient que les sociétés actives (SCA19).
     return set(ParametrageRelanceClient.objects.filter(
         mode=ParametrageRelanceClient.Mode.MANUEL,
+        company_id__in=active_company_ids(),
     ).values_list('company_id', 'client_id'))
 
 

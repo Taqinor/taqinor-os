@@ -308,8 +308,11 @@ class VuesPubliquesSansJwtTests(TestCase):
         pour les inconnus, 200 pour un vrai lien GED. Mutant : 403 sur
         `ticket_public_status` quand `Authorization` est présent ⇒ rouge."""
         from authentication.models import Company
-        from apps.ged import services as ged
-        from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+        from importlib import import_module
+        ged = import_module('apps.ged.services')  # core n'importe aucune app
+        Cabinet, Document, DocumentVersion, Folder = (
+            django_apps.get_model('ged', nom)
+            for nom in ('Cabinet', 'Document', 'DocumentVersion', 'Folder'))
         co = Company.objects.create(nom='ATST10', slug='atst10')
         doc = Document.objects.create(company=co, nom='Contrat', folder=Folder.objects.create(
             company=co, nom='D', cabinet=Cabinet.objects.create(company=co, nom='C')))

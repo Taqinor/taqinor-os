@@ -74,6 +74,9 @@ describe('ExportReversibilitePage (NTOBS7)', () => {
     await user.click(await screen.findByRole('button', { name: 'Annuler' }))
     expect(parametresApi.couperLienExportReversibilite).not.toHaveBeenCalled()
     parametresApi.getHistoriqueExportReversibilite.mockResolvedValue({ data: [{ ...pret, statut: 'expire' }] })
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu (confirmation annulée) : un humain ne re-clique pas plus vite.
+    await new Promise((r) => setTimeout(r, 450))
     await user.click(screen.getByRole('button', { name: /Couper le lien/ }))
     const dialogue = await screen.findByRole('alertdialog')
     await user.click(within(dialogue).getByRole('button', { name: 'Couper le lien' }))
