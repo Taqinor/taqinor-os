@@ -360,13 +360,24 @@ class MintTests(TestCase):
         """AMSG1 (C-AMSG-001, D-ACVI-7) — opposé, perdu, archivé : 409 nommé,
         aucun lien frappé, aucune note ; le témoin garde son 200 + url.
         Mutant : retirer `garde_contact_du_lead` ⇒ 200 + url."""
-        for extra, motif in (({'ne_plus_contacter': True}, 'ne plus contacter'),
-                             ({'perdu': True}, 'perdu/archivé'),
-                             ({'is_archived': True}, 'perdu/archivé')):
-            self.lead = lead_complet(self.company, telephone='+212600000071', **extra)
+        # Un contact PAR lead : l'opposition (« ne plus contacter ») suit la
+        # personne par empreinte e-mail/téléphone (D-ACVI-6, ACRM62) — un même
+        # contact ferait naître les leads suivants opposés.
+        for n, extra, motif in (
+                (71, {'ne_plus_contacter': True}, 'ne plus contacter'),
+                (73, {'perdu': True}, 'perdu/archivé'),
+                (74, {'is_archived': True}, 'perdu/archivé')):
+            self.lead = lead_complet(
+                self.company, telephone=f'+2126000000{n}',
+                email=f'amina{n}@example.ma', **extra)
             res = self._post()
             self.assertEqual(res.status_code, 409, res.content)
-            self.assertEqual(res.json(), {'detail': f'Message refusé : {motif}.'})
+            # L'enveloppe d'erreur de la plateforme (`error`) accompagne le
+            # `detail` nommé : on vérifie le motif et son code, pas l'absence
+            # de l'enveloppe.
+            corps = res.json()
+            self.assertEqual(corps['detail'], f'Message refusé : {motif}.')
+            self.assertEqual(corps['error']['code'], 'state_conflict')
             self.assertFalse(QuestionnaireLien.objects.filter(lead=self.lead).exists())
             self.assertFalse(LeadActivity.objects.filter(
                 lead=self.lead, body__startswith='Lien questionnaire').exists())

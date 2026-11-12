@@ -10,6 +10,7 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_xfac8_canal_relance -v 2
 """
+import contextlib
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -166,6 +167,11 @@ class XFAC8CanalRelanceTests(TestCase):
                 company=company, ordre=0, nom=f'Niveau {canal}',
                 delai_jours=0, canal=canal)
             make_facture(company, client_obj)
-            with UPLOAD_OK:
+            # MinIO simulé pour la SEULE lettre (courrier) : l'e-mail joint le
+            # PDF RÉEL de la facture (AFAC42) — un upload simulé le rendrait
+            # introuvable et l'envoi serait refusé, à raison.
+            simule = (UPLOAD_OK if canal == FollowupLevel.Canal.COURRIER
+                      else contextlib.nullcontext())
+            with simule:
                 sent = relance_reminders()
             self.assertGreaterEqual(sent, 1)

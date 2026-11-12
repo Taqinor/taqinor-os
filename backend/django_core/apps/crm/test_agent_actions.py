@@ -207,6 +207,10 @@ class CrmAgentWhatsappPrepareTest(TestCase):
         devis = Devis.objects.create(
             company=self.company, lead=self.lead, client=client,
             statut='brouillon', reference='DEV-AG6-0002')
+        # Le profil société naît (et s'audite) au premier rendu du message :
+        # créé AVANT le comptage, il ne passe pas pour une trace d'envoi.
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.get(company=self.company)
         etape, audits = self.lead.stage, AuditLog.objects.count()
         activites = self.lead.activites.count()
         resp = auth(self.user).post(

@@ -388,8 +388,14 @@ class TestEnvoyerEmailTerminalStatus(TestCase):
     def test_refused_devis_not_regressed(self):
         devis = make_devis(self.company, self.user, self.client_obj, 'refuse',
                            'DEV-QJ14-T2')
+        # AMSG38 — un devis refusé n'est plus en jeu : l'envoi répond 409
+        # nommé, sans mail ni régression de statut.
+        from django.core import mail
+        from apps.ventes.domain.modifiabilite import MESSAGE_HORS_JEU
         resp = self.api.post(url(devis.id), {}, format='json')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(str(resp.data['detail']), MESSAGE_HORS_JEU)
+        self.assertEqual(len(mail.outbox), 0)
 
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'refuse',

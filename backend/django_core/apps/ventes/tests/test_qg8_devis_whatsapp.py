@@ -8,6 +8,8 @@ Couvre :
   * pas de numéro → 400 sans changer le statut ;
   * multi-société : devis d'une autre société → 404.
 """
+import itertools
+
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
@@ -23,6 +25,11 @@ from apps.ventes.utils.whatsapp import (
 )
 
 User = get_user_model()
+
+#: Une référence UNIQUE par devis créé : AMSG33/AMSG35 créent plusieurs
+#: devis de même statut dans un test, et ``id(statut) % 10000`` les faisait
+#: collider sur l'unicité (company, reference).
+_SEQ = itertools.count(1)
 
 
 def _company(slug):
@@ -53,7 +60,7 @@ class DevisWhatsappActionTests(TestCase):
 
     def _devis(self, statut=Devis.Statut.BROUILLON, client=None, lead=None):
         return Devis.objects.create(
-            company=self.company, reference=f'DEV-QG8-{id(statut) % 10000}',
+            company=self.company, reference=f'DEV-QG8-{next(_SEQ)}',
             client=client if client is not None else self.client_obj,
             lead=lead, statut=statut)
 

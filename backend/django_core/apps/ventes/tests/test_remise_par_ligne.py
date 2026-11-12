@@ -388,9 +388,11 @@ class TestHtmlRemiseParLigne(_DevisRemise, TestCase):
     def _cellule(self, html):
         self.assertIn(self.BARRE, html)
         # 4 000,00 barré, 3 800,00 en chiffre principal, dans la MÊME cellule.
+        # Le séparateur de milliers du HTML rendu est l'espace fine insécable
+        # de la maison (``FINE``), pas l'espace simple.
         self.assertRegex(html, re.compile(
-            re.escape(self.BARRE) + r'4 000,00</span>\s*'
-            r'<span style="white-space:nowrap;">3 800,00</span>'))
+            re.escape(self.BARRE) + '4' + self.FINE + r'000,00</span>\s*'
+            r'<span style="white-space:nowrap;">3' + self.FINE + '800,00</span>'))
         # La chaîne de totaux est intacte : Sous-total CATALOGUE → Remise → net.
         self.assertIn('Sous-total HT', html)
         self.assertIn('Remise (5', html)
