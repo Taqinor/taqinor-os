@@ -687,7 +687,11 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
         self.assertEqual(html.count("<polyline"), 2)
         self.assertIn('stroke="#b"', html)
         texte = _texte_ci(html)
-        self.assertIn("Sans batterie — remboursé en 3,6", texte)
+        # La légende imprime LE retour de la carte « Sans batterie »
+        # (``couverture.retour_affiche``), jamais un autre calcul.
+        from apps.ventes.quote_engine.ci import couverture
+        retour_carte = couverture.ans(couverture.retour_affiche(d, "com"))
+        self.assertIn(f"Sans batterie — remboursé en {retour_carte}", texte)
         self.assertIn("Avec batterie — remboursé en 5,0", texte)
         # Les montants de l'axe sont des cumuls SERVIS (années 0 et 25).
         self.assertIn(f"{round(-327250.0)} MAD", html)
