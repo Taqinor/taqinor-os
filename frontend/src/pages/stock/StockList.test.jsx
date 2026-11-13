@@ -441,3 +441,22 @@ describe('StockList — relecture ratée du catalogue (AERR33)', () => {
     expect(fetchProduits.mock.calls.length).toBe(avant + 1)
   })
 })
+
+describe('ADRG106 — « Supprimer » du catalogue suit `stock_supprimer`', () => {
+  const menuDeLigne = async () => {
+    const grid = await screen.findByRole('grid')
+    const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    await screen.findByRole('menu')
+  }
+  it('Admin Ventes (stock_supprimer, palier normal) : « Supprimer » ; Responsable sans le code : absent', async () => {
+    const vue = renderPage({ role: 'normal', permissions: ['stock_voir', 'stock_modifier', 'stock_supprimer'] })
+    await menuDeLigne()
+    expect(screen.getByRole('menuitem', { name: /Supprimer/ })).toBeInTheDocument()
+    vue.unmount()
+    renderPage({ role: 'responsable', permissions: ['stock_voir', 'stock_modifier'] })
+    await menuDeLigne()
+    expect(screen.queryByRole('menuitem', { name: /Supprimer/ })).toBeNull()
+  })
+})
+

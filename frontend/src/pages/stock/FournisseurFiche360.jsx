@@ -646,6 +646,8 @@ function ContactForm({ fournisseurId, contact, onClose, onSaved }) {
 }
 
 function OngletContacts({ fournisseurId, canWrite }) {
+  const estAdmin = useIsAdmin()
+  const peutSupprimer = useHasPermission('stock_supprimer') || estAdmin  // ADRG106 — plus `stock_modifier` seul
   const [confirmer, dialogueConfirmation] = useConfirmation()
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
@@ -690,7 +692,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
               {canWrite && (
                 <span className="flex items-center gap-1">
                   <BoutonsModifierSupprimer onModifier={() => setEditing(c)}
-                                            onSupprimer={() => supprimer(c)} />
+                                            onSupprimer={peutSupprimer ? () => supprimer(c) : null} />
                 </span>
               )}
             </li>
@@ -818,7 +820,8 @@ function OngletDocuments({ fournisseurId, canWrite, resume, onConformiteChange }
   const [editing, setEditing] = useState(null) // {} = nouvelle pièce
   const [aSupprimer, setASupprimer] = useState(null)
   const [actionError, setActionError] = useState(null)
-  const isAdmin = useIsAdmin()
+  const estAdmin = useIsAdmin()
+  const isAdmin = useHasPermission('stock_supprimer') || estAdmin  // ADRG106 — droit de la route DELETE
 
   const reload = useCallback(() => {
     fetchAllPages((page, { page_size: pageSize } = {}) =>

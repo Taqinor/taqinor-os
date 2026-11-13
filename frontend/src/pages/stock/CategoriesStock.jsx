@@ -92,7 +92,9 @@ export default function CategoriesStock() {
   const canWriteViaPerm = useHasPermission('stock_modifier')
   const canWriteViaRole = useIsAdminOrResponsable()
   const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
-  const canDelete = useIsAdmin()
+  // ADRG106 — suppression : administrateur ou `stock_supprimer` (PeutSupprimerStock).
+  const estAdmin = useIsAdmin()
+  const canDelete = useHasPermission('stock_supprimer') || estAdmin
 
   const [categories, setCategories] = useState([])
   const [marques, setMarques] = useState([])

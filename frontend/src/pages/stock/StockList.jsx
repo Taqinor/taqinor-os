@@ -737,6 +737,8 @@ export default function StockList() {
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
   const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
   const canDelete = useIsAdmin()
+  // ADRG106 — « Supprimer » suit la route (PeutSupprimerStock) : administrateur ou `stock_supprimer`.
+  const peutSupprimer = useHasPermission('stock_supprimer') || canDelete
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
   // modification/l'import, séparés de la création.
@@ -1609,7 +1611,7 @@ export default function StockList() {
               loading={loading}
               canWrite={canWrite}
               canEditPrix={canEditPrix}
-              canDelete={canDelete}
+              canDelete={peutSupprimer}
               onEdit={openEdit}
               onDelete={handleDelete}
               onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
