@@ -64,6 +64,8 @@ import InterventionLiensPublicsPanel from '../../features/installations/Interven
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
+import { toastWithUndo } from '../../lib/toast'
+import { useConfirmDialog } from '../../ui/confirm'
 import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 import { SelecteurVue } from '../../ui/SelecteurVue'
 import { ColonneStatut, ItemsUtilisateurs, SelectReaffectation } from '../../ui/kanbanAffectation'
@@ -569,12 +571,29 @@ export default function InterventionsPage() {
     && (!fType || it.type_intervention === fType)
   ), [items, fStatut, fType])
 
-  const patchStatus = (it, statut) => {
+  const { confirm } = useConfirmDialog()
+  const patchStatus = async (it, statut) => {
+    // AERR29 — Terminée / Validée résolvent le ticket SAV lié (sans retour) :
+    // confirmation nommée ; les autres statuts : appliqué + « Annuler » (inverse).
+    const nom = it.reference ?? it.installation_reference ?? `#${it.id}`
+    const label = interventionStatusLabel(statut)
+    const final = statut === 'terminee' || statut === 'validee'
+    if (final && !(await confirm({
+      title: `Passer ${nom} à « ${label} » ?`,
+      description: `${nom} passera à « ${label} » : le ticket SAV lié sera résolu.`,
+      confirmLabel: 'Confirmer', cancelLabel: 'Annuler', destructive: false,
+    }))) return
+    const avant = it.statut
     // Optimiste : reflète immédiatement, recharge en arrière-plan.
     setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, statut } : x)))
     // ACHT61 — même raison que la fiche, UN seul toast (pont axios coupé).
     installationsApi.updateIntervention(it.id, { statut }, { suppressErrorToast: true })
-      .then(() => { toast.success('Statut mis à jour.'); fetchData() })
+      .then(() => {
+        if (final) toast.success('Statut mis à jour.')
+        else toastWithUndo({ message: `${nom} passée à « ${label} ».`, onUndo: () => installationsApi
+          .updateIntervention(it.id, { statut: avant }).catch(() => toast.error('Annulation impossible.')).finally(fetchData) })
+        fetchData()
+      })
       .catch((err) => {
         toast.error(raisonRefusStatut(err) ?? 'Changement de statut impossible.')
         fetchData()
