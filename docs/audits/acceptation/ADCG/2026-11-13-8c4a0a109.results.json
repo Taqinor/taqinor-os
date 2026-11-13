@@ -1,0 +1,126 @@
+{
+  "sha": "8c4a0a109f5a0e923fee92ca8862cacb8a9faea4",
+  "date": "2026-11-13",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG115",
+    "ADCG107",
+    "ADCG108",
+    "ADCG109",
+    "ADCG23"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF3.sauvegardes.copie_distante_echec",
+      "taches": [
+        "ADCG115"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADCG-PF3.sauvegardes.copie_distante_echec.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF3.banc.ADCG107",
+      "taches": [
+        "ADCG107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-13/bancs-auto-deploy.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "banc scripts/tests/test_auto_deploy.py rejoué sur runner Linux (job bancs-deploy, run 43508182398) : test_retour_arriere_jamais_dans_un_etat_melange « ADCG107 — … ... ok », suite 18 tests OK, code 0 ; verdict recalculé depuis la trace brute (l'évaluateur du workflow cherchait le nom de méthode, unittest -v imprime la docstring) ; volet production « orchestrateur seulement et sur demande de Reda » non demandé, non joué"
+    },
+    {
+      "id": "PF3.banc.ADCG108",
+      "taches": [
+        "ADCG108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-13/bancs-auto-deploy.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "banc scripts/tests/test_auto_deploy.py rejoué sur runner Linux (job bancs-deploy, run 43508182398) : test_zero_downtime_sans_commit_neuf_drapeau_consomme « ADCG108 — … ... ok », suite 18 tests OK, code 0 ; verdict recalculé depuis la trace brute (l'évaluateur du workflow cherchait le nom de méthode, unittest -v imprime la docstring) ; volet production « orchestrateur seulement et sur demande de Reda » non demandé, non joué"
+    },
+    {
+      "id": "PF3.banc.ADCG109",
+      "taches": [
+        "ADCG109"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-13/bancs-auto-deploy.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "banc scripts/tests/test_auto_deploy.py rejoué sur runner Linux (job bancs-deploy, run 43508182398) : test_code_neuf_visible_seulement_apres_migrate « ADCG109 — … ... ok », suite 18 tests OK, code 0 ; verdict recalculé depuis la trace brute (l'évaluateur du workflow cherchait le nom de méthode, unittest -v imprime la docstring) ; volet production « orchestrateur seulement et sur demande de Reda » non demandé, non joué"
+    },
+    {
+      "id": "PF3.compose.ADCG23",
+      "taches": [
+        "ADCG23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-13/ADCG23-e2e-local.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "pile docker compose complète sur runner (job pile-compose, run 43508182398), db/redis/minio en marche avant up ; e2e-local.sh up (code 0 : migrate, seed_demo, Django, preview prêt) puis stop (code 0) : « services laissés en marche (non démarrés par up) », db/redis/minio toujours Up, fichier d'état effacé ; relais socat 5432->5433 (base compose publiée sur 5433, .env d'exemple DB_PORT=5432)"
+    }
+  ]
+}
