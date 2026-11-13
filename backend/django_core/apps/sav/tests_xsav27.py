@@ -11,10 +11,13 @@ Couvre :
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_xsav27 -v 2
 """
+import threading
 from datetime import date, timedelta
+from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -26,7 +29,8 @@ from apps.sav.services import (
     PretEquipementError, creer_pret_equipement, prets_en_retard,
     retourner_pret_equipement,
 )
-from apps.stock.models import Produit
+from apps.stock.models import MouvementStock, Produit
+from core.test_utils import WideTeardownTimeoutMixin
 
 User = get_user_model()
 
@@ -244,3 +248,87 @@ class XSAV27PretEquipementServiceTest(TestCase):
         self.assertFalse(self.ticket.annule)
         self.assertTrue(self.ticket.prets_equipement.filter(
             statut=PretEquipement.Statut.EN_COURS).exists())
+
+
+class XSAV27PretConcurrenceTest(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC27 — deux VRAIES connexions (patron `TestSavPiecesConcurrence._course`
+    de `tests_pieces.py`) : A tient le verrou et a écrit, B arrive pendant."""
+
+    def setUp(self):
+        self.company = make_company(slug='sav-acnc27', nom='Sav Co ACNC27')
+        self.admin = User.objects.create_user(
+            username='acnc27_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.client_obj = Client.objects.create(company=self.company, nom='Client')
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ACNC27-1',
+            client=self.client_obj, type=Ticket.Type.CORRECTIF, created_by=self.admin)
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Onduleur Prêt', sku='OND-ACNC27',
+            prix_achat=3000, prix_vente=6000, quantite_stock=10)
+
+    def _course(self, geste_a, geste_b):
+        """A (atomic) joue `geste_a` puis attend que B tente le verrou produit
+        (ou 3 s) avant de commiter ; B lance `geste_b` dès que A a écrit."""
+        from apps.stock import services as stock
+        original, a_tient, b_tente, res = stock.verrouiller_produit, threading.Event(), threading.Event(), {}
+
+        def verrou(pk):
+            if threading.current_thread().name == 'B':
+                b_tente.set()
+            return original(pk)
+
+        def fil_a():
+            with transaction.atomic():
+                geste_a()
+                a_tient.set()
+                b_tente.wait(3)
+            connection.close()
+
+        def fil_b():
+            a_tient.wait(5)
+            res['b'] = geste_b(auth(self.admin)).status_code
+            connection.close()
+        with mock.patch.object(stock, 'verrouiller_produit', side_effect=verrou):
+            fils = [threading.Thread(target=fil_a, name='A'), threading.Thread(target=fil_b, name='B')]
+            for fil in fils:
+                fil.start()
+            for fil in fils:
+                fil.join(15)
+        self.produit.refresh_from_db()
+        return res.get('b')
+
+    def _poser_pret(self):
+        return creer_pret_equipement(
+            company=self.company, ticket=self.ticket, produit=self.produit,
+            numero_serie='SN-A', date_sortie=date.today(),
+            date_retour_prevue=None, user=self.admin)
+
+    def test_deux_prets_simultanes_stock_8(self):
+        url = f'/api/django/sav/tickets/{self.ticket.id}/prets-equipement/'
+        statut = self._course(self._poser_pret, lambda api: api.post(
+            url, {'produit': self.produit.id, 'numero_serie': 'SN-B'}, format='json'))
+        self.assertEqual(statut, 201)
+        self.assertEqual(self.produit.quantite_stock, 8)
+        self.assertEqual(list(MouvementStock.objects.filter(produit=self.produit).order_by('id')
+                              .values_list('quantite_avant', 'quantite_apres')), [(10, 9), (9, 8)])
+
+    def test_deux_retours_croises_une_seule_entree(self):
+        with transaction.atomic():
+            pret = self._poser_pret()  # stock 10 → 9, prêt EN_COURS
+        url = (f'/api/django/sav/tickets/{self.ticket.id}/prets-equipement/'
+               f'{pret.id}/retourner/')
+
+        def retour_a():
+            relu = PretEquipement.objects.select_for_update().get(pk=pret.pk)
+            retourner_pret_equipement(
+                pret=relu, date_retour_reelle=date.today(), user=self.admin)
+        statut = self._course(retour_a, lambda api: api.post(url, {}, format='json'))
+        self.assertEqual(statut, 200)
+        self.assertEqual(self.produit.quantite_stock, 10)
+        pret.refresh_from_db()
+        self.assertTrue(pret.stock_reintegre)
+        self.assertEqual(pret.statut, PretEquipement.Statut.RETOURNE)
+        self.assertEqual(MouvementStock.objects.filter(
+            produit=self.produit, quantite_avant=9, quantite_apres=10).count(), 1)
+        self.assertEqual(MouvementStock.objects.filter(produit=self.produit).count(), 2)

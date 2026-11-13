@@ -2524,6 +2524,9 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
         date_retour = (date_du_corps(exiger_objet(request.data), 'date_retour_reelle')
                        or timezone.localdate())
         with transaction.atomic():
+            # ACNC27 — prêt relu SOUS VERROU : un retour croisé le retrouve
+            # « retourné » et ne réintègre rien (une seule ENTRÉE).
+            pret = PretEquipement.objects.select_for_update().get(pk=pret.pk)
             pret = retourner_pret_equipement(
                 pret=pret, date_retour_reelle=date_retour, user=request.user)
         activity.log_note(
