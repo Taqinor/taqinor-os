@@ -40,6 +40,7 @@ export default function WarrantiesPage() {
   const [warranties, setWarranties] = useState([])
   const [installations, setInstallations] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pasAJour, setPasAJour] = useState(false) // AERR129 — relecture ratée : liste gardée
 
   // Dialogue création / édition.
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -69,8 +70,8 @@ export default function WarrantiesPage() {
 
   const reload = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
     monitoringApi.getWarranties({ page, page_size: pageSize }).then((r) => r.data))
-    .then((rows) => setWarranties((Array.isArray(rows) ? rows : (rows?.results ?? []))))
-    .catch(() => setWarranties([]))
+    .then((rows) => { setWarranties((Array.isArray(rows) ? rows : (rows?.results ?? []))); setPasAJour(false) })
+    .catch(() => setPasAJour(true))
 
   useEffect(() => {
     let active = true
@@ -85,7 +86,7 @@ export default function WarrantiesPage() {
         setWarranties((Array.isArray(w) ? w : (w?.results ?? [])))
         setInstallations((Array.isArray(i) ? i : (i?.results ?? [])))
       })
-      .catch(() => {})
+      .catch(() => { if (active) setPasAJour(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
@@ -243,11 +244,17 @@ export default function WarrantiesPage() {
         {peutEcrire && <Button onClick={openCreate}><Plus /> Nouvelle garantie</Button>}
       </div>
 
+      {pasAJour && !loading && (
+        <div role="status" className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">{warranties.length ? 'Liste pas à jour' : 'Garanties non chargées'} — le serveur n’a pas répondu.</span>
+          <Button type="button" size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </div>
+      )}
       {loading ? (
         showLoadingSpinner && (
           <ChargementPage />
         )
-      ) : warranties.length === 0 ? (
+      ) : warranties.length === 0 ? (pasAJour ? null :
         <EmptyState
           title="Aucune garantie de production"
           description="Créez une garantie pour suivre l'écart entre production réelle et productible garanti."

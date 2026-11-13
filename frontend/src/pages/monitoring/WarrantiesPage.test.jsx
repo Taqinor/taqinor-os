@@ -133,3 +133,28 @@ describe('WarrantiesPage (WR6 — garanties de production)', () => {
     expect(screen.getAllByLabelText('Statut et courbe').length).toBeGreaterThan(0)
   })
 })
+
+describe('WarrantiesPage — AERR129 relecture rejetée', () => {
+  it('relecture rejetée après un geste : les garanties restent', async () => {
+    const base = {
+      degradation_pct_per_year: '0.50', start_year: 2025, tolerance_pct: '5.00',
+      compensation_mad_per_kwh: '1.0000', note: '',
+    }
+    monitoringApi.getWarranties.mockResolvedValueOnce({
+      data: [
+        { ...base, id: 3, installation: 11, guaranteed_year1_kwh: '14000.00' },
+        { ...base, id: 4, installation: 99, installation_reference: 'CHT-202611-0099', guaranteed_year1_kwh: '9000.00' },
+      ],
+    })
+    renderPage(<WarrantiesPage />)
+    await screen.findAllByText('CHT-202611-0099')
+    monitoringApi.getWarranties.mockRejectedValueOnce(new Error('503'))
+    await userEvent.click(screen.getAllByLabelText('Modifier')[0])
+    await userEvent.click(await screen.findByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByText(/Liste pas à jour/)).toBeInTheDocument()
+    expect(screen.getAllByText('INST-2026-001 — Amrani').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('CHT-202611-0099').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.queryByText('Aucune garantie de production')).toBeNull()
+  })
+})
