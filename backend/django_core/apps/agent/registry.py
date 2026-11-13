@@ -330,19 +330,21 @@ def _register_builtin_actions() -> None:
     ``apps.roles.models.ALL_PERMISSIONS``.
     """
     builtins = [
-        # FG351 — Actions d'ÉCRITURE en langage naturel (« crée un devis pour… »,
-        # « ajoute un lead… », « crée le client… »). Ce sont des écritures
-        # GARDÉES : `risk=RISK_OUTWARD` force le motif propose→confirm côté
-        # relais FastAPI (l'outil renvoie une PROPOSITION signée à confirmer,
-        # il n'exécute JAMAIS directement). Django reste l'autorité finale :
-        # permission ERP + société sont re-vérifiées à l'exécution (la société
-        # est toujours imposée côté serveur via perform_create, jamais lue du
-        # corps fourni par l'agent).
-        # NOTE — l'action « créer un devis » VIDE est retirée à dessein : le
-        # Copilote crée TOUJOURS un devis dimensionné via l'auto-devis
-        # (``ventes.devis.creer_auto`` → POST /ventes/devis/auto/, déclaré dans
-        # apps/ventes/agent_actions.py). On n'expose plus de chemin produisant
-        # un brouillon à 0 DH.
+        # FG351 — Action d'ÉCRITURE en langage naturel (« crée le client… »).
+        # Écriture GARDÉE : `risk=RISK_OUTWARD` force le motif propose→confirm
+        # côté relais FastAPI (l'outil renvoie une PROPOSITION signée à
+        # confirmer, il n'exécute JAMAIS directement). Django reste l'autorité
+        # finale : permission ERP + société sont re-vérifiées à l'exécution (la
+        # société est toujours imposée côté serveur via perform_create, jamais
+        # lue du corps fourni par l'agent).
+        # COP-G2 — retirés du catalogue : ``crm.lead.create`` (doublon masqué :
+        # la déclaration de ``apps/crm/agent_actions.py`` est la seule) et
+        # ``ventes.devis.proposal_pdf`` (même route /proposal que
+        # ``ventes.devis.generer_pdf``, déclarée dans ``apps/ventes``). L'action
+        # « créer un devis » VIDE reste retirée à dessein : le Copilote crée
+        # TOUJOURS un devis dimensionné via l'auto-devis
+        # (``ventes.devis.creer_auto`` → POST /ventes/devis/auto/). On n'expose
+        # plus de chemin produisant un brouillon à 0 DH.
         AgentAction(
             key='crm.client.create',
             label='Créer un client',
@@ -369,51 +371,6 @@ def _register_builtin_actions() -> None:
             required_permission='crm_creer',
             risk=RISK_OUTWARD,
             confirm_summary='Créer la fiche client.',
-        ),
-        AgentAction(
-            key='crm.lead.create',
-            label='Créer un lead',
-            description=(
-                "Crée un nouveau lead (opportunité) pour la société. L'agent "
-                "fournit au moins le nom ; le serveur impose la société et le "
-                "propriétaire. Écriture sensible : confirmation requise avant "
-                "exécution."
-            ),
-            endpoint='/api/django/crm/leads/',
-            method='POST',
-            inputs={
-                'type': 'object',
-                'properties': {
-                    'nom': {'type': 'string'},
-                    'prenom': {'type': 'string'},
-                    'email': {'type': 'string'},
-                    'telephone': {'type': 'string'},
-                    'ville': {'type': 'string'},
-                    'source': {'type': 'string'},
-                },
-                'required': ['nom'],
-            },
-            required_permission='crm_creer',
-            risk=RISK_OUTWARD,
-            confirm_summary='Créer le lead.',
-        ),
-        AgentAction(
-            key='ventes.devis.proposal_pdf',
-            label='Générer le PDF de proposition',
-            description=(
-                "Génère le PDF client (premium) d'un devis via /proposal — "
-                "l'unique chemin de PDF de devis destiné au client."
-            ),
-            endpoint='/api/django/ventes/devis/{id}/proposal/',
-            method='GET',
-            inputs={
-                'type': 'object',
-                'properties': {'id': {'type': 'integer'}},
-                'required': ['id'],
-            },
-            required_permission='ventes_pdf',
-            risk=RISK_OUTWARD,
-            confirm_summary='Produire le PDF de devis destiné au client.',
         ),
         # FG352 — Outil de RÉCUPÉRATION RAG / DocQA. Action de LECTURE pure
         # (risk=internal) : renvoie les passages de documents/manuels les plus
@@ -453,6 +410,9 @@ def _register_builtin_actions() -> None:
             inputs={'type': 'object', 'properties': {}},
             required_permission='crm_voir',
             risk=RISK_INTERNAL,
+            # COP-G2 — outil sans entrée, remplacé par ``crm.lead.chercher``
+            # (lot copilote) : servi seulement tant que le copilote est éteint.
+            lot=LOT_HERITE,
         ),
         # XPLT18 — Proposer une règle d'automatisation en langage naturel.
         # Le LLM produit un brouillon STRUCTURÉ (trigger_type/action_type du
@@ -486,7 +446,10 @@ def _register_builtin_actions() -> None:
                 },
                 'required': ['nom', 'trigger_type', 'action_type'],
             },
-            required_permission=None,
+            # COP-G2 — la route est ``IsAdminRole`` (``roles_gerer``, le critère
+            # d'administrateur) : la permission du catalogue suit la garde réelle
+            # (offerte à un commercial, elle répondait toujours 403).
+            required_permission='roles_gerer',
             risk=RISK_OUTWARD,
             confirm_summary=(
                 "Créer un brouillon de règle d'automatisation (désactivée, "

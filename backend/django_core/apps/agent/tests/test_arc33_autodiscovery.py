@@ -94,7 +94,7 @@ class TestAutodiscovery(SimpleTestCase):
         for keys in registry._DISCOVERED.values():
             attributed |= keys
         for legacy_key in ('crm.lead.create', 'crm.lead.list',
-                           'ventes.devis.proposal_pdf'):
+                           'ventes.devis.generer_pdf'):
             self.assertNotIn(legacy_key, attributed)
 
 
@@ -134,7 +134,9 @@ class TestModuleToggleGating(TestCase):
             company=self.company, module='crm', actif=False)
         keys = {a.key for a in registry.for_user(self.su)}
         self.assertIn('crm.lead.create', keys)
-        self.assertIn('crm.lead.list', keys)
+        # (crm.lead.list est du lot « herite », masqué au superuser par
+        # l'interrupteur du copilote — COP-G1 ; on prend une action sans lot.)
+        self.assertIn('crm.lead.note', keys)
 
     def test_user_without_company_sees_everything(self):
         su_global = User.objects.create_superuser(

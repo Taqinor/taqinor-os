@@ -58,6 +58,11 @@ from apps.agent.registry import (
 _PERM_CREER = 'ventes_creer'
 _PERM_PDF = 'ventes_pdf'
 _PERM_VALIDER = 'ventes_valider'
+# COP-G2 — gardes RÉELLES des routes (jamais un code « voisin ») : la remise est
+# un PATCH du devis (``DroitDeLaGrille('ventes_modifier')``) et l'encaissement
+# exige ``encaisser`` (``PeutEncaisser``, ASEC29).
+_PERM_MODIFIER = 'ventes_modifier'
+_PERM_ENCAISSER = 'encaisser'
 
 
 # ── AG4 ─────────────────────────────────────────────────────────────────────
@@ -221,7 +226,7 @@ REMISE_DEVIS = AgentAction(
         },
         'required': ['id', 'remise_globale'],
     },
-    required_permission=_PERM_CREER,
+    required_permission=_PERM_MODIFIER,
     risk=RISK_INTERNAL,
 )
 
@@ -439,7 +444,7 @@ ENREGISTRER_PAIEMENT = AgentAction(
         },
         'required': ['id', 'montant', 'date_paiement'],
     },
-    required_permission=_PERM_VALIDER,
+    required_permission=_PERM_ENCAISSER,
     risk=RISK_IRREVERSIBLE,
     confirm_summary='Enregistrer cet encaissement (irréversible).',
 )

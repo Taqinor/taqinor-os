@@ -51,7 +51,7 @@ class AgentActionsEndpointTest(TestCase):
         keys = {a['key'] for a in resp.data['actions']}
         self.assertEqual(resp.data['count'], len(resp.data['actions']))
         self.assertIn('ventes.devis.creer_auto', keys)
-        self.assertIn('ventes.devis.proposal_pdf', keys)
+        self.assertIn('ventes.devis.generer_pdf', keys)
         self.assertNotIn('stock.produit.delete', keys)
 
     def test_readonly_user_gets_limited_catalogue(self):
@@ -60,16 +60,17 @@ class AgentActionsEndpointTest(TestCase):
         keys = {a['key'] for a in resp.data['actions']}
         self.assertIn('crm.lead.list', keys)
         self.assertNotIn('ventes.devis.creer_auto', keys)
-        self.assertNotIn('ventes.devis.proposal_pdf', keys)
+        self.assertNotIn('ventes.devis.generer_pdf', keys)
 
     def test_action_metadata_present(self):
         resp = _auth(self.sales).get(URL)
         action = next(a for a in resp.data['actions']
-                      if a['key'] == 'ventes.devis.proposal_pdf')
+                      if a['key'] == 'ventes.devis.generer_pdf')
         for fld in ('key', 'label', 'description', 'inputs', 'endpoint',
-                    'method', 'required_permission', 'risk', 'confirm_summary'):
+                    'method', 'required_permission', 'risk', 'confirm_summary',
+                    'carte', 'lot', 'objets'):
             self.assertIn(fld, action)
-        self.assertEqual(action['risk'], 'outward')
+        self.assertEqual(action['risk'], 'internal')
 
 
 class CrossTenantNoLeakageTest(TestCase):

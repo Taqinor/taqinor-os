@@ -93,13 +93,13 @@ class ForUserFilterTest(TestCase):
         keys = {a.key for a in for_user(self.readonly)}
         self.assertIn('crm.lead.list', keys)              # crm_voir → autorisé
         self.assertNotIn('ventes.devis.creer_auto', keys)  # ventes_creer manquant
-        self.assertNotIn('ventes.devis.proposal_pdf', keys)
+        self.assertNotIn('ventes.devis.generer_pdf', keys)
         self.assertNotIn('stock.produit.delete', keys)
 
     def test_sales_user_sees_sales_actions(self):
         keys = {a.key for a in for_user(self.sales)}
         self.assertIn('ventes.devis.creer_auto', keys)
-        self.assertIn('ventes.devis.proposal_pdf', keys)
+        self.assertIn('ventes.devis.generer_pdf', keys)
         self.assertIn('crm.lead.list', keys)
         self.assertNotIn('stock.produit.delete', keys)  # stock_supprimer manquant
 
@@ -203,6 +203,115 @@ class InterrupteurCopiloteTest(TestCase):
             self.assertEqual(confirmer(self.admin), 201)
 
 
+def _feuilles(garde):
+    """Aplatit une garde composée DRF (``A | B`` : ``op1`` / ``op2``)."""
+    if hasattr(garde, 'op1') and hasattr(garde, 'op2'):
+        return _feuilles(garde.op1) + _feuilles(garde.op2)
+    return [garde]
+
+
+def _gardes_de_la_route(action):
+    """Gardes RÉELLES de la route d'une action du catalogue, lues sur la vue
+    qui la sert (résolution d'URL + ``get_permissions()``, rien n'est exécuté) :
+    ``(codes, admin, modules)`` — codes de grille (``HasPermissionOrLegacy`` /
+    ``HasPermission`` / ``DroitDeLaGrille``), garde palier administrateur,
+    modules de droits des gardes « module » (``IsResponsableOrAdmin``,
+    ``LectureDuModule``)."""
+    import re
+
+    from django.urls import resolve
+    from rest_framework.test import APIRequestFactory
+
+    from authentication.permissions import (
+        IsAdminRole, IsResponsableOrAdmin, LectureDuModule, module_de_la_vue)
+
+    chemin = re.sub(r'\{[a-z_]+\}', '1', action.endpoint)
+    trouve = resolve(chemin)
+    cls = getattr(trouve.func, 'cls', None)
+    vue = cls(**getattr(trouve.func, 'initkwargs', {}))
+    vue.request = APIRequestFactory().generic(action.method.upper(), chemin)
+    vue.kwargs, vue.format_kwarg = trouve.kwargs, None
+    actions = getattr(trouve.func, 'actions', None) or {}
+    vue.action = actions.get(action.method.lower())
+    codes, admin, modules = set(), False, set()
+    for garde in (f for g in vue.get_permissions() for f in _feuilles(g)):
+        for nom in (c.__name__ for c in type(garde).__mro__):
+            for prefixe in ('HasPermissionOrLegacy_', 'HasPermission_'):
+                if nom.startswith(prefixe):
+                    codes.add(nom[len(prefixe):])
+        admin = admin or isinstance(garde, IsAdminRole)
+        if isinstance(garde, (IsResponsableOrAdmin, LectureDuModule)):
+            modules.add(getattr(garde, 'module_fige', None)
+                        or module_de_la_vue(vue))
+    return codes, admin, modules - {None}
+
+
+class PariteCataloguePermissionRouteTest(SimpleTestCase):
+    """COP-G2 — la permission du CATALOGUE est la garde de la ROUTE : une action
+    offerte à un compte qui reçoit 403 (``automation.rule.propose_draft``), ou
+    cachée à un compte qui peut l'exécuter (``enregistrer_paiement`` :
+    ``ventes_valider`` au catalogue, ``encaisser`` à la route), trompe le
+    modèle. Périmètre : les actions de ventes et les actions propres de
+    l'agent. Garde lue statiquement par :func:`_gardes_de_la_route` ; une garde
+    qui n'est pas lisible ainsi est listée ICI avec sa raison (jamais ignorée
+    en silence) et le test échoue si cette liste cesse d'être exacte."""
+
+    PROPRES_A_L_AGENT = ('automation.rule.propose_draft', 'crm.client.create',
+                         'crm.lead.list', 'ged.docqa.retrieve',
+                         'stock.produit.delete')
+    # clé -> raison pour laquelle la garde de la route n'est pas lisible.
+    NON_LISIBLES = {
+        'ged.docqa.retrieve': (
+            "catalogue None (tout compte interne) ; la route est une garde de "
+            "MODULE (LectureDuModule ged) + l'ACL coffre-fort lue dans la vue"),
+    }
+
+    def _perimetre(self):
+        return [a for a in all_actions()
+                if a.key.startswith('ventes.')
+                or a.key in self.PROPRES_A_L_AGENT]
+
+    def test_permission_du_catalogue_egale_garde_de_la_route(self):
+        from authentication.permissions import codes_du_module
+
+        ecarts, non_lisibles = [], set()
+        for action in self._perimetre():
+            codes, admin, modules = _gardes_de_la_route(action)
+            attendu = action.required_permission
+            if codes:
+                ok = attendu in codes
+            elif admin:
+                ok = attendu == 'roles_gerer'
+            elif modules:
+                ok = any(attendu in codes_du_module(m) for m in modules)
+            else:
+                ok = False
+            if not ok and action.key in self.NON_LISIBLES:
+                non_lisibles.add(action.key)
+            elif not ok:
+                ecarts.append(
+                    f'{action.key} : catalogue {attendu!r}, route '
+                    f'codes={sorted(codes)} admin={admin} modules={sorted(modules)}')
+        self.assertEqual(ecarts, [])
+        self.assertEqual(non_lisibles, set(self.NON_LISIBLES))
+
+    def test_le_perimetre_contient_les_actions_attendues(self):
+        cles = {a.key for a in self._perimetre()}
+        self.assertTrue({'ventes.devis.accepter',
+                         'ventes.facture.enregistrer_paiement',
+                         'automation.rule.propose_draft'} <= cles)
+        self.assertGreaterEqual(len(cles), 12)
+
+    def test_les_deux_ecarts_corriges_restent_alignes(self):
+        par_cle = {a.key: a for a in all_actions()}
+        self.assertEqual(
+            par_cle['ventes.facture.enregistrer_paiement'].required_permission,
+            'encaisser')
+        self.assertEqual(
+            par_cle['automation.rule.propose_draft'].required_permission,
+            'roles_gerer')
+
+
 class GuardedWriteActionsTest(TestCase):
     """FG351 — les écritures en langage naturel (Devis/Lead/Client) sont des
     actions GARDÉES : risk=outward (=> propose→confirm côté relais) et gatées
@@ -238,14 +347,26 @@ class GuardedWriteActionsTest(TestCase):
         self.assertNotIn('ventes.devis.creer', catalogue)
 
     def test_write_actions_are_guarded_outward(self):
-        catalogue = self._by_key()
-        for key in ('crm.client.create', 'crm.lead.create'):
-            action = catalogue[key]
-            # outward => le relais renvoie une PROPOSITION à confirmer (jamais
-            # une exécution immédiate).
-            self.assertEqual(action.risk, RISK_OUTWARD, key)
-            self.assertEqual(action.method.upper(), 'POST', key)
-            self.assertTrue(action.confirm_summary, key)
+        action = self._by_key()['crm.client.create']
+        # outward => le relais renvoie une PROPOSITION à confirmer (jamais
+        # une exécution immédiate).
+        self.assertEqual(action.risk, RISK_OUTWARD)
+        self.assertEqual(action.method.upper(), 'POST')
+        self.assertTrue(action.confirm_summary)
+
+    def test_crm_lead_create_declare_une_seule_fois_par_crm(self):
+        """COP-G2 — plus de builtin doublon : la déclaration servie est celle
+        de ``apps/crm/agent_actions.py`` (descriptions « Sert à : »). Son niveau
+        de risque (outward) est gardé par les tests de l'app crm."""
+        action = self._by_key()['crm.lead.create']
+        self.assertTrue(action.description.startswith('Sert à'))
+        self.assertEqual(action.method.upper(), 'POST')
+
+    def test_actions_retirees_du_catalogue(self):
+        """COP-G2 — ``ventes.devis.proposal_pdf`` doublonnait
+        ``ventes.devis.generer_pdf`` (même route /proposal)."""
+        self.assertNotIn('ventes.devis.proposal_pdf', self._by_key())
+        self.assertIn('ventes.devis.generer_pdf', self._by_key())
 
     def test_write_actions_gated_by_permission(self):
         catalogue = self._by_key()

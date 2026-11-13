@@ -35,6 +35,7 @@ from apps.ventes.models import (
 from apps.ventes.agent_actions import (
     CREER_AUTO,
     GENERER_PDF_DEVIS,
+    REMISE_DEVIS,
     ACCEPTER_DEVIS,
     CONVERTIR_EN_BON_COMMANDE,
     GENERER_FACTURE,
@@ -62,11 +63,13 @@ class VentesAgentCatalogueTest(TestCase):
     def setUp(self):
         register_ventes_actions()  # idempotent (ready() les pose déjà)
         self.company = Company.objects.create(nom='AG45 Co', slug='ag45-co')
-        # Responsable : porte les trois codes de rattachement.
+        # Responsable : porte les codes de rattachement (COP-G2 : la remise suit
+        # ``ventes_modifier``, l'encaissement ``encaisser`` — gardes des routes).
         self.resp_role = Role.objects.create(
             company=self.company, nom='Responsable Ventes',
             permissions=[
-                'ventes_voir', 'ventes_creer', 'ventes_pdf', 'ventes_valider',
+                'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_pdf',
+                'ventes_valider', 'encaisser',
             ])
         self.resp = User.objects.create_user(
             username='ag45_resp', password='x', role=self.resp_role,
@@ -98,10 +101,12 @@ class VentesAgentCatalogueTest(TestCase):
         self.assertEqual(GENERER_PDF_DEVIS.required_permission, 'ventes_pdf')
         for action in (
             ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE, GENERER_FACTURE,
-            ENREGISTRER_PAIEMENT,
         ):
             self.assertEqual(
                 action.required_permission, 'ventes_valider', action.key)
+        # COP-G2 — aligné sur les gardes des routes (test de parité de l'agent).
+        self.assertEqual(ENREGISTRER_PAIEMENT.required_permission, 'encaisser')
+        self.assertEqual(REMISE_DEVIS.required_permission, 'ventes_modifier')
 
     def test_risk_levels_exact(self):
         # AG4
