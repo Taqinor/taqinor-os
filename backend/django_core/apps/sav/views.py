@@ -849,12 +849,13 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : les 30 derniers jours).
         """
         from .query_params import periode_param
+        from .services import disponibilite_equipement  # résolu par check_api_shapes
 
         equipement = self.get_object()
         # api-fuzz-full 27/10 (ENF11) : `fin=0001-01-01` débordait (500).
         debut_periode, fin_periode = periode_param(request)
 
-        data = sav_services.disponibilite_equipement(
+        data = disponibilite_equipement(
             equipement, debut_periode=debut_periode, fin_periode=fin_periode)
         return Response(data)
 
@@ -2511,8 +2512,9 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
         Suggestions JAMAIS auto-appliquées : GET pur, rien n'est écrit sur le
         ticket. Sans GROQ_API_KEY, renvoie ``{'disponible': False}`` (200,
         comportement actuel byte-identique)."""
+        from .services import suggerer_triage_ticket  # résolu par check_api_shapes
         ticket = self.get_object()
-        result = sav_services.suggerer_triage_ticket(
+        result = suggerer_triage_ticket(
             company=ticket.company, description=ticket.description)
         return Response(result)
 
