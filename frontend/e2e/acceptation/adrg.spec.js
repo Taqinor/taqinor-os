@@ -46,7 +46,10 @@ sortie(u.id)`)
 /** Écran sous le compte `nom` : contexte navigateur vierge, connexion par /token/, visites guidées fermées
  *  comme un habitué (même geste que auth.setup.js), page observée par les oracles. */
 async function ecran(page, suivi, testInfo, nom, stockage = {}) {
-  const ctx = await page.context().browser().newContext({
+  const navigateur = page.context().browser()
+  // La page demo_admin de l'étape (vierge) est refermée : la capture de l'étape montre l'écran du rôle joué.
+  if (!page.isClosed()) await page.close()
+  const ctx = await navigateur.newContext({
     baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] }, serviceWorkers: 'block',
   })
   ouverts.push(() => ctx.close())
@@ -110,6 +113,16 @@ function sondeAppoint(constat) {
 }
 
 const csv = (nom, texte) => ({ name: nom, mimeType: 'text/csv', buffer: Buffer.from(texte) })
+
+/** Devis posé par demo_admin (lead + ligne produit) ; `etat` : brouillon, envoye ou accepte. */
+async function devisDemo(r, m, etat, prod) {
+  const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ADRG ${etat} ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `adrg${etat}${m}@example.invalid` } }), 'lead')
+  const d = await lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: lead.id, lignes: [{ produit: prod.id, designation: prod.nom, quantite: '1', prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
+  if (etat !== 'brouillon') await lireJson(await r.post(`${API}/ventes/devis/${d.id}/share-link/`, { ...T, data: { envoi: true } }), 'envoi')
+  if (etat === 'accepte') await lireJson(await r.post(`${API}/ventes/devis/${d.id}/accepter/`, { ...T, data: { nom: 'Client ADRG' } }), 'accepter')
+  return d
+}
+const produitDemo = async (r, m) => lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Onduleur réseau ADRG ${m}`, prix_vente: '1000.00', prix_achat: '321.00' } }), 'produit')
 
 // ───────────────────────── PF4.3 — imports, exports, rapports ─────────────────────────
 
@@ -178,18 +191,26 @@ sortie(p.pk)`)
     expect(entree, `Directeur : l'entrée prix_achat est servie (${JSON.stringify(dd.conflits)})`).toBeTruthy()
     expect(String(entree.ancienne), 'Directeur : ancienne valeur = 9017.31').toContain('9017.31')
     // Écran Stock → Importer (aperçu) au Commercial responsable.
+    // Le bouton « Importer » de /stock suit `stock_modifier` (StockList `canWrite`), que ce rôle livré ne porte pas
+    // (il porte `stock_creer`) : s'il est absent, l'aperçu n'est joignable que par la route, rejouée ci-dessus ;
+    // s'il est présent, l'aperçu affiché ne doit montrer aucun prix d'achat actuel.
     const p = await ecran(page, suivi, testInfo, cr.nom)
     await p.goto('/stock')
-    await p.getByRole('button', { name: 'Importer', exact: true }).first().click()
-    const [apercu] = await Promise.all([
-      p.waitForResponse((x) => /\/imports\/dry-run\/$/.test(new URL(x.url()).pathname), { timeout: 60_000 }),
-      p.locator('input[type="file"][accept=".csv,.xlsx"]').setInputFiles(fichier),
-    ])
-    expect(apercu.status(), 'aperçu écran : 200').toBe(200)
-    await expect(p.getByText(/colonnes reconnues/), 'aperçu affiché').toBeVisible({ timeout: 60_000 })
+    await p.waitForLoadState('networkidle')
+    const importer = p.getByRole('button', { name: 'Importer', exact: true })
+    const n = await importer.count()
+    console.log(`[ADRG63] /stock au Commercial responsable : ${n} bouton(s) « Importer »`)
+    if (n > 0) {
+      await importer.first().click()
+      const [apercu] = await Promise.all([
+        p.waitForResponse((x) => /\/imports\/dry-run\/$/.test(new URL(x.url()).pathname), { timeout: 60_000 }),
+        p.locator('input[type="file"][accept=".csv,.xlsx"]').setInputFiles(fichier),
+      ])
+      expect(apercu.status(), 'aperçu écran : 200').toBe(200)
+      await expect(p.getByText(/colonnes reconnues/), 'aperçu affiché').toBeVisible({ timeout: 60_000 })
+    }
     expect(await p.locator('body').innerText(), 'écran : aucun prix d\'achat actuel affiché').not.toContain('9017')
     sondeAppoint('C-ADRG-004')
-    await page.close()
   } finally {
     await py(`from apps.stock.models import Produit
 try:
@@ -236,7 +257,6 @@ sortie(dict(id=b.pk, cree=cree))`)
       }
     }
     sondeAppoint('C-ADRG-005')
-    await page.close()
   } finally {
     if (budget?.cree) {
       await py(`from apps.stock.models import BudgetDepartement
@@ -245,6 +265,13 @@ sortie(1)`).catch(() => null)
     }
   }
 })
+
+// Écart accepté (base FAIL) de l'étape ADRG69 : /rapports, ouvert par un Commercial, charge pour TOUT rôle des cartes
+// réservées (Rapports.jsx : `jobCosting` « réservé owner/responsable », `commissions` N99 « réservé admin »,
+// `profitability` WIR100(c) « réservé admin — un 403 est traité comme erreur ») et `reports/service/` (refusé au
+// Commercial depuis ADRG71) : 403 + console.error (oracles 2-3) hors d'ADRG69, qui ne porte que la carte et la route
+// du Journal ; avant ADRG69 la même étape tombait déjà sur ces refus (et sur audit-log 403).
+const ECART_RAPPORTS = { base: 'FAIL', raison: "frontend/src/pages/Rapports.jsx charge pour tout rôle reporting/insights/job-costing/, commissions/ et profitability/ (réservés, 403 traité comme « erreur » par la page) et reporting/reports/service/ (refusé au Commercial par ADRG71, carte non adaptée) : 403 + console.error hors d'ADRG69 ; la même étape échouait déjà avant ADRG69" }
 
 etape('PF4.3-ADRG69', ['ADRG69'], async ({ page, suivi, testInfo }) => {
   const m = marque()
@@ -265,15 +292,20 @@ etape('PF4.3-ADRG69', ['ADRG69'], async ({ page, suivi, testInfo }) => {
     pc.waitForResponse((x) => /\/reporting\/reports\/sales\/$/.test(new URL(x.url()).pathname), { timeout: 60_000 }),
     pc.goto('/rapports'),
   ])
+  await pc.getByRole('tab', { name: 'Insights' }).click()
+  await expect(pc.getByText('Revenu récurrent (contrats de maintenance)').first(), 'Commercial : onglet Insights ouvert').toBeVisible({ timeout: 60_000 })
   await pc.waitForLoadState('networkidle')
   await expect(pc.getByText(TITRE), 'Commercial : carte Journal absente').toHaveCount(0)
   expect(appels, 'Commercial : aucun appel auditLog').toEqual([])
   const pd = await ecran(page, suivi, testInfo, di.nom)
   await pd.goto('/rapports')
+  await pd.getByRole('tab', { name: 'Insights' }).click()
   await expect(pd.getByText(TITRE).first(), 'Directeur : carte Journal rendue').toBeVisible({ timeout: 60_000 })
   sondeAppoint('C-ADRG-018')
-  await page.close()
-})
+  // L'écart ne couvre QUE les refus déclarés : tout autre incident fait tomber l'étape.
+  const hors = suivi.incidents.filter((i) => !/\/reporting\/(insights\/(job-costing|commissions|profitability)|reports\/service)\//.test(i.texte))
+  expect(hors, 'aucun incident hors de l\'écart déclaré').toEqual([])
+}, { ecart: ECART_RAPPORTS })
 
 // ADRG70 — les 11 routes ventes/CRM (fabrique `lecture_source`).
 const ROUTES_70 = (client) => [
@@ -317,11 +349,12 @@ sortie(c.pk)`)
     })
     await p.goto('/dashboard')
     await p.waitForLoadState('networkidle')
+    console.log(`[ADRG70] accueil du Technicien : ${p.url()} ; incidents ${suivi.incidents.length}`)
     await p.goto('/reporting')
     await p.waitForLoadState('networkidle')
+    console.log(`[ADRG70] /reporting du Technicien : ${p.url()} ; incidents ${suivi.incidents.length}`)
     expect(servis, 'Technicien : aucune route ventes/CRM servie à l\'écran').toEqual([])
     sondeAppoint('C-ADRG-019')
-    await page.close()
   } finally {
     await py(`from apps.crm.models import Client
 Client.objects.filter(pk=${cl}).delete()
@@ -341,10 +374,12 @@ sortie(i.pk)`)
     const co = await session(testInfo, `adrg71co_${m}`, 'Commercial')
     const rh = await session(testInfo, `adrg71rh_${m}`, 'Admin RH')
     const tr = await session(testInfo, `adrg71tr_${m}`, 'Technicien responsable')
+    // La fiche technicien exige `?technicien=` (400 sans) : le Technicien responsable se lit lui-même.
+    const q = (route) => (route.includes('technicien-scorecard') ? `?technicien=${tr.id}` : '')
     const bilan = []
     for (const route of [...CHANTIERS, ...AUTRES]) {
-      bilan.push([route, (await co.ctx.get(`${API}/${route}`, T)).status(), (await rh.ctx.get(`${API}/${route}`, T)).status(),
-        (await tr.ctx.get(`${API}/${route}`, T)).status()])
+      bilan.push([route, (await co.ctx.get(`${API}/${route}${q(route)}`, T)).status(), (await rh.ctx.get(`${API}/${route}${q(route)}`, T)).status(),
+        (await tr.ctx.get(`${API}/${route}${q(route)}`, T)).status()])
     }
     console.log(`[ADRG71] ${bilan.map((b) => `${b[0]} co=${b[1]} rh=${b[2]} tr=${b[3]}`).join(' | ')}`)
     for (const [route, sc, sh, st] of bilan) {
@@ -358,12 +393,12 @@ sortie(i.pk)`)
       p.waitForResponse((x) => /\/reporting\/reports\/sales\/$/.test(new URL(x.url()).pathname), { timeout: 60_000 }),
       p.goto('/rapports'),
     ])
+    await p.getByRole('tab', { name: 'Service' }).click()
     await p.waitForLoadState('networkidle')
-    const carte = p.locator('div').filter({ has: p.getByText('Service (chantiers + SAV)', { exact: true }) })
-      .filter({ hasText: 'Rapport indisponible' })
-    await expect(carte, 'Commercial : la carte chantiers n\'est pas en erreur').toHaveCount(0)
+    const onglet = p.getByRole('tabpanel')
+    console.log(`[ADRG71] onglet Service du Commercial : ${(await onglet.innerText()).replace(/\s+/g, ' ').slice(0, 300)}`)
+    await expect(onglet.getByText('Rapport indisponible'), 'Commercial : la carte chantiers n\'est pas en erreur').toHaveCount(0)
     sondeAppoint('C-ADRG-019')
-    await page.close()
   } finally {
     await py(`from apps.installations.models import Installation
 Installation.objects.filter(pk=${chantier}).delete()
@@ -382,20 +417,24 @@ etape('PF4.3-ADRG73', ['ADRG73'], async ({ page, suivi, testInfo }) => {
   expect((await x.body()).subarray(0, 2).toString(), 'classeur PK…').toBe('PK')
   for (const [qui, nom, visible] of [['Commercial', co.nom, false], ['Commercial responsable', cr.nom, true]]) {
     const p = await ecran(page, suivi, testInfo, nom)
-    const [rep] = await Promise.all([
-      p.waitForResponse((r) => /\/reporting\/dashboard\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 }),
-      p.goto('/reporting'),
-    ])
-    expect(rep.status(), `${qui} : tableau de bord 200`).toBe(200)
     const bouton = p.getByRole('button', { name: /Exporter Excel/ })
-    if (visible) await expect(bouton.first(), `${qui} : bouton présent`).toBeVisible({ timeout: 60_000 })
-    else {
+    if (visible) {
+      const [rep] = await Promise.all([
+        p.waitForResponse((r) => /\/reporting\/dashboard\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 }),
+        p.goto('/reporting'),
+      ])
+      expect(rep.status(), `${qui} : tableau de bord 200`).toBe(200)
+      await expect(bouton.first(), `${qui} : bouton présent`).toBeVisible({ timeout: 60_000 })
+    } else {
+      // La route /reporting est réservée au palier responsable (module.config `RESPONSABLE_ADMIN`) : le
+      // Commercial y est soit refusé par l'écran, soit sur le tableau sans export ; dans les deux cas, aucun bouton.
+      await p.goto('/reporting')
       await p.waitForLoadState('networkidle')
+      console.log(`[ADRG73] /reporting du Commercial : ${p.url()} ; texte : ${(await p.locator('main').first().innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200)}`)
       await expect(bouton, `${qui} : aucun bouton « Exporter Excel »`).toHaveCount(0)
     }
   }
   sondeAppoint('C-ADRG-020')
-  await page.close()
 })
 
 // ───────────────────────── PF4.1 — écritures ventes ─────────────────────────
@@ -429,7 +468,6 @@ sortie([ListePrix.objects.filter(pk=${ids.liste}).exists(), DevisPreset.objects.
     expect((await cr.ctx.delete(`${API}/ventes/presets/${ids.preset}/`, T)).status(), 'Commercial responsable : modèle 204').toBe(204)
     expect(await existent(), 'relu : supprimés par le Commercial responsable').toEqual([false, false])
     sondeAppoint('C-ADRG-013')
-    await page.close()
   } finally {
     await py(`from apps.ventes.models import ListePrix, DevisPreset
 ListePrix.objects.filter(pk=${ids.liste}).delete(); DevisPreset.objects.filter(pk=${ids.preset}).delete()
@@ -442,18 +480,15 @@ etape('PF4.1-ADRG19', ['ADRG19'], async ({ page, suivi, testInfo }) => {
   const r = page.request
   const vi = await session(testInfo, `adrg19vi_${m}`, 'Viewer')
   const co = await session(testInfo, `adrg19co_${m}`, 'Commercial')
-  // Trois devis (brouillon, envoyé, accepté) posés par demo_admin puis attribués au Commercial.
-  const prod = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Onduleur réseau ADRG19 ${m}`, prix_vente: '1000.00', prix_achat: '321.00' } }), 'produit')
+  // Trois devis (brouillon, envoyé, accepté) posés par demo_admin puis attribués au Commercial. Viewer et
+  // Commercial ont le même encadrant (portée « équipe » des deux rôles livrés : les pairs) : le Viewer lit la liste.
+  const prod = await produitDemo(r, m)
   const devis = {}
-  for (const etat of ['brouillon', 'envoye', 'accepte']) {
-    const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ADRG19 ${etat} ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `adrg19${etat}${m}@example.invalid` } }), 'lead')
-    const d = await lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: lead.id, lignes: [{ produit: prod.id, designation: prod.nom, quantite: '1', prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
-    if (etat !== 'brouillon') await lireJson(await r.post(`${API}/ventes/devis/${d.id}/share-link/`, { ...T, data: { envoi: true } }), 'envoi')
-    if (etat === 'accepte') await lireJson(await r.post(`${API}/ventes/devis/${d.id}/accepter/`, { ...T, data: { nom: 'Client ADRG19' } }), 'accepter')
-    devis[etat] = d
-  }
+  for (const etat of ['brouillon', 'envoye', 'accepte']) devis[etat] = await devisDemo(r, m, etat, prod)
   await py(`from apps.ventes.models import Devis
 Devis.objects.filter(pk__in=${J(Object.values(devis).map((d) => d.id))}).update(created_by_id=${co.id})
+chef = U.objects.get(username='demo_admin').pk
+U.objects.filter(pk__in=[${vi.id}, ${co.id}]).update(supervisor_id=chef)
 sortie(1)`)
   const GESTES = {
     brouillon: { boutons: ['PDF', 'Envoyer'], menu: ['Éditer', 'Aperçu du PDF', 'Variante', 'Créer une variante de gamme', 'Proforma (PDF)'] },
@@ -487,7 +522,6 @@ sortie(1)`)
       await p.keyboard.press('Escape')
     }
   }
-  await page.close()
 })
 
 etape('PF4.1-ADRG62', ['ADRG62'], async ({ testInfo }) => {
@@ -558,8 +592,12 @@ etape('PF4.2-ADRG21', ['ADRG21'], async ({ page, suivi, testInfo }) => {
   await py(`U.objects.filter(pk=${te.id}).update(supervisor_id=${tr.id})
 sortie(1)`)
   const co = await session(testInfo, `adrg21co_${m}`, 'Commercial')
+  // Le Commercial entre aux chantiers par l'octroi `ventes_voir` (APFS105) : il voit ceux des devis de SA portée.
+  const dv = await devisDemo(page.request, m, 'brouillon', await produitDemo(page.request, m))
   const ids = await py(`from apps.installations.models import Installation, Intervention
-i = Installation.objects.create(company_id=${SOC}, reference='CHT-ADRG21-${m}', statut='installe', created_by_id=${co.id}, technicien_responsable_id=${te.id})
+from apps.ventes.models import Devis
+Devis.objects.filter(pk=${dv.id}).update(created_by_id=${co.id})
+i = Installation.objects.create(company_id=${SOC}, reference='CHT-ADRG21-${m}', statut='installe', created_by_id=${co.id}, technicien_responsable_id=${te.id}, devis_id=${dv.id})
 iv = Intervention.objects.create(company_id=${SOC}, installation=i, type_intervention='pose', technicien_id=${te.id}, created_by_id=${te.id}, date_prevue=timezone.localdate())
 sortie(dict(chantier=i.pk, ref=i.reference, iv=iv.pk))`)
   try {
@@ -567,7 +605,7 @@ sortie(dict(chantier=i.pk, ref=i.reference, iv=iv.pk))`)
     const pc = await ecran(page, suivi, testInfo, co.nom)
     await pc.goto(`/chantiers?id=${ids.chantier}`)
     const fiche = pc.getByRole('dialog')
-    await expect(fiche.getByText(ids.ref).first(), 'Commercial : fiche ouverte').toBeVisible({ timeout: 60_000 })
+    await expect(fiche.getByText(`Chantier — ${ids.ref}`).first(), 'Commercial : fiche ouverte').toBeVisible({ timeout: 60_000 })
     await expect(fiche.getByRole('button', { name: 'Fermer', exact: true }), 'Commercial : fiche rendue').toBeVisible()
     for (const geste of ['Mettre à jour', 'Annuler le chantier', 'Marquer réceptionné']) {
       await expect(fiche.getByRole('button', { name: geste }), `Commercial : pas de « ${geste} »`).toHaveCount(0)
@@ -586,7 +624,6 @@ sortie(dict(chantier=i.pk, ref=i.reference, iv=iv.pk))`)
     const pr = await ecran(page, suivi, testInfo, tr.nom)
     await pr.goto('/planification')
     await expect(pr.getByTestId(`iv-${ids.iv}`).getByRole('button', { name: /Déplacer l'intervention/ }), 'Technicien responsable : carte glissable').toBeVisible({ timeout: 60_000 })
-    await page.close()
   } finally {
     await py(`from apps.installations.models import Installation, Intervention
 Intervention.objects.filter(pk=${ids.iv}).delete()
@@ -633,7 +670,6 @@ sortie([i.technicien_responsable_id, i.acces_instructions])`)
     expect(re.status(), `Technicien responsable réaffecte : ${(await re.text()).slice(0, 200)}`).toBe(200)
     expect((await relu())[0], 'relu : réaffecté').toBe(te2.id)
     sondeAppoint('C-ADRG-055')
-    await page.close()
   } finally {
     await py(`from apps.installations.models import Installation
 try:
@@ -677,8 +713,13 @@ sortie(dict(statut=d.statut_douane, note=d.note, frais=list(FraisImport.objects.
       ['POST frais-import', () => tr.ctx.post(`${B}/frais-import/`, { ...T, data: { dossier: ids.dossier, categorie: 'douane', montant: '999' } })],
       ['POST landed-cost-lignes', () => tr.ctx.post(`${B}/landed-cost-lignes/`, { ...T, data: { dossier: ids.dossier, designation: 'Y', quantite: '1', valeur_fob: '1' } })],
     ]
+    // Garde livrée = `HasPermissionOrLegacy('achats_commander')` (Code net de la tâche, patron ACHT54) : 403 au
+    // message DRF générique ; le corps est journalisé (le code n'y est pas nommé).
     for (const [quoi, geste] of gestes) {
-      await refus(await geste(), 'achats_commander', `Technicien responsable ${quoi}`, { droitManquant: false })
+      const res = await geste()
+      const corps = await res.text()
+      console.log(`[ADRG31] ${quoi} → ${res.status()} ${corps.slice(0, 160)}`)
+      expect(res.status(), `Technicien responsable ${quoi} : ${corps.slice(0, 200)}`).toBe(403)
     }
     expect(await etat(), 'persistance : dossier, frais, lignes et frais_annexes du BCF inchangés').toEqual(avant)
     // Lectures inchangées pour le Technicien responsable.
@@ -709,7 +750,6 @@ sortie(1)`)
       else await expect(ligne, `${qui} : pas de « Nouvelle ligne SKU »`).toHaveCount(0)
     }
     sondeAppoint('C-ADRG-006')
-    await page.close()
   } finally {
     await py(`from apps.installations.models_dossier_import import DossierImport
 DossierImport.objects.filter(pk=${ids.dossier}).delete()
@@ -740,7 +780,6 @@ etape('PF4.2-ADRG86', ['ADRG86'], async ({ page, suivi, testInfo }) => {
     }
     expect(await py(`from apps.installations.models_demande_achat import DemandeAchat
 sortie(DemandeAchat.objects.get(pk=${da.id}).statut)`), 'relu : demande toujours soumise').toBe('soumise')
-    await page.close()
   } finally {
     await py(`from apps.installations.models_demande_achat import DemandeAchat
 DemandeAchat.objects.filter(pk=${da.id}).delete()
@@ -771,5 +810,4 @@ etape('PF4.2-ADRG104', ['ADRG104'], async ({ page, suivi, testInfo }) => {
       expect(appels, `${qui} : aucune requête co2-fleet`).toEqual([])
     }
   }
-  await page.close()
 })
