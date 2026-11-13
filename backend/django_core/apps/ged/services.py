@@ -4818,9 +4818,10 @@ def verifier_integrite_archives(company):
     synthese = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
     archivages = ArchivageLegal.objects.filter(
         company=company).select_related('version', 'document')
-    alteres = []
+    alteres, a_signaler = [], []
     for archivage in archivages:
         synthese['total'] += 1
+        precedent = archivage.controles.values_list('resultat', flat=True).first()  # ACEL62
         hash_constate = _hash_constate_pour_archivage(archivage)
         if hash_constate is None:
             resultat = CONTROLE_RESULTAT_INDISPONIBLE
@@ -4832,12 +4833,17 @@ def verifier_integrite_archives(company):
             resultat = CONTROLE_RESULTAT_ALTERE
             synthese['altere'] += 1
             alteres.append(archivage)
+        if resultat != CONTROLE_RESULTAT_OK and resultat != precedent:
+            a_signaler.append((archivage, resultat))
         ControleIntegrite.objects.create(
             company=company, archivage=archivage, resultat=resultat,
             hash_constate=hash_constate or '')
 
     if alteres:
         _notifier_alteration_archives(company, alteres)
+    if a_signaler:
+        from .alertes_integrite import alerter_archives_compromises
+        alerter_archives_compromises(company, a_signaler)
     return synthese
 
 
