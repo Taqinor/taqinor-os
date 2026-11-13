@@ -209,6 +209,36 @@ class EndpointProvisionnementPartenaireTests(TestCase):
         for interdit in ('password', 'mot_de_passe', 'motdepasse'):
             self.assertNotIn(interdit, corps)
 
+    def test_sans_email_operationnel_identifiants_non_envoyes(self):
+        """AMSG93 — e-mail non opérationnel : 200 + ``email_envoye: false`` et
+        un ``detail`` qui dit « non envoyés » ; clé factice + locmem : 1 e-mail."""
+        from django.core import mail
+        from django.test import override_settings
+        self.api.force_authenticate(user=self._admin())
+        with override_settings(
+                ANYMAIL={},
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            res = self.api.post(self.url, {}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data['cree'])
+        self.assertIs(res.data['email_envoye'], False)
+        self.assertEqual(
+            res.data['detail'], 'Accès portail créé — e-mail non '
+            'opérationnel : identifiants non envoyés.')
+        self.assertEqual(len(mail.outbox), 0)
+        user = CustomUser.objects.get(id=res.data['utilisateur_id'])
+        self.assertTrue(user.must_change_password)
+        autre = make_partenaire(self.company)
+        with override_settings(
+                ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            res = self.api.post(
+                f'/api/django/crm/partenaires/{autre.id}/provisionner-acces/',
+                {}, format='json')
+        self.assertIs(res.data['email_envoye'], True)
+        self.assertIn('envoyé par email', res.data['detail'])
+        self.assertEqual(len(mail.outbox), 1)
+
     def test_responsable_non_admin_refuse(self):
         self.api.force_authenticate(user=self._responsable())
         res = self.api.post(self.url, {}, format='json')

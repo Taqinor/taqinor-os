@@ -405,7 +405,8 @@ def provisionner_compte_portail_client(company, client_id, avec_envoi=False):
 # login JWT standard — jamais un second système d'auth.
 # ``Partenaire.token_acces`` (lien ponctuel/legacy) reste intact et inchangé.
 
-def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
+def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False,
+                                   avec_envoi=False):
     """NTPRT4 — Crée (ou relie) le compte utilisateur portail d'un partenaire.
 
     ADOC123 — ``exiger_email=True`` lève ``ProvisionnementSansEmail`` avant
@@ -413,7 +414,9 @@ def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
     côté vue). Défaut ``False`` : comportement inchangé.
 
     Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
-    par CET appel. Idempotent SANS effet de bord : un compte déjà rattaché à
+    par CET appel — AMSG93 : ``avec_envoi=True`` rend ``(user, cree,
+    envoye)``, ``envoye`` vrai seulement si l'e-mail est réellement parti.
+    Idempotent SANS effet de bord : un compte déjà rattaché à
     CE partenaire dans CETTE société est renvoyé tel quel (ni mot de passe
     réinitialisé, ni réactivation silencieuse d'un accès révoqué). Le
     partenaire est résolu dans CETTE société uniquement — un id absent ou
@@ -430,11 +433,14 @@ def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
     )
     from authentication.models import CustomUser
 
+    def _rendu(user, cree, envoye=False):
+        return (user, cree, envoye) if avec_envoi else (user, cree)
+
     if company is None or not partenaire_id:
-        return None, False
+        return _rendu(None, False)
     partenaire = partenaire_pour_certification(company, partenaire_id)
     if partenaire is None:
-        return None, False
+        return _rendu(None, False)
 
     with transaction.atomic():
         existant = CustomUser.objects.filter(
@@ -443,7 +449,7 @@ def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
             portail_partenaire_id=partenaire.id,
         ).first()
         if existant is not None:
-            return existant, False
+            return _rendu(existant, False)
 
         if exiger_email and not (partenaire.email or '').strip():
             raise ProvisionnementSansEmail(
@@ -476,9 +482,8 @@ def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
         user.set_password(mot_de_passe)
         user.save()
 
-    _envoyer_identifiants_portail(
-        user, mot_de_passe, company, portee_libelle='partenaire')
-    return user, True
+    return _rendu(user, True, _envoyer_identifiants_portail(
+        user, mot_de_passe, company, portee_libelle='partenaire'))
 
 
 # ── AUD138 — Révocation RÉELLE de l'accès portail d'un client ───────────────
