@@ -171,6 +171,7 @@ export default function UsersManagement() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null) // AERR60 — une relecture réussie efface l'échec précédent
     try {
       // ADOC38 — toutes les pages (fetchAllPages), jamais la seule page 1.
       const [userList, roleListBrut, posteListBrut] = await Promise.all([
