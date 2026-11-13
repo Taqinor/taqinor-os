@@ -12,6 +12,7 @@ import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
 import toutesLesPages from './toutesLesPages'
+import { LectureEchouee } from './SectionEnregistrement'
 
 const emptyForm = {
   duree_hover_peek_ms: 400,
@@ -27,6 +28,10 @@ export default function UxParametresPage() {
   const [roleOptions, setRoleOptions] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  // AERR56 — lecture (réglages OU rôles) rejetée : formulaire jamais proposé.
+  const [lectureEchouee, setLectureEchouee] = useState(false)
+  const [essai, setEssai] = useState(0)
+  const reessayer = () => { setLectureEchouee(false); setLoading(true); setEssai((n) => n + 1) }
 
   useEffect(() => {
     let active = true
@@ -44,15 +49,19 @@ export default function UxParametresPage() {
         })
         setRoleOptions(roles.map((r) => ({ value: r.id, label: r.nom })))
       })
-      .catch(() => toast.error('Chargement des réglages UX impossible.'))
+      .catch(() => {
+        if (active) setLectureEchouee(true)
+        toast.error('Chargement des réglages UX impossible.')
+      })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [])
+  }, [essai])
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const submit = (e) => {
     e.preventDefault()
+    if (lectureEchouee) return
     setSaving(true)
     api.patch('/uxviews/parametres/', form)
       .then((r) => {
@@ -75,6 +84,7 @@ export default function UxParametresPage() {
         </>
       }>
 
+      {lectureEchouee ? <LectureEchouee onRetry={reessayer} /> : (
       <FormulaireReglages onSubmit={submit} saving={saving}>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
@@ -158,6 +168,7 @@ export default function UxParametresPage() {
         </Card>
 
       </FormulaireReglages>
+      )}
     </PageReglages>
   )
 }

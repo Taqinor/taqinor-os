@@ -109,3 +109,17 @@ describe('UxParametresPage — NTUX27', () => {
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('Chargement des réglages UX impossible.'))
   })
 })
+
+describe('UxParametresPage — AERR56', () => {
+  it('lecture des rôles rejetée : formulaire non proposé, aucun PATCH', async () => {
+    const user = userEvent.setup()
+    getRoles.mockReset().mockRejectedValueOnce(new Error('boom'))
+    render(<UxParametresPage />)
+    expect(await screen.findByText(/Réglages non chargés/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
+    expect(api.patch).not.toHaveBeenCalled()
+    getRoles.mockResolvedValue({ data: ROLES })
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByDisplayValue('400')).toBeInTheDocument()
+  })
+})

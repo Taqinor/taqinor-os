@@ -16,14 +16,14 @@
 // AUCUNE valeur n'y est préremplie : un champ vide reste vide, et chaque bloc
 // porte ses champs source/date. Un refus (avant envoi ou 400 du serveur, clé =
 // nom du champ) s'affiche SOUS le champ fautif, et un bandeau le nomme.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Save, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import {
   Card, CardContent, Input, Button, IconButton, Spinner, Switch,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { BoutonEnregistrer, ChargementSection } from './SectionEnregistrement'
+import { BoutonEnregistrer, ChargementSection, LectureEchouee } from './SectionEnregistrement'
 import { toast } from '../../ui/confirm'
 // VX233 — feed d'audit extrait, verrouillé sur la section « tarification ».
 import SettingsAuditFeed from './SettingsAuditFeed'
@@ -63,10 +63,13 @@ export default function TarificationSection() {
   // CIQ227 — études commerciales et industrielles (scénarios de sensibilité
   // sourcés + autorisation « crédit-bail »). null = non servis : jamais renvoyés.
   const [ci, setCi] = useState(null)
+  // AERR56 — lecture rejetée : jamais de formulaire de repli enregistrable.
+  const [lectureEchouee, setLectureEchouee] = useState(false)
 
-  useEffect(() => {
+  const charger = useCallback(() => {
     parametresApi.getTariffSettings()
       .then(r => {
+        setLectureEchouee(false)
         const d = r.data || {}
         setForm({
           tolerance_kwh: d.tolerance_kwh ?? 10,
@@ -96,11 +99,9 @@ export default function TarificationSection() {
         setPompage(pompageDepuisServeur(d))
         setCi(ciDepuisServeur(d))
       })
-      .catch(() => {
-        setForm(FALLBACK_FORM)
-        setTiers(DEFAULT_TIERS.map(t => ({ ...t })))
-      })
+      .catch(() => setLectureEchouee(true))
   }, [])
+  useEffect(() => { charger() }, [charger])
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const setTier = (i, key, val) =>
@@ -195,7 +196,7 @@ export default function TarificationSection() {
   }
 
   const save = async () => {
-    if (!form) return
+    if (!form || lectureEchouee) return
     // CALX72 — refus AVANT envoi : une valeur sourcée sans sa source n'est
     // jamais envoyée (le serveur reste l'arbitre de tout le reste).
     const refus = {
@@ -256,7 +257,7 @@ export default function TarificationSection() {
   }
 
   if (form === null) {
-    return <ChargementSection />
+    return lectureEchouee ? <LectureEchouee onRetry={charger} /> : <ChargementSection />
   }
 
   return (
@@ -462,7 +463,8 @@ export default function TarificationSection() {
         </div>
       )}
 
-      <BoutonEnregistrer save={save} saving={saving} saved={saved} />
+      <BoutonEnregistrer save={save} saving={saving} saved={saved}
+        desactive={lectureEchouee} />
 
       {/* VX233 — historique des changements de la TARIFICATION (section
           « tarification » seule) : qui a changé le barème/ROI, quand,
@@ -503,20 +505,6 @@ const DEFAULT_TIERS = [
   { max_kwh: '510', prix_kwh_ttc: '1.381704' },
   { max_kwh: '', prix_kwh_ttc: '1.622856' },
 ]
-
-const FALLBACK_FORM = {
-  tolerance_kwh: 10,
-  selective_threshold_kwh: 150,
-  force_motrice_prix_kwh_ttc: '0.9500',
-  surplus_injecte_compense: false,
-  surplus_prix_kwh_ttc: '0.0000',
-  autoconsommation_pct_defaut: '70.00',
-  pertes_systeme_pct: '20.00',
-  pvgis_actif: true,
-  productible_manuel_kwh_kwc: '1500.0',
-  inclinaison_defaut_deg: 30,
-  azimut_defaut_deg: 0,
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CALX72 — les réglages SAISIS du lot 5 (CALX274 → CALX284)

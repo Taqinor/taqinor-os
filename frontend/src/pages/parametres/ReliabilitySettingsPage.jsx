@@ -3,7 +3,7 @@
 // `/core/fiabilite/reglages/`). Lecture `fiabilite_voir`, écriture
 // `fiabilite_administration` (Directeur/Administrateur toujours) — un refus
 // d'écriture s'affiche comme tel, sans casser l'écran.
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { BellRing } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, Label, Switch } from '../../ui'
@@ -11,6 +11,7 @@ import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
 import useFormulaireReglages from './useFormulaireReglages'
+import { LectureEchouee } from './SectionEnregistrement'
 
 const DEFAUTS = {
   notifier_maintenance_email: true,
@@ -51,18 +52,26 @@ export default function ReliabilitySettingsPage() {
   const {
     form, setForm, loading, setLoading, saving, setSaving, setField,
   } = useFormulaireReglages(DEFAUTS)
+  // AERR56 — lecture rejetée : jamais de formulaire par défaut enregistrable.
+  const [lectureEchouee, setLectureEchouee] = useState(false)
+  const [essai, setEssai] = useState(0)
+  const reessayer = () => { setLectureEchouee(false); setLoading(true); setEssai((n) => n + 1) }
 
   useEffect(() => {
     let active = true
     parametresApi.getReliabilitySettings()
       .then((r) => { if (active) setForm(depuisServeur(r.data)) })
-      .catch((err) => toast.error(frErr(err, 'Chargement des réglages de fiabilité impossible.')))
+      .catch((err) => {
+        if (active) setLectureEchouee(true)
+        toast.error(frErr(err, 'Chargement des réglages de fiabilité impossible.'))
+      })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [setForm, setLoading])
+  }, [setForm, setLoading, essai])
 
   const submit = (e) => {
     e.preventDefault()
+    if (lectureEchouee) return
     setSaving(true)
     parametresApi.saveReliabilitySettings(form)
       .then((r) => {
@@ -78,6 +87,7 @@ export default function ReliabilitySettingsPage() {
   return (
     <PageReglages titre="Réglages fiabilité"
       sousTitre="Ce que votre société reçoit et affiche au sujet de la disponibilité du service.">
+      {lectureEchouee ? <LectureEchouee onRetry={reessayer} /> : (
       <FormulaireReglages onSubmit={submit} saving={saving}>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
@@ -115,6 +125,7 @@ export default function ReliabilitySettingsPage() {
           </CardContent>
         </Card>
       </FormulaireReglages>
+      )}
     </PageReglages>
   )
 }
