@@ -37,11 +37,8 @@ const repoRoot = join(here, '..', '..', '..', '..')
 const apiSrc = readFileSync(join(here, 'adsengineApi.js'), 'utf8')
 const urlsSrc = readFileSync(
   join(repoRoot, 'backend', 'django_core', 'apps', 'adsengine', 'urls.py'), 'utf8')
-// AERR24 — l'action `desapprouver` vit dans un mixin importé par views.py (views.py ≥ 2 000
-// lignes ne grossit pas, C20) : sa source est lue avec views.py, rien n'est relâché.
 const viewsSrc = readFileSync(
-  join(repoRoot, 'backend', 'django_core', 'apps', 'adsengine', 'views.py'), 'utf8') + '\n' +
-  readFileSync(join(repoRoot, 'backend', 'django_core', 'apps', 'adsengine', 'desapprobation.py'), 'utf8')
+  join(repoRoot, 'backend', 'django_core', 'apps', 'adsengine', 'views.py'), 'utf8')
 
 // ── Backend : préfixes routés (DRF router) ──────────────────────────────────
 function extractRouterPrefixes(src) {
