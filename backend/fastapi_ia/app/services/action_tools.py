@@ -820,8 +820,9 @@ def _extrait_pour_modele(sortie: dict) -> str:
 
 
 _NON_EXECUTEE = " La proposition est consommée : l'action n'a pas été exécutée ; redemande-la."
-_SANS_REPONSE = (" La proposition est consommée et le serveur n'a pas répondu : "
-                 "vérifie si l'action a été faite avant de la redemander.")
+_SANS_REPONSE = (" La proposition est consommée et le résultat est incertain (le "
+                 "serveur n'a pas répondu normalement) : vérifie si l'action a "
+                 "été faite avant de la redemander.")
 
 
 def _preparer_confirmation(
@@ -885,7 +886,10 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
         ctx, action, _avec_cle_corps(action, inputs, token),
         headers={"Idempotency-Key": _cle_idempotence(token)})
     if not res.get("ok"):
-        suite = _SANS_REPONSE if not res.get("status") else _NON_EXECUTEE
+        # Sans reponse (0) ou erreur serveur (5xx) : l'action a PEUT-ETRE ete
+        # faite — ne jamais affirmer « non executee », ne jamais pousser a rejouer.
+        statut = int(res.get("status") or 0)
+        suite = _SANS_REPONSE if (not statut or statut >= 500) else _NON_EXECUTEE
         return {"ok": False, "status": res.get("status"),
                 "error": (res.get("error") or "L'action a échoué.") + suite,
                 "request_id": res.get("request_id")}

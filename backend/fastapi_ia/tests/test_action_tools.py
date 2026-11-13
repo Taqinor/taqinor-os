@@ -1447,7 +1447,9 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
         for reponse, attendu in (({"ok": False, "status": 409, "error": "Déjà soldée."},
                                   "n'a pas été exécutée ; redemande-la"),
                                  ({"ok": False, "status": 0, "error": "Service indisponible."},
-                                  "le serveur n'a pas répondu")):
+                                  "vérifie si l'action a été faite"),
+                                 ({"ok": False, "status": 500, "error": "Erreur interne."},
+                                  "vérifie si l'action a été faite")):
             with self.subTest(status=reponse["status"]):
                 jeton = self._proposer(ctx)
                 res, _ = self._confirmer(ctx, jeton, reponse)
