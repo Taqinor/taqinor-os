@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Radar, ShieldAlert } from 'lucide-react'
 import crmApi from '../../api/crmApi'
@@ -107,16 +107,20 @@ export default function VisiteursPage() {
   const [loadingVisitesLead, setLoadingVisitesLead] = useState(true)
   const [erreurVisitesLead, setErreurVisitesLead] = useState(false)
 
+  const jetonAppareils = useRef(0)
   const chargerAppareils = () => {
     // setState différé au prochain microtask (jamais synchrone dans l'effet) —
     // évite react-hooks/set-state-in-effect, même patron que
     // `RelancesSuiviPage.jsx`.
     queueMicrotask(() => { setLoading(true); setErreur(false) })
     const params = appareilFiltre ? { appareil_id: appareilFiltre } : {}
+    // AERR115 — jeton de lecture : une réponse périmée (filtre changé entre-temps) est ignorée.
+    const mien = ++jetonAppareils.current
+    const courant = () => mien === jetonAppareils.current
     return crmApi.getAppareilsVisites(params)
-      .then((r) => setAppareils(r.data?.results ?? r.data ?? []))
-      .catch(() => setErreur(true))
-      .finally(() => setLoading(false))
+      .then((r) => { if (courant()) setAppareils(r.data?.results ?? r.data ?? []) })
+      .catch(() => { if (courant()) setErreur(true) })
+      .finally(() => { if (courant()) setLoading(false) })
   }
 
   const chargerEquipe = () => {

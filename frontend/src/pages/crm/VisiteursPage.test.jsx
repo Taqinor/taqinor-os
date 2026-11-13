@@ -247,3 +247,22 @@ describe('VisiteursPage — mode lead (?lead=), historique des accès (VIS-LEAD)
     expect(screen.queryByText(/Historique des accès/)).not.toBeInTheDocument()
   })
 })
+
+describe('VisiteursPage — AERR115 réponse périmée ignorée', () => {
+  it('filtre d’appareil : réponse périmée ignorée', async () => {
+    let resoudreLent
+    getAppareilsVisites
+      .mockImplementationOnce(() => new Promise((r) => { resoudreLent = r }))
+      .mockResolvedValueOnce({ data: { results: [APPAREIL_SUSPECT] } })
+    const user = userEvent.setup()
+    mount(['/crm/visiteurs?appareil=ffff0000aaaa'])
+    await waitFor(() => expect(getAppareilsVisites).toHaveBeenCalledTimes(1))
+    await user.click(await screen.findByRole('button', { name: 'Retirer le filtre' }))
+    expect(await screen.findByText('Ahmed Alami')).toBeInTheDocument()
+    // L'ancienne réponse (filtrée sur l'appareil équipe) arrive APRÈS : ignorée.
+    resoudreLent({ data: { results: [APPAREIL_EQUIPE] } })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getByText('Ahmed Alami')).toBeInTheDocument()
+    expect(screen.queryByText('Karim T.')).not.toBeInTheDocument()
+  })
+})
