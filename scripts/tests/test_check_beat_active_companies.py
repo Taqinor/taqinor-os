@@ -161,11 +161,16 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
               "    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE)\n"
               "    statut = models.CharField(max_length=10)\n")
 
-    def _lancer(self, scheduled_src, allow='', fichier='scheduled.py', extra=None):
+    def _lancer(self, scheduled_src, allow='', fichier='scheduled.py', extra=None,
+                limites=None):
+        """``limites`` : None = règle ACEL2 neutralisée (ces fixtures testent les règles
+        existantes) ; sinon contenu du passif ``beat_limites_allow.txt``."""
         import io
         from contextlib import redirect_stdout
         from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+                guard, 'check_limites_balayage',
+                guard.check_limites_balayage if limites is not None else (lambda p: [])):
             r = Path(tmp)
             apps = r / 'backend' / 'django_core' / 'apps' / 'ventes'
             apps.mkdir(parents=True)
@@ -177,7 +182,10 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
                 cible.write_text(src, encoding='utf-8')
             allow_path = r / 'allow.txt'
             allow_path.write_text(allow, encoding='utf-8')
+            limites_path = r / 'limites.txt'
+            limites_path.write_text(limites or '', encoding='utf-8')
             with mock.patch.object(guard, 'ROOT', r), \
+                    mock.patch.object(guard, 'LIMITES_ALLOW_PATH', limites_path), \
                     mock.patch.object(guard, 'DJANGO_CORE', r / 'backend' / 'django_core'), \
                     mock.patch.object(guard, 'SCAN_ROOT', r / 'backend' / 'django_core' / 'apps'), \
                     mock.patch.object(guard, 'ALLOWLIST_PATH', allow_path):
@@ -288,6 +296,40 @@ class BeatActiveCompaniesTests(BalayageGlobalNonScopeTests):
         code, out = self._lancer(
             "def f(ids):\n    return list(Facture.objects.filter(pk__in=ids))\n")
         self.assertEqual(code, 1, out)
+
+
+class LimitesBalayageTests(BalayageGlobalNonScopeTests):
+    """ACEL2 — un balayage planifié des sociétés porte une limite de temps effective."""
+
+    TETE = "@shared_task(name='x.balayer'{lim})\ndef balayer():\n    for c in active_companies():\n"
+    LIM = ", soft_time_limit=100, time_limit=160"
+
+    def test_balayage_sans_limite_refuse(self):
+        code, out = self._lancer(self.TETE.format(lim='') + "        traiter(c)\n", limites='')
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled.py::balayer', out)
+        code, out = self._lancer(self.TETE.format(lim=self.LIM) + "        traiter(c)\n", limites='')
+        self.assertEqual(code, 0, out)
+
+    def test_limite_douce_avalee_refusee(self):
+        avale = ("        try:\n            traiter(c)\n"
+                 "        except Exception:\n            logger.warning('x')\n")
+        code, out = self._lancer(self.TETE.format(lim=self.LIM) + avale, limites='')
+        self.assertEqual(code, 1, out)
+        self.assertIn('avale SoftTimeLimitExceeded', out)
+        relevee = ("        try:\n            traiter(c)\n"
+                   "        except SoftTimeLimitExceeded:\n            raise\n"
+                   "        except Exception:\n            logger.warning('x')\n")
+        code, out = self._lancer(self.TETE.format(lim=self.LIM) + relevee, limites='')
+        self.assertEqual(code, 0, out)
+
+    def test_passif_gele_et_cle_morte(self):
+        src = self.TETE.format(lim='') + "        traiter(c)\n"
+        cle = 'backend/django_core/apps/ventes/scheduled.py::balayer  # tâche X\n'
+        self.assertEqual(self._lancer(src, limites=cle)[0], 0)
+        code, out = self._lancer(self.TETE.format(lim=self.LIM) + "        traiter(c)\n", limites=cle)
+        self.assertEqual(code, 1, out)
+        self.assertIn('clé morte', out)
 
 
 if __name__ == '__main__':

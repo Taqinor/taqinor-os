@@ -65,6 +65,8 @@ TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (ja
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 ALLOWLIST_PATH = ROOT / "scripts" / "beat_active_companies_allow.txt"
+#: ACEL2 — passif gelé des balayages sans limite de temps effective (ne fait que décroître).
+LIMITES_ALLOW_PATH = ROOT / "scripts" / "beat_limites_allow.txt"
 
 #: Le modèle dont le balayage périodique est réservé au sélecteur.
 MODEL_NAME = "Company"
@@ -277,6 +279,65 @@ def check_balayage_global(path: Path, modeles: set):
     return sorties
 
 
+_LARGES = {"Exception", "BaseException"}
+
+
+def _noms_types(h: ast.ExceptHandler) -> set:
+    t = h.type
+    elts = t.elts if isinstance(t, ast.Tuple) else ([t] if t is not None else [])
+    return {getattr(e, "id", getattr(e, "attr", "")) for e in elts}
+
+
+def _releve(h: ast.ExceptHandler) -> bool:
+    return any(isinstance(x, ast.Raise) for x in ast.walk(h))
+
+
+def _limite_douce_avalee(fonction: ast.AST) -> bool:
+    """Un ``except`` large (nu, Exception, BaseException) sans relève, que ne précède
+    aucun ``except SoftTimeLimitExceeded: raise`` du même ``try``."""
+    for t in (n for n in ast.walk(fonction) if isinstance(n, ast.Try)):
+        douce_relevee = False
+        for h in t.handlers:
+            noms = _noms_types(h)
+            if "SoftTimeLimitExceeded" in noms and _releve(h):
+                douce_relevee = True
+            elif (h.type is None or noms & _LARGES) and not douce_relevee and not _releve(h):
+                return True
+    return False
+
+
+def check_limites_balayage(path: Path):
+    """ACEL2 — [(fonction, raison)] : ``@shared_task`` qui balaie les sociétés sans
+    ``soft_time_limit`` ET ``time_limit``, ou dont un ``except`` large avale la limite douce."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    sorties = []
+    for f in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        decos = [d for d in f.decorator_list
+                 if getattr(d.func if isinstance(d, ast.Call) else d, "id",
+                            getattr(d.func if isinstance(d, ast.Call) else d, "attr", "")) == "shared_task"]
+        if not decos:
+            continue
+        noms = [(_callee_name(c) or "") for c in ast.walk(f) if isinstance(c, ast.Call)]
+        if not any(n.split(".")[-1] in _SELECTEURS_SOCIETE or f"{MODEL_NAME}.objects" in n for n in noms):
+            continue
+        kws = {kw.arg for d in decos if isinstance(d, ast.Call) for kw in d.keywords}
+        if not {"soft_time_limit", "time_limit"} <= kws:
+            sorties.append((f.name, "sans soft_time_limit ET time_limit au décorateur"))
+        elif _limite_douce_avalee(f):
+            sorties.append((f.name, "except large qui avale SoftTimeLimitExceeded"))
+    return sorties
+
+
+def _load_limites_allow():
+    if not LIMITES_ALLOW_PATH.exists():
+        return set()
+    lignes = LIMITES_ALLOW_PATH.read_text(encoding="utf-8").splitlines()
+    return {ligne.split("#")[0].strip() for ligne in lignes if ligne.split("#")[0].strip()}
+
+
 def check_file(path: Path):
     """Renvoie [(ligne, expression)] des balayages non scopés trouvés."""
     try:
@@ -326,7 +387,7 @@ def main(argv):
     offenders, listed = [], []
     offenders += _morts_offenders(allow)
     modeles = modeles_a_company()
-    cles_vues = set()
+    cles_vues, limites_vues, allow_limites = set(), set(), _load_limites_allow()
     for path in _iter_source_files():
         rel = _rel(path)
         for lineno, expr in check_file(path):
@@ -342,6 +403,18 @@ def main(argv):
                 offenders.append(
                     f"{cle}  {expr} — requête sur un modèle à FK company sans "
                     f"{SELECTEUR} ni filtre company/company__in")
+        # ACEL2 — limite de temps effective des balayages planifiés.
+        for fonction, raison in check_limites_balayage(path):
+            cle = f"{rel}::{fonction}"
+            limites_vues.add(cle)
+            listed.append(f"{cle}  # limites : {raison}")
+            if cle not in allow_limites:
+                offenders.append(
+                    f"{cle}  — {raison} : posez soft_time_limit + time_limit et placez "
+                    "`except SoftTimeLimitExceeded: raise` avant tout except large "
+                    "(patron : apps/ventes/coherence/moteur.py)")
+    for cle in sorted(allow_limites - limites_vues):
+        offenders.append(f"{cle}  — clé morte de scripts/beat_limites_allow.txt : retirez la ligne")
     mortes = sorted(c for c in allow if "::" in c and c not in cles_vues)
     for cle in mortes:
         offenders.append(f"{cle}  — clé morte de l'allowlist (site corrigé ou disparu) : "
