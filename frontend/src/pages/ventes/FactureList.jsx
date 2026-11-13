@@ -379,6 +379,7 @@ export default function FactureList() {
   // aucune facture n'est ouverte (liste nue).
   // AERR15 — racine du FORMULAIRE : une boîte posée par-dessus coupe « a ».
   const formScopeRef = useRef(null)
+  const [payeeSecheErreur, setPayeeSecheErreur] = useState('')
   useFocusedRecordShortcuts(
     'factureDetail',
     { a: () => editFacture && handleGenererPdf(editFacture) },
@@ -583,30 +584,27 @@ export default function FactureList() {
           riche en échappatoire (« Encaisser » capture mode/date/référence). */}
       <ConfirmDialog
         open={!!payeeSecheTarget}
-        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif('') } }}
+        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif(''); setPayeeSecheErreur('') } }}
         severity="medium"
         title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
         description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
         confirmLabel="Marquer payée quand même"
-        onConfirm={() => {
-          const f = payeeSecheTarget
+        onConfirm={async () => {
+          // AERR20 — la boîte reste ouverte, motif gardé, tant que le marquage n'a pas réussi.
           const motif = payeeSecheMotif.trim()
-          setPayeeSecheTarget(null)
-          setPayeeSecheMotif('')
-          if (!motif) {
-            toast.error('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.')
-            return
+          if (!motif) { setPayeeSecheErreur('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.'); return }
+          if (payeeSecheTarget && await doAction(marquerPayeeFacture, { id: payeeSecheTarget.id, motif })) {
+            setPayeeSecheTarget(null); setPayeeSecheMotif(''); setPayeeSecheErreur('')
           }
-          if (f) doAction(marquerPayeeFacture, { id: f.id, motif })
         }}
       >
         {/* AUD124 — sans motif, ce geste faisait disparaître une créance de
             la balance âgée sans que rien ne dise qui, quand ni pourquoi. */}
-        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche">
+        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche" error={payeeSecheErreur}>
           <Input
             id="motif-payee-seche"
-            value={payeeSecheMotif}
-            onChange={(e) => setPayeeSecheMotif(e.target.value)}
+            value={payeeSecheMotif} invalid={!!payeeSecheErreur}
+            onChange={(e) => { setPayeeSecheMotif(e.target.value); setPayeeSecheErreur('') }}
             placeholder="Ex. : virement encaissé hors ERP, constaté au relevé"
           />
         </FormField>

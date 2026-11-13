@@ -265,15 +265,18 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
 
   // APX17 — confirmation maison (AlertDialog Radix), jamais la popup du
   // système.
+  // AERR20 — rend vrai au succès (l'appelant ferme sa boîte seulement alors).
   const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
+    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return false
     setActionId(id)
     try {
       await dispatch(thunk(id)).unwrap()
+      return true
     } catch (err) {
       // VX63 — plus de JSON brut à l'écran : message FR lisible extrait du
       // payload d'erreur (le sweep alert→toast reste la propriété de VX19).
       toast.error(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
+      return false
     } finally {
       setActionId(null)
     }

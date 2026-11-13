@@ -169,6 +169,32 @@ describe('FactureList — AERR17 : émettre une ligne demande confirmation', () 
   })
 })
 
+describe('FactureList — AERR20 : « Marquer payée sans détail »', () => {
+  it('motif vide : boîte ouverte + erreur sous Motif ; refus serveur : motif gardé', async () => {
+    // AERR20 (C-AERR-018) — mutant : remettre `setPayeeSecheMotif('')` avant le test ⇒ échec.
+    const marquer = vi.spyOn(ventesApi, 'marquerPayeeFacture')
+      .mockRejectedValue({ response: { status: 400, data: { detail: 'Refusé.' } } })
+    const user = userEvent.setup()
+    renderList({ factures: [{ ...baseFacture, id: 42, reference: 'FAC-2026-11-0042' }] })
+    const row = screen.getByText('FAC-2026-11-0042').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Actions/ }))
+    await user.click(await screen.findByTestId('marquer-payee'))
+    const boite = await screen.findByRole('alertdialog')
+    await user.click(within(boite).getByRole('button', { name: 'Marquer payée quand même' }))
+    expect(within(boite).getByText(/Motif obligatoire/)).toBeInTheDocument()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(marquer).not.toHaveBeenCalled()
+
+    await user.type(within(boite).getByLabelText(/Motif/), 'virement hors ERP')
+    await user.click(within(boite).getByRole('button', { name: 'Marquer payée quand même' }))
+    await waitFor(() => expect(marquer).toHaveBeenCalledWith(42, 'virement hors ERP'))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(within(screen.getByRole('alertdialog')).getByLabelText(/Motif/)).toHaveValue('virement hors ERP')
+    marquer.mockRestore()
+  })
+})
+
 describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) et charge les vues serveur', async () => {
     renderList({ factures: [baseFacture] })
