@@ -256,4 +256,7 @@ class PerformUpdateBorneTests(_ScopedThingTableMixin, TestCase):
         obj.refresh_from_db()
         self.assertEqual(obj.nom, "après")
         self.assertEqual(obj.statut, "resolu")
+        # La colonne non écrite est relue avant pre_save : la réponse (et tout
+        # receveur post_save) voit la base, jamais la valeur périmée.
+        self.assertEqual(resp.data["statut"], "resolu")
         self.assertEqual(obj.company_id, tenant.id)
