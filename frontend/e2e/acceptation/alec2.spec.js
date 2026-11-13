@@ -107,11 +107,9 @@ sortie(dict(cl=cl.pk, p=p.pk, f=f.pk, l=l.pk))`)
       expect((await di.ctx.get(`${base}${fx.l}/`, T)).status(), `Directeur : détail ${base}`).toBe(200)
     }
     expect(ids(await toutes(di.ctx, routes[0])), 'Directeur : la ligne de B listée').toContain(fx.l)
-    // PATCH refusé : le Commercial n'a pas le palier d'écriture (IsResponsableOrAdmin, 403 avant la portée) ;
-    // le Commercial responsable passe le palier et bute sur la portée : 404.
+    // PATCH de la ligne de B : 404 (hors portée) pour A, et pour un Commercial responsable hors de son sous-arbre.
     const pa = await a.ctx.patch(`${routes[0]}${fx.l}/`, { ...T, data: { designation: 'Pirate A' } })
-    note(testInfo, 'PATCH Commercial A', `HTTP ${pa.status()}`)
-    expect([403, 404], `PATCH Commercial A : ${(await pa.text()).slice(0, 200)}`).toContain(pa.status())
+    expect(pa.status(), `PATCH Commercial A : ${(await pa.text()).slice(0, 200)}`).toBe(404)
     const pc = await cr.ctx.patch(`${routes[0]}${fx.l}/`, { ...T, data: { designation: 'Pirate CR' } })
     expect(pc.status(), `PATCH Commercial responsable : ${(await pc.text()).slice(0, 200)}`).toBe(404)
     // Persistance : la ligne de B relue en base est inchangée.
@@ -305,7 +303,7 @@ Client.objects.filter(pk__in=[${fx.ca}, ${fx.cb}]).delete()
 sortie(1)`).catch(() => undefined)
     await fermer(a, b, di)
   }
-})
+}, { ecart: { base: 'FAIL', raison: "l'écran /sav/contrats (frontend/src/pages/sav/ContratsMaintenance.jsx:317, WIR230 du 26/08/2026) appelle GET /api/django/users/ au montage pour TOUT rôle ; réservé à users_gerer, il répond 403 au Commercial (oracles 2-3) — même défaut que ERR-SAV-TECH-USERS-403 (corrigé sur TicketsPage seulement), antérieur et hors d'ALEC26 (portée serveur de la tournée)" } })
 
 // ── ALEC4 — liste sans cible des pièces : la note de révision d'un BCF hors palier admin ─────────────────
 etape('P1.4', ['ALEC4'], async ({ testInfo }) => {
@@ -328,7 +326,7 @@ sortie(dict(f=f.pk, p=p.pk, bc=bc.pk, lg=lg.pk, lead=lead.pk, nl=nl.pk))`)
   try {
     // Révision du BCF par le Directeur (VRAIE route `reviser` → reviser_bcf → note « prix_achat_unitaire : 100 → 120 »).
     await lireJson(await di.ctx.post(`${API}/stock/bons-commande-fournisseur/${fx.bc}/reviser/`, {
-      ...T, data: { lignes: [{ id: fx.lg, quantite: '2', prix_achat_unitaire: '120.00' }] },
+      ...T, data: { lignes: [{ id: fx.lg, quantite: 2, prix_achat_unitaire: '120.00' }] },
     }), 'révision BCF')
     const nb = await py(`from django.contrib.contenttypes.models import ContentType
 from apps.records.models import Comment
@@ -378,9 +376,9 @@ t = Ticket.objects.create(company_id=CO, client=cl, reference='SAV-ALEC14-${m}',
 sortie(dict(cl=cl.pk, d=d.pk, t=t.pk))`)
   let ecran = null
   try {
-    // Ticket : deux modifications par la VRAIE route (journal générique, en requête) — une visible, le coût.
+    // Ticket : une modification visible par la VRAIE route (journal générique, en requête). `Ticket.cout` n'est écrit
+    // par aucune route (lecture seule au PATCH, ASEC34) : ses lignes sont écrites au format du journal générique.
     await lireJson(await di.ctx.patch(`${API}/sav/tickets/${fx.t}/`, { ...T, data: { description: `Panne ALEC14 ${m} — diagnostic fait` } }), 'ticket : description')
-    await lireJson(await di.ctx.patch(`${API}/sav/tickets/${fx.t}/`, { ...T, data: { cout: COUT } }), 'ticket : coût')
     // Devis : statut puis marge figée (4 000) — lignes écrites au format du journal générique (le geste prouvé est
     // la LECTURE ; le ticket ci-dessus, lui, est journalisé par la vraie route).
     const journal = await py(`${CO}from django.contrib.contenttypes.models import ContentType
@@ -391,10 +389,12 @@ ctd = ContentType.objects.get_for_model(Devis); ctt = ContentType.objects.get_fo
 for changes in ([{'field': 'statut', 'old': 'brouillon', 'new': 'envoye'}, {'field': 'marge_snapshot', 'old': None, 'new': '4000.00'}],
                 [{'field': 'marge_snapshot', 'old': '4000.00', 'new': '4100.00'}]):
     AuditLog.objects.create(company_id=CO, action=AuditLog.Action.UPDATE, content_type=ctd, object_id=str(${fx.d}), changes=changes)
-cout = [l.changes for l in AuditLog.objects.filter(content_type=ctt, object_id=str(${fx.t})) if any(isinstance(c, dict) and c.get('field') == 'cout' for c in (l.changes or []))]
-sortie(dict(cout=cout))`)
-    note(testInfo, 'journal du ticket (coût écrit par la route)', JSON.stringify(journal.cout))
-    expect(journal.cout.length, 'le PATCH du coût est journalisé').toBeGreaterThanOrEqual(1)
+for changes in ([{'field': 'cout', 'old': None, 'new': '${COUT}'}],
+                [{'field': 'priorite', 'old': 'normale', 'new': 'haute'}, {'field': 'cout', 'old': '${COUT}', 'new': '8472.00'}]):
+    AuditLog.objects.create(company_id=CO, action=AuditLog.Action.UPDATE, content_type=ctt, object_id=str(${fx.t}), changes=changes)
+sortie(dict(ticket=[l.changes for l in AuditLog.objects.filter(content_type=ctt, object_id=str(${fx.t}))]))`)
+    note(testInfo, 'journal du ticket', JSON.stringify(journal.ticket))
+    expect(JSON.stringify(journal.ticket), 'la description modifiée par la route est journalisée').toContain('diagnostic fait')
     const H = (ct, id) => `${API}/audit/objets/${ct}/${id}/history/`
     // Devis : C1 (créateur, sans marge_voir) ne lit aucune marge ; la ligne qui n'avait qu'elle disparaît.
     const hc = await c1.ctx.get(H('ventes.devis', fx.d), T)
@@ -408,7 +408,9 @@ sortie(dict(cout=cout))`)
     expect(JSON.stringify(dd), 'Directeur : « Marge HT figée … : — → 4000.00 »').toMatch(/Marge HT fig.*— → 4000\.00/)
     // Ticket : C1 ne lit pas le coût ; le Directeur le lit.
     const tc = await lireJson(await c1.ctx.get(H('sav.ticket', fx.t), T), 'C1 : historique du ticket')
-    expect(JSON.stringify(tc), 'C1 : pas de coût').not.toContain('8471')
+    expect(JSON.stringify(tc), 'C1 : pas de coût').not.toMatch(/847[12]/)
+    expect(tc.count, 'C1 : la ligne « coût seul » disparaît, la ligne mixte reste').toBe(journal.ticket.length - 1)
+    expect(JSON.stringify(tc), 'C1 : la partie visible de la ligne mixte').toContain('haute')
     expect(JSON.stringify(tc), 'C1 : la modification visible reste').toContain('diagnostic fait')
     expect(JSON.stringify(await lireJson(await di.ctx.get(H('sav.ticket', fx.t), T), 'Directeur : historique du ticket')), 'Directeur : coût').toContain('8471')
     // Écran Tickets → Historique, compte Commercial : pas de coût.
