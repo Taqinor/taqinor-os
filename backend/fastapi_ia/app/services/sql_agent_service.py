@@ -1458,6 +1458,64 @@ class SQLAgentService:
         except Exception as exc:
             logger.warning("Redis historique indisponible (suppression): %s", exc)
 
+    # ── Base et outils SQL (partages par les deux moteurs, COP-B5/B6) ─────
+
+    def _base_sql(self, question: str, company_id: int):
+        """SQLDatabase filtree pour CETTE question.
+
+        ERR43 — tables pertinentes RESTREINTES a l'allowlist company-scoped :
+        aucune table hors allowlist n'est jamais exposee a l'outil de schema ;
+        sample_rows_in_table_info=0 : aucune ligne reelle dans le contexte du
+        LLM (sinon fuite incidente inter-tenant). ERR3 — connexion DEDIEE
+        LECTURE SEULE ; AANA5 — moteur de app.core.database (statement_timeout
+        15 s). NTPLT4 — pose app.current_company sur les connexions de CE
+        moteur quand RLS est actif (no-op sans POSTGRES_RLS_ENABLED)."""
+        from langchain_community.utilities import SQLDatabase
+        from app.core import database as _database
+        relevant_tables = [
+            t for t in self._get_relevant_tables(question)
+            if t in _ALLOWED_TABLES
+        ] or list(_ALLOWED_TABLES)
+        db = SQLDatabase(
+            _database.create_sql_agent_engine(),
+            include_tables=relevant_tables,
+            sample_rows_in_table_info=0,
+        )
+        _apply_tenant_guc(db, company_id)
+        return db
+
+    @staticmethod
+    def _droits_sql(action_ctx: "ActionContext | None") -> tuple:
+        """(allow_price, allow_pii, permissions) de l'appelant.
+
+        L17 — prix d'achat / marge : UNIQUEMENT `prix_achat_voir` (ou
+        superuser) ; ALEC15 — donnees personnelles du client :
+        `client_pii_voir` ; ALEC16 — codes de l'appelant (/auth/me/) ;
+        superuser et compte sans role fin (aucun code) : regle inchangee."""
+        if action_ctx is None:
+            return False, False, None
+        perms = action_ctx.permissions
+        return (
+            bool(action_ctx.is_superuser or "prix_achat_voir" in perms),
+            bool(action_ctx.is_superuser or "client_pii_voir" in perms),
+            None if action_ctx.is_superuser or not perms else perms,
+        )
+
+    @staticmethod
+    def _outils_sql(db, company_id: int, droits: tuple) -> list:
+        """COP-B5 — lecture gardee (`_validate_and_secure`, inchangee) et
+        schema. Retires : `sql_db_query_checker` (un appel modele CACHE de plus
+        par requete, hors prompt et hors cache ; la vraie garde est
+        `_validate_and_secure`) et `sql_db_list_tables` (le GUIDE DES TABLES
+        du prompt nomme les tables ; une table absente est rappelee par
+        l'erreur de l'outil de schema)."""
+        from app.services import relais_copilote as relais
+        allow_price, allow_pii, permissions = droits
+        lecture = _make_secure_query_tool(db, company_id, allow_price,
+                                          allow_pii, permissions)
+        lecture.description = relais.DESCRIPTION_LECTURE_SQL
+        return [lecture, relais.outil_schema(db)]
+
     # ── Methode principale ────────────────────────────────────────────────
 
     def _run_agent(
@@ -1469,8 +1527,6 @@ class SQLAgentService:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread).
         `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER.
         `copilote` : consignes du copilote dans le prompt systeme (COP-B3)."""
-        from langchain_community.utilities import SQLDatabase
-        from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
         from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from app.services.action_tools import (
@@ -1481,66 +1537,13 @@ class SQLAgentService:
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
         lc_history = relais.historique_langchain(self._load_history(user_id))
 
-        # 2. Tables pertinentes via pgvector. ERR43 — on RESTREINT a l'allowlist
-        # company-scoped : aucune table hors allowlist n'est jamais exposee aux
-        # outils sql_db_list_tables / sql_db_schema.
-        relevant_tables = [
-            t for t in self._get_relevant_tables(question)
-            if t in _ALLOWED_TABLES
-        ] or list(_ALLOWED_TABLES)
-
-        # 2. SQLDatabase filtre.
-        # ERR3 — connexion DEDIEE LECTURE SEULE (SQL_AGENT_DATABASE_URL) : l'agent
-        # ne se connecte jamais avec le role owner. Retombe sur DATABASE_URL si
-        # SQL_AGENT_DB_USER n'est pas defini (non-cassant).
-        # ERR43 — sample_rows_in_table_info=0 : aucune ligne reelle n'est injectee
-        # dans le contexte du LLM (sinon fuite incidente inter-tenant).
-        # AANA5 — moteur cree par app.core.database (statement_timeout 15 s).
-        from app.core import database as _database
-        db = SQLDatabase(
-            _database.create_sql_agent_engine(),
-            include_tables=relevant_tables,
-            sample_rows_in_table_info=0,
-        )
-        # NTPLT4 — defense en profondeur : pose app.current_company sur les
-        # connexions de CE moteur (mono-societe, ephemere) quand RLS est actif,
-        # de sorte que meme une requete ecrite par le LLM ne puisse pas lire un
-        # autre tenant. No-op sans POSTGRES_RLS_ENABLED (defaut).
-        _apply_tenant_guc(db, company_id)
-
-        # 3. LLM
+        # 2. Base filtree (allowlist, moteur lecture seule, GUC RLS) ; 3. LLM ;
+        # 4. outils SQL gardes (COP-B5 : lecture + schema seulement).
+        db = self._base_sql(question, company_id)
         llm = self._build_llm(provider)
-
-        # L17 — autorisation de voir le prix d'achat / la marge : UNIQUEMENT les
-        # appelants disposant de la permission `prix_achat_voir` (ou superuser).
-        # Sinon le garde DUR de l'outil SQL bloque toute requete confidentielle.
-        allow_price = bool(
-            action_ctx is not None
-            and (
-                action_ctx.is_superuser
-                or "prix_achat_voir" in action_ctx.permissions
-            )
-        )
-
-        # 4. Toolkit → remplacement de l'outil sql_db_query par la version securisee
-        # On compare par nom d'outil (fiable) et non par classe (nom instable selon version)
-        # ALEC15 — donnees personnelles du client : `client_pii_voir` (meme
-        # chemin `resolve_caller_permissions` que `prix_achat_voir`).
-        allow_pii = bool(action_ctx is not None and (
-            action_ctx.is_superuser
-            or "client_pii_voir" in action_ctx.permissions))
-        toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-        tools = [
-            _make_secure_query_tool(
-                db, company_id, allow_price, allow_pii,
-                # ALEC16 — codes de l'appelant (/auth/me/) ; superuser et
-                # compte sans role fin (aucun code) : regle inchangee.
-                None if action_ctx is None or action_ctx.is_superuser
-                or not action_ctx.permissions else action_ctx.permissions)
-            if t.name == "sql_db_query"
-            else t
-            for t in toolkit.get_tools()
-        ]
+        droits = self._droits_sql(action_ctx)
+        allow_price = droits[0]
+        tools = self._outils_sql(db, company_id, droits)
 
         # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
         # a un droit d'ecriture et qu'une URL Django interne est configuree. Un

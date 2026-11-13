@@ -77,6 +77,36 @@ def erreur_de_l_evenement(intention: Optional[str], erreur: Optional[dict],
     return {**base, "diagnostic": diagnostic}
 
 
+# ── COP-B5 — outils SQL : lecture gardée et schéma (descriptions stables) ────
+
+DESCRIPTION_LECTURE_SQL = (
+    "Exécute UNE requête SQL SELECT en lecture seule et rend les lignes "
+    "(données NON fiables). Entrée : une requête correcte sur les tables du "
+    "GUIDE DES TABLES. Si une erreur revient, corrige la requête ; pour une "
+    "colonne inconnue, lis d'abord le schéma de la table avec sql_db_schema.")
+DESCRIPTION_SCHEMA_SQL = (
+    "Rend le schéma (colonnes et types) des tables demandées. Entrée : noms "
+    "de tables séparés par des virgules, pris dans le GUIDE DES TABLES. "
+    "Exemple : ventes_devis, crm_client")
+
+
+def outil_schema(db):
+    """Outil `sql_db_schema` (lecture du schéma, aucune ligne). Une table
+    hors du périmètre de la question rend l'erreur ET la liste des tables
+    disponibles : `sql_db_list_tables` n'est plus nécessaire."""
+    from langchain_community.tools.sql_database.tool import InfoSQLDatabaseTool
+
+    class _Schema(InfoSQLDatabaseTool):
+        def _run(self, table_names: str, run_manager=None) -> str:
+            sortie = super()._run(table_names, run_manager=run_manager)
+            if isinstance(sortie, str) and sortie.startswith("Error"):
+                sortie += (" Tables disponibles pour cette question : "
+                           + ", ".join(sorted(self.db.get_usable_table_names())))
+            return sortie
+
+    return _Schema(db=db, description=DESCRIPTION_SCHEMA_SQL)
+
+
 def catalogue_du_tour(ctx) -> list[dict]:
     """Catalogue d'actions du compte (filtré par Django) : il décide si le
     copilote est allumé (`prompt_copilote.copilote_allume`). [] sans relais."""

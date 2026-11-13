@@ -611,6 +611,29 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertIsNone(envoyes[1]["erreur"])
         self.assertEqual(envoyes[1]["tokens"]["cache_write"], 0)
 
+    def test_jeu_d_outils_sql_allege(self):
+        """COP-B5 — le modele ne recoit plus `sql_db_query_checker` (appel
+        modele cache) ni `sql_db_list_tables` ; une table hors perimetre rend
+        l'erreur du schema ET les tables disponibles ; la lecture reste gardee
+        (une ecriture est refusee sans etre executee)."""
+        from langchain_core.messages import AIMessage
+        from app.services import sql_agent_service as svc
+        _, _, llm = _tour([AIMessage(content="ok")])
+        noms = next(n for g, n in llm.recus if g == "outils")
+        self.assertEqual(noms, ["sql_db_query", "sql_db_schema", "report_gap"])
+        from sqlalchemy import create_engine, text
+        from langchain_community.utilities import SQLDatabase
+        engine = create_engine("sqlite://")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE crm_client (id INTEGER, nom TEXT)"))
+        lecture, schema = svc.SQLAgentService._outils_sql(
+            SQLDatabase(engine, include_tables=["crm_client"]), 7, (False, False, None))
+        sortie = schema.invoke({"table_names": "ventes_devis"})
+        self.assertIn("Tables disponibles pour cette question : crm_client", sortie)
+        self.assertIn("CREATE TABLE crm_client", schema.invoke({"table_names": "crm_client"}))
+        self.assertEqual(lecture.invoke({"query": "DELETE FROM crm_client"}),
+                         svc._UNSAFE_QUERY_REPLY)
+
     def test_references_bornees_a_300_caracteres(self):
         from app.services import relais_copilote as relais
         lignes = [{"lead_id": 1000 + i, "touche_id": 5000 + i} for i in range(60)]
