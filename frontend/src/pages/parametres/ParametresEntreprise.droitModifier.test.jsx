@@ -1,5 +1,6 @@
 import { definirProfil, rendreParametresEntreprise } from '../../test/parametresEntrepriseHarness'
 import crmApi from '../../api/crmApi'
+import installationsApi from '../../api/installationsApi'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { screen, cleanup, waitFor } from '@testing-library/react'
 
@@ -81,5 +82,21 @@ describe('ERR-PARAM-ASSIGNABLE-USERS-403 — liste des assignables', () => {
     })
     await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
     expect(crmApi.getAssignableUsers).toHaveBeenCalled()
+  })
+
+  // ADRG111 — types d'intervention et étapes de checklist : LectureDuModule installations.
+  it("Commercial responsable (sans code installations) : ni types d'intervention ni étapes de checklist lus", async () => {
+    installationsApi.getTypesIntervention.mockClear(); installationsApi.getChecklistEtapes.mockClear()
+    const { container } = rendreParametresEntreprise({
+      role: 'responsable', role_nom: 'Commercial responsable',
+      permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'parametres_voir', 'reporting_voir'],
+    })
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    expect(installationsApi.getTypesIntervention).not.toHaveBeenCalled()
+    expect(installationsApi.getChecklistEtapes).not.toHaveBeenCalled()
+    cleanup()
+    rendreParametresEntreprise({ role: 'admin', role_nom: 'Directeur', permissions: ['installation_voir', 'parametres_modifier'] })
+    await waitFor(() => expect(installationsApi.getTypesIntervention).toHaveBeenCalled())
+    expect(installationsApi.getChecklistEtapes).toHaveBeenCalled()
   })
 })
