@@ -266,7 +266,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: atst-spec-captures
-          path: docs/qa-explorer/captures/
+          path: docs/qa-explorer/captures/*/ACCEPTATION-ATST-*
           retention-days: 7
           if-no-files-found: warn
       - name: Upload rapport Playwright
@@ -320,6 +320,6 @@ jobs:
           name: atst-enregistrement-final
           path: |
             docs/audits/acceptation/ATST/
-            docs/qa-explorer/captures/
+            docs/qa-explorer/captures/*/ACCEPTATION-ATST-*
           retention-days: 7
           if-no-files-found: warn

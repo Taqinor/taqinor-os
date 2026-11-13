@@ -3,7 +3,7 @@
 //   * les étapes hors navigateur de `.github/zz-scratch-atst/rejeu.py` (hote + django).
 // Supprimé avec le workflow au dernier commit.
 //   node .github/zz-scratch-atst/fusion.mjs <dossier_artefacts>
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ecrire, ORACLES, RACINE } from '../../frontend/e2e/acceptation/_enregistrement.js'
 
@@ -40,19 +40,28 @@ console.log(`date = ${date} ; spec : ${specMd || 'ABSENTE'}`)
 const traces = `docs/audits/acceptation/${G}/traces/${date}`
 mkdirSync(join(RACINE, traces), { recursive: true })
 const etapes = []
+const rouges = []
 for (const section of ['hote', 'django']) {
   const json = tous.find((p) => p.includes(`atst-${section}`) && p.endsWith('etapes.json'))
   if (!json) { console.log(`section ${section} : etapes.json ABSENT`); continue }
   for (const e of JSON.parse(readFileSync(json, 'utf8'))) {
     const trace = `${traces}/${e.id}.txt`
     copyFileSync(join(json, '..', e.log), join(RACINE, trace))
-    etapes.push({
+    const etape = {
       id: e.id, taches: e.taches, verdict: e.verdict, base_verdict: null, trace,
       // Hors navigateur : aucun des oracles 1-10 n'est observable (ni page, ni réseau, ni console).
       oracles: Object.fromEntries(ORACLES.map((o) => [o, 'NA'])),
       notes: `rejeu runner (${section}, .github/zz-scratch-atst/rejeu.py @ ${SHA.slice(0, 9)}) : ${e.notes}`,
-    })
+    }
+    // Une étape ROUGE n'entre pas dans l'enregistrement (elle le ferait tomber à FAIL et ne couvrirait
+    // rien) : sa tâche n'est PAS couverte ; sa trace est gardée et nommée sous le tableau.
+    if (e.verdict === 'PASS') etapes.push(etape)
+    else rouges.push(etape)
   }
 }
 const sortie = ecrire({ groupe: G, couvre: [...new Set(etapes.flatMap((e) => e.taches))], etapes, sha: SHA, date })
-console.log(`${sortie.verdict} — ${sortie.md}`)
+if (rouges.length) {
+  appendFileSync(sortie.md, ['', '## Étapes ROUGES — tâches NON couvertes par cet enregistrement', '',
+    ...rouges.map((e) => `- ${e.id} (${e.taches.join(', ')}) : FAIL — trace \`${e.trace}\` — ${e.notes}`), ''].join(String.fromCharCode(10)), 'utf8')
+}
+console.log(`${sortie.verdict} — ${sortie.md} ; rouges hors enregistrement : ${rouges.map((e) => e.id).join(', ') || 'aucune'}`)

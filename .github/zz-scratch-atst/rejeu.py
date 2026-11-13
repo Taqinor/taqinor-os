@@ -100,10 +100,11 @@ class Etape:
         self.verifie(f"sonde {constat} rejouée ⇒ repro False (repro={res.get('repro')!r})",
                      ligne is not None and res.get("repro") is False)
 
-    def mutants(self, test_cmd, mutants, cwd_rel="."):
+    def mutants(self, test_cmd, mutants, cwd_rel=".", diagnostic=False):
         """Contrôle sur la copie non mutée (vert) puis chaque mutant (rouge), fichier restauré après."""
         base = copie()
-        self.cmd("contrôle : copie NON mutée ⇒ vert", test_cmd, cwd=base / cwd_rel)
+        if not diagnostic:
+            self.cmd("contrôle : copie NON mutée ⇒ vert", test_cmd, cwd=base / cwd_rel)
         for rel, ancien, nouveau, ancre, desc in mutants:
             f = base / rel
             src = f.read_text(encoding="utf-8")
@@ -115,7 +116,13 @@ class Etape:
             f.write_text(motif.sub(lambda m: nouveau, src, count=1), encoding="utf-8")
             self.log(f"--- mutant « {desc} » : {rel}\n    - {ancien!r}\n    + {nouveau!r}\n")
             try:
-                self.cmd(f"mutant « {desc} » sur la copie ⇒ module ROUGE", test_cmd, cwd=base / cwd_rel, rouge=True)
+                if diagnostic:  # n'entre PAS dans le verdict : il explique un mutant survivant
+                    ok, resume = self.ok, list(self.resume)
+                    self.cmd(f"DIAGNOSTIC (hors verdict) mutant « {desc} » ⇒ module ROUGE ?", test_cmd,
+                             cwd=base / cwd_rel, rouge=True)
+                    self.ok, self.resume = ok, resume + ["DIAGNOSTIC " + self.resume[-1]]
+                else:
+                    self.cmd(f"mutant « {desc} » sur la copie ⇒ module ROUGE", test_cmd, cwd=base / cwd_rel, rouge=True)
             finally:
                 f.write_text(src, encoding="utf-8")
 
@@ -124,6 +131,15 @@ class Etape:
         (OUT / nom).write_text("\n".join(self.lignes), encoding="utf-8")
         return {"id": self.id, "taches": self.taches, "verdict": "PASS" if self.ok else "FAIL",
                 "notes": " ; ".join(self.resume), "log": nom}
+
+
+def vu_re(nom):
+    """Le test nommé a tourné (ligne -v 2) ; son verdict est lu par `sans=echec_re(nom)` + rc 0."""
+    return "^" + re.escape(nom) + r" \("
+
+
+def echec_re(nom):
+    return r"^(?:FAIL|ERROR): " + re.escape(nom) + r" "
 
 
 def ok_re(nom):
@@ -316,7 +332,7 @@ def django():
     e.sonde("C-ATST-003")
     mod = "apps.ventes.tests.test_qg9_variante_pct"
     e.cmd("module joué comme un shard de fusion ⇒ vert, test_commercial_et_viewer_livres_refuses ok", dj(mod), cwd=DJ,
-          motif=ok_re("test_commercial_et_viewer_livres_refuses"))
+          motif=vu_re("test_commercial_et_viewer_livres_refuses"), sans=echec_re("test_commercial_et_viewer_livres_refuses"))
     e.mutants(dj(mod + ".VarianteConfigEndpointTests"), [
         m(str(DJ / "apps/ventes/views/devis.py"), "or role_nom in ('Directeur', 'Commercial responsable')",
           "or role_nom in ('Directeur', 'Commercial responsable', 'Commercial')",
@@ -327,7 +343,7 @@ def django():
     e.sonde("C-ATST-004")
     mod = "apps.ventes.tests.test_moteur_zero_invention"
     e.cmd("module joué comme un shard de fusion ⇒ vert, test_economies_decochees_aucun_montant_au_html ok", dj(mod),
-          cwd=DJ, motif=ok_re("test_economies_decochees_aucun_montant_au_html"))
+          cwd=DJ, motif=vu_re("test_economies_decochees_aucun_montant_au_html"), sans=echec_re("test_economies_decochees_aucun_montant_au_html"))
     e.mutants(dj(mod + ".M10SectionsMasqueesHtmlTests"), [
         m(str(DJ / "apps/ventes/quote_engine/etude_chiffrage.py"),
           'masquer_economies |= "economies" in opts.get("sections_masquees", ())', "pass  # mutant ATST22",
@@ -338,7 +354,7 @@ def django():
     e.sonde("C-ATST-005")
     mod = "apps.ventes.tests.test_remise_par_ligne"
     e.cmd("module joué comme un shard de fusion ⇒ vert, test_premium_et_une_page_… ok", dj(mod), cwd=DJ,
-          motif=ok_re("test_premium_et_une_page_montrent_le_prix_barre_et_le_prix_remise"))
+          motif=vu_re("test_premium_et_une_page_montrent_le_prix_barre_et_le_prix_remise"), sans=echec_re("test_premium_et_une_page_montrent_le_prix_barre_et_le_prix_remise"))
     e.mutants(dj(mod + ".TestHtmlRemiseParLigne"), [
         m(str(DJ / "apps/ventes/quote_engine/generate_devis_premium.py"),
           "_cellule_prix_remise(pu_ht, _item_pu_ht_remise(it))", "_cellule_prix_remise(pu_ht, pu_ht)",
@@ -346,6 +362,20 @@ def django():
         m(str(DJ / "apps/ventes/quote_engine/legacy_onepage.py"),
           "_g._cellule_prix_remise(pu_ht, _g._item_pu_ht_remise(it))", "_g._cellule_prix_remise(pu_ht, pu_ht)",
           "une-page (page_onepage) : _cellule_prix_remise(pu_ht, pu_ht)", ancre=False)], cwd_rel=str(DJ))
+    # Diagnostic : la cellule TOTAL de la ligne « Installation » (1 × 4 000) imprime elle aussi
+    # « 4 000,00 barré puis 3 800,00 » ; si muter P.U. ET total ensemble rougit, le test ne lit que le total.
+    prem = str(DJ / "apps/ventes/quote_engine/generate_devis_premium.py")
+    base = copie() / prem
+    src = base.read_text(encoding="utf-8")
+    try:
+        base.write_text(src.replace("_cellule_prix_remise(qty * pu_ht, _item_total_ht_remise(it))",
+                                    "_cellule_prix_remise(qty * pu_ht, qty * pu_ht)", 1), encoding="utf-8")
+        e.log("--- (diagnostic) cellule TOTAL de equip_rows aussi mutée : _cellule_prix_remise(qty * pu_ht, qty * pu_ht)")
+        e.mutants(dj(mod + ".TestHtmlRemiseParLigne"), [
+            m(prem, "_cellule_prix_remise(pu_ht, _item_pu_ht_remise(it))", "_cellule_prix_remise(pu_ht, pu_ht)",
+              "premium : P.U. ET total mutés ensemble", ancre=False)], cwd_rel=str(DJ), diagnostic=True)
+    finally:
+        base.write_text(src, encoding="utf-8")
     etapes.append(e.fin())
     return etapes
 
