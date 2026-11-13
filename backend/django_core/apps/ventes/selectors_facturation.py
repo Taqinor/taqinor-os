@@ -860,7 +860,7 @@ def porte_facture_bc(bc):
     return {'ok': True, 'motif': ''}
 
 
-def kpis_q2c_periode(company, debut, fin):
+def kpis_q2c_periode(company, debut, fin, createurs=None):
     """AFAC53 — KPI factures du tableau Quote-to-Cash, sur les DÉFINITIONS du
     modèle et de la période ``[debut, fin]`` (dates incluses).
 
@@ -872,6 +872,9 @@ def kpis_q2c_periode(company, debut, fin):
     * Encaissé = paiements NON rejetés de la période, escompte compris — la
       même définition que ``kpis_factures`` / ``Facture.montant_paye``.
     * DSO      = encours / facturé × jours de la période (None si rien facturé).
+
+    ``createurs`` (ALEC23) : ids des créateurs de facture dans la portée du
+    demandeur (``None`` = toute la société) ; l'encaissé suit leurs factures.
 
     Lecture seule ; renvoie des ``Decimal`` et un DSO flottant arrondi.
     """
@@ -891,7 +894,8 @@ def kpis_q2c_periode(company, debut, fin):
                                 'affectations_paiement__paiement'))
     facture = Decimal('0')
     encours = Decimal('0')
-    for f in emises:
+    portee = {} if createurs is None else {'created_by__in': createurs}
+    for f in emises.filter(**portee):
         facture += f.total_ttc
         if f.statut == Facture.Statut.PAYEE:
             continue
@@ -902,6 +906,7 @@ def kpis_q2c_periode(company, debut, fin):
     agg = (Paiement.objects
            .filter(company=company,
                    date_paiement__gte=debut, date_paiement__lte=fin)
+           .filter(**{f'facture__{k}': v for k, v in portee.items()})
            .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
            .aggregate(montant=Sum('montant'), escompte=Sum('escompte_montant')))
     encaisse = (agg['montant'] or Decimal('0')) + (agg['escompte'] or Decimal('0'))
