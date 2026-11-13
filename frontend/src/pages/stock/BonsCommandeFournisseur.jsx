@@ -100,10 +100,11 @@ const fmtDateFR = (iso) => {
 
 // ── N19 — Modal de retour fournisseur (créé + validé depuis un BCF) ──────────
 // La validation décrémente le stock. Lien automatique vers le BCF d'origine.
-export function RetourModal({ bcf, onClose, onDone }) {
+export function RetourModal({ bcf: bcfInitial, onClose, onDone }) {
   const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif, lot, series } }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [bcf, setBcf] = useState(bcfInitial)  // ACNC28 — relu après un échec : plafonds rebasés sur le reçu serveur
   const lignes = bcf?.lignes ?? []
 
   const setLigne = (id, patch) =>
@@ -140,6 +141,8 @@ export function RetourModal({ bcf, onClose, onDone }) {
       onClose()
     } catch (err) {
       setError(frBcfError(err, 'Échec du retour fournisseur.'))
+      stockApi.getBonCommandeFournisseur(bcf.id).then((r) => { setBcf(r.data); setSaisies({}) })
+        .catch((e) => setError(frBcfError(e, 'Échec du retour fournisseur ; BCF non relu.')))
     } finally { setBusy(false) }
   }
 

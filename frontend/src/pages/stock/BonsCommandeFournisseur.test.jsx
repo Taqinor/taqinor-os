@@ -50,6 +50,7 @@ vi.mock('../../api/stockApi', () => ({
     createRetourFournisseur: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
     envoyerBcf: vi.fn(() => Promise.resolve({ data: {} })),
     validerRetourFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
+    getBonCommandeFournisseur: vi.fn(),  // ACNC28 — RetourModal relit le BCF après un échec
   },
 }))
 
@@ -605,6 +606,22 @@ describe('RetourModal (AAPV20)', () => {
       expect.objectContaining({ lignes: [expect.objectContaining({
         produit: 7, quantite: 3, numero_lot: 'L-0425', numeros_serie: ['SN1', 'SN2', 'SN3'] })] })))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
+  })
+
+  it('ACNC28 — après un échec de validation, le BCF est relu et le plafond rebasé sur le reçu serveur', async () => {
+    const bcf = { id: 4, reference: 'BCF-4', fournisseur: 2, lignes: [
+      { id: 9, produit: 7, produit_nom: 'Batterie', quantite_recue: 5 }] }
+    stockApi.validerRetourFournisseur.mockRejectedValueOnce({ response: { status: 409, data: {
+      detail: 'Quantité retournée supérieure à la quantité reçue restante (0).' } } })
+    stockApi.getBonCommandeFournisseur.mockResolvedValueOnce({ data: { ...bcf, lignes: [
+      { ...bcf.lignes[0], quantite_recue: 0 }] } })
+    render(<ThemeProvider><RetourModal bcf={bcf} onClose={() => {}} onDone={() => {}} /></ThemeProvider>)
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Valider le retour' }))
+    expect(await screen.findByText(/quantité reçue restante \(0\)/)).toBeInTheDocument()
+    await waitFor(() => expect(stockApi.getBonCommandeFournisseur).toHaveBeenCalledWith(4))
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveAttribute('max', '0'))
+    expect(screen.getByRole('spinbutton')).toHaveValue(null)
   })
 })
 
