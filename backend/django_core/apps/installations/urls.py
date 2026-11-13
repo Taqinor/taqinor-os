@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views.commissioning import RecettePompageViewSet
 from .views.gps_tracking import InterventionPresenceView
+from .views.recurrence_intervention import RecurrenceInterventionViewSet  # ACEL46
 
 from .views import (
     InstallationViewSet, InterventionViewSet, TypeInterventionViewSet,
@@ -92,6 +93,7 @@ router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
 router.register(r'equipes', EquipeViewSet)
+router.register(r'recurrences-intervention', RecurrenceInterventionViewSet)  # ACEL46
 # DC34 — annuaire des sous-traitants (référentiel UNIFIÉ, consommé aussi par
 # btp_chantier et gestion_projet) : ViewSet façade au-dessus de stock
 # (Fournisseur type=service) sans queryset propre → basename explicite requis.
