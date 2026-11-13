@@ -1,0 +1,36 @@
+{
+  "sha": "3312f8f8ee41c4727353787660ff1b3ccf4c8d8b",
+  "date": "2026-11-13",
+  "groupe": "ACHT",
+  "verdict": "PASS",
+  "couvre": [
+    "ACHT138"
+  ],
+  "couvre_avec_ecart": [
+    "ACHT138"
+  ],
+  "etapes": [
+    {
+      "id": "P.agenda_activites_bornees",
+      "taches": [
+        "ACHT138"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ACHT-P.agenda_activites_bornees.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET /api/django/crm/assignable-users/ → 403 (+ console.error et toast « permission ») au montage de /calendrier pour le Technicien : frontend/src/pages/CalendarPage.jsx l. 80-82 appelle crmApi.getAssignableUsers() sans garde de droit (vue IsResponsableOrAdmin) — jumeau, sur l’agenda, d’ERR-ACHT123-ASSIGNABLE-USERS-403-TECHNICIEN corrigé sur Chantiers ; défaut du shell frontend antérieur, hors ACHT138 (backend reporting/calendar.py, lecture des activités) — rejeu runner 13/11 run 43509702846 : corps de l’étape vert, seuls les oracles 2/3 tombent. ; oracle 2 — GET http://localhost:4173/api/django/crm/assignable-users/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/assignable-users/) ; oracle 2 — GET http://localhost:4173/api/django/crm/assignable-users/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/assignable-users/)"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "sha": "3312f8f8ee41c4727353787660ff1b3ccf4c8d8b",
+  "date": "2026-11-13",
+  "groupe": "ACSV",
+  "verdict": "PASS",
+  "couvre": [
+    "ACSV114",
+    "ACSV115",
+    "ACSV116",
+    "ACSV111"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.mise_en_service_future",
+      "taches": [
+        "ACSV114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ACSV-P.mise_en_service_future.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.fiche_deux_mesures_reseau_lent",
+      "taches": [
+        "ACSV115"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ACSV-P.fiche_deux_mesures_reseau_lent.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.facture_sans_ligne_f11_nulle",
+      "taches": [
+        "ACSV116"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ACSV-P.facture_sans_ligne_f11_nulle.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.cloture_refusee_piece_f11",
+      "taches": [
+        "ACSV111"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ACSV-P.cloture_refusee_piece_f11.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
