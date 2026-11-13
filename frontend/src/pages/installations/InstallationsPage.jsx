@@ -348,9 +348,17 @@ export default function InstallationsPage() {
       .catch(() => { toast.error('Réassignation impossible.'); refetch() })
   // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
   // journalise le changement de date dans le chatter).
-  const onReschedule = (inst, dateKey) =>
-    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: dateKey } })).unwrap()
-      .catch(() => { toast.error('Replanification impossible.'); refetch() })
+  // AERR30 — toast nommé + « Annuler » (appel inverse, patron PlanificationPage).
+  const replanifier = (inst, date) =>
+    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: date } })).unwrap()
+  const onReschedule = (inst, dateKey) => {
+    const avant = inst.date_pose_prevue ?? null
+    const [, m, d] = dateKey.split('-')
+    return replanifier(inst, dateKey).then(() => toastWithUndo({
+      message: `Pose de ${inst.reference || `#${inst.id}`} déplacée au ${d}/${m}`,
+      onUndo: () => replanifier(inst, avant).catch(() => { toast.error('Annulation impossible.'); refetch() }),
+    })).catch(() => { toast.error('Replanification impossible.'); refetch() })
+  }
   useEffect(() => {
     dispatch(fetchInstallations(serverParams(filters)))
     // intentionally narrow: only `annule`/`mine` are server-side dimensions

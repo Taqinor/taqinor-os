@@ -205,4 +205,32 @@ describe('InstallationsPage (CHT28)', () => {
     await mocks.toastWithUndo.mock.calls[0][0].onUndo()
     expect(mocks.updateInstallation).toHaveBeenLastCalledWith(42, { statut: 'planifie' })
   })
+
+  // AERR30 — dépôt calendrier : toast nommé, « Annuler » remet l'ancienne date.
+  it('dépôt calendrier : toast nommé, Annuler ⇒ PATCH de l’ancienne date', async () => {
+    localStorage.setItem('taqinor.chantiers.view', 'calendrier')
+    const now = new Date()
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const inst = { id: 51, reference: 'CH-2026-0123', client_nom: 'Client G', statut: 'planifie',
+      date_pose_prevue: `${ym}-12` }
+    mocks.getInstallations.mockResolvedValue({ data: { count: 1, results: [inst] } })
+    mocks.updateInstallation.mockImplementation((id, data) => Promise.resolve({ data: { ...inst, ...data } }))
+    const { container } = renderPage()
+    const puce = await waitFor(() => {
+      const el = container.querySelector('.cal-chip')
+      expect(el).not.toBeNull()
+      return el
+    })
+    const cible = [...container.querySelectorAll('.cal-cell:not(.cal-cell-out)')]
+      .find((c) => c.querySelector('.cal-day-number')?.textContent === '19')
+    fireEvent.dragStart(puce, { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    fireEvent.drop(cible)
+    await waitFor(() => expect(mocks.updateInstallation).toHaveBeenCalledWith(51, { date_pose_prevue: `${ym}-19` }))
+    await waitFor(() => expect(mocks.toastWithUndo).toHaveBeenCalled())
+    const opts = mocks.toastWithUndo.mock.calls[0][0]
+    expect(opts.message).toBe(`Pose de CH-2026-0123 déplacée au 19/${ym.slice(5)}`)
+    expect(opts.onCommit).toBeUndefined()
+    await opts.onUndo()
+    expect(mocks.updateInstallation).toHaveBeenLastCalledWith(51, { date_pose_prevue: `${ym}-12` })
+  })
 })
