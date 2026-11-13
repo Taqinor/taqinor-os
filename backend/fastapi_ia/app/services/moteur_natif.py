@@ -132,18 +132,41 @@ def _client():
                                max_retries=REPRISES_SDK, timeout=DELAI_APPEL_S)
 
 
+def _cache_1h() -> dict:
+    """Même demande d'une heure que ``sql_agent_service._contenu_systeme`` :
+    entre deux questions d'une commerciale il passe plus de 5 minutes
+    (claude-api shared/prompt-caching.md « Choosing the TTL »)."""
+    return {"type": "ephemeral", "ttl": "1h"}
+
+
 def _corps(systeme: list[dict], outils: list[OutilNatif], modele: str,
            effort: str, max_tokens: int) -> dict:
-    """Paramètres fixes d'une requête (identiques à chaque appel du tour)."""
+    """Paramètres fixes d'une requête (identiques à chaque appel du tour).
+
+    Points de cache (COP-M4), deux sur les quatre permis : (1) fin du préfixe
+    stable — dernier bloc système, qui couvre outils + système (ordre de rendu
+    tools -> system -> messages) ; (2) queue de la conversation — champ
+    ``cache_control`` de PREMIER niveau (cache automatique, posé par l'API sur
+    le dernier bloc et avancé à chaque appel : aucune marque dans les messages
+    gardés). Les deux en 1 h (une entrée 1 h après une 5 min est un 400).
+    Source : claude-api shared/prompt-caching.md « The robust combination for
+    agent loops ». Ordre des outils : tel que reçu."""
     tools = [{"name": o.nom, "description": o.description,
               "input_schema": o.schema} for o in outils]
     # Pensée adaptive : non désactivable sur Sonnet 5.5, `budget_tokens` y est
     # un 400 (claude-api shared/model-migration.md, Sonnet 5.5 changement 1).
     corps = {"model": modele, "max_tokens": max_tokens,
              "thinking": {"type": "adaptive"},
-             "output_config": {"effort": (effort or "low").lower()}}
-    if systeme:
-        corps["system"] = [dict(b) for b in systeme]
+             "output_config": {"effort": (effort or "low").lower()},
+             "cache_control": _cache_1h()}
+    # Le moteur pose SEUL ses points : marques reçues retirées.
+    system = [{k: v for k, v in b.items() if k != "cache_control"}
+              for b in systeme or []]
+    if system:
+        system[-1]["cache_control"] = _cache_1h()
+        corps["system"] = system
+    elif tools:
+        tools[-1]["cache_control"] = _cache_1h()
     if tools:
         # `tool_choice` forcé = 400 avec la pensée sur Sonnet 5.5 : `auto`
         # (claude-api python/claude-api/tool-use.md « Tool Choice »).
