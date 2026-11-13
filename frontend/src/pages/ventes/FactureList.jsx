@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useMemo } from 'react'
+import { Fragment, useEffect, useRef, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -27,7 +27,7 @@ import ComptaDialogs from './factureList/ComptaDialogs.jsx'
 // VNT102 — sélection/masse, documents, gestes et dialogues extraits en factureList/.
 import useFactureLot from './factureList/useFactureLot.js'
 import useFactureDocuments from './factureList/useFactureDocuments.js'
-import useFactureGestes from './factureList/useFactureGestes.js'
+import useFactureGestes, { relireApresGeste } from './factureList/useFactureGestes.js'
 import DialoguesFacture from './factureList/DialoguesFacture.jsx'
 import { isPartiallyPaid, isOverdue, today, STATUTS_HORS_ENCAISSEMENT } from './factureList/factureHelpers.js'
 import {
@@ -149,7 +149,10 @@ export default function FactureList() {
   // VNT102 (patron SPL212) — sélection/actions en masse, documents et gestes
   // extraits en factureList/ (move only) ; leurs noms sont re-déstructurés ici
   // pour que le sac de contexte des lignes et le JSX restent identiques.
-  const lot = useFactureLot({ factures, dispatch })
+  // AERR3 — après un geste d'argent : liste ET tuiles relues (un seul point).
+  const [tuilesPasAJour, setTuilesPasAJour] = useState(false)
+  const relire = () => relireApresGeste(dispatch, setTuilesPasAJour)
+  const lot = useFactureLot({ factures, dispatch, relire, confirm })
   const {
     selectedIds, setSelectedIds, toggleSelect, clearSelection, bulkBusy,
     BULK_LABELS, handleBulkAction, facturesEncaissables, clientSelectionUnique,
@@ -161,7 +164,7 @@ export default function FactureList() {
     waBusy, waLangue, setWaLangue, handleWhatsApp, handleUbl,
     payLinkBusy, handleLienPaiement, dgiActif, dgiBusy, handleDgiExport, handleDgiConformite,
   } = docs
-  const gestes = useFactureGestes({ dispatch, confirm, lot })
+  const gestes = useFactureGestes({ dispatch, confirm, lot, relire })
   const {
     canManage, peutEncaisser, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
     peutModifier, peutPdf, peutExporter,
@@ -374,10 +377,14 @@ export default function FactureList() {
   // ouverte via `?id=` (VX220) ou un clic « Modifier » — `editFacture` est la
   // seule notion de « fiche » qui existe pour une facture). Absent quand
   // aucune facture n'est ouverte (liste nue).
+  // AERR15 — racine du FORMULAIRE : une boîte posée par-dessus coupe « a ».
+  const formScopeRef = useRef(null)
+  const [payeeSecheErreur, setPayeeSecheErreur] = useState('')
   useFocusedRecordShortcuts(
     'factureDetail',
     { a: () => editFacture && handleGenererPdf(editFacture) },
     !!editFacture,
+    { scopeRef: formScopeRef },
   )
 
 
@@ -532,7 +539,9 @@ export default function FactureList() {
 
   // ERR-AFAC105-SQUELETTE — pendant que la facture se crée, rafraîchir la liste ne démonte jamais le formulaire ouvert :
   // sinon le « Total TTC … identique au devis signé » disparaît aussitôt affiché.
-  if (loading && !showForm) {
+  // AERR1 — écran plein (squelette, erreur) seulement si rien n'a jamais été
+  // chargé : une relecture après un geste garde lignes et boîtes montées.
+  if (loading && !showForm && factures.length === 0) {
     return (
       <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
         showSkeleton={showSkeleton} libelle="Chargement des factures…">
@@ -550,12 +559,13 @@ export default function FactureList() {
       </PageListeChargement>
     )
   }
-  if (error) {
+  if (error && factures.length === 0) {
     return (
       <div className="page">
         {pageHeader}
         <EmptyState className="mt-4" icon={FileWarning} title="Erreur de chargement"
-                    description="Impossible de charger les factures. Réessayez." />
+                    description="Impossible de charger les factures."
+                    action={<Button size="sm" variant="outline" onClick={() => dispatch(fetchFactures())}>Réessayer</Button>} />
       </div>
     )
   }
@@ -563,35 +573,38 @@ export default function FactureList() {
   return (
     <div className="page">
       {pageHeader}
+      {error && (
+        <div role="status" data-testid="factures-pas-a-jour" className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Liste pas à jour — la dernière relecture a échoué ; les lignes datent du dernier chargement réussi.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchFactures())}>Réessayer</Button>
+        </div>
+      )}
 
       {/* EZ13 — le marquage sec explique CE QU'ON PERD, et offre le chemin
           riche en échappatoire (« Encaisser » capture mode/date/référence). */}
       <ConfirmDialog
         open={!!payeeSecheTarget}
-        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif('') } }}
+        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif(''); setPayeeSecheErreur('') } }}
         severity="medium"
         title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
         description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
         confirmLabel="Marquer payée quand même"
-        onConfirm={() => {
-          const f = payeeSecheTarget
+        onConfirm={async () => {
+          // AERR20 — la boîte reste ouverte, motif gardé, tant que le marquage n'a pas réussi.
           const motif = payeeSecheMotif.trim()
-          setPayeeSecheTarget(null)
-          setPayeeSecheMotif('')
-          if (!motif) {
-            toast.error('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.')
-            return
+          if (!motif) { setPayeeSecheErreur('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.'); return }
+          if (payeeSecheTarget && await doAction(marquerPayeeFacture, { id: payeeSecheTarget.id, motif })) {
+            setPayeeSecheTarget(null); setPayeeSecheMotif(''); setPayeeSecheErreur('')
           }
-          if (f) doAction(marquerPayeeFacture, { id: f.id, motif })
         }}
       >
         {/* AUD124 — sans motif, ce geste faisait disparaître une créance de
             la balance âgée sans que rien ne dise qui, quand ni pourquoi. */}
-        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche">
+        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche" error={payeeSecheErreur}>
           <Input
             id="motif-payee-seche"
-            value={payeeSecheMotif}
-            onChange={(e) => setPayeeSecheMotif(e.target.value)}
+            value={payeeSecheMotif} invalid={!!payeeSecheErreur}
+            onChange={(e) => { setPayeeSecheMotif(e.target.value); setPayeeSecheErreur('') }}
             placeholder="Ex. : virement encaissé hors ERP, constaté au relevé"
           />
         </FormField>
@@ -627,14 +640,14 @@ export default function FactureList() {
       )}
 
       {showForm && (
-        <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
+        <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} scopeRef={formScopeRef} />
       )}
 
       {/* ── Modale d'enregistrement de paiement (VX230 — composant partagé) ── */}
       <PaiementDialog
         facture={payTarget}
         onOpenChange={(o) => { if (!o) setPayTarget(null) }}
-        onSaved={() => { dispatch(fetchFactures()); setDernierEncaissement(payTarget) }}
+        onSaved={() => { relire(); setDernierEncaissement(payTarget) }}
       />
 
       {/* APX14 — aperçu du PDF de la facture, INLINE. Source = le PDF LEGACY
@@ -669,6 +682,9 @@ export default function FactureList() {
           `<Stat>` (chiffres `.num` tabulaires, delta en icône lucide). Le
           glyphe de tendance en TEXTE posé ici régressait VX129 — c'était le
           dernier site du dossier ventes à ne pas parler ce langage. */}
+      {factures.length > 0 && tuilesPasAJour && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">Indicateurs pas à jour — la relecture a échoué.</p>
+      )}
       {factures.length > 0 && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat

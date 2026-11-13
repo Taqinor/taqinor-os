@@ -124,6 +124,43 @@ describe('RelancesPage (PACT44 — paramétrage des relances par client)', () =>
       '/ventes/relances/', { params: { mes_relances: 1 } }))
   })
 
+  it('lecture rejetée : erreur + Réessayer, pas PartyPopper', async () => {
+    // AERR4 (C-AERR-004) — mutant : remettre `.catch(() => {})` ⇒ échec.
+    ventesApi.getRelances.mockRejectedValueOnce(new Error('réseau'))
+    const user = userEvent.setup()
+    renderPage()
+    const alerte = await screen.findByTestId('relances-erreur')
+    expect(alerte).toHaveTextContent('Impossible de charger la file de relances.')
+    expect(screen.queryByText('Aucune facture impayée')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText('ACME SARL')).toBeInTheDocument()
+    expect(screen.queryByTestId('relances-erreur')).toBeNull()
+  })
+
+  it('deux bascules : la réponse tardive de la première est ignorée', async () => {
+    let livrerMes
+    api.get.mockImplementation((url, cfg) => {
+      if (url === '/ventes/relances/' && cfg?.params?.mes_relances) {
+        return new Promise((ok) => { livrerMes = () => ok({ data: [{ ...ROWS[0], id: 9, reference: 'FAC-MES', client_nom: 'Tardive SA' }] }) })
+      }
+      return defaultGet(url)
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('ACME SARL')
+    await user.click(screen.getByRole('combobox', { name: 'Filtrer la file de relance' }))
+    await user.click(await screen.findByRole('option', { name: 'Mes relances' }))
+    await waitFor(() => expect(livrerMes).toBeTypeOf('function'))
+    await user.click(screen.getByRole('combobox', { name: 'Filtrer la file de relance' }))
+    await user.click(await screen.findByRole('option', { name: 'Toutes les factures' }))
+    await waitFor(() => expect(ventesApi.getRelances).toHaveBeenCalledTimes(2))
+    livrerMes()
+    await waitFor(() => expect(screen.getByText('Globex')).toBeInTheDocument())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('Tardive SA')).toBeNull()
+    expect(screen.getByText('ACME SARL')).toBeInTheDocument()
+  })
+
   it('passe un client en relance manuelle assignée', async () => {
     const user = userEvent.setup()
     api.post.mockResolvedValue({ data: { id: 8 } })

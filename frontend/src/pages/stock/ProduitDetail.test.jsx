@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -434,6 +434,21 @@ describe('WIR221 — RebutModal (composant réutilisable)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
     expect(screen.getByRole('alert').textContent).toMatch(/quantité positive/)
     expect(stockApi.rebuterProduit).not.toHaveBeenCalled()
+  })
+
+  it('rebut 7.5 : message sous le champ, aucun appel (AERR87)', async () => {
+    render(<RebutModal produit={p} onClose={() => {}} onDone={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('combobox'))
+    await userEvent.click(await screen.findByRole('option', { name: 'Obsolète' }))
+    fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '7.5' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+    expect(screen.getByRole('alert').textContent).toMatch(/quantité entière/)
+    expect(stockApi.rebuterProduit).not.toHaveBeenCalled()
+
+    stockApi.rebuterProduit.mockResolvedValue({ data: { mouvement_id: 9 } })
+    fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '7' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+    await waitFor(() => expect(stockApi.rebuterProduit).toHaveBeenCalledWith(42, expect.objectContaining({ quantite: 7 })))
   })
 
   it('affiche l\'erreur serveur (ex. stock négatif refusé) sans planter', async () => {

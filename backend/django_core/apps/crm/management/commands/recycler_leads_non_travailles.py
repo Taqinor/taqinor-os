@@ -80,8 +80,10 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
 
         deassign_hours = _deassign_hours(company)
 
+        # ACEL80 — un lead perdu ou opposé n'est jamais escaladé « non travaillé ».
         leads = selectors.leads_sla_depasse(
-            company, now=now, seuil_heures=seuil)
+            company, now=now, seuil_heures=seuil
+        ).exclude(perdu=True).exclude(ne_plus_contacter=True)
         # APRF10 — les leads DÉJÀ escaladés, lus en UNE requête par société
         # (et non un ``.exists()`` par lead à chaque passage horaire).
         deja_escalades = set(LeadActivity.objects.filter(

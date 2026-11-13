@@ -133,6 +133,23 @@ describe('FacturerVenteDialog (VNT45)', () => {
     expect(body.paiements).toBeUndefined()
   })
 
+  it('33 % de 1 234,50 ⇒ 407,39', async () => {
+    // AERR19 (C-AERR-017) — arrondi au centime moitié vers le haut, comme le
+    // serveur (_montant_demande). Mutant : remettre `.toFixed(2)` seul ⇒ 407.38.
+    const a = apercuNeuf()
+    a.vente = { ...a.vente, prix_convenu_ttc: '1234.50', reste_a_facturer_ttc: '1234.50' }
+    ventesApi.apercuFacturerVente.mockResolvedValue({ data: a })
+    const user = userEvent.setup()
+    monter()
+    await attendreApercu()
+    await typer(user, 'Pourcentage (%)', '33')
+    await user.click(screen.getByRole('switch', { name: 'Déjà payé' }))
+    expect(screen.getByPlaceholderText('407.39')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Créer la facture' }))
+    await waitFor(() => expect(ventesApi.facturerVente).toHaveBeenCalled())
+    expect(ventesApi.facturerVente.mock.calls[0][1].paiements[0].montant).toBe('407.39')
+  })
+
   it('onglet Totalité ⇒ nature complete, sans montant', async () => {
     const user = userEvent.setup()
     monter()
@@ -344,8 +361,10 @@ describe('ATOT60 — avoir de révision à confirmer', () => {
   const monterPanneau = async (variante, onRafraichir = vi.fn()) => {
     const { exempleContrat } = await import('../../../test/fixtures/contractSamples.js')
     const { default: PanneauVente } = await import('./PanneauVente')
+    const { ConfirmProvider } = await import('../../../providers/ConfirmProvider.jsx')
     const vente = exempleContrat('ventes', 'vente_etat', variante).vente
-    render(<PanneauVente devis={{ ...DEVIS, vente }} onRafraichir={onRafraichir} />)
+    // AERR17 — le clic ouvre d'abord la confirmation maison (provider requis).
+    render(<ConfirmProvider><PanneauVente devis={{ ...DEVIS, vente }} onRafraichir={onRafraichir} /></ConfirmProvider>)
     return { vente, onRafraichir }
   }
 
@@ -356,6 +375,7 @@ describe('ATOT60 — avoir de révision à confirmer', () => {
     const { vente, onRafraichir } = await monterPanneau('exemple_avoir_a_confirmer')
     expect(screen.getByText(vente.raison_bloquee)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Confirmer l.avoir/ }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onRafraichir).toHaveBeenCalledTimes(1))
     expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledTimes(1)
     expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledWith(DEVIS.id)
@@ -368,6 +388,7 @@ describe('ATOT60 — avoir de révision à confirmer', () => {
     ventesApi.confirmerAvoirRevision.mockRejectedValue({ response: { status: 409, data: refus } })
     const { onRafraichir } = await monterPanneau('exemple_avoir_a_confirmer')
     await user.click(screen.getByRole('button', { name: /Confirmer l.avoir/ }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(refus.detail)
     expect(onRafraichir).not.toHaveBeenCalled()
   })

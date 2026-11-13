@@ -130,8 +130,12 @@ describe('LW38 — scénario 4 : la note ne fuit pas, et le brouillon revient au
     await act(async () => { result.current.setField('nom', 'Ali édité') })
     await act(async () => { result.current.dispatch({ type: 'SET_COMPOSER', patch: { note: 'note sur A' } }) })
 
+    // AERR108 — quitter A envoie son brouillon ; ici l'envoi échoue (réseau) :
+    // le miroir sessionStorage reste la défense anti-perte.
+    crmApi.updateLead.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { message: 'Network Error' }))
     // Navigation vers B : état reconstruit à neuf.
     await act(async () => { rerender({ lead: { id: 2, nom: 'Sara', date_modification: 'b' } }) })
+    expect(crmApi.updateLead).toHaveBeenCalledWith(1, { nom: 'Ali édité' })
     expect(result.current.state.composer.note).toBe('') // note de A jamais reportée sur B
     expect(getField(result.current.state, 'nom')).toBe('Sara') // édition de A absente sur B
 

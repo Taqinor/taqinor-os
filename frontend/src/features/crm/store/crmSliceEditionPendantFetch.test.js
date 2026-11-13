@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
-  fetchLeads, updateLead, createLead, leadsChunkReceived,
+  fetchLeads, fetchClients, updateLead, createLead, leadsChunkReceived,
+  leadPatchedFromServer,
 } from './crmSlice'
 import crmApi from '../../../api/crmApi'
 import { NEW_STAGE, CONTACTED_STAGE } from '../stages'
@@ -225,5 +226,28 @@ describe('PERF-CRM — fetchLeads : flux progressif, pages de 200, 3 en parallè
     expect(st.leadsLoading).toBe(false)
     st = reducer(st, leadsChunkReceived({ requestId: 'req-1', results: [lead(2), lead(3)], first: false }))
     expect(st.leads.map((l) => l.id)).toEqual([1, 2, 3])
+  })
+})
+
+describe('AERR100 — erreur des leads propre + autosauvegarde sans relecture', () => {
+  it('fetchClients rejeté ne pose pas l’erreur des leads ; fetchLeads rejeté la pose', () => {
+    let st = etatInitial()
+    st = reducer(st, fetchLeads.pending('req-1', {}))
+    st = reducer(st, leadsChunkReceived({ requestId: 'req-1', results: [lead(1)], first: true }))
+    st = reducer(st, fetchClients.rejected(null, 'c-1', undefined, 'boom'))
+    expect(st.leadsError).toBeNull()
+    expect(st.leads).toHaveLength(1)
+    st = reducer(st, fetchLeads.pending('req-2', {}))
+    st = reducer(st, fetchLeads.rejected(null, 'req-2', {}, 'panne'))
+    expect(st.leadsError).toBe('panne')
+    expect(st.leads).toHaveLength(1)
+  })
+
+  it('leadPatchedFromServer change la seule ligne concernée', () => {
+    let st = etatInitial()
+    st = reducer(st, fetchLeads.pending('req-1', {}))
+    st = reducer(st, leadsChunkReceived({ requestId: 'req-1', results: [lead(1), lead(2)], first: true }))
+    st = reducer(st, leadPatchedFromServer({ ...lead(2, CONTACTED_STAGE), nom: 'Renommé' }))
+    expect(st.leads.map((l) => l.nom)).toEqual(['L1', 'Renommé'])
   })
 })

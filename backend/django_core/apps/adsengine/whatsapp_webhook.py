@@ -237,24 +237,33 @@ class WhatsAppCloudWebhookView(View):
                             continue
                         phone = str(msg.get('from') or '').strip()
                         ad_id = str(referral.get('source_id') or '')[:64]
-                        CtwaReferral.objects.update_or_create(
+                        champs = {
+                            'ad_id': ad_id,
+                            'ctwa_clid': str(
+                                referral.get('ctwa_clid') or '')[:255],
+                            'source_type': str(
+                                referral.get('source_type') or '')[:16],
+                            'headline': str(referral.get('headline') or ''),
+                            'ts': _parse_ts(msg.get('timestamp')),
+                            'phone_key': _phone_key(phone)[:32],
+                        }
+                        # ACNC48 — l'unicité du message arbitre D'ABORD ; le
+                        # lead n'est créé que par la livraison gagnante.
+                        ref, created = CtwaReferral.objects.get_or_create(
                             company=company,
                             wa_message_id=wa_message_id[:128],
-                            defaults={
-                                'ad_id': ad_id,
-                                'ctwa_clid': str(
-                                    referral.get('ctwa_clid') or '')[:255],
-                                'source_type': str(
-                                    referral.get('source_type') or '')[:16],
-                                'headline': str(referral.get('headline') or ''),
-                                'ts': _parse_ts(msg.get('timestamp')),
-                                'phone_key': _phone_key(phone)[:32],
-                                # PUB27 — auto-crée un Lead minimal quand aucun
-                                # lead n'existe pour ce téléphone (jamais un
-                                # referral orphelin qui perd son attribution).
-                                'crm_lead_id': _ensure_lead_id_for_phone(
-                                    company, phone, ad_id),
-                            })
+                            defaults=champs)
+                        if created:
+                            # PUB27 — auto-crée un Lead minimal quand aucun
+                            # lead n'existe pour ce téléphone (jamais un
+                            # referral orphelin qui perd son attribution).
+                            ref.crm_lead_id = _ensure_lead_id_for_phone(
+                                company, phone, ad_id)
+                            ref.save(update_fields=['crm_lead_id'])
+                        else:
+                            for nom, valeur in champs.items():
+                                setattr(ref, nom, valeur)
+                            ref.save(update_fields=list(champs))
                         stored += 1
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(

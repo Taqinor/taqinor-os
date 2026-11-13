@@ -11,6 +11,8 @@ import { useState } from 'react'
 import { Cable } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { Button } from '../../ui'
+import { useConfirmDialog } from '../../ui/confirm'
+import { isAnyFormDirty } from '../../ui/useDirtyGuard'
 import { bilanBoq } from './lotsBoq'
 
 /**
@@ -22,10 +24,17 @@ export default function AjouterBoqElectrique({ devisId, modifiable, onAjoute }) 
   const [resultat, setResultat] = useState(null)
   const [erreur, setErreur] = useState('')
   const [enCours, setEnCours] = useState(false)
+  const { confirm } = useConfirmDialog()
 
   if (!devisId || !modifiable) return null
 
   const ajouter = async () => {
+    // AERR12 — l'ajout recharge le devis : une saisie non enregistrée serait perdue.
+    if (isAnyFormDirty() && !(await confirm({
+      title: 'Ajouter le BOQ électrique ?',
+      description: 'L’ajout recharge le devis : vos modifications non enregistrées seront perdues.',
+      confirmLabel: 'Ajouter quand même', cancelLabel: 'Annuler',
+    }))) return
     setEnCours(true)
     setErreur('')
     try {

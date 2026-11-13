@@ -43,7 +43,7 @@ from ..services import enregistrer_reverification, lever_reserve_chantier
 from .. import field_services
 from .. import field_capture
 from .. import field_sync
-from . import _openapi as oa, intervention_liens  # APUB6 : mixin hors fichier-mur (C20)
+from . import _openapi as oa, intervention_liens, livraison  # APUB6 : mixin hors fichier-mur (C20)
 from ..serializers import PhotoAnnotationSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -526,7 +526,8 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
             and new_technicien.id != old.technicien_id)
         from django.db import transaction
         with transaction.atomic():
-            interv = serializer.save()
+            with livraison.ecriture_bornee(serializer):  # ACNC25 — n'écrit que les champs validés
+                interv = serializer.save()
             # CHT9 — le technicien RÉAFFECTÉ est notifié (sa propre clé
             # INTERVENTION_ASSIGNEE).
             if technicien_change:
@@ -1938,19 +1939,16 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
-        if reserve.devis_repare_id:
+        try:
+            reserve, devis = intervention_liens.devis_de_reserve(reserve, interv, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if devis is None:
             return Response({
                 'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
                 'deja_existant': True,
             })
-        from apps.ventes.services import create_devis_from_reserve
-        try:
-            devis = create_devis_from_reserve(reserve=reserve, user=request.user)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        reserve.devis_repare_id = devis.id
-        reserve.save(update_fields=['devis_repare_id'])
         return Response({
             'reserve': reserve.id, 'devis_id': devis.id,
             'devis_reference': devis.reference, 'deja_existant': False,

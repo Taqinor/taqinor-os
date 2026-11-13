@@ -18,6 +18,7 @@ import {
 } from '../../ui'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { StateBlock } from '../../components/StateBlock'
+import { useSaisieCourte } from '../../features/crm/useSaisieCourte'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import ClientTypeToggle from './ClientTypeToggle'
@@ -59,9 +60,11 @@ export default function ClientList() {
   const [typeFilter, setTypeFilter] = useState('tous')
   // Vues enregistrées (FG11).
   const { savedViews, saveView, deleteView } = useSavedViews(CL_SAVED_VIEWS_KEY)
-  const saveCurrentView = () => {
-    const name = window.prompt('Nom de la vue enregistrée :')
-    saveView(name, { typeFilter })
+  // AERR117 — boîte maison (plus de `window.prompt`).
+  const { demanderSaisie, dialogueSaisie } = useSaisieCourte()
+  const saveCurrentView = async () => {
+    const name = await demanderSaisie('Enregistrer la vue', 'Nom de la vue enregistrée')
+    if (name) saveView(name, { typeFilter })
   }
   const applyView = (v) => {
     if (v.state?.typeFilter) setTypeFilter(v.state.typeFilter)
@@ -348,6 +351,7 @@ export default function ClientList() {
 
   return (
     <div className="page">
+      {dialogueSaisie}
       {/* APX10 — identité CRM + ligne de contrôle alignée sur celle des Leads.
           État vérifié avant : un `page-header` générique (h2 nu + boutons), le
           seul écran CRM sans aucune identité de module, alors que ModuleHero
@@ -382,7 +386,19 @@ export default function ClientList() {
                      onDone={() => dispatch(fetchClients())} />
       )}
 
-      {error ? (
+      {/* AERR111 — relecture échouée alors que des clients sont déjà affichés :
+          les lignes restent, avis + Réessayer (le bloc plein écran n'est que
+          pour un échec SANS aucune ligne). */}
+      {error && clients.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2" role="status" data-testid="clients-pas-a-jour">
+          <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchClients())}>
+            Réessayer
+          </Button>
+        </div>
+      )}
+
+      {error && clients.length === 0 ? (
         // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
         // câblé sur le même thunk que le montage initial (jamais d'objet brut
         // ni de page blanche).

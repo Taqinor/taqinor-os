@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Plus } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -34,6 +34,11 @@ const tauxDeLaFacture = (f) => (f?.taux_tva == null || f.taux_tva === '' ? '' : 
 export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged }) {
   const isAdmin = useIsAdmin()
   const [notes, setNotes] = useState([])
+  // AERR21 — échec de lecture ≠ « aucune note » ; « Réessayer » relance la lecture.
+  const [lectureKo, setLectureKo] = useState(false)
+  const [essai, setEssai] = useState(0)
+  // ACNC2 — clé d'envoi gardée entre deux clics, remise à zéro au succès.
+  const cleEnvoi = useRef(null)
   // Facture dont `notes` reflète déjà le chargement — `loading` est DÉRIVÉ de
   // la comparaison avec la facture courante (jamais un `setLoading(true)`
   // synchrone dans l'effet, react-hooks/set-state-in-effect).
@@ -68,19 +73,22 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
       .then((data) => {
         if (!active) return
         setNotes(Array.isArray(data) ? data : (data?.results || []))
+        setLectureKo(false)
       })
-      .catch(() => { if (active) setNotes([]) })
+      .catch(() => { if (active) setLectureKo(true) })
       .finally(() => { if (active) setLoadedFactureId(factureId) })
     return () => { active = false }
-  }, [open, factureId])
+  }, [open, factureId, essai])
 
   const creer = async () => {
     if (!facture?.id) return
     setCreating(true); setErreur('')
+    cleEnvoi.current ??= globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
     try {
-      const res = await ventesApi.creerNoteDebit(
-        facture.id, { motif, montant, ...(tauxTva !== '' && { taux_tva: tauxTva }) })
-      setNotes((n) => [res.data, ...n])
+      const res = await ventesApi.creerNoteDebit(facture.id, {
+        motif, montant, ...(tauxTva !== '' && { taux_tva: tauxTva }), idempotency_key: cleEnvoi.current })
+      cleEnvoi.current = null
+      setNotes((n) => [res.data, ...n.filter((x) => x.id !== res.data?.id)])
       setMotif(''); setMontant('')
       toast.success(`Note de débit ${res.data?.reference || ''} créée.`)
       onChanged?.()
@@ -88,6 +96,8 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
       // Le message serveur est affiché TEL QUEL sous le champ.
       setErreur(
         e?.response?.data?.detail || 'Création de la note de débit impossible.')
+      // ACNC2 — sans réponse : la liste est relue (la note a pu être créée).
+      if (!e?.response) setEssai((n) => n + 1)
     } finally {
       setCreating(false)
     }
@@ -131,6 +141,11 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
 
         {loading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : lectureKo && notes.length === 0 ? (
+          <p role="alert" className="flex items-center gap-2 text-sm text-destructive">
+            Notes de débit indisponibles.
+            <Button size="sm" variant="outline" onClick={() => { setLoadedFactureId(null); setEssai((n) => n + 1) }}>Réessayer</Button>
+          </p>
         ) : notes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Aucune note de débit sur cette facture.

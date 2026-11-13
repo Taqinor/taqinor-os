@@ -46,13 +46,14 @@ vi.mock('./useAdsPermissions', () => ({
 }))
 
 import ApprovalsScreen from './ApprovalsScreen'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 // AACQ63 — la ligne budget vient du CONTRAT serveur (AACQ60), jamais d'un
 // mock fabriqué (l'ancien `budget_avant`/`budget_apres` n'existe pas côté
 // serveur : aucun bloc budget ne s'affichait en vrai).
 import ENGINE_ACTION from '../../../../backend/django_core/apps/adsengine/contract_samples/engine_action.json'
 
 const renderScreen = () => render(
-  <MemoryRouter><ApprovalsScreen /></MemoryRouter>)
+  <ConfirmProvider><MemoryRouter><ApprovalsScreen /></MemoryRouter></ConfirmProvider>)
 
 const ACTIONS = [
   { ...ENGINE_ACTION.exemple, id: 11,
@@ -456,7 +457,28 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
     await screen.findAllByTestId('ae-action-card')
     fireEvent.keyDown(window, { key: 'j' }) // focus la 2e carte (id 12)
     fireEvent.keyDown(window, { key: 'a' })
+    // AERR23 — confirmation maison qui nomme l'action ; rien ne part avant.
+    expect(await screen.findByText('Approuver : swap_creative ?')).toBeInTheDocument()
+    expect(within(screen.getByRole('alertdialog')).getByText('Créatif fatigué (fréquence 3,2).')).toBeInTheDocument()
+    expect(mocks.approve).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))
+  })
+
+  it('A : confirmation nommée, Annuler ⇒ aucun approve ; « a » sous une boîte ⇒ rien', async () => {
+    renderScreen()
+    await screen.findAllByTestId('ae-action-card')
+    fireEvent.keyDown(window, { key: 'j' })
+    fireEvent.keyDown(window, { key: 'a' })
+    await screen.findByText('Approuver : swap_creative ?')
+    // « a » tapé alors que la boîte est ouverte par-dessus : aucune 2e boîte,
+    // aucun approve.
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(screen.getAllByText('Approuver : swap_creative ?')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(
+      screen.queryByText('Approuver : swap_creative ?')).not.toBeInTheDocument())
+    expect(mocks.approve).not.toHaveBeenCalled()
   })
 
   it('R ouvre le panneau de rejet STRUCTURÉ de la carte focalisée', async () => {

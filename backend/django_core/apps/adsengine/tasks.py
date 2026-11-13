@@ -19,6 +19,8 @@ import logging
 
 from celery import shared_task
 
+from .isolation import relever_si_delai
+
 logger = logging.getLogger(__name__)
 
 
@@ -707,7 +709,8 @@ def sync_ad_creatives(company, client):
     for ad in AdMirror.objects.filter(company=company):
         try:
             creative = fetch(ad.meta_id)
-        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
+        except Exception as exc:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
+            relever_si_delai(exc)  # ACEL71 — jamais avalée
             logger.warning("tasks.sync_ad_creatives : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if creative:
@@ -908,7 +911,8 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
         try:
             leads = (get_leads(ad.meta_id, since_unix=since_unix)
                      if since_unix is not None else get_leads(ad.meta_id))
-        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
+        except Exception as exc:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
+            relever_si_delai(exc)  # ACEL71 — jamais avalée
             logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if not leads:
@@ -1062,7 +1066,8 @@ def pull_meta_leads_recent():
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
-        except Exception:  # pragma: no cover - défensif, isolation société
+        except Exception as exc:  # pragma: no cover - défensif, isolation société
+            relever_si_delai(exc)  # ACEL71 — jamais avalée
             logger.warning(
                 'adsengine.pull_meta_leads_recent: échec société %s',
                 company.pk, exc_info=True)
@@ -1101,7 +1106,8 @@ def pull_meta_leads():
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
-        except Exception:  # pragma: no cover - défensif, isolation société
+        except Exception as exc:  # pragma: no cover - défensif, isolation société
+            relever_si_delai(exc)  # ACEL71 — jamais avalée
             logger.warning(
                 'adsengine.pull_meta_leads: échec société %s',
                 company.pk, exc_info=True)
@@ -1207,7 +1213,8 @@ def sync_insights_daily():
             # PUB20 — token mort : alerte + bandeau, jamais un swallow silencieux.
             _handle_meta_auth_error(conn, exc)
             continue
-        except Exception:  # pragma: no cover - défensif, isolation société
+        except Exception as exc:  # pragma: no cover - défensif, isolation société
+            relever_si_delai(exc)  # ACEL71 — jamais avalée
             logger.warning(
                 'adsengine.sync_insights_daily: échec société %s',
                 company.pk, exc_info=True)
@@ -1608,19 +1615,9 @@ def decay_assumptions_weekly():
     pour une société sans nœud. Best-effort par société ; la logique pure +
     modèle vit dans ``assumption_decay.py``. Renvoie le nombre total de nœuds
     oubliés."""
-    from authentication.selectors import active_companies
-
     from . import assumption_decay
 
-    total = 0
-    for company in active_companies():
-        try:
-            total += assumption_decay.run_weekly_decay(company)
-        except Exception:  # pragma: no cover - défensif, isolation société
-            logger.warning(
-                'adsengine.decay_assumptions_weekly: échec société %s',
-                company.pk, exc_info=True)
-            continue
+    total = assumption_decay.oublier_toutes_les_societes()
     logger.info(
         'adsengine.decay_assumptions_weekly: %s nœud(s) oublié(s)', total)
     return {'nodes_decayed': total}

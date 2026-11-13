@@ -164,3 +164,34 @@ def run_weekly_decay(company, *, now=None):
                 node.pk, company.pk, exc_info=True)
             continue
     return decayed
+
+
+def oublier_toutes_les_societes():
+    """Corps de la tâche ``adsengine.decay_assumptions_weekly`` : chaque
+    société active, isolée (best-effort), n'oublie qu'UNE fois par semaine ISO
+    (ACEL72, Casablanca). Renvoie le nombre total de nœuds oubliés."""
+    from zoneinfo import ZoneInfo
+
+    from django.db import transaction
+
+    from authentication.selectors import active_companies
+    from core.idempotency import dedupe_event
+
+    iso = timezone.localtime(
+        timezone.now(), ZoneInfo('Africa/Casablanca')).isocalendar()
+    semaine = f'{iso[0]}-W{iso[1]:02d}'
+    total = 0
+    for company in active_companies():
+        try:
+            with transaction.atomic():
+                if not dedupe_event(company=company,
+                                    source='adsengine.oubli_hebdo',
+                                    event_id=semaine):
+                    continue
+                total += run_weekly_decay(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.decay_assumptions_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    return total

@@ -328,3 +328,21 @@ describe('MaJourneePage — relances commerciales gatées par la permission serv
     ))
   })
 })
+
+// AERR36 — tournée illisible sans cache : « Tournée indisponible » + « Réessayer »,
+// jamais « Aucune intervention aujourd'hui » (le technicien croirait sa journée libre).
+describe('MaJourneePage (AERR36)', () => {
+  it('getMaTournee rejeté sans cache : Tournée indisponible + Réessayer', async () => {
+    const { readCache } = await import('../../features/offlinesync/readCache')
+    await readCache.vider()
+    installationsApi.getMaTournee.mockRejectedValue(new Error('réseau'))
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+
+    expect(await screen.findByText('Tournée indisponible — vérifiez la connexion')).toBeInTheDocument()
+    expect(screen.queryByText("Aucune intervention aujourd'hui")).not.toBeInTheDocument()
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText("Aucune intervention aujourd'hui")).toBeInTheDocument()
+  })
+})

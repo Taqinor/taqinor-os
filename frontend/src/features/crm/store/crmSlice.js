@@ -28,6 +28,13 @@ function surLesLocaux(state, results) {
   return results.map((l) => edites[l.id] ?? l)
 }
 
+// AERR100 — corps de updateLead.fulfilled, extrait (une seule implémentation).
+function fusionnerLead(state, lead) {
+  const idx = state.leads.findIndex(l => l.id === lead.id)
+  if (idx !== -1) state.leads[idx] = lead
+  if (state.fetchLeadsInFlight) state.leadsEditedDuringFetch[lead.id] = lead
+}
+
 function avecLesCreesLocaux(state, liste) {
   const presents = new Set(liste.map((l) => l.id))
   const crees = state.leads.filter(
@@ -176,6 +183,9 @@ const crmSlice = createSlice({
     // pendant qu'une requête sœur charge encore.
     pendingCount: 0,
     error: null,
+    // AERR100 — erreur PROPRE à fetchLeads (fetchClients garde `error`) : un
+    // rejet tardif d'un autre écran ne démonte plus la liste des leads.
+    leadsError: null,
     selectedClient: null,
     // VX164 — requestId (RTK) de la DERNIÈRE update dispatchée, par id — deux
     // maps séparées (clients/leads sont des tables distinctes, leurs ids
@@ -197,6 +207,9 @@ const crmSlice = createSlice({
   reducers: {
     setSelectedClient(state, action) { state.selectedClient = action.payload },
     clearError(state) { state.error = null },
+    // AERR100 — une autosauvegarde réussie change SA seule ligne (aucun
+    // GET /leads) : même fusion que updateLead.fulfilled.
+    leadPatchedFromServer(state, action) { fusionnerLead(state, action.payload) },
     // Changement d'étape optimiste (drag-and-drop kanban) : l'UI bouge tout de
     // suite, le conteneur redéclenche cette action avec l'ancienne étape si le
     // PATCH échoue (retour-arrière).
@@ -230,7 +243,7 @@ const crmSlice = createSlice({
       })
       .addCase(fetchLeads.pending, (state, action) => {
         state.leadsLoading = true
-        state.error = null
+        state.leadsError = null
         state.fetchLeadsRequestId = action.meta.requestId
         state.fetchLeadsInFlight = true
         state.leadsEditedDuringFetch = {}
@@ -271,7 +284,7 @@ const crmSlice = createSlice({
         if (action.meta.requestId !== state.fetchLeadsRequestId) return
         state.leadsLoading = false
         state.fetchLeadsInFlight = false
-        state.error = action.payload
+        state.leadsError = action.payload
       })
       .addCase(createLead.fulfilled, (state, action) => {
         state.leads.unshift(action.payload)
@@ -282,9 +295,7 @@ const crmSlice = createSlice({
       })
       .addCase(updateLead.fulfilled, (state, action) => {
         if (isStaleResourceUpdate(state.leadUpdateSeq, action.payload.id, action.meta.requestId)) return
-        const idx = state.leads.findIndex(l => l.id === action.payload.id)
-        if (idx !== -1) state.leads[idx] = action.payload
-        if (state.fetchLeadsInFlight) state.leadsEditedDuringFetch[action.payload.id] = action.payload
+        fusionnerLead(state, action.payload)
       })
       .addCase(archiveLead.fulfilled, (state, action) => {
         const idx = state.leads.findIndex(l => l.id === action.payload.id)
@@ -302,5 +313,5 @@ const crmSlice = createSlice({
   },
 })
 
-export const { setSelectedClient, clearError, leadStagePatched } = crmSlice.actions
+export const { setSelectedClient, clearError, leadStagePatched, leadPatchedFromServer } = crmSlice.actions
 export default crmSlice.reducer

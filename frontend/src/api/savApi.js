@@ -92,7 +92,9 @@ const savApi = {
     api.post(`/sav/tickets/${id}/facturer/`, override ? { override: true } : {}),
   // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).
   getTicketPieces: (id) => api.get(`/sav/tickets/${id}/pieces/`),
-  addTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces/`, body),
+  // ACNC26 — `idempotencyKey` (une par ouverture du formulaire) : un renvoi ne double pas la pièce.
+  addTicketPiece: (id, body, { idempotencyKey } = {}) => api.post(`/sav/tickets/${id}/pieces/`, body,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
   removeTicketPiece: (id, pieceId) =>
     api.delete(`/sav/tickets/${id}/pieces/${pieceId}/`),
   // ZMFG8 — vue unifiée Ajout/Retrait/Recyclage des pièces du ticket.

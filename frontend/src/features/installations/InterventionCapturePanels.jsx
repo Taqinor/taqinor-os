@@ -26,6 +26,8 @@ import { withOfflineFallback, FIELD_OPS, queuePhoto } from './offline/fieldOutbo
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { apiErrorMessage } from '../../lib/apiError'
+import { toastErreurNonAffichee } from '../../lib/toast'
+import { useConfirm } from '../../providers/confirm-context'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
@@ -124,6 +126,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const [scanAbsent, setScanAbsent] = useState(false)
   const [erreurNumero, setErreurNumero] = useState('')
   const [erreurComposant, setErreurComposant] = useState('')
+  const [echec, setEchec] = useState(false) // AERR78 — illisible ≠ aucun
   const fileRef = useRef(null)
   // VX94 — refocus sur le premier champ après un ajout réussi (recette
   // `newCatRef` prouvée dans ProduitForm) : la saisie sérialisée au pouce
@@ -132,8 +135,8 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
 
   const load = useCallback(() => Promise.all([
     installationsApi.getSerials(id)
-      .then((r) => setRows(r.data || []))
-      .catch(() => setRows([])),
+      .then((r) => { setRows(r.data || []); setEchec(false) })
+      .catch(() => setEchec(true)),
     Promise.resolve()
       .then(() => installationsApi.getSerialsAttendus(id))
       .then((r) => setAttendus(r?.data || null))
@@ -261,6 +264,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const remove = suppression.remove
 
   if (loading) return <PanelLoading label="numéros de série" />
+  if (echec) return <PanelUnavailable label="Numéros de série non chargés." onRetry={load} />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
@@ -390,6 +394,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
   const [extra, setExtra] = useState({ designation: '', quantite_utilisee: '' })
   // VX94 — refocus sur le premier champ « hors devis » après un ajout réussi.
   const extraFirstRef = useRef(null)
+  const confirm = useConfirm()
 
   const load = useCallback(() => installationsApi.getConsommation(id)
     .then((r) => setData(r.data))
@@ -410,7 +415,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
         { baseUpdatedAt: li.date_modification })
       if (r.queued) toast.success(QUEUED_MSG)
       else await load()
-    } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Mise à jour impossible.') } finally { setBusy(false) }
   }
   const addExtra = async () => {
     if (!extra.designation.trim()) return
@@ -420,9 +425,17 @@ export function ConsommationPanel({ intervention, onChanged }) {
       setExtra({ designation: '', quantite_utilisee: '' })
       extraFirstRef.current?.focus()
       await load()
-    } catch { toast.error('Ajout impossible.') } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Ajout impossible.') } finally { setBusy(false) }
   }
   const valider = async () => {
+    // AERR77 — sortie de stock définitive (aucune dé-validation) : boîte nommée.
+    const nom = intervention.reference ?? intervention.installation_reference ?? `#${id}`
+    const articles = (data?.lignes || []).map((li) => `${li.quantite_utilisee ?? 0} × ${li.designation}`).join(', ')
+    if (!(await confirm({
+      title: `Valider la consommation de ${nom} ?`,
+      description: `Sortiront du stock : ${articles || 'aucun article'}. Validation définitive : la consommation ne sera plus modifiable.`,
+      confirmLabel: 'Valider', cancelLabel: 'Annuler', destructive: false,
+    }))) return
     setBusy(true)
     try {
       await installationsApi.validerConsommation(id)
@@ -496,12 +509,13 @@ export function MemosPanel({ intervention, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [echec, setEchec] = useState(false)
   const recorder = useRef(null)
   const chunks = useRef([])
 
   const load = useCallback(() => installationsApi.getMemos(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
+    .then((r) => { setRows(r.data || []); setEchec(false) })
+    .catch(() => setEchec(true)) // AERR78 — illisible ≠ aucun
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
@@ -553,10 +567,11 @@ export function MemosPanel({ intervention, onChanged }) {
   const remove = suppression.remove
   const saveTranscript = async (mid, transcript) => {
     try { await installationsApi.modifierMemo(id, mid, transcript); await load() }
-    catch { toast.error('Édition impossible.') }
+    catch (err) { toastErreurNonAffichee(err, 'Édition impossible.') }
   }
 
   if (loading) return <PanelLoading label="mémos vocaux" />
+  if (echec) return <PanelUnavailable label="Mémos non chargés." onRetry={load} />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
@@ -599,10 +614,11 @@ export function ReservesPanel({ intervention, onChanged }) {
   const [desc, setDesc] = useState('')
   const [creerTicket, setCreerTicket] = useState(false)
   const [creerSuivi, setCreerSuivi] = useState(false)
+  const [echec, setEchec] = useState(false)
 
   const load = useCallback(() => installationsApi.getReserves(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
+    .then((r) => { setRows(r.data || []); setEchec(false) })
+    .catch(() => setEchec(true)) // AERR78 — illisible ≠ aucun
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
@@ -618,15 +634,16 @@ export function ReservesPanel({ intervention, onChanged }) {
       setDesc(''); setCreerTicket(false); setCreerSuivi(false)
       if (r.queued) toast.success(QUEUED_MSG)
       await load(); onChanged?.()
-    } catch { toast.error('Ajout impossible.') } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Ajout impossible.') } finally { setBusy(false) }
   }
   const resolve = async (rid) => {
     setBusy(true)
     try { await installationsApi.resoudreReserve(id, { reserve: rid, resolution: '' }); await load(); onChanged?.() }
-    catch { toast.error('Résolution impossible.') } finally { setBusy(false) }
+    catch (err) { toastErreurNonAffichee(err, 'Résolution impossible.') } finally { setBusy(false) }
   }
 
   if (loading) return <PanelLoading label="réserves" />
+  if (echec) return <PanelUnavailable label="Réserves non chargées." onRetry={load} />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
@@ -669,17 +686,18 @@ export function ToolReturnPanel({ intervention, onChanged }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [echec, setEchec] = useState(false)
 
   const load = useCallback(() => installationsApi.getToolReturn(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
+    .then((r) => { setRows(r.data || []); setEchec(false) })
+    .catch(() => setEchec(true)) // AERR78 — illisible ≠ aucun
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
   const toggle = async (line, rendu) => {
     setBusy(true)
     try { await installationsApi.cocherToolReturn(id, { ligne: line, rendu }); await load() }
-    catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
+    catch (err) { toastErreurNonAffichee(err, 'Mise à jour impossible.') } finally { setBusy(false) }
   }
   const confirm = async () => {
     setBusy(true)
@@ -689,10 +707,11 @@ export function ToolReturnPanel({ intervention, onChanged }) {
       if (nr.length) toast.error(`Outils non rendus : ${nr.join(', ')}`)
       else toast.success("Retour d'outillage confirmé.")
       await load(); onChanged?.()
-    } catch { toast.error('Confirmation impossible.') } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Confirmation impossible.') } finally { setBusy(false) }
   }
 
   if (loading) return <PanelLoading label="retour d'outillage" />
+  if (echec) return <PanelUnavailable label="Retours d'outils non chargés." onRetry={load} />
   if (rows.length === 0) return <PanelUnavailable label="Aucun outil dans le kit de préparation." />
   return (
     <ErrorBoundary>
@@ -733,7 +752,7 @@ export function SafetyPanel({ intervention, onChanged }) {
         FIELD_OPS.COCHER_SAFETY, { intervention: id, cle, coche })
       if (r.queued) toast.success(QUEUED_MSG)
       await load()
-    } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Mise à jour impossible.') } finally { setBusy(false) }
   }
   const sign = async () => {
     setBusy(true)
@@ -859,6 +878,11 @@ function PanelLoading({ label }) {
   )
 }
 
-function PanelUnavailable({ label }) {
-  return <p className="py-4 text-sm text-muted-foreground">{label}</p>
+function PanelUnavailable({ label, onRetry }) {
+  if (!onRetry) return <p className="py-4 text-sm text-muted-foreground">{label}</p>
+  return (
+    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+      {label} <Button size="sm" variant="outline" onClick={() => onRetry()}>Réessayer</Button>
+    </p>
+  )
 }

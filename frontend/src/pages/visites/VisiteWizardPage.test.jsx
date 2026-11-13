@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
 beforeAll(polyfillResizeObserver)
 
@@ -116,11 +117,13 @@ import { polyfillResizeObserver } from '../../test/selectNatif'
 
 function withProviders() {
   return render(
-    <MemoryRouter initialEntries={['/visites/7']}>
-      <Routes>
-        <Route path="/visites/:id" element={<VisiteWizardPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ConfirmProvider>
+      <MemoryRouter initialEntries={['/visites/7']}>
+        <Routes>
+          <Route path="/visites/:id" element={<VisiteWizardPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ConfirmProvider>,
   )
 }
 
@@ -136,6 +139,51 @@ describe('VisiteWizardPage — VT10', () => {
     expect(bloc).toHaveTextContent('Tableau ouvert (disjoncteurs visibles)')
     expect(bloc).toHaveTextContent('Obstacles et ombrages')
     expect(bloc).toHaveTextContent('Largeur du mur libre (cm)')
+  })
+
+  it('croix de vignette : rien n’est supprimé sans confirmation nommée (AERR106)', async () => {
+    const visitesApi = (await import('../../api/visitesApi')).default
+    visitesApi.deleteVisitePhoto.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la photo toit-1.jpg' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('toit-1.jpg')
+    expect(boite).toHaveTextContent('Vue générale du toit')
+    await user.click(within(boite).getByRole('button', { name: 'Garder' }))
+    expect(visitesApi.deleteVisitePhoto).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Supprimer la photo toit-1.jpg' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }))
+    await vi.waitFor(() => expect(visitesApi.deleteVisitePhoto).toHaveBeenCalledTimes(1))
+    expect(visitesApi.deleteVisitePhoto).toHaveBeenCalledWith('7', 31)
+  })
+
+  it('relecture en échec : saisie et onglets gardés, avis + Réessayer (AERR107)', async () => {
+    const visitesApi = (await import('../../api/visitesApi')).default
+    visitesApi.deleteVisitePhoto.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    withProviders()
+    const form = await screen.findByTestId('visite-mesures-toiture')
+    const champ = form.querySelector('#visite-mesure-toiture-longueur_m')
+    await user.clear(champ)
+    await user.type(champ, '9.5')
+    getVisite.mockRejectedValueOnce(new Error('réseau'))
+    // une photo supprimée (confirmée) déclenche `recharger`
+    await user.click(screen.getByRole('button', { name: 'Supprimer la photo toit-1.jpg' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }))
+    expect(await screen.findByTestId('visite-pas-a-jour')).toBeInTheDocument()
+    expect(screen.getByTestId('visite-mesures-toiture').querySelector('#visite-mesure-toiture-longueur_m').value).toBe('9.5')
+    expect(screen.getByRole('tab', { name: 'Toiture' })).toBeInTheDocument()
+    expect(screen.queryByText('Visite introuvable ou inaccessible.')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await vi.waitFor(() => expect(screen.queryByTestId('visite-pas-a-jour')).not.toBeInTheDocument())
+  })
+
+  it('premier chargement rejeté : « Visite introuvable ou inaccessible. » (AERR107)', async () => {
+    getVisite.mockRejectedValueOnce(new Error('404'))
+    withProviders()
+    expect(await screen.findByText('Visite introuvable ou inaccessible.')).toBeInTheDocument()
   })
 
   it('la saisie non enregistrée survit au changement d’onglet', async () => {

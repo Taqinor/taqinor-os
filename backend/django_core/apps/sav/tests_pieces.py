@@ -16,6 +16,7 @@ from apps.stock.models import MouvementStock, Produit
 from apps.sav.models import (
     Ticket, PieceConsommee, ContratMaintenance, TicketActivity)
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -156,6 +157,20 @@ class TestSavPieces(TestCase):
         self.assertEqual(self.produit.quantite_stock, Decimal('10'))
         self.assertFalse(PieceConsommee.objects.filter(id=pid).exists())
 
+    def test_pose_meme_cle_une_seule_piece(self):
+        """ACNC26 — une pose renvoyée avec la même Idempotency-Key ne crée
+        qu'une pièce (et une seule SORTIE de stock)."""
+        url = f'/api/django/sav/tickets/{self.ticket.id}/pieces/'
+        corps = {'produit': self.produit.id, 'quantite': '3', 'decrement': True}
+        r1 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k1')
+        r2 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k1')
+        self.assertEqual((r1.status_code, r2.status_code), (201, 201), r2.data)
+        self.assertEqual(r1.data['id'], r2.data['id'])
+        self.assertEqual(PieceConsommee.objects.filter(ticket=self.ticket).count(), 1)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('7'))
+        self.assertEqual(MouvementStock.objects.filter(produit=self.produit).count(), 1)
+
     def test_add_piece_logs_activity(self):
         # L310 — l'ajout d'une pièce (avec décrément) journalise l'Historique.
         r = self._add(quantite='2', decrement=True)
@@ -244,6 +259,43 @@ class TestSavPiecesConcurrence(WideTeardownTimeoutMixin, TransactionTestCase):
             quantite=Decimal('1'), stock_decremente=True, created_by=self.user)
         self.assertEqual(self._course(lambda api: api.delete(
             f'/api/django/sav/tickets/{self.ticket.id}/pieces/{piece.id}/')), (204, Decimal('5'), [(5, 4), (4, 5)]))
+
+    def test_deux_retraits_croises_une_seule_entree(self):
+        """ACNC26 — deux DELETE de la même pièce décrémentée lisent la pièce
+        avant que le premier ne commite : une seule ENTRÉE (10 → 13), le second
+        rend 404."""
+        from apps.stock import services as stock
+        Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=Decimal('10'))
+        piece = PieceConsommee.objects.create(
+            company=self.company, ticket=self.ticket, produit=self.produit,
+            quantite=Decimal('3'), stock_decremente=True, created_by=self.user)
+        url = f'/api/django/sav/tickets/{self.ticket.id}/pieces/{piece.id}/'
+        original, a_tient, b_tente, res = stock.verrouiller_produit, threading.Event(), threading.Event(), {}
+
+        def verrou(pk):
+            if threading.current_thread().name == 'A':
+                a_tient.set()
+                # B a lu la pièce (non relue : il atteint ce verrou) ou y est bloqué.
+                attendre_un_ecrivain_bloque(ou_bien=b_tente)
+            else:
+                b_tente.set()
+            return original(pk)
+
+        def fil(nom):
+            if nom == 'B':
+                a_tient.wait(5)
+            res[nom] = auth(self.user).delete(url).status_code
+            connection.close()
+        with mock.patch.object(stock, 'verrouiller_produit', side_effect=verrou):
+            fils = [threading.Thread(target=fil, args=(n,), name=n) for n in 'AB']
+            for f in fils:
+                f.start()
+            for f in fils:
+                f.join(15)
+        self.produit.refresh_from_db()
+        self.assertEqual(res, {'A': 204, 'B': 404})
+        self.assertEqual(self.produit.quantite_stock, Decimal('13'))
+        self.assertEqual(MouvementStock.objects.filter(produit=self.produit).count(), 1)
 
 
 class TestMaintenanceRenewal(TestCase):

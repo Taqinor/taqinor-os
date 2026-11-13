@@ -10,10 +10,14 @@ Couvre :
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_yserv5 -v 2
 """
+import threading
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
@@ -22,6 +26,8 @@ from apps.sav.maintenance import generer_visites_dues
 from apps.sav.models import ContratMaintenance, SavSlaSettings, Ticket
 from apps.sav.tasks import generer_visites_dues_quotidien
 from apps.notifications.models import Notification
+from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -109,3 +115,89 @@ class YSERV5GenerationAutoTest(TestCase):
         self.assertIsNotNone(self.contrat.derniere_visite)
         contrat_lointain.refresh_from_db()
         self.assertIsNone(contrat_lointain.derniere_visite)
+
+    def test_erreur_apres_creation_ne_laisse_pas_de_ticket_double(self):
+        # ACEL47 — ticket + avance du contrat dans UNE transaction : une erreur
+        # après la création du ticket ne laisse aucun ticket orphelin.
+        from unittest import mock
+
+        from apps.sav import services as sav_services
+
+        vrai = sav_services.poser_sla_due_at
+        appels = {'n': 0}
+
+        def poser_puis_lever(ticket):
+            appels['n'] += 1
+            if appels['n'] == 1:
+                raise RuntimeError('panne simulée')
+            return vrai(ticket)
+
+        preventifs = Ticket.objects.filter(
+            company=self.company, type=Ticket.Type.PREVENTIF)
+        with mock.patch.object(
+                sav_services, 'poser_sla_due_at', side_effect=poser_puis_lever):
+            with self.assertRaises(RuntimeError):
+                generer_visites_dues(self.company, self.admin, avance_jours=10)
+            self.assertEqual(preventifs.count(), 0)
+            self.contrat.refresh_from_db()
+            self.assertIsNone(self.contrat.derniere_visite)
+            echeance = self.contrat.prochaine_visite()
+
+            generer_visites_dues(self.company, self.admin, avance_jours=10)
+            self.assertEqual(preventifs.count(), 1)
+            ticket = preventifs.get()
+            self.assertEqual(ticket.statut, Ticket.Statut.NOUVEAU)
+            self.assertEqual(ticket.date_ouverture, echeance)
+            self.contrat.refresh_from_db()
+            self.assertEqual(self.contrat.derniere_visite, echeance)
+
+            generer_visites_dues(self.company, self.admin, avance_jours=10)
+            self.assertEqual(preventifs.count(), 1)
+
+
+class YSERV5GenerationCroiseeTest(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC35 — deux « Générer les visites dues » croisés sur DEUX vraies
+    connexions (patron `TestSavPiecesConcurrence._course` de `tests_pieces.py`) :
+    A génère dans sa transaction et tient le contrat ; B arrive avant le commit."""
+
+    def setUp(self):
+        self.company = make_company(slug='sav-acnc35', nom='Sav Co ACNC35')
+        self.admin = User.objects.create_user(
+            username='acnc35_admin', password='x', role_legacy='admin',
+            company=self.company, is_active=True)
+        client = Client.objects.create(company=self.company, nom='Client', prenom='ACNC35')
+        inst = Installation.objects.create(
+            company=self.company, reference='CHT-ACNC35', client=client)
+        # Échéance annuelle passée de 35 jours : due aujourd'hui sans avance.
+        self.contrat = ContratMaintenance.objects.create(
+            company=self.company, client=client, installation=inst,
+            date_debut=date.today() - timedelta(days=400), actif=True)
+        self.echeance = self.contrat.prochaine_visite()
+
+    def test_deux_generations_croisees_un_ticket_par_contrat(self):
+        a_tient, res = threading.Event(), {}
+
+        def fil_a():
+            with transaction.atomic():
+                res['a'] = generer_visites_dues(self.company, self.admin)
+                a_tient.set()
+                attendre_un_ecrivain_bloque()  # B bloqué avant le commit de A
+            connection.close()
+
+        def fil_b():
+            a_tient.wait(5)
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+            r = api.post('/api/django/sav/contrats-maintenance/generer-dus/')
+            res['b'] = (r.status_code, r.data.get('tickets_generes'))
+            connection.close()
+        fils = [threading.Thread(target=fil_a), threading.Thread(target=fil_b)]
+        for fil in fils:
+            fil.start()
+        for fil in fils:
+            fil.join(20)
+        self.assertEqual(res, {'a': 1, 'b': (200, 0)})
+        self.assertEqual(Ticket.objects.filter(
+            company=self.company, type=Ticket.Type.PREVENTIF).count(), 1)
+        self.contrat.refresh_from_db()
+        self.assertEqual(self.contrat.derniere_visite, self.echeance)

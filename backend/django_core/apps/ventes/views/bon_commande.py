@@ -337,20 +337,24 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def confirmer(self, request, pk=None):
         bc = self.get_object()
-        if bc.statut != BonCommande.Statut.EN_ATTENTE:
-            # ENF11 — conflit d'ÉTAT (et non entrée invalide) : 409.
-            return Response(
-                {'detail': 'Seul un BC en attente peut être confirmé.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        bc.statut = BonCommande.Statut.CONFIRME
-        bc.save()
-        # YDOCF7 — toggle société (défaut OFF = comportement actuel intact) :
-        # réserve le stock des lignes du BC (StockReservation N14, via
-        # installations.services — jamais d'import de son modèle ici).
-        if _reserver_stock_bc_actif(bc.company):
-            from apps.installations.services import reserver_stock_depuis_bc
-            reserver_stock_depuis_bc(bc)
+        with transaction.atomic():
+            # ACNC7 (C-ACNC-002) — statut RELU SOUS VERROU : un 2e « Confirmer »
+            # croisé ⇒ 409, une seule réservation.
+            bc = BonCommande.objects.select_for_update().get(pk=bc.pk)
+            if bc.statut != BonCommande.Statut.EN_ATTENTE:
+                # ENF11 — conflit d'ÉTAT (et non entrée invalide) : 409.
+                return Response(
+                    {'detail': 'Seul un BC en attente peut être confirmé.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            bc.statut = BonCommande.Statut.CONFIRME
+            bc.save()
+            # YDOCF7 — toggle société (défaut OFF = comportement actuel intact) :
+            # réserve le stock des lignes du BC (StockReservation N14, via
+            # installations.services — jamais d'import de son modèle ici).
+            if _reserver_stock_bc_actif(bc.company):
+                from apps.installations.services import reserver_stock_depuis_bc
+                reserver_stock_depuis_bc(bc)
         # CHT15 — nudge « Matériel commandé » (notification seulement, jamais
         # de transition de statut chantier).
         _notifier_chantier_materiel_confirme(bc)
@@ -763,6 +767,13 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         # légal à l'émission) ; facture + lignes recopiées restent atomiques.
         from ..utils.company_settings import create_provisoire
         with transaction.atomic():
+            # ACNC7 — BC RELU SOUS VERROU, porte rejouée : annulé ou facturé
+            # entre la lecture et l'écriture ⇒ 409, aucune facture créée.
+            bc = BonCommande.objects.select_for_update().get(pk=bc.pk)
+            porte = porte_facture_bc(bc)
+            if not porte['ok']:
+                return Response({'detail': porte['motif']},
+                                status=status.HTTP_409_CONFLICT)
             from ..domain.annulation_facture import (
                 detacher_factures_annulees_du_bc)
             detacher_factures_annulees_du_bc(bc, request.user)  # AARG30

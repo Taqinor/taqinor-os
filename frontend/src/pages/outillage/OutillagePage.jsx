@@ -19,6 +19,7 @@ import {
   toast,
 } from '../../ui'
 import { TableauNu } from '../../ui/TableauDefilant'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
 const STATUTS = [
   ['disponible', 'Disponible'],
@@ -55,6 +56,7 @@ export default function OutillagePage() {
   const [editing, setEditing] = useState(null) // null | {} (nouveau) | outil
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const { errors, setFromResponse, clearField, clearAll } = useServerFieldErrors() // AERR85
 
   // NTMOB31 — scan d'étiquette d'outil : bascule emprunté ↔ rendu sans
   // recherche manuelle dans la liste (3ᵉ module branché sur `useBarcodeScanner`,
@@ -123,11 +125,11 @@ export default function OutillagePage() {
     })
     setEditing(o)
   }
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); clearField(k) }
 
   const save = async () => {
     if (!form.nom.trim()) { toast.error('Le nom de l’outil est requis.'); return }
-    setSaving(true)
+    setSaving(true); clearAll()
     const payload = {
       ...form,
       emplacement: form.emplacement === '' ? null : form.emplacement,
@@ -146,7 +148,7 @@ export default function OutillagePage() {
       }
       await load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? "Enregistrement impossible.")
+      setFromResponse(e?.response?.data, { fallback: 'Enregistrement impossible.' })
     } finally { setSaving(false) }
   }
 
@@ -329,6 +331,7 @@ export default function OutillagePage() {
             </label>
             <label className="flex-1 text-sm font-medium">N° de série
               <Input className="mt-1" value={form.numero_serie} onChange={(e) => set('numero_serie', e.target.value)} />
+              {errors.numero_serie && <span role="alert" className="text-xs text-destructive">{errors.numero_serie}</span>}
             </label>
           </div>
           <label className="text-sm font-medium">Emplacement
@@ -377,6 +380,8 @@ export default function OutillagePage() {
               onChange={(e) => set('note', e.target.value)} />
           </label>
 
+          {Object.entries(errors).filter(([k]) => k !== 'numero_serie').map(([k, m]) => (
+            <p key={k} role="alert" className="text-sm text-destructive">{m}</p>))}
           <div className="mt-1 flex gap-2">
             <Button onClick={save} disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}

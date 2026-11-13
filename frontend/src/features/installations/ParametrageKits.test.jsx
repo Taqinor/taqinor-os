@@ -98,3 +98,36 @@ describe('ParametrageKits (PACT61)', () => {
       expect.objectContaining({ kit: 12, active: true })))
   })
 })
+
+// AERR83 — « Retirer » ouvre la boîte maison nommant le composant et le kit.
+describe('ParametrageKits — AERR83 confirmation nommée', () => {
+  it('Retirer puis Annuler : aucun appel ; boîte nommée ; aucun confirm natif', async () => {
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider')
+    const { within } = await import('@testing-library/react')
+    const natif = vi.spyOn(window, 'confirm')
+    inst.getKitComposants.mockImplementation(() => Promise.resolve({ data: { count: 1, results: [
+      { id: 81, kit: 12, produit_nom: 'Onduleur 5 kW', quantite: '1' },
+    ] } }))
+    const user = userEvent.setup()
+    render(<ConfirmProvider><ParametrageKits /></ConfirmProvider>)
+    await user.click((await screen.findAllByRole('button', { name: 'Retirer' }))[0])
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Onduleur 5 kW')
+    expect(boite).toHaveTextContent('Kit variateur pompage')
+    await user.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(inst.deleteKitComposant).not.toHaveBeenCalled()
+
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
+    await user.click(screen.getAllByRole('button', { name: 'Retirer' })[0])
+    const boite2 = await screen.findByRole('alertdialog')
+    await user.click(within(boite2).getByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(inst.deleteKitComposant).toHaveBeenCalledWith(81))
+    expect(inst.deleteKitComposant).toHaveBeenCalledTimes(1)
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
+    inst.getKitComposants.mockImplementation(() => Promise.resolve({ data: { count: 0, results: [] } }))
+  })
+})

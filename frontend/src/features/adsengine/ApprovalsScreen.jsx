@@ -3,6 +3,8 @@ import {
   Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw, PlayCircle,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { useConfirmDialog } from '../../ui/confirm'
+import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMoney, formatNumber, REJECTION_REASONS,
   actionWarnings, editCopyDiff, emptyGrid, actionResultKey, erreurServeur,
@@ -91,6 +93,8 @@ export default function ApprovalsScreen() {
   const { has } = useAdsPermissions()
   const canApprove = has('adsengine_approve')
   const canManage = has('adsengine_manage')
+  const { confirm } = useConfirmDialog()
+  const rootRef = useRef(null)
   const [actions, setActions] = useState([])
   // La liste vit AUSSI dans une ref, écrite au MÊME instant que l'état (jamais
   // au rendu). Les raccourcis clavier la lisent : sans elle, le gestionnaire
@@ -296,7 +300,15 @@ export default function ApprovalsScreen() {
         // plus (le raccourci ne doit pas déclencher ce que l'écran cache), et
         // « Appliquer » reste un geste délibéré à la souris.
         if (!current || actionResultKey(current) === 'approuve') return
-        e.preventDefault(); approve(current.id)
+        // AERR23 — jamais sous une boîte ouverte ; et l'approbation (budget
+        // engagé, non défaisable depuis l'écran) nomme l'action avant de partir.
+        if (dialogueParDessus(rootRef.current)) return
+        e.preventDefault()
+        confirm({
+          title: `Approuver : ${actionTypeLabel(current.type)} ?`,
+          description: current.reason_fr || '',
+          confirmLabel: 'Confirmer', cancelLabel: 'Annuler', destructive: false,
+        }).then((ok) => { if (ok) approve(current.id) })
       } else if (key === 'r') {
         // PUB10 — même garde que le bouton Rejeter.
         if (!canApprove) return
@@ -307,7 +319,7 @@ export default function ApprovalsScreen() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveFocus, approve, openReject, canApprove])
+  }, [moveFocus, approve, openReject, canApprove, confirm])
 
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
@@ -358,7 +370,7 @@ export default function ApprovalsScreen() {
   const selectedCount = actions.filter(a => selected.has(a.id)).length
 
   return (
-    <div className="page ae-approvals">
+    <div className="page ae-approvals" ref={rootRef}>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <ClipboardCheck size={20} aria-hidden="true" /> Boîte d&apos;approbation

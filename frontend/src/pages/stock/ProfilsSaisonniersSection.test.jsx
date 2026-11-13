@@ -152,11 +152,34 @@ describe('AGR623 — liste, modification, suppression', () => {
     })
   })
 
-  it('supprime un profil', async () => {
+  it('supprime un profil après confirmation nommée (AERR80)', async () => {
     renderSection()
     await screen.findByTestId(`profil-saisonnier-${EXEMPLE.id}`)
     fireEvent.click(screen.getByRole('button', { name: `Supprimer le profil ${EXEMPLE.nom}` }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(new RegExp(EXEMPLE.nom))).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
     await waitFor(() => expect(deleteProfil).toHaveBeenCalledWith(EXEMPLE.id))
+  })
+
+  it('Supprimer puis Annuler : aucune suppression (AERR80)', async () => {
+    renderSection()
+    await screen.findByTestId(`profil-saisonnier-${EXEMPLE.id}`)
+    fireEvent.click(screen.getByRole('button', { name: `Supprimer le profil ${EXEMPLE.nom}` }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(deleteProfil).not.toHaveBeenCalled()
+    expect(screen.getByTestId(`profil-saisonnier-${EXEMPLE.id}`)).toBeInTheDocument()
+  })
+
+  it('un échec de suppression est dit (AERR80)', async () => {
+    deleteProfil.mockRejectedValueOnce(new Error('Network Error'))
+    renderSection()
+    await screen.findByTestId(`profil-saisonnier-${EXEMPLE.id}`)
+    fireEvent.click(screen.getByRole('button', { name: `Supprimer le profil ${EXEMPLE.nom}` }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }))
+    expect(await screen.findByText("Le profil n'a pas pu être supprimé.")).toBeInTheDocument()
   })
 
   it('en lecture seule : la liste se voit, aucun bouton d’écriture', async () => {

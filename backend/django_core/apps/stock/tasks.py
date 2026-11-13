@@ -290,47 +290,6 @@ def notifier_bcf_en_retard_buyer_task():
     return result
 
 
-@shared_task(name='stock.recompute_scores_risque')
-def recompute_scores_risque_task():
-    """NTP2P34 — recalcule quotidiennement le score de risque (NTP2P8,
-    ``selectors.score_risque_fournisseur``, calcul PUR sans appel externe)
-    de tous les fournisseurs ACTIFS de chaque société active.
-
-    ``score_risque_fournisseur`` ne met RIEN en cache (calcul à la volée à
-    chaque appel de l'endpoint `fournisseurs/{id}/score-risque/`) — « invalide
-    le cache éventuel du badge » est donc un no-op ici par construction (rien
-    à invalider). Sans effet si le sélecteur NTP2P8 n'existe pas encore
-    (garde d'existence, no-op silencieux). Best-effort : un fournisseur ou
-    une société en échec n'arrête jamais les suivants. Renvoie
-    ``{company_id: nb_fournisseurs_recalcules}`` pour observabilité/tests."""
-    from authentication.selectors import active_companies
-    from . import selectors as stock_selectors
-    from .models import Fournisseur
-
-    if not hasattr(stock_selectors, 'score_risque_fournisseur'):
-        return {}
-
-    result = {}
-    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
-        count = 0
-        fournisseur_ids = list(
-            Fournisseur.objects.filter(
-                company=company, is_archived=False
-            ).values_list('id', flat=True))
-        for fournisseur_id in fournisseur_ids:
-            try:
-                stock_selectors.score_risque_fournisseur(
-                    company, fournisseur_id)
-                count += 1
-            except Exception:  # noqa: BLE001 — fournisseur suivant (D-ENF22-BLE001)
-                logger.warning(
-                    'stock.recompute_scores_risque: échec fournisseur %s '
-                    '(société %s)', fournisseur_id, company.id,
-                    exc_info=True)
-        result[company.id] = count
-    return result
-
-
 @shared_task(name='stock.alerter_surcapacite_zones')
 def alerter_surcapacite_zones_task(seuil_pct=None):
     """NTWMS42 — alerte PASSIVE de sur-stockage par zone.
@@ -455,14 +414,18 @@ def generer_comptages_tournants_task():
     DUES, toutes sociétés. Idempotente : rejouée le même jour elle ne recrée
     rien (l'échéance du plan vient d'être repoussée). Renvoie le nombre de
     sessions créées."""
+    from authentication.selectors import active_companies
+    from apps.reporting.journal_problemes import consigner_echec_tache
     from .services_wms import generer_comptages_tournants
-    try:
-        resultat = generer_comptages_tournants()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logger.warning('stock.generer_comptages_tournants: échec du balayage',
-                       exc_info=True)
-        return 0
-    return len(resultat.get('sessions', []))
+    total = 0
+    for company in active_companies():  # ACEL39 — une société en échec n'arrête pas les suivantes
+        try:
+            total += len(generer_comptages_tournants(company=company).get('sessions', []))
+        except Exception as exc:  # noqa: BLE001 — société suivante, échec consigné (D-ENF22-BLE001)
+            logger.warning('stock.generer_comptages_tournants: échec société %s',
+                           company.id, exc_info=True)
+            consigner_echec_tache('stock.generer_comptages_tournants', exc)
+    return total
 
 
 @shared_task(name='stock.liberer_vagues_planifiees')
@@ -472,14 +435,18 @@ def liberer_vagues_planifiees_task():
     une vague déjà lancée n'est jamais retouchée. Cadence courte assumée :
     l'heure de coupure est un réglage PAR SOCIÉTÉ, à la minute près. Renvoie le
     nombre de vagues libérées."""
+    from authentication.selectors import active_companies
+    from apps.reporting.journal_problemes import consigner_echec_tache
     from .services_wms import liberer_vagues_planifiees
-    try:
-        resultat = liberer_vagues_planifiees()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logger.warning('stock.liberer_vagues_planifiees: échec du balayage',
-                       exc_info=True)
-        return 0
-    return len(resultat.get('liberees', []))
+    total = 0
+    for company in active_companies():  # ACEL39 — une société en échec n'arrête pas les suivantes
+        try:
+            total += len(liberer_vagues_planifiees(company=company).get('liberees', []))
+        except Exception as exc:  # noqa: BLE001 — société suivante, échec consigné (D-ENF22-BLE001)
+            logger.warning('stock.liberer_vagues_planifiees: échec société %s',
+                           company.id, exc_info=True)
+            consigner_echec_tache('stock.liberer_vagues_planifiees', exc)
+    return total
 
 
 #: APRF34/APRF43 — durée de validité du lien de téléchargement de la notification (24 h).

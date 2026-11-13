@@ -12,12 +12,14 @@ comptées en base / dans la boîte mail de test.
 Run :
     python manage.py test apps.sav.tests_asav12_transition_unique -v2
 """
+import threading
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -33,6 +35,8 @@ from apps.sav.models import (
 from apps.sav.services import ouvrir_downtime
 from apps.stock.models import Produit
 from core.events import ticket_resolu
+from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -164,3 +168,56 @@ class TransitionUniqueTests(TestCase):
         r = self.api.post(f'/api/django/sav/tickets/{t.pk}/reouvrir/')
         self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('statut', r.data)
+
+
+class TransitionCroiseeTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC32 — deux « Résoudre » croisés sur DEUX vraies connexions (patron
+    `TestSavPiecesConcurrence._course` de `tests_pieces.py`) : A résout dans
+    sa transaction et tient la ligne ; B arrive avant le commit de A."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='ACNC32 Co', slug='acnc32-co')
+        self.admin = User.objects.create_user(
+            username='acnc32_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ACNC32-1',
+            client=Client.objects.create(company=self.company, nom='C'),
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.EN_COURS,
+            created_by=self.admin)
+        self.signaux = []
+        ticket_resolu.connect(self._recu, weak=False)
+        self.addCleanup(ticket_resolu.disconnect, self._recu)
+
+    def _recu(self, sender, ticket=None, **kw):
+        self.signaux.append(ticket.pk)
+
+    def test_deux_resolutions_croisees_emettent_une_fois(self):
+        from apps.sav.services import appliquer_transition_ticket
+        a_tient, res = threading.Event(), {}
+
+        def fil_a():
+            with transaction.atomic():
+                appliquer_transition_ticket(
+                    Ticket.objects.get(pk=self.ticket.pk), Ticket.Statut.RESOLU, self.admin)
+                a_tient.set()
+                attendre_un_ecrivain_bloque()  # B bloqué avant le commit de A
+            connection.close()
+
+        def fil_b():
+            a_tient.wait(5)
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+            res['b'] = api.post(f'/api/django/sav/tickets/{self.ticket.pk}/resoudre/').status_code
+            connection.close()
+        fils = [threading.Thread(target=fil_a), threading.Thread(target=fil_b)]
+        for fil in fils:
+            fil.start()
+        for fil in fils:
+            fil.join(20)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.statut, Ticket.Statut.RESOLU)
+        self.assertEqual(self.signaux.count(self.ticket.pk), 1)
+        # B relit « résolu » sous le verrou : même statut = no-op de la
+        # machine d'états (aucun effet, aucune seconde émission).
+        self.assertEqual(res.get('b'), 200)

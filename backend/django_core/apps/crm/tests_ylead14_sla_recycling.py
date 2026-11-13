@@ -202,6 +202,23 @@ class RecyclerLeadsCommandTests(TestCase):
         self.assertFalse(
             LeadActivity.objects.filter(lead=lead).exists())
 
+    def test_opposes_et_perdus_jamais_escalades(self):
+        # ACEL80 — ni note marqueur « objectif dépassé » pour perdu/opposé.
+        from apps.crm.management.commands import (
+            recycler_leads_non_travailles as recyclage_cmd)
+        oppose = _old_new_lead(self.company, hours_ago=48, owner=self.owner)
+        Lead.objects.filter(pk=oppose.pk).update(ne_plus_contacter=True)
+        perdu = _old_new_lead(self.company, hours_ago=48, owner=self.owner)
+        Lead.objects.filter(pk=perdu.pk).update(perdu=True)
+        temoin = _old_new_lead(self.company, hours_ago=48, owner=self.owner)
+        for _passe in range(2):
+            escalated, _ = recycler_leads_non_travailles(now=timezone.now())
+            self.assertEqual(escalated, 1 if _passe == 0 else 0)
+        notes = LeadActivity.objects.filter(
+            kind=LeadActivity.Kind.NOTE, body__startswith=recyclage_cmd.ESCALATION_MARKER)
+        self.assertEqual(
+            set(notes.values_list('lead_id', flat=True)), {temoin.pk})
+
     def test_deassign_disabled_by_default(self):
         """lead_sla_deassign_hours=0 (défaut) → jamais désassigné, même très
         ancien — comportement actuel préservé tant que non configuré."""

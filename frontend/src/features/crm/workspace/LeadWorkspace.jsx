@@ -26,6 +26,7 @@ import { normalizePhoneE164 } from '../../../lib/format'
 import { buildWaUrl } from '../../../lib/contactLinks'
 import { COLD_STAGE, isStageMoveBackward } from '../stages'
 import { useRaisonFroid } from '../useRaisonFroid'
+import { useSaisieCourte } from '../useSaisieCourte'
 import { isSortieSigne } from '../stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
 // lead et les deux étapes) : une seule formulation pour tous les gestes qui
@@ -355,6 +356,8 @@ export default function LeadWorkspace({
      touche à rien : aucun PATCH, l'étape affichée ne bouge pas. */
   const confirmerRecul = useConfirmerRecul()
   const { demanderRaisonFroid, dialogueRaisonFroid } = useRaisonFroid()
+  // AERR117 — saisie courte maison (plus de `window.prompt`).
+  const { demanderSaisie, dialogueSaisie } = useSaisieCourte()
   const changeStageConfirme = useCallback(async (cible) => {
     // Décision fondateur 08/10/2026 — quitter « Signé » dés-accepte le devis
     // côté serveur : la question est posée même vers Froid (pas un recul) ;
@@ -507,23 +510,24 @@ export default function LeadWorkspace({
       }
       case 'relance-arreter': {
         if (!leadId) return undefined
-        const motif = window.prompt("Motif d'arrêt de la cadence :")
-        if (!motif || !motif.trim()) return undefined
-        return toastPromise(
-          crmApi.arreterCadence(leadId, { motif: motif.trim() })
-            .then(() => { draft.refreshServer(); setRelanceVersion((n) => n + 1) }),
-          {
-            loading: 'Arrêt de la cadence…',
-            success: 'Cadence arrêtée.',
-            error: 'Arrêt de la cadence impossible.',
-          },
-        ).catch(() => {})
+        return demanderSaisie('Arrêter la cadence', "Motif d'arrêt de la cadence").then((motif) => {
+          if (!motif) return undefined
+          return toastPromise(
+            crmApi.arreterCadence(leadId, { motif })
+              .then(() => { draft.refreshServer(); setRelanceVersion((n) => n + 1) }),
+            {
+              loading: 'Arrêt de la cadence…',
+              success: 'Cadence arrêtée.',
+              error: 'Arrêt de la cadence impossible.',
+            },
+          ).catch(() => {})
+        })
       }
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
   }, [doArchive, leaveGuard, draft, onClose, setField, leadId,
-    changeStageConfirme, ouvrirConceptionToiture])
+    changeStageConfirme, ouvrirConceptionToiture, demanderSaisie])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')
@@ -531,6 +535,12 @@ export default function LeadWorkspace({
   const prevInQueue = queueIndex > 0 ? leadsQueue[queueIndex - 1] : null
   const nextInQueue = (queueIndex >= 0 && queueIndex < leadsQueue.length - 1)
     ? leadsQueue[queueIndex + 1] : null
+
+  // AERR108 — « Ouvrir le doublon » passe par la garde de sortie : le brouillon
+  // part d'abord (édition) ou la question « Quitter sans enregistrer ? » est posée.
+  const ouvrirDoublon = useCallback((id) => {
+    leaveGuard(() => onOpenDuplicate?.(id))
+  }, [leaveGuard, onOpenDuplicate])
 
   const goToLead = useCallback((target) => {
     if (!target || !onNavigateLead) return
@@ -829,7 +839,7 @@ export default function LeadWorkspace({
             onSubmit={handleCreateSubmit}
             refData={{
               users, tagOptions, motifOptions,
-              leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+              leadId: lead?.id ?? null, onOpenDuplicate: onOpenDuplicate ? ouvrirDoublon : undefined, suggested: draft.suggested,
             }}
           />
         </div>
@@ -875,7 +885,7 @@ export default function LeadWorkspace({
               onSubmit={handleCreateSubmit}
               refData={{
                 users, tagOptions, motifOptions,
-                leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+                leadId: lead?.id ?? null, onOpenDuplicate: onOpenDuplicate ? ouvrirDoublon : undefined, suggested: draft.suggested,
                 // QJ-ARBRE (09/09/2026) — l'arbre « Historique en un coup
                 // d'œil » (SectionPipeline, colonne droite du Suivi
                 // commercial) lit le MÊME historique que TimelineTab —
@@ -1010,6 +1020,7 @@ export default function LeadWorkspace({
         />
       )}
       {dialogueRaisonFroid}
+      {dialogueSaisie}
       {signeOpen && (
         <SigneDialog
           lead={state.server}

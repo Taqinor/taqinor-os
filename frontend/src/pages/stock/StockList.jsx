@@ -58,6 +58,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 
@@ -429,6 +430,8 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const [transfertsTotal, setTransfertsTotal] = useState(null)
   const [newEmp, setNewEmp] = useState('')
   const [error, setError] = useState(null)
+  // AERR84 — refus serveur par champ (quantité sous « Quantité », le reste dans l'alerte).
+  const { errors: refus, setErrors: setRefus, setFromResponse } = useServerFieldErrors()
   const [saving, setSaving] = useState(false)
   // WR4 / FG62 — suggestions de réappro par emplacement (admin).
   const [suggestions, setSuggestions] = useState([])
@@ -463,7 +466,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
     const msg = validateTransfert({ breakdown, source, destination, quantite })
     if (!produitId) { setError('Choisissez un produit.'); return }
     if (msg) { setError(msg); return }
-    setSaving(true); setError(null)
+    setSaving(true); setError(null); setRefus({})
     try {
       // AAPV74 (rejeu 08/11) — les Select rendent des chaînes ; le corps du
       // transfert exige des identifiants ENTIERS (garde stricte côté serveur).
@@ -476,7 +479,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
       setQuantite(''); setNote('')
       onDone?.()
     } catch (err) {
-      setError(err.response?.data?.detail ?? 'Échec du transfert.')
+      setFromResponse(err?.response?.data, { fallback: frenchError(err, 'Le transfert a été refusé.') })
     } finally { setSaving(false) }
   }
 
@@ -488,7 +491,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
       setNewEmp('')
       await loadEmplacements()
     } catch (err) {
-      setError(err.response?.data?.detail ?? "Échec de l'ajout d'emplacement.")
+      setError(frenchError(err, "L'emplacement n'a pas pu être ajouté."))
     }
   }
   const removeEmplacement = async (id) => {
@@ -579,6 +582,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
             {source && (
               <span className="text-xs text-muted-foreground">dispo : {dispoSource}</span>
             )}
+            {refus.quantite && <span role="alert" className="text-xs text-destructive">{refus.quantite}</span>}
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -587,8 +591,10 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
                  placeholder="Ex. chargement chantier Casablanca" />
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+        {(error || Object.keys(refus).some((k) => k !== 'quantite')) && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error || Object.entries(refus).filter(([k]) => k !== 'quantite').map(([, m]) => m).join(' ')}
+          </div>
         )}
 
         <div className="flex justify-end">
@@ -1141,10 +1147,15 @@ export default function StockList() {
       </div>
     )
   }
-  if (error) {
+  // AERR33 — écran d'erreur plein SEULEMENT si rien n'a jamais été chargé ;
+  // une relecture ratée garde le catalogue affiché (avis « pas à jour » plus bas).
+  const reessayer = (
+    <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchProduits())}>Réessayer</Button>
+  )
+  if (error && produits.length === 0) {
     return (
       <div className="ui-root px-4 py-5 sm:px-5">
-        <EmptyState icon={AlertTriangle} title="Erreur de chargement"
+        <EmptyState icon={AlertTriangle} title="Erreur de chargement" action={reessayer}
                     description={frenchError(error, 'Chargement du catalogue impossible.')} className="border-destructive/40" />
       </div>
     )
@@ -1180,6 +1191,13 @@ export default function StockList() {
           onCancel={() => setConfirmDelete(null)}
           onConfirm={handleForceDelete}
         />
+      )}
+
+      {error && (
+        <div role="status" data-testid="catalogue-pas-a-jour" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>Catalogue pas à jour — la dernière relecture a échoué ; les produits affichés datent du dernier chargement réussi.</span>
+          {reessayer}
+        </div>
       )}
 
       {/* ODY17 — ModuleHero VX15 : identité de cockpit + KPI de synthèse.

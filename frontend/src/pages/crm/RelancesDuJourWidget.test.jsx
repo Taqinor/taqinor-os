@@ -87,6 +87,22 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     openSpy.mockRestore()
   })
 
+  it('relecture en échec après Fait : la file reste, Réessayer relit (AERR101)', async () => {
+    crmApi.getRelanceEtapesDues.mockResolvedValue(
+      reponseContrat('crm', 'relance_etape_v2'))
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    crmApi.getRelanceEtapesDues.mockRejectedValueOnce(new Error('réseau'))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Fait$/ })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    // la relecture est différée d'1 s après le geste (setTimeout de `traiter`).
+    expect(await screen.findByTestId('file-pas-a-jour', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByText('Indisponible pour le moment.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.queryByTestId('file-pas-a-jour')).not.toBeInTheDocument())
+  })
+
   it('le mini-formulaire Fait envoie l\'issue choisie', async () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())

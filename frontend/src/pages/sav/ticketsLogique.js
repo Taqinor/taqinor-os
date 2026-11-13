@@ -139,3 +139,10 @@ export function ticketSlaTri(ticket, now = new Date()) {
   if (!e) return Number.MAX_SAFE_INTEGER
   return e.jours
 }
+
+/** Date ISO (AAAA-MM-JJ) en français, « — » si absente ou illisible. */
+export const formatDateFR = (iso) => {
+  if (!iso) return '—'
+  const d = new Date(`${iso}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
+}

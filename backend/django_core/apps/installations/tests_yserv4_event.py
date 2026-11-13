@@ -10,15 +10,19 @@ Run :
     python manage.py test apps.installations.tests_yserv4_event -v2
 """
 import itertools
+import threading
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from core.events import chantier_receptionne
+from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -140,3 +144,48 @@ class TestChantierReceptionneEmisViaMiseEnService(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(len(self.catcher.calls), 1)
         self.assertEqual(self.catcher.calls[0]['installation_id'], self.inst.id)
+
+
+class TestChantierReceptionneCourse(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC31 — deux VRAIES connexions (patron ``apps/sav/tests_pieces.py::
+    TestSavPiecesConcurrence._course``) : A réceptionne et tient sa transaction
+    pendant l'émission ; B envoie le même PATCH au même moment. Classe
+    ``TransactionTestCase`` dédiée : ``TestChantierReceptionneEmisViaPerformUpdate``
+    est un ``TestCase`` (une seule connexion, aucune course possible)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.inst = make_installation(self.company, make_client(self.company))
+
+    def test_deux_patchs_croises_emettent_une_fois(self):
+        a_tient, b_tente, appels, res = threading.Event(), threading.Event(), [], {}
+
+        def recepteur(sender, installation, **kwargs):
+            appels.append(installation.id)
+            if not a_tient.is_set():  # A : tient sa transaction ouverte
+                a_tient.set()
+                b_tente.wait(5)
+                attendre_un_ecrivain_bloque()  # B bloqué sur la relecture du chantier
+
+        chantier_receptionne.connect(recepteur, dispatch_uid='acnc31-course', weak=False)
+        self.addCleanup(chantier_receptionne.disconnect, dispatch_uid='acnc31-course')
+        url = f'/api/django/installations/chantiers/{self.inst.id}/'
+
+        def fil(nom):
+            if nom == 'b':
+                a_tient.wait(5)
+                b_tente.set()
+            res[nom] = auth(self.user).patch(
+                url, {'statut': Installation.Statut.RECEPTIONNE}, format='json').status_code
+            connection.close()
+
+        fils = [threading.Thread(target=fil, args=(n,)) for n in ('a', 'b')]
+        for f in fils:
+            f.start()
+        for f in fils:
+            f.join(20)
+        self.assertEqual(res, {'a': 200, 'b': 200})
+        self.assertEqual(appels, [self.inst.id])
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, Installation.Statut.RECEPTIONNE)

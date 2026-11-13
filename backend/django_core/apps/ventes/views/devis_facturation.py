@@ -74,8 +74,16 @@ def refus_avant_facturer(vue, request, devis, corps):
     exigent le code d'encaissement (même garde que
     ``factures/<id>/enregistrer-paiement/``) ; avertissement de vente
     bloquant (ZSAL9, ``override_avertissement``)."""
+    # ASEC96 (D-ASEC-VER6-1) — retirer un brouillon à référence LÉGALE émet
+    # son avoir : `encaisser` (prédicat d'ASEC90, BC `creer-facture`).
+    from core.numbering import est_reference_provisoire as provisoire
+    from ..models import Facture
+    from ..vente_facturation import factures_de_la_vente
+    remplace_legal = bool(corps.get('remplacer_brouillons')) and any(
+        f.statut == Facture.Statut.BROUILLON and not provisoire(f.reference)
+        for f in factures_de_la_vente(devis))
     if corps.get('emettre') or corps.get('paiements') \
-            or corps.get('utiliser_avances'):
+            or corps.get('utiliser_avances') or remplace_legal:
         if not HasPermissionOrLegacy('encaisser')().has_permission(
                 request, vue):
             return Response(
@@ -175,6 +183,13 @@ class DevisFacturationActionsMixin:
         if not PeutEncaisser().has_permission(request, self):  # ASEC67
             return Response({'detail': MOTIF_SANS_ENCAISSER},
                             status=status.HTTP_403_FORBIDDEN)
+        # ACNC12 (C-ACNC-010) — « Idempotency-Key » : la tranche déjà émise est
+        # rendue, jamais la tranche SUIVANTE (2e numéro légal).
+        from apps.facturation.views.facture_rectificatifs import rejeu_par_cle
+        rejeu = rejeu_par_cle(self, request, 'generer_facture',
+                              lambda: self.generer_facture(request, pk))
+        if rejeu is not None:
+            return rejeu
         devis = self.get_object()
         # ENF11 — corps validé par son sérialiseur déclaré : un corps non
         # objet (liste, scalaire) ou un drapeau mal typé → 400, jamais 500.
@@ -461,6 +476,28 @@ class DevisFacturationActionsMixin:
         from ..models import ProformaDocument
         from ..utils.pdf import generate_proforma_pdf
 
+        # ACNC12 — « Idempotency-Key » : la proforma déjà créée est RE-RENDUE
+        # sous son numéro PF- (le contrat mémorise son id, jamais le PDF).
+        from apps.facturation.views.facture_rectificatifs import rejeu_par_cle
+
+        def _creer_en_json():
+            r = self.proforma_pdf(request, pk)
+            if not hasattr(r, 'proforma_id'):
+                return r  # refus : rendu tel quel, jamais mémorisé
+            return Response({'proforma': r.proforma_id},
+                            status=status.HTTP_201_CREATED)
+        rejeu = rejeu_par_cle(self, request, 'proforma', _creer_en_json)
+        if rejeu is not None:
+            if getattr(request, '_proforma_rendue', None) is not None:
+                return request._proforma_rendue
+            if rejeu.status_code >= 400:
+                return rejeu
+            proforma = ProformaDocument.objects.get(
+                pk=rejeu.data['proforma'], company=request.user.company)
+            resp = HttpResponse(generate_proforma_pdf(proforma.devis, proforma.reference),
+                                content_type='application/pdf')
+            resp['Content-Disposition'] = f'inline; filename="{proforma.reference}.pdf"'
+            return resp
         devis = self.get_object()
         company = request.user.company
         rendu = {}
@@ -504,4 +541,6 @@ class DevisFacturationActionsMixin:
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
             f'inline; filename="{proforma.reference}.pdf"')
+        request._proforma_rendue = resp  # ACNC12 — rendu réutilisé par l'enveloppe
+        resp.proforma_id = proforma.id
         return resp

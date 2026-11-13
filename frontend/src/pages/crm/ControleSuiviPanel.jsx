@@ -849,9 +849,14 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
         const statutRefus = err?.response?.status
         const erreurs = (statutRefus === 400 || statutRefus === 409) ? err.response.data?.erreurs : null
         const nomme = erreurs && Object.keys(erreurs).length > 0
-        setResultat({
-          cle, donnees: null, erreurs: nomme ? erreurs : null, panne: !nomme,
-        })
+        // AERR101 — une panne (non nommée) garde le verdict DÉJÀ lu : seul le
+        // refus qui nomme un champ vide l'écran (le message va sous le champ).
+        setResultat((prec) => ({
+          cle,
+          donnees: nomme ? null : (prec.donnees ?? null),
+          erreurs: nomme ? erreurs : null,
+          panne: !nomme,
+        }))
         // Les sélecteurs vivent dans le détail : un refus qui NOMME un champ le
         // déplie pour montrer le message sous ce champ (sans toucher à la préférence
         // mémorisée — c'est une ouverture forcée, pas un choix).
@@ -910,7 +915,7 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
             bouton qui déplie le reste. */}
         {chargement && !donnees ? (
           <Squelette />
-        ) : !chargement && panne ? (
+        ) : !chargement && panne && !donnees ? (
           <div className="flex flex-wrap items-center gap-2" data-testid="controle-panne">
             <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
             <Button type="button" size="sm" variant="outline" onClick={() => setTentative((t) => t + 1)}>
@@ -922,6 +927,14 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
             className={cn('transition-opacity', chargement && 'opacity-60')}
             aria-busy={chargement || undefined}
           >
+            {!chargement && panne && (
+              <div className="mb-2 flex flex-wrap items-center gap-2" role="status" data-testid="controle-pas-a-jour">
+                <span className="text-sm text-muted-foreground">Pas à jour — le serveur n’a pas répondu.</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => setTentative((t) => t + 1)}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
             <Bandeau donnees={donnees} />
           </div>
         ) : null}

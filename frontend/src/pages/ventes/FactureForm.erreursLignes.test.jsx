@@ -125,4 +125,39 @@ describe('AFAC70 — FactureForm : motif serveur sous la ligne refusée', () => 
     expect([...serveur.lignes.values()].map(l => l.designation).sort())
       .toEqual(['Ligne 1', 'Ligne 2', 'Ligne 3'])
   })
+
+  it('une ligne dont la réponse expire n’est jamais re-postée', async () => {
+    // ACNC15 (C-ACNC-028) — la ligne est créée en base mais la réponse se perd
+    // (délai) : le formulaire relit les lignes et ne la renvoie pas. Mutant :
+    // renvoyer les lignes sans relecture ⇒ 2e createLigneFacture.
+    const ventesApi = (await import('../../api/ventesApi')).default
+    ventesApi.createLigneFacture.mockClear()
+    ventesApi.updateFacture.mockClear()
+    ventesApi.createLigneFacture.mockImplementationOnce((data) => {
+      const id = serveur.prochainId++
+      serveur.lignes.set(id, { id, ...data })
+      return Promise.reject(Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))
+    })
+    ventesApi.getFacture.mockImplementation(() => Promise.resolve({ data: { id: 77, lignes: [...serveur.lignes.values()] } }))
+    rendre(facture([ligne(1, { id: 1 }), ligne(2, { id: 2 }), ligne(3)]))
+    serveur.lignes.set(1, { id: 1, ...ligne(1) })
+    serveur.lignes.set(2, { id: 2, ...ligne(2) })
+    enregistrer()
+    await waitFor(() => expect(ventesApi.getFacture).toHaveBeenCalledWith(77))
+    enregistrer()
+    await waitFor(() => expect(ventesApi.updateFacture).toHaveBeenCalledTimes(2))
+    expect(ventesApi.createLigneFacture).toHaveBeenCalledTimes(1)
+    expect(serveur.lignes.size).toBe(3)
+    ventesApi.getFacture.mockResolvedValue({ data: {} })
+  })
+
+  it('l’enregistrement envoie lock_version', async () => {
+    // ACNC15 — le jeton de version lu à l'ouverture part avec l'en-tête.
+    const ventesApi = (await import('../../api/ventesApi')).default
+    ventesApi.updateFacture.mockClear()
+    rendre({ ...facture([ligne(1, { id: 1 })]), lock_version: 4 })
+    enregistrer()
+    await waitFor(() => expect(ventesApi.updateFacture).toHaveBeenCalled())
+    expect(ventesApi.updateFacture.mock.calls[0][1].lock_version).toBe(4)
+  })
 })

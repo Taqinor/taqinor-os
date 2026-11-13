@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderLeadWorkspace, echecReseauAutosaveVille } from '../../../test/leadWorkspaceHarness'
-import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { LEAD_A, dupMatches, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
 import LeadWorkspace from './LeadWorkspace'
@@ -19,6 +19,7 @@ import { initState } from './draftCore'
    SIGNED→SigneDialog est prouvé ici au niveau du shell (le lien
    StageControl→onSigne est couvert par StageControl.test.jsx — non dupliqué). */
 
+// AERR108 — doublons pilotables par test : `dupMatches` du module de mocks partagé.
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 // SigneDialog rendu en sonde : prouve l'ouverture par onAction('signe').
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => <div data-testid="signe-dialog" /> }))
@@ -77,6 +78,33 @@ describe('LW37 — fenêtre : édition autosauvée (migré de LeadForm.test / VX
   it('en création, le champ Nom (#lf-nom) porte l’auto-focus (SectionContact)', () => {
     render(<SectionContact state={initState({ mode: 'create' })} setField={vi.fn()} errors={{}} mode="create" refData={{}} />)
     expect(document.activeElement?.id).toBe('lf-nom')
+  })
+})
+
+describe('AERR108 — quitter la fiche ne perd plus la frappe', () => {
+  it('démontage avant le débounce : le brouillon part', async () => {
+    const { unmount } = renderEdit()
+    await settled()
+    fireEvent.change(document.querySelector('#lf-ville'), { target: { value: 'Rabat' } })
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    unmount()
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, { ville: 'Rabat' }))
+    expect(crmApi.updateLead).toHaveBeenCalledTimes(1)
+  })
+
+  it('ouvrir un doublon : flush avant de basculer', async () => {
+    dupMatches.current = [{ id: 77, nom: 'Doublon' }]
+    try {
+      const onOpenDuplicate = vi.fn()
+      renderEdit({ onOpenDuplicate })
+      await settled()
+      fireEvent.change(document.querySelector('#lf-ville'), { target: { value: 'Rabat' } })
+      fireEvent.click(await screen.findByRole('button', { name: /Doublon/ }))
+      await waitFor(() => expect(onOpenDuplicate).toHaveBeenCalledWith(77))
+      expect(crmApi.updateLead).toHaveBeenCalledWith(1, { ville: 'Rabat' })
+      expect(crmApi.updateLead.mock.invocationCallOrder[0])
+        .toBeLessThan(onOpenDuplicate.mock.invocationCallOrder[0])
+    } finally { dupMatches.current = [] }
   })
 })
 

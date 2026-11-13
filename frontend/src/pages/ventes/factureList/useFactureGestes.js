@@ -3,19 +3,32 @@
 // consolidation, encaissement groupé), l'avoir, l'annulation (AFAC13), le
 // marquage sec « payée » (EZ13) et `doAction`. Déplacés tels quels (move only)
 // depuis FactureList.jsx ; `lot` = useFactureLot (sélection encaissable).
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission } from '../../../hooks/useHasPermission'
+import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import ventesApi from '../../../api/ventesApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
-import { fetchFactures, annulerFacture } from '../../../features/ventes/store/ventesSlice'
+import { fetchFactures, fetchFacturesKpis, annulerFacture } from '../../../features/ventes/store/ventesSlice'
 import { frenchError } from '../../../lib/frenchError'
 import { errorMessageFrom } from '../../../lib/toast'
 import { toNumber } from '../../../lib/format'
 import { toast } from '../../../ui'
-import { today } from './factureHelpers.js'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
-export default function useFactureGestes({ dispatch, confirm, lot }) {
+// AERR3 — LE point « relire après un geste d'argent » : la liste PUIS les
+// tuiles (lues seulement au montage avant) ; `surEchec(true)` si les tuiles
+// n'ont pas pu être relues (anciennes valeurs gardées, dites « pas à jour »).
+// ACNC3 — clé d'envoi d'un geste rejouable (créée à l'ouverture du dialogue).
+const nouvelleCle = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+
+export function relireApresGeste(dispatch, surEchec) {
+  dispatch(fetchFactures())
+  return Promise.resolve(dispatch(fetchFacturesKpis()))
+    .then((a) => surEchec?.(Boolean(a?.error)), () => surEchec?.(true))
+}
+
+export default function useFactureGestes({ dispatch, confirm, lot, relire = () => relireApresGeste(dispatch) }) {
   const {
     facturesEncaissables, facturesEcartees, clientSelectionUnique, clearSelection,
   } = lot
@@ -61,7 +74,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     try {
       await ventesApi.remettreBrouillonFacture(f.id)
       toast.success(`Facture ${f.reference} remise en brouillon.`)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Remise en brouillon impossible.')
     } finally { setWir183Busy(false) }
@@ -79,7 +92,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     try {
       const { data } = await ventesApi.facturerPenalitesFacture(f.id)
       toast.success(`Facture de pénalités ${data?.reference ?? ''} créée.`)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Facturation des pénalités impossible.')
     } finally { setWir183Busy(false) }
@@ -102,7 +115,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       await ventesApi.abandonnerSoldeFacture(abandonTarget.id, abandonMotif)
       toast.success(`Solde de ${abandonTarget.reference} abandonné.`)
       setAbandonTarget(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Abandon du solde impossible.')
     } finally { setWir183Busy(false) }
@@ -116,7 +129,11 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
   const [retourMotif, setRetourMotif] = useState('')
   const [retourRestocker, setRetourRestocker] = useState(false)
   const [retourQtes, setRetourQtes] = useState({})
+  // ACNC3 — clé gardée entre deux clics, renouvelée à l'ouverture et au succès.
+  const cleRetour = useRef(null)
+  const cleAvoir = useRef(null)
   const openRetourClient = async (f) => {
+    cleRetour.current = nouvelleCle()
     setRetourMotif('')
     setRetourRestocker(false)
     setRetourQtes({})
@@ -141,12 +158,15 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     try {
       await ventesApi.retourClientFacture(retourTarget.id, {
         motif: retourMotif, restocker: retourRestocker, lignes,
+        idempotency_key: cleRetour.current,
       })
+      cleRetour.current = nouvelleCle()
       toast.success(`Retour enregistré pour ${retourTarget.reference}.`)
       setRetourTarget(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Retour client impossible.')
+      if (!err?.response) relire()  // ACNC3 — sans réponse : la liste est relue
     } finally { setWir183Busy(false) }
   }
 
@@ -165,7 +185,9 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       const res = await fetchAllPages((page) => ventesApi.getDevis({ statut: 'accepte', page, page_size: 200 }).then((r) => r.data))
       setConsoliderDevis(Array.isArray(res) ? res : (res?.results ?? []))
     } catch {
-      setConsoliderDevis([])
+      // AERR21 — un échec n'est pas « aucun devis » : la boîte se referme et le dit.
+      setConsoliderOpen(false)
+      toast.error('Devis à consolider indisponibles.', { action: { label: 'Réessayer', onClick: () => openConsolider() } })
     }
   }
   const handleConsolider = async () => {
@@ -178,7 +200,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       const { data } = await ventesApi.consoliderFactures(consoliderSel)
       toast.success(`Facture consolidée ${data?.reference ?? ''} créée.`)
       setConsoliderOpen(false)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Consolidation impossible.')
     } finally { setWir183Busy(false) }
@@ -189,7 +211,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
   // force quand l'utilisateur la renseigne.
   const [encaissementOpen, setEncaissementOpen] = useState(false)
   const [encaissementForm, setEncaissementForm] = useState({
-    montant: '', mode: 'virement', date: today, reference: '',
+    montant: '', mode: 'virement', date: todayLocalIso(), reference: '',
   })
   const [encaissementRepartition, setEncaissementRepartition] = useState({})
 
@@ -204,6 +226,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
   const [avoirType, setAvoirType]     = useState('geste_commercial')
 
   const openAvoirModal = async (f) => {
+    cleAvoir.current = nouvelleCle()
     setAvoirMotif('')
     setAvoirQtes({})
     setAvoirType('geste_commercial')
@@ -220,7 +243,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     if (!avoirTarget) return
     setAvoirSaving(true)
     try {
-      const payload = { motif: avoirMotif, type: avoirType }
+      const payload = { motif: avoirMotif, type: avoirType, idempotency_key: cleAvoir.current }
       if (mode === 'partiel') {
         const lignes = (avoirTarget.lignes || [])
           .map(l => ({ ...l, _qte: parseFloat(avoirQtes[l.id] ?? 0) }))
@@ -241,11 +264,13 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
         payload.lignes = lignes
       }
       await ventesApi.creerAvoir(avoirTarget.id, payload)
+      cleAvoir.current = nouvelleCle()
       setAvoirTarget(null)
-      dispatch(fetchFactures())
+      relire()
       toast.success('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
     } catch (err) {
       toast.error(frenchError(err, "Création de l'avoir impossible."))
+      if (!err?.response) relire()  // ACNC3 — sans réponse : la liste est relue
     } finally {
       setAvoirSaving(false)
     }
@@ -255,15 +280,18 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
 
   // APX17 — confirmation maison (AlertDialog Radix), jamais la popup du
   // système.
+  // AERR20 — rend vrai au succès (l'appelant ferme sa boîte seulement alors).
   const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
+    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return false
     setActionId(id)
     try {
       await dispatch(thunk(id)).unwrap()
+      return true
     } catch (err) {
       // VX63 — plus de JSON brut à l'écran : message FR lisible extrait du
       // payload d'erreur (le sweep alert→toast reste la propriété de VX19).
       toast.error(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
+      return false
     } finally {
       setActionId(null)
     }
@@ -296,7 +324,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       await dispatch(annulerFacture({ id: annulTarget.id, directive })).unwrap()
       toast.success(`Facture ${annulTarget.reference} annulée.`)
       setAnnulTarget(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       setAnnulErreur(err?.detail
         || errorMessageFrom({ response: { data: err } }, 'Annulation impossible.'))
@@ -312,12 +340,17 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
   const [payeeSecheMotif, setPayeeSecheMotif] = useState('')
   const openMarquerPayee = (f) => setPayeeSecheTarget(f)
 
+  // AERR13 — un refus PAR CHAMP s'écrit sous le champ de la boîte ; sans champ, le `detail`.
+  const egErreurs = useServerFieldErrors()
+  const cleEncaissement = useRef(null)  // ACNC9 — gardée entre deux clics
   const openEncaissementGroupe = () => {
+    cleEncaissement.current = nouvelleCle()
+    egErreurs.clearAll()
     setEncaissementRepartition({})
     setEncaissementForm({
       montant: String(facturesEncaissables.reduce(
         (s, f) => s + toNumber(f.montant_du ?? 0), 0)),
-      mode: 'virement', date: today, reference: '',
+      mode: 'virement', date: todayLocalIso(), reference: '',
     })
     setEncaissementOpen(true)
   }
@@ -335,7 +368,9 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
         reference: encaissementForm.reference,
         factures: facturesEncaissables.map(f => f.id),
         ...(Object.keys(repartition).length ? { repartition } : {}),
+        idempotency_key: cleEncaissement.current,
       })
+      cleEncaissement.current = nouvelleCle()
       const n = Array.isArray(data) ? data.length : 0
       toast.success(`Encaissement réparti sur ${n} facture(s).`
         + (facturesEcartees.length
@@ -343,9 +378,16 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
           : ''))
       setEncaissementOpen(false)
       clearSelection()
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
-      erreurServeur(err, 'Encaissement groupé impossible.')
+      const d = err?.response?.data
+      if (d && typeof d === 'object' && ['montant', 'date', 'mode', 'reference'].some(k => k in d)) {
+        egErreurs.setFromResponse(d)
+      } else {
+        egErreurs.clearAll()
+        erreurServeur(err, 'Encaissement groupé impossible.')
+        if (!err?.response) relire()  // ACNC9 — sans réponse : la liste est relue
+      }
     } finally { setWir183Busy(false) }
   }
 
@@ -361,7 +403,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     openConsolider, handleConsolider,
     encaissementOpen, setEncaissementOpen, encaissementForm, setEncaissementForm,
     encaissementRepartition, setEncaissementRepartition,
-    openEncaissementGroupe, handleEncaissementGroupe,
+    openEncaissementGroupe, handleEncaissementGroupe, egErreurs: egErreurs.errors,
     avoirTarget, setAvoirTarget, avoirMotif, setAvoirMotif, avoirSaving, avoirQtes,
     setAvoirQtes, avoirType, setAvoirType, openAvoirModal, handleCreerAvoir,
     actionId, doAction,

@@ -36,6 +36,8 @@ const api = vi.hoisted(() => ({
   facturerPenalitesFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-PEN-1' } })),
   consoliderFactures: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-CONSO-1' } })),
   encaissementGroupeFactures: vi.fn(() => Promise.resolve({ data: [{ id: 1 }, { id: 2 }] })),
+  // AERR3 — tuiles d'argent relues après un geste d'argent.
+  getFacturesKpis: vi.fn(() => Promise.resolve({ data: { encaisse_mois: '0' } })),
   getFacture: vi.fn(() => Promise.resolve({
     data: {
       id: 1, reference: 'FAC-2026-07-0001', montant_du: 5000,
@@ -208,6 +210,8 @@ describe('WIR183 — XPOS7 : retour client', () => {
       motif: 'Panneau cassé',
       restocker: true,
       lignes: [{ produit: 77, quantite: '2' }],
+      // ACNC3 — clé d'envoi créée à l'ouverture du dialogue (rejeu = un avoir).
+      idempotency_key: expect.any(String),
     }))
   })
 
@@ -296,6 +300,34 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
       })))
   })
 
+  it('après l’encaissement groupé, la tuile Encaissé ce mois relit le serveur', async () => {
+    // AERR3 (C-AERR-003) — mutant : retirer fetchFacturesKpis() du point de relecture ⇒ échec.
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const { Provider } = await import('react-redux')
+    const { MemoryRouter } = await import('react-router-dom')
+    const { render } = await import('@testing-library/react')
+    const ventes = (await import('../../features/ventes/store/ventesSlice')).default
+    api.getFacturesKpis
+      .mockResolvedValueOnce({ data: { encaisse_mois: '0' } })
+      .mockResolvedValueOnce({ data: { encaisse_mois: '12000' } })
+    const store = configureStore({
+      reducer: { ventes, auth: (s = { role: 'admin' }) => s },
+      preloadedState: { ventes: { ...ventes(undefined, { type: 'init' }), factures: [{ ...emise, total_ttc: 12000, montant_du: 12000 }] } },
+    })
+    const page = <ThemeProvider><FactureList /></ThemeProvider>
+    render(<Provider store={store}><MemoryRouter initialEntries={['/ventes/factures']}>{page}</MemoryRouter></Provider>)
+    const tuile = () => screen.getByText('Encaissé ce mois').parentElement.parentElement
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(1))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(tuile()).toHaveTextContent(/12\s?000/))
+  })
+
   it('est désactivé si la sélection mélange plusieurs clients', async () => {
     const user = userEvent.setup()
     renderList({
@@ -305,6 +337,42 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
     const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
     expect(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
       .toBeDisabled()
+  })
+
+  it('deux envois après ECONNABORTED portent la même clé', async () => {
+    // ACNC9 (C-ACNC-008) — mutant : régénérer la clé à chaque clic ⇒ échec.
+    api.encaissementGroupeFactures.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+    const user = userEvent.setup()
+    renderList({ factures: deux })
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(api.encaissementGroupeFactures).toHaveBeenCalledTimes(1))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(api.encaissementGroupeFactures).toHaveBeenCalledTimes(2))
+    const [k1, k2] = api.encaissementGroupeFactures.mock.calls.map(([corps]) => corps.idempotency_key)
+    expect(k1).toBeTruthy()
+    expect(k2).toBe(k1)
+  })
+
+  it('400 montant : message sous Montant, boîte ouverte', async () => {
+    // AERR13 (C-AERR-012) — mutant : remettre `erreurServeur(err, …)` ⇒ échec.
+    api.encaissementGroupeFactures.mockRejectedValueOnce({
+      response: { status: 400, data: { montant: ["Assurez-vous qu'il n'y a pas plus de 2 décimales."] } },
+    })
+    const user = userEvent.setup()
+    renderList({ factures: deux })
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    expect(await within(dialog).findByText("Assurez-vous qu'il n'y a pas plus de 2 décimales.")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Montant reçu (MAD)')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(toast.error).not.toHaveBeenCalledWith('Encaissement groupé impossible.')
   })
 
   it('affiche TEL QUEL le refus du serveur', async () => {

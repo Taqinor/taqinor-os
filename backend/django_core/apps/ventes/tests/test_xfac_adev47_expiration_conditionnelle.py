@@ -121,6 +121,48 @@ class ExpirationConditionnelleTests(TestCase):
         self.assertTrue(lead.activites.filter(
             body=NOTE_EXPIRATION_EN_ATTENTE).exists())
 
+    def test_mort_avant_les_effets_rejoue_tout(self):
+        """ACEL69 (C-ACEL-011) — une mort dure (BaseException) pendant la note
+        d'historique annule le statut : devis « envoyé », lead à QUOTE_SENT,
+        aucun événement ; le passage suivant fait tout. Mutant : ressortir la
+        note de la transaction ⇒ devis expiré sans note."""
+        from apps.crm import stages
+        from apps.crm.models import Lead
+        from apps.ventes import activity
+        from apps.ventes.models import Devis, DevisActivity
+        from core.events import devis_expired
+        lead = Lead.objects.create(
+            company=self.company, nom='Mort', stage=stages.QUOTE_SENT,
+            telephone='+212661470002')
+        Devis.objects.filter(pk=self.devis.pk).update(lead=lead)
+        recus = []
+
+        def _ecoute(sender, **kwargs):
+            recus.append(kwargs.get('devis'))
+        devis_expired.connect(_ecoute)
+        self.addCleanup(devis_expired.disconnect, _ecoute)
+
+        class _Mort(BaseException):
+            pass
+        with patch.object(activity, 'log_devis_note', side_effect=_Mort):
+            with self.assertRaises(_Mort):
+                self._expirer()
+        self.devis.refresh_from_db()
+        lead.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(lead.stage, stages.QUOTE_SENT)
+        self.assertEqual(recus, [])
+
+        self.assertEqual(self._expirer()['expired'], 1)
+        self.devis.refresh_from_db()
+        lead.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.EXPIRE)
+        self.assertEqual(DevisActivity.objects.filter(
+            devis=self.devis,
+            body__startswith='Devis expiré automatiquement').count(), 1)
+        self.assertEqual(len(recus), 1)
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+
     def test_envoye_expire(self):
         from apps.ventes.models import Devis
         resultat = self._expirer()

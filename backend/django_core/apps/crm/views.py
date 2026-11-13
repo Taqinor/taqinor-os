@@ -1886,14 +1886,13 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
 
         Renvoie 200 avec le lead résultant en cas de succès, 422 si le rejeu
         échoue encore (le payload reste rejouable — jamais supprimé)."""
-        from .webhooks import (
-            replay_meta_lead_payload, replay_website_lead_payload)
+        from . import webhook_rejeu, webhooks
 
         payload = self.get_object()
         if payload.source == WebsiteLeadPayload.Source.META_LEAD_ADS:
-            ok, detail, lead = replay_meta_lead_payload(payload)
+            ok, detail, lead = webhooks.replay_meta_lead_payload(payload)
         else:
-            ok, detail, lead = replay_website_lead_payload(payload)
+            ok, detail, lead = webhook_rejeu.replay_website_lead_payload(payload)
         payload.refresh_from_db()
         data = WebsiteLeadPayloadSerializer(payload).data
         if not ok:

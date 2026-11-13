@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
   Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
-  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft, Link2, ScanLine,
+  ShieldCheck, ExternalLink, Zap, Link2, ScanLine,
 } from 'lucide-react'
-import {
-  DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable,
-  useSensor, useSensors,
-} from '@dnd-kit/core'
 import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
+import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
+import { useConfirm } from '../../providers/confirm-context'
 // EZ15 — dictée INLINE navigateur, surface BUREAU.
 import {
   DictationButton, DICTATION_PRIVACY_FR,
@@ -46,7 +44,6 @@ import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import TicketWorksheetPanel from './TicketWorksheetPanel'
-import { groupTicketsByDate } from './ticketCalendarUtils'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 // NTUX37 — toast « Annuler » (NTUX6) après une édition en masse réussie.
 import { notifyBulkUpdateWithUndo } from '../../ui/datatable/notifyBulkUpdateWithUndo'
@@ -89,16 +86,16 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty, isAnyFormDirty,
   DataTable,
   toast,
 } from '../../ui'
 import {
-  annulerEditionStatut, executerEditionStatut, frError, parseBulkResult,
+  annulerEditionStatut, executerEditionStatut, formatDateFR, frError, parseBulkResult,
   ticketSlaEcheance, ticketSlaTri,
 } from './ticketsLogique'
-import ComboboxClient from '../../components/ComboboxClient'
-import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
+import { TicketCalendarView } from './TicketCalendarView'
+import { BandeauListePasAJour, BoutonExportExcel, ChampTypeTicket, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -108,11 +105,6 @@ import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const TP_ECRAN = 'sav.tickets'
 
-const formatDateFR = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(`${iso}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
-}
 // ASAV51 — catalogue lu EN ENTIER (toutes les pages DRF), jamais la page 1 :
 // le 101e produit / le 51e chantier doivent se choisir.
 const lireTout = (appel) => fetchAllPages(
@@ -255,7 +247,13 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
-export function TicketDetail({ ticket, onClose, onSaved }) {
+// AERR25 — l'enveloppe remonte la fiche à chaque changement de ticket : son
+// état local (champs, en-tête, actions) ne survit jamais d'un ticket à l'autre.
+export function TicketDetail(props) {
+  return <TicketDetailCorps key={props.ticket.id} {...props} />
+}
+
+function TicketDetailCorps({ ticket, onClose, onSaved }) {
   const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
@@ -267,6 +265,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
+  const confirmer = useConfirm() // AERR82
   const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement'), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
   const F =(k, d = '') => current?.[k] ?? d
 
@@ -340,6 +339,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [pieceForm, setPieceForm] = useState(
     { produit: '', quantite: '1', decrement: false })
   const [pieceBusy, setPieceBusy] = useState(false)
+  // ACNC26 — clé de pose créée à l'ouverture du formulaire, renouvelée au succès ;
+  // retrait en cours (« Retirer » désactivé pendant l'envoi).
+  const [clePiece, setClePiece] = useState(() => globalThis.crypto?.randomUUID?.())
+  const [retraitEnCours, setRetraitEnCours] = useState(null)
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [motif, setMotif] = useState('')
   const [confirmVide, setConfirmVide] = useState(false) // L300 — confirmation motif vide
@@ -686,7 +689,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         produit: pieceForm.produit,
         quantite: pieceForm.quantite || '1',
         decrement: pieceForm.decrement,
-      })
+      }, { idempotencyKey: clePiece })
+      setClePiece(globalThis.crypto?.randomUUID?.())
       setPieceForm({ produit: '', quantite: '1', decrement: false })
       loadPieces()
       loadHistorique()
@@ -694,13 +698,16 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       setActionError(frError(err, "Échec de l'ajout de la pièce."))
     } finally { setPieceBusy(false) }
   }
-  const removePiece = async (pieceId) => {
+  const removePiece = async (p) => {
+    // AERR82 — confirmation qui nomme la pièce et la quantité.
+    if (!await confirmer({ title: `Retirer ${p.produit_nom} × ${p.quantite} de ce ticket ?`, confirmLabel: 'Retirer', destructive: true })) return
     setActionError(null)
+    setRetraitEnCours(p.id)
     try {
-      await savApi.removeTicketPiece(id, pieceId)
+      await savApi.removeTicketPiece(id, p.id)
       loadPieces()
       loadHistorique()
-    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) }
+    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) } finally { setRetraitEnCours(null) }
   }
 
   const annuler = async () => {
@@ -914,14 +921,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="Type">
-              <Select value={fields.type} onValueChange={(v) => set('type', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </FormField>
+            <ChampTypeTicket value={fields.type} onValueChange={(v) => set('type', v)} />
             <FormField label="Priorité">
               <Select value={fields.priorite} onValueChange={(v) => set('priorite', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1193,7 +1193,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                     {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''} × {p.quantite}
                     {p.stock_decremente && <Badge tone="info" className="ml-2">stock −</Badge>}
                   </span>
-                  {peutGerer && <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p.id)}>
+                  {peutGerer && <Button type="button" variant="ghost" size="sm" loading={retraitEnCours === p.id} onClick={() => removePiece(p)}>
                     <Trash2 /> Retirer
                   </Button>}
                 </li>
@@ -1594,272 +1594,6 @@ export function KanbanColumn({ statut, tickets, onSelect }) {
   )
 }
 
-const CAL_WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-const CAL_MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
-
-const calYmd = (d) => {
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${day}`
-}
-
-// Grille du mois : commence le lundi de la semaine du 1er, finit le dimanche
-// de la semaine du dernier jour (toujours des lignes complètes de 7 colonnes).
-function calMonthGrid(year, month) {
-  const first = new Date(year, month, 1)
-  const startOffset = (first.getDay() + 6) % 7 // 0 = lundi
-  const start = new Date(year, month, 1 - startOffset)
-  const cells = []
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start)
-    d.setDate(start.getDate() + i)
-    cells.push(d)
-  }
-  if (cells[35].getMonth() !== month && cells[28].getMonth() !== month) {
-    return cells.slice(0, 35)
-  }
-  return cells
-}
-
-function CalendarTicketCard({ ticket }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-md border border-border bg-card p-1.5 text-left text-xs shadow-sm hover:border-primary/40">
-      <span className="flex items-center gap-1 font-medium">
-        <span className="size-1.5 shrink-0 rounded-full"
-              style={{ background: TICKET_STATUS_COLORS[ticket.statut] }} />
-        {ticket.reference}
-      </span>
-      <span className="truncate text-muted-foreground">{ticket.client_nom ?? '—'}</span>
-    </div>
-  )
-}
-
-function DraggableCalendarCard({ ticket, onSelect }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `ticket-cal-${ticket.id}`, data: { ticket },
-  })
-  return (
-    <div ref={setNodeRef} {...listeners} {...attributes}
-         onClick={() => onSelect(ticket)}
-         className={isDragging ? 'cursor-grabbing opacity-50' : 'cursor-grab'}>
-      <CalendarTicketCard ticket={ticket} />
-    </div>
-  )
-}
-
-function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, onQuickCreate }) {
-  const key = calYmd(cellDate)
-  const { setNodeRef, isOver } = useDroppable({ id: `day-${key}`, data: { date: key } })
-  return (
-    <div ref={setNodeRef}
-         className={`group flex min-h-[6rem] flex-col gap-1 p-1 ${inMonth ? 'bg-card' : 'bg-muted/30'} ${isOver ? 'ring-2 ring-inset ring-primary' : ''}`}>
-      <div className="flex items-center justify-between px-0.5">
-        <span className={`text-xs ${inMonth ? 'text-foreground' : 'text-muted-foreground'} ${isToday ? 'font-bold' : ''}`}>
-          {isToday
-            ? <span className="rounded-full bg-primary px-1.5 py-0.5 text-primary-foreground">{cellDate.getDate()}</span>
-            : cellDate.getDate()}
-        </span>
-        {/* Création rapide d'un ticket depuis ce créneau. */}
-        <button type="button" title="Créer un ticket ce jour"
-                onClick={() => onQuickCreate(key)}
-                className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:flex">
-          <Plus className="size-3" aria-hidden="true" />
-        </button>
-      </div>
-      <div className="flex flex-col gap-1">
-        {tickets.map((t) => (
-          <DraggableCalendarCard key={t.id} ticket={t} onSelect={onSelect} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Formulaire minimal de création rapide (référence auto côté serveur) :
-// client (OBLIGATOIRE — WIR178, `Ticket.client` est un FK non nullable côté
-// serveur, un payload sans client était un 400 garanti) + type + description,
-// puis createTicket suivi de replanifierTicket sur la date cliquée dans le
-// calendrier (affinable ensuite par glisser-déposer) — garde le composant
-// simple : ouvrir la fiche standard n'est pas nécessaire, un POST minimal suffit.
-// VX240(d) — dernier type de ticket utilisé (localStorage, modifiable),
-// même patron que VX93 (lireLastTva/lireDernierMode) : le type ne reset plus
-// silencieusement à « correctif » à chaque ouverture.
-const TICKET_QC_TYPE_KEY = 'taqinor.tickets.quickCreate.lastType'
-const lireLastTicketType = () => {
-  try { return window.localStorage.getItem(TICKET_QC_TYPE_KEY) || 'correctif' }
-  catch { return 'correctif' }
-}
-const ecrireLastTicketType = (v) => {
-  try { if (v) window.localStorage.setItem(TICKET_QC_TYPE_KEY, v) }
-  catch { console.warn('TicketsPage (ecrireLastTicketType) : localStorage indisponible (navigation privée, quota) : no-op') }
-}
-
-function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
-  const [clientId, setClientId] = useState(null)
-  const [description, setDescription] = useState('')
-  const [type, setType] = useState(lireLastTicketType)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
-
-  const submit = async () => {
-    setErr(null)
-    if (!clientId) { setErr('Le client est requis.'); return }
-    setBusy(true)
-    try {
-      const r = await savApi.createTicket({
-        client: parseInt(clientId, 10), type, description: description || undefined,
-      })
-      // Pose la date planifiée sur le ticket fraîchement créé.
-      await savApi.replanifierTicket(r.data.id, openDate)
-      ecrireLastTicketType(type)  // VX240(d) — mémorise le type pour la prochaine création
-      onCreated?.()
-      onClose()
-    } catch (e) {
-      setErr(frError(e, 'Échec de la création.'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <AlertDialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Nouveau ticket — {formatDateFR(openDate)}</AlertDialogTitle>
-          <AlertDialogDescription>
-            Créer un ticket planifié à cette date.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="grid gap-3">
-          <FormField label="Client" htmlFor="cqc-client">
-            {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
-            <ComboboxClient id="cqc-client" value={clientId} onChange={(v) => setClientId(v)}
-                            invalid={err && !clientId ? true : undefined} />
-          </FormField>
-          <FormField label="Type">
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Description">
-            <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-          </FormField>
-          {err && (
-            <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> <span>{err}</span>
-            </div>
-          )}
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction disabled={busy} onClick={(e) => { e.preventDefault(); submit() }}>
-            Créer
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
-
-export function TicketCalendarView({ tickets, onSelect, onReload }) {
-  const today = useMemo(() => new Date(), [])
-  const [cursor, setCursor] = useState(
-    () => ({ year: today.getFullYear(), month: today.getMonth() }))
-  const [quickCreateDate, setQuickCreateDate] = useState(null)
-  const [dragTicket, setDragTicket] = useState(null)
-  const [err, setErr] = useState('')
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
-  )
-
-  const cells = useMemo(() => calMonthGrid(cursor.year, cursor.month), [cursor])
-  const byDay = useMemo(() => groupTicketsByDate(tickets), [tickets])
-
-  const go = (delta) => setCursor((c) => {
-    const d = new Date(c.year, c.month + delta, 1)
-    return { year: d.getFullYear(), month: d.getMonth() }
-  })
-  const goToday = () => setCursor({ year: today.getFullYear(), month: today.getMonth() })
-
-  const handleDragEnd = useCallback(async ({ active, over }) => {
-    setDragTicket(null)
-    const ticket = active?.data?.current?.ticket
-    const targetDate = over?.data?.current?.date
-    if (!ticket || !targetDate || targetDate === ticket.date_tournee) return
-    setErr('')
-    try {
-      await savApi.replanifierTicket(ticket.id, targetDate)
-      onReload?.()
-    } catch {
-      setErr('Replanification impossible.')
-    }
-  }, [onReload])
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => go(-1)}><ChevronLeft /></Button>
-        <Button variant="outline" size="sm" onClick={goToday}>Aujourd'hui</Button>
-        <Button variant="outline" size="sm" onClick={() => go(1)}><ChevronRight /></Button>
-        <strong className="min-w-[140px] text-center text-sm">
-          {CAL_MONTHS[cursor.month]} {cursor.year}
-        </strong>
-      </div>
-
-      {err && (
-        <p role="alert" className="text-sm text-destructive">{err}</p>
-      )}
-
-      <DndContext sensors={sensors}
-                  onDragStart={({ active }) => setDragTicket(active?.data?.current?.ticket ?? null)}
-                  onDragEnd={handleDragEnd}
-                  onDragCancel={() => setDragTicket(null)}>
-        <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
-          {CAL_WEEKDAYS.map((d) => (
-            <div key={d} className="bg-muted px-2 py-1.5 text-center text-xs font-semibold text-muted-foreground">
-              {d}
-            </div>
-          ))}
-          {cells.map((d) => {
-            const key = calYmd(d)
-            return (
-              <CalendarDayCell
-                key={key}
-                date={d}
-                inMonth={d.getMonth() === cursor.month}
-                isToday={key === calYmd(today)}
-                tickets={byDay[key] || []}
-                onSelect={onSelect}
-                onQuickCreate={setQuickCreateDate}
-              />
-            )
-          })}
-        </div>
-      </DndContext>
-
-      {!dragTicket && Object.keys(byDay).length === 0 && (
-        <p className="text-center text-sm text-muted-foreground">
-          Aucun ticket planifié (date de tournée) ce mois-ci.
-        </p>
-      )}
-
-      {quickCreateDate && (
-        <CalendarQuickCreateDialog
-          date={quickCreateDate}
-          onClose={() => setQuickCreateDate(null)}
-          onCreated={() => onReload?.()}
-        />
-      )}
-    </div>
-  )
-}
-
 export default function TicketsPage() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Tickets SAV')
@@ -1949,6 +1683,12 @@ export default function TicketsPage() {
      J/K DÉPLACENT la sélection dans la liste FILTRÉE et TRIÉE affichée
      (`rows`), donc ce que le clavier parcourt est exactement ce que l'œil voit.
      Effet AVEC dep array (jamais un ré-abonnement à chaque rendu). */
+  // AERR25 — UN seul point de changement de sélection (ligne, kanban,
+  // calendrier, J/K), gardé par la saisie non enregistrée de la fiche.
+  const selectionner = useCallback((row) => {
+    if (row?.id !== detailTicket?.id && !confirmLeaveIfDirty(isAnyFormDirty())) return
+    setSelected(row)
+  }, [detailTicket])
   const deplacerSelection = useCallback((pas) => {
     if (!rows.length) return
     const i = detailTicket ? rows.findIndex((r) => r.id === detailTicket.id) : -1
@@ -1956,16 +1696,20 @@ export default function TicketsPage() {
     const cible = i < 0
       ? (pas > 0 ? 0 : rows.length - 1)
       : Math.min(Math.max(i + pas, 0), rows.length - 1)
-    setSelected(rows[cible])
-  }, [rows, detailTicket])
+    selectionner(rows[cible])
+  }, [rows, detailTicket, selectionner])
 
   // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
   // l'effet-événement en lit toujours la version courante.
   const fermerDetail = useEffectEvent(() => closeDetail())
+  // AERR27 — racine de la page : une boîte posée par-dessus fait taire J/K/Entrée/Échap.
+  const racineRef = useRef(null)
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (isTypingTarget(e.target)) return
+      if (e.defaultPrevented) return
+      if (isTypingTarget(e.target) || dialogueParDessus(racineRef.current)) return
+      if (e.target?.closest?.('[role="listbox"], [role="menu"]')) return
       if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
       else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
       else if (e.key === 'Enter' && !detailTicket && rows.length) {
@@ -1975,7 +1719,7 @@ export default function TicketsPage() {
         e.preventDefault()
         setSelected(rows[0])
       } else if (e.key === 'Escape' && detailTicket) {
-        fermerDetail()
+        if (confirmLeaveIfDirty(isAnyFormDirty())) fermerDetail()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -2181,7 +1925,7 @@ export default function TicketsPage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="ui-root flex flex-col gap-5 p-1">
+      <div ref={racineRef} className="ui-root flex flex-col gap-5 p-1">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Tickets SAV</h1>
@@ -2328,9 +2072,11 @@ export default function TicketsPage() {
             mobile/tablette inchangé), donc pas de wrapper flex nécessaire ici. */}
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
           <div className="min-w-0 flex-1">
-            {loading ? (
+            {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
+            {error && items.length > 0 && <BandeauListePasAJour onRetry={reload} className="mb-3" />}
+            {loading && items.length === 0 ? (
               <SqueletteListe lignes={6} />
-            ) : error ? (
+            ) : error && items.length === 0 ? (
               <ErreurChargement description="Les tickets n'ont pas pu être chargés. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
             ) : rows.length === 0 ? (
               // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
@@ -2350,13 +2096,13 @@ export default function TicketsPage() {
                 {TICKET_STATUSES.map((k) => (
                   <KanbanColumn key={k} statut={k}
                                 tickets={rows.filter((r) => r.statut === k)}
-                                onSelect={setSelected} />
+                                onSelect={selectionner} />
                 ))}
               </div>
             ) : view === 'calendrier' ? (
               // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
               // glisser-déposer pour replanifier, création rapide depuis un créneau.
-              <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
+              <TicketCalendarView tickets={rows} onSelect={selectionner} onReload={reload} />
             ) : (
               <DataTable
                 data={rows}
@@ -2364,7 +2110,7 @@ export default function TicketsPage() {
                 getRowId={(row) => row.id}
                 searchable={false}
                 selectable
-                onRowClick={(row) => setSelected(row)}
+                onRowClick={selectionner}
                 exportName="tickets"
                 emptyTitle="Aucun ticket"
                 emptyDescription="Aucun ticket ne correspond à votre recherche."

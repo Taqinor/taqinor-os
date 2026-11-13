@@ -123,6 +123,14 @@ describe('SUIVI-BLOCAGE — frise de la fiche', () => {
     expect(onEtapes.mock.calls.at(-1)[0].map((e) => e.id)).toEqual([2])
   })
 
+  it('fenêtre d’appel, lecture rejetée : l’appelant ne reçoit pas [] mais le signal d’échec (AERR102)', async () => {
+    crmApi.getRelanceEtapesLead.mockRejectedValue(new Error('délai'))
+    const onEtapes = vi.fn()
+    render(<Fiche seulementActionnable appelOuvert onEtapes={onEtapes} />)
+    await waitFor(() => expect(onEtapes).toHaveBeenCalledWith('echec'))
+    expect(onEtapes).not.toHaveBeenCalledWith([])
+  })
+
   it('mode « fenêtre d’appel » sans aucune touche ouverte : rien n’est rendu et l’appelant reçoit une liste vide', async () => {
     crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { results: [] } })
     const onEtapes = vi.fn()

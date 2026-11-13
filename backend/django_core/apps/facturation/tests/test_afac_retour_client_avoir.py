@@ -132,6 +132,39 @@ class RetourClientAvoirTests(_Base, TestCase):
             generate_releve_pdf(self.client_obj, _releve_data(self.client_obj))
         self.assertIn('-2400.00 MAD', rendu.call_args[0][0])
 
+    def test_meme_cle_un_seul_avoir(self):
+        """ACNC3 (C-ACNC-001) — avoir partiel puis retour client, chacun
+        POSTé deux fois avec sa clé : un avoir par geste (2e réponse = même
+        id et même référence), une seule avance, une seule entrée de stock.
+        Mutant : retirer l'enveloppe de `retour_client` ⇒ 2 avoirs retour."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import Avoir, Paiement
+        facture = self._facture(pu='5000', qte=3)
+        self._payer(facture)
+        base = f'/api/django/ventes/factures/{facture.id}/'
+        avoir = {'type': 'geste_commercial', 'motif': 'Geste',
+                 'idempotency_key': 'ACNC3-K1', 'lignes': [
+                     {'produit': self.produit.id, 'designation': 'Geste',
+                      'quantite': '1', 'prix_unitaire': '1000',
+                      'taux_tva': '20'}]}
+        retour = {'motif': 't', 'restocker': True,
+                  'idempotency_key': 'ACNC3-K2',
+                  'lignes': [{'produit': self.produit.id, 'quantite': 1}]}
+        stock_avant = Produit.objects.get(pk=self.produit.pk).quantite_stock
+        for url, corps in ((base + 'creer-avoir/', avoir),
+                           (base + 'retour-client/', retour)):
+            r1 = self.api.post(url, corps, format='json')
+            r2 = self.api.post(url, corps, format='json')
+            self.assertEqual(r1.status_code, 201, r1.data)
+            self.assertEqual(r2.status_code, 201, r2.data)
+            self.assertEqual((r2.data['id'], r2.data['reference']),
+                             (r1.data['id'], r1.data['reference']))
+        self.assertEqual(Avoir.objects.filter(facture=facture).count(), 2)
+        self.assertEqual(Paiement.objects.filter(
+            facture__isnull=True, client=self.client_obj).count(), 2)
+        self.assertEqual(Produit.objects.get(pk=self.produit.pk).quantite_stock,
+                         stock_avant + 1)
+
     def test_retour_au_dela_du_reste_devient_avance(self):
         """AARG1 — même geste par `retour-client` (5 000 HT sur 2 × 5 000)."""
         from apps.ventes.models import Facture, Paiement

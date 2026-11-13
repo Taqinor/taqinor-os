@@ -30,6 +30,7 @@ from core.champs_stricts import (
     DateStricte, DecimalBornee, EntierStrict, entier_ou_400,
 )
 from core.conflit_etat import ConflitEtat
+from core.idempotency import IdempotentCreateMixin  # ACNC26
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
@@ -39,7 +40,7 @@ from apps.ventes.utils.references import create_with_reference
 
 from apps.records.champs_stricts import RegexStricte
 
-from . import activity
+from . import activity, services as sav_services
 from .champs_corps import (
     CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, erreurs_nombres_lignes,
     refus_stock_en_conflit,
@@ -462,9 +463,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 serializer.save(company=company, created_by=self.request.user)
             else:  # ACSV59 — écrivain unique du parc d'un chantier (ACHT46)
                 from apps.installations.selectors import quantites_nomenclature_chantier
-                from .services import assurer_equipement_chantier
                 chantier, produit = vd['installation'], vd.get('produit')
-                statut, serializer.instance = assurer_equipement_chantier(
+                statut, serializer.instance = sav_services.assurer_equipement_chantier(
                     company=company, installation=chantier, produit=produit, numero_serie=vd.get('numero_serie'),
                     quantite_ligne=quantites_nomenclature_chantier(chantier).get(getattr(produit, 'pk', None), 1),
                     date_pose=chantier.date_reception or vd.get('date_pose'), created_by=self.request.user)
@@ -792,8 +792,6 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             qs = equipement.downtimes.select_related('ticket')
             return Response(EquipementDowntimeSerializer(qs, many=True).data)
 
-        from .services import DowntimeOverlapError, ouvrir_downtime
-
         # ENF11 — corps validé (date mal formée / id non entier : 400, jamais 500).
         entree = DowntimeEntreeSerializer(data=request.data)
         entree.is_valid(raise_exception=True)
@@ -807,12 +805,12 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 raise NotFound({'ticket': 'Ticket inconnu.'})
 
         try:
-            dt = ouvrir_downtime(
+            dt = sav_services.ouvrir_downtime(
                 company=equipement.company, equipement=equipement,
                 debut=debut, ticket=ticket,
                 motif=(entree.validated_data.get('motif') or '').strip(),
                 created_by=request.user)
-        except DowntimeOverlapError as exc:
+        except sav_services.DowntimeOverlapError as exc:
             # ERR-ENF11-FUZZ-SAV : une immobilisation déjà ouverte (ou qui
             # chevauche) est un refus d'ÉTAT — 409, jamais un 400.
             raise ConflitEtat(str(exc))
@@ -851,7 +849,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : les 30 derniers jours).
         """
         from .query_params import periode_param
-        from .services import disponibilite_equipement
+        from .services import disponibilite_equipement  # résolu par check_api_shapes
 
         equipement = self.get_object()
         # api-fuzz-full 27/10 (ENF11) : `fin=0001-01-01` débordait (500).
@@ -893,7 +891,6 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             qs = equipement.releves_compteur.all()
             return Response(ReleveCompteurEquipementSerializer(qs, many=True).data)
 
-        from .services import ReleveDecroissantError, enregistrer_releve_compteur
         from .validations_releve import lire_releve
 
         lu = lire_releve(request.data)
@@ -902,11 +899,11 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         type_releve, valeur, date_releve = lu
 
         try:
-            releve, ticket = enregistrer_releve_compteur(
+            releve, ticket = sav_services.enregistrer_releve_compteur(
                 company=equipement.company, equipement=equipement,
                 type_releve=type_releve, valeur=valeur,
                 date_releve=date_releve, created_by=request.user)
-        except ReleveDecroissantError as exc:
+        except sav_services.ReleveDecroissantError as exc:
             return Response({'detail': str(exc)}, status=409)  # ENF11 : le dernier relevé s'oppose
 
         payload = ReleveCompteurEquipementSerializer(releve).data
@@ -970,7 +967,7 @@ class TicketEnDoubleError(APIException):
         OpenApiParameter('ouvert', OpenApiTypes.STR, required=False, enum=['tous']),
         OpenApiParameter('annule', OpenApiTypes.STR, required=False, enum=['only', 'sans']),
     ]))
-class TicketViewSet(CompanyScopedModelViewSet):
+class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
     Tout est scopé à la société ; acteur et société posés côté serveur."""
@@ -1153,8 +1150,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         AUD519 — l'implémentation vit désormais dans ``services`` (une seule
         copie, partagée avec les 7 autres producteurs de tickets)."""
-        from .services import resolution_days_pour
-        return resolution_days_pour(company, client, priorite)
+        return sav_services.resolution_days_pour(company, client, priorite)
 
     def _compute_sla_due_at(self, company, client, priorite, date_ouverture):
         """FG81 — Calcule sla_due_at depuis les réglages société (ou None).
@@ -1169,8 +1165,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         AUD519 — délègue à ``services.compute_sla_due_at`` : ce chemin manuel
         n'est plus le seul à poser l'échéance, la logique est partagée."""
-        from .services import compute_sla_due_at
-        return compute_sla_due_at(company, client, priorite, date_ouverture)
+        return sav_services.compute_sla_due_at(company, client, priorite, date_ouverture)
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -1194,35 +1189,36 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
         client = serializer.validated_data.get('client')
-        # ASAV23 — un double clic ne crée qu'un ticket.
-        self._refuser_doublon_recent(company, serializer.validated_data)
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
         # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
-        from .services import compute_sla_echeance, compute_sla_reponse_due_at
-        sla_reponse_due_at = compute_sla_reponse_due_at(
+        sla_reponse_due_at = sav_services.compute_sla_reponse_due_at(
             company, client, priorite, date_ouverture)
         # ASAV21 — horodatage de l'échéance (chemin heures ouvrées seulement).
-        sla_echeance_at = compute_sla_echeance(
+        sla_echeance_at = sav_services.compute_sla_echeance(
             company, client, priorite, date_ouverture)[1]
-        create_with_reference(
-            Ticket, 'SAV', company,
-            lambda ref: serializer.save(
-                reference=ref, company=company,
-                created_by=self.request.user,
-                date_ouverture=date_ouverture,
-                sla_due_at=sla_due_at,
-                sla_echeance_at=sla_echeance_at,
-                sla_reponse_due_at=sla_reponse_due_at),
-        )
+        # ASAV23 — un double clic ne crée qu'un ticket ; ACNC33 — contrôle et
+        # création sérialisés par le verrou de la fiche client (sans importer crm).
+        with transaction.atomic():
+            type(client)._base_manager.select_for_update().filter(pk=client.pk).first()
+            self._refuser_doublon_recent(company, serializer.validated_data)
+            create_with_reference(
+                Ticket, 'SAV', company,
+                lambda ref: serializer.save(
+                    reference=ref, company=company,
+                    created_by=self.request.user,
+                    date_ouverture=date_ouverture,
+                    sla_due_at=sla_due_at,
+                    sla_echeance_at=sla_echeance_at,
+                    sla_reponse_due_at=sla_reponse_due_at),
+            )
         # XSAV9 — affectation automatique si aucun technicien n'a été choisi
         # à la création et que la société l'a activée (défaut OFF = inchangé).
         inst = serializer.instance
         if not inst.technicien_responsable_id:
             sla = SavSlaSettings.get(company)
             if sla.affectation_auto_sav:
-                from .services import assign_technicien_auto
-                technicien = assign_technicien_auto(company=company)
+                technicien = sav_services.assign_technicien_auto(company=company)
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
@@ -1234,8 +1230,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # création (API, WhatsApp, e-mail...) — jamais seulement celui-ci.
         # ZSAV9 — abonne automatiquement les suiveurs globaux (réglage
         # société, liste vide par défaut = no-op).
-        from .services import abonner_suiveurs_globaux
-        abonner_suiveurs_globaux(inst)
+        sav_services.abonner_suiveurs_globaux(inst)
         # XCTR2 — avertissement NON BLOQUANT si l'équipement lié n'est pas
         # couvert par le contrat de maintenance actif du client (registre
         # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
@@ -1322,12 +1317,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``compute_sla_due_at`` que la création) et ouvre un nouveau cycle :
         pré-alerte, escalade (paliers compris) et ``sla_breach`` remis à
         zéro puis ``sla_breach`` recalculé sur la nouvelle échéance."""
-        from .services import compute_sla_echeance, compute_sla_reponse_due_at
         ouverture = ticket.date_ouverture or timezone.localdate()
-        ticket.sla_due_at, ticket.sla_echeance_at = compute_sla_echeance(
+        ticket.sla_due_at, ticket.sla_echeance_at = sav_services.compute_sla_echeance(
             ticket.company, ticket.client, ticket.priorite, ouverture)
         # ASAV19 — l'échéance de première réponse suit les mêmes entrées.
-        ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
+        ticket.sla_reponse_due_at = sav_services.compute_sla_reponse_due_at(
             ticket.company, ticket.client, ticket.priorite, ouverture)
         ticket.sla_pre_alert_notifiee = False
         ticket.sla_escalade_notifiee = False
@@ -1365,7 +1359,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # avant → après au chatter (aucune ligne sans changement réel).
         activity.log_changes(ancien, serializer.instance, self.request.user)
         if serializer.instance.arret_installation and not etait_a_l_arret:
-            from . import services as sav_services
             sav_services.notifier_arret_installation(serializer.instance)
 
     def _appliquer_transition_statut(self, ticket, statut_cible, **options):
@@ -1373,7 +1366,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``services.appliquer_transition_ticket`` (même chaîne d'effets pour la
         vue et le récepteur d'intervention terminée). Une transition refusée
         lève ``ValidationError`` (400) avec le détail du service."""
-        from . import services as sav_services
         try:
             return sav_services.appliquer_transition_ticket(
                 ticket, statut_cible, self.request.user, request=self.request,
@@ -1763,7 +1755,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
             # ASAV13 — le statut d'une macro passe par LE service gardé
             # (graphe, YSERV2, effets complets d'ASAV12) ; un refus renvoie
             # 400 SANS note ni changement de statut.
-            from . import services as sav_services
             try:
                 sav_services.appliquer_transition_ticket(
                     ticket, statut_macro, request.user, request=request)
@@ -1777,12 +1768,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # ASAV19 — une note VISIBLE CLIENT est une réponse au client ; une
         # note interne ne l'est pas.
         if visible_client:
-            from .services import poser_premiere_reponse
-            poser_premiere_reponse(ticket)
+            sav_services.poser_premiere_reponse(ticket)
         # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
-        from .services import notify_followers
         from apps.notifications.types_evenements import EventType
-        notify_followers(
+        sav_services.notify_followers(
             ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
             title=f'Nouvelle note — {ticket.reference}',
             body=body, link=f'/sav/tickets/{ticket.pk}',
@@ -1870,8 +1859,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         at_corps = SavPremierReponseRequete().run_validation(request.data).get('at')
         if ticket.date_premiere_reponse is None:
             at = at_corps or timezone.now()
-            from .services import poser_premiere_reponse
-            poser_premiere_reponse(ticket, at)
+            sav_services.poser_premiere_reponse(ticket, at)
             activity.log_note(
                 ticket, request.user,
                 f'Première réponse enregistrée le {at.strftime("%d/%m/%Y %H:%M")}')
@@ -1890,7 +1878,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         (``sav/file-attente/``) ne fait que PROPOSER — elle ne réaffecte
         jamais en silence. ``equipe: null`` détache le ticket de son équipe."""
         ticket = self.get_object()
-        from .services import reaffecter_equipe as _reaffecter
 
         entree = SavReaffecterEquipeRequete(data=request.data)
         entree.is_valid(raise_exception=True)
@@ -1903,7 +1890,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             if equipe is None:
                 return Response({'equipe': 'Équipe inconnue.'}, status=404)  # ENF11 : id inconnu
         try:
-            _reaffecter(ticket, equipe, user=request.user)
+            sav_services.reaffecter_equipe(ticket, equipe, user=request.user)
         except ValueError as exc:
             champ, _, detail = str(exc).partition(': ')
             return Response({champ: detail or str(exc)}, status=400)
@@ -1948,8 +1935,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # ASAV19 — un appel journalisé (hors « non joint ») est une réponse
         # réelle au client : pose la première réponse (une seule fois).
         if issue != 'non_joint':
-            from .services import poser_premiere_reponse
-            poser_premiere_reponse(ticket)
+            sav_services.poser_premiere_reponse(ticket)
         return Response({
             'id': entree.pk, 'kind': entree.kind, 'body': entree.body,
             'issue': entree.outcome, 'duree_minutes': entree.duree_minutes,
@@ -1985,13 +1971,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         retombe sur le backend console (no-op réseau silencieux) — le fil est
         journalisé dans tous les cas."""
         ticket = self.get_object()
-        from .services import EmailNonConfigure, repondre_par_email
 
         entree = SavRepondreEmailRequete(data=request.data)
         entree.is_valid(raise_exception=True)
         corps = entree.validated_data
         try:
-            ligne = repondre_par_email(
+            ligne = sav_services.repondre_par_email(
                 ticket,
                 corps=corps['corps'],
                 sujet=(corps.get('sujet') or '').strip(),
@@ -2001,11 +1986,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             champ, _, detail = str(exc).partition(': ')
             # api-fuzz #1377 — e-mail non configuré : l'état du serveur s'oppose
             # à un corps conforme → 409 (ENF11) ; un autre refus garde son 400.
-            code = 409 if isinstance(exc, EmailNonConfigure) else 400
+            code = 409 if isinstance(exc, sav_services.EmailNonConfigure) else 400
             return Response({champ: detail or str(exc)}, status=code)
         # ASAV19 — un e-mail envoyé au client pose la première réponse.
-        from .services import poser_premiere_reponse
-        poser_premiere_reponse(ticket)
+        sav_services.poser_premiere_reponse(ticket)
         return Response({
             'id': ligne.pk, 'message_id': ligne.message_id,
             'thread_root': ligne.thread_root,
@@ -2091,63 +2075,67 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if request.method == 'GET':
             qs = ticket.pieces.select_related('produit')
             return Response(PieceConsommeeSerializer(qs, many=True).data)
-        from apps.stock.selectors import (
-            get_produit_or_raise, produit_does_not_exist,
-        )
-        from apps.stock.services import (
-            mouvement_type_sortie, record_stock_movement,
-        )
-        corps = _valider_corps(_SCHEMA_PIECE_CONSOMMEE, request.data)
-        quantite = corps.get('quantite', Decimal('1'))
-        try:
-            produit = get_produit_or_raise(ticket.company, corps['produit'])
-        except (produit_does_not_exist(), ValueError, TypeError):
-            return Response({'detail': 'Produit inconnu.'}, status=404)
-        decrement = bool(corps.get('decrement'))
-        with transaction.atomic():
-            if decrement:
-                # ACSV52 - verrou de ligne AVANT la lecture du stock (deux
-                # poses concurrentes ne lisent plus la meme valeur) ; ERR80 -
-                # garde plancher : ne jamais piloter le stock en negatif ;
-                # ASTK248 - la part en quarantaine n'est jamais prelevee.
-                from apps.stock.services import verrouiller_produit
-                from apps.stock.services_wms import exiger_hors_quarantaine
-                from apps.stock.erreurs_achats import EtatIncompatible
-                produit = verrouiller_produit(produit.pk)
-                if quantite > produit.quantite_stock:
-                    return Response(
-                        {'detail': 'Stock insuffisant : '
-                         f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
-                        status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
-                try:
-                    exiger_hors_quarantaine(ticket.company, produit, quantite)
-                except EtatIncompatible as exc:
-                    raise ConflitEtat(str(exc)) from exc
-            piece = PieceConsommee.objects.create(
-                company=ticket.company, ticket=ticket, produit=produit,
-                quantite=quantite, created_by=request.user)
-            if decrement:
-                try:
-                    record_stock_movement(
-                        company=ticket.company, produit=produit,
-                        type_mouvement=mouvement_type_sortie(),
-                        quantite=quantite, quantite_avant=produit.quantite_stock,
-                        quantite_apres=produit.quantite_stock - quantite,
-                        reference=ticket.reference,
-                        note=f'Consommation SAV {ticket.reference}',
-                        created_by=request.user)
-                except ValidationError as exc:
-                    # ERR-ENF11 : quantité conforme, le stock du produit se compte en unités entières.
-                    raise ConflitEtat(exc.detail) from exc
-                piece.stock_decremente = True
-                piece.save(update_fields=['stock_decremente'])
-            # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
-            activity.log_note(
-                ticket, request.user,
-                f'Pièce {produit.nom} ×{quantite} consommée'
-                + (' (stock −)' if decrement else ''))
-        return Response(
-            PieceConsommeeSerializer(piece).data, status=201)
+
+        # ACNC26 — pose rejouable : même Idempotency-Key => une seule pièce.
+        def _poser():
+            from apps.stock.selectors import (
+                get_produit_or_raise, produit_does_not_exist,
+            )
+            from apps.stock.services import (
+                mouvement_type_sortie, record_stock_movement,
+            )
+            corps = _valider_corps(_SCHEMA_PIECE_CONSOMMEE, request.data)
+            quantite = corps.get('quantite', Decimal('1'))
+            try:
+                produit = get_produit_or_raise(ticket.company, corps['produit'])
+            except (produit_does_not_exist(), ValueError, TypeError):
+                return Response({'detail': 'Produit inconnu.'}, status=404)
+            decrement = bool(corps.get('decrement'))
+            with transaction.atomic():
+                if decrement:
+                    # ACSV52 - verrou de ligne AVANT la lecture du stock (deux
+                    # poses concurrentes ne lisent plus la meme valeur) ; ERR80 -
+                    # garde plancher : ne jamais piloter le stock en negatif ;
+                    # ASTK248 - la part en quarantaine n'est jamais prelevee.
+                    from apps.stock.services import verrouiller_produit
+                    from apps.stock.services_wms import exiger_hors_quarantaine
+                    from apps.stock.erreurs_achats import EtatIncompatible
+                    produit = verrouiller_produit(produit.pk)
+                    if quantite > produit.quantite_stock:
+                        return Response(
+                            {'detail': 'Stock insuffisant : '
+                             f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                            status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
+                    try:
+                        exiger_hors_quarantaine(ticket.company, produit, quantite)
+                    except EtatIncompatible as exc:
+                        raise ConflitEtat(str(exc)) from exc
+                piece = PieceConsommee.objects.create(
+                    company=ticket.company, ticket=ticket, produit=produit,
+                    quantite=quantite, created_by=request.user)
+                if decrement:
+                    try:
+                        record_stock_movement(
+                            company=ticket.company, produit=produit,
+                            type_mouvement=mouvement_type_sortie(),
+                            quantite=quantite, quantite_avant=produit.quantite_stock,
+                            quantite_apres=produit.quantite_stock - quantite,
+                            reference=ticket.reference,
+                            note=f'Consommation SAV {ticket.reference}',
+                            created_by=request.user)
+                    except ValidationError as exc:
+                        # ERR-ENF11 : quantité conforme, le stock du produit se compte en unités entières.
+                        raise ConflitEtat(exc.detail) from exc
+                    piece.stock_decremente = True
+                    piece.save(update_fields=['stock_decremente'])
+                # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
+                activity.log_note(
+                    ticket, request.user,
+                    f'Pièce {produit.nom} ×{quantite} consommée'
+                    + (' (stock −)' if decrement else ''))
+            return Response(
+                PieceConsommeeSerializer(piece).data, status=201)
+        return self._avec_idempotence(request, _poser, suffixe='pieces')
 
     @extend_schema(request=None, responses={204: None},
                    parameters=[OpenApiParameter('piece_id', OpenApiTypes.INT, OpenApiParameter.PATH)])
@@ -2170,6 +2158,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
             if not garde.has_permission(request, self):
                 raise PermissionDenied(garde.message)
         with transaction.atomic():
+            # ACNC26 — pièce relue SOUS VERROU : un retrait croisé de la même
+            # pièce attend, la retrouve supprimée et rend 404 (une seule ENTRÉE).
+            piece = PieceConsommee.objects.select_for_update().filter(
+                pk=piece.pk, ticket=ticket).first()
+            if piece is None:
+                return Response({'detail': 'Introuvable.'}, status=404)
             if piece.stock_decremente:
                 from apps.stock.services import verrouiller_produit
                 produit = verrouiller_produit(piece.produit_id)  # ACSV52
@@ -2215,11 +2209,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
-        from .services import (
-            EquipementDejaRemplaceError, OperationDestinationIncoherenteError,
-            RetraitHorsPerimetreError, RetraitProduitIncoherentError,
-            SerieNeuveDejaAuParcError, retirer_piece,
-        )
         corps = _valider_corps(_SCHEMA_PIECE_RETIREE, request.data)
         quantite = corps.get('quantite', Decimal('1'))
         try:
@@ -2240,11 +2229,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response(
                     {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
                     status=409)  # ENF11 : état du parc
-            from .services import equipement_vise
             if (not numero_serie or not Equipement.objects.filter(
                     company=ticket.company,
                     numero_serie=numero_serie).exists()) and (
-                    equipement_vise(ticket, produit) is None):
+                    sav_services.equipement_vise(ticket, produit) is None):
                 return Response(
                     {'serie_neuve': ["Le numéro de série de l'appareil "
                                      'remplacé doit exister au parc.']},
@@ -2252,13 +2240,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         equipement_neuf = None
         try:
             with transaction.atomic(), refus_stock_en_conflit():
-                piece = retirer_piece(
+                piece = sav_services.retirer_piece(
                     company=ticket.company, ticket=ticket, produit=produit,
                     quantite=quantite, numero_serie=numero_serie,
                     destination=destination, operation=operation,
                     user=request.user)
                 if serie_neuve and piece.equipement_remplace is not None:
-                    from .services import remplacer_equipement
                     produit_neuf = produit
                     if corps.get('produit_neuf'):
                         try:
@@ -2267,23 +2254,23 @@ class TicketViewSet(CompanyScopedModelViewSet):
                         except (produit_does_not_exist(), ValueError,
                                 TypeError):
                             raise _ProduitNeufInconnu()
-                    equipement_neuf = remplacer_equipement(
+                    equipement_neuf = sav_services.remplacer_equipement(
                         ticket=ticket, ancien=piece.equipement_remplace,
                         produit_neuf=produit_neuf, serie_neuve=serie_neuve,
                         date_pose=timezone.localdate(), user=request.user)
         except _ProduitNeufInconnu:
             return Response({'produit_neuf': ['Produit inconnu.']},
                             status=404)
-        except SerieNeuveDejaAuParcError as exc:
+        except sav_services.SerieNeuveDejaAuParcError as exc:
             return Response({'serie_neuve': [str(exc)]}, status=400)
-        except OperationDestinationIncoherenteError as exc:
+        except sav_services.OperationDestinationIncoherenteError as exc:
             return Response({'detail': str(exc)}, status=400)
         # ASAV8 — retrait borné au périmètre du ticket, une fois par équipement.
-        except RetraitHorsPerimetreError as exc:
+        except sav_services.RetraitHorsPerimetreError as exc:
             return Response({'numero_serie': [str(exc)]}, status=400)
-        except RetraitProduitIncoherentError as exc:
+        except sav_services.RetraitProduitIncoherentError as exc:
             return Response({'produit': [str(exc)]}, status=400)
-        except EquipementDejaRemplaceError as exc:
+        except sav_services.EquipementDejaRemplaceError as exc:
             return Response({'detail': str(exc)}, status=409)
         suffixe = {
             PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
@@ -2361,13 +2348,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         """ASAV2 — corps commun de ``facturer`` et ``generer-facture`` : la
         décision « qui paie » vient de ``services.decision_facturation``."""
         from apps.ventes.services import generer_facture_ticket_sav
-        from .services import decision_facturation
 
         # XFSM15 — récidive : refus 403 sans ``override`` d'un responsable.
         # ENF11 (api-fuzz) — ``override`` validé (vrai booléen JSON ou absent).
         override = SavFacturerRequete().run_validation(request.data).get(
             'override', False)
-        decision = decision_facturation(ticket, request.user, override)
+        decision = sav_services.decision_facturation(ticket, request.user, override)
         if decision['refuse']:
             return Response({'detail': decision['detail']},
                             status=decision['http'])
@@ -2427,14 +2413,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # l'intervention, elle, est déjà créée.
         if ticket.statut == Ticket.Statut.NOUVEAU:
             # ASAV12 — même service unique que les actions de statut.
-            from .services import (
-                TransitionTicketRefusee, appliquer_transition_ticket,
-            )
             try:
-                appliquer_transition_ticket(
+                sav_services.appliquer_transition_ticket(
                     ticket, Ticket.Statut.PLANIFIE, request.user,
                     request=request)
-            except TransitionTicketRefusee:
+            except sav_services.TransitionTicketRefusee:
                 import logging
                 logging.getLogger(__name__).warning(
                     'sav: planifier_intervention — transition NOUVEAU → '
@@ -2468,7 +2451,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
-        from .services import PretEquipementError, creer_pret_equipement
         corps = _valider_corps(_SCHEMA_PRET_EQUIPEMENT, request.data)
         try:
             produit = get_produit_or_raise(ticket.company, corps['produit'])
@@ -2479,11 +2461,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         numero_serie = (corps.get('numero_serie') or '').strip()
         try:
             with transaction.atomic():
-                pret = creer_pret_equipement(
+                pret = sav_services.creer_pret_equipement(
                     company=ticket.company, ticket=ticket, produit=produit,
                     numero_serie=numero_serie, date_sortie=date_sortie,
                     date_retour_prevue=date_retour_prevue, user=request.user)
-        except PretEquipementError as exc:
+        except sav_services.PretEquipementError as exc:
             return Response({'detail': str(exc)}, status=409)  # ENF11 : stock insuffisant = état
         activity.log_note(
             ticket, request.user,
@@ -2504,7 +2486,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         """XSAV27 — clôture un prêt : réintègre le stock (idempotent)."""
         ticket = self.get_object()
         from .models import PretEquipement
-        from .services import retourner_pret_equipement
         try:
             pret = ticket.prets_equipement.select_related('produit').get(
                 pk=pret_id)
@@ -2513,7 +2494,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         date_retour = (date_du_corps(exiger_objet(request.data), 'date_retour_reelle')
                        or timezone.localdate())
         with transaction.atomic():
-            pret = retourner_pret_equipement(
+            # ACNC27 — prêt relu SOUS VERROU : un retour croisé le retrouve
+            # « retourné » et ne réintègre rien (une seule ENTRÉE).
+            pret = PretEquipement.objects.select_for_update().get(pk=pret.pk)
+            pret = sav_services.retourner_pret_equipement(
                 pret=pret, date_retour_reelle=date_retour, user=request.user)
         activity.log_note(
             ticket, request.user,
@@ -2528,8 +2512,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         Suggestions JAMAIS auto-appliquées : GET pur, rien n'est écrit sur le
         ticket. Sans GROQ_API_KEY, renvoie ``{'disponible': False}`` (200,
         comportement actuel byte-identique)."""
+        from .services import suggerer_triage_ticket  # résolu par check_api_shapes
         ticket = self.get_object()
-        from .services import suggerer_triage_ticket
         result = suggerer_triage_ticket(
             company=ticket.company, description=ticket.description)
         return Response(result)
@@ -2893,10 +2877,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         jamais d'import direct du modèle ventes)."""
         ticket = self.get_object()
         # ASAV2 — même décision que les deux portes de facture.
-        from .services import decision_facturation
         override = str(exiger_objet(request.data).get('override') or '') in (
             '1', 'true', 'True', 'on')
-        decision = decision_facturation(ticket, request.user, override)
+        decision = sav_services.decision_facturation(ticket, request.user, override)
         if decision['refuse']:
             return Response({'detail': decision['detail']},
                             status=decision['http'])
@@ -2931,21 +2914,30 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response({'lignes': erreurs},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            devis = create_devis_pour_ticket(
-                company=ticket.company, user=request.user,
-                client_id=client_id, lignes=lignes,
-                note=f'Devis de réparation SAV — ticket {ticket.reference}')
-        except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
-            return Response(
-                {'detail': 'Client introuvable pour votre société.'},
-                status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            # ACNC33 — ticket relu SOUS VERROU : un devis déjà lié est rendu
+            # (200, même id), jamais un second brouillon numéroté.
+            ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+            from apps.ventes.selectors import get_devis_by_pk
+            existant = ticket.devis_id_ext and get_devis_by_pk(ticket.devis_id_ext)
+            if existant and existant.company_id == ticket.company_id:
+                return Response(
+                    {'devis_id': existant.id, 'devis_reference': existant.reference})
+            try:
+                devis = create_devis_pour_ticket(
+                    company=ticket.company, user=request.user,
+                    client_id=client_id, lignes=lignes,
+                    note=f'Devis de réparation SAV — ticket {ticket.reference}')
+            except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
+                return Response(
+                    {'detail': 'Client introuvable pour votre société.'},
+                    status=status.HTTP_404_NOT_FOUND)
 
-        ticket.devis_id_ext = devis.id
-        ticket.save(update_fields=['devis_id_ext'])
-        activity.log_note(
-            ticket, request.user,
-            f'Devis de réparation {devis.reference} créé (brouillon)')
+            ticket.devis_id_ext = devis.id
+            ticket.save(update_fields=['devis_id_ext'])
+            activity.log_note(
+                ticket, request.user,
+                f'Devis de réparation {devis.reference} créé (brouillon)')
         return Response(
             {'devis_id': devis.id, 'devis_reference': devis.reference},
             status=status.HTTP_201_CREATED)
@@ -3020,13 +3012,10 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
         if getattr(self, 'action', None) == 'list':
             # AGR619 — sème une seule fois « Entretien pompage solaire » à
             # l'affichage des modèles (même patron que seed_checklist_etapes).
-            from .services import (
-                ensure_modele_entretien_ci, ensure_modele_entretien_pompage,
-            )
             company = getattr(self.request.user, 'company', None)
-            ensure_modele_entretien_pompage(company)
+            sav_services.ensure_modele_entretien_pompage(company)
             # CIQ641 — et « Entretien site professionnel » (C&I), même patron.
-            ensure_modele_entretien_ci(company)
+            sav_services.ensure_modele_entretien_ci(company)
         return actifs_en_liste(self, super().get_queryset())
 
     def perform_create(self, serializer):
@@ -3295,8 +3284,7 @@ class AlarmeOnduleurViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 + (f' : {alarme.libelle}' if alarme.libelle else ''))
             # AUD519 — l'escalade d'alarme pose la même échéance SLA que le
             # chemin manuel (sans quoi le ticket était invisible aux scans).
-            from .services import poser_sla_due_at
-            ticket = poser_sla_due_at(create_with_reference(
+            ticket = sav_services.poser_sla_due_at(create_with_reference(
                 Ticket, 'SAV', company,
                 lambda ref: Ticket.objects.create(
                     reference=ref, company=company,
@@ -4011,7 +3999,6 @@ def sav_file_attente(request):
     ``tickets/{id}/reaffecter-equipe/``. Réservé au tier responsable/admin
     (vérifié côté urls.py)."""
     from .selectors import charges_equipes, file_attente_equipe
-    from .services import debordement_equipe
 
     company = request.user.company
     charges = charges_equipes(company)
@@ -4021,7 +4008,7 @@ def sav_file_attente(request):
     resultats = []
     for equipe in equipes:
         file_attente = list(file_attente_equipe(equipe))
-        proposition = debordement_equipe(equipe)
+        proposition = sav_services.debordement_equipe(equipe)
         resultats.append({
             'equipe_id': equipe.pk,
             'equipe_nom': equipe.nom,

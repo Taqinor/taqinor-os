@@ -43,7 +43,9 @@ test('VX92 : paiement — ON garde le dialog ouvert (reset + refocus), OFF ferme
   // Fenêtre élargie (VX155 a inséré le jalon toastMilestone « facture payée »
   // entre l'appel API et le bloc « créer un autre » — même motif que la
   // fenêtre ProduitForm ci-dessous).
-  const block = PAIEMENT_DIALOG_SRC.slice(start, start + 1700)
+  // ACNC1 a encore allongé le bloc (clé d'envoi) : la fenêtre court jusqu'au
+  // `} catch (err)` qui ferme le chemin de succès.
+  const block = PAIEMENT_DIALOG_SRC.slice(start, PAIEMENT_DIALOG_SRC.indexOf('} catch (err)', start))
   assert.match(block, /if \(payCreerUnAutre\) \{/)
   assert.match(block, /payMontantRef\.current\?\.focus\(\)/)
   // VX230 — la fermeture passe désormais par onOpenChange(false) (le parent

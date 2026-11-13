@@ -462,6 +462,16 @@ describe('CAD152 — les tel: du rail ouvrent le panneau d’appel AVANT de comp
     expect(await screen.findByRole('dialog')).toHaveTextContent('Appel — Karim B.')
   })
 
+  it('lecture des étapes en échec : avis + Réessayer, jamais « relancez la cadence » (AERR102)', async () => {
+    crmApi.getRelanceEtapesLead.mockRejectedValueOnce(new Error('délai'))
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(document.querySelector('a[href="tel:0612345678"]'))
+    expect(await screen.findByTestId('lw-appel-etapes-illisibles')).toHaveTextContent('Étapes de suivi illisibles')
+    expect(screen.queryByTestId('lw-appel-sans-touche')).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByTestId('lw-appel-etapes-illisibles')).getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByTestId('lw-appel-sans-touche')).toBeInTheDocument()
+  })
+
   it('une réponse enregistrée depuis la modale rafraîchit la fiche (onAction refresh)', async () => {
     crmApi.updateLead.mockResolvedValue({ data: { id: 7, score: 55 } })
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)

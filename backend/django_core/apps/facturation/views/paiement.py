@@ -157,7 +157,9 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # date stricts) : ``date_rejet: ""`` valait « aujourd'hui » en silence.
         corps = corps_valide(request, D.RejeterPaiementRequest)
         try:
-            rejeter_paiement(
+            # ACNC7 — le service relit le paiement sous verrou : on sérialise
+            # l'instance qu'il a écrite, jamais la copie lue avant.
+            paiement = rejeter_paiement(
                 paiement=paiement, motif=corps['motif'],
                 frais=corps.get('frais'), date_rejet=corps.get('date_rejet'),
                 user=request.user,
@@ -335,6 +337,8 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 reference=reference,
                 note=note,
                 created_by=request.user,
+                # ACNC12 — clé d'envoi du corps : un rejeu rend la même avance.
+                idempotency_key=(str(request.data.get('idempotency_key') or '').strip()[:255] or None),
             )
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)

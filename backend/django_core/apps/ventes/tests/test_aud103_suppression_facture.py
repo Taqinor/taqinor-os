@@ -102,6 +102,25 @@ class TestSuppressionFacture(TestCase):
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
         self.assertTrue(Paiement.objects.filter(pk=paiement.pk).exists())
 
+    def test_suppression_relit_le_statut_sous_verrou(self):
+        """ACNC5 (C-ACNC-002) — un brouillon chargé par la vue puis passé
+        « émise / FAC-… » en base (l'émission a gagné le verrou) : la
+        suppression sur l'instance chargée répond 409 et la facture émise,
+        numérotée, reste en base. Mutant : garder `instance.statut` ⇒ supprimée."""
+        from apps.facturation.views.facture import FactureViewSet
+        from core.conflit_etat import ConflitEtat
+        brouillon = self._facture()
+        Facture.objects.filter(pk=brouillon.pk).update(
+            reference=f'BROUILLON-{brouillon.pk}')
+        chargee = Facture.objects.get(pk=brouillon.pk)
+        Facture.objects.filter(pk=brouillon.pk).update(
+            statut=Facture.Statut.EMISE, reference=f'FAC-ACNC5-{_nxt()}')
+        with self.assertRaises(ConflitEtat):
+            FactureViewSet().perform_destroy(chargee)
+        relue = Facture.objects.get(pk=brouillon.pk)
+        self.assertEqual(relue.statut, Facture.Statut.EMISE)
+        self.assertTrue(relue.reference.startswith('FAC-ACNC5-'))
+
     def test_facture_payee_refusee(self):
         facture = self._facture(statut=Facture.Statut.PAYEE)
         resp = self.api_su.delete(self._url(facture))

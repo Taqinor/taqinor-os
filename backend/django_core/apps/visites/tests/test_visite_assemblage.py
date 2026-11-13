@@ -155,6 +155,39 @@ class ActionApiTests(AssemblageBase):
         self.assertEqual(detail.data['photo_toit']['assemblage_etat'],
                          VisiteTerrain.Assemblage.EN_COURS)
 
+    def test_assemblage_tue_passe_en_echec_apres_10_minutes(self):
+        # ACEL77 — tâche tuée : « en cours » ne reste pas pour toujours.
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self.poster_photo('toit-1.png')
+        self.poster_photo('toit-2.png')
+        url = f'/api/django/visites/visites/{self.visite_id}/'
+        with mock.patch(
+                'apps.visites.tasks.assembler_photos_toit_task.delay'):
+            self.api.post(url + 'assembler-photos/', {}, format='json')
+        t0 = timezone.now()
+        with mock.patch('django.utils.timezone.now',
+                        return_value=t0 + timedelta(minutes=9)):
+            toit = self.api.get(url).data['photo_toit']
+        self.assertEqual(toit['assemblage_etat'],
+                         VisiteTerrain.Assemblage.EN_COURS)
+        with mock.patch('django.utils.timezone.now',
+                        return_value=t0 + timedelta(minutes=11)):
+            toit = self.api.get(url).data['photo_toit']
+        self.assertEqual(toit['assemblage_etat'],
+                         VisiteTerrain.Assemblage.ECHEC)
+        self.assertIn('relancez', toit['assemblage_erreur'])
+        self.assertEqual(self.visite().assemblage_etat,
+                         VisiteTerrain.Assemblage.ECHEC)
+        with mock.patch(
+                'apps.visites.tasks.assembler_photos_toit_task.delay'):
+            resp = self.api.post(url + 'assembler-photos/', {}, format='json')
+        self.assertEqual(resp.data['photo_toit']['assemblage_etat'],
+                         VisiteTerrain.Assemblage.EN_COURS)
+        self.assertGreaterEqual(self.visite().assemblage_demande_le, t0)
+
     def test_photo_toit_absente_renvoie_409(self):
         # ENF47 (api-fuzz-full 42017839549) : la visite existe, seule l'image
         # manque — refus d'état 409 ; une visite inconnue reste 404.

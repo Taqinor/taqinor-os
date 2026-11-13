@@ -30,10 +30,10 @@ User = get_user_model()
 JOUR = datetime.date(2026, 5, 11)
 
 
-def instant(heure, minute=0):
+def instant(heure, minute=0, jour=JOUR):
     """Datetime AWARE fixe (jamais `now()`)."""
     return timezone.make_aware(
-        datetime.datetime(JOUR.year, JOUR.month, JOUR.day, heure, minute),
+        datetime.datetime(jour.year, jour.month, jour.day, heure, minute),
         timezone.get_default_timezone())
 
 
@@ -71,8 +71,13 @@ class Ntwms12Base(TestCase):
                 prix_achat=Decimal('1'), prix_vente=Decimal('2'))
         besoins = [{'produit_id': produit.id, 'quantite': 1}
                    for _ in range(nb_lignes)]
-        return creer_vague_depuis_besoins(
+        vague = creer_vague_depuis_besoins(
             company=company, user=self.admin, besoins=besoins)
+        # ACEL44 — créée au matin de JOUR : sa 1re coupure est JOUR 17:00
+        # (jamais l'heure réelle du run, postérieure à JOUR).
+        VaguePicking.objects.filter(pk=vague.pk).update(created_at=instant(8))
+        vague.refresh_from_db()
+        return vague
 
 
 class TestConfiguration(Ntwms12Base):
@@ -176,7 +181,26 @@ class TestLiberationAutoHeure(Ntwms12Base):
         second = liberer_vagues_planifiees(maintenant=instant(19, 0))
         self.assertEqual(second['liberees'], [])
 
-    def test_sans_heure_configuree_jamais_liberee(self):
+    def test_creee_apres_la_coupure_attend_le_lendemain(self):
+        """ACEL44 — créée à 17:30 (coupure 17:00) : brouillon le soir même et
+        le lendemain avant 17:00, lancée le lendemain à 17:00."""
+        vague = self._vague()
+        configurer_liberation_vague(vague=vague, mode='auto_heure')
+        VaguePicking.objects.filter(pk=vague.pk).update(
+            created_at=instant(17, 30))
+        lendemain = JOUR + datetime.timedelta(days=1)
+        for moment in (instant(17, 45), instant(16, 45, jour=lendemain)):
+            self.assertEqual(
+                liberer_vagues_planifiees(maintenant=moment)['liberees'], [])
+            vague.refresh_from_db()
+            self.assertEqual(vague.statut, VaguePicking.Statut.BROUILLON)
+        resultat = liberer_vagues_planifiees(
+            maintenant=instant(17, 0, jour=lendemain))
+        self.assertEqual(resultat['liberees'], [vague.reference])
+        vague.refresh_from_db()
+        self.assertEqual(vague.statut, VaguePicking.Statut.LANCEE)
+        self.assertIsNotNone(vague.date_lancement)
+
         parametres = AchatsParametres.for_company(self.company)
         parametres.heure_coupure_vagues = None
         parametres.save(update_fields=['heure_coupure_vagues'])
@@ -218,6 +242,59 @@ class TestLiberationAutoSeuil(Ntwms12Base):
         self.assertEqual(resultat['liberees'], [vague.reference])
         vague.refresh_from_db()
         self.assertEqual(vague.statut, VaguePicking.Statut.LANCEE)
+
+    def test_une_societe_en_echec_n_arrete_pas_les_suivantes(self):
+        """ACEL39 — le lancement qui lève chez A n'empêche plus la vague de B
+        de partir ; l'échec est consigné au journal des problèmes."""
+        from unittest import mock
+        from apps.stock import services_wms
+        from apps.stock.tasks import liberer_vagues_planifiees_task
+
+        vague_a = self._vague()
+        configurer_liberation_vague(
+            vague=vague_a, mode='auto_seuil', seuil_lignes=1)
+        vague_b = self._vague(company=self.autre)
+        configurer_liberation_vague(
+            vague=vague_b, mode='auto_seuil', seuil_lignes=1)
+        reel = services_wms.lancer_vague
+
+        def _lancer(vague):
+            if vague.company_id == self.company.id:
+                raise RuntimeError('lancement en panne')
+            return reel(vague)
+
+        with mock.patch.object(services_wms, 'lancer_vague',
+                               side_effect=_lancer), \
+                mock.patch('apps.reporting.journal_problemes.'
+                           'consigner_echec_tache') as consigner:
+            total = liberer_vagues_planifiees_task()
+        self.assertEqual(total, 1)
+        vague_a.refresh_from_db()
+        vague_b.refresh_from_db()
+        self.assertEqual(vague_a.statut, VaguePicking.Statut.BROUILLON)
+        self.assertEqual(vague_b.statut, VaguePicking.Statut.LANCEE)
+        consigner.assert_called_once()
+        self.assertEqual(consigner.call_args[0][0],
+                         'stock.liberer_vagues_planifiees')
+
+    def test_societe_suspendue_jamais_liberee(self):
+        """ACEL40 — appelé sans société (commande), le service ne lance
+        jamais la vague d'une société suspendue."""
+        from authentication.models import Company
+        vague_a = self._vague()
+        configurer_liberation_vague(
+            vague=vague_a, mode='auto_seuil', seuil_lignes=1)
+        vague_b = self._vague(company=self.autre)
+        configurer_liberation_vague(
+            vague=vague_b, mode='auto_seuil', seuil_lignes=1)
+        Company.objects.filter(pk=self.autre.pk).update(
+            actif=False, statut=Company.STATUT_SUSPENDU)
+        resultat = liberer_vagues_planifiees(maintenant=instant(10, 0))
+        self.assertEqual(resultat['liberees'], [vague_a.reference])
+        vague_a.refresh_from_db()
+        vague_b.refresh_from_db()
+        self.assertEqual(vague_a.statut, VaguePicking.Statut.LANCEE)
+        self.assertEqual(vague_b.statut, VaguePicking.Statut.BROUILLON)
 
 
 class TestCommandeManagement(Ntwms12Base):

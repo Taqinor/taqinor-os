@@ -19,3 +19,20 @@ class CouperLienRapportMixin:
         interv = self.get_object()
         interv.couper_lien_rapport()
         return Response({'coupe': True})
+
+
+def devis_de_reserve(reserve, interv, user):
+    """XFSM18/ACNC34 — devis de réparation d'une réserve, garde jugée sur la
+    réserve relue SOUS VERROU (deux clics croisés : un seul devis). Renvoie
+    ``(réserve relue, devis neuf)`` ou ``(réserve relue, None)`` si elle porte
+    déjà son devis ; le ``ValueError`` du service ventes remonte."""
+    from django.db import transaction
+    from apps.ventes.services import create_devis_from_reserve
+    with transaction.atomic():
+        reserve = type(reserve).objects.select_for_update().get(pk=reserve.pk, intervention=interv)
+        if reserve.devis_repare_id:
+            return reserve, None
+        devis = create_devis_from_reserve(reserve=reserve, user=user)
+        reserve.devis_repare_id = devis.id
+        reserve.save(update_fields=['devis_repare_id'])
+    return reserve, devis

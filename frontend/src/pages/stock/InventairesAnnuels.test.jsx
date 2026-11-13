@@ -60,6 +60,17 @@ describe('InventairesAnnuels (WIR109)', () => {
     expect(screen.queryByRole('button', { name: 'Valoriser' })).toBeNull()
   })
 
+  it('échec initial : erreur + Réessayer, jamais Chargement… ; succès ensuite : erreur effacée (AERR89)', async () => {
+    stockApi.getInventairesAnnuels.mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValueOnce({ data: [{ id: 1, exercice: 2025, nb_lignes: 42, total_valeur: 150000 }] })
+    renderPage()
+    expect(await screen.findByText('Chargement des inventaires impossible.')).toBeInTheDocument()
+    expect(screen.queryByText(/Chargement…/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText(/Exercice 2025/)).toBeInTheDocument()
+    expect(screen.queryByText('Chargement des inventaires impossible.')).toBeNull()
+  })
+
   it('liste les exercices figés', async () => {
     stockApi.getInventairesAnnuels.mockResolvedValue({
       data: [{ id: 1, exercice: 2025, nb_lignes: 42, total_valeur: 150000 }],

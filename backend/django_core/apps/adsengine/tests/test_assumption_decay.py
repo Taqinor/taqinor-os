@@ -134,6 +134,26 @@ class DecayNodeTests(TestCase):
         self.assertEqual(fresh.alpha, before_fresh)    # intact
         self.assertEqual(seasonal.alpha, before_seasonal)  # intact
 
+    def test_tache_hebdo_rejouee_n_oublie_qu_une_fois(self):
+        """ACEL72 — un rejeu de la même semaine ISO n'oublie rien de plus."""
+        from unittest.mock import patch
+
+        from apps.adsengine.tasks import decay_assumptions_weekly
+
+        node = self._node(last_tested_at=None, alpha=20.0, beta=10.0)
+        decay_assumptions_weekly()
+        node.refresh_from_db()
+        un_pas = node.alpha
+        self.assertLess(un_pas, 20.0)
+        decay_assumptions_weekly()
+        node.refresh_from_db()
+        self.assertEqual(node.alpha, un_pas)  # même semaine : rien de plus
+        plus_tard = timezone.now() + datetime.timedelta(days=7)
+        with patch('django.utils.timezone.now', return_value=plus_tard):
+            decay_assumptions_weekly()
+        node.refresh_from_db()
+        self.assertLess(node.alpha, un_pas)  # semaine suivante : second pas
+
     def test_run_weekly_decay_is_company_scoped(self):
         other = Company.objects.create(nom='Autre', slug='autre-decay')
         mine = self._node(last_tested_at=None)

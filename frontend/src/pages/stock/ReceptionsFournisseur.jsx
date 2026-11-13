@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Input, Textarea,
   // EZ10 — le sélecteur de bon de commande passe au Combobox (recherche).
-  Combobox,
+  Combobox, useDirtyGuard, confirmLeaveIfDirty,
 } from '../../ui'
 import { TableauStock } from './ComposantsStock'
 
@@ -27,6 +27,7 @@ import CellulesProduitQuantite, { EnteteProduitQuantite } from './CellulesProdui
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { erreurComptageSeries, parseSeries } from './numerosSerie.js'
+import { messageSaisieNonEntiere } from './validationEntiers'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -69,6 +70,9 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   const [ouvertes, setOuvertes] = useState({})  // { ligneCmdId: bool }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // AERR37 — un BCF choisi ou une note saisie : clic extérieur / Échap demandent avant de fermer.
+  const dirty = Boolean(bonId || note.trim())
+  useDirtyGuard(dirty)
 
   // Charge le détail (lignes à jour) du BCF choisi.
   useEffect(() => {
@@ -115,6 +119,8 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 
   const submit = async (confirmer) => {
     setError(null)
+    const nonEntiere = messageSaisieNonEntiere(lignes, (l) => saisies[l.id])  // AERR87 — jamais tronquée
+    if (nonEntiere) { setError(nonEntiere); return }
     const lignesEnErreur = lignes.filter((l) => erreurSeries(l))
     if (lignesEnErreur.length > 0) {
       setOuvertes((o) => ({ ...o, ...Object.fromEntries(lignesEnErreur.map((l) => [l.id, true])) }))
@@ -158,7 +164,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nouvelle réception fournisseur</DialogTitle>

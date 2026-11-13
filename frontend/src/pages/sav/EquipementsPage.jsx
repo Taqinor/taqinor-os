@@ -47,7 +47,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
-import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
+import { BandeauListePasAJour, BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import SelectStatutEquipement from '../../features/sav/SelectStatutEquipement'
 
 const formatDateFR = (iso) => {
@@ -90,7 +90,13 @@ function frError(data, fallback) {
   return fallback
 }
 
-export function EquipementDetail({ equipement, onClose, onSaved }) {
+// AERR92 — l'enveloppe remonte la fiche à chaque changement d'équipement :
+// son état local ne survit jamais d'un équipement à l'autre (règle d'AERR25).
+export function EquipementDetail(props) {
+  return <EquipementDetailCorps key={props.equipement.id} {...props} />
+}
+
+function EquipementDetailCorps({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
   // ASAV61 / ADRG39 — mise au rebut / réactivation : palier ET equipement_gerer (serveur).
   const palierRebut = useIsAdminOrResponsable(), codeRebut = useDroitMetier('equipement_gerer')
@@ -723,9 +729,11 @@ export default function EquipementsPage() {
           </div>
         )}
 
-        {loading ? (
+        {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
+        {error && items.length > 0 && <BandeauListePasAJour onRetry={reload} />}
+        {loading && items.length === 0 ? (
           <SqueletteListe lignes={6} />
-        ) : error ? (
+        ) : error && items.length === 0 ? (
           <ErreurChargement description="Le parc d'équipements n'a pas pu être chargé. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
         ) : rows.length === 0 ? (
           <EmptyState

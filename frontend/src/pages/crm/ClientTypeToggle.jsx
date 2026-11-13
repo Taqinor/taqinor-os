@@ -20,9 +20,8 @@ export default function ClientTypeToggle({ client, onSave }) {
   const serverType = isEntrepriseValue(client?.type_client, client)
     ? 'entreprise'
     : 'particulier'
-  const { value, statusLabel, isSaving, save } = useOptimisticSave(serverType, {
-    onError: () => toast.error('Type non enregistré — réessayez.'),
-  })
+  // AERR117 — le refus est DÉJÀ toasté par l'intercepteur axios : pas de second toast.
+  const { value, statusLabel, isSaving, save } = useOptimisticSave(serverType)
   const [open, setOpen] = useState(false)
 
   const choose = async (next) => {

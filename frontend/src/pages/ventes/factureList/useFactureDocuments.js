@@ -73,8 +73,10 @@ export default function useFactureDocuments({ dispatch }) {
     try {
       const res = await ventesApi.telechargerPdfFacture(f.id)
       openPdfBlob(res.data, `${f.reference}.pdf`)
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
+    } catch (err) {
+      // AERR21 — « introuvable » seulement sur un 404 ; sinon la raison servie.
+      toast.error(err?.response?.status === 404 ? 'Fichier introuvable. Régénérez le PDF.'
+        : frenchError(err, 'Téléchargement du PDF impossible.'))
     } finally {
       setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
     }
@@ -137,10 +139,18 @@ export default function useFactureDocuments({ dispatch }) {
       const { data } = await ventesApi.lienPaiementFacture(f.id)
       const url = data?.pay_url ?? ''
       if (url && navigator.clipboard?.writeText) {
-        pending.win?.close?.()
-        await navigator.clipboard.writeText(url)
-        // AFAC26 — le montant annoncé est CE QUE LE CLIENT PAIERA (reste exigible), jamais le `montant` figé.
-        toast.success(`Lien de paiement copié — ${formatMAD(data.montant_a_payer ?? data.montant)}.`)
+        // AERR10 — la copie a son propre échec (le lien existe : on l'offre).
+        const copie = await navigator.clipboard.writeText(url).then(() => true, () => false)
+        if (copie) {
+          pending.win?.close?.()
+          // AFAC26 — le montant annoncé est CE QUE LE CLIENT PAIERA (reste exigible), jamais le `montant` figé.
+          toast.success(`Lien de paiement copié — ${formatMAD(data.montant_a_payer ?? data.montant)}.`)
+        } else {
+          if (pending.win && !pending.win.closed) pending.win.location = url
+          toast.error(`Copie impossible — lien créé : ${url}`, {
+            action: { label: 'Ouvrir', onClick: () => window.open(url, '_blank', 'noopener') },
+          })
+        }
       } else if (url) {
         if (pending.win && !pending.win.closed) {
           pending.win.location = url

@@ -17,7 +17,6 @@ import {
 } from '../../../../features/kanban/kanbanA11y'
 import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
-import { toast } from '../../../../ui/confirm'
 import { EmptyState } from '../../../../ui'
 import { useProbabilitesEtape, ponderer } from '../useProbabilitesEtape'
 import LeadCard from './LeadCard'
@@ -116,12 +115,8 @@ function groupByMonth(leads, probas) {
 // jamais sélectionnable comme NOUVELLE cible.
 function MonthMover({ lead, monthOptions, onCommitDate, busy }) {
   const currentKey = monthKey(lead.date_cloture_prevue) ?? UNDATED_KEY
-  const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(
-    currentKey,
-    {
-      onError: () => toast.error('Replanification non enregistrée — réessayez.'),
-    },
-  )
+  // AERR117 — le refus est DÉJÀ toasté par l'intercepteur axios : pas de second toast.
+  const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(currentKey)
   if (!onCommitDate) return null
   const onChange = (e) => {
     const next = e.target.value

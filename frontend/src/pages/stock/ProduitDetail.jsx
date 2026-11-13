@@ -38,6 +38,7 @@ import { STATUT_DEVIS_LABELS } from '../../features/ventes/devisStatuts.js'
 import { STATUS_LABELS as CHANTIER_STATUT_LABELS } from '../../features/installations/statuses.js'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { estEntierSaisi, MESSAGE_ENTIER } from './validationEntiers'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -783,10 +784,13 @@ export function RebutModal({ produit, emplacements = [], onClose, onDone }) {
   const [referenceChantier, setReferenceChantier] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [erreurQte, setErreurQte] = useState(null)  // AERR87 — sous le champ Quantité
 
   const submit = async () => {
     const qte = parseInt(quantite, 10)
-    if (!Number.isInteger(qte) || qte <= 0) { setError('Saisissez une quantité positive.'); return }
+    setErreurQte(null)
+    if (String(quantite).trim() && !estEntierSaisi(quantite)) { setErreurQte(MESSAGE_ENTIER); return }
+    if (!Number.isInteger(qte) || qte <= 0) { setErreurQte('Saisissez une quantité positive.'); return }
     if (!motif) { setError('Le motif est obligatoire.'); return }
     setBusy(true); setError(null)
     try {
@@ -819,6 +823,7 @@ export function RebutModal({ produit, emplacements = [], onClose, onDone }) {
           <Input id="rebut-qte" type="number" min="1" max={produit.quantite_stock || undefined}
                  inputMode="numeric" value={quantite}
                  onChange={(e) => setQuantite(e.target.value)} />
+          {erreurQte && <p role="alert" className="text-xs text-destructive">{erreurQte}</p>}
           <p className="text-xs text-muted-foreground">Stock actuel : {produit.quantite_stock ?? 0}</p>
         </div>
         <div className="flex flex-col gap-1.5">

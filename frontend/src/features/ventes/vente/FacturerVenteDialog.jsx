@@ -22,6 +22,7 @@ import { todayLocalIso } from '../../../lib/dateLocale.js'
 import { MODES_PAIEMENT } from '../modesPaiement'
 import { aplatirErreurs, erreursParChamp, bandeau } from './erreursVente'
 import { ouvrirPdfFacture } from './facturePdf'
+import { arrondiCentime } from '../remise'
 
 const REPLI_CHARGEMENT = "Impossible de lire l'état de la vente."
 const REPLI_CREATION = 'Création de la facture impossible.'
@@ -117,7 +118,8 @@ function CorpsFacturer({ devis, onOpenChange, onDone }) {
     montantFacture = montant
       ? norm(montant)
       : (pct && vente
-        ? ((num(pct) * num(vente.prix_convenu_ttc)) / 100).toFixed(2)
+        // AERR19 — au centime, MOITIÉ VERS LE HAUT, comme le serveur (_montant_demande).
+        ? arrondiCentime((num(pct) * num(vente.prix_convenu_ttc)) / 100).toFixed(2)
         : (acompte && acompteOuvert ? acompte.montant_ttc : ''))
   } else if (tab === 'complete') {
     montantFacture = vente?.reste_a_facturer_ttc || ''

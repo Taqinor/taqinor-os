@@ -1409,6 +1409,19 @@ describe('ControleSuiviPanel — détail repliable (replié par défaut, mémori
     }
   })
 
+  it('rafraîchissement en échec : le verdict reste, avec « Pas à jour » + Réessayer (AERR101)', async () => {
+    const { rerender } = monter()
+    await attendreVerdict()
+    crmApi.getControleSuivi.mockRejectedValueOnce(new Error('boom'))
+    rerender(
+      <MemoryRouter><ControleSuiviPanel rafraichir={1} /></MemoryRouter>)
+    expect(await screen.findByTestId('controle-pas-a-jour')).toHaveTextContent('Pas à jour')
+    expect(screen.getByTestId('controle-verdict')).toBeInTheDocument()
+    expect(screen.queryByTestId('controle-panne')).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByTestId('controle-pas-a-jour')).getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.queryByTestId('controle-pas-a-jour')).not.toBeInTheDocument())
+  })
+
   it('un refus 400 qui nomme un champ déplie le détail pour montrer le message sous ce champ', async () => {
     const message = '« jours » doit valoir 7, 14 ou 30.'
     crmApi.getControleSuivi.mockRejectedValueOnce({

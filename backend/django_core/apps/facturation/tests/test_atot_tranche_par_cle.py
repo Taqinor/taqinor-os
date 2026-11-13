@@ -104,6 +104,30 @@ class TrancheParCleTests(TestCase):
                     sum((Decimal(str(f.total_ttc)) for f in actives),
                         Decimal('0')), Decimal('150000.00'))
 
+    def test_generer_facture_meme_cle_une_tranche(self):
+        """ACNC12 (C-ACNC-010) — « generer-facture » et « proforma-pdf » POSTés
+        deux fois avec la même « Idempotency-Key » : une facture d'acompte
+        (pas la tranche suivante), un seul numéro PF-. Mutant : retirer
+        l'enveloppe ⇒ 2 tranches."""
+        from unittest.mock import patch
+        from apps.ventes.models import ProformaDocument
+        devis = self._devis()
+        url = f'/api/django/ventes/devis/{devis.id}/generer-facture/'
+        r1 = self.api.post(url, {}, format='json', HTTP_IDEMPOTENCY_KEY='ACNC12-T')
+        r2 = self.api.post(url, {}, format='json', HTTP_IDEMPOTENCY_KEY='ACNC12-T')
+        self.assertEqual((r1.status_code, r2.status_code), (201, 201), r2.data)
+        self.assertEqual(r2.data['id'], r1.data['id'])
+        self.assertEqual(len(self._actives(devis)), 1)
+        with patch('apps.ventes.utils.pdf.generate_proforma_pdf',
+                   return_value=b'%PDF'):
+            for _ in range(2):
+                r = self.api.post(
+                    f'/api/django/ventes/devis/{devis.id}/proforma-pdf/', {},
+                    format='json', HTTP_IDEMPOTENCY_KEY='ACNC12-PF')
+                self.assertIn(r.status_code, (200, 201))
+                self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertEqual(ProformaDocument.objects.filter(devis=devis).count(), 1)
+
     def test_revision_baisse_solde_nul_400(self):
         from apps.ventes.models import Avoir, Facture
         devis = self._devis()

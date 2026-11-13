@@ -2727,46 +2727,6 @@ def website_lead_webhook(request):
         )
 
 
-def replay_website_lead_payload(raw):
-    """QX16 — Rejoue un ``WebsiteLeadPayload`` non traité/en erreur à travers
-    EXACTEMENT le même mapping que le webhook (``_map_and_link_lead``, source
-    unique de vérité — jamais une seconde implémentation qui pourrait
-    diverger). Résout la société DEPUIS le payload déjà stocké (jamais du
-    payload brut re-résolu — ``raw.company`` a été posée côté serveur à la
-    réception initiale ; si elle manquait, on retombe sur ``_resolve_company``
-    comme le ferait un nouveau POST).
-
-    Renvoie ``(ok: bool, detail: str, lead)``. Ne lève jamais — capte toute
-    exception et la consigne sur ``raw.error`` comme le fait la vue webhook,
-    pour que le rejeu reste rejouable indéfiniment (jamais une exception
-    remontée casse l'appelant HTTP)."""
-    # AACQ30 — rejeu IDEMPOTENT et fidèle au webhook, à n'importe quel délai.
-    payload = raw.payload if isinstance(raw.payload, dict) else {}
-    if payload.get('event_type'):
-        return False, "Ping d'engagement : jamais rejoué en lead.", None
-    if raw.lead_id:
-        return (True, f'Déjà rattaché au lead #{raw.lead_id} — aucun nouveau '
-                      f'lead.', raw.lead)
-    if raw.processed:
-        return (False, "Événement déjà traité : la soumission d'origine a "
-                       "déjà sa fiche.", None)
-    company = raw.company or _resolve_company()
-    if company is None:
-        return False, 'Aucune Company résolue — rejeu impossible.', None
-    try:
-        lead, created, detail, _extra = _map_and_link_lead(
-            raw, raw.payload, company)
-        if created:
-            _mettre_en_file_devis_automatique(lead, company)
-        return True, detail, lead
-    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook (D-ENF22-BLE001)
-        raw.error = f'{type(exc).__name__}: {exc}'
-        raw.save(update_fields=['error'])
-        logger.exception(
-            'replay_website_lead_payload: mapping échoué (payload #%s)', raw.pk)
-        return False, f'Rejeu échoué : {exc}', None
-
-
 # ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle) ──────────
 #
 # Deux jetons distincts (settings, jamais du corps de requête) :

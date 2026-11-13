@@ -3,10 +3,10 @@
 // FactureList.jsx. Aucun flux modifié, aucune valeur transformée.
 import { useMemo, useState } from 'react'
 import ventesApi from '../../../api/ventesApi'
-import { fetchFactures } from '../../../features/ventes/store/ventesSlice'
+import { relireApresGeste } from './useFactureGestes.js'
 import { toast } from '../../../ui'
 
-export default function useFactureLot({ factures, dispatch }) {
+export default function useFactureLot({ factures, dispatch, relire = () => relireApresGeste(dispatch), confirm = () => Promise.resolve(true) }) {
   // WR2b — sélection multiple pour la barre d'actions en masse (FG43).
   const [selectedIds, setSelectedIds] = useState([])
   const toggleSelect = (id) => setSelectedIds(prev =>
@@ -19,21 +19,36 @@ export default function useFactureLot({ factures, dispatch }) {
     emettre: 'Émettre', relancer: 'Relancer',
     'envoyer-email': 'Envoyer par email', 'generer-pdf': 'Générer le PDF',
   }
+  // AERR7 — actions à effet client (numéro légal, relance, e-mail) : confirmation
+  // maison qui dit le nombre et les références ; « Générer le PDF » part sans question.
+  const BULK_QUESTIONS = { emettre: 'Émettre', relancer: 'Relancer', 'envoyer-email': 'Envoyer' }
   const handleBulkAction = async (action) => {
     if (!selectedIds.length) return
+    if (BULK_QUESTIONS[action]) {
+      const n = selectedIds.length
+      const refs = factures.filter(f => selectedIds.includes(f.id)).map(f => f.reference).join(', ')
+      const ok = await confirm({
+        title: `${BULK_QUESTIONS[action]} ${n} facture${n > 1 ? 's' : ''}${action === 'envoyer-email' ? ' par e-mail' : ''} ?`,
+        description: refs, confirmLabel: 'Confirmer', cancelLabel: 'Annuler',
+      })
+      if (!ok) return
+    }
     setBulkBusy(true)
     try {
       const { data } = await ventesApi.bulkFactures(action, selectedIds)
-      const entries = Object.values(data || {})
-      const ok = entries.filter(r => r.ok).length
-      const ko = entries.length - ok
-      if (ko === 0) {
+      // AERR8 — chaque refusée est nommée avec la raison servie et reste cochée.
+      const entries = Object.entries(data || {})
+      const refusees = entries.filter(([, r]) => !r.ok)
+      const ok = entries.length - refusees.length
+      if (refusees.length === 0) {
         toast.success(`${BULK_LABELS[action] ?? action} : ${ok} facture(s) traitée(s).`)
       } else {
-        toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${ko} échec(s).`)
+        const refDe = (id) => factures.find(f => String(f.id) === id)?.reference ?? `#${id}`
+        toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${refusees.length} refusée(s) — `
+          + refusees.map(([id, r]) => `${refDe(id)} : ${r.detail || 'refusée'}`).join(' ; '))
       }
-      dispatch(fetchFactures())
-      clearSelection()
+      relire()
+      setSelectedIds(selectedIds.filter(id => refusees.some(([k]) => k === String(id))))
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Action en masse impossible.')
     } finally {

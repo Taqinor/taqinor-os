@@ -96,12 +96,15 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
   // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
   const chargerPrets = useEffectEvent(loadPrets)
   useEffect(() => { chargerPrets() }, [ticketId])
+  // ACNC27 — retour en cours : « Retourner » désactivé pendant l'envoi.
+  const [retourEnCours, setRetourEnCours] = useState(null)
   const retournerPret = async (pretId) => {
+    setRetourEnCours(pretId)
     try {
       await savApi.retournerPretEquipement(ticketId, pretId)
       toast.success('Prêt retourné')
       loadPrets()
-    } catch (err) { toast.error(err?.response?.data?.detail ?? 'Retour impossible.') }
+    } catch (err) { toast.error(err?.response?.data?.detail ?? 'Retour impossible.') } finally { setRetourEnCours(null) }
   }
 
   const [pretFormOpen, setPretFormOpen] = useState(false)
@@ -288,7 +291,7 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
                   {p.date_retour_reelle ? ` (retourné le ${p.date_retour_reelle})` : ''}
                 </span>
                 {!p.date_retour_reelle && (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => retournerPret(p.id)}>
+                  <Button type="button" size="sm" variant="ghost" loading={retourEnCours === p.id} onClick={() => retournerPret(p.id)}>
                     <Undo2 /> Retourner
                   </Button>
                 )}

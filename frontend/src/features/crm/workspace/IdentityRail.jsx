@@ -884,7 +884,19 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               onChanged={() => { setFriseAppelToken((k) => k + 1); onAction('refresh') }}
             />
           </div>
-          {touchesAppel && touchesAppel.length === 0 && (
+          {/* AERR102 — lecture des étapes en échec : jamais « relancez la cadence ». */}
+          {touchesAppel === 'echec' && (
+            <div className="flex flex-wrap items-center gap-2" role="alert" data-testid="lw-appel-etapes-illisibles">
+              <p className="text-xs text-muted-foreground">Étapes de suivi illisibles.</p>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { setTouchesAppel(null); setFriseAppelToken((k) => k + 1) }}
+              >
+                Réessayer
+              </Button>
+            </div>
+          )}
+          {Array.isArray(touchesAppel) && touchesAppel.length === 0 && (
             <>
               <p className="text-xs text-muted-foreground" data-testid="lw-appel-sans-touche">
                 Aucune étape de suivi ouverte sur ce lead : le script reste lisible ci-dessous ;

@@ -67,3 +67,22 @@ describe('EquipementDetail — ZMFG12 mise au rebut', () => {
     await waitFor(() => expect(savApi.reactiverRebutEquipement).toHaveBeenCalledWith(3))
   })
 })
+
+describe('EquipementDetail — AERR92 la fiche suit l’équipement reçu', () => {
+  it('re-rendu avec un autre équipement : la fiche suit', async () => {
+    savApi.updateEquipement.mockResolvedValue({ data: {} })
+    const fiche = (e) => (
+      <MemoryRouter>
+        <EquipementDetail equipement={e} onClose={() => {}} onSaved={() => {}} />
+      </MemoryRouter>
+    )
+    const { rerender } = render(fiche({ ...baseEquip, id: 3, numero_serie: 'SN-A' }))
+    expect(screen.getByDisplayValue('SN-A')).toBeInTheDocument()
+    rerender(fiche({ ...baseEquip, id: 4, numero_serie: 'SN-B' }))
+    expect(screen.getByDisplayValue('SN-B')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('SN-A')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Mettre à jour/ }))
+    await waitFor(() => expect(savApi.updateEquipement)
+      .toHaveBeenCalledWith(4, expect.objectContaining({ numero_serie: 'SN-B' })))
+  })
+})

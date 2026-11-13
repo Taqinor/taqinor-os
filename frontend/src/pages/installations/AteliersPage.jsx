@@ -25,6 +25,7 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import PiedAnnulerOccupe from '../../ui/PiedAnnulerOccupe'
 import { ErreurTexte } from '../../ui/AlertesServeur'
 import { ErreurChargementReessayer } from '../../ui/ChargementPage'
+import { useConfirm } from '../../providers/confirm-context'
 
 // Statuts de l'ordre d'assemblage (models_kitting OrdreAssemblage.Statut).
 const STATUT_TONE = {
@@ -246,6 +247,7 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
   const [structureBusy, setStructureBusy] = useState(false)
   const [nouvelleLigne, setNouvelleLigne] = useState({ designation: '', quantite: '' })
   const [busy, setBusy] = useState(false)
+  const confirm = useConfirm()
   const [terminerOpen, setTerminerOpen] = useState(false)
   const [annulerOpen, setAnnulerOpen] = useState(false)
   // WIR248 — déclaration d'un rebut de production sur CET ordre.
@@ -330,11 +332,14 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
       .finally(() => setBusy(false))
   }
 
-  const supprimerLigne = (ligne) => {
+  const supprimerLigne = async (ligne) => {
+    // AERR81 — confirmation nommant l'article et la quantité ; toast global seul.
+    const nom = `${ligne.produit_nom ?? ligne.designation ?? `#${ligne.id}`} × ${ligne.quantite ?? '—'}`
+    if (!(await confirm({ title: `Retirer la ligne « ${nom} » ?`, confirmLabel: 'Supprimer', destructive: true }))) return
     setBusy(true)
     installationsApi.deleteLigneAssemblage(ligne.id)
       .then(() => setLignes((prev) => prev.filter((l) => l.id !== ligne.id)))
-      .catch(() => toast.error('Ligne non supprimée.'))
+      .catch(() => { /* le toast global de l'intercepteur suffit (pas de doublon) */ })
       .finally(() => setBusy(false))
   }
 

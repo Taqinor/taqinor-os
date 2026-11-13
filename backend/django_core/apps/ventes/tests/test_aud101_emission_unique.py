@@ -554,6 +554,28 @@ class TestEmissionConcurrenteVNT20(TransactionTestCase):
             montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'))
             for i in range(2)]
 
+    def test_montant_tranche_meme_montant_apres_emission_409(self):
+        """ACNC6 (C-ACNC-002) — brouillon de tranche intermédiaire chargé par
+        la vue puis émis en base avant le verrou : « Modifier le montant »
+        au même montant répond 409 ``facture_emise`` ; la facture reste
+        émise et numérotée. Mutant : retirer la relecture ⇒ BROUILLON-<id>."""
+        from apps.ventes.domain.facturation_vente import (
+            FacturationVenteRefusee, modifier_montant_tranche)
+        tranche = self.brouillons[0]
+        Facture.objects.filter(pk=tranche.pk).update(
+            type_facture='intermediaire', cle_tranche='intermediaire_1',
+            reference=f'BROUILLON-{tranche.pk}')
+        chargee = Facture.objects.get(pk=tranche.pk)
+        Facture.objects.filter(pk=tranche.pk).update(
+            statut=Facture.Statut.EMISE, reference='FAC-ACNC6-0001')
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(chargee, '6000', user=self.user)
+        self.assertEqual((ctx.exception.status, ctx.exception.corps['code']),
+                         (409, 'facture_emise'))
+        relue = Facture.objects.get(pk=tranche.pk)
+        self.assertEqual((relue.statut, relue.reference),
+                         (Facture.Statut.EMISE, 'FAC-ACNC6-0001'))
+
     def test_deux_emissions_simultanees_une_409(self):
         import threading
         resultats, verrou = [], threading.Lock()

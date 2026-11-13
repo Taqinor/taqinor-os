@@ -87,6 +87,31 @@ class TestEncaissementGroupe(TestCase):
             self.assertEqual(f.statut, Facture.Statut.PAYEE)
             self.assertEqual(f.montant_du, Decimal('0'))
 
+    def test_meme_cle_un_seul_encaissement(self):
+        """ACNC9 (C-ACNC-008) — le même virement envoyé deux fois avec la même
+        clé : 2e réponse = la 1re rejouée, 3 paiements, AUCUNE avance ; corps
+        différent sous la même clé : 409. Mutant : retirer l'enveloppe ⇒
+        avance de 10 000."""
+        api = self._api(self.resp)
+        url = '/api/django/ventes/factures/encaissement-groupe/'
+        corps = {'client': self.client_obj.id, 'montant': '10000',
+                 'mode': 'virement', 'date': str(timezone.now().date()),
+                 'factures': [self.f1.id, self.f2.id, self.f3.id],
+                 'idempotency_key': 'ACNC9-K'}
+        r1 = api.post(url, corps, format='json')
+        r2 = api.post(url, corps, format='json')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        self.assertEqual(r2.status_code, 201, r2.data)
+        import json
+        self.assertEqual(json.loads(json.dumps(r2.data, default=str)),
+                         json.loads(json.dumps(r1.data, default=str)))
+        self.assertEqual(Paiement.objects.filter(
+            facture__in=[self.f1, self.f2, self.f3]).count(), 3)
+        self.assertFalse(Paiement.objects.filter(
+            facture__isnull=True, client=self.client_obj).exists())
+        r3 = api.post(url, {**corps, 'montant': '9000'}, format='json')
+        self.assertEqual(r3.status_code, 409, r3.data)
+
     def test_entrees_invalides_repondent_400(self):
         # ENF11 — montant démesuré, mode inconnu, date illisible, ids non
         # entiers, référence trop longue : 400 (DataError/ValueError → 500).

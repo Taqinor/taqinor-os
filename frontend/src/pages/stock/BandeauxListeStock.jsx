@@ -1,4 +1,4 @@
-import { Spinner } from '../../ui'
+import { Button, Spinner } from '../../ui'
 
 /* Éléments d'écran PARTAGÉS des listes / formulaires Stock : bandeau d'erreur
    serveur, ligne « Chargement… » et enchaînement erreur → chargement → vide →
@@ -22,13 +22,15 @@ export function ChargementStock() {
 }
 
 /** Liste Stock : bandeau d'erreur, puis chargement / état vide / contenu
- *  (`children` est une fonction : rendue seulement quand `items` est chargé). */
-export function ListeStock({ error, items, vide, children }) {
+ *  (`children` est une fonction : rendue seulement quand `items` est chargé).
+ *  AERR89 — 1re lecture ratée : l'erreur + « Réessayer » (`onRetry`), jamais un « Chargement… » éternel. */
+export function ListeStock({ error, items, vide, children, onRetry }) {
   return (
     <>
       <AlerteErreurStock error={error} />
       {items === null ? (
-        <ChargementStock />
+        error ? (onRetry && <Button type="button" size="sm" variant="outline" className="self-start" onClick={onRetry}>Réessayer</Button>)
+          : <ChargementStock />
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">{vide}</p>
       ) : (

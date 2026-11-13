@@ -14,7 +14,7 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
-import { useResyncForm } from '../../features/installations/useResyncForm'
+import { useEtatSuivi, useResyncForm } from '../../features/installations/useResyncForm'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -197,12 +197,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const id = installation.id
 
   // État local éditable + version courante (rafraîchie après interventions).
-  const [current, setCurrent] = useState(installation)
+  // AERR91 — re-rendu avec un AUTRE chantier : l'état local le suit (réinitialisé au rendu).
+  const [current, setCurrent, autreChantier] = useEtatSuivi(id, installation)
   // NTMOB16 — dialog de signature client (bon de livraison).
   const [signatureOpen, setSignatureOpen] = useState(false)
   // APX25 — onglet actif de la fiche (Aperçu par défaut).
   const [tab, setTab] = useState('apercu')
-  const F = (k, d = '') => current?.[k] ?? d
+  const F = (k, d = '') => (autreChantier ? installation : current)?.[k] ?? d
   const initialFields = {
     statut: F('statut', 'a_planifier'),
     site_adresse: F('site_adresse'),
@@ -227,10 +228,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     dossier_operateur: F('dossier_operateur'),
     dossier_date_depot: F('dossier_date_depot'),
     dossier_date_approbation: F('dossier_date_approbation'),
-    art33_regularisation: current?.art33_regularisation ?? false,
+    art33_regularisation: F('art33_regularisation', false),
     notes: F('notes'),
   }
-  const [fields, setFields] = useState(initialFields)
+  const [fields, setFields] = useEtatSuivi(id, initialFields)
   // ACHT57 — resynchronise le formulaire sur `current` après chaque
   // rafraîchissement (avancée du stepper, dates posées par le serveur) : un
   // champ NON touché suit la nouvelle valeur serveur, un champ édité par
@@ -456,7 +457,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     } finally { setEditEquipBusy(false) }
   }
   const deleteEquip = async (eq) => {
-    if (!window.confirm('Supprimer cet équipement du parc ?')) return
+    if (!(await confirmerMes({ title: `Supprimer l’équipement ${eq.produit_nom ?? ''} n° ${eq.numero_serie || '—'} du parc ?`, confirmLabel: 'Supprimer' }))) return // AERR83
     try {
       await savApi.deleteEquipement(eq.id)
       setActionError(null)

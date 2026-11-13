@@ -19,6 +19,7 @@ import { Badge, Button, Input, Label } from '../../../ui'
 // même dossier — ce fichier est un composant JSX, jamais exécuté sous
 // `node --test`, donc aucune contrainte d'import paresseux ici).
 import { toast } from '../../../ui/confirm'
+import { useConfirmDialog } from '../../../ui/confirm'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 
 const STATUS_LABELS = {
@@ -43,6 +44,7 @@ export default function AppointmentBooker({ leadId }) {
   // requête, jamais un échec silencieux qui laisse croire au commercial que
   // le RDV a bien été annulé alors qu'il tient toujours — double-booking).
   const [cancellingId, setCancellingId] = useState(null)
+  const { confirm } = useConfirmDialog()
   // VX245(b) — aperçu du message de confirmation WhatsApp avant ouverture de
   // wa.me : { apptId, message, wa_url } | null.
   const [waPreview, setWaPreview] = useState(null)
@@ -74,9 +76,12 @@ export default function AppointmentBooker({ leadId }) {
       setNotes('')
       load()
     } catch (err) {
+      const notes = err?.response?.data?.notes
       setError(
         err?.response?.data?.detail
         || err?.response?.data?.scheduled_at?.[0]
+        // AERR117 — le refus nommé du champ « notes » (400 `{notes: […]}`).
+        || (Array.isArray(notes) ? `Notes : ${notes[0]}` : null)
         || 'Erreur lors de la création du rendez-vous.'
       )
     } finally {
@@ -90,6 +95,14 @@ export default function AppointmentBooker({ leadId }) {
   // pendant la requête ; en échec, `load()` n'est PAS rappelé — la liste
   // reste honnête, le RDV toujours affiché puisqu'il n'a pas été annulé.
   async function handleCancel(apptId) {
+    // AERR105 — une confirmation NOMMÉE avant l'annulation (aucun envoi au client).
+    const rdv = appointments.find((a) => a.id === apptId)
+    const ok = await confirm({
+      title: `Annuler le rendez-vous du ${formatDateTime(rdv?.scheduled_at).replace(/[\s\u202f]+/, ' à ')} ?`,
+      confirmLabel: 'Annuler le rendez-vous',
+      cancelLabel: 'Garder',
+    })
+    if (!ok) return
     setCancellingId(apptId)
     try {
       await crmApi.updateAppointment(apptId, { statut: 'annule' })

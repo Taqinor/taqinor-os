@@ -20,6 +20,7 @@ import useCanaux from '../../../features/crm/useCanaux'
 import { usePasteClean, parsePastedPhone } from '../../../hooks/usePasteClean'
 import useCardPaste from '../../../features/crm/workspace/useCardPaste'
 import PhoneHint from '../../../components/PhoneHint'
+import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormField, FormActions, Input,
@@ -45,6 +46,8 @@ const ecrireLastCanal = (v) => {
   if (v) ecrireStockage('local', LEAD_EXPRESS_CANAL_KEY, v)
 }
 
+const CHAMPS_FORMULAIRE = ['nom', 'telephone', 'societe', 'email']
+
 export default function LeadExpressModal({ onClose, onSaved }) {
   const formId = useId()
   const nomRef = useRef(null)
@@ -57,6 +60,8 @@ export default function LeadExpressModal({ onClose, onSaved }) {
   const [canal, setCanal] = useState(lireLastCanal)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // AERR104 — le refus du serveur se range SOUS son champ (400 `{email: […]}`).
+  const { errors, setFromResponse, clearField, clearAll } = useServerFieldErrors()
   // FG35 — état de la vérification de doublons.
   // dupState: null (pas encore) | 'checking' | { warning: string|null }
   const [dupState, setDupState] = useState(null)
@@ -144,6 +149,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
   const handleSubmit = creerSoumissionNomRequis({
     nom, setError, setBusy,
     envoyer: async () => {
+      clearAll()
       const payload = {
         nom: nom.trim(),
         telephone: telephone.trim() || null,
@@ -157,11 +163,21 @@ export default function LeadExpressModal({ onClose, onSaved }) {
       onSaved?.(res.data)
       onClose?.()
     },
-    messageErreur: (err) =>
-      err?.response?.data?.detail ||
-      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
-      'Erreur lors de la création du lead.',
+    messageErreur: (err) => {
+      const data = err?.response?.data
+      if (data && typeof data === 'object' && CHAMPS_FORMULAIRE.some((c) => data[c])) {
+        setFromResponse(data)
+        return null  // le message est sous le champ : pas de bandeau générique
+      }
+      return messageGenerique(err)
+    },
   })
+
+  function messageGenerique(err) {
+    return err?.response?.data?.detail ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
+      'Erreur lors de la création du lead.'
+  }
 
   return (
     // VX118(b) — les 23 références `lem-*` n'avaient AUCUN CSS depuis la
@@ -207,14 +223,14 @@ export default function LeadExpressModal({ onClose, onSaved }) {
             </div>
           )}
 
-          <FormField label="Nom" required htmlFor={`${formId}-nom`}>
+          <FormField label="Nom" required htmlFor={`${formId}-nom`} error={errors.nom}>
             <Input
               id={`${formId}-nom`}
               ref={nomRef}
               type="text"
               placeholder="Nom du prospect"
               value={nom}
-              onChange={(e) => setNom(e.target.value)}
+              onChange={(e) => { setNom(e.target.value); clearField('nom') }}
               onPaste={onNomPaste}
               required
               autoComplete="off"
@@ -235,13 +251,13 @@ export default function LeadExpressModal({ onClose, onSaved }) {
             </div>
           )}
 
-          <FormField label="Société" htmlFor={`${formId}-societe`}>
+          <FormField label="Société" htmlFor={`${formId}-societe`} error={errors.societe}>
             <Input
               id={`${formId}-societe`}
               type="text"
               placeholder="Société du prospect"
               value={societe}
-              onChange={(e) => setSociete(e.target.value)}
+              onChange={(e) => { setSociete(e.target.value); clearField('societe') }}
               autoComplete="off"
             />
           </FormField>
@@ -249,6 +265,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
           <FormField
             label="Téléphone"
             htmlFor={`${formId}-tel`}
+            error={errors.telephone}
             hint={dupChecking ? 'Vérification des doublons…' : undefined}
           >
             <Input
@@ -256,7 +273,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               type="tel"
               placeholder="06 00 00 00 00"
               value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
+              onChange={(e) => { setTelephone(e.target.value); clearField('telephone') }}
               onPaste={onTelephonePaste}
               autoComplete="off"
             />
@@ -271,13 +288,14 @@ export default function LeadExpressModal({ onClose, onSaved }) {
             </p>
           )}
 
-          <FormField label="E-mail" htmlFor={`${formId}-email`}>
+          <FormField label="E-mail" htmlFor={`${formId}-email`} error={errors.email}>
             <Input
               id={`${formId}-email`}
               type="email"
               placeholder="contact@exemple.com"
+              invalid={!!errors.email}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); clearField('email') }}
               autoComplete="off"
             />
           </FormField>

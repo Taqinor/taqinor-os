@@ -32,7 +32,7 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
     consoliderOpen, setConsoliderOpen, consoliderDevis, consoliderSel, setConsoliderSel,
     handleConsolider,
     encaissementOpen, setEncaissementOpen, encaissementForm, setEncaissementForm,
-    encaissementRepartition, setEncaissementRepartition, handleEncaissementGroupe,
+    encaissementRepartition, setEncaissementRepartition, handleEncaissementGroupe, egErreurs = {},
   } = gestes
   const { facturesEncaissables, facturesEcartees } = lot
   const { waPreview, setWaPreview, waLangue, ouvrirWhatsApp } = docs
@@ -286,16 +286,16 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Montant reçu (MAD)" htmlFor="eg-montant" fullWidth>
-                <Input id="eg-montant" type="number" step="any"
+              <FormField label="Montant reçu (MAD)" htmlFor="eg-montant" fullWidth error={egErreurs.montant}>
+                <Input id="eg-montant" type="number" step="any" invalid={!!egErreurs.montant}
                        value={encaissementForm.montant}
                        onChange={e => setEncaissementForm(f => ({ ...f, montant: e.target.value }))} />
               </FormField>
-              <FormField label="Date" htmlFor="eg-date" fullWidth>
+              <FormField label="Date" htmlFor="eg-date" fullWidth error={egErreurs.date}>
                 <Input id="eg-date" type="date" value={encaissementForm.date}
                        onChange={e => setEncaissementForm(f => ({ ...f, date: e.target.value }))} />
               </FormField>
-              <FormField label="Mode" htmlFor="eg-mode" fullWidth>
+              <FormField label="Mode" htmlFor="eg-mode" fullWidth error={egErreurs.mode}>
                 <Select value={encaissementForm.mode}
                         onValueChange={v => setEncaissementForm(f => ({ ...f, mode: v }))}>
                   <SelectTrigger id="eg-mode" aria-label="Mode"><SelectValue /></SelectTrigger>
@@ -307,7 +307,7 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                   </SelectContent>
                 </Select>
               </FormField>
-              <FormField label="Référence" htmlFor="eg-reference" fullWidth>
+              <FormField label="Référence" htmlFor="eg-reference" fullWidth error={egErreurs.reference}>
                 <Input id="eg-reference" type="text" value={encaissementForm.reference}
                        onChange={e => setEncaissementForm(f => ({ ...f, reference: e.target.value }))} />
               </FormField>

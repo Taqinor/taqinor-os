@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
@@ -11,6 +11,7 @@ import ventesApi from '../../api/ventesApi'
 // (`company` est TOUJOURS imposée par le serveur, jamais envoyée d'ici).
 import api from '../../api/axios'
 import { useHasPermission } from '../../hooks/useHasPermission'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import PaiementDialog from './PaiementDialog'
 import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -60,6 +61,9 @@ export default function RelancesPage() {
   const peutEncaisser = useHasPermission('encaisser')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  // AERR4 — état réel de la dernière lecture + garde d'ordre (patron useResource `runId`).
+  const [erreur, setErreur] = useState(false)
+  const lectureId = useRef(0)
   const [target, setTarget] = useState(null)  // facture being relancée
   // VX230 — encaisser LÀ où on chasse l'impayé : la facture ciblée par la modale
   // de paiement PARTAGÉE (PaiementDialog), sans quitter la vue de recouvrement.
@@ -86,6 +90,8 @@ export default function RelancesPage() {
   // AFAC61 — erreurs serveur affichées dans la modale concernée / bilan du lot.
   const [relanceErreur, setRelanceErreur] = useState('')
   const [promesseErreur, setPromesseErreur] = useState('')
+  // AERR13 — refus par champ de la promesse, écrit sous le champ fautif.
+  const promErreurs = useServerFieldErrors()
   const [paramErreur, setParamErreur] = useState('')
   const [bilanLot, setBilanLot] = useState('')
   const [histTarget, setHistTarget] = useState(null)  // facture dont on voit l'historique
@@ -118,9 +124,11 @@ export default function RelancesPage() {
     const requete = mode === 'mes'
       ? api.get('/ventes/relances/', { params: { mes_relances: 1 } })
       : ventesApi.getRelances()
+    const id = ++lectureId.current
     requete
-      .then(r => setRows(Array.isArray(r.data) ? r.data : []))
-      .catch(() => {}).finally(() => setLoading(false))
+      .then(r => { if (id === lectureId.current) { setRows(Array.isArray(r.data) ? r.data : []); setErreur(false) } })
+      .catch(() => { if (id === lectureId.current) setErreur(true) })
+      .finally(() => { if (id === lectureId.current) setLoading(false) })
   }
 
   const loadParametrages = () => fetchAllPages((page, extra) => api.get('/ventes/parametrages-relance-client/', { params: { page, ...extra } }).then(r => r.data))
@@ -195,7 +203,7 @@ export default function RelancesPage() {
 
   const enregistrerPromesse = async () => {
     if (!promesseTarget) return
-    setPromesseBusy(true); setPromesseErreur('')
+    setPromesseBusy(true); setPromesseErreur(''); promErreurs.clearAll()
     try {
       // `company`, `created_by` et `statut` sont imposés par le serveur.
       await api.post('/ventes/promesses-paiement/', {
@@ -208,7 +216,9 @@ export default function RelancesPage() {
       setPromesseTarget(null)
       load()
     } catch (err) {
-      setPromesseErreur(frenchError(err, 'Enregistrement de la promesse impossible.'))
+      const d = err?.response?.data
+      if (d && typeof d === 'object' && ['montant_promis', 'date_promise', 'note'].some(k => k in d)) promErreurs.setFromResponse(d)
+      else setPromesseErreur(frenchError(err, 'Enregistrement de la promesse impossible.'))
     } finally { setPromesseBusy(false) }
   }
 
@@ -839,11 +849,17 @@ export default function RelancesPage() {
         </div>
       )}
 
-      {loading ? (
+      {erreur && (
+        <div role="alert" data-testid="relances-erreur" className="mb-3 flex flex-wrap items-center gap-2 text-sm text-destructive">
+          {rows.length > 0 ? 'File pas à jour — la dernière lecture a échoué.' : 'Impossible de charger la file de relances.'}
+          <Button type="button" size="sm" variant="outline" onClick={() => load()}>Réessayer</Button>
+        </div>
+      )}
+      {loading && rows.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
           <Spinner /> Chargement…
         </div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && erreur ? null : rows.length === 0 ? (
         <EmptyState
           icon={PartyPopper}
           title={fileFilter === 'mes'
@@ -969,9 +985,10 @@ export default function RelancesPage() {
           <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="promesse-montant">Montant promis (MAD)</Label>
-              <Input id="promesse-montant" type="number" step="any"
+              <Input id="promesse-montant" type="number" step="any" invalid={!!promErreurs.errors.montant_promis}
                      value={promesseMontant}
                      onChange={e => setPromesseMontant(e.target.value)} />
+              {promErreurs.errors.montant_promis && <p role="alert" className="text-xs text-destructive">{promErreurs.errors.montant_promis}</p>}
               {promesseTarget && (
                 <p className="text-xs text-muted-foreground">
                   Reste dû : {formatMAD(promesseTarget.montant_du)}
@@ -981,12 +998,14 @@ export default function RelancesPage() {
             <div className="grid gap-1.5">
               <Label htmlFor="promesse-date">Date promise</Label>
               <Input id="promesse-date" type="date" value={promesseDate}
-                     onChange={e => setPromesseDate(e.target.value)} />
+                     onChange={e => setPromesseDate(e.target.value)} invalid={!!promErreurs.errors.date_promise} />
+              {promErreurs.errors.date_promise && <p role="alert" className="text-xs text-destructive">{promErreurs.errors.date_promise}</p>}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="promesse-note">Note (contexte de l&apos;engagement)</Label>
               <Textarea id="promesse-note" rows={2} value={promesseNote}
                         onChange={e => setPromesseNote(e.target.value)} />
+              {promErreurs.errors.note && <p role="alert" className="text-xs text-destructive">{promErreurs.errors.note}</p>}
             </div>
           </div>
           {promesseErreur && (

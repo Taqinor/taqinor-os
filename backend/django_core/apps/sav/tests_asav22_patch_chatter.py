@@ -74,3 +74,21 @@ class PatchChatterTests(TestCase):
             'description': 'initial'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(self._modifs().count(), avant)
+
+    def test_patch_instructions_trace_ancien_et_nouveau(self):
+        """AERR26 — les instructions d'intervention ne s'écrasent jamais
+        sans trace : ligne d'historique ancien → nouveau."""
+        ancien = 'Couper le disjoncteur avant intervention.'
+        Ticket.objects.filter(pk=self.ticket.pk).update(instructions=ancien)
+        r = self.api.patch(f'{BASE}/{self.ticket.pk}/', {
+            'instructions': 'Accès par le portail nord.'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        ligne = self._modifs().get(field='instructions')
+        self.assertEqual(ligne.field_label, 'Instructions')
+        self.assertEqual(ligne.old_value, ancien)
+        self.assertEqual(ligne.new_value, 'Accès par le portail nord.')
+        self.assertEqual(ligne.user_id, self.admin.pk)
+        r = self.api.patch(f'{BASE}/{self.ticket.pk}/', {
+            'instructions': 'Accès par le portail nord.'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self._modifs().filter(field='instructions').count(), 1)

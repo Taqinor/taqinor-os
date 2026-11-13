@@ -287,6 +287,7 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
     crmApi.getRelanceEtapesDues({ scope })
       .then((r) => {
         if (!active) return
+        setError(false)  // AERR101 — une relecture réussie efface l'avis
         setEtapes(r.data?.results ?? [])
         if (r.data?.file) setFile(r.data.file)
       })
@@ -426,9 +427,19 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
             ))}
           </ul>
         )}
+        {/* AERR101 — relecture échouée alors que des touches sont déjà à
+            l'écran : elles restent, avec un avis + Réessayer. */}
+        {error && etapes.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-2" role="status" data-testid="file-pas-a-jour">
+            <span className="text-sm text-muted-foreground">Pas à jour — le serveur n’a pas répondu.</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => { charger() }}>
+              Réessayer
+            </Button>
+          </div>
+        )}
         {loading ? (
           <Spinner />
-        ) : error ? (
+        ) : error && etapes.length === 0 ? (
           <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
         ) : etapes.length === 0 ? (
           <div className="flex flex-col items-start gap-2" data-testid="file-vide">

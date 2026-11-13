@@ -7,7 +7,10 @@ import { cleanup } from '@testing-library/react'
    `LeadDevisPanel` / `SigneDialog` / rails restent propres à chaque suite (un
    `vi.mock` posé ici écraserait celui de la suite, enregistré avant). Le module
    ne dépend d'aucun composant : il est sûr à charger depuis une fabrique. */
-vi.mock('../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
+// AERR108 — doublons pilotables par une suite (`dupMatches.current`), aucun par défaut.
+const doublons = vi.hoisted(() => ({ current: [] }))
+export const dupMatches = doublons
+vi.mock('../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => doublons.current }))
 vi.mock('../features/crm/useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
 vi.mock('../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
 vi.mock('../components/CustomFieldsInput', () => ({ default: () => null }))

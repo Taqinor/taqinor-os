@@ -36,7 +36,9 @@ test('LB7 : reassign ne refetch plus et toaste en échec (bugs #5/#11)', () => {
   const end = PAGE_SRC.indexOf('}, [dispatch])', start)
   const body = PAGE_SRC.slice(start, end)
   assert.doesNotMatch(body, /refetch\(\)/)
-  assert.match(body, /toastError\('La réassignation a échoué/)
+  // AERR117 — plus de second toast : l'intercepteur axios signale déjà le refus.
+  assert.doesNotMatch(body, /toastError\(/)
+  assert.match(body, /catch \{/)
 })
 
 test('LB7 : exportFiltered/exportSelection toastent en échec (bug #11, catch silencieux tué)', () => {
@@ -56,7 +58,7 @@ test('LB7 : viewProps embarque toujours onRefetch — reste légitime pour bulk/
   assert.match(block, /onRefetch: refetch,/)
   // Les cas légitimes restent câblés : runBulk (bulk), onSaved (création),
   // onAnyMerge (merge), ExcelImport onDone (import), SigneDialog (Signé).
-  assert.match(PAGE_SRC, /const onSaved = \(\) => refetch\(\)/)
+  assert.match(PAGE_SRC, /const onSaved = \(res\) => \(res && res\.id != null\s+\? dispatch\(leadPatchedFromServer\(res\)\) : refetch\(\)\)/)
   assert.match(PAGE_SRC, /onAnyMerge=\{\(\) => \{ refetch\(\); refreshDoublonsCount\(\) \}\}/)
   assert.match(PAGE_SRC, /onDone=\{refetch\}/)
 })

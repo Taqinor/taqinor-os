@@ -16,15 +16,20 @@ Run :
     python manage.py test apps.installations.tests_xfsm18_reserve_devis -v2
 """
 import itertools
+import threading
+from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.installations.models import Installation, Intervention, Reserve
 from apps.ventes.models import Devis
+from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -113,3 +118,55 @@ class TestGenererDevisReserve(TestCase):
         devis_id = r.data['devis_id']
         r2 = self.api.get(f'{BASE}/interventions/{self.interv.id}/reserves/')
         self.assertEqual(r2.data[0]['devis_repare_id'], devis_id)
+
+
+class TestGenererDevisReserveCourse(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC34 — deux VRAIES connexions (patron ``apps/sav/tests_pieces.py::
+    TestSavPiecesConcurrence._course``) : deux « Générer le devis » croisés sur
+    la même réserve. Classe ``TransactionTestCase`` dédiée :
+    ``TestGenererDevisReserve`` est un ``TestCase`` (une seule connexion)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.inst = make_installation(self.company)
+        self.interv = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='depannage', created_by=self.user)
+        self.reserve = Reserve.objects.create(
+            company=self.company, intervention=self.interv,
+            description='Fissure sur le rail de fixation.',
+            created_by=self.user)
+
+    def test_deux_generations_croisees_un_seul_devis(self):
+        from apps.ventes import services as ventes_services
+        original = ventes_services.create_devis_from_reserve
+        a_tient, b_tente, res = threading.Event(), threading.Event(), {}
+        url = f'{BASE}/interventions/{self.interv.id}/generer-devis-reserve/'
+
+        def creation_lente(**kwargs):
+            if not a_tient.is_set():  # A : tient sa transaction ouverte
+                a_tient.set()
+                b_tente.wait(5)
+                attendre_un_ecrivain_bloque()  # B bloqué sur la relecture de la réserve
+            return original(**kwargs)
+
+        def fil(nom):
+            if nom == 'b':
+                a_tient.wait(5)
+                b_tente.set()
+            r = auth(self.user).post(url, {'reserve': self.reserve.id}, format='json')
+            res[nom] = (r.status_code, r.data.get('devis_id'))
+            connection.close()
+
+        with mock.patch.object(ventes_services, 'create_devis_from_reserve', side_effect=creation_lente):
+            fils = [threading.Thread(target=fil, args=(n,)) for n in ('a', 'b')]
+            for f in fils:
+                f.start()
+            for f in fils:
+                f.join(20)
+        self.assertEqual(sorted(code for code, _ in res.values()), [200, 201], res)
+        self.assertEqual(res['a'][1], res['b'][1])
+        self.assertEqual(Devis.objects.filter(client_id=self.inst.client_id).count(), 1)
+        self.reserve.refresh_from_db()
+        self.assertEqual(self.reserve.devis_repare_id, res['a'][1])

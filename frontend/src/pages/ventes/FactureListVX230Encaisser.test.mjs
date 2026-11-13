@@ -35,7 +35,11 @@ test('VX230 : FactureList monte le PaiementDialog partagé et rafraîchit la lis
   assert.match(FACTURE_LIST, /<PaiementDialog[\s\S]{0,160}facture=\{payTarget\}/)
   // EZ12 — le save rafraîchit TOUJOURS la liste ; il arme en plus le bandeau
   // « Voir l'encaissement » (l'action suivante offerte).
-  assert.match(FACTURE_LIST, /onSaved=\{\(\) => \{ dispatch\(fetchFactures\(\)\); setDernierEncaissement\(payTarget\) \}\}/)
+  // AERR3 — le rafraîchissement passe par `relire()` (liste ET tuiles) : la
+  // relecture commence TOUJOURS par fetchFactures.
+  assert.match(FACTURE_LIST, /onSaved=\{\(\) => \{ relire\(\); setDernierEncaissement\(payTarget\) \}\}/)
+  assert.match(FACTURE_LIST, /const relire = \(\) => relireApresGeste\(dispatch, setTuilesPasAJour\)/)
+  assert.match(FACTURE_LIST, /export function relireApresGeste\(dispatch, surEchec\) \{\s*dispatch\(fetchFactures\(\)\)/)
   // La modale locale (et ses constantes) ne vit plus ici.
   assert.doesNotMatch(FACTURE_LIST, /const handleEnregistrerPaiement/)
   assert.doesNotMatch(FACTURE_LIST, /const MODES_PAIEMENT/)

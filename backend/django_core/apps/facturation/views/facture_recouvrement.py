@@ -4,6 +4,9 @@ actions de ``FactureViewSet`` portées par ``FactureRecouvrementActionsMixin``,
 déplacées telles quelles depuis ``views/facture.py``. Aucune route dans
 ``urls.py`` : le routeur les découvre sur le viewset.
 """
+from datetime import date
+
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
@@ -14,7 +17,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from apps.ventes.views import openapi_docs as D
 from apps.ventes import openapi_shapes as SH
-from apps.ventes.models import RelanceLog
+from apps.ventes.models import Facture, RelanceLog
 from apps.ventes.serializers import EmailLogSerializer
 from apps.facturation.serializers import (
     FactureActivitySerializer, FactureListeSerializer, FactureSerializer, RelanceLogSerializer,
@@ -59,62 +62,76 @@ class FactureRecouvrementActionsMixin:
         from apps.facturation.recouvrement import (
             ensure_default_followup_levels, facture_relancable,
         )
-        facture = self.get_object()
-        # AUD131 — garde d'état AVANT toute écriture.
-        ok, motif = facture_relancable(facture)
-        if not ok:
-            # ENF11 — payée, annulée, brouillon ou rien d'exigible : l'ÉTAT
-            # de la facture s'oppose à la relance → 409.
-            return Response({'detail': motif},
-                            status=status.HTTP_409_CONFLICT)
-        # Fondateur 05/10/2026 — les 3 niveaux par défaut existent toujours
-        # (créés seulement si la société n'en a aucun) : le `niveau` posté
-        # (ORDRE, cf. RelancerFactureSerializer) se résout donc toujours.
-        ensure_default_followup_levels(facture.company)
+        # ACNC11 — facture relue SOUS VERROU : deux « Relancer » croisés se
+        # suivent, le second voit la relance du premier.
+        with transaction.atomic():
+            facture = Facture.objects.select_for_update().get(
+                pk=self.get_object().pk)
+            # AUD131 — garde d'état AVANT toute écriture.
+            ok, motif = facture_relancable(facture)
+            if not ok:
+                # ENF11 — payée, annulée, brouillon ou rien d'exigible : l'ÉTAT
+                # de la facture s'oppose à la relance → 409.
+                return Response({'detail': motif},
+                                status=status.HTTP_409_CONFLICT)
+            # Fondateur 05/10/2026 — les 3 niveaux par défaut existent toujours
+            # (créés seulement si la société n'en a aucun) : le `niveau` posté
+            # (ORDRE, cf. RelancerFactureSerializer) se résout donc toujours.
+            ensure_default_followup_levels(facture.company)
 
-        payload = RelancerFactureSerializer(
-            data=request.data, context={'company': facture.company})
-        payload.is_valid(raise_exception=True)
-        donnees = payload.validated_data
+            payload = RelancerFactureSerializer(
+                data=request.data, context={'company': facture.company})
+            payload.is_valid(raise_exception=True)
+            donnees = payload.validated_data
 
-        niveau = donnees.get('niveau')
-        note = (donnees.get('note') or '').strip()
-        lvl = payload.context.get('followup_level')
-        if niveau is None and lvl is None:
-            # AFAC46 — sans niveau choisi, LE prochain niveau de la cadence
-            # (le même que l'aperçu et le beat), jamais une relance hors
-            # séquence.
-            from apps.ventes.domain.recouvrement import prochain_niveau
-            lvl, _tous = prochain_niveau(facture)
-            niveau = lvl.ordre if lvl is not None else None
-        niveau_nom = lvl.nom if lvl is not None else ''
-        # AUD129 — envoi d'email en OPT-IN explicite (défaut : ne rien envoyer).
-        # NO-OP réseau sans clé configurée.
-        email_log_id = None
-        if donnees.get('envoyer_email'):
-            from apps.ventes.email_service import send_relance_email
-            # AUD129 (PAY-19) — la note saisie prime sur le message générique
-            # du niveau : sinon la personnalisation n'atteint jamais le client.
-            email_log = send_relance_email(
-                facture, niveau_nom=niveau_nom,
-                message=(note or (lvl.message if lvl is not None else '')),
-                user=request.user, attach_pdf=True)  # AARG62
-            email_log_id = email_log.id
-            from apps.ventes.scheduled import _email_parti
-            if not _email_parti(email_log):  # AARG69 : niveau non consommé
-                return Response({'detail': "L'e-mail de relance n'est pas parti : aucune relance consignée.",
-                                 'email_log_id': email_log_id}, status=status.HTTP_502_BAD_GATEWAY)
-        RelanceLog.objects.create(
-            company=facture.company, facture=facture, niveau=niveau or None,
-            niveau_nom=niveau_nom, note=note, created_by=request.user)
-        # Prochaine relance proposée si fournie, sinon laissée telle quelle.
-        prochaine = donnees.get('prochaine_relance')
-        if prochaine:
-            facture.prochaine_relance = prochaine
-            facture.save(update_fields=['prochaine_relance'])
-        data = FactureSerializer(facture, context={'request': request}).data
-        data['email_log_id'] = email_log_id
-        return Response(data)
+            niveau = donnees.get('niveau')
+            note = (donnees.get('note') or '').strip()
+            lvl = payload.context.get('followup_level')
+            # ACNC11 (C-ACNC-009) — rejeu le même jour au même niveau (sans niveau
+            # posté : la dernière du jour) : la relance consignée est RENDUE (200),
+            # ni 2e ligne, ni escalade, ni e-mail.
+            deja = facture.relances.filter(date=date.today())
+            if niveau is not None or lvl is not None:
+                deja = deja.filter(niveau=niveau if niveau is not None else lvl.ordre)
+            if deja.exists():
+                data = FactureSerializer(facture, context={'request': request}).data
+                data['email_log_id'] = None
+                return Response(data)
+            if niveau is None and lvl is None:
+                # AFAC46 — sans niveau choisi, LE prochain niveau de la cadence
+                # (le même que l'aperçu et le beat), jamais une relance hors
+                # séquence.
+                from apps.ventes.domain.recouvrement import prochain_niveau
+                lvl, _tous = prochain_niveau(facture)
+                niveau = lvl.ordre if lvl is not None else None
+            niveau_nom = lvl.nom if lvl is not None else ''
+            # AUD129 — envoi d'email en OPT-IN explicite (défaut : ne rien envoyer).
+            # NO-OP réseau sans clé configurée.
+            email_log_id = None
+            if donnees.get('envoyer_email'):
+                from apps.ventes.email_service import send_relance_email
+                # AUD129 (PAY-19) — la note saisie prime sur le message générique
+                # du niveau : sinon la personnalisation n'atteint jamais le client.
+                email_log = send_relance_email(
+                    facture, niveau_nom=niveau_nom,
+                    message=(note or (lvl.message if lvl is not None else '')),
+                    user=request.user, attach_pdf=True)  # AARG62
+                email_log_id = email_log.id
+                from apps.ventes.scheduled import _email_parti
+                if not _email_parti(email_log):  # AARG69 : niveau non consommé
+                    return Response({'detail': "L'e-mail de relance n'est pas parti : aucune relance consignée.",
+                                     'email_log_id': email_log_id}, status=status.HTTP_502_BAD_GATEWAY)
+            RelanceLog.objects.create(
+                company=facture.company, facture=facture, niveau=niveau or None,
+                niveau_nom=niveau_nom, note=note, created_by=request.user)
+            # Prochaine relance proposée si fournie, sinon laissée telle quelle.
+            prochaine = donnees.get('prochaine_relance')
+            if prochaine:
+                facture.prochaine_relance = prochaine
+                facture.save(update_fields=['prochaine_relance'])
+            data = FactureSerializer(facture, context={'request': request}).data
+            data['email_log_id'] = email_log_id
+            return Response(data)
 
     @extend_schema(responses=D.RelanceApercuResponse)
     @action(detail=True, methods=['get'], url_path='relance-apercu',

@@ -486,6 +486,8 @@ export default function RelanceEtapeRow({
   // CRM) n'est chargée qu'au premier refus choisi (`null` = pas encore lue),
   // jamais pour chaque ligne de la file.
   const [motifs, setMotifs] = useState(null)
+  // AERR122 — lecture des motifs en ÉCHEC (distincte d'une liste vide).
+  const [motifsIllisibles, setMotifsIllisibles] = useState(false)
   const [motifRefus, setMotifRefus] = useState('')
   const [erreurMotif, setErreurMotif] = useState('')
   // CAD11 — la proposition « perdu, motif junk » (case à cocher : le clic
@@ -605,12 +607,13 @@ export default function RelanceEtapeRow({
   const chargerMotifs = () => {
     if (motifsDemandes.current) return
     motifsDemandes.current = true
+    setMotifsIllisibles(false)
     Promise.resolve()
       .then(() => fetchAllPages((page, { page_size: pageSize } = {}) =>
         crmApi.getMotifsPerte({ page, page_size: pageSize }).then((r) => r.data)))
       .then((rows) => setMotifs(
         (Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived)))
-      .catch(() => setMotifs([]))
+      .catch(() => { motifsDemandes.current = false; setMotifsIllisibles(true) })
   }
 
   // SUIVI-PARCOURS — le TYPE d'étape et ses réponses viennent de la table
@@ -1445,7 +1448,15 @@ export default function RelanceEtapeRow({
                   <option key={m.id ?? m.nom} value={m.nom}>{m.nom}</option>
                 ))}
               </select>
-              {motifs !== null && (motifs ?? []).length === 0 && (
+              {motifsIllisibles && (
+                <p className="text-xs text-warning" role="status" data-testid="motif-perte-illisibles">
+                  Motifs illisibles —{' '}
+                  <button type="button" className="underline underline-offset-2" onClick={chargerMotifs}>
+                    Réessayer
+                  </button>
+                </p>
+              )}
+              {motifs !== null && !motifsIllisibles && (motifs ?? []).length === 0 && (
                 <p className="text-xs text-warning" data-testid="motif-perte-aucun">
                   Aucun motif de perte n’est paramétré (Paramètres → CRM → Motifs de perte).
                 </p>

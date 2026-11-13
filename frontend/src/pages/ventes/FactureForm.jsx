@@ -49,7 +49,11 @@ const emptyLine = () => ({
 
 const today = todayLocalIso()
 
-export default function FactureForm({ facture = null, onClose, onSaved }) {
+// AERR6 — clés d'erreur serveur rendues SOUS un champ du formulaire.
+const CHAMPS_FORMULAIRE = ['client', 'bon_commande', 'date_echeance', 'date_livraison', 'taux_tva',
+  'remise_globale', 'conditions_paiement', 'reference_commande_client', 'note', 'lines', 'submit']
+
+export default function FactureForm({ facture = null, onClose, onSaved, scopeRef }) {
   const dispatch = useDispatch()
   const isEdit = !!facture
   // AFAC71 — une facture hors BROUILLON (émise, payée, en retard, annulée) s'ouvre en
@@ -298,6 +302,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     return Object.keys(e).length === 0
   }
 
+  // ACNC15 — jeton de version (NTPLT17) renvoyé à chaque enregistrement :
+  // un onglet périmé reçoit 409 `conflit_version` au lieu d'écraser.
+  const versionRef = useRef(facture?.lock_version)
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
@@ -328,15 +335,18 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       // submit précédent partiellement échoué) ne repart JAMAIS en second
       // POST : la relance passe systématiquement en ÉDITION.
       let factureId = facture?.id ?? createdFactureId
+      const verrou = versionRef.current != null ? { lock_version: versionRef.current } : {}
       if (factureId && horsBrouillon) {
         // AFAC71 — hors brouillon, seuls les champs non financiers partent :
         // mise à jour PARTIELLE (PATCH). Un PUT exige le client et les montants
         // (400 « client : Ce champ est obligatoire », vu en acceptation live).
-        const { data } = await ventesApi.patchFacture(factureId, payload)
+        const { data } = await ventesApi.patchFacture(factureId, { ...payload, ...verrou })
         factureId = data.id
+        versionRef.current = data.lock_version ?? versionRef.current
       } else if (factureId) {
-        const res = await dispatch(updateFacture({ id: factureId, data: payload })).unwrap()
+        const res = await dispatch(updateFacture({ id: factureId, data: { ...payload, ...verrou } })).unwrap()
         factureId = res.id
+        versionRef.current = res.lock_version ?? versionRef.current
       } else {
         const res = await dispatch(createFacture(payload)).unwrap()
         factureId = res.id
@@ -385,10 +395,26 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         }))
       }
 
+      // ACNC15 — une ligne SANS réponse (délai) a pu être créée : les lignes
+      // de la facture sont relues et rapprochées, jamais re-postées en double.
+      const perdues = createResult.failed.filter(f => typeof f.error === 'string')
+      const retrouvees = new Map()
+      if (perdues.length) {
+        const { data } = await ventesApi.getFacture(factureId)
+        const connus = new Set([...lines.map(l => l.id), ...createResult.succeeded.map(r => r.value.id)])
+        const libres = (data?.lignes || []).filter(sl => !connus.has(sl.id))
+        for (const f of perdues) {
+          const i = libres.findIndex(sl => sl.designation === f.item.designation
+            && String(sl.produit) === String(f.item.produit) && Number(sl.quantite) === Number(f.item.quantite))
+          if (i >= 0) retrouvees.set(f.item._key, libres.splice(i, 1)[0].id)
+        }
+        if (retrouvees.size) setLines(ls => ls.map(l => (retrouvees.has(l._key) ? { ...l, id: retrouvees.get(l._key) } : l)))
+      }
+
       // AFAC70 — chaque ligne refusée dit POURQUOI (motif serveur, clé de
       // champ DRF via frenchError) et LAQUELLE (numéro d'affichage) ; la
       // saisie reste dans le champ, jamais corrigée en silence.
-      const lignesEnEchec = [...updResult.failed, ...createResult.failed]
+      const lignesEnEchec = [...updResult.failed, ...createResult.failed.filter(f => !retrouvees.has(f.item._key))]
         .map(f => ({
           key: f.item._key,
           numero: lines.findIndex(l => l._key === f.item._key) + 1,
@@ -422,7 +448,16 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     } catch (err) {
       // VX171 — mapping DRF générique (detail / objet champ → liste / array) : chaque
       // champ en erreur vire rouge, plus un toast anonyme.
-      setFromResponse(err)
+      // AERR6 — hors brouillon `patchFacture` rejette une AxiosError brute : on
+      // lit SA donnée ; une clé hors formulaire va au bandeau, nommée.
+      setFromResponse(err?.isAxiosError ? err.response?.data : err,
+        { fallback: frenchError(err, 'Enregistrement impossible.') })
+      setErrors(prev => {
+        const hors = Object.keys(prev).filter(k => !CHAMPS_FORMULAIRE.includes(k))
+        if (!hors.length) return prev
+        const garde = Object.fromEntries(Object.entries(prev).filter(([k]) => CHAMPS_FORMULAIRE.includes(k)))
+        return { ...garde, submit: [prev.submit, ...hors.map(k => `${k} : ${prev[k]}`)].filter(Boolean).join(' ') }
+      })
     } finally {
       setSaving(false)
     }
@@ -430,7 +465,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent ref={scopeRef} className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>
         </DialogHeader>
@@ -501,7 +536,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               </div>
             </FormField>
 
-            <FormField label="Bon de commande (optionnel)" htmlFor="fc-bc">
+            <FormField label="Bon de commande (optionnel)" htmlFor="fc-bc" error={errors.bon_commande}>
               <Select value={fields.bon_commande ? String(fields.bon_commande) : undefined}
                       disabled={horsBrouillon}
                       onValueChange={v => onBcChange(v)}>
@@ -544,8 +579,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               )}
             </FormField>
 
-            <FormField label="Date d'échéance" htmlFor="fc-echeance">
-              <Input id="fc-echeance" type="date" value={fields.date_echeance}
+            <FormField label="Date d'échéance" htmlFor="fc-echeance" error={errors.date_echeance}>
+              <Input id="fc-echeance" type="date" value={fields.date_echeance} invalid={!!errors.date_echeance}
                      onChange={e => setField('date_echeance', e.target.value)} />
               {fields.date_echeance && fields.date_echeance < today && (
                 <p className="mt-1 text-xs text-warning">
@@ -554,14 +589,14 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               )}
             </FormField>
 
-            <FormField label="Date de livraison/prestation" htmlFor="fc-livraison"
+            <FormField label="Date de livraison/prestation" htmlFor="fc-livraison" error={errors.date_livraison}
                        hint="Mention Art. 145 — date de la livraison ou prestation">
               <Input id="fc-livraison" type="date" value={fields.date_livraison}
                      disabled={horsBrouillon}
                      onChange={e => setField('date_livraison', e.target.value)} />
             </FormField>
 
-            <FormField label="TVA (%)" htmlFor="fc-tva"
+            <FormField label="TVA (%)" htmlFor="fc-tva" error={errors.taux_tva}
                        hint="Taux global (par défaut 20 %). Le taux par ligne prime quand renseigné.">
               <Input id="fc-tva" type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
                      value={fields.taux_tva} onChange={e => setField('taux_tva', e.target.value)} />
@@ -576,7 +611,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               </div>
             </FormField>
 
-            <FormField label="Remise globale (%)" htmlFor="fc-remise">
+            <FormField label="Remise globale (%)" htmlFor="fc-remise" error={errors.remise_globale}>
               <Input id="fc-remise" type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
                      value={fields.remise_globale} onChange={e => setField('remise_globale', e.target.value)} />
             </FormField>
@@ -774,14 +809,16 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             <Label htmlFor="fc-conditions">Conditions et mode de paiement</Label>
             <Textarea id="fc-conditions" rows={2} value={fields.conditions_paiement}
                       onChange={e => setField('conditions_paiement', e.target.value)}
-                      placeholder="Ex. Virement à 30 jours, RIB…" />
+                      placeholder="Ex. Virement à 30 jours, RIB…" aria-invalid={!!errors.conditions_paiement || undefined} />
+            {errors.conditions_paiement && <p role="alert" className="text-xs text-destructive">{errors.conditions_paiement}</p>}
           </div>
 
           {/* ── CIQ226 — référence de commande du client ── */}
           <div className="grid gap-1.5">
             <Label htmlFor="fc-ref-commande">Référence de commande du client</Label>
             <Input id="fc-ref-commande" maxLength={60} value={fields.reference_commande_client}
-                   onChange={e => setField('reference_commande_client', e.target.value)} />
+                   onChange={e => setField('reference_commande_client', e.target.value)} invalid={!!errors.reference_commande_client} />
+            {errors.reference_commande_client && <p role="alert" className="text-xs text-destructive">{errors.reference_commande_client}</p>}
           </div>
 
           {/* ── CIQ226 — retenue de garantie : montant retenu, exigible, libération ── */}
@@ -813,7 +850,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             <Label htmlFor="fc-note">Note interne</Label>
             <Textarea id="fc-note" rows={3} value={fields.note}
                       onChange={e => setField('note', e.target.value)}
-                      placeholder="Conditions de paiement, remarques..." />
+                      placeholder="Conditions de paiement, remarques..." aria-invalid={!!errors.note || undefined} />
+            {errors.note && <p role="alert" className="text-xs text-destructive">{errors.note}</p>}
           </div>
 
           {errors.submit && (

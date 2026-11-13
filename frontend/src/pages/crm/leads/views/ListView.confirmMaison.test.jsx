@@ -13,13 +13,17 @@ import crmReducer from '../../../../features/crm/store/crmSlice'
    s'affiche dans un toast (jamais `window.alert`). Réducteur et vue RÉELS ;
    seul l'appel réseau `crmApi.deleteLead` est simulé. */
 
-const { deleteLead, toastError, toastWithUndo } = vi.hoisted(() => ({
+const { deleteLead, archiverLead, toastError, toastWithUndo } = vi.hoisted(() => ({
   deleteLead: vi.fn(),
+  archiverLead: vi.fn(),
   toastError: vi.fn(),
   toastWithUndo: vi.fn(),
 }))
 vi.mock('../../../../api/crmApi', () => ({
-  default: { deleteLead: (...a) => deleteLead(...a), restaurerCorbeille: vi.fn() },
+  default: {
+    deleteLead: (...a) => deleteLead(...a), restaurerCorbeille: vi.fn(),
+    archiverLead: (...a) => archiverLead(...a),
+  },
 }))
 vi.mock('../../../../lib/toast', async (importOriginal) => {
   const actual = await importOriginal()
@@ -69,6 +73,38 @@ beforeEach(() => {
   alertNatif = vi.spyOn(window, 'alert').mockImplementation(() => {})
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+describe('AERR113 — ListView : archiver/supprimer nomment le lead', () => {
+  it('Archiver depuis la liste : confirmation qui nomme le lead', async () => {
+    archiverLead.mockResolvedValue({ data: { ...LEAD, is_archived: true } })
+    const user = userEvent.setup()
+    rendre()
+    await user.click(await screen.findByRole('button', { name: 'Archiver' }))
+    let dialogue = await screen.findByRole('alertdialog')
+    expect(dialogue).toHaveTextContent('Archiver « Aziz Benali » ?')
+    await user.click([...dialogue.querySelectorAll('button')]
+      .find((b) => b.textContent.trim() === 'Annuler'))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(archiverLead).not.toHaveBeenCalled()
+
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
+    await user.click(screen.getByRole('button', { name: 'Archiver' }))
+    dialogue = await screen.findByRole('alertdialog')
+    await user.click([...dialogue.querySelectorAll('button')]
+      .find((b) => b.textContent.trim() === 'Archiver'))
+    await waitFor(() => expect(archiverLead).toHaveBeenCalledWith(9))
+    expect(archiverLead).toHaveBeenCalledTimes(1)
+  })
+
+  it('Supprimer : la boîte nomme le lead', async () => {
+    const user = userEvent.setup()
+    rendre()
+    await user.click(await screen.findByRole('button', { name: 'Supprimer' }))
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Aziz Benali')
+  })
+})
 
 describe('ALEA22 — ListView : confirmation maison', () => {
   it('Supprimer → dialogue maison rendu, aucun window.confirm', async () => {
