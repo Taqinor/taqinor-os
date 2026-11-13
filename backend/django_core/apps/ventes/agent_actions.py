@@ -16,9 +16,12 @@ plus d'action de création « vide » — le Copilote crée toujours un devis ch
 
 Niveaux de risque (qui pilotent le garde-fou propose→confirm) :
   * AG4 ``creer_auto``         → INTERNAL  (devis dimensionné, écriture interne)
-  * AG4 ``ligne_ajouter`` / ``ligne_modifier`` / ``remise`` → INTERNAL (édition brouillon)
-  * AG4 ``ligne_supprimer``    → OUTWARD   (retrait de ligne — confirmation)
-  * AG4 ``generer_pdf_devis``  → INTERNAL  (rend le PDF, ne change aucun statut)
+  * AG4 ``ligne_ajouter`` / ``ligne_modifier`` / ``ligne_supprimer`` / ``remise``
+    → OUTWARD (COP-G3 : toute action qui CHANGE un montant du devis passe par
+    une proposition à confirmer — plus d'exécution immédiate ni de prix ou de
+    remise appliqués sans que la commerciale ait lu le montant)
+  * AG4 ``generer_pdf_devis``  → INTERNAL  (lit /proposal : carte « document »,
+    le relais rend un LIEN, aucun statut ne change)
   * AG4 ``accepter_devis``     → OUTWARD   (marque le devis accepté → chantier)
   * AG5 ``convertir_en_bon_commande`` → OUTWARD (crée le BC du devis accepté)
   * AG5 ``generer_facture``    → OUTWARD   (émet la facture de tranche suivante)
@@ -26,17 +29,22 @@ Niveaux de risque (qui pilotent le garde-fou propose→confirm) :
     par confirmation ; écrit un Paiement scopé société, montant validé > 0)
 
 Permissions : les endpoints du flux devis/facture sont gardés par le viewset
-avec ``IsResponsableOrAdmin`` (garde basée sur le RÔLE, pas un code ERP).
-Comme le filtre catalogue AG1 (:func:`apps.agent.registry.for_user`) ne sait
-raisonner que sur des codes de permission ERP, on adosse chaque action au code
-ERP le plus proche que portent Responsable/Admin/Directeur — et que NE porte PAS
-un utilisateur en lecture seule — pour que le catalogue expose bien l'action à
-un responsable/admin et la cache à un lecteur seul :
+avec ``IsResponsableOrAdmin`` (garde basée sur le RÔLE et le module) ou par un
+code de la grille. Le filtre catalogue AG1 (:func:`apps.agent.registry.for_user`)
+raisonne sur des codes ERP : on adosse chaque action au code que sa route exige
+quand elle en exige un (``encaisser``, ``ventes_modifier``…), sinon au code du
+module le plus proche — un test de PARITÉ (``apps/agent/tests/test_registry.py``)
+compare le catalogue aux gardes réelles des routes :
   * création de devis        → ``ventes_creer``
+  * remise globale           → ``ventes_modifier`` (PATCH du devis)
   * génération du PDF devis   → ``ventes_pdf``
-  * validation du flux (accepter / convertir / facturer / encaisser)
-    → ``ventes_valider``
+  * accepter / convertir / facturer → ``ventes_valider``
+  * encaisser                → ``encaisser`` (``PeutEncaisser``, ASEC29)
 Le viewset reste l'autorité finale (il re-vérifie le rôle + la société).
+
+Cartes (COP-G3) : l'action PDF porte ``carte='document'`` ; les actions qui
+désignent un devis, une facture, un lead ou un client par un identifiant
+déclarent ``objets`` pour que l'aperçu d'une proposition NOMME l'objet.
 
 Enregistrement : :func:`register_ventes_actions` est appelée depuis
 ``VentesConfig.ready()`` (import différé). Idempotente : sûre si ``ready()`` est
@@ -67,26 +75,28 @@ _PERM_ENCAISSER = 'encaisser'
 
 # ── AG4 ─────────────────────────────────────────────────────────────────────
 
-# Action — Créer un devis AUTOMATIQUE (résidentiel). Endpoint réel : POST
+# Action — Créer un devis AUTOMATIQUE (4 marchés). Endpoint réel : POST
 # /api/django/ventes/devis/auto/ (DevisViewSet.auto). C'est le SEUL chemin de
 # création de devis offert à l'agent : il dimensionne l'installation à partir de
 # la fiche lead (facture d'hiver / taille souhaitée), choisit panneaux + onduleur
 # (+ batterie si le lead la souhaite) dans le catalogue, force la société et le
-# created_by côté serveur, et numérote. Il ne crée JAMAIS un devis vide : si une
-# donnée manque, le serveur répond 409 avec le champ à compléter pour que l'agent
-# le demande.
+# created_by côté serveur, et numérote. Le MARCHÉ est lu sur le lead
+# (``type_installation``, ``domain/creation_auto.py``) : résidentiel, commercial,
+# industriel (moteur C&I) ou agricole (pompage) ; ``target_kwc`` / ``scenario``
+# sont ceux de ``DevisAutoRequest`` (``views/openapi_docs.py``). Il ne crée
+# JAMAIS un devis vide : si une donnée manque, le serveur répond 409 avec le
+# champ à compléter pour que l'agent le demande.
 CREER_AUTO = AgentAction(
     key='ventes.devis.creer_auto',
     label='Créer un devis (automatique)',
     description=(
-        "Sert à : créer un devis résidentiel dimensionné depuis la fiche lead "
-        "(facture d'électricité ou taille souhaitée) ; seul moyen de créer un "
-        "devis. Ne pas utiliser pour : modifier un devis existant ni chiffrer "
-        "l'industriel ou l'agricole (le serveur oriente vers le générateur). "
-        "Exemple : « fais un devis pour le lead 42 » → lead=42 (ou client, on "
-        "remonte au lead). Résultat : devis brouillon numéroté avec panneaux, "
-        "onduleur (+ batterie si souhaitée) ; 409 avec le champ manquant à "
-        "demander — jamais de devis vide."
+        "Sert à : créer un devis brouillon dimensionné depuis la fiche lead ; "
+        "le marché (résidentiel, commercial, industriel ou agricole) vient du "
+        "type d'installation du lead. Ne pas utiliser pour : modifier un devis "
+        "existant ni créer un devis vide (il n'y en a pas). Exemple : « devis "
+        "de 6 kWc sans batterie pour le lead 42 » → lead=42, target_kwc=6, "
+        "scenario=sans. Résultat : devis brouillon numéroté avec ses lignes ; "
+        "409 nommant la donnée du lead à compléter."
     ),
     endpoint='/api/django/ventes/devis/auto/',
     method='POST',
@@ -104,12 +114,34 @@ CREER_AUTO = AgentAction(
                     'qui lui est rattaché.'
                 ),
             },
-            'taux_tva': {'type': 'string'},
-            'remise_globale': {'type': 'string'},
+            'target_kwc': {
+                'type': 'number',
+                'description': (
+                    'Puissance cible en kWc (10 000 au plus). Absente : le '
+                    'serveur dimensionne depuis le profil du lead.'
+                ),
+            },
+            'scenario': {
+                'type': 'string',
+                'enum': ['sans', 'avec', 'les_deux'],
+                'description': (
+                    "Résidentiel seulement : « sans » ou « avec » batterie, "
+                    "« les_deux » (défaut) pour proposer les deux options."
+                ),
+            },
+            'taux_tva': {
+                'type': 'number',
+                'description': 'Taux de TVA en % (défaut : taux standard de la société).',
+            },
+            'remise_globale': {
+                'type': 'number',
+                'description': 'Remise globale en % (0 à 100).',
+            },
         },
     },
     required_permission=_PERM_CREER,
     risk=RISK_INTERNAL,
+    objets={'lead': 'lead', 'client': 'client'},
 )
 
 
@@ -120,61 +152,72 @@ LIGNE_AJOUTER = AgentAction(
     key='ventes.devis.ligne_ajouter',
     label='Ajouter une ligne au devis',
     description=(
-        "Sert à : ajouter un produit du catalogue à un devis brouillon. Ne pas "
+        "Sert à : ajouter un produit du catalogue à un devis brouillon ; ajoute "
+        "un montant : proposition puis confirmation obligatoire. Ne pas "
         "utiliser pour : changer une ligne existante (ligne_modifier) ni créer "
         "un devis. Exemple : « ajoute 2 batteries au devis 12 » → devis=12, "
-        "produit=<id>, quantite=2, prix_unitaire en HT (même base que le "
-        "devis) ; designation et remise (%) optionnelles. Résultat : la ligne "
-        "est créée et les totaux du devis sont recalculés."
+        "produit=<id>, quantite=2 ; prix_unitaire HT, designation, remise (%) "
+        "optionnels. Résultat : la ligne est créée, les totaux recalculés."
     ),
     endpoint='/api/django/ventes/devis-lignes/',
     method='POST',
     inputs={
         'type': 'object',
         'properties': {
-            'devis': {'type': 'integer'},
-            'produit': {'type': 'integer'},
+            'devis': {'type': 'integer', 'description': 'Identifiant du devis brouillon.'},
+            'produit': {'type': 'integer', 'description': 'Identifiant du produit du catalogue.'},
             'designation': {'type': 'string'},
-            'quantite': {'type': 'string'},
-            'prix_unitaire': {'type': 'string'},
-            'remise': {'type': 'string'},
+            'quantite': {'type': 'number', 'description': 'Quantité (strictement positive).'},
+            'prix_unitaire': {
+                'type': 'number',
+                'description': 'Prix unitaire HT ; absent = prix du catalogue.',
+            },
+            'remise': {'type': 'number', 'description': 'Remise de la ligne en %.'},
         },
         'required': ['devis', 'produit', 'quantite'],
     },
     required_permission=_PERM_CREER,
-    risk=RISK_INTERNAL,
+    # COP-G3 — ajouter une ligne CHANGE le total du devis (et peut y poser un
+    # prix libre) : même règle que ``ligne_modifier`` / ``remise``.
+    risk=RISK_OUTWARD,
+    confirm_summary='Ajouter cette ligne au devis (le total change).',
+    objets={'devis': 'devis'},
 )
 
 
 # Action — Modifier une ligne de devis. Endpoint réel : PATCH
-# /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). Pour viser « la
-# batterie », l'agent liste d'abord les lignes du devis puis agit par id.
+# /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). L'id est celui de la
+# LIGNE (aucune action ne liste les lignes d'un devis : l'agent le demande s'il
+# ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
+# proposition à confirmer — un prix de ligne n'est vu par AUCUN garde-fou de
+# remise du serveur (``profondeur_remise_effective`` le prend pour la base).
 LIGNE_MODIFIER = AgentAction(
     key='ventes.devis.ligne_modifier',
     label='Modifier une ligne de devis',
     description=(
         "Sert à : changer le prix unitaire HT, la quantité, la remise ou la "
-        "désignation d'une ligne de devis brouillon. Ne pas utiliser pour : "
-        "retirer une ligne (ligne_supprimer) ni la remise globale (remise). "
-        "Exemple : « passe la batterie à 1 unité » → liste d'abord les lignes "
-        "du devis, puis id=<ligne>, quantite=1. Résultat : la ligne est mise à "
-        "jour et les totaux du devis recalculés."
+        "désignation d'une ligne de devis brouillon ; change un montant : "
+        "proposition puis confirmation obligatoire. Ne pas utiliser pour : "
+        "retirer une ligne ni la remise globale (remise). Exemple : « passe la "
+        "batterie à 1 unité » → id=<id de la ligne>, quantite=1 ; sans id de "
+        "ligne, demande-le. Résultat : ligne mise à jour, totaux recalculés."
     ),
     endpoint='/api/django/ventes/devis-lignes/{id}/',
     method='PATCH',
     inputs={
         'type': 'object',
         'properties': {
-            'id': {'type': 'integer'},
-            'prix_unitaire': {'type': 'string'},
-            'quantite': {'type': 'string'},
-            'remise': {'type': 'string'},
+            'id': {'type': 'integer', 'description': 'Identifiant de la LIGNE de devis.'},
+            'prix_unitaire': {'type': 'number', 'description': 'Prix unitaire HT.'},
+            'quantite': {'type': 'number', 'description': 'Quantité (strictement positive).'},
+            'remise': {'type': 'number', 'description': 'Remise de la ligne en %.'},
             'designation': {'type': 'string'},
         },
         'required': ['id'],
     },
     required_permission=_PERM_CREER,
-    risk=RISK_INTERNAL,
+    risk=RISK_OUTWARD,
+    confirm_summary='Modifier cette ligne du devis (le total change).',
 )
 
 
@@ -185,16 +228,19 @@ LIGNE_SUPPRIMER = AgentAction(
     key='ventes.devis.ligne_supprimer',
     label='Retirer une ligne de devis',
     description=(
-        "Sert à : retirer une ligne d'un devis brouillon, par id de ligne. Ne "
-        "pas utiliser pour : réduire une quantité (ligne_modifier). Exemple : "
-        "« enlève la ligne 87 » → id=87. Résultat : la ligne disparaît du "
-        "devis — proposition puis confirmation obligatoire."
+        "Sert à : retirer une ligne d'un devis brouillon, par id de ligne ; "
+        "change un montant : proposition puis confirmation obligatoire. Ne pas "
+        "utiliser pour : réduire une quantité (ligne_modifier). Exemple : « "
+        "enlève la ligne 87 » → id=87. Résultat : la ligne disparaît du devis, "
+        "totaux recalculés."
     ),
     endpoint='/api/django/ventes/devis-lignes/{id}/',
     method='DELETE',
     inputs={
         'type': 'object',
-        'properties': {'id': {'type': 'integer'}},
+        'properties': {
+            'id': {'type': 'integer', 'description': 'Identifiant de la LIGNE de devis.'},
+        },
         'required': ['id'],
     },
     required_permission=_PERM_CREER,
@@ -210,24 +256,33 @@ REMISE_DEVIS = AgentAction(
     key='ventes.devis.remise',
     label='Appliquer une remise au devis',
     description=(
-        "Sert à : fixer la remise globale (en %) d'un devis brouillon. Ne pas "
+        "Sert à : fixer la remise globale (en %) d'un devis brouillon ; change "
+        "un montant : proposition puis confirmation obligatoire. Ne pas "
         "utiliser pour : la remise d'une seule ligne (ligne_modifier). "
-        "Exemple : « remise de 5 % sur le devis 12 » → id=12, "
-        "remise_globale=5. Résultat : la remise est appliquée et les totaux "
-        "HT, TVA et TTC du devis recalculés."
+        "Exemple : « remise de 2 % sur le devis 12 » → id=12, "
+        "remise_globale=2. Résultat : remise appliquée, totaux HT, TVA et TTC "
+        "recalculés."
     ),
     endpoint='/api/django/ventes/devis/{id}/',
     method='PATCH',
     inputs={
         'type': 'object',
         'properties': {
-            'id': {'type': 'integer'},
-            'remise_globale': {'type': 'string'},
+            'id': {'type': 'integer', 'description': 'Identifiant du devis brouillon.'},
+            'remise_globale': {
+                'type': 'number',
+                'description': 'Remise globale en % (0 à 100).',
+            },
         },
         'required': ['id', 'remise_globale'],
     },
     required_permission=_PERM_MODIFIER,
-    risk=RISK_INTERNAL,
+    # COP-G3 — une remise n'est plus appliquée sans confirmation : l'exécution
+    # était immédiate et sans borne (la garde d'approbation du serveur ne couvre
+    # que l'ENVOI, et seulement si un seuil est réglé).
+    risk=RISK_OUTWARD,
+    confirm_summary='Appliquer cette remise globale au devis.',
+    objets={'id': 'devis'},
 )
 
 
@@ -241,13 +296,12 @@ GENERER_PDF_DEVIS = AgentAction(
     key='ventes.devis.generer_pdf',
     label='Générer le PDF de proposition (devis)',
     description=(
-        "Sert à : produire le PDF client d'un devis. PDF client = `/proposal` "
-        "uniquement (règle #4) : options pdf_mode (full/onepage), "
-        "include_etude… filtrées par une liste blanche serveur. Ne pas "
-        "utiliser pour : une facture ni un autre format de devis — il n'en "
-        "existe pas. Exemple : « sors le PDF du devis 12 en une page » → "
-        "id=12, pdf_mode=onepage. Résultat : le PDF est rendu ; aucun statut "
-        "ne change."
+        "Sert à : obtenir le lien du PDF client d'un devis. PDF client = "
+        "`/proposal` uniquement (règle #4) ; options pdf_mode (full/onepage), "
+        "include_etude, include_calepinage, langue. Ne pas utiliser pour : une "
+        "facture ni un autre format de devis, il n'en existe pas. Exemple : "
+        "« PDF du devis 12 en une page » → id=12, pdf_mode=onepage. Résultat : "
+        "un lien vers le PDF, rien n'est envoyé ; aucun statut ne change."
     ),
     endpoint='/api/django/ventes/devis/{id}/proposal/',
     method='GET',
@@ -259,17 +313,25 @@ GENERER_PDF_DEVIS = AgentAction(
                 'description': 'Identifiant du devis.',
             },
             # Options de format (liste blanche ``clean_pdf_options``) — passées
-            # en query params ; la société/le devis bornent déjà le rendu.
+            # en query params, tels que la route les LIT (``devis_pdf.proposal``) :
+            # ``payment_mode`` et ``custom_acompte`` n'y sont jamais lus (retirés).
             'pdf_mode': {
                 'type': 'string',
+                'enum': ['full', 'onepage'],
                 'description': "Format : 'full' (premium) ou 'onepage'.",
             },
             'include_etude': {
                 'type': 'boolean',
-                'description': "Ajoute la page Étude (4e page premium).",
+                'description': "Ajoute la page Étude (4e page, résidentiel).",
             },
-            'payment_mode': {'type': 'string'},
-            'custom_acompte': {'type': 'string'},
+            'include_calepinage': {
+                'type': 'boolean',
+                'description': "Ajoute (true) ou retire (false) la planche de calepinage.",
+            },
+            'langue': {
+                'type': 'string',
+                'description': "Langue du document (code court, ex. fr) ; absente : celle du client.",
+            },
             'show_monthly': {'type': 'boolean'},
             'devis_final': {'type': 'boolean'},
         },
@@ -277,6 +339,10 @@ GENERER_PDF_DEVIS = AgentAction(
     },
     required_permission=_PERM_PDF,
     risk=RISK_INTERNAL,
+    # COP-G3 — l'action ne fait que LIRE /proposal : le relais rend le LIEN
+    # (contrat ``assistant_document.json``), jamais le PDF binaire lu comme JSON.
+    carte='document',
+    objets={'id': 'devis'},
 )
 
 
@@ -328,6 +394,7 @@ ACCEPTER_DEVIS = AgentAction(
     required_permission=_PERM_VALIDER,
     risk=RISK_OUTWARD,
     confirm_summary='Marquer ce devis comme accepté par le client.',
+    objets={'id': 'devis'},
 )
 
 
@@ -363,6 +430,7 @@ CONVERTIR_EN_BON_COMMANDE = AgentAction(
     required_permission=_PERM_VALIDER,
     risk=RISK_OUTWARD,
     confirm_summary='Créer le bon de commande de ce devis accepté.',
+    objets={'id': 'devis'},
 )
 
 
@@ -397,6 +465,7 @@ GENERER_FACTURE = AgentAction(
     required_permission=_PERM_VALIDER,
     risk=RISK_OUTWARD,
     confirm_summary='Émettre la prochaine facture de tranche de ce devis.',
+    objets={'id': 'devis'},
 )
 
 
@@ -447,6 +516,7 @@ ENREGISTRER_PAIEMENT = AgentAction(
     required_permission=_PERM_ENCAISSER,
     risk=RISK_IRREVERSIBLE,
     confirm_summary='Enregistrer cet encaissement (irréversible).',
+    objets={'id': 'facture'},
 )
 
 

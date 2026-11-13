@@ -35,6 +35,9 @@ from apps.ventes.models import (
 from apps.ventes.agent_actions import (
     CREER_AUTO,
     GENERER_PDF_DEVIS,
+    LIGNE_AJOUTER,
+    LIGNE_MODIFIER,
+    LIGNE_SUPPRIMER,
     REMISE_DEVIS,
     ACCEPTER_DEVIS,
     CONVERTIR_EN_BON_COMMANDE,
@@ -112,6 +115,12 @@ class VentesAgentCatalogueTest(TestCase):
         # AG4
         self.assertEqual(CREER_AUTO.risk, RISK_INTERNAL)
         self.assertEqual(GENERER_PDF_DEVIS.risk, RISK_INTERNAL)
+        # COP-G3 — tout ce qui CHANGE un montant du devis passe par une
+        # proposition à confirmer (remise, prix/quantité de ligne, ajout, retrait).
+        for action in (REMISE_DEVIS, LIGNE_AJOUTER, LIGNE_MODIFIER,
+                       LIGNE_SUPPRIMER):
+            self.assertEqual(action.risk, RISK_OUTWARD, action.key)
+            self.assertTrue(action.confirm_summary, action.key)
         self.assertEqual(ACCEPTER_DEVIS.risk, RISK_OUTWARD)
         # AG5
         self.assertEqual(CONVERTIR_EN_BON_COMMANDE.risk, RISK_OUTWARD)
@@ -126,6 +135,61 @@ class VentesAgentCatalogueTest(TestCase):
     def test_creer_auto_accepts_lead(self):
         # Le client est résolu serveur depuis le lead → lead doit être un input.
         self.assertIn('lead', CREER_AUTO.inputs['properties'])
+
+    def test_creer_auto_dit_vrai_et_declare_les_entrees_de_la_route(self):
+        """COP-G3 — la route sert les QUATRE marchés (selon le type du lead) et
+        accepte ``target_kwc`` / ``scenario`` : l'action les déclare avec les
+        valeurs que la route accepte, rien d'autre que le corps publié."""
+        from apps.ventes.domain.creation_auto import SCENARIOS_DEMANDABLES
+        from apps.ventes.views.openapi_docs import (
+            AutoDevisRequest, TARGET_KWC_MAX)
+        props = CREER_AUTO.inputs['properties']
+        self.assertLessEqual(set(props), set(AutoDevisRequest.fields))
+        self.assertEqual(props['target_kwc']['type'], 'number')
+        self.assertIn(str(TARGET_KWC_MAX).replace('_', ''),
+                      props['target_kwc']['description'].replace(' ', ''))
+        self.assertEqual(tuple(props['scenario']['enum']), SCENARIOS_DEMANDABLES)
+        for marche in ('résidentiel', 'commercial', 'industriel', 'agricole'):
+            self.assertIn(marche, CREER_AUTO.description)
+        self.assertNotIn('uniquement', CREER_AUTO.description.lower())
+
+    def test_pdf_action_ne_lit_que_le_pdf_proposal(self):
+        """COP-G3 — carte « document » (le relais rend le lien /proposal) ; les
+        options déclarées sont celles que la route LIT (``payment_mode`` et
+        ``custom_acompte`` ne l'étaient jamais)."""
+        import inspect
+
+        from apps.ventes.views import devis_pdf
+        self.assertEqual(GENERER_PDF_DEVIS.carte, 'document')
+        self.assertEqual(GENERER_PDF_DEVIS.method, 'GET')
+        source = inspect.getsource(devis_pdf.DevisPdfActionsMixin.proposal)
+        for option in GENERER_PDF_DEVIS.inputs['properties']:
+            if option != 'id':
+                self.assertIn(f"'{option}'", source, option)
+        self.assertNotIn('payment_mode', GENERER_PDF_DEVIS.inputs['properties'])
+        # Aucune autre action du flux ne rend un PDF : seule la lecture de
+        # /proposal porte la carte « document ».
+        self.assertEqual(
+            [a.key for a in VENTES_ACTIONS if a.carte], [GENERER_PDF_DEVIS.key])
+
+    def test_objets_nommes_pour_chaque_identifiant_d_objet(self):
+        """COP-G3 — toute entrée qui désigne un devis, une facture, un lead ou un
+        client est déclarée dans ``objets`` (aperçu nommé) ; seule la LIGNE de
+        devis n'a pas de type."""
+        attendu = {
+            'ventes.devis.creer_auto': {'lead': 'lead', 'client': 'client'},
+            'ventes.devis.ligne_ajouter': {'devis': 'devis'},
+            'ventes.devis.remise': {'id': 'devis'},
+            'ventes.devis.generer_pdf': {'id': 'devis'},
+            'ventes.devis.accepter': {'id': 'devis'},
+            'ventes.devis.convertir_bc': {'id': 'devis'},
+            'ventes.devis.generer_facture': {'id': 'devis'},
+            'ventes.facture.enregistrer_paiement': {'id': 'facture'},
+        }
+        for action in VENTES_ACTIONS:
+            self.assertEqual(action.objets, attendu.get(action.key, {}), action.key)
+            self.assertLessEqual(set(action.objets),
+                                 set(action.inputs['properties']), action.key)
 
     def test_catalogue_endpoint_lists_actions_for_responsable(self):
         api = auth(self.resp)
@@ -148,6 +212,10 @@ class VentesAgentCatalogueTest(TestCase):
                 self.assertIn(section, desc, f'{key} : {section}')
             self.assertNotIn('prix_achat', desc, key)
             self.assertNotIn('marge', desc.lower(), key)
+            # COP-G3 — ni dans les entrées déclarées (clés et descriptions).
+            entrees = str(action.inputs).lower()
+            self.assertNotIn('prix_achat', entrees, key)
+            self.assertNotIn('marge', entrees, key)
         pdf = ventes[GENERER_PDF_DEVIS.key].description
         self.assertIn('/proposal', pdf)
         self.assertIn('règle #4', pdf)
