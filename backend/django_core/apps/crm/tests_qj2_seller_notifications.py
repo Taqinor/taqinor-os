@@ -170,7 +170,7 @@ class NotifyDevisOpenedTests(TestCase):
     def test_lead_oppose_aucun_lien_wa(self):
         """AMSG8 — nouveau lead, devis ouvert, demande de contact WhatsApp d'un
         lead « ne plus contacter » : notifications créées, AUCUN wa.me ; témoin
-        inchangé ; un rappel demandé lève d'abord l'opposition (D-ACRM-5 (3))."""
+        inchangé ; APUB39 (11/11) : un rappel demandé ne lève plus l'opposition — toujours aucun wa.me."""
         from apps.crm.cadence_signaux import notify_client_contact_request
         oppose = _make_lead(self.company, owner=self.owner, nom='Oppose')
         Lead.objects.filter(pk=oppose.pk).update(ne_plus_contacter=True)
@@ -190,7 +190,7 @@ class NotifyDevisOpenedTests(TestCase):
         Notification.objects.all().delete()
         notify_client_contact_request('DEV-AMSG8-1', oppose, canal='rappel')
         demande = Notification.objects.get(recipient=self.owner, event_type='client_contact_request')
-        self.assertIn('wa.me', demande.body)
+        self.assertNotIn('wa.me', demande.body)
 
     def test_parrainage_lead_oppose_sans_lien_wa(self):
         """AMSG8 — la notification de parrainage d'un devis accepté d'un lead

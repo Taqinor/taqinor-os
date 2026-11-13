@@ -214,7 +214,7 @@ class RelanceEchecEnvoiTests(TestCase):
         auteur = get_user_model().objects.create_user(
             username=f'amsg30-{_nxt()}', password='x',
             role_legacy='responsable', company=self.company)
-        f1, f2, f3 = (self._facture(self._client()) for _ in range(3))
+        f1, f2, f3 = (self._facture(self._client(email=f'amsg30-{i}@example.invalid')) for i in range(3))
         for f in (f1, f2):
             for n in niveaux:
                 RelanceLog.objects.create(
