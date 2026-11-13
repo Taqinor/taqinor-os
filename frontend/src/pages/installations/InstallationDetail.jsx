@@ -14,7 +14,7 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
-import { useResyncForm } from '../../features/installations/useResyncForm'
+import { useEtatSuivi, useResyncForm } from '../../features/installations/useResyncForm'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -68,7 +68,6 @@ import {
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import useEtatSuivi from '../../hooks/useEtatSuivi'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
