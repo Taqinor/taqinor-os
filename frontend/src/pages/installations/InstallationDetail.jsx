@@ -68,6 +68,7 @@ import {
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+import useEtatSuivi from '../../hooks/useEtatSuivi'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -197,11 +198,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const id = installation.id
 
   // État local éditable + version courante (rafraîchie après interventions).
-  const [current, setCurrent] = useState(installation)
   // AERR91 — re-rendu avec un AUTRE chantier : l'état local le suit (réinitialisé au rendu).
-  const [idVu, setIdVu] = useState(id)
-  const autreChantier = idVu !== id
-  if (autreChantier) { setIdVu(id); setCurrent(installation) }
+  const [current, setCurrent, autreChantier] = useEtatSuivi(id, installation)
   // NTMOB16 — dialog de signature client (bon de livraison).
   const [signatureOpen, setSignatureOpen] = useState(false)
   // APX25 — onglet actif de la fiche (Aperçu par défaut).
@@ -234,8 +232,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     art33_regularisation: F('art33_regularisation', false),
     notes: F('notes'),
   }
-  const [fields, setFields] = useState(initialFields)
-  if (autreChantier) setFields(initialFields)
+  const [fields, setFields] = useEtatSuivi(id, initialFields)
   // ACHT57 — resynchronise le formulaire sur `current` après chaque
   // rafraîchissement (avancée du stepper, dates posées par le serveur) : un
   // champ NON touché suit la nouvelle valeur serveur, un champ édité par
