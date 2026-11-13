@@ -5,12 +5,16 @@ import '../../../test/utilisateur7Mock'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-const { crmApiMock, reportingApiMock } = vi.hoisted(() => ({
+const { crmApiMock, reportingApiMock, installationsApiMock } = vi.hoisted(() => ({
   crmApiMock: { getRelances: vi.fn() },
-  reportingApiMock: { getCalendar: vi.fn() },
+  reportingApiMock: {
+    getCalendar: vi.fn(), approbationsEnAttente: vi.fn(), getNotifications: vi.fn(),
+  },
+  installationsApiMock: { getMaTournee: vi.fn() },
 }))
 vi.mock('../../../api/crmApi', () => ({ default: crmApiMock }))
 vi.mock('../../../api/reportingApi', () => ({ default: reportingApiMock }))
+vi.mock('../../../api/installationsApi', () => ({ default: installationsApiMock }))
 
 import CommercialHome from './CommercialHome'
 
@@ -29,6 +33,9 @@ beforeEach(() => {
   reportingApiMock.getCalendar.mockResolvedValue({
     data: { events: [{ id: 'ev-1', title: 'Visite chantier', date: '2026-07-17' }] },
   })
+  reportingApiMock.approbationsEnAttente.mockResolvedValue({ data: { items: [] } })
+  reportingApiMock.getNotifications.mockResolvedValue({ data: { factures: [] } })
+  installationsApiMock.getMaTournee.mockResolvedValue({ data: { stops: [] } })
 })
 
 function renderPage() {
@@ -68,5 +75,26 @@ describe('CommercialHome (NTMOB4)', () => {
     expect(await screen.findByRole('button', { name: /Nouveau lead/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Créer devis/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Carte de mes leads/ })).toBeInTheDocument()
+  })
+
+  // AERR121 — l'utilisateur de test n'a pas `crm_voir` : le widget ne lit pas
+  // les relances ; sa panne est simulée sur la tournée (même chemin `safe`).
+  it("panne des relances : jamais « Rien d'urgent », avis + Réessayer", async () => {
+    const panne = new Error('Network Error')
+    crmApiMock.getRelances.mockRejectedValue(panne)
+    installationsApiMock.getMaTournee.mockRejectedValue(panne)
+    renderPage()
+    expect(await screen.findByText(/Une partie de la journée n'a pas pu être lue/)).toBeInTheDocument()
+    expect(await screen.findByText('Lecture impossible')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Réessayer' }).length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText("Rien d'urgent aujourd'hui")).toBeNull()
+    expect(screen.queryByText("Aucune relance due aujourd'hui")).toBeNull()
+  })
+
+  it('un 403 (droit, module absent) reste silencieux', async () => {
+    installationsApiMock.getMaTournee.mockRejectedValue({ response: { status: 403 } })
+    renderPage()
+    expect(await screen.findByText("Rien d'urgent aujourd'hui")).toBeInTheDocument()
+    expect(screen.queryByText(/n'a pas pu être lue/)).toBeNull()
   })
 })

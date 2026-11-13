@@ -41,25 +41,39 @@ function sortByPriority(leads) {
   })
 }
 
+// AERR121 — une liste dont la lecture a échoué n'est jamais « aucune » :
+// état d'erreur + Réessayer (partagé par les accueils d'équipe).
+export function EchecLecture({ onRetry }) {
+  return (
+    <EmptyState
+      title="Lecture impossible"
+      description="La liste n'a pas pu être lue — elle n'est pas forcément vide."
+      action={<Button type="button" size="sm" variant="outline" onClick={onRetry}>Réessayer</Button>}
+    />
+  )
+}
+
 export default function CommercialHome() {
   const isMobile = useIsMobile()
   const navigate = useNavigate()
   const userId = useSelector((s) => s.auth?.user?.id)
   const [leads, setLeads] = useState(null)
   const [events, setEvents] = useState(null)
+  const [essai, setEssai] = useState(0)
 
   useEffect(() => {
     if (!isMobile) return undefined
     let alive = true
     crmApi.getRelances({ scope: 'today' })
       .then((r) => { if (alive) setLeads(sortByPriority(r.data?.results ?? [])) })
-      .catch(() => { if (alive) setLeads([]) })
+      .catch(() => { if (alive) setLeads(false) })
     const day = todayIso()
     reportingApi.getCalendar({ from: day, to: day, assignee: userId || undefined })
       .then((r) => { if (alive) setEvents(r.data?.events ?? []) })
-      .catch(() => { if (alive) setEvents([]) })
+      .catch(() => { if (alive) setEvents(false) })
     return () => { alive = false }
-  }, [isMobile, userId])
+  }, [isMobile, userId, essai])
+  const relire = () => { setLeads(null); setEvents(null); setEssai((n) => n + 1) }
 
   if (!isMobile) return <Navigate to="/dashboard" replace />
 
@@ -94,6 +108,7 @@ export default function CommercialHome() {
         )}>
         {leads === null
           ? <Spinner />
+          : leads === false ? <EchecLecture onRetry={relire} />
           : leads.length === 0
             ? <EmptyState title="Aucune relance due aujourd'hui" />
             : (
@@ -140,6 +155,7 @@ export default function CommercialHome() {
         )}>
         {events === null
           ? <Spinner />
+          : events === false ? <EchecLecture onRetry={relire} />
           : events.length === 0
             ? <EmptyState title="Aucun rendez-vous aujourd'hui" />
             : (
