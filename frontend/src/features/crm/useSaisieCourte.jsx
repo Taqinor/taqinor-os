@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Button, Input } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé avec sa boîte (dev HMR only) (D-ENF22)
 function SaisieCourteDialog({ titre, label, onFin }) {
   const [texte, setTexte] = useState('')
   const valider = () => { if (texte.trim()) onFin(texte.trim()) }

@@ -98,7 +98,7 @@ export default function AppointmentBooker({ leadId }) {
     // AERR105 — une confirmation NOMMÉE avant l'annulation (aucun envoi au client).
     const rdv = appointments.find((a) => a.id === apptId)
     const ok = await confirm({
-      title: `Annuler le rendez-vous du ${formatDateTime(rdv?.scheduled_at).replace(/[\s ]+/, ' à ')} ?`,
+      title: `Annuler le rendez-vous du ${formatDateTime(rdv?.scheduled_at).replace(/[\s\u202f]+/, ' à ')} ?`,
       confirmLabel: 'Annuler le rendez-vous',
       cancelLabel: 'Garder',
     })
