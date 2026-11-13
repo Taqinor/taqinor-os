@@ -118,6 +118,22 @@ describe('PaiementsFournisseurLedgerPage (PACT51)', () => {
     expect(Object.keys(post.mock.calls[0][1])).not.toContain('company')
   })
 
+  it('montant 0 : message sous le champ, aucun appel (AERR90)', async () => {
+    const user = userEvent.setup()
+    mockGets()
+    afficher()
+    await screen.findByTestId('table-paiements')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    expect(await screen.findByText('Choisissez la facture à régler.')).toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Facture fournisseur' }))
+    await user.click(await screen.findByRole('option', { name: /FF-2026-08-0001/ }))
+    await user.type(screen.getByLabelText('Montant du règlement'), '0')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    expect(await screen.findByText('Saisissez un montant supérieur à 0.')).toBeInTheDocument()
+    expect(screen.queryByText('Choisissez la facture à régler.')).toBeNull()
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it('filtre le registre sur la période affichée', async () => {
     mockGets()
     afficher()

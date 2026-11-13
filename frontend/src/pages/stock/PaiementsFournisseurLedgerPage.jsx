@@ -91,6 +91,7 @@ export default function PaiementsFournisseurLedgerPage() {
   })
   // XPUR6 — pourcentage d'escompte disponible sur le dernier paiement saisi.
   const [escompte, setEscompte] = useState(null)
+  const [erreursDraft, setErreursDraft] = useState({})  // AERR90 — dit pourquoi rien ne part
 
   // ENF15 — toutes les pages (jamais la seule page 1) : le registre et ses totaux
   // portent sur l'ensemble des paiements.
@@ -146,7 +147,12 @@ export default function PaiementsFournisseurLedgerPage() {
   }
 
   const enregistrer = async () => {
-    if (!draft.facture || !(Number(draft.montant) > 0)) return
+    const erreurs = {
+      ...(draft.facture ? {} : { facture: 'Choisissez la facture à régler.' }),
+      ...(Number(draft.montant) > 0 ? {} : { montant: 'Saisissez un montant supérieur à 0.' }),
+    }
+    setErreursDraft(erreurs)
+    if (Object.keys(erreurs).length) return
     setBusy(true)
     setEscompte(null)
     try {
@@ -293,11 +299,14 @@ export default function PaiementsFournisseurLedgerPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {erreursDraft.facture && <p role="alert" className="mt-1 text-xs text-destructive">{erreursDraft.facture}</p>}
             </div>
-            <Input className="w-[140px]" type="number" step="any"
-              aria-label="Montant du règlement" placeholder="Montant"
-              value={draft.montant}
-              onChange={(e) => setDraft((d) => ({ ...d, montant: e.target.value }))} />
+            <div className="w-[140px]">
+              <Input type="number" step="any" aria-label="Montant du règlement" placeholder="Montant"
+                value={draft.montant} aria-invalid={!!erreursDraft.montant}
+                onChange={(e) => setDraft((d) => ({ ...d, montant: e.target.value }))} />
+              {erreursDraft.montant && <p role="alert" className="mt-1 text-xs text-destructive">{erreursDraft.montant}</p>}
+            </div>
             <Input className="w-[160px]" type="date"
               aria-label="Date du règlement"
               value={draft.date_paiement}
