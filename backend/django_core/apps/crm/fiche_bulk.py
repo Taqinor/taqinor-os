@@ -8,6 +8,8 @@ import re
 from django.db.models import Q
 from django.utils import timezone
 
+from core.conflit_etat import ConflitEtat
+
 from . import activity, stages
 from .models import Canal, Lead, LeadActivity
 from .leads_fusion import raison_refus_suppression
@@ -45,9 +47,20 @@ BULK_ADMIN_ONLY = {'delete'}
 
 def archiver_lead(lead, user, *, note=None):
     """ACVI24 — L'archivage (fiche et lot) : écriture et chatter dans la même
-    transaction (ALEA30), puis le rendez-vous de visite en attente annulé."""
+    transaction (ALEA30), puis le rendez-vous de visite en attente annulé.
+    ASUP48 (D-ASUP-6 = refuser) — un lead SIGNÉ dont un devis en vigueur a une
+    suite réelle (facture, BC, chantier avancé) : 409 nommé, rien d'écrit —
+    la même raison que la sortie de « Signé »."""
     from django.db import transaction
 
+    from .portee_selectors import est_lead_signe
+    if est_lead_signe(lead):
+        from apps.ventes.selectors import devis_signes_en_vigueur
+        from apps.ventes.services import raison_blocage_annulation_acceptation
+        for devis in devis_signes_en_vigueur(lead.company, lead_ids=[lead.pk]):
+            raison = raison_blocage_annulation_acceptation(devis)
+            if raison:
+                raise ConflitEtat(f"Impossible d'archiver ce lead signé : {raison}")
     lead.is_archived = True
     lead.archived_by = user
     lead.archived_at = timezone.now()
@@ -593,9 +606,13 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 if lead.is_archived:
                     unchanged += 1
                     continue
-                archiver_lead(
-                    lead, user,
-                    note=f"Lead archivé en masse par {getattr(user, 'username', '?')}")
+                try:
+                    archiver_lead(
+                        lead, user,
+                        note=f"Lead archivé en masse par {getattr(user, 'username', '?')}")
+                except ConflitEtat as exc:  # ASUP48 — signé à suite réelle : sauté
+                    skip(lead, str(exc.detail))
+                    continue
                 updated += 1
 
             elif op == 'unarchive':
