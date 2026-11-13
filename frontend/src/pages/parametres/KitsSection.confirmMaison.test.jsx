@@ -63,3 +63,33 @@ describe('APAR67 KitsSection — dialogue maison', () => {
     await waitFor(() => expect(outillageApi.deleteKit).toHaveBeenCalledWith(7))
   })
 })
+
+describe('AERR67 KitsSection — retrait d’un article nommé', () => {
+  const kitAvecPerceuse = {
+    data: [{ id: 7, nom: 'Kit toiture', actif: true, ordre: 1, type_intervention: '',
+      items: [{ id: 31, outil: 4, outil_nom: 'Perceuse', ordre: 1 }] }],
+  }
+
+  it('retrait d’article : Annuler ⇒ aucun appel', async () => {
+    outillageApi.deleteKitItem.mockClear()
+    outillageApi.getKits.mockResolvedValue(kitAvecPerceuse)
+    await renderSection()
+    fireEvent.click(await screen.findByLabelText("Retirer l'outil"))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/Perceuse/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Kit toiture/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByText('Annuler'))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(outillageApi.deleteKitItem).not.toHaveBeenCalled()
+  })
+
+  it('retrait d’article : Supprimer ⇒ un appel', async () => {
+    outillageApi.deleteKitItem.mockClear()
+    outillageApi.getKits.mockResolvedValue(kitAvecPerceuse)
+    await renderSection()
+    fireEvent.click(await screen.findByLabelText("Retirer l'outil"))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(outillageApi.deleteKitItem).toHaveBeenCalledWith(31))
+  })
+})

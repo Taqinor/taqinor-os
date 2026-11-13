@@ -120,7 +120,9 @@ export default function KitsSection() {
       load()
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Réordonnancement impossible.') }
   }
-  const delItem = async (it) => {
+  const delItem = async (it, k) => {
+    // AERR67 — retrait nommé (outil + kit), comme la suppression du kit.
+    if (!(await confirmDelete({ title: `Retirer « ${it.outil_nom ?? outilNom(it.outil)} » du kit « ${k.nom} » ?` }))) return
     try { await outillageApi.deleteKitItem(it.id); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
@@ -209,7 +211,7 @@ export default function KitsSection() {
                     <ChevronDown className="size-4" aria-hidden="true" />
                   </IconButton>
                   <IconButton size="sm" variant="outline" label="Retirer l'outil"
-                    className="text-destructive hover:text-destructive" onClick={() => delItem(it)}>
+                    className="text-destructive hover:text-destructive" onClick={() => delItem(it, k)}>
                     <Trash2 className="size-4" aria-hidden="true" />
                   </IconButton>
                 </div>
