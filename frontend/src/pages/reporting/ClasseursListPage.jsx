@@ -26,15 +26,18 @@ export default function ClasseursListPage() {
   const listerTous = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
     reportingApi.listClasseurs({ page, page_size: pageSize }).then((r) => r.data))
 
+  // AERR130 — une relecture en échec GARDE la liste affichée (jamais « Aucun
+  // classeur ») et le dit : avis « Liste pas à jour » + Réessayer.
+  const [pasAJour, setPasAJour] = useState(false)
   const reload = () => listerTous()
-    .then((rows) => setClasseurs(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-    .catch(() => setClasseurs([]))
+    .then((rows) => { setClasseurs(Array.isArray(rows) ? rows : (rows?.results ?? [])); setPasAJour(false) })
+    .catch(() => setPasAJour(true))
 
   useEffect(() => {
     let active = true
     listerTous()
       .then((rows) => { if (active) setClasseurs(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
-      .catch(() => { if (active) setClasseurs([]) })
+      .catch(() => { if (active) setPasAJour(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
@@ -60,7 +63,11 @@ export default function ClasseursListPage() {
     })
     if (!ok) return
     reportingApi.deleteClasseur(classeur.id)
-      .then(() => { toast.success('Classeur supprimé.'); reload() })
+      .then(() => {
+        toast.success('Classeur supprimé.')
+        setClasseurs((l) => l.filter((c) => c.id !== classeur.id))
+        reload()
+      })
       .catch(() => toast.error('Suppression impossible.'))
   }
 
@@ -84,16 +91,22 @@ export default function ClasseursListPage() {
         <Button onClick={() => setDialogOpen(true)}><Plus /> Nouveau classeur</Button>
       </div>
 
+      {pasAJour && (
+        <p role="status" className="mb-3 text-sm text-muted-foreground">
+          Liste pas à jour — le serveur n’a pas répondu.{' '}
+          <Button size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </p>
+      )}
       {loading ? (
         <ChargementPage />
-      ) : classeurs.length === 0 ? (
+      ) : classeurs.length === 0 ? (pasAJour ? null : (
         <EmptyState
           icon={Sheet}
           title="Aucun classeur"
           description="Créez un classeur pour construire un mini-tableau de bord avec formules."
           className="my-6"
         />
-      ) : (
+      )) : (
         <DataTable
           data={classeurs}
           columns={columns}
