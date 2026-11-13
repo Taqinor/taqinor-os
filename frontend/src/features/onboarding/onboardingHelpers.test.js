@@ -80,10 +80,10 @@ vi.mock('../../api/axios', () => ({ default: { get: vi.fn() } }))
 vi.mock('../../api/stockApi', () => ({ default: { getProduits: vi.fn() } }))
 
 describe('useOnboardingSteps : /users/ réservé aux paliers responsable/admin', () => {
-  function rendre(role) {
+  function rendre(role, permissions = []) {
     const store = configureStore({
       reducer: {
-        auth: (s = { role, permissions: [] }) => s,
+        auth: (s = { role, permissions }) => s,
         parametres: (s = { profile: null }) => s,
       },
     })
@@ -107,5 +107,22 @@ describe('useOnboardingSteps : /users/ réservé aux paliers responsable/admin',
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(api.get).toHaveBeenCalledWith('/users/')
     expect(result.current.steps.find((s) => s.key === 'equipe').done).toBe(true)
+  })
+  it('rôle fin sans code stock (Commercial terrain) : aucun appel à stockApi.getProduits, étape produits à faire', async () => {
+    const { result } = rendre('normal', ['visites_voir', 'visites_creer', 'visites_modifier', 'app_visites_voir'])
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(stockApi.getProduits).not.toHaveBeenCalled()
+    expect(result.current.steps.find((s) => s.key === 'produit').done).toBe(false)
+  })
+  it('Admin RH (palier responsable, aucun stock_*) : stock jamais lu', async () => {
+    const { result } = rendre('responsable', ['rh_voir', 'users_voir'])
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(stockApi.getProduits).not.toHaveBeenCalled()
+  })
+  it('Directeur (stock_voir) : produits lus une fois, étape comptée', async () => {
+    const { result } = rendre('admin', ['stock_voir', 'users_voir'])
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(stockApi.getProduits).toHaveBeenCalledTimes(1)
+    expect(result.current.steps.find((s) => s.key === 'produit').done).toBe(true)
   })
 })
