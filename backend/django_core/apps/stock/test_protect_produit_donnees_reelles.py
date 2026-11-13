@@ -231,16 +231,33 @@ class TestForceDeleteRefuseLesDonneesReelles(TestCase):
             'la transaction doit annuler la suppression des mouvements')
 
     def test_produit_sans_donnee_reelle_reste_supprimable(self):
-        """La garde ne doit pas bloquer un produit réellement jetable."""
-        mouvement = MouvementStock.objects.create(
-            company=self.company, produit=self.produit,
-            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
-            quantite=1, quantite_avant=0, quantite_apres=1)
-
+        """La garde ne doit pas bloquer un produit réellement jetable (ni
+        mouvement ni référence — ASUP4 : un mouvement, lui, bloque)."""
         reponse = self.api.delete(
             f'/api/django/stock/produits/{self.produit.pk}/force-delete/')
 
         self.assertEqual(reponse.status_code, 200)
         self.assertFalse(Produit.objects.filter(pk=self.produit.pk).exists())
-        self.assertFalse(
-            MouvementStock.objects.filter(pk=mouvement.pk).exists())
+
+    def test_refuse_409_si_le_produit_a_des_mouvements(self):
+        """ASUP4 (C-ASUP-002, D-ASUP-3 = refuser) — le registre des mouvements
+        est append-only : entrée 10 puis sortie 10 (stock 0) ⇒ 409 nommant
+        « 2 mouvements de stock », produit et mouvements conservés. Mutant :
+        remettre la suppression des mouvements ⇒ échec."""
+        for type_mvt, avant, apres in (
+                (MouvementStock.TypeMouvement.ENTREE, 0, 10),
+                (MouvementStock.TypeMouvement.SORTIE, 10, 0)):
+            MouvementStock.objects.create(
+                company=self.company, produit=self.produit,
+                type_mouvement=type_mvt, quantite=10,
+                quantite_avant=avant, quantite_apres=apres)
+
+        reponse = self.api.delete(
+            f'/api/django/stock/produits/{self.produit.pk}/force-delete/')
+
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertIn('2 mouvements de stock', reponse.json()['detail'])
+        self.assertIn('archive suffit', reponse.json()['detail'])
+        self.assertTrue(Produit.objects.filter(pk=self.produit.pk).exists())
+        self.assertEqual(
+            MouvementStock.objects.filter(produit=self.produit).count(), 2)

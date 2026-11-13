@@ -1950,9 +1950,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 status=status.HTTP_409_CONFLICT,
             )
         # ASTK81 — mêmes références vivantes que destroy (helper commun) : on
-        # archive au lieu de détacher/cascader. Les mouvements restent
-        # supprimés avec le produit (comportement historique) ; les PROTECT
-        # gardent leur refus 409 plus bas.
+        # archive au lieu de détacher/cascader ; les PROTECT gardent leur refus
+        # 409 plus bas. ASUP4 (D-ASUP-3) : des mouvements ⇒ 409, rien effacé.
         comptes = _references_vivantes(
             produit, exclure=(MouvementStock,), avec_protegees=False)
         if comptes:
@@ -1969,12 +1968,13 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 status=status.HTTP_200_OK,
             )
         nb = produit.mouvements.count()
+        if nb:
+            return Response({'detail': (
+                f'Suppression définitive refusée : ce produit porte {nb} '
+                f'mouvement{"s" if nb > 1 else ""} de stock (registre conservé). '
+                "L'archive suffit.")}, status=status.HTTP_409_CONFLICT)
         try:
-            # Atomique : sans cette transaction, un PROTECT levé par
-            # `produit.delete()` laisserait les mouvements DÉJÀ supprimés.
-            with transaction.atomic():
-                produit.mouvements.all().delete()
-                produit.delete()
+            produit.delete()
         except ProtectedError as exc:
             # Données réelles rattachées (prix fournisseur/contractuel, ligne
             # de liste de prix, fiche technique, lot, série…) : on refuse.
@@ -1995,9 +1995,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             )
         return Response(
             {
-                'detail': (
-                    f'Produit et {nb} mouvement(s) supprimé(s) définitivement.'
-                )
+                'detail': 'Produit supprimé définitivement.'
             },
             status=status.HTTP_200_OK,
         )
