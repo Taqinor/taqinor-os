@@ -664,13 +664,15 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
         with patch.object(equip, "_tient", _tient):
             pdf = equip.pdf_adaptatif(d, _build, lambda _html: _Doc())
         self.assertEqual(pdf, b"%PDF-sans-graphique")
-        # Palier 0 partout ; le GRAPHIQUE cède seul d'abord (re-mesuré),
-        # puis les autres blocs cédables encore posés — jamais la densité.
-        self.assertEqual([palier for palier, _r in essais], [None] * 3)
+        # Palier 0 partout — jamais la densité. Page de trop : les blocs des
+        # pages 2+ cèdent d'abord (la page 1 gardée), puis le GRAPHIQUE seul
+        # (re-mesuré), puis les autres blocs cédables encore posés.
+        self.assertTrue(all(palier is None for palier, _r in essais))
         self.assertIsNone(essais[0][1])
-        self.assertEqual(essais[1][1], frozenset({"energie_mensuelle"}))
-        self.assertIn("energie_mensuelle", essais[2][1])
-        self.assertIn("etapes", essais[2][1])
+        page1 = {"energie_mensuelle", "etapes"}
+        i = essais.index((None, frozenset({"energie_mensuelle"})))
+        self.assertTrue(all(not (r & page1) for _p, r in essais[1:i]))
+        self.assertTrue(page1 <= essais[-1][1])
 
     def test_rendu_adaptatif_le_graphique_seul_suffit(self):
         """AMOT90 — quand retirer le seul graphique suffit, la page 1 garde
@@ -694,7 +696,44 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
             self.assertEqual(
                 equip.pdf_adaptatif(d, _build, lambda _html: _Doc()),
                 b"%PDF")
-        self.assertEqual(essais, [None, frozenset({"energie_mensuelle"})])
+        # Les essais « page 1 gardée » (blocs des pages 2+) ne suffisent pas
+        # ici ; le document livré ne retire QUE le graphique.
+        self.assertIsNone(essais[0])
+        self.assertEqual(essais[-1], frozenset({"energie_mensuelle"}))
+        self.assertTrue(all(not (r & {"energie_mensuelle", "etapes"})
+                            for r in essais[1:-1]))
+
+    def test_rendu_adaptatif_page_2_longue_garde_le_graphique_page_1(self):
+        """DEV-202611-0037 (13/11/2026) — une page de trop poussée par la
+        page 2 : retirer la fiche d'installation de la page 2 suffit, la
+        page 1 GARDE son énergie mois par mois et ses prochaines étapes."""
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        class _Doc:
+            pages = ["p1", "p2", "p3", "p4"]  # 4 pages pour 3 déclarées
+
+            def write_pdf(self):
+                return b"%PDF"
+
+        def _build(donnees):
+            essais.append(donnees.get("_sans_graphiques"))
+            return render.build_html(donnees)
+
+        def _tient(html, _doc):
+            return 'data-graphique="installation"' not in html
+
+        d = renderer._augment(_data_ci())
+        self.assertIn('data-graphique="installation"', render.build_html(d))
+        with patch.object(equip, "_tient", _tient):
+            self.assertEqual(
+                equip.pdf_adaptatif(d, _build, lambda _html: _Doc()),
+                b"%PDF")
+        self.assertIn("installation", essais[-1])
+        # Aucun essai n'a retiré un bloc de la page 1.
+        self.assertTrue(all(not (r or frozenset()) & {"energie_mensuelle",
+                                                      "etapes"}
+                            for r in essais))
 
 
 class TestAmot91Hypotheses(SimpleTestCase):

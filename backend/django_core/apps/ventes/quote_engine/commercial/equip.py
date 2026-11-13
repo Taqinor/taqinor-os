@@ -182,19 +182,22 @@ def _rendu_tenu(donnees, build_html, rendre):
         return doc
     if 'data-graphique="' not in html or donnees.get("_sans_graphiques"):
         return None
+    # Page de trop (ou de moins) : on ne sait pas quelle page a poussé. Les
+    # blocs de la PAGE 1 (énergie mois par mois, prochaines étapes) ne cèdent
+    # qu'APRÈS ceux des pages 2+ — devis DEV-202611-0037 (13/11/2026) : la
+    # page 2 trop longue faisait perdre son graphique à la page 1 alors que
+    # retirer la seule fiche d'installation de la page 2 suffisait. Rien ne
+    # tient ainsi ⇒ la suite d'avant, à l'identique.
+    if not _pages_exactes(html, doc):
+        tenu, _html = _ceder_dans_l_ordre(donnees, build_html, rendre, html,
+                                          doc, garder=_cedables_page1(html))
+        if tenu is not None:
+            return tenu
     # Les blocs cédables des pages qui débordent cèdent dans l'ORDRE
     # ``ORDRE_CEDABLES``, chaque retrait RE-MESURÉ ; enfin tous.
-    retires = frozenset()
-    for etape in ORDRE_CEDABLES:
-        candidats = _cedables_des_pages_debordantes(html, doc) - retires
-        ajout = candidats if etape is None else candidats & etape
-        if not ajout:
-            continue
-        retires = retires | ajout
-        html = build_html(dict(donnees, _sans_graphiques=retires))
-        doc = rendre(html)
-        if _tient(html, doc):
-            return doc
+    tenu, html = _ceder_dans_l_ordre(donnees, build_html, rendre, html, doc)
+    if tenu is not None:
+        return tenu
     if 'data-graphique="' not in html:
         return None
     html = build_html(dict(donnees, _sans_graphiques=_cedables_hors_page1(html)))
@@ -204,6 +207,41 @@ def _rendu_tenu(donnees, build_html, rendre):
     html = build_html(dict(donnees, _sans_graphiques=True))
     doc = rendre(html)
     return doc if _tient(html, doc) else None
+
+
+def _ceder_dans_l_ordre(donnees, build_html, rendre, html, doc,
+                        garder=frozenset()):
+    """``(doc, html)`` : les blocs cédables des pages qui débordent cèdent
+    dans l'ordre ``ORDRE_CEDABLES``, chaque retrait RE-MESURÉ, sauf ceux de
+    ``garder`` ; ``doc`` est ``None`` si rien ne tient (``html`` = le dernier
+    essai)."""
+    retires = frozenset()
+    for etape in ORDRE_CEDABLES:
+        candidats = (_cedables_des_pages_debordantes(html, doc) - retires
+                     - garder)
+        ajout = candidats if etape is None else candidats & etape
+        if not ajout:
+            continue
+        retires = retires | ajout
+        html = build_html(dict(donnees, _sans_graphiques=retires))
+        doc = rendre(html)
+        if _tient(html, doc):
+            return doc, html
+    return None, html
+
+
+def _pages_exactes(html, doc):
+    """Le rendu a-t-il autant de pages que le HTML en déclare ?"""
+    return len(list(getattr(doc, "pages", None) or [])) == \
+        html.count('<div class="page">')
+
+
+def _cedables_page1(html):
+    """Les noms ``data-graphique`` posés sur la page 1."""
+    import re
+    segments = html.split('<div class="page">')[1:]
+    return frozenset(re.findall(r'data-graphique="([\w-]+)"', segments[0])
+                     if segments else ())
 
 
 def _cedables_hors_page1(html):
