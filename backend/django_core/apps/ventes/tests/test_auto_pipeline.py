@@ -563,6 +563,25 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         # Le chemin normal redevient possible immédiatement.
         self.assertIsNotNone(self._creer(lead))
 
+    def test_une_mort_dure_ne_condamne_pas_le_lead(self):
+        """ACEL67 — une mort dure (aucun ``except Exception`` ne s'exécute) ne
+        laisse pas de marque sans devis : le rejeu crée le devis."""
+        from core.idempotency import ProcessedWebhookEvent
+
+        class _MortDure(BaseException):
+            pass
+
+        lead = self._lead(roof_outline=CONTOUR_LATLNG)
+        with patch('apps.ventes.domain.creation_auto.build_devis_auto',
+                   side_effect=_MortDure()):
+            with self.assertRaises(_MortDure):
+                self._creer(lead)
+        self.assertFalse(ProcessedWebhookEvent.objects.filter(
+            company=self.company, source='ventes.auto_devis',
+            event_id=str(lead.pk)).exists())
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 0)
+        self.assertIsNotNone(self._creer(lead))
+
     def test_un_devis_saisi_a_la_main_bloque_lauto(self):
         from apps.crm.models import Client
         lead = self._lead(roof_outline=CONTOUR_LATLNG)

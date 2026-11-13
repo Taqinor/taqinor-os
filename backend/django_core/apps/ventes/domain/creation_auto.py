@@ -466,13 +466,6 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     # rejeux (``core.idempotency.dedupe_event``) — on ne s'en réinvente pas une
     # seconde. Perdant = on ne crée rien, en silence : l'autre worker s'en
     # charge.
-    if not dedupe_event(company=company, source=_MARQUE_AUTO_DEVIS,
-                        event_id=str(lead_id)):
-        logger.info(
-            'Auto-devis: création déjà en cours/faite pour le lead %s '
-            '(dédup) — rien créé.', lead_id)
-        return None
-
     journal_auto = {}
     # Le ``try`` couvre TOUT ce qui suit la pose de la marque — y compris les
     # lectures catalogue/géométrie — et il ENVELOPPE la transaction (et non
@@ -487,6 +480,12 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         plafond = plafond_physique_du_contour(
             contour_client_lnglat(lead), produit_panneau)
         with transaction.atomic():
+            # ACEL67 — marque posée DANS la transaction du devis : une mort dure
+            # du worker ne laisse ni l'une ni l'autre (rejeu ``acks_late`` libre).
+            if not dedupe_event(company=company, source=_MARQUE_AUTO_DEVIS,
+                                event_id=str(lead_id)):
+                logger.info('Auto-devis: lead %s déjà traité (dédup).', lead_id)
+                return None
             devis = build_devis_auto(
                 lead=lead,
                 # Le devis est attribué au commercial qui possède le lead
