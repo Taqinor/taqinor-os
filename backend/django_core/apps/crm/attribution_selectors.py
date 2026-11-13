@@ -8,7 +8,7 @@ from .clients_selectors import (
     _devis_compte_comme_signe, _devis_en_vigueur_ids, _prefetch_devis,
 )
 from .portee_selectors import (
-    lead_signe_q, est_lead_signe, cles_numeros_lead,
+    lead_signe_q, est_lead_signe, cles_numeros_lead, peut_contacter,
 )
 import logging
 
@@ -530,7 +530,7 @@ def lead_capi_identifiers(company, lead_id):
     lead = (Lead.objects
             .filter(pk=lead_id, company=company)
             .only('id', 'external_system', 'external_id', 'telephone', 'email',
-                  'fbclid', 'canal', 'source', 'nom')
+                  'fbclid', 'canal', 'source', 'nom', 'ne_plus_contacter')
             .first())
     if lead is None:
         return None
@@ -555,6 +555,7 @@ def lead_capi_identifiers(company, lead_id):
         'fbclid': '' if is_erased else (lead.fbclid or ''),
         'is_meta_origin': is_meta_origin,
         'is_erased': is_erased,
+        'is_opposed': not peut_contacter(lead),  # AMSG10 (D-AMSG-3) — rien vers Meta pour un opposé
     }
 
 
