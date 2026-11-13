@@ -144,6 +144,31 @@ describe('FactureList — AERR15 : raccourci « a » de la fiche facture', () =>
   })
 })
 
+describe('FactureList — AERR17 : émettre une ligne demande confirmation', () => {
+  it('Émettre d\'une ligne brouillon : confirmation nommée, Annuler ⇒ aucune émission', async () => {
+    // AERR17 (C-AERR-015) — mutant : retirer le `confirmMsg` ⇒ échec.
+    const emettre = vi.spyOn(ventesApi, 'emettreFacture').mockResolvedValue({ data: {} })
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider.jsx')
+    const f = { ...baseFacture, id: 12, reference: 'BROUILLON-12', statut: 'brouillon', total_ttc: 5000 }
+    render(
+      <Provider store={makeStore({ factures: [f] })}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><ConfirmProvider><FactureList /></ConfirmProvider></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    const row = screen.getByText('BROUILLON-12').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Émettre/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Émettre la facture BROUILLON-12')
+    expect(boite).toHaveTextContent('Un numéro légal lui sera attribué.')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(emettre).not.toHaveBeenCalled()
+    emettre.mockRestore()
+  })
+})
+
 describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) et charge les vues serveur', async () => {
     renderList({ factures: [baseFacture] })

@@ -12,6 +12,7 @@
 import { useState } from 'react'
 import ventesApi from '../../../api/ventesApi'
 import { Button } from '../../../ui'
+import { useConfirmDialog } from '../../../ui/confirm'
 import BilanVente from './BilanVente'
 import LigneFactureVente from './LigneFactureVente'
 import FacturerVenteDialog from './FacturerVenteDialog'
@@ -36,6 +37,7 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
   const [facturer, setFacturer] = useState(false)
   const [prixOuvert, setPrixOuvert] = useState(false)
   const [avoir, setAvoir] = useState({ enCours: false, erreur: '' })
+  const { confirm } = useConfirmDialog()
   if (!vente) return null
   const remplacee = vente.est_tete === false
   const tete = remplacee ? (vente.versions || []).find((v) => v.id === vente.tete_id) : null
@@ -50,6 +52,9 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
   const prix = !remplacee && peutVente(d, 'prix_negocie')
   const confirmer = !remplacee && peutVente(d, 'confirmer_avoir_revision')
   const confirmerAvoir = async () => {
+    // AERR17 — un avoir sera émis : confirmation qui nomme le devis.
+    if (!(await confirm({ title: `Confirmer l'avoir de révision du devis ${devis.reference} ?`,
+      description: 'Un avoir sera émis sur la facture de ce devis.' }))) return
     setAvoir({ enCours: true, erreur: '' })
     try {
       await ventesApi.confirmerAvoirRevision(devis.id)
