@@ -10,6 +10,7 @@ import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Mi
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import useDroitMetier from '../../../features/sav/useDroitMetier' // ADRG20 — code fin, sinon palier
 import StateBlock from '../../../components/StateBlock'
+import { useSaisieCourte } from '../../../features/crm/useSaisieCourte'
 import { fetchLeads, updateLead, leadStagePatched, leadPatchedFromServer } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
@@ -342,9 +343,11 @@ export default function LeadsPage() {
     () => accountViews.map((v) => ({ id: v.id, name: v.name, state: v.payload })),
     [accountViews],
   )
+  // AERR117 — boîte maison (plus de `window.prompt`).
+  const { demanderSaisie, dialogueSaisie } = useSaisieCourte()
   const saveCurrentView = async () => {
-    const name = window.prompt('Nom de la vue enregistrée :')
-    if (!name || !name.trim()) return
+    const name = await demanderSaisie('Enregistrer la vue', 'Nom de la vue enregistrée')
+    if (!name) return
     const ok = await saveView(name, { filters, view })
     if (!ok) toastError('Enregistrement impossible — ce nom existe peut-être déjà.')
   }
@@ -672,11 +675,10 @@ export default function LeadsPage() {
   // mono-lead (updateLead.fulfilled remplace déjà le lead au complet dans le
   // store) ; le catch silencieux toaste désormais (I8).
   const reassign = useCallback(async (lead, ownerId) => {
+    // AERR117 — l'intercepteur axios toaste DÉJÀ le refus : aucun second toast.
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-    } catch {
-      toastError('La réassignation a échoué — réessayez.')
-    }
+    } catch { /* refus déjà signalé par le toast global */ }
   }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
@@ -740,7 +742,8 @@ export default function LeadsPage() {
     dispatch(updateLead({ id: lead.id, data: { perdu: true, motif_perte: motif } }))
       .unwrap()
       .catch((err) => {
-        toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+        // AERR117 — toast global déjà émis ; le refus nommé (400 `{motif_perte}`)
+        // remonte à la popover, qui l'affiche sous le motif.
         throw err
       })
   ), [dispatch])
@@ -1298,6 +1301,7 @@ export default function LeadsPage() {
         />
       )}
 
+      {dialogueSaisie}
       {signeLead && (
         <SigneDialog
           lead={signeLead}

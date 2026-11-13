@@ -52,3 +52,17 @@ describe('ClientTypeToggle (L151)', () => {
       .toHaveTextContent('Particulier'))
   })
 })
+
+describe('ClientTypeToggle — AERR117', () => {
+  it('refus : aucun toast local (l’intercepteur global signale déjà le refus)', async () => {
+    const { toast } = await import('../../ui/confirm')
+    const onSave = vi.fn(() => Promise.reject(new Error('boom')))
+    render(<ClientTypeToggle client={clientParticulier} onSave={onSave} />)
+    fireEvent.click(screen.getByTitle('Changer le type de client'))
+    fireEvent.click(screen.getByRole('button', { name: 'Entreprise' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTitle('Changer le type de client'))
+      .toHaveTextContent('Particulier'))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+})

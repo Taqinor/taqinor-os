@@ -76,9 +76,12 @@ export default function AppointmentBooker({ leadId }) {
       setNotes('')
       load()
     } catch (err) {
+      const notes = err?.response?.data?.notes
       setError(
         err?.response?.data?.detail
         || err?.response?.data?.scheduled_at?.[0]
+        // AERR117 — le refus nommé du champ « notes » (400 `{notes: […]}`).
+        || (Array.isArray(notes) ? `Notes : ${notes[0]}` : null)
         || 'Erreur lors de la création du rendez-vous.'
       )
     } finally {

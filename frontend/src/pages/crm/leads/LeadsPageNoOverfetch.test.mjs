@@ -36,7 +36,9 @@ test('LB7 : reassign ne refetch plus et toaste en échec (bugs #5/#11)', () => {
   const end = PAGE_SRC.indexOf('}, [dispatch])', start)
   const body = PAGE_SRC.slice(start, end)
   assert.doesNotMatch(body, /refetch\(\)/)
-  assert.match(body, /toastError\('La réassignation a échoué/)
+  // AERR117 — plus de second toast : l'intercepteur axios signale déjà le refus.
+  assert.doesNotMatch(body, /toastError\(/)
+  assert.match(body, /catch \{/)
 })
 
 test('LB7 : exportFiltered/exportSelection toastent en échec (bug #11, catch silencieux tué)', () => {

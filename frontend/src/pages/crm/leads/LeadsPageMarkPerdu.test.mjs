@@ -27,10 +27,10 @@ test('LB5 : LeadsPage définit onMarkPerdu — dispatch updateLead, AUCUN refetc
   assert.doesNotMatch(body, /refetch\(\)/)
 })
 
-test('LB5 : onMarkPerdu toaste ET relance l\'erreur en échec (I8 — jamais de catch silencieux)', () => {
+test('LB5 : onMarkPerdu relance l\'erreur en échec (I8 — jamais de catch silencieux ; AERR117 : le toast est celui de l\'intercepteur global)', () => {
   const start = PAGE_SRC.indexOf('const onMarkPerdu = useCallback((lead, motif) => (')
   const body = PAGE_SRC.slice(start, start + 500)
-  assert.match(body, /toastError\(/)
+  assert.doesNotMatch(body, /toastError\(/)
   assert.match(body, /throw err/)
 })
 

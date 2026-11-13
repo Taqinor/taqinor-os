@@ -18,6 +18,7 @@ import {
 } from '../../ui'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { StateBlock } from '../../components/StateBlock'
+import { useSaisieCourte } from '../../features/crm/useSaisieCourte'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import ClientTypeToggle from './ClientTypeToggle'
@@ -59,9 +60,11 @@ export default function ClientList() {
   const [typeFilter, setTypeFilter] = useState('tous')
   // Vues enregistrées (FG11).
   const { savedViews, saveView, deleteView } = useSavedViews(CL_SAVED_VIEWS_KEY)
-  const saveCurrentView = () => {
-    const name = window.prompt('Nom de la vue enregistrée :')
-    saveView(name, { typeFilter })
+  // AERR117 — boîte maison (plus de `window.prompt`).
+  const { demanderSaisie, dialogueSaisie } = useSaisieCourte()
+  const saveCurrentView = async () => {
+    const name = await demanderSaisie('Enregistrer la vue', 'Nom de la vue enregistrée')
+    if (name) saveView(name, { typeFilter })
   }
   const applyView = (v) => {
     if (v.state?.typeFilter) setTypeFilter(v.state.typeFilter)
@@ -348,6 +351,7 @@ export default function ClientList() {
 
   return (
     <div className="page">
+      {dialogueSaisie}
       {/* APX10 — identité CRM + ligne de contrôle alignée sur celle des Leads.
           État vérifié avant : un `page-header` générique (h2 nu + boutons), le
           seul écran CRM sans aucune identité de module, alors que ModuleHero
