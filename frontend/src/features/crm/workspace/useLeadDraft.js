@@ -378,6 +378,19 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     return () => clearTimeout(t)
   }, [state.mode, state.draft, draftDirty, state.inflight, chargeRefusee, flush])
 
+  // ── AERR108 — démontage / changement de lead : le brouillon part ───────────
+  // Une frappe de < 1,5 s suivie d'un démontage (raccourci, clic de menu,
+  // `?new=1`) n'envoyait jamais son PATCH : seul le miroir sessionStorage la
+  // gardait. `stateRef` porte encore l'état de l'ANCIEN lead à ce moment.
+  const flushRef = useRef(flush)
+  useEffect(() => { flushRef.current = flush })
+  useEffect(() => () => {
+    const st = stateRef.current
+    if (st.mode !== 'edit' || !isDirty(st)) return
+    if (st.refused && st.refused === signatureCharge(st)) return  // ALEA18
+    flushRef.current({})
+  }, [lead?.id, mode])
+
   // ── Miroir sessionStorage (défense anti-perte) ───────────────────────────
   useEffect(() => {
     if (state.mode !== 'edit' || state.leadId == null) return

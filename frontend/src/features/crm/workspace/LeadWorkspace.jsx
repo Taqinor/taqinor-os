@@ -532,6 +532,12 @@ export default function LeadWorkspace({
   const nextInQueue = (queueIndex >= 0 && queueIndex < leadsQueue.length - 1)
     ? leadsQueue[queueIndex + 1] : null
 
+  // AERR108 — « Ouvrir le doublon » passe par la garde de sortie : le brouillon
+  // part d'abord (édition) ou la question « Quitter sans enregistrer ? » est posée.
+  const ouvrirDoublon = useCallback((id) => {
+    leaveGuard(() => onOpenDuplicate?.(id))
+  }, [leaveGuard, onOpenDuplicate])
+
   const goToLead = useCallback((target) => {
     if (!target || !onNavigateLead) return
     leaveGuard(() => onNavigateLead(target))
@@ -829,7 +835,7 @@ export default function LeadWorkspace({
             onSubmit={handleCreateSubmit}
             refData={{
               users, tagOptions, motifOptions,
-              leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+              leadId: lead?.id ?? null, onOpenDuplicate: onOpenDuplicate ? ouvrirDoublon : undefined, suggested: draft.suggested,
             }}
           />
         </div>
@@ -875,7 +881,7 @@ export default function LeadWorkspace({
               onSubmit={handleCreateSubmit}
               refData={{
                 users, tagOptions, motifOptions,
-                leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+                leadId: lead?.id ?? null, onOpenDuplicate: onOpenDuplicate ? ouvrirDoublon : undefined, suggested: draft.suggested,
                 // QJ-ARBRE (09/09/2026) — l'arbre « Historique en un coup
                 // d'œil » (SectionPipeline, colonne droite du Suivi
                 // commercial) lit le MÊME historique que TimelineTab —
