@@ -116,6 +116,37 @@ class SandboxTests(TestCase):
         env.sandbox_company.refresh_from_db()
         self.assertFalse(env.sandbox_company.actif)
 
+    def test_purge_sandbox_delete_en_echec_garde_le_lien(self):
+        """ACEL16 — un `delete` qui lève garde le lien de son env et n'arrête
+        pas la purge des suivants."""
+        from unittest import mock
+
+        from ..tasks import purger_sandbox_expires
+        echu = timezone.now() - timezone.timedelta(days=30)
+        envs = []
+        for i in range(2):
+            bac = Company.objects.create(nom=f'Bac ACEL16 {i}', slug=f'bac-acel16-{i}')
+            envs.append(SandboxEnvironment.objects.create(
+                company=self.company, sandbox_company=bac,
+                statut=SandboxEnvironment.Statut.EXPIRE, date_expiration=echu))
+        supprimes = []
+
+        def _delete(societe, *args, **kwargs):
+            if societe.pk == envs[0].sandbox_company_id:
+                raise RuntimeError('suppression impossible')
+            supprimes.append(societe.pk)
+            return (1, {})
+
+        with mock.patch.object(Company, 'delete', autospec=True, side_effect=_delete):
+            resultat = purger_sandbox_expires()
+        premier, second = envs
+        premier.refresh_from_db()
+        second.refresh_from_db()
+        self.assertIsNotNone(premier.sandbox_company_id)
+        self.assertIsNone(second.sandbox_company_id)
+        self.assertEqual(len(supprimes), 1)
+        self.assertEqual(resultat['echecs'], 1)
+
 
 class ConfigPackageTests(TestCase):
     def setUp(self):

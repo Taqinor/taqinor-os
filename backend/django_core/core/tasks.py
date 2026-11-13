@@ -564,7 +564,10 @@ def _purger_exports_reversibilite_expires(now):
     seuil = now - timedelta(days=RETENTION_EXPORT_REVERSIBILITE_JOURS)
     expires = ExportReversibiliteRun.objects.filter(expire_le__lt=seuil)
 
+    # ACEL16 — la ligne n'est supprimée que si son ZIP l'a été : sinon elle
+    # reste (seule clé qui désigne le fichier) et sera retentée.
     client = None
+    gardes = []
     for run in expires.exclude(fichier_key=''):
         try:
             if client is None:
@@ -573,11 +576,12 @@ def _purger_exports_reversibilite_expires(now):
             client.delete_object(
                 Bucket=REVERSIBILITE_BUCKET, Key=run.fichier_key)
         except Exception:  # noqa: BLE001 — best-effort, une clé KO n'en bloque pas d'autres (D-ENF22-BLE001)
+            gardes.append(run.pk)
             logger.exception(
                 'core.purger_donnees_fiabilite: échec suppression MinIO '
                 '%s.', run.fichier_key)
 
-    deleted, _ = expires.delete()
+    deleted, _ = expires.exclude(pk__in=gardes).delete()
     return deleted
 
 
