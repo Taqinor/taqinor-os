@@ -81,6 +81,7 @@ vi.mock('../../api/axios', () => ({
 import reportingApi from '../../api/reportingApi'
 import automationApi from '../../api/automationApi'
 import ApprobationsPage from './ApprobationsPage'
+import { toast } from '../../ui/confirm'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('ApprobationsPage (XKB1/ZCTR7-9 — boîte d’approbations centralisée)', () => {
@@ -108,6 +109,22 @@ describe('ApprobationsPage (XKB1/ZCTR7-9 — boîte d’approbations centralisé
     await waitFor(() => expect(reportingApi.deciderApprobation).toHaveBeenCalledWith(
       'automation', 1, 'approuver', '',
     ))
+  })
+})
+
+describe('ApprobationsPage — AERR59 relecture rejetée', () => {
+  it('après une décision, une relecture rejetée garde les demandes restantes + Réessayer', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    renderPage(<ApprobationsPage />)
+    await screen.findAllByText('Règle X')
+    reportingApi.approbationsEnAttente.mockRejectedValueOnce(new Error('boom'))
+    const boutons = await screen.findAllByTestId('approbation-approve-automation-1')
+    boutons[0].click()
+    expect(await screen.findByTestId('approbations-pas-a-jour')).toBeInTheDocument()
+    expect(screen.getAllByText('Réquisition R-007').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Aucune demande en attente')).toBeNull()
+    expect(erreur).not.toHaveBeenCalledWith('Chargement des approbations impossible.')
+    erreur.mockRestore()
   })
 })
 

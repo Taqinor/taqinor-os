@@ -284,6 +284,8 @@ function ApprobationsFileTab() {
   const [priorite, setPriorite] = useState('')
   const [trier, setTrier] = useState('')
   const [decidingKey, setDecidingKey] = useState(null)
+  // AERR59 — relecture rejetée : on garde les lignes à l'écran et on le DIT.
+  const [pasAJour, setPasAJour] = useState(false)
 
   const params = useMemo(() => {
     const p = {}
@@ -298,8 +300,8 @@ function ApprobationsFileTab() {
   const reload = () => {
     setLoading(true)
     return fetchApprobations(params)
-      .then(setItems)
-      .catch(() => { setItems([]); toast.error('Chargement des approbations impossible.') })
+      .then((data) => { setItems(data); setPasAJour(false) })
+      .catch(() => setPasAJour(true))
       .finally(() => setLoading(false))
   }
 
@@ -311,8 +313,8 @@ function ApprobationsFileTab() {
   useEffect(() => {
     let active = true
     fetchApprobations(params)
-      .then((data) => { if (active) setItems(data) })
-      .catch(() => { if (active) { setItems([]); toast.error('Chargement des approbations impossible.') } })
+      .then((data) => { if (active) { setItems(data); setPasAJour(false) } })
+      .catch(() => { if (active) setPasAJour(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [params])
@@ -331,6 +333,7 @@ function ApprobationsFileTab() {
     try {
       await reportingApi.deciderApprobation(item.source, item.id, decision, motif.trim())
       toast.success(decision === 'approuver' ? 'Demande approuvée.' : 'Demande refusée.')
+      setItems((l) => l.filter((x) => `${x.source}-${x.id}` !== key)) // AERR59
       reload()
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Action impossible.')
@@ -538,9 +541,19 @@ function ApprobationsFileTab() {
         </div>
       </div>
 
+      {pasAJour && !loading && (
+        <div className="flex flex-wrap items-center gap-2" role="status" data-testid="approbations-pas-a-jour">
+          <span className="text-sm text-muted-foreground">
+            Liste pas à jour — le serveur n’a pas répondu. Les demandes affichées
+            datent du dernier chargement réussi.
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </div>
+      )}
+
       {loading ? (
         <ChargementPage />
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !pasAJour ? (
         <EmptyState
           icon={Inbox}
           title="Aucune demande en attente"
