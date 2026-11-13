@@ -37,6 +37,21 @@ describe('PortailClientEquipe — ADOC138', () => {
       .toHaveBeenCalledWith(contrat.invitation.exemple_corps))
     await waitFor(() => expect(portailApi.equipe.liste).toHaveBeenCalledTimes(2))
     expect(screen.getByText('En attente')).toBeTruthy()
+    expect(screen.getByText('Invitation envoyée.')).toBeTruthy()
+  })
+
+  it('e-mail non parti : le message le dit, jamais « Invitation envoyée. »', async () => {
+    portailApi.equipe.liste.mockResolvedValue(reponseContrat('portail', 'mon_equipe'))
+    portailApi.equipe.inviter.mockResolvedValue({
+      data: { ...contrat.invitation.reponses['201'], email_envoye: false },
+    })
+    renderPage()
+    await screen.findByText('collegue@exemple.ma')
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'a@b.ma' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Inviter' }))
+    expect(await screen.findByText(
+      "Invitation enregistrée, mais l'e-mail n'est pas parti : votre collègue ne l'a pas reçue.")).toBeTruthy()
+    expect(screen.queryByText('Invitation envoyée.')).toBeNull()
   })
 
   it('l’admin révoque un membre : POST puis relecture', async () => {

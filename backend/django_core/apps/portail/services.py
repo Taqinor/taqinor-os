@@ -727,7 +727,9 @@ def inviter_membre_portail(company, client_id, email, role, base_url=None):
         token_invitation=secrets.token_urlsafe(32),
         expire_le=timezone.now() + DUREE_VALIDITE_INVITATION,
     )
-    _envoyer_invitation_portail(invitation, company, base_url=base_url)
+    # AMSG92 — le résultat d'envoi voyage sur l'objet (non persisté).
+    invitation.email_envoye = bool(_envoyer_invitation_portail(
+        invitation, company, base_url=base_url))
     return invitation
 
 

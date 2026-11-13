@@ -312,6 +312,32 @@ class MonEquipeEndpointTests(TestCase):
                 company=self.company, email='nouveau@example.invalid',
             ).exists())
 
+    def test_invitation_sans_email_operationnel_le_dit(self):
+        """AMSG92 — e-mail non opérationnel : 201 + ``email_envoye: false`` ;
+        clé factice + locmem : ``true`` et 1 e-mail."""
+        from django.core import mail
+        self.api.force_authenticate(user=self.admin)
+        with override_settings(
+                ANYMAIL={},
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            res = self.api.post('/api/django/portail/mon-equipe/', {
+                'email': 'collegue@example.invalid', 'role': 'lecture',
+            }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIs(res.data['email_envoye'], False)
+        self.assertEqual(len(mail.outbox), 0)
+        liste = self.api.get('/api/django/portail/mon-equipe/')
+        self.assertEqual(liste.data['results'][0]['statut'], 'en_attente')
+        self.assertNotIn('email_envoye', liste.data['results'][0])
+        with override_settings(
+                ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            res = self.api.post('/api/django/portail/mon-equipe/', {
+                'email': 'autre@example.invalid', 'role': 'lecture',
+            }, format='json')
+        self.assertIs(res.data['email_envoye'], True)
+        self.assertEqual(len(mail.outbox), 1)
+
     def test_membre_ne_peut_pas_inviter(self):
         invitation = inviter_membre_portail(
             self.company, self.client_crm.id, 'membre@example.invalid',

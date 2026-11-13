@@ -61,8 +61,10 @@ export default function PortailClientEquipe() {
     setMessageOk(null)
     setEnvoi(true)
     try {
-      await portailApi.equipe.inviter({ email: email.trim(), role })
-      setMessageOk('Invitation envoyée.')
+      const r = await portailApi.equipe.inviter({ email: email.trim(), role })
+      setMessageOk(r?.data?.email_envoye === false
+        ? "Invitation enregistrée, mais l'e-mail n'est pas parti : votre collègue ne l'a pas reçue."
+        : 'Invitation envoyée.')
       setEmail('')
       charger()
     } catch (err) {
