@@ -54,6 +54,28 @@ class AgentActionsEndpointTest(TestCase):
         self.assertIn('ventes.devis.generer_pdf', keys)
         self.assertNotIn('stock.produit.delete', keys)
 
+    def test_catalogue_suit_l_interrupteur_du_copilote(self):
+        """COP-G1 — ``ASSISTANT_COPILOTE`` : l'endpoint ne sert le lot
+        ``copilote`` qu'aux comptes pour qui il est allumé (ici un
+        commercial : éteint par défaut, allumé par ``tous``) et ``lot`` figure
+        dans chaque action servie."""
+        from apps.agent.registry import (
+            AgentAction, register, unregister)
+        for cle, lot in (('tmp.vw.copilote', 'copilote'),
+                         ('tmp.vw.herite', 'herite')):
+            register(AgentAction(key=cle, label=cle, description='d',
+                                 endpoint='/x/', lot=lot))
+            self.addCleanup(unregister, cle)
+        for reglage, attendu in (('admins', {'tmp.vw.herite'}),
+                                 ('aucun', {'tmp.vw.herite'}),
+                                 ('tous', {'tmp.vw.copilote'})):
+            with self.settings(ASSISTANT_COPILOTE=reglage):
+                resp = _auth(self.sales).get(URL)
+            servies = {a['key']: a['lot'] for a in resp.data['actions']
+                       if a['key'].startswith('tmp.vw.')}
+            self.assertEqual(set(servies), attendu, reglage)
+            self.assertTrue(all(servies.values()), reglage)
+
     def test_readonly_user_gets_limited_catalogue(self):
         resp = _auth(self.readonly).get(URL)
         self.assertEqual(resp.status_code, 200)

@@ -46,6 +46,24 @@ class AgentActionDataclassTest(TestCase):
         self.assertEqual(d['required_permission'], 'stock_voir')
         self.assertEqual(d['risk'], RISK_OUTWARD)
         self.assertEqual(d['confirm_summary'], 'résumé')
+        # COP-G7 — le catalogue porte la carte, le lot et les objets nommés.
+        self.assertEqual((d['carte'], d['lot'], d['objets']), (None, None, {}))
+        b = AgentAction(
+            key='demo.carte', label='L', description='d', endpoint='/x/{id}/',
+            carte='document', lot='copilote', objets={'id': 'devis'})
+        self.assertEqual(
+            {k: b.as_dict()[k] for k in ('carte', 'lot', 'objets')},
+            {'carte': 'document', 'lot': 'copilote', 'objets': {'id': 'devis'}})
+        # ``objets`` est une copie : le catalogue servi ne mute pas l'action.
+        b.as_dict()['objets']['id'] = 'facture'
+        self.assertEqual(b.objets, {'id': 'devis'})
+
+    def test_carte_lot_et_objets_hors_ensemble_refuses(self):
+        for champ, valeur in (('carte', 'inconnue'), ('lot', 'tous'),
+                              ('objets', {'id': 'ligne'})):
+            with self.assertRaises(ValueError, msg=champ):
+                AgentAction(key='k', label='L', description='d',
+                            endpoint='/x/', **{champ: valeur})
 
 
 class RegisterUniquenessTest(TestCase):
