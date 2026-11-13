@@ -2,6 +2,7 @@
 // est coché. Prix (% ou fixe), garantie, catégorie, marque, export Excel. La
 // règle (prix d'achat jamais touché) est appliquée SERVEUR ; ici, UI seulement.
 import { useRef, useState } from 'react'
+import { formatNumber } from '../../lib/format'
 import { Download, QrCode, LayoutGrid, X } from 'lucide-react'
 import {
   Button, Input, Segmented,
@@ -43,7 +44,7 @@ export default function BulkProductBar({
   const clePrix = useRef(null)
   const toggle = (n) => { setPanel((p) => (p === n ? null : n)); setAConfirmer(false) }
   const run = (action, params) => { onAction(action, params); setPanel(null) }
-  const fmt = (v) => Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt = (v) => formatNumber(v, { decimals: 2 })
   const apres = priceMode === 'percent' ? Number(prixExemple) * (1 + Number(priceVal) / 100) : Number(priceVal)
   const appliquerPrix = async () => {
     clePrix.current ??= globalThis.crypto?.randomUUID?.() ?? `prix-${Date.now()}`
