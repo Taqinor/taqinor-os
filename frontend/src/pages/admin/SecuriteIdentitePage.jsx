@@ -271,15 +271,22 @@ function BanniereTab() {
   const [banner, setBanner] = useState('')
   const [lockout, setLockout] = useState('')
   const [loading, setLoading] = useState(true)
-  useEffect(() => {
+  // AERR57 — lecture échouée : champs vides ⇒ enregistrer poserait un seuil 0
+  // (verrouillage DÉSACTIVÉ) et effacerait la bannière. Rien ne part.
+  const [lectureEchouee, setLectureEchouee] = useState(false)
+  const charger = () => {
+    setLoading(true)
+    setLectureEchouee(false)
     parametresApi.getProfile()
       .then((r) => {
         setBanner(r.data?.login_banner_text ?? '')
         setLockout(String(r.data?.lockout_max_attempts ?? ''))
       })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [])
+      .catch(() => setLectureEchouee(true)).finally(() => setLoading(false))
+  }
+  useEffect(() => { charger() }, [])
   const save = async () => {
+    if (lectureEchouee) return
     try {
       await parametresApi.updateProfile({
         login_banner_text: banner,
@@ -307,7 +314,13 @@ function BanniereTab() {
           <Input id="lockout" value={lockout} type="number"
             onChange={(e) => setLockout(e.target.value)} placeholder="0 = désactivé" />
         </div>
-        <Button onClick={save}>Enregistrer</Button>
+        {lectureEchouee && (
+          <div role="alert" className="flex items-center gap-3 text-sm text-destructive">
+            Les réglages actuels n&apos;ont pas pu être lus : rien ne peut être enregistré.
+            <Button variant="outline" size="sm" onClick={charger}>Réessayer</Button>
+          </div>
+        )}
+        <Button onClick={save} disabled={lectureEchouee}>Enregistrer</Button>
       </CardContent>
     </Card>
   )
