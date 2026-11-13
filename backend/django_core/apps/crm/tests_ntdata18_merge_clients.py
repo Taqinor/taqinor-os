@@ -171,3 +171,21 @@ class MergeClientsTests(TestCase):
             1)
         self.assertIn('monitoring.CertificatCarbone.client_id',
                       [n['relation'] for n in rapport['non_repointes']])
+
+    def test_fusion_croisee_sur_copies_perimees_refusee(self):
+        """ACNC54 (C-ACNC-032) — Y absorbée dans X, puis Y'→X' sur copies
+        périmées : FusionRefusee, rien marqué ; seule Y porte la fusion."""
+        x, y = self.survivant, self.doublon
+        x_perime = Client.objects.get(pk=x.pk)
+        y_perime = Client.objects.get(pk=y.pk)
+        merge_clients(x, [y], self.user)
+        devis = Devis.objects.create(
+            company=self.company, client=x, reference='DEV-ACNC54-1')
+        with self.assertRaises(FusionRefusee):
+            merge_clients(y_perime, [x_perime], self.user)
+        x.refresh_from_db()
+        y.refresh_from_db()
+        devis.refresh_from_db()
+        self.assertNotIn('fusionne_dans', x.custom_data or {})
+        self.assertEqual(y.custom_data['fusionne_dans'], x.pk)
+        self.assertEqual(devis.client_id, x.pk)
