@@ -410,6 +410,11 @@ sortie({str(f): list(BonCommandeFournisseur.objects.filter(fournisseur_id=f).val
     const lus = await bcfs()
     expect(lus[String(ids.f1)], 'aucun BCF chez F1').toEqual([])
     expect(lus[String(ids.f2)].length, 'un BCF chez F2').toBe(1)
+    // Run 43509139251 : un reload lancé PENDANT le rafraîchissement de la fiche (statut avancé par la commande,
+    // `refreshInstallation` → resynchro du formulaire) a croisé le garde « modifications non enregistrées »
+    // (beforeunload). On attend que la fiche ait fini de se recharger (réseau au repos) avant de recharger ;
+    // si le dialogue revient malgré tout, l'oracle 4 le compte (aucun champ n'a été saisi).
+    await page.waitForLoadState('networkidle', T)
     await page.reload()
     await page.getByRole('tab', { name: /Matériel/ }).click({ timeout: 60_000 })
     const blocBcf = page.locator('tr', { hasText: corps.bons_commande[0].reference })

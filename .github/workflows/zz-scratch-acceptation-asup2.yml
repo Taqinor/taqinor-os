@@ -171,7 +171,11 @@ jobs:
           name: acceptation-asup2-enregistrement
           path: |
             docs/audits/acceptation/ASUP/
-            docs/qa-explorer/captures/*/ACCEPTATION-ASUP-PF10*
+            docs/qa-explorer/captures/*/ACCEPTATION-ASUP-PF10.2-ASUP42.jpg
+            docs/qa-explorer/captures/*/ACCEPTATION-ASUP-PF10.3-ASUP44.jpg
+            docs/qa-explorer/captures/*/ACCEPTATION-ASUP-PF10.3-ASUP49.jpg
+            docs/qa-explorer/captures/*/ACCEPTATION-ASUP-PF10.2-ASUP47.jpg
+            docs/qa-explorer/captures/*/ACCEPTATION-ASUP-PF10.2-ASUP52.jpg
           retention-days: 7
           if-no-files-found: warn
       - name: Upload rapport Playwright
