@@ -9,8 +9,9 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_xfac7_pre_echeance -v 2
 """
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -21,6 +22,7 @@ from apps.ventes.models import EmailLog, Facture
 from apps.ventes.scheduled import pre_echeance_reminders, casablanca_today
 
 MONTH = timezone.now().strftime('%Y%m')
+MERCREDI = date(2026, 11, 11)  # AMSG88 — un mercredi (beat lundi-vendredi)
 
 
 def make_company(slug='xfac7-co', nom='XFAC7 Co'):
@@ -95,13 +97,48 @@ class XFAC7PreEcheanceTests(TestCase):
         profile = CompanyProfile.get(company=self.company)
         profile.rappel_pre_echeance_jours = 3
         profile.save(update_fields=['rappel_pre_echeance_jours'])
-        # échéance à J+5 ne correspond plus à N=3 → pas de rappel.
-        sent = pre_echeance_reminders()
-        self.assertEqual(sent, 0)
-        self.facture.date_echeance = casablanca_today() + timedelta(days=3)
-        self.facture.save(update_fields=['date_echeance'])
-        sent = pre_echeance_reminders()
-        self.assertEqual(sent, 1)
+        # AMSG88 — horloge figée un MERCREDI : un vendredi, la fenêtre élargie
+        # au week-end atteindrait J+5.
+        with patch('apps.ventes.scheduled.casablanca_today',
+                   return_value=MERCREDI):
+            # échéance à J+5 ne correspond plus à N=3 → pas de rappel.
+            self.facture.date_echeance = MERCREDI + timedelta(days=5)
+            self.facture.save(update_fields=['date_echeance'])
+            sent = pre_echeance_reminders()
+            self.assertEqual(sent, 0)
+            self.facture.date_echeance = MERCREDI + timedelta(days=3)
+            self.facture.save(update_fields=['date_echeance'])
+            sent = pre_echeance_reminders()
+            self.assertEqual(sent, 1)
+
+    def test_vendredi_couvre_le_week_end_et_le_lundi(self):
+        """AMSG88 (C-AMSG-VER1-105) — beat lundi-vendredi, délai 1 j : le
+        vendredi 13/11 rappelle les échéances du dimanche 15 et du lundi 16
+        (jamais rappelées sinon), pas celle du mardi 17 ; le lundi 16 rappelle
+        le mardi, sans second rappel pour dimanche ni lundi. Mutant : remettre
+        la borne ``today + timedelta(days=n)`` ⇒ échec."""
+        Facture.objects.filter(pk=self.facture.pk).update(
+            statut=Facture.Statut.PAYEE)
+        profile = CompanyProfile.get(company=self.company)
+        profile.rappel_pre_echeance_jours = 1
+        profile.save(update_fields=['rappel_pre_echeance_jours'])
+        dimanche, lundi, mardi = (
+            Facture.objects.create(
+                company=self.company, reference=f'FAC-{MONTH}-08{jour}',
+                client=self.client_obj, statut=Facture.Statut.EMISE,
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'), date_echeance=date(2026, 11, jour))
+            for jour in (15, 16, 17))
+        with patch('apps.ventes.scheduled.casablanca_today',
+                   return_value=date(2026, 11, 13)):
+            self.assertEqual(pre_echeance_reminders(), 2)
+        with patch('apps.ventes.scheduled.casablanca_today',
+                   return_value=date(2026, 11, 16)):
+            self.assertEqual(pre_echeance_reminders(), 1)
+        for facture in (dimanche, lundi, mardi):
+            self.assertEqual(EmailLog.objects.filter(
+                facture=facture, statut=EmailLog.Statut.ENVOYE,
+                reference__endswith='::pre_echeance').count(), 1)
 
     def test_echeance_dans_la_fenetre_rappelee_une_fois(self):
         """ASOC85 (C-ASOC-145) — N=5, échéance J+3 (beat raté, délai < N) :

@@ -196,3 +196,61 @@ class RelanceEchecEnvoiTests(TestCase):
         self.assertEqual(EmailLog.objects.filter(
             client=client, statut=EmailLog.Statut.ENVOYE).count(), 1)
         self.assertEqual(releve_mensuel_reminders(), 0)
+
+    def test_commande_remet_au_niveau_1_sans_effacer(self):
+        """AMSG30 (C-AMSG-008, D-AMSG-5) — dry-run : 2 factures listées,
+        0 écriture ; application sur id1 : ses relances automatiques sortent
+        de la cadence (historique gardé), niveau 1 de nouveau, date amorcée ;
+        id2 et la relance manuelle intactes ; seconde application sans effet.
+        Mutant : ``delete()`` au lieu du drapeau ⇒ échec."""
+        from datetime import date
+        from io import StringIO
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from apps.ventes.domain.recouvrement import (
+            RELANCE_AUTO_NOTE, niveaux_cadence, prochain_niveau)
+        from apps.ventes.models import RelanceLog
+        niveaux = niveaux_cadence(self.company)
+        auteur = get_user_model().objects.create_user(
+            username=f'amsg30-{_nxt()}', password='x',
+            role_legacy='responsable', company=self.company)
+        f1, f2, f3 = (self._facture(self._client()) for _ in range(3))
+        for f in (f1, f2):
+            for n in niveaux:
+                RelanceLog.objects.create(
+                    company=self.company, facture=f, niveau=n.ordre,
+                    niveau_nom=n.nom, note=RELANCE_AUTO_NOTE, canal='email')
+        RelanceLog.objects.create(
+            company=self.company, facture=f3, niveau=niveaux[0].ordre,
+            note='Appel du client', canal='email', created_by=auteur)
+        RelanceLog.objects.filter(company=self.company).update(
+            date=date(2026, 10, 1))
+        self.assertTrue(prochain_niveau(f1, niveaux)[1])
+
+        out = StringIO()
+        call_command('remettre_relances_non_parties',
+                     '--jusqu-au', '2026-10-08', stdout=out)
+        lignes = out.getvalue()
+        self.assertIn(f1.reference, lignes)
+        self.assertIn(f2.reference, lignes)
+        self.assertNotIn(f3.reference, lignes)
+        self.assertIn('DRY-RUN', lignes)
+        self.assertFalse(RelanceLog.objects.filter(
+            company=self.company, compte_dans_cadence=False).exists())
+
+        for _ in range(2):  # une seconde application ne change rien
+            call_command('remettre_relances_non_parties',
+                         '--jusqu-au', '2026-10-08', '--appliquer',
+                         '--factures', str(f1.pk), stdout=StringIO())
+            f1 = type(f1).objects.get(pk=f1.pk)
+            self.assertEqual(RelanceLog.objects.filter(facture=f1).count(),
+                             len(niveaux))
+            self.assertFalse(RelanceLog.objects.filter(
+                facture=f1, compte_dans_cadence=True).exists())
+            niveau, deja_tous = prochain_niveau(f1, niveaux)
+            self.assertEqual((niveau.pk, deja_tous), (niveaux[0].pk, False))
+            self.assertIsNotNone(f1.prochaine_relance)
+        self.assertEqual(RelanceLog.objects.filter(
+            facture__in=[f2, f3], compte_dans_cadence=True).count(),
+            len(niveaux) + 1)
+        self.assertTrue(prochain_niveau(f2, niveaux)[1])
