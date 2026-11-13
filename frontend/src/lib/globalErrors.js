@@ -17,11 +17,14 @@ import { captureException } from './monitoring'
 import { signalerErreurScript, installerViolationsCsp } from './journalProblemes'
 import { sessionEstActive } from '../providers/session-bridge'
 import { toastError } from './toast'
+// COP-D2 — tampon de diagnostic en mémoire (erreurs de script et promesses rejetées).
+import { noterErreur } from './tamponDiagnostic'
 
 let _installed = false
 
 async function report(error) {
   console.error('[globalErrors]', error)
+  noterErreur({ genre: 'script', message: error?.message })
   // YJPB1 — AVANT `captureException` : ce journal-ci est celui qui fonctionne
   // sans DSN Sentry, donc celui qui ne doit jamais dépendre de lui.
   signalerErreurScript(error, undefined, { sessionEstActive })
