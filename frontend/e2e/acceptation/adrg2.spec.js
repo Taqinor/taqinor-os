@@ -629,6 +629,16 @@ sortie(sorted(set(Lead.objects.filter(pk__in=${J(leads.map((l) => l.id))}).value
     expect(owners, 'owner inchangé').toEqual([c.id])
     await s.ctx.close()
   }
+}, {
+  // Défaut ANTÉRIEUR observé au run 43507467003 (13/11/2026), hors ADRG20 (lecture, pas le geste de réaffectation).
+  ecart: {
+    base: 'FAIL',
+    raison: "GET /crm/assignable-users/ (backend/django_core/apps/crm/views.py::assignable_users, IsResponsableOrAdmin) répond 403 "
+      + "aux rôles livrés de palier normal (Commercial, Viewer) alors que LeadWorkspace.jsx (useEffect de montage) et "
+      + "LeadsPage.jsx (commentaire « Ouvert à la Commerciale ») l'appellent pour tout rôle : 403 + console.error à chaque "
+      + "ouverture de la fiche et de la liste ; appels inchangés par ADRG20, qui ne règle que les gestes (sélecteur inerte, "
+      + "« Responsable » en masse, export)",
+  },
 })
 
 // ── PF4.4 — ADRG88 : export RGPD d'un client sous `crm_export` (Commercial : bouton + export 200) ───────────────
