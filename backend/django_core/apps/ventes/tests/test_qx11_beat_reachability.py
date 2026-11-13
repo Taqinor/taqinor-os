@@ -47,6 +47,11 @@ ON_DEMAND_ALLOWLIST = {
     # (jamais périodique — un export n'existe que parce qu'un utilisateur l'a
     # demandé).
     'stock.export_mouvements_xlsx',
+    # ACEL65 — dépôt GED d'un document téléversé par le client du portail :
+    # confié après commit par le récepteur ``post_save`` (``transaction.
+    # on_commit`` dans ``portail/receivers.py``) ; jamais périodique — un
+    # dépôt n'existe que parce qu'un client vient de téléverser un document.
+    'portail.deposer_document_ged',
     # PUB16 — génération de variantes ANCRÉES (FactTable) : déclenchée à la
     # demande depuis l'endpoint de génération IA (``.delay()`` dans une action
     # de viewset, key-gated GEN_ENV_KEY ; jamais périodique).

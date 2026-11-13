@@ -971,11 +971,13 @@ app.conf.beat_schedule = {
     'core-balayer-travaux-orphelins': {
         'task': 'core.balayer_travaux_orphelins',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # ACEL32 — job bulk de l'API publique resté « en cours » (worker tué) → échec relançable.
     'publicapi-expirer-jobs-bloques': {
         'task': 'publicapi.expirer_jobs_bloques',
         'schedule': crontab(minute='*/10'),
+        'options': _expire_dans(600),
     },
 }
 
