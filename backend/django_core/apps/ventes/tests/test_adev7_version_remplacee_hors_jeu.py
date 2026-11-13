@@ -111,7 +111,7 @@ class VersionRemplaceeHorsJeuTests(TestCase):
         refusé et l'expiré : 409 ``version_remplacee`` sans ``wa_url``, aucun
         effet. Mutants : retirer l'appel dans ``whatsapp_preview`` ⇒ échec ;
         retirer la boucle ``geste_cycle_permis`` de la vue lead ⇒ échec."""
-        from apps.audit.models import AuditLog
+        from django.apps import apps as registre
         from apps.crm.models import Lead, LeadActivity
         from apps.ventes.domain.modifiabilite import MESSAGE_HORS_JEU
         from apps.ventes.models import ShareLink
@@ -156,7 +156,8 @@ class VersionRemplaceeHorsJeuTests(TestCase):
             self.assertEqual((d.statut, d.date_envoi), (statut, self.date_envoi))
         self.assertEqual(ShareLink.objects.count(), liens_avant)
         self.assertEqual(self.evenements, [])
-        self.assertFalse(AuditLog.objects.filter(action=AuditLog.Action.WHATSAPP).exists())
+        # Contrat M4 : ventes n'importe pas apps.audit — modèle lu par le registre.
+        self.assertFalse(registre.get_model('audit', 'AuditLog').objects.filter(action='whatsapp').exists())
         self.assertFalse(LeadActivity.objects.filter(lead=lead, kind=LeadActivity.Kind.NOTE).exists())
 
     def test_mark_devis_sent_archive_noop(self):
