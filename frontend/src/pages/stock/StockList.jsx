@@ -863,8 +863,11 @@ export default function StockList() {
       const { data } = await stockApi.bulkProduits({ ids: [...visibleSelected], action, ...params })
       setBulkMsg(bulkResultMessage(data))
       dispatch(fetchProduits())
+      return true
     } catch (e) {
       setBulkMsg(e?.response?.data?.detail ?? "L'action en masse a échoué.")
+      dispatch(fetchProduits())  // ACNC24 — relire les prix après un échec (jamais ré-appliquer à l'aveugle)
+      return false
     } finally { setBulkBusy(false) }
   }
   const exportSelection = async () => {
@@ -1434,6 +1437,7 @@ export default function StockList() {
       {canWrite && visibleSelected.size > 0 && (
         <BulkProductBar
           count={visibleSelected.size}
+          prixExemple={(produits ?? []).find((p) => visibleSelected.has(p.id))?.prix_vente}
           categories={categories}
           marques={marquesList}
           busy={bulkBusy}

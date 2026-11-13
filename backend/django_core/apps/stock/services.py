@@ -39,7 +39,7 @@ def apply_product_bulk(*, company, user, ids, op, params):
     if op not in BULK_ACTIONS:
         raise ValueError("Action en masse inconnue.")
 
-    produits = list(Produit.objects.filter(company=company, id__in=ids))
+    produits = list(Produit.objects.select_for_update().filter(company=company, id__in=ids))  # ACNC24 (atomic : vue)
     updated, skipped = 0, []
 
     def skip(p, reason):

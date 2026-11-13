@@ -25,6 +25,7 @@ from ..utils.params import (
     ID_MAX, MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, etiquette_options_ou_400,
     id_corps, id_requete_ou_400, ids_requete_ou_400, valeur_unique_ou_400,
 )
+from core.idempotency import IdempotentCreateMixin  # ACNC24
 from core.viewsets import CompanyScopedModelViewSet
 from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
@@ -330,7 +331,7 @@ def _texte_references(comptes):
                                                    P('entite', ID_OU_VIDE, False,
                                                      'Filtre optionnel par entité juridique (NTADM2)')]))
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
-                     CompanyScopedModelViewSet):
+                     IdempotentCreateMixin, CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
     # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que
@@ -609,15 +610,16 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                             "pour modifier le prix catalogue (prix_vente).")},
                 status=status.HTTP_403_FORBIDDEN)
         try:
-            result = apply_product_bulk(
-                company=request.user.company, user=request.user,
-                ids=ids, op=op, params=_params_bulk(donnees))
+            # ACNC24 — tout-ou-rien (une transaction) et rejouable sans cumul (Idempotency-Key).
+            reponse = self._avec_idempotence(request, lambda: Response(transaction.atomic(apply_product_bulk)(
+                company=request.user.company, user=request.user, ids=ids, op=op, params=_params_bulk(donnees))),
+                suffixe='bulk')
         except IntrouvableMetier as exc:  # catégorie inconnue : ressource absente (404)
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        return Response(result)
+        return reponse
 
     @extend_schema(request=corps('ProduitInventaireCorps', motif=serializers.CharField(required=False,
                                                                                        allow_blank=True,

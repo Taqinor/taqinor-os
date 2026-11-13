@@ -107,7 +107,7 @@ const stockApi = {
   createMouvement: (data, { idempotencyKey } = {}) => api.post('/stock/mouvements/', data, avecCle(idempotencyKey)),
 
   // Édition en masse du catalogue (T8) + export Excel d'une sélection.
-  bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
+  bulkProduits: ({ idempotencyKey, ...payload }) => api.post('/stock/produits/bulk/', payload, avecCle(idempotencyKey)),  // ACNC24
   // N16 — inventaire physique : comptage par produit → ajustement de stock.
   inventaire: (payload) => api.post('/stock/produits/inventaire/', payload),
   // N18 — valorisation du stock par emplacement (coût moyen, INTERNE/admin).
