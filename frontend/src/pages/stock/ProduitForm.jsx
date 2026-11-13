@@ -62,6 +62,7 @@ import { AlerteErreurStock } from './BandeauxListeStock'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
 import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
+import { useRetraitPrixFournisseur, fmtAchatDate } from './useRetraitPrixFournisseur'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -225,7 +226,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
         ?? (e.response?.data?.fournisseur?.[0] && 'Ce fournisseur a déjà un prix pour ce produit.')
         ?? 'Échec de l\'ajout.'))
   }
-  const remove = (id) => stockApi.deletePrixFournisseur(id).then(load).catch(() => {})
+  const [remove, dialogueRetrait] = useRetraitPrixFournisseur({ load, setError })  // AERR80 — retrait nommé, échec dit
 
   const startEdit = (r) => { setEditId(r.id); setEditPrix(String(r.prix_achat)); setError(null) }
   const cancelEdit = () => { setEditId(null); setEditPrix('') }
@@ -237,17 +238,9 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
       .catch((e) => setError(e.response?.data?.detail ?? 'Échec de la modification.'))
   }
 
-  // Date du dernier achat au format JJ/MM/AAAA (sinon « — »).
-  const fmtAchatDate = (iso) => {
-    if (!iso) return '—'
-    const d = new Date(iso)
-    return Number.isNaN(d.getTime())
-      ? '—'
-      : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  }
-
   return (
     <section className="sm:col-span-2 flex flex-col gap-2 border-t border-border pt-4">
+      {dialogueRetrait}
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-medium text-foreground">Prix fournisseurs (interne)</p>
         <p className="text-xs text-muted-foreground">
@@ -306,7 +299,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                         <Pencil className="size-3.5" />
                       </Button>
                       {isAdmin && <Button type="button" variant="ghost" size="icon" className="size-7"
-                              aria-label="Supprimer" onClick={() => remove(r.id)}>{/* ADRG37 : admin seul */}
+                              aria-label="Supprimer" onClick={() => remove(r)}>{/* ADRG37 : admin seul */}
                         <Trash2 className="text-destructive" />
                       </Button>}
                     </span>

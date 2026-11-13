@@ -3,6 +3,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { Button, FormField, Input } from '../../ui'
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 /* ============================================================================
    AGR623 — profils saisonniers de réappro (saison d'irrigation) d'un produit.
@@ -122,7 +123,10 @@ export default function ProfilsSaisonniersSection({ produit, canWrite = false })
     }
   }
 
+  // AERR80 — suppression confirmée par une boîte qui nomme le profil.
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const supprimer = async (profil) => {
+    if (!(await confirmer({ title: `Supprimer le profil saisonnier « ${profil.nom || profil.id} » ?`, confirmLabel: 'Supprimer' }))) return
     try {
       await stockApi.deleteProfilSaisonnier(profil.id)
       await recharger()
@@ -135,6 +139,8 @@ export default function ProfilsSaisonniersSection({ produit, canWrite = false })
 
   return (
     <div className="flex flex-col gap-3" data-testid="profils-saisonniers">
+      {dialogueConfirmation}
+      {!edition && erreurs.detail && <p role="alert" className="text-xs text-destructive">{erreurs.detail}</p>}
       <p className="text-xs text-muted-foreground">
         Saison de réapprovisionnement de ce produit (par exemple la saison
         d&apos;irrigation) : mois de début et de fin, seuils et quantité cible.
