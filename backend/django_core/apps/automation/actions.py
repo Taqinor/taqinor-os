@@ -941,10 +941,13 @@ def _for_each(rule, instance, company, context, user):
             cible = (_CibleElement(instance, element) if action_type in ENVOIS_REPORTABLES
                      and isinstance(element, dict) and any(element.get(c) for c in CHAMPS_DESTINATAIRE)
                      else instance)
+            # AMSG91 — l'envoi est différé au commit : l'élément opposé est sauté (et nommé) ICI.
+            if cible is not instance and _refus_opposition(
+                    cible, 'email' if action_type == ActionType.SEND_EMAIL else 'whatsapp') is not None:
+                sautes.append(index)
+                continue
             statut, _message = executer_action(
                 vue, cible, company, sous_contexte, user)
-            if cible is not instance and statut == Status.SKIPPED and _message == MOTIF_CONTACT_REFUSE:
-                sautes.append(index)
             if statut == Status.FAILED:
                 echecs += 1
             else:
