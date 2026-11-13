@@ -717,7 +717,7 @@ def assurer_alertes_fiabilite_kpi_task():
     return {'crees': crees}
 
 
-@shared_task(name='core.balayer_travaux_orphelins')
+@shared_task(name='core.balayer_travaux_orphelins', soft_time_limit=540, time_limit=600)  # ACEL2
 def balayer_travaux_orphelins_task():
     """ACEL11 — un travail à la demande tué (limite dure, SIGKILL au
     déploiement) n'exécute aucun ``except`` : l'export de réversibilité reste

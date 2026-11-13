@@ -12,7 +12,7 @@ backend/django_core/apps/adminops/sandbox_service.py::prolonger_sandbox  # tâch
 backend/django_core/apps/adsengine/evidence.py::record_node_evidence  # tâche ACNC à trier, propriétaire adsengine
 backend/django_core/apps/adsengine/models.py::register_unresolved_cycle  # tâche ACNC à trier, propriétaire adsengine
 backend/django_core/apps/adsengine/views.py::create  # tâche ACNC à trier, propriétaire adsengine
-backend/django_core/apps/automation/engine.py::resume_scheduled_step  # tâche ACNC à trier, propriétaire automation
+backend/django_core/apps/automation/engine.py::_resume_scheduled_step  # tâche ACNC à trier, propriétaire automation (clé déplacée par ACEL74 : réclamation par update conditionnel dans la transaction)
 backend/django_core/apps/automation/models.py::creer_version_automation_rule  # tâche ACNC à trier, propriétaire automation
 backend/django_core/apps/crm/cadence_visite.py::clore_etape_apres_planification  # tâche ACNC à trier, propriétaire crm
 backend/django_core/apps/crm/fiche_ecritures.py::appliquer_plan_activite  # tâche ACNC à trier, propriétaire crm

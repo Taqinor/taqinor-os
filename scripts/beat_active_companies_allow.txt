@@ -74,12 +74,6 @@ backend/django_core/apps/parametres/traductions_manquantes.py::marquer_notifiees
 backend/django_core/apps/publicapi/retry.py::run_due_retries
 # à trier, propriétaire publicapi (hors constat ACEL5)
 backend/django_core/apps/publicapi/retry.py::schedule_first_retry
-# tâche ACEL de docs/plans/PLAN_AUDIT_ANALYSE.md
-backend/django_core/apps/reporting/management/commands/controle_integrite.py::Command.handle
-# tâche ACEL de docs/plans/PLAN_AUDIT_STOCK.md
-backend/django_core/apps/stock/services_wms.py::generer_comptages_tournants
-# tâche ACEL de docs/plans/PLAN_AUDIT_STOCK.md
-backend/django_core/apps/stock/services_wms.py::liberer_vagues_planifiees
 # à trier, propriétaire ventes (hors constat ACEL5)
 backend/django_core/apps/ventes/domain/pdf_signe.py::rendre_pdf_signe
 # à trier, propriétaire securite (hors constat)

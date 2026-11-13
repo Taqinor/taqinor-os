@@ -6,7 +6,6 @@ backend/django_core/apps/adminops/tasks.py::recalculer_health_score_tenants  # t
 backend/django_core/apps/adsengine/tasks.py::autopause_blast_radius  # tâche ACEL du plan acquisition
 backend/django_core/apps/adsengine/tasks.py::backfill_complet  # tâche ACEL du plan acquisition
 backend/django_core/apps/adsengine/tasks.py::check_attribution_quality  # tâche ACEL du plan acquisition
-backend/django_core/apps/adsengine/tasks.py::decay_assumptions_weekly  # tâche ACEL du plan acquisition
 backend/django_core/apps/adsengine/tasks.py::emit_capi_signatures  # tâche ACEL du plan acquisition
 backend/django_core/apps/adsengine/tasks.py::evaluate_guardrails  # tâche ACEL du plan acquisition
 backend/django_core/apps/adsengine/tasks.py::evaluate_quarter_hourly  # tâche ACEL du plan acquisition
@@ -48,7 +47,6 @@ backend/django_core/apps/stock/tasks.py::notifier_bcf_en_retard_buyer_task  # t�
 backend/django_core/apps/stock/tasks.py::notifier_documents_conformite_expirants_task  # tâche ACEL de l'app stock (à trier)
 backend/django_core/apps/stock/tasks.py::notifier_documents_fournisseur_expirants_task  # tâche ACEL de l'app stock (à trier)
 backend/django_core/apps/stock/tasks.py::recompute_reordering_task  # tâche ACEL de l'app stock (à trier)
-backend/django_core/apps/stock/tasks.py::recompute_scores_risque_task  # tâche ACEL de l'app stock (à trier)
 backend/django_core/apps/stock/tasks.py::relancer_bcf_en_retard_task  # tâche ACEL de l'app stock (à trier)
 backend/django_core/apps/uxviews/tasks.py::digest_favoris_obsoletes_hebdo  # tâche ACEL de l'app uxviews (à trier)
 backend/django_core/apps/ventes/scheduled.py::check_overdue_factures  # tâche ACEL du plan devis

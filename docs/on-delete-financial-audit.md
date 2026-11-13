@@ -134,6 +134,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/ged/models.py::RoutageDocumentaire.company` | backend/django_core/apps/ged/models.py:3428 | authentication.Company | CASCADE |
 | `backend/django_core/apps/ged/models.py::FavoriGed.company` | backend/django_core/apps/ged/models.py:3483 | authentication.Company | CASCADE |
 | `backend/django_core/apps/ged/models.py::VueGedEnregistree.company` | backend/django_core/apps/ged/models.py:3553 | authentication.Company | CASCADE |
+| `backend/django_core/apps/ged/models.py::PieceJointeImportee.company` | backend/django_core/apps/ged/models.py:3587 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_approbation_bcf.py::SeuilApprobationBCF.company` | backend/django_core/apps/installations/models_approbation_bcf.py:40 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_approbation_bcf.py::ApprobationBCF.company` | backend/django_core/apps/installations/models_approbation_bcf.py:80 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_astreinte.py::Astreinte.company` | backend/django_core/apps/installations/models_astreinte.py:27 | authentication.Company | CASCADE |
