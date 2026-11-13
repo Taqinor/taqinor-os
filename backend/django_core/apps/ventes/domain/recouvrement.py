@@ -975,57 +975,68 @@ def expire_stale_devis():
             # VNT56 (D-ADEV-1) — une révision V2 expirée réactive la V1 acceptée.
             from .revision import abandonner_revision
             abandonner_revision(verrouille, None)
-        devis.statut = Devis.Statut.EXPIRE
-
-        # Chatter entry via ventes.activity (exists for devis accepted/sent —
-        # reuse the generic note pattern).
-        try:
-            from apps.ventes import activity as _act
-            _act.log_devis_note(
-                devis, None,
-                'Devis expiré automatiquement (date de validité dépassée).')
-        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-            logger.warning('QJ5: log chatter échec devis %s : %s',
-                           devis.reference, exc)
-
-        # YEVNT10 — une mutation AUTOMATIQUE (cron, hors requête HTTP) échappe
-        # à l'audit par signaux request-scopé. Cette expiration est journalisée
-        # « système » CÔTÉ audit, via un abonnement à l'événement
-        # `devis_expired` émis ci-dessous (apps/audit/receivers.py) — jamais par
-        # un import direct ventes→audit (M4 : les réactions passent par
-        # core.events).
-
-        # YEVNT2 — événement métier (notifications/audit s'abonnent), jamais
-        # réémis pour un devis déjà expiré (garde amont via le queryset ENVOYE
-        # + is_expired). Best-effort : ne casse jamais le sweep.
-        try:
-            from core.events import devis_expired
-            devis_expired.send(
-                sender=Devis, devis=devis, ancien_statut='envoye')
-        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-            logger.warning('YEVNT2: devis_expired échoué pour devis %s : %s',
-                           devis.reference, exc)
-
+            devis.statut = Devis.Statut.EXPIRE
+            # ACEL69 (C-ACEL-011) — note, événement et avance du lead DANS la
+            # transaction du statut : une mort dure du worker laisse le devis
+            # « envoyé » et le passage suivant refait tout.
+            fup, cold = _effets_expiration(devis, today)
         expired += 1
-
-        # Funnel hygiene: advance QUOTE_SENT → FOLLOW_UP via crm.services.
-        lead = devis.lead
-        if lead is None:
-            continue
-
-        try:
-            fup, cold = _advance_lead_on_expiry(lead, today=today)
-            funnel_followup += int(fup)
-            funnel_cold += int(cold)
-        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-            logger.warning('QJ5: avance funnel échec lead %s : %s',
-                           getattr(lead, 'pk', '?'), exc)
+        funnel_followup += int(fup)
+        funnel_cold += int(cold)
 
     logger.info(
         'QJ5 expire_stale_devis: %d expiré(s), %d → FOLLOW_UP, %d → COLD',
         expired, funnel_followup, funnel_cold)
     return {'expired': expired, 'funnel_followup': funnel_followup,
             'funnel_cold': funnel_cold}
+
+
+def _effets_expiration(devis, today):
+    """ACEL69 — chaque effet best-effort sous son ``atomic()`` imbriqué."""
+    from django.db import transaction
+    from ..models import Devis
+    # Chatter entry via ventes.activity (exists for devis accepted/sent —
+    # reuse the generic note pattern).
+    try:
+        with transaction.atomic():
+            from apps.ventes import activity as _act
+            _act.log_devis_note(
+                devis, None,
+                'Devis expiré automatiquement (date de validité dépassée).')
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+        logger.warning('QJ5: log chatter échec devis %s : %s',
+                       devis.reference, exc)
+
+    # YEVNT10 — une mutation AUTOMATIQUE (cron, hors requête HTTP) échappe
+    # à l'audit par signaux request-scopé. Cette expiration est journalisée
+    # « système » CÔTÉ audit, via un abonnement à l'événement
+    # `devis_expired` émis ci-dessous (apps/audit/receivers.py) — jamais par
+    # un import direct ventes→audit (M4 : les réactions passent par
+    # core.events).
+
+    # YEVNT2 — événement métier (notifications/audit s'abonnent), jamais
+    # réémis pour un devis déjà expiré (garde amont via le queryset ENVOYE
+    # + is_expired). Best-effort : ne casse jamais le sweep.
+    try:
+        with transaction.atomic():
+            from core.events import devis_expired
+            devis_expired.send(
+                sender=Devis, devis=devis, ancien_statut='envoye')
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+        logger.warning('YEVNT2: devis_expired échoué pour devis %s : %s',
+                       devis.reference, exc)
+
+    # Funnel hygiene: advance QUOTE_SENT → FOLLOW_UP via crm.services.
+    lead = devis.lead
+    if lead is None:
+        return False, False
+    try:
+        with transaction.atomic():
+            return _advance_lead_on_expiry(lead, today=today)
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+        logger.warning('QJ5: avance funnel échec lead %s : %s',
+                       getattr(lead, 'pk', '?'), exc)
+    return False, False
 
 
 # Days a QUOTE_SENT lead stays at FOLLOW_UP before being parked COLD (no
