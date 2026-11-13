@@ -525,8 +525,10 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
             new_technicien is not None
             and new_technicien.id != old.technicien_id)
         from django.db import transaction
+        from .livraison import ecriture_bornee
         with transaction.atomic():
-            interv = serializer.save()
+            with ecriture_bornee(serializer):  # ACNC25 — n'écrit que les champs validés
+                interv = serializer.save()
             # CHT9 — le technicien RÉAFFECTÉ est notifié (sa propre clé
             # INTERVENTION_ASSIGNEE).
             if technicien_change:

@@ -6,6 +6,8 @@ serveur ; cycle ``expedier`` (→ en transit) / ``livrer`` (→ livrée) / ``ann
 rôle, écriture responsable/admin. Multi-tenant via ``TenantMixin`` ;
 chantier/dépôt validés tenant. Cross-app : ``stock`` en string-FK.
 """
+from contextlib import contextmanager
+
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -64,6 +66,27 @@ _VERBES_LIVRAISON = {
     _LS.EN_TRANSIT: "l'expédier", _LS.LIVREE: 'la livrer',
     _LS.ANNULEE: "l'annuler",
 }
+
+
+@contextmanager
+def ecriture_bornee(serializer):
+    """ACNC25 — borne le ``instance.save()`` de ``ModelSerializer.update`` aux
+    champs VALIDÉS (+ horodatages ``auto_now`` ; ``lock_version`` est ajouté par
+    son mixin) : une transition commitée entre ``get_object()`` et l'écriture
+    n'est plus réécrite depuis la copie périmée. Patron
+    ``apps/crm/views.py::_save_borne_aux_champs`` (CRX25) ; l'instance est
+    relue après l'écriture (réponse = état de la base)."""
+    instance = serializer.instance
+    meta = type(instance)._meta
+    champs = sorted({f.name for f in meta.concrete_fields if not f.primary_key and (
+        f.name in serializer.validated_data or getattr(f, 'auto_now', False))})
+    if champs:
+        instance.save = lambda *a, **k: type(instance).save(instance, *a, **{'update_fields': champs, **k})
+    try:
+        yield
+    finally:
+        instance.__dict__.pop('save', None)
+    instance.refresh_from_db()
 
 
 def _exiger_transition_livraison(liv, cible):
@@ -171,7 +194,8 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
             if modifies:  # ACHT20
                 raise ConflitEtat(  # ENF11 : la livraison est partie
                     {nom: [MESSAGE_LIVRAISON_FIGEE] for nom in modifies})
-        serializer.save(company=self.request.user.company)
+        with ecriture_bornee(serializer):  # ACNC25
+            serializer.save(company=self.request.user.company)
 
     def _set_statut(self, request, statut):
         liv = self.get_object()

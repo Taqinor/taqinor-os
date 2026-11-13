@@ -71,3 +71,25 @@ class InterventionTraceTests(TestCase):
             intervention=self.iv, field='compte_rendu').order_by('-id')[0]
         self.assertEqual((derniere.old_value, derniere.new_value),
                          ('ok', 'corrigé'))
+
+    def test_patch_technicien_ne_reecrit_pas_le_statut_termine(self):
+        # ACNC25 — un collègue passe l'intervention « terminée » entre le
+        # get_object() du PATCH et son écriture : le PATCH {technicien}
+        # n'écrit que ce champ, la clôture reste.
+        from unittest import mock
+
+        from apps.installations.views.intervention import InterventionViewSet
+        original = InterventionViewSet._check_tenant
+
+        def collegue_termine(vue, serializer):
+            Intervention.objects.filter(pk=self.iv.pk).update(
+                statut=Intervention.Statut.TERMINEE)
+            return original(vue, serializer)
+
+        with mock.patch.object(InterventionViewSet, '_check_tenant', collegue_termine):
+            r = self.api.patch(f'{BASE}/{self.iv.id}/',
+                               {'technicien': self.autre.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+        self.assertEqual(self.iv.technicien_id, self.autre.id)

@@ -78,7 +78,9 @@ class DemandeTransfertViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if serializer.instance.statut != DemandeTransfert.Statut.DEMANDE:
             raise ConflitEtat('Demande approuvée : non modifiable.')
         self._check_tenant(serializer)
-        serializer.save(company=self.request.user.company)
+        from .livraison import ecriture_bornee
+        with ecriture_bornee(serializer):  # ACNC25
+            serializer.save(company=self.request.user.company)
 
     @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])

@@ -130,3 +130,28 @@ class LivraisonVentilationTests(TestCase):
         self.assertEqual(self._post(liv, 'annuler').status_code, 200)
         self.assertEqual(self._sur(self.a, self.camion), 0)
         self.assertEqual(self._sur(self.a, self.depot), 20)
+
+    def test_patch_croise_expedition_garde_stock_mouvemente(self):
+        # ACNC25 — « Expédier » commité entre le get_object() d'un PATCH {note}
+        # et son écriture : le PATCH n'écrit que la note, la livraison reste
+        # en transit avec son stock déjà mouvementé.
+        from unittest import mock
+
+        from apps.installations.views.livraison import LivraisonViewSet
+        liv = self._liv([(self.a, 4)])
+        original = LivraisonViewSet._check_tenant
+
+        def expedition_croisee(vue, serializer):
+            Livraison.objects.filter(pk=liv.pk).update(
+                statut=Livraison.Statut.EN_TRANSIT, stock_mouvemente=True)
+            return original(vue, serializer)
+
+        with mock.patch.object(LivraisonViewSet, '_check_tenant', expedition_croisee):
+            r = self.api.patch(f'{BASE}/livraisons/{liv.id}/',
+                               {'note': 'Appeler avant'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        liv.refresh_from_db()
+        self.assertEqual(liv.statut, Livraison.Statut.EN_TRANSIT)
+        self.assertTrue(liv.stock_mouvemente)
+        self.assertEqual(liv.note, 'Appeler avant')
+        self.assertEqual(r.data['statut'], Livraison.Statut.EN_TRANSIT)
