@@ -1,0 +1,23 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/brouillon-suivi/",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « wa_message » de l'assistant (AIC32). Incident : la vue rendait `lien_wa_me` pendant que la carte lisait `wa_url` — aucun bouton « Ouvrir WhatsApp ». `wa_url` est désormais la clé lue par l'écran ; `lien_wa_me` reste servi (même valeur) pour un écran resté en cache. Règle du Guide (« Jamais \"vous avez vu le devis ?\" ») : sans modèle société pour l'objectif, AUCUNE phrase de repli n'est écrite — `texte` vaut \"\" et `wa_url` ouvre la conversation sans texte pré-rempli (la commerciale écrit elle-même). `wa_url` et `lien_wa_me` valent null sans numéro joignable, pour un rôle sans `client_pii_voir` ou pour un canal autre que whatsapp. Rien n'est écrit, rien n'est envoyé. Lot `herite` : le copilote lui préfère `crm.suivi.preparer_touche` (textes validés du suivi).",
+  "exemple_corps": {
+    "canal": "whatsapp",
+    "objectif": "relance_devis",
+    "langue": "fr"
+  },
+  "exemple": {
+    "texte": "Bonjour M. Benali. C'est Meryem de TAQINOR. …",
+    "wa_url": "https://wa.me/212651971400?text=Bonjour%20M.%20Benali",
+    "lien_wa_me": "https://wa.me/212651971400?text=Bonjour%20M.%20Benali",
+    "modele_source": "Relance devis",
+    "langue_servie": "fr"
+  },
+  "exemple_sans_modele": {
+    "texte": "",
+    "wa_url": "https://wa.me/212651971400",
+    "lien_wa_me": "https://wa.me/212651971400",
+    "modele_source": null,
+    "langue_servie": "fr"
+  }
+}

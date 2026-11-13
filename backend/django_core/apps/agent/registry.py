@@ -46,6 +46,16 @@ CARTES = frozenset({
     'diagnostic',     # état technique (admin) : santé, problèmes récents
 })
 
+# Lot de déploiement d'une action (interrupteur ``ASSISTANT_COPILOTE`` lu par
+# :func:`for_user`) : ``None`` = toujours au catalogue ; ``copilote`` = servie
+# seulement aux comptes pour qui le copilote commercial est ALLUMÉ ; ``herite``
+# = servie seulement tant qu'il est ÉTEINT pour le compte (ancien outil que le
+# copilote remplace). Un outil neuf vu par le modèle change le comportement de
+# production au merge : il naît dans le lot ``copilote``, jamais hors lot.
+LOT_COPILOTE = 'copilote'
+LOT_HERITE = 'herite'
+LOTS = frozenset({LOT_COPILOTE, LOT_HERITE})
+
 
 @dataclass(frozen=True)
 class AgentAction:
@@ -66,6 +76,7 @@ class AgentAction:
       * ``confirm_summary`` — résumé optionnel à montrer avant exécution.
       * ``carte`` — carte de résultat à rendre (clé de :data:`CARTES`), ou
         ``None`` pour la carte générique.
+      * ``lot`` — lot de déploiement (clé de :data:`LOTS`) ou ``None``.
     """
 
     key: str
@@ -78,6 +89,7 @@ class AgentAction:
     risk: str = RISK_INTERNAL
     confirm_summary: Optional[str] = None
     carte: Optional[str] = None
+    lot: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.risk not in RISK_CHOICES:
@@ -91,6 +103,11 @@ class AgentAction:
             raise ValueError(
                 f"AgentAction {self.key!r}: carte {self.carte!r} inconnue "
                 f"(attendu l'une de {sorted(CARTES)})"
+            )
+        if self.lot is not None and self.lot not in LOTS:
+            raise ValueError(
+                f"AgentAction {self.key!r}: lot {self.lot!r} inconnu "
+                f"(attendu l'un de {sorted(LOTS)})"
             )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -106,6 +123,7 @@ class AgentAction:
             'risk': self.risk,
             'confirm_summary': self.confirm_summary,
             'carte': self.carte,
+            'lot': self.lot,
         }
 
 

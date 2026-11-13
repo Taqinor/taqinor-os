@@ -31,13 +31,13 @@
   "cartes_donnees": {
     "liste_leads": "apps/crm/contract_samples/assistant_leads_recherche.json",
     "file_touches": "apps/crm/contract_samples/assistant_a_relancer.json",
-    "matin": "GET crm/assistant/digest-matin/ : {visites, relances, devis_sans_reponse, manques_signales_hier} ; `relances.lignes` a la forme de assistant_a_relancer.json",
-    "fiche_lead": "GET crm/leads/<id>/resume/ : {identite, etape, contact_prefere, chatter[], devis[], visites[], prochaine_touche, alertes[]} ; chaque devis porte `id` et `reference`, `prochaine_touche` porte `touche_id`",
+    "matin": "apps/crm/contract_samples/assistant_digest_matin.json",
+    "fiche_lead": "apps/crm/contract_samples/assistant_lead_resume.json",
     "touche": "apps/crm/contract_samples/assistant_touche.json",
     "suite_touche": "apps/crm/contract_samples/relance_etape_v2.json (une ligne de `results`) + `prochaine_touche`",
-    "wa_message": "POST crm/leads/<id>/brouillon-suivi/ : {texte, wa_url, lien_wa_me, modele_source, langue_servie}",
+    "wa_message": "apps/crm/contract_samples/assistant_brouillon_suivi.json",
     "wa_devis": "apps/crm/contract_samples/whatsapp_devis_apercu.json + `lead_id` et `devis_ids` (l'écran s'en sert pour appeler le commit `whatsapp-devis`)",
-    "document": "{devis_id, reference, url} — `url` est le chemin interne /api/django/ventes/devis/<id>/proposal/ (règle #4), jamais un autre",
+    "document": "apps/agent/contract_samples/assistant_document.json",
     "visite": "apps/crm/contract_samples/lead_visite_planifier.json",
     "diagnostic": "apps/reporting/contract_samples/assistant_diagnostic.json"
   },
@@ -47,6 +47,7 @@
       "ecran": "/crm/relances",
       "lead_id": null,
       "devis_id": null,
+      "touche_id": null,
       "diagnostic": null
     }
   },
@@ -58,9 +59,19 @@
     "proposal": null,
     "result": {
       "action_key": "crm.suivi.preparer_touche",
-      "touche": {"id": 412, "lead": 1489},
-      "lead": {"lead_id": 1489, "nom": "Aziz Benali", "ville": "Casablanca"},
-      "message": {"message": "Bonjour Aziz, …", "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz"},
+      "touche": {
+        "id": 412,
+        "lead": 1489
+      },
+      "lead": {
+        "lead_id": 1489,
+        "nom": "Aziz Benali",
+        "ville": "Casablanca"
+      },
+      "message": {
+        "message": "Bonjour Aziz, …",
+        "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz"
+      },
       "appel": null,
       "refus": null
     },
@@ -71,9 +82,19 @@
         "libelle": "Préparer une touche",
         "carte": "touche",
         "donnees": {
-          "touche": {"id": 412, "lead": 1489},
-          "lead": {"lead_id": 1489, "nom": "Aziz Benali", "ville": "Casablanca"},
-          "message": {"message": "Bonjour Aziz, …", "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz"},
+          "touche": {
+            "id": 412,
+            "lead": 1489
+          },
+          "lead": {
+            "lead_id": 1489,
+            "nom": "Aziz Benali",
+            "ville": "Casablanca"
+          },
+          "message": {
+            "message": "Bonjour Aziz, …",
+            "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz"
+          },
           "appel": null,
           "refus": null
         }
@@ -91,7 +112,9 @@
       "action_key": "ventes.devis.generer_facture",
       "human_preview": "Générer la facture (tranche suivante) (id=45)",
       "confirm_token": "jeton-b",
-      "inputs": {"id": 45}
+      "inputs": {
+        "id": 45
+      }
     },
     "result": null,
     "cartes": [
@@ -117,18 +140,28 @@
   },
   "confirmation": {
     "endpoint": "POST /api/fastapi/sql-agent/confirm",
-    "exemple_corps": {"token": "jeton-a"},
+    "exemple_corps": {
+      "token": "jeton-a"
+    },
     "exemple": {
       "ok": true,
       "action_key": "ventes.devis.accepter",
       "detail": "Action executee.",
-      "data": {"id": 45, "reference": "DEV-202611-0045", "statut": "accepte"},
+      "data": {
+        "id": 45,
+        "reference": "DEV-202611-0045",
+        "statut": "accepte"
+      },
       "carte": {
         "type": "resultat",
         "action_key": "ventes.devis.accepter",
         "libelle": "Accepter un devis",
         "carte": null,
-        "donnees": {"id": 45, "reference": "DEV-202611-0045", "statut": "accepte"}
+        "donnees": {
+          "id": 45,
+          "reference": "DEV-202611-0045",
+          "statut": "accepte"
+        }
       },
       "suite": null
     },
@@ -137,8 +170,15 @@
   "historique": {
     "endpoint": "GET /api/fastapi/sql-agent/history",
     "exemple": [
-      {"role": "user", "content": "Prépare ma prochaine relance"},
-      {"role": "agent", "content": "Voici le message…", "cartes": []}
+      {
+        "role": "user",
+        "content": "Prépare ma prochaine relance"
+      },
+      {
+        "role": "agent",
+        "content": "Voici le message…",
+        "cartes": []
+      }
     ],
     "regles": "`cartes` (facultatif) est rejoué tel quel au rechargement ; une proposition rechargée dont le jeton a expiré est rendue inactive par l'écran"
   },
@@ -150,11 +190,29 @@
       "navigateur": "Chrome",
       "en_ligne": true,
       "requetes": [
-        {"methode": "POST", "route": "/api/django/crm/relance-etapes/<id>/fait/", "statut": 409, "duree_ms": 212, "request_id": "0123456789abcdef0123456789abcdef", "code": "", "il_y_a_s": 12}
+        {
+          "methode": "POST",
+          "route": "/api/django/crm/relance-etapes/<id>/fait/",
+          "statut": 409,
+          "duree_ms": 212,
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "code": "",
+          "il_y_a_s": 12
+        }
       ],
       "erreurs": [
-        {"genre": "script", "message": "Cannot read properties of undefined", "il_y_a_s": 40}
+        {
+          "genre": "script",
+          "message": "Cannot read properties of undefined",
+          "il_y_a_s": 40
+        }
       ]
     }
+  },
+  "contexte": {
+    "regles": "`contexte` est posé par l'ÉCRAN, jamais par le modèle : `ecran` (route courante), `lead_id` / `devis_id` (fiche ouverte), `touche_id` (touche de la dernière carte « touche » affichée — le FOYER de la conversation), `diagnostic` (tampon technique, voir plus bas). Le relais ajoute lui-même, côté serveur, la date et l'heure de Casablanca, le prénom et le rôle de l'utilisateur dans l'en-tête de chaque question : le modèle ne devine jamais « jeudi »."
+  },
+  "deploiement": {
+    "regles": "Deux interrupteurs, tous deux ÉTEINTS pour les commerciaux au merge. (1) Django `ASSISTANT_COPILOTE` = `aucun` | `admins` (défaut) | `tous` : sert ou non les actions du lot `copilote` (et retire alors celles du lot `herite`) dans `GET /api/django/agent/actions/` ; chaque action du catalogue porte `lot`. Le relais n'a aucun réglage à lui pour cela : il applique les consignes du copilote dès que le catalogue reçu contient une action du lot `copilote`. (2) FastAPI `ASSISTANT_MOTEUR` = `langchain` (défaut) | `natif` : moteur du fournisseur claude ; le moteur natif n'est pris que pour un compte dont le copilote est allumé. Les réparations déterministes (cartes, confirmation à usage unique, validations, écran) ne dépendent d'aucun interrupteur."
   }
 }
