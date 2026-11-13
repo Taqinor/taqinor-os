@@ -1027,6 +1027,9 @@ _MODULE_DES_TABLES = (
 _TABLES_A_PROPRIETAIRE = frozenset({
     "ventes_devis", "ventes_facture", "ventes_boncommande", "crm_client",
     "installations_installation", "sav_ticket",
+    # ALEC41 — lignes de documents, interventions et parc : memes proprietaires.
+    "ventes_lignedevis", "ventes_lignefacture", "installations_intervention",
+    "sav_equipement", "sav_contratmaintenance",
 })
 
 
