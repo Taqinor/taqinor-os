@@ -17,6 +17,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
 import ProduitDetail, { RebutModal } from './ProduitDetail'
+import usePeutEcrireStock from './usePeutEcrireStock'
 import { CatalogueTable } from './CatalogueTable'
 import PretDevisCi from './PretDevisCi'
 import PilotageStock from './PilotageStock'
@@ -739,6 +740,7 @@ export default function StockList() {
   const canDelete = useIsAdmin()
   // ADRG106 — « Supprimer » suit la route (PeutSupprimerStock) : administrateur ou `stock_supprimer`.
   const peutSupprimer = useHasPermission('stock_supprimer') || canDelete
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')  // ADRG107 — « Mettre au rebut » suit sa route
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
   // modification/l'import, séparés de la création.
@@ -1470,7 +1472,7 @@ export default function StockList() {
           produit={detailProduit}
           onClose={() => setDetailProduit(null)}
           onEdit={canWrite ? ((prod, champ) => { setDetailProduit(null); openEdit(prod, champ) }) : null}
-          onRebut={canWrite ? () => dispatch(fetchProduits()) : null}
+          onRebut={peutMouvement ? () => dispatch(fetchProduits()) : null}
         />
       )}
       {/* WIR221/XSTK10 — mise au rebut depuis la grille catalogue. */}
@@ -1616,7 +1618,7 @@ export default function StockList() {
               onDelete={handleDelete}
               onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
               onDetail={(prod) => setDetailProduit(prod)}
-              onRebut={canWrite ? (prod) => setRebutProduit(prod) : null}
+              onRebut={peutMouvement ? (prod) => setRebutProduit(prod) : null}
               onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
                 state: { prefillBcf: {
                   produit: prod.id,

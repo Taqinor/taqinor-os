@@ -460,3 +460,21 @@ describe('ADRG106 — « Supprimer » du catalogue suit `stock_supprimer`', () =
   })
 })
 
+describe('StockList — mise au rebut suit `stock_mouvement`', () => {
+  const ouvrirMenu = async () => {
+    const grille = await screen.findByRole('grid')
+    const ligne = within(grille).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    await userEvent.click(within(ligne).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    return screen.findByRole('menu')
+  }
+  it('Technicien : « Mettre au rebut » au menu de la ligne ; rôle sans `stock_mouvement` : absent', async () => {
+    const vue = renderPage({ role: 'normal', permissions: ['stock_voir', 'stock_mouvement'] })
+    await ouvrirMenu()
+    expect(screen.getByRole('menuitem', { name: /Mettre au rebut/ })).toBeInTheDocument()
+    vue.unmount()
+    renderPage({ role: 'normal', permissions: ['stock_voir', 'stock_modifier'] })
+    await ouvrirMenu()
+    expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
+  })
+})
+
