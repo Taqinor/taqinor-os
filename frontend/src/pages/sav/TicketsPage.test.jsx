@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 // ADRG22 — doublures réseau de la fiche et de la liste (aucun effet sur les
 // briques de présentation testées plus bas, qui n'appellent aucune API).
@@ -318,5 +319,42 @@ describe('TicketsPage — ADRG22 « Assigner à … » en masse', () => {
   it('sans sav_reassign : aucun « Assigner à »', async () => {
     const texte = await actionsGroupees(TECHNICIEN)
     expect(texte).not.toContain('Assigner à')
+  }, 60000)
+})
+
+/* AERR27 — J/K/Entrée/Échap de l'écran se taisent quand une boîte est posée
+   par-dessus ou qu'une liste déroulante est ouverte. */
+describe('TicketsPage — AERR27 raccourcis clavier gardés', () => {
+  async function ouvrirFiche() {
+    mockMatchMedia(true)
+    render(<ThemeProvider><Provider store={storeAdrg22([], 'admin')}><MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter></Provider></ThemeProvider>)
+    await screen.findAllByText('SAV-1', { exact: false })
+    fireEvent.keyDown(document.body, { key: 'j' })
+    await waitFor(() => expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-1/))
+  }
+
+  it("Échap sur la boîte d'annulation : la fiche reste ouverte", async () => {
+    await ouvrirFiche()
+    fireEvent.click(screen.getByRole('button', { name: /Annuler le ticket/ }))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.keyDown(boite, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-1/)
+  }, 60000)
+
+  it('k dans une listbox ouverte : sélection inchangée', async () => {
+    await ouvrirFiche()
+    fireEvent.keyDown(document.body, { key: 'j' })
+    await waitFor(() => expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-2/))
+    // Liste déroulante ouverte (contenu Radix porté dans <body>).
+    const liste = document.createElement('div')
+    liste.setAttribute('role', 'listbox')
+    liste.tabIndex = 0
+    document.body.appendChild(liste)
+    fireEvent.keyDown(liste, { key: 'k' })
+    expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-2/)
+    liste.remove()
   }, 60000)
 })

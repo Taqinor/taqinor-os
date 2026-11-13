@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -14,6 +14,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
+import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 // EZ15 — dictée INLINE navigateur, surface BUREAU.
 import {
   DictationButton, DICTATION_PRIVACY_FR,
@@ -1974,10 +1975,14 @@ export default function TicketsPage() {
   // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
   // l'effet-événement en lit toujours la version courante.
   const fermerDetail = useEffectEvent(() => closeDetail())
+  // AERR27 — racine de la page : une boîte posée par-dessus fait taire J/K/Entrée/Échap.
+  const racineRef = useRef(null)
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (isTypingTarget(e.target)) return
+      if (e.defaultPrevented) return
+      if (isTypingTarget(e.target) || dialogueParDessus(racineRef.current)) return
+      if (e.target?.closest?.('[role="listbox"], [role="menu"]')) return
       if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
       else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
       else if (e.key === 'Enter' && !detailTicket && rows.length) {
@@ -1987,7 +1992,7 @@ export default function TicketsPage() {
         e.preventDefault()
         setSelected(rows[0])
       } else if (e.key === 'Escape' && detailTicket) {
-        fermerDetail()
+        if (confirmLeaveIfDirty(isAnyFormDirty())) fermerDetail()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -2193,7 +2198,7 @@ export default function TicketsPage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="ui-root flex flex-col gap-5 p-1">
+      <div ref={racineRef} className="ui-root flex flex-col gap-5 p-1">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Tickets SAV</h1>
