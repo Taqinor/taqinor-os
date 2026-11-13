@@ -97,7 +97,7 @@ export default function RevalorisationsStock() {
 
   const reload = () => {
     fetchAllPages((page) => stockApi.getRevalorisationsStock({ ordering: '-date_creation', page }).then((r) => r.data), { concurrency: 3 })
-      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })  // AERR89
       .catch(() => setError('Chargement des revalorisations impossible.'))
   }
 
@@ -146,7 +146,7 @@ export default function RevalorisationsStock() {
         )}
       />
 
-      <ListeStock error={error} items={items} vide="Aucune revalorisation.">
+      <ListeStock error={error} items={items} onRetry={reload} vide="Aucune revalorisation.">
         {() => (
         <ul className="flex flex-col gap-2">
           {items.map((r) => (

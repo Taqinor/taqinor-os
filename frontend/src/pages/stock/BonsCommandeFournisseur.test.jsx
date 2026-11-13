@@ -650,3 +650,45 @@ describe('BcfDetail — avertissements prix (AAPV16)', () => {
     expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
   })
 })
+
+describe('AERR35 — une lecture ratée ne vide jamais la liste des BCF', () => {
+  const bcfEnvoye = {
+    id: 77, reference: 'BCF-77', statut: 'envoye', fournisseur: 1, fournisseur_nom: 'Fourni Plus',
+    date_commande: '2026-07-01', date_livraison_prevue: '2026-07-15', note: '', total_achat: '200',
+    lignes: [{ id: 501, produit: 7, produit_nom: 'Module test', quantite: 2, prix_achat_unitaire: 100, quantite_recue: 0 }],
+  }
+  const bcfBrouillon = {
+    id: 10, reference: 'BCF-10', statut: 'brouillon', fournisseur: 1, fournisseur_nom: 'Fourni Plus',
+    lignes: [], total_achat: '100',
+  }
+
+  it('premier chargement rejeté : erreur + Réessayer, jamais « Aucun bon de commande »', async () => {
+    stockApi.getBonsCommandeFournisseur.mockRejectedValueOnce(new Error('Network Error'))
+    render(<BonsCommandeFournisseur />, { wrapper: makeWrapper() })
+    const avis = await screen.findByTestId('bcf-liste-pas-a-jour')
+    expect(screen.queryByText(/Aucun bon de commande/)).toBeNull()
+    stockApi.getBonsCommandeFournisseur.mockResolvedValue({ data: [bcfBrouillon] })
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    const grid = await screen.findByRole('grid', { name: 'Bons de commande fournisseur' })
+    await waitFor(() => expect(within(grid).getByText('BCF-10')).toBeInTheDocument())
+    expect(screen.queryByTestId('bcf-liste-pas-a-jour')).toBeNull()
+  })
+
+  it('relecture rejetée après une sauvegarde : lignes gardées + avis', async () => {
+    stockApi.getBonsCommandeFournisseur.mockResolvedValue({ data: [bcfBrouillon, bcfEnvoye] })
+    stockApi.reviserBcf.mockResolvedValue({ data: { ...bcfEnvoye, revision: 1, reapprobation_requise: false } })
+    render(<BonsCommandeFournisseur />, { wrapper: makeWrapper() })
+    const grid = await screen.findByRole('grid', { name: 'Bons de commande fournisseur' })
+    await waitFor(() => expect(within(grid).getByText('BCF-77')).toBeInTheDocument())
+
+    stockApi.getBonsCommandeFournisseur.mockRejectedValue(new Error('Network Error'))
+    await userEvent.click(within(grid).getByText('BCF-77'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Réviser' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la révision' }))
+    await waitFor(() => expect(stockApi.reviserBcf).toHaveBeenCalled())
+
+    expect(await screen.findByTestId('bcf-liste-pas-a-jour')).toBeInTheDocument()
+    expect(within(grid).getByText('BCF-10')).toBeInTheDocument()
+    expect(within(grid).getByText('BCF-77')).toBeInTheDocument()
+  })
+})

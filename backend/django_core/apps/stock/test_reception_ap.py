@@ -15,10 +15,12 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
+
+from core.test_utils import WideTeardownTimeoutMixin
 
 from apps.stock.models import (
     Produit, Fournisseur, MouvementStock, BonCommandeFournisseur,
@@ -312,3 +314,57 @@ class TestFactureFournisseur(G5Base):
         self.assertEqual(r.status_code, 201, r.data)
         paiement = PaiementFournisseur.objects.get(facture_id=fid)
         self.assertEqual(paiement.company_id, self.company.id)
+
+
+class TestFactureFournisseurConcurrence(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC36 — deux VRAIES connexions (patron sav.tests_pieces.TestSavPiecesConcurrence._course) :
+    A supprime le 1er règlement et tient sa transaction ; B supprime le 2nd par l'API.
+    Sans verrou, B relisait la facture sans voir A et écrivait « partiellement payée »."""
+
+    def setUp(self):
+        self.company = make_company('acnc36-co', 'ACNC36 Co')
+        self.fournisseur = Fournisseur.objects.create(company=self.company, nom='Grossiste ACNC36')
+        self.admin = User.objects.create_user(
+            username='acnc36_admin', password='x', role_legacy='admin', company=self.company)
+        self.facture = FactureFournisseur.objects.create(
+            company=self.company, reference=f'FF-{MONTH}-9036', fournisseur=self.fournisseur,
+            montant_ht=Decimal('8333.33'), montant_tva=Decimal('1666.67'), montant_ttc=Decimal('10000.00'))
+        self.p1, self.p2 = (PaiementFournisseur.objects.create(
+            company=self.company, facture=self.facture, montant=Decimal('5000.00'), mode='virement')
+            for _ in range(2))
+        from apps.stock.services import recompute_facture_fournisseur_statut
+        recompute_facture_fournisseur_statut(self.facture)
+
+    def test_deux_suppressions_croisees_facture_a_payer(self):
+        import threading
+        from unittest import mock
+        from django.db import connection, transaction
+        from apps.stock import services as stock
+        original, a_tient, b_tente, res = (
+            stock.recompute_facture_fournisseur_statut, threading.Event(), threading.Event(), {})
+
+        def fil_a():
+            with transaction.atomic():
+                PaiementFournisseur.objects.filter(pk=self.p1.pk).delete()
+                original(FactureFournisseur.objects.get(pk=self.facture.pk))
+                a_tient.set()
+                b_tente.wait(5)  # B atteint le recalcul : A commite
+            connection.close()
+
+        def fil_b():
+            a_tient.wait(5)
+            res['b'] = auth(self.admin).delete(
+                f'/api/django/stock/paiements-fournisseur/{self.p2.pk}/').status_code
+            connection.close()
+
+        with mock.patch.object(stock, 'recompute_facture_fournisseur_statut',
+                               side_effect=lambda f: (b_tente.set(), original(f))[1]):
+            fils = [threading.Thread(target=fil_a), threading.Thread(target=fil_b)]
+            for fil in fils:
+                fil.start()
+            for fil in fils:
+                fil.join(15)
+        self.facture.refresh_from_db()
+        self.assertEqual(res.get('b'), 204)
+        self.assertEqual(self.facture.statut, FactureFournisseur.Statut.A_PAYER)
+        self.assertEqual(self.facture.solde_du, Decimal('10000.00'))

@@ -2217,18 +2217,20 @@ def recompute_facture_fournisseur_statut(facture):
     préchargement périmé)."""
     from decimal import Decimal
     from .models import FactureFournisseur
-    fraiche = FactureFournisseur.objects.get(pk=facture.pk)
-    ttc = fraiche.montant_ttc or Decimal('0')
-    solde = fraiche.solde_du
-    if solde >= ttc:
-        statut = FactureFournisseur.Statut.A_PAYER
-    elif solde <= Decimal('0'):
-        statut = FactureFournisseur.Statut.PAYEE
-    else:
-        statut = FactureFournisseur.Statut.PARTIELLEMENT_PAYEE
-    if fraiche.statut != statut:
-        fraiche.statut = statut
-        fraiche.save(update_fields=['statut'])
+    # ACNC36 — facture relue SOUS VERROU : deux suppressions croisées des règlements se
+    # sérialisent ici et la seconde voit la première commitée (jamais « partiellement payée » à tort).
+    with transaction.atomic():
+        fraiche = FactureFournisseur.objects.select_for_update().get(pk=facture.pk)
+        ttc, solde = fraiche.montant_ttc or Decimal('0'), fraiche.solde_du
+        if solde >= ttc:
+            statut = FactureFournisseur.Statut.A_PAYER
+        elif solde <= Decimal('0'):
+            statut = FactureFournisseur.Statut.PAYEE
+        else:
+            statut = FactureFournisseur.Statut.PARTIELLEMENT_PAYEE
+        if fraiche.statut != statut:
+            fraiche.statut = statut
+            fraiche.save(update_fields=['statut'])
     facture.statut = statut
     return statut
 

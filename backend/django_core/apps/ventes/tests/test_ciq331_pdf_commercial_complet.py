@@ -393,6 +393,89 @@ def _p1(data):
                   .replace("\xa0", " ").replace("\u202f", " "))
 
 
+def _p2(data):
+    import re
+    from html import unescape
+    html = _html(data).split('class="page"')[2]
+    html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))
+                  .replace("\xa0", " ").replace(" ", " "))
+
+
+class DeuxOptionsPage2CommeLeResidentiel(SimpleTestCase):
+    """Lead nada (13/11/2026, Reda) — page 2 d'un devis C&I à deux options
+    sur le modèle du résidentiel : UN tableau (valeurs « sans · avec »),
+    spécifiques et totaux côte à côte ; l'offre seule inchangée."""
+
+    @staticmethod
+    def _items():
+        sans = [
+            {"designation": "Panneau Essai 715W", "quantite": 35, "prix_unit_ht": 1200.0,
+             "taux_tva": 10},
+            {"designation": "Onduleur réseau Essai 20kW", "quantite": 1,
+             "prix_unit_ht": 27000.0, "taux_tva": 20},
+            {"designation": "Transport", "quantite": 1, "prix_unit_ht": 1500.0, "taux_tva": 20}]
+        avec = [
+            {"designation": "Panneau Essai 715W", "quantite": 50, "prix_unit_ht": 1200.0,
+             "taux_tva": 10},
+            {"designation": "Onduleur hybride Essai 15kW", "quantite": 2,
+             "prix_unit_ht": 30000.0, "taux_tva": 20},
+            {"designation": "Batterie Essai 16 kWh", "quantite": 4,
+             "prix_unit_ht": 29166.67, "taux_tva": 20},
+            {"designation": "Transport", "quantite": 1, "prix_unit_ht": 1500.0, "taux_tva": 20}]
+        return sans, avec
+
+    def _rendu(self):
+        import re
+        from html import unescape
+        from apps.ventes.quote_engine.commercial.equip import tableau_deux_options
+        sans, avec = self._items()
+        d = {"option_batterie": {"lignes": avec, "totaux": {
+                 "ht_brut": 327278.38, "arrondi": 28.38, "ht_net": 327250.0,
+                 "tva": 59450.0, "ttc": 386700.0}},
+             "totaux_all": {"ht_brut": 132203.35, "arrondi": 36.68, "ht_net": 132166.67,
+                            "tva": 22233.33, "ttc": 154400.0}}
+        fmt = lambda v: f"{v:,.2f}".replace(",", " ").replace(".", ",")  # noqa: E731
+        parts = tableau_deux_options(d, lambda cle, fr, **k: fr, fmt,
+                                     ("#n", "#g", "#m", "#l", "#w"), sans)
+        html = "".join(parts[1:])
+        texte = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))
+                       .replace("\xa0", " ").replace(" ", " "))
+        return html, texte
+
+    def test_ligne_commune_porte_ses_deux_valeurs(self):
+        html, texte = self._rendu()
+        self.assertIn("Équipement des deux options", texte)
+        # Panneaux : 35 (sans) · 50 (avec), totaux 42 000 · 60 000.
+        self.assertIn("Panneau Essai 715W", texte)
+        self.assertIn("35 50", texte)
+        self.assertIn("42 000,00 60 000,00", texte)
+        # Une ligne identique dans les deux options : une seule valeur.
+        self.assertIn("Transport 1 1 500,00", texte)
+        self.assertEqual(texte.count("Panneau Essai 715W"), 1)
+
+    def test_specifiques_et_totaux_cote_a_cote(self):
+        _html, texte = self._rendu()
+        self.assertIn("Spécifique à l'option 1 — Sans batterie", texte)
+        self.assertIn("Onduleur réseau Essai 20kW 27 000,00 HT", texte)
+        self.assertIn("Spécifique à l'option 2 — Avec batterie", texte)
+        self.assertIn("4× Batterie Essai 16 kWh 116 666,68 HT", texte)
+        self.assertIn("2× Onduleur hybride Essai 15kW 60 000,00 HT", texte)
+        # Chaque option sa chaîne de totaux, valeurs du builder.
+        self.assertIn("Option 1 — Sans batterie", texte)
+        self.assertIn("Total TTC 154 400,00 MAD", texte)
+        self.assertIn("Option 2 — Avec batterie", texte)
+        self.assertIn("Total TTC 386 700,00 MAD", texte)
+        self.assertIn("Arrondi commercial - 28,38 MAD", texte)
+
+    def test_offre_seule_page2_inchangee(self):
+        p2 = _p2(_data())
+        self.assertNotIn("Équipement des deux options", p2)
+        self.assertNotIn("Spécifique à l'option", p2)
+        # Deux options servies : la page 2 du modèle résidentiel.
+        self.assertIn("Option 2 — Avec batterie", _p2(deux_options(_data())))
+
+
 class Cpdf3DeuxOptionsCoteACote(SimpleTestCase):
 
     def test_deux_cartes_meme_gabarit(self):

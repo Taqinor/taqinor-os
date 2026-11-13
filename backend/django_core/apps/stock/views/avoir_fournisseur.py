@@ -79,19 +79,25 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         garde paiements de ``FactureFournisseurViewSet.perform_destroy`` —
         refus d'ÉTAT, donc 409 comme elle (CI #1004 : le jumeau était resté 400)."""
         from ..erreurs_achats import ConflitEtat
-        imputations = list(
-            instance.imputations.select_related('facture'))
-        if imputations:
-            refs = ', '.join(sorted({
-                i.facture.reference for i in imputations}))
-            raise ConflitEtat({
-                'detail': (
-                    f'Cet avoir fournisseur est imputé sur {refs} '
-                    f'(montant imputé : {instance.montant_impute} MAD) : '
-                    'suppression refusée.'
-                ),
-            })
-        instance.delete()
+        # ACNC36 — avoir relu SOUS VERROU avant de lire ses imputations :
+        # l'imputation (services_verrous.imputer_avoir_sous_verrou) verrouille
+        # la même ligne, les deux gestes se sérialisent (jamais une imputation
+        # commitée effacée en cascade).
+        with transaction.atomic():
+            instance = AvoirFournisseur.objects.select_for_update().get(pk=instance.pk)
+            imputations = list(
+                instance.imputations.select_related('facture'))
+            if imputations:
+                refs = ', '.join(sorted({
+                    i.facture.reference for i in imputations}))
+                raise ConflitEtat({
+                    'detail': (
+                        f'Cet avoir fournisseur est imputé sur {refs} '
+                        f'(montant imputé : {instance.montant_impute} MAD) : '
+                        'suppression refusée.'
+                    ),
+                })
+            instance.delete()
 
     @extend_schema(request=None, responses=AvoirFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='valider')

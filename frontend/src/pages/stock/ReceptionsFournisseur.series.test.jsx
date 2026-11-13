@@ -74,6 +74,37 @@ describe('Réception — n° de série', () => {
   })
 })
 
+describe('Réception — fermeture d’une saisie modifiée (AERR37)', () => {
+  it('saisie puis Échap : demande, rester ⇒ saisie gardée', async () => {
+    const onClose = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<ThemeProvider>
+      <NouvelleReception bonsRecevables={[{ id: 5, reference: 'BCF-5' }]} onClose={onClose} onSaved={() => {}} />
+    </ThemeProvider>)
+    fireEvent.click(screen.getByText('choisir-bon'))
+    fireEvent.click(await screen.findByRole('button', { name: /N° de série \/ lot/ }))
+    const champ = screen.getByLabelText(/N° de série \(un par ligne/)
+    fireEvent.change(champ, { target: { value: 'S1\nS2\nS3' } })
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(confirm).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/N° de série \(un par ligne/)).toHaveValue('S1\nS2\nS3')
+    confirm.mockRestore()
+  })
+
+  it('formulaire non modifié : Échap ferme sans demander', () => {
+    const onClose = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm')
+    render(<ThemeProvider>
+      <NouvelleReception bonsRecevables={[{ id: 5, reference: 'BCF-5' }]} onClose={onClose} onSaved={() => {}} />
+    </ThemeProvider>)
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(confirm).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+})
+
 describe('Réception — détail enregistré (ACHT129)', () => {
   it('le détail d\'une réception affiche séries et lot', () => {
     const reception = {

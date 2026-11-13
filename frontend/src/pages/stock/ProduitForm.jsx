@@ -62,6 +62,8 @@ import { AlerteErreurStock } from './BandeauxListeStock'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
 import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
+import { useRetraitPrixFournisseur, fmtAchatDate } from './useRetraitPrixFournisseur'
+import { erreursEntiersProduit } from './validationEntiers'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -225,7 +227,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
         ?? (e.response?.data?.fournisseur?.[0] && 'Ce fournisseur a déjà un prix pour ce produit.')
         ?? 'Échec de l\'ajout.'))
   }
-  const remove = (id) => stockApi.deletePrixFournisseur(id).then(load).catch(() => {})
+  const [remove, dialogueRetrait] = useRetraitPrixFournisseur({ load, setError })  // AERR80 — retrait nommé, échec dit
 
   const startEdit = (r) => { setEditId(r.id); setEditPrix(String(r.prix_achat)); setError(null) }
   const cancelEdit = () => { setEditId(null); setEditPrix('') }
@@ -237,17 +239,9 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
       .catch((e) => setError(e.response?.data?.detail ?? 'Échec de la modification.'))
   }
 
-  // Date du dernier achat au format JJ/MM/AAAA (sinon « — »).
-  const fmtAchatDate = (iso) => {
-    if (!iso) return '—'
-    const d = new Date(iso)
-    return Number.isNaN(d.getTime())
-      ? '—'
-      : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  }
-
   return (
     <section className="sm:col-span-2 flex flex-col gap-2 border-t border-border pt-4">
+      {dialogueRetrait}
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-medium text-foreground">Prix fournisseurs (interne)</p>
         <p className="text-xs text-muted-foreground">
@@ -306,7 +300,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                         <Pencil className="size-3.5" />
                       </Button>
                       {isAdmin && <Button type="button" variant="ghost" size="icon" className="size-7"
-                              aria-label="Supprimer" onClick={() => remove(r.id)}>{/* ADRG37 : admin seul */}
+                              aria-label="Supprimer" onClick={() => remove(r)}>{/* ADRG37 : admin seul */}
                         <Trash2 className="text-destructive" />
                       </Button>}
                     </span>
@@ -869,6 +863,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                                            e.prix_vente = 'Prix de vente requis (> 0)'
     if (skuDuplicate)
       e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`
+    Object.assign(e, erreursEntiersProduit(fields))  // AERR87 — « 7.5 » refusé sous le champ, jamais tronqué
     setErrors(e)
     // CALX355 — une courbe fautive bloque TOUT l'enregistrement (rien n'est
     // écrit, ni le produit ni la fiche) : l'erreur s'affiche sous la cellule
@@ -921,6 +916,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
         // arrivée entre-temps serait écrasée). Il se corrige par un mouvement
         // ou un ajustement d'inventaire tracé.
         ...(isEdit ? {} : { quantite_stock: parseInt(fields.quantite_stock) || 0 }),
+        ...(isEdit ? { lock_version: produit.lock_version } : {}),  // AERR76 — verrou optimiste (409 si modifié entre-temps)
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
         categorie_id:   fields.categorie_id   ? parseInt(fields.categorie_id)   : null,
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,
@@ -1090,7 +1086,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
         ? (Array.isArray(err.sku) ? err.sku[0] : err.sku)
         : null
       setFromResponse(
-        typeof skuMsg === 'string' ? { ...err, sku: frSkuMessage(skuMsg) } : err,
+        typeof skuMsg === 'string' ? { ...err, sku: frSkuMessage(skuMsg) } : (err?.code === 'conflit_version' ? { detail: err.detail } : err),
       )
     } finally {
       setSaving(false)
@@ -1389,7 +1385,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
 
           <FormSection title="Stock & alerte">
             <FormField
-              label="Quantité en stock" htmlFor="pf-qte"
+              label="Quantité en stock" htmlFor="pf-qte" error={errors.quantite_stock}
               hint={isEdit ? 'Modifiez via un mouvement de stock' : undefined}
             >
               <Input id="pf-qte" type="number" min="0" step="1" inputMode="numeric"
@@ -1398,7 +1394,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                      disabled={isEdit}
                      title={isEdit ? 'Utilisez un mouvement de stock pour modifier la quantité' : ''} />
             </FormField>
-            <FormField label="Seuil d'alerte" htmlFor="pf-seuil">
+            <FormField label="Seuil d'alerte" htmlFor="pf-seuil" error={errors.seuil_alerte}>
               <Input id="pf-seuil" type="number" min="0" step="1" inputMode="numeric"
                      value={fields.seuil_alerte}
                      onChange={e => setField('seuil_alerte', e.target.value)} />
@@ -1418,14 +1414,14 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                      onChange={e => setField('garantie', e.target.value)}
                      placeholder="ex : 12 ans produit, 25 ans performance" />
             </FormField>
-            <FormField label="Garantie équipement (mois)" htmlFor="pf-gar"
+            <FormField label="Garantie équipement (mois)" htmlFor="pf-gar" error={errors.garantie_mois}
                        hint="Laisser vide si non renseignée.">
               <Input id="pf-gar" type="number" min="0" step="1" inputMode="numeric"
                      value={fields.garantie_mois}
                      onChange={e => setField('garantie_mois', e.target.value)}
                      placeholder="ex : 120 (10 ans)" />
             </FormField>
-            <FormField label="Garantie production (mois)" htmlFor="pf-garprod"
+            <FormField label="Garantie production (mois)" htmlFor="pf-garprod" error={errors.garantie_production_mois}
                        hint="Pour les panneaux. Optionnel.">
               <Input id="pf-garprod" type="number" min="0" step="1" inputMode="numeric"
                      value={fields.garantie_production_mois}

@@ -88,3 +88,15 @@ describe('AchatsParametresPage (WIR26 — Paramètres → Achats)', () => {
     expect(screen.getByRole('button', { name: /Enregistrer/i })).toBeDisabled()
   })
 })
+
+describe('AERR124 — lecture ratée : on le dit', () => {
+  it('« Réglages illisibles » + Réessayer, Enregistrer désactivé ; Réessayer réussi rend le bouton', async () => {
+    stockApi.getAchatsParametres.mockRejectedValueOnce({ response: { status: 500, data: {} } })
+    renderPage(<AchatsParametresPage />)
+    expect(await screen.findByText(/Réglages illisibles/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled())
+    expect(screen.queryByText(/Réglages illisibles/)).toBeNull()
+  })
+})

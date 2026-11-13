@@ -92,7 +92,7 @@ export default function InventairesAnnuels() {
 
   const reload = () => {
     fetchAllPages((page) => stockApi.getInventairesAnnuels({ ordering: '-exercice', page }).then((r) => r.data), { concurrency: 3 })
-      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })  // AERR89
       .catch(() => setError('Chargement des inventaires impossible.'))
   }
 
@@ -123,7 +123,7 @@ export default function InventairesAnnuels() {
         )}
       />
 
-      <ListeStock error={error} items={items} vide={<>Aucun exercice figé pour l&apos;instant.</>}>
+      <ListeStock error={error} items={items} onRetry={reload} vide={<>Aucun exercice figé pour l&apos;instant.</>}>
         {() => (
         <ul className="flex flex-col gap-2">
           {items.map((inv) => (
