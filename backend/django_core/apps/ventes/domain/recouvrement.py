@@ -184,15 +184,19 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
     motif = (motif or '').strip()
     if not motif:
         raise PaiementRejectError('Le motif du rejet est obligatoire.')
-    if paiement.statut == Paiement.Statut.REJETE:
-        raise PaiementRejectError(
-            'Ce paiement est déjà marqué rejeté.', conflict=True)
-    if paiement.statut == Paiement.Statut.ANNULE_SAISIE:
-        # AFAC17 — une saisie annulée n'a jamais porté d'argent.
-        raise PaiementRejectError(
-            'Saisie annulée : ce paiement ne se rejette pas.', conflict=True)
-
     with transaction.atomic():
+        # ACNC7 (C-ACNC-002) — statut RELU SOUS VERROU (patron
+        # ``annuler_saisie_paiement``) : un 2e rejet, ou une annulation de
+        # saisie croisée, voit l'état courant (409), jamais un 2e effet.
+        paiement = Paiement.objects.select_for_update().get(pk=paiement.pk)
+        if paiement.statut == Paiement.Statut.REJETE:
+            raise PaiementRejectError(
+                'Ce paiement est déjà marqué rejeté.', conflict=True)
+        if paiement.statut == Paiement.Statut.ANNULE_SAISIE:
+            # AFAC17 — une saisie annulée n'a jamais porté d'argent.
+            raise PaiementRejectError(
+                'Saisie annulée : ce paiement ne se rejette pas.',
+                conflict=True)
         paiement.statut = Paiement.Statut.REJETE
         paiement.motif_rejet = motif[:255]
         paiement.frais_rejet = frais
