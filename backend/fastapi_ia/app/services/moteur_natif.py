@@ -542,7 +542,16 @@ def reprendre(*, conversation: str, message: str, systeme: list[dict],
     enveloppe, rédigé par le relais) à la conversation et laisse le modèle
     continuer. Même retour qu':func:`executer`, ou ``None`` s'il n'y a aucune
     conversation à reprendre (expirée, effacée, autre moteur)."""
-    return None
+    etat = _lire(conversation)
+    if etat is None:
+        return None
+    # La conversation finit par l'assistant (point sûr) : le résultat entre
+    # comme message utilisateur TEXTE, jamais dans un tool_result ni dans un
+    # message système (l3/web_anthropic.verif-omissions.md F9).
+    return _servir(question=message, etat=etat, conversation=conversation,
+                   systeme=systeme, outils=outils, modele=modele,
+                   effort=effort, max_tokens=max_tokens,
+                   max_iterations=max_iterations)
 
 
 def effacer(conversation: str) -> None:
