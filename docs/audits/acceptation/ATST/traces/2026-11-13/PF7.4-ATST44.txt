@@ -1,0 +1,71 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_invariants -v    [checkout: taqinor-os]  rc=0
+test_fichier_absent_rouge (scripts.tests.test_check_invariants.AbsenceTests.test_fichier_absent_rouge) ... ok
+test_fichier_present_inchange (scripts.tests.test_check_invariants.AbsenceTests.test_fichier_present_inchange)
+Fichier du dépôt présent ⇒ comportement inchangé (rc 0). ... ok
+test_fichier_absent_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_fichier_absent_rend_un) ... ok
+test_fichier_illisible_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_fichier_illisible_rend_un) ... ok
+test_methode_renommee_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_methode_renommee_rend_un) ... ok
+test_reference_resolue_rend_zero (scripts.tests.test_check_invariants.ReferencesTests.test_reference_resolue_rend_zero) ... ok
+test_registre_sans_reference_sort (scripts.tests.test_check_invariants.ReferencesTests.test_registre_sans_reference_sort) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.089s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_invariants sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_invariants.py    [checkout: taqinor-os]  rc=0
+Invariant registry OK — 19 reference(s) resolve to a real test.
+
+
+==> OK : garde scripts/check_invariants.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_invariants -v    [copie: depot]  rc=0
+test_fichier_absent_rouge (scripts.tests.test_check_invariants.AbsenceTests.test_fichier_absent_rouge) ... ok
+test_fichier_present_inchange (scripts.tests.test_check_invariants.AbsenceTests.test_fichier_present_inchange)
+Fichier du dépôt présent ⇒ comportement inchangé (rc 0). ... ok
+test_fichier_absent_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_fichier_absent_rend_un) ... ok
+test_fichier_illisible_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_fichier_illisible_rend_un) ... ok
+test_methode_renommee_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_methode_renommee_rend_un) ... ok
+test_reference_resolue_rend_zero (scripts.tests.test_check_invariants.ReferencesTests.test_reference_resolue_rend_zero) ... ok
+test_registre_sans_reference_sort (scripts.tests.test_check_invariants.ReferencesTests.test_registre_sans_reference_sort) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.085s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « main : if not _find_method_in_class(...) → if False » : scripts/check_invariants.py
+    - '        if not _find_method_in_class(tree, class_name, method_name):'
+    + '        if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_invariants -v    [copie: depot]  rc=1
+test_fichier_absent_rouge (scripts.tests.test_check_invariants.AbsenceTests.test_fichier_absent_rouge) ... ok
+test_fichier_present_inchange (scripts.tests.test_check_invariants.AbsenceTests.test_fichier_present_inchange)
+Fichier du dépôt présent ⇒ comportement inchangé (rc 0). ... ok
+test_fichier_absent_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_fichier_absent_rend_un) ... ok
+test_fichier_illisible_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_fichier_illisible_rend_un) ... ok
+test_methode_renommee_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_methode_renommee_rend_un) ... FAIL
+test_reference_resolue_rend_zero (scripts.tests.test_check_invariants.ReferencesTests.test_reference_resolue_rend_zero) ... ok
+test_registre_sans_reference_sort (scripts.tests.test_check_invariants.ReferencesTests.test_registre_sans_reference_sort) ... ok
+
+======================================================================
+FAIL: test_methode_renommee_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_methode_renommee_rend_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_invariants.py", line 71, in test_methode_renommee_rend_un
+    self.assertEqual(rc, 1)
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.106s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « main : if not _find_method_in_class(...) → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_methode_renommee_rend_un (scripts.tests.test_check_invariants.ReferencesTests.test_methode_renommee_rend_un)

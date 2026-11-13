@@ -284,6 +284,19 @@ téléphone ; ligne de coût `H<n> S<n> O<n> F<n> · jetons sous-agents ≈ x M`
    la décision existante dans `decisions.yml` avant d'en ouvrir une (ADOC196 : décision déjà prise le 04/11). Tant
    que `audit_registre.py --du` ne les annonce pas (ADCG104), ces contre-visites se lancent à la main à partir du
    tableau `status` (colonne « dernier vérifie », écarts > 0, tâches d'écart cochées).
+7. **Preuves en direct sur un runner GitHub (essai du 13/11/2026, AMET104).** Quand la pile locale n'est pas
+   disponible, une tâche « code livré, preuve en direct due » peut être rejouée par sa spec d'acceptation sur un workflow
+   TEMPORAIRE de la branche (`on: push` de cette seule branche, squelette `ci-image-check` + `e2e-full` de
+   `release-verify.yml`, projet Playwright `acceptation`, shell Django par `E2E_DJANGO_EXEC`), supprimé au dernier commit ;
+   l'enregistrement est rapatrié de l'artefact et commité à la main. Trois règles, mesurées sur 149 tâches : (a) rien n'est
+   coché avant une RELECTURE ADVERSE fraîche, tâche par tâche, de l'étape contre la clause « Preuve en direct » — un écran
+   nommé par la clause doit être AFFIRMÉ, pas seulement ouvert pour les oracles (29 refus sur 149) ; (b) un écart accepté
+   n'est légitime que si le défaut est antérieur au commit de la tâche ET hors de ses `Files:` ; il ouvre une tâche chez son
+   propriétaire ; (c) une tâche où une contre-visite trouve un écart S1-S2 n'est pas cochée, même avec un rejeu vert. Limites
+   du runner : pas de Celery ni de beat, pas de sonde sous Docker (`E2E_SONDE_LOCALE=1`, sondes hôte seulement), données de
+   démo, sha de la branche d'essai, aucune clé secrète (une preuve à fournisseur réel se joue sur la pile locale ; les clés
+   de fond de carte, publiques, se lisent à l'exécution). Les fichiers de spec neufs se déclarent par « Nouveau dossier
+   car : » sur la tâche qui porte le rejeu.
 
 ---
 

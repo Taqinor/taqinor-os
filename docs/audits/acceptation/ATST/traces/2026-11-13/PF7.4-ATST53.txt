@@ -1,0 +1,313 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_source_regex -v    [checkout: taqinor-os]  rc=0
+[check_tests_source_regex] OK - allowlist gelee a 16 fichiers (famille DevisGenerator*/solar*/autoQuote*) + 50 fichiers (cliquet CRM CRX41, pages/crm+features/crm) - aucun NOUVEAU test 'regex sur code source' dans les deux perimetres.
+[check_tests_source_regex] ATST53 - stock gele : 131 test(s) front, 145 test(s) back, 13 code(s) de permission hors registre.
+test_allowlist_a_une_raison_non_vide_par_entree (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_a_une_raison_non_vide_par_entree) ... ok
+test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille) ... ok
+test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir) ... ok
+test_code_de_permission_hors_registre_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_code_de_permission_hors_registre_rougit) ... ok
+test_entree_de_base_disparue_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_de_base_disparue_rougit) ... ok
+test_entree_offgrid_est_desormais_datee_et_attribuee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_offgrid_est_desormais_datee_et_attribuee) ... ok
+test_fichier_hors_famille_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_hors_famille_ignore_meme_avec_le_patron) ... ok
+test_fichier_non_test_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_non_test_ignore_meme_avec_le_patron) ... ok
+test_le_depot_reel_est_propre (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_le_depot_reel_est_propre) ... ok
+test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source) ... ok
+test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert) ... <unknown>:122: DeprecationWarning: invalid escape sequence '\u'
+ok
+test_meme_fichier_dans_lallowlist_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_meme_fichier_dans_lallowlist_ne_rougit_pas) ... ok
+test_nouveau_fichier_de_la_famille_hors_allowlist_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouveau_fichier_de_la_famille_hors_allowlist_rougit) ... ok
+test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas) ... ok
+test_nouvelle_entree_allowlist_sans_raison_datee_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_sans_raison_datee_rougit) ... ok
+test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas) ... ok
+test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas) ... ok
+test_socle_actuel_reste_gele_aucune_retro_datation_exigee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_socle_actuel_reste_gele_aucune_retro_datation_exigee) ... ok
+test_tout_test_qui_lit_le_source_hors_base_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_tout_test_qui_lit_le_source_hors_base_rougit) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.923s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_tests_source_regex sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_tests_source_regex.py    [checkout: taqinor-os]  rc=0
+[check_tests_source_regex] OK - allowlist gelee a 16 fichiers (famille DevisGenerator*/solar*/autoQuote*) + 50 fichiers (cliquet CRM CRX41, pages/crm+features/crm) - aucun NOUVEAU test 'regex sur code source' dans les deux perimetres.
+[check_tests_source_regex] ATST53 - stock gele : 131 test(s) front, 145 test(s) back, 13 code(s) de permission hors registre.
+
+
+==> OK : garde scripts/check_tests_source_regex.py sur le dépôt réel ⇒ 0 (rc=0)
+
+--- décomptes imprimés : ('131', '145', '13') ; entrées des bases : {'scripts/tests_source_regex_allow.txt': 276, 'scripts/tests_permissions_hors_registre_allow.txt': 13}
+
+==> OK : décomptes imprimés (front, back, codes) = ('131', '145', '13') ; bases {'scripts/tests_source_regex_allow.txt': 276, 'scripts/tests_permissions_hors_registre_allow.txt': 13}
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_source_regex -v    [copie: depot]  rc=0
+[check_tests_source_regex] OK - allowlist gelee a 16 fichiers (famille DevisGenerator*/solar*/autoQuote*) + 50 fichiers (cliquet CRM CRX41, pages/crm+features/crm) - aucun NOUVEAU test 'regex sur code source' dans les deux perimetres.
+[check_tests_source_regex] ATST53 - stock gele : 131 test(s) front, 145 test(s) back, 13 code(s) de permission hors registre.
+test_allowlist_a_une_raison_non_vide_par_entree (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_a_une_raison_non_vide_par_entree) ... ok
+test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille) ... ok
+test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir) ... ok
+test_code_de_permission_hors_registre_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_code_de_permission_hors_registre_rougit) ... ok
+test_entree_de_base_disparue_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_de_base_disparue_rougit) ... ok
+test_entree_offgrid_est_desormais_datee_et_attribuee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_offgrid_est_desormais_datee_et_attribuee) ... ok
+test_fichier_hors_famille_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_hors_famille_ignore_meme_avec_le_patron) ... ok
+test_fichier_non_test_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_non_test_ignore_meme_avec_le_patron) ... ok
+test_le_depot_reel_est_propre (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_le_depot_reel_est_propre) ... ok
+test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source) ... ok
+test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert) ... <unknown>:122: DeprecationWarning: invalid escape sequence '\u'
+ok
+test_meme_fichier_dans_lallowlist_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_meme_fichier_dans_lallowlist_ne_rougit_pas) ... ok
+test_nouveau_fichier_de_la_famille_hors_allowlist_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouveau_fichier_de_la_famille_hors_allowlist_rougit) ... ok
+test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas) ... ok
+test_nouvelle_entree_allowlist_sans_raison_datee_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_sans_raison_datee_rougit) ... ok
+test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas) ... ok
+test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas) ... ok
+test_socle_actuel_reste_gele_aucune_retro_datation_exigee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_socle_actuel_reste_gele_aucune_retro_datation_exigee) ... ok
+test_tout_test_qui_lit_le_source_hors_base_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_tout_test_qui_lit_le_source_hors_base_rougit) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.832s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « scan_backend rend [] » : scripts/check_tests_source_regex.py
+    - '    trouves = []\n    for rel, arbre in _fichiers_test_backend(_candidat_source):'
+    + '    return []\n    trouves = []\n    for rel, arbre in _fichiers_test_backend(_candidat_source):'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_source_regex -v    [copie: depot]  rc=1
+ex_allow.txt : backend/django_core/apps/ged/tests_guide_suivi_a_jour.py::GuideSuiviAJourTests.test_le_html_committe_correspond_a_la_table (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ged/tests_guide_suivi_a_jour.py::GuideSuiviAJourTests.test_pompage_le_pdf_est_celui_de_cette_source (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_aud311_cle_stockage_scopee.py::TestCleStockageScopeeSociete.test_les_cinq_sites_passent_company (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_ciq623_hse.py::HseMinimalTest.test_plus_de_promesse_qhse22 (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_ez7_contrat.py::TestEz7Forme.test_la_garde_reste_unique (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_ez7_contrat.py::TestEz7Forme.test_le_reglage_est_additif_et_off_par_defaut (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_ez7_contrat.py::TestEz7Forme.test_migration_additive_presente (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_zmfg10_bon_assemblage_pdf.py::TestBonAssemblagePdf.test_aucun_prix_dans_le_contexte_ni_le_code (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/installations/tests_zstk4_bon_livraison.py::TestBonLivraisonPdf.test_contexte_sans_cout_interne (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/monitoring/test_ciq643_sans_attendu_invente.py::TestSansAttenduInvente.test_constante_supprimee (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/monitoring/tests.py::TestUnderperformance.test_underperf_ticket_goes_through_sav_services_boundary (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/notifications/tests_apar24_digest_sav.py::DigestSavTests.test_frontiere_selectors (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/parametres/tests_cad60_envoi_manuel.py::LaMentionExisteTests.test_le_catalogue_porte_la_mention_A_COTE_du_texte (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/parametres/tests_dc5_tariff_selector.py::TestAMOT64ReglagesEcranOntUnLecteur.test_rendement_global_retire_et_tarif_libelle_repli (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/parametres/tests_dc5_tariff_selector.py::TestAMOT64ReglagesEcranOntUnLecteur.test_tout_champ_expose_a_un_lecteur_ou_est_un_repli (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/publicapi/tests_aana_portees.py::RoutesFastapiMortesRetireesTests.test_main_ne_monte_plus_ces_routeurs (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/reporting/tests_insights.py::TestCfModuleModelSingleSource.test_no_hardcoded_model_imports_in_helper (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/stock/test_cal_dimensions_de_pose.py::DimensionsDePoseTests.test_aucun_import_apps_ao_ni_apps_stock_models (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/stock/test_ntwms19_stock_tiers.py::IdentiteFournisseurSansPrixTests.test_aucun_prix_d_achat_ne_traverse_le_pont (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_acal_drapeau_moteur_calepinage.py::ReglageDuDrapeau.test_le_reglage_existe_dans_settings_et_vaut_off_par_defaut (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_acal_productible_repli_unique.py::ProductibleRepliUniqueTests.test_solar_design_n_a_plus_de_repli_brut (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_adev2_contrat_proposal_accept.py::ContratProposalAcceptTests.test_cles_additives_de_proposal_data (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_cad168_charges_fixes.py::LaFormeHistoriqueNeBougePas.test_calculer_etude_horaire_ne_gagne_aucune_cle (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_cad173_reglages.py::Q10_Q15_Q18_LesTroisSTATU_QUO.test_Q15_les_coupures_ne_dimensionnent_RIEN (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_cad173_reglages.py::Q10_Q15_Q18_LesTroisSTATU_QUO.test_Q18_aucune_couche_de_chauffage_d_hiver (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_cad173_reglages.py::Q17_AucunPrixDeCarburantEnDur.test_le_moteur_ne_porte_aucune_conversion_litres_vers_dirhams (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_cal195_schema_unifilaire.py::PorteSchemaUnifilaireTest.test_un_devis_delegue_au_chemin_existant_sans_rien_ajouter (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_calepinage_bascule.py::LeContratDeClassificationEstIntact.test_la_bascule_ne_touche_pas_le_moteur_de_devis_client (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_calepinage_bascule.py::LeContratDeClassificationEstIntact.test_les_mots_cles_de_solar_js_sont_inchanges (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_ciq107_profils_charge.py::TestPurete.test_imports_permis_sans_django (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_ciq110_autoconso_horaire.py::GardeAstTests.test_module_pur_sans_taux_fixe (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_ciq114_charge_toiture.py::ChargeToitureModuleTests.test_aucune_ancienne_constante (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_ciq132_registres_mt.py::RegistresMtTests.test_aucun_utc_plus_un_code (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_ciq305_mentions_ci.py::TestGabaritsLisentLaTable.test_aucune_copie_8221_dans_le_moteur (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_ciq654_seuils_recette_ventes.py::ConstantesRetireesTests.test_aucune_constante_inventee (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_classification_parity.py::TestClassificationParity.test_dc8_solarjs_classify_logic_matches (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_classification_parity.py::TestClassificationParity.test_solarjs_keywords_present (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_composer_sonde_parite.py::AucunAppelDirect.test_garde_ast (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_courbes_journalieres.py::ProductionParSaisonUniqueTests.test_garde_ast_la_copie_delegue (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_err_qac_multivilla_total_xn.py::TestArgentTotaux.test_le_moteur_pdf_demande_le_total_unitaire (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_etude_horaire.py::JourReferenceTousLesAppelantsTests.test_les_quatre_appelants_transmettent_le_parametre (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_modifiabilite_gestes.py::PlusAucuneCopieDeLaRegle.test_views_ne_recopient_plus_la_regle (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_moteur_scission_structure.py::Spl169LegacyEtudeTests.test_seule_reecriture_declaree_aucun_globals (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py::M1GhiSourceUniqueTests.test_public_views_importe_les_poids_au_lieu_de_les_recopier (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py::M7DateDeValiditeTests.test_le_builder_lit_la_regle_d_expiration_du_backend (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py::Q7BaremeNationalUniqueTests.test_le_miroir_js_porte_la_meme_regle (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_options.py::TestPureFilter.test_tout_appelant_passe_le_niveau_du_devis (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_pdf_garde_optimum_capacite_utile.py::ParseKwhUnique.test_builder_et_public_views_lisent_le_catalogue (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_premium_base_harnais.py::UnSeulKwcStr.test_les_harnais_de_marche_delegent_au_harnais_commun (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_premium_base_harnais.py::UnSeulKwcStr.test_plus_de_kwc_str_local_dans_les_couvertures (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr140_capacite_batterie_option.py::CheminsAvecDataInchangesTests.test_l_ordre_des_trois_replis_est_conserve (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr165_lecteur_layout.py::LesCinqOriginesLisentLeMemeLecteur.test_la_lecture_inline_de_la_creation_3D_est_supprimee (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr165_lecteur_layout.py::LesCinqOriginesLisentLeMemeLecteur.test_le_devis_automatique_et_le_tunnel_ne_relisent_pas_le_layout (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr165_lecteur_layout.py::LesCinqOriginesLisentLeMemeLecteur.test_les_accesseurs_de_la_resynchro_delaguent_au_lecteur_unique (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr167_banque_option.py::AppelantPublicPasseLOptionTests.test_couverture_batterie_publique_nomme_explicitement_l_option (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr227_cavaliers_cablage.py::CavalierADocstringDuRegistre.test_la_preseance_a_bien_un_appelant_de_production (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr227_cavaliers_cablage.py::CavalierBForceEtudesSurTousLesModes.test_aucun_rafraichissement_du_pipeline_n_ignore_le_drapeau (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr227_cavaliers_cablage.py::CavalierBForceEtudesSurTousLesModes.test_le_mode_composer_transmet_force_etudes (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr227_cavaliers_cablage.py::CavalierBForceEtudesSurTousLesModes.test_le_mode_rafraichir_le_transmettait_deja (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr232_jour_reference_epingle.py::EmpreinteStableDUnJourALAutre.test_la_date_reste_DANS_l_empreinte (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr235_registre_renderers.py::LeRegistreEstLaSeuleListe.test_les_quatre_blocs_copies_colles_ont_disparu (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr235_registre_renderers.py::LeRegistreEstLaSeuleListe.test_plus_aucun_if_is_de_dispatch_dans_le_builder (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr235_registre_renderers.py::LeRepliEstNomme.test_le_dispatch_journalise_le_cas_sans_entree (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr243_cavaliers_structure.py::CavalierAImportsMorts.test_le_noqa_ne_couvre_plus_F401_sur_cet_import (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr243_cavaliers_structure.py::CavalierBEtape2SansParametreMort.test_le_site_d_appel_ne_passe_plus_les_entrees (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr243_cavaliers_structure.py::CavalierCLectureUniqueDuWattage.test_la_lecture_en_ligne_a_disparu (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr243_cavaliers_structure.py::CavalierEDocstringDesEtudes.test_les_deux_chemins_cites_ne_forcent_effectivement_pas (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr243_cavaliers_structure.py::CavalierGRecensementAvecVerdicts.test_aucun_recablage_dans_ce_lot (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr418_garde_otp_actions.py::InventaireDesActionsPubliquesTests.test_l_inventaire_couvre_toutes_les_actions_publiques (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr424_une_seule_definition_classement.py::UnGrepConfirmeUneSeuleDefinitionVivante.test_solar_design_importe_texte_classement_et_a_supprime_sa_copie (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr668_clauses_cgv.py::UneSeuleFonctionDeRemplissageTests.test_conditions_publiques_sans_format_local (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qjr_argent_vues.py::LaFacadeNAPlusQueDeuxVues.test_la_branche_brut_a_disparu_de_la_porte (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qx49_proposal_payload.py::TestModeKpisPure.test_mode_kpis_n_importe_plus_agronomy (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_qx50_injection_82_21.py::TestTarifMtSansJumeauJs.test_solar_js_sans_symboles_de_valorisation_ci (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_selectors_surface.py::SurfaceSelectorsVentes.test_le_noyau_d_argent_reste (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/ventes/tests/test_selectors_surface.py::SurfaceSelectorsVentes.test_vnt23_etat_vente_re_exporte_jamais_redefini (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/visites/tests/test_acal_calage_valideur_commun.py::CalageVisiteValideurCommunTest.test_le_validateur_n_est_plus_recopie_dans_visites (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/visites/tests/test_vta2_visites_split.py::TablesEtEtatTests.test_fk_lead_est_une_reference_string (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/visites/tests/test_vta5_evenement_visite_validee.py::PlusAucunEcritDirectTests.test_les_deux_notifications_pointent_la_nouvelle_route (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/apps/visites/tests/test_vta5_evenement_visite_validee.py::PlusAucunEcritDirectTests.test_services_visites_n_ecrit_plus_sur_le_lead (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_adep_env_example.py::EnvExempleTests.test_chaque_variable_minio_est_lue (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_agr112_besoin_fao.py::NatureEtSourceEt0.test_le_reexport_ventes_pointe_sur_le_noyau (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_aud413_edition_miroir_v1.py::LeGatingDEditionPasseParLeMemePointDEntree.test_la_licence_est_composee_dans_le_point_d_entree_unique (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_calepinage_poseur.py::LePoseurNeCompteRien.test_poseur_n_importe_pas_moteur (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_calepinage_villa.py::AppsWebResteIntact.test_aucun_import_du_cerveau_typescript (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_ciq113_contenance_declaree.py::ContenanceTests.test_aucune_constante_surfacique (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_events_split_golden.py::EventsSplitGoldenTests.test_socle_reste_dans_init_et_couverture_complete (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_nombre_lettres.py::FondationPureTests.test_aucun_import_django_ni_app (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_nombre_lettres_administratif.py::FondationResteePureTests.test_aucun_import_django_ni_app (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_nplusone_dev_only.py::NplusoneDevOnlyTests.test_base_settings_never_reference_nplusone (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_nplusone_dev_only.py::NplusoneDevOnlyTests.test_prod_settings_never_reference_nplusone (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_parquer_app.py::ParquerAppTests.test_coquille_complete (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_parquer_app.py::ParquerAppTests.test_dry_run_n_ecrit_rien (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_parquer_app.py::TalonModelsPyTests.test_echec_a_froid_remet_tout_en_etat (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_pompage_purete.py::ImportsDuPaquet.test_ajouter_import_django_rend_le_verrou_rouge (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_startapp_erp.py::StartAppErpTest.test_generation_dans_tmp_produit_fichiers_valides (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_source_regex_allow.txt : backend/django_core/core/tests/test_wir138_esign_socle.py::WIR138SocleParqueTests.test_socle_reste_une_fondation_sans_import_metier (n'est plus signalée — relancez --write-baseline)
+
+  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) SEULEMENT si le patron est reellement incontournable (module non pur sous node --test) - sinon ecrire un vrai test qui EXECUTE le code. Toute entree NOUVELLE doit citer une date AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.
+test_allowlist_a_une_raison_non_vide_par_entree (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_a_une_raison_non_vide_par_entree) ... ok
+test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille) ... ok
+test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir) ... FAIL
+test_code_de_permission_hors_registre_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_code_de_permission_hors_registre_rougit) ... ok
+test_entree_de_base_disparue_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_de_base_disparue_rougit) ... ok
+test_entree_offgrid_est_desormais_datee_et_attribuee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_offgrid_est_desormais_datee_et_attribuee) ... ok
+test_fichier_hors_famille_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_hors_famille_ignore_meme_avec_le_patron) ... ok
+test_fichier_non_test_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_non_test_ignore_meme_avec_le_patron) ... ok
+test_le_depot_reel_est_propre (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_le_depot_reel_est_propre) ... ok
+test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source) ... ok
+test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert) ... <unknown>:122: DeprecationWarning: invalid escape sequence '\u'
+FAIL
+test_meme_fichier_dans_lallowlist_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_meme_fichier_dans_lallowlist_ne_rougit_pas) ... ok
+test_nouveau_fichier_de_la_famille_hors_allowlist_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouveau_fichier_de_la_famille_hors_allowlist_rougit) ... ok
+test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas) ... ok
+test_nouvelle_entree_allowlist_sans_raison_datee_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_sans_raison_datee_rougit) ... ok
+test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas) ... ok
+test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas) ... ok
+test_socle_actuel_reste_gele_aucune_retro_datation_exigee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_socle_actuel_reste_gele_aucune_retro_datation_exigee) ... ok
+test_tout_test_qui_lit_le_source_hors_base_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_tout_test_qui_lit_le_source_hors_base_rougit) ... FAIL
+
+======================================================================
+FAIL: test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_source_regex.py", line 229, in test_base_amorcee_sort_zero_et_ne_peut_que_retrecir
+    self.assertEqual(code, 0, sortie)
+AssertionError: 1 != 0 : [check_tests_source_regex] ECHEC - nouveau test 'regex sur code source' hors allowlist :
+  - entrée MORTE de source_allow.txt : backend/django_core/apps/ventes/tests/test_x.py::XTests.test_y (n'est plus signalée — relancez --write-baseline)
+
+  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) SEULEMENT si le patron est reellement incontournable (module non pur sous node --test) - sinon ecrire un vrai test qui EXECUTE le code. Toute entree NOUVELLE doit citer une date AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.
+
+
+======================================================================
+FAIL: test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_source_regex.py", line 161, in test_main_sur_le_vrai_depot_est_vert
+    self.assertEqual(guard.main(), 0)
+AssertionError: 1 != 0
+
+======================================================================
+FAIL: test_tout_test_qui_lit_le_source_hors_base_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_tout_test_qui_lit_le_source_hors_base_rougit)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_source_regex.py", line 212, in test_tout_test_qui_lit_le_source_hors_base_rougit
+    self.assertIn(f"{cle} - NOUVEAU test qui lit un source", sortie)
+AssertionError: 'backend/django_core/apps/ventes/tests/test_x.py::XTests.test_y - NOUVEAU test qui lit un source' not found in "[check_tests_source_regex] ECHEC - nouveau test 'regex sur code source' hors allowlist :\n  - frontend/src/pages/ventes/FactureListNouveau.test.mjs - NOUVEAU test qui lit un source de production et l'asserte par motif (ATST53) : executez le code au lieu de lire son texte\n  - backend/django_core/apps/ventes/tests/test_x.py::XTests.test_z::tickets_gerer - code de permission absent du registre (ATST53) : un role invente prouve un refus qui vient d'ailleurs ; jouez un role livre\n\n  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) SEULEMENT si le patron est reellement incontournable (module non pur sous node --test) - sinon ecrire un vrai test qui EXECUTE le code. Toute entree NOUVELLE doit citer une date AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.\n"
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.940s
+
+FAILED (failures=3)
+
+
+==> OK : mutant « scan_backend rend [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir); test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert); test_tout_test_qui_lit_le_source_hors_base_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_tout_test_qui_lit_le_source_hors_base_rougit)
+
+--- mutant « tout code admis » : scripts/check_tests_source_regex.py
+    - 'if code not in codes and not RE_CODE_DYNAMIQUE.match(code)'
+    + 'if False and code not in codes and not RE_CODE_DYNAMIQUE.match(code)'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_source_regex -v    [copie: depot]  rc=1
+[check_tests_source_regex] ECHEC - nouveau test 'regex sur code source' hors allowlist :
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_critical_rule_blocks_role_assignment::facture.saisir (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_critical_rule_blocks_role_assignment::paiement.valider (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_no_violation_when_only_one_permission::facture.saisir (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_report_scoped_to_company::a (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_report_scoped_to_company::b (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violation_detected::facture.saisir (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violation_detected::paiement.valider (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violations_endpoint::facture.saisir (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_violations_endpoint::paiement.valider (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_warning_rule_does_not_block::achat.commander (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/accessreview/tests/test_sod.py::SodTests.test_warning_rule_does_not_block::achat.receptionner (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/apps/uxviews/tests.py::UxParametresApiTests.test_roles_autorises_restreint_qui_pose_le_defaut::crm_gerer (n'est plus signalée — relancez --write-baseline)
+  - entrée MORTE de tests_permissions_hors_registre_allow.txt : backend/django_core/core/tests/test_aud801_gated_fields.py::Aud801GatedFieldsTests.setUpTestData::tickets_gerer (n'est plus signalée — relancez --write-baseline)
+
+  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) SEULEMENT si le patron est reellement incontournable (module non pur sous node --test) - sinon ecrire un vrai test qui EXECUTE le code. Toute entree NOUVELLE doit citer une date AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.
+test_allowlist_a_une_raison_non_vide_par_entree (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_a_une_raison_non_vide_par_entree) ... ok
+test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_allowlist_pointe_vers_des_fichiers_reels_de_la_famille) ... ok
+test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir) ... FAIL
+test_code_de_permission_hors_registre_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_code_de_permission_hors_registre_rougit) ... FAIL
+test_entree_de_base_disparue_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_de_base_disparue_rougit) ... ok
+test_entree_offgrid_est_desormais_datee_et_attribuee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_entree_offgrid_est_desormais_datee_et_attribuee) ... ok
+test_fichier_hors_famille_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_hors_famille_ignore_meme_avec_le_patron) ... ok
+test_fichier_non_test_ignore_meme_avec_le_patron (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_fichier_non_test_ignore_meme_avec_le_patron) ... ok
+test_le_depot_reel_est_propre (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_le_depot_reel_est_propre) ... ok
+test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source) ... ok
+test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert) ... <unknown>:122: DeprecationWarning: invalid escape sequence '\u'
+FAIL
+test_meme_fichier_dans_lallowlist_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_meme_fichier_dans_lallowlist_ne_rougit_pas) ... ok
+test_nouveau_fichier_de_la_famille_hors_allowlist_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouveau_fichier_de_la_famille_hors_allowlist_rougit) ... ok
+test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas) ... ok
+test_nouvelle_entree_allowlist_sans_raison_datee_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_allowlist_sans_raison_datee_rougit) ... ok
+test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas) ... ok
+test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_readfilesync_dun_fixture_json_sans_regex_ne_rougit_pas) ... ok
+test_socle_actuel_reste_gele_aucune_retro_datation_exigee (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_socle_actuel_reste_gele_aucune_retro_datation_exigee) ... ok
+test_tout_test_qui_lit_le_source_hors_base_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_tout_test_qui_lit_le_source_hors_base_rougit) ... ok
+
+======================================================================
+FAIL: test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_source_regex.py", line 229, in test_base_amorcee_sort_zero_et_ne_peut_que_retrecir
+    self.assertEqual(code, 0, sortie)
+AssertionError: 1 != 0 : [check_tests_source_regex] ECHEC - nouveau test 'regex sur code source' hors allowlist :
+  - entrée MORTE de codes_allow.txt : backend/django_core/apps/ventes/tests/test_x.py::XTests.test_z::tickets_gerer (n'est plus signalée — relancez --write-baseline)
+
+  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) SEULEMENT si le patron est reellement incontournable (module non pur sous node --test) - sinon ecrire un vrai test qui EXECUTE le code. Toute entree NOUVELLE doit citer une date AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.
+
+
+======================================================================
+FAIL: test_code_de_permission_hors_registre_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_code_de_permission_hors_registre_rougit)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_source_regex.py", line 217, in test_code_de_permission_hors_registre_rougit
+    self.assertIn(f"{self.CLES[2]} - code de permission absent du registre", sortie)
+AssertionError: 'backend/django_core/apps/ventes/tests/test_x.py::XTests.test_z::tickets_gerer - code de permission absent du registre' not found in "[check_tests_source_regex] ECHEC - nouveau test 'regex sur code source' hors allowlist :\n  - backend/django_core/apps/ventes/tests/test_x.py::XTests.test_y - NOUVEAU test qui lit un source de production et l'asserte par motif (ATST53) : executez le code au lieu de lire son texte\n  - frontend/src/pages/ventes/FactureListNouveau.test.mjs - NOUVEAU test qui lit un source de production et l'asserte par motif (ATST53) : executez le code au lieu de lire son texte\n\n  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) SEULEMENT si le patron est reellement incontournable (module non pur sous node --test) - sinon ecrire un vrai test qui EXECUTE le code. Toute entree NOUVELLE doit citer une date AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.\n"
+
+======================================================================
+FAIL: test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_source_regex.py", line 161, in test_main_sur_le_vrai_depot_est_vert
+    self.assertEqual(guard.main(), 0)
+AssertionError: 1 != 0
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.906s
+
+FAILED (failures=3)
+
+
+==> OK : mutant « tout code admis » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_base_amorcee_sort_zero_et_ne_peut_que_retrecir (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_base_amorcee_sort_zero_et_ne_peut_que_retrecir); test_code_de_permission_hors_registre_rougit (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_code_de_permission_hors_registre_rougit); test_main_sur_le_vrai_depot_est_vert (scripts.tests.test_check_tests_source_regex.CheckTestsSourceRegexTests.test_main_sur_le_vrai_depot_est_vert)

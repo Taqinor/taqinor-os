@@ -1,0 +1,34 @@
+{
+  "sha": "3312f8f8ee41c4727353787660ff1b3ccf4c8d8b",
+  "date": "2026-11-13",
+  "groupe": "ASTK",
+  "verdict": "PASS",
+  "couvre": [
+    "ASTK264"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.acompte_revision_acceptee_pose",
+      "taches": [
+        "ASTK264"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASTK-P.acompte_revision_acceptee_pose.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

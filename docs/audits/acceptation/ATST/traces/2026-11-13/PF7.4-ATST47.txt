@@ -1,0 +1,164 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_unique_scoping -v    [checkout: taqinor-os]  rc=0
+test_cle_autorisee_passe (scripts.tests.test_check_unique_scoping.MainTests.test_cle_autorisee_passe) ... ok
+test_depot_reel_vert (scripts.tests.test_check_unique_scoping.MainTests.test_depot_reel_vert) ... ok
+test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un) ... ok
+test_unique_scope_passe (scripts.tests.test_check_unique_scoping.MainTests.test_unique_scope_passe) ... ok
+test_authentication_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_authentication_models_file_opened) ... ok
+test_core_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_core_models_file_opened) ... ok
+test_models_split_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_models_split_file_opened) ... ok
+test_bare_business_unique_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_bare_business_unique_flagged) ... ok
+test_company_scoped_unique_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_company_scoped_unique_ok) ... ok
+test_global_token_names_exempt (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_global_token_names_exempt) ... ok
+test_modele_deplace_garde_sa_cle_models_py (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_modele_deplace_garde_sa_cle_models_py)
+Scission SPL : la clé gelée ``<app>/models.py::M.f`` couvre le ... ok
+test_softdelete_unique_with_condition_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_with_condition_ok) ... ok
+test_softdelete_unique_without_condition_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_without_condition_flagged) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.286s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_unique_scoping sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_unique_scoping.py    [checkout: taqinor-os]  rc=0
+check_unique_scoping: OK — every business unique is company-scoped or allowlisted.
+
+
+==> OK : garde scripts/check_unique_scoping.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_unique_scoping -v    [copie: depot]  rc=0
+test_cle_autorisee_passe (scripts.tests.test_check_unique_scoping.MainTests.test_cle_autorisee_passe) ... ok
+test_depot_reel_vert (scripts.tests.test_check_unique_scoping.MainTests.test_depot_reel_vert) ... ok
+test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un) ... ok
+test_unique_scope_passe (scripts.tests.test_check_unique_scoping.MainTests.test_unique_scope_passe) ... ok
+test_authentication_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_authentication_models_file_opened) ... ok
+test_core_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_core_models_file_opened) ... ok
+test_models_split_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_models_split_file_opened) ... ok
+test_bare_business_unique_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_bare_business_unique_flagged) ... ok
+test_company_scoped_unique_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_company_scoped_unique_ok) ... ok
+test_global_token_names_exempt (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_global_token_names_exempt) ... ok
+test_modele_deplace_garde_sa_cle_models_py (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_modele_deplace_garde_sa_cle_models_py)
+Scission SPL : la clé gelée ``<app>/models.py::M.f`` couvre le ... ok
+test_softdelete_unique_with_condition_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_with_condition_ok) ... ok
+test_softdelete_unique_without_condition_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_without_condition_flagged) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.288s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « if offenders → if False » : scripts/check_unique_scoping.py
+    - '    if offenders:'
+    + '    if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_unique_scoping -v    [copie: depot]  rc=1
+test_cle_autorisee_passe (scripts.tests.test_check_unique_scoping.MainTests.test_cle_autorisee_passe) ... ok
+test_depot_reel_vert (scripts.tests.test_check_unique_scoping.MainTests.test_depot_reel_vert) ... ok
+test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un) ... FAIL
+test_unique_scope_passe (scripts.tests.test_check_unique_scoping.MainTests.test_unique_scope_passe) ... ok
+test_authentication_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_authentication_models_file_opened) ... ok
+test_core_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_core_models_file_opened) ... ok
+test_models_split_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_models_split_file_opened) ... ok
+test_bare_business_unique_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_bare_business_unique_flagged) ... ok
+test_company_scoped_unique_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_company_scoped_unique_ok) ... ok
+test_global_token_names_exempt (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_global_token_names_exempt) ... ok
+test_modele_deplace_garde_sa_cle_models_py (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_modele_deplace_garde_sa_cle_models_py)
+Scission SPL : la clé gelée ``<app>/models.py::M.f`` couvre le ... ok
+test_softdelete_unique_with_condition_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_with_condition_ok) ... ok
+test_softdelete_unique_without_condition_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_without_condition_flagged) ... ok
+
+======================================================================
+FAIL: test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_unique_scoping.py", line 191, in test_unique_non_scope_fait_sortir_un
+    self.assertEqual(rc, 1, sortie)
+AssertionError: 0 != 1 : check_unique_scoping: OK — every business unique is company-scoped or allowlisted.
+
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.292s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un)
+
+--- mutant « for path in [] » : scripts/check_unique_scoping.py
+    - '    for path in _iter_models_files():'
+    + '    for path in []:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_unique_scoping -v    [copie: depot]  rc=1
+test_cle_autorisee_passe (scripts.tests.test_check_unique_scoping.MainTests.test_cle_autorisee_passe) ... ok
+test_depot_reel_vert (scripts.tests.test_check_unique_scoping.MainTests.test_depot_reel_vert) ... ok
+test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un) ... FAIL
+test_unique_scope_passe (scripts.tests.test_check_unique_scoping.MainTests.test_unique_scope_passe) ... ok
+test_authentication_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_authentication_models_file_opened) ... ok
+test_core_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_core_models_file_opened) ... ok
+test_models_split_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_models_split_file_opened) ... ok
+test_bare_business_unique_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_bare_business_unique_flagged) ... ok
+test_company_scoped_unique_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_company_scoped_unique_ok) ... ok
+test_global_token_names_exempt (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_global_token_names_exempt) ... ok
+test_modele_deplace_garde_sa_cle_models_py (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_modele_deplace_garde_sa_cle_models_py)
+Scission SPL : la clé gelée ``<app>/models.py::M.f`` couvre le ... ok
+test_softdelete_unique_with_condition_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_with_condition_ok) ... ok
+test_softdelete_unique_without_condition_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_without_condition_flagged) ... ok
+
+======================================================================
+FAIL: test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_unique_scoping.py", line 191, in test_unique_non_scope_fait_sortir_un
+    self.assertEqual(rc, 1, sortie)
+AssertionError: 0 != 1 : check_unique_scoping: OK — every business unique is company-scoped or allowlisted.
+
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.007s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « for path in [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un)
+
+--- mutant « if True: continue » : scripts/check_unique_scoping.py
+    - '            if _autorise(key, allow):'
+    + '            if True:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_unique_scoping -v    [copie: depot]  rc=1
+test_cle_autorisee_passe (scripts.tests.test_check_unique_scoping.MainTests.test_cle_autorisee_passe) ... ok
+test_depot_reel_vert (scripts.tests.test_check_unique_scoping.MainTests.test_depot_reel_vert) ... ok
+test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un) ... FAIL
+test_unique_scope_passe (scripts.tests.test_check_unique_scoping.MainTests.test_unique_scope_passe) ... ok
+test_authentication_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_authentication_models_file_opened) ... ok
+test_core_models_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_core_models_file_opened) ... ok
+test_models_split_file_opened (scripts.tests.test_check_unique_scoping.TestSurfaceEnumeration.test_models_split_file_opened) ... ok
+test_bare_business_unique_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_bare_business_unique_flagged) ... ok
+test_company_scoped_unique_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_company_scoped_unique_ok) ... ok
+test_global_token_names_exempt (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_global_token_names_exempt) ... ok
+test_modele_deplace_garde_sa_cle_models_py (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_modele_deplace_garde_sa_cle_models_py)
+Scission SPL : la clé gelée ``<app>/models.py::M.f`` couvre le ... ok
+test_softdelete_unique_with_condition_ok (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_with_condition_ok) ... ok
+test_softdelete_unique_without_condition_flagged (scripts.tests.test_check_unique_scoping.TestUniqueScoping.test_softdelete_unique_without_condition_flagged) ... ok
+
+======================================================================
+FAIL: test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_unique_scoping.py", line 191, in test_unique_non_scope_fait_sortir_un
+    self.assertEqual(rc, 1, sortie)
+AssertionError: 0 != 1 : check_unique_scoping: OK — every business unique is company-scoped or allowlisted.
+
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.283s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « if True: continue » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_unique_non_scope_fait_sortir_un (scripts.tests.test_check_unique_scoping.MainTests.test_unique_non_scope_fait_sortir_un)
