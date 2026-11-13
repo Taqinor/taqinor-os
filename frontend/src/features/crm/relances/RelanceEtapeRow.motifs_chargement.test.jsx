@@ -60,3 +60,23 @@ describe('RelanceEtapeRow — motifs de perte en cours de lecture', () => {
     expect(await screen.findByTestId('motif-perte-aucun')).toBeInTheDocument()
   })
 })
+
+describe('RelanceEtapeRow — AERR122 lecture des motifs rejetée', () => {
+  it('lecture rejetée : pas « Aucun motif », Réessayer relit', async () => {
+    await ouvrirPerdu()
+    expect(crmApi.getMotifsPerte).toHaveBeenCalledTimes(1)
+    // Le 1er appel (en attente) échoue.
+    resoudreMotifs(Promise.reject(new Error('délai')))
+    expect(await screen.findByTestId('motif-perte-illisibles')).toHaveTextContent('Motifs illisibles')
+    expect(screen.queryByTestId('motif-perte-aucun')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(crmApi.getMotifsPerte).toHaveBeenCalledTimes(2))
+    resoudreMotifs({ data: { results: [
+      { id: 1, nom: 'Prix', archived: false }, { id: 2, nom: 'Délai', archived: false },
+      { id: 3, nom: 'Concurrent', archived: false },
+    ] } })
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Prix' })).toBeInTheDocument())
+    expect(screen.getAllByRole('option')).toHaveLength(4)
+    expect(screen.queryByTestId('motif-perte-illisibles')).not.toBeInTheDocument()
+  })
+})
