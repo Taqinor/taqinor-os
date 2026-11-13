@@ -109,3 +109,41 @@ class YSERV5GenerationAutoTest(TestCase):
         self.assertIsNotNone(self.contrat.derniere_visite)
         contrat_lointain.refresh_from_db()
         self.assertIsNone(contrat_lointain.derniere_visite)
+
+    def test_erreur_apres_creation_ne_laisse_pas_de_ticket_double(self):
+        # ACEL47 — ticket + avance du contrat dans UNE transaction : une erreur
+        # après la création du ticket ne laisse aucun ticket orphelin.
+        from unittest import mock
+
+        from apps.sav import services as sav_services
+
+        vrai = sav_services.poser_sla_due_at
+        appels = {'n': 0}
+
+        def poser_puis_lever(ticket):
+            appels['n'] += 1
+            if appels['n'] == 1:
+                raise RuntimeError('panne simulée')
+            return vrai(ticket)
+
+        preventifs = Ticket.objects.filter(
+            company=self.company, type=Ticket.Type.PREVENTIF)
+        with mock.patch.object(
+                sav_services, 'poser_sla_due_at', side_effect=poser_puis_lever):
+            with self.assertRaises(RuntimeError):
+                generer_visites_dues(self.company, self.admin, avance_jours=10)
+            self.assertEqual(preventifs.count(), 0)
+            self.contrat.refresh_from_db()
+            self.assertIsNone(self.contrat.derniere_visite)
+            echeance = self.contrat.prochaine_visite()
+
+            generer_visites_dues(self.company, self.admin, avance_jours=10)
+            self.assertEqual(preventifs.count(), 1)
+            ticket = preventifs.get()
+            self.assertEqual(ticket.statut, Ticket.Statut.NOUVEAU)
+            self.assertEqual(ticket.date_ouverture, echeance)
+            self.contrat.refresh_from_db()
+            self.assertEqual(self.contrat.derniere_visite, echeance)
+
+            generer_visites_dues(self.company, self.admin, avance_jours=10)
+            self.assertEqual(preventifs.count(), 1)
