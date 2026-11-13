@@ -379,6 +379,191 @@ def bloc_installation(d, L, fmt, couleurs):
             f'font-size:7.8pt;">{lignes}</table></div>')
 
 
+def _montants_ligne(d, it):
+    """``(P.U. HT, total HT)`` d'une ligne — LE helper unique
+    ``montants.lignes_remisees`` (remise de ligne et globale), comme le
+    tableau de l'offre seule ; aucun recalcul propre."""
+    from ..montants import lignes_remisees
+    (_it, _pu_cat, pu_ht, _tot_cat, total, _remisee) = lignes_remisees(
+        [it], catalogue_seul=bool(d.get("regles_calcul_origine")))[0]
+    return pu_ht, total
+
+
+def _sous_lignes_deux(it_s, it_a, muted):
+    """Le détail d'une ligne regroupée présente dans les deux options : une
+    sous-ligne par composant, sa quantité « sans · avec » quand elle
+    diffère (« 1 · 2 × Coffret DC »), absente d'une option ⇒ « — »."""
+    def table(it):
+        return {(sl.get("designation") or ""): sl for sl in (it.get("sous_lignes") or [])
+                if isinstance(sl, dict)}
+    s, a = table(it_s), table(it_a)
+    if not s and not a:
+        return ""
+    noms = list(s) + [n for n in a if n not in s]
+
+    def q(sl):
+        return f"{_num(sl.get('quantite')):g}" if sl else "—"
+    sortie = ""
+    for nom in noms:
+        qs, qa = q(s.get(nom)), q(a.get(nom))
+        qte = qs if qs == qa else f"{qs}&#160;·&#160;<b>{qa}</b>"
+        sortie += (f'<div class="ci-sl" style="font-size:6.5pt;color:{muted};'
+                   f'font-weight:400;padding-left:6px;line-height:1.25;">'
+                   f'{qte}&#160;×&#160;{nom}</div>')
+    return sortie
+
+
+def _rangees_totaux(L, tot, fmt_mad, ancrer):
+    """La chaîne Sous-total HT → Remise → Arrondi → Total HT → TVA → Total
+    TTC d'UNE option, valeurs du builder (``totaux_all`` / ``totaux`` de
+    l'option), aucun recalcul ; ``ancrer`` : ancres ``data-figure`` (offre
+    servie seulement)."""
+    def a(cle, texte):
+        return ancre(cle, texte) if ancrer else ""
+    ht_brut, remise = _num(tot.get("ht_brut")), _num(tot.get("remise"))
+    arrondi, ht_net = _num(tot.get("arrondi")), _num(tot.get("ht_net"))
+    tva, ttc = _num(tot.get("tva")), _num(tot.get("ttc"))
+    rangees = ""
+    if ht_brut:
+        f = fmt_mad(ht_brut)
+        rangees += (f'<tr><td>{L("sous_total_ht", "Sous-total HT")}{a("sous_total_ht", f)}'
+                    f'</td><td>{f} MAD</td></tr>')
+    if remise > 0:
+        f = fmt_mad(remise)
+        rangees += (f'<tr><td>{L("remise", "Remise")}{a("remise", f)}</td>'
+                    f'<td class="c2-tr">- {f} MAD</td></tr>')
+    if arrondi:
+        f = fmt_mad(abs(arrondi))
+        rangees += (f'<tr><td>{L("arrondi", "Arrondi commercial")}{a("arrondi", f)}</td>'
+                    f'<td class="c2-tr">{"- " if arrondi > 0 else "+ "}{f} MAD</td></tr>')
+    for cle, fr, valeur in (("total_ht", "Total HT", ht_net), ("tva", "TVA", tva)):
+        f = fmt_mad(valeur)
+        rangees += f'<tr><td>{L(cle, fr)}{a(cle, f)}</td><td>{f} MAD</td></tr>'
+    f = fmt_mad(ttc)
+    rangees += (f'<tr class="c2-tot-ttc"><td>{L("total_ttc", "Total TTC")}{a("total_ttc", f)}'
+                f'</td><td>{f} MAD</td></tr>')
+    return rangees
+
+
+def tableau_deux_options(d, L, fmt_mad, couleurs, items_sans):
+    """Lead nada (13/11/2026, Reda) — un devis C&I à DEUX options imprime sa
+    page 2 comme le résidentiel : UN tableau « Équipement des deux options »
+    (une ligne présente dans les deux options porte ses deux valeurs,
+    « sans · avec »), puis « Spécifique à l'option » côte à côte, puis les
+    deux chaînes de totaux côte à côte. Tout est LU : lignes et totaux du
+    builder (``all_items`` / ``option_batterie``), montants par
+    ``lignes_remisees`` ; aucun chiffre calculé. ``None`` hors deux options
+    (l'offre seule garde sa page d'avant)."""
+    from ..ci.blocs import langue, textes_non_rentable
+    from ..ci.mentions import valeur_option_avec
+    bloc = d.get("option_batterie")
+    tot_a = (bloc or {}).get("totaux") if isinstance(bloc, dict) else None
+    if not isinstance(tot_a, dict) or _num(tot_a.get("ttc")) <= 0:
+        return None
+    navy, gold, muted, line_soft, wash = couleurs
+    items_avec = [it for it in lignes_client(bloc.get("lignes") or [], d)
+                  if isinstance(it, dict) and _num(it.get("quantite")) > 0]
+    avec_par_nom = {}
+    for it in items_avec:
+        avec_par_nom.setdefault(it.get("designation") or "", it)
+    noms_sans = {it.get("designation") or "" for it in items_sans}
+
+    def deux(vs, va, gras=True):
+        if vs == va:
+            return f"<b>{va}</b>" if gras else va
+        return (f'<span style="color:{muted};font-weight:400;">{vs}</span>'
+                f'&#160;&#160;<b>{va}</b>')
+
+    rows = ""
+    for it in items_sans:
+        nom = it.get("designation") or ""
+        it_a = avec_par_nom.get(nom)
+        if it_a is None:
+            continue
+        pu_s, tot_s = _montants_ligne(d, it)
+        pu_a, tot_a_l = _montants_ligne(d, it_a)
+        marque = (it.get("marque") or "").strip()
+        m = f'<span class="c2-mq">{marque}</span>' if marque else ""
+        q_s = f"{_num(it.get('quantite')):g}"
+        q_a = f"{_num(it_a.get('quantite')):g}"
+        rows += (
+            f'<tr><td class="c2-d">{nom}{m}{_sous_lignes_deux(it, it_a, muted)}</td>'
+            f'<td class="c2-q">{deux(q_s, q_a)}</td>'
+            f'<td class="c2-p">{deux(fmt_mad(pu_s), fmt_mad(pu_a), gras=False)}</td>'
+            f'<td class="c2-v">{_num(it.get("taux_tva")):g} %</td>'
+            f'<td class="c2-t">{deux(fmt_mad(tot_s), fmt_mad(tot_a_l))}</td></tr>')
+
+    def specifiques(items):
+        sortie = ""
+        for it in items:
+            _pu, total = _montants_ligne(d, it)
+            q = _num(it.get("quantite"))
+            prefixe_q = f"{q:g}&#215; " if q != 1 else ""
+            sortie += (f'<tr><td class="c2-d">{prefixe_q}'
+                       f'{it.get("designation") or ""}'
+                       f'{sous_lignes_html(it, 6.5, muted)}</td>'
+                       f'<td class="c2-t">{fmt_mad(total)}&#160;{L("ci_ht", "HT")}</td></tr>')
+        return sortie
+
+    spec_s = specifiques([it for it in items_sans
+                          if (it.get("designation") or "") not in avec_par_nom])
+    spec_a = specifiques([it for it in items_avec
+                          if (it.get("designation") or "") not in noms_sans])
+    lg = langue(d)
+    valeur = valeur_option_avec(d) or {}
+    badge, ligne_nr = textes_non_rentable(valeur, lg)
+    nom_s = L("ci_opt_sans_batterie", "Sans batterie")
+    nom_a = L("ci_opt_avec_batterie", "Avec batterie")
+    opt = L("ci_opt_option", "Option")
+    note_nr = (f'<div style="font-size:7pt;color:{muted};padding:4px 10px 6px;">'
+               f'{ligne_nr}</div>') if ligne_nr else ""
+    titre_a = nom_a + (f' &mdash; <span style="font-weight:400;">{badge}</span>'
+                       if badge else "")
+
+    def carte(couleur, texte_titre, corps, pied=""):
+        return (f'<td class="c2-dx-c"><div class="c2-dx-box">'
+                f'<div class="c2-dx-h" style="background:{couleur};">{texte_titre}</div>'
+                f'<table class="c2-tbl" style="margin-top:0;">{corps}</table>{pied}</div></td>')
+
+    specifique = L("ci_specifique_option", "Spécifique à l'option")
+    cartes_spec = ""
+    if spec_s or spec_a:
+        cartes_spec = (
+            '<table class="c2-dx"><tr>'
+            + carte(navy, f"{specifique} 1 &mdash; {nom_s}", spec_s)
+            + '<td class="c2-dx-gap"></td>'
+            + carte(gold, f"{specifique} 2 &mdash; {titre_a}", spec_a, note_nr)
+            + '</tr></table>')
+    totaux = (
+        '<table class="c2-dx"><tr>'
+        f'<td class="c2-dx-c"><div class="c2-dx-k" style="border-top:3px solid {navy};">'
+        f'{opt} 1 &mdash; {nom_s}</div><table class="c2-tot-tbl">'
+        + _rangees_totaux(L, d.get("totaux_all") or {}, fmt_mad, True)
+        + '</table></td><td class="c2-dx-gap"></td>'
+        f'<td class="c2-dx-c"><div class="c2-dx-k" style="border-top:3px solid {gold};">'
+        f'{opt} 2 &mdash; {titre_a}</div><table class="c2-tot-tbl">'
+        + _rangees_totaux(L, tot_a, fmt_mad, False)
+        + '</table></td></tr></table>')
+    entete = (
+        f'<table class="c2-tbl"><tr><th>{L("designation", "Désignation")}</th>'
+        f'<th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th>'
+        f'<th class="c2-rr">{L("ci_tva_pct", "TVA %")}</th>'
+        f'<th class="c2-rr">{L("total_ht", "Total HT")}</th></tr>')
+    kicker = (f'<div class="c2-dx-t"><span class="c2-kicker">'
+              f'{L("ci_equipement_deux_options", "Équipement des deux options")}</span>'
+              f'<span class="c2-dx-l">{L("ci_deux_valeurs", "deux valeurs : sans · avec batterie")}'
+              f'</span></div>')
+    css = (f'<style>.c2-dx{{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;}}'
+           f'.c2-dx-c{{width:49%;vertical-align:top;}}.c2-dx-gap{{width:2%;}}'
+           f'.c2-dx-box{{border:1px solid {line_soft};border-radius:10px;overflow:hidden;background:#fff;}}'
+           f'.c2-dx-h{{color:#fff;font-weight:700;font-size:8pt;padding:6px 10px;}}'
+           f'.c2-dx-k{{font-weight:700;color:{navy};font-size:8.5pt;padding:6px 8px 2px;background:{wash};}}'
+           f'.c2-dx-t{{margin-top:10px;display:table;width:100%;}}'
+           f'.c2-dx-l{{display:table-cell;text-align:right;font-size:7pt;color:{muted};}}'
+           '.c2-tbl th.c2-rr{white-space:nowrap;}</style>')
+    return css, kicker, entete, rows, cartes_spec, totaux
+
+
 def build(ctx):
     d = ctx["d"]
 
@@ -590,6 +775,27 @@ def build(ctx):
     clauses_html = bloc_clauses_html(
         d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink,
         langue=_langue(d))
+    # Lead nada (13/11/2026, Reda) — deux options : la page du résidentiel
+    # (un tableau « sans · avec », puis spécifiques et totaux côte à côte).
+    duo = tableau_deux_options(d, L, fmt_mad, (navy, gold, muted, line_soft, wash), items)
+    if duo is not None:
+        css_duo, kicker_duo, entete_duo, rows_duo, spec_duo, totaux_duo = duo
+        return f"""{css}{css_duo}{css_densite(d.get("_palier_equip"))}
+<div class="c2-root">
+  <div class="c2-kicker">{L("ci_votre_installation", "Votre installation")}</div>
+  <div class="c2-sec">{L("ci_equipements_investissement", "Équipements &amp; investissement")}</div>
+  {kicker_duo}
+  {entete_duo}
+    {rows_duo}{rangees_hors_total(d, L, navy, muted, wash)}
+  </table>
+  {spec_duo}
+  {totaux_duo}
+  {note_html}{clauses_html}
+  {options_html}{injection_html}
+  {block}
+  {bloc_installation(d, L, fmt, (navy, muted, line_soft, wash))}
+</div>
+"""
     html = f"""{css}{css_densite(d.get("_palier_equip"))}
 <div class="c2-root">
   <div class="c2-kicker">{L("ci_votre_installation", "Votre installation")}</div>
