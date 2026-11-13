@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 
 /* VX31 — boîte de réception SAV : sur grand viewport (≥1280px), `TicketDetail`
@@ -8,13 +8,17 @@ import { Provider } from 'react-redux'
    tablette inchangé. On simule `matchMedia` aux deux points de rupture, comme
    `ResponsiveDialog.test.jsx` (M158) le fait déjà pour le même mécanisme. */
 
-vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock())
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
+  // AERR25 — le PATCH de « Mettre à jour » (thunk updateTicket réel).
+  updateTicket: vi.fn((id, data) => Promise.resolve({ data: { id, ...data } })),
+}))
 
 vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTestKit')).axiosVideMock())
 
 vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import api from '../../api/axios'
+import savApi from '../../api/savApi'
 import { TicketDetail } from './TicketsPage'
 import { makeTicketStore } from './__tests__/ticketDetailTestKit'
 import { mockMatchMedia } from '../../test/matchMedia'
@@ -84,5 +88,34 @@ describe('TicketDetail — VX31 split-view desktop vs Sheet mobile/tablette', ()
     // Tiroir Sheet : rôle dialog rendu via portail Radix ; aucun <aside>.
     expect(document.querySelector('[role="dialog"]')).toBeTruthy()
     expect(document.querySelector('aside')).toBeNull()
+  })
+})
+
+describe('TicketDetail — AERR25 la fiche suit le ticket sélectionné', () => {
+  it('rerender A → B puis Mettre à jour : PATCH de B avec les champs de B', async () => {
+    mockMatchMedia(true)
+    const ticketA = {
+      ...baseTicket, id: 1, reference: 'SAV-1', priorite: 'urgente', description: 'Onduleur HS',
+    }
+    const ticketB = {
+      ...baseTicket, id: 2, reference: 'SAV-2', priorite: 'normale', description: 'Panneau fissuré',
+    }
+    const store = makeTicketStore()
+    const fiche = (t) => (
+      <Provider store={store}>
+        <TicketDetail ticket={t} onClose={() => {}} onSaved={() => {}} />
+      </Provider>
+    )
+    const { rerender } = render(fiche(ticketA))
+    await screen.findByText('SAV-1', { exact: false })
+    rerender(fiche(ticketB))
+    await screen.findByText('SAV-2', { exact: false })
+    expect(document.querySelector('aside').getAttribute('aria-label')).toMatch(/SAV-2/)
+    fireEvent.click(screen.getByRole('button', { name: /Mettre à jour/ }))
+    await waitFor(() => expect(savApi.updateTicket).toHaveBeenCalled())
+    const [id, data] = savApi.updateTicket.mock.calls[0]
+    expect(id).toBe(2)
+    expect(data.priorite).toBe('normale')
+    expect(data.description).toBe('Panneau fissuré')
   })
 })

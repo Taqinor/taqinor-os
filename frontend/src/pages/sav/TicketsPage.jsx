@@ -89,7 +89,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty, isAnyFormDirty,
   DataTable,
   toast,
 } from '../../ui'
@@ -255,7 +255,13 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
-export function TicketDetail({ ticket, onClose, onSaved }) {
+// AERR25 — l'enveloppe remonte la fiche à chaque changement de ticket : son
+// état local (champs, en-tête, actions) ne survit jamais d'un ticket à l'autre.
+export function TicketDetail(props) {
+  return <TicketDetailCorps key={props.ticket.id} {...props} />
+}
+
+function TicketDetailCorps({ ticket, onClose, onSaved }) {
   const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
@@ -1949,6 +1955,12 @@ export default function TicketsPage() {
      J/K DÉPLACENT la sélection dans la liste FILTRÉE et TRIÉE affichée
      (`rows`), donc ce que le clavier parcourt est exactement ce que l'œil voit.
      Effet AVEC dep array (jamais un ré-abonnement à chaque rendu). */
+  // AERR25 — UN seul point de changement de sélection (ligne, kanban,
+  // calendrier, J/K), gardé par la saisie non enregistrée de la fiche.
+  const selectionner = useCallback((row) => {
+    if (row?.id !== detailTicket?.id && !confirmLeaveIfDirty(isAnyFormDirty())) return
+    setSelected(row)
+  }, [detailTicket])
   const deplacerSelection = useCallback((pas) => {
     if (!rows.length) return
     const i = detailTicket ? rows.findIndex((r) => r.id === detailTicket.id) : -1
@@ -1956,8 +1968,8 @@ export default function TicketsPage() {
     const cible = i < 0
       ? (pas > 0 ? 0 : rows.length - 1)
       : Math.min(Math.max(i + pas, 0), rows.length - 1)
-    setSelected(rows[cible])
-  }, [rows, detailTicket])
+    selectionner(rows[cible])
+  }, [rows, detailTicket, selectionner])
 
   // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
   // l'effet-événement en lit toujours la version courante.
@@ -2350,13 +2362,13 @@ export default function TicketsPage() {
                 {TICKET_STATUSES.map((k) => (
                   <KanbanColumn key={k} statut={k}
                                 tickets={rows.filter((r) => r.statut === k)}
-                                onSelect={setSelected} />
+                                onSelect={selectionner} />
                 ))}
               </div>
             ) : view === 'calendrier' ? (
               // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
               // glisser-déposer pour replanifier, création rapide depuis un créneau.
-              <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
+              <TicketCalendarView tickets={rows} onSelect={selectionner} onReload={reload} />
             ) : (
               <DataTable
                 data={rows}
@@ -2364,7 +2376,7 @@ export default function TicketsPage() {
                 getRowId={(row) => row.id}
                 searchable={false}
                 selectable
-                onRowClick={(row) => setSelected(row)}
+                onRowClick={selectionner}
                 exportName="tickets"
                 emptyTitle="Aucun ticket"
                 emptyDescription="Aucun ticket ne correspond à votre recherche."
