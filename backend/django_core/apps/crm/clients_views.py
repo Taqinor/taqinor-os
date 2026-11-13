@@ -1003,7 +1003,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         anonymiser_client(client.company, client, nom=f'Client anonymisé #{client.id}',
                           motif='Anonymisation RGPD (action fiche client)')
         # AMSG4 (C-AMSG-004) — ses leads aussi, même scrub que le DSR (cadence arrêtée).
-        for lead in client.leads.exclude(nom=LEAD_NOM_ANONYMISE):
+        for lead in Lead.all_objects.filter(client=client).exclude(nom=LEAD_NOM_ANONYMISE):  # ASUP62 corbeille
             anonymiser_lead(client.company, lead, motif='Anonymisation RGPD (action fiche client)')
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
