@@ -63,6 +63,11 @@ async function ecrireLayout(request, id, roofLayout) {
 /** Statuts des requêtes MapTiler (clé masquée) : la carte est-elle réellement servie à cette origine ? */
 function suivreCarte(page) {
   const statuts = []
+  // Diagnostic seulement (les oracles restent ceux du harnais) : avertissements et erreurs hors tuiles refusées.
+  page.on('console', (m) => {
+    if (!['warning', 'error'].includes(m.type()) || /status of 403/.test(m.text())) return
+    console.log(`[console ${m.type()}] ${m.text().replace(/(key|access_token|token)=[^&\s]+/g, '$1=…').slice(0, 300)}`)
+  })
   page.on('response', (r) => {
     if (/api\.maptiler\.com|api\.mapbox\.com/.test(r.url())) {
       statuts.push({ url: r.url().replace(/(key|access_token)=[^&]+/g, '$1=…').slice(0, 120), statut: r.status() })
@@ -77,7 +82,14 @@ async function ouvrirAtelier(page, id, statutsCarte, onglet = null) {
   await expect(page.getByRole('alert').filter({ hasText: 'clé MapTiler' }), 'jamais « Carte indisponible »').toHaveCount(0)
   await expect(page.locator('#rp9-map canvas').first(), 'canvas de la carte').toBeVisible({ timeout: 120_000 })
   const bouton = page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ })
-  await expect(bouton, 'scène hydratée').toBeEnabled({ timeout: 240_000 })
+  try {
+    await expect(bouton, 'scène hydratée').toBeEnabled({ timeout: 240_000 })
+  } catch (e) {
+    const statut = await page.locator('#rp9-status').innerText().catch(() => '?')
+    console.log(`[atelier] scène non hydratée ; #rp9-status : « ${statut} » ; requêtes carte : ${statutsCarte.length}, `
+      + `statuts : ${JSON.stringify([...new Set(statutsCarte.map((s) => s.statut))])}`)
+    throw e
+  }
   await expect(page.locator('#rp9-reco-prod'), 'carte Production chiffrée').toHaveText(/\d/, { timeout: 120_000 })
   const servies = statutsCarte.filter((s) => s.statut < 300)
   const refusees = statutsCarte.filter((s) => s.statut >= 400)
