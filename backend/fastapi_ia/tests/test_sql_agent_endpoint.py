@@ -432,9 +432,11 @@ def _appel_outil(nom, args, ident="appel-1"):
 
 
 def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
-          ctx=None):
-    """Un tour du VRAI `_run_agent` (executeur, outils, gardes) : seuls le
-    LLM, Django et Redis sont simules. Rend (sortie, historique ecrit, llm)."""
+          ctx=None, fournisseur="groq", reglages=None):
+    """Un tour du VRAI service (`_query` -> `_run_agent` : executeur, outils,
+    gardes) : seuls le LLM, Django et Redis sont simules. Rend (sortie,
+    historique ecrit, llm). `reglages` : attributs du service a surcharger."""
+    import asyncio
     from sqlalchemy import create_engine, text
     from sqlalchemy.pool import StaticPool
     from app.services import metriques_gouvernees as mg
@@ -453,6 +455,8 @@ def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
         mock.patch.object(svc.SQLAgentService, "_build_llm",
                           staticmethod(lambda provider=None: llm)),
         mock.patch.object(mg, "outil_metrique_gouvernee", lambda c, a: None),
+        mock.patch.multiple(svc, SQL_AGENT_PROVIDER=fournisseur,
+                            SQL_AGENT_FALLBACK_PROVIDER="", **(reglages or {})),
         mock.patch.multiple(_at, fetch_catalogue=lambda c: list(catalogue),
                             _proposal_redis=lambda: _FakeRedis(),
                             ACTION_PROPOSAL_SECRET="sig-secret",
@@ -462,8 +466,8 @@ def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
     with contextlib.ExitStack() as pile:
         for p in patches:
             pile.enter_context(p)
-        sortie = service._run_agent("Prépare ma relance", 7, 1, ctx, None,
-                                    contexte)
+        sortie = asyncio.run(service._query("Prépare ma relance", 1, 7, ctx,
+                                            contexte))
     return sortie, ecrit, llm
 
 
@@ -513,6 +517,29 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertIn("Touche en cours : 412", textes[5])
         self.assertTrue(textes[5].endswith("\n\nPrépare ma relance"))
         self.assertEqual(historique[3]["content"], "r2")
+
+    def test_consignes_du_copilote_dans_le_bloc_en_cache(self):
+        """COP-B3 — catalogue avec une action du lot `copilote` : les consignes
+        entrent dans le bloc systeme mis en cache (claude) ; sinon le prompt
+        d'aujourd'hui, inchange."""
+        from langchain_core.messages import AIMessage
+        from app.services import prompt_copilote
+        from app.services import sql_agent_service as svc
+
+        def systeme(catalogue):
+            _, _, llm = _tour([AIMessage(content="ok")], catalogue=catalogue,
+                              ctx=_ctx(), fournisseur="claude")
+            return next(m for g, m in llm.recus if g == "messages")[0].content
+
+        allume = systeme([dict(_CAT_LEAD_LIST, lot="copilote")])
+        self.assertIsInstance(allume, list)
+        self.assertEqual(allume[0]["cache_control"], {"type": "ephemeral", "ttl": "1h"})
+        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, allume[0]["text"])
+        eteint = systeme([dict(_CAT_LEAD_LIST, lot="herite")])
+        self.assertEqual(eteint, svc._contenu_systeme("claude", False)[0])
+        self.assertNotIn(prompt_copilote.CONSIGNES_COPILOTE, str(eteint))
+        groq, _ = svc._contenu_systeme("groq", True, copilote=True)
+        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, groq)
 
     def test_references_bornees_a_300_caracteres(self):
         from app.services import relais_copilote as relais

@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
 
+from app.services import prompt_copilote
 from app.services.cartes import construire_cartes
 from app.core.config import (
     CHAT_HISTORY_MAX,
@@ -470,14 +471,19 @@ def _manifeste_allege(manifeste: dict | None) -> str:
             + "".join(f"- {i}\n" for i in items if isinstance(i, str)))
 
 
-def _contenu_systeme(provider: str, allow_price: bool) -> tuple[Any, bool]:
+def _contenu_systeme(provider: str, allow_price: bool,
+                     copilote: bool = False) -> tuple[Any, bool]:
     """AIC5 — bloc SYSTEME = _AGENT_PREFIX (+ marge) + politique + manifeste +
     manuel ; sous `claude`, marque `cache_control` ephemere 1 h (>= 512
     tokens). Renvoie (contenu du SystemMessage, manuel_present). Hors claude
     (repli AIC4, ou Groq en fournisseur principal) : bloc ALLEGE sans manuel
-    ni manifeste complet (voir _manifeste_allege), manuel_present=False."""
+    ni manifeste complet (voir _manifeste_allege), manuel_present=False.
+    COP-B3 — copilote allume : ses consignes (texte STABLE) entrent dans le
+    MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
+    if copilote:
+        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.CONSIGNES_COPILOTE + "\n"
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
     texte = base + docs["texte"]
@@ -1444,10 +1450,11 @@ class SQLAgentService:
         self, question: str, company_id: int, user_id: int = 0,
         action_ctx: "ActionContext | None" = None,
         provider: str | None = None,
-        contexte: dict | None = None,
+        contexte: dict | None = None, copilote: bool = False,
     ) -> dict[str, Any]:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread).
-        `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER."""
+        `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER.
+        `copilote` : consignes du copilote dans le prompt systeme (COP-B3)."""
         from langchain_community.utilities import SQLDatabase
         from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
         from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -1564,7 +1571,7 @@ class SQLAgentService:
         # contenir des accolades) ; manifeste + manuel en cache 1 h (claude).
         from langchain_core.messages import SystemMessage
         systeme, manuel_present = _contenu_systeme(
-            (provider or SQL_AGENT_PROVIDER).lower(), allow_price)
+            (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote)
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=systeme),
             MessagesPlaceholder(variable_name="chat_history"),
@@ -1729,11 +1736,16 @@ class SQLAgentService:
         action_ctx: "ActionContext | None",
         contexte: dict | None = None,
     ) -> dict[str, Any]:
+        from app.services import relais_copilote as relais
         try:
+            # COP-B3 — le copilote est allume pour ce compte quand le
+            # catalogue recu de Django porte une action du lot `copilote`.
+            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx)
+            copilote = prompt_copilote.copilote_allume(catalogue)
             try:
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
-                    action_ctx, None, contexte,
+                    action_ctx, None, contexte, copilote,
                 )
                 return {**out, "repli": False,
                         "modele": _modele_effectif(SQL_AGENT_PROVIDER.lower())}
@@ -1746,7 +1758,7 @@ class SQLAgentService:
                                SQL_AGENT_PROVIDER, refus, repli)
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
-                    action_ctx, repli, contexte,
+                    action_ctx, repli, contexte, copilote,
                 )
                 return {**out, "repli": True,
                         "modele": _modele_effectif(repli)}
