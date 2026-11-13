@@ -23,7 +23,7 @@ const DEFAUTS = process.env.AMSG2_DEFAUTS === '1'
 const etape = groupe('AMSG', ['AMSG27', 'AMSG28', 'AMSG29', 'AMSG31', 'AMSG32', 'AMSG56', 'AMSG58',
   'AMSG59', 'AMSG60', 'AMSG61', 'AMSG63', 'AMSG64', ...(DEFAUTS ? ['AMSG57', 'AMSG68'] : [])])
 const etapeDefaut = DEFAUTS ? etape
-  : (id, taches, corps) => test.skip(`${id} — ${taches.join(', ')} (défaut constaté, AMSG2_DEFAUTS=1 pour rejouer)`, corps)
+  : (id, taches) => test.skip(`${id} — ${taches.join(', ')} (défaut constaté, AMSG2_DEFAUTS=1 pour rejouer)`, () => undefined)
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
