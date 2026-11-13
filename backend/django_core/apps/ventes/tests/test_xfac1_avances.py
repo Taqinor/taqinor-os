@@ -77,6 +77,24 @@ class XFAC1AvancesTests(TestCase):
         paiement = Paiement.objects.get(pk=r.data['id'])
         self.assertEqual(paiement.montant_disponible, Decimal('5000'))
 
+    def test_enregistrer_avance_meme_cle_une_avance(self):
+        """ACNC12 (C-ACNC-010) — même clé envoyée deux fois : une seule avance
+        de 2 000, la 2e réponse rend la même ; sans clé : deux avances
+        (inchangé). Mutant : retirer la relecture par clé ⇒ 2 avances."""
+        url = '/api/django/ventes/paiements/enregistrer-avance/'
+        corps = {'client': self.client_obj.id, 'montant': '2000',
+                 'mode': 'virement', 'idempotency_key': 'ACNC12-AV'}
+        r1 = self.api.post(url, corps, format='json')
+        r2 = self.api.post(url, corps, format='json')
+        self.assertEqual((r1.status_code, r2.status_code), (201, 201), r2.data)
+        self.assertEqual(r2.data['id'], r1.data['id'])
+        avances = Paiement.objects.filter(client=self.client_obj, facture__isnull=True)
+        self.assertEqual(avances.count(), 1)
+        sans = {k: v for k, v in corps.items() if k != 'idempotency_key'}
+        self.api.post(url, sans, format='json')
+        self.api.post(url, sans, format='json')
+        self.assertEqual(avances.count(), 3)
+
     def test_enregistrer_avance_requires_positive_montant(self):
         r = self.api.post(
             '/api/django/ventes/paiements/enregistrer-avance/', {

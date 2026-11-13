@@ -986,7 +986,8 @@ def record_payment_from_link(*, link, payload=None):
 # ────────────────────────── factures ───────────────────────────────────────
 
 def enregistrer_avance(*, company, client, montant, date_paiement, mode,
-                       reference='', note='', created_by=None):
+                       reference='', note='', created_by=None,
+                       idempotency_key=None):
     """Enregistre un règlement reçu SANS facture (avance, acompte à la
     commande, trop-perçu). Le paiement reste ``statut_affectation=non_affecte``
     tant qu'il n'a pas été ventilé sur une ou plusieurs factures ouvertes du
@@ -1005,10 +1006,18 @@ def enregistrer_avance(*, company, client, montant, date_paiement, mode,
         raise ValidationError({'montant': 'Le montant doit être positif.'})
     if client is None:
         raise ValidationError({'client': 'Client requis pour une avance.'})
+    # ACNC12 (C-ACNC-010) — rejouable par clé (contrainte
+    # ``uniq_paiement_idempotency_par_societe``) : l'avance déjà enregistrée
+    # est rendue, jamais une 2e.
+    deja = Paiement.objects.filter(
+        company=company, idempotency_key=idempotency_key).first() if idempotency_key else None
+    if deja is not None:
+        return deja
     return enregistrer_paiement(
         porte=False, company=company, client=client, montant=montant, user=created_by,
         statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
-        date_paiement=date_paiement, mode=mode, reference=reference, note=note)
+        date_paiement=date_paiement, mode=mode, reference=reference, note=note,
+        idempotency_key=idempotency_key or None)
 
 
 def crediter_trop_percu_en_avance(facture, avoir, *, user=None):

@@ -335,6 +335,8 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 reference=reference,
                 note=note,
                 created_by=request.user,
+                # ACNC12 — clé d'envoi du corps : un rejeu rend la même avance.
+                idempotency_key=(str(request.data.get('idempotency_key') or '').strip()[:255] or None),
             )
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
