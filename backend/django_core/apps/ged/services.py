@@ -2671,8 +2671,10 @@ def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
 
     candidats = list(corbeille_purgeable(
         company, grace_days=grace_days, now=now))
-    purges = 0
-    proteges = 0
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from apps.reporting.journal_problemes import consigner_echec_tache
+    purges = proteges = echecs = 0
     ids = []
     for document in candidats:
         # Garde légale RE-vérifiée par document (état au moment de la purge).
@@ -2686,6 +2688,13 @@ def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
                 # Filet ultime : course avec une protection posée entre-temps.
                 proteges += 1
                 continue
+            except SoftTimeLimitExceeded:
+                raise
+            except Exception as exc:  # ACEL64 — un document fautif n'arrête plus la purge
+                logger.warning('ged.purge : document #%s non purgé', document.pk, exc_info=True)
+                consigner_echec_tache('ged.purge_corbeille_echue', exc)
+                echecs += 1
+                continue
         purges += 1
         ids.append(document.pk)
     return {
@@ -2694,6 +2703,7 @@ def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
         'eligibles': len(candidats),
         'purges': purges,
         'proteges': proteges,
+        'echecs': echecs,
         'ids': ids,
     }
 
@@ -2714,14 +2724,24 @@ def purger_corbeille_toutes_societes(*, grace_days=None, now=None, apply=False):
     DÉFINITIVEMENT chaque nuit à 02:30."""
     from authentication.selectors import active_companies
 
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from apps.reporting.journal_problemes import consigner_echec_tache
     total = {'dry_run': not apply, 'eligibles': 0, 'purges': 0,
-             'proteges': 0, 'par_societe': []}
+             'proteges': 0, 'echecs': 0, 'par_societe': []}
     for company in active_companies():
-        res = purger_corbeille_echue(
-            company, grace_days=grace_days, now=now, apply=apply)
-        total['eligibles'] += res['eligibles']
-        total['purges'] += res['purges']
-        total['proteges'] += res['proteges']
+        try:
+            res = purger_corbeille_echue(
+                company, grace_days=grace_days, now=now, apply=apply)
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:  # ACEL64 — une société fautive n'arrête plus les suivantes
+            logger.warning('ged.purge : société #%s non balayée', company.pk, exc_info=True)
+            consigner_echec_tache('ged.purge_corbeille_echue', exc)
+            total['echecs'] += 1
+            continue
+        for cle in ('eligibles', 'purges', 'proteges', 'echecs'):
+            total[cle] += res[cle]
         if res['eligibles']:
             total['par_societe'].append(res)
     return total
