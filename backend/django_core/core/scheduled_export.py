@@ -38,6 +38,7 @@ import logging
 import os
 import re
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
@@ -806,6 +807,8 @@ def executer_exports_dus(now=None, *, companies=None):
     for export in exports_dus(now, companies=companies):
         try:
             executer(export, now=now)
+        except SoftTimeLimitExceeded:
+            raise
         except Exception:  # noqa: BLE001 — un extrait ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning('extraits planifiés : extrait %s en échec',
                            getattr(export, 'pk', None), exc_info=True)

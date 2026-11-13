@@ -21,6 +21,7 @@ autres tâches du dépôt (cf. apps/ged/tasks.py)."""
 import logging
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -607,18 +608,24 @@ def purger_donnees_fiabilite_task():
     }
     try:
         resultat['incidents'] = _purger_incidents_resolus_perimes(now)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge IncidentPublic.')
     try:
         resultat['exports_reversibilite'] = (
             _purger_exports_reversibilite_expires(now))
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge '
             'ExportReversibiliteRun.')
     try:
         resultat['uptime_buckets'] = _purger_uptime_buckets_perimes(now)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge UptimeDayBucket.')
@@ -693,6 +700,8 @@ def assurer_alertes_fiabilite_kpi_task():
                     operateur=KpiAlerte.Operateur.SUP_EGAL, seuil=seuil_quota,
                     nom='Quota saturé'):
                 crees += 1
+        except SoftTimeLimitExceeded:
+            raise
         except Exception:  # noqa: BLE001 — best-effort, une société KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.exception(
                 'core.assurer_alertes_fiabilite_kpi: échec société %s.',

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.db import connection
 from django.db.models import Sum
@@ -206,6 +207,8 @@ def snapshot_all(jour=None):
         try:
             snapshot_company(company_id, jour=jour)
             done.append(company_id)
+        except SoftTimeLimitExceeded:
+            raise
         except Exception:  # noqa: BLE001 — une société KO ne bloque pas le reste (D-ENF22-BLE001)
             logger.exception('metering: snapshot KO pour société %s', company_id)
     return done
