@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   getApprovisionnement: vi.fn(),
   creerInterventionsStandard: vi.fn(),
   updateIntervention: vi.fn(),
+  updateInstallation: vi.fn(),
 }))
 
 vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
@@ -34,6 +35,7 @@ vi.mock('../../api/installationsApi', async () => ({
     getApprovisionnement: (...a) => mocks.getApprovisionnement(...a),
     creerInterventionsStandard: (...a) => mocks.creerInterventionsStandard(...a),
     updateIntervention: (...a) => mocks.updateIntervention(...a),
+    updateInstallation: (...a) => mocks.updateInstallation(...a),
   },
 }))
 vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
@@ -41,20 +43,22 @@ vi.mock('../../features/installations/offline/OfflineSyncIndicator', async () =>
 
 // L'onglet Matériel monte le picker d'équipements (permissions) : le harnais
 // partagé n'a pas de tranche `auth`, on la fournit ici.
-const rendre = (installation) => render(
-  <Provider store={configureStore({
-    reducer: {
-      stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
-      auth: (state = { permissions: ['installation_gerer', 'intervention_gerer', 'achats_commander'], role_nom: 'admin' }) => state, // ADRG21
-    },
-  })}>
+const nouveauStore = () => configureStore({
+  reducer: {
+    stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
+    auth: (state = { permissions: ['installation_gerer', 'intervention_gerer', 'achats_commander'], role_nom: 'admin' }) => state, // ADRG21
+  },
+})
+const arbre = (installation, store) => (
+  <Provider store={store}>
     <MemoryRouter initialEntries={['/chantiers']}>
       <ThemeProvider>
         <InstallationDetail installation={installation} onClose={() => {}} onSaved={() => {}} />
       </ThemeProvider>
     </MemoryRouter>
-  </Provider>,
+  </Provider>
 )
+const rendre = (installation) => render(arbre(installation, nouveauStore()))
 
 const CHANTIER = {
   id: 43,
@@ -147,5 +151,25 @@ describe('InstallationDetail — interventions standard', () => {
     const bouton = await screen.findByRole('button', { name: 'Créer les interventions standard' })
     expect(bouton.disabled).toBe(true)
     expect(bouton.getAttribute('title')).toMatch(/déjà des interventions/)
+  })
+})
+
+// AERR91 — la fiche modale suit le chantier reçu (re-rendu sans `key` par les listes).
+describe('InstallationDetail — AERR91 changement de chantier', () => {
+  it('re-rendu avec un autre chantier : la fiche suit et « Mettre à jour » écrit sur lui seul', async () => {
+    const A = { ...CHANTIER, id: 1, reference: 'CH-001', site_ville: 'Casablanca' }
+    const B = { ...CHANTIER, id: 2, reference: 'CH-002', site_ville: 'Rabat' }
+    mocks.updateInstallation.mockImplementation((id, data) => Promise.resolve({ data: { ...B, ...data } }))
+    const store = nouveauStore()
+    const { rerender } = render(arbre(A, store))
+    expect(await screen.findByDisplayValue('Casablanca')).toBeTruthy()
+    rerender(arbre(B, store))
+    expect(await screen.findByDisplayValue('Rabat')).toBeTruthy()
+    expect(screen.queryByDisplayValue('Casablanca')).toBeNull()
+    expect(screen.getAllByText(/CH-002/).length).toBeGreaterThan(0)
+    fireEvent.change(screen.getByDisplayValue('Rabat'), { target: { value: 'Salé' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+    await waitFor(() => expect(mocks.updateInstallation).toHaveBeenCalledTimes(1))
+    expect(mocks.updateInstallation).toHaveBeenCalledWith(2, { site_ville: 'Salé' })
   })
 })
