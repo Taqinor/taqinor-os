@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -433,6 +433,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   // AERR84 — refus serveur par champ (quantité sous « Quantité », le reste dans l'alerte).
   const { errors: refus, setErrors: setRefus, setFromResponse } = useServerFieldErrors()
   const [saving, setSaving] = useState(false)
+  const cleTransfert = useRef(null)  // ACNC22 — clé gardée entre deux clics, neuve après un succès
   // WR4 / FG62 — suggestions de réappro par emplacement (admin).
   const [suggestions, setSuggestions] = useState([])
   const rows = (produits ?? []).filter((p) => !p.is_archived)
@@ -470,15 +471,19 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
     try {
       // AAPV74 (rejeu 08/11) — les Select rendent des chaînes ; le corps du
       // transfert exige des identifiants ENTIERS (garde stricte côté serveur).
+      cleTransfert.current ??= globalThis.crypto?.randomUUID?.() ?? `tr-${Date.now()}-${Math.random()}`
       await stockApi.createTransfert({
         produit: Number(produitId), source: Number(source), destination: Number(destination),
         quantite: parseInt(quantite, 10), note,
-      })
+      }, { idempotencyKey: cleTransfert.current })
+      cleTransfert.current = null
       await loadBreakdown(produitId)
       await loadTransferts()
       setQuantite(''); setNote('')
       onDone?.()
     } catch (err) {
+      // Réponse perdue ou transfert encore en vol : relire le stock (même clé au prochain clic).
+      if (!err?.response || err.response.data?.code === 'idempotency_en_cours') { loadBreakdown(produitId); loadTransferts() }
       setFromResponse(err?.response?.data, { fallback: frenchError(err, 'Le transfert a été refusé.') })
     } finally { setSaving(false) }
   }

@@ -185,3 +185,33 @@ describe('ERR-QAH-STOCK-MOUVEMENT-QUANTITE-DECIMALE-TRONQUEE — quantité déci
     ))
   })
 })
+
+describe('ACNC22 — mouvement rejouable sans doublon (Idempotency-Key)', () => {
+  const thunk = (unwrap) => () => () => ({ unwrap })
+  it('même clé après un échec sans réponse, clé neuve après un succès', async () => {
+    renderPage({ produits: [{ id: 1, nom: 'Panneau', quantite_stock: 10 }] })
+    const saisir = async () => {
+      await userEvent.click(screen.getByRole('button', { name: /Saisir mouvement/ }))
+      await userEvent.click(screen.getAllByRole('combobox')[0])
+      await userEvent.click(await screen.findByRole('option', { name: /Panneau — stock : 10/ }))
+    }
+    createMouvement
+      .mockImplementationOnce(thunk(() => Promise.reject('timeout of 20000ms exceeded')))
+      .mockImplementationOnce(thunk(() => Promise.resolve({})))
+    await saisir()
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer le mouvement/ }))
+    await waitFor(() => expect(createMouvement).toHaveBeenCalledTimes(1))
+    await new Promise((r) => { setTimeout(r, 450) })  // verrou anti double-clic (CAD177)
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer le mouvement/ }))
+    await waitFor(() => expect(createMouvement).toHaveBeenCalledTimes(2))
+    const [premier, second] = createMouvement.mock.calls.map(([p]) => p.idempotencyKey)
+    expect(premier).toBeTruthy()
+    expect(second).toBe(premier)
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Enregistrer le mouvement/ })).toBeNull())
+    await saisir()
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer le mouvement/ }))
+    await waitFor(() => expect(createMouvement).toHaveBeenCalledTimes(3))
+    expect(createMouvement.mock.calls[2][0].idempotencyKey).not.toBe(premier)
+  })
+})
+

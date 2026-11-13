@@ -100,7 +100,10 @@ const stockApi = {
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
-  createMouvement: (data) => api.post('/stock/mouvements/', data),
+  // ACNC22 — `idempotencyKey` (une par ouverture du dialogue) part en en-tête
+  // `Idempotency-Key` : un 2ᵉ envoi après une réponse perdue est rejoué, jamais doublé.
+  createMouvement: (data, { idempotencyKey } = {}) => api.post('/stock/mouvements/', data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
 
   // Édition en masse du catalogue (T8) + export Excel d'une sélection.
   bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
@@ -125,7 +128,8 @@ const stockApi = {
   deleteEmplacement: (id) => api.delete(`/stock/emplacements/${id}/`),
   getProduitEmplacements: (id) => api.get(`/stock/produits/${id}/emplacements/`),
   getTransferts: (params) => api.get('/stock/transferts/', { params }),
-  createTransfert: (data) => api.post('/stock/transferts/', data),
+  createTransfert: (data, { idempotencyKey } = {}) => api.post('/stock/transferts/', data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),  // ACNC22
 
   // NTFSM19 — réappro automatique van-stock (étend FG62).
   getVanStockAReapprovisionner: () =>
