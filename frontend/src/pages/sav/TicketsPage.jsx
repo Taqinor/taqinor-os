@@ -15,6 +15,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
+import { useConfirm } from '../../providers/confirm-context'
 // EZ15 — dictée INLINE navigateur, surface BUREAU.
 import {
   DictationButton, DICTATION_PRIVACY_FR,
@@ -275,6 +276,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
+  const confirmer = useConfirm() // AERR82
   const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement'), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
   const F =(k, d = '') => current?.[k] ?? d
 
@@ -702,10 +704,12 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
       setActionError(frError(err, "Échec de l'ajout de la pièce."))
     } finally { setPieceBusy(false) }
   }
-  const removePiece = async (pieceId) => {
+  const removePiece = async (p) => {
+    // AERR82 — confirmation qui nomme la pièce et la quantité.
+    if (!await confirmer({ title: `Retirer ${p.produit_nom} × ${p.quantite} de ce ticket ?`, confirmLabel: 'Retirer', destructive: true })) return
     setActionError(null)
     try {
-      await savApi.removeTicketPiece(id, pieceId)
+      await savApi.removeTicketPiece(id, p.id)
       loadPieces()
       loadHistorique()
     } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) }
@@ -1201,7 +1205,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
                     {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''} × {p.quantite}
                     {p.stock_decremente && <Badge tone="info" className="ml-2">stock −</Badge>}
                   </span>
-                  {peutGerer && <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p.id)}>
+                  {peutGerer && <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p)}>
                     <Trash2 /> Retirer
                   </Button>}
                 </li>

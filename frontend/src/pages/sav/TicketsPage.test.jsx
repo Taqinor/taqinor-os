@@ -6,6 +6,8 @@ import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { mockMatchMedia } from '../../test/matchMedia'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
+import savApi from '../../api/savApi'
 
 // ADRG22 — doublures réseau de la fiche et de la liste (aucun effet sur les
 // briques de présentation testées plus bas, qui n'appellent aucune API).
@@ -385,5 +387,33 @@ describe('TicketsPage — AERR32 liste gardée pendant/après une relecture', ()
   it('relecture en cours avec tickets chargés : pas de squelette, lignes visibles', async () => {
     rendre({ items: [T1, T2], loading: true, error: null })
     expect(await screen.findAllByText('SAV-1', { exact: false })).not.toHaveLength(0)
+  }, 60000)
+})
+
+/* AERR82 — retirer une pièce (déjà sortie du stock) d'un ticket passe par une
+   confirmation qui nomme la pièce et sa quantité. */
+describe('TicketDetail — AERR82 retrait de pièce confirmé', () => {
+  it('Retirer puis Annuler : aucun retrait ; Retirer confirmé : un appel', async () => {
+    savApi.getTicketPieces.mockResolvedValue({
+      data: [{ id: 31, produit_nom: 'Fusible 15 A', quantite: 2, stock_decremente: true }],
+    })
+    savApi.removeTicketPiece = vi.fn(() => Promise.resolve({ data: {} }))
+    render(<Provider store={storeAdrg22([], 'admin')}><MemoryRouter><ConfirmProvider>
+      <TicketDetail ticket={T1} onClose={() => {}} onSaved={() => {}} />
+    </ConfirmProvider></MemoryRouter></Provider>)
+    const ligne = (await screen.findByText(/Fusible 15 A/)).closest('li')
+    fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite.textContent).toContain('Fusible 15 A × 2')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(savApi.removeTicketPiece).not.toHaveBeenCalled()
+
+    fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
+    const boite2 = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite2).getByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(savApi.removeTicketPiece).toHaveBeenCalledWith(1, 31))
+    savApi.getTicketPieces.mockReset()
+    savApi.getTicketPieces.mockImplementation(() => Promise.resolve({ data: [] }))
   }, 60000)
 })
