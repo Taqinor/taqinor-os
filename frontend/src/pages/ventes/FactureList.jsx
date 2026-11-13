@@ -152,7 +152,7 @@ export default function FactureList() {
   // AERR3 — après un geste d'argent : liste ET tuiles relues (un seul point).
   const [tuilesPasAJour, setTuilesPasAJour] = useState(false)
   const relire = () => relireApresGeste(dispatch, setTuilesPasAJour)
-  const lot = useFactureLot({ factures, dispatch, relire })
+  const lot = useFactureLot({ factures, dispatch, relire, confirm })
   const {
     selectedIds, setSelectedIds, toggleSelect, clearSelection, bulkBusy,
     BULK_LABELS, handleBulkAction, facturesEncaissables, clientSelectionUnique,

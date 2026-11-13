@@ -273,11 +273,46 @@ describe('FactureList — WR2b : barre d\'actions en masse (bulkFactures)', () =
 
     const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
     expect(within(bulkBar).getByText('1')).toBeVisible()
+    // AERR7 — l'émission en masse est confirmée (repli hors provider : window.confirm).
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
 
     await waitFor(() => {
       expect(ventesApi.bulkFactures).toHaveBeenCalledWith('emettre', [1])
     })
+    confirmSpy.mockRestore()
+  })
+
+  it('Émettre en masse : confirmation nommée, Annuler ⇒ aucun bulkFactures', async () => {
+    // AERR7 (C-AERR-007) — mutant : retirer l'`await confirm(` ⇒ échec.
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider.jsx')
+    const store = makeStore({
+      factures: [
+        { ...baseFacture, id: 1, reference: 'FAC-BULK-1', statut: 'brouillon' },
+        { ...baseFacture, id: 2, reference: 'FAC-BULK-2', statut: 'brouillon' },
+      ],
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><ConfirmProvider><FactureList /></ConfirmProvider></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
+    fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Émettre 2 factures ?')
+    expect(boite).toHaveTextContent('FAC-BULK-1, FAC-BULK-2')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(ventesApi.bulkFactures).not.toHaveBeenCalled()
+    expect(within(bulkBar).getByText('2')).toBeVisible()
+
+    fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(ventesApi.bulkFactures).toHaveBeenCalledWith('emettre', [1, 2]))
   })
 
   it('tout sélectionner coche toutes les lignes filtrées', () => {

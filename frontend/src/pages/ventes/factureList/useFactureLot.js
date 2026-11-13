@@ -6,7 +6,7 @@ import ventesApi from '../../../api/ventesApi'
 import { relireApresGeste } from './useFactureGestes.js'
 import { toast } from '../../../ui'
 
-export default function useFactureLot({ factures, dispatch, relire = () => relireApresGeste(dispatch) }) {
+export default function useFactureLot({ factures, dispatch, relire = () => relireApresGeste(dispatch), confirm = () => Promise.resolve(true) }) {
   // WR2b — sélection multiple pour la barre d'actions en masse (FG43).
   const [selectedIds, setSelectedIds] = useState([])
   const toggleSelect = (id) => setSelectedIds(prev =>
@@ -19,8 +19,20 @@ export default function useFactureLot({ factures, dispatch, relire = () => relir
     emettre: 'Émettre', relancer: 'Relancer',
     'envoyer-email': 'Envoyer par email', 'generer-pdf': 'Générer le PDF',
   }
+  // AERR7 — actions à effet client (numéro légal, relance, e-mail) : confirmation
+  // maison qui dit le nombre et les références ; « Générer le PDF » part sans question.
+  const BULK_QUESTIONS = { emettre: 'Émettre', relancer: 'Relancer', 'envoyer-email': 'Envoyer' }
   const handleBulkAction = async (action) => {
     if (!selectedIds.length) return
+    if (BULK_QUESTIONS[action]) {
+      const n = selectedIds.length
+      const refs = factures.filter(f => selectedIds.includes(f.id)).map(f => f.reference).join(', ')
+      const ok = await confirm({
+        title: `${BULK_QUESTIONS[action]} ${n} facture${n > 1 ? 's' : ''}${action === 'envoyer-email' ? ' par e-mail' : ''} ?`,
+        description: refs, confirmLabel: 'Confirmer', cancelLabel: 'Annuler',
+      })
+      if (!ok) return
+    }
     setBulkBusy(true)
     try {
       const { data } = await ventesApi.bulkFactures(action, selectedIds)
