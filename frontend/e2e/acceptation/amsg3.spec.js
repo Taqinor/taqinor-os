@@ -29,7 +29,11 @@ const INIT = () => {
 }
 test.beforeEach(async ({ page }) => { await page.addInitScript(INIT); await assurerSessionPage(page) })
 const contextesUi = []
-test.afterEach(async () => { for (const c of contextesUi.splice(0)) await c.close().catch(() => undefined) })
+const apres = []
+test.afterEach(async () => {
+  for (const c of contextesUi.splice(0)) await c.close().catch(() => undefined)
+  for (const f of apres.splice(0)) await f().catch((e) => console.log(`[nettoyage] ${e.message}`))
+})
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const courriel = (m) => `amsg-${m}-${Math.floor(Math.random() * 1e6)}@example.invalid`
 const SOC = `U.objects.get(username='demo_admin').company_id`
@@ -174,7 +178,11 @@ sortie(dict(lie=[l.nom, l.email, l.telephone, l.whatsapp], a_faire=RelanceEtape.
     expect(base.a_faire, 'en base : aucune touche à faire (cadence arrêtée)').toBe(0)
     await ficheAnonyme(page, lie.id, nomLead)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await nettoyer(page.request, { leads: [lie.id, autre.id] })
+    })
   }
 })
 
@@ -229,11 +237,15 @@ sortie(dict(meta=[M.get(pk=${f.meta}).nom, M.get(pk=${f.meta}).telephone], aille
     expect(base.client, 'en base : client lié anonymisé').toBe(true)
     expect(base.ailleurs, 'en base : fiche de l\'autre société intacte').toEqual([`AMSG5 Ailleurs ${m}`, tel])
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await py(`from authentication.models import Company
 from core.models import DataSubjectRequest
 DataSubjectRequest.objects.filter(subject_identifier=${J(email)}).delete()
 Company.objects.filter(pk=${f.autre_co}).delete()
 sortie(1)`).catch(() => undefined)
+    })
   }
 })
 
@@ -289,7 +301,11 @@ sortie(res)`)
     })
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await nettoyer(page.request, { leads: [darija.id, fr.id] })
+    })
   }
 })
 
@@ -331,7 +347,11 @@ sortie(sorted(Appointment.objects.filter(lead_id=${lead.id}).values_list('statut
     expect(statuts, 'rien n\'est écrit (statuts inchangés)').toEqual(['annule', 'effectue', 'no_show'])
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await nettoyer(page.request, { leads: [lead.id] })
+    })
   }
 })
 
@@ -377,7 +397,11 @@ etape('PF8.2.resume_associe_ecran', ['AMSG12'], async ({ page, suivi, testInfo }
     expect([apres.statut, apres.date_envoi], 'devis : statut et date d\'envoi inchangés').toEqual([avant.statut, avant.date_envoi])
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await nettoyer(page.request, { leads: [lead.id] })
+    })
   }
 })
 

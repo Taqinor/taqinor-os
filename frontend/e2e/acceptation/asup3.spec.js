@@ -25,7 +25,11 @@ const INIT = () => {
 }
 test.beforeEach(async ({ page }) => { await page.addInitScript(INIT); await assurerSessionPage(page) })
 const contextesUi = []
-test.afterEach(async () => { for (const c of contextesUi.splice(0)) await c.close().catch(() => undefined) })
+const apres = []
+test.afterEach(async () => {
+  for (const c of contextesUi.splice(0)) await c.close().catch(() => undefined)
+  for (const f of apres.splice(0)) await f().catch((e) => console.log(`[nettoyage] ${e.message}`))
+})
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const SOC = `U.objects.get(username='demo_admin').company_id`
 
@@ -146,6 +150,9 @@ sortie([ProductionWarranty.objects.filter(pk=${ids.g1}).exists(), ProductionWarr
     await expect(ligne(`ASUP7-${m}-2`)).toHaveCount(0)
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await py(`from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.monitoring.models import ProductionReading, ProductionWarranty
@@ -153,6 +160,7 @@ ProductionReading.objects.filter(installation_id__in=${J(ids.inst)}).delete()
 ProductionWarranty.objects.filter(installation_id__in=${J(ids.inst)}).delete()
 Installation.objects.filter(pk__in=${J(ids.inst)}).delete()
 Client.objects.filter(pk=${ids.client}).delete()`).catch(() => undefined)
+    })
   }
 })
 
@@ -196,7 +204,11 @@ sortie([Lead.all_objects.get(pk=pk).is_archived for pk in ${J(pks)}])`)
     await expect(p.locator('.lw-archived-badge'), 'après rechargement : toujours « Archivé »').toBeVisible({ timeout: 60_000 })
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await supprimerLeads([ids.a, ids.b, ids.c, ids.d])
+    })
   }
 })
 
@@ -249,7 +261,11 @@ l = Lead.all_objects.get(pk=${ids.lead}); sortie([l.is_deleted, l.is_archived])`
     await borne(suivi)
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await supprimerLeads([ids.lead])
+    })
   }
 }, { ecart: ECART_403 })
 
@@ -304,7 +320,11 @@ sortie(dict(ancien=[a.is_deleted, ElementSupprime.objects.get(pk=${ids.e1}).rest
     await borne(suivi)
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await supprimerLeads([ids.ancien, ids.vivant, ids.seul])
+    })
   }
 }, { ecart: ECART_403 })
 
@@ -349,12 +369,16 @@ sortie(dict(client=cl.pk, leads=[l1.pk, l2.pk]))`)
     await ficheAnonyme(ids.leads[0])
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await py(`from apps.crm.models import Client, Lead
 for pk in ${J(ids.leads)}:
     try: Lead.all_objects.filter(pk=pk).delete()
     except Exception: pass
 try: Client.objects.filter(pk=${ids.client}).delete()
 except Exception: pass`).catch(() => undefined)
+    })
   }
 })
 
@@ -369,6 +393,8 @@ sortie(dict(lead=l.pk))`)
   try {
     // Administrateur (demo_admin) : liste des leads → « Supprimer » → toast « Lead supprimé. » → « Annuler ».
     const q = encodeURIComponent(nomLead)
+    // Écran large : la colonne d'actions de la vue liste (« Supprimer ») sort de la fenêtre en 1280 px (run 1).
+    await page.setViewportSize({ width: 2200, height: 1100 })
     await page.goto(`/crm/leads?view=liste&q=${q}`)
     const row = page.locator('tr.lv-row').filter({ hasText: nomLead })
     await expect(row).toBeVisible({ timeout: 60_000 })
@@ -401,7 +427,11 @@ sortie([Lead.all_objects.get(pk=${ids.lead}).is_deleted, _e is not None and _e.r
     await page.waitForLoadState('networkidle')
     await expect(page.getByTestId('corbeille-row').filter({ hasText: nomLead }), 'après rechargement : absente des actives').toHaveCount(0)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await supprimerLeads([ids.lead])
+    })
   }
 })
 
@@ -441,9 +471,17 @@ sortie(dict(vieilles=[n.pk for n in vieilles], recentes=[n.pk for n in recentes]
     await expect(panneau.locator('.nb-item').filter({ hasText: 'ASUP43 archivée' }), 'liste : aucune archivée').toHaveCount(0)
     const avant = await nombre()
     expect(avant - base, 'la cloche compte exactement les non lues que la liste montre').toBe(3)
-    // « Tout marquer lu » : les 3 récentes seulement.
+    // La liste servie à la cloche (non lues, tous types) = ce que « tout marquer lu » doit marquer ; jamais les 12 archivées.
+    const listeNonLues = await lireJson(await p.request.get(`${API}/notifications/notifications/?unread=1&page_size=100`, T), 'liste des non lues')
+    const nl = (Array.isArray(listeNonLues) ? listeNonLues : listeNonLues.results)
+    expect(nl.filter((x) => ids.vieilles.includes(x.id)), 'liste : aucune archivée').toEqual([])
+    expect(nl.filter((x) => ids.recentes.includes(x.id)).length, 'liste : les 3 récentes').toBe(3)
+    const compte = await lireJson(await p.request.get(`${API}/notifications/notifications/unread-count/`, T), 'compteur')
+    expect(compte.unread, 'compteur non lues = la liste (les 12 archivées ignorées)').toBe(nl.length)
+    // « Tout marquer lu » : exactement les non lues de la liste.
     await panneau.getByRole('button', { name: 'Tout marquer lu', exact: true }).first().click()
-    await expect(toast(p, '3 marqués lu.'), '« tout lu » porte sur les 3 de la liste').toBeVisible({ timeout: 30_000 })
+    await expect.poll(() => p.locator('[data-sonner-toast]').allInnerTexts(), { message: '« tout lu » porte sur les non lues de la liste', timeout: 30_000 })
+      .toEqual(expect.arrayContaining([expect.stringContaining(`${nl.length} marqué${nl.length > 1 ? 's' : ''} lu.`)]))
     await expect(cloche).toHaveAttribute('aria-label', `Notifications (${base})`, { timeout: 30_000 })
     const lu = await py(`from apps.notifications.models import Notification
 sortie([Notification.objects.filter(pk__in=${J(ids.vieilles)}, read=False, archived=True).count(), Notification.objects.filter(pk__in=${J(ids.recentes)}, read=True).count()])`)
@@ -457,8 +495,12 @@ sortie([Notification.objects.filter(pk__in=${J(ids.vieilles)}, read=False, archi
     await borne(suivi)
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await py(`from apps.notifications.models import Notification
 Notification.objects.filter(recipient_id=${co}).delete()`).catch(() => undefined)
+    })
   }
 }, { ecart: ECART_403 })
 
@@ -521,8 +563,12 @@ sortie(dict(leads=[[l.is_archived, l.is_deleted] for l in (Lead.all_objects.get(
     await borne(suivi)
     await montrer(page)
   } finally {
+    // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
+    // des données retirées (404 tardifs hors de l'étape).
+    apres.push(async () => {
     await py(`from apps.records.models import Activity
 Activity.objects.filter(pk__in=${J(ids.acts)}).delete()`).catch(() => undefined)
     await supprimerLeads(ids.leads)
+    })
   }
 }, { ecart: ECART_403 })
