@@ -1,5 +1,6 @@
 // SPL211 — aides partagées entre FactureList.jsx et factureList/FactureRow.jsx
-// (déplacées VERBATIM ; `today` reste évalué au chargement du module).
+// (déplacées VERBATIM). AERR18 — `today` n'est plus figé au chargement : la date du
+// jour se lit au moment du geste (`todayLocalIso()`).
 import { toNumber } from '../../../lib/format.js'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
 
@@ -15,7 +16,7 @@ export const today = todayLocalIso()
 // AFAC72 — `aujourdhui` injectable (le Kanban et ses tests) ; sans 2e argument
 // chaîne (ex. `.filter(isOverdue)` qui passe l'index), la date du module sert.
 export const isOverdue = (f, aujourdhui) => {
-  const ref = typeof aujourdhui === 'string' ? aujourdhui : today
+  const ref = typeof aujourdhui === 'string' ? aujourdhui : todayLocalIso()
   return !!(f?.is_overdue ||
     f?.statut === 'en_retard' ||
     (f?.statut === 'emise' && f?.date_echeance && f.date_echeance < ref))

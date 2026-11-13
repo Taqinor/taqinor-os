@@ -14,7 +14,7 @@ import { frenchError } from '../../../lib/frenchError'
 import { errorMessageFrom } from '../../../lib/toast'
 import { toNumber } from '../../../lib/format'
 import { toast } from '../../../ui'
-import { today } from './factureHelpers.js'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 // AERR3 — LE point « relire après un geste d'argent » : la liste PUIS les
 // tuiles (lues seulement au montage avant) ; `surEchec(true)` si les tuiles
@@ -199,7 +199,7 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
   // force quand l'utilisateur la renseigne.
   const [encaissementOpen, setEncaissementOpen] = useState(false)
   const [encaissementForm, setEncaissementForm] = useState({
-    montant: '', mode: 'virement', date: today, reference: '',
+    montant: '', mode: 'virement', date: todayLocalIso(), reference: '',
   })
   const [encaissementRepartition, setEncaissementRepartition] = useState({})
 
@@ -330,7 +330,7 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
     setEncaissementForm({
       montant: String(facturesEncaissables.reduce(
         (s, f) => s + toNumber(f.montant_du ?? 0), 0)),
-      mode: 'virement', date: today, reference: '',
+      mode: 'virement', date: todayLocalIso(), reference: '',
     })
     setEncaissementOpen(true)
   }

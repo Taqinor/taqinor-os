@@ -471,6 +471,21 @@ describe('FactureList — VX142(a) : toolbar « Exporter » unique, plus de wind
     expect(promptSpy).not.toHaveBeenCalled()
   })
 
+  it('à 00:30 le 1er décembre (heure du Maroc), le journal propose 2026-12', async () => {
+    // AERR18 (C-AERR-016) — mutant : remettre `toISOString().slice(0, 7)` ⇒ échec (UTC = la veille).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-30T23:30:00Z')) // 00:30 à Casablanca (UTC+1)
+    try {
+      const user = userEvent.setup()
+      renderList({ factures: [{ ...baseFacture }] })
+      await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
+      await user.click(screen.getByRole('menuitem', { name: /Journal comptable/ }))
+      expect(await screen.findByLabelText('Mois du journal')).toHaveValue('2026-12')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('« Export comptable… » ouvre un Dialog à deux champs date, jamais window.prompt', async () => {
     const user = userEvent.setup()
     const promptSpy = vi.spyOn(window, 'prompt')
