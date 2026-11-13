@@ -189,6 +189,20 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
     })
   })
 
+  it('Payer en ligne, writeText rejeté : pas de « Création … impossible », action Ouvrir', async () => {
+    // AERR10 (C-AERR-010) — mutant : remettre la copie dans le `try` commun ⇒ échec.
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.reject(new Error('refus'))) } })
+    toastMock.error.mockClear()
+    renderList({ factures: [{ ...baseFacture }] })
+    const row = screen.getByText('FAC-2026-07-0001').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Payer en ligne/ }))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    const [msg, opts] = toastMock.error.mock.calls.at(-1)
+    expect(msg).not.toMatch(/Création du lien de paiement impossible/)
+    expect(msg).toContain(CONTRAT_LIEN.pay_url)
+    expect(opts?.action?.label).toBe('Ouvrir')
+  })
+
   it('le toast annonce montant_a_payer', async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.resolve()) } })
     renderList({ factures: [{ ...baseFacture }] })
