@@ -85,7 +85,7 @@ def _classer(qs, fts, *ordre):
 # avant de signer. » : la référence du document est extraite du texte, et un
 # numéro saisi dans n'importe quel format (+212 661-826837, 0661826837…)
 # retrouve le téléphone stocké (« 212661826837 ») par ses 9 derniers chiffres.
-_REF_DOC_RE = re.compile(r'[A-Z]{2,5}-\d{4,6}-\d{2,6}', re.IGNORECASE)
+_REF_DOC_RE = re.compile(r'\b[A-Z]{2,5}-\d{4,6}-\d{2,6}\b', re.IGNORECASE)
 _TEL_SAISI_RE = re.compile(r'[\d\s+().\-/]+')
 
 
