@@ -24,6 +24,7 @@ from authentication.permissions import (
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50 / D-ASEC-50
 from core.conflit_etat import ConflitEtat
 from core.events import facture_annulee  # ACSV112
+from core.idempotency import IdempotentCreateMixin  # ACNC2
 from core.permissions import declared_action_permissions
 
 # ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
@@ -73,6 +74,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                      FactureDocumentsActionsMixin,
                      FactureRecouvrementActionsMixin,
                      FactureLotActionsMixin, EntiteScopeMixin,
+                     IdempotentCreateMixin,  # ACNC2 — sans en-tête : create inchangé
                      CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # api-fuzz-full 24/10 — FactureWriteSerializer porte IdInconnu404Mixin :

@@ -86,7 +86,7 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
     await user.click(bouton())
     await waitFor(() =>
       expect(ventesApi.creerNoteDebit).toHaveBeenCalledWith(
-        11, { motif: 'pénalité', montant: '500', taux_tva: '20' }))
+        11, { motif: 'pénalité', montant: '500', taux_tva: '20', idempotency_key: expect.any(String) }))
     expect(await screen.findByText(CONTRAT.exemple.reference)).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalled()
   })
@@ -104,7 +104,7 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
     await user.type(screen.getByLabelText(/Montant HT/), '500')
     await user.click(bouton())
     await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenLastCalledWith(
-      12, { motif: '', montant: '500', taux_tva: '14' }))
+      12, { motif: '', montant: '500', taux_tva: '14', idempotency_key: expect.any(String) }))
     const sansTaux = { ...FACTURE, id: 13, taux_tva: null }
     rerender(<NoteDebitDialog facture={sansTaux} open={false} onOpenChange={() => {}} />)
     rerender(<NoteDebitDialog facture={sansTaux} open onOpenChange={() => {}} />)
@@ -113,7 +113,28 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
     await user.type(screen.getByLabelText(/Montant HT/), '300')
     await user.click(bouton())
     await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenLastCalledWith(
-      13, { motif: '', montant: '300' }))
+      13, { motif: '', montant: '300', idempotency_key: expect.any(String) }))
+  })
+
+  it('deux clics après une réponse perdue portent la même clé ; la liste est relue', async () => {
+    // ACNC2 (C-ACNC-001) — mutant : régénérer la clé à chaque clic ⇒ échec.
+    ventesApi.creerNoteDebit.mockClear()
+    ventesApi.creerNoteDebit
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+      .mockResolvedValueOnce({ data: CONTRAT.exemple })
+    const user = userEvent.setup()
+    render(<NoteDebitDialog facture={FACTURE} open onOpenChange={() => {}} />)
+    await screen.findByText('ND-202607-0001')
+    const lectures = ventesApi.getNotesDebit.mock.calls.length
+    await user.type(screen.getByLabelText(/Montant HT/), '500')
+    await user.click(bouton())
+    await waitFor(() => expect(ventesApi.getNotesDebit.mock.calls.length).toBeGreaterThan(lectures))
+    await screen.findByText('ND-202607-0001')
+    await user.click(bouton())
+    await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenCalledTimes(2))
+    const [k1, k2] = ventesApi.creerNoteDebit.mock.calls.map(([, corps]) => corps.idempotency_key)
+    expect(k1).toBeTruthy()
+    expect(k2).toBe(k1)
   })
 
   it('affiche le message serveur sous le champ', async () => {

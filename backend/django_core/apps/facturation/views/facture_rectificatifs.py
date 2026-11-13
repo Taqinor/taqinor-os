@@ -177,6 +177,14 @@ def _montant_note_debit(donnees, facture):
     return (Decimal(brut), taux), None
 
 
+def cle_du_corps(request):
+    """ACNC2 — la clé d'envoi portée par le corps (``idempotency_key``, même
+    forme que ``Paiement.idempotency_key``) ; ``None`` sans clé."""
+    corps = request.data if isinstance(request.data, dict) else {}
+    cle = corps.get('idempotency_key')
+    return (str(cle).strip()[:255] or None) if cle else None
+
+
 class FactureRectificatifsActionsMixin:
     """Les documents qui corrigent une facture émise : avoir, note de
     débit, retour client, facture de pénalités."""
@@ -314,6 +322,14 @@ class FactureRectificatifsActionsMixin:
         """ZFAC4 — crée une NoteDebit (majoration d'une facture déjà émise) —
         pendant de l'avoir. Total (copie des lignes de la facture) ou
         personnalisé (`lignes` fourni) ; augmente ``Facture.montant_du``."""
+        # ACNC2 (C-ACNC-001) — rejouable : la clé ``idempotency_key`` du corps
+        # (ou l'en-tête ``Idempotency-Key``) rend la note déjà créée, jamais
+        # une seconde note numérotée ; corps différent sous la même clé : 409.
+        return self._avec_idempotence(
+            request, lambda: self._creer_note_debit(request),
+            suffixe='note_debit', cle=cle_du_corps(request))
+
+    def _creer_note_debit(self, request):
         facture = self.get_object()
         # CI #1000 — corps validé (types, listes) AVANT toute lecture, comme
         # l'avoir : ``taux_tva: null`` / ``motif: 5`` (500) passaient à la main.

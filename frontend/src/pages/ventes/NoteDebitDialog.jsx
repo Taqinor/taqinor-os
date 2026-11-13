@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Plus } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -37,6 +37,8 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   // AERR21 — échec de lecture ≠ « aucune note » ; « Réessayer » relance la lecture.
   const [lectureKo, setLectureKo] = useState(false)
   const [essai, setEssai] = useState(0)
+  // ACNC2 — clé d'envoi gardée entre deux clics, remise à zéro au succès.
+  const cleEnvoi = useRef(null)
   // Facture dont `notes` reflète déjà le chargement — `loading` est DÉRIVÉ de
   // la comparaison avec la facture courante (jamais un `setLoading(true)`
   // synchrone dans l'effet, react-hooks/set-state-in-effect).
@@ -81,10 +83,12 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   const creer = async () => {
     if (!facture?.id) return
     setCreating(true); setErreur('')
+    cleEnvoi.current ??= globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
     try {
-      const res = await ventesApi.creerNoteDebit(
-        facture.id, { motif, montant, ...(tauxTva !== '' && { taux_tva: tauxTva }) })
-      setNotes((n) => [res.data, ...n])
+      const res = await ventesApi.creerNoteDebit(facture.id, {
+        motif, montant, ...(tauxTva !== '' && { taux_tva: tauxTva }), idempotency_key: cleEnvoi.current })
+      cleEnvoi.current = null
+      setNotes((n) => [res.data, ...n.filter((x) => x.id !== res.data?.id)])
       setMotif(''); setMontant('')
       toast.success(`Note de débit ${res.data?.reference || ''} créée.`)
       onChanged?.()
@@ -92,6 +96,8 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
       // Le message serveur est affiché TEL QUEL sous le champ.
       setErreur(
         e?.response?.data?.detail || 'Création de la note de débit impossible.')
+      // ACNC2 — sans réponse : la liste est relue (la note a pu être créée).
+      if (!e?.response) setEssai((n) => n + 1)
     } finally {
       setCreating(false)
     }
