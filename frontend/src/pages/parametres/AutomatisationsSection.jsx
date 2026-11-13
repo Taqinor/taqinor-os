@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, RefreshCw, Wand2, Sparkles } from 'lucide-react'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import automationApi from '../../api/automationApi'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { formatDateTime } from '../../lib/format'
 import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
@@ -216,6 +217,8 @@ export default function AutomatisationsSection() {
     action_type: 'create_activity', action_config: '',
     requires_approval: false, approval_threshold: '',
   })
+  // AMSG94 — refus du serveur par champ (`{action_config: […]}`), sous le champ.
+  const { errors: erreursAjout, setFromResponse, clearField } = useServerFieldErrors()
 
   const loadRules = () => toutesLesPages((params) => automationApi.getRules(params))
     .then((rows) => setRules(rows)).catch(() => {})
@@ -309,8 +312,13 @@ export default function AutomatisationsSection() {
         action_type: 'create_activity', action_config: '',
         requires_approval: false, approval_threshold: '',
       })
+      clearField('action_config')
       loadRules()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) {
+      const data = e?.response?.data
+      if (data?.action_config) setFromResponse(data)
+      else console.warn('Ajout impossible.', e)
+    }
   }
 
   const toggle = async (r) => {
@@ -520,10 +528,19 @@ export default function AutomatisationsSection() {
                 placeholder='Config déclencheur (JSON, ex. {"stage": "SIGNED"})'
                 value={draft.trigger_config}
                 onChange={(e) => setDraft((d) => ({ ...d, trigger_config: e.target.value }))} />
-              <Textarea className="min-w-[160px] flex-1 font-mono text-xs" rows={2}
-                placeholder='Config action (JSON, ex. {"body": "..."} )'
-                value={draft.action_config}
-                onChange={(e) => setDraft((d) => ({ ...d, action_config: e.target.value }))} />
+              <div className="min-w-[160px] flex-1">
+                <Textarea className="w-full font-mono text-xs" rows={2}
+                  placeholder='Config action (JSON, ex. {"body": "..."} )'
+                  aria-invalid={erreursAjout.action_config ? true : undefined}
+                  value={draft.action_config}
+                  onChange={(e) => {
+                    setDraft((d) => ({ ...d, action_config: e.target.value }))
+                    clearField('action_config')
+                  }} />
+                {erreursAjout.action_config && (
+                  <p role="alert" className="mt-1 text-xs text-destructive">{erreursAjout.action_config}</p>
+                )}
+              </div>
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1.5 text-sm">

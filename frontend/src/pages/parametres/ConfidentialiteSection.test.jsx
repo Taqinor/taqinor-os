@@ -93,6 +93,23 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     expect(screen.queryByText('Impossible de charger les demandes')).not.toBeInTheDocument()
   })
 
+  it('Commercial responsable sans dsr_traiter : aucune lecture des demandes, refus qui nomme le droit', async () => {
+    // ADRG112 — rôle fin au palier responsable, sans le code : la liste n'est
+    // jamais demandée (aucun 403 ni erreur console au chargement).
+    renderWithRole('responsable', {
+      role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'users_voir'],
+    })
+    expect(await screen.findByText('Accès refusé')).toBeInTheDocument()
+    expect(screen.getByText(/dsr_traiter/)).toBeInTheDocument()
+    expect(listDsr).not.toHaveBeenCalled()
+  })
+
+  it('Directeur (dsr_traiter) : la liste des demandes est lue et rendue', async () => {
+    renderWithRole('admin', { role: 'admin', role_nom: 'Directeur', permissions: ['dsr_traiter'] })
+    expect(await screen.findByText('client@x.ma')).toBeInTheDocument()
+    expect(listDsr).toHaveBeenCalled()
+  })
+
   it('soumet une nouvelle demande de personne concernée', async () => {
     const user = userEvent.setup()
     renderWithRole('responsable')
