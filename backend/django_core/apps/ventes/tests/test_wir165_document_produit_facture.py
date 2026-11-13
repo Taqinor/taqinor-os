@@ -196,7 +196,10 @@ class DocumentProduitFactureTests(TestCase):
         facture = make_facture(self.user, self.client_obj, self.produit)
         versions = DocumentVersion.objects.filter(
             document__company=self.company)
-        with freeze_time(datetime(2026, 11, 13, 9, 0, tzinfo=dt_tz.utc)) as t:
+        # Horloge gelée à l'heure RÉELLE : le dépôt GED signe ses requêtes
+        # MinIO avec l'heure courante ; une date figée loin du présent est
+        # refusée (décalage d'horloge) et le récepteur, best-effort, n'écrit rien.
+        with freeze_time(datetime.now(dt_tz.utc).replace(second=0, microsecond=0)) as t:
             generate_facture_pdf(facture.id)
             t.tick(60)
             generate_facture_pdf(facture.id)
