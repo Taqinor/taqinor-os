@@ -156,6 +156,23 @@ export default function ReglesAttributionEditor({
                 onCheckedChange={(v) => onSaveReglages(equipe, { confirmation_responsable: v })} />
         Le responsable confirme chaque lead
       </label>
+      {/* Fondateur 13/11/2026 — choisi par le responsable : un lead qu'il
+          n'attribue pas lui-même (aucune règle ni permanence) est proposé à
+          ce commercial et part chez lui au délai. Vide = rotation équilibrée. */}
+      <div className="mb-2 max-w-xs">
+        <Label htmlFor={`defaut-attr-${equipe.id}`}>Commercial par défaut</Label>
+        <select id={`defaut-attr-${equipe.id}`} className="form-control" disabled={busy}
+                value={equipe.commercial_par_defaut ?? ''}
+                onChange={(e) => onSaveReglages(equipe, {
+                  commercial_par_defaut: e.target.value === '' ? null : Number(e.target.value),
+                })}>
+          <option value="">— Aucun (rotation équilibrée) —</option>
+          {membres.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+        </select>
+        <p className="mt-1 text-[11.5px] text-muted-foreground">
+          Reçoit les leads que le responsable n’a pas attribués avant le délai.
+        </p>
+      </div>
       {equipe.confirmation_responsable && (
         <>
           <div className="mb-2 max-w-xs">
@@ -174,7 +191,7 @@ export default function ReglesAttributionEditor({
           </div>
           <Label className="mb-1 block">Règles de proposition</Label>
           <p className="mb-2 text-[11.5px] text-muted-foreground">
-            La première règle qui correspond propose son membre ; sinon rotation équilibrée.
+            La première règle qui correspond propose son membre ; sinon le commercial par défaut, sinon rotation équilibrée.
           </p>
           {erreur && <p role="alert" className="mb-2 text-xs text-destructive">{erreur}</p>}
           {regles.map((r, i) => (
