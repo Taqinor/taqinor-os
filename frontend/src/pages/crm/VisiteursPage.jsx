@@ -116,11 +116,10 @@ export default function VisiteursPage() {
     const params = appareilFiltre ? { appareil_id: appareilFiltre } : {}
     // AERR115 — jeton de lecture : une réponse périmée (filtre changé entre-temps) est ignorée.
     const mien = ++jetonAppareils.current
-    const courant = () => mien === jetonAppareils.current
     return crmApi.getAppareilsVisites(params)
-      .then((r) => { if (courant()) setAppareils(r.data?.results ?? r.data ?? []) })
-      .catch(() => { if (courant()) setErreur(true) })
-      .finally(() => { if (courant()) setLoading(false) })
+      .then((r) => { if (mien === jetonAppareils.current) setAppareils(r.data?.results ?? r.data ?? []) })
+      .catch(() => { if (mien === jetonAppareils.current) setErreur(true) })
+      .finally(() => { if (mien === jetonAppareils.current) setLoading(false) })
   }
 
   const chargerEquipe = () => {
