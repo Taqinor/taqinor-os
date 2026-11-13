@@ -3,6 +3,7 @@ import { Check, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { Input } from '../Input'
 import { Spinner } from '../Spinner'
+import { getApiError } from '../../lib/apiError'
 
 /* ============================================================================
    H32 — Édition de cellule en place avec validation + sauvegarde + annulation.
@@ -109,7 +110,8 @@ export function EditableCell({
     } catch (e) {
       // Rejet serveur : la cellule RESTE ouverte (rouverte), message affiché
       // au lieu de se refermer en silence sur un échec.
-      setError(e?.response?.data?.detail || e?.message || 'Échec de l’enregistrement — réessayez.')
+      // AERR70 — message servi (champ nommé), jamais le texte technique d'axios.
+      setError(getApiError(e, 'Échec de l’enregistrement — réessayez.').message)
       return false
     } finally {
       setSaving(false)

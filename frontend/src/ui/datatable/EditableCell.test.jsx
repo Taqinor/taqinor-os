@@ -53,6 +53,22 @@ describe('EditableCell (VX127)', () => {
     // Toujours en édition (rouverte) : le champ existe encore avec le brouillon.
     expect(document.querySelector('input')).toHaveValue('999')
   })
+
+  it('AERR70 — refus par champ sans detail : message servi, jamais « Request failed »', async () => {
+    const onSave = vi.fn().mockRejectedValue({
+      message: 'Request failed with status code 400',
+      response: { status: 400, data: { prix_vente: ['Assurez-vous que cette valeur est supérieure ou égale à 0.'] } },
+    })
+    render(<EditableCell value="12" onSave={onSave} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    const input = document.querySelector('input')
+    fireEvent.change(input, { target: { value: '-5' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(await screen.findByText(/supérieure ou égale à 0\./)).toBeTruthy()
+    expect(screen.queryByText(/Request failed/)).toBeNull()
+    expect(document.querySelector('input')).toHaveValue('-5')
+  })
 })
 
 /* NTUX8 — navigation clavier type tableur, 100 % opt-in (`autoEdit`/
