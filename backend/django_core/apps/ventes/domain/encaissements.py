@@ -564,6 +564,12 @@ def affecter_encaissement_groupe(
             if motif:
                 raise FactureNonEncaissable(
                     f"Facture {facture.reference} : {motif}")
+        # ACNC10 (D-ACNC-2) — un lot ENTIÈREMENT soldé ne devient jamais une
+        # avance du montant entier (argent jamais reçu) : refusé (409).
+        if all(facture.montant_du <= 0 for facture in locked):
+            raise ValueError(
+                "Ces factures sont déjà soldées ; pour une avance, utilisez "
+                "Enregistrer une avance.")
 
         if isinstance(repartition, dict) and repartition:
             # Répartition explicite fournie par l'appelant. AUD120 — on
