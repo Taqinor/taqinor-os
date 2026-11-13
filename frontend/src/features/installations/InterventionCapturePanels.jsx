@@ -26,6 +26,7 @@ import { withOfflineFallback, FIELD_OPS, queuePhoto } from './offline/fieldOutbo
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { apiErrorMessage } from '../../lib/apiError'
+import { useConfirm } from '../../providers/confirm-context'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
@@ -390,6 +391,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
   const [extra, setExtra] = useState({ designation: '', quantite_utilisee: '' })
   // VX94 — refocus sur le premier champ « hors devis » après un ajout réussi.
   const extraFirstRef = useRef(null)
+  const confirm = useConfirm()
 
   const load = useCallback(() => installationsApi.getConsommation(id)
     .then((r) => setData(r.data))
@@ -423,6 +425,14 @@ export function ConsommationPanel({ intervention, onChanged }) {
     } catch { toast.error('Ajout impossible.') } finally { setBusy(false) }
   }
   const valider = async () => {
+    // AERR77 — sortie de stock définitive (aucune dé-validation) : boîte nommée.
+    const nom = intervention.reference ?? intervention.installation_reference ?? `#${id}`
+    const articles = (data?.lignes || []).map((li) => `${li.quantite_utilisee ?? 0} × ${li.designation}`).join(', ')
+    if (!(await confirm({
+      title: `Valider la consommation de ${nom} ?`,
+      description: `Sortiront du stock : ${articles || 'aucun article'}. Validation définitive : la consommation ne sera plus modifiable.`,
+      confirmLabel: 'Valider', cancelLabel: 'Annuler', destructive: false,
+    }))) return
     setBusy(true)
     try {
       await installationsApi.validerConsommation(id)

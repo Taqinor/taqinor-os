@@ -251,3 +251,32 @@ describe('FichePanel — saisie pendant un envoi', () => {
     await waitFor(() => expect(api.renseignerFiche).toHaveBeenCalledWith(42, 22, '12'))
   })
 })
+
+// AERR77 — valider la consommation sort le stock pour de bon : boîte nommée d'abord.
+describe('ConsommationPanel — AERR77 confirmation de validation', () => {
+  it('Valider puis Annuler : aucun appel ; boîte nommée', async () => {
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider')
+    api.getConsommation.mockResolvedValue({ data: { valide: false, lignes: [
+      { ...CONSOMMATION.lignes[0], id: 5, designation: 'Panneau 450W', quantite_utilisee: '12' },
+      { ...CONSOMMATION.lignes[0], id: 6, designation: 'Onduleur 5 kW', quantite_utilisee: '1' },
+    ] } })
+    api.validerConsommation.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    render(<ConfirmProvider><ConsommationPanel intervention={{ id: 42, reference: 'INT-0042' }} /></ConfirmProvider>)
+    await user.click(await screen.findByRole('button', { name: /Valider la consommation/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('INT-0042')
+    expect(boite).toHaveTextContent('12 × Panneau 450W')
+    expect(boite).toHaveTextContent('1 × Onduleur 5 kW')
+    expect(boite).toHaveTextContent('définitive')
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(api.validerConsommation).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: /Valider la consommation/ }))
+    await screen.findByRole('alertdialog')
+    await user.click(screen.getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(api.validerConsommation).toHaveBeenCalledTimes(1))
+    expect(api.validerConsommation).toHaveBeenCalledWith(42)
+  })
+})
