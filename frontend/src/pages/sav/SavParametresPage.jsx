@@ -17,6 +17,7 @@ import { BoutonsEdition } from './SavCommun'
 import SimpleRefListEditor from './SimpleRefListEditor'
 import { useConfirm } from '../../providers/confirm-context'
 import { toastErreurNonAffichee } from '../../lib/toast'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
 // pour le total.
@@ -521,6 +522,7 @@ function HorairesOuvresEditor({ value, onChange }) {
 }
 
 function SlaAutomationSection() {
+  const peutModifier = useCanModifierParametres() // ADRG46 — même garde que le serveur
   const [form, setForm] = useState(SLA_SETTINGS_DEFAULTS)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -587,12 +589,18 @@ function SlaAutomationSection() {
           </div>
           <HorairesOuvresEditor value={form.horaires_ouvres} onChange={setField('horaires_ouvres')} />
         </div>
-        <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
-          Enregistrer
-        </Button>
+        <BoutonEnregistrer peutModifier={peutModifier} saving={saving} onClick={save} />
       </Card>
     </div>
   )
+}
+
+// ADRG46 (D-ADRG-5) — sans `parametres_modifier`, les réglages SLA restent en lecture seule.
+function BoutonEnregistrer({ peutModifier, saving, onClick }) {
+  if (!peutModifier) {
+    return <p className="text-xs text-muted-foreground">Lecture seule — modifier ces réglages demande le droit « Modifier les paramètres ».</p>
+  }
+  return <Button type="button" size="sm" className="self-start" loading={saving} onClick={onClick}>Enregistrer</Button>
 }
 
 // ── NTSRV33 — Service client : les réglages du groupe NTSRV rassemblés en UN
@@ -627,6 +635,7 @@ const SERVICE_CLIENT_TOGGLES = [
 ]
 
 function ServiceClientSection() {
+  const peutModifier = useCanModifierParametres() // ADRG46
   const [form, setForm] = useState({
     affectation_par_competence: false,
     csat_detaille_actif: false,
@@ -698,9 +707,7 @@ function ServiceClientSection() {
           (boîte e-mail entrante) : c'est la source unique du canal, elle n'est
           pas recopiée ici.
         </p>
-        <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
-          Enregistrer
-        </Button>
+        <BoutonEnregistrer peutModifier={peutModifier} saving={saving} onClick={save} />
       </Card>
     </div>
   )

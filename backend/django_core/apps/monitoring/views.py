@@ -35,7 +35,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin
 from apps.records.champs_stricts import RegexStricte
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from core.conflit_etat import ConflitEtat
@@ -1015,7 +1015,7 @@ class MonitoringSettingsViewSet(SettingsAuditedMixin, TenantMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('parametres_modifier')()]  # ADRG46 (D-ADRG-5)
 
     @extend_schema(responses=MonitoringSettingsSerializer)
     def list(self, request, *args, **kwargs):
