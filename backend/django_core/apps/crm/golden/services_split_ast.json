@@ -2572,13 +2572,6 @@
    "genre": "def",
    "sha256": "0bae7a39a3036f0192d123c6da8278c76d17c0de863ba89111b26743157baad2"
   },
-  "_lever_opposition_a_la_demande_du_client": {
-   "cible": "cadence_signaux",
-   "debut": 8265,
-   "fin": 8285,
-   "genre": "def",
-   "sha256": "6ef912ecc47b8f3a59340a2b32c3f4fb7aa42bb8117fd8fcd6a0cd737ccc17e3"
-  },
   "_libelle_cadence": {
    "cible": "cadence_plan",
    "debut": 1156,
@@ -4369,7 +4362,7 @@
    "debut": 8169,
    "fin": 8255,
    "genre": "def",
-   "sha256": "e4c39dbd1f9bef340e4903390e5bd2324bd0742c5f1d889e8c3a6bdbd171d797"
+   "sha256": "3c9e7575e83671aabbeb3d24153279777aef8e52a7d8e77007b3d1f49ac4779e"
   },
   "notify_devis_opened": {
    "cible": "leads_notifications",
