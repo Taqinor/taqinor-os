@@ -86,7 +86,9 @@ def peut_fixer_objectif(user, owner_id):
 
 def verifier_objectif(user, *owners):
     """403 si ``user`` ne peut pas écrire l'objectif de CHACUN de ``owners``
-    (instances utilisateur, identifiants bruts ou None)."""
+    (instances utilisateur, identifiants bruts ou None) ; ADRG15 : et le
+    droit ``crm_modifier``."""
+    dispatch.exiger_ecriture_equipe(user, None, '')
     for owner in owners:
         if not peut_fixer_objectif(user, getattr(owner, 'pk', owner)):
             raise PermissionDenied(

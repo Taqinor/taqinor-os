@@ -24,6 +24,16 @@ def make_company(slug='zsal3crud-co'):
     return Company.objects.get_or_create(slug=slug, defaults={'nom': slug})[0]
 
 
+def role_ecriture_crm(company):
+    """ADRG15 — rôle fin des chefs d'équipe / directeurs des tests : écrire
+    la règle d'équipe exige ``crm_modifier`` (sans ``crm_creer`` : hors
+    rotation des leads, comme les comptes hérités qu'ils remplacent)."""
+    from apps.roles.models import Role
+    return Role.objects.get_or_create(
+        company=company, nom='Chef test ADRG15', defaults={'permissions': [
+            'crm_voir', 'crm_modifier', 'client_pii_voir']})[0]
+
+
 class TestEquipeCommercialeCRUD(TestCase):
     def setUp(self):
         self.company = make_company()
@@ -248,12 +258,14 @@ class TestDispatchLeads(TestCase):
         self.company = make_company('dispatch-co')
         CompanyProfile.objects.create(company=self.company)
         mk = User.objects.create_user
-        self.chef = mk(username='dsp_chef', password='x', company=self.company)
+        chef_role = role_ecriture_crm(self.company)
+        self.chef = mk(username='dsp_chef', password='x', company=self.company,
+                       role=chef_role)
         self.m1 = mk(username='dsp_m1', password='x', company=self.company,
                      first_name='Sara')
         self.m2 = mk(username='dsp_m2', password='x', company=self.company)
         self.autre_chef = mk(username='dsp_chef2', password='x',
-                             company=self.company)
+                             company=self.company, role=chef_role)
         self.admin = mk(username='dsp_admin', password='x',
                         role_legacy='admin', company=self.company)
         self.equipe = EquipeCommerciale.objects.create(
@@ -557,9 +569,11 @@ class TestDispatchLeads(TestCase):
         from apps.roles.models import Departement
         mk = User.objects.create_user
         self.directeur = mk(username='dsp_dir', password='x',
-                            company=self.company)
+                            company=self.company,
+                            role=role_ecriture_crm(self.company))
         self.autre_dir = mk(username='dsp_dir2', password='x',
-                            company=self.company)
+                            company=self.company,
+                            role=role_ecriture_crm(self.company))
         commercial = Departement.objects.create(
             company=self.company, nom='Commercial', responsable=self.directeur)
         Departement.objects.create(
@@ -584,6 +598,45 @@ class TestDispatchLeads(TestCase):
             company=make_company('dsp-regl-etr'), nom='Ailleurs')
         self.assertEqual(
             self._reglages(self.admin, etrangere, corps).status_code, 404)
+
+    def test_viewer_responsable_d_equipe_ne_regle_pas(self):
+        """ADRG15 (D-ADRG-6) — un « Viewer » responsable d'équipe lit son
+        cockpit mais n'écrit ni réglage ni objectif (403 nommant le droit)."""
+        from apps.crm.models import ObjectifCommercial
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_RESP_PERMISSIONS, VIEWER_PERMISSIONS)
+
+        def compte(nom, perms):
+            return User.objects.create_user(
+                username=f'dsp_{nom}', password='x', company=self.company,
+                role=Role.objects.create(company=self.company, nom=nom,
+                                         permissions=list(perms)))
+        viewer = compte('viewer', VIEWER_PERMISSIONS)
+        membre = User.objects.create_user(
+            username='dsp_m_fes', password='x', company=self.company)
+        equipe = EquipeCommerciale.objects.create(
+            company=self.company, nom='Fès', responsable=viewer)
+        equipe.membres.set([membre])
+        r = self._reglages(viewer, equipe, {'delai_minutes': 9})
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertIn('crm_modifier', r.json()['detail'])
+        self.auth_as(viewer)
+        r = self.api.post('/api/django/crm/objectifs/', {
+            'owner': membre.pk, 'metric': 'nb_contacts', 'period_type': 'month',
+            'period_year': 2026, 'period_month': 10, 'cible': '5'},
+            format='json')
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertIn('crm_modifier', r.json()['detail'])
+        equipe.refresh_from_db()
+        self.assertEqual(equipe.delai_attribution_minutes, 5)
+        self.assertFalse(ObjectifCommercial.objects.filter(owner=membre).exists())
+        self.assertEqual(self.api.get('/api/django/crm/cockpit-equipe/', {
+            'equipe': equipe.pk}).status_code, 200)
+        equipe.responsable = compte('resp', COMMERCIAL_RESP_PERMISSIONS)
+        equipe.save(update_fields=['responsable'])
+        self.assertEqual(self._reglages(equipe.responsable, equipe, {
+            'delai_minutes': 9}).status_code, 200)
 
     def test_reglages_ecrit_les_deux_champs_seuls(self):
         r = self._reglages(self.chef, self.equipe, {
@@ -749,19 +802,20 @@ class TestCockpitEquipe(TestCase):
         self.company = make_company('cockpit-co')
         CompanyProfile.objects.create(company=self.company)
         mk = User.objects.create_user
+        chef_role = role_ecriture_crm(self.company)
         self.chef = mk(username='ck_chef', password='x', company=self.company,
-                       first_name='Meryem')
+                       first_name='Meryem', role=chef_role)
         self.m1 = mk(username='ck_m1', password='x', company=self.company,
                      first_name='Sara', poste='Chargée de clientèle')
         self.m2 = mk(username='ck_m2', password='x', company=self.company,
                      first_name='Amine')
         self.autre_chef = mk(username='ck_chef2', password='x',
-                             company=self.company)
+                             company=self.company, role=chef_role)
         self.m3 = mk(username='ck_m3', password='x', company=self.company)
         self.directeur = mk(username='ck_dir', password='x',
-                            company=self.company)
+                            company=self.company, role=chef_role)
         self.autre_dir = mk(username='ck_dir2', password='x',
-                            company=self.company)
+                            company=self.company, role=chef_role)
         self.admin = mk(username='ck_admin', password='x', role_legacy='admin',
                         company=self.company)
         commercial = Departement.objects.create(
