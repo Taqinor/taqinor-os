@@ -176,6 +176,19 @@ export function useCanLireEquipesCrm() {
   return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
 }
 
+// ADRG120 — `GET /reporting/dashboard/` (accueil, ADRG70) : responsable ET, pour un
+// rôle fin non admin, un code `reporting_*` ET la lecture des ventes.
+export function useCanLireTableauDeBord() {
+  const lireVentes = useCanLireVentes()
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const permissions = useSelector((s) => s.auth.permissions) || []
+  if (role === 'admin') return true
+  if (!roleNom && permissions.length === 0) return role === 'responsable'
+  return estResponsable(role, roleNom, permissions) && lireVentes
+    && permissions.some((c) => typeof c === 'string' && c.startsWith('reporting_'))
+}
+
 export const useCanListFactures = useCanLireVentes
 
 export default useHasPermission

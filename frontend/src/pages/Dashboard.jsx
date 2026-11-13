@@ -48,7 +48,8 @@ import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
 import { useDeviseTenant } from '../hooks/useDeviseTenant'
-import { useCanLireVentes, useCanLireEquipesCrm } from '../hooks/useHasPermission'
+import { useCanLireVentes, useCanLireEquipesCrm, useCanLireTableauDeBord } from '../hooks/useHasPermission'
+import useDroitMetier from '../features/sav/useDroitMetier'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
 // existants (aucune logique de ticket dupliquée ici) et les tickets déjà en
@@ -255,6 +256,13 @@ export function leadsChauds(leads, { userId, limit = 3 } = {}) {
     .slice()
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, limit)
+}
+
+// ADRG120 — lectures de l'accueil selon les droits (ADRG70), jamais un appel voué au 403 :
+// leads et « Mes chiffres » = lecture du CRM ; tableau de bord servi = règle de sa route.
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
+export function lecturesAccueil({ peutLireVentes, peutLireCrm, peutLireTableau } = {}) {
+  return { ventes: !!peutLireVentes, leads: !!peutLireCrm, reporting: !!peutLireTableau, mesChiffres: !!peutLireCrm }
 }
 
 // K148 — Delta tokenisé pour une carte KPI : flèche + SIGNE + couleur (jamais
@@ -473,6 +481,9 @@ export function Component() {
   const roleTier = useSelector((s) => s.auth.role)
   const peutLireVentes = useCanLireVentes()
   const peutLireEquipes = useCanLireEquipesCrm()
+  const lectures = lecturesAccueil({
+    peutLireVentes, peutLireCrm: useDroitMetier('crm_voir'), peutLireTableau: useCanLireTableauDeBord(),
+  })
   const profile = cockpitProfile({ roleNom, roleTier })
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
@@ -529,7 +540,7 @@ export function Component() {
     if (peutLireVentes) dispatch(fetchDevis())
     if (peutLireVentes) dispatch(fetchFactures())
     dispatch(fetchInstallations())
-    dispatch(fetchLeads())
+    if (lectures.leads) dispatch(fetchLeads())
     dispatch(fetchTickets())
     // AANA60 — chiffres SERVIS (taux, « Mes chiffres », CA mensuel) ; un 403 de
     // /reporting/dashboard/ (rôle non direction) → état « accès réservé ».
@@ -541,8 +552,8 @@ export function Component() {
       servi('q2c', ventesApi.getDashboardQuoteToCash())
       servi('q2cMine', ventesApi.getDashboardQuoteToCash({ month: moisCourant(), mine: 1 }))
     }
-    servi('reporting', reportingApi.getDashboard())
-  }, [dispatch, peutLireVentes])
+    if (lectures.reporting) servi('reporting', reportingApi.getDashboard())
+  }, [dispatch, peutLireVentes, lectures.leads, lectures.reporting])
   useEffect(() => {
     reload()
   }, [reload])
@@ -937,7 +948,7 @@ export function Component() {
               vue personnelle (`/reporting`+`/reporting/commercial` gatés
               manager/admin), voit enfin SA propre performance. Ne dé-gate
               RIEN : `/reporting/commercial` reste l'outil manager. */}
-          {user?.id != null && (
+          {user?.id != null && lectures.mesChiffres && (
             <MesChiffresCard
               envoyes={mesChiffres.envoyes}
               acceptes={mesChiffres.acceptes}
@@ -1112,8 +1123,8 @@ export function Component() {
             <ChartCard
               title="Chiffre d'affaires mensuel"
               description={`Paiements reçus HT · ${formatMontant(caTotal, { decimals: 0, devise })} sur 6 mois`}
-              isEmpty={servis.refuseReporting || caMensuel.every((m) => m.ca === 0)}
-              emptyLabel={servis.refuseReporting
+              isEmpty={!lectures.reporting || servis.refuseReporting || caMensuel.every((m) => m.ca === 0)}
+              emptyLabel={!lectures.reporting || servis.refuseReporting
                 ? "Accès réservé : chiffre d'affaires visible par la direction."
                 : 'Aucun paiement reçu sur les 6 derniers mois.'}
               actions={(
