@@ -108,12 +108,16 @@ export default function WarrantyClaimsPage() {
 
   const visibleRows = useMemo(() => rows, [rows])
 
+  // ACNC35 — « Créer » désactivé pendant sa requête (une réclamation par envoi).
+  const [envoiCreation, setEnvoiCreation] = useState(false)
   const create = async () => {
     if (!form.equipement) {
       setFormError('Équipement requis.')
       return
     }
+    if (envoiCreation) return
     setFormError(null)
+    setEnvoiCreation(true)
     try {
       const payload = {
         equipement: form.equipement,
@@ -128,7 +132,7 @@ export default function WarrantyClaimsPage() {
       load()
     } catch (e) {
       setFormError(e?.response?.data?.detail ?? 'Création impossible.')
-    }
+    } finally { setEnvoiCreation(false) }
   }
 
   const startEdit = (row) => setEdit({
@@ -290,7 +294,7 @@ export default function WarrantyClaimsPage() {
               <Input type="date" value={form.date_signalement}
                      onChange={(e) => setForm((f) => ({ ...f, date_signalement: e.target.value }))} />
             </FormField>
-            <Button type="submit"><Plus /> Créer</Button>
+            <Button type="submit" loading={envoiCreation}><Plus /> Créer</Button>
           </Form>
           <ErreurFormulaire message={formError} />
         </Card>
