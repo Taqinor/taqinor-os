@@ -218,6 +218,11 @@ sortie(p.pk)`)
       await expect(p.getByText(/colonnes reconnues/), 'aperçu affiché').toBeVisible({ timeout: 60_000 })
     }
     expect(await p.locator('body').innerText(), 'écran : aucun prix d\'achat actuel affiché').not.toContain('9017')
+    // Relu après rechargement : même écran, toujours aucun prix d'achat actuel, même nombre de « Importer ».
+    await p.reload()
+    await p.waitForLoadState('networkidle')
+    await expect(importer, 'relu : même accès à « Importer »').toHaveCount(n)
+    expect(await p.locator('body').innerText(), 'relu : aucun prix d\'achat actuel affiché').not.toContain('9017')
     sondeAppoint('C-ADRG-004')
   } finally {
     await py(`from apps.stock.models import Produit
@@ -257,11 +262,16 @@ sortie(dict(id=b.pk, cree=cree))`)
       expect(rep.status(), `${qui} : p2p/kpi 200`).toBe(200)
       await expect(p.getByTestId('kpi-p2p-card'), `${qui} : carte Achats affichée`).toBeVisible({ timeout: 60_000 })
       const lignes = p.locator('[data-testid^="kpi-p2p-budget-"]')
-      if (attendu === 0) {
-        await expect(p.getByTestId('kpi-p2p-chargement')).toHaveCount(0, { timeout: 60_000 })
-        await expect(lignes, `${qui} : aucune ligne de budget`).toHaveCount(0)
-      } else {
-        await expect(lignes.first(), `${qui} : ligne de budget affichée`).toBeVisible({ timeout: 60_000 })
+      for (const passe of ['', 'relu après rechargement : ']) {
+        if (passe) { await p.reload(); await expect(p.getByTestId('kpi-p2p-card')).toBeVisible({ timeout: 60_000 }) }
+        if (attendu === 0) {
+          await expect(p.getByTestId('kpi-p2p-chargement')).toHaveCount(0, { timeout: 60_000 })
+          await expect(lignes, `${passe}${qui} : aucune ligne de budget`).toHaveCount(0)
+          await expect(p.getByTestId('kpi-p2p-card'), `${passe}${qui} : aucun libellé de budget`).not.toContainText('Budget achats')
+        } else {
+          await expect(lignes.first(), `${passe}${qui} : ligne de budget affichée`).toBeVisible({ timeout: 60_000 })
+          await expect(lignes.first(), `${passe}${qui} : libellé du budget`).toContainText('Budget achats')
+        }
       }
     }
     sondeAppoint('C-ADRG-005')
@@ -305,10 +315,20 @@ etape('PF4.3-ADRG69', ['ADRG69'], async ({ page, suivi, testInfo }) => {
   await pc.waitForLoadState('networkidle')
   await expect(pc.getByText(TITRE), 'Commercial : carte Journal absente').toHaveCount(0)
   expect(appels, 'Commercial : aucun appel auditLog').toEqual([])
+  // Relu après rechargement.
+  await pc.reload()
+  await pc.getByRole('tab', { name: 'Insights' }).click()
+  await expect(pc.getByText('Revenu récurrent (contrats de maintenance)').first(), 'relu : onglet Insights ouvert').toBeVisible({ timeout: 60_000 })
+  await pc.waitForLoadState('networkidle')
+  await expect(pc.getByText(TITRE), 'relu : carte Journal absente').toHaveCount(0)
+  expect(appels, 'relu : aucun appel auditLog').toEqual([])
   const pd = await ecran(page, suivi, testInfo, di.nom)
   await pd.goto('/rapports')
   await pd.getByRole('tab', { name: 'Insights' }).click()
   await expect(pd.getByText(TITRE).first(), 'Directeur : carte Journal rendue').toBeVisible({ timeout: 60_000 })
+  await pd.reload()
+  await pd.getByRole('tab', { name: 'Insights' }).click()
+  await expect(pd.getByText(TITRE).first(), 'Directeur relu : carte Journal rendue').toBeVisible({ timeout: 60_000 })
   sondeAppoint('C-ADRG-018')
   // L'écart ne couvre QUE les refus déclarés : tout autre incident fait tomber l'étape.
   const hors = suivi.incidents.filter((i) => !/\/reporting\/(insights\/(job-costing|commissions|profitability)|reports\/service)\//.test(i.texte))
@@ -433,6 +453,8 @@ etape('PF4.3-ADRG73', ['ADRG73'], async ({ page, suivi, testInfo }) => {
       ])
       expect(rep.status(), `${qui} : tableau de bord 200`).toBe(200)
       await expect(bouton.first(), `${qui} : bouton présent`).toBeVisible({ timeout: 60_000 })
+      await p.reload()
+      await expect(bouton.first(), `${qui} relu : bouton présent`).toBeVisible({ timeout: 60_000 })
     } else {
       // La route /reporting est réservée au palier responsable (module.config `RESPONSABLE_ADMIN`) : le
       // Commercial y est soit refusé par l'écran, soit sur le tableau sans export ; dans les deux cas, aucun bouton.
@@ -440,6 +462,9 @@ etape('PF4.3-ADRG73', ['ADRG73'], async ({ page, suivi, testInfo }) => {
       await p.waitForLoadState('networkidle')
       console.log(`[ADRG73] /reporting du Commercial : ${p.url()} ; texte : ${(await p.locator('main').first().innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200)}`)
       await expect(bouton, `${qui} : aucun bouton « Exporter Excel »`).toHaveCount(0)
+      await p.reload()
+      await p.waitForLoadState('networkidle')
+      await expect(bouton, `${qui} relu : aucun bouton « Exporter Excel »`).toHaveCount(0)
     }
   }
   sondeAppoint('C-ADRG-020')
@@ -465,12 +490,15 @@ sortie([ListePrix.objects.filter(pk=${ids.liste}).exists(), DevisPreset.objects.
     for (const [qui, nom, visible] of [['Commercial', co.nom, false], ['Commercial responsable', cr.nom, true]]) {
       const p = await ecran(page, suivi, testInfo, nom)
       await p.goto('/ventes/listes-prix')
-      await p.getByRole('button', { name: ids.nom, exact: true }).click({ timeout: 60_000 })
-      const dlg = p.getByRole('dialog')
-      await expect(dlg.getByRole('button', { name: 'Archiver' }), `${qui} : fiche ouverte`).toBeVisible({ timeout: 60_000 })
-      const suppr = dlg.getByRole('button', { name: 'Supprimer', exact: true })
-      if (visible) await expect(suppr, `${qui} : « Supprimer » présent`).toBeVisible()
-      else await expect(suppr, `${qui} : aucun « Supprimer »`).toHaveCount(0)
+      for (const passe of ['', 'relu après rechargement : ']) {
+        if (passe) await p.reload()
+        await p.getByRole('button', { name: ids.nom, exact: true }).click({ timeout: 60_000 })
+        const dlg = p.getByRole('dialog')
+        await expect(dlg.getByRole('button', { name: 'Archiver' }), `${passe}${qui} : fiche ouverte`).toBeVisible({ timeout: 60_000 })
+        const suppr = dlg.getByRole('button', { name: 'Supprimer', exact: true })
+        if (visible) await expect(suppr, `${passe}${qui} : « Supprimer » présent`).toBeVisible()
+        else await expect(suppr, `${passe}${qui} : aucun « Supprimer »`).toHaveCount(0)
+      }
     }
     expect((await cr.ctx.delete(`${API}/ventes/listes-prix/${ids.liste}/`, T)).status(), 'Commercial responsable : liste 204').toBe(204)
     expect((await cr.ctx.delete(`${API}/ventes/presets/${ids.preset}/`, T)).status(), 'Commercial responsable : modèle 204').toBe(204)
@@ -505,8 +533,10 @@ sortie(1)`)
   }
   for (const [qui, nom, present] of [['Viewer', vi.nom, false], ['Commercial', co.nom, true]]) {
     const p = await ecran(page, suivi, testInfo, nom)
-    for (const [etat, d] of Object.entries(devis)) {
+    // Les trois lignes, puis la ligne brouillon relue après rechargement.
+    for (const [etat, d, recharger] of [...Object.entries(devis).map(([e, x]) => [e, x, false]), ['brouillon', devis.brouillon, true]]) {
       await p.goto(`/ventes/devis?q=${encodeURIComponent(d.reference)}`)
+      if (recharger) await p.reload()
       const ligne = p.locator(`#devis-row-${d.id}`)
       await expect(ligne, `${qui} : ligne ${etat} affichée`).toBeVisible({ timeout: 60_000 })
       const entete = [p.getByRole('button', { name: /Exporter Excel/ }), p.getByRole('button', { name: /Nouveau devis/ })]
@@ -612,26 +642,35 @@ sortie(dict(chantier=i.pk, ref=i.reference, iv=iv.pk))`)
     // Fiche et liste au Commercial : lecture seule, aucun « Exporter Excel ».
     const pc = await ecran(page, suivi, testInfo, co.nom)
     await pc.goto(`/chantiers?id=${ids.chantier}`)
-    const fiche = pc.getByRole('dialog')
-    await expect(fiche.getByText(`Chantier — ${ids.ref}`).first(), 'Commercial : fiche ouverte').toBeVisible({ timeout: 60_000 })
-    await expect(fiche.getByRole('button', { name: 'Fermer', exact: true }).first(), 'Commercial : fiche rendue').toBeVisible()
-    for (const geste of ['Mettre à jour', 'Annuler le chantier', 'Marquer réceptionné']) {
-      await expect(fiche.getByRole('button', { name: geste }), `Commercial : pas de « ${geste} »`).toHaveCount(0)
+    for (const passe of ['', 'relu après rechargement : ']) {
+      if (passe) await pc.reload()
+      const fiche = pc.getByRole('dialog')
+      await expect(fiche.getByText(`Chantier — ${ids.ref}`).first(), `${passe}Commercial : fiche ouverte`).toBeVisible({ timeout: 60_000 })
+      await expect(fiche.getByRole('button', { name: 'Fermer', exact: true }).first(), `${passe}Commercial : fiche rendue`).toBeVisible()
+      for (const geste of ['Mettre à jour', 'Annuler le chantier', 'Marquer réceptionné']) {
+        await expect(fiche.getByRole('button', { name: geste }), `${passe}Commercial : pas de « ${geste} »`).toHaveCount(0)
+      }
+      await expect(pc.getByRole('button', { name: /Exporter Excel/ }), `${passe}Commercial : aucun « Exporter Excel »`).toHaveCount(0)
     }
-    await expect(pc.getByRole('button', { name: /Exporter Excel/ }), 'Commercial : aucun « Exporter Excel »').toHaveCount(0)
     // Témoin : le Technicien garde les gestes de la fiche.
     const pt = await ecran(page, suivi, testInfo, te.nom)
     await pt.goto(`/chantiers?id=${ids.chantier}`)
     await expect(pt.getByRole('dialog').getByRole('button', { name: 'Mettre à jour' }), 'Technicien : gestes présents').toBeVisible({ timeout: 60_000 })
-    // Planning : carte non glissable au Technicien, glissable au Technicien responsable.
+    // Planning : carte non glissable au Technicien (relue après rechargement), glissable au Technicien responsable.
     await pt.goto('/planification')
-    const carte = pt.getByTestId(`iv-${ids.iv}`)
-    await expect(carte, 'Technicien : intervention au planning').toBeVisible({ timeout: 60_000 })
-    await expect(carte.getByRole('button', { name: /Déplacer l'intervention/ }), 'Technicien : carte non glissable').toHaveCount(0)
-    await expect(pt.getByText(/Lecture seule : déplacer une intervention demande le droit/), 'Technicien : lecture seule annoncée').toBeVisible()
+    for (const passe of ['', 'relu après rechargement : ']) {
+      if (passe) await pt.reload()
+      const carte = pt.getByTestId(`iv-${ids.iv}`)
+      await expect(carte, `${passe}Technicien : intervention au planning`).toBeVisible({ timeout: 60_000 })
+      await expect(carte.getByRole('button', { name: /Déplacer l'intervention/ }), `${passe}Technicien : carte non glissable`).toHaveCount(0)
+      await expect(pt.getByText(/Lecture seule : déplacer une intervention demande le droit/), `${passe}Technicien : lecture seule annoncée`).toBeVisible()
+    }
     const pr = await ecran(page, suivi, testInfo, tr.nom)
     await pr.goto('/planification')
     await expect(pr.getByTestId(`iv-${ids.iv}`).getByRole('button', { name: /Déplacer l'intervention/ }), 'Technicien responsable : carte glissable').toBeVisible({ timeout: 60_000 })
+    // L'écart ne couvre QUE le refus déclaré (types d'intervention lus par la fiche) : tout autre incident fait tomber l'étape.
+    const hors = suivi.incidents.filter((i) => !/\/installations\/types-intervention\//.test(i.texte))
+    expect(hors, 'aucun incident hors de l\'écart déclaré').toEqual([])
   } finally {
     await py(`from apps.installations.models import Installation, Intervention
 Intervention.objects.filter(pk=${ids.iv}).delete()
@@ -641,7 +680,10 @@ except Exception:
     Installation.objects.filter(pk=${ids.chantier}).update(annule=True)
 sortie(1)`).catch(() => null)
   }
-})
+}, { ecart: {
+  base: 'FAIL',
+  raison: "frontend/src/pages/installations/InstallationDetail.jsx (effet d'ouverture, l. 427) lit installations/types-intervention/ pour TOUT rôle ; le Commercial, entré aux chantiers par l'octroi ventes_voir (APFS105) sans code installations, reçoit 403 + console.error. Lecture antérieure à ADRG21 (qui ne conditionne que les gestes, 0 ligne nette ajoutée à ce fichier), hors de ses gestes d'écriture",
+} })
 
 etape('PF4.2-ADRG99', ['ADRG99'], async ({ page, suivi, testInfo }) => {
   const m = marque()
@@ -667,8 +709,11 @@ sortie([i.technicien_responsable_id, i.acces_instructions])`)
     // Écran Chantiers (Kanban) : aucun sélecteur « Installateur » au Technicien ; présent au Technicien responsable.
     const pt = await ecran(page, suivi, testInfo, te.nom, { 'taqinor.chantiers.view': 'kanban' })
     await pt.goto('/chantiers')
-    await expect(pt.getByText(ids.ref).first(), 'Technicien : carte du chantier').toBeVisible({ timeout: 60_000 })
-    await expect(pt.getByRole('combobox', { name: 'Installateur' }), 'Technicien : aucun sélecteur « Installateur »').toHaveCount(0)
+    for (const passe of ['', 'relu après rechargement : ']) {
+      if (passe) await pt.reload()
+      await expect(pt.getByText(ids.ref).first(), `${passe}Technicien : carte du chantier`).toBeVisible({ timeout: 60_000 })
+      await expect(pt.getByRole('combobox', { name: 'Installateur' }), `${passe}Technicien : aucun sélecteur « Installateur »`).toHaveCount(0)
+    }
     const pr = await ecran(page, suivi, testInfo, tr.nom, { 'taqinor.chantiers.view': 'kanban' })
     await pr.goto('/chantiers')
     await expect(pr.getByText(ids.ref).first(), 'Technicien responsable : carte du chantier').toBeVisible({ timeout: 60_000 })
@@ -743,19 +788,22 @@ sortie(1)`)
     for (const [qui, nom, present] of [['Technicien responsable', tr.nom, false], ['Administrateur', ad.nom, true]]) {
       const p = await ecran(page, suivi, testInfo, nom)
       await p.goto('/chantiers/import')
-      await p.getByTestId(`dossier-import-${ids.dossier}`).click({ timeout: 60_000 })
-      await expect(p.getByText(`DI-ADRG31-${m}`).first(), `${qui} : fiche du dossier`).toBeVisible({ timeout: 60_000 })
-      const boutons = [p.getByRole('button', { name: 'Nouveau dossier' }), p.getByRole('button', { name: 'Faire avancer' }),
-        p.getByRole('button', { name: /Nouveau frais/ })]
-      for (const b of boutons) {
-        if (present) await expect(b.first(), `${qui} : bouton présent`).toBeVisible({ timeout: 30_000 })
-        else await expect(b, `${qui} : bouton absent`).toHaveCount(0)
+      for (const passe of ['', 'relu après rechargement : ']) {
+        if (passe) await p.reload()
+        await p.getByTestId(`dossier-import-${ids.dossier}`).click({ timeout: 60_000 })
+        await expect(p.getByText(`DI-ADRG31-${m}`).first(), `${passe}${qui} : fiche du dossier`).toBeVisible({ timeout: 60_000 })
+        const boutons = [p.getByRole('button', { name: 'Nouveau dossier' }), p.getByRole('button', { name: 'Faire avancer' }),
+          p.getByRole('button', { name: /Nouveau frais/ })]
+        for (const b of boutons) {
+          if (present) await expect(b.first(), `${passe}${qui} : bouton présent`).toBeVisible({ timeout: 30_000 })
+          else await expect(b, `${passe}${qui} : bouton absent`).toHaveCount(0)
+        }
+        await p.getByRole('tab', { name: 'Coût débarqué' }).click()
+        await expect(p.getByRole('button', { name: 'Calculer le coût débarqué' }), `${passe}${qui} : onglet ouvert`).toBeVisible({ timeout: 30_000 })
+        const ligne = p.getByRole('button', { name: /Nouvelle ligne SKU/ })
+        if (present) await expect(ligne, `${passe}${qui} : « Nouvelle ligne SKU »`).toBeVisible()
+        else await expect(ligne, `${passe}${qui} : pas de « Nouvelle ligne SKU »`).toHaveCount(0)
       }
-      await p.getByRole('tab', { name: 'Coût débarqué' }).click()
-      await expect(p.getByRole('button', { name: 'Calculer le coût débarqué' }), `${qui} : onglet ouvert`).toBeVisible({ timeout: 30_000 })
-      const ligne = p.getByRole('button', { name: /Nouvelle ligne SKU/ })
-      if (present) await expect(ligne, `${qui} : « Nouvelle ligne SKU »`).toBeVisible()
-      else await expect(ligne, `${qui} : pas de « Nouvelle ligne SKU »`).toHaveCount(0)
     }
     sondeAppoint('C-ADRG-006')
   } finally {
@@ -776,14 +824,17 @@ etape('PF4.2-ADRG86', ['ADRG86'], async ({ page, suivi, testInfo }) => {
     const di = await session(testInfo, `adrg86di_${m}`, 'Directeur')
     for (const [qui, nom, present] of [['Technicien responsable', tr.nom, false], ['Directeur', di.nom, true]]) {
       const p = await ecran(page, suivi, testInfo, nom)
-      await p.goto(`/chantiers/demandes-achat?da=${da.id}`)
-      await expect(p.getByText(`Demande ADRG86 ${m}`).first(), `${qui} : détail ouvert`).toBeVisible({ timeout: 60_000 })
-      const boutons = [p.getByRole('button', { name: 'Approuver', exact: true }), p.getByRole('button', { name: 'Refuser', exact: true })]
-      if (present) {
-        for (const b of boutons) await expect(b, `${qui} : bouton présent`).toBeVisible({ timeout: 30_000 })
-      } else {
-        await expect(p.getByRole('button', { name: 'Fermer', exact: true }).first(), `${qui} : détail rendu`).toBeVisible({ timeout: 30_000 })
-        for (const b of boutons) await expect(b, `${qui} : aucun bouton d'approbation`).toHaveCount(0)
+      // Deux chargements complets de la page (le lien `?da=` est retiré de l'adresse à l'ouverture : on le rouvre).
+      for (const passe of ['', 'relu après rechargement : ']) {
+        await p.goto(`/chantiers/demandes-achat?da=${da.id}`)
+        await expect(p.getByText(`Demande ADRG86 ${m}`).first(), `${passe}${qui} : détail ouvert`).toBeVisible({ timeout: 60_000 })
+        const boutons = [p.getByRole('button', { name: 'Approuver', exact: true }), p.getByRole('button', { name: 'Refuser', exact: true })]
+        if (present) {
+          for (const b of boutons) await expect(b, `${passe}${qui} : bouton présent`).toBeVisible({ timeout: 30_000 })
+        } else {
+          await expect(p.getByRole('button', { name: 'Fermer', exact: true }).first(), `${passe}${qui} : détail rendu`).toBeVisible({ timeout: 30_000 })
+          for (const b of boutons) await expect(b, `${passe}${qui} : aucun bouton d'approbation`).toHaveCount(0)
+        }
       }
     }
     expect(await py(`from apps.installations.models_demande_achat import DemandeAchat
@@ -813,9 +864,13 @@ etape('PF4.2-ADRG104', ['ADRG104'], async ({ page, suivi, testInfo }) => {
       expect(rep.status(), `${qui} : pastille chargée (200)`).toBe(200)
     } else {
       await p.goto('/ventes/devis')
-      await p.waitForLoadState('networkidle')
-      await expect(p.getByRole('navigation').first(), `${qui} : barre latérale rendue`).toBeVisible({ timeout: 60_000 })
-      expect(appels, `${qui} : aucune requête co2-fleet`).toEqual([])
+      for (const passe of ['', 'relu après rechargement : ']) {
+        if (passe) await p.reload()
+        await p.waitForLoadState('networkidle')
+        await expect(p.getByRole('navigation').first(), `${passe}${qui} : barre latérale rendue`).toBeVisible({ timeout: 60_000 })
+        await expect(p.locator('[aria-label^="Impact cumulé du parc"]'), `${passe}${qui} : pas de pastille d'impact`).toHaveCount(0)
+        expect(appels, `${passe}${qui} : aucune requête co2-fleet`).toEqual([])
+      }
     }
   }
 })
