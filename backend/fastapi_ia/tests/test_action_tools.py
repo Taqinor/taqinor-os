@@ -948,7 +948,7 @@ class CapteurErreursAic7Tests(unittest.TestCase):
                          ("hors_champ", None))
 
     def test_5xx_devient_evenement_bug(self):
-        for status in (500, 404, 409, 422, 0):
+        for status in (500, 422, 0):
             with self.subTest(status=status):
                 texte, collector = self._lancer(status)
                 self.assertIn("a echoue", texte)  # reponse au commercial inchangee
@@ -960,7 +960,8 @@ class CapteurErreursAic7Tests(unittest.TestCase):
                                           "message": "boom"})
 
     def test_403_et_400_ne_sont_pas_des_bugs(self):
-        self.assertEqual(at.STATUTS_REPONSE_NORMALE, frozenset({400, 403}))
+        # COP-A4 — 409 (refus metier) et 404 (objet hors portee) non plus.
+        self.assertEqual(at.STATUTS_REPONSE_NORMALE, frozenset({400, 403, 404, 409}))
         for status in sorted(at.STATUTS_REPONSE_NORMALE):
             with self.subTest(status=status):
                 _texte, collector = self._lancer(status)
@@ -1430,6 +1431,53 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
                 res, appels = self._confirmer(ctx, jeton)
                 self.assertIn("déjà confirmée", res["error"])
                 self.assertEqual(appels, [])
+
+
+# ── COP-A4 — erreurs dites juste ──────────────────────────────────────────────
+
+class _RespEntetes(_FakeResp):
+    def __init__(self, status_code, payload, headers=None):
+        super().__init__(status_code, payload)
+        self.headers = headers or {}
+
+
+class ErreursCop4Tests(unittest.TestCase):
+    def test_refus_metier_409_et_404_ne_sont_pas_des_bugs(self):
+        for status in (409, 404):
+            with self.subTest(status=status):
+                collector: list = []
+                with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                        "ok": False, "status": status, "error": "Touche déjà close."}):
+                    texte = at.run_catalogue_action(_ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+                self.assertIsNone(at.intention_pour_statut(status))
+                self.assertEqual(collector, [])
+                self.assertIn("Touche déjà close.", texte)
+
+    def test_identifiant_de_requete_conserve(self):
+        par_entete = at._normalize_error(
+            _RespEntetes(500, {"detail": "Erreur serveur."}, {"X-Request-Id": "abc123"}), {"detail": "Erreur serveur."})
+        self.assertEqual(par_entete["request_id"], "abc123")
+        corps = {"detail": "Erreur.", "error": {"code": "server_error", "message": "Erreur.", "request_id": "r-9"}}
+        self.assertEqual(at._normalize_error(_FakeResp(500, corps), corps)["request_id"], "r-9")
+        self.assertIsNone(at._normalize_error(_FakeResp(500, {}), {})["request_id"])
+
+    def test_request_id_dans_l_entree_erreur_pas_dans_le_texte_du_modele(self):
+        collector: list = []
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": False, "status": 500, "error": "Erreur serveur.", "request_id": "rid-77"}):
+            texte = at.run_catalogue_action(_ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+        self.assertEqual(collector[0]["request_id"], "rid-77")
+        self.assertNotIn("rid-77", texte)
+
+    def test_message_court_sans_enveloppe_brute(self):
+        champs = {"nom": ["Ce champ est obligatoire."], "erreurs": {"rappel_le": "Date passée."},
+                  "error": {"code": "validation_error", "message": "Données invalides.", "request_id": "x"}}
+        message = at._normalize_error(_FakeResp(400, champs), champs)["error"]
+        self.assertEqual(message, "nom: Ce champ est obligatoire. ; erreurs: rappel_le: Date passée.")
+        seule = {"error": {"code": "conflict", "message": "Conflit.", "request_id": "x"}}
+        self.assertEqual(at._normalize_error(_FakeResp(409, seule), seule)["error"], "Conflit.")
+        long = {"detail": "x" * 1000}
+        self.assertLessEqual(len(at._normalize_error(_FakeResp(409, long), long)["error"]), 300)
 
 
 if __name__ == "__main__":

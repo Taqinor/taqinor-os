@@ -192,11 +192,13 @@ def _django_call(
 
 
 # AIC7 — UNE table statut -> intention de l'evenement (lue par le capteur ET
-# par les tests). 403 (permission) et 400 (validation, champ fautif) sont une
-# reponse NORMALE au commercial ; tout autre echec d'une action (5xx, 404, 409,
-# 422 inattendus, Django injoignable = 0) est un `bug`, sans que le modele ait
-# a le decider.
-STATUTS_REPONSE_NORMALE = frozenset({400, 403})
+# par les tests). 403 (permission), 400 (validation, champ fautif), 409 (refus
+# METIER : touche deja close, devis deja accepte…) et 404 (objet inconnu ou
+# hors portee) sont une reponse NORMALE au commercial (COP-A4 : chaque 409 du
+# suivi etait journalise `bug`) ; tout autre echec d'une action (5xx, 422
+# inattendu, Django injoignable = 0) est un `bug`, sans que le modele ait a le
+# decider.
+STATUTS_REPONSE_NORMALE = frozenset({400, 403, 404, 409})
 
 
 def intention_pour_statut(status: Any) -> Optional[str]:
@@ -252,21 +254,58 @@ def _normalize_error(resp, data) -> dict[str, Any]:
 
     # Message d'erreur lisible (Django renvoie souvent {'detail': ...} ou un
     # dict de champs). On masque les internes.
-    detail = ""
-    if isinstance(data, dict):
-        detail = str(data.get("detail") or "")
-        if not detail:
-            # Concatene les premiers messages de champ.
-            parts = []
-            for k, v in data.items():
-                if isinstance(v, (list, tuple)):
-                    v = ", ".join(str(x) for x in v)
-                parts.append(f"{k}: {v}")
-            detail = " ; ".join(parts[:4])
+    detail = _message_lisible(data)
     if resp.status_code in (401, 403):
         detail = detail or "Vous n'avez pas les droits pour cette action."
+    if len(detail) > _MESSAGE_MAX:
+        detail = detail[:_MESSAGE_MAX - 1].rstrip() + "…"
     return {"ok": False, "status": resp.status_code,
-            "error": detail or "La demande a ete refusee."}
+            "error": detail or "La demande a ete refusee.",
+            "request_id": _request_id(resp, data)}
+
+
+# COP-A4 — message d'erreur court, sans enveloppe technique brute.
+_MESSAGE_MAX = 300
+# Cles de l'enveloppe YAPIC3 (`core/exceptions.py`) : jamais recopiees telles
+# quelles dans le message (dict brut) ; `error.message` sert de repli.
+_CLES_ENVELOPPE = frozenset({"error", "request_id"})
+
+
+def _texte_erreur(valeur: Any) -> str:
+    """Valeur d'erreur Django -> texte plat (listes et dicts de champs)."""
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(_texte_erreur(v) for v in valeur)
+    if isinstance(valeur, dict):
+        return " ; ".join(f"{k}: {_texte_erreur(v)}" for k, v in valeur.items())
+    return str(valeur)
+
+
+def _message_lisible(data: Any) -> str:
+    """`detail`, sinon les quatre premiers messages de champ, sinon le
+    `message` de l'enveloppe d'erreur."""
+    if not isinstance(data, dict):
+        return ""
+    if data.get("detail"):
+        return _texte_erreur(data["detail"])
+    parts = [f"{k}: {_texte_erreur(v)}" for k, v in data.items()
+             if k not in _CLES_ENVELOPPE]
+    if parts:
+        return " ; ".join(parts[:4])
+    enveloppe = data.get("error")
+    return str(enveloppe.get("message") or "") if isinstance(enveloppe, dict) else ""
+
+
+def _request_id(resp, data: Any) -> Optional[str]:
+    """COP-A4 — identifiant de la requete Django (en-tete `X-Request-Id` de
+    `RequestIdMiddleware`, sinon `error.request_id` du corps) : il relie
+    l'erreur vue par le commercial aux journaux du serveur."""
+    entetes = getattr(resp, "headers", None) or {}
+    rid = entetes.get("X-Request-Id") or entetes.get("X-Request-ID")
+    if not rid and isinstance(data, dict):
+        enveloppe = data.get("error")
+        rid = (enveloppe.get("request_id") if isinstance(enveloppe, dict)
+               else None) or data.get("request_id")
+    return str(rid)[:64] if rid else None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -662,7 +701,8 @@ def run_catalogue_action(
         if collector is not None and intention_pour_statut(res.get("status")):
             collector.append({
                 "type": "erreur", "intention": "bug", "status": res.get("status"),
-                "outil": action["key"], "message": str(res.get("error", ""))[:200]})
+                "outil": action["key"], "message": str(res.get("error", ""))[:200],
+                "request_id": res.get("request_id")})
         return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
     result = {
         "type": "result", "action_key": action["key"],
@@ -742,7 +782,8 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     if not res.get("ok"):
         suite = _SANS_REPONSE if not res.get("status") else _NON_EXECUTEE
         return {"ok": False, "status": res.get("status"),
-                "error": (res.get("error") or "L'action a échoué.") + suite}
+                "error": (res.get("error") or "L'action a échoué.") + suite,
+                "request_id": res.get("request_id")}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
     # `log_confirmed_action` existait côté Django, testée, mais aucun appelant
