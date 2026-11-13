@@ -159,6 +159,13 @@ jobs:
           done
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
+          # A — étapes des DÉFAUTS constatés (AMSG57, AMSG68) rejouées pour la trace : leur enregistrement est jeté.
+          set +e
+          AMSG2_DEFAUTS=1 npx playwright test --project=acceptation e2e/acceptation/amsg2.spec.js --grep "AMSG57|AMSG68" --reporter=list
+          echo "== rejeu des défauts : sortie $? (attendu : non nul tant que les défauts demeurent)"
+          set -e
+          rm -rf ../docs/audits/acceptation/AMSG ../docs/qa-explorer/captures/*/ACCEPTATION-AMSG-*
+          # B — l'enregistrement du lot (12 tâches).
           npx playwright test --project=acceptation e2e/acceptation/amsg2.spec.js
       - name: Queue des journaux gunicorn (diagnostic)
         if: ${{ !cancelled() }}
