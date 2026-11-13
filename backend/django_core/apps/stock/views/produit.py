@@ -1969,12 +1969,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 },
                 status=status.HTTP_200_OK,
             )
-        nb = produit.mouvements.count()
-        if nb:
-            return Response({'detail': (
-                f'Suppression définitive refusée : ce produit porte {nb} '
-                f'mouvement{"s" if nb > 1 else ""} de stock (registre conservé). '
-                "L'archive suffit.")}, status=status.HTTP_409_CONFLICT)
+        if (nb := produit.mouvements.count()):
+            return Response({'detail': f'Suppression définitive refusée : ce produit porte {nb} mouvement'
+                             f'{"s" if nb > 1 else ""} de stock (registre conservé). L\'archive suffit.'},
+                            status=status.HTTP_409_CONFLICT)
         try:
             produit.delete()
         except ProtectedError as exc:
