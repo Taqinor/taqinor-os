@@ -118,24 +118,24 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L("Note de débit à charge de") }}</div>
-      {% if note_debit.client.type_client == 'entreprise' %}
-      <div class="partie-nom">{{ note_debit.client.nom }}</div>
+      {% if acheteur.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ acheteur.nom }}</div>
       {% else %}
-      <div class="partie-nom">{{ note_debit.client.nom }} {{ note_debit.client.prenom or '' }}</div>
+      <div class="partie-nom">{{ acheteur.nom }} {{ acheteur.prenom or '' }}</div>
       {% endif %}
       {# APDF27 (C-APDF-009) — même bloc client entreprise que la facture
          (CIQ217 / AFAC56) : ICE, IF, RC chacun omis s'il est vide. #}
-      {% if note_debit.client.type_client == 'entreprise' or note_debit.client.ice or note_debit.client.if_fiscal or note_debit.client.rc %}
+      {% if acheteur.type_client == 'entreprise' or acheteur.ice or acheteur.if_fiscal or acheteur.rc %}
       <div class="partie-detail">
-        {% if note_debit.client.ice %}ICE : {{ note_debit.client.ice }}<br />{% endif %}
-        {% if note_debit.client.if_fiscal %}IF : {{ note_debit.client.if_fiscal }}<br />{% endif %}
-        {% if note_debit.client.rc %}RC : {{ note_debit.client.rc }}<br />{% endif %}
+        {% if acheteur.ice %}ICE : {{ acheteur.ice }}<br />{% endif %}
+        {% if acheteur.if_fiscal %}IF : {{ acheteur.if_fiscal }}<br />{% endif %}
+        {% if acheteur.rc %}RC : {{ acheteur.rc }}<br />{% endif %}
       </div>
       {% endif %}
       <div class="partie-detail">
-        {% if note_debit.client.email %}{{ note_debit.client.email }}<br />{% endif %}
-        {% if note_debit.client.telephone %}{{ note_debit.client.telephone }}<br />{% endif %}
-        {% if note_debit.client.adresse %}{{ note_debit.client.adresse }}{% endif %}
+        {% if acheteur.email %}{{ acheteur.email }}<br />{% endif %}
+        {% if acheteur.telephone %}{{ acheteur.telephone }}<br />{% endif %}
+        {% if acheteur.adresse %}{{ acheteur.adresse }}{% endif %}
       </div>
     </div>
   </div>
