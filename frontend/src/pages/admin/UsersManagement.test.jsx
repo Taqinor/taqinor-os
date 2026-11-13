@@ -167,6 +167,33 @@ describe('UsersManagement — DataTable (J145)', () => {
     })))
   })
 
+  it('AERR54 — mot de passe refusé : message sous le champ, jamais Request failed', async () => {
+    const refus = new Error('Request failed with status code 400')
+    refus.response = { status: 400, data: { password: ['Ce mot de passe est trop court.'] } }
+    apiMock.post.mockRejectedValueOnce(refus)
+    renderPage()
+    await screen.findAllByText('sami')
+    fireEvent.click(screen.getByRole('button', { name: '+ Nouvel utilisateur' }))
+    const createBtn = screen.getByRole('button', { name: 'Créer' })
+    const form = createBtn.closest('form')
+    fireEvent.change(form.querySelector('input:not([type])'), { target: { value: 'nouveau' } })
+    fireEvent.change(form.querySelector('input[type="password"]'), { target: { value: '1' } })
+    fireEvent.click(createBtn)
+
+    const message = await screen.findByText('Ce mot de passe est trop court.')
+    expect(message.closest('#new-password-error')).toBeTruthy()
+    expect(screen.queryByText(/Request failed/)).toBeNull()
+    expect(form.querySelector('input:not([type])').value).toBe('nouveau')
+  })
+
+  it('AERR60 — échec puis Réessayer réussi : la liste revient', async () => {
+    apiMock.get.mockRejectedValueOnce(new Error('panne'))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Réessayer' }))
+    expect((await screen.findAllByText('sami')).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('Données indisponibles')).toBeNull()
+  })
+
   // Organigramme (27/10/2026) : la fonction est obligatoire à la création quand
   // la société en a défini, et pose le rôle par défaut.
   it('fonction obligatoire à la création : bloque sans fonction, envoie fonction + rôle de la fonction', async () => {

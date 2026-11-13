@@ -91,3 +91,30 @@ class PurgeDemoExpireeEnabledTest(TestCase):
         # le texte (`detail`) reste la preuve, même FK à None.
         self.assertIn('demo-audit-purge', entry.detail)
         self.assertIsNone(entry.company_id)
+
+    @override_settings(DEMO_AUTO_PURGE_ENABLED=True)
+    def test_bloqueur_d_une_autre_societe_jamais_supprime(self):
+        """ACEL16 — un bloqueur PROTECT d'une autre société n'est jamais
+        supprimé : la purge de la démo est annulée en entier, comptes compris."""
+        from unittest import mock
+
+        from django.db.models import ProtectedError
+
+        from authentication.management.commands.reset_demo_company import (
+            BloqueurAutreSociete, _delete_cascading,
+        )
+        demo = _demo_company('demo-bloquee', EXPIRED_91J)
+        CustomUser.objects.create(username='u-demo-bloquee', company=demo)
+        autre = Company.objects.create(nom='Autre ACEL16', slug='autre-acel16')
+        bloqueur = CustomUser.objects.create(username='u-autre-acel16', company=autre)
+        protege = ProtectedError('protégé', {bloqueur})
+        with mock.patch.object(Company, 'delete', side_effect=protege):
+            with self.assertRaises(BloqueurAutreSociete):
+                _delete_cascading(demo)
+            self.assertTrue(CustomUser.objects.filter(pk=bloqueur.pk).exists())
+            result = purger_societes_demo_expirees_task()
+        self.assertEqual(result['purged'], 0)
+        self.assertEqual(result['echecs'], 1)
+        self.assertTrue(CustomUser.objects.filter(pk=bloqueur.pk).exists())
+        self.assertTrue(Company.objects.filter(pk=demo.pk).exists())
+        self.assertTrue(CustomUser.objects.filter(username='u-demo-bloquee').exists())

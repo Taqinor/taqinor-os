@@ -9,7 +9,9 @@ Couvre :
     liste transverse pour un superuser).
 """
 from datetime import date
+from unittest import mock
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -80,6 +82,25 @@ class MeteringLogicTests(TestCase):
         self.assertEqual(set(done), {self.company_a.pk, self.company_b.pk})
         self.assertEqual(
             TenantUsageSnapshot.objects.filter(jour=jour).count(), 2)
+
+    def test_limite_douce_remonte_et_arrete_le_balayage(self):
+        """ACEL10 — la limite douce Celery n'est jamais avalée par la
+        boucle par société : elle remonte, les sociétés suivantes ne sont
+        pas traitées ; une erreur ordinaire reste isolée."""
+        from core.tasks import snapshot_tenant_usage_task
+        with mock.patch.object(
+                usage, 'snapshot_company',
+                side_effect=SoftTimeLimitExceeded()) as snap:
+            with self.assertRaises(SoftTimeLimitExceeded):
+                snapshot_tenant_usage_task()
+        self.assertEqual(snap.call_count, 1)
+        n = Company.objects.count()
+        with mock.patch.object(
+                usage, 'snapshot_company',
+                side_effect=[ValueError('KO')] + [None] * (n - 1)) as snap:
+            done = usage.snapshot_all(jour=date(2026, 7, 11))
+        self.assertEqual(snap.call_count, n)
+        self.assertEqual(len(done), n - 1)
 
 
 class UsageEndpointTests(TestCase):

@@ -11,6 +11,10 @@ import { formatDate } from '../../lib/format'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { useConfirmDialog } from '../../ui/confirm'
 
+// AERR54 — le toast global (api/axios) dit déjà le refus servi ; seul le 404,
+// qu'il tait, est dit ici (jamais deux toasts pour une erreur).
+const signaler404 = (e, message) => { if (e?.response?.status === 404) toast.error(message) }
+
 /* ============================================================================
    WIR135 — Écran d'administration « Gouvernance des accès ».
    ----------------------------------------------------------------------------
@@ -51,7 +55,7 @@ function CampagnesTab() {
     try {
       await accessReviewApi.campaigns.create({ nom: nom.trim(), perimetre, statut: 'ouverte' })
       setNom(''); load(); toast.success('Campagne lancée.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Lancement impossible.') }
+    } catch (e) { signaler404(e, 'Lancement impossible.') }
   }
   const nomCompte = (it) => (it.user_nom ? `${it.user_nom} (Compte #${it.user})` : `Compte #${it.user}`)
   const attester = async (campaign, item, decision) => {
@@ -64,7 +68,7 @@ function CampagnesTab() {
       const r = await accessReviewApi.campaigns.get(campaign.id)
       setCampaigns((cs) => cs.map((c) => (c.id === campaign.id ? r.data : c)))
       toast.success(decision === 'revoque' ? 'Accès révoqué (rôle retiré).' : 'Accès maintenu.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Décision impossible.') }
+    } catch (e) { signaler404(e, 'Décision impossible.') }
   }
 
   if (loading) return <Spinner />
@@ -123,6 +127,13 @@ function CampagnesTab() {
   )
 }
 
+// AERR62 — lecture rejetée : jamais « aucune règle / aucune violation » (faux
+// rassurant en sécurité), un avis d'échec + « Réessayer ».
+const LectureEchouee = ({ quoi, onRetry }) => (
+  <EmptyState title={`${quoi} illisible(s) : la lecture a échoué.`} className="py-4"
+    action={<Button size="sm" variant="outline" onClick={onRetry}>Réessayer</Button>} />
+)
+
 // ── Règles SoD + violations ───────────────────────────────────────────────────
 function SodTab() {
   const [rules, setRules] = useState([])
@@ -130,13 +141,15 @@ function SodTab() {
   const [a, setA] = useState('')
   const [b, setB] = useState('')
   const [loading, setLoading] = useState(true)
+  const [echec, setEchec] = useState(false)
+  const { confirmDelete } = useConfirmDialog()
 
   const load = () => Promise.all([
     fetchAllPages((page, o) => accessReviewApi.sodRules.list({ page, ...o }).then((r) => r?.data)),
     accessReviewApi.sodRules.violations(),
   ]).then(([r, v]) => {
-    setRules(asList(r)); setViolations(asList(v.data))
-  }).catch(() => {}).finally(() => setLoading(false))
+    setRules(asList(r)); setViolations(asList(v.data)); setEchec(false)
+  }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const create = async () => {
@@ -144,18 +157,23 @@ function SodTab() {
     try {
       await accessReviewApi.sodRules.create({ permission_a: a.trim(), permission_b: b.trim(), severite: 'warning', libelle: `${a} ⊗ ${b}` })
       setA(''); setB(''); load()
-    } catch (e) { toast.error(e?.response?.data?.permission_a ?? e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { signaler404(e, 'Création impossible.') }
   }
   const remove = async (r) => {
+    if (!await confirmDelete({  // AERR64 — la boîte nomme les deux permissions
+      title: `Supprimer la règle SoD « ${r.permission_a} ⊗ ${r.permission_b} » ?`,
+      description: 'Ce cumul de permissions ne sera plus signalé.',
+    })) return
     try { await accessReviewApi.sodRules.remove(r.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { signaler404(e, 'Suppression impossible.') }
   }
   const seed = async () => {
     try { await accessReviewApi.sodRules.seedStandard(); load(); toast.success('Jeu SoD standard semé.') }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Semis impossible.') }
+    catch (e) { signaler404(e, 'Semis impossible.') }
   }
 
   if (loading) return <Spinner />
+  if (echec) return <LectureEchouee quoi="Règles et violations SoD" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Règles de séparation des tâches (SoD)</CardTitle></CardHeader>
@@ -203,10 +221,12 @@ function SodTab() {
 // ── Rapport de certification des accès ────────────────────────────────────────
 function RapportTab() {
   const [rows, setRows] = useState(null)
-  useEffect(() => {
+  const charger = () => {
+    setRows(null)
     accessReviewApi.revueAcces()
-      .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows([]))
-  }, [])
+      .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows('echec'))
+  }
+  useEffect(() => { charger() }, [])
   const exportCsv = async () => {
     try {
       const res = await accessReviewApi.revueAccesCsv()
@@ -217,6 +237,7 @@ function RapportTab() {
     } catch { toast.error('Export impossible.') }
   }
   if (rows === null) return <Spinner />
+  if (rows === 'echec') return <LectureEchouee quoi="Rapport de certification" onRetry={charger} />
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">

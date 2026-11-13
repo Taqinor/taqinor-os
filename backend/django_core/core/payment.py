@@ -175,17 +175,28 @@ def marquer_paye(transaction, *, external_ref=''):
     métier (il reste fondation). Idempotent : re-marquer une transaction déjà
     payée ne ré-émet pas l'événement.
     """
+    from django.db import transaction as db_transaction
+
     from .models import PaymentTransaction
 
-    if transaction.statut == PaymentTransaction.STATUT_PAYE:
+    # ACNC43 — relecture SOUS VERROU avant le test d'idempotence : deux
+    # « Rafraîchir » croisés (instances périmées) n'émettent qu'une capture.
+    champs = ('statut', 'external_ref', 'paye_le', 'updated_at')
+    with db_transaction.atomic():
+        relue = PaymentTransaction.objects.select_for_update().get(pk=transaction.pk)
+        deja_paye = relue.statut == PaymentTransaction.STATUT_PAYE
+        if not deja_paye:
+            relue.statut = PaymentTransaction.STATUT_PAYE
+            if external_ref:
+                relue.external_ref = external_ref
+            relue.paye_le = timezone.now()
+            relue.save(update_fields=list(champs))
+    for champ in champs:
+        setattr(transaction, champ, getattr(relue, champ))
+    if deja_paye:
         return transaction
-    transaction.statut = PaymentTransaction.STATUT_PAYE
-    if external_ref:
-        transaction.external_ref = external_ref
-    transaction.paye_le = timezone.now()
-    transaction.save()
 
     from .events import payment_captured
-    payment_captured.send(sender=PaymentTransaction, transaction=transaction,
-                          company=transaction.company)
+    payment_captured.send(sender=PaymentTransaction, transaction=relue,
+                          company=relue.company)
     return transaction

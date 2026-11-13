@@ -45,6 +45,13 @@ def creer_sandbox(company, user):
         raise SandboxNonAutorise(
             'La création de sandbox est désactivée pour cette société.')
 
+    # ACEL11 — une création tuée (SIGKILL) resterait « en création » à vie et
+    # bloquerait toute nouvelle sandbox : au-delà de 30 min, elle est en échec.
+    SandboxEnvironment.objects.filter(
+        company=company, statut=SandboxEnvironment.Statut.EN_CREATION,
+        date_creation__lt=timezone.now() - timezone.timedelta(minutes=30),
+    ).update(statut=SandboxEnvironment.Statut.ECHEC,
+             erreur='Création interrompue (plus de 30 min).')
     actif = SandboxEnvironment.objects.filter(
         company=company,
         statut__in=[SandboxEnvironment.Statut.EN_CREATION,

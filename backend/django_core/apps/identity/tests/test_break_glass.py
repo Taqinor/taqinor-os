@@ -69,6 +69,31 @@ class BreakGlassServiceTests(TestCase):
         self.assertIsNotNone(grant.revoque_le)
         self.assertFalse(is_break_glass_active(self.target))
 
+    def test_un_octroi_en_echec_n_arrete_pas_les_autres(self):
+        """ACEL16 — un octroi qui lève n'empêche pas la révocation du suivant."""
+        from unittest import mock
+
+        from apps.identity import breakglass
+        autre = UserFactory(company=self.company, username='ops2')
+        grants = [grant_break_glass(target=cible, motif='x', duree_minutes=30, accorde_par=None)
+                  for cible in (self.target, autre)]
+        BreakGlassGrant.objects.filter(pk__in=[g.pk for g in grants]).update(
+            active_jusqu_a=timezone.now() - timedelta(minutes=1))
+        reel = breakglass.revoke_break_glass
+
+        def _revoke(grant):
+            if grant.pk == grants[0].pk:
+                raise RuntimeError('révocation impossible')
+            return reel(grant)
+
+        with mock.patch.object(breakglass, 'revoke_break_glass', side_effect=_revoke):
+            n = revoke_expired()
+        self.assertEqual(n, 1)
+        grants[1].refresh_from_db()
+        self.assertIsNotNone(grants[1].revoque_le)
+        autre.refresh_from_db()
+        self.assertFalse(is_break_glass_active(autre))
+
 
 class BreakGlassEndpointTests(TenantAPITestCase):
     URL = '/api/django/identity/break-glass/'

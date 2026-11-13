@@ -215,6 +215,42 @@ class ExportsDusTests(TestCase):
         _args, kwargs = espion.call_args
         self.assertIn(self.company, kwargs['companies'])
 
+    def test_un_extrait_ne_part_qu_une_fois_par_heure(self):
+        """ACEL15 — deux passages chevauchants (lus avant toute livraison),
+        puis un rejeu après un `save` final perdu : une seule livraison."""
+        export = self._export(cron='0 * * * *')
+        livraisons = []
+
+        class _Dest:
+            def deliver(self, filename, data, content_type, context=None):
+                livraisons.append(filename)
+                return {'ok': False, 'statut': 'erreur', 'detail': 'refus'}
+
+        lu_1 = scheduled_export.exports_dus(MARDI_02H)
+        lu_2 = scheduled_export.exports_dus(MARDI_02H)
+        dest = mock.patch.object(scheduled_export, '_destination_for',
+                                 return_value=_Dest())
+        lus = mock.patch.object(scheduled_export, 'exports_dus',
+                                side_effect=[lu_1, lu_2])
+        with dest, lus:
+            scheduled_export.executer_exports_dus(now=MARDI_02H)
+            scheduled_export.executer_exports_dus(now=MARDI_02H)
+        self.assertEqual(len(livraisons), 1)
+        export.refresh_from_db()
+        self.assertEqual(export.dernier_statut, 'erreur')
+        # L'heure suivante, l'extrait en erreur est rejouable ; un `save`
+        # final qui lève n'ouvre pas une seconde livraison au rejeu.
+        heure_suivante = MARDI_02H.replace(hour=3)
+        self.assertTrue(scheduled_export.est_du(export, heure_suivante))
+        perdu = mock.patch.object(ScheduledExport, 'save',
+                                  side_effect=RuntimeError('worker tué'))
+        with mock.patch.object(scheduled_export, '_destination_for',
+                               return_value=_Dest()):
+            with perdu:
+                scheduled_export.executer_exports_dus(now=heure_suivante)
+            scheduled_export.executer_exports_dus(now=heure_suivante)
+        self.assertEqual(len(livraisons), 2)
+
     def test_un_extrait_en_erreur_n_interrompt_pas_les_suivants(self):
         premier = self._export(titre='Premier')
         second = self._export(titre='Second')

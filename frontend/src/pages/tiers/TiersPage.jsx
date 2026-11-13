@@ -7,6 +7,7 @@ import {
 import { ListShell } from '../../ui/module'
 import tiersApi from '../../api/tiersApi'
 import fetchAllPages from '../../utils/fetchAllPages'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
 /* ============================================================================
    WIR152 — Écran « Tiers » (`/tiers`) : répertoire unifié.
@@ -44,6 +45,11 @@ function rolesOf(t) {
   return roles
 }
 
+const LIBELLES_CHAMPS = {
+  nom: 'Nom', prenom: 'Prénom', raison_sociale: 'Raison sociale', telephone: 'Téléphone', whatsapp: 'WhatsApp',
+  email: 'Email', adresse: 'Adresse', ville: 'Ville', ice: 'ICE', rc: 'RC', identifiant_fiscal: 'IF', cin: 'CIN', rib: 'RIB',
+}
+
 function TiersDialog({ record, onClose, onSaved }) {
   const isEdit = Boolean(record)
   const [typeTiers, setTypeTiers] = useState(record?.type_tiers || 'particulier')
@@ -65,7 +71,9 @@ function TiersDialog({ record, onClose, onSaved }) {
   const [isPartenaire, setIsPartenaire] = useState(record?.is_partenaire || false)
   const [isSoustraitant, setIsSoustraitant] = useState(record?.is_soustraitant || false)
   const [saving, setSaving] = useState(false)
-  const [serverError, setServerError] = useState(null)
+  // AERR54 — chaque refus de champ (ICE, RC, RIB, CIN, téléphone…) est nommé.
+  const { errors: erreurs, setFromResponse, clearAll } = useServerFieldErrors()
+  const serverError = Object.entries(erreurs).map(([k, m]) => (LIBELLES_CHAMPS[k] ? `${LIBELLES_CHAMPS[k]} : ${m}` : m))[0]
 
   const dirty = Boolean(nom || prenom || raisonSociale || telephone || email)
   const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
@@ -75,7 +83,7 @@ function TiersDialog({ record, onClose, onSaved }) {
     e.preventDefault()
     if (!peutEnregistrer) return
     setSaving(true)
-    setServerError(null)
+    clearAll()
     const payload = {
       type_tiers: typeTiers, nom, prenom, raison_sociale: raisonSociale,
       telephone, whatsapp, email, adresse, ville,
@@ -91,10 +99,7 @@ function TiersDialog({ record, onClose, onSaved }) {
       }
       onSaved?.()
     } catch (err) {
-      const data = err?.response?.data
-      setServerError(
-        data?.nom || data?.email || data?.detail
-        || (typeof data === 'string' ? data : 'Enregistrement impossible.'))
+      setFromResponse(err?.response?.data, { fallback: 'Enregistrement impossible.' })
     } finally {
       setSaving(false)
     }

@@ -114,4 +114,27 @@ describe('WIR135 GouvernanceAccesPage', () => {
     await waitFor(() => expect(H.revueAcces).toHaveBeenCalled())
     expect(await screen.findByText('sami')).toBeInTheDocument()
   })
+
+  it('AERR62 — lecture SoD rejetée : jamais « Aucune violation »', async () => {
+    H.sodList.mockImplementationOnce(() => Promise.reject(new Error('panne')))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('tab', { name: /Règles SoD/ }))
+    expect(await screen.findByText(/illisible/)).toBeInTheDocument()
+    expect(screen.queryByText('Aucune violation SoD détectée.')).toBeNull()
+    expect(screen.queryByText('Aucune règle SoD')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText(/Achat ⊗ Paiement/)).toBeInTheDocument()
+  })
+
+  it('AERR62 — rapport rejeté : avis d’échec, jamais « Aucune ligne »', async () => {
+    H.revueAcces.mockImplementationOnce(() => Promise.reject(new Error('panne')))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('tab', { name: /Rapport/ }))
+    expect(await screen.findByText(/illisible/)).toBeInTheDocument()
+    expect(screen.queryByText('Aucune ligne')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText('sami')).toBeInTheDocument()
+  })
 })

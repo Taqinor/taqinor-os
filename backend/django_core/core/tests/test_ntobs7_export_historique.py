@@ -51,6 +51,48 @@ class ExportRunLifecycleTest(TestCase):
             result = export_reversibilite_tenant(self.company.id)
         self.assertTrue(result['ok'])
 
+    def test_export_orphelin_passe_en_echec_et_previent(self):
+        """ACEL11 — un export ou un job tué depuis plus de 30 min passe en
+        échec par le balayage planifié, et son demandeur est prévenu ; un job
+        récent reste en cours."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.models import BackgroundJob
+        from core.tasks import balayer_travaux_orphelins_task
+
+        user = User.objects.create_user(
+            username='acel11', password='x', company=self.company)
+        il_y_a_45 = timezone.now() - timedelta(minutes=45)
+        run = ExportReversibiliteRun.objects.create(
+            company=self.company, demande_par=user,
+            statut=ExportReversibiliteRun.Statut.EN_COURS)
+        vieux = BackgroundJob.objects.create(
+            company=self.company, user=user, kind='export',
+            statut=BackgroundJob.STATUT_RUNNING)
+        recent = BackgroundJob.objects.create(
+            company=self.company, user=user, kind='export',
+            statut=BackgroundJob.STATUT_RUNNING)
+        ExportReversibiliteRun.objects.filter(pk=run.pk).update(
+            updated_at=il_y_a_45)
+        BackgroundJob.objects.filter(pk=vieux.pk).update(updated_at=il_y_a_45)
+        BackgroundJob.objects.filter(pk=recent.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=5))
+
+        balayer_travaux_orphelins_task()
+
+        run.refresh_from_db()
+        vieux.refresh_from_db()
+        recent.refresh_from_db()
+        self.assertEqual(run.statut, ExportReversibiliteRun.Statut.ECHEC)
+        self.assertEqual(vieux.statut, BackgroundJob.STATUT_FAILED)
+        self.assertIn('interrompu', vieux.message_erreur)
+        self.assertEqual(recent.statut, BackgroundJob.STATUT_RUNNING)
+        Notification = django_apps.get_model('notifications', 'Notification')
+        self.assertTrue(Notification.objects.filter(
+            recipient=user, event_type='travail_de_fond_echoue').exists())
+
 
 class HistoriqueEndpointTest(TestCase):
     def setUp(self):

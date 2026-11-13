@@ -3,11 +3,16 @@ import { Shield, Plus, Trash2, Network, Smartphone, Activity, KeyRound, ServerCo
 import identityApi from '../../api/identityApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import parametresApi from '../../api/parametresApi'
+import { useConfirmDialog } from '../../ui/confirm'
 import {
   Card, CardContent, CardHeader, CardTitle, Button, Input, Textarea, Label,
   Badge, Spinner, EmptyState, toast,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
+
+// AERR54 — le toast global (api/axios) dit déjà le refus servi ; seul le 404,
+// qu'il tait, est dit ici (jamais deux toasts pour une erreur).
+const signaler404 = (e, message) => { if (e?.response?.status === 404) toast.error(message) }
 
 /* ============================================================================
    WIR134 — Écran d'administration « Sécurité & Identité » (apps/identity).
@@ -28,6 +33,7 @@ function ReseauTab() {
   const [cidr, setCidr] = useState('')
   const [label, setLabel] = useState('')
   const [loading, setLoading] = useState(true)
+  const { confirmDelete } = useConfirmDialog()
 
   // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
   const load = () => Promise.all([
@@ -51,11 +57,16 @@ function ReseauTab() {
       const p = await ensurePolicy()
       await identityApi.ipRules.create({ policy: p.id, cidr: cidr.trim(), label })
       setCidr(''); setLabel(''); load()
-    } catch (e) { toast.error(e?.response?.data?.cidr ?? e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { signaler404(e, 'Ajout impossible.') }
   }
   const removeRule = async (r) => {
+    // AERR64 — retirer la plage du bureau peut couper l'accès de toute la société.
+    if (!await confirmDelete({
+      title: `Supprimer la plage « ${r.cidr} » ?`,
+      description: 'Un poste hors des plages restantes perdra l’accès à l’application.',
+    })) return
     try { await identityApi.ipRules.remove(r.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { signaler404(e, 'Suppression impossible.') }
   }
 
   if (loading) return <Spinner />
@@ -103,7 +114,7 @@ function AppareilsTab() {
 
   const forget = async (d) => {
     try { await identityApi.trustedDevices.forget(d.id); toast.success('Appareil oublié — MFA reforcée.'); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
+    catch (e) { signaler404(e, 'Action impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -181,7 +192,7 @@ function BreakGlassTab() {
       await identityApi.breakGlass.grant({ user_id: userId, motif: motif.trim(), duree_minutes: Number(duree) || 60 })
       setUserId(''); setMotif(''); load()
       toast.success('Accès break-glass accordé.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? e?.response?.data?.motif ?? 'Octroi impossible.') }
+    } catch (e) { signaler404(e, 'Octroi impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -223,6 +234,7 @@ function ServiceAccountsTab() {
   const [accounts, setAccounts] = useState([])
   const [nom, setNom] = useState('')
   const [loading, setLoading] = useState(true)
+  const { confirmDelete } = useConfirmDialog()
   const load = () => fetchAllPages((page, o) => identityApi.serviceAccounts.list({ page, ...o })
     .then((r) => r?.data))
     .then((data) => setAccounts(asList(data))).catch(() => {}).finally(() => setLoading(false))
@@ -230,11 +242,15 @@ function ServiceAccountsTab() {
   const create = async () => {
     if (!nom.trim()) { toast.error('Nom requis.'); return }
     try { await identityApi.serviceAccounts.create({ nom: nom.trim() }); setNom(''); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+    catch (e) { signaler404(e, 'Création impossible.') }
   }
   const remove = async (a) => {
+    if (!await confirmDelete({
+      title: `Supprimer le compte de service « ${a.nom} » ?`,
+      description: 'Les intégrations qui l’utilisent cesseront de fonctionner.',
+    })) return
     try { await identityApi.serviceAccounts.remove(a.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { signaler404(e, 'Suppression impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -267,22 +283,29 @@ function BanniereTab() {
   const [banner, setBanner] = useState('')
   const [lockout, setLockout] = useState('')
   const [loading, setLoading] = useState(true)
-  useEffect(() => {
+  // AERR57 — lecture échouée : champs vides ⇒ enregistrer poserait un seuil 0
+  // (verrouillage DÉSACTIVÉ) et effacerait la bannière. Rien ne part.
+  const [lectureEchouee, setLectureEchouee] = useState(false)
+  const charger = () => {
+    setLoading(true)
+    setLectureEchouee(false)
     parametresApi.getProfile()
       .then((r) => {
         setBanner(r.data?.login_banner_text ?? '')
         setLockout(String(r.data?.lockout_max_attempts ?? ''))
       })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [])
+      .catch(() => setLectureEchouee(true)).finally(() => setLoading(false))
+  }
+  useEffect(() => { charger() }, [])
   const save = async () => {
+    if (lectureEchouee) return
     try {
       await parametresApi.updateProfile({
         login_banner_text: banner,
         lockout_max_attempts: Number(lockout) || 0,
       })
       toast.success('Enregistré.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.') }
+    } catch (e) { signaler404(e, 'Enregistrement impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -303,7 +326,13 @@ function BanniereTab() {
           <Input id="lockout" value={lockout} type="number"
             onChange={(e) => setLockout(e.target.value)} placeholder="0 = désactivé" />
         </div>
-        <Button onClick={save}>Enregistrer</Button>
+        {lectureEchouee && (
+          <div role="alert" className="flex items-center gap-3 text-sm text-destructive">
+            Les réglages actuels n&apos;ont pas pu être lus : rien ne peut être enregistré.
+            <Button variant="outline" size="sm" onClick={charger}>Réessayer</Button>
+          </div>
+        )}
+        <Button onClick={save} disabled={lectureEchouee}>Enregistrer</Button>
       </CardContent>
     </Card>
   )

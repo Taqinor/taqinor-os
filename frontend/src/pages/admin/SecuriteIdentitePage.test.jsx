@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
+import { confirmerSuppression } from './confirmation.testHelpers.js'
 
 /* WIR134 — l'écran Sécurité & Identité monte ses onglets, liste/crée une règle
    IP, révoque un appareil, lit la posture. */
@@ -41,7 +43,7 @@ vi.mock('../../api/parametresApi', () => ({
 import SecuriteIdentitePage from './SecuriteIdentitePage'
 
 const renderPage = () => render(
-  <ThemeProvider><SecuriteIdentitePage /></ThemeProvider>,
+  <ThemeProvider><ConfirmProvider><SecuriteIdentitePage /></ConfirmProvider></ThemeProvider>,
 )
 
 beforeEach(() => { Object.values(H).forEach((f) => f.mockClear && f.mockClear()) })
@@ -84,5 +86,35 @@ describe('WIR134 SecuriteIdentitePage', () => {
     await waitFor(() => expect(H.posture).toHaveBeenCalled())
     expect(await screen.findByText('72')).toBeInTheDocument()
     expect(screen.getByText('1 compte dormant')).toBeInTheDocument()
+  })
+
+  it('AERR57 — lecture du profil rejetée : aucun enregistrement possible', async () => {
+    const user = userEvent.setup()
+    H.getProfile.mockImplementationOnce(() => Promise.reject(new Error('panne')))
+    renderPage()
+    await user.click(screen.getByRole('tab', { name: /Bannière/ }))
+    expect(await screen.findByText(/n.ont pas pu être lus/)).toBeInTheDocument()
+    const enregistrer = screen.getByRole('button', { name: 'Enregistrer' })
+    expect(enregistrer).toBeDisabled()
+    fireEvent.click(enregistrer)
+    expect(H.updateProfile).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled())
+    expect(screen.getByLabelText(/Seuil de verrouillage/)).toHaveValue(5)
+  })
+
+  it('AERR64 — Supprimer puis Annuler : aucune suppression ; confirmation nommée', async () => {
+    H.ipList.mockImplementation(() => Promise.resolve({ data: [{ id: 4, cidr: '10.0.0.0/24', label: 'Bureau' }] }))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la règle' }))
+    expect(await screen.findByText(/Supprimer la plage « 10\.0\.0\.0\/24 »/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByText(/Supprimer la plage/)).toBeNull())
+    expect(H.ipRemove).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Supprimer la règle' }))
+    await confirmerSuppression(user)
+    await waitFor(() => expect(H.ipRemove).toHaveBeenCalledWith(4))
+    H.ipList.mockImplementation(() => Promise.resolve({ data: [] }))
   })
 })
