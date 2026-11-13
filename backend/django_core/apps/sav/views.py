@@ -2977,7 +2977,7 @@ class SavSlaSettingsViewSet(SettingsAuditedMixin, JsonSeulementMixin, CompanySco
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('parametres_modifier')()]  # ADRG46 (D-ADRG-5)
+        return [IsResponsableOrAdmin()]
 
     def list(self, request, *args, **kwargs):
         company = request.user.company

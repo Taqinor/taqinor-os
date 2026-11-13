@@ -43,12 +43,6 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
-// ADRG46 — droit d'écrire les réglages (même garde que le serveur) ; vrai par défaut.
-const droit = vi.hoisted(() => ({ peutModifier: true }))
-vi.mock('../../features/parametres/useCanModifierParametres', () => ({
-  useCanModifierParametres: () => droit.peutModifier,
-}))
-
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import SavParametresPage from './SavParametresPage'
@@ -134,19 +128,6 @@ describe('SavParametresPage', () => {
       await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
       await waitFor(() => expect(api.post).toHaveBeenCalledWith(
         '/sav/sla-settings/', expect.objectContaining({ generation_auto_visites: true })))
-    })
-
-    it('ADRG46 — sans « Modifier les paramètres » : lecture seule, aucun Enregistrer', async () => {
-      droit.peutModifier = false
-      try {
-        const user = userEvent.setup()
-        render(<SavParametresPage />)
-        await user.click(screen.getByRole('tab', { name: 'SLA / Automatisation' }))
-        expect(await screen.findByText(/Lecture seule/)).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
-      } finally {
-        droit.peutModifier = true
-      }
     })
   })
 

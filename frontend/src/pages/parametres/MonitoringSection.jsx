@@ -9,10 +9,8 @@ import { Save, CheckCircle2, AlertCircle } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import { Card, CardContent, Input, Label, Button, Spinner, Switch } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 
 export default function MonitoringSection() {
-  const peutModifier = useCanModifierParametres() // ADRG46 — même garde que le serveur
   const [settings, setSettings] = useState(null) // null = chargement
   // ERR62 — distinguer « serveur indisponible » des valeurs par défaut : un
   // échec de chargement affiche un état d'erreur + Réessayer au lieu de faire
@@ -102,8 +100,7 @@ export default function MonitoringSection() {
         </label>
 
         <div className="flex items-center gap-3">
-          <Button type="button" onClick={save} disabled={saving || !peutModifier}
-                  title={peutModifier ? undefined : 'Lecture seule : droit « Modifier les paramètres » requis.'}>
+          <Button type="button" onClick={save} disabled={saving}>
             <Save /> Enregistrer
           </Button>
           {saved && (
