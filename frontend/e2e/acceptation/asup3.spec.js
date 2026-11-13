@@ -387,7 +387,11 @@ sortie(dict(lead=l.pk))`)
     await page.goto(`/crm/leads?view=liste&q=${q}`)
     const row = page.locator('tr.lv-row').filter({ hasText: nomLead })
     await expect(row).toBeVisible({ timeout: 60_000 })
-    await row.getByRole('button', { name: 'Supprimer' }).click()
+    // La colonne d'actions reste hors de la zone visible du conteneur défilant (runs 1-2, même en 2200 px) : le
+    // bouton est atteint au CLAVIER (focus puis Entrée), un geste utilisateur réel, jamais un clic synthétique.
+    const supprimer = row.getByRole('button', { name: 'Supprimer' })
+    await supprimer.focus()
+    await page.keyboard.press('Enter')
     const dlg = page.getByRole('alertdialog')
     await expect(dlg).toContainText('Supprimer ce lead ?')
     await dlg.getByRole('button', { name: 'Supprimer' }).click()
