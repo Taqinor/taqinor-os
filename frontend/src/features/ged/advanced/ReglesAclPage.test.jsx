@@ -108,8 +108,12 @@ describe('PACT133 ReglesAclPage', () => {
     renderPage()
     await screen.findAllByText('Contrats confidentiels')
 
+    // AERR65 — la suppression est confirmée (repli `window.confirm` hors provider).
+    const confirme = vi.spyOn(window, 'confirm').mockReturnValue(true)
     await userEvent.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
     await waitFor(() => expect(gedApi.deleteRegleAclMetadonnee).toHaveBeenCalledWith(4))
+    expect(confirme).toHaveBeenCalledWith('La règle « Contrats confidentiels » sera supprimée.')
+    confirme.mockRestore()
     expect(toast.error).not.toHaveBeenCalled()
     expect(screen.getAllByText('Contrats confidentiels').length).toBeGreaterThan(0)
   })

@@ -19,6 +19,7 @@ import DialogueFormulaire from './DialogueFormulaire.jsx'
 import DecisionDialogue from './DecisionDialogue.jsx'
 import { useHasPermission, useHasRole } from '../../../hooks/useHasPermission'
 import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    UX46 — Rétention, archivage légal & partage.
@@ -45,6 +46,7 @@ const StatutDisposition = statusPill({
 const ACTION_DISPOSITION_LABELS = { detruire: 'Détruire', archiver: 'Archiver' }
 
 export default function RetentionPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [politiques, setPolitiques] = useState([])
   const [echus, setEchus] = useState([])
   const [archivages, setArchivages] = useState([])
@@ -133,6 +135,7 @@ export default function RetentionPage() {
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: 'Supprimer cette politique ?', description: `La politique de rétention « ${r.nom} » sera supprimée.` })) return
         try { await gedApi.deletePolitiqueRetention(r.id); toast.success('Politique supprimée.'); load() }
         catch (err) { toastSiMuet(err) }
       },

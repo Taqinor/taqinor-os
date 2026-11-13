@@ -16,6 +16,7 @@ import { errMessage, toutesLesPages } from './shared.js'
 import { ChampDocument, ChampDescription, ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    WIR164 — GED avancée, groupe (a) : checklist de pièces (XGED8), validation
@@ -34,6 +35,7 @@ import { toastSiMuet } from '../listesGed'
    ========================================================================== */
 
 export default function ChecklistPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [folders, setFolders] = useState([])
   const [cabinets, setCabinets] = useState([])
   const [folderId, setFolderId] = useState('')
@@ -116,6 +118,7 @@ export default function ChecklistPage() {
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: 'Supprimer cette exigence ?', description: `La pièce exigée « ${r.libelle} » sera supprimée.` })) return
         try { await gedApi.deleteExigence(r.id); toast.success('Exigence supprimée.'); load() }
         catch (err) { toastSiMuet(err) }
       },
@@ -188,6 +191,7 @@ export default function ChecklistPage() {
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: 'Supprimer ce tampon ?', description: `Le tampon « ${r.libelle} » sera supprimé.` })) return
         try { await gedApi.deleteTamponSociete(r.id); toast.success('Tampon supprimé.'); load() }
         catch (err) { toastSiMuet(err) }
       },

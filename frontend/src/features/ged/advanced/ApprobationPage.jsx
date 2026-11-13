@@ -20,6 +20,7 @@ import { StatutApprobation, StatutSignature, errMessage, toutesLesPages } from '
 import { ChampDocument, ChampCommentaire } from './ChampsGed.jsx'
 import DecisionDialogue from './DecisionDialogue.jsx'
 import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
@@ -55,6 +56,7 @@ export default function ApprobationPage() {
   const [analytique, setAnalytique] = useState(null) // XGED26 — KPIs approbation/signature
   const [kanban, setKanban] = useState(null)         // ZGED3 — tableau de bord par statut
   const [prolongerFor, setProlongerFor] = useState(null) // WIR204 — prolonger l'échéance
+  const { confirm } = useConfirmDialog()
 
   const load = async () => {
     setLoading(true)
@@ -183,7 +185,13 @@ export default function ApprobationPage() {
   ]
 
   // ── Mutations ─────────────────────────────────────────────────────────
+  // AERR65 — statut légal / demande envoyée à un tiers : confirmation nommée.
+  const nomDoc = (r) => r.document_nom || `#${r.document}`
   const markSigned = async (r) => {
+    if (!await confirm({
+      title: 'Marquer la demande comme signée ?', confirmLabel: 'Marquer comme signée', destructive: false,
+      description: `La demande de signature de « ${nomDoc(r)} » passera au statut signé.`,
+    })) return
     try {
       await gedApi.marquerSigne(r.id)
       toast.success('Signature enregistrée.')
@@ -192,6 +200,10 @@ export default function ApprobationPage() {
   }
 
   const cancelSignature = async (r) => {
+    if (!await confirm({
+      title: 'Annuler la demande de signature ?', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder',
+      description: `La demande de signature de « ${nomDoc(r)} » sera annulée pour ses signataires.`,
+    })) return
     try {
       await gedApi.annulerDemandeSignature(r.id)
       toast.success('Demande annulée.')

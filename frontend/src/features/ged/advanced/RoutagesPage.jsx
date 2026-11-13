@@ -11,6 +11,7 @@ import {
 import { ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    PACT136 — Routage documentaire automatique (ZGED6).
@@ -40,6 +41,7 @@ function Segments({ dossierCible }) {
 }
 
 export default function RoutagesPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [routages, setRoutages] = useState([])
   const [cabinets, setCabinets] = useState([])
   const [tags, setTags] = useState([])
@@ -75,7 +77,7 @@ export default function RoutagesPage() {
     () => gedApi.updateRoutageDocumentaire(r.id, { actif: !r.actif }),
     r.actif ? 'Routage désactivé.' : 'Routage activé.', load)
 
-  const supprimer = (r) => actionAvecToast(
+  const supprimer = async (r) => await confirmDelete({ title: 'Supprimer ce routage ?', description: `Le routage « ${r.source} » vers ${r.cabinet_cible_nom || 'son cabinet'} sera supprimé.` }) && actionAvecToast(
     () => gedApi.deleteRoutageDocumentaire(r.id), 'Routage supprimé.', load)
 
   const rowActions = (r) => actionsActivation(r, toggleActif, supprimer)
