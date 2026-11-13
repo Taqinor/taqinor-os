@@ -1,0 +1,149 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_read_modify_write -v    [checkout: taqinor-os]  rc=0
+test_allowlist_ou_verrou_rend_zero (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_allowlist_ou_verrou_rend_zero) ... ok
+test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un) ... ok
+test_bare_augassign_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_augassign_detected) ... ok
+test_bare_read_modify_write_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_read_modify_write_detected) ... ok
+test_f_expression_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_f_expression_is_safe) ... ok
+test_no_save_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_no_save_ignored) ... ok
+test_select_for_update_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_select_for_update_is_safe) ... ok
+test_string_concat_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_string_concat_ignored) ... ok
+test_check_file_remonte_le_statut (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_check_file_remonte_le_statut) ... ok
+test_relecture_sous_verrou_acceptee (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_relecture_sous_verrou_acceptee) ... ok
+test_sans_ecriture_ou_hors_parametre_accepte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_sans_ecriture_ou_hors_parametre_accepte) ... ok
+test_statut_hors_verrou_detecte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_statut_hors_verrou_detecte) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.005s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_read_modify_write sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_read_modify_write.py    [checkout: taqinor-os]  rc=0
+check_read_modify_write: OK — no unlocked read-modify-write outside the allowlist.
+
+
+==> OK : garde scripts/check_read_modify_write.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_read_modify_write -v    [copie: depot]  rc=0
+test_allowlist_ou_verrou_rend_zero (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_allowlist_ou_verrou_rend_zero) ... ok
+test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un) ... ok
+test_bare_augassign_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_augassign_detected) ... ok
+test_bare_read_modify_write_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_read_modify_write_detected) ... ok
+test_f_expression_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_f_expression_is_safe) ... ok
+test_no_save_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_no_save_ignored) ... ok
+test_select_for_update_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_select_for_update_is_safe) ... ok
+test_string_concat_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_string_concat_ignored) ... ok
+test_check_file_remonte_le_statut (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_check_file_remonte_le_statut) ... ok
+test_relecture_sous_verrou_acceptee (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_relecture_sous_verrou_acceptee) ... ok
+test_sans_ecriture_ou_hors_parametre_accepte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_sans_ecriture_ou_hors_parametre_accepte) ... ok
+test_statut_hors_verrou_detecte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_statut_hors_verrou_detecte) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.011s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « check_file : if _function_saves_var(...) → if False » : scripts/check_read_modify_write.py
+    - '            if _function_saves_var(node, varname):'
+    + '            if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_read_modify_write -v    [copie: depot]  rc=1
+test_allowlist_ou_verrou_rend_zero (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_allowlist_ou_verrou_rend_zero) ... ok
+test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un) ... FAIL
+test_bare_augassign_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_augassign_detected) ... FAIL
+test_bare_read_modify_write_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_read_modify_write_detected) ... FAIL
+test_f_expression_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_f_expression_is_safe) ... ok
+test_no_save_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_no_save_ignored) ... ok
+test_select_for_update_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_select_for_update_is_safe) ... ok
+test_string_concat_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_string_concat_ignored) ... ok
+test_check_file_remonte_le_statut (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_check_file_remonte_le_statut) ... ok
+test_relecture_sous_verrou_acceptee (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_relecture_sous_verrou_acceptee) ... ok
+test_sans_ecriture_ou_hors_parametre_accepte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_sans_ecriture_ou_hors_parametre_accepte) ... ok
+test_statut_hors_verrou_detecte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_statut_hors_verrou_detecte) ... ok
+
+======================================================================
+FAIL: test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_read_modify_write.py", line 177, in test_services_fautif_rend_un
+    self.assertEqual(code, 1, out)
+AssertionError: 0 != 1 : check_read_modify_write: OK — no unlocked read-modify-write outside the allowlist.
+
+
+======================================================================
+FAIL: test_bare_augassign_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_augassign_detected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_read_modify_write.py", line 76, in test_bare_augassign_detected
+    self.assertEqual(_findings(BARE_AUGASSIGN), [("incr", "obj.points")])
+AssertionError: Lists differ: [] != [('incr', 'obj.points')]
+
+Second list contains 1 additional elements.
+First extra element 0:
+('incr', 'obj.points')
+
+- []
++ [('incr', 'obj.points')]
+
+======================================================================
+FAIL: test_bare_read_modify_write_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_read_modify_write_detected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_read_modify_write.py", line 73, in test_bare_read_modify_write_detected
+    self.assertEqual(_findings(BARE_RMW), [("incr", "obj.quantite")])
+AssertionError: Lists differ: [] != [('incr', 'obj.quantite')]
+
+Second list contains 1 additional elements.
+First extra element 0:
+('incr', 'obj.quantite')
+
+- []
++ [('incr', 'obj.quantite')]
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.024s
+
+FAILED (failures=3)
+
+
+==> OK : mutant « check_file : if _function_saves_var(...) → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_bare_augassign_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_augassign_detected); test_bare_read_modify_write_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_read_modify_write_detected); test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un)
+
+--- mutant « main : if offenders → if False » : scripts/check_read_modify_write.py
+    - '    if offenders:'
+    + '    if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_read_modify_write -v    [copie: depot]  rc=1
+test_allowlist_ou_verrou_rend_zero (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_allowlist_ou_verrou_rend_zero) ... ok
+test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un) ... FAIL
+test_bare_augassign_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_augassign_detected) ... ok
+test_bare_read_modify_write_detected (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_bare_read_modify_write_detected) ... ok
+test_f_expression_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_f_expression_is_safe) ... ok
+test_no_save_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_no_save_ignored) ... ok
+test_select_for_update_is_safe (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_select_for_update_is_safe) ... ok
+test_string_concat_ignored (scripts.tests.test_check_read_modify_write.TestReadModifyWrite.test_string_concat_ignored) ... ok
+test_check_file_remonte_le_statut (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_check_file_remonte_le_statut) ... ok
+test_relecture_sous_verrou_acceptee (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_relecture_sous_verrou_acceptee) ... ok
+test_sans_ecriture_ou_hors_parametre_accepte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_sans_ecriture_ou_hors_parametre_accepte) ... ok
+test_statut_hors_verrou_detecte (scripts.tests.test_check_read_modify_write.TestStatutHorsVerrou.test_statut_hors_verrou_detecte) ... ok
+
+======================================================================
+FAIL: test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_read_modify_write.py", line 177, in test_services_fautif_rend_un
+    self.assertEqual(code, 1, out)
+AssertionError: 0 != 1 : check_read_modify_write: OK — no unlocked read-modify-write outside the allowlist.
+
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.013s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « main : if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_services_fautif_rend_un (scripts.tests.test_check_read_modify_write.MainSurArbreFautifTests.test_services_fautif_rend_un)
