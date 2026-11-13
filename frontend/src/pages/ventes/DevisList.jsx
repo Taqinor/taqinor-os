@@ -846,7 +846,7 @@ export default function DevisList() {
     conflitLigne, setConflitLigne, ouvrirDevis,
     openEdit, openVarianteModal, openGammeModal, handleDelete,
     openAcceptModal, openRefusModal, handleConvertBC,
-    handleChantier, handleRevoquerLienPublic,
+    handleChantier, handleRevoquerLienPublic, confirm,
   }
 
   // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas

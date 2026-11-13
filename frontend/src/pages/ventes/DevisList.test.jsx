@@ -186,6 +186,29 @@ describe('DevisList — raccourci « a » sous une boîte (AERR14)', () => {
   })
 })
 
+describe('DevisList — approuver la remise (AERR16)', () => {
+  it('Approuver la remise : confirmation nommée, Annuler ⇒ aucun POST', async () => {
+    const user = userEvent.setup()
+    const approuver = vi.spyOn(ventesApi, 'approuverRemise').mockResolvedValue({ data: {} })
+    const demande = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderList({
+      devis: [{
+        id: 88, reference: 'DEV-2026-11-0007', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-11-01', total_ttc: 5000, nb_options: 1, version: 1,
+        remise_globale: '12.00', remise_approuvee: false,
+      }],
+    })
+    const row = screen.getByText('DEV-2026-11-0007').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Approuver la remise/ }))
+    await waitFor(() => expect(demande).toHaveBeenCalledWith(
+      'Approuver la remise de 12 % du devis DEV-2026-11-0007 ?'))
+    expect(approuver).not.toHaveBeenCalled()
+    demande.mockRestore()
+    approuver.mockRestore()
+  })
+})
+
 describe('DevisList — rendu des données (J141)', () => {
   it('rend les vraies lignes avec une pastille de statut quand le chargement est terminé', () => {
     renderList({
