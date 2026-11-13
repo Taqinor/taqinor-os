@@ -10,7 +10,7 @@ import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Mi
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import useDroitMetier from '../../../features/sav/useDroitMetier' // ADRG20 — code fin, sinon palier
 import StateBlock from '../../../components/StateBlock'
-import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
+import { fetchLeads, updateLead, leadStagePatched, leadPatchedFromServer } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
 import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE, devisAccepteReference } from '../../../features/crm/stages'
@@ -143,7 +143,7 @@ export default function LeadsPage() {
   useDocumentTitle('Leads')
   const dispatch = useDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { leads, leadsLoading, error } = useSelector(s => s.crm)
+  const { leads, leadsLoading, leadsError } = useSelector(s => s.crm)
   // VX224 — « Mes leads » par défaut : résout le toggle FilterBar.jsx contre
   // l'utilisateur COURANT (jamais un nom codé en dur) + décide du défaut par
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
@@ -618,7 +618,10 @@ export default function LeadsPage() {
       }, { replace: true })
     }
   }
-  const onSaved = () => refetch()
+  // AERR100 — l'autosauvegarde passe la réponse du PATCH : sa seule ligne
+  // change, sans relire toute la liste ; création/fusion/etc. relisent.
+  const onSaved = (res) => (res && res.id != null
+    ? dispatch(leadPatchedFromServer(res)) : refetch())
 
   // VX220(b) — raccourci clavier « c l » (shortcuts.js/CommandPalette) navigue
   // vers /crm/leads?new=1 : câblage MINIMAL du paramètre — ouvre directement le
@@ -878,10 +881,13 @@ export default function LeadsPage() {
   // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
   // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
   // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
-  if (error) return (
-    <StateBlock
-      error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
-    />
+  // AERR100 — la liste ET la fiche restent montées quand une RELECTURE échoue :
+  // le bloc plein écran n'est que pour un échec sans aucun lead en mémoire.
+  const messageLeadsErreur = leadsError
+    ? `Erreur : ${errorMessageFrom({ response: { data: leadsError } }, 'Impossible de charger les leads.')}`
+    : null
+  if (leadsError && leads.length === 0) return (
+    <StateBlock error={messageLeadsErreur} onRetry={refetch} />
   )
 
   return (
@@ -1128,6 +1134,17 @@ export default function LeadsPage() {
           >
             <X />
           </IconButton>
+        </div>
+      )}
+
+      {/* AERR100 — relecture échouée alors que des leads sont déjà là : la liste
+          et la fiche restent, on le DIT et on offre de réessayer. */}
+      {leadsError && leads.length > 0 && (
+        <div className="lp-stage-error" role="status" data-testid="leads-pas-a-jour">
+          <span>Liste pas à jour — {messageLeadsErreur}</span>
+          <Button type="button" size="sm" variant="outline" onClick={refetch}>
+            Réessayer
+          </Button>
         </div>
       )}
 

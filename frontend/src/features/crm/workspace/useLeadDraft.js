@@ -189,7 +189,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       if (res && res.id === st.leadId) {
         setOpenedAt(st.leadId, res.date_modification)
         clearMirror(st.leadId)
-        onSavedRef.current?.()
+        onSavedRef.current?.(res)
       }
       return true
     } catch (err) {

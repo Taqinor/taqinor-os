@@ -56,7 +56,7 @@ test('LB7 : viewProps embarque toujours onRefetch — reste légitime pour bulk/
   assert.match(block, /onRefetch: refetch,/)
   // Les cas légitimes restent câblés : runBulk (bulk), onSaved (création),
   // onAnyMerge (merge), ExcelImport onDone (import), SigneDialog (Signé).
-  assert.match(PAGE_SRC, /const onSaved = \(\) => refetch\(\)/)
+  assert.match(PAGE_SRC, /const onSaved = \(res\) => \(res && res\.id != null\s+\? dispatch\(leadPatchedFromServer\(res\)\) : refetch\(\)\)/)
   assert.match(PAGE_SRC, /onAnyMerge=\{\(\) => \{ refetch\(\); refreshDoublonsCount\(\) \}\}/)
   assert.match(PAGE_SRC, /onDone=\{refetch\}/)
 })
