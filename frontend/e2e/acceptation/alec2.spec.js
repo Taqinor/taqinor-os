@@ -434,7 +434,7 @@ Ticket.objects.filter(pk=${fx.t}).delete(); Devis.objects.filter(pk=${fx.d}).del
 sortie(1)`).catch(() => undefined)
     await fermer(c1, di)
   }
-})
+}, { ecart: { base: 'FAIL', raison: "ouvrir la fiche d'un ticket en Commercial (/sav?id=, TicketDetail de frontend/src/pages/sav/TicketsPage.jsx) déclenche 6 GET refusés 403 au rôle (sav/tickets/<id>/checklist/, pieces/, pieces-compatibles/, pieces-unifiees/, prets-equipement/ et installations/interventions/?ticket=) — oracles 2-3 ; défaut de l'écran antérieur à ALEC14 (qui ne touche que apps/audit : vue et serializer de l'historique), même famille que ERR-SAV-TECH-USERS-403" } })
 
 // ── ALEC20 — répertoire des tiers borné au droit et à la portée, coordonnées masquées sans client_pii_voir ────
 etape('P1.20', ['ALEC20'], async ({ page, testInfo, suivi }) => {
