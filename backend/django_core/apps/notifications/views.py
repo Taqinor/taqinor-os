@@ -896,12 +896,14 @@ def attention_summary(request):
     if company is not None:
         from apps.records.models import Activity
         from apps.records.serializers import activity_state
+        from apps.records.views import sans_cibles_archivees
 
-        qs = Activity.objects.filter(
+        # ASUP60 — même retrait que « Ma file » : lead archivé/supprimé exclu.
+        qs = sans_cibles_archivees(Activity.objects.filter(
             company=company, assigned_to=request.user, done=False,
         ).filter(
             Q(snoozed_until__isnull=True)
-            | Q(snoozed_until__lte=timezone.now().date()))
+            | Q(snoozed_until__lte=timezone.now().date())))
         for act in qs.only('due_date', 'done'):
             st = activity_state(act.due_date, act.done)
             if st == 'overdue':

@@ -79,3 +79,43 @@ class Vx207AttentionSummaryTests(TestCase):
         self.assertEqual(resp.data['en_retard'], 0)
         self.assertEqual(resp.data['aujourdhui'], 0)
         self.assertEqual(resp.data['mentions_non_lues'], 0)
+
+    def test_a_faire_d_un_lead_archive_ou_supprime_non_compte(self):
+        """ASUP60 — à-faire en retard sur un lead archivé, du jour sur un lead
+        à la corbeille, du jour sur un lead vivant : le résumé compte comme
+        « Ma file » (0 / 1), puis (1 / 2) une fois les deux leads restaurés."""
+        import datetime
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.crm.models import Lead
+        from apps.records.models import Activity
+
+        commercial = _make_user(self.company, 'asup60_commercial')
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
+        ct = ContentType.objects.get_for_model(Lead)
+        today = datetime.date.today()
+        hier = today - datetime.timedelta(days=1)
+        archive, corbeille, vivant = (
+            Lead.objects.create(company=self.company, nom=f'ASUP60 {n}')
+            for n in ('archivé', 'corbeille', 'vivant'))
+        for lead, due in ((archive, hier), (corbeille, today), (vivant, today)):
+            Activity.objects.create(
+                company=self.company, content_type=ct, object_id=lead.pk,
+                summary=lead.nom, assigned_to=commercial, due_date=due)
+        Lead.objects.filter(pk=archive.pk).update(is_archived=True)
+        corbeille.soft_delete()
+
+        def _comptes():
+            resume = api.get('/api/django/notifications/attention-summary/').data
+            file = api.get('/api/django/records/activities/ma-file/').data['resume']
+            self.assertEqual(
+                (resume['en_retard'], resume['aujourdhui']),
+                (file['en_retard'], file['aujourdhui']))
+            return resume['en_retard'], resume['aujourdhui']
+
+        self.assertEqual(_comptes(), (0, 1))
+        Lead.objects.filter(pk=archive.pk).update(is_archived=False)
+        Lead.all_objects.get(pk=corbeille.pk).restore()
+        self.assertEqual(_comptes(), (1, 2))
