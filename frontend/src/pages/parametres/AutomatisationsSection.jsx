@@ -102,7 +102,7 @@ function IncomingWebhookPanel({ rules }) {
       setUrlNeuve(r?.data?.url_path || null)
       setRuleId(''); setSecret(''); load()
       toast.success('Webhook créé.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { console.warn('Création impossible.', e) }
     finally { setBusy(false) }
   }
   const rotate = async (h) => {
@@ -110,16 +110,16 @@ function IncomingWebhookPanel({ rules }) {
       const r = await automationApi.rotateWebhook(h.id)
       setUrlNeuve(r?.data?.url_path || null); load(); toast.success('Token régénéré.')
     }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation impossible.') }
+    catch (e) { console.warn('Rotation impossible.', e) }
   }
   const toggle = async (h) => {
     try { await automationApi.updateWebhook(h.id, { enabled: !h.enabled }); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    catch (e) { console.warn('Modification impossible.', e) }
   }
   const remove = async (h) => {
     if (!(await confirmerSuppression({ title: 'Supprimer ce webhook ? Son URL cessera de fonctionner.' }))) return
     try { await automationApi.deleteWebhook(h.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   return (
@@ -310,16 +310,16 @@ export default function AutomatisationsSection() {
         requires_approval: false, approval_threshold: '',
       })
       loadRules()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { console.warn('Ajout impossible.', e) }
   }
 
   const toggle = async (r) => {
-    try { await automationApi.toggleRule(r.id); loadRules() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    try { await automationApi.toggleRule(r.id); loadRules() } catch (e) { console.warn('Modification impossible.', e) }
   }
   const delRule = async (r) => {
     if (!(await confirmerSuppression({ title: `Supprimer la règle « ${r.nom} » ?` }))) return
     try { await automationApi.deleteRule(r.id); loadRules() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   const decide = async (a, ok) => {
@@ -327,7 +327,7 @@ export default function AutomatisationsSection() {
       if (ok) await automationApi.approve(a.id)
       else await automationApi.reject(a.id)
       loadApprovals(); loadRuns()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Décision impossible.') }
+    } catch (e) { console.warn('Décision impossible.', e) }
   }
 
   if (loading) return (

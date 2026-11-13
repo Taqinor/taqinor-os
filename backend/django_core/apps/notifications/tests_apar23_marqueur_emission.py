@@ -150,3 +150,44 @@ class MarqueurEmissionTests(TestCase):
             date_fin_garantie=jour_j + datetime.timedelta(days=70))
         sweeps._sweep_warranty_expiring(self.company)
         self.assertEqual(garanties.count(), 2)
+
+    def test_mort_avant_notify_n_eteint_pas_l_alerte(self):
+        """ACEL75 (C-ACEL-017) — marqueur et diffusion partent ensemble : une
+        mort dure avant ``notify`` n'éteint pas l'alerte de garantie."""
+        import gc
+
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        tech = User.objects.create_user(
+            username='acel75-tech', password='x', role_legacy='normal',
+            company=self.company)
+        client = Client.objects.create(company=self.company, nom='Client ACEL75')
+        eq = Equipement.objects.create(
+            company=self.company, statut=Equipement.Statut.EN_SERVICE,
+            produit=Produit.objects.create(
+                company=self.company, nom='Onduleur ACEL75', prix_vente=0),
+            installation=Installation.objects.create(
+                company=self.company, client=client, reference='CH-ACEL75-1',
+                statut=Installation.Statut.CLOTURE, technicien_responsable=tech),
+            date_fin_garantie=datetime.date.today() + datetime.timedelta(days=60))
+        marqueurs = MarqueurEmissionBalayage.objects.filter(
+            company=self.company, cle=f'equipement:{eq.pk}')
+        garanties = Notification.objects.filter(
+            event_type=EventType.WARRANTY_EXPIRING)
+
+        class _MortDure(BaseException):
+            pass
+
+        with mock.patch.object(sweeps, 'notify', side_effect=_MortDure):
+            with self.assertRaises(_MortDure):
+                sweeps._sweep_warranty_expiring(self.company)
+        gc.collect()  # referme le générateur du balayage interrompu
+        self.assertEqual(marqueurs.count(), 0)
+        self.assertEqual(garanties.count(), 0)
+        sweeps._sweep_warranty_expiring(self.company)
+        self.assertEqual(marqueurs.count(), 1)
+        self.assertEqual(garanties.count(), 1)
+        sweeps._sweep_warranty_expiring(self.company)
+        self.assertEqual(garanties.count(), 1)

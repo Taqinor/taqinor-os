@@ -18,7 +18,7 @@ import { useDispatch } from 'react-redux'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { Plus, Trash2, Download, Lock, FileCheck2, ShieldCheck } from 'lucide-react'
-import { toast, useConfirmDialog } from '../../ui/confirm'
+import { useConfirmDialog } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
 // PACT119 — le registre de consentement consomme `/core/consent-records/`
 // directement via l'instance axios (aucun ajout au client partagé coreApi :
@@ -79,7 +79,7 @@ function RegistreTraitements() {
       })
       setDraft({ code: '', finalite: '', base_legale: '' })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { console.warn('Ajout impossible.', e) }
     finally { setBusy(false) }
   }
 
@@ -87,20 +87,20 @@ function RegistreTraitements() {
     try {
       await coreApi.confidentialite.registreTraitements.update(row.id, { actif: !row.actif })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    } catch (e) { console.warn('Modification impossible.', e) }
   }
 
   const delRow = async (row) => {
     if (!(await confirmerSuppression({ title: `Supprimer le traitement « ${row.code} » ?` }))) return
     try { await coreApi.confidentialite.registreTraitements.remove(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   const exportCsv = async () => {
     try {
       const res = await coreApi.confidentialite.registreTraitements.exportCsv()
       downloadBlob(res.data, filenameFromResponse(res, 'registre-traitements-cndp.csv'))
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Export impossible.') }
+    } catch (e) { console.warn('Export impossible.', e) }
   }
 
   if (loading) return <ChargementTexte />
@@ -203,7 +203,7 @@ function DsrRequests() {
       })
       setDraft({ subject_identifier: '', kind: 'acces' })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Soumission impossible.') }
+    } catch (e) { console.warn('Soumission impossible.', e) }
     finally { setBusy(false) }
   }
 
@@ -219,7 +219,7 @@ function DsrRequests() {
     }
     setTraitingId(row.id)
     try { await coreApi.confidentialite.dsrRequests.traiter(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Traitement impossible.') }
+    catch (e) { console.warn('Traitement impossible.', e) }
     finally { setTraitingId(null) }
   }
 
@@ -365,7 +365,7 @@ function ConsentRecords() {
       })
       setDraft({ subject_identifier: '', purpose: '', version_texte: '' })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { console.warn('Ajout impossible.', e) }
     finally { setBusy(false) }
   }
 
@@ -375,7 +375,7 @@ function ConsentRecords() {
     try {
       await api.patch(`/core/consent-records/${row.id}/`, { granted: !row.granted })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    } catch (e) { console.warn('Modification impossible.', e) }
   }
 
   if (loading) return <ChargementTexte />
@@ -486,7 +486,7 @@ function BenchmarkingConsent() {
       // APAR73 — le verrou du profil avance (le « Enregistrer » suivant porte
       // ce nouvel horodatage) sans resynchroniser le formulaire.
       dispatch(majVerrouProfil(r?.data?.updated_at))
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    } catch (e) { console.warn('Modification impossible.', e) }
     finally { setBusy(false) }
   }
 

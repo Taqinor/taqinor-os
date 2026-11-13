@@ -119,6 +119,47 @@ class WaitStepTests(TestCase):
         self.assertEqual(status, AutomationRun.Status.SKIPPED)
         self.assertEqual(CustomRecord.objects.count(), 1)
 
+    def test_deux_copies_n_executent_l_etape_qu_une_fois(self):
+        """ACEL74 — réclamation conditionnelle : deux copies lues avant tout
+        passage n'exécutent l'étape qu'une fois ; une mort dure en cours
+        d'étape laisse l'échéance « en attente » (transaction annulée)."""
+        from unittest import mock
+
+        self._sequence()
+        engine.run_action(self.rule, self.lead, self.co,
+                          context={'reference': 'DV-4'})
+        echeance = AutomationScheduledStep.objects.get(company=self.co)
+        echeance.run_at = timezone.now() - timedelta(minutes=1)
+        echeance.save(update_fields=['run_at'])
+        copie_1 = AutomationScheduledStep.objects.get(pk=echeance.pk)
+        copie_2 = AutomationScheduledStep.objects.get(pk=echeance.pk)
+        engine.resume_scheduled_step(copie_1)
+        status, _msg = engine.resume_scheduled_step(copie_2)
+        self.assertEqual(status, AutomationRun.Status.SKIPPED)
+        self.assertEqual(CustomRecord.objects.count(), 1)
+        echeance.refresh_from_db()
+        self.assertEqual(echeance.statut,
+                         AutomationScheduledStep.Statut.REPRISE)
+
+        # Mort dure (BaseException) pendant l'étape : l'échéance repart.
+        engine.run_action(self.rule, self.lead, self.co,
+                          context={'reference': 'DV-5'})
+        autre = AutomationScheduledStep.objects.exclude(
+            pk=echeance.pk).get(company=self.co)
+        autre.run_at = timezone.now() - timedelta(minutes=1)
+        autre.save(update_fields=['run_at'])
+
+        class _MortDure(BaseException):
+            pass
+
+        with mock.patch.object(engine, '_run_steps', side_effect=_MortDure):
+            with self.assertRaises(_MortDure):
+                engine.resume_scheduled_step(
+                    AutomationScheduledStep.objects.get(pk=autre.pk))
+        autre.refresh_from_db()
+        self.assertEqual(autre.statut,
+                         AutomationScheduledStep.Statut.EN_ATTENTE)
+
     def test_disabled_rule_is_not_resumed(self):
         self._sequence()
         engine.run_action(self.rule, self.lead, self.co, context={})

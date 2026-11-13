@@ -34,7 +34,6 @@ import {
   AlertTriangle, ShoppingCart, BarChart3, Wallet, ScrollText, MessageSquare, Key,
   Search,
 } from 'lucide-react'
-import { toast } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
 import {
   Card, CardContent, Badge, EmptyState, Switch, Input, Select, SelectTrigger,
@@ -243,7 +242,7 @@ export default function ApplicationsSection() {
       await load()
     } catch (e) {
       if (depuisApercu) setCascadeConfirm(null)
-      toast.error(e?.response?.data?.detail ?? 'Activation impossible.')
+      console.warn('Activation impossible.', e)
     } finally {
       setBusyKey(null)
     }
@@ -267,7 +266,7 @@ export default function ApplicationsSection() {
           cascade: data.dependants, detail: data.detail,
         })
       } else {
-        toast.error(data?.detail ?? 'Désactivation impossible.')
+        console.warn('Désactivation impossible.', e)
         setCascadeConfirm(null)
       }
     } finally {

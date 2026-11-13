@@ -1346,6 +1346,23 @@ class IncomingWebhookTriggerTests(TestCase):
             rule__trigger_type=TriggerType.WEBHOOK_INBOUND).first()
         self.assertIsNotNone(run)
 
+    def test_meme_corps_livre_deux_fois_une_seule_execution(self):
+        """ACNC47 — un même corps (avec ou sans ``event_id``) reçu deux fois
+        n'exécute la règle qu'une fois ; deux ``event_id`` = deux exécutions."""
+        def poster(corps):
+            return self.client.post(
+                self._url(self.trigger.token), data=json.dumps(corps),
+                content_type='application/json')
+
+        for corps in ({'event_id': 'evt-1', 'x': 1}, {'x': 2}):
+            avant = AutomationRun.objects.filter(rule=self.rule).count()
+            self.assertEqual(poster(corps).status_code, 202)
+            self.assertEqual(poster(corps).status_code, 202)
+            self.assertEqual(
+                AutomationRun.objects.filter(rule=self.rule).count(), avant + 1)
+        poster({'event_id': 'evt-2', 'x': 1})
+        self.assertEqual(AutomationRun.objects.filter(rule=self.rule).count(), 3)
+
     def test_invalid_token_is_404(self):
         resp = self.client.post(
             self._url('does-not-exist-token'),
