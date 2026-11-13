@@ -109,3 +109,19 @@ describe('GammesMarquesPage (PVMRQ — Paramètres → Gammes & marques)', () =>
     ))
   })
 })
+
+describe('AERR124 — lecture ratée : enregistrement bloqué', () => {
+  it('« Réglages illisibles » + Réessayer, Enregistrer désactivé, aucun PATCH ; Réessayer réussi rend le bouton', async () => {
+    ventesApi.getParametresGammes.mockRejectedValueOnce({ response: { status: 500, data: {} } })
+    ventesApi.updateParametresGammes.mockClear()
+    renderPage(<GammesMarquesPage />)
+    expect(await screen.findByText(/Réglages illisibles/)).toBeInTheDocument()
+    const enregistrer = screen.getByRole('button', { name: 'Enregistrer' })
+    expect(enregistrer).toBeDisabled()
+    await userEvent.click(enregistrer)
+    expect(ventesApi.updateParametresGammes).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled())
+    expect(screen.queryByText(/Réglages illisibles/)).toBeNull()
+  })
+})

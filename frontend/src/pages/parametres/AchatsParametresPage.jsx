@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import useFormulaireReglages from './useFormulaireReglages'
 import { Link } from 'react-router-dom'
 import { CalendarCheck2, ShieldCheck } from 'lucide-react'
@@ -42,6 +42,9 @@ export default function AchatsParametresPage() {
   const {
     id, setId, form, setForm, loading, setLoading, saving, setSaving, setField,
   } = useFormulaireReglages(emptyForm)
+  const [echecLecture, setEchecLecture] = useState(false)
+  const [essai, setEssai] = useState(0)
+  const reessayer = () => { setLoading(true); setEssai((n) => n + 1) }  // AERR124 — fini le « Enregistrer » muet
 
   useEffect(() => {
     let active = true
@@ -61,11 +64,12 @@ export default function AchatsParametresPage() {
           sod_stricte: !!data.sod_stricte,
           plafond_notes_frais_actif: !!data.plafond_notes_frais_actif,
         })
+        setEchecLecture(false)
       })
-      .catch(() => toast.error('Chargement des paramètres achats impossible.'))
+      .catch(() => { if (active) setEchecLecture(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [setId, setForm, setLoading])
+  }, [setId, setForm, setLoading, essai])
 
   const submit = (e) => {
     e.preventDefault()
@@ -110,7 +114,12 @@ export default function AchatsParametresPage() {
         </>
       )}>
 
-      <FormulaireReglages onSubmit={submit} saving={saving} disabled={!id}>
+      {echecLecture && (
+        <p role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-sm text-destructive">
+          Réglages illisibles — paramètres achats non lus, l’enregistrement est bloqué.
+          <Button type="button" size="sm" variant="outline" onClick={reessayer}>Réessayer</Button>
+        </p>)}
+      <FormulaireReglages onSubmit={submit} saving={saving} disabled={!id || echecLecture}>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">

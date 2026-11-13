@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import useFormulaireReglages from './useFormulaireReglages'
 import { Layers, Tags } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { PRODUCT_CATEGORIES } from '../../features/ventes/solar'
-import { Input, Label, Switch, CarteContenu } from '../../ui'
+import { Button, Input, Label, Switch, CarteContenu } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
@@ -57,12 +57,17 @@ export default function GammesMarquesPage() {
   const {
     id, setId, form, setForm, loading, setLoading, saving, setSaving, setField,
   } = useFormulaireReglages(emptyForm)
+  // AERR124 — lecture ratée : formulaire verrouillé (jamais d'écrasement par les valeurs vides).
+  const [echecLecture, setEchecLecture] = useState(false)
+  const [essai, setEssai] = useState(0)
+  const reessayer = () => { setLoading(true); setEssai((n) => n + 1) }
 
   useEffect(() => {
     let active = true
     ventesApi.getParametresGammes()
       .then((r) => {
         if (!active) return
+        setEchecLecture(false)
         const data = r.data ?? {}
         setId(data.id ?? null)
         setForm({
@@ -72,10 +77,10 @@ export default function GammesMarquesPage() {
           marques: normalizeMarques(data.marques),
         })
       })
-      .catch(() => toast.error('Chargement des réglages « Gammes & marques » impossible.'))
+      .catch(() => { if (active) setEchecLecture(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [setId, setForm, setLoading])
+  }, [setId, setForm, setLoading, essai])
 
   const setMarque = (slot, role, value) => setForm((f) => ({
     ...f,
@@ -87,6 +92,7 @@ export default function GammesMarquesPage() {
 
   const submit = (e) => {
     e.preventDefault()
+    if (echecLecture) return
     setSaving(true)
     ventesApi.updateParametresGammes(form)
       .then((r) => {
@@ -116,7 +122,12 @@ export default function GammesMarquesPage() {
         </>
       }>
 
-      <FormulaireReglages onSubmit={submit} saving={saving}>
+      {echecLecture && (
+        <p role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-sm text-destructive">
+          Réglages illisibles — la lecture a échoué, l’enregistrement est bloqué.
+          <Button type="button" size="sm" variant="outline" onClick={reessayer}>Réessayer</Button>
+        </p>)}
+      <FormulaireReglages onSubmit={submit} saving={saving} disabled={echecLecture}>
         <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
             <Layers className="size-4 text-muted-foreground" aria-hidden="true" />
