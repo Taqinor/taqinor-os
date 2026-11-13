@@ -1,6 +1,7 @@
 import { lazy } from 'react'
 import { Cpu, Search, Bot, ListChecks, BrainCircuit } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
+import { installerEcouteurOuverture } from './ecouteurOuverture'
 
 /* ============================================================================
    ODY23 — Configuration du module « Intelligence » (IA / OCR / agent), NOUVEAU
@@ -23,6 +24,9 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    rôle historiques. Tant qu'ODY4 n'a pas retiré le littéral, les deux
    coexistent (attendu, résorbé au moment du fold — cf. rapport de tâche).
    ========================================================================== */
+
+// COP-F5 — écouteur de « Demander à l'assistant », actif dès le démarrage.
+installerEcouteurOuverture()
 
 const IaCockpit = lazy(() => import('../../pages/ia/IaCockpit'))
 

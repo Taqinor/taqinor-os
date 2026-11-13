@@ -3,8 +3,9 @@
 // l'injection `deps.env`, donc le test tourne headless. On couvre :
 //   • les helpers purs (support, choix de voix, MIME, RMS),
 //   • le repli navigateur non supporté (recordingSupported=false),
-//   • le happy path AG11 (capture → transcribe → queryAgent),
-//   • le garde-fou de sécurité AG12 (une proposition NE confirme JAMAIS seule).
+//   • le happy path AG11 (capture → transcribe → zone de saisie, COP-F6 : la
+//     dictée ne part plus toute seule),
+//   • le garde-fou de sécurité AG12/COP-F6 (aucune confirmation à la voix).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
@@ -130,15 +131,16 @@ describe('useVoiceChat — repli navigateur non supporté', () => {
   })
 })
 
-describe('useVoiceChat — happy path AG11 (capture → transcribe → queryAgent)', () => {
+describe('useVoiceChat — happy path AG11 (capture → transcribe → zone de saisie)', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
-  it('un tour micro transcrit puis dispatch queryAgent avec le texte', async () => {
+  it('un tour micro transcrit puis REMPLIT la saisie (aucune question envoyée seule)', async () => {
     const store = makeStore()
     const env = makeMockEnv()
     const transcribe = vi.fn(() => Promise.resolve({ data: { text: 'combien de clients', language: 'fr' } }))
+    const onTexte = vi.fn()
     const { result } = renderHook(
-      () => useVoiceChat({ env, transcribe }),
+      () => useVoiceChat({ env, transcribe, onTexte }),
       { wrapper: wrapper(store) },
     )
     expect(result.current.recordingSupported).toBe(true)
@@ -152,11 +154,9 @@ describe('useVoiceChat — happy path AG11 (capture → transcribe → queryAgen
     await act(async () => { result.current.toggleRecording() })
     await waitFor(() => expect(transcribe).toHaveBeenCalled())
 
-    // queryAgent a poussé un message user dans le store.
-    await waitFor(() => {
-      const msgs = store.getState().ia.messages
-      expect(msgs.some((m) => m.role === 'user' && m.content === 'combien de clients')).toBe(true)
-    })
+    // COP-F6 : le texte est remis à l'écran pour relecture ; rien n'est envoyé.
+    await waitFor(() => expect(onTexte).toHaveBeenCalledWith('combien de clients'))
+    expect(store.getState().ia.messages).toEqual([])
   })
 
   it('transcription indisponible (available:false) → erreur visible, pas de question', async () => {
@@ -183,16 +183,13 @@ describe('useVoiceChat — sécurité AG12 (pas d\'auto-confirmation)', () => {
     expect(result.current.voiceError).toMatch(/mode conversation/i)
   })
 
-  it('confirmByVoiceTap NE confirme PAS hors d\'une proposition en attente', async () => {
+  it('COP-F6 : le hook n\'expose aucun chemin de confirmation vocale', () => {
     const store = makeStore()
     const env = makeMockEnv()
     const { result } = renderHook(() => useVoiceChat({ env, transcribe: vi.fn() }), { wrapper: wrapper(store) })
+    expect(result.current.confirmByVoiceTap).toBeUndefined()
     act(() => { result.current.startConversation() })
     expect(result.current.conversationMode).toBe(true)
-    // Aucune proposition en attente → un tap ne déclenche AUCUNE confirmation :
-    // le store ne porte aucun index de confirmation en cours.
-    act(() => { result.current.confirmByVoiceTap() })
-    expect(store.getState().ia.confirmingIndex).toBe(null)
     act(() => { result.current.stopConversation() })
     expect(result.current.conversationMode).toBe(false)
   })

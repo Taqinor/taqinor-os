@@ -1,17 +1,13 @@
 // AG12 — Tests de la machine à états du « Mode conversation » (logique pure,
 // node:test). Couvre : la boucle écoute↔réponse, le barge-in, l'arrêt immédiat,
-// et SURTOUT le garde-fou de sécurité : la boucle NE confirme JAMAIS
-// automatiquement une action sensible — elle attend un « confirmer » explicite.
+// et SURTOUT le garde-fou de sécurité (COP-F6) : AUCUNE confirmation à la voix —
+// une proposition se confirme d'un doigt, rien de ce qui se dit ne la confirme.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  createConversationLoop,
-  LOOP_STATES,
-  normalizeUtterance,
-  isConfirmUtterance,
-  isCancelUtterance,
-} from './conversationLoop.js'
+import * as moduleBoucle from './conversationLoop.js'
+
+const { createConversationLoop, LOOP_STATES, PHRASE_CONFIRMER_AU_DOIGT } = moduleBoucle
 
 // Petit harnais : enregistre tous les appels de handlers.
 function makeSpyHandlers() {
@@ -25,6 +21,7 @@ function makeSpyHandlers() {
       ask: rec('ask'),
       speak: rec('speak'),
       stopSpeaking: rec('stopSpeaking'),
+      // Un `confirm` branché ne doit JAMAIS être appelé : la boucle n'en connaît plus.
       confirm: rec('confirm'),
       onState: rec('onState'),
     },
@@ -32,26 +29,12 @@ function makeSpyHandlers() {
   }
 }
 
-test('normalizeUtterance retire accents/casse/espaces', () => {
-  assert.equal(normalizeUtterance('  Confirmér  '), 'confirmer')
-  assert.equal(normalizeUtterance('OUI   Confirme'), 'oui confirme')
-  assert.equal(normalizeUtterance(null), '')
-})
-
-test('isConfirmUtterance reconnaît « confirmer » et variantes, rejette le reste', () => {
-  assert.ok(isConfirmUtterance('confirmer'))
-  assert.ok(isConfirmUtterance('Confirmé'))
-  assert.ok(isConfirmUtterance('oui confirme'))
-  assert.ok(isConfirmUtterance('valider'))
-  assert.equal(isConfirmUtterance('quel est le stock ?'), false)
-  assert.equal(isConfirmUtterance('oui'), false) // « oui » seul ne confirme PAS
-  assert.equal(isConfirmUtterance(''), false)
-})
-
-test('isCancelUtterance reconnaît « annuler » / « non »', () => {
-  assert.ok(isCancelUtterance('annuler'))
-  assert.ok(isCancelUtterance('non'))
-  assert.equal(isCancelUtterance('confirmer'), false)
+test('COP-F6 : le module n\'exporte plus aucun chemin de confirmation vocale', () => {
+  assert.equal(moduleBoucle.isConfirmUtterance, undefined)
+  assert.equal(moduleBoucle.isCancelUtterance, undefined)
+  assert.equal(LOOP_STATES.AWAITING_CONFIRM, undefined)
+  const loop = createConversationLoop({})
+  assert.equal(loop.confirmByTap, undefined)
 })
 
 test('start() ouvre le micro et passe en LISTENING', () => {
@@ -72,7 +55,6 @@ test('tour normal : parole → transcription → question → réponse lue → r
   loop.onTranscript('combien de clients ?')
   assert.equal(loop.getState(), LOOP_STATES.THINKING)
   assert.deepEqual(spy.calls.find((c) => c[0] === 'ask'), ['ask', 'combien de clients ?'])
-  // L'agent répond (texte simple) → lecture vocale.
   loop.onAnswer({ role: 'agent', content: 'Vous avez 12 clients.' })
   assert.equal(loop.getState(), LOOP_STATES.SPEAKING)
   assert.deepEqual(spy.calls.find((c) => c[0] === 'speak'), ['speak', 'Vous avez 12 clients.'])
@@ -91,77 +73,50 @@ test('transcript vide ne pose PAS de question et ré-ouvre le micro', () => {
   assert.equal(spy.names().filter((n) => n === 'ask').length, 0)
 })
 
-test('SÉCURITÉ : une proposition NE déclenche JAMAIS confirm() automatiquement', () => {
+test('SÉCURITÉ : une proposition est lue, dit d\'appuyer au doigt, et ne confirme RIEN', () => {
   const spy = makeSpyHandlers()
   const loop = createConversationLoop(spy.handlers)
   loop.start()
   loop.onSpeechEnd()
   loop.onTranscript('envoie le devis par whatsapp')
-  // L'agent répond par une PROPOSITION (action sensible).
-  loop.onAnswer({
-    role: 'agent', kind: 'proposal',
-    human_preview: 'Envoyer le devis DEV-7 par WhatsApp ?',
-    confirm_token: 'tok-9',
-  })
-  // → AWAITING_CONFIRM, l'aperçu est lu, mais AUCUN confirm() émis.
-  assert.equal(loop.getState(), LOOP_STATES.AWAITING_CONFIRM)
+  loop.onAnswer({ role: 'agent', content: 'Voilà.', proposition: true, apercu: 'Envoyer le devis DEV-7 ?' })
   assert.equal(spy.names().filter((n) => n === 'confirm').length, 0)
-  const speakCall = spy.calls.find((c) => c[0] === 'speak')
-  assert.match(speakCall[1], /confirmer/i)
+  const parle = spy.calls.find((c) => c[0] === 'speak')
+  assert.match(parle[1], /Envoyer le devis DEV-7/)
+  assert.ok(parle[1].endsWith(PHRASE_CONFIRMER_AU_DOIGT))
+  // La lecture finie, le micro se ré-ouvre : il ne reste jamais bloqué.
+  loop.onSpeechSpoken()
+  assert.equal(loop.getState(), LOOP_STATES.LISTENING)
 })
 
-test('SÉCURITÉ : un énoncé NON reconnu pendant l\'attente ne confirme pas (nouvelle question)', () => {
+test('SÉCURITÉ : « non je ne confirme pas » (et « confirmer ») n\'est qu\'une question', () => {
+  for (const phrase of ['non je ne confirme pas', 'confirmer', 'valide', 'oui']) {
+    const spy = makeSpyHandlers()
+    const loop = createConversationLoop(spy.handlers)
+    loop.start()
+    loop.onSpeechEnd()
+    loop.onTranscript('envoie le devis')
+    loop.onAnswer({ role: 'agent', content: '', proposition: true, apercu: 'X' })
+    loop.onSpeechSpoken()
+    loop.onSpeechEnd()
+    loop.onTranscript(phrase)
+    assert.equal(spy.names().filter((n) => n === 'confirm').length, 0, phrase)
+    assert.deepEqual(spy.calls.filter((c) => c[0] === 'ask').at(-1), ['ask', phrase])
+    assert.equal(loop.getState(), LOOP_STATES.THINKING)
+  }
+})
+
+test('une action confirmée au doigt : accusé lu puis ré-écoute', () => {
   const spy = makeSpyHandlers()
   const loop = createConversationLoop(spy.handlers)
   loop.start()
   loop.onSpeechEnd()
-  loop.onTranscript('envoie le devis')
-  loop.onAnswer({ role: 'agent', kind: 'proposal', human_preview: 'X', confirm_token: 'tok-9' })
-  assert.equal(loop.getState(), LOOP_STATES.AWAITING_CONFIRM)
-  // L'utilisateur dit autre chose → traité comme une question, JAMAIS confirmé.
-  loop.onSpeechEnd?.() // pas requis mais on reste cohérent
-  loop.onTranscript('quel est le total ?')
-  assert.equal(spy.names().filter((n) => n === 'confirm').length, 0)
-  assert.equal(loop.getState(), LOOP_STATES.THINKING)
-  assert.ok(spy.calls.some((c) => c[0] === 'ask' && c[1] === 'quel est le total ?'))
-})
-
-test('confirmation : « confirmer » explicite exécute confirm() avec le token', () => {
-  const spy = makeSpyHandlers()
-  const loop = createConversationLoop(spy.handlers)
-  loop.start()
-  loop.onSpeechEnd()
-  loop.onTranscript('envoie le devis')
-  loop.onAnswer({ role: 'agent', kind: 'proposal', human_preview: 'X', confirm_token: 'tok-9' })
-  loop.onTranscript('confirmer')
-  assert.deepEqual(spy.calls.find((c) => c[0] === 'confirm'), ['confirm', 'tok-9'])
-  assert.equal(loop.getState(), LOOP_STATES.THINKING)
-})
-
-test('confirmByTap exécute uniquement en AWAITING_CONFIRM', () => {
-  const spy = makeSpyHandlers()
-  const loop = createConversationLoop(spy.handlers)
-  loop.start()
-  // Pas en attente → le tap ne fait rien.
-  loop.confirmByTap()
-  assert.equal(spy.names().filter((n) => n === 'confirm').length, 0)
-  // En attente → le tap confirme.
-  loop.onSpeechEnd()
-  loop.onTranscript('envoie le devis')
-  loop.onAnswer({ role: 'agent', kind: 'proposal', human_preview: 'X', confirm_token: 'tok-1' })
-  loop.confirmByTap()
-  assert.deepEqual(spy.calls.find((c) => c[0] === 'confirm'), ['confirm', 'tok-1'])
-})
-
-test('« annuler » pendant l\'attente écarte sans confirmer et ré-écoute', () => {
-  const spy = makeSpyHandlers()
-  const loop = createConversationLoop(spy.handlers)
-  loop.start()
-  loop.onSpeechEnd()
-  loop.onTranscript('envoie le devis')
-  loop.onAnswer({ role: 'agent', kind: 'proposal', human_preview: 'X', confirm_token: 'tok-9' })
-  loop.onTranscript('annuler')
-  assert.equal(spy.names().filter((n) => n === 'confirm').length, 0)
+  loop.onTranscript('accepte le devis')
+  loop.onAnswer({ role: 'agent', content: '', proposition: true, apercu: 'Accepter ?' })
+  loop.onSpeechSpoken()
+  loop.onActionDone({ content: 'Devis accepté.' })
+  assert.equal(loop.getState(), LOOP_STATES.SPEAKING)
+  loop.onSpeechSpoken()
   assert.equal(loop.getState(), LOOP_STATES.LISTENING)
 })
 
@@ -188,8 +143,8 @@ test('stop() arrête tout immédiatement et revient à IDLE', () => {
   assert.ok(spy.names().includes('stopListening'))
   assert.ok(spy.names().includes('stopSpeaking'))
   // Après stop, plus aucune transition ne réagit.
-  const before = spy.calls.length
+  const avant = spy.calls.length
   loop.onTranscript('confirmer')
-  loop.onAnswer({ kind: 'proposal', confirm_token: 't' })
-  assert.equal(spy.calls.length, before)
+  loop.onAnswer({ proposition: true })
+  assert.equal(spy.calls.length, avant)
 })
