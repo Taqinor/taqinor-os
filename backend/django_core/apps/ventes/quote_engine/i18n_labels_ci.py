@@ -69,6 +69,36 @@ LIBELLES_CI = {
         'fr': 'non rentable sur les seuls critères financiers',
         'en': 'not cost-effective on financial criteria alone',
         'ar': 'غير مربح وفق المعايير المالية وحدها'},
+    # Lead nada (13/11/2026) — couverture à deux options : l'énergie mois par
+    # mois des deux options, et la courbe du retour sur investissement.
+    'ci_gr_sur_place': {
+        'fr': 'consommé sur place', 'en': 'used on site',
+        'ar': 'مستهلك في الموقع'},
+    'ci_gr_surplus_court': {
+        'fr': 'surplus', 'en': 'surplus', 'ar': 'فائض'},
+    'ci_gr_note_deux': {
+        'fr': 'kWh par mois, sans et avec batterie : votre consommation et la '
+              'production estimée, calculées heure par heure.',
+        'en': 'kWh per month, without and with battery: your consumption and '
+              'the estimated production, calculated hour by hour.',
+        'ar': 'كيلوواط ساعة شهرياً، بدون بطارية ومع بطارية: استهلاككم '
+              'والإنتاج المقدر، محسوبان ساعة بساعة.'},
+    'ci_gr_retour_titre': {
+        'fr': 'Votre retour sur investissement', 'en': 'Your payback',
+        'ar': 'استرداد استثماركم'},
+    'ci_gr_votre_installation': {
+        'fr': 'Votre installation', 'en': 'Your installation',
+        'ar': 'منشأتكم'},
+    'ci_gr_rembourse_en': {
+        'fr': 'remboursé en', 'en': 'paid back in', 'ar': 'يُسترد في'},
+    'ci_gr_retour_note': {
+        'fr': 'Gain cumulé ({base}) année par année : économies moins '
+              'investissement et remplacements ; au-dessus de 0, '
+              "l'installation est remboursée.",
+        'en': 'Cumulative gain ({base}) year by year: savings minus investment '
+              'and replacements; above 0, the installation is paid back.',
+        'ar': 'المكسب التراكمي ({base}) سنة بعد سنة: التوفير ناقص الاستثمار '
+              'والاستبدالات؛ فوق 0 يكون الاستثمار قد استُرد.'},
     'ci_opt_non_rentable_ligne': {
         'fr': 'Retour estimé {n} ans (remplacement batterie inclus), au-delà de '
               "l'horizon de {h} ans retenu : l'option solaire seule est recommandée.",

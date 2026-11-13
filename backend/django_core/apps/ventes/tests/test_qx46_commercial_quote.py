@@ -634,6 +634,90 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
                         "calculées heure par heure"):
             self.assertIn(legende, texte)
 
+    @staticmethod
+    def _deux_options(**surcharges):
+        """Lead nada (13/11/2026) — une couverture à deux options minimale :
+        offre sans servie (``synthese.argent``), option avec chiffrée
+        (``etude_ci.option_avec`` : bilan mensuel et flux 25 ans)."""
+        mois = [{"mois": m, "production_kwh": 2800, "consommation_kwh": 4100,
+                 "autoconso_kwh": 1900, "surplus_kwh": 900} for m in range(1, 13)]
+        mois_avec = [{"mois": m, "production_kwh": 4800, "consommation_kwh": 4100,
+                      "autoconso_kwh": 3900, "surplus_kwh": 900} for m in range(1, 13)]
+        flux = {"flux": [{"annee": a, "cumul_mad": -128500.0 + a * 36209.0}
+                         for a in range(0, 26)]}
+        flux_avec = {"flux": [{"annee": a, "cumul_mad": -327250.0 + a * 66137.0}
+                              for a in range(0, 26)]}
+        d = {"option_servie": "sans",
+             "com_payback": 3.6,
+             "com_synthese": {
+                 "energie": {"par_mois": mois},
+                 "argent": {"base": "ht", "flux_ht": flux},
+                 "option_batterie": {"valeur_chiffree": {"retour_simple_ans": 5.0}}},
+             "etude": {"etude_ci": {"option_avec": {
+                 "bilan": {"par_mois": mois_avec},
+                 "economie_flux": {"flux_ht": flux_avec}}}}}
+        d.update(surcharges)
+        return d
+
+    def test_deux_options_energie_des_deux_options_nommees(self):
+        from apps.ventes.quote_engine.ci.graphiques import bloc_energie_mensuelle
+        d = self._deux_options()
+        html = bloc_energie_mensuelle(
+            d, d["com_synthese"], ("#c", "#as", "#ss", "#ax", "#tx"), "x",
+            lambda v: str(v), "c1c", couleurs_avec=("#aa", "#sa"))
+        self.assertIn("Sans batterie", html)
+        self.assertIn("Avec batterie", html)
+        # 12 barres « consommé sur place » de l'option avec, à sa couleur.
+        self.assertEqual(html.count('fill="#aa"'), 12)
+        # La graduation : le plus grand kWh SERVI (production avec).
+        self.assertIn("4800 kWh", html)
+        # Sans ``couleurs_avec`` (document mono-option) : une seule série.
+        mono = bloc_energie_mensuelle(
+            d, d["com_synthese"], ("#c", "#as", "#ss", "#ax", "#tx"), "x",
+            lambda v: str(v), "c1c")
+        self.assertNotIn("Avec batterie", mono)
+        self.assertNotIn('fill="#aa"', mono)
+
+    def test_deux_options_courbe_du_retour_par_option(self):
+        from apps.ventes.quote_engine.ci.graphiques import bloc_retour_cumul
+        d = self._deux_options()
+        html = bloc_retour_cumul(d, "com", ("#g", "#b"), "#m", "#m", "x",
+                                 lambda v: f"{v} MAD", "c1c")
+        self.assertIn('data-graphique="courbe_cumul"', html)
+        self.assertEqual(html.count("<polyline"), 2)
+        self.assertIn('stroke="#b"', html)
+        texte = _texte_ci(html)
+        # La légende imprime LE retour de la carte « Sans batterie »
+        # (``couverture.retour_affiche``), jamais un autre calcul.
+        from apps.ventes.quote_engine.ci import couverture
+        retour_carte = couverture.ans(couverture.retour_affiche(d, "com"))
+        self.assertIn(f"Sans batterie — remboursé en {retour_carte}", texte)
+        self.assertIn("Avec batterie — remboursé en 5,0", texte)
+        # Les montants de l'axe sont des cumuls SERVIS (années 0 et 25).
+        self.assertIn(f"{round(-327250.0)} MAD", html)
+        self.assertIn(f"{round(-327250.0 + 25 * 66137.0)} MAD", html)
+        self.assertIn("Gain cumulé (HT)", texte)
+
+    def test_courbe_du_retour_mono_option_et_omissions(self):
+        from apps.ventes.quote_engine.ci.graphiques import bloc_retour_cumul
+        fmt = lambda v: f"{v} MAD"  # noqa: E731
+        mono = self._deux_options(option_servie="avec")
+        html = bloc_retour_cumul(mono, "com", ("#g", "#b"), "#m", "#m", "x",
+                                 fmt, "c1c")
+        self.assertEqual(html.count("<polyline"), 1)
+        self.assertIn("Votre installation", _texte_ci(html))
+        # Économies masquées, flux absent, bloc cédé : rien.
+        self.assertEqual(bloc_retour_cumul(
+            self._deux_options(com_masquer_economies=True), "com",
+            ("#g", "#b"), "#m", "#m", "x", fmt, "c1c"), "")
+        sans_flux = self._deux_options()
+        sans_flux["com_synthese"]["argent"].pop("flux_ht")
+        self.assertEqual(bloc_retour_cumul(sans_flux, "com", ("#g", "#b"),
+                                           "#m", "#m", "x", fmt, "c1c"), "")
+        self.assertEqual(bloc_retour_cumul(
+            self._deux_options(_sans_graphiques=frozenset({"courbe_cumul"})),
+            "com", ("#g", "#b"), "#m", "#m", "x", fmt, "c1c"), "")
+
     def test_sans_douze_mois_aucun_graphique(self):
         data = _data_ci()
         data["etude"]["etude_ci"]["bilan"]["par_mois"].pop()
@@ -872,9 +956,16 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
         sans = self._data(seller={"nom": "", "telephone": "0522000000"})
         self.assertNotIn("Votre interlocuteur", _texte_ci(self._p1(sans)))
 
+    @staticmethod
+    def _sans_flux(data):
+        for cle in ("flux_ht", "flux_ttc"):
+            data["economie_ci"].pop(cle, None)
+        return data
+
     def test_prochaines_etapes_et_qr_seulement_avec_un_lien(self):
         lien = "https://taqinor.ma/proposition/hotel-atlas/abcdEFGH1234"
-        p1 = self._p1(self._data(links={"signer": lien}))
+        # Sans flux servi (aucune courbe du retour) : les étapes, comme avant.
+        p1 = self._p1(self._sans_flux(self._data(links={"signer": lien})))
         texte = _texte_ci(p1)
         self.assertIn("Prochaines étapes 1 Visite technique de votre site 2 "
                       "Validation de l'offre définitive 3 Pose et mise en "
@@ -884,10 +975,24 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
                       texte)
         self.assertNotIn("abcdEFGH1234", texte)
         # Le repli « /signer/<ref> » (jamais servi par le site) : aucun QR.
-        p1_sans = self._p1(self._data(
-            links={"signer": "taqinor.ma/signer/DEV-COM-DEMO"}))
+        p1_sans = self._p1(self._sans_flux(self._data(
+            links={"signer": "taqinor.ma/signer/DEV-COM-DEMO"})))
         self.assertNotIn('alt="QR"', p1_sans)
         self.assertIn("Prochaines étapes", _texte_ci(p1_sans))
+
+    def test_courbe_du_retour_remplace_les_etapes_le_qr_reste(self):
+        """Lead nada (13/11/2026, Reda) — flux servi : la courbe du retour
+        prend la place de « Prochaines étapes » (déjà en page 3) ; le QR de
+        la proposition reste."""
+        lien = "https://taqinor.ma/proposition/hotel-atlas/abcdEFGH1234"
+        p1 = self._p1(self._data(links={"signer": lien}))
+        texte = _texte_ci(p1)
+        self.assertIn('data-graphique="courbe_cumul"', p1)
+        self.assertIn("Votre retour sur investissement", texte)
+        self.assertNotIn("Prochaines étapes", texte)
+        self.assertIn('alt="QR"', p1)
+        self.assertIn("Votre proposition en ligne · taqinor.ma/proposition",
+                      texte)
 
     def test_industriel_titre_projet_et_etapes_cedables(self):
         from apps.ventes.quote_engine.industriel import render as i_render
