@@ -75,6 +75,21 @@ describe('mutateWithUndo — anti-commit-différé (le cœur d’EZ14)', () => {
     expect(errorSpy).toHaveBeenCalled()
   })
 
+  it('AERR71 — refus serveur avec réponse : rollback, aucun undo, aucun toast local', async () => {
+    const rollback = vi.fn()
+    const ok = await mutateWithUndo({
+      kind: 'lead_stage',
+      message: 'Étape modifiée.',
+      apply: vi.fn().mockRejectedValue({ response: { status: 400, data: { detail: 'Étape non modifiable.' } } }),
+      revert: vi.fn(),
+      rollbackOptimistic: rollback,
+    })
+    expect(ok).toBe(false)
+    expect(rollback).toHaveBeenCalledTimes(1)
+    expect(undoSpy).not.toHaveBeenCalled()
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
   it('un échec de l’INVERSE est dit à l’utilisateur, jamais avalé', async () => {
     await mutateWithUndo({
       kind: 'lead_archive',
