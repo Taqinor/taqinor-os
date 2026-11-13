@@ -3969,11 +3969,10 @@ def expirer_demandes_echues(company, *, now=None):
         company=company, statut=SIGNATURE_EN_ATTENTE,
         expires_at__isnull=False, expires_at__lte=now)
     count = 0
-    for demande in echues:
-        demande.statut = SIGNATURE_ANNULE
-        demande.annule_le = now
-        demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
-        count += 1
+    for demande in echues:  # ACEL63 — conditionnel : une signature committée entre-temps gagne
+        count += DemandeSignatureDocument.objects.filter(
+            pk=demande.pk, statut=SIGNATURE_EN_ATTENTE).update(
+            statut=SIGNATURE_ANNULE, annule_le=now, updated_at=now)
     return count
 
 
