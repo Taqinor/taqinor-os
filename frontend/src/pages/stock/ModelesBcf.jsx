@@ -217,10 +217,12 @@ export default function ModelesBcf() {
   const [genererFor, setGenererFor] = useState(null)
   const [info, setInfo] = useState(null)
 
+  // AERR35 — une lecture ratée ne vide JAMAIS la liste (avis + « Réessayer »).
+  const [erreurListe, setErreurListe] = useState(false)
   const reload = () => {
     fetchAllPages((page) => stockApi.getModelesBcf({ page }).then((r) => r.data), { concurrency: 3 })
-      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-      .catch(() => setItems([]))
+      .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setErreurListe(false) })
+      .catch(() => setErreurListe(true))
       .finally(() => setLoading(false))
   }
 
@@ -299,13 +301,21 @@ export default function ModelesBcf() {
         </div>
       )}
 
+      {erreurListe && (
+        <div role="status" data-testid="modeles-liste-pas-a-jour" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>Liste pas à jour — la lecture a échoué (le serveur n’a pas répondu).</span>
+          <Button type="button" size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </div>
+      )}
+
       <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (nom, fournisseur)…"
         globalColumns={['nom', 'fournisseur_nom']}
         onRowClick={openModele}
-        emptyTitle="Aucun modèle de bon de commande"
-        emptyDescription="Créez-en un pour réutiliser rapidement une liste d'articles récurrente."
-        emptyAction={peutCommander
+        emptyTitle={erreurListe ? 'Liste indisponible' : 'Aucun modèle de bon de commande'}
+        emptyDescription={erreurListe ? 'Réessayez avec le bouton ci-dessus.'
+          : "Créez-en un pour réutiliser rapidement une liste d'articles récurrente."}
+        emptyAction={peutCommander && !erreurListe
           ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau modèle</Button>
           : undefined}
         aria-label="Modèles de bon de commande fournisseur"

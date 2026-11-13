@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -88,5 +88,30 @@ describe('ASTK242 — gating par achats_commander', () => {
     expect(screen.queryByRole('button', { name: /Nouveau modèle/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Générer un BCF/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Supprimer le modèle/ })).toBeNull()
+  })
+})
+
+describe('AERR35 — une lecture ratée ne vide jamais la liste des modèles', () => {
+  it('lecture rejetée : erreur + Réessayer, jamais Aucun modèle', async () => {
+    stockApi.getModelesBcf.mockRejectedValueOnce(new Error('Network Error'))
+    render(<ModelesBcf />, { wrapper })
+    const avis = await screen.findByTestId('modeles-liste-pas-a-jour')
+    expect(avis).toHaveTextContent(/Liste pas à jour/)
+    expect(screen.queryByText(/Aucun modèle de bon de commande/)).toBeNull()
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect((await screen.findAllByText('Réassort panneaux'))[0]).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByTestId('modeles-liste-pas-a-jour')).toBeNull())
+  })
+
+  it('relecture rejetée après une suppression : lignes gardées + avis', async () => {
+    stockApi.deleteModeleBcf.mockResolvedValue({})
+    render(<ModelesBcf />, { wrapper })
+    await screen.findAllByText('Réassort panneaux')
+    stockApi.getModelesBcf.mockRejectedValue(new Error('Network Error'))
+    fireEvent.click(screen.getAllByRole('button', { name: /Supprimer le modèle/ })[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(stockApi.deleteModeleBcf).toHaveBeenCalledWith(1))
+    expect(await screen.findByTestId('modeles-liste-pas-a-jour')).toBeInTheDocument()
+    expect(screen.getAllByText('Réassort panneaux')[0]).toBeInTheDocument()
   })
 })

@@ -1413,13 +1413,15 @@ export default function BonsCommandeFournisseur() {
       .catch(() => {})
   }, [ouvrirBcfId])
 
+  // AERR35 — lecture ratée : liste jamais vidée (setItems au seul succès), avis + « Réessayer ».
+  const [erreurListe, setErreurListe] = useState(false)
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
     // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
     fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
-      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-      .catch(() => setItems([]))
+      .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setErreurListe(false) })
+      .catch(() => setErreurListe(true))
       .finally(() => setLoading(false))
   }
   const reloadEnRetard = () => {
@@ -1427,12 +1429,12 @@ export default function BonsCommandeFournisseur() {
     // — lecture directe, jamais ?page= (garde check_frontend_query_params).
     stockApi.getBcfEnRetard()
       .then((r) => setEnRetardIds(new Set((Array.isArray(r.data) ? r.data : []).map((b) => b.id))))
-      .catch(() => setEnRetardIds(new Set()))
+      .catch(() => {}) // AERR35 — indicateur gardé tel quel sur une lecture ratée
   }
   const reloadSuggestions = () => {
     stockApi.getSuggestionsConsolidationBcf()
       .then((r) => setConsolidationSuggestions(r.data ?? []))
-      .catch(() => setConsolidationSuggestions([]))
+      .catch(() => {}) // AERR35 — suggestions gardées sur une lecture ratée
   }
 
   useEffect(() => {
@@ -1608,6 +1610,13 @@ export default function BonsCommandeFournisseur() {
         )}
       </div>
 
+      {erreurListe && (
+        <div role="status" data-testid="bcf-liste-pas-a-jour" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>Liste pas à jour — la lecture a échoué (le serveur n’a pas répondu).</span>
+          <Button type="button" size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </div>
+      )}
+
       <DataTable
         data={rows}
         columns={columns}
@@ -1633,9 +1642,10 @@ export default function BonsCommandeFournisseur() {
               }]
             : []),
         ]}
-        emptyTitle="Aucun bon de commande fournisseur"
-        emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
-        emptyAction={peutCommanderListe
+        emptyTitle={erreurListe ? 'Liste indisponible' : 'Aucun bon de commande fournisseur'}
+        emptyDescription={erreurListe ? 'Réessayez avec le bouton ci-dessus.'
+          : "Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."}
+        emptyAction={peutCommanderListe && !erreurListe
           ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau bon de commande</Button>
           : undefined}
         aria-label="Bons de commande fournisseur"
