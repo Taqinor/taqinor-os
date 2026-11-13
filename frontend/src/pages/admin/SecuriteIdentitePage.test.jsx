@@ -112,6 +112,9 @@ describe('WIR134 SecuriteIdentitePage', () => {
     await user.click(screen.getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(screen.queryByText(/Supprimer la plage/)).toBeNull())
     expect(H.ipRemove).not.toHaveBeenCalled()
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     await user.click(screen.getByRole('button', { name: 'Supprimer la règle' }))
     await confirmerSuppression(user)
     await waitFor(() => expect(H.ipRemove).toHaveBeenCalledWith(4))

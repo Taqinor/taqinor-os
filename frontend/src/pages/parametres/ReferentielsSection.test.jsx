@@ -114,6 +114,9 @@ describe('WIR66 ReferentielsSection', () => {
     await waitFor(() => expect(confirmer).toHaveBeenCalled())
     expect(confirmer.mock.calls[0][0]).toContain('Mètre')
     expect(parametresApi.deleteUniteMesure).not.toHaveBeenCalled()
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     confirmer.mockReturnValue(true)
     fireEvent.click(supprimer)
     await waitFor(() => expect(parametresApi.deleteUniteMesure).toHaveBeenCalledTimes(1))

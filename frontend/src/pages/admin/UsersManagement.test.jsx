@@ -187,7 +187,13 @@ describe('UsersManagement — DataTable (J145)', () => {
   })
 
   it('AERR60 — échec puis Réessayer réussi : la liste revient', async () => {
-    apiMock.get.mockRejectedValueOnce(new Error('panne'))
+    // La 1re lecture de /users/ échoue (le bandeau des sièges lit aussi via
+    // api.get : un rejet « Once » non ciblé tombait sur /adminops/licences/).
+    let echoue = false
+    apiMock.get.mockImplementation((url) => {
+      if (url === '/users/' && !echoue) { echoue = true; return Promise.reject(new Error('panne')) }
+      return Promise.resolve({ data: USERS })
+    })
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Réessayer' }))
     expect((await screen.findAllByText('sami')).length).toBeGreaterThanOrEqual(1)

@@ -286,17 +286,18 @@ function BanniereTab() {
   // AERR57 — lecture échouée : champs vides ⇒ enregistrer poserait un seuil 0
   // (verrouillage DÉSACTIVÉ) et effacerait la bannière. Rien ne part.
   const [lectureEchouee, setLectureEchouee] = useState(false)
+  const lire = () => parametresApi.getProfile()
+    .then((r) => {
+      setBanner(r.data?.login_banner_text ?? '')
+      setLockout(String(r.data?.lockout_max_attempts ?? ''))
+    })
+    .catch(() => setLectureEchouee(true)).finally(() => setLoading(false))
   const charger = () => {
     setLoading(true)
     setLectureEchouee(false)
-    parametresApi.getProfile()
-      .then((r) => {
-        setBanner(r.data?.login_banner_text ?? '')
-        setLockout(String(r.data?.lockout_max_attempts ?? ''))
-      })
-      .catch(() => setLectureEchouee(true)).finally(() => setLoading(false))
+    lire()
   }
-  useEffect(() => { charger() }, [])
+  useEffect(() => { lire() }, [])
   const save = async () => {
     if (lectureEchouee) return
     try {

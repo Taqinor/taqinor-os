@@ -155,7 +155,7 @@ describe('Modale « Session expirée » — seulement s\'il y avait une session'
   })
 })
 
-describe('AERR51 — après reconnexion, dire que l'écriture refusée n'est pas partie', () => {
+describe("AERR51 — après reconnexion, dire que l'écriture refusée n'est pas partie", () => {
   const reconnecter = async () => {
     api.defaults.adapter = async (config) => ({
       data: { role: 'admin' }, status: 200, statusText: 'OK', headers: {}, config,
@@ -166,7 +166,7 @@ describe('AERR51 — après reconnexion, dire que l'écriture refusée n'est pas
     await waitFor(() => expect(screen.queryByText(TITRE_MODALE)).toBeNull())
   }
 
-  it('PATCH refusé en 401 puis reconnexion : avis d'enregistrement à refaire', async () => {
+  it("PATCH refusé en 401 puis reconnexion : avis d'enregistrement à refaire", async () => {
     store.dispatch(setCredentials({ user: { username: 'reda' } }))
     monterAvecStore()
     await expect(api.patch('/crm/clients/1/', { nom: 'x' })).rejects.toBeTruthy()

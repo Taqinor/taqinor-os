@@ -71,6 +71,9 @@ describe('ChatterWidget (VX196)', () => {
     expect(recordsApi.deleteComment).not.toHaveBeenCalled()
     expect(screen.getByText('Bonjour')).toBeInTheDocument()
 
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     fireEvent.click(screen.getByLabelText('Supprimer le commentaire'))
     fireEvent.click(await screen.findByRole('button', { name: 'Supprimer' }))
     await waitFor(() => expect(recordsApi.deleteComment).toHaveBeenCalledTimes(1))

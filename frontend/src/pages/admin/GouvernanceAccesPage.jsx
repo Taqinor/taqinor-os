@@ -221,12 +221,10 @@ function SodTab() {
 // ── Rapport de certification des accès ────────────────────────────────────────
 function RapportTab() {
   const [rows, setRows] = useState(null)
-  const charger = () => {
-    setRows(null)
-    accessReviewApi.revueAcces()
-      .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows('echec'))
-  }
-  useEffect(() => { charger() }, [])
+  const lire = () => accessReviewApi.revueAcces()
+    .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows('echec'))
+  const charger = () => { setRows(null); lire() }
+  useEffect(() => { lire() }, [])
   const exportCsv = async () => {
     try {
       const res = await accessReviewApi.revueAccesCsv()
