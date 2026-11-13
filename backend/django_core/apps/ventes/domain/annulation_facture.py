@@ -561,6 +561,12 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
     # dans le total.
     from .. import activity
     with transaction.atomic():
+        # ACNC8 (C-ACNC-003) — la VENTE d'abord, puis la facture (ordre de
+        # ``verrouiller_emission``) : deux annulations croisées de l'acompte et
+        # du solde se suivent, et la seconde voit la première (stock rendu 1×).
+        if facture.devis_id:
+            from .facturation_vente import verrouiller_vente
+            verrouiller_vente(facture.devis)
         locked = Facture.objects.select_for_update().get(pk=facture.pk)
         if locked.statut == Facture.Statut.ANNULEE or (
                 locked.statut == Facture.Statut.PAYEE
