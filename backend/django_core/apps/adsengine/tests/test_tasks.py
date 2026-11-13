@@ -164,6 +164,39 @@ class SyncInsightsRunTests(TestCase):
             self.assertEqual(sync_insights_daily(), {'companies_synced': 0})
 
 
+class EmitCapiCommandeManuelleTests(TestCase):
+    """ACEL73 — ``manage.py emit_capi_signatures`` déclenche la tâche."""
+
+    def setUp(self):
+        Company.objects.create(nom='Capi Co', slug='capi-co')
+
+    def test_commande_declenche_la_tache(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        with patch('apps.adsengine.capi_odoo.is_configured',
+                   return_value=False), \
+                patch('apps.adsengine.capi_odoo.emit_lead_received') as lead:
+            call_command('emit_capi_signatures', stdout=out)
+        self.assertIn('CRM Dataset non configuré', out.getvalue())
+        lead.assert_not_called()
+
+        out = StringIO()
+        with patch('apps.adsengine.capi_odoo.is_configured',
+                   return_value=True), \
+                patch('apps.adsengine.capi_odoo.emit_lead_received',
+                      return_value={'emitted': 1}), \
+                patch('apps.adsengine.capi_odoo.emit_signed_deals',
+                      return_value={'emitted': 2}):
+            call_command('emit_capi_signatures', stdout=out)
+        self.assertIn('1 reçu(s), 2 signé(s)', out.getvalue())
+        from erp_agentique.celery import app
+        planifiees = {e['task'] for e in app.conf.beat_schedule.values()}
+        self.assertNotIn('adsengine.emit_capi_signatures', planifiees)
+
+
 class BeatReachabilityTests(SimpleTestCase):
     def test_task_is_scheduled(self):
         from erp_agentique.celery import app
