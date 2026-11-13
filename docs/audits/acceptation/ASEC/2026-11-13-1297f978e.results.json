@@ -1,0 +1,78 @@
+{
+  "sha": "1297f978e17ee9eb66f74a2b70a61070be2a5eca",
+  "date": "2026-11-13",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC96"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "V7.96-AV",
+      "taches": [
+        "ASEC96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASEC-V7.96-AV.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V7.96-RESP",
+      "taches": [
+        "ASEC96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASEC-V7.96-RESP.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V7.96-COM",
+      "taches": [
+        "ASEC96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASEC-V7.96-COM.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
