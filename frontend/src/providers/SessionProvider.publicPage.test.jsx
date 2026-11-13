@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -31,7 +31,14 @@ vi.mock('../api/refreshCoordinator', async (importOriginal) => {
   }
 })
 
+// AERR51 — l'avis « enregistrement à refaire » passe par toastInfo.
+vi.mock('../lib/toast', async (importOriginal) => ({
+  ...(await importOriginal()),
+  toastInfo: vi.fn(),
+}))
+
 const { default: api } = await import('../api/axios')
+const { toastInfo } = await import('../lib/toast')
 const { brancherSourceDeSession } = await import('./session-bridge')
 const { SessionProvider } = await import('./SessionProvider')
 const { refreshSession, reprendreApresPanne } = await import('../api/refreshCoordinator')
@@ -145,5 +152,36 @@ describe('Modale « Session expirée » — seulement s\'il y avait une session'
     await waitFor(() => expect(screen.getByText('contenu public')).toBeTruthy())
     expect(screen.queryByText(TITRE_MODALE)).toBeNull()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('AERR51 — après reconnexion, dire que l'écriture refusée n'est pas partie', () => {
+  const reconnecter = async () => {
+    api.defaults.adapter = async (config) => ({
+      data: { role: 'admin' }, status: 200, statusText: 'OK', headers: {}, config,
+    })
+    fireEvent.change(screen.getByLabelText('Nom d’utilisateur'), { target: { value: 'reda' } })
+    fireEvent.change(screen.getByLabelText('Mot de passe'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Se reconnecter' }))
+    await waitFor(() => expect(screen.queryByText(TITRE_MODALE)).toBeNull())
+  }
+
+  it('PATCH refusé en 401 puis reconnexion : avis d'enregistrement à refaire', async () => {
+    store.dispatch(setCredentials({ user: { username: 'reda' } }))
+    monterAvecStore()
+    await expect(api.patch('/crm/clients/1/', { nom: 'x' })).rejects.toBeTruthy()
+    expect(await screen.findByText(TITRE_MODALE)).toBeTruthy()
+    await reconnecter()
+    expect(toastInfo).toHaveBeenCalledTimes(1)
+    expect(toastInfo.mock.calls[0][0]).toMatch(/n'est pas parti/)
+  })
+
+  it('GET refusé en 401 puis reconnexion : aucun avis', async () => {
+    store.dispatch(setCredentials({ user: { username: 'reda' } }))
+    monterAvecStore()
+    await declencher401()
+    expect(await screen.findByText(TITRE_MODALE)).toBeTruthy()
+    await reconnecter()
+    expect(toastInfo).not.toHaveBeenCalled()
   })
 })

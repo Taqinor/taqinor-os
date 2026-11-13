@@ -11,6 +11,7 @@ import { apiErrorMessageServi } from '../lib/apiError'
 // NTADM26 — entité active (filtre d'affichage, module pur sans React ici).
 import { lireEntiteActive } from '../lib/entiteActive'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
+import { noterEcritureRefusee } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
 import {
@@ -123,6 +124,7 @@ api.interceptors.response.use(
       // réellement (`auth.isAuthenticated`, cf. session-bridge.js) — un 401 sur
       // une page publique n'est pas une expiration, et la modale ne doit pas
       // s'ouvrir par-dessus une vitrine (son overlay bloque tous les clics).
+      noterEcritureRefusee(originalRequest.method)
       emitSessionExpired()
       return Promise.reject(error)
     }
