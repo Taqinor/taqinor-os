@@ -818,12 +818,13 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Unité logistique introuvable dans cette société.'},
                 status=status.HTTP_404_NOT_FOUND)
-        return Response({
-            'unite_logistique': unite.id,
-            'offres': comparer_tarifs_transporteurs(
-                unite, destination=request.query_params.get('destination')
-                or ''),
-        })
+        offres = comparer_tarifs_transporteurs(
+            unite, destination=request.query_params.get('destination') or '')
+        from ..permissions import PeutVoirPrixAchat
+        if not PeutVoirPrixAchat().has_permission(request, None):
+            # ALEC5 (D-ALEC-1) : un tarif de transport est un montant d'achat.
+            offres = [{**o, 'cout': None} for o in offres]
+        return Response({'unite_logistique': unite.id, 'offres': offres})
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('produit', INT)]))
