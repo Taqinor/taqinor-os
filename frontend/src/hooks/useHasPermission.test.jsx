@@ -21,6 +21,7 @@ import {
   useCanListFactures,
   useCanLireParcMonitoring,
   useCanLireEquipesCrm,
+  useCanListAssignableUsers,
   useCanLireTableauDeBord,
   PRODUIT_CREATE_ROLES,
   VENTES_VALIDER_PERMISSION,
@@ -181,6 +182,14 @@ describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-L
   const parc = (auth) => renderHook(() => useCanLireParcMonitoring(), { wrapper: renderWithAuth(auth) }).result.current
   const equipes = (auth) => renderHook(() => useCanLireEquipesCrm(), { wrapper: renderWithAuth(auth) }).result.current
 
+  it('useCanListAssignableUsers : Lecteur et Technicien non, Commercial et légacy responsable oui', () => {
+    const assignables = (auth) => renderHook(() => useCanListAssignableUsers(),
+      { wrapper: renderWithAuth(auth) }).result.current
+    expect(assignables(VIEWER)).toBe(false)
+    expect(assignables({ role: 'normal', role_nom: 'Technicien', permissions: ['installation_voir', 'sav_gerer'] })).toBe(false)
+    expect(assignables({ role: 'normal', role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer', 'crm_modifier'] })).toBe(true)
+    expect(assignables({ role: 'responsable', permissions: [] })).toBe(true)
+  })
   it('Lecteur (que des *_voir) : ni parc ni équipes (le serveur répond 403)', () => {
     expect(parc(VIEWER)).toBe(false)
     expect(equipes(VIEWER)).toBe(false)

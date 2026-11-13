@@ -7,7 +7,7 @@ import { useSearchParams } from 'react-router-dom'
 // Zap/GitMerge (GitMerge = même icône que la section « Doublons » de
 // LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
 import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2, Move } from 'lucide-react'
-import { useIsAdmin } from '../../../hooks/useHasPermission'
+import { useIsAdmin, useCanListAssignableUsers } from '../../../hooks/useHasPermission'
 import useDroitMetier from '../../../features/sav/useDroitMetier' // ADRG20 — code fin, sinon palier
 import StateBlock from '../../../components/StateBlock'
 import { useSaisieCourte } from '../../../features/crm/useSaisieCourte'
@@ -157,10 +157,10 @@ export default function LeadsPage() {
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
   const [users, setUsers] = useState([])
+  const peutAssignables = useCanListAssignableUsers() // ADRG113 — sinon 403 (Viewer)
   useEffect(() => {
-    crmApi.getAssignableUsers()
-      .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
-  }, [])
+    if (peutAssignables) crmApi.getAssignableUsers().then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+  }, [peutAssignables])
 
   // ACVI73 — le minuteur « À contacter » du kanban lit le réglage servi.
   const [slaBreach, setSlaBreach] = useState(null)

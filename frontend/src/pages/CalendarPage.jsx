@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
+import { useCanListAssignableUsers } from '../hooks/useHasPermission'
 import MonthGrid from '../components/MonthGrid'
 import { useConfirmDialog } from '../ui/confirm'
 import {
@@ -58,6 +59,7 @@ export default function CalendarPage() {
   const [subOpen, setSubOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const { confirm } = useConfirmDialog()
+  const peutAssignables = useCanListAssignableUsers() // ADRG113 — sinon 403 (Viewer, Technicien)
 
   // Bornes du mois affiché (semaines complètes, comme MonthGrid les calcule).
   const { from, to } = useMemo(() => {
@@ -91,9 +93,8 @@ export default function CalendarPage() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    crmApi.getAssignableUsers()
-      .then(r => setUsers(r.data || [])).catch(() => {})
-  }, [])
+    if (peutAssignables) crmApi.getAssignableUsers().then(r => setUsers(r.data || [])).catch(() => {})
+  }, [peutAssignables])
 
   const byDay = useMemo(() => {
     const map = {}

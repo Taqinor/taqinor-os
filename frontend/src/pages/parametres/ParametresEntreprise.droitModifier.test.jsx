@@ -76,9 +76,10 @@ describe('ERR-PARAM-ASSIGNABLE-USERS-403 — liste des assignables', () => {
     expect(crmApi.getAssignableUsers).not.toHaveBeenCalled()
   })
 
-  it('droit crm_voir : getAssignableUsers appelé', async () => {
+  // ADRG113 — codes du Commercial responsable du registre (crm_voir seul = Lecteur, refusé).
+  it('Commercial responsable (crm_voir + écriture crm) : getAssignableUsers appelé', async () => {
     const { container } = rendreParametresEntreprise({
-      role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir'],
+      role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_creer', 'crm_modifier'],
     })
     await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
     expect(crmApi.getAssignableUsers).toHaveBeenCalled()

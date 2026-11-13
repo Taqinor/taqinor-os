@@ -107,13 +107,10 @@ export function useCanValiderVente() {
 // (`crm_*`, apps/roles/permissions_registre.py) ; le palier admin et le
 // compte hérité sans rôle fin (palier responsable) passent. Un Admin RH n'y a
 // pas droit : l'écran ne doit pas appeler l'endpoint (403 en console).
+// ADRG113 — même règle que `useCanLireEquipesCrm` (responsable ET module crm) :
+// un Viewer (que des `*_voir`) n'est pas responsable côté serveur.
 export function useCanListAssignableUsers() {
-  const role = useSelector((s) => s.auth.role)
-  const roleNom = useSelector((s) => s.auth.role_nom)
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  if (role === 'admin') return true
-  if (role === 'responsable' && !roleNom && permissions.length === 0) return true
-  return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
+  return useCanLireEquipesCrm()
 }
 
 // ERR-ASEC11-LECTURE-FACTURES, ADVS23 — la règle de `LectureVentes`
