@@ -276,10 +276,12 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
     renderList({ factures: [{ ...baseFacture }] })
     const row = screen.getByText('FAC-2026-07-0001').closest('tr')
     fireEvent.click(within(row).getByRole('button', { name: /Payer en ligne/ }))
-    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
-    const [msg, opts] = toastMock.error.mock.calls.at(-1)
-    expect(msg).not.toMatch(/Création du lien de paiement impossible/)
-    expect(msg).toContain(CONTRAT_LIEN.pay_url)
+    // Le toast du lien est cherché parmi tous les appels : un toast réseau parasite
+    // (« Connexion perdue ») peut arriver après lui sous charge (file de merge #1389).
+    const appels = toastMock.error.mock.calls
+    await waitFor(() => expect(appels.some(([m]) => String(m).includes(CONTRAT_LIEN.pay_url))).toBe(true))
+    expect(appels.some(([m]) => /Création du lien de paiement impossible/.test(String(m)))).toBe(false)
+    const [, opts] = appels.find(([m]) => String(m).includes(CONTRAT_LIEN.pay_url))
     expect(opts?.action?.label).toBe('Ouvrir')
   })
 
