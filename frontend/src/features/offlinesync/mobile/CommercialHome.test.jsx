@@ -34,7 +34,7 @@ beforeEach(() => {
     data: { events: [{ id: 'ev-1', title: 'Visite chantier', date: '2026-07-17' }] },
   })
   reportingApiMock.approbationsEnAttente.mockResolvedValue({ data: { items: [] } })
-  reportingApiMock.getNotifications.mockResolvedValue({ data: { factures: [] } })
+  reportingApiMock.getNotifications.mockResolvedValue({ data: { factures_impayees: [] } })
   installationsApiMock.getMaTournee.mockResolvedValue({ data: { stops: [] } })
 })
 
