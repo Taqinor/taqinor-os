@@ -41,7 +41,8 @@ from authentication.models import Company
 # de cibles autorisées pour décider quels rattachements donnent un DocumentLien.
 from apps.records.models import ALLOWED_TARGETS, Attachment
 
-from apps.ged.models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
+from apps.ged.models import (Cabinet, Document, DocumentLien, DocumentVersion, Folder,
+                             PieceJointeImportee)
 
 # DÉCISION — noms du cabinet/dossier d'atterrissage par défaut (par société).
 DEFAULT_CABINET_NOM = 'Importé'
@@ -90,12 +91,24 @@ def import_attachments(company=None, dry_run=False):
             counters['skipped'] += 1
             continue
 
+        # ACEL61 — marqueur relu AVANT le file_key : importée puis purgée
+        # (ou détruite) ⇒ jamais réimportée ; cible autorisée disparue ⇒ sautée.
+        if PieceJointeImportee.objects.filter(
+                company=att_company, attachment_id=att.pk).exists() or (
+                _target_is_allowed(att) and not _cible_existe(att)):
+            counters['skipped'] += 1
+            continue
+
         # Idempotence : déjà importée si une version porte ce file_key dans la
         # société. On ne recopie jamais le fichier — on réutilise la même clé.
         existing = (DocumentVersion.objects
                     .filter(company=att_company, file_key=att.file_key)
                     .first())
         if existing:
+            if not dry_run:  # ACEL61 — import antérieur au marqueur : on le pose
+                PieceJointeImportee.objects.get_or_create(
+                    company=att_company, attachment_id=att.pk,
+                    defaults={'document': existing.document})
             # Le document existe déjà ; on s'assure tout de même que le lien vers
             # la cible est présent (idempotent), au cas où un import précédent
             # aurait été interrompu avant la pose du lien.
@@ -136,6 +149,8 @@ def import_attachments(company=None, dry_run=False):
                 mime=att.mime or '',
                 uploaded_by=att.uploaded_by,
             )
+            PieceJointeImportee.objects.create(
+                company=att_company, attachment_id=att.pk, document=document)
             counters['documents'] += 1
             if _ensure_lien(document, att):
                 counters['liens'] += 1
@@ -149,6 +164,11 @@ def _target_is_allowed(att):
     return (ct.app_label, ct.model) in ALLOWED_TARGETS
 
 
+def _cible_existe(att):
+    """La cible de la pièce jointe existe-t-elle encore (gestionnaire par défaut) ?"""
+    return att.content_type.model_class().objects.filter(pk=att.object_id).exists()
+
+
 def _ensure_lien(document, att):
     """Crée (idempotent) le DocumentLien vers la cible de la pièce jointe.
 
@@ -160,7 +180,7 @@ def _ensure_lien(document, att):
         return False
     ct = att.content_type
     # La cible doit exister encore (une pièce jointe peut survivre à son objet).
-    if not ct.model_class().objects.filter(pk=att.object_id).exists():
+    if not _cible_existe(att):
         return False
     _lien, created = DocumentLien.objects.get_or_create(
         document=document,
