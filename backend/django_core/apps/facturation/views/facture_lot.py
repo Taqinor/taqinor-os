@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
+from apps.roles.permissions import DroitDeLaGrille  # ADRG109
 from apps.ventes.views import openapi_docs as D
 from apps.ventes.models import Facture
 from apps.facturation.serializers import FactureListeSerializer, FactureSerializer
@@ -165,6 +166,10 @@ class FactureLotActionsMixin:
         # AARG9 (D-AARG-3) — émettre exige ``encaisser``, refus PAR facture.
         from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
         encaisse = PeutEncaisser().has_permission(request, self)
+        # ADRG109 — `generer-pdf` exige `ventes_pdf` (comme le geste unitaire).
+        droit_pdf = DroitDeLaGrille('ventes_pdf')
+        pdf_ok = (action_name != 'generer-pdf'
+                  or droit_pdf().has_permission(request, self))
         results = {}
         for fid_int in ids:
             facture = factures_by_id.get(fid_int)
@@ -175,6 +180,9 @@ class FactureLotActionsMixin:
                 if action_name == 'emettre' and not encaisse:
                     results[fid_int] = {'ok': False,
                                         'detail': MOTIF_SANS_ENCAISSER}
+                elif not pdf_ok:
+                    results[fid_int] = {'ok': False,
+                                        'detail': droit_pdf.message['detail']}
                 elif action_name == 'emettre':
                     if facture.statut != Facture.Statut.BROUILLON:
                         results[fid_int] = {

@@ -176,3 +176,23 @@ class EngineActionApiGatingTests(TestCase):
             f'{BASE}{action_id}/', {'status': 'approuvee'}, format='json')
         self.assertEqual(
             EngineAction.objects.get(id=action_id).status, 'proposee')
+
+    def test_desapprouver_approuvee_vers_proposee_droit_et_appliquee(self):
+        """AERR24 — desapprouver : approuvee ⇒ proposee ; sans droit 403 ;
+        appliquee 400."""
+        action_id = self._propose_via_api(self.manager).data['id']
+        auth(self.approver).post(f'{BASE}{action_id}/approve/')
+        url = f'{BASE}{action_id}/desapprouver/'
+        self.assertEqual(auth(self.manager).post(url).status_code, 403)
+        ok = auth(self.approver).post(url)
+        self.assertEqual(ok.status_code, 200, ok.data)
+        self.assertEqual(ok.data['status'], 'proposee')
+        relu = EngineAction.objects.get(id=action_id)
+        self.assertEqual(relu.status, 'proposee')
+        self.assertIsNone(relu.approved_by_id)
+        # Proposée : rien à désapprouver.
+        self.assertEqual(auth(self.approver).post(url).status_code, 400)
+        EngineAction.objects.filter(id=action_id).update(status='appliquee')
+        self.assertEqual(auth(self.approver).post(url).status_code, 400)
+        self.assertEqual(
+            EngineAction.objects.get(id=action_id).status, 'appliquee')

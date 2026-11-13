@@ -609,8 +609,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         QR QHSE) ; absente, on dégrade proprement en renvoyant ``qr`` à
         ``null`` — le lien reste affichable et copiable."""
         equipement = self.get_object()
-        url = request.build_absolute_uri(
-            f'/e/{equipement.ensure_public_token()}')
+        from apps.ventes.services import public_url  # AMSG90 : PUBLIC_BASE_URL d'abord
+        url = public_url(f'/e/{equipement.ensure_public_token()}', request)
         return Response({'url': url, 'qr': _qr_data_uri(url)})
 
     @extend_schema(
@@ -635,6 +635,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         de la société (limité à 200 pour WeasyPrint). Symbologie : qr (défaut)
         ou code128. Renvoie HTML prêt pour impression / conversion PDF."""
         from apps.stock.labels import render_labels_html
+        from apps.ventes.services import public_url  # AMSG90 : PUBLIC_BASE_URL d'abord
         from django.http import HttpResponse as HR
 
         qs = self.get_queryset()
@@ -671,8 +672,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         items = []
         for eq in qs:
             if public:
-                token = request.build_absolute_uri(
-                    f'/e/{eq.ensure_public_token()}')
+                token = public_url(f'/e/{eq.ensure_public_token()}', request)
             else:
                 # Assure le jeton présent (rétro-compat équipements sans token).
                 token = eq.equipement_token or f'EQUIP:{eq.pk}'
@@ -2958,7 +2958,8 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
         patron que XSAL17 ``public_booking_url``)."""
         ticket = self.get_object()
         token = ticket.ensure_share_token()
-        url = request.build_absolute_uri(f'/suivi/{token}')
+        from apps.ventes.services import public_url  # AMSG90 : PUBLIC_BASE_URL d'abord
+        url = public_url(f'/suivi/{token}', request)
         return Response({'token': token, 'url': url})
 
 
@@ -2977,7 +2978,7 @@ class SavSlaSettingsViewSet(SettingsAuditedMixin, JsonSeulementMixin, CompanySco
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('parametres_modifier')()]  # ADRG46 (D-ADRG-5)
 
     def list(self, request, *args, **kwargs):
         company = request.user.company

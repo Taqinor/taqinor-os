@@ -1853,7 +1853,7 @@ class EngineActionViewSet(AdsengineViewSet):
     # (approve/reject/apply/annuler/proposer) sont des POST.
     http_method_names = ['get', 'post', 'head', 'options']
 
-    _APPROVE_ACTIONS = ('approve', 'reject', 'apply')
+    _APPROVE_ACTIONS = ('approve', 'reject', 'apply', 'desapprouver')
 
     def get_permissions(self):
         if getattr(self, 'action', None) in self._APPROVE_ACTIONS:
@@ -1965,6 +1965,18 @@ class EngineActionViewSet(AdsengineViewSet):
             reject_action(
                 instance, user=request.user,
                 commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['post'])
+    def desapprouver(self, request, pk=None):
+        """AERR24 — Retire l'approbation (approuvee → proposee) tant que
+        l'action n'est pas appliquée ; sinon 400."""
+        from .services import desapprouver_action
+        instance = self.get_object()
+        try:
+            desapprouver_action(instance, user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(instance).data)

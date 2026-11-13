@@ -17,6 +17,7 @@ laisse ses coordonnées pour un rappel — jamais d'exception.
 import logging
 
 from django.conf import settings
+from django.http import Http404
 from django.utils import timezone
 from .openapi_public import PUBLIC_DETAIL
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -61,6 +62,12 @@ class PublicChatRateThrottle(SimpleRateThrottle):
             'scope': self.scope,
             'ident': f'{ident}:{token}',
         }
+
+
+def _exiger_livechat_ouvert():
+    """APUB10 (D-APUB-2 = parquer) — éteint par défaut : 404, rien n'est écrit."""
+    if not getattr(settings, 'LIVECHAT_PUBLIC_ENABLED', False):
+        raise Http404('Livechat public désactivé.')
 
 
 def _resolve_company():
@@ -127,6 +134,7 @@ def open_chat_session(request):
     chaque appel anonyme, ne portait rien — un simple bouclage remplissait la
     table ``ChatSessionPublique``. Même limiteur que ses sœurs (par IP ; sans
     jeton d'URL, le seau est celui de l'appelant)."""
+    _exiger_livechat_ouvert()
     company = _resolve_company()
     if company is None:
         return Response(
@@ -162,6 +170,7 @@ def post_chat_message(request, token):
     livechat) et le transcript y est collé en note chatter — la session
     passe alors ``qualifiee``.
     """
+    _exiger_livechat_ouvert()
     session = ChatSessionPublique.objects.filter(token=token).first()
     if session is None:
         return Response(
@@ -244,6 +253,7 @@ def post_chat_message(request, token):
 @throttle_classes([PublicChatRateThrottle])
 def get_chat_session(request, token):
     """Lit le transcript d'une session (polling — pas de WebSocket)."""
+    _exiger_livechat_ouvert()
     session = ChatSessionPublique.objects.filter(token=token).first()
     if session is None:
         return Response(

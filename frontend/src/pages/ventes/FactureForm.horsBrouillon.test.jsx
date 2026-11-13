@@ -63,8 +63,8 @@ const LIGNE = {
   remise: '0', taux_tva: '20.00',
 }
 const AUTH = { user: { id: 1 }, role: 'responsable', permissions: [], isAuthenticated: true, loading: false }
-const rendre = (f) => render(
-  <Provider store={configureStore({ reducer: { auth: authReducer, ventes: ventesReducer }, preloadedState: { auth: AUTH } })}>
+const rendre = (f, auth = AUTH) => render(
+  <Provider store={configureStore({ reducer: { auth: authReducer, ventes: ventesReducer }, preloadedState: { auth } })}>
     <FactureForm facture={f} onClose={() => {}} onSaved={() => {}} />
   </Provider>,
 )
@@ -124,7 +124,8 @@ describe('AFAC71 — FactureForm hors brouillon', () => {
       response: { status: 400, data: { date_echeance: ['Période verrouillée.'], champ_inconnu: ['Refusé.'] } },
     })
     ventesApi.patchFacture.mockImplementationOnce(() => Promise.reject(axiosErr))
-    rendre({ ...base.facture, lignes: [{ ...LIGNE }] })
+    // ADRG108 — l'échéance d'une émise n'est saisissable qu'avec `encaisser`.
+    rendre({ ...base.facture, lignes: [{ ...LIGNE }] }, { ...AUTH, permissions: ['encaisser'] })
     fireEvent.change(document.getElementById('fc-echeance'), { target: { value: '2026-01-31' } })
     enregistrer()
     expect(await screen.findByText('Période verrouillée.')).toBeInTheDocument()
@@ -132,6 +133,28 @@ describe('AFAC71 — FactureForm hors brouillon', () => {
     expect(document.getElementById('fc-echeance').value).toBe('2026-01-31')
     expect(screen.getByText(/champ_inconnu : Refusé\./)).toBeInTheDocument()
     expect(screen.queryByText(/Request failed/)).toBeNull()
+  })
+
+  it("émise : l'échéance suit `encaisser` (grisée et absente du PATCH sans le code, modifiable et envoyée avec)", async () => {
+    // ADRG108 (C-ADRG-VER1-003) — mutant : retirer `!peutEncaisser` du `disabled` ⇒ échec.
+    const ouverte = { ...base.facture, date_echeance: '2026-11-30', lignes: [{ ...LIGNE }] }
+    const adminVentes = { ...AUTH, role_nom: 'Admin Ventes', permissions: ['ventes_voir', 'ventes_creer', 'ventes_modifier'] }
+    const { unmount } = rendre(ouverte, adminVentes)
+    expect(document.getElementById('fc-echeance').disabled).toBe(true)
+    fireEvent.change(document.getElementById('fc-note'), { target: { value: 'note admin ventes' } })
+    enregistrer()
+    await waitFor(() => expect(base.facture.note).toBe('note admin ventes'))
+    // Relecture serveur : le corps reçu n'a jamais porté l'échéance.
+    expect('date_echeance' in base.facture).toBe(false)
+    unmount()
+
+    const commercialResp = { ...AUTH, role_nom: 'Commercial responsable', permissions: ['ventes_voir', 'ventes_modifier', 'encaisser'] }
+    rendre({ ...ouverte, note: base.facture.note, updated_at: base.facture.updated_at }, commercialResp)
+    const echeance = document.getElementById('fc-echeance')
+    expect(echeance.disabled).toBe(false)
+    fireEvent.change(echeance, { target: { value: '2026-12-31' } })
+    enregistrer()
+    await waitFor(() => expect(base.facture.date_echeance).toBe('2026-12-31'))
   })
 
   it('brouillon : formulaire complet sans Statut/DGI, aucun statut envoyé', async () => {

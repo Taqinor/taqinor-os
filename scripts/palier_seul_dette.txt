@@ -430,10 +430,6 @@ backend/django_core/apps/monitoring/views.py::MonitoringConfigViewSet.import_rel
 backend/django_core/apps/monitoring/views.py::MonitoringConfigViewSet.partial_update
 backend/django_core/apps/monitoring/views.py::MonitoringConfigViewSet.sync_now
 backend/django_core/apps/monitoring/views.py::MonitoringConfigViewSet.update
-backend/django_core/apps/monitoring/views.py::MonitoringSettingsViewSet.create
-backend/django_core/apps/monitoring/views.py::MonitoringSettingsViewSet.destroy
-backend/django_core/apps/monitoring/views.py::MonitoringSettingsViewSet.partial_update
-backend/django_core/apps/monitoring/views.py::MonitoringSettingsViewSet.update
 backend/django_core/apps/monitoring/views.py::ProductionReadingViewSet.create
 backend/django_core/apps/monitoring/views.py::ProductionReadingViewSet.destroy
 backend/django_core/apps/monitoring/views.py::ProductionReadingViewSet.partial_update
@@ -538,10 +534,6 @@ backend/django_core/apps/sav/views.py::ReponseTypeViewSet.create
 backend/django_core/apps/sav/views.py::ReponseTypeViewSet.destroy
 backend/django_core/apps/sav/views.py::ReponseTypeViewSet.partial_update
 backend/django_core/apps/sav/views.py::ReponseTypeViewSet.update
-backend/django_core/apps/sav/views.py::SavSlaSettingsViewSet.create
-backend/django_core/apps/sav/views.py::SavSlaSettingsViewSet.destroy
-backend/django_core/apps/sav/views.py::SavSlaSettingsViewSet.partial_update
-backend/django_core/apps/sav/views.py::SavSlaSettingsViewSet.update
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet.create
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet.destroy
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet.partial_update

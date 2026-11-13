@@ -687,6 +687,50 @@ class GestesArgentTests(TestCase):
                 self.assertNotEqual(
                     self._api(commercial).get(url).status_code, 403)
 
+    def test_bulk_generer_pdf_exige_ventes_pdf(self):
+        """ADRG109 (C-ADRG-VER1-010) — le lot ``generer-pdf`` exige
+        ``ventes_pdf`` facture par facture, comme le geste unitaire : rôle
+        décoché ⇒ ``ok`` faux nommant ``ventes_pdf``, aucun rendu en file ;
+        Commercial responsable ⇒ rendu lancé une fois. Mutant : retirer la
+        branche de refus ⇒ échec."""
+        from unittest.mock import MagicMock, patch
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_RESP_PERMISSIONS)
+        from apps.ventes.tasks import task_generate_facture_pdf
+        decoche = User.objects.create_user(
+            username=f'adrg109-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.create(
+                company=self.company, nom='Responsable sans PDF',
+                permissions=[c for c in COMMERCIAL_RESP_PERMISSIONS
+                             if c != 'ventes_pdf']),
+            company=self.company)
+        resp = User.objects.create_user(
+            username=f'adrg109-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.get(company=self.company,
+                                  nom='Commercial responsable'),
+            company=self.company)
+        url = '/api/django/ventes/factures/bulk/'
+        f_decoche, f_resp = self._facture(decoche), self._facture(resp)
+        with patch.object(task_generate_facture_pdf, 'delay',
+                          return_value=MagicMock(id='t-1')) as delay:
+            r = self._api(decoche).post(
+                url, {'action': 'generer-pdf', 'ids': [f_decoche.id]},
+                format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            res = r.data.get(f_decoche.id) or r.data.get(str(f_decoche.id))
+            self.assertFalse(res['ok'], res)
+            self.assertIn('ventes_pdf', res['detail'])
+            delay.assert_not_called()
+            r = self._api(resp).post(
+                url, {'action': 'generer-pdf', 'ids': [f_resp.id]},
+                format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            res = r.data.get(f_resp.id) or r.data.get(str(f_resp.id))
+            self.assertTrue(res['ok'], res)
+            self.assertEqual(res['task_id'], 't-1')
+            delay.assert_called_once_with(f_resp.id)
+
     def test_get_permissions_respecte_action(self):
         from apps.facturation.views.facture import FactureViewSet
         from apps.facturation.views.facture_gardes import PeutEncaisser
