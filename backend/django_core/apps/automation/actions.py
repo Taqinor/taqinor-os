@@ -406,8 +406,11 @@ def _refus_opposition(instance, canal):
     """ACRM17 — ``(SKIPPED, motif)`` si la personne derrière ``instance``
     a demandé à ne plus être contactée (``crm.selectors.peut_contacter``),
     sinon ``None``. Aucun envoi, aucun lien préparé."""
-    from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter
-    if peut_contacter(instance, canal):
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter, porte_une_opposition
+    element = getattr(instance, '_element', None) if isinstance(instance, _CibleElement) else None
+    # AMSG91 — l'adresse d'un ÉLÉMENT de boucle peut porter une opposition de la société.
+    if peut_contacter(instance, canal) and not (element and porte_une_opposition(
+            instance.company_id, *(element.get(c) for c in ('email', 'telephone', 'whatsapp')))):
         return None
     return Status.SKIPPED, MOTIF_CONTACT_REFUSE
 
@@ -911,8 +914,10 @@ def _for_each(rule, instance, company, context, user):
         report = reporter_hors_fenetre(rule, instance, company, context)
         if report is not None:
             return report
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE
     faits = 0
     echecs = 0
+    sautes = []
     for index, element in enumerate(elements, start=1):
         sous_contexte = dict(context or {})
         if isinstance(element, dict):
@@ -938,6 +943,8 @@ def _for_each(rule, instance, company, context, user):
                      else instance)
             statut, _message = executer_action(
                 vue, cible, company, sous_contexte, user)
+            if cible is not instance and statut == Status.SKIPPED and _message == MOTIF_CONTACT_REFUSE:
+                sautes.append(index)
             if statut == Status.FAILED:
                 echecs += 1
             else:
@@ -947,6 +954,8 @@ def _for_each(rule, instance, company, context, user):
                f'{len(sous_actions)} sous-action(s) — {faits} exécutée(s)')
     if echecs:
         message += f', {echecs} en échec'
+    if sautes:
+        message += f", élément(s) {', '.join(map(str, sorted(set(sautes))))} sauté(s) : {MOTIF_CONTACT_REFUSE}"
     if tronquee:
         message += (f' (liste tronquée à la borne de {MAX_ITERATIONS} '
                     f'itérations)')

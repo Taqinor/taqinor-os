@@ -162,6 +162,40 @@ class ForEachActionTests(TestCase):
         self.assertEqual(mail.outbox, [])
         self.assertEqual(AutomationScheduledStep.objects.filter(rule=etape).count(), 1)
 
+    def test_element_oppose_saute_avant_tout_envoi(self):
+        """AMSG91 — boucle à trois adresses dont une opposée (empreinte de la
+        société) : 2 e-mails, l'élément 2 nommé sauté ; en WhatsApp, aucune tâche."""
+        from django.core import mail
+
+        from apps.automation.actions import RESUME_TACHE_WHATSAPP
+        from apps.crm.selectors import MOTIF_CONTACT_REFUSE
+        from apps.records.models import Activity
+        from testkit.time import frozen
+        Lead.objects.create(company=self.co, nom='Opposé', stage='NEW',
+                            email='oppose-boucle@example.invalid', ne_plus_contacter=True)
+        lignes = [{'email': 'a-boucle@example.invalid'}, {'email': 'OPPOSE-BOUCLE@example.invalid'},
+                  {'email': 'c-boucle@example.invalid'}]
+        rule = self._rule(source='contexte:lignes', sous_actions=[{
+            'action_type': ActionType.SEND_EMAIL, 'action_config': {'subject': 'Info', 'body': 'Bonjour'}}])
+        mail.outbox = []
+        with frozen('2026-01-06 09:00:00'):
+            with self.captureOnCommitCallbacks(execute=True):
+                _statut, message = engine.run_action(rule, self.lead, self.co, context={'lignes': lignes})
+        self.assertEqual(sorted(m.to[0] for m in mail.outbox),
+                         ['a-boucle@example.invalid', 'c-boucle@example.invalid'])
+        self.assertIn(f'élément(s) 2 sauté(s) : {MOTIF_CONTACT_REFUSE}', message)
+        run = AutomationRun.objects.filter(rule=rule).order_by('-pk').first()
+        self.assertIn('élément(s) 2 sauté(s)', run.message)
+
+        regle_wa = self._rule(source='contexte:lignes', sous_actions=[{
+            'action_type': ActionType.SEND_WHATSAPP, 'action_config': {'message': 'Bonjour'}}])
+        with frozen('2026-01-06 09:00:00'):
+            with self.captureOnCommitCallbacks(execute=True):
+                _statut, message_wa = engine.run_action(regle_wa, self.lead, self.co, context={'lignes': [
+                    {'email': 'oppose-boucle@example.invalid', 'whatsapp': '+212600000091'}]})
+        self.assertIn('élément(s) 1 sauté(s)', message_wa)
+        self.assertFalse(Activity.objects.filter(summary__startswith=RESUME_TACHE_WHATSAPP[:20]).exists())
+
     def test_custom_object_source_is_company_scoped(self):
         CustomRecord.objects.create(
             company=self.co, objet=self.objet, data={'titre': 'A'})

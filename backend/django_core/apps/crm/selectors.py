@@ -172,7 +172,7 @@ __all__ = [
     'signed_leads_for_campaigns', 'site_du_client', 'site_location_for_devis', 'site_profile_for_client',
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
     'telephones_cibles_activites', 'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
-    'arrivee_lead_meta', 'hors_heures_ouvrees', 'lead_porte_note',
+    'arrivee_lead_meta', 'hors_heures_ouvrees', 'lead_porte_note', 'porte_une_opposition',
 ]
 
 
@@ -198,3 +198,10 @@ def lead_porte_note(lead, corps):
     return LeadActivity.objects.filter(
         company_id=lead.company_id, lead=lead, kind=LeadActivity.Kind.NOTE,
         body=corps).exists()
+
+
+def porte_une_opposition(company_id, email=None, telephone=None, whatsapp=None):
+    """AMSG91 — ``leads_doublons.porte_une_opposition`` pour une autre app."""
+    from .leads_doublons import porte_une_opposition as _porte
+
+    return _porte(company_id, email, telephone, whatsapp)
