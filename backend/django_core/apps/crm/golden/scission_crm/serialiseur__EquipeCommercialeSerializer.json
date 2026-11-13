@@ -83,6 +83,12 @@
    "nom": "file_a_prendre",
    "read_only": false,
    "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "commercial_par_defaut",
+   "read_only": true,
+   "required": false
   }
  ]
 }

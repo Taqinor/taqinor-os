@@ -638,6 +638,36 @@ class AttributionParResponsableTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.owner, self.b)
 
+    def test_commercial_par_defaut_recoit_le_lead_non_attribue(self):
+        # Fondateur 13/11/2026 — le responsable n'a pas choisi : le lead est
+        # proposé à SON commercial par défaut et part chez lui au délai ; une
+        # règle qui correspond garde la priorité ; un défaut devenu inactif
+        # retombe sur la rotation.
+        from django.utils import timezone
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models_clients import AttributionEnAttente
+        self.equipe.commercial_par_defaut = self.b
+        self.equipe.save(update_fields=['commercial_par_defaut'])
+        lead = self._nouveau(ville='Tanger')
+        attente = lead.attribution_en_attente
+        self.assertEqual((attente.proposee, attente.raison),
+                         (self.b, 'Commercial par défaut'))
+        AttributionEnAttente.objects.filter(pk=attente.pk).update(
+            echeance=timezone.now() - timezone.timedelta(minutes=1))
+        self.assertEqual(attribuer_echeances(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.b)
+
+        self._regle(self.a, villes='Agadir')
+        self.assertEqual(
+            self._nouveau(ville='Agadir').attribution_en_attente.proposee, self.a)
+
+        self.b.is_active = False
+        self.b.save(update_fields=['is_active'])
+        attente = self._nouveau(ville='Tanger').attribution_en_attente
+        self.assertEqual((attente.proposee, attente.raison),
+                         (self.a, 'Rotation équilibrée'))
+
     def test_isolation_societe_regles_d_une_autre_societe_ignorees(self):
         from apps.crm.models_clients import RegleAttribution
         autre = Company.objects.create(nom='Autre dispatch', slug='autre-dispatch')
