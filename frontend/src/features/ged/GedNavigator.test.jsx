@@ -882,11 +882,10 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
     for (const nom of gestes) expect(screen.queryByRole('button', { name: nom })).toBeNull()
     expect(screen.queryByRole('button', { name: /Mettre en corbeille/ })).toBeNull()
-    // Lecture et gestes ouverts à tout rôle : ZIP, extraction, verrou.
+    // Lecture ouverte à tout rôle : ZIP. ADRG75 — extraction et verrou
+    // exigent `ged_gerer` (cas dédié ci-dessous).
     expect(screen.getByRole('button', { name: /Télécharger \(\.zip\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Extraire a\.pdf/ })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Plus d'actions pour a\.pdf/i }))
-    expect(await screen.findByText('Verrouiller (avertissement)')).toBeInTheDocument()
     expect(screen.queryByText('Nouvelle version…')).toBeNull()
     expect(screen.queryByText('Cycle de vie…')).toBeNull()
     vue.unmount()
@@ -894,6 +893,34 @@ describe('GedNavigator — écriture (U14)', () => {
     renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     for (const nom of gestes) expect(await screen.findByRole('button', { name: nom })).toBeInTheDocument()
+  })
+
+  it('ADRG75 — Viewer sans boutons de verrou ; lever un verrou posé reste offert', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', is_locked: false, est_verrouille_avertissement: false, updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', is_locked: false, est_verrouille_avertissement: true, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    const vue = renderGed(AUTH_VIEWER)
+    await userEvent.click(await screen.findByText('Docs'))
+    await screen.findByRole('button', { name: /Plus d'actions pour a\.pdf/i })
+    expect(screen.queryByRole('button', { name: /Extraire a\.pdf/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Plus d'actions pour a\.pdf/i }))
+    expect(screen.queryByText('Verrouiller (avertissement)')).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: /Plus d'actions pour b\.pdf/i }))
+    expect(await screen.findByText('Lever le verrou (avertissement)')).toBeInTheDocument()
+    vue.unmount()
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    expect(await screen.findByRole('button', { name: /Extraire a\.pdf/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Plus d'actions pour a\.pdf/i }))
+    expect(await screen.findByText('Verrouiller (avertissement)')).toBeInTheDocument()
   })
 
   it('ADRG89 — sans ged_gouvernance : pas de Caviarder ; le Directeur le voit', async () => {

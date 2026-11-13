@@ -646,7 +646,8 @@ export default function GedNavigator() {
                                 onClick={() => checkIn(d)}>
                                 <LockOpen className="size-4" aria-hidden="true" /> Archiver
                               </Button>
-                            ) : (
+                            ) : peutGerer && (
+                              // ADRG75 — extraire exige `ged_gerer` (D-ADRG-7).
                               <Button size="sm" variant="ghost"
                                 aria-label={`Extraire ${d.nom}`}
                                 onClick={() => checkOut(d)}>
@@ -678,10 +679,12 @@ export default function GedNavigator() {
                                     <ScanText /> Extraire l'OCR
                                   </DropdownMenuItem>
                                 </>}
+                                {/* ADRG75 — poser le verrou exige `ged_gerer` ; le lever reste ouvert. */}
+                                {(peutGerer || d.est_verrouille_avertissement) && (
                                 <DropdownMenuItem onSelect={() => toggleVerrouAvertissement(d)}>
                                   {d.est_verrouille_avertissement ? <ShieldOff /> : <ShieldAlert />}
                                   {d.est_verrouille_avertissement ? 'Lever le verrou (avertissement)' : 'Verrouiller (avertissement)'}
-                                </DropdownMenuItem>
+                                </DropdownMenuItem>)}
                                 {peutGerer && <DropdownMenuItem onSelect={() => setCycleVieDoc(d)}>
                                   <Workflow /> Cycle de vie…
                                 </DropdownMenuItem>}
