@@ -147,7 +147,7 @@
 - frontend/src/api/crmApi.js :: savePermanences -> /api/django/crm/dispatch/permanences/<>
     equipe:inconnu, permanences:liste
 - frontend/src/api/crmApi.js :: saveReglagesDispatch -> /api/django/crm/dispatch/reglages/<>
-    confirmation_responsable:inconnu, delai_minutes:inconnu, id:inconnu, nom:inconnu
+    commercial_par_defaut:inconnu, confirmation_responsable:inconnu, delai_minutes:inconnu, id:inconnu, nom:inconnu
 - frontend/src/api/crmApi.js :: scanCarteVisite -> /api/django/crm/leads/scan-carte
     detail:inconnu, doublons:inconnu, email:inconnu, nom:inconnu, prenom:inconnu, societe:inconnu, telephone:inconnu
 - frontend/src/api/crmApi.js :: searchClients -> /api/django/crm/clients/search
@@ -784,7 +784,7 @@
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
 - frontend/src/api/crmApi.js :: deleteEquipe -> /api/django/crm/equipes/<>  [EquipeCommercialeSerializer]
-    champs: actif, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, file_a_prendre, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+    champs: actif, commercial_par_defaut, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, file_a_prendre, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
 - frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
@@ -803,7 +803,7 @@
     champs: actif, cible_equipe, company, created_at, id, metrique, metrique_display, nom, periode_debut, periode_fin, recompense
     metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: getEquipes -> /api/django/crm/equipes  [EquipeCommercialeSerializer]
-    champs: actif, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, file_a_prendre, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+    champs: actif, commercial_par_defaut, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, file_a_prendre, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: getExperiencesCadence -> /api/django/crm/experiences-cadence  [ExperienceCadenceSerializer]
     champs: changement, date, date_lecture, effet_attendu, id, metrique, resultat
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]

@@ -1458,6 +1458,12 @@ class EquipeCommerciale(models.Model):
     # gardent leur responsable désigné (routage CIQ416, AVANT la file).
     file_a_prendre = models.BooleanField(
         default=False, verbose_name="File « À prendre » (tout membre prend un lead)")
+    # Fondateur 13/11/2026 — choisi par le responsable : quand il ne choisit
+    # pas lui-même (aucune règle ni permanence), le lead est proposé à ce
+    # commercial et part chez lui au délai ; vide = rotation équilibrée.
+    commercial_par_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='+', verbose_name='Commercial par défaut')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
