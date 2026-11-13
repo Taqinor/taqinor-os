@@ -265,8 +265,9 @@ export default function CrmInsightsPanel() {
                     <span className="font-medium">
                       {o.metric_display} — {o.owner_nom ?? 'Équipe'}
                     </span>
+                    {/* ALEC24 — hors portée : cible, réalisé et taux à null → « — ». */}
                     <Badge tone={o.taux >= 100 ? 'success' : o.taux >= 60 ? 'warning' : 'neutral'}>
-                      {Math.round(o.taux)} %
+                      {o.taux == null ? '—' : `${Math.round(o.taux)} %`}
                     </Badge>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">

@@ -8,6 +8,8 @@ import {
   toPayload, currentFields,
 } from './draftCore'
 import { refusEtape } from '../raisonsFroid'
+import { STAGE_LABELS, CONVERSION_STAGE } from '../stages'
+import { toastWithUndo } from '../../../lib/toast'
 import { getPrefetched } from './leadPrefetch'
 import fieldLabels from './fieldLabels'
 import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort.js'
@@ -274,7 +276,8 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // côté serveur : il n'est jamais persisté sur le lead.
   const changeStage = useCallback(async (newStage, { confirmeRecul = false, parcRaison } = {}) => {
     const st = stateRef.current
-    if (st.mode !== 'edit' || getField(st, 'stage') === newStage) return
+    const prev = getField(st, 'stage')
+    if (st.mode !== 'edit' || prev === newStage) return
     await flush({})
     try {
       const corps = { stage: newStage }
@@ -284,6 +287,21 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
       onSavedRef.current?.()
+      // AERR119 (D-AERR-2) — avancée (touches 1-4 / menu) : « Annuler » comme le kanban
+      // (marqueur `undo`, LB39) ; recul confirmé, Froid avec raison, sortie de Signé : sans.
+      if (confirmeRecul || parcRaison || !prev || prev === CONVERSION_STAGE) return
+      const nom = [st.server?.prenom, st.server?.nom].filter(Boolean).join(' ')
+      toastWithUndo({
+        message: `Lead « ${nom} » → ${STAGE_LABELS[newStage] ?? newStage}`,
+        onUndo: async () => {
+          try {
+            const r = (await crmApi.updateLead(st.leadId, { stage: prev, undo: true })).data
+            dispatch({ type: 'SET_SERVER', res: r })
+            if (r) setOpenedAt(r.id, r.date_modification)
+            onSavedRef.current?.()
+          } catch { toast.error('Annulation impossible — vérifiez votre connexion.') }
+        },
+      })
     } catch (err) {
       // LW42 — messages fidèles : un 400 avec `detail` (ex. lead perdu
       // verrouillé) affiche LE TEXTE SERVEUR, jamais le générique fixe

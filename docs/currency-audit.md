@@ -43,7 +43,7 @@ with no rate column at all — mono-MAD in practice.
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
 | crm | Lead | `apps/crm/models.py:224` | montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2384` | cout |
+| crm | PointContact | `apps/crm/models.py:2380` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:219` | total |
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:278` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:556` | montant_commission_du, montant_commission_estime |

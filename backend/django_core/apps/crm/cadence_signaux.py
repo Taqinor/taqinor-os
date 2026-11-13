@@ -20,7 +20,6 @@ from .cadence_plan import (
 from .cadence_reperes import (
     LIBELLE_SIGNAL_PROPOSITION, LIBELLE_SIGNAL_QUESTIONNAIRE, RAPPEL_DEMANDE_LIBELLE,
     q_etape_moteur, q_visite)
-from .leads_consentement import _ecrire_registre_contact
 from .leads_notifications import _build_lead_wa_reply_url
 from .leads_socle import lead_notification_recipients
 from .models import Lead, LeadActivity, RelanceEtape
@@ -587,11 +586,14 @@ def notify_client_contact_request(devis_reference: str, lead,
             company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=note)
 
-        # ACRM63 (D-ACRM-5 (3)=(a)) — la personne « ne plus contacter » qui
-        # demande ELLE-MÊME un rappel lève son opposition (note datée +
-        # registre), AVANT de poser la touche.
-        if canal_key == 'rappel':
-            _lever_opposition_a_la_demande_du_client(lead)
+        # APUB39 (D-APUB-1 = confirmer_par_commercial) — un rappel demandé par
+        # le lien ne lève JAMAIS l'opposition (rien ne prouve que le porteur
+        # est la personne) : le commercial la lève sur la fiche après l'appel.
+        if canal_key == 'rappel' and getattr(lead, 'ne_plus_contacter', False):
+            activity.journal_systeme(
+                company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+                body=("Rappel demandé — opposition loi 09-08 active : la lever "
+                      "sur la fiche après l'appel"))
 
         # QW5/QW4 — un rappel demandé DEPUIS LA PROPOSITION est la même
         # obligation qu'un rappel demandé à la capture : pose la préférence si
@@ -648,31 +650,6 @@ def notify_client_contact_request(devis_reference: str, lead,
 CONSENT_SOURCE_OPPOSITION_LEVEE_CLIENT = (
     'opposition levée à la demande du client (rappel demandé)')
 NOTE_OPPOSITION_LEVEE_CLIENT = 'opposition levée à la demande du client'
-
-
-def _lever_opposition_a_la_demande_du_client(lead) -> bool:
-    """ACRM63 — D-ACRM-5 (3)=(a) : un lead ``ne_plus_contacter`` dont la
-    personne demande elle-même un rappel passe à ``False``, avec une note de
-    chatter datée « opposition levée à la demande du client » et les lignes
-    ``ConsentRecord`` accordées (réutilise ``tracer_levee_opposition_registre``
-    via ``_ecrire_registre_contact`` — aucune seconde écriture du registre).
-    Un lead non opposé : rien. Renvoie ``True`` si l'opposition a été levée."""
-    if lead is None or not getattr(lead, 'ne_plus_contacter', False):
-        return False
-    maintenant = timezone.now()
-    lead.ne_plus_contacter = False
-    lead.save(update_fields=['ne_plus_contacter'])
-    from .leads_doublons import retirer_empreintes_opposition  # ACVI108 (D-ACVI-6)
-    retirer_empreintes_opposition(lead.company, lead)
-    activity.journal_systeme(
-        company=lead.company, lead=lead,
-        kind=LeadActivity.Kind.NOTE,
-        body=(f'{NOTE_OPPOSITION_LEVEE_CLIENT} '
-              f'({timezone.localtime(maintenant):%d/%m/%Y %H:%M})'))
-    _ecrire_registre_contact(
-        lead, granted=True, source=CONSENT_SOURCE_OPPOSITION_LEVEE_CLIENT,
-        occurred_at=maintenant)
-    return True
 
 
 #: QW4 — marqueur de note système : posé UNE FOIS par lead pour éviter de

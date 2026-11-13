@@ -615,6 +615,39 @@ class AttributionParResponsableTests(TestCase):
             lead=lead, body__startswith='Attribué automatiquement à').exists())
         self.assertEqual(attribuer_echeances(), 0)
 
+    def test_lead_sorti_quitte_la_file_sans_attribution(self):
+        """ACEL79 (C-ACEL-030) — corbeille, archivé, perdu, « ne plus
+        contacter » : l'attente disparaît sans attribution ni notification,
+        sans avertissement au passage suivant ; le témoin est attribué."""
+        from unittest import mock
+        from django.utils import timezone
+        from apps.crm import cadence_reponses
+        from apps.crm.dispatch import attribuer_echeances, file_attente
+        from apps.crm.models_clients import AttributionEnAttente
+        temoin = self._nouveau()
+        sortis = [self._nouveau() for _ in range(4)]
+        for lead, champ in zip(sortis, ('is_deleted', 'is_archived', 'perdu',
+                                        'ne_plus_contacter')):
+            Lead.all_objects.filter(pk=lead.pk).update(**{champ: True})
+        AttributionEnAttente.objects.update(
+            echeance=timezone.now() - timezone.timedelta(minutes=1))
+        with mock.patch.object(
+                cadence_reponses, 'reattribuer_lead',
+                wraps=cadence_reponses.reattribuer_lead) as espion:
+            self.assertEqual(attribuer_echeances(), 1)
+        self.assertEqual([c.args[0].pk for c in espion.call_args_list],
+                         [temoin.pk])
+        with self.assertNoLogs('apps.crm.dispatch', level='WARNING'):
+            self.assertEqual(attribuer_echeances(), 0)
+        ids = [lead.pk for lead in sortis]
+        self.assertFalse(AttributionEnAttente.objects.filter(
+            lead_id__in=ids).exists())
+        self.assertEqual(set(Lead.all_objects.filter(pk__in=ids).values_list(
+            'owner_id', flat=True)), {self.chef.pk})
+        temoin.refresh_from_db()
+        self.assertNotEqual(temoin.owner_id, self.chef.pk)
+        self.assertEqual(file_attente(self.chef)['en_attente'], 0)
+
     def test_echeance_non_atteinte_rien_ne_bouge(self):
         from apps.crm.dispatch import attribuer_echeances
         from apps.crm.models_clients import AttributionEnAttente

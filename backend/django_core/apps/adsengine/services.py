@@ -1913,6 +1913,28 @@ def approve_action(action, *, user):
     return action
 
 
+def desapprouver_action(action, *, user):
+    """AERR24 (D-AERR-1) — Retire l'approbation d'une action APPROUVÉE non
+    appliquée : retour à ``proposee``, ``approved_by`` vidé. Même discipline
+    verrou-de-ligne + re-vérification sous verrou qu'``approve_action``
+    (course contre ``apply``). L'item de backlog reste programmé : l'action
+    redevient une proposition, ce n'est pas un rejet."""
+    from django.db import transaction
+    with transaction.atomic():
+        locked = (EngineAction.objects
+                  .select_for_update()
+                  .filter(pk=action.pk).first())
+        if locked is None or locked.status != EngineAction.Statut.APPROUVEE:
+            raise ValueError(
+                "Seule une action approuvée non appliquée peut être désapprouvée.")
+        locked.status = EngineAction.Statut.PROPOSEE
+        locked.approved_by = None
+        locked.save(update_fields=['status', 'approved_by', 'updated_at'])
+    action.status = EngineAction.Statut.PROPOSEE
+    action.approved_by = None
+    return action
+
+
 def reject_action(action, *, user, commentaire=''):
     """Rejette une action PROPOSÉE (elle ne pourra jamais être appliquée).
 

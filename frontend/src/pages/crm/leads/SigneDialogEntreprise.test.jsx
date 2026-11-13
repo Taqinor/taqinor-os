@@ -59,6 +59,30 @@ describe('SigneDialog — ACVI68 refus serveur', () => {
     expect(screen.getByLabelText(/Nom de la personne/)).toHaveValue('M. Bennani')
     expect(screen.getByText('Obligatoire.')).toBeInTheDocument()
   })
+
+  it('400 date : message sous la date', async () => {
+    ventesApi.getDevis.mockResolvedValue({ data: { results: [devis('residentiel')] } })
+    ventesApi.accepterDevis.mockRejectedValueOnce({
+      response: { status: 400, data: { date: ['Date invalide.'] } },
+    })
+    const onFailed = vi.fn()
+    const lead = { id: 5, nom: 'Exemple', prenom: 'Karim' }
+    const { unmount } = render(
+      <SigneDialog lead={lead} onClose={() => {}} onConfirmed={() => {}} onFailed={onFailed} />)
+    await screen.findByLabelText('Devis accepté')
+    confirmer()
+    await waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1))
+    const { saisie, erreurs } = onFailed.mock.calls[0][0]
+    expect(erreurs.date).toBe('Date invalide.')
+    // Sous son champ, jamais deux fois à l'écran.
+    expect(saisie.message).toBeNull()
+    unmount()
+    render(<SigneDialog lead={lead} onClose={() => {}} onConfirmed={() => {}}
+                        saisieInitiale={{ ...saisie, erreurs }} />)
+    await screen.findByLabelText('Devis accepté')
+    const sousDate = screen.getByText('Date invalide.')
+    expect(screen.getByLabelText("Date d'acceptation").nextElementSibling).toBe(sousDate)
+  })
 })
 
 describe('SigneDialog — CIQ324 identité d\'entreprise', () => {

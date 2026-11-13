@@ -60,6 +60,7 @@ class OpenSessionTests(TestCase):
         self.company = Company.objects.create(
             nom='Taqinor Chat', slug='taqinor-chat')
 
+    @override_settings(LIVECHAT_PUBLIC_ENABLED=True)
     def test_open_session_issues_token(self):
         resp = self.client.post(reverse('public-chat-open'))
         self.assertEqual(resp.status_code, 201)
@@ -68,7 +69,36 @@ class OpenSessionTests(TestCase):
         self.assertEqual(session.company_id, self.company.id)
         self.assertEqual(session.statut, ChatSessionPublique.Statut.ACTIVE)
 
+    def test_livechat_eteint_par_defaut_404_sans_ecriture(self):
+        """APUB10 (C-APUB-007, D-APUB-2 = parquer) — réglage non posé : ouvrir,
+        poster (téléphone d'un lead Signé) et relire rendent 404 ; aucune
+        session ni note créée, e-mail du lead inchangé. Mutant : défaut à
+        '1' dans settings/base.py ⇒ 201 et transcript collé sur le lead."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Client Signé',
+            telephone='0644444444', stage=stages.SIGNED)
+        session = ChatSessionPublique.objects.create(company=self.company)
+        notes_avant = LeadActivity.objects.count()
+        self.assertEqual(
+            self.client.post(reverse('public-chat-open')).status_code, 404)
+        resp = self.client.post(
+            reverse('public-chat-post', kwargs={'token': session.token}),
+            data=json.dumps({'message': "je m'appelle X, 0644444444, "
+                                        'x@exemple.invalid'}),
+            content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(self.client.get(
+            reverse('public-chat-get', kwargs={'token': session.token})
+        ).status_code, 404)
+        self.assertEqual(ChatSessionPublique.objects.count(), 1)
+        self.assertEqual(LeadActivity.objects.count(), notes_avant)
+        lead.refresh_from_db()
+        self.assertFalse(lead.email)
+        session.refresh_from_db()
+        self.assertEqual(session.transcript, [])
 
+
+@override_settings(LIVECHAT_PUBLIC_ENABLED=True)
 class InvalidTokenTests(TestCase):
     def setUp(self):
         Company.objects.create(nom='Taqinor Chat 2', slug='taqinor-chat-2')
@@ -146,6 +176,7 @@ class ThrottleWiringTests(TestCase):
                     'la vue publique %s n\'est pas limitée en débit.' % nom)
 
 
+@override_settings(LIVECHAT_PUBLIC_ENABLED=True)
 class DegradedModeCaptureTests(TestCase):
     """Sans clé LLM configurée : mode dégradé, capture quand même le lead."""
 
@@ -212,7 +243,7 @@ class DegradedModeCaptureTests(TestCase):
             Lead.objects.filter(company=self.company).count(), 1)
 
 
-@override_settings()
+@override_settings(LIVECHAT_PUBLIC_ENABLED=True)
 class LLMConfiguredReplyTests(TestCase):
     """Avec un faux fournisseur LLM sélectionné, la réponse générée est
     utilisée à la place du message d'absence."""
@@ -234,6 +265,7 @@ class LLMConfiguredReplyTests(TestCase):
         self.assertEqual(resp.data['reply'], 'Merci ! Quelle est votre ville ?')
 
 
+@override_settings(LIVECHAT_PUBLIC_ENABLED=True)
 class MultiTenantChatTests(TestCase):
     def test_sessions_are_not_shared_across_companies(self):
         co_a = Company.objects.create(nom='Chat A', slug='chat-a')

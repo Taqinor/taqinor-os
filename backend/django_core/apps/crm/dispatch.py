@@ -306,6 +306,17 @@ def peut_regler(user, equipe):
                 and departement.responsable_id == user.pk)
 
 
+def exiger_ecriture_equipe(user, equipe, refus):
+    """ADRG15 (D-ADRG-6) — porte d'ÉCRITURE de la règle d'équipe :
+    ``peut_regler`` (403 ``refus``) ET le droit ``crm_modifier`` ; les
+    lectures (cockpit, file) restent à ``peut_regler`` seul."""
+    from core.permissions import _user_has_or_legacy
+    if equipe is not None and not peut_regler(user, equipe):
+        raise PermissionDenied(refus)
+    if not _user_has_or_legacy(user, 'crm_modifier'):
+        raise PermissionDenied("Droit « crm_modifier » requis pour écrire.")
+
+
 def equipes_reglables(user):
     """Équipes commerciales ACTIVES dont ``user`` peut régler l'attribution
     (contrat ``dispatch_leads.json`` → ``equipes_reglables``), par nom."""
@@ -361,10 +372,9 @@ def definir_permanences(user, equipe_id, lignes):
         if user.company_id else None)
     if equipe is None:
         raise NotFound('Équipe introuvable.')
-    if not peut_regler(user, equipe):
-        raise PermissionDenied(
-            "Seuls le responsable de l'équipe, le directeur commercial et "
-            "la Direction règlent sa permanence.")
+    exiger_ecriture_equipe(
+        user, equipe, "Seuls le responsable de l'équipe, le directeur "
+        "commercial et la Direction règlent sa permanence.")
     choix = _choix_equipe(equipe, equipe.membres.filter(
         is_active=True, company_id=equipe.company_id))
     with transaction.atomic():
@@ -403,10 +413,9 @@ def modifier_reglages(user, equipe_id, valeurs):
               if user.company_id else None)
     if equipe is None:
         raise NotFound('Équipe introuvable.')
-    if not peut_regler(user, equipe):
-        raise PermissionDenied(
-            "Seuls le responsable de l'équipe, le directeur commercial et la "
-            "Direction règlent son attribution.")
+    exiger_ecriture_equipe(
+        user, equipe, "Seuls le responsable de l'équipe, le directeur "
+        "commercial et la Direction règlent son attribution.")
     champs = []
     if 'confirmation_responsable' in valeurs:
         equipe.confirmation_responsable = valeurs['confirmation_responsable']
@@ -442,10 +451,16 @@ def _peut_tout_voir(user):
 def _deja_decide(attente):
     """Le lead a changé de main hors de cet écran (fiche du lead, admin) :
     la décision humaine prime, l'attente n'a plus d'objet. Équipe sans
-    responsable : jamais « décidé » — la tâche attribue la proposition."""
+    responsable : jamais « décidé » — la tâche attribue la proposition.
+    ACEL79 : un lead sorti (corbeille, archivé, perdu, « ne plus contacter »)
+    n'attend plus rien — retiré sans attribution ni notification."""
+    lead = attente.lead  # gestionnaire de base : la corbeille reste lisible
+    if (lead.is_deleted or lead.is_archived or lead.perdu
+            or lead.ne_plus_contacter):
+        return True
     responsable_id = attente.equipe.responsable_id
     return (responsable_id is not None
-            and attente.lead.owner_id != responsable_id)
+            and lead.owner_id != responsable_id)
 
 
 def responsable_change(equipe, ancien_id):
@@ -522,6 +537,8 @@ def attribuer(user, lead_id, owner_id):
                 raise PermissionDenied(
                     "Un membre ne s'attribue un lead qu'à lui-même.")
             prise = True
+        else:
+            exiger_ecriture_equipe(user, None, '')
         owner = equipe.membres.filter(
             pk=owner_id, is_active=True, company_id=user.company_id).first()
         if owner is None and owner_id == equipe.responsable_id:

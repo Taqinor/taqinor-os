@@ -608,6 +608,11 @@ def pre_echeance_reminders():
     ).select_related('client', 'company').prefetch_related(
         *RELATIONS_MONTANT_DU)
     clients_manuels = _clients_manuels()
+    # AMSG88 — beat du lundi au vendredi (AMSG43) : la fenêtre court jusqu'à
+    # la veille du prochain passage + N (le vendredi couvre le week-end).
+    veille = today
+    while (veille + timedelta(days=1)).weekday() >= 5:
+        veille += timedelta(days=1)
 
     profiles_cache = {}
     for facture in candidates:
@@ -624,7 +629,7 @@ def pre_echeance_reminders():
         n = getattr(profile, 'rappel_pre_echeance_jours', 5) or 0
         if n <= 0:
             continue
-        if not (today < facture.date_echeance <= today + timedelta(days=n)):
+        if not (today < facture.date_echeance <= veille + timedelta(days=n)):
             continue
         # Idempotence : un seul rappel par facture (le marqueur reste tant
         # que la facture n'a qu'une échéance figée — pas de doublon possible

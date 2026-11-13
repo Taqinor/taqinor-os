@@ -16,6 +16,12 @@ vi.mock('../../../api/crmApi', () => ({
     updateLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   },
 }))
+// AERR119 — le toast « Annuler » est capturé (son `onUndo` est rejoué).
+const undoToast = vi.hoisted(() => ({ fn: vi.fn() }))
+vi.mock('../../../lib/toast', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toastWithUndo: undoToast.fn }
+})
 vi.mock('../../../ui', async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, toast: { ...actual.toast, error: vi.fn(), success: vi.fn() } }
@@ -83,5 +89,34 @@ describe('changeStage — transport du marqueur confirme_recul', () => {
     expect(crmApi.updateLead).toHaveBeenCalledWith(1, { stage: 'CONTACTED' })
     expect(confirmNatif).not.toHaveBeenCalled()
     confirmNatif.mockRestore()
+  })
+})
+
+// AERR119 (D-AERR-2) — une avancée par les touches 1-4 / le menu d'étape offre
+// « Annuler » comme le kanban : toast nommé, PATCH inverse avec `undo`.
+describe('changeStage — Annuler comme le kanban (AERR119)', () => {
+  const AHMED = { id: 1, prenom: 'Ahmed', nom: 'Benali', stage: 'CONTACTED', date_modification: 'a' }
+
+  it('avancée : toast nommé + Annuler qui renvoie l\'étape d\'origine avec undo', async () => {
+    crmApi.updateLead
+      .mockResolvedValueOnce({ data: { ...AHMED, stage: 'QUOTE_SENT' } })
+      .mockResolvedValueOnce({ data: { ...AHMED, stage: 'CONTACTED' } })
+    const { result } = renderHook(() => useLeadDraft(AHMED, { mode: 'edit', currentUserId: 42 }))
+    await act(async () => { await result.current.changeStage('QUOTE_SENT') })
+    expect(crmApi.updateLead).toHaveBeenNthCalledWith(1, 1, { stage: 'QUOTE_SENT' })
+    expect(undoToast.fn).toHaveBeenCalledTimes(1)
+    const { message, onUndo, onCommit } = undoToast.fn.mock.calls[0][0]
+    expect(message).toBe('Lead « Ahmed Benali » → Devis envoyé')
+    expect(onCommit).toBeUndefined()
+    await act(async () => { await onUndo() })
+    expect(crmApi.updateLead).toHaveBeenNthCalledWith(2, 1, { stage: 'CONTACTED', undo: true })
+    expect(result.current.state.server.stage).toBe('CONTACTED')
+  })
+
+  it('recul confirmé ou Froid avec raison : pas d\'« Annuler »', async () => {
+    const { result } = renderHook(() => useLeadDraft(AHMED, { mode: 'edit', currentUserId: 42 }))
+    await act(async () => { await result.current.changeStage('NEW', { confirmeRecul: true }) })
+    await act(async () => { await result.current.changeStage('COLD', { parcRaison: 'pas_interesse' }) })
+    expect(undoToast.fn).not.toHaveBeenCalled()
   })
 })

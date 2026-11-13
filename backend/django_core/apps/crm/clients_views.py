@@ -1488,6 +1488,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     def attainment(self, request, pk=None):
         """Réalisé vs cible pour un objectif unique."""
         from .selectors import compute_attainment
+        from .portee_selectors import masquer_objectifs_hors_portee
         obj = self.get_object()
         data = compute_attainment(obj)
         payload = {
@@ -1503,7 +1504,8 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
             'owner_nom': getattr(obj.owner, 'username', None),
             **data,
         }
-        s = ObjectifAttainmentSerializer(payload)
+        s = ObjectifAttainmentSerializer(
+            masquer_objectifs_hors_portee([payload], request.user)[0])
         return Response(s.data)
 
     # YAPIC6 — sans cette annotation le schéma documente un OBJET unique alors
@@ -1524,6 +1526,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     def attainment_list(self, request):
         """Réalisé vs cible pour tous les objectifs du filtre courant."""
         from .selectors import compute_attainment
+        from .portee_selectors import masquer_objectifs_hors_portee
         qs = self.get_queryset()
         result = []
         for obj in qs:
@@ -1541,7 +1544,8 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
                 'owner_nom': getattr(obj.owner, 'username', None),
                 **data,
             })
-        s = ObjectifAttainmentSerializer(result, many=True)
+        s = ObjectifAttainmentSerializer(
+            masquer_objectifs_hors_portee(result, request.user), many=True)
         return Response(s.data)
 
 
