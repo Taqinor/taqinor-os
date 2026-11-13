@@ -89,3 +89,27 @@ describe('EmailSection — ZSAL5 modèles d\'e-mail', () => {
     ]))
   })
 })
+
+describe('EmailSection — AMSG89 rappel de RDV sujet seul', () => {
+  it('rappel_rdv : aucun champ Corps, phrase de renvoi affichée', async () => {
+    const RAPPEL = {
+      ...TEMPLATE, cle: 'rappel_rdv', label: 'Rappel de RDV (J-1)',
+      sujet: 'Rappel de rendez-vous — demain', sujet_defaut: 'Rappel de rendez-vous — demain',
+      corps: 'Bonjour {nom}', corps_defaut: 'Bonjour {nom}', corps_modifiable: false,
+    }
+    parametresApi.getEmailTemplates.mockResolvedValue({
+      data: { results: [{ ...TEMPLATE, corps_modifiable: true }, RAPPEL] },
+    })
+    render(<EmailSection />)
+    expect(await screen.findByText('Rappel de RDV (J-1)')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Rappel de rendez-vous — demain')).toBeInTheDocument()
+    expect(document.getElementById('pe-email-corps-rappel_rdv')).toBeNull()
+    expect(document.getElementById('pe-email-corps-en-rappel_rdv')).toBeNull()
+    expect(document.getElementById('pe-email-corps-ar-rappel_rdv')).toBeNull()
+    expect(document.getElementById('pe-email-sujet-en-rappel_rdv')).not.toBeNull()
+    expect(screen.getByText(/seul le sujet se règle ici/)).toBeInTheDocument()
+    // La carte « Envoi de devis » garde ses champs Corps.
+    expect(document.getElementById('pe-email-corps-envoi_devis')).not.toBeNull()
+    expect(document.getElementById('pe-email-corps-en-envoi_devis')).not.toBeNull()
+  })
+})

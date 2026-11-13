@@ -144,6 +144,10 @@ EMAIL_TEMPLATE_DEFAULTS = {
     },
 }
 
+# AMSG89 — clés dont l'envoi ne lit QUE le sujet (cf. AMSG66 ci-dessus) :
+# l'écran Paramètres › E-mails n'y propose aucun corps modifiable.
+CLES_EMAIL_SUJET_SEUL = ('rappel_rdv',)
+
 
 # Placeholders autorisés par clé (parité avec ``MessageTemplate``). On valide au
 # sérialiseur qu'un sujet/corps ne référence QUE ces tokens-là.

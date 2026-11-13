@@ -116,6 +116,18 @@ class EmailTemplateApiTest(TestCase):
         self.assertEqual(rows2['devis']['sujet_defaut'],
                          EMAIL_TEMPLATE_DEFAULTS['devis']['sujet'])
 
+    def test_effective_rappel_rdv_sujet_seul(self):
+        """AMSG89 — l'envoi du rappel J-1 ne lit que le sujet : la ligne
+        `rappel_rdv` sert `corps_modifiable: false`, toutes les autres `true`."""
+        r = self.api.get(BASE + 'effective/')
+        self.assertEqual(r.status_code, 200)
+        rows = {row['cle']: row for row in r.data['results']}
+        self.assertIs(rows['rappel_rdv']['corps_modifiable'], False)
+        autres = {cle: row['corps_modifiable']
+                  for cle, row in rows.items() if cle != 'rappel_rdv'}
+        self.assertTrue(autres)
+        self.assertTrue(all(v is True for v in autres.values()), autres)
+
     # ── Upsert en masse (bulk) ───────────────────────────────────────────
     def test_bulk_upsert(self):
         r = self.api.put(BASE + 'bulk/', {
