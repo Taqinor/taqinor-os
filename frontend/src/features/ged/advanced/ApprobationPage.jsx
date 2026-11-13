@@ -19,6 +19,8 @@ import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/down
 import { StatutApprobation, StatutSignature, errMessage, toutesLesPages } from './shared.js'
 import { ChampDocument, ChampCommentaire } from './ChampsGed.jsx'
 import DecisionDialogue from './DecisionDialogue.jsx'
+import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
@@ -54,6 +56,7 @@ export default function ApprobationPage() {
   const [analytique, setAnalytique] = useState(null) // XGED26 — KPIs approbation/signature
   const [kanban, setKanban] = useState(null)         // ZGED3 — tableau de bord par statut
   const [prolongerFor, setProlongerFor] = useState(null) // WIR204 — prolonger l'échéance
+  const { confirm } = useConfirmDialog()
 
   const load = async () => {
     setLoading(true)
@@ -182,20 +185,30 @@ export default function ApprobationPage() {
   ]
 
   // ── Mutations ─────────────────────────────────────────────────────────
+  // AERR65 — statut légal / demande envoyée à un tiers : confirmation nommée.
+  const nomDoc = (r) => r.document_nom || `#${r.document}`
   const markSigned = async (r) => {
+    if (!await confirm({
+      title: 'Marquer la demande comme signée ?', confirmLabel: 'Marquer comme signée', destructive: false,
+      description: `La demande de signature de « ${nomDoc(r)} » passera au statut signé.`,
+    })) return
     try {
       await gedApi.marquerSigne(r.id)
       toast.success('Signature enregistrée.')
       load()
-    } catch (err) { toast.error(errMessage(err)) }
+    } catch (err) { toastSiMuet(err) }
   }
 
   const cancelSignature = async (r) => {
+    if (!await confirm({
+      title: 'Annuler la demande de signature ?', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder',
+      description: `La demande de signature de « ${nomDoc(r)} » sera annulée pour ses signataires.`,
+    })) return
     try {
       await gedApi.annulerDemandeSignature(r.id)
       toast.success('Demande annulée.')
       load()
-    } catch (err) { toast.error(errMessage(err)) }
+    } catch (err) { toastSiMuet(err) }
   }
 
   // XGED3/PACT185 — `downloadBlobInGesture` DOIT être appelé SYNCHRONE, avant
@@ -208,8 +221,7 @@ export default function ApprobationPage() {
     gedApi.pdfSigneDemande(r.id)
       .then((res) => pending.deliver(
         res.data, filenameFromResponse(res, `signature-${r.id}.pdf`)))
-      .catch((err) => toast.error(
-        errMessage(err, "Cette demande n'est pas encore signée.")))
+      .catch((err) => toastSiMuet(err, "Cette demande n'est pas encore signée."))
   }
 
   return (
@@ -468,7 +480,7 @@ function DemanderRevueDialog({ documents, onClose, onDone }) {
       await gedApi.demanderRevue(documentId, { commentaire })
       toast.success('Demande de revue envoyée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -520,7 +532,7 @@ function ProlongerSignatureDialog({ demande, onClose, onDone }) {
       await gedApi.prolongerDemandeSignature(demande.id, { expires_at: iso })
       toast.success('Échéance prolongée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -566,7 +578,7 @@ function DemanderSignatureDialog({ documents, preselect, onClose, onDone }) {
       toast.success('Demande de signature créée.')
       if (res?.data?.lien_signature) setLien(res.data.lien_signature)
       else onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   const copier = async () => {
@@ -649,7 +661,7 @@ function GenererModeleDialog({ modele, onClose, onDone }) {
       const res = await gedApi.genererModele(modele.id, contexte)
       toast.success(res.data?.created ? 'Document généré et classé.' : 'Document mis à jour (nouvelle version si le modèle a changé).')
       onDone()
-    } catch (err) { toast.error(errMessage(err, 'Génération indisponible (moteur PDF).')) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err, 'Génération indisponible (moteur PDF).') } finally { setSaving(false) }
   }
 
   return (
@@ -738,7 +750,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
       setDemande(res.data)
       toast.success('Circuit de signature créé.')
       setEtape(2)
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -865,14 +877,14 @@ function ChampsSignatureEditor({ demande }) {
       })
       setChamps((list) => [...list, res.data])
       toast.success('Champ ajouté.')
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   const supprimer = async (id) => {
     try {
       await gedApi.deleteChampSignature(id)
       setChamps((list) => list.filter((c) => c.id !== id))
-    } catch (err) { toast.error(errMessage(err)) }
+    } catch (err) { toastSiMuet(err) }
   }
 
   return (
@@ -972,7 +984,7 @@ function EnvoiMasseDialog({ modeles, onClose, onDone }) {
       toast.success(
         `Lot créé : ${lot?.nb_envoyes ?? 0}/${lot?.total ?? 0} demande(s) envoyée(s).`)
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

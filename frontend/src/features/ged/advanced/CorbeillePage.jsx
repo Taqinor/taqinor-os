@@ -17,6 +17,7 @@ import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { errMessage, toutesLesPages } from './shared.js'
 import { useHasPermission, useHasRole } from '../../../hooks/useHasPermission'
+import { toastSiMuet } from '../listesGed'
 
 function unpage(data) {
   if (Array.isArray(data)) return data
@@ -69,7 +70,7 @@ export default function CorbeillePage() {
       await gedApi.restaurerCorbeille(r.id)
       toast.success('Document restauré.')
       load()
-    } catch (err) { toast.error(errMessage(err)) }
+    } catch (err) { toastSiMuet(err) }
   }
 
   const confirmerPurge = async () => {
@@ -79,7 +80,7 @@ export default function CorbeillePage() {
       toast.success('Document supprimé définitivement.')
       setPurge(null)
       load()
-    } catch (err) { toast.error(errMessage(err)); setPurge(null) }
+    } catch (err) { toastSiMuet(err); setPurge(null) }
   }
 
   const actions = (r) => [

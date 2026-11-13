@@ -70,8 +70,9 @@ describe('PortailClientDevis — ADVS20 empreinte du contenu lu', () => {
     fireEvent.click(screen.getByRole('button', { name: /Confirmer l’acceptation/ }))
     await waitFor(() => expect(portailApi.devis.accepter).toHaveBeenCalledTimes(1))
     expect(portailApi.devis.accepter.mock.calls[0][1].empreinte_contenu).toBe(r.data.results[0].empreinte_contenu)
-    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith(reponses['409_empreinte_perimee'].detail))
     await waitFor(() => expect(portailApi.devis.liste).toHaveBeenCalledTimes(2))
+    // AERR128 — le 409 est dit par le toast global (intercepteur axios) : pas de double.
+    expect(toastSpy.error).not.toHaveBeenCalled()
   })
 })
 

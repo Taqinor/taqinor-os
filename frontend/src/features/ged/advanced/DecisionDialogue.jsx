@@ -3,8 +3,8 @@ import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   toast,
 } from '../../../ui'
-import { errMessage } from './shared.js'
 import { ChampCommentaire } from './ChampsGed.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* Dialogue d'approbation / rejet GED, partagé par les demandes d'approbation
    (ApprobationPage) et les dispositions de rétention (RetentionPage) : même
@@ -22,7 +22,7 @@ export default function DecisionDialogue({ decision, onClose, onDone, objet, app
       else await appels.rejeter(decision.demande.id, { commentaire })
       toast.success(approuver ? 'Demande approuvée.' : 'Demande rejetée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

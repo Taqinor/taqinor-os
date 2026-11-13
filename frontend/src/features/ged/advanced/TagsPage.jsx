@@ -11,6 +11,8 @@ import gedApi from '../../../api/gedApi'
 import { errMessage, CIBLES_LIEN, toutesLesPages } from './shared.js'
 import { ChampDocument } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
+import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    UX47 — Tags & liens transverses.
@@ -27,6 +29,7 @@ function unpage(data) {
 }
 
 export default function TagsPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [tags, setTags] = useState([])
   const [assignments, setAssignments] = useState([])
   const [liens, setLiens] = useState([])
@@ -83,8 +86,9 @@ export default function TagsPage() {
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: 'Supprimer ce tag ?', description: `Le tag « ${r.nom} » sera retiré de tous ses documents.` })) return
         try { await gedApi.deleteTag(r.id); toast.success('Tag supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -105,8 +109,9 @@ export default function TagsPage() {
     {
       id: 'detacher', label: 'Détacher', icon: Unlink, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: 'Détacher ce tag ?', confirmLabel: 'Détacher', description: `Le tag « ${r.tag_nom} » sera détaché de « ${r.document_nom || `#${r.document}`} ».` })) return
         try { await gedApi.deleteTagAssignment(r.id); toast.success('Tag détaché.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -129,8 +134,9 @@ export default function TagsPage() {
     {
       id: 'delier', label: 'Délier', icon: Unlink, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: 'Délier ce document ?', confirmLabel: 'Délier', description: `Le lien entre « ${r.document_nom || `#${r.document}`} » et ${r.target_label || `#${r.target_id}`} sera supprimé.` })) return
         try { await gedApi.deleteLien(r.id); toast.success('Lien supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -216,7 +222,7 @@ function TagDialog({ tags, onClose, onDone }) {
       })
       toast.success('Tag créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -258,7 +264,7 @@ function AssignDialog({ documents, tags, onClose, onDone }) {
       await gedApi.createTagAssignment({ document: documentId, tag: tagId })
       toast.success('Tag affecté.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -290,7 +296,7 @@ function LienDialog({ documents, onClose, onDone }) {
       await gedApi.createLien({ document: documentId, model, id: Number(objectId) })
       toast.success('Lien créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

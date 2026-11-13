@@ -105,14 +105,17 @@ class DocumentPortailVersMinioTests(TestCase):
             company=self.co, cabinet=cabinet, nom='Documents clients')
         document_ged = Document.objects.create(
             company=self.co, folder=dossier, nom='Facture ONEE')
+        self._celery_eager()
         with mock.patch('apps.records.storage.fetch_attachment',
                         return_value=(PDF, None)) as relit:
             with mock.patch('apps.ged.services.deposit_document') as depose:
                 depose.return_value = (document_ged, True)
-                doc = DocumentClientPortail.objects.create(
-                    company=self.co, libelle='Facture ONEE',
-                    fichier_key=cle, fichier_filename='facture.pdf',
-                    fichier_mime='application/pdf', fichier_size=len(PDF))
+                # ACEL65 — le dépôt part APRÈS commit (tâche relancée).
+                with self.captureOnCommitCallbacks(execute=True):
+                    doc = DocumentClientPortail.objects.create(
+                        company=self.co, libelle='Facture ONEE',
+                        fichier_key=cle, fichier_filename='facture.pdf',
+                        fichier_mime='application/pdf', fichier_size=len(PDF))
 
         relit.assert_called_once_with(cle)
         kwargs = depose.call_args.kwargs
@@ -123,6 +126,54 @@ class DocumentPortailVersMinioTests(TestCase):
         self.assertEqual(kwargs['mime'], 'application/pdf')
         doc.refresh_from_db()
         self.assertEqual(doc.document_ged_id, document_ged.pk)
+
+    def _celery_eager(self):
+        from erp_agentique.celery import app as celery_app
+        prev = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        self.addCleanup(setattr, celery_app.conf, 'task_always_eager', prev)
+
+    def test_depot_ged_en_echec_est_repris(self):
+        """ACEL65 (C-ACEL-035) — une GED qui lève au 1er essai finit avec
+        `document_ged` posé (un seul document GED) ; une GED qui lève toujours
+        laisse `document_ged` vide et l'échec définitif est consigné."""
+        from apps.ged.services import deposit_document
+        self._celery_eager()
+        cle = f'attachments/{self.co.id}/portail-acel65.pdf'
+        reel = deposit_document
+        essais = []
+
+        def ged_capricieuse(**kwargs):
+            essais.append(1)
+            if len(essais) == 1:
+                raise OSError('GED arrêtée')
+            return reel(**kwargs)
+
+        champs = dict(company=self.co, fichier_filename='facture.pdf',
+                      fichier_mime='application/pdf', fichier_size=len(PDF))
+        with mock.patch('apps.records.storage.fetch_attachment', return_value=(PDF, None)), \
+                mock.patch('apps.ged.services._store_bytes',
+                           return_value=(cle, {'filename': 'f.pdf', 'size': len(PDF),
+                                               'mime': 'application/pdf'})), \
+                mock.patch('apps.ged.services.deposit_document', side_effect=ged_capricieuse):
+            with self.captureOnCommitCallbacks(execute=True):
+                repris = DocumentClientPortail.objects.create(
+                    libelle='Reprise', fichier_key=cle, **champs)
+        repris.refresh_from_db()
+        self.assertIsNotNone(repris.document_ged_id)
+        self.assertEqual(len(essais), 2)
+        self.assertEqual(Document.objects.filter(pk=repris.document_ged_id).count(), 1)
+
+        with mock.patch('apps.records.storage.fetch_attachment', return_value=(PDF, None)), \
+                mock.patch('apps.ged.services.deposit_document', side_effect=OSError('GED arrêtée')), \
+                mock.patch('apps.reporting.journal_problemes.consigner_echec_tache') as consigne:
+            with self.captureOnCommitCallbacks(execute=True):
+                perdu = DocumentClientPortail.objects.create(
+                    libelle='Perdu', fichier_key=cle + '-2', **champs)
+        perdu.refresh_from_db()
+        self.assertIsNone(perdu.document_ged_id)
+        self.assertEqual([c.args[0] for c in consigne.call_args_list],
+                         ['portail.deposer_document_ged'])
 
     def test_sans_cle_ni_fichier_aucun_depot_ged(self):
         with mock.patch('apps.ged.services.deposit_document') as depose:

@@ -14,6 +14,8 @@ import {
 import { PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
+import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    PACT132 — Règles de dossier : action automatique au dépôt (XGED19).
@@ -53,6 +55,7 @@ function actionLabel(type) {
 }
 
 export default function ReglesDossierPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [regles, setRegles] = useState([])
   const [dossiers, setDossiers] = useState([])
   const [tags, setTags] = useState([])
@@ -94,7 +97,7 @@ export default function ReglesDossierPage() {
     () => gedApi.updateRegleDossier(r.id, { actif: !r.actif }),
     r.actif ? 'Règle désactivée.' : 'Règle activée.', load)
 
-  const supprimer = (r) => actionAvecToast(
+  const supprimer = async (r) => await confirmDelete({ title: 'Supprimer cette règle de dossier ?', description: `La règle « ${r.nom} » sera supprimée.` }) && actionAvecToast(
     () => gedApi.deleteRegleDossier(r.id), 'Règle supprimée.', load)
 
   const rowActions = (r) => [
@@ -185,7 +188,7 @@ function CreateRegleDialog({ dossiers, tags, users, onClose, onDone }) {
       })
       toast.success('Règle créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
