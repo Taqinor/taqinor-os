@@ -1,0 +1,482 @@
+$ sonde docs/audits/sondes/ATST/C-ATST-006.py  rc=0
+@@S{"repro": false, "tests_qui_chargent_la_garde": ["scripts/tests/test_check_company_fk.py"], "ligne_de_decision_presente": true, "detail": "un test charge la garde"}
+
+
+==> OK : sonde C-ATST-006 rejouée ⇒ repro False (repro=False)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_ci_guards.ToutEstBrancheTests -v    [checkout: taqinor-os]  rc=0
+test_entree_exacte_retiree_rouge (scripts.tests.test_ci_guards.ToutEstBrancheTests.test_entree_exacte_retiree_rouge)
+ADEP105 - retirer l'entree exacte `test_check_stages` n'est plus masque par ... ok
+test_exclusions_datees_et_vivantes (scripts.tests.test_ci_guards.ToutEstBrancheTests.test_exclusions_datees_et_vivantes) ... ok
+test_tout_test_et_garde_est_branche (scripts.tests.test_ci_guards.ToutEstBrancheTests.test_tout_test_et_garde_est_branche) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.036s
+
+OK
+
+
+==> OK : garde branchée : scripts.tests.test_ci_guards.ToutEstBrancheTests (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_company_fk -v    [checkout: taqinor-os]  rc=0
+test_depot_reel_vert (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_depot_reel_vert) ... ok
+test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent)
+Point fixe de `resolve_has_company` retiré ⇒ LigneFacture MISSING, échec. ... ok
+test_modele_metier_sans_societe_rougit (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_modele_metier_sans_societe_rougit)
+Mutant `if not ok and key not in exempt:` → `if False:` ⇒ rc 0, échec. ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.245s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_company_fk sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_company_fk.py    [checkout: taqinor-os]  rc=0
+OK]
+  backend/django_core/apps/installations/models_field.py:129  installations.ComponentSerial  [OK]
+  backend/django_core/apps/installations/models_comptage.py:77  installations.ComptageLigne  [OK]
+  backend/django_core/apps/installations/models_field.py:332  installations.ConsommationLigne  [OK]
+  backend/django_core/apps/installations/models_contrat_prix.py:18  installations.ContratPrixFournisseur  [OK]
+  backend/django_core/apps/installations/models_contrat_prix.py:83  installations.ContratPrixLigne  [OK]
+  backend/django_core/apps/installations/models_kitting.py:547  installations.ControleQualiteItemModele  [OK]
+  backend/django_core/apps/installations/models_kitting.py:519  installations.ControleQualiteModele  [OK]
+  backend/django_core/apps/installations/models_kitting.py:576  installations.ControleQualiteOrdre  [OK]
+  backend/django_core/apps/installations/models_demande_achat.py:200  installations.DemandeAchatLigne  [OK]
+  backend/django_core/apps/installations/models_demande_transfert.py:19  installations.DemandeTransfert  [OK]
+  backend/django_core/apps/installations/models_document.py:23  installations.DocumentProjet  [OK]
+  backend/django_core/apps/installations/models_dossier_import.py:19  installations.DossierImport  [OK]
+  backend/django_core/apps/installations/models_equipe.py:44  installations.Equipe  [OK]
+  backend/django_core/apps/installations/models_approbation_achat.py:157  installations.EtapeApprobationAchat  [OK]
+  backend/django_core/apps/installations/models_kitting.py:620  installations.EtapeAssemblage  [OK]
+  backend/django_core/apps/installations/models_kitting.py:654  installations.EtapeOrdre  [OK]
+  backend/django_core/apps/installations/models_evaluation_soustraitant.py:21  installations.EvaluationSousTraitant  [OK]
+  backend/django_core/apps/installations/models_field.py:680  installations.FicheInterventionChamp  [OK]
+  backend/django_core/apps/installations/models_field.py:717  installations.FicheInterventionReleve  [OK]
+  backend/django_core/apps/installations/models_field.py:649  installations.FicheInterventionTemplate  [OK]
+  backend/django_core/apps/installations/models_field.py:745  installations.FicheInterventionValeur  [OK]
+  backend/django_core/apps/installations/models_field.py:776  installations.FieldOp  [OK]
+  backend/django_core/apps/installations/models_landed_cost.py:28  installations.FraisImport  [OK]
+  backend/django_core/apps/installations/models_gps_tracking.py:274  installations.GeofenceAlert  [OK]
+  backend/django_core/apps/installations/models_gps_tracking.py:150  installations.GpsConsentRecord  [OK]
+  backend/django_core/apps/installations/models_chantier.py:578  installations.HandoverPack  [OK]
+  backend/django_core/apps/installations/models_indispo.py:24  installations.IndisponibiliteRessource  [OK]
+  backend/django_core/apps/installations/models_installation.py:28  installations.Installation  [OK]
+  backend/django_core/apps/installations/models_intervention.py:384  installations.InstallationActivity  [OK]
+  backend/django_core/apps/installations/models_intervention.py:62  installations.Intervention  [OK]
+  backend/django_core/apps/installations/models_intervention.py:344  installations.InterventionActivity  [OK]
+  backend/django_core/apps/installations/models_field.py:28  installations.InterventionPreparation  [OK]
+  backend/django_core/apps/installations/models_projet.py:29  installations.JalonProjet  [OK]
+  backend/django_core/apps/installations/models_kitting.py:20  installations.Kit  [OK]
+  backend/django_core/apps/installations/models_kitting.py:60  installations.KitComposant  [OK]
+  backend/django_core/apps/installations/models_landed_cost.py:76  installations.LandedCostLigne  [OK]
+  backend/django_core/apps/installations/models_livraison.py:19  installations.Livraison  [OK]
+  backend/django_core/apps/installations/models_livraison.py:109  installations.LivraisonLigne  [OK]
+  backend/django_core/apps/installations/models_lot_prelevement.py:18  installations.LotPrelevement  [OK]
+  backend/django_core/apps/installations/models_consignation.py:37  installations.MaterielConsigne  [OK]
+  backend/django_core/apps/installations/models_field.py:300  installations.MaterielConsommation  [OK]
+  backend/django_core/apps/installations/models_projet.py:136  installations.ModeleProjet  [OK]
+  backend/django_core/apps/installations/models_projet.py:200  installations.ModeleProjetBomLigne  [OK]
+  backend/django_core/apps/installations/models_projet.py:169  installations.ModeleProjetJalon  [OK]
+  backend/django_core/apps/installations/models_kitting.py:138  installations.OrdreAssemblage  [OK]
+  backend/django_core/apps/installations/models_kitting.py:289  installations.OrdreAssemblageActivity  [OK]
+  backend/django_core/apps/installations/models_kitting.py:332  installations.OrdreAssemblageLigne  [OK]
+  backend/django_core/apps/installations/models_kitting.py:422  installations.OrdreDemontage  [OK]
+  backend/django_core/apps/installations/models_kitting.py:479  installations.OrdreDemontageLigne  [OK]
+  backend/django_core/apps/installations/models_field.py:194  installations.PhotoAnnotation  [OK]
+  backend/django_core/apps/installations/models_field.py:229  installations.PhotoChecklistMeta  [OK]
+  backend/django_core/apps/installations/models_picklist.py:18  installations.PickList  [OK]
+  backend/django_core/apps/installations/models_picklist.py:63  installations.PickListLigne  [OK]
+  backend/django_core/apps/installations/models_gps_tracking.py:226  installations.PositionTechnicien  [OK]
+  backend/django_core/apps/installations/models_field.py:66  installations.PreparationMaterielLigne  [OK]
+  backend/django_core/apps/installations/models_field.py:100  installations.PreparationOutilLigne  [OK]
+  backend/django_core/apps/installations/models_pod.py:17  installations.PreuveLivraison  [OK]
+  backend/django_core/apps/installations/models_program.py:34  installations.Projet  [OK]
+  backend/django_core/apps/installations/models_program.py:206  installations.ProjetChantier  [OK]
+  backend/django_core/apps/installations/models_program.py:246  installations.ProjetDevis  [OK]
+  backend/django_core/apps/installations/models_program.py:93  installations.ProjetTache  [OK]
+  backend/django_core/apps/installations/models_program.py:280  installations.ProjetTicket  [OK]
+  backend/django_core/apps/installations/models_putaway.py:18  installations.PutAway  [OK]
+  backend/django_core/apps/installations/models_rfq.py:31  installations.RFQ  [OK]
+  backend/django_core/apps/installations/models_rfq.py:127  installations.RFQConsultation  [OK]
+  backend/django_core/apps/installations/models_rfq.py:82  installations.RFQOffre  [OK]
+  backend/django_core/apps/installations/models_gr_ir.py:22  installations.ReceptionNonFacturee  [OK]
+  backend/django_core/apps/installations/models_chantier.py:482  installations.RecettePompage  [OK]
+  backend/django_core/apps/installations/models_intervention.py:461  installations.RecurrenceIntervention  [OK]
+  backend/django_core/apps/installations/models_approbation_achat.py:38  installations.RegleApprobationAchat  [OK]
+  backend/django_core/apps/installations/models_storage_rules.py:49  installations.RegleRangement  [OK]
+  backend/django_core/apps/installations/models_reappro.py:19  installations.RegleReappro  [OK]
+  backend/django_core/apps/installations/models_kitting.py:248  installations.ReservationAssemblage  [OK]
+  backend/django_core/apps/installations/models_field.py:432  installations.Reserve  [OK]
+  backend/django_core/apps/installations/models_retenue_garantie.py:24  installations.RetenueGarantieSousTraitant  [OK]
+  backend/django_core/apps/installations/models_retour_livraison.py:21  installations.RetourLivraison  [OK]
+  backend/django_core/apps/installations/models_retour_livraison.py:62  installations.RetourLivraisonLigne  [OK]
+  backend/django_core/apps/installations/models_retour_materiel.py:25  installations.RetourMateriel  [OK]
+  backend/django_core/apps/installations/models_retour_materiel.py:67  installations.RetourMaterielLigne  [OK]
+  backend/django_core/apps/installations/models_projet.py:234  installations.ReunionChantier  [OK]
+  backend/django_core/apps/installations/models_chantier.py:429  installations.ReverificationMesure  [OK]
+  backend/django_core/apps/installations/models_document.py:92  installations.RevisionDocument  [OK]
+  backend/django_core/apps/installations/models_kitting.py:93  installations.RevisionKit  [OK]
+  backend/django_core/apps/installations/models_field.py:617  installations.SafetyCheckItem  [OK]
+  backend/django_core/apps/installations/models_field.py:560  installations.SafetyChecklistSlot  [OK]
+  backend/django_core/apps/installations/models_field.py:589  installations.SafetySignoff  [OK]
+  backend/django_core/apps/installations/models_kitting.py:370  installations.SerieAssemblage  [OK]
+  backend/django_core/apps/installations/models_serie_entrepot.py:18  installations.SerieEntrepot  [OK]
+  backend/django_core/apps/installations/models_comptage.py:19  installations.SessionComptage  [OK]
+  backend/django_core/apps/installations/models_approbation_bcf.py:33  installations.SeuilApprobationBCF  [OK]
+  backend/django_core/apps/installations/models_chantier.py:730  installations.ShotListSlot  [OK]
+  backend/django_core/apps/installations/models_chantier.py:123  installations.StageModele  [OK]
+  backend/django_core/apps/installations/models_chantier.py:628  installations.StockReservation  [OK]
+  backend/django_core/apps/installations/models_field.py:522  installations.ToolReturn  [OK]
+  backend/django_core/apps/installations/models_transporteur.py:15  installations.Transporteur  [OK]
+  backend/django_core/apps/installations/models_intervention.py:29  installations.TypeIntervention  [OK]
+  backend/django_core/apps/installations/models_intervention.py:428  installations.TypeInterventionPlan  [OK]
+  backend/django_core/apps/installations/models_field.py:383  installations.VoiceMemo  [OK]
+  backend/django_core/apps/monitoring/models.py:457  monitoring.AbonnementMonitoring  [OK]
+  backend/django_core/apps/monitoring/models.py:355  monitoring.CertificatCarbone  [OK]
+  backend/django_core/apps/monitoring/models.py:166  monitoring.CleaningEvent  [OK]
+  backend/django_core/apps/monitoring/models.py:48  monitoring.MonitoringConfig  [OK]
+  backend/django_core/apps/monitoring/models.py:201  monitoring.MonitoringSettings  [OK]
+  backend/django_core/apps/monitoring/models.py:105  monitoring.ProductionReading  [OK]
+  backend/django_core/apps/monitoring/models_warranty.py:17  monitoring.ProductionWarranty  [OK]
+  backend/django_core/apps/monitoring/models.py:295  monitoring.SlaDisponibilite  [OK]
+  backend/django_core/apps/monitoring/models.py:232  monitoring.UnderperformanceFlag  [OK]
+  backend/django_core/apps/notifications/models.py:609  notifications.Annonce  [OK]
+  backend/django_core/apps/notifications/models.py:705  notifications.AnnonceLecture  [OK]
+  backend/django_core/apps/notifications/models.py:740  notifications.AnnonceRelance  [OK]
+  backend/django_core/apps/notifications/models.py:781  notifications.ApprovalReminderConfig  [OK]
+  backend/django_core/apps/notifications/models.py:812  notifications.ApprovalReminderState  [OK]
+  backend/django_core/apps/notifications/models.py:388  notifications.Holiday  [OK]
+  backend/django_core/apps/notifications/models.py:976  notifications.MarqueurEmissionBalayage  [OK]
+  backend/django_core/apps/notifications/models.py:905  notifications.MessageAccueil  [OK]
+  backend/django_core/apps/notifications/models.py:55  notifications.Notification  [OK]
+  backend/django_core/apps/notifications/models.py:119  notifications.NotificationPreference  [OK]
+  backend/django_core/apps/notifications/models.py:200  notifications.NotificationRoutingRule  [OK]
+  backend/django_core/apps/notifications/models.py:158  notifications.PushSubscription  [OK]
+  backend/django_core/apps/notifications/models.py:854  notifications.SnoozedItem  [OK]
+  backend/django_core/apps/notifications/models.py:257  notifications.VapidKeyPair  [EXEMPT]
+  backend/django_core/apps/notifications/models.py:953  notifications.WhatsAppInboundMessage  [OK]
+  backend/django_core/apps/notifications/models.py:523  notifications.WhatsAppMessageLog  [OK]
+  backend/django_core/apps/notifications/models.py:439  notifications.WhatsAppTemplate  [OK]
+  backend/django_core/apps/notifications/models.py:338  notifications.WorkingHoursConfig  [OK]
+  backend/django_core/apps/offlinesync/models.py:34  offlinesync.OfflineOperation  [OK]
+  backend/django_core/apps/onboarding/models.py:19  onboarding.OnboardingChecklistItem  [OK]
+  backend/django_core/apps/onboarding/models.py:83  onboarding.OnboardingProgress  [OK]
+  backend/django_core/apps/onboarding/models.py:119  onboarding.ProductTourStep  [OK]
+  backend/django_core/apps/onboarding/models.py:152  onboarding.TourProgress  [OK]
+  backend/django_core/apps/outillage/models.py:99  outillage.KitOutillage  [OK]
+  backend/django_core/apps/outillage/models.py:126  outillage.KitOutillageItem  [OK]
+  backend/django_core/apps/outillage/models.py:17  outillage.Outillage  [OK]
+  backend/django_core/apps/portail/models.py:157  portail.AcceptationDevisPortail  [OK]
+  backend/django_core/apps/portail/models.py:105  portail.ComptePortailClient  [OK]
+  backend/django_core/apps/portail/models.py:472  portail.DemandeTicketPortail  [OK]
+  backend/django_core/apps/portail/models.py:313  portail.DocumentClientPortail  [OK]
+  backend/django_core/apps/portail/models.py:547  portail.InvitationPortail  [OK]
+  backend/django_core/apps/portail/models.py:408  portail.JalonChantierPortail  [OK]
+  backend/django_core/apps/portail/models.py:229  portail.PaiementFacturePortail  [OK]
+  backend/django_core/apps/portail/models.py:50  portail.PreferencePortail  [OK]
+  backend/django_core/apps/publicapi/models.py:845  publicapi.ApiCallLog  [OK]
+  backend/django_core/apps/publicapi/models.py:674  publicapi.ApiEvent  [OK]
+  backend/django_core/apps/publicapi/models.py:73  publicapi.ApiKey  [OK]
+  backend/django_core/apps/publicapi/models.py:543  publicapi.BulkJob  [OK]
+  backend/django_core/apps/publicapi/models.py:349  publicapi.IdempotencyRecord  [OK]
+  backend/django_core/apps/publicapi/models.py:733  publicapi.OAuthClient  [OK]
+  backend/django_core/apps/publicapi/models.py:499  publicapi.SandboxTenant  [OK]
+  backend/django_core/apps/publicapi/models.py:400  publicapi.ServiceAccount  [OK]
+  backend/django_core/apps/publicapi/models.py:185  publicapi.Webhook  [OK]
+  backend/django_core/apps/publicapi/models.py:241  publicapi.WebhookDelivery  [OK]
+  backend/django_core/apps/publicapi/models.py:469  publicapi.WebhookDeliveryArchive  [EXEMPT]
+  backend/django_core/apps/publicapi/models.py:297  publicapi.WebhookDeliveryAttempt  [OK]
+  backend/django_core/apps/reporting/models.py:196  reporting.AccesRapportPartage  [OK]
+  backend/django_core/apps/reporting/models.py:670  reporting.ApprobationSlaConfig  [OK]
+  backend/django_core/apps/reporting/models.py:621  reporting.Classeur  [OK]
+  backend/django_core/apps/reporting/models.py:710  reporting.ClasseurPartageInterne  [OK]
+  backend/django_core/apps/reporting/models.py:340  reporting.DashboardConfig  [OK]
+  backend/django_core/apps/reporting/models.py:235  reporting.EnvoiRapport  [OK]
+  backend/django_core/apps/reporting/models.py:1013  reporting.JetonCalendrier  [OK]
+  backend/django_core/apps/reporting/models.py:413  reporting.KpiAlerte  [OK]
+  backend/django_core/apps/reporting/models.py:803  reporting.ProblemeClient  [OK]
+  backend/django_core/apps/reporting/models.py:948  reporting.RapportAbonnement  [OK]
+  backend/django_core/apps/reporting/models.py:890  reporting.RapportDefinition  [OK]
+  backend/django_core/apps/reporting/models.py:11  reporting.SavedReport  [OK]
+  backend/django_core/apps/reporting/models.py:756  reporting.WebVitalMetric  [OK]
+  backend/django_core/apps/sav/models.py:1954  sav.AlarmeOnduleur  [OK]
+  backend/django_core/apps/sav/models.py:307  sav.CategorieEquipement  [OK]
+  backend/django_core/apps/sav/models.py:2548  sav.CategorieTicket  [OK]
+  backend/django_core/apps/sav/models.py:2090  sav.CauseDefaillance  [OK]
+  backend/django_core/apps/sav/models.py:2349  sav.CompatibilitePiece  [OK]
+  backend/django_core/apps/sav/models.py:1578  sav.ContratMaintenance  [OK]
+  backend/django_core/apps/sav/models.py:628  sav.EquipeMaintenance  [OK]
+  backend/django_core/apps/sav/models.py:359  sav.Equipement  [OK]
+  backend/django_core/apps/sav/models.py:2292  sav.EquipementDowntime  [OK]
+  backend/django_core/apps/sav/models.py:2680  sav.EscaladeSlaNiveau  [OK]
+  backend/django_core/apps/sav/models.py:1533  sav.KbArticle  [OK]
+  backend/django_core/apps/sav/models.py:278  sav.MaintenanceChecklistItem  [OK]
+  backend/django_core/apps/sav/models.py:255  sav.MaintenanceChecklistTemplate  [OK]
+  backend/django_core/apps/sav/models.py:2248  sav.PieceConsommee  [OK]
+  backend/django_core/apps/sav/models.py:2398  sav.PieceRetiree  [OK]
+  backend/django_core/apps/sav/models.py:1907  sav.PrestationContrat  [OK]
+  backend/django_core/apps/sav/models.py:2482  sav.PretEquipement  [OK]
+  backend/django_core/apps/sav/models.py:2816  sav.Probleme  [OK]
+  backend/django_core/apps/sav/models.py:2883  sav.ProblemeIncident  [OK]
+  backend/django_core/apps/sav/models.py:581  sav.ReleveCompteurEquipement  [OK]
+  backend/django_core/apps/sav/models.py:2115  sav.RemedeDefaillance  [OK]
+  backend/django_core/apps/sav/models.py:2140  sav.ReponseType  [OK]
+  backend/django_core/apps/sav/models.py:46  sav.SavSlaSettings  [OK]
+  backend/django_core/apps/sav/models.py:674  sav.Ticket  [OK]
+  backend/django_core/apps/sav/models.py:1372  sav.TicketActiviteAFaire  [OK]
+  backend/django_core/apps/sav/models.py:1291  sav.TicketActivity  [OK]
+  backend/django_core/apps/sav/models.py:1257  sav.TicketChecklistItem  [OK]
+  backend/django_core/apps/sav/models.py:2739  sav.TicketEmailThread  [OK]
+  backend/django_core/apps/sav/models.py:1427  sav.TicketFollower  [OK]
+  backend/django_core/apps/sav/models.py:2030  sav.TicketSatisfaction  [OK]
+  backend/django_core/apps/sav/models.py:2617  sav.TicketWorksheet  [OK]
+  backend/django_core/apps/sav/models.py:1460  sav.WarrantyClaim  [OK]
+  backend/django_core/apps/sav/models.py:2575  sav.WorksheetMaintenanceModele  [OK]
+  backend/django_core/apps/semantic/models.py:37  semantic.MetricDefinition  [OK]
+  backend/django_core/apps/semantic/models.py:201  semantic.MetricDefinitionVersion  [OK]
+  backend/django_core/apps/statuspage/models.py:24  statuspage.ComponentStatus  [OK]
+  backend/django_core/apps/statuspage/models.py:225  statuspage.ComponentStatusLog  [OK]
+  backend/django_core/apps/statuspage/models.py:73  statuspage.IncidentPublic  [OK]
+  backend/django_core/apps/statuspage/models.py:141  statuspage.IncidentUpdate  [OK]
+  backend/django_core/apps/statuspage/models.py:276  statuspage.StatusSubscriber  [EXEMPT]
+  backend/django_core/apps/statuspage/models.py:164  statuspage.UptimeDayBucket  [OK]
+  backend/django_core/apps/stock/models_rfa.py:16  stock.AccordRFAFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:427  stock.AchatsParametres  [OK]
+  backend/django_core/apps/stock/models.py:1738  stock.AcompteFournisseur  [OK]
+  backend/django_core/apps/stock/models_wms.py:604  stock.AffectationCrossDock  [OK]
+  backend/django_core/apps/stock/models_wms.py:669  stock.AlerteRappel  [OK]
+  backend/django_core/apps/stock/models_portail_fournisseur.py:77  stock.AnnonceLivraisonFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:1799  stock.AvoirFournisseur  [OK]
+  backend/django_core/apps/stock/models_wms.py:838  stock.BlocageQualite  [OK]
+  backend/django_core/apps/stock/models.py:2339  stock.BudgetDepartement  [OK]
+  backend/django_core/apps/stock/models.py:19  stock.Categorie  [OK]
+  backend/django_core/apps/stock/models.py:323  stock.CategorieFournisseur  [OK]
+  backend/django_core/apps/stock/models_hazmat.py:26  stock.CompatibiliteHazmatCasier  [OK]
+  backend/django_core/apps/stock/models_portail_fournisseur.py:22  stock.CompteFournisseurPortail  [OK]
+  backend/django_core/apps/stock/models.py:1188  stock.ConditionnementProduit  [OK]
+  backend/django_core/apps/stock/models.py:343  stock.ContactFournisseur  [OK]
+  backend/django_core/apps/stock/models_qualite_reception.py:80  stock.ControleReception  [OK]
+  backend/django_core/apps/stock/models_consignation.py:73  stock.DeclarationConsommation  [OK]
+  backend/django_core/apps/stock/models_consignation.py:22  stock.DepotConsignation  [OK]
+  backend/django_core/apps/stock/models.py:618  stock.DocumentConformiteFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:2509  stock.DocumentFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:2461  stock.DossierOnboardingFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:1703  stock.EcheanceFactureFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:1406  stock.EmplacementStock  [OK]
+  backend/django_core/apps/stock/models.py:2399  stock.EngagementBudget  [OK]
+  backend/django_core/apps/stock/models_wms.py:477  stock.ExpeditionTransporteur  [OK]
+  backend/django_core/apps/stock/models.py:2579  stock.FavorisCatalogueAchat  [OK]
+  backend/django_core/apps/stock/models_fiche_technique.py:114  stock.FicheTechnique  [OK]
+  backend/django_core/apps/stock/models.py:88  stock.Fournisseur  [OK]
+  backend/django_core/apps/stock/models_historique_casier.py:26  stock.HistoriqueCasier  [OK]
+  backend/django_core/apps/stock/models.py:1860  stock.ImputationAvoirFournisseur  [OK]
+  backend/django_core/apps/stock/models_incident_fournisseur.py:18  stock.IncidentQualiteFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:1961  stock.InventaireAnnuel  [OK]
+  backend/django_core/apps/stock/models.py:1892  stock.InventaireSession  [OK]
+  backend/django_core/apps/stock/models.py:2087  stock.KitComposant  [OK]
+  backend/django_core/apps/stock/models.py:2051  stock.KitProduit  [OK]
+  backend/django_core/apps/stock/models.py:1932  stock.LigneInventaire  [OK]
+  backend/django_core/apps/stock/models_wms.py:118  stock.LignePicking  [OK]
+  backend/django_core/apps/stock/models_wms.py:901  stock.LigneRetourClient  [OK]
+  backend/django_core/apps/stock/models.py:1232  stock.LotEntrepot  [OK]
+  backend/django_core/apps/stock/models.py:685  stock.Marque  [OK]
+  backend/django_core/apps/stock/models.py:2187  stock.ModeleBonCommandeFournisseur  [OK]
+  backend/django_core/apps/stock/models.py:2219  stock.ModeleBonCommandeFournisseurLigne  [OK]
+  backend/django_core/apps/stock/models_wms.py:954  stock.MouvementRebut  [OK]
+  backend/django_core/apps/stock/models.py:1303  stock.MouvementStock  [OK]
+  backend/django_core/apps/stock/models.py:2242  stock.NomenclatureCodeBarres  [OK]
+  backend/django_core/apps/stock/models.py:1670  stock.PalierPrixFournisseur  [OK]
+  backend/django_core/apps/stock/models_negoce_params.py:16  stock.ParametresNegoce  [OK]
+  backend/django_core/apps/stock/models_catch_weight.py:23  stock.PeseeLigneReception  [OK]
+  backend/django_core/apps/stock/models_wms.py:1022  stock.PlanChargement  [OK]
+  backend/django_core/apps/stock/models_wms.py:546  stock.PlanComptageTournant  [OK]
+  backend/django_core/apps/stock/models_qualite_reception.py:23  stock.PlanEchantillonnage  [OK]
+  backend/django_core/apps/stock/models.py:281  stock.PortailFournisseurToken  [OK]
+  backend/django_core/apps/stock/models_wms.py:729  stock.PortailTiersToken  [OK]
+  backend/django_core/apps/stock/models.py:705  stock.Produit  [OK]
+  backend/django_core/apps/stock/models.py:1508  stock.ProfilSaisonnier  [OK]
+  backend/django_core/apps/stock/models_wms.py:298  stock.Quai  [OK]
+  backend/django_core/apps/stock/models.py:2277  stock.RegleCodeBarres  [OK]
+  backend/django_core/apps/stock/models_wms.py:328  stock.RendezVousTransporteur  [OK]
+  backend/django_core/apps/stock/models_wms.py:778  stock.RetourClient  [OK]
+  backend/django_core/apps/stock/models.py:2000  stock.RevalorisationStock  [OK]
+  backend/django_core/apps/stock/models.py:2139  stock.RevisionKit  [OK]
+  backend/django_core/apps/stock/models_reappro_casier.py:26  stock.SeuilReapproCasier  [OK]
+  backend/django_core/apps/stock/models.py:368  stock.SousTraitantProfile  [OK]
+  backend/django_core/apps/stock/models.py:1459  stock.StockEmplacement  [OK]
+  backend/django_core/apps/stock/models_van_sales.py:14  stock.StockVehicule  [OK]
+  backend/django_core/apps/stock/models_reappro_casier.py:68  stock.TacheReapproInterne  [OK]
+  backend/django_core/apps/stock/models.py:577  stock.ToleranceRapprochementCategorie  [OK]
+  backend/django_core/apps/stock/models.py:1582  stock.TransfertStock  [OK]
+  backend/django_core/apps/stock/models_wms.py:174  stock.UniteLogistique  [OK]
+  backend/django_core/apps/stock/models_wms.py:252  stock.UniteLogistiqueLigne  [OK]
+  backend/django_core/apps/stock/models_wms.py:52  stock.VaguePicking  [OK]
+  backend/django_core/apps/tiers/models.py:17  tiers.Tiers  [OK]
+  backend/django_core/apps/trash/models.py:37  trash.ElementSupprime  [OK]
+  backend/django_core/apps/uxviews/models.py:178  uxviews.EcranRecent  [OK]
+  backend/django_core/apps/uxviews/models.py:59  uxviews.FavoriUtilisateur  [OK]
+  backend/django_core/apps/uxviews/models.py:19  uxviews.SavedView  [OK]
+  backend/django_core/apps/uxviews/models.py:121  uxviews.UxParametres  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:607  ventes.AbandonCreance  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:418  ventes.AffectationPaiement  [OK]
+  backend/django_core/apps/ventes/models_commissioning.py:153  ventes.AsBuiltPack  [OK]
+  backend/django_core/apps/ventes/models_commissioning.py:206  ventes.AttestationConformite  [OK]
+  backend/django_core/apps/ventes/models_commissioning.py:342  ventes.AttestationRE  [OK]
+  backend/django_core/apps/ventes/models.py:930  ventes.AvenantDevis  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:141  ventes.BonCommande  [OK]
+  backend/django_core/apps/ventes/models_commissioning.py:22  ventes.CommissioningTest  [OK]
+  backend/django_core/apps/ventes/models.py:854  ventes.ConfigurationDevisSnapshot  [OK]
+  backend/django_core/apps/ventes/models.py:37  ventes.Devis  [OK]
+  backend/django_core/apps/ventes/models.py:975  ventes.DevisActivity  [OK]
+  backend/django_core/apps/ventes/models.py:1828  ventes.DevisNudgeLog  [OK]
+  backend/django_core/apps/ventes/models.py:1737  ventes.DevisPreset  [OK]
+  backend/django_core/apps/ventes/models.py:1466  ventes.DevisSignature  [OK]
+  backend/django_core/apps/ventes/models_preuves.py:201  ventes.DevisSignatureArchivee  [OK]
+  backend/django_core/apps/ventes/models_regulatory.py:187  ventes.DossierChecklistItem  [OK]
+  backend/django_core/apps/ventes/models_regulatory.py:252  ventes.DossierExchange  [OK]
+  backend/django_core/apps/ventes/models.py:1013  ventes.EmailLog  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:27  ventes.FactureActivity  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:1065  ventes.FacturePenalite  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:98  ventes.FactureSource  [OK]
+  backend/django_core/apps/ventes/models.py:1895  ventes.FicheTechnique  [OK]
+  backend/django_core/apps/ventes/models_commissioning.py:85  ventes.IVCurveCapture  [OK]
+  backend/django_core/apps/ventes/models.py:599  ventes.LigneDevis  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:1045  ventes.LigneLivraisonBC  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:522  ventes.LigneNoteDebit  [OK]
+  backend/django_core/apps/ventes/models.py:2083  ventes.LignePrixListe  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:882  ventes.LigneRemiseEncaissement  [OK]
+  backend/django_core/apps/ventes/models.py:2039  ventes.ListePrix  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:1015  ventes.LivraisonBC  [OK]
+  backend/django_core/apps/ventes/models.py:892  ventes.LotDevis  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:939  ventes.MandatPaiement  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:452  ventes.NoteDebit  [OK]
+  backend/django_core/apps/ventes/models.py:2172  ventes.PalierRemiseVolume  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:683  ventes.ParametrageRelanceClient  [OK]
+  backend/django_core/apps/ventes/models.py:2390  ventes.ParametresGammes  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:715  ventes.PaymentLink  [OK]
+  backend/django_core/apps/ventes/models.py:2232  ventes.PlanCommission  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:66  ventes.ProformaDocument  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:646  ventes.PromessePaiement  [OK]
+  backend/django_core/apps/ventes/models.py:2106  ventes.RegleListePrix  [OK]
+  backend/django_core/apps/ventes/models_regulatory.py:372  ventes.Regularisation8221  [OK]
+  backend/django_core/apps/ventes/models_regulatory.py:70  ventes.RegulatoryDossier  [OK]
+  backend/django_core/apps/ventes/models_releve.py:32  ventes.ReleveImportSession  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:814  ventes.RemiseEncaissement  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:554  ventes.RetenueSubie  [OK]
+  backend/django_core/apps/ventes/models.py:1095  ventes.ShareLink  [OK]
+  backend/django_core/apps/ventes/models_regulatory.py:306  ventes.SubventionDossier  [OK]
+  backend/django_core/apps/ventes/models_facturation.py:981  ventes.TentativeDebitMandat  [OK]
+  backend/django_core/apps/ventes/models_commissioning.py:272  ventes.TestPerformanceReception  [OK]
+  backend/django_core/apps/ventes/models_coherence.py:23  ventes.ViolationCoherence  [OK]
+  backend/django_core/apps/visites/models.py:202  visites.VisiteMedia  [OK]
+  backend/django_core/apps/visites/models.py:44  visites.VisiteTerrain  [OK]
+
+check_company_fk: OK — every business model is company-scoped (directly, transitively, or exempted).
+
+
+==> OK : garde scripts/check_company_fk.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_company_fk -v    [copie: depot]  rc=0
+test_depot_reel_vert (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_depot_reel_vert) ... ok
+test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent)
+Point fixe de `resolve_has_company` retiré ⇒ LigneFacture MISSING, échec. ... ok
+test_modele_metier_sans_societe_rougit (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_modele_metier_sans_societe_rougit)
+Mutant `if not ok and key not in exempt:` → `if False:` ⇒ rc 0, échec. ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.239s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « if not ok and key not in exempt → if False » : scripts/check_company_fk.py
+    - '        if not ok and key not in exempt:'
+    + '        if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_company_fk -v    [copie: depot]  rc=1
+test_depot_reel_vert (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_depot_reel_vert) ... ok
+test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent)
+Point fixe de `resolve_has_company` retiré ⇒ LigneFacture MISSING, échec. ... ok
+test_modele_metier_sans_societe_rougit (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_modele_metier_sans_societe_rougit)
+Mutant `if not ok and key not in exempt:` → `if False:` ⇒ rc 0, échec. ... FAIL
+
+======================================================================
+FAIL: test_modele_metier_sans_societe_rougit (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_modele_metier_sans_societe_rougit)
+Mutant `if not ok and key not in exempt:` → `if False:` ⇒ rc 0, échec.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_company_fk.py", line 46, in test_modele_metier_sans_societe_rougit
+    self.assertEqual(rc, 1, sortie)
+AssertionError: 0 != 1 : check_company_fk: scanned 1 model(s) across business apps.
+  backend/django_core/apps/zzfake/models.py:5  zzfake.Facture  [MISSING]
+
+check_company_fk: OK — every business model is company-scoped (directly, transitively, or exempted).
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.257s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « if not ok and key not in exempt → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_modele_metier_sans_societe_rougit (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_modele_metier_sans_societe_rougit)
+
+--- mutant « point fixe de resolve_has_company retiré » : scripts/check_company_fk.py
+    - '    changed = True\n    while changed:\n        changed = False\n        for key, info in graph.items():'
+    + '    changed = False\n    while changed:\n        changed = False\n        for key, info in graph.items():'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_company_fk -v    [copie: depot]  rc=1
+test_depot_reel_vert (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_depot_reel_vert) ... FAIL
+test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent)
+Point fixe de `resolve_has_company` retiré ⇒ LigneFacture MISSING, échec. ... 
+  test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent) (source='class Facture(models.Model):')
+Point fixe de `resolve_has_company` retiré ⇒ LigneFacture MISSING, échec. ... FAIL
+test_modele_metier_sans_societe_rougit (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_modele_metier_sans_societe_rougit)
+Mutant `if not ok and key not in exempt:` → `if False:` ⇒ rc 0, échec. ... ok
+
+======================================================================
+FAIL: test_depot_reel_vert (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_depot_reel_vert)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_company_fk.py", line 65, in test_depot_reel_vert
+    self.assertEqual(rc, 0, sortie.getvalue()[-2000:])
+AssertionError: 1 != 0 :  scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/stock/models.py:2277: stock.RegleCodeBarres has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/ventes/models.py:599: ventes.LigneDevis has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/ventes/models_facturation.py:1045: ventes.LigneLivraisonBC has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/ventes/models_facturation.py:522: ventes.LigneNoteDebit has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/ventes/models.py:2083: ventes.LignePrixListe has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/ventes/models_facturation.py:882: ventes.LigneRemiseEncaissement has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+  - backend/django_core/apps/ventes/models.py:2106: ventes.RegleListePrix has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+
+Fix by adding a `company` FK (or a FK to a company-scoped model), inheriting core.models.TenantModel, or — if this is genuinely a foundation/global model — add its 'app.Model' key to scripts/exceptions_permanentes.yml (tenant_exempt_models) after review.
+
+
+======================================================================
+FAIL: test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent) (source='class Facture(models.Model):')
+Point fixe de `resolve_has_company` retiré ⇒ LigneFacture MISSING, échec.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_company_fk.py", line 55, in test_fk_transitive_et_exemption_passent
+    self.assertEqual(rc, 0, sortie)
+AssertionError: 1 != 0 : check_company_fk: scanned 2 model(s) across business apps.
+  backend/django_core/apps/zzfake/models.py:5  zzfake.Facture  [OK]
+  backend/django_core/apps/zzfake/models.py:9  zzfake.LigneFacture  [MISSING]
+
+check_company_fk: violation(s) found:
+  - backend/django_core/apps/zzfake/models.py:9: zzfake.LigneFacture has no company scope (no direct FK, no TenantModel base, no FK to a model that has one) and is not in scripts/exceptions_permanentes.yml (tenant_exempt_models).
+
+Fix by adding a `company` FK (or a FK to a company-scoped model), inheriting core.models.TenantModel, or — if this is genuinely a foundation/global model — add its 'app.Model' key to scripts/exceptions_permanentes.yml (tenant_exempt_models) after review.
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.248s
+
+FAILED (failures=2)
+
+
+==> OK : mutant « point fixe de resolve_has_company retiré » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_depot_reel_vert (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_depot_reel_vert); test_fk_transitive_et_exemption_passent (scripts.tests.test_check_company_fk.CheckCompanyFkTests.test_fk_transitive_et_exemption_passent)

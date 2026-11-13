@@ -1,0 +1,217 @@
+$ sonde docs/audits/sondes/ATST/C-ATST-004.py  rc=0
+@@S{"repro": false, "ci_exclut_tag_pdf": true, "tests_consommateurs_tagues_pdf_slow": 2, "tests_consommateurs_non_tagues": 1, "taggues": ["backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py::M10SectionsMasqueesTests.test_economies_decochees_aucun_montant_au_pdf", "backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py::M10SectionsMasqueesTests.test_cle_inconnue_ignoree_et_sans_option_rendu_inchange"], "non_taggues": ["backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py::M10SectionsMasqueesHtmlTests.test_economies_decochees_aucun_montant_au_html"]}
+
+
+==> OK : sonde C-ATST-004 rejouée ⇒ repro False (repro=False)
+
+$ /opt/venv/bin/python manage.py test apps.ventes.tests.test_moteur_zero_invention --keepdb --noinput -v 2 --exclude-tag=pdf --exclude-tag=slow    [checkout: django_core]  rc=0
+Excluding test tag(s): pdf, slow.
+Found 69 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, django, drf_spectacular, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: accessreview, achats, admin, adminops, adsengine, agent, agriculture, ai_governance, ao, assurances, audit, auth, authentication, automation, btp_chantier, calepinage, chat, compta, contacts, contenttypes, contrats, conversation_ai, core, cpq, credit, crm, customfields, dataimport, dataquality, datarooms, douane, ecommerce_connect, education, einvoice, entites, esg, extensions, facturation, fiscal, flotte, fpa, frais, ged, gestion_projet, grc, hospitality, identity, immobilier, innovation, installations, juridique, kb, litiges, marketing, migration, mlops, monitoring, mrp, notifications, offlinesync, onboarding, outillage, paie, parametres, portail, pos, promotions, publicapi, qhse, records, reporting, rh, roles, sante, sav, scm, semantic, sessions, statuspage, stock, territoires, tiers, token_blacklist, transport, trash, uxviews, veille_ao, ventes, visites, voip
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+  Generating charts...
+Using existing test database for alias 'default' ('test_erp_db')...
+System check identified some issues:
+
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+	HINT: Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+	HINT: Poser WHATSAPP_BSP_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+
+System check identified 2 issues (0 silenced).
+test_economies_decochees_aucun_montant_au_html (apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests.test_economies_decochees_aucun_montant_au_html) ... ok
+test_l_economie_estimee_porte_la_mention_sur_les_trois_pages (apps.ventes.tests.test_moteur_zero_invention.M10M11EstimationDivulgueeTests.test_l_economie_estimee_porte_la_mention_sur_les_trois_pages) ... ok
+test_l_economie_estimee_porte_la_mention_sur_une_page (apps.ventes.tests.test_moteur_zero_invention.M10M11EstimationDivulgueeTests.test_l_economie_estimee_porte_la_mention_sur_une_page) ... ok
+test_la_ligne_de_tarif_estimee_est_rendue_telle_quelle (apps.ventes.tests.test_moteur_zero_invention.M10M11EstimationDivulgueeTests.test_la_ligne_de_tarif_estimee_est_rendue_telle_quelle) ... ok
+test_sans_drapeau_aucune_mention_ajoutee (apps.ventes.tests.test_moteur_zero_invention.M10M11EstimationDivulgueeTests.test_sans_drapeau_aucune_mention_ajoutee) ... ok
+test_un_tarif_estime_n_est_jamais_dit_personnalise (apps.ventes.tests.test_moteur_zero_invention.M10M11EstimationDivulgueeTests.test_un_tarif_estime_n_est_jamais_dit_personnalise) ... ok
+test_avec_factures_reelles_la_carte_reste_celle_d_avant (apps.ventes.tests.test_moteur_zero_invention.M1FactureProxyTests.test_avec_factures_reelles_la_carte_reste_celle_d_avant) ... ok
+test_le_legacy_ne_plante_plus_sur_une_serie_absente (apps.ventes.tests.test_moteur_zero_invention.M1FactureProxyTests.test_le_legacy_ne_plante_plus_sur_une_serie_absente) ... ok
+test_sans_factures_le_document_n_imprime_aucune_facture_onee (apps.ventes.tests.test_moteur_zero_invention.M1FactureProxyTests.test_sans_factures_le_document_n_imprime_aucune_facture_onee) ... ok
+test_serie_absente_la_couche_economique_est_omise_en_place (apps.ventes.tests.test_moteur_zero_invention.M1FactureProxyTests.test_serie_absente_la_couche_economique_est_omise_en_place)
+M1 × Z2 — la dégradation VOULUE, dans sa forme la plus stricte. ... ok
+test_les_poids_derivent_de_la_table_ghi_verrouillee (apps.ventes.tests.test_moteur_zero_invention.M1GhiSourceUniqueTests.test_les_poids_derivent_de_la_table_ghi_verrouillee) ... ok
+test_public_views_importe_les_poids_au_lieu_de_les_recopier (apps.ventes.tests.test_moteur_zero_invention.M1GhiSourceUniqueTests.test_public_views_importe_les_poids_au_lieu_de_les_recopier) ... ok
+test_detection_panneau_elargie_aux_designations_reelles (apps.ventes.tests.test_moteur_zero_invention.M2PuissanceInventeeParLePrixTests.test_detection_panneau_elargie_aux_designations_reelles) ... ok
+test_puissance_connue_les_vignettes_restent (apps.ventes.tests.test_moteur_zero_invention.M2PuissanceInventeeParLePrixTests.test_puissance_connue_les_vignettes_restent) ... ok
+test_puissance_inconnue_le_document_n_imprime_ni_kwc_ni_panneaux (apps.ventes.tests.test_moteur_zero_invention.M2PuissanceInventeeParLePrixTests.test_puissance_inconnue_le_document_n_imprime_ni_kwc_ni_panneaux) ... ok
+test_puissance_inconnue_omet_production_et_economies (apps.ventes.tests.test_moteur_zero_invention.M2PuissanceInventeeParLePrixTests.test_puissance_inconnue_omet_production_et_economies) ... ok
+test_une_page_omet_le_resume_systeme_sans_puissance (apps.ventes.tests.test_moteur_zero_invention.M2PuissanceInventeeParLePrixTests.test_une_page_omet_le_resume_systeme_sans_puissance) ... ok
+test_la_designation_facturee_n_est_jamais_suffixee (apps.ventes.tests.test_moteur_zero_invention.M3WattNonLuTests.test_la_designation_facturee_n_est_jamais_suffixee) ... ok
+test_le_moteur_lit_le_watt_sans_repli_catalogue (apps.ventes.tests.test_moteur_zero_invention.M3WattNonLuTests.test_le_moteur_lit_le_watt_sans_repli_catalogue) ... ok
+test_watt_lu_la_puissance_unitaire_reste_imprimee (apps.ventes.tests.test_moteur_zero_invention.M3WattNonLuTests.test_watt_lu_la_puissance_unitaire_reste_imprimee) ... ok
+test_watt_non_lu_le_document_ecrit_n_panneaux_sans_puissance (apps.ventes.tests.test_moteur_zero_invention.M3WattNonLuTests.test_watt_non_lu_le_document_ecrit_n_panneaux_sans_puissance) ... ok
+test_watts_mixtes_kwc_somme_niveau_12 (apps.ventes.tests.test_moteur_zero_invention.M3WattNonLuTests.test_watts_mixtes_kwc_somme_niveau_12)
+AGNR69 (C-AGNR-VER4-030) — 10 × 550 W + 10 × 710 W : le kWc du ... ok
+test_branche_avec_affiche_l_economie_avec_batterie (apps.ventes.tests.test_moteur_zero_invention.M4UnePageMemeBrancheTests.test_branche_avec_affiche_l_economie_avec_batterie) ... ok
+test_branche_inconnue_omet_la_vignette (apps.ventes.tests.test_moteur_zero_invention.M4UnePageMemeBrancheTests.test_branche_inconnue_omet_la_vignette) ... ok
+test_branche_sans_affiche_l_economie_sans_batterie (apps.ventes.tests.test_moteur_zero_invention.M4UnePageMemeBrancheTests.test_branche_sans_affiche_l_economie_sans_batterie) ... ok
+test_jamais_le_maximum_des_deux_branches (apps.ventes.tests.test_moteur_zero_invention.M4UnePageMemeBrancheTests.test_jamais_le_maximum_des_deux_branches) ... ok
+test_la_garde_moyenne_tension_couvre_la_page_2 (apps.ventes.tests.test_moteur_zero_invention.M5CourbeVingtCinqAnsTests.test_la_garde_moyenne_tension_couvre_la_page_2) ... ok
+test_le_cumul_vient_du_cashflow_reel_pas_de_eco_fois_annee (apps.ventes.tests.test_moteur_zero_invention.M5CourbeVingtCinqAnsTests.test_le_cumul_vient_du_cashflow_reel_pas_de_eco_fois_annee) ... ok
+test_les_deux_series_gardent_26_points (apps.ventes.tests.test_moteur_zero_invention.M5CourbeVingtCinqAnsTests.test_les_deux_series_gardent_26_points) ... ok
+test_repli_sur_la_droite_quand_le_cumul_manque (apps.ventes.tests.test_moteur_zero_invention.M5CourbeVingtCinqAnsTests.test_repli_sur_la_droite_quand_le_cumul_manque) ... ok
+test_aucune_garantie_saisie_aucun_badge (apps.ventes.tests.test_moteur_zero_invention.M6GarantiesCodeesEnDurTests.test_aucune_garantie_saisie_aucun_badge) ... ok
+test_la_garantie_saisie_reste_affichee (apps.ventes.tests.test_moteur_zero_invention.M6GarantiesCodeesEnDurTests.test_la_garantie_saisie_reste_affichee) ... ok
+test_le_pourcentage_canadian_solar_ne_sort_plus_sur_un_autre_panneau (apps.ventes.tests.test_moteur_zero_invention.M6GarantiesCodeesEnDurTests.test_le_pourcentage_canadian_solar_ne_sort_plus_sur_un_autre_panneau) ... ok
+test_le_tableau_n_invente_plus_de_garantie_par_mot_cle (apps.ventes.tests.test_moteur_zero_invention.M6GarantiesCodeesEnDurTests.test_le_tableau_n_invente_plus_de_garantie_par_mot_cle) ... ok
+test_les_badges_reprennent_les_durees_des_fiches (apps.ventes.tests.test_moteur_zero_invention.M6GarantiesCodeesEnDurTests.test_les_badges_reprennent_les_durees_des_fiches) ... ok
+test_echeance_indeterminable_la_mention_disparait (apps.ventes.tests.test_moteur_zero_invention.M7DateDeValiditeTests.test_echeance_indeterminable_la_mention_disparait) ... ok
+test_le_bandeau_a_signer_porte_la_vraie_date (apps.ventes.tests.test_moteur_zero_invention.M7DateDeValiditeTests.test_le_bandeau_a_signer_porte_la_vraie_date) ... ok
+test_le_builder_lit_la_regle_d_expiration_du_backend (apps.ventes.tests.test_moteur_zero_invention.M7DateDeValiditeTests.test_le_builder_lit_la_regle_d_expiration_du_backend) ... ok
+test_le_pdf_imprime_l_echeance_reelle (apps.ventes.tests.test_moteur_zero_invention.M7DateDeValiditeTests.test_le_pdf_imprime_l_echeance_reelle) ... ok
+test_une_page_suit_la_meme_echeance (apps.ventes.tests.test_moteur_zero_invention.M7DateDeValiditeTests.test_une_page_suit_la_meme_echeance) ... ok
+test_le_stockage_se_deduit_de_la_capacite_batterie_reelle (apps.ventes.tests.test_moteur_zero_invention.M9AbattementBatterieTests.test_le_stockage_se_deduit_de_la_capacite_batterie_reelle)
+Sans ``stockage_present`` explicite, la présence de stockage se ... ok
+test_les_deux_hypotheses_cachees_sont_imprimees (apps.ventes.tests.test_moteur_zero_invention.M9AbattementBatterieTests.test_les_deux_hypotheses_cachees_sont_imprimees) ... ok
+test_sans_stockage_aucun_abattement (apps.ventes.tests.test_moteur_zero_invention.M9AbattementBatterieTests.test_sans_stockage_aucun_abattement) ... ok
+test_sans_stockage_l_hypothese_batterie_ne_s_affiche_pas (apps.ventes.tests.test_moteur_zero_invention.M9AbattementBatterieTests.test_sans_stockage_l_hypothese_batterie_ne_s_affiche_pas) ... ok
+test_aucun_onduleur_aucune_provision (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_aucun_onduleur_aucune_provision) ... ok
+test_la_legende_de_la_courbe_affiche_le_montant_provisionne (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_la_legende_de_la_courbe_affiche_le_montant_provisionne) ... ok
+test_le_builder_lit_le_prix_ttc_reel_des_lignes_onduleur (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_le_builder_lit_le_prix_ttc_reel_des_lignes_onduleur) ... ok
+test_le_creux_de_l_annee_12_vaut_le_prix_reel_de_l_onduleur (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_le_creux_de_l_annee_12_vaut_le_prix_reel_de_l_onduleur) ... ok
+test_le_montant_reel_est_imprime_dans_les_hypotheses (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_le_montant_reel_est_imprime_dans_les_hypotheses) ... ok
+test_sans_onduleur_le_document_dit_hors_provision (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_sans_onduleur_le_document_dit_hors_provision) ... ok
+test_sans_provision_la_legende_ne_mentionne_rien (apps.ventes.tests.test_moteur_zero_invention.Q1ProvisionOnduleurTests.test_sans_provision_la_legende_ne_mentionne_rien) ... ok
+test_deux_options_garde_la_serie_de_l_option_recommandee (apps.ventes.tests.test_moteur_zero_invention.Q2SerieDeLOptionChiffreeTests.test_deux_options_garde_la_serie_de_l_option_recommandee) ... ok
+test_mono_option_sans_batterie_lit_la_serie_sans (apps.ventes.tests.test_moteur_zero_invention.Q2SerieDeLOptionChiffreeTests.test_mono_option_sans_batterie_lit_la_serie_sans) ... ok
+test_un_seul_jeu_de_chiffres_par_document (apps.ventes.tests.test_moteur_zero_invention.Q2SerieDeLOptionChiffreeTests.test_un_seul_jeu_de_chiffres_par_document) ... ok
+test_ils_ne_sont_plus_dans_la_boite_conditions (apps.ventes.tests.test_moteur_zero_invention.Q5DelaisIndicatifsTests.test_ils_ne_sont_plus_dans_la_boite_conditions) ... ok
+test_le_renderer_residentiel_suit_le_meme_reglage (apps.ventes.tests.test_moteur_zero_invention.Q5DelaisIndicatifsTests.test_le_renderer_residentiel_suit_le_meme_reglage) ... ok
+test_les_delais_portent_la_mention_indicatif (apps.ventes.tests.test_moteur_zero_invention.Q5DelaisIndicatifsTests.test_les_delais_portent_la_mention_indicatif) ... ok
+test_un_reglage_vide_retire_le_delai_du_document (apps.ventes.tests.test_moteur_zero_invention.Q5DelaisIndicatifsTests.test_un_reglage_vide_retire_le_delai_du_document) ... ok
+test_la_donnee_locale_est_imprimee_avec_sa_source (apps.ventes.tests.test_moteur_zero_invention.Q6ProductibleLocalTests.test_la_donnee_locale_est_imprimee_avec_sa_source) ... ok
+test_le_builder_omet_hors_table_pvgis (apps.ventes.tests.test_moteur_zero_invention.Q6ProductibleLocalTests.test_le_builder_omet_hors_table_pvgis) ... ok
+test_le_cent_pour_cent_propre_n_est_plus_chiffre (apps.ventes.tests.test_moteur_zero_invention.Q6ProductibleLocalTests.test_le_cent_pour_cent_propre_n_est_plus_chiffre) ... ok
+test_le_slogan_national_a_disparu (apps.ventes.tests.test_moteur_zero_invention.Q6ProductibleLocalTests.test_le_slogan_national_a_disparu) ... ok
+test_une_ville_d_alias_nomme_sa_ville_de_reference (apps.ventes.tests.test_moteur_zero_invention.Q6ProductibleLocalTests.test_une_ville_d_alias_nomme_sa_ville_de_reference)
+QJR127 — « Settat » ne peut plus être nommée SOURCE PVGIS. ... ok
+test_ville_inconnue_la_phrase_s_omet (apps.ventes.tests.test_moteur_zero_invention.Q6ProductibleLocalTests.test_ville_inconnue_la_phrase_s_omet) ... ok
+test_l_etiquette_approximatif_a_disparu_du_document (apps.ventes.tests.test_moteur_zero_invention.Q7BaremeNationalUniqueTests.test_l_etiquette_approximatif_a_disparu_du_document) ... ok
+test_le_miroir_js_porte_la_meme_regle (apps.ventes.tests.test_moteur_zero_invention.Q7BaremeNationalUniqueTests.test_le_miroir_js_porte_la_meme_regle) ... ok
+test_meme_facture_quel_que_soit_le_distributeur (apps.ventes.tests.test_moteur_zero_invention.Q7BaremeNationalUniqueTests.test_meme_facture_quel_que_soit_le_distributeur) ... ok
+test_le_document_rendu_ne_porte_aucune_autre_devise (apps.ventes.tests.test_moteur_zero_invention.Q8DeviseTests.test_le_document_rendu_ne_porte_aucune_autre_devise) ... ok
+test_les_montants_sont_etiquetes_mad (apps.ventes.tests.test_moteur_zero_invention.Q8DeviseTests.test_les_montants_sont_etiquetes_mad) ... ok
+
+----------------------------------------------------------------------
+Ran 69 tests in 10.306s
+
+OK
+Preserving test database for alias 'default' ('test_erp_db')...
+
+
+==> OK : module joué comme un shard de fusion ⇒ vert, test_economies_decochees_aucun_montant_au_html ok (rc=0)
+
+$ /opt/venv/bin/python manage.py test apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests --keepdb --noinput -v 2 --exclude-tag=pdf --exclude-tag=slow    [copie: django_core]  rc=0
+Excluding test tag(s): pdf, slow.
+Found 1 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, django, drf_spectacular, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: accessreview, achats, admin, adminops, adsengine, agent, agriculture, ai_governance, ao, assurances, audit, auth, authentication, automation, btp_chantier, calepinage, chat, compta, contacts, contenttypes, contrats, conversation_ai, core, cpq, credit, crm, customfields, dataimport, dataquality, datarooms, douane, ecommerce_connect, education, einvoice, entites, esg, extensions, facturation, fiscal, flotte, fpa, frais, ged, gestion_projet, grc, hospitality, identity, immobilier, innovation, installations, juridique, kb, litiges, marketing, migration, mlops, monitoring, mrp, notifications, offlinesync, onboarding, outillage, paie, parametres, portail, pos, promotions, publicapi, qhse, records, reporting, rh, roles, sante, sav, scm, semantic, sessions, statuspage, stock, territoires, tiers, token_blacklist, transport, trash, uxviews, veille_ao, ventes, visites, voip
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
+Using existing test database for alias 'default' ('test_erp_db')...
+System check identified some issues:
+
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+	HINT: Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+	HINT: Poser WHATSAPP_BSP_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+
+System check identified 2 issues (0 silenced).
+test_economies_decochees_aucun_montant_au_html (apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests.test_economies_decochees_aucun_montant_au_html) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.789s
+
+OK
+Preserving test database for alias 'default' ('test_erp_db')...
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « ligne masquer_economies |= … sections_masquees supprimée » : backend/django_core/apps/ventes/quote_engine/etude_chiffrage.py
+    - 'masquer_economies |= "economies" in opts.get("sections_masquees", ())'
+    + 'pass  # mutant ATST22'
+
+$ /opt/venv/bin/python manage.py test apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests --keepdb --noinput -v 2 --exclude-tag=pdf --exclude-tag=slow    [copie: django_core]  rc=1
+Excluding test tag(s): pdf, slow.
+Found 1 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, django, drf_spectacular, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: accessreview, achats, admin, adminops, adsengine, agent, agriculture, ai_governance, ao, assurances, audit, auth, authentication, automation, btp_chantier, calepinage, chat, compta, contacts, contenttypes, contrats, conversation_ai, core, cpq, credit, crm, customfields, dataimport, dataquality, datarooms, douane, ecommerce_connect, education, einvoice, entites, esg, extensions, facturation, fiscal, flotte, fpa, frais, ged, gestion_projet, grc, hospitality, identity, immobilier, innovation, installations, juridique, kb, litiges, marketing, migration, mlops, monitoring, mrp, notifications, offlinesync, onboarding, outillage, paie, parametres, portail, pos, promotions, publicapi, qhse, records, reporting, rh, roles, sante, sav, scm, semantic, sessions, statuspage, stock, territoires, tiers, token_blacklist, transport, trash, uxviews, veille_ao, ventes, visites, voip
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
+Using existing test database for alias 'default' ('test_erp_db')...
+System check identified some issues:
+
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+	HINT: Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+	HINT: Poser WHATSAPP_BSP_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+
+System check identified 2 issues (0 silenced).
+test_economies_decochees_aucun_montant_au_html (apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests.test_economies_decochees_aucun_montant_au_html) ... FAIL
+
+======================================================================
+FAIL: test_economies_decochees_aucun_montant_au_html (apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests.test_economies_decochees_aucun_montant_au_html)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-x3q2gol5/depot/backend/django_core/apps/ventes/tests/test_moteur_zero_invention.py", line 843, in test_economies_decochees_aucun_montant_au_html
+    self.assertIs(data_masque['masquer_economies'], True)
+AssertionError: False is not True
+
+----------------------------------------------------------------------
+Ran 1 test in 0.080s
+
+FAILED (failures=1)
+Preserving test database for alias 'default' ('test_erp_db')...
+
+
+==> OK : mutant « ligne masquer_economies |= … sections_masquees supprimée » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_economies_decochees_aucun_montant_au_html (apps.ventes.tests.test_moteur_zero_invention.M10SectionsMasqueesHtmlTests.test_economies_decochees_aucun_montant_au_html)

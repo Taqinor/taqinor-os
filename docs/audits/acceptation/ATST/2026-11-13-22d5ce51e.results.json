@@ -1,0 +1,379 @@
+{
+  "sha": "22d5ce51e72669f288d23df1f601dc69b93ab949",
+  "date": "2026-11-13",
+  "groupe": "ATST",
+  "verdict": "PASS",
+  "couvre": [
+    "ATST27",
+    "ATST41",
+    "ATST42",
+    "ATST43",
+    "ATST44",
+    "ATST45",
+    "ATST46",
+    "ATST47",
+    "ATST48",
+    "ATST49",
+    "ATST50",
+    "ATST51",
+    "ATST52",
+    "ATST53",
+    "ATST21",
+    "ATST22"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF7.3-ATST27",
+      "taches": [
+        "ATST27"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ATST-PF7.3-ATST27.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF7.4-ATST41",
+      "taches": [
+        "ATST41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST41.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK sonde C-ATST-006 rejouée ⇒ repro False (repro=False) ; OK garde branchée : scripts.tests.test_ci_guards.ToutEstBrancheTests (rc=0) ; OK module scripts.tests.test_check_company_fk sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_company_fk.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « if not ok and key not in exempt → if False » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « point fixe de resolve_has_company retiré » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST42",
+      "taches": [
+        "ATST42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST42.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK tests de la garde (scripts.tests.test_nightly_alert_gate) (rc=0) ; OK tests du workflow (scripts.tests.test_release_verify_workflow) (rc=0) ; OK lecture seule de l'issue #726 ; OK le dernier commentaire nomme les jobs rouges (« Jobs non verts : … ») ; OK run nocturne 43411063219 lu ; OK jobs nommés ['e2e-full'] == jobs non verts du run ['e2e-full'] ; OK run planifié (schedule) ; OK le nocturne lu contient le commit ATST42 e1bb12cca (compare : ahead)"
+    },
+    {
+      "id": "PF7.4-ATST43",
+      "taches": [
+        "ATST43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST43.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_read_modify_write sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_read_modify_write.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « check_file : if _function_saves_var(...) → if False » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « main : if offenders → if False » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST44",
+      "taches": [
+        "ATST44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST44.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_invariants sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_invariants.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « main : if not _find_method_in_class(...) → if False » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST45",
+      "taches": [
+        "ATST45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST45.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_tests_sautes_environnement sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_tests_sautes_environnement.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « non_signes = [] » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « {\"skipTest\", \"skip\"} → {\"skip\"} » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST46",
+      "taches": [
+        "ATST46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST46.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_odoo_writes sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_odoo_writes.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « main sans _verifier_appels » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « main sans _verifier_allowlist_execution » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « main sans _verifier_transports_declares » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « main sans _verifier_module_dormant » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « main : if echecs → if False » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST47",
+      "taches": [
+        "ATST47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST47.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_unique_scoping sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_unique_scoping.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « for path in [] » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « if True: continue » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST48",
+      "taches": [
+        "ATST48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST48.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_action_permission_override sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_action_permission_override.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « for path in [] » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « contrôle RAISON_MIN neutralisé » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST49",
+      "taches": [
+        "ATST49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST49.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_money_rounding sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_money_rounding.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « sites = scan() → sites = [] » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST50",
+      "taches": [
+        "ATST50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST50.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_mouvement_stock_service sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_mouvement_stock_service.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « for path in _iter_source_files() → for path in [] » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST51",
+      "taches": [
+        "ATST51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST51.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK Django NON importable sur ce runner (comme le job stage-names) ; OK test_table_django_figee « ok », pas « skipped », sans Django (rc=0) ; OK garde sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « .strip(\"-_\") → .strip(\"-\") » sur la copie ⇒ module ROUGE (rc=1) ; OK dernière fusion verte de main lue ; OK journal stage-names de la fusion : test_table_django_figee « ok », pas « skipped »"
+    },
+    {
+      "id": "PF7.4-ATST52",
+      "taches": [
+        "ATST52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST52.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK garde branchée : scripts.tests.test_ci_guards.ToutEstBrancheTests (rc=0) ; OK module scripts.tests.test_check_no_anon_snapshot sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_no_anon_snapshot.py sur le dépôt réel ⇒ 0 (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « offending rend [] » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « except qui rend 0 » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.4-ATST53",
+      "taches": [
+        "ATST53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.4-ATST53.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (hote, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK module scripts.tests.test_check_tests_source_regex sur le dépôt ⇒ vert (rc=0) ; OK garde scripts/check_tests_source_regex.py sur le dépôt réel ⇒ 0 (rc=0) ; OK décomptes imprimés (front, back, codes) = ('131', '145', '13') ; bases {'scripts/tests_source_regex_allow.txt': 276, 'scripts/tests_permissions_hors_registre_allow.txt': 13} ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « scan_backend rend [] » sur la copie ⇒ module ROUGE (rc=1) ; OK mutant « tout code admis » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.1-ATST21",
+      "taches": [
+        "ATST21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.1-ATST21.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (django, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK sonde C-ATST-003 rejouée ⇒ repro False (repro=False) ; OK module joué comme un shard de fusion ⇒ vert, test_commercial_et_viewer_livres_refuses ok (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « « Commercial » ajouté au tuple de la garde par nom » sur la copie ⇒ module ROUGE (rc=1)"
+    },
+    {
+      "id": "PF7.3-ATST22",
+      "taches": [
+        "ATST22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-13/PF7.3-ATST22.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu runner (django, .github/zz-scratch-atst/rejeu.py @ 22d5ce51e) : OK sonde C-ATST-004 rejouée ⇒ repro False (repro=False) ; OK module joué comme un shard de fusion ⇒ vert, test_economies_decochees_aucun_montant_au_html ok (rc=0) ; OK contrôle : copie NON mutée ⇒ vert (rc=0) ; OK mutant « ligne masquer_economies |= … sections_masquees supprimée » sur la copie ⇒ module ROUGE (rc=1)"
+    }
+  ]
+}

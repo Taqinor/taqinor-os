@@ -1,0 +1,352 @@
+$ sonde docs/audits/sondes/ATST/C-ATST-003.py  rc=0
+@@S{"repro": false, "raison": "VarianteConfigEndpointTests.test_viewer_forbidden n'existe plus"}
+
+
+==> OK : sonde C-ATST-003 rejouée ⇒ repro False (repro=False)
+
+$ /opt/venv/bin/python manage.py test apps.ventes.tests.test_qg9_variante_pct --keepdb --noinput -v 2 --exclude-tag=pdf --exclude-tag=slow    [checkout: django_core]  rc=0
+Excluding test tag(s): pdf, slow.
+Found 12 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, django, drf_spectacular, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: accessreview, achats, admin, adminops, adsengine, agent, agriculture, ai_governance, ao, assurances, audit, auth, authentication, automation, btp_chantier, calepinage, chat, compta, contacts, contenttypes, contrats, conversation_ai, core, cpq, credit, crm, customfields, dataimport, dataquality, datarooms, douane, ecommerce_connect, education, einvoice, entites, esg, extensions, facturation, fiscal, flotte, fpa, frais, ged, gestion_projet, grc, hospitality, identity, immobilier, innovation, installations, juridique, kb, litiges, marketing, migration, mlops, monitoring, mrp, notifications, offlinesync, onboarding, outillage, paie, parametres, portail, pos, promotions, publicapi, qhse, records, reporting, rh, roles, sante, sav, scm, semantic, sessions, statuspage, stock, territoires, tiers, token_blacklist, transport, trash, uxviews, veille_ao, ventes, visites, voip
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
+Using existing test database for alias 'default' ('test_erp_db')...
+System check identified some issues:
+
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+	HINT: Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+	HINT: Poser WHATSAPP_BSP_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+
+System check identified 2 issues (0 silenced).
+test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) ... Forbidden: /api/django/ventes/devis/variante-config/
+Forbidden: /api/django/ventes/devis/variante-config/
+ok
+test_commercial_responsable_can_change (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_responsable_can_change) ... ok
+test_company_scoped (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_company_scoped) ... ok
+test_corps_non_objet_ou_trop_precis_400 (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_corps_non_objet_ou_trop_precis_400) ... Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_directeur_can_change (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_directeur_can_change) ... ok
+test_get_default_open_to_all (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_get_default_open_to_all) ... ok
+test_invalid_pct_rejected (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_invalid_pct_rejected) ... Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_pct_non_fini_ou_illisible_400 (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_pct_non_fini_ou_illisible_400) ... Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_configured_pct_drives_scales (apps.ventes.tests.test_qg9_variante_pct.VariantePctScalingTests.test_configured_pct_drives_scales) ... Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential unnecessary eager load detected on `Devis.created_by`
+Potential unnecessary eager load detected on `Devis.superseded_by`
+Potential unnecessary eager load detected on `Devis.updated_by`
+Potential unnecessary eager load detected on `Devis.signature`
+Potential unnecessary eager load detected on `Devis.bon_commande`
+Potential unnecessary eager load detected on `Devis.lignes`
+Potential unnecessary eager load detected on `Produit.fiche_technique`
+Potential unnecessary eager load detected on `Devis.factures`
+Potential unnecessary eager load detected on `Devis.share_links`
+Potential unnecessary eager load detected on `Devis.installations`
+ok
+test_default_pct_is_20 (apps.ventes.tests.test_qg9_variante_pct.VariantePctScalingTests.test_default_pct_is_20) ... Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential unnecessary eager load detected on `Devis.created_by`
+Potential unnecessary eager load detected on `Devis.superseded_by`
+Potential unnecessary eager load detected on `Devis.updated_by`
+Potential unnecessary eager load detected on `Devis.signature`
+Potential unnecessary eager load detected on `Devis.bon_commande`
+Potential unnecessary eager load detected on `Devis.lignes`
+Potential unnecessary eager load detected on `Produit.fiche_technique`
+Potential unnecessary eager load detected on `Devis.factures`
+Potential unnecessary eager load detected on `Devis.share_links`
+Potential unnecessary eager load detected on `Devis.installations`
+ok
+test_request_override_explicit_scales (apps.ventes.tests.test_qg9_variante_pct.VariantePctScalingTests.test_request_override_explicit_scales) ... Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential unnecessary eager load detected on `Devis.created_by`
+Potential unnecessary eager load detected on `Devis.superseded_by`
+Potential unnecessary eager load detected on `Devis.updated_by`
+Potential unnecessary eager load detected on `Devis.signature`
+Potential unnecessary eager load detected on `Devis.bon_commande`
+Potential unnecessary eager load detected on `Devis.lignes`
+Potential unnecessary eager load detected on `Produit.fiche_technique`
+Potential unnecessary eager load detected on `Devis.factures`
+Potential unnecessary eager load detected on `Devis.share_links`
+Potential unnecessary eager load detected on `Devis.installations`
+ok
+test_request_override_variante_pct (apps.ventes.tests.test_qg9_variante_pct.VariantePctScalingTests.test_request_override_variante_pct) ... Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential n+1 query detected on `LigneDevis.produit`
+Potential unnecessary eager load detected on `Devis.created_by`
+Potential unnecessary eager load detected on `Devis.superseded_by`
+Potential unnecessary eager load detected on `Devis.updated_by`
+Potential unnecessary eager load detected on `Devis.signature`
+Potential unnecessary eager load detected on `Devis.bon_commande`
+Potential unnecessary eager load detected on `Devis.lignes`
+Potential unnecessary eager load detected on `Produit.fiche_technique`
+Potential unnecessary eager load detected on `Devis.factures`
+Potential unnecessary eager load detected on `Devis.share_links`
+Potential unnecessary eager load detected on `Devis.installations`
+ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 1.293s
+
+OK
+Preserving test database for alias 'default' ('test_erp_db')...
+
+
+==> OK : module joué comme un shard de fusion ⇒ vert, test_commercial_et_viewer_livres_refuses ok (rc=0)
+
+$ /opt/venv/bin/python manage.py test apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests --keepdb --noinput -v 2 --exclude-tag=pdf --exclude-tag=slow    [copie: django_core]  rc=0
+Excluding test tag(s): pdf, slow.
+Found 8 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, django, drf_spectacular, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: accessreview, achats, admin, adminops, adsengine, agent, agriculture, ai_governance, ao, assurances, audit, auth, authentication, automation, btp_chantier, calepinage, chat, compta, contacts, contenttypes, contrats, conversation_ai, core, cpq, credit, crm, customfields, dataimport, dataquality, datarooms, douane, ecommerce_connect, education, einvoice, entites, esg, extensions, facturation, fiscal, flotte, fpa, frais, ged, gestion_projet, grc, hospitality, identity, immobilier, innovation, installations, juridique, kb, litiges, marketing, migration, mlops, monitoring, mrp, notifications, offlinesync, onboarding, outillage, paie, parametres, portail, pos, promotions, publicapi, qhse, records, reporting, rh, roles, sante, sav, scm, semantic, sessions, statuspage, stock, territoires, tiers, token_blacklist, transport, trash, uxviews, veille_ao, ventes, visites, voip
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
+Using existing test database for alias 'default' ('test_erp_db')...
+System check identified some issues:
+
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+	HINT: Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+	HINT: Poser WHATSAPP_BSP_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+
+System check identified 2 issues (0 silenced).
+test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) ... Forbidden: /api/django/ventes/devis/variante-config/
+Forbidden: /api/django/ventes/devis/variante-config/
+ok
+test_commercial_responsable_can_change (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_responsable_can_change) ... ok
+test_company_scoped (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_company_scoped) ... ok
+test_corps_non_objet_ou_trop_precis_400 (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_corps_non_objet_ou_trop_precis_400) ... Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_directeur_can_change (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_directeur_can_change) ... ok
+test_get_default_open_to_all (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_get_default_open_to_all) ... ok
+test_invalid_pct_rejected (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_invalid_pct_rejected) ... Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_pct_non_fini_ou_illisible_400 (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_pct_non_fini_ou_illisible_400) ... Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.270s
+
+OK
+Preserving test database for alias 'default' ('test_erp_db')...
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « « Commercial » ajouté au tuple de la garde par nom » : backend/django_core/apps/ventes/views/devis.py
+    - "or role_nom in ('Directeur', 'Commercial responsable')"
+    + "or role_nom in ('Directeur', 'Commercial responsable', 'Commercial')"
+
+$ /opt/venv/bin/python manage.py test apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests --keepdb --noinput -v 2 --exclude-tag=pdf --exclude-tag=slow    [copie: django_core]  rc=1
+Excluding test tag(s): pdf, slow.
+Found 8 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, django, drf_spectacular, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: accessreview, achats, admin, adminops, adsengine, agent, agriculture, ai_governance, ao, assurances, audit, auth, authentication, automation, btp_chantier, calepinage, chat, compta, contacts, contenttypes, contrats, conversation_ai, core, cpq, credit, crm, customfields, dataimport, dataquality, datarooms, douane, ecommerce_connect, education, einvoice, entites, esg, extensions, facturation, fiscal, flotte, fpa, frais, ged, gestion_projet, grc, hospitality, identity, immobilier, innovation, installations, juridique, kb, litiges, marketing, migration, mlops, monitoring, mrp, notifications, offlinesync, onboarding, outillage, paie, parametres, portail, pos, promotions, publicapi, qhse, records, reporting, rh, roles, sante, sav, scm, semantic, sessions, statuspage, stock, territoires, tiers, token_blacklist, transport, trash, uxviews, veille_ao, ventes, visites, voip
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
+Using existing test database for alias 'default' ('test_erp_db')...
+System check identified some issues:
+
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+	HINT: Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+	HINT: Poser WHATSAPP_BSP_APP_SECRET dans le .env du serveur au prochain deploy (voir .env.example).
+
+System check identified 2 issues (0 silenced).
+test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) ... 
+  test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) (role='Commercial') ... FAIL
+Forbidden: /api/django/ventes/devis/variante-config/
+  test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) (role='Viewer') ... FAIL
+test_commercial_responsable_can_change (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_responsable_can_change) ... ok
+test_company_scoped (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_company_scoped) ... ok
+test_corps_non_objet_ou_trop_precis_400 (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_corps_non_objet_ou_trop_precis_400) ... Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_directeur_can_change (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_directeur_can_change) ... ok
+test_get_default_open_to_all (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_get_default_open_to_all) ... ok
+test_invalid_pct_rejected (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_invalid_pct_rejected) ... Bad Request: /api/django/ventes/devis/variante-config/
+ok
+test_pct_non_fini_ou_illisible_400 (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_pct_non_fini_ou_illisible_400) ... Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+Bad Request: /api/django/ventes/devis/variante-config/
+ok
+
+======================================================================
+FAIL: test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) (role='Commercial')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-x3q2gol5/depot/backend/django_core/apps/ventes/tests/test_qg9_variante_pct.py", line 146, in test_commercial_et_viewer_livres_refuses
+    self.assertEqual(self._put(user, 30).status_code, 403)
+AssertionError: 200 != 403
+
+======================================================================
+FAIL: test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses) (role='Viewer')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-x3q2gol5/depot/backend/django_core/apps/ventes/tests/test_qg9_variante_pct.py", line 147, in test_commercial_et_viewer_livres_refuses
+    self.assertEqual(
+AssertionError: Decimal('30.00') != Decimal('20')
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.228s
+
+FAILED (failures=2)
+Preserving test database for alias 'default' ('test_erp_db')...
+
+
+==> OK : mutant « « Commercial » ajouté au tuple de la garde par nom » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_commercial_et_viewer_livres_refuses (apps.ventes.tests.test_qg9_variante_pct.VarianteConfigEndpointTests.test_commercial_et_viewer_livres_refuses)
