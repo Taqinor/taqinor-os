@@ -725,6 +725,8 @@ def balayer_travaux_orphelins_task():
     from django.conf import settings
     from django.utils import timezone as dj_timezone
 
+    from authentication.selectors import active_companies
+
     from . import notify_registry
     from .export_registry import ExportReversibiliteRun
     from .models import BackgroundJob
@@ -734,8 +736,10 @@ def balayer_travaux_orphelins_task():
     titre = 'Un travail de fond a été interrompu'
     corps = 'Le traitement a été interrompu ; relancez-le.'
     runs = list(ExportReversibiliteRun.objects.filter(
+        company__in=active_companies(),
         statut=ExportReversibiliteRun.Statut.EN_COURS, updated_at__lt=seuil))
     jobs = list(BackgroundJob.objects.filter(
+        company__in=active_companies(),
         statut=BackgroundJob.STATUT_RUNNING, updated_at__lt=seuil))
     ExportReversibiliteRun.objects.filter(pk__in=[r.pk for r in runs]).update(
         statut=ExportReversibiliteRun.Statut.ECHEC)
