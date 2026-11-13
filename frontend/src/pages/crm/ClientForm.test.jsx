@@ -124,4 +124,23 @@ describe('CIQ422 — ClientForm : identité d’une entreprise', () => {
       expect(envois.liste[0].data).not.toHaveProperty(cle)
     }
   })
+
+  it('relevé mensuel automatique : cocher puis enregistrer envoie releve_mensuel_auto', async () => {
+    mockMatchMedia(false)
+    renderClientForm({ client: { ...entreprise, email: 'compta@exemple.ma', releve_mensuel_auto: false } })
+    const caseReleve = document.getElementById('cf-releve-mensuel')
+    expect(caseReleve.checked).toBe(false)
+    fireEvent.click(caseReleve)
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+    await waitFor(() => expect(envois.liste).toHaveLength(1))
+    expect(envois.liste[0].data.releve_mensuel_auto).toBe(true)
+    // Fiche rouverte avec l'état enregistré : case cochée ; sans y toucher,
+    // la clé n'est pas renvoyée.
+    cleanup()
+    renderClientForm({ client: { ...entreprise, releve_mensuel_auto: true } })
+    expect(document.getElementById('cf-releve-mensuel').checked).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+    await waitFor(() => expect(envois.liste).toHaveLength(2))
+    expect(envois.liste[1].data).not.toHaveProperty('releve_mensuel_auto')
+  })
 })
