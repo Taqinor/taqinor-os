@@ -20,7 +20,7 @@ import {
 // transport `fetch` : il n'utilise JAMAIS cette instance axios, donc
 // aucune récursion possible par cet intercepteur).
 import { signalerErreurRequete } from '../lib/journalProblemes'
-// COP-D2 — tampon de diagnostic en mémoire (assistant « Signaler un problème »).
+// COP-D2 — tampon de diagnostic en mémoire (assistant, « Signaler un bug »).
 import { noterRequete } from '../lib/tamponDiagnostic'
 
 const ORIGIN = originFrom(import.meta.env.VITE_API_URL)

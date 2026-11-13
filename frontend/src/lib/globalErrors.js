@@ -24,7 +24,7 @@ let _installed = false
 
 async function report(error) {
   console.error('[globalErrors]', error)
-  noterErreur({ genre: 'script', message: error?.message })
+  noterErreur({ genre: 'script', message: error?.message || String(error ?? '') })
   // YJPB1 — AVANT `captureException` : ce journal-ci est celui qui fonctionne
   // sans DSN Sentry, donc celui qui ne doit jamais dépendre de lui.
   signalerErreurScript(error, undefined, { sessionEstActive })
