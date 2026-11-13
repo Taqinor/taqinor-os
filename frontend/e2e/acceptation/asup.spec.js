@@ -724,14 +724,22 @@ sortie(dict(leads=[l.pk for l in leads], acts=[a.pk for a in acts], token=make_i
     // Le lead de A1 restauré (vraie route, par demo_admin) ⇒ A1 réapparaît.
     const r = await page.request.post(`${API}/crm/leads/${ids.leads[0]}/restaurer/`, T)
     expect(r.status(), `restaurer A1 : ${(await r.text()).slice(0, 200)}`).toBe(200)
-    expect((await file()).ids, 'A1 réapparaît').toEqual([ids.acts[0], ids.acts[2]])
+    // La restauration pose aussi la prochaine étape du lead (ACVI36, `assurer_prochaine_etape_apres_succes`) :
+    // tout à-faire EN PLUS des trois du jeu doit porter sur A1 (jamais sur A2, le supprimé).
+    const f2 = (await file()).ids
+    expect(f2.filter((x) => ids.acts.includes(x)), 'A1 réapparaît (A2 toujours absent)').toEqual([ids.acts[0], ids.acts[2]])
+    const extras = f2.filter((x) => !ids.acts.includes(x))
+    const cibles = await py(`from apps.records.models import Activity
+sortie(sorted(set(Activity.objects.filter(pk__in=${JSON.stringify(extras)}).values_list('object_id', flat=True))))`)
+    expect(cibles.filter((x) => x !== ids.leads[0]), `à-faire ajoutés par la restauration : seulement sur A1 (${extras})`).toEqual([])
+    ids.extras = extras
     await page.goto('/apps')
     await expect(page.locator('body')).toBeVisible()
   } finally {
     await co.ctx.dispose()
     await py(`from apps.crm.models import Lead
 from apps.records.models import Activity
-Activity.objects.filter(pk__in=${JSON.stringify(ids.acts)}).delete()
+Activity.objects.filter(pk__in=${JSON.stringify([...ids.acts, ...(ids.extras || [])])}).delete()
 for pk in ${JSON.stringify(ids.leads)}:
     try: Lead.all_objects.filter(pk=pk).delete()
     except Exception as exc: print('nettoyage', pk, exc)`)
