@@ -9,7 +9,7 @@ import { RECETTE_TRI_ETAT, RECETTE_RESULTATS } from '../../features/installation
 import {
   Button, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-  DialogFooter, Input, Textarea, Label,
+  DialogFooter, Input, Textarea, Label, useDirtyGuard, confirmLeaveIfDirty,
 } from '../../ui'
 
 const TRI_ETAT = RECETTE_TRI_ETAT
@@ -193,6 +193,10 @@ export default function RecettePompageDialog({
 }) {
   const [record, setRecord] = useState(recordInitial ?? null)
   const [etat, setEtat] = useState(() => etatDepuisRecord(recordInitial))
+  // AERR38 — mesures saisies non enregistrées : demander avant de fermer.
+  const [etatEnregistre, setEtatEnregistre] = useState(etat)
+  const dirty = JSON.stringify(etat) !== JSON.stringify(etatEnregistre)
+  useDirtyGuard(dirty)
   const [busy, setBusy] = useState(false)
   const [erreurs, setErreurs] = useState({ champs: {}, general: null })
 
@@ -214,6 +218,7 @@ export default function RecettePompageDialog({
       }
       const r = await installationsApi.updateRecettePompage(id, payloadDepuisEtat(etat))
       setRecord(r.data?.record ?? null)
+      setEtatEnregistre(etat)
       onSaved?.(r.data)
     } catch (err) {
       setErreurs(erreursDepuis(err))
@@ -230,7 +235,7 @@ export default function RecettePompageDialog({
   )
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Recette de pompage (IEC 62253)</DialogTitle>
