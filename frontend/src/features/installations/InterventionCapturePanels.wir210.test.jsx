@@ -50,6 +50,8 @@ const api = vi.hoisted(() => ({
   validerConsommation: vi.fn(),
   getFiche: vi.fn(),
   renseignerFiche: vi.fn(),
+  getReserves: vi.fn(),
+  ajouterReserve: vi.fn(),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
@@ -63,7 +65,7 @@ vi.mock('../../ui', async (importOriginal) => {
   return { ...actual, toast: { ...actual.toast, success: toasts.success, error: toasts.error } }
 })
 
-import { SerialsPanel, ConsommationPanel, FichePanel } from './InterventionCapturePanels'
+import { SerialsPanel, ConsommationPanel, FichePanel, ReservesPanel } from './InterventionCapturePanels'
 
 const INTERVENTION = { id: 42 }
 
@@ -141,7 +143,9 @@ describe('ConsommationPanel — WIR210 hors-ligne (F11)', () => {
     await user.type(champ, '12')
     await user.tab()
 
-    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('Mise à jour impossible.'))
+    // AERR86 — le toast global (intercepteur) dit la cause : aucun toast local en double.
+    await waitFor(() => expect(api.modifierLigneConsommation).toHaveBeenCalled())
+    expect(toasts.error).not.toHaveBeenCalled()
     expect(outbox.enqueue).not.toHaveBeenCalled()
   })
 })
@@ -278,5 +282,23 @@ describe('ConsommationPanel — AERR77 confirmation de validation', () => {
     await user.click(screen.getByRole('button', { name: 'Valider' }))
     await waitFor(() => expect(api.validerConsommation).toHaveBeenCalledTimes(1))
     expect(api.validerConsommation).toHaveBeenCalledWith(42)
+  })
+})
+
+// AERR86 — un refus serveur n'ajoute pas de toast local générique au toast global.
+describe('ReservesPanel — AERR86 pas de toast local en double', () => {
+  it('ajout de réserve refusé : aucun toast local, la saisie reste', async () => {
+    api.getReserves.mockResolvedValue({ data: [] })
+    api.ajouterReserve.mockRejectedValue({ response: { status: 400, data: { detail: 'Réserve déjà levée.' } } })
+    const user = userEvent.setup()
+    render(<ReservesPanel intervention={INTERVENTION} />)
+    const saisie = await screen.findByPlaceholderText(/Réserve à reprendre/)
+    await user.type(saisie, 'Câble manquant')
+    await user.click(screen.getByRole('button', { name: 'Ajouter la réserve' }))
+    await waitFor(() => expect(api.ajouterReserve).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Ajouter la réserve' })).not.toBeDisabled())
+    expect(toasts.error).not.toHaveBeenCalled()
+    expect(outbox.enqueue).not.toHaveBeenCalled()
+    expect(saisie).toHaveValue('Câble manquant')
   })
 })
