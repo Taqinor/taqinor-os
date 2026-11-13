@@ -678,7 +678,7 @@ export default function LeadsPage() {
     // AERR117 — l'intercepteur axios toaste DÉJÀ le refus : aucun second toast.
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-    } catch { /* refus déjà signalé par le toast global */ }
+    } catch { console.warn('LeadsPage (reassign) : refus déjà signalé par le toast global') }
   }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.

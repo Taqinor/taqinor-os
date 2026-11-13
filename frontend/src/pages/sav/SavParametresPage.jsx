@@ -16,6 +16,7 @@ import {
 import { BoutonsEdition } from './SavCommun'
 import SimpleRefListEditor from './SimpleRefListEditor'
 import { useConfirm } from '../../providers/confirm-context'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
 // pour le total.
@@ -318,7 +319,7 @@ function CompatibilitesPieceSection() {
     try {
       await savApi.deleteCompatibilitePiece(r.id)
       setLoading(true); load()
-    } catch { /* toast global d'erreur (axios) */ }
+    } catch (err) { toastErreurNonAffichee(err, 'Suppression impossible.') }
   }
 
   const produitOptions = (placeholder) => (

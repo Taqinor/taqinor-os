@@ -11,6 +11,7 @@ import { toast } from '../ui/Toaster'
 // `errorMessageFrom` ci-dessous ne fait plus que déléguer, pour ne rien
 // casser des appelants existants (signature/nom inchangés).
 import { apiErrorMessage } from './apiError'
+import { frenchError } from './frenchError'
 
 // VX196 — sonner ne rend qu'UNE région aria-live="polite" pour tous les
 // toasts : une erreur bloquante n'interrompt jamais le lecteur d'écran
@@ -40,6 +41,17 @@ export function toastSuccess(message, options = {}) {
 export function toastError(message, options = {}) {
   announceAssertive(message)
   return toast.error(message, options)
+}
+
+/**
+ * AERR86 — échec d'un geste dont l'intercepteur global (`api/axios.js`, L53) a
+ * déjà pu dire la cause : ne toaste (en français) que ce qu'il n'a PAS dit —
+ * 401/404, erreur hors requête — jamais un second toast pour le même refus.
+ */
+export function toastErreurNonAffichee(err, fallback) {
+  const status = err?.response?.status
+  const ditParLeGlobal = status ? status !== 401 && status !== 404 : Boolean(err?.isAxiosError || err?.config)
+  if (!ditParLeGlobal) toastError(frenchError(err, fallback))
 }
 
 /** Toast d'information neutre. `toast.info` (pas le `toast()` générique) pour

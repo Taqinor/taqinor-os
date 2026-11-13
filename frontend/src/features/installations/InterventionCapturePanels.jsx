@@ -26,6 +26,7 @@ import { withOfflineFallback, FIELD_OPS, queuePhoto } from './offline/fieldOutbo
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { apiErrorMessage } from '../../lib/apiError'
+import { toastErreurNonAffichee } from '../../lib/toast'
 import { useConfirm } from '../../providers/confirm-context'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
@@ -414,7 +415,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
         { baseUpdatedAt: li.date_modification })
       if (r.queued) toast.success(QUEUED_MSG)
       else await load()
-    } catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Mise à jour impossible.') } finally { setBusy(false) }
   }
   const addExtra = async () => {
     if (!extra.designation.trim()) return
@@ -424,7 +425,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
       setExtra({ designation: '', quantite_utilisee: '' })
       extraFirstRef.current?.focus()
       await load()
-    } catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Ajout impossible.') } finally { setBusy(false) }
   }
   const valider = async () => {
     // AERR77 — sortie de stock définitive (aucune dé-validation) : boîte nommée.
@@ -566,7 +567,7 @@ export function MemosPanel({ intervention, onChanged }) {
   const remove = suppression.remove
   const saveTranscript = async (mid, transcript) => {
     try { await installationsApi.modifierMemo(id, mid, transcript); await load() }
-    catch { /* AERR86 — le toast global dit la cause */ }
+    catch (err) { toastErreurNonAffichee(err, 'Édition impossible.') }
   }
 
   if (loading) return <PanelLoading label="mémos vocaux" />
@@ -633,12 +634,12 @@ export function ReservesPanel({ intervention, onChanged }) {
       setDesc(''); setCreerTicket(false); setCreerSuivi(false)
       if (r.queued) toast.success(QUEUED_MSG)
       await load(); onChanged?.()
-    } catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Ajout impossible.') } finally { setBusy(false) }
   }
   const resolve = async (rid) => {
     setBusy(true)
     try { await installationsApi.resoudreReserve(id, { reserve: rid, resolution: '' }); await load(); onChanged?.() }
-    catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    catch (err) { toastErreurNonAffichee(err, 'Résolution impossible.') } finally { setBusy(false) }
   }
 
   if (loading) return <PanelLoading label="réserves" />
@@ -696,7 +697,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
   const toggle = async (line, rendu) => {
     setBusy(true)
     try { await installationsApi.cocherToolReturn(id, { ligne: line, rendu }); await load() }
-    catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    catch (err) { toastErreurNonAffichee(err, 'Mise à jour impossible.') } finally { setBusy(false) }
   }
   const confirm = async () => {
     setBusy(true)
@@ -706,7 +707,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
       if (nr.length) toast.error(`Outils non rendus : ${nr.join(', ')}`)
       else toast.success("Retour d'outillage confirmé.")
       await load(); onChanged?.()
-    } catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Confirmation impossible.') } finally { setBusy(false) }
   }
 
   if (loading) return <PanelLoading label="retour d'outillage" />
@@ -751,7 +752,7 @@ export function SafetyPanel({ intervention, onChanged }) {
         FIELD_OPS.COCHER_SAFETY, { intervention: id, cle, coche })
       if (r.queued) toast.success(QUEUED_MSG)
       await load()
-    } catch { /* AERR86 — le toast global dit la cause */ } finally { setBusy(false) }
+    } catch (err) { toastErreurNonAffichee(err, 'Mise à jour impossible.') } finally { setBusy(false) }
   }
   const sign = async () => {
     setBusy(true)

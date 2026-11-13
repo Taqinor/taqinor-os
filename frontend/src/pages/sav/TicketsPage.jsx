@@ -29,7 +29,7 @@ import api from '../../api/axios'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
 import { downloadBlob } from '../../utils/downloadBlob'
-import { toastWithUndo } from '../../lib/toast'
+import { toastErreurNonAffichee, toastWithUndo } from '../../lib/toast'
 import { formatMAD, timeAgo } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
 import { fetchAllPages, lireToutesLesPages } from '../../utils/fetchAllPages'
@@ -1819,7 +1819,7 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
         onUndo: () => savApi.replanifierTicket(ticket.id, ancienne).then(() => onReload?.(), () => {}),
       })
       onReload?.()
-    } catch { /* toast global d'erreur */ }
+    } catch (err) { toastErreurNonAffichee(err, 'Replanification impossible.') }
   }, [onReload])
 
   return (
