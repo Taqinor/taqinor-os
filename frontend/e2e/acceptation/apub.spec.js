@@ -153,7 +153,7 @@ FlightPlan.objects.filter(pk=${p.id}).delete(); sortie(1)`)
 })
 
 // ── PF5.2 — APUB41 : « Couper le lien public » d'un rapport programmé ─────────────────────────────────
-etape('PF5.2-APUB41', ['APUB41'], async ({ page, suivi, testInfo }) => {
+etape('PF5.2-APUB41', ['APUB41'], async ({ page, testInfo }) => {
   const m = marque()
   const rap = await py(`from apps.reporting.models import SavedReport
 from apps.reporting.diffusion_views import make_report_token
@@ -484,7 +484,7 @@ sortie(dict(essais=s.otp_essais, expire=str(s.otp_expires_at)))`)
   expect(codesRecus(ADRESSE_OTP9).length, 'aucun e-mail au refus').toBe(1)
   expect(await etat(), 'destinataire relu : essais = 1, expiration inchangée').toEqual(apresEssai)
   // 61 s après le premier envoi : nouvel envoi accepté.
-  await v.page.waitForTimeout(Math.max(0, 61_500 - (Date.now() - t0)))
+  await expect.poll(() => Date.now() - t0, { message: 'fenêtre de renvoi de 60 s écoulée', timeout: 90_000, intervals: [1_000] }).toBeGreaterThan(61_500)
   await v.page.reload()
   const ok = v.page.waitForResponse((x) => x.url().includes(`/ged/signataire/${jeton}/`) && x.request().method() === 'POST')
   await v.page.getByRole('button', { name: 'Recevoir un code' }).click()
