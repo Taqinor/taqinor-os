@@ -136,6 +136,20 @@ class RafraichisseurTests(_Base):
         devis.refresh_from_db()
         self.assertGreater(devis.etude_params['etude_ci']['bilan']['production_kwh'], avant)
 
+    def test_taille_relue_sur_les_lignes_jamais_dite_saisie(self):
+        """DEV-202611-0037 (13/11/2026) — la taille que le rafraîchisseur
+        relit sur les LIGNES est de provenance « devis » (lignes du devis),
+        jamais « saisie » : aucun commercial ne l'a tapée."""
+        devis = self._devis()
+        rafraichir_etudes_du_devis(devis)
+        devis.refresh_from_db()
+        entrees = devis.etude_params['etude_ci']['entrees_resolues']
+        prov = entrees['taille_explicite_kwc']['provenance']
+        self.assertEqual(prov['origine'], 'devis')
+        self.assertEqual(prov['detail'], etude_ci.DETAIL_LIGNES_DU_DEVIS)
+        self.assertAlmostEqual(entrees['taille_explicite_kwc']['valeur'], 49.7, places=2)
+        self.assertNotEqual(entrees['mode']['provenance']['origine'], 'saisie')
+
     def test_second_appel_sans_changement_zero_ecriture(self):
         devis = self._devis()
         rafraichir_etudes_du_devis(devis)

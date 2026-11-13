@@ -380,16 +380,31 @@ def _couche_devis(res, devis):
         getattr(devis, 'updated_at', None))))
 
 
-def _couche_corps(res, corps):
+#: Détail de provenance du corps que le SERVEUR compose depuis le devis (mode
+#: du devis, taille relue sur ses lignes — rafraîchissement de l'étude,
+#: révision après visite) — jamais une saisie : DEV-202611-0037 (13/11/2026)
+#: affichait « saisi » sur 35,75 kWc qu'aucun commercial n'avait tapés.
+DETAIL_LIGNES_DU_DEVIS = 'relu sur le devis'
+
+
+def provenance_lignes_du_devis():
+    """La provenance du corps quand le serveur le compose depuis le devis."""
+    return _provenance('devis', DETAIL_LIGNES_DU_DEVIS, _aujourdhui().isoformat())
+
+
+def _couche_corps(res, corps, provenance=None):
     if isinstance(corps, dict):
-        res.poser_arbre(corps, _provenance('saisie', None, _aujourdhui().isoformat()))
+        res.poser_arbre(corps, provenance or _provenance(
+            'saisie', None, _aujourdhui().isoformat()))
 
 
-def resoudre_entrees(entrees, *, devis=None, lead=None):
+def resoudre_entrees(entrees, *, devis=None, lead=None, provenance_corps=None):
+    """``provenance_corps`` : celle du corps quand ce n'est PAS une saisie
+    (le serveur relit le devis) — défaut « saisie »."""
     res = _Resolution()
     _couche_lead(res, lead)
     _couche_devis(res, devis)
-    _couche_corps(res, entrees)
+    _couche_corps(res, entrees, provenance_corps)
     return res
 
 
@@ -1306,7 +1321,7 @@ def _alertes_postes(composition, avec):
 
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
                onduleurs_imposes=None, source_production_figee=None, option_avec_imposee=None,
-               production_figee_rasante=None, verdict_creation=None):
+               production_figee_rasante=None, verdict_creation=None, provenance_corps=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
 
     ``production_figee`` (CIQ119) : le bloc ``production`` déjà figé sur le
@@ -1320,6 +1335,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     quelle. ``production_figee_rasante`` (R1, B2) : la série rasante figée du
     devis (option « avec » logée au-delà de 30°). ``verdict_creation`` (R1,
     B1) : ``etude_params.taille_creation_ci``, relu en taille explicite.
+    ``provenance_corps`` : voir :func:`resoudre_entrees` (défaut « saisie »).
     """
     from apps.ventes import tarif_ci
     from apps.ventes.moteur_ci.composition import composer_ci
@@ -1331,7 +1347,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
 
     alertes, hypotheses = [], []
-    res = resoudre_entrees(entrees, devis=devis, lead=lead)
+    res = resoudre_entrees(entrees, devis=devis, lead=lead, provenance_corps=provenance_corps)
     mode = res.valeur('mode')
     if mode not in MODES:
         alertes.append(_alerte('mode_inconnu', 'mode',
@@ -1922,7 +1938,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
             source_production_figee=_source_production(existant),
             option_avec_imposee=imposee,
             production_figee_rasante=params.get(CLE_PRODUCTION_FIGEE_RASANTE),
-            verdict_creation=params.get(CLE_TAILLE_CREATION))
+            verdict_creation=params.get(CLE_TAILLE_CREATION),
+            provenance_corps=provenance_lignes_du_devis())
         if etude.get('bilan') is None:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,
