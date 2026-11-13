@@ -105,6 +105,9 @@ describe('ReglagesGabarits (ACAL242)', () => {
     expect(boite).toHaveTextContent(premier.intitule)
     await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
     expect(espions.supprimer).not.toHaveBeenCalled()
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     await userEvent.click(screen.getByTestId(`acal242-supprimer-${premier.id}`))
     boite = await screen.findByRole('alertdialog')
     await userEvent.click(within(boite).getByRole('button', { name: 'Supprimer' }))

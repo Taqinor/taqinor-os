@@ -38,6 +38,9 @@ describe('PanneauVente — AERR17 : « Confirmer l\'avoir » confirmé', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(ventesApi.confirmerAvoirRevision).not.toHaveBeenCalled()
 
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     await user.click(screen.getByRole('button', { name: /Confirmer l'avoir/ }))
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledWith(318))

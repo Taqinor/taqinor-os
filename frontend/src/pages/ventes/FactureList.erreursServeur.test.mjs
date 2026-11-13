@@ -25,5 +25,7 @@ test("sondage du PDF : l'erreur est affichée une fois et la boucle continue (AF
 })
 
 test('ERR-AFAC105-SQUELETTE : rafraîchir la liste ne démonte pas le formulaire ouvert', () => {
-  assert.match(src, /if \(loading && !showForm\) \{/)
+  // AERR1 — le squelette plein écran exige en plus une liste encore vide :
+  // la garde du formulaire ouvert reste en tête de la condition.
+  assert.match(src, /if \(loading && !showForm && factures\.length === 0\) \{/)
 })

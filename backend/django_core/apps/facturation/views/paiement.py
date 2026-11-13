@@ -157,7 +157,9 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # date stricts) : ``date_rejet: ""`` valait « aujourd'hui » en silence.
         corps = corps_valide(request, D.RejeterPaiementRequest)
         try:
-            rejeter_paiement(
+            # ACNC7 — le service relit le paiement sous verrou : on sérialise
+            # l'instance qu'il a écrite, jamais la copie lue avant.
+            paiement = rejeter_paiement(
                 paiement=paiement, motif=corps['motif'],
                 frais=corps.get('frais'), date_rejet=corps.get('date_rejet'),
                 user=request.user,
