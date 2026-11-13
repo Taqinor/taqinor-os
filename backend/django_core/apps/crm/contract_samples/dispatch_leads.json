@@ -66,6 +66,7 @@
         "nom": "Casa",
         "confirmation_responsable": true,
         "delai_minutes": 5,
+        "commercial_par_defaut": 4,
         "membres": [
           {
             "id": 2,
@@ -134,6 +135,7 @@
         "nom": "Casa",
         "confirmation_responsable": true,
         "delai_minutes": 5,
+        "commercial_par_defaut": 4,
         "membres": [
           {
             "id": 2,

@@ -100,6 +100,19 @@
   {
    "args": [],
    "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "authentication.customuser",
+    "verbose_name": "Commercial par défaut"
+   },
+   "nom": "commercial_par_defaut",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
     "auto_now_add": true
    },
    "nom": "date_creation",
