@@ -921,6 +921,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
         // arrivée entre-temps serait écrasée). Il se corrige par un mouvement
         // ou un ajustement d'inventaire tracé.
         ...(isEdit ? {} : { quantite_stock: parseInt(fields.quantite_stock) || 0 }),
+        ...(isEdit ? { lock_version: produit.lock_version } : {}),  // AERR76 — verrou optimiste (409 si modifié entre-temps)
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
         categorie_id:   fields.categorie_id   ? parseInt(fields.categorie_id)   : null,
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,
@@ -1090,7 +1091,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
         ? (Array.isArray(err.sku) ? err.sku[0] : err.sku)
         : null
       setFromResponse(
-        typeof skuMsg === 'string' ? { ...err, sku: frSkuMessage(skuMsg) } : err,
+        typeof skuMsg === 'string' ? { ...err, sku: frSkuMessage(skuMsg) } : (err?.code === 'conflit_version' ? { detail: err.detail } : err),
       )
     } finally {
       setSaving(false)

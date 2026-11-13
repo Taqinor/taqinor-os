@@ -132,6 +132,26 @@ describe('ASTK230 — champs maîtres saisissables', () => {
   })
 })
 
+describe('AERR76 — verrou de version à l’enregistrement', () => {
+  it('édition : payload avec lock_version ; 409 ⇒ fiche ouverte', async () => {
+    espionsStock.updateProduitApi.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'Modifié entre-temps.', code: 'conflit_version', lock_version: 4 } },
+    })
+    const onClose = vi.fn()
+    render(<ProduitForm produit={{ ...BATTERIE, lock_version: 3 }} onClose={onClose} onSaved={() => {}} />,
+      { wrapper: wrapperProduitForm })
+    await screen.findByText('Données maîtres')
+    await waitFor(() => expect(reseau.options).toHaveBeenCalledWith('/stock/produits/'))
+    fireEvent.change(screen.getByLabelText('Code-barres'), { target: { value: 'CB-NOUVEAU' } })
+    enregistrer()
+    await waitFor(() => expect(espionsStock.updateProduitApi).toHaveBeenCalled())
+    expect(dernierPatch()).toMatchObject({ lock_version: 3 })
+    expect(await screen.findByText('Modifié entre-temps.')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Code-barres')).toHaveValue('CB-NOUVEAU')
+  })
+})
+
 describe('CCAT5 — rôle de devis : libellés français et aide batterie C&I', () => {
   it('les options sont en français, le « Rôle effectif » aussi', async () => {
     await ouvrir({ ...BATTERIE, role_devis_effectif: 'onduleur_hybride', role_devis_source: 'déclaré' })
