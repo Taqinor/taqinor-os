@@ -176,13 +176,71 @@ class QueryConfirmLoopTests(unittest.TestCase):
 
     @staticmethod
     def _service_payload(collector):
+        from app.services.cartes import construire_cartes
         from app.services.sql_agent_service import SQLAgentService
         return {
             "answer": "ok", "sql_query": "", "data": None,
             "action_performed": bool(collector),
             "proposal": SQLAgentService._build_proposal_payload(collector),
             "result": SQLAgentService._build_result_payload(collector),
+            "cartes": construire_cartes(collector), "moteur": "langchain",
+            "evenement_id": 9001,
         }
+
+    def test_query_sert_toutes_les_cartes(self):
+        """COP-B1 — deux propositions dans un tour : DEUX cartes (avant, seule
+        la derniere etait confirmable) ; `proposal` reste la derniere."""
+        async def fake_query(question, user_id=None, company_id=None,
+                             action_ctx=None):
+            collector = []
+            for devis in (45, 46):
+                _at.run_catalogue_action(_ctx(), _CAT_PROPOSAL_PDF,
+                                         {"id": devis}, collector)
+            return self._service_payload(collector)
+
+        with mock.patch.object(_ep.sql_agent_service, "query", fake_query):
+            body = self.client.post("/sql-agent/query",
+                                    json={"question": "deux PDF"}).json()
+        self.assertEqual([c["type"] for c in body["cartes"]],
+                         ["proposition", "proposition"])
+        jetons = [c["confirm_token"] for c in body["cartes"]]
+        self.assertTrue(all(jetons) and jetons[0] != jetons[1])
+        self.assertEqual(body["proposal"]["confirm_token"], jetons[1])
+        self.assertEqual((body["moteur"], body["evenement_id"]), ("langchain", 9001))
+
+    def test_confirm_sert_la_carte_et_ecrit_l_historique(self):
+        """COP-B1 — `/confirm` sert `carte` (fabrique unique) et `suite` null
+        sous langchain ; l'action confirmee entre dans l'historique."""
+        collector = []
+        _at.run_catalogue_action(_ctx(), _CAT_PROPOSAL_PDF, {"id": 9}, collector)
+        historique = []
+        with mock.patch.object(_at, "fetch_catalogue", lambda c: _FULL_CATALOGUE), \
+                mock.patch.object(_at, "_django_call", lambda *a, **k: {
+                    "ok": True, "status": 200, "data": {"id": 9, "statut": "envoye"}}), \
+                mock.patch.object(_ep.sql_agent_service, "_ajouter_historique",
+                                  lambda uid, msgs: historique.append((uid, msgs))):
+            body = self.client.post("/sql-agent/confirm", json={
+                "token": collector[0]["confirm_token"]}).json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["carte"]["type"], "resultat")
+        self.assertEqual(body["carte"]["action_key"], "ventes.devis.proposal_pdf")
+        self.assertEqual(body["carte"]["donnees"], {"id": 9, "statut": "envoye"})
+        self.assertIsNone(body["suite"])
+        (uid, msgs), = historique
+        self.assertEqual((uid, msgs[0]["role"]), (1, "agent"))
+        self.assertIn("confirmée", msgs[0]["content"])
+        self.assertEqual(msgs[0]["cartes"], [body["carte"]])
+
+    def test_historique_rend_les_cartes_et_relit_l_ancien(self):
+        anciens = [{"role": "user", "content": "q"},
+                   {"role": "agent", "content": "r"},
+                   {"role": "agent", "content": "r2", "cartes": [{"type": "resultat"}]}]
+        with mock.patch.object(_ep.sql_agent_service, "_load_history",
+                               lambda uid: anciens):
+            body = self.client.get("/sql-agent/history").json()
+        self.assertEqual(body[0], {"role": "user", "content": "q"})
+        self.assertNotIn("cartes", body[1])
+        self.assertEqual(body[2]["cartes"], [{"type": "resultat"}])
 
     def test_outward_query_then_confirm(self):
         async def fake_query(question, user_id=None, company_id=None,
@@ -345,6 +403,90 @@ class RelevantTableSelectionTests(unittest.TestCase):
         self.assertTrue(tables)
         self.assertLessEqual(len(tables), 5)
         self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
+
+
+def _llm_simule(reponses):
+    """LLM simule (frontiere externe) : rend `reponses` (AIMessage, appels
+    d'outils compris) une a une ; journalise les messages recus."""
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+
+    class _Simule(GenericFakeChatModel):
+        recus: list = []
+
+        def bind_tools(self, tools, **kwargs):
+            self.recus.append(("outils", [t.name for t in tools]))
+            return self
+
+        def _generate(self, messages, *a, **k):
+            self.recus.append(("messages", list(messages)))
+            return super()._generate(messages, *a, **k)
+
+    # disable_streaming : l'executeur appelle `stream` ; un appel d'outil sans
+    # texte ne produirait aucun fragment sous le faux modele generique.
+    return _Simule(messages=iter(reponses), recus=[], disable_streaming=True)
+
+
+def _appel_outil(nom, args, ident="appel-1"):
+    from langchain_core.messages import AIMessage
+    return AIMessage(content="", tool_calls=[{"name": nom, "args": args, "id": ident}])
+
+
+def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
+          ctx=None):
+    """Un tour du VRAI `_run_agent` (executeur, outils, gardes) : seuls le
+    LLM, Django et Redis sont simules. Rend (sortie, historique ecrit, llm)."""
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import StaticPool
+    from app.services import metriques_gouvernees as mg
+    from app.services import sql_agent_service as svc
+
+    engine = create_engine("sqlite://", poolclass=StaticPool,
+                           connect_args={"check_same_thread": False})
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE crm_client (id INTEGER, nom TEXT)"))
+    service, ecrit, llm = svc.SQLAgentService(), [], _llm_simule(reponses)
+    patches = (
+        mock.patch.object(_ep._database, "create_sql_agent_engine", lambda: engine),
+        mock.patch.multiple(service, _load_history=lambda uid: list(historique),
+                            _ajouter_historique=lambda uid, m: ecrit.extend(m),
+                            _get_relevant_tables=lambda q: ["crm_client"]),
+        mock.patch.object(svc.SQLAgentService, "_build_llm",
+                          staticmethod(lambda provider=None: llm)),
+        mock.patch.object(mg, "outil_metrique_gouvernee", lambda c, a: None),
+        mock.patch.multiple(_at, fetch_catalogue=lambda c: list(catalogue),
+                            _proposal_redis=lambda: _FakeRedis(),
+                            ACTION_PROPOSAL_SECRET="sig-secret",
+                            _django_call=django or (lambda *a, **k: {
+                                "ok": True, "status": 200, "data": {}})),
+    )
+    with contextlib.ExitStack() as pile:
+        for p in patches:
+            pile.enter_context(p)
+        sortie = service._run_agent("Prépare ma relance", 7, 1, ctx, None,
+                                    contexte)
+    return sortie, ecrit, llm
+
+
+@unittest.skipUnless(_OK and _HAS_CLIENT, f"service indisponible: {_ERR}")
+class TourReelCartesTests(unittest.TestCase):
+    """COP-B1 — le vrai `_run_agent` rend toutes les cartes et les ecrit dans
+    l'historique avec la reponse."""
+
+    def test_cartes_du_tour_et_historique(self):
+        from langchain_core.messages import AIMessage
+        sortie, ecrit, _ = _tour(
+            [_appel_outil("crm_lead_list", {}),
+             _appel_outil("ventes_devis_proposal_pdf", {"id": 45}, "appel-2"),
+             AIMessage(content="Voici.")],
+            catalogue=_FULL_CATALOGUE, ctx=_ctx(),
+            django=lambda *a, **k: {"ok": True, "status": 200,
+                                    "data": [{"id": 1489}]})
+        self.assertEqual([c["type"] for c in sortie["cartes"]],
+                         ["resultat", "proposition"])
+        self.assertEqual(sortie["cartes"][0]["donnees"], {"lignes": [{"id": 1489}]})
+        self.assertEqual(sortie["moteur"], "langchain")
+        self.assertEqual(ecrit[1], {"role": "agent", "content": "Voici.",
+                                    "cartes": sortie["cartes"]})
 
 
 class ContexteEcranAic9Tests(unittest.TestCase):

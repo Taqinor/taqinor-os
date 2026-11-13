@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
 
+from app.services.cartes import construire_cartes
 from app.core.config import (
     CHAT_HISTORY_MAX,
     CHAT_HISTORY_TTL,
@@ -1410,17 +1411,25 @@ class SQLAgentService:
             return []
 
     def _save_history(
-        self, user_id: int, question: str, answer: str
+        self, user_id: int, question: str, answer: str,
+        cartes: list | None = None,
     ) -> None:
-        """Sauvegarde un echange dans Redis avec TTL 24h."""
+        """Sauvegarde un echange dans Redis avec TTL 24h. COP-B1 : le message
+        d'agent porte ses `cartes` (rejouees au rechargement de l'ecran)."""
+        self._ajouter_historique(user_id, [
+            {"role": "user", "content": question},
+            {"role": "agent", "content": answer, "cartes": list(cartes or [])},
+        ])
+
+    def _ajouter_historique(self, user_id: int, messages: list[dict]) -> None:
+        """Ajoute des messages a l'historique Redis (ecriture best-effort)."""
         try:
-            import json
             import redis as redis_lib
             r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
             key = self._history_key(user_id)
             pipe = r.pipeline()
-            pipe.rpush(key, json.dumps({"role": "user", "content": question}))
-            pipe.rpush(key, json.dumps({"role": "agent", "content": answer}))
+            for message in messages:
+                pipe.rpush(key, json.dumps(message, default=str))
             # Garde seulement les CHAT_HISTORY_MAX derniers messages
             pipe.ltrim(key, -CHAT_HISTORY_MAX, -1)
             # Renouvelle le TTL a chaque echange
@@ -1456,23 +1465,13 @@ class SQLAgentService:
         from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
         from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-        from langchain_core.messages import HumanMessage, AIMessage
         from app.services.action_tools import (
             actions_available, build_action_tools, outil_report_gap,
         )
+        from app.services import relais_copilote as relais
 
-        # 1. Historique Redis → messages LangChain (2 derniers echanges seulement)
-        # On limite volontairement pour eviter que d'anciens resultats incorrects
-        # contaminent les nouvelles questions. L'historique complet reste dans Redis
-        # pour l'affichage frontend, mais le LLM ne recoit que le contexte recent.
-        raw_history = self._load_history(user_id)
-        recent = raw_history[-4:] if len(raw_history) >= 4 else raw_history
-        lc_history = []
-        for msg in recent:
-            if msg.get("role") == "user":
-                lc_history.append(HumanMessage(content=msg["content"]))
-            elif msg.get("role") == "agent":
-                lc_history.append(AIMessage(content=msg["content"]))
+        # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
+        lc_history = relais.historique_langchain(self._load_history(user_id))
 
         # 2. Tables pertinentes via pgvector. ERR43 — on RESTREINT a l'allowlist
         # company-scoped : aucune table hors allowlist n'est jamais exposee aux
@@ -1613,9 +1612,9 @@ class SQLAgentService:
         answer, intention = _extraire_intention(
             result.get("output", "Aucune reponse obtenue."))
         intention, erreur = _intention_et_erreur(action_outputs, intention)
-
-        # Sauvegarde l'echange dans Redis
-        self._save_history(user_id, question, answer)
+        # COP-B1 — TOUTES les sorties structurees du tour, dans l'ordre.
+        cartes = construire_cartes(action_outputs)
+        self._save_history(user_id, question, answer, cartes)
 
         # ERR84 — le SQL genere (avec les vrais noms de tables) reste cote
         # serveur (log de debug uniquement) et n'est JAMAIS renvoye au client :
@@ -1642,6 +1641,7 @@ class SQLAgentService:
             # d'une action interne deja executee. None quand aucune action.
             "proposal": proposal,
             "result": action_result,
+            "cartes": cartes, "moteur": relais.MOTEUR_LANGCHAIN,
             "manuel_present": manuel_present,
             # AIC6 — matiere de l'evenement (journalise par `query`).
             "intention": intention,

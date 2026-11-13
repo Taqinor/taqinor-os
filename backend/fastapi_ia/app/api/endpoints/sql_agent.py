@@ -11,6 +11,7 @@ from app.core.security import require_company_id as _require_company_id
 from app.services.action_tools import (
     ActionContext, resolve_caller_permissions,
 )
+from app.services import relais_copilote
 from app.services.sql_agent_service import (
     sql_agent_service, suggestions_pour_ecran,
 )
@@ -71,11 +72,18 @@ class SQLResponse(BaseModel):
     # AIC6 — id de l'evenement journalise (note du commercial, AIC8) ; None
     # si le journal n'a pas pu etre ecrit (best-effort).
     evenement_id: int | None = None
+    # COP-B1 — TOUTES les cartes du tour, dans l'ordre (contrat
+    # assistant_reponse.json) ; l'ecran ne lit plus que celles-ci.
+    cartes: list[dict] = Field(default_factory=list)
+    # COP-B1 — moteur qui a servi la reponse : "langchain" ou "natif".
+    moteur: str = "langchain"
 
 
 class HistoryMessage(BaseModel):
     role: str
     content: str
+    # COP-B1 — cartes du message d'agent (absentes d'un historique ancien).
+    cartes: list[dict] | None = None
 
 
 @router.post("/query", response_model=SQLResponse)
@@ -132,10 +140,13 @@ async def query_database(
         proposal=result.get("proposal"),
         result=result.get("result"),
         evenement_id=result.get("evenement_id"),
+        cartes=result.get("cartes") or [],
+        moteur=result.get("moteur") or "langchain",
     )
 
 
-@router.get("/history", response_model=list[HistoryMessage])
+@router.get("/history", response_model=list[HistoryMessage],
+            response_model_exclude_none=True)
 def get_history(token_payload: dict = Depends(verify_token)):
     """Retourne l'historique de conversation (24h, 20 messages max)."""
     user_id = int(token_payload.get("user_id", 0))
@@ -175,6 +186,11 @@ class ConfirmResponse(BaseModel):
     action_key: str = ""
     detail: str = ""
     data: dict | list | None = None
+    # COP-B1 — carte `resultat` de l'action confirmee (fabrique des cartes).
+    carte: dict | None = None
+    # COP-B6 — reprise du moteur natif {answer, cartes, evenement_id} ;
+    # toujours None sous le moteur langchain.
+    suite: dict | None = None
 
 
 @router.post("/confirm", response_model=ConfirmResponse)
@@ -215,9 +231,14 @@ async def confirm_action(
         return ConfirmResponse(
             ok=False, detail=result.get("error", "L'action n'a pas pu etre executee."))
     data = result.get("data")
+    apres = await asyncio.to_thread(
+        relais_copilote.apres_confirmation, sql_agent_service, action_ctx,
+        company_id, int(token_payload.get("user_id", 0)), result)
     return ConfirmResponse(
         ok=True,
         action_key=result.get("action_key", ""),
         data=data if isinstance(data, (dict, list)) else None,
         detail="Action executee.",
+        carte=apres.get("carte"),
+        suite=apres.get("suite"),
     )
