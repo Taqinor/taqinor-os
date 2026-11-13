@@ -29,9 +29,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from apps.crm.stages import STAGES
+from apps.crm.stages import COLD, SIGNED, STAGES
 
-from apps.agent.registry import AgentAction, RISK_INTERNAL, register, _REGISTRY
+from apps.agent.registry import (
+    AgentAction, LOT_COPILOTE, LOT_HERITE, RISK_INTERNAL, RISK_OUTWARD,
+    register, _REGISTRY)
 
 
 # Action 1 — Créer un lead (opportunité solaire).
@@ -65,24 +67,28 @@ CREER_LEAD = AgentAction(
         'required': ['nom'],
     },
     required_permission='crm_creer',
-    risk=RISK_INTERNAL,
+    # COP-C5 — UNE seule définition effective de ``crm.lead.create`` : la
+    # création reste CONFIRMÉE (la lane REGISTRE retire le doublon du registre).
+    risk=RISK_OUTWARD,
 )
 
 
-# Action 2 — Mettre à jour un lead : avancer l'étape du pipeline et/ou poser une
-# date de relance. Endpoint réel : PATCH /api/django/crm/leads/<id>/ (LeadViewSet
-# .partial_update). Les valeurs de `stage` proviennent de STAGES.py (jamais codées
-# en dur). La société reste celle du caller (jamais modifiable depuis le corps).
+# Action 2 — Poser la date de relance d'un lead. Endpoint réel : PATCH
+# /api/django/crm/leads/<id>/ (LeadViewSet.partial_update). COP-C5 : ``stage``
+# n'est PLUS porté ici (un saut d'étape sans confirmation, jusqu'à SIGNED sans
+# devis accepté) — il vit dans ``crm.lead.changer_etape``, confirmé. La société
+# reste celle du caller (jamais modifiable depuis le corps). Une date de
+# relance déplace la prochaine touche (MRY10) : écriture CONFIRMÉE.
 METTRE_A_JOUR_LEAD = AgentAction(
     key='crm.lead.update',
     label='Mettre à jour un lead',
     description=(
-        "Sert à : faire avancer l'étape du pipeline d'un lead et/ou poser sa "
-        "date de relance. "
-        "Ne pas utiliser pour : ajouter une note (crm.lead.note) ni lister "
-        "les relances (crm.leads.a_relancer). "
-        "Exemple : « Passe le lead 12 en devis envoyé, relance le 3 »"
-        " (étapes = clés de STAGES.py). "
+        "Sert à : poser la date de relance d'un lead (la prochaine touche "
+        "du suivi est déplacée à cette date). "
+        "Ne pas utiliser pour : changer l'étape (crm.lead.changer_etape), "
+        "qualifier (crm.lead.qualifier), noter (crm.lead.note) ni "
+        "enregistrer la réponse d'une touche (crm.suivi.proposer_reponse). "
+        "Exemple : « Relance le lead 12 le 3 ». "
         "Résultat : le lead mis à jour ; la société n'est jamais modifiable."
     ),
     endpoint='/api/django/crm/leads/{id}/',
@@ -91,12 +97,6 @@ METTRE_A_JOUR_LEAD = AgentAction(
         'type': 'object',
         'properties': {
             'id': {'type': 'integer'},
-            'stage': {
-                'type': 'string',
-                # Source de vérité unique des étapes : STAGES.py (règle #2).
-                'enum': list(STAGES),
-                'description': "Étape du pipeline (clé canonique STAGES.py).",
-            },
             'relance_date': {
                 'type': 'string',
                 'format': 'date',
@@ -106,7 +106,8 @@ METTRE_A_JOUR_LEAD = AgentAction(
         'required': ['id'],
     },
     required_permission='crm_modifier',
-    risk=RISK_INTERNAL,
+    risk=RISK_OUTWARD,
+    objets={'id': 'lead'},
 )
 
 
@@ -140,22 +141,23 @@ NOTER_LEAD = AgentAction(
 
 
 # Action 4 — Préparer l'envoi WhatsApp d'un/de devis du lead. AMSG6 — endpoint :
-# l'APERÇU sans effet POST /api/django/crm/leads/<id>/whatsapp-devis-apercu/
-# (QJR538 : ni « envoyé », ni funnel, ni AuditLog), jamais le commit
-# `whatsapp-devis` ; renvoie {wa_url, message, links} pour la carte de résultat.
-# Le commercial appuie lui-même sur Envoyer. RISK_INTERNAL.
+# l'APERÇU sans effet (QJR538 : ni « envoyé », ni funnel, ni AuditLog), jamais
+# le commit `whatsapp-devis` ; COP-C7 : la vue mince de l'assistant
+# (``views_assistant.lead_whatsapp_devis_apercu``) rend en plus ``lead_id`` et
+# ``devis_ids`` — la carte « wa_devis » s'en sert pour appeler le commit au
+# moment où elle ouvre WhatsApp. Le commercial appuie lui-même sur Envoyer.
 PREPARER_ENVOI_WHATSAPP = AgentAction(
     key='crm.lead.whatsapp_prepare',
     label='Préparer un envoi WhatsApp de devis',
     description=(
         "Sert à : préparer le texte et le lien `wa.me` d'un ou plusieurs "
         "devis du lead ; n'envoie jamais, le commercial valide lui-même. "
-        "Ne pas utiliser pour : une relance sans devis "
-        "(crm.lead.brouillon_suivi). "
+        "Ne pas utiliser pour : une relance sans devis (le texte d'une "
+        "touche du suivi). "
         "Exemple : « Prépare le WhatsApp du devis 45 pour le lead 12 ». "
-        "Résultat : {wa_url, message, links}."
+        "Résultat : {wa_url, message, links, lead_id, devis_ids}."
     ),
-    endpoint='/api/django/crm/leads/{id}/whatsapp-devis-apercu/',
+    endpoint='/api/django/crm/assistant/leads/{id}/whatsapp-devis-apercu/',
     method='POST',
     inputs={
         'type': 'object',
@@ -175,6 +177,7 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
     },
     required_permission='crm_modifier',
     risk=RISK_INTERNAL,
+    carte='wa_devis',
 )
 
 
@@ -186,8 +189,9 @@ LEADS_A_RELANCER = AgentAction(
     label='Mes leads à relancer',
     description=(
         "Sert à : lister les leads que le commercial connecté doit relancer "
-        "(nom, étape, touche prévue, retard en jours ouvrés, canal, dernier "
-        "contact), 20 lignes max avec le total. "
+        "(nom, étape, touche prévue, retard, canal, dernier contact), 20 "
+        "lignes max avec le total ; touche_id de chaque ligne = l'entrée de "
+        "crm.suivi.preparer_touche. "
         "Ne pas utiliser pour : relancer, écrire ou chercher un lead précis. "
         "Exemple : « Qui dois-je relancer aujourd'hui ? » (portee=aujourd_hui). "
         "Résultat : {portee, total, limite, lignes[]}, même file que le cockpit."
@@ -206,6 +210,7 @@ LEADS_A_RELANCER = AgentAction(
     },
     required_permission='crm_voir',
     risk=RISK_INTERNAL,
+    carte='file_touches',
 )
 
 
@@ -217,7 +222,8 @@ RESUME_LEAD = AgentAction(
     label='Résumer un lead',
     description=(
         "Sert à : préparer un appel — identité, étape, contact préféré, "
-        "5 dernières entrées du chatter, devis, visites, prochaine touche, "
+        "5 dernières entrées du chatter, devis (avec leur id), visites, "
+        "prochaine touche (touche_id, entrée de crm.suivi.preparer_touche), "
         "alertes. "
         "Ne pas utiliser pour : écrire une note (crm.lead.note) ni modifier "
         "le lead. "
@@ -234,6 +240,7 @@ RESUME_LEAD = AgentAction(
     },
     required_permission='crm_voir',
     risk=RISK_INTERNAL,
+    carte='fiche_lead',
 )
 
 
@@ -250,8 +257,9 @@ BROUILLON_SUIVI = AgentAction(
         "Ne pas utiliser pour : envoyer (jamais d'envoi) ni préparer l'envoi "
         "d'un devis (crm.lead.whatsapp_prepare). "
         "Exemple : « Prépare une relance WhatsApp pour le lead 12 ». "
-        "Résultat : {texte, lien_wa_me, modele_source, langue_servie}, "
-        "500 caractères max sur WhatsApp, expéditeur = responsable du lead."
+        "Résultat : {texte, wa_url, modele_source, langue_servie}, 500 "
+        "caractères max sur WhatsApp ; sans modèle société le texte est vide "
+        "(aucune phrase de repli)."
     ),
     endpoint='/api/django/crm/leads/{id}/brouillon-suivi/',
     method='POST',
@@ -272,6 +280,10 @@ BROUILLON_SUIVI = AgentAction(
     },
     required_permission='crm_modifier',
     risk=RISK_INTERNAL,
+    # COP-C7 — le copilote lui préfère ``crm.suivi.preparer_touche`` (les
+    # textes VALIDÉS du suivi) : il ne reste servi que copilote éteint.
+    carte='wa_message',
+    lot=LOT_HERITE,
 )
 
 
@@ -298,6 +310,358 @@ DIGEST_MATIN = AgentAction(
     inputs={'type': 'object', 'properties': {}},
     required_permission='visites_voir',
     risk=RISK_INTERNAL,
+    carte='matin',
+)
+
+
+# ── COP — copilote commercial : les actions NEUVES ────────────────────────────
+# Toute action neuve naît dans le lot ``copilote`` (invisible des commerciaux
+# tant que l'interrupteur ASSISTANT_COPILOTE ne les allume pas). Les
+# vocabulaires (issues, réponses, langues, clés de message…) sont LUS là où le
+# serveur les valide — jamais retapés : un test de parité les compare.
+
+#: Champs de la fiche qu'une QUALIFICATION à l'appel a le droit d'écrire
+#: (les questions du Guide : factures, toit, foyer, équipements, projet).
+#: Jamais ``stage``, jamais un champ de propriété (owner), de parcage ni de
+#: contact (téléphone, e-mail : un faux numéro enverrait le prochain WhatsApp
+#: à une autre personne).
+CHAMPS_QUALIFICATION = (
+    'facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh',
+    'distributeur', 'raccordement', 'regularisation_8221', 'objectif_projet',
+    'type_toiture', 'surface_toiture_m2', 'orientation', 'ombrage',
+    'batterie_souhaitee', 'type_bien', 'ville',
+    'occupation_jour', 'nb_personnes_foyer', 'chauffage_electrique_hiver',
+    'ownership', 'equip_piscine', 'equip_voiture_electrique', 'equip_clim',
+    'equip_chauffe_eau_electrique', 'equip_ve_statut',
+    'project_timeline', 'financing_intent', 'decideur', 'devis_concurrents',
+    'frein_principal', 'declencheur', 'type_installation',
+    'taille_souhaitee_kwc', 'langue_preferee', 'civilite', 'priorite',
+)
+
+
+def _propriete_du_champ(champ):
+    """Le schéma JSON d'un champ du lead, LU sur le modèle : choix fermés en
+    ``enum`` (les valeurs du serveur), booléen, entier, nombre ou texte."""
+    from django.db import models
+
+    from apps.crm.models import Lead
+
+    f = Lead._meta.get_field(champ)
+    propriete = {'description': str(f.verbose_name)}
+    if f.choices:
+        propriete.update(
+            type='string', enum=[v for v, _libelle in f.flatchoices if v != ''])
+    elif isinstance(f, models.BooleanField):
+        propriete['type'] = 'boolean'
+    elif isinstance(f, models.IntegerField):
+        propriete['type'] = 'integer'
+    elif isinstance(f, (models.DecimalField, models.FloatField)):
+        propriete['type'] = 'number'
+    else:
+        propriete['type'] = 'string'
+    return propriete
+
+
+def _vocabulaire_touche():
+    """Les vocabulaires de ``fait`` / ``reporter`` / ``sauter``, lus chez le
+    serveur : issues du chatter, réponses du client, raisons d'attente,
+    langues de relance, gestes."""
+    from apps.crm.assistant_touches import GESTES
+    from apps.crm.cadence_reponses import (
+        RAISONS_ATTENTE_VALEURS, REPONSES_TOUCHE)
+    from apps.crm.models import LeadActivity
+    from apps.crm.schema_docs import LANGUES_RELANCE
+
+    return {
+        'gestes': list(GESTES),
+        'issues': [k for k, _libelle in LeadActivity.OUTCOMES if k],
+        'reponses': list(REPONSES_TOUCHE),
+        'raisons': list(RAISONS_ATTENTE_VALEURS),
+        'langues': list(LANGUES_RELANCE),
+    }
+
+
+def _entrees_proposer_reponse():
+    voc = _vocabulaire_touche()
+    return {
+        'type': 'object',
+        'properties': {
+            'touche_id': {'type': 'integer',
+                          'description': 'touche_id de la file ou de la fiche.'},
+            'geste': {'type': 'string', 'enum': voc['gestes'],
+                      'description': 'fait = répondre ; reporter ; sauter.'},
+            'outcome': {'type': 'string', 'enum': voc['issues'],
+                        'description': 'Issue (geste fait).'},
+            'reponse': {'type': 'string', 'enum': voc['reponses'],
+                        'description': 'Réponse du client (geste fait) : '
+                                       'prime sur outcome.'},
+            'motif_refus': {'type': 'string',
+                            'description': 'Motif (avec outcome=refuse).'},
+            'perdu_junk': {'type': 'string',
+                           'description': 'Motif junk (outcome=non_joint).'},
+            'motif_perte': {'type': 'string',
+                            'description': 'Motif (reponse=perdu).'},
+            'raison_attente': {'type': 'string', 'enum': voc['raisons'],
+                               'description': 'reponse=attente_accord.'},
+            'rappel_le': {'type': 'string', 'format': 'date',
+                          'description': 'AAAA-MM-JJ ; pas dans le passé.'},
+            'rappel_heure': {'type': 'string', 'description': 'HH:MM.'},
+            'note': {'type': 'string'},
+            'langue': {'type': 'string', 'enum': voc['langues']},
+            'mode': {'type': 'string', 'enum': ['decaler', 'veille'],
+                     'description': 'geste reporter.'},
+            'due_at': {'type': 'string', 'format': 'date-time',
+                       'description': 'geste reporter (ou rappel_le).'},
+        },
+        'required': ['touche_id', 'geste'],
+    }
+
+
+def _entrees_qualifier():
+    proprietes = {'id': {'type': 'integer'}}
+    proprietes.update(
+        {champ: _propriete_du_champ(champ) for champ in CHAMPS_QUALIFICATION})
+    return {'type': 'object', 'properties': proprietes, 'required': ['id']}
+
+
+def _entrees_journaliser():
+    from apps.crm.models import LeadActivity
+
+    return {
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'kind': {'type': 'string', 'enum': [
+                LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL,
+                LeadActivity.Kind.WHATSAPP]},
+            'body': {'type': 'string', 'description': "Résumé de l'échange."},
+            'outcome': {'type': 'string', 'enum': [
+                k for k, _libelle in LeadActivity.OUTCOMES if k]},
+            'rappel_le': {'type': 'string', 'format': 'date'},
+            'rappel_heure': {'type': 'string', 'description': 'HH:MM.'},
+        },
+        'required': ['id', 'kind'],
+    }
+
+
+def _entrees_message_visite():
+    from apps.crm.cadence_messages import CLES_MESSAGE_VISITE
+    from apps.crm.schema_docs import LANGUES_RELANCE
+
+    return {
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'cle': {'type': 'string', 'enum': list(CLES_MESSAGE_VISITE)},
+            'langue': {'type': 'string', 'enum': list(LANGUES_RELANCE),
+                       'description': 'Défaut : la langue du lead.'},
+        },
+        'required': ['id', 'cle'],
+    }
+
+
+CHERCHER_LEAD = AgentAction(
+    key='crm.lead.chercher',
+    label='Retrouver un lead',
+    description=(
+        "Sert à : retrouver un lead par nom, prénom, société, téléphone, "
+        "ville ou référence (et/ou étape), 10 lignes par défaut. "
+        "Ne pas utiliser pour : lister toute la file (crm.leads.a_relancer) "
+        "ni lire une fiche (crm.lead.resume). "
+        "Exemple : « Le lead de Bouskoura », « retrouve Alami ». "
+        "Résultat : {q, etape, total, limite, lignes[]} ; chaque ligne porte "
+        "lead_id et, si ouverte, prochaine_touche.touche_id."
+    ),
+    endpoint='/api/django/crm/assistant/leads/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string'},
+            'etape': {'type': 'string', 'enum': list(STAGES),
+                      'description': 'Étape du pipeline (clé STAGES.py).'},
+            'limite': {'type': 'integer', 'minimum': 1, 'maximum': 25},
+        },
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+    carte='liste_leads',
+    lot=LOT_COPILOTE,
+)
+
+PREPARER_TOUCHE = AgentAction(
+    key='crm.suivi.preparer_touche',
+    label='Préparer une touche du suivi',
+    description=(
+        "Sert à : préparer UNE touche de la file — le message VALIDÉ du "
+        "suivi (texte rendu par le serveur, jamais écrit par toi) ou le "
+        "script d'appel et ses questions. Rien n'est envoyé. "
+        "Ne pas utiliser pour : enregistrer la réponse du client "
+        "(crm.suivi.proposer_reponse). "
+        "Exemple : « Prépare ma prochaine relance » (touche_id de la file). "
+        "Résultat : {touche, lead, message | appel | refus}."
+    ),
+    endpoint='/api/django/crm/assistant/touches/{touche_id}/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {'touche_id': {'type': 'integer'}},
+        'required': ['touche_id'],
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+    carte='touche',
+    lot=LOT_COPILOTE,
+)
+
+PROPOSER_REPONSE = AgentAction(
+    key='crm.suivi.proposer_reponse',
+    label="Proposer la réponse d'une touche",
+    description=(
+        "Sert à : afficher la carte de la réponse que la commerciale vient "
+        "de dicter (pas de réponse, rappel jeudi 11 h, refus…) ; le serveur "
+        "la valide. Cet outil n'enregistre RIEN : c'est son doigt sur la "
+        "carte qui confirme. Une seule touche à la fois. "
+        "Ne pas utiliser pour : écrire au client ni noter (crm.lead.note). "
+        "Exemple : « Il n'a pas répondu » (geste=fait, outcome=non_joint). "
+        "Résultat : {proposition {libelle, effet}} ou proposition_refus."
+    ),
+    endpoint='/api/django/crm/assistant/touches/{touche_id}/',
+    method='GET',
+    inputs=_entrees_proposer_reponse(),
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+    carte='touche',
+    lot=LOT_COPILOTE,
+)
+
+QUALIFIER_LEAD = AgentAction(
+    key='crm.lead.qualifier',
+    label='Qualifier un lead',
+    description=(
+        "Sert à : écrire sur la fiche ce que le client a dit à l'appel "
+        "(factures, toit, foyer, équipements, délai, financement, décideur, "
+        "frein). "
+        "Ne pas utiliser pour : l'étape (crm.lead.changer_etape), le "
+        "responsable, le parcage, le téléphone ni l'e-mail. "
+        "Exemple : « Facture 2 300 en été, 1 400 en hiver, il décide avec "
+        "son frère ». "
+        "Résultat : le lead mis à jour, après confirmation."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs=_entrees_qualifier(),
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+CHANGER_ETAPE_LEAD = AgentAction(
+    key='crm.lead.changer_etape',
+    label="Changer l'étape d'un lead",
+    description=(
+        "Sert à : faire AVANCER un lead dans le pipeline (étapes = clés de "
+        "STAGES.py), après confirmation. "
+        "Ne pas utiliser pour : signer (l'acceptation d'un devis le fait), "
+        "parquer au Froid (geste de l'écran avec sa raison) ni reculer. "
+        "Exemple : « Passe le lead 12 en devis envoyé ». "
+        "Résultat : le lead mis à jour."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'stage': {
+                'type': 'string',
+                # Source unique : STAGES.py (règle #2), SIGNED et COLD exclus.
+                'enum': [s for s in STAGES if s not in (SIGNED, COLD)],
+                'description': "Étape du pipeline (clé canonique STAGES.py).",
+            },
+        },
+        'required': ['id', 'stage'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    objets={'id': 'lead'},
+)
+
+JOURNALISER_LEAD = AgentAction(
+    key='crm.lead.journaliser',
+    label='Journaliser un échange',
+    description=(
+        "Sert à : consigner au fil du lead un appel, un e-mail ou un "
+        "WhatsApp déjà passé (premier contact horodaté ; outcome=rappel "
+        "déplace la prochaine touche), après confirmation. "
+        "Ne pas utiliser pour : une simple note (crm.lead.note) ni clore "
+        "une touche (crm.suivi.proposer_reponse). "
+        "Exemple : « Note que je l'ai appelé, il rappellera lundi ». "
+        "Résultat : l'entrée du fil."
+    ),
+    endpoint='/api/django/crm/leads/{id}/log-interaction/',
+    method='POST',
+    inputs=_entrees_journaliser(),
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+PLANIFIER_VISITE = AgentAction(
+    key='crm.visite.planifier',
+    label='Planifier une visite',
+    description=(
+        "Sert à : poser la visite technique d'un lead (date, touche qui "
+        "l'a demandée) ; le technicien est notifié, après confirmation. "
+        "Ne pas utiliser pour : une visite de maintenance "
+        "(installations) ni proposer la visite (crm.visite.message). "
+        "Exemple : « Il est d'accord pour une visite samedi ». "
+        "Résultat : {visite, prochaine_touche}."
+    ),
+    endpoint='/api/django/crm/leads/{id}/visites/planifier/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'date_prevue': {'type': 'string', 'format': 'date',
+                            'description': 'AAAA-MM-JJ, pas dans le passé.'},
+            'etape': {'type': 'integer',
+                      'description': 'touche_id qui demande la visite.'},
+            'notes': {'type': 'string'},
+            'note_etape': {'type': 'string'},
+            'replanifier': {'type': 'boolean',
+                            'description': 'Déplacer le rendez-vous en attente.'},
+        },
+        'required': ['id', 'date_prevue'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    carte='visite',
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead', 'etape': 'touche'},
+)
+
+MESSAGE_VISITE = AgentAction(
+    key='crm.visite.message',
+    label='Message de visite',
+    description=(
+        "Sert à : préparer le message VALIDÉ pour proposer ou confirmer la "
+        "visite technique (texte du serveur, une langue). Rien n'est "
+        "envoyé. "
+        "Ne pas utiliser pour : planifier la visite (crm.visite.planifier). "
+        "Exemple : « Prépare la confirmation de visite pour le lead 12 ». "
+        "Résultat : {texte, wa_url, modele_source, langue_servie}."
+    ),
+    endpoint='/api/django/crm/assistant/leads/{id}/message-visite/',
+    method='GET',
+    inputs=_entrees_message_visite(),
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+    carte='wa_message',
+    lot=LOT_COPILOTE,
 )
 
 
@@ -310,6 +674,14 @@ _ACTIONS = (
     RESUME_LEAD,
     BROUILLON_SUIVI,
     DIGEST_MATIN,
+    CHERCHER_LEAD,
+    PREPARER_TOUCHE,
+    PROPOSER_REPONSE,
+    QUALIFIER_LEAD,
+    CHANGER_ETAPE_LEAD,
+    JOURNALISER_LEAD,
+    PLANIFIER_VISITE,
+    MESSAGE_VISITE,
 )
 
 
