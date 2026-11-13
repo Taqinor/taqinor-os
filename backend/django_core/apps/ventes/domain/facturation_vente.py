@@ -818,16 +818,19 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
     ``montant_invalide`` pour un montant ≥ au prix convenu (la dernière tranche
     vaut le reste : refus d'état). Aucun statut écrit (règle #4). Rend la
     facture relue."""
-    from apps.ventes.models import Devis
+    from apps.ventes.models import Devis, Facture
     from apps.ventes.utils.echeancier import UNITE_MONTANT
     from apps.ventes.vente_facturation import plan_facturation
     from .modifiabilite import (
         EcheancierRefuse, consigner_correction_apres_envoi,
         controler_echeancier_vente)
-    if facture.statut != 'brouillon':
-        raise _conflit('facture_emise',
-                       'Seul un brouillon change de montant : cette facture '
-                       'est émise — corrigez-la par un avoir.')
+
+    def _exiger_brouillon(f):
+        if f.statut != 'brouillon':
+            raise _conflit('facture_emise',
+                           'Seul un brouillon change de montant : cette '
+                           'facture est émise — corrigez-la par un avoir.')
+    _exiger_brouillon(facture)
     if not facture.devis_id or not facture.cle_tranche \
             or facture.type_facture == 'complete':
         raise _conflit('pas_une_tranche',
@@ -835,6 +838,11 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
     with transaction.atomic():
         devis = next(d for d in verrouiller_vente(facture.devis)
                      if d.pk == facture.devis_id)
+        # ACNC6 (C-ACNC-002) — facture RELUE sous verrou (patron
+        # ``verrouiller_emission``) : émise entre la lecture et le verrou ⇒ 409,
+        # jamais un `save()` complet qui la repasserait en brouillon.
+        facture = Facture.objects.select_for_update().get(pk=facture.pk)
+        _exiger_brouillon(facture)
         _exiger_vente_en_jeu(devis)
         plan = plan_facturation(devis)
         montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,

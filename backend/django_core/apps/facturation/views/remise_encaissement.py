@@ -55,6 +55,12 @@ def _id_ou_vide(valeur):
         isinstance(valeur, int) and not isinstance(valeur, bool))
 
 
+def _remise_verrouillee(pk):
+    """ACNC6 — la remise relue sous ``select_for_update`` (dans l'atomic de
+    l'appelant) : les gestes jugent l'état COURANT, jamais l'instance chargée."""
+    return RemiseEncaissement.objects.select_for_update().get(pk=pk)
+
+
 @extend_schema_view(list=extend_schema(
     parameters=[qint('technicien')]))
 class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
@@ -193,37 +199,43 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
         l'appliquait — `cloturer` ne changeait que le statut. Une remise
         clôturée ou validée est désormais IMMUABLE (le modèle refuse aussi
         toute écriture de ligne, y compris hors API)."""
-        remise = self.get_object()
-        if remise.statut != RemiseEncaissement.Statut.OUVERTE:
-            raise ConflitEtat({'detail': (
-                f'Remise {remise.get_statut_display().lower()} : ses lignes '
-                f'et sa déclaration sont verrouillées.')})
-        serializer.save()
+        # ACNC6 (C-ACNC-002) — statut relu SOUS VERROU : une remise clôturée
+        # entre-temps n'est jamais rouverte par le `save()` complet.
+        with transaction.atomic():
+            remise = _remise_verrouillee(serializer.instance.pk)
+            if remise.statut != RemiseEncaissement.Statut.OUVERTE:
+                raise ConflitEtat({'detail': (
+                    f'Remise {remise.get_statut_display().lower()} : ses lignes '
+                    f'et sa déclaration sont verrouillées.')})
+            serializer.save()
 
     def perform_destroy(self, instance):
         """AFAC16 — seule une remise OUVERTE se supprime (responsable/admin,
         voir `get_permissions`) : une remise clôturée est un bordereau remis
         en banque, et le DELETE en cascade contournait le verrou de ligne du
         modèle."""
-        if instance.statut != RemiseEncaissement.Statut.OUVERTE:
-            raise ConflitEtat({'detail': (
-                f'Remise {instance.get_statut_display().lower()} : un '
-                f'bordereau clôturé ne se supprime pas.')})
-        instance.delete()
+        with transaction.atomic():  # ACNC6 — statut relu sous verrou
+            instance = _remise_verrouillee(instance.pk)
+            if instance.statut != RemiseEncaissement.Statut.OUVERTE:
+                raise ConflitEtat({'detail': (
+                    f'Remise {instance.get_statut_display().lower()} : un '
+                    f'bordereau clôturé ne se supprime pas.')})
+            instance.delete()
 
     @action(detail=True, methods=['post'], url_path='cloturer')
     def cloturer(self, request, pk=None):
         """Clôture la remise (responsable/admin) : verrouille les lignes,
         calcule l'écart, génère le bordereau PDF. Alerte (dans la réponse)
         si l'écart ≠ 0 — sans jamais bloquer la clôture."""
-        remise = self.get_object()
-        if remise.statut != RemiseEncaissement.Statut.OUVERTE:
-            raise ConflitEtat(
-                {'detail': 'Seule une remise ouverte peut être clôturée.'})
-        remise.statut = RemiseEncaissement.Statut.CLOTUREE
-        remise.cloture_par = request.user
-        remise.date_cloture = timezone.now()
-        remise.save(update_fields=['statut', 'cloture_par', 'date_cloture'])
+        with transaction.atomic():  # ACNC6 — statut relu sous verrou
+            remise = _remise_verrouillee(self.get_object().pk)
+            if remise.statut != RemiseEncaissement.Statut.OUVERTE:
+                raise ConflitEtat(
+                    {'detail': 'Seule une remise ouverte peut être clôturée.'})
+            remise.statut = RemiseEncaissement.Statut.CLOTUREE
+            remise.cloture_par = request.user
+            remise.date_cloture = timezone.now()
+            remise.save(update_fields=['statut', 'cloture_par', 'date_cloture'])
         try:
             from apps.ventes.utils.pdf import generate_bordereau_remise_pdf
             generate_bordereau_remise_pdf(remise.id)
