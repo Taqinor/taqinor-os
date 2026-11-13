@@ -1,16 +1,15 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core import database as _database
 from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'OCR ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
-from app.services.action_tools import (
-    ActionContext, resolve_caller_permissions,
-)
+from app.services.action_tools import ActionContext
+from app.services import relais_copilote
 from app.services.sql_agent_service import (
     sql_agent_service, suggestions_pour_ecran,
 )
@@ -38,9 +37,20 @@ def _check_sql_agent_rate_limit(user_id) -> None:
 
 class ContexteEcran(BaseModel):
     """AIC9 — contexte de l'ecran d'ou part la question (evenement DOM
-    `taqinor:assistant:ouvrir`, ou `window.location.pathname`)."""
+    `taqinor:assistant:ouvrir`, ou `window.location.pathname`). COP-B2 :
+    fiche de devis ouverte, touche FOYER de la conversation et tampon
+    technique du navigateur (donnee NON fiable : bornee, cles inconnues
+    ecartees). Toute autre cle du corps est ignoree."""
     ecran: str = Field("", max_length=255)
     lead_id: int | None = Field(None, ge=1)
+    devis_id: int | None = Field(None, ge=1)
+    touche_id: int | None = Field(None, ge=1)
+    diagnostic: dict | None = None
+
+    @field_validator("diagnostic", mode="before")
+    @classmethod
+    def _borner_diagnostic(cls, valeur):
+        return relais_copilote.borner_diagnostic(valeur)
 
 
 class SQLQuery(BaseModel):
@@ -71,11 +81,18 @@ class SQLResponse(BaseModel):
     # AIC6 — id de l'evenement journalise (note du commercial, AIC8) ; None
     # si le journal n'a pas pu etre ecrit (best-effort).
     evenement_id: int | None = None
+    # COP-B1 — TOUTES les cartes du tour, dans l'ordre (contrat
+    # assistant_reponse.json) ; l'ecran ne lit plus que celles-ci.
+    cartes: list[dict] = Field(default_factory=list)
+    # COP-B1 — moteur qui a servi la reponse : "langchain" ou "natif".
+    moteur: str = "langchain"
 
 
 class HistoryMessage(BaseModel):
     role: str
     content: str
+    # COP-B1 — cartes du message d'agent (absentes d'un historique ancien).
+    cartes: list[dict] | None = None
 
 
 @router.post("/query", response_model=SQLResponse)
@@ -109,7 +126,8 @@ async def query_database(
         token=raw_token,
         is_superuser=bool(token_payload.get("is_superuser", False)),
     )
-    await asyncio.to_thread(resolve_caller_permissions, action_ctx)
+    # COP-B2 — UNE lecture de /auth/me/ : permissions + prenom et role.
+    await asyncio.to_thread(relais_copilote.lire_appelant, action_ctx)
 
     options = {}
     if request.contexte is not None:
@@ -132,10 +150,13 @@ async def query_database(
         proposal=result.get("proposal"),
         result=result.get("result"),
         evenement_id=result.get("evenement_id"),
+        cartes=result.get("cartes") or [],
+        moteur=result.get("moteur") or "langchain",
     )
 
 
-@router.get("/history", response_model=list[HistoryMessage])
+@router.get("/history", response_model=list[HistoryMessage],
+            response_model_exclude_none=True)
 def get_history(token_payload: dict = Depends(verify_token)):
     """Retourne l'historique de conversation (24h, 20 messages max)."""
     user_id = int(token_payload.get("user_id", 0))
@@ -144,9 +165,14 @@ def get_history(token_payload: dict = Depends(verify_token)):
 
 @router.delete("/history", status_code=204)
 def clear_history(token_payload: dict = Depends(verify_token)):
-    """Efface la conversation de l'utilisateur."""
+    """Efface la conversation de l'utilisateur (et sa conversation native,
+    rangee sous la societe active, COP-B6)."""
     user_id = int(token_payload.get("user_id", 0))
-    sql_agent_service.clear_history(user_id)
+    try:
+        company_id = _require_company_id(token_payload)
+    except HTTPException:
+        company_id = None
+    sql_agent_service.clear_history(user_id, company_id)
 
 
 @router.get("/suggestions", response_model=list[str])
@@ -175,6 +201,11 @@ class ConfirmResponse(BaseModel):
     action_key: str = ""
     detail: str = ""
     data: dict | list | None = None
+    # COP-B1 — carte `resultat` de l'action confirmee (fabrique des cartes).
+    carte: dict | None = None
+    # COP-B6 — reprise du moteur natif {answer, cartes, evenement_id} ;
+    # toujours None sous le moteur langchain.
+    suite: dict | None = None
 
 
 @router.post("/confirm", response_model=ConfirmResponse)
@@ -208,16 +239,22 @@ async def confirm_action(
         token=raw_token,
         is_superuser=bool(token_payload.get("is_superuser", False)),
     )
-    await asyncio.to_thread(resolve_caller_permissions, action_ctx)
+    # COP-B2 — UNE lecture de /auth/me/ : permissions + prenom et role.
+    await asyncio.to_thread(relais_copilote.lire_appelant, action_ctx)
 
     result = await sql_agent_service.confirm_action(action_ctx, request.token.strip())
     if not result.get("ok"):
         return ConfirmResponse(
             ok=False, detail=result.get("error", "L'action n'a pas pu etre executee."))
     data = result.get("data")
+    apres = await asyncio.to_thread(
+        relais_copilote.apres_confirmation, sql_agent_service, action_ctx,
+        company_id, int(token_payload.get("user_id", 0)), result)
     return ConfirmResponse(
         ok=True,
         action_key=result.get("action_key", ""),
         data=data if isinstance(data, (dict, list)) else None,
         detail="Action executee.",
+        carte=apres.get("carte"),
+        suite=apres.get("suite"),
     )
