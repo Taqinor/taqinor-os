@@ -22,8 +22,8 @@ from apps.records.champs_stricts import RegexStricte
 from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
 from .services import (
-    ActionNotUndoableError, agent_hmac_secret, annuler_action,
-    anonymiser_texte, cout_estime_usd, hacher_identifiant,
+    CHAMPS_TOKENS, ActionNotUndoableError, agent_hmac_secret, annuler_action,
+    anonymiser_texte, borner_erreur, cout_estime_usd, hacher_identifiant,
     log_confirmed_action, preuve_confirmation_valide,
 )
 from rest_framework.parsers import JSONParser
@@ -287,7 +287,6 @@ class AgentActionConfirmerView(APIView):
 # (`preuve_confirmation_valide`, meme secret que logs/confirmer/) couvre le
 # corps de l'evenement pour CET utilisateur et CETTE societe.
 ACTION_PREUVE_EVENEMENT = 'assistant.evenement'
-_CHAMPS_TOKENS = ('cache_read', 'input', 'output')
 
 _EvenementAssistant = inline_serializer('AssistantEvenement', {
     'id': drf_serializers.IntegerField(),
@@ -356,6 +355,22 @@ def _serialiser_evenement(ev: AssistantEvent) -> dict:
     }
 
 
+def _erreur_evenement_valide(erreur) -> bool:
+    """COP-G5 — types de ``erreur`` : ``status`` entier ; ``outil``,
+    ``message``, ``request_id`` texte ; ``diagnostic`` objet ou null."""
+    if not isinstance(erreur, dict):
+        return False
+    status = erreur.get('status')
+    if status is not None and (isinstance(status, bool)
+                               or not isinstance(status, int)):
+        return False
+    if any(erreur.get(cle) is not None and not isinstance(erreur[cle], str)
+           for cle in ('outil', 'message', 'request_id')):
+        return False
+    diagnostic = erreur.get('diagnostic')
+    return diagnostic is None or isinstance(diagnostic, dict)
+
+
 def _types_evenement_valides(data: dict) -> bool:
     """Types JSON publies, verifies AVANT tout usage (jamais de coercition :
     `0` n'est pas une chaine, `"1"` n'est pas un booleen)."""
@@ -372,7 +387,8 @@ def _types_evenement_valides(data: dict) -> bool:
     outils = data.get('outils_appeles', [])
     if not isinstance(outils, list) or not all(isinstance(o, str) for o in outils):
         return False
-    if data.get('erreur') is not None and not isinstance(data['erreur'], dict):
+    if data.get('erreur') is not None and not _erreur_evenement_valide(
+            data['erreur']):
         return False
     tokens = data.get('tokens', {})
     return isinstance(tokens, dict) and all(
@@ -435,7 +451,7 @@ class AssistantEventView(APIView):
         if lead_id is not None:
             from apps.crm.selectors import get_company_lead
             lead_id = lead_id if get_company_lead(company, lead_id) else None
-        erreur = v.get('erreur')
+        erreur = borner_erreur(v.get('erreur'))
         ev = AssistantEvent.objects.create(
             company=company, user=request.user,
             intention=v['intention'], question=v['question'],
@@ -447,7 +463,7 @@ class AssistantEventView(APIView):
             repli=v.get('repli', False),
             manuel_present=v.get('manuel_present', False),
             tokens={k: int((v.get('tokens') or {}).get(k, 0))
-                    for k in _CHAMPS_TOKENS},
+                    for k in CHAMPS_TOKENS},
         )
         return Response(_serialiser_evenement(ev),
                         status=status.HTTP_201_CREATED)
@@ -515,7 +531,8 @@ class AssistantEventExportView(APIView):
         lignes = []
         for ev in evenements:
             n = noms.get(ev.lead_id, ())
-            erreur = dict(ev.erreur) if isinstance(ev.erreur, dict) else None
+            erreur = ({k: ev.erreur.get(k) for k in ('status', 'outil', 'message')}
+                      if isinstance(ev.erreur, dict) else None)
             if erreur is not None:
                 erreur['message'] = anonymiser_texte(erreur.get('message'), n)
             lignes.append({
@@ -585,7 +602,7 @@ class AssistantEventStatsView(APIView):
             created_at__gte=timezone.now() - timedelta(weeks=semaines))
         intentions = AssistantEvent.Intention.values
         jeton = {cle: Sum(Cast(KT(f'tokens__{cle}'), IntegerField()))
-                 for cle in ('input', 'output', 'cache_read')}
+                 for cle in CHAMPS_TOKENS}
         par_modele = list(qs.values('modele').annotate(
             n=Count('id'), repli_n=Count('id', filter=Q(repli=True)),
             **{f'i_{i}': Count('id', filter=Q(intention=i)) for i in intentions},

@@ -7,7 +7,7 @@ Couvre :
   avec le même nom de permission voient leur catalogue filtré par LEUR rôle,
   sans fuite de l'autre société.
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -162,9 +162,64 @@ class AssistantEvenementTests(TestCase):
         # company/user poses cote serveur ; lead 12 hors societe => null.
         self.assertEqual((ev.company, ev.user), (self.co, self.vendeur))
         self.assertIsNone(ev.lead_id)
-        self.assertEqual(ev.tokens, {'cache_read': 1800, 'input': 420, 'output': 96})
+        self.assertEqual(ev.tokens, {
+            'cache_read': 1800, 'cache_write': 300, 'input': 420, 'output': 96})
         self.assertEqual(ev.outils_appeles, ['crm.lead.note'])
         self.assertEqual(ev.note, 0)
+
+    def test_erreur_avec_request_id_et_tampon_borne(self):
+        """COP-G5 — ``erreur`` porte ``request_id`` et ``diagnostic`` ; le
+        tampon est BORNÉ (15 requêtes, 10 erreurs, chaînes tronquées, route sans
+        chaîne de requête) et tout champ inconnu est écarté."""
+        requete = dict(
+            CONTRAT_EVENEMENT['exemple_erreur_avec_tampon']['diagnostic']['requetes'][0],
+            route='/api/django/crm/leads/12/?telephone=0612345678#x' + 'a' * 400,
+            corps={'secret': 'x'})
+        erreur = dict(CONTRAT_EVENEMENT['exemple_erreur_avec_tampon'])
+        erreur['inconnu'] = 'ecarte'
+        erreur['message'] = 'm' * 900
+        erreur['diagnostic'] = dict(
+            erreur['diagnostic'], requetes=[dict(requete) for _ in range(20)],
+            erreurs=[{'genre': 'script', 'message': 'appelle 0612345678',
+                      'il_y_a_s': 3, 'pile': 'x'}] * 14,
+            cookie='ecarte')
+        resp = _auth(self.vendeur).post(
+            URL_EVENEMENTS, _corps_signe(self.vendeur, erreur=erreur),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        stocke = AssistantEvent.objects.get(pk=resp.data['id']).erreur
+        self.assertEqual(set(stocke), {
+            'status', 'outil', 'message', 'request_id', 'diagnostic'})
+        self.assertEqual(len(stocke['message']), 300)
+        self.assertEqual(stocke['request_id'], erreur['request_id'])
+        diag = stocke['diagnostic']
+        self.assertEqual(set(diag), {'version', 'ecran', 'navigateur',
+                                     'en_ligne', 'requetes', 'erreurs'})
+        self.assertEqual((len(diag['requetes']), len(diag['erreurs'])), (15, 10))
+        self.assertEqual(set(diag['requetes'][0]), {
+            'methode', 'route', 'statut', 'duree_ms', 'request_id', 'code',
+            'il_y_a_s'})
+        self.assertEqual(diag['requetes'][0]['route'], '/api/django/crm/leads/12/')
+        self.assertEqual(diag['erreurs'][0]['message'], 'appelle [tel]')
+        self.assertEqual(set(diag['erreurs'][0]), {'genre', 'message', 'il_y_a_s'})
+
+    def test_erreur_aux_types_faux_refusee_400(self):
+        for erreur in ({'status': '409'}, {'status': True},
+                       {'outil': 3}, {'request_id': ['x']},
+                       {'diagnostic': []}, ['liste']):
+            resp = _auth(self.vendeur).post(
+                URL_EVENEMENTS, _corps_signe(self.vendeur, erreur=erreur),
+                format='json')
+            self.assertEqual(resp.status_code, 400, erreur)
+        self.assertFalse(AssistantEvent.objects.exists())
+
+    def test_erreur_simple_du_contrat_reste_acceptee(self):
+        erreur = CONTRAT_EVENEMENT['exemple_erreur_outil']
+        resp = _auth(self.vendeur).post(
+            URL_EVENEMENTS, _corps_signe(self.vendeur, erreur=erreur),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(AssistantEvent.objects.get(pk=resp.data['id']).erreur, erreur)
 
     def test_preuve_dun_autre_utilisateur_refusee(self):
         corps = _corps_signe(self.collegue)
@@ -237,6 +292,38 @@ class AnonymiserTexteTests(TestCase):
             'Ahmedou paie 12 345 DH', ['Ahmed']), 'Ahmedou paie 12 345 DH')
 
 
+class BornerErreurEvenementTests(SimpleTestCase):
+    """COP-G5 — ``borner_erreur`` / ``borner_diagnostic`` (fonctions pures)."""
+
+    def test_non_objet_donne_none(self):
+        for valeur in (None, 'x', [], 3):
+            self.assertIsNone(agent_services.borner_erreur(valeur))
+            self.assertIsNone(agent_services.borner_diagnostic(valeur))
+
+    def test_diagnostic_du_contrat_traverse_a_l_identique(self):
+        diag = CONTRAT_EVENEMENT['exemple_erreur_avec_tampon']['diagnostic']
+        self.assertEqual(agent_services.borner_diagnostic(diag), diag)
+
+    def test_bornes_chaines_et_champs_inconnus(self):
+        sortie = agent_services.borner_diagnostic({
+            'version': 'v' * 100, 'navigateur': 'Chrome', 'en_ligne': 'oui',
+            'requetes': [{'methode': 'post', 'route': '/x/?a=1', 'statut': True,
+                          'duree_ms': 12.5, 'corps': 'secret'}, 'pas un objet'],
+            'erreurs': 'pas une liste', 'inconnu': 1})
+        self.assertEqual(len(sortie['version']), 40)
+        self.assertIsNone(sortie['en_ligne'])
+        self.assertEqual(sortie['erreurs'], [])
+        self.assertEqual(sortie['requetes'], [{
+            'methode': 'POST', 'route': '/x/', 'statut': None, 'duree_ms': None,
+            'request_id': '', 'code': '', 'il_y_a_s': None}])
+        self.assertNotIn('inconnu', sortie)
+
+    def test_erreur_sans_request_id_ni_tampon_reste_a_trois_cles(self):
+        self.assertEqual(
+            agent_services.borner_erreur({'status': 502, 'outil': 'o', 'message': 'm'}),
+            {'status': 502, 'outil': 'o', 'message': 'm'})
+
+
 @override_settings(AGENT_HMAC_SECRET=SECRET_AIC6)
 class AssistantExportTests(TestCase):
     URL = URL_EVENEMENTS + 'export/'
@@ -261,6 +348,16 @@ class AssistantExportTests(TestCase):
                                       intention='hors_champ', question='Météo ?')
         AssistantEvent.objects.create(company=self.autre, intention='bug',
                                       question='Autre société 0699999999')
+
+    def test_export_garde_trois_cles_d_erreur_sans_le_tampon(self):
+        """COP-G5 — le tampon technique et le request_id d'un événement ne
+        partent pas dans l'export (le tri nocturne dépose des lignes au dépôt)."""
+        AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, intention='bug', question='Bug',
+            erreur=CONTRAT_EVENEMENT['exemple_erreur_avec_tampon'])
+        resp = _auth(self.admin).get(self.URL)
+        bug = next(e for e in resp.data['evenements'] if e['intention'] == 'bug')
+        self.assertEqual(set(bug['erreur']), {'status', 'outil', 'message'})
 
     def test_export_anonymise_sans_tel_ni_nom_ni_email(self):
         resp = _auth(self.admin).get(self.URL)
@@ -340,6 +437,18 @@ class AssistantStatsTests(TestCase):
         self.assertEqual(resp.data['par_intention']['manque'], 1)
         self.assertEqual(resp.data['manques_recents'], [
             {'question_anonymisee': 'Envoie-le sur WhatsApp au [tel]', 'vu_n_fois': 1}])
+
+    def test_cout_compte_les_ecritures_de_cache(self):
+        """COP-G5 — ``cache_write`` a son prix NOMMÉ (2 × l'entrée, écriture
+        d'une heure) : 1 M de tokens écrits en cache = 4 USD sur Sonnet 5.5."""
+        AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, modele='claude-sonnet-5-5',
+            question='Manuel ?', tokens={'cache_write': 1_000_000})
+        resp = _auth(self.admin).get(self.URL, {'semaines': 1})
+        self.assertEqual(resp.data['cout_estime_usd'], 7.40)
+        self.assertEqual(agent_services.cout_estime_usd(
+            'claude-sonnet-5-5', {'cache_write': 500_000}), 2.0)
+        self.assertEqual(agent_services.cout_estime_usd('inconnu', {'cache_write': 5}), 0.0)
 
     def test_stats_admin_seul(self):
         self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 403)
