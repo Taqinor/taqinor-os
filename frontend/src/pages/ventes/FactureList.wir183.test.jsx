@@ -344,6 +344,24 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
       .toBeDisabled()
   })
 
+  it('deux envois après ECONNABORTED portent la même clé', async () => {
+    // ACNC9 (C-ACNC-008) — mutant : régénérer la clé à chaque clic ⇒ échec.
+    api.encaissementGroupeFactures.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+    const user = userEvent.setup()
+    renderList({ factures: deux })
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(api.encaissementGroupeFactures).toHaveBeenCalledTimes(1))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(api.encaissementGroupeFactures).toHaveBeenCalledTimes(2))
+    const [k1, k2] = api.encaissementGroupeFactures.mock.calls.map(([corps]) => corps.idempotency_key)
+    expect(k1).toBeTruthy()
+    expect(k2).toBe(k1)
+  })
+
   it('400 montant : message sous Montant, boîte ouverte', async () => {
     // AERR13 (C-AERR-012) — mutant : remettre `erreurServeur(err, …)` ⇒ échec.
     api.encaissementGroupeFactures.mockRejectedValueOnce({

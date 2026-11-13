@@ -382,6 +382,13 @@ class FactureEncaissementActionsMixin:
             avance XFAC1 explicite (Paiement sans facture, non affecté),
             renvoyée dans la réponse — jamais abandonnée en silence.
         """
+        # ACNC9 (C-ACNC-008) — rejouable par la clé du corps : le 2e envoi
+        # rend la même répartition, jamais tout le virement en avance.
+        from .facture_rectificatifs import rejeu_par_cle
+        rejeu = rejeu_par_cle(self, request, 'encaissement_groupe',
+                              lambda: self.encaissement_groupe(request))
+        if rejeu is not None:
+            return rejeu
         from decimal import Decimal
 
         from apps.crm.selectors import get_company_client

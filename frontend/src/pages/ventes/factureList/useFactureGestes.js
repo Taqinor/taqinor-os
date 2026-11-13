@@ -342,7 +342,9 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
 
   // AERR13 — un refus PAR CHAMP s'écrit sous le champ de la boîte ; sans champ, le `detail`.
   const egErreurs = useServerFieldErrors()
+  const cleEncaissement = useRef(null)  // ACNC9 — gardée entre deux clics
   const openEncaissementGroupe = () => {
+    cleEncaissement.current = nouvelleCle()
     egErreurs.clearAll()
     setEncaissementRepartition({})
     setEncaissementForm({
@@ -366,7 +368,9 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
         reference: encaissementForm.reference,
         factures: facturesEncaissables.map(f => f.id),
         ...(Object.keys(repartition).length ? { repartition } : {}),
+        idempotency_key: cleEncaissement.current,
       })
+      cleEncaissement.current = nouvelleCle()
       const n = Array.isArray(data) ? data.length : 0
       toast.success(`Encaissement réparti sur ${n} facture(s).`
         + (facturesEcartees.length
@@ -382,6 +386,7 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
       } else {
         egErreurs.clearAll()
         erreurServeur(err, 'Encaissement groupé impossible.')
+        if (!err?.response) relire()  // ACNC9 — sans réponse : la liste est relue
       }
     } finally { setWir183Busy(false) }
   }
