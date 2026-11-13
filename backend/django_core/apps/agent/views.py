@@ -21,9 +21,10 @@ from apps.records.champs_stricts import RegexStricte
 
 from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
+from .selectors import agregats_par_modele, cout_des_agregats, noms_des_leads
 from .services import (
     CHAMPS_TOKENS, ActionNotUndoableError, agent_hmac_secret, annuler_action,
-    anonymiser_texte, borner_erreur, cout_estime_usd, hacher_identifiant,
+    anonymiser_texte, borner_erreur, hacher_identifiant,
     log_confirmed_action, preuve_confirmation_valide,
 )
 from rest_framework.parsers import JSONParser
@@ -469,19 +470,6 @@ class AssistantEventView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
-def _noms_des_leads(company, lead_ids) -> dict:
-    """{lead_id: [nom, prénom du lead et de son client]} — lus via
-    ``apps.crm.selectors`` (jamais le modèle crm), bornés à la société."""
-    from apps.crm.selectors import get_company_leads_by_ids
-
-    noms = {}
-    for pk, lead in get_company_leads_by_ids(company, set(lead_ids)).items():
-        client = getattr(lead, 'client', None)
-        noms[pk] = [v for v in (lead.nom, lead.prenom, getattr(client, 'nom', None),
-                                getattr(client, 'prenom', None)) if v]
-    return noms
-
-
 def _periode_export(request):
     """(depuis, jusqu_a) ISO de la requête ; défaut : les 7 derniers jours."""
     from datetime import timedelta
@@ -526,8 +514,8 @@ class AssistantEventExportView(APIView):
         depuis, jusqu_a = _periode_export(request)
         evenements = list(_evenements_de_la_societe(request.user).filter(
             created_at__gte=depuis, created_at__lt=jusqu_a).order_by('created_at'))
-        noms = _noms_des_leads(request.user.company,
-                               [ev.lead_id for ev in evenements if ev.lead_id])
+        noms = noms_des_leads(request.user.company,
+                              [ev.lead_id for ev in evenements if ev.lead_id])
         lignes = []
         for ev in evenements:
             n = noms.get(ev.lead_id, ())
@@ -589,9 +577,6 @@ class AssistantEventStatsView(APIView):
         from collections import Counter
         from datetime import timedelta
 
-        from django.db.models import Count, IntegerField, Q, Sum
-        from django.db.models.fields.json import KT
-        from django.db.models.functions import Cast
         from django.utils import timezone
 
         brut = request.query_params.get('semaines', '4')
@@ -601,21 +586,15 @@ class AssistantEventStatsView(APIView):
         qs = _evenements_de_la_societe(request.user).filter(
             created_at__gte=timezone.now() - timedelta(weeks=semaines))
         intentions = AssistantEvent.Intention.values
-        jeton = {cle: Sum(Cast(KT(f'tokens__{cle}'), IntegerField()))
-                 for cle in CHAMPS_TOKENS}
-        par_modele = list(qs.values('modele').annotate(
-            n=Count('id'), repli_n=Count('id', filter=Q(repli=True)),
-            **{f'i_{i}': Count('id', filter=Q(intention=i)) for i in intentions},
-            **{f't_{cle}': agregat for cle, agregat in jeton.items()}))
+        par_modele = agregats_par_modele(qs)
         questions = sum(g['n'] for g in par_modele)
         par_intention = {i: sum(g[f'i_{i}'] for g in par_modele) for i in intentions}
         commerciaux = qs.exclude(user=None).values('user').distinct().count()
-        cout = sum(cout_estime_usd(g['modele'], {
-            cle: g[f't_{cle}'] or 0 for cle in jeton}) for g in par_modele)
+        cout = cout_des_agregats(par_modele)
         # Manques récents : même anonymisation que l'export (AIC11).
         recents = list(qs.filter(intention=AssistantEvent.Intention.MANQUE)
                        .order_by('-created_at').values_list('question', 'lead_id')[:200])
-        noms = _noms_des_leads(request.user.company, [lead for _, lead in recents if lead])
+        noms = noms_des_leads(request.user.company, [lead for _, lead in recents if lead])
         manques = Counter(anonymiser_texte(q, noms.get(lead, ())) for q, lead in recents)
         return Response({
             'questions': questions,

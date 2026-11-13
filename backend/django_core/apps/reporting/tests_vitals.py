@@ -963,3 +963,128 @@ class CommandeLectureTests(TestCase):
     def test_fenetre_invalide_refusee(self):
         with self.assertRaises(CommandError):
             self._sortie(jours=0)
+
+
+# ── COP-G6 — diagnostic de l'assistant pour l'administrateur ─────────────────
+DIAGNOSTIC_URL = '/api/django/reporting/assistant/diagnostic/'
+CONTRAT_DIAGNOSTIC = json.loads(
+    (Path(__file__).resolve().parent / 'contract_samples'
+     / 'assistant_diagnostic.json').read_text(encoding='utf-8'))
+
+
+class DiagnosticAssistantTests(TestCase):
+    """``GET reporting/assistant/diagnostic/`` : administrateurs seulement,
+    problèmes et journal de l'assistant BORNÉS à leur société ; la plateforme
+    n'est servie qu'à un super-utilisateur."""
+
+    def setUp(self):
+        from apps.agent.models import AssistantEvent
+        from apps.crm.models import Lead
+
+        self.company = Company.objects.get_or_create(
+            slug='cop6-co', defaults={'nom': 'COP6 Co'})[0]
+        self.autre = Company.objects.get_or_create(
+            slug='cop6-autre', defaults={'nom': 'COP6 Autre'})[0]
+        self.admin = User.objects.create_user(
+            username='cop6_admin', password='x', company=self.company,
+            role_legacy='admin')
+        self.vendeur = User.objects.create_user(
+            username='cop6_vendeur', password='x', company=self.company,
+            role_legacy='normal')
+        self.super = User.objects.create_user(
+            username='cop6_super', password='x', company=self.company,
+            is_staff=True, is_superuser=True)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch('core.health.check_services', return_value=[]).start()
+        mock.patch('apps.reporting.journal_problemes._instants_demarrage',
+                   return_value=[]).start()
+        for societe, route in ((self.company, '/ma-route/'), (self.autre, '/autre/')):
+            ProblemeClient.objects.create(
+                company=societe, genre='serveur', methode='GET', route=route,
+                statut_reponse=500)
+        vieux = ProblemeClient.objects.create(
+            company=self.company, genre='serveur', methode='GET',
+            route='/vieux/', statut_reponse=500)
+        ProblemeClient.objects.filter(pk=vieux.pk).update(
+            created_at=timezone.now() - timedelta(days=3))
+        lead = Lead.objects.create(company=self.company, nom='Benali', prenom='Ahmed')
+        diagnostic = CONTRAT_DIAGNOSTIC['exemple']['assistant']['signalements'][0][
+            'diagnostic']
+        self.bug = AssistantEvent.objects.create(
+            company=self.company, user=self.vendeur, intention='bug',
+            lead_id=lead.pk, ecran='/crm/relances', modele='claude-sonnet-5-5',
+            question='Le bouton Fait ne répond pas pour Ahmed Benali 0612345678',
+            erreur={'status': 409, 'outil': 'x', 'message': 'm',
+                    'diagnostic': diagnostic},
+            tokens={'input': 1_000_000})
+        AssistantEvent.objects.create(
+            company=self.company, user=self.vendeur, intention='donnee',
+            question='Combien ?', repli=True, modele='llama-3.3-70b-versatile')
+        AssistantEvent.objects.create(
+            company=self.autre, intention='bug', question='Autre société 0699999999')
+
+    def _get(self, user, **params):
+        return _auth(user).get(DIAGNOSTIC_URL, params)
+
+    def test_reserve_aux_administrateurs(self):
+        self.assertEqual(self._get(self.vendeur).status_code, 403)
+        self.assertIn(APIClient().get(DIAGNOSTIC_URL).status_code, (401, 403))
+        self.assertEqual(self._get(self.admin).status_code, 200)
+
+    def test_forme_du_contrat_et_societe_de_l_administrateur(self):
+        resp = self._get(self.admin)
+        exemple = CONTRAT_DIAGNOSTIC['exemple']
+        self.assertEqual(set(resp.data), set(exemple))
+        self.assertEqual(set(resp.data['assistant']), set(exemple['assistant']))
+        self.assertEqual({p['route'] for p in resp.data['problemes']}, {'/ma-route/'})
+        self.assertEqual(set(resp.data['problemes'][0]),
+                         set(exemple['problemes'][0]))
+        self.assertIsNone(resp.data['plateforme'])
+        assistant = resp.data['assistant']
+        self.assertEqual((assistant['questions'], assistant['erreurs']), (2, 1))
+        self.assertEqual(assistant['part_repli'], 0.5)
+        self.assertEqual(assistant['cout_estime_usd'], 2.0)
+
+    def test_meme_calcul_que_le_resume_de_service(self):
+        resp = self._get(self.admin)
+        attendu = json.loads(json.dumps(
+            resume_json(jours=1, company=self.company)['problemes']))
+        self.assertEqual(json.loads(json.dumps(resp.data['problemes'])), attendu)
+
+    def test_signalements_anonymises_avec_le_tampon(self):
+        resp = self._get(self.admin)
+        signalements = resp.data['assistant']['signalements']
+        self.assertEqual([s['evenement_id'] for s in signalements], [self.bug.pk])
+        signalement = signalements[0]
+        self.assertEqual(set(signalement), set(
+            CONTRAT_DIAGNOSTIC['exemple']['assistant']['signalements'][0]))
+        self.assertEqual(signalement['question_anonymisee'],
+                         'Le bouton Fait ne répond pas pour [client] [tel]')
+        self.assertEqual(signalement['diagnostic'],
+                         self.bug.erreur['diagnostic'])
+        self.assertNotIn('0612345678', json.dumps(resp.data))
+
+    def test_plateforme_pour_le_seul_super_utilisateur(self):
+        resp = self._get(self.super)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(set(resp.data['plateforme']), set(
+            CONTRAT_DIAGNOSTIC['exemple_super_utilisateur_plateforme']))
+        # Les problèmes restent ceux de SA société (jamais toutes).
+        self.assertEqual({p['route'] for p in resp.data['problemes']}, {'/ma-route/'})
+
+    def test_fenetre_jours_bornee(self):
+        for jours in ('0', '8', 'abc', '-1', '1.5'):
+            self.assertEqual(self._get(self.admin, jours=jours).status_code, 400, jours)
+        resp = self._get(self.admin, jours=7)
+        self.assertEqual(resp.data['jours'], 7)
+        self.assertIn('/vieux/', {p['route'] for p in resp.data['problemes']})
+
+    def test_l_action_du_catalogue_pointe_cette_route(self):
+        from apps.agent.registry import all_actions
+
+        action = next(a for a in all_actions()
+                      if a.key == 'reporting.assistant.diagnostic')
+        self.assertEqual(action.endpoint, DIAGNOSTIC_URL)
+        self.assertEqual((action.carte, action.lot, action.risk, action.method),
+                         ('diagnostic', 'copilote', 'internal', 'GET'))
+        self.assertEqual(action.required_permission, 'roles_gerer')

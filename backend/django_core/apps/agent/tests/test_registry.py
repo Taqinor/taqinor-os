@@ -258,6 +258,7 @@ class PariteCataloguePermissionRouteTest(SimpleTestCase):
 
     PROPRES_A_L_AGENT = ('automation.rule.propose_draft', 'crm.client.create',
                          'crm.lead.list', 'ged.docqa.retrieve',
+                         'reporting.assistant.diagnostic',
                          'stock.produit.delete')
     # clé -> raison pour laquelle la garde de la route n'est pas lisible.
     NON_LISIBLES = {

@@ -455,6 +455,40 @@ def _register_builtin_actions() -> None:
                 "Créer un brouillon de règle d'automatisation (désactivée, "
                 "à valider par un administrateur)."),
         ),
+        # COP-G6 — diagnostic pour l'ADMINISTRATEUR (« qu'est-ce qui a cassé
+        # hier ? », « l'assistant marche-t-il ? ») : lecture seule de
+        # ``reporting/assistant/diagnostic/`` (problèmes de SA société, santé de
+        # la plateforme pour un super-utilisateur, journal de l'assistant).
+        # Neuve : lot ``copilote`` (le modèle ne la voit que copilote allumé) ;
+        # ``roles_gerer`` = le critère d'administrateur de la route (``IsAdminRole``).
+        AgentAction(
+            key='reporting.assistant.diagnostic',
+            label="Diagnostic de l'ERP et de l'assistant",
+            description=(
+                "Sert à : dire ce qui a cassé récemment dans l'ERP (problèmes "
+                "vécus par les utilisateurs de la société, regroupés), l'état "
+                "de l'assistant (erreurs, repli, coût) et ses signalements "
+                "récents. Ne pas utiliser pour : une question métier (leads, "
+                "devis) ni une panne que tu peux voir à l'écran. Exemple : "
+                "« qu'est-ce qui a cassé hier ? » → jours=1. Résultat : "
+                "problèmes, assistant, signalements ; administrateurs seulement."
+            ),
+            endpoint='/api/django/reporting/assistant/diagnostic/',
+            method='GET',
+            inputs={
+                'type': 'object',
+                'properties': {
+                    'jours': {
+                        'type': 'integer',
+                        'description': 'Fenêtre en jours, de 1 à 7 (défaut 1 : hier).',
+                    },
+                },
+            },
+            required_permission='roles_gerer',
+            risk=RISK_INTERNAL,
+            carte='diagnostic',
+            lot=LOT_COPILOTE,
+        ),
         AgentAction(
             key='stock.produit.delete',
             label='Supprimer un produit',
