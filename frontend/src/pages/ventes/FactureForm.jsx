@@ -302,6 +302,9 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
     return Object.keys(e).length === 0
   }
 
+  // ACNC15 — jeton de version (NTPLT17) renvoyé à chaque enregistrement :
+  // un onglet périmé reçoit 409 `conflit_version` au lieu d'écraser.
+  const versionRef = useRef(facture?.lock_version)
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
@@ -332,15 +335,18 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
       // submit précédent partiellement échoué) ne repart JAMAIS en second
       // POST : la relance passe systématiquement en ÉDITION.
       let factureId = facture?.id ?? createdFactureId
+      const verrou = versionRef.current != null ? { lock_version: versionRef.current } : {}
       if (factureId && horsBrouillon) {
         // AFAC71 — hors brouillon, seuls les champs non financiers partent :
         // mise à jour PARTIELLE (PATCH). Un PUT exige le client et les montants
         // (400 « client : Ce champ est obligatoire », vu en acceptation live).
-        const { data } = await ventesApi.patchFacture(factureId, payload)
+        const { data } = await ventesApi.patchFacture(factureId, { ...payload, ...verrou })
         factureId = data.id
+        versionRef.current = data.lock_version ?? versionRef.current
       } else if (factureId) {
-        const res = await dispatch(updateFacture({ id: factureId, data: payload })).unwrap()
+        const res = await dispatch(updateFacture({ id: factureId, data: { ...payload, ...verrou } })).unwrap()
         factureId = res.id
+        versionRef.current = res.lock_version ?? versionRef.current
       } else {
         const res = await dispatch(createFacture(payload)).unwrap()
         factureId = res.id
@@ -389,10 +395,26 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
         }))
       }
 
+      // ACNC15 — une ligne SANS réponse (délai) a pu être créée : les lignes
+      // de la facture sont relues et rapprochées, jamais re-postées en double.
+      const perdues = createResult.failed.filter(f => typeof f.error === 'string')
+      const retrouvees = new Map()
+      if (perdues.length) {
+        const { data } = await ventesApi.getFacture(factureId)
+        const connus = new Set([...lines.map(l => l.id), ...createResult.succeeded.map(r => r.value.id)])
+        const libres = (data?.lignes || []).filter(sl => !connus.has(sl.id))
+        for (const f of perdues) {
+          const i = libres.findIndex(sl => sl.designation === f.item.designation
+            && String(sl.produit) === String(f.item.produit) && Number(sl.quantite) === Number(f.item.quantite))
+          if (i >= 0) retrouvees.set(f.item._key, libres.splice(i, 1)[0].id)
+        }
+        if (retrouvees.size) setLines(ls => ls.map(l => (retrouvees.has(l._key) ? { ...l, id: retrouvees.get(l._key) } : l)))
+      }
+
       // AFAC70 — chaque ligne refusée dit POURQUOI (motif serveur, clé de
       // champ DRF via frenchError) et LAQUELLE (numéro d'affichage) ; la
       // saisie reste dans le champ, jamais corrigée en silence.
-      const lignesEnEchec = [...updResult.failed, ...createResult.failed]
+      const lignesEnEchec = [...updResult.failed, ...createResult.failed.filter(f => !retrouvees.has(f.item._key))]
         .map(f => ({
           key: f.item._key,
           numero: lines.findIndex(l => l._key === f.item._key) + 1,
