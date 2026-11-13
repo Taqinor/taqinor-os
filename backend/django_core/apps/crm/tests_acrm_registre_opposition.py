@@ -143,3 +143,53 @@ class RegistreOppositionTests(TestCase):
             'DEV-ACRM63', self.lead, canal='revision', message='')
         self.lead.refresh_from_db()
         self.assertTrue(self.lead.ne_plus_contacter)
+
+    # ── AMSG3 (D-AMSG-2 = toutes_les_fiches) ───────────────────────────────
+
+    def test_stop_coche_les_fiches_existantes_aux_memes_contacts(self):
+        """STOP sur A : les fiches EXISTANTES de la société aux mêmes contacts
+        (B même numéro écrit autrement, D archivée au même e-mail) sont
+        cochées avec la ligne ancien → nouveau ; C d'une autre société ne
+        bouge pas ; un numéro opposé collé sur E la rend opposée ; une case
+        décochée n'est pas recochée par l'enregistrement suivant."""
+        from apps.crm.cadence_reponses import (
+            CONSENT_SOURCE_OPPOSITION_TOUCHE, tracer_opposition_registre)
+        from apps.crm.models import LeadActivity
+        from apps.crm.selectors import peut_contacter
+
+        b = Lead.objects.create(company=self.company, nom='B',
+                                telephone='06 61 59 59 59')
+        d = Lead.objects.create(company=self.company, nom='D',
+                                email=EMAIL.upper(), is_archived=True)
+        autre = Company.objects.create(nom='AMSG3 Autre', slug='amsg3-autre')
+        c = Lead.objects.create(company=autre, nom='C', telephone=TELEPHONE)
+        e = Lead.objects.create(company=self.company, nom='E',
+                                telephone='+212600000303')
+        Lead.objects.filter(pk=self.lead.pk).update(ne_plus_contacter=True)
+        self.lead.refresh_from_db()
+        tracer_opposition_registre(
+            self.lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
+
+        for fiche in (b, d):
+            fiche.refresh_from_db()
+            self.assertTrue(fiche.ne_plus_contacter, fiche.nom)
+            self.assertTrue(LeadActivity.objects.filter(
+                lead=fiche, kind=LeadActivity.Kind.MODIFICATION,
+                field='ne_plus_contacter').exists(), fiche.nom)
+        self.assertFalse(peut_contacter(b))
+        c.refresh_from_db()
+        self.assertFalse(c.ne_plus_contacter)
+        e.refresh_from_db()
+        self.assertFalse(e.ne_plus_contacter)
+
+        e.telephone = TELEPHONE
+        e.save()
+        e.refresh_from_db()
+        self.assertTrue(e.ne_plus_contacter)
+
+        b.ne_plus_contacter = False
+        b.save()
+        b.ville = 'Rabat'
+        b.save()
+        b.refresh_from_db()
+        self.assertFalse(b.ne_plus_contacter)

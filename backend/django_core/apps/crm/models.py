@@ -1979,13 +1979,9 @@ class Lead(LeadPompageMixin, VerrouOptimisteMixin, RechercheFTSMixin, SoftDelete
         # ACRM32 — idem pour le WhatsApp (tronqué comme la colonne).
         self.whatsapp_normalise = (
             _crm_doublons.normalize_phone(self.whatsapp) or '')[:20]
-        # ACRM62 — une personne opposée puis effacée (empreinte) naît « ne
-        # plus contacter », quelle que soit la porte de création.
-        if self._state.adding and not self.ne_plus_contacter:
-            from .leads_doublons import porte_une_opposition
-            self.ne_plus_contacter = porte_une_opposition(
-                self.company_id, email=self.email, telephone=self.telephone,
-                whatsapp=self.whatsapp)
+        # ACRM62, AMSG3 — empreinte d'opposition relue à la création ou au
+        # changement d'un contact, quelle que soit la porte d'écriture.
+        _crm_doublons.relire_opposition(self, kwargs)
         super().save(*args, **kwargs)
 
     class Meta:

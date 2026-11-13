@@ -412,19 +412,65 @@ def empreintes_contact(email=None, telephone=None, whatsapp=None):
 def poser_empreintes_opposition(company, le):
     """ACRM62, ACVI43 — un lead « ne plus contacter » laisse l'empreinte hachée
     de son e-mail et de son téléphone (WhatsApp compris) à la liste d'opposition
-    de la société ; un lead NON opposé ne laisse rien."""
+    de la société ; un lead NON opposé ne laisse rien. AMSG3 (D-AMSG-2 =
+    toutes_les_fiches) — une empreinte NEUVE coche aussi les autres fiches
+    vivantes de la société aux mêmes contacts (ligne ancien → nouveau)."""
     if not getattr(le, 'ne_plus_contacter', False):
         return
     from .models import EmpreinteOpposition
 
-    # La contrainte (company, nature, empreinte) absorbe un second passage :
+    empreintes = empreintes_contact(le.email, le.telephone, le.whatsapp)
+    neuves = empreintes - set(EmpreinteOpposition.objects.filter(
+        company=company, empreinte__in=[e for _n, e in empreintes],
+    ).values_list('nature', 'empreinte'))
+    if not neuves:
+        return
+    # La contrainte (company, nature, empreinte) absorbe une course :
     # jamais de doublon, jamais d'erreur.
     EmpreinteOpposition.objects.bulk_create(
         [EmpreinteOpposition(company=company, nature=nature,
                              empreinte=empreinte)
-         for nature, empreinte in empreintes_contact(
-             le.email, le.telephone, le.whatsapp)],
-        ignore_conflicts=True)
+         for nature, empreinte in neuves], ignore_conflicts=True)
+    _opposer_fiches_soeurs(company, le)
+
+
+def _opposer_fiches_soeurs(company, le):
+    """AMSG3 — fiches vivantes de ``company`` aux contacts normalisés de ``le``
+    encore contactables ⇒ cochées (une sœur cochée sort du filtre)."""
+    from django.db.models import Q
+
+    from .cadence_reponses import _marquer_lead_ne_plus_contacter
+    tels = {(normalize_phone(v) or '')[:20] for v in (le.telephone, le.whatsapp)} - {''}
+    cible = Q(phone_normalise__in=tels) | Q(whatsapp_normalise__in=tels)
+    if normalize_email(le.email):
+        cible |= Q(email_normalise=normalize_email(le.email))
+    for pk in Lead.objects.filter(cible, company=company).exclude(
+            pk=le.pk).values_list('pk', flat=True):
+        soeur = Lead.objects.filter(pk=pk, ne_plus_contacter=False).first()
+        if soeur is not None:
+            _marquer_lead_ne_plus_contacter(soeur, None)
+
+
+def relire_opposition(lead, kwargs):
+    """ACRM62, AMSG3 — appelée par ``Lead.save`` : une fiche créée, ou dont un
+    contact normalisé change, devient « ne plus contacter » si une empreinte
+    de sa société porte ce contact ; une case décochée n'est jamais recochée
+    par un enregistrement qui ne change aucun contact."""
+    champs = kwargs.get('update_fields')
+    if lead.ne_plus_contacter or (champs is not None and not {
+            'email', 'telephone', 'whatsapp'} & set(champs)):
+        return
+    if not porte_une_opposition(lead.company_id, email=lead.email,
+                                telephone=lead.telephone, whatsapp=lead.whatsapp):
+        return
+    if not lead._state.adding and Lead.all_objects.filter(
+            pk=lead.pk, email_normalise=lead.email_normalise,
+            phone_normalise=lead.phone_normalise,
+            whatsapp_normalise=lead.whatsapp_normalise).exists():
+        return
+    lead.ne_plus_contacter = True
+    if champs is not None:
+        kwargs['update_fields'] = [*champs, 'ne_plus_contacter']
 
 
 def retirer_empreintes_opposition(company, le):
