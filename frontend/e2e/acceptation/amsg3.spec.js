@@ -146,7 +146,7 @@ etape('PF8.2.anonymiser_client_ecran', ['AMSG4'], async ({ page }) => {
   const nomClient = `AMSG4 Client ${m}`
   const lie = await nouveauLead(page.request, nomLead, { whatsapp: telephoneMobileUnique() })
   const autre = await nouveauLead(page.request, `AMSG4 Temoin ${m}`)
-  const c = await py(`from apps.crm.models import Client, Lead
+  await py(`from apps.crm.models import Client, Lead
 co = ${SOC}
 c1 = Client.objects.create(company_id=co, nom=${J(nomClient)}, email='amsg4-client-${m}@example.invalid', telephone='${telephoneMobileUnique()}')
 c2 = Client.objects.create(company_id=co, nom='AMSG4 Autre ${m}')
