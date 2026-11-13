@@ -111,7 +111,11 @@ def catalogue_du_tour(ctx) -> list[dict]:
     """Catalogue d'actions du compte (filtré par Django) : il décide si le
     copilote est allumé (`prompt_copilote.copilote_allume`). [] sans relais."""
     from app.services.action_tools import actions_available, fetch_catalogue
-    return fetch_catalogue(ctx) if actions_available(ctx) else []
+    if not actions_available(ctx):
+        return []
+    # Gardé pour le tour : `build_action_tools` ne relit pas Django.
+    ctx.catalogue_tour = fetch_catalogue(ctx)
+    return ctx.catalogue_tour
 
 
 # ── COP-B2 — identité de l'appelant, lue par le SERVEUR ───────────────────────

@@ -94,6 +94,11 @@ class ActionContext:
         self.permissions = list(permissions or [])
         self.token = token or ""
         self.is_superuser = bool(is_superuser)
+        # Posés par le relais pour la durée d'UNE requête (jamais lus du corps) :
+        # prénom et rôle affiché de l'appelant (en-tête de tour), et le
+        # catalogue déjà lu ce tour (une seule lecture Django par question).
+        self.identite: dict[str, str] = {}
+        self.catalogue_tour: Optional[list[dict[str, Any]]] = None
 
     # ── Gating cote FastAPI (defense en profondeur) ───────────────────────
 
@@ -1124,7 +1129,8 @@ def build_action_tools(
     from langchain_core.tools import StructuredTool
 
     tools = []
-    for action in fetch_catalogue(ctx):
+    catalogue = getattr(ctx, "catalogue_tour", None)
+    for action in (fetch_catalogue(ctx) if catalogue is None else catalogue):
         try:
             args_model = _args_model_for(action)
         except Exception as exc:  # pragma: no cover - schema malforme

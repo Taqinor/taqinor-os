@@ -261,6 +261,21 @@ class BuildToolsTests(unittest.TestCase):
             tool = at.build_action_tools(ctx)[0]
         self.assertIn("PROPOSITION", tool.description)
 
+    def test_catalogue_du_tour_deja_lu_n_est_pas_relu(self):
+        """Une seule lecture Django par question : le catalogue que le relais
+        a déjà lu ce tour (`ctx.catalogue_tour`) sert à construire les outils."""
+        ctx = _ctx(role="admin")
+        ctx.catalogue_tour = [_CAT_PROPOSAL_PDF]
+
+        def _interdit(ctx):
+            raise AssertionError("catalogue relu")
+        with mock.patch.object(at, "fetch_catalogue", _interdit):
+            names = [t.name for t in at.build_action_tools(ctx)]
+        self.assertEqual(names, ["ventes_devis_proposal_pdf"])
+        # Sans catalogue du tour (défaut None) : lecture normale.
+        self.assertIsNone(_ctx(role="admin").catalogue_tour)
+        self.assertEqual(_ctx(role="admin").identite, {})
+
     def test_tool_args_schema_from_inputs(self):
         ctx = _ctx(role="admin")
         with _patch_catalogue([_CAT_PROPOSAL_PDF]):
