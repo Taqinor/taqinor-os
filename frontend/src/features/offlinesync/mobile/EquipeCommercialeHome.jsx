@@ -16,7 +16,7 @@ import {
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import OnboardingTerrain from '../OnboardingTerrain'
-import CommercialHome from './CommercialHome'
+import CommercialHome, { EchecLecture } from './CommercialHome'
 import { classementParCommercial } from './equipeCommerciale'
 
 const ONGLETS = [
@@ -29,19 +29,20 @@ export default function EquipeCommercialeHome() {
   const navigate = useNavigate()
   const [onglet, setOnglet] = useState('moi')
   const [enRetard, setEnRetard] = useState(null)
+  const [essai, setEssai] = useState(0)
 
   useEffect(() => {
     if (!isMobile) return undefined
     let alive = true
     crmApi.getRelances({ scope: 'overdue' })
       .then((r) => { if (alive) setEnRetard(r.data?.results ?? []) })
-      .catch(() => { if (alive) setEnRetard([]) })
+      .catch(() => { if (alive) setEnRetard(false) }) // AERR121 — échec ≠ « aucune »
     return () => { alive = false }
-  }, [isMobile])
+  }, [isMobile, essai])
 
   if (!isMobile) return <Navigate to="/dashboard" replace />
 
-  const classement = classementParCommercial(enRetard ?? [])
+  const classement = classementParCommercial(enRetard || [])
 
   return (
     <div className="flex flex-col gap-3 p-3 pb-24">
@@ -65,6 +66,8 @@ export default function EquipeCommercialeHome() {
           )}>
           {enRetard === null
             ? <Spinner />
+            : enRetard === false
+              ? <EchecLecture onRetry={() => { setEnRetard(null); setEssai((n) => n + 1) }} />
             : classement.length === 0
               ? <EmptyState title="Aucune relance en retard dans l'équipe" />
               : (

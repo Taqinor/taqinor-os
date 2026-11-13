@@ -98,7 +98,8 @@ export default function PortailClientSav() {
     )
   }
 
-  if (erreur) {
+  // AERR128 — une relecture ratée après un geste garde la page et son message.
+  if (erreur && rows.length === 0 && !messageCreation) {
     return (
       <EmptyState
         title="Demandes indisponibles"
@@ -154,6 +155,11 @@ export default function PortailClientSav() {
         </form>
       </Card>
 
+      {erreur ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Liste pas à jour — <Button variant="link" size="sm" onClick={charger}>Réessayer</Button>
+        </p>
+      ) : null}
       {rows.length === 0 ? (
         <EmptyState
           title="Aucune demande"

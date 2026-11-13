@@ -8,10 +8,12 @@ import {
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
 import {
-  errMessage, toutesLesPages, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+  toutesLesPages, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
 } from './shared.js'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
+import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    PACT133 — Règles d'accès par métadonnée (XGED21, couche dynamique).
@@ -45,6 +47,7 @@ function niveauLabel(niveau) {
 }
 
 export default function ReglesAclPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [regles, setRegles] = useState([])
   const [roles, setRoles] = useState([])
   const [showCreate, setShowCreate] = useState(false)
@@ -79,7 +82,7 @@ export default function ReglesAclPage() {
     () => gedApi.updateRegleAclMetadonnee(r.id, { actif: !r.actif }),
     r.actif ? 'Règle désactivée.' : 'Règle activée.', load)
 
-  const supprimer = (r) => actionAvecToast(
+  const supprimer = async (r) => await confirmDelete({ title: 'Supprimer cette règle d’accès ?', description: `La règle « ${r.nom} » sera supprimée.` }) && actionAvecToast(
     () => gedApi.deleteRegleAclMetadonnee(r.id), 'Règle supprimée.', load)
 
   const rowActions = (r) => actionsActivation(r, toggleActif, supprimer)
@@ -136,7 +139,7 @@ function CreateRegleAclDialog({ roles, onClose, onDone }) {
       })
       toast.success('Règle créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

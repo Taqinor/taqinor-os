@@ -104,6 +104,45 @@ class RepriseBulkTest(TestCase):
         self.assertEqual(job.succes, 4)
         self.assertEqual(job.cursor, 4)
 
+    def test_limite_douce_ne_saute_aucune_ligne(self):
+        """ACEL33 — la limite douce (120 s) tombe sur la ligne 4 : elle n'est
+        pas comptée en erreur, le curseur reste avant elle, le journal déjà
+        accumulé (ligne 2 invalide) est écrit, et la reprise l'importe."""
+        import json
+        from celery.exceptions import SoftTimeLimitExceeded
+        lignes = [{'nom': 'L1'}, {'nom': 'L2', 'email': 'pas-un-email'},
+                  {'nom': 'L3'}, {'nom': 'L4'}, {'nom': 'L5'}]
+        job = self._job_import('\n'.join(
+            json.dumps(x) for x in lignes).encode('utf-8'))
+        original = bulk._process_lead_row
+
+        def limite_sur_l4(company, mode, dedup_key, row):
+            if row.get('nom') == 'L4':
+                raise SoftTimeLimitExceeded()
+            return original(company, mode, dedup_key, row)
+
+        with mock.patch.object(bulk, '_process_lead_row',
+                               side_effect=limite_sur_l4):
+            bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertEqual((job.cursor, job.erreurs), (3, 1))
+        journal = self.magasin[job.erreurs_file_key].decode('utf-8')
+        self.assertEqual(
+            [json.loads(x)['ligne'] for x in journal.splitlines()], [2])
+
+        with mock.patch.object(bulk, '_dispatch_import'):
+            bulk.relancer_job(job)
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
+        self.assertEqual(job.succes, 4)
+        noms = list(Lead.objects.filter(company=self.co).order_by(
+            'nom').values_list('nom', flat=True))
+        self.assertEqual(noms, ['L1', 'L3', 'L4', 'L5'])
+        bulk.run_import_job(job.id)  # job terminé : ne fait rien
+        self.assertEqual(Lead.objects.filter(company=self.co).count(), 4)
+
     def test_export_reprise_complet(self):
         for nom in ('E1', 'E2', 'E3', 'E4'):
             Lead.objects.create(company=self.co, nom=nom)

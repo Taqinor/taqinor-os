@@ -15,12 +15,15 @@ vi.mock('../api/recordsApi', () => ({
 
 import recordsApi from '../api/recordsApi'
 import ChatterWidget from './ChatterWidget'
+import { ConfirmProvider } from '../providers/ConfirmProvider'
 
 function renderWidget(user = { username: 'sami', role: 'commerciale' }) {
   const store = configureStore({ reducer: { auth: () => ({ user }) } })
   return render(
     <Provider store={store}>
-      <ChatterWidget model="crm.lead" id={1} />
+      <ConfirmProvider>
+        <ChatterWidget model="crm.lead" id={1} />
+      </ConfirmProvider>
     </Provider>,
   )
 }
@@ -54,6 +57,26 @@ describe('ChatterWidget (VX196)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
     expect(await screen.findByText('Ça marche')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('AERR68 — Supprimer puis Annuler : aucune suppression ; Supprimer confirmé : un appel', async () => {
+    recordsApi.deleteComment.mockClear()
+    recordsApi.deleteComment.mockResolvedValueOnce({})
+    renderWidget()
+    fireEvent.click(await screen.findByLabelText('Supprimer le commentaire'))
+    expect(await screen.findByText('Supprimer ce commentaire ?')).toBeInTheDocument()
+    expect(screen.getByText(/« Bonjour » sera supprimé/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByText('Supprimer ce commentaire ?')).not.toBeInTheDocument())
+    expect(recordsApi.deleteComment).not.toHaveBeenCalled()
+    expect(screen.getByText('Bonjour')).toBeInTheDocument()
+
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
+    fireEvent.click(screen.getByLabelText('Supprimer le commentaire'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(recordsApi.deleteComment).toHaveBeenCalledTimes(1))
   })
 
   it('VX204 — un échec d\'envoi de commentaire affiche un message d\'erreur visible', async () => {

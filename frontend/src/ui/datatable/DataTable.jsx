@@ -266,6 +266,8 @@ export const DataTable = forwardRef(function DataTable(
     // états
     loading = false,
     error = null,
+    // AERR58 — relecture ratée AVEC des lignes : « Réessayer » du bandeau.
+    onRetry,
     // recherche / filtres
     searchable = true,
     searchPlaceholder = 'Rechercher…',
@@ -434,6 +436,9 @@ export const DataTable = forwardRef(function DataTable(
      virtualisation) pour un rythme vertical premium et régulier. */
   const densityRowHeight = density === 'compact' ? 32 : density === 'spacious' ? 48 : 40
 
+  // AERR58 — une relecture (en cours ou ratée) ne vide jamais une liste affichée.
+  const avecLignes = Array.isArray(data) && data.length > 0
+  const squelettes = loading && !avecLignes
   const table = useDataTable({
     data, columns, getRowId, globalColumns,
     initialPageSize, initialView: savedViews?.[0]?.id ?? null,
@@ -966,7 +971,7 @@ export const DataTable = forwardRef(function DataTable(
       )}
 
       {/* -------- Erreur -------- */}
-      {error ? (
+      {error && !avecLignes ? (
         <EmptyState
           icon={AlertTriangle}
           tone="error"
@@ -975,6 +980,13 @@ export const DataTable = forwardRef(function DataTable(
         />
       ) : (
         <>
+          {error && (
+            <div role="alert" data-dt-stale className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+              <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden />
+              <span className="flex-1">Liste peut-être pas à jour — {typeof error === 'string' ? error : 'la relecture a échoué.'}</span>
+              {onRetry && <Button size="sm" variant="outline" onClick={onRetry}>Réessayer</Button>}
+            </div>
+          )}
           {/* -------- DESKTOP : tableau --------
              ARC49-FIX — `hidden dt-desktop:block` UNIQUEMENT quand le repli en
              cartes prend le relais sous 768 px. Sans cartes (renderRow /
@@ -1144,7 +1156,7 @@ export const DataTable = forwardRef(function DataTable(
                 )}
 
                 <tbody>
-                  {loading ? (
+                  {squelettes ? (
                     /* H133 — lignes-squelettes calquées sur la VRAIE disposition
                        (une cellule par colonne, hauteur de densité). Jamais de
                        spinner en parallèle : le squelette EST l'indicateur.
@@ -1499,7 +1511,7 @@ export const DataTable = forwardRef(function DataTable(
               branches DOIVENT rester pilotées par ce seul booléen. */}
           {mobileCards && (
           <div data-dt-cards className="flex flex-col gap-2 dt-desktop:hidden">
-            {loading ? (
+            {squelettes ? (
               Array.from({ length: 4 }).map((unused, i) => (
                 <div key={i} data-skeleton-card className="rounded-xl border border-border bg-card p-3">
                   <Skeleton className="mb-2 h-5 w-1/2" />

@@ -1,0 +1,6 @@
+[ADCG115] dump_database: OK — BackupRun #1, 15805124 octets, objet pg_dumps/20261113-211407.dump
+[ADCG115] BackupRun #1 — cause servie : Could not connect to the endpoint URL: "http://127.0.0.1:9/acceptation-adcg115/pg_dumps/20261113-211407.dump?uploads"
+[ADCG115] écran (ouverture) : Copie hors serveur en échec le 13 novembre 2026 à 21:14 : Could not connect to the endpoint URL: "http://127.0.0.1:9/acceptation-adcg115/pg_dumps/20261113-211407.dump?uploads"
+[ADCG115] écran (rechargement) : Copie hors serveur en échec le 13 novembre 2026 à 21:14 : Could not connect to the endpoint URL: "http://127.0.0.1:9/acceptation-adcg115/pg_dumps/20261113-211407.dump?uploads"
+::notice title=🎭 Playwright Run Summary::  2 passed (41.6s)
+  2 passed (41.6s)

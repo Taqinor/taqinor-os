@@ -352,6 +352,39 @@ class TestControleIntegriteBeatTask(IntegrityBase):
         self.assertIsNotNone(notif)
         self.assertIn('Devis acceptés sans chantier créé', notif.body)
 
+    def test_societe_suspendue_ni_controlee_ni_notifiee(self):
+        """ACEL35 — le chemin du planning (sans --company) ne contrôle ni ne
+        notifie une société suspendue (actif=False)."""
+        from io import StringIO
+        from unittest import mock
+        from apps.notifications.models import Notification
+        from apps.reporting.tasks import run_controle_integrite_beat
+        from authentication.selectors import active_companies
+
+        suspendue = Company.objects.create(
+            slug='acel35-suspendue', nom='ACEL35 B', actif=False)
+        admin_b = User.objects.create_user(
+            username='acel35_b', password='x', role_legacy='admin',
+            company=suspendue)
+        client_b = Client.objects.create(company=suspendue, nom='ClientB')
+        for co, cl, ref in ((self.company, self.client_obj, 'DEV-A35'),
+                            (suspendue, client_b, 'DEV-B35')):
+            Devis.objects.create(company=co, reference=ref, client=cl,
+                                 statut=Devis.Statut.ACCEPTE)
+
+        sortie = StringIO()
+        with mock.patch('sys.stdout', sortie):
+            run_controle_integrite_beat()
+
+        def notifs(user):
+            return Notification.objects.filter(
+                recipient=user, title__icontains="Contrôle d'intégrité")
+        self.assertEqual(notifs(self.user).count(), 1)
+        self.assertFalse(notifs(admin_b).exists())
+        self.assertIn(f'pour {active_companies().count()} société(s)',
+                      sortie.getvalue())
+        self.assertNotIn(suspendue, list(active_companies()))
+
     def test_beat_task_does_not_notify_when_no_anomaly(self):
         from apps.notifications.models import Notification
         from apps.reporting.tasks import run_controle_integrite_beat

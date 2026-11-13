@@ -1,0 +1,358 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [checkout: taqinor-os]  rc=0
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... ok
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... ok
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... ok
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... ok
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 7.616s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_odoo_writes sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_odoo_writes.py    [checkout: taqinor-os]  rc=0
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+==> OK : garde scripts/check_odoo_writes.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [copie: depot]  rc=0
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... ok
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... ok
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... ok
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... ok
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 7.622s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « main sans _verifier_appels » : scripts/check_odoo_writes.py
+    - '    _verifier_appels(textes, echecs)\n'
+    + '    pass\n'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [copie: depot]  rc=1
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... ok
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... FAIL
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... ok
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... ok
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+======================================================================
+FAIL: test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 223, in test_ecriture_non_declaree_fait_sortir_un
+    self._rougit({'apps/crm/ailleurs.py': "odoo_call(cfg, 'res.partner', 'write', {'vals': {}})"},
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+----------------------------------------------------------------------
+Ran 24 tests in 7.559s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « main sans _verifier_appels » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un)
+
+--- mutant « main sans _verifier_allowlist_execution » : scripts/check_odoo_writes.py
+    - '    _verifier_allowlist_execution(textes, echecs)\n'
+    + '    pass\n'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [copie: depot]  rc=1
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... FAIL
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... ok
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... ok
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... ok
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+======================================================================
+FAIL: test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 228, in test_allowlist_absente_fait_sortir_un
+    self._rougit({ODOO_SYNC: reel.replace('_WRITE_ALLOWED', '_AUTORISE_RENOMME')}, '_WRITE_ALLOWED')
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+----------------------------------------------------------------------
+Ran 24 tests in 7.745s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « main sans _verifier_allowlist_execution » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un)
+
+--- mutant « main sans _verifier_transports_declares » : scripts/check_odoo_writes.py
+    - '    _verifier_transports_declares(textes, echecs)\n'
+    + '    pass\n'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [copie: depot]  rc=1
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... ok
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... ok
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... ok
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... FAIL
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+======================================================================
+FAIL: test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 231, in test_nouveau_transport_fait_sortir_un
+    self._rougit({'apps/compta/pont_odoo.py': "url = base + '/json/2/account.move/create'"}, 'pont_odoo.py')
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+----------------------------------------------------------------------
+Ran 24 tests in 3.004s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « main sans _verifier_transports_declares » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un)
+
+--- mutant « main sans _verifier_module_dormant » : scripts/check_odoo_writes.py
+    - '    _verifier_module_dormant(textes, echecs)\n'
+    + '    pass\n'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [copie: depot]  rc=1
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... ok
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... ok
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... FAIL
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... ok
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+======================================================================
+FAIL: test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 234, in test_module_dormant_appele_fait_sortir_un
+    self._rougit({'apps/compta/services_atst46.py': 'from core import odoo_accounting'}, 'plus dormant')
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+----------------------------------------------------------------------
+Ran 24 tests in 5.331s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « main sans _verifier_module_dormant » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un)
+
+--- mutant « main : if echecs → if False » : scripts/check_odoo_writes.py
+    - '    if echecs:'
+    + '    if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_odoo_writes -v    [copie: depot]  rc=1
+check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un) ... FAIL
+test_corpus_reel_seul_sort_zero (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_corpus_reel_seul_sort_zero) ... ok
+test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un) ... FAIL
+test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un) ... FAIL
+test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un) ... FAIL
+test_absente_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_absente_rougit) ... ok
+test_conforme_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_conforme_ne_rougit_pas) ... ok
+test_declaree_mais_jamais_consultee_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_declaree_mais_jamais_consultee_rougit) ... ok
+test_elargie_rougit (scripts.tests.test_check_odoo_writes.TestAllowlistExecution.test_elargie_rougit) ... ok
+test_ecriture_declaree_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_declaree_ne_rougit_pas) ... ok
+test_ecriture_non_declaree_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_ecriture_non_declaree_rougit) ... ok
+test_exception_qui_ne_couvre_plus_rien_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_exception_qui_ne_couvre_plus_rien_rougit) ... ok
+test_lecture_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestAppels.test_lecture_ne_rougit_pas) ... ok
+test_les_tests_du_depot_sont_ignores (scripts.tests.test_check_odoo_writes.TestAppels.test_les_tests_du_depot_sont_ignores) ... ok
+test_meme_ecriture_depuis_un_autre_fichier_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_meme_ecriture_depuis_un_autre_fichier_rougit) ... ok
+test_modele_non_litteral_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_modele_non_litteral_rougit) ... ok
+test_unlink_non_declare_rougit (scripts.tests.test_check_odoo_writes.TestAppels.test_unlink_non_declare_rougit) ... ok
+test_le_depot_est_vert (scripts.tests.test_check_odoo_writes.TestDepotReel.test_le_depot_est_vert) ... ok
+test_appelant_hors_tests_rougit (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_appelant_hors_tests_rougit) ... ok
+test_sans_appelant_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestModuleDormant.test_sans_appelant_ne_rougit_pas) ... ok
+test_corpus_complet_ne_rougit_pas (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_corpus_complet_ne_rougit_pas) ... ok
+test_nouveau_transport_json2_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_json2_rougit) ... ok
+test_nouveau_transport_jsonrpc_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_nouveau_transport_jsonrpc_rougit) ... ok
+test_transport_declare_disparu_rougit (scripts.tests.test_check_odoo_writes.TestTransportsDeclares.test_transport_declare_disparu_rougit) ... ok
+
+======================================================================
+FAIL: test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 228, in test_allowlist_absente_fait_sortir_un
+    self._rougit({ODOO_SYNC: reel.replace('_WRITE_ALLOWED', '_AUTORISE_RENOMME')}, '_WRITE_ALLOWED')
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+======================================================================
+FAIL: test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 223, in test_ecriture_non_declaree_fait_sortir_un
+    self._rougit({'apps/crm/ailleurs.py': "odoo_call(cfg, 'res.partner', 'write', {'vals': {}})"},
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+======================================================================
+FAIL: test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 234, in test_module_dormant_appele_fait_sortir_un
+    self._rougit({'apps/compta/services_atst46.py': 'from core import odoo_accounting'}, 'plus dormant')
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+======================================================================
+FAIL: test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 231, in test_nouveau_transport_fait_sortir_un
+    self._rougit({'apps/compta/pont_odoo.py': "url = base + '/json/2/account.move/create'"}, 'pont_odoo.py')
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_odoo_writes.py", line 219, in _rougit
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_odoo_writes : OK — tout appel Odoo est une lecture, sauf les ecritures declarees (crm.lead.write, account.move.create, account.payment.create).
+
+
+----------------------------------------------------------------------
+Ran 24 tests in 7.834s
+
+FAILED (failures=4)
+
+
+==> OK : mutant « main : if echecs → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_allowlist_absente_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_allowlist_absente_fait_sortir_un); test_ecriture_non_declaree_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_ecriture_non_declaree_fait_sortir_un); test_module_dormant_appele_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_module_dormant_appele_fait_sortir_un); test_nouveau_transport_fait_sortir_un (scripts.tests.test_check_odoo_writes.MainSurArbreFautifTests.test_nouveau_transport_fait_sortir_un)

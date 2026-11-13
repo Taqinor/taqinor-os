@@ -27,6 +27,7 @@ import { PageListeChargement } from './ElementsListeVentes'
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 // VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
@@ -401,16 +402,21 @@ export default function DevisList() {
   // reste juge (ADEV14), le bouton « Passer outre » n'est qu'une commodité
   // pour Administrateur / Responsable.
   const [acceptBlocage, setAcceptBlocage] = useState(null)
+  // AERR5 — refus 400 : erreur sous le champ nommé (`champ`), saisie conservée.
+  const acceptErreurs = useServerFieldErrors()
 
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
   // second concept de « devis actif »). Absent hors deep-link (liste nue) :
   // aucun devis n'est « focalisé » sans lien profond.
   const highlightedDevis = highlightId ? devis.find(d => d.id === highlightId) : null
+  // AERR14 — `scopeRef` : « a » se tait quand une boîte est posée par-dessus.
+  const pageRef = useRef(null)
   useFocusedRecordShortcuts(
     'devisDetail',
     { a: () => openPdfModal(highlightedDevis) },
     !!highlightedDevis,
+    { scopeRef: pageRef },
   )
 
   const openAcceptModal = (d) => {
@@ -421,13 +427,20 @@ export default function DevisList() {
     setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)
     setAcceptBlocage(null)
+    acceptErreurs.clearAll()
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
   // config société (CompanyProfile.variante_pct via GET variante-config), avec
   // repli à 20 % si la lecture échoue. La saisie n'est autorisée que pour le
   // Directeur / Commercial responsable (sinon champ en lecture seule).
+  // ACNC13 — une clé d'idempotence par ouverture de dialogue (variante, gamme),
+  // gardée entre deux clics (renvoi après coupure réseau), remise à zéro au succès.
+  const cleVarianteRef = useRef(null)
+  const cleGammeRef = useRef(null)
+  const nouvelleCle = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
   const openVarianteModal = async (d) => {
+    cleVarianteRef.current = nouvelleCle()
     setVarianteTarget(d)
     setVariantePct('20')
     setVarianteBusy(false)
@@ -463,7 +476,8 @@ export default function DevisList() {
       const pct = parseFloat(variantePct)
       const payload = (Number.isFinite(pct) && pct > 0 && pct < 100)
         ? { variante_pct: pct } : {}
-      await ventesApi.dupliquerVariante(d.id, payload)
+      await ventesApi.dupliquerVariante(d.id, { ...payload, idempotency_key: cleVarianteRef.current })
+      cleVarianteRef.current = null
       dispatch(fetchDevis())
       toast.success(`Variantes créées pour ${d.reference}.`)
       closeVarianteModal()
@@ -481,6 +495,7 @@ export default function DevisList() {
   // GAMMES — ouvre la modale « Créer une variante de gamme ». Les deux libellés
   // sont pré-remplis avec les défauts proposés et restent librement éditables.
   const openGammeModal = (d) => {
+    cleGammeRef.current = nouvelleCle()
     setGammeTarget(d)
     setGammeNom('Premium')
     setGammeNomSource(d?.etude_params?.gamme?.nom || 'Essentielle')
@@ -502,7 +517,9 @@ export default function DevisList() {
         nom,
         nom_source: (gammeNomSource || '').trim() || undefined,
         recommandee: gammeRecommandee,
+        idempotency_key: cleGammeRef.current,
       })
+      cleGammeRef.current = null
       dispatch(fetchDevis())
       toast.success(`Gamme « ${nom} » créée pour ${d.reference}.`)
       closeGammeModal()
@@ -571,7 +588,8 @@ export default function DevisList() {
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} supprimé.`)
     } catch (err) {
-      toast.error(frenchError(err, 'Suppression impossible.'))
+      // AERR22 — le pont axios toaste déjà le refus (sauf 404) : un seul toast.
+      if (err?.response?.status === 404) toast.error(frenchError(err, 'Suppression impossible.'))
     } finally {
       setDeletingId(null)
     }
@@ -594,6 +612,7 @@ export default function DevisList() {
   // bloquée — les données de perte redeviennent exploitables.
   const [refusTarget, setRefusTarget] = useState(null)
   const [motifsPerte, setMotifsPerte] = useState([])
+  const [motifsErreur, setMotifsErreur] = useState('') // AERR22 — motifs illisibles
   const [refusMotifId, setRefusMotifId] = useState('')
   const [refusNote, setRefusNote] = useState('')
   const [refusBusy, setRefusBusy] = useState(false)
@@ -606,10 +625,11 @@ export default function DevisList() {
     setRefusMotifId('')
     setRefusNote('')
     setRefusBusy(false)
+    setMotifsErreur('')
     fetchAllPages((page, extra) => crmApi.getMotifsPerte({ page, ...extra }).then(r => r.data))
       // ADEV119 — motifs actifs seuls (le refus valide un motif NON archivé).
       .then(rows => setMotifsPerte((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived)))
-      .catch(() => setMotifsPerte([]))
+      .catch((err) => { setMotifsPerte([]); setMotifsErreur(`Les motifs de refus n’ont pas pu être lus (${frenchError(err, 'erreur réseau')}).`) })
   }
   const closeRefusModal = () => { setRefusTarget(null); setRefusBusy(false) }
 
@@ -646,6 +666,7 @@ export default function DevisList() {
     // Décision fondateur 08/10/2026 — la fête part DÈS le clic ; l'acceptation
     // (chantier, contrat, PDF scellé… souvent > 20 s) se fait PENDANT la fête.
     setAcceptTarget(null)
+    acceptErreurs.clearAll()
     annoncerAffaireSignee({
       reference: d.reference,
       montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
@@ -671,6 +692,11 @@ export default function DevisList() {
             detail: data.detail || 'Acceptation bloquée.',
           })
           setAcceptTarget(d)
+        } else if (err?.response?.status === 400) {
+          if (data?.champ) acceptErreurs.setErrors({ [data.champ]: data.detail || 'Valeur refusée.' })
+          else acceptErreurs.setFromResponse(data, { fallbackField: /^Date/.test(data?.detail || '') ? 'date' : 'submit' })
+          setAcceptTarget(d)
+          toast.error(frenchError(err, 'Acceptation impossible.'))
         } else if (!signalerConflit(d, err)) {
           toast.error(frenchError(err, 'Acceptation impossible.'))
         }
@@ -833,7 +859,7 @@ export default function DevisList() {
     conflitLigne, setConflitLigne, ouvrirDevis,
     openEdit, openVarianteModal, openGammeModal, handleDelete,
     openAcceptModal, openRefusModal, handleConvertBC,
-    handleChantier, handleRevoquerLienPublic,
+    handleChantier, handleRevoquerLienPublic, confirm,
   }
 
   // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas
@@ -879,7 +905,9 @@ export default function DevisList() {
     />
   )
 
-  if (loading) {
+  // AERR2 — squelette / StateBlock seulement si AUCUN devis n'a été chargé :
+  // une relecture (suppression, variante, gamme) ne démonte plus la liste.
+  if (loading && devis.length === 0) {
     return (
       <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
         showSkeleton={showSkeleton} libelle="Chargement des devis…">
@@ -896,7 +924,7 @@ export default function DevisList() {
       </PageListeChargement>
     )
   }
-  if (error) {
+  if (error && devis.length === 0) {
     // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
     // (relance le même thunk que le montage initial), là où l'ancien
     // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
@@ -918,8 +946,16 @@ export default function DevisList() {
   }
 
   return (
-    <div className="page">
+    <div className="page" ref={pageRef}>
       {pageHeader}
+      {error && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="status" data-testid="devis-pas-a-jour">
+          <span className="text-sm text-muted-foreground">
+            Liste pas à jour — {frenchError(error, 'le serveur n’a pas répondu.')} Les lignes datent du dernier chargement réussi.
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchDevis())}>Réessayer</Button>
+        </div>
+      )}
 
       {/* SPL206 — en-tête de page : synthèse, filtres, barre de lot (move only). */}
       <DevisListChrome
@@ -985,6 +1021,9 @@ export default function DevisList() {
         )}
       >
           <div className="flex flex-col gap-4">
+            {acceptErreurs.errors.submit && (
+              <p className="text-sm text-destructive">{acceptErreurs.errors.submit}</p>
+            )}
             {acceptBlocage && (
               <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 {acceptBlocage.detail}
@@ -1000,6 +1039,9 @@ export default function DevisList() {
               <Label htmlFor="accept-date">Date d'acceptation</Label>
               <Input id="accept-date" type="date" value={acceptDate} max={todayLocalIso()}
                      onChange={e => setAcceptDate(e.target.value)} />
+              {(acceptErreurs.errors.date || acceptErreurs.errors.date_acceptation) && (
+                <p className="text-xs text-destructive">{acceptErreurs.errors.date || acceptErreurs.errors.date_acceptation}</p>
+              )}
             </div>
             {acceptTarget?.nb_options === 2 && (
               <div className="grid gap-2">
@@ -1018,7 +1060,7 @@ export default function DevisList() {
             )}
             {estDevisCi(acceptTarget) && (
               <IdentiteEntrepriseFields value={acceptEntreprise} onChange={setAcceptEntreprise}
-                                        idPrefix="accept" />
+                                        idPrefix="accept" errors={acceptErreurs.errors} />
             )}
           </div>
       </ResponsiveDialog>
@@ -1072,7 +1114,8 @@ export default function DevisList() {
                   ))}
                 </SelectContent>
               </Select>
-              {motifsPerte.length === 0 && (
+              {motifsErreur && <p role="alert" className="text-xs text-destructive">{motifsErreur} Fermez puis rouvrez pour réessayer.</p>}
+              {motifsPerte.length === 0 && !motifsErreur && (
                 <p className="text-xs text-muted-foreground">
                   Aucun motif configuré — ajoutez-en dans les paramètres CRM.
                 </p>

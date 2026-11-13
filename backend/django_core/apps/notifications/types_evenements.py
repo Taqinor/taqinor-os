@@ -494,3 +494,7 @@ class EventType(models.TextChoices):
         'fournisseur_candidature', 'Nouvelle candidature fournisseur')
     TRUST_CENTER_AUDIT_EXPIRE = (
         'trust_center_audit_expire', 'Audit Trust Center expiré')
+    # ACEL11 — un export ou un job de fond tué est passé en échec par le
+    # balayage ``core.balayer_travaux_orphelins`` (transverse : aucun module).
+    TRAVAIL_DE_FOND_ECHOUE = (
+        'travail_de_fond_echoue', 'Travail de fond interrompu')

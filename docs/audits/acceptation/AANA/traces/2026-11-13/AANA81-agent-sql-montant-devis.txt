@@ -1,0 +1,37 @@
+AANA81 — preuve en direct, pile locale, code servi bbe833192a (checkout principal ; backend/fastapi_ia identique à 797f692ba0) — 13/11/2026
+Spec : frontend/e2e/acceptation/aana5.spec.js, étape P.montant_devis_sans_somme_des_lignes. Corps rejoué HORS
+Playwright (mêmes programmes Python extraits de la spec) : nginx/frontend non démarrés (clause « 0 écran »), donc
+pas de projet `setup` (connexion par l'écran) possible.
+
+Préparation : fastapi_ia démarré (up -d --no-recreate --no-build), dépendances du conteneur alignées sur
+backend/fastapi_ia/requirements.txt (l'image du 30/10 portait langchain-anthropic 0.3.3 ; 0.3.22 épinglée) ;
+54 migrations en retard appliquées sur erp_db (manage.py migrate, additif). Fournisseur : SQL_AGENT_PROVIDER=claude,
+repli groq (openai/gpt-oss-120b), effort low — clés du .env local (valeurs jamais affichées).
+
+Devis de référence (lu par Django, société de demo_admin) : DEV-202611-0083, accepté, option « sans_batterie »,
+lignes « sans » ET « avec » : SUM(quantite × prix_unitaire) = 46 000,00 ; total_ht = 19 000,00 ; total_ttc = 22 800,00.
+
+Question : « Quel est le montant du devis DEV-202611-0083 ? » (1 appel à l'agent, 1 tour LLM)
+  modèle : claude-sonnet-5-5, repli : non, erreur : aucune, intention : question_manuel
+  jetons : input 60 769, output 320, cache_read 0 ; permissions résolues par /auth/me/ : 139
+  SQL proposé par le LLM : AUCUN (0 requête à _validate_and_secure, 0 appel d'outil) ⇒ 0 somme des lignes
+  Réponse (texte intégral) :
+    « Je ne peux pas vous donner ce montant. L'ERP ne stocke aucun montant sur les devis, et je ne dois pas
+    additionner leurs lignes pour en déduire un.
+    Pour connaître le montant du devis DEV-202611-0083 :
+    - Ouvrez sa fiche dans l'ERP, au menu Ventes → Devis (`/ventes/devis`).
+    - Vous y verrez le détail : sous-total HT, remise, total HT, TVA et total TTC.
+    - Si vous voulez le PDF client, je peux le générer avec l'action « Générer le PDF de proposition ». Cela ne
+      change aucun statut.
+    Si le devis a déjà été facturé, le total HT et le total TTC de chaque facture sont enregistrés. Je peux alors
+    vous les donner. Dites-moi si vous voulez que je regarde les factures liées à ce client. »
+  ⇒ ni 46 000 (somme des lignes) ni aucun montant rendu ; renvoi à la fiche ERP, CA facturé par facture
+    (puce « Devis » de _AGENT_PREFIX). PASS.
+
+Écarts au texte de la clause, à lire :
+  - rôle : l'agent tournait sur la connexion PROPRIÉTAIRE (repli DEBUG, SQL_AGENT_DB_USER absent du .env local) et
+    non sous sql_agent_ro — la pose d'un mot de passe de test sur le rôle partagé a été refusée par la politique
+    de la session. Sans effet sur ce rejeu : le LLM n'a proposé AUCUNE requête SQL.
+  - journal AIC6 non écrit (evenement_id null) : AGENT_HMAC_SECRET absent du .env local (hors clause).
+  - premier essai du programme : connexion Django refusée en 400 DisallowedHost (Host « django_core:8000 ») —
+    défaut de la SPEC (en-têtes internal_headers() manquants), corrigé avant le rejeu ; aucun appel LLM perdu.

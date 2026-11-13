@@ -170,7 +170,8 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     await userEvent.click(await screen.findByRole('button', { name: /Ajouter/ }))
 
     await waitFor(() => expect(monitoringApi.addReading).toHaveBeenCalled())
-    expect(await screen.findByText('Ce relevé recouvre celui du 01/09/2026 (30 j).')).toBeInTheDocument()
+    // AERR52 — le refus par champ nomme le champ.
+    expect(await screen.findByText('Date : Ce relevé recouvre celui du 01/09/2026 (30 j).')).toBeInTheDocument()
   })
 
   it('affiche l\'historique mensuel attendu vs réel dès qu\'une config existe', async () => {

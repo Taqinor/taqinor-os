@@ -1,0 +1,68 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_nightly_alert_gate -v    [checkout: taqinor-os]  rc=0
+test_cli_green_run_no_alert (scripts.tests.test_nightly_alert_gate.CliTests.test_cli_green_run_no_alert) ... ok
+test_cli_missing_previous_conclusion_flag_is_fail_safe (scripts.tests.test_nightly_alert_gate.CliTests.test_cli_missing_previous_conclusion_flag_is_fail_safe) ... ok
+test_cli_multiple_job_results (scripts.tests.test_nightly_alert_gate.CliTests.test_cli_multiple_job_results) ... ok
+test_cli_nomme_les_jobs_non_verts (scripts.tests.test_nightly_alert_gate.CliTests.test_cli_nomme_les_jobs_non_verts) ... ok
+test_cli_run_vert_decide_fermer (scripts.tests.test_nightly_alert_gate.CliTests.test_cli_run_vert_decide_fermer) ... ok
+test_cli_two_red_nights (scripts.tests.test_nightly_alert_gate.CliTests.test_cli_two_red_nights) ... ok
+test_all_success_is_green (scripts.tests.test_nightly_alert_gate.IsRunGreenTests.test_all_success_is_green) ... ok
+test_empty_is_never_green (scripts.tests.test_nightly_alert_gate.IsRunGreenTests.test_empty_is_never_green) ... ok
+test_one_cancelled_not_green (scripts.tests.test_nightly_alert_gate.IsRunGreenTests.test_one_cancelled_not_green) ... ok
+test_one_failure_not_green (scripts.tests.test_nightly_alert_gate.IsRunGreenTests.test_one_failure_not_green) ... ok
+test_one_skipped_not_green (scripts.tests.test_nightly_alert_gate.IsRunGreenTests.test_one_skipped_not_green) ... ok
+test_cancelled_previous_counts_as_not_green (scripts.tests.test_nightly_alert_gate.ShouldAlertTests.test_cancelled_previous_counts_as_not_green) ... ok
+test_single_red_night_does_not_alert (scripts.tests.test_nightly_alert_gate.ShouldAlertTests.test_single_red_night_does_not_alert) ... ok
+test_skipped_job_counts_as_not_green (scripts.tests.test_nightly_alert_gate.ShouldAlertTests.test_skipped_job_counts_as_not_green) ... ok
+test_this_run_green_never_alerts_regardless_of_history (scripts.tests.test_nightly_alert_gate.ShouldAlertTests.test_this_run_green_never_alerts_regardless_of_history) ... ok
+test_two_red_nights_in_a_row_alerts (scripts.tests.test_nightly_alert_gate.ShouldAlertTests.test_two_red_nights_in_a_row_alerts) ... ok
+test_unknown_previous_history_is_fail_safe (scripts.tests.test_nightly_alert_gate.ShouldAlertTests.test_unknown_previous_history_is_fail_safe) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.248s
+
+OK
+
+
+==> OK : tests de la garde (scripts.tests.test_nightly_alert_gate) (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_release_verify_workflow -v    [checkout: taqinor-os]  rc=0
+test_le_corps_nomme_les_jobs_non_verts (scripts.tests.test_release_verify_workflow.AlerteNocturneTests.test_le_corps_nomme_les_jobs_non_verts) ... ok
+test_build_avant_vitest (scripts.tests.test_release_verify_workflow.OrdreWebFullTests.test_build_avant_vitest) ... ok
+test_patron_ci_construit_avant_de_tester (scripts.tests.test_release_verify_workflow.OrdreWebFullTests.test_patron_ci_construit_avant_de_tester) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.091s
+
+OK
+
+
+==> OK : tests du workflow (scripts.tests.test_release_verify_workflow) (rc=0)
+
+$ gh issue view 726 --json comments  rc=0
+
+==> OK : lecture seule de l'issue #726 —  2 dernières exécutions planifiées (`schedule`).\n\nJobs non verts : e2e-full\n\nRun qui a déclenché cette alerte : https://github.com/Taqinor/taqinor-os/actions/runs/43411063219\nHistorique : https://github.com/Taqinor/taqinor-os/actions/workflows/release-verify.yml","createdAt":"2026-11-13T14:40:46Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":"","reactionGroups":[],"url":"https://github.com/Taqinor/taqinor-os/issues/726#issuecomment-6856163706","viewerDidAuthor":true}]}
+
+
+--- dernier commentaire (2026-11-13T14:40:46Z) :
+`release-verify.yml` (vérification nightly, palier 3) n'a produit
+aucun run VERT lors des 2 dernières exécutions planifiées (`schedule`).
+
+Jobs non verts : e2e-full
+
+Run qui a déclenché cette alerte : https://github.com/Taqinor/taqinor-os/actions/runs/43411063219
+Historique : https://github.com/Taqinor/taqinor-os/actions/workflows/release-verify.yml
+
+==> OK : le dernier commentaire nomme les jobs rouges (« Jobs non verts : … »)
+
+==> OK : run nocturne 43411063219 lu — s/setup-python@v5","number":15,"startedAt":"2026-11-13T14:40:47Z","status":"completed"},{"completedAt":"2026-11-13T14:40:47Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-11-13T14:40:47Z","status":"completed"},{"completedAt":"2026-11-13T14:40:47Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-11-13T14:40:47Z","status":"completed"}],"url":"https://github.com/Taqinor/taqinor-os/actions/runs/43411063219/job/131951638778"}]}
+
+
+--- run 43411063219 (schedule, 2026-11-13T10:41:49Z, sha 5641201e6301d4c47370cfd3e96e1eda96e59735) jobs : {"web-full": "success", "fastapi-tests": "success", "ci-image-check": "success", "frontend-full": "success", "backend-full": "success", "e2e-full": "failure", "alert-on-repeated-failure": "failure"}
+
+==> OK : jobs nommés ['e2e-full'] == jobs non verts du run ['e2e-full']
+
+==> OK : run planifié (schedule)
+
+--- compare e1bb12cca (commit ATST42)...5641201e6301d4c47370cfd3e96e1eda96e59735 : ahead
+
+==> OK : le nocturne lu contient le commit ATST42 e1bb12cca (compare : ahead)

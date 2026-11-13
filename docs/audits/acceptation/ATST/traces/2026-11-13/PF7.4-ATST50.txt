@@ -1,0 +1,147 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_mouvement_stock_service -v    [checkout: taqinor-os]  rc=0
+check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+test_le_depot_est_propre (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucun site hors allowlist). ... ok
+test_le_service_lui_meme_est_dans_l_allowlist (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_service_lui_meme_est_dans_l_allowlist) ... ok
+test_acces_qualifie_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_acces_qualifie_est_signale) ... ok
+test_appel_au_service_est_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_appel_au_service_est_accepte) ... ok
+test_bulk_create_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_bulk_create_est_signale) ... ok
+test_create_direct_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_create_direct_est_signale) ... ok
+test_ecriture_dans_le_service_et_lecture_acceptees (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_dans_le_service_et_lecture_acceptees) ... ok
+test_ecriture_directe_quantite_stock (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_directe_quantite_stock) ... ok
+test_instanciation_nue_est_signalee (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_instanciation_nue_est_signalee) ... ok
+test_serializer_sans_save_ou_autre_modele_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_sans_save_ou_autre_modele_accepte) ... ok
+test_serializer_save_detecte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_save_detecte) ... ok
+test_un_autre_modele_nest_pas_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_un_autre_modele_nest_pas_signale) ... ok
+test_chemin_en_allowlist_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_chemin_en_allowlist_rend_zero) ... ok
+test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un) ... ok
+test_via_le_service_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_via_le_service_rend_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 11.099s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_mouvement_stock_service sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_mouvement_stock_service.py    [checkout: taqinor-os]  rc=0
+check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+
+
+==> OK : garde scripts/check_mouvement_stock_service.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_mouvement_stock_service -v    [copie: depot]  rc=0
+check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+test_le_depot_est_propre (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucun site hors allowlist). ... ok
+test_le_service_lui_meme_est_dans_l_allowlist (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_service_lui_meme_est_dans_l_allowlist) ... ok
+test_acces_qualifie_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_acces_qualifie_est_signale) ... ok
+test_appel_au_service_est_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_appel_au_service_est_accepte) ... ok
+test_bulk_create_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_bulk_create_est_signale) ... ok
+test_create_direct_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_create_direct_est_signale) ... ok
+test_ecriture_dans_le_service_et_lecture_acceptees (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_dans_le_service_et_lecture_acceptees) ... ok
+test_ecriture_directe_quantite_stock (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_directe_quantite_stock) ... ok
+test_instanciation_nue_est_signalee (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_instanciation_nue_est_signalee) ... ok
+test_serializer_sans_save_ou_autre_modele_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_sans_save_ou_autre_modele_accepte) ... ok
+test_serializer_save_detecte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_save_detecte) ... ok
+test_un_autre_modele_nest_pas_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_un_autre_modele_nest_pas_signale) ... ok
+test_chemin_en_allowlist_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_chemin_en_allowlist_rend_zero) ... ok
+test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un) ... ok
+test_via_le_service_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_via_le_service_rend_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 11.357s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « if offenders → if False » : scripts/check_mouvement_stock_service.py
+    - '    if offenders:'
+    + '    if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_mouvement_stock_service -v    [copie: depot]  rc=1
+check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+test_le_depot_est_propre (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucun site hors allowlist). ... ok
+test_le_service_lui_meme_est_dans_l_allowlist (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_service_lui_meme_est_dans_l_allowlist) ... ok
+test_acces_qualifie_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_acces_qualifie_est_signale) ... ok
+test_appel_au_service_est_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_appel_au_service_est_accepte) ... ok
+test_bulk_create_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_bulk_create_est_signale) ... ok
+test_create_direct_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_create_direct_est_signale) ... ok
+test_ecriture_dans_le_service_et_lecture_acceptees (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_dans_le_service_et_lecture_acceptees) ... ok
+test_ecriture_directe_quantite_stock (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_directe_quantite_stock) ... ok
+test_instanciation_nue_est_signalee (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_instanciation_nue_est_signalee) ... ok
+test_serializer_sans_save_ou_autre_modele_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_sans_save_ou_autre_modele_accepte) ... ok
+test_serializer_save_detecte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_save_detecte) ... ok
+test_un_autre_modele_nest_pas_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_un_autre_modele_nest_pas_signale) ... ok
+test_chemin_en_allowlist_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_chemin_en_allowlist_rend_zero) ... ok
+test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un) ... FAIL
+test_via_le_service_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_via_le_service_rend_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+======================================================================
+FAIL: test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_mouvement_stock_service.py", line 213, in test_create_direct_fait_sortir_un
+    self.assertEqual(code, 1, out)
+AssertionError: 0 != 1 : check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+
+
+----------------------------------------------------------------------
+Ran 17 tests in 10.657s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un)
+
+--- mutant « for path in _iter_source_files() → for path in [] » : scripts/check_mouvement_stock_service.py
+    - '    for path in _iter_source_files():'
+    + '    for path in []:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_mouvement_stock_service -v    [copie: depot]  rc=1
+check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+test_le_depot_est_propre (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucun site hors allowlist). ... ok
+test_le_service_lui_meme_est_dans_l_allowlist (scripts.tests.test_check_mouvement_stock_service.AllowlistTests.test_le_service_lui_meme_est_dans_l_allowlist) ... ok
+test_acces_qualifie_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_acces_qualifie_est_signale) ... ok
+test_appel_au_service_est_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_appel_au_service_est_accepte) ... ok
+test_bulk_create_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_bulk_create_est_signale) ... ok
+test_create_direct_est_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_create_direct_est_signale) ... ok
+test_ecriture_dans_le_service_et_lecture_acceptees (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_dans_le_service_et_lecture_acceptees) ... ok
+test_ecriture_directe_quantite_stock (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_ecriture_directe_quantite_stock) ... ok
+test_instanciation_nue_est_signalee (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_instanciation_nue_est_signalee) ... ok
+test_serializer_sans_save_ou_autre_modele_accepte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_sans_save_ou_autre_modele_accepte) ... ok
+test_serializer_save_detecte (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_serializer_save_detecte) ... ok
+test_un_autre_modele_nest_pas_signale (scripts.tests.test_check_mouvement_stock_service.DetectionTests.test_un_autre_modele_nest_pas_signale) ... ok
+test_chemin_en_allowlist_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_chemin_en_allowlist_rend_zero) ... ok
+test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un) ... FAIL
+test_via_le_service_rend_zero (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_via_le_service_rend_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_mouvement_stock_service.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+======================================================================
+FAIL: test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_mouvement_stock_service.py", line 213, in test_create_direct_fait_sortir_un
+    self.assertEqual(code, 1, out)
+AssertionError: 0 != 1 : check_mouvement_stock_service : OK — aucune création directe de MouvementStock hors du service (allowlist respectée).
+
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.006s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « for path in _iter_source_files() → for path in [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_create_direct_fait_sortir_un (scripts.tests.test_check_mouvement_stock_service.MainSurArbreFautifTests.test_create_direct_fait_sortir_un)

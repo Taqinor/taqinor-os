@@ -353,7 +353,8 @@ describe('VisiteBureauEtudesPage — ACAL209', () => {
     monter()
     await user.click(await screen.findByText('Lead A'))
     await user.click(await screen.findByRole('button', { name: /atelier 3d/i }))
-    expect(await screen.findByText(/Module Calepinage : Lead introuvable\./)).toBeInTheDocument()
+    // AERR52 — le refus par champ nomme le champ.
+    expect(await screen.findByText(/Module Calepinage : Lead : Lead introuvable\./)).toBeInTheDocument()
     expect(screen.queryByTestId('sonde-calepinage')).toBeNull()
   })
 })

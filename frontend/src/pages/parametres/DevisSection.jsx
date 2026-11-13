@@ -119,9 +119,9 @@ export default function DevisSection({
         if (!vivant) return
         const pct = r?.data?.variante_pct
         if (pct == null) return
-        // Le serveur renvoie une chaîne décimale (« 20.00 ») — on l'arrondit,
-        // comme la modale de création.
-        const n = Math.round(parseFloat(pct))
+        // Le serveur renvoie une chaîne décimale (« 17.50 ») : affichée telle
+        // quelle, sans arrondi (AERR74) — « 20.00 » reste « 20 ».
+        const n = parseFloat(pct)
         if (Number.isFinite(n)) setVariantePct(String(n))
       })
       .catch(() => { /* silencieux : le champ reste vide, rien n'est cassé */ })

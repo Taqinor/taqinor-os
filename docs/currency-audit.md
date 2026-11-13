@@ -56,8 +56,8 @@ with no rate column at all — mono-MAD in practice.
 | facturation | Paiement | `apps/facturation/models.py:900` | escompte_montant, montant |
 | facturation | Avoir | `apps/facturation/models.py:1124` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
 | facturation | LigneAvoir | `apps/facturation/models.py:1242` | prix_unitaire, remise, taux_tva |
-| ged | ModeleDocument | `apps/ged/models.py:2393` | corps_html |
-| ged | LotEnvoi | `apps/ged/models.py:3351` | total |
+| ged | ModeleDocument | `apps/ged/models.py:2395` | corps_html |
+| ged | LotEnvoi | `apps/ged/models.py:3353` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
 | installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:73` | montant_approuve |
 | installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:71` | prix_negocie |

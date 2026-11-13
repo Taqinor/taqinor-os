@@ -82,8 +82,9 @@ describe('OmReportPage (WR7 — rapport O&M)', () => {
     await userEvent.type(await screen.findByLabelText('Destinataire (optionnel)'), 'tiers@exemple.ma')
     await userEvent.click(screen.getByRole('button', { name: /^Envoyer$/ }))
 
+    // AERR52 — le refus par champ nomme le champ (clé lisible faute de libellé).
     await waitFor(() => expect(erreur).toHaveBeenCalledWith(
-      'Le rapport ne part qu’aux adresses du client du système.'))
+      'Recipient : Le rapport ne part qu’aux adresses du client du système.'))
   })
 
   it('ADRG47 — un Commercial lit le rapport sans « Envoyer par e-mail »', async () => {

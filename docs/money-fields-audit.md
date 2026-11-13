@@ -27,8 +27,8 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/crm/models_clients.py:588` | DealEnregistre.montant_commission_estime | 14 | 2 |
 | `backend/django_core/apps/crm/models_clients.py:590` | DealEnregistre.montant_commission_du | 14 | 2 |
 | `backend/django_core/apps/crm/models_clients.py:1300` | ConcurrentPerte.concurrent_prix | 12 | 2 |
-| `backend/django_core/apps/crm/models_clients.py:1605` | ForecastEntry.montant_prevu | 12 | 2 |
-| `backend/django_core/apps/crm/models_clients.py:1657` | ForecastSnapshot.montant_total | 14 | 2 |
+| `backend/django_core/apps/crm/models_clients.py:1611` | ForecastEntry.montant_prevu | 12 | 2 |
+| `backend/django_core/apps/crm/models_clients.py:1663` | ForecastSnapshot.montant_total | 14 | 2 |
 | `backend/django_core/apps/crm/models_lead_pompage.py:93` | LeadPompageMixin.carburant_prix_unitaire_mad | 8 | 2 |
 | `backend/django_core/apps/facturation/models.py:107` | Facture.montant_ht | 12 | 2 |
 | `backend/django_core/apps/facturation/models.py:110` | Facture.montant_tva | 12 | 2 |

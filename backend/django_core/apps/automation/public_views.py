@@ -6,7 +6,12 @@ au ``IncomingWebhookTrigger`` du token). La société est résolue UNIQUEMENT
 par le token — jamais par le payload. Un token invalide/désactivé → 404
 (ne révèle pas si le token a existé). Chaque appel est journalisé dans
 ``AutomationRun`` (via ``engine.evaluate``), throttlé par token.
+
+ACNC47 — une livraison est dédoublonnée : ``event_id`` (facultatif, dans le
+corps JSON) identifie l'événement ; sans lui, l'empreinte SHA-256 du corps
+brut. Une redélivrance renvoie 202 « Déjà reçu. » sans rejouer la règle.
 """
+import hashlib
 import hmac
 import json
 import logging
@@ -15,6 +20,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from rest_framework.throttling import SimpleRateThrottle
+
+from core.idempotency import dedupe_event
 
 from .models import IncomingWebhookTrigger
 
@@ -146,6 +153,12 @@ def incoming_webhook(request, token):
         # émetteur) mais rien ne s'exécute — cohérent avec le principe
         # additif/opt-in du moteur.
         return JsonResponse({'detail': 'Reçu (règle inactive).'}, status=202)
+
+    # ACNC47 — même événement reçu deux fois = une seule exécution.
+    evt = str(data.get('event_id') or '')[:200] or hashlib.sha256(raw_body).hexdigest()
+    if not dedupe_event(company=trigger.company,
+                        source=f'automation_webhook:{trigger.pk}', event_id=evt):
+        return JsonResponse({'detail': 'Déjà reçu.'}, status=202)
 
     from . import engine
     from .models import TriggerType

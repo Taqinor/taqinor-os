@@ -265,7 +265,7 @@ function InteractiveConsole() {
       const r = await publicapiApi.sandboxTry('leads')
       setTryResult(r.data)
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Essai impossible.')
+      console.warn('Essai impossible.', e)
     } finally {
       setTrying(false)
     }
@@ -527,7 +527,7 @@ export default function ApiWebhooksSection() {
       setRevealedKey(r.data.key)
       setNewKeyLabel(''); setNewKeyScopes([]); setNewKeyEnv('live')
       loadAll()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { console.warn('Création impossible.', e) }
   }
   // NTAPI23 — rotation sans coupure : nouvelle clé + grace period sur l'ancienne.
   const rotateKey = (k) => setPendingAction({
@@ -542,7 +542,7 @@ export default function ApiWebhooksSection() {
         const r = await publicapiApi.rotateKey(k.id)
         setRevealedKey(r.data.key)
         loadAll()
-      } catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation impossible.') }
+      } catch (e) { console.warn('Rotation impossible.', e) }
     },
   })
   const toggleDeliveries = async (webhookId) => {
@@ -576,7 +576,7 @@ export default function ApiWebhooksSection() {
     title: `Désactiver la clé « ${k.label} » ?`,
     description: 'La clé cessera immédiatement de fonctionner pour tout système externe qui l’utilise. Réversible (réactivable ensuite).',
     confirmLabel: 'Désactiver',
-    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Révocation impossible.') } },
+    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch (e) { console.warn('Révocation impossible.', e) } },
   })
   const deleteKey = (k) => setPendingAction({
     severity: 'high',
@@ -584,7 +584,7 @@ export default function ApiWebhooksSection() {
     description: `La clé « ${k.label} » sera supprimée définitivement. Tout système externe qui l’utilise cessera de fonctionner.`,
     confirmText: k.label,
     confirmLabel: 'Supprimer définitivement',
-    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') } },
+    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch (e) { console.warn('Suppression impossible.', e) } },
   })
 
   const createWebhook = async () => {
@@ -596,11 +596,11 @@ export default function ApiWebhooksSection() {
       setRevealedSecret(r.data.secret)
       setNewHookUrl(''); setNewHookLabel(''); setNewHookEvents([])
       loadAll()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { console.warn('Création impossible.', e) }
   }
   const toggleWebhook = async (h) => {
     try { await publicapiApi.updateWebhook(h.id, { enabled: !h.enabled }); loadAll() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    catch (e) { console.warn('Modification impossible.', e) }
   }
   const rotateSecret = (h) => setPendingAction({
     severity: 'high',
@@ -610,7 +610,7 @@ export default function ApiWebhooksSection() {
     confirmLabel: 'Régénérer le secret',
     run: async () => {
       try { const r = await publicapiApi.rotateWebhookSecret(h.id); setRevealedSecret(r.data.secret) }
-      catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation du secret impossible.') }
+      catch (e) { console.warn('Rotation du secret impossible.', e) }
     },
   })
   const deleteWebhook = (h) => setPendingAction({
@@ -619,7 +619,7 @@ export default function ApiWebhooksSection() {
     description: `« ${h.label || h.target_url} » sera définitivement supprimé — les notifications sortantes vers cette URL cesseront.`,
     confirmText: 'SUPPRIMER',
     confirmLabel: 'Supprimer',
-    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') } },
+    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch (e) { console.warn('Suppression impossible.', e) } },
   })
 
   if (loading) {

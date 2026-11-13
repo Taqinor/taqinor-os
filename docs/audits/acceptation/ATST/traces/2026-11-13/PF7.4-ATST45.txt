@@ -1,0 +1,110 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_sautes_environnement -v    [checkout: taqinor-os]  rc=0
+test_entree_perimee_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_entree_perimee_rend_un) ... ok
+test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un) ... ok
+test_tous_signes_rend_zero (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_tous_signes_rend_zero) ... ok
+test_autre_raise_ignore (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_autre_raise_ignore) ... ok
+test_decorateurs_et_appel_skiptest_sont_des_sites (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_decorateurs_et_appel_skiptest_sont_des_sites) ... ok
+test_raise_skiptest_est_un_site (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_raise_skiptest_est_un_site) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_tests_sautes_environnement sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_tests_sautes_environnement.py    [checkout: taqinor-os]  rc=0
+check_tests_sautes_environnement: OK — 134 saut(s), tous signés (environnement).
+
+
+==> OK : garde scripts/check_tests_sautes_environnement.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_sautes_environnement -v    [copie: depot]  rc=0
+test_entree_perimee_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_entree_perimee_rend_un) ... ok
+test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un) ... ok
+test_tous_signes_rend_zero (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_tous_signes_rend_zero) ... ok
+test_autre_raise_ignore (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_autre_raise_ignore) ... ok
+test_decorateurs_et_appel_skiptest_sont_des_sites (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_decorateurs_et_appel_skiptest_sont_des_sites) ... ok
+test_raise_skiptest_est_un_site (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_raise_skiptest_est_un_site) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « non_signes = [] » : scripts/check_tests_sautes_environnement.py
+    - '    non_signes = sorted(set(trouves) - signes)'
+    + '    non_signes = []'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_sautes_environnement -v    [copie: depot]  rc=1
+test_entree_perimee_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_entree_perimee_rend_un) ... ok
+test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un) ... FAIL
+test_tous_signes_rend_zero (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_tous_signes_rend_zero) ... ok
+test_autre_raise_ignore (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_autre_raise_ignore) ... ok
+test_decorateurs_et_appel_skiptest_sont_des_sites (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_decorateurs_et_appel_skiptest_sont_des_sites) ... ok
+test_raise_skiptest_est_un_site (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_raise_skiptest_est_un_site) ... ok
+
+======================================================================
+FAIL: test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_sautes_environnement.py", line 79, in test_saut_non_signe_rend_un
+    self.assertEqual(code, 1)
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « non_signes = [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un)
+
+--- mutant « {"skipTest", "skip"} → {"skip"} » : scripts/check_tests_sautes_environnement.py
+    - '{"skipTest", "skip"}'
+    + '{"skip"}'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_tests_sautes_environnement -v    [copie: depot]  rc=1
+test_entree_perimee_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_entree_perimee_rend_un) ... ok
+test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un) ... FAIL
+test_tous_signes_rend_zero (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_tous_signes_rend_zero) ... FAIL
+test_autre_raise_ignore (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_autre_raise_ignore) ... ok
+test_decorateurs_et_appel_skiptest_sont_des_sites (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_decorateurs_et_appel_skiptest_sont_des_sites) ... FAIL
+test_raise_skiptest_est_un_site (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_raise_skiptest_est_un_site) ... ok
+
+======================================================================
+FAIL: test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_sautes_environnement.py", line 80, in test_saut_non_signe_rend_un
+    self.assertEqual(sortie.count("saut NON SIGNÉ"), 3)
+AssertionError: 2 != 3
+
+======================================================================
+FAIL: test_tous_signes_rend_zero (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_tous_signes_rend_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_sautes_environnement.py", line 84, in test_tous_signes_rend_zero
+    self.assertEqual(code, 0)
+AssertionError: 1 != 0
+
+======================================================================
+FAIL: test_decorateurs_et_appel_skiptest_sont_des_sites (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_decorateurs_et_appel_skiptest_sont_des_sites)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_tests_sautes_environnement.py", line 57, in test_decorateurs_et_appel_skiptest_sont_des_sites
+    self.assertEqual(set(sites), {"T", "T.test_b", "T.test_c"})
+AssertionError: Items in the second set but not the first:
+'T.test_c'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+FAILED (failures=3)
+
+
+==> OK : mutant « {"skipTest", "skip"} → {"skip"} » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_decorateurs_et_appel_skiptest_sont_des_sites (scripts.tests.test_check_tests_sautes_environnement.SitesTests.test_decorateurs_et_appel_skiptest_sont_des_sites); test_saut_non_signe_rend_un (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_saut_non_signe_rend_un); test_tous_signes_rend_zero (scripts.tests.test_check_tests_sautes_environnement.MainTests.test_tous_signes_rend_zero)

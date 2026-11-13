@@ -27,6 +27,20 @@ class ResetDemoEndpointTest(TestCase):
         # La société existe toujours (re-peuplée).
         self.assertTrue(Company.objects.filter(slug=self.SLUG).exists())
 
+    def test_reset_toujours_synchrone(self):
+        """ACEL18 — le reset tourne dans la requête, jamais via une tâche
+        Celery (même si une tâche de ce nom apparaissait)."""
+        factice = mock.MagicMock()
+        tache = mock.patch('authentication.tasks.reset_demo_company_task',
+                           factice, create=True)
+        with tache, mock.patch('django.core.management.call_command') as commande:
+            resp = self.client.post(
+                f'/api/django/companies/{self.demo.id}/reset-demo/')
+        self.assertEqual(resp.status_code, 200)
+        commande.assert_called_once_with(
+            'reset_demo_company', slug=self.SLUG, force=True, verbosity=0)
+        factice.delay.assert_not_called()
+
     def test_reset_demo_forbidden_on_non_demo_company(self):
         real = Company.objects.create(nom='Réelle SARL', slug='reelle-sarl')
         resp = self.client.post(

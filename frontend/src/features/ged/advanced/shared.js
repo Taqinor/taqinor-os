@@ -12,6 +12,7 @@ import { CheckCircle2, Trash2, XCircle } from 'lucide-react'
 import { statusPill } from '../../../ui/module'
 import { toast } from '../../../ui'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { toastSiMuet } from '../listesGed'
 
 /** ADOC31 — lit une liste GED paginée EN ENTIER (StandardPagination : 50 par
  *  défaut, 200 max) et renvoie une réponse `{ data: [...] }` (même forme
@@ -83,7 +84,7 @@ export function useChargementGed(fetcher, messageErreur) {
 /** Exécute une action serveur, confirme par un toast puis recharge. */
 export async function actionAvecToast(action, messageSucces, recharger) {
   try { await action(); toast.success(messageSucces); recharger() }
-  catch (err) { toast.error(errMessage(err)) }
+  catch (err) { toastSiMuet(err) }
 }
 
 /** Menu de ligne commun : activer/désactiver puis supprimer. */

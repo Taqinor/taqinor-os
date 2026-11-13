@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react'
 import { CalendarClock, Play, Plus } from 'lucide-react'
 import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { toast, useConfirmDialog } from '../../ui/confirm'
+import { useConfirmDialog } from '../../ui/confirm'
 import {
   Card, CardContent, Input, Button, Badge, EmptyState, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem,
@@ -102,7 +102,7 @@ export default function ExportsPlanifiesSection() {
       setDraft(VIDE)
       charger()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      console.warn('Création impossible.', e)
     } finally { setBusy(false) }
   }
 
@@ -120,7 +120,7 @@ export default function ExportsPlanifiesSection() {
         charger()
       }
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Exécution impossible.')
+      console.warn('Exécution impossible.', e)
     } finally { setRunningId(null) }
   }
 
@@ -129,7 +129,7 @@ export default function ExportsPlanifiesSection() {
       await api.patch(`/core/scheduled-exports/${row.id}/`, { actif: !row.actif })
       charger()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Modification impossible.')
+      console.warn('Modification impossible.', e)
     }
   }
 
@@ -139,7 +139,7 @@ export default function ExportsPlanifiesSection() {
       await api.delete(`/core/scheduled-exports/${row.id}/`)
       charger()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Suppression impossible.')
+      console.warn('Suppression impossible.', e)
     }
   }
 

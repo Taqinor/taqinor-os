@@ -14,6 +14,7 @@ vi.mock('../api/recordsApi', () => ({
 
 import recordsApi from '../api/recordsApi'
 import ActivitiesPanel from './ActivitiesPanel'
+import { ConfirmProvider } from '../providers/ConfirmProvider'
 
 /* VX204 — `load()` avalait ses échecs (`.catch(() => {})`) : l'état `error`
    existait déjà (ligne 26) mais n'était jamais alimenté, rendant un échec de
@@ -46,5 +47,20 @@ describe('ActivitiesPanel (VX204)', () => {
     render(<ActivitiesPanel model="crm.lead" id={1} />)
     expect(await screen.findByText('Aucune activité planifiée.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('ActivitiesPanel (AERR68)', () => {
+  it('Supprimer puis Annuler : aucune suppression, la boîte nomme l’activité', async () => {
+    recordsApi.deleteActivity.mockClear()
+    recordsApi.getActivities.mockResolvedValueOnce({ data: [
+      { id: 5, done: false, state: 'planned', activity_type_nom: 'Appel', summary: 'Rappeler Karim' },
+    ] })
+    render(<ConfirmProvider><ActivitiesPanel model="crm.lead" id={1} /></ConfirmProvider>)
+    fireEvent.click(await screen.findByTitle('Supprimer'))
+    expect(await screen.findByText(/Appel — Rappeler Karim sera supprimée/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByText('Supprimer cette activité ?')).not.toBeInTheDocument())
+    expect(recordsApi.deleteActivity).not.toHaveBeenCalled()
   })
 })

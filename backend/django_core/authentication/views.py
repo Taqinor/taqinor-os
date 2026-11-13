@@ -1396,17 +1396,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
 # ── Gestion des entreprises (superuser uniquement) ─────────────
 def _run_demo_reset(slug):
-    """NTDMO7 — lance ``reset_demo_company`` en tâche Celery best-effort, avec
-    repli SYNCHRONE si Celery est absent/non configuré. Ne lève jamais côté
-    requête pour une erreur d'enqueue : dans ce cas on exécute en synchrone."""
+    """NTDMO7/ACEL18 — lance ``reset_demo_company`` en SYNCHRONE, dans la
+    requête : la suite de ``reset_demo`` écrit le chatter de la société
+    recréée, la réponse ne part donc qu'après le reset (aucune tâche Celery)."""
     from django.core.management import call_command
-    try:
-        from authentication.tasks import reset_demo_company_task
-        reset_demo_company_task.delay(slug)
-        return
-    except Exception:
-        # Pas de Celery (ou pas de task) → exécution synchrone immédiate.
-        pass
     call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
 
 

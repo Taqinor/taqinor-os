@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Tv, LayoutGrid } from 'lucide-react'
 import coreApi from '../../api/coreApi'
-import { Spinner, Card, EmptyState } from '../../ui'
+import { Button, Spinner, Card, EmptyState } from '../../ui'
 import { KpiSpark, AreaSansAxe, ChartEmpty } from '../../ui/charts'
 
 /* ============================================================================
@@ -76,18 +76,22 @@ export default function DashboardsTvPage() {
   const [dashboards, setDashboards] = useState([])
   const [loading, setLoading] = useState(true)
   const [index, setIndex] = useState(0)
+  // AERR130 — un sondage en échec garde les dashboards affichés ; au premier
+  // chargement rejeté, état d'erreur + Réessayer (jamais « Aucun dashboard »).
+  const [tvEnEchec, setTvEnEchec] = useState(false)
+  const [essaiTv, setEssaiTv] = useState(0)
 
   useEffect(() => {
     let active = true
     const fetchList = () => coreApi.dashboardsTv.list()
-      .then((r) => { if (active) setDashboards(r.data?.dashboards ?? []) })
-      .catch(() => { if (active) setDashboards([]) })
+      .then((r) => { if (active) { setDashboards(r.data?.dashboards ?? []); setTvEnEchec(false) } })
+      .catch(() => { if (active) setTvEnEchec(true) })
       .finally(() => { if (active) setLoading(false) })
 
     fetchList()
     const refreshTimer = setInterval(fetchList, REFRESH_MS)
     return () => { active = false; clearInterval(refreshTimer) }
-  }, [])
+  }, [essaiTv])
 
   useEffect(() => {
     if (dashboards.length < 2) return undefined
@@ -119,7 +123,12 @@ export default function DashboardsTvPage() {
     return (
       <div className="flex h-screen w-screen flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
         <Tv className="size-10" aria-hidden="true" />
-        <p>Aucun dashboard partagé disponible pour le mode TV.</p>
+        {tvEnEchec ? (
+          <p role="status">
+            Lecture des dashboards impossible.{' '}
+            <Button size="sm" variant="outline" onClick={() => setEssaiTv((n) => n + 1)}>Réessayer</Button>
+          </p>
+        ) : <p>Aucun dashboard partagé disponible pour le mode TV.</p>}
       </div>
     )
   }

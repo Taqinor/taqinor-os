@@ -34,6 +34,7 @@ import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 // QJR635 — LE constructeur wa.me partagé (normalise « 06… » → 2126…) ;
 // `draft` (QX30) pré-remplit `?text=` quand le backend en fournit un.
 import { waHref } from '../../lib/contactLinks'
+import { frenchError } from './devisList/devisListHelpers.js'
 
 // CAD115 (SIG9) — libellés FR du canal de la prochaine touche CRM
 // (`crm.RelanceEtape.Canal`, mêmes clés que le serveur) ; repli sur la clé
@@ -99,11 +100,12 @@ export default function DevisActionBoardPage() {
 
   // CHT14 — fetch indépendant du board principal (endpoint distinct, aucun
   // impact sur `loading`/`loadError` du board si celui-ci échoue).
-  useEffect(() => {
-    installationsApi.getChantiersAFacturer()
-      .then((r) => setChantiersAFacturer(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setChantiersAFacturer([]))
-  }, [])
+  // AERR22 — 403 (rôle sans accès) = aucune tranche ; une PANNE se dit, avec « Réessayer ».
+  const [chantiersErreur, setChantiersErreur] = useState('')
+  const chargerChantiers = () => installationsApi.getChantiersAFacturer()
+    .then((r) => { setChantiersErreur(''); setChantiersAFacturer(Array.isArray(r.data) ? r.data : []) })
+    .catch((err) => { setChantiersAFacturer([]); setChantiersErreur(err?.response?.status === 403 ? '' : frenchError(err, 'Lecture impossible.')) })
+  useEffect(() => { chargerChantiers() }, [])
 
   const totalCount = useTotalBuckets(board)
 
@@ -181,9 +183,14 @@ export default function DevisActionBoardPage() {
           <div className="flex items-center gap-2">
             <Receipt className="size-4 text-muted-foreground" aria-hidden="true" />
             <span className="flex-1 font-display text-sm font-semibold">Chantiers à facturer</span>
-            <Badge tone="warning">{chantiersAFacturer.length}</Badge>
+            {!chantiersErreur && <Badge tone="warning">{chantiersAFacturer.length}</Badge>}
           </div>
-          {chantiersAFacturer.length === 0 ? (
+          {chantiersErreur ? (
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-destructive">
+              Lecture impossible — {chantiersErreur}
+              <Button size="xs" variant="outline" onClick={chargerChantiers}>Réessayer</Button>
+            </div>
+          ) : chantiersAFacturer.length === 0 ? (
             <p className="text-xs text-muted-foreground">Aucune tranche due.</p>
           ) : (
             <ul className="flex flex-col gap-1.5">

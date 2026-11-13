@@ -149,11 +149,17 @@ export default function PortailPartenaireLeads() {
         </Form>
       </Card>
 
-      {loading ? (
+      {erreur && rows.length > 0 ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Liste pas à jour — <Button variant="link" size="sm" onClick={charger}>Réessayer</Button>
+        </p>
+      ) : null}
+      {/* AERR128 — relecture (ou son échec) : les affaires déjà listées restent. */}
+      {loading && rows.length === 0 ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner /> Chargement de vos affaires…
         </div>
-      ) : erreur ? (
+      ) : erreur && rows.length === 0 ? (
         <EmptyState
           title="Affaires indisponibles"
           description="Vos affaires n’ont pas pu être chargées. Réessayez plus tard."

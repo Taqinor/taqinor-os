@@ -24,6 +24,7 @@ import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import OnboardingTerrain from '../OnboardingTerrain'
 import { todayLocalIso } from '../../../lib/dateLocale'
 import EnteteCarteBadge from './EnteteCarteBadge'
+import { EchecLecture } from './CommercialHome'
 
 function todayIso() {
   return todayLocalIso()
@@ -48,15 +49,16 @@ export default function EquipeTerrainHome() {
         // notion, portée par la visibilité des enregistrements — pas ici).
         setEquipe(list.filter((u) => u.supervisor === moi))
       })
-      .catch(() => setEquipe([]))
+      .catch(() => setEquipe(false))
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       installationsApi.getInterventions({ date_prevue: jour, page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => setInterventions(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-      .catch(() => setInterventions([]))
+      .catch(() => setInterventions(false))
     installationsApi.getConflitsAffectation({ debut: jour, fin: jour })
       .then((r) => setConflits(r.data?.conflits ?? r.data?.results ?? []))
-      .catch(() => setConflits([]))
+      .catch(() => setConflits(false)) // AERR121 — échec ≠ « aucun »
   }, [moi])
+  const relire = () => { setEquipe(null); setInterventions(null); setConflits([]); charger() }
 
   useEffect(() => {
     if (!isMobile || !moi) return
@@ -65,9 +67,9 @@ export default function EquipeTerrainHome() {
 
   if (!isMobile) return <Navigate to="/dashboard" replace />
 
-  const membreIds = new Set((equipe ?? []).map((u) => u.id))
-  const duJour = (interventions ?? []).filter((iv) => membreIds.has(iv.technicien))
-  const nomMembre = (id) => (equipe ?? []).find((u) => u.id === id)?.username || '—'
+  const membreIds = new Set((equipe || []).map((u) => u.id))
+  const duJour = (interventions || []).filter((iv) => membreIds.has(iv.technicien))
+  const nomMembre = (id) => (equipe || []).find((u) => u.id === id)?.username || '—'
 
   const reaffecter = async (intervention, technicienId) => {
     setBusyId(intervention.id)
@@ -85,7 +87,7 @@ export default function EquipeTerrainHome() {
       {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
       <OnboardingTerrain userId={moi} />
 
-      {conflits.length > 0 && (
+      {(conflits === false || conflits.length > 0) && (
         <CarteContenu
           entete={(
           <CardHeader>
@@ -96,6 +98,7 @@ export default function EquipeTerrainHome() {
             <CardDescription>Double-réservation détectée aujourd'hui</CardDescription>
           </CardHeader>
           )}>
+          {conflits === false ? <EchecLecture onRetry={relire} /> : (
           <ul className="flex flex-col divide-y divide-border text-sm">
             {conflits.map((c, i) => (
               <li key={c.id ?? `conflit-${i}`} className="py-2">
@@ -104,6 +107,7 @@ export default function EquipeTerrainHome() {
               </li>
             ))}
           </ul>
+          )}
         </CarteContenu>
       )}
 
@@ -115,6 +119,8 @@ export default function EquipeTerrainHome() {
         )}>
         {equipe === null || interventions === null
           ? <Spinner />
+          : equipe === false || interventions === false
+            ? <EchecLecture onRetry={relire} />
           : duJour.length === 0
             ? (
               <EmptyState
@@ -152,7 +158,7 @@ export default function EquipeTerrainHome() {
                         <SelectValue placeholder="Réaffecter à…" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(equipe ?? []).map((u) => (
+                        {(equipe || []).map((u) => (
                           <SelectItem key={u.id} value={String(u.id)}>
                             {u.username}
                           </SelectItem>

@@ -25,6 +25,8 @@ import io
 import json
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from apps.records.xlsx import neutralize_csv_cell  # APUB47 — ENF12, définition unique
 from .models import BulkJob
 
@@ -363,6 +365,17 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
 
     job.marquer_progression(total=total, cursor=start)
 
+    def _ecrire_journal():
+        if not error_rows:
+            return ''
+        blob = '\n'.join(
+            json.dumps(r, ensure_ascii=False, default=str) for r in error_rows
+        ).encode('utf-8')
+        from apps.records.storage import store_export_result
+        return store_export_result(
+            blob, company_id=job.company_id, job_id=f'{job.id}-erreurs',
+            ext='jsonl', content_type='application/x-ndjson')
+
     # AANA35 — le curseur est l'INDEX de la ligne de DONNÉES traitée (rang
     # dans ``rows``), jamais le numéro de ligne du fichier : un JSONL avec
     # des lignes vides décale ces deux nombres, et reprendre à
@@ -379,6 +392,15 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 else:
                     _process_activite_row(job.company, row)
                 succes += 1
+            except SoftTimeLimitExceeded:
+                # ACEL33 — limite douce : la ligne en cours n'est PAS une erreur ;
+                # curseur laissé avant elle, journal accumulé écrit, job relançable.
+                job.erreurs_file_key = _ecrire_journal()
+                job.save(update_fields=['erreurs_file_key', 'updated_at'])
+                job.marquer_echec(
+                    "Limite de temps atteinte — relancez le job, "
+                    f"il reprend à la ligne {rang}")
+                return
             except Exception as exc:  # noqa: BLE001 — une ligne en erreur n'arrête PAS les suivantes (D-ENF22-BLE001)
                 logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
                 erreurs_count += 1
@@ -387,17 +409,28 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
         job.marquer_progression(
             traites=rang, succes=succes, erreurs=erreurs_count, cursor=rang)
 
-    erreurs_file_key = ''
-    if error_rows:
-        blob = '\n'.join(
-            json.dumps(r, ensure_ascii=False, default=str) for r in error_rows
-        ).encode('utf-8')
-        from apps.records.storage import store_export_result
-        erreurs_file_key = store_export_result(
-            blob, company_id=job.company_id, job_id=f'{job.id}-erreurs',
-            ext='jsonl', content_type='application/x-ndjson')
+    job.marquer_termine(erreurs_file_key=_ecrire_journal())
 
-    job.marquer_termine(erreurs_file_key=erreurs_file_key)
+
+# ── ACEL32 — Job resté « en cours » après la mort du worker ──────────────────
+
+DELAI_JOB_BLOQUE_MIN = 10  # > limite dure Celery (180 s) et > l'écart entre deux progressions
+
+
+def expirer_jobs_bloques(now=None):
+    """Passe en `echec` les jobs `en_cours` sans progression (`updated_at`)
+    depuis plus de 10 min — worker tué sans `except`. Idempotent : un job déjà
+    en échec n'est plus `en_cours`. `relancer_job` le reprend à son curseur."""
+    from datetime import timedelta
+    from django.utils import timezone
+    limite = (now or timezone.now()) - timedelta(minutes=DELAI_JOB_BLOQUE_MIN)
+    bloques = list(BulkJob.objects.filter(
+        statut=BulkJob.STATUT_EN_COURS, updated_at__lt=limite))
+    for job in bloques:
+        job.marquer_echec(
+            "Traitement interrompu (arrêt du serveur) — relancez le job, "
+            f"il reprend à la ligne {job.cursor + 1}")
+    return len(bloques)
 
 
 # ── NTAPI43 — Reprise sur curseur ────────────────────────────────────────────
@@ -406,15 +439,23 @@ def relancer_job(job):
     """Relance un `BulkJob` EN ÉCHEC (ou resté bloqué `en_cours`, ex. worker
     tué) depuis son `cursor` PERSISTANT — jamais de zéro, jamais de doublon
     (les lignes déjà appliquées avant `cursor` ne sont jamais rejouées).
-    Refuse un job déjà `termine`/`en_file` (rien à reprendre)."""
-    if job.statut not in (BulkJob.STATUT_ECHEC, BulkJob.STATUT_EN_COURS):
-        raise BulkJobError(
-            "Seul un job en échec (ou bloqué en cours) peut être relancé.")
-    job.statut = BulkJob.STATUT_EN_FILE
-    job.message_erreur = ''
-    job.save(update_fields=['statut', 'message_erreur', 'updated_at'])
-    if job.type == BulkJob.TYPE_EXPORT:
-        _dispatch_export(job)
-    else:
-        _dispatch_import(job)
+    Refuse un job déjà `termine`/`en_file` (rien à reprendre), et (ACNC46) un
+    `en_cours` qui a progressé depuis moins de `DELAI_JOB_BLOQUE_MIN` : il
+    tourne encore, un second traitement repartirait du même curseur."""
+    from datetime import timedelta
+    from django.db import transaction
+    from django.utils import timezone
+    with transaction.atomic():
+        job = BulkJob.objects.select_for_update().get(pk=job.pk)
+        if job.statut not in (BulkJob.STATUT_ECHEC, BulkJob.STATUT_EN_COURS):
+            raise BulkJobError(
+                "Seul un job en échec (ou bloqué en cours) peut être relancé.")
+        if job.statut == BulkJob.STATUT_EN_COURS and job.updated_at > (
+                timezone.now() - timedelta(minutes=DELAI_JOB_BLOQUE_MIN)):
+            raise BulkJobError("Ce job est encore en cours de traitement.")
+        job.statut = BulkJob.STATUT_EN_FILE
+        job.message_erreur = ''
+        job.save(update_fields=['statut', 'message_erreur', 'updated_at'])
+        dispatch = _dispatch_export if job.type == BulkJob.TYPE_EXPORT else _dispatch_import
+        transaction.on_commit(lambda: dispatch(job))
     return job

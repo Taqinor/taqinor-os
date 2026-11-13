@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import recordsApi from '../api/recordsApi'
 import AssigneePicker from './AssigneePicker'
+import { useConfirmDialog } from '../ui/confirm'
 import FollowToggle from './FollowToggle'
 import { DatePicker } from '../ui/DatePicker'
 import { today as todayDate } from '../ui/date-utils'
@@ -53,6 +54,7 @@ const ymdFromDate = (d) => (d
   : '')
 
 export default function ActivitiesPanel({ model, id, users = [], onChange }) {
+  const { confirmDelete } = useConfirmDialog()
   const [types, setTypes] = useState([])
   const [activities, setActivities] = useState([])
   const [adding, setAdding] = useState(false)
@@ -111,7 +113,9 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
     try { await recordsApi.markActivityDone(act.id); load(); onChange?.() } catch { setError('Action impossible — réessayez.') }
   }
   const remove = async (act) => {
-    if (!window.confirm('Supprimer cette activité ?')) return
+    // AERR68 — boîte maison qui nomme l'activité.
+    const nom = [act.activity_type_nom, act.summary].filter(Boolean).join(' — ')
+    if (!(await confirmDelete({ title: 'Supprimer cette activité ?', description: `${nom || 'Cette activité'} sera supprimée.` }))) return
     setError(null)
     try { await recordsApi.deleteActivity(act.id); load(); onChange?.() } catch { setError('Action impossible — réessayez.') }
   }

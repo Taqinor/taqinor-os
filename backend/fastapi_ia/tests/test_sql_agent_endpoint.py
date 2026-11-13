@@ -81,6 +81,9 @@ class _FakeRedis:
     def get(self, key):
         return self.store.get(key)
 
+    def getdel(self, key):  # ACNC42 — lecture + consommation atomiques
+        return self.store.pop(key, None)
+
     def delete(self, key):
         self.store.pop(key, None)
 
@@ -210,7 +213,7 @@ class QueryConfirmLoopTests(unittest.TestCase):
 
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             calls.append(path)
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
@@ -265,7 +268,7 @@ class QueryConfirmLoopTests(unittest.TestCase):
             collector = []
             with mock.patch.object(
                     _at, "_django_call",
-                    lambda ctx, path, method="POST", payload=None:
+                    lambda ctx, path, method="POST", payload=None, **_k:
                     {"ok": True, "status": 200,
                      "data": {"reference": "SAV-1", "wa_url": "https://wa/x"}}):
                 _at.run_catalogue_action(_ctx(), _CAT_LEAD_LIST, {}, collector)

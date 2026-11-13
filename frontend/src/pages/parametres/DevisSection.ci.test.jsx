@@ -23,6 +23,7 @@ vi.mock('../../api/stockApi', () => ({ default: { getPretDevisCi } }))
 import DevisSection from './DevisSection'
 import { formDevisBase } from '../../test/fixtures/devisSectionForm'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
+import ventesApi from '../../api/ventesApi'
 
 // Par défaut : le contrat sans forfait ni erreur n'est pas servi (aide muette).
 beforeEach(() => {
@@ -218,5 +219,16 @@ describe('CIQ106 — prestations C&I et bande prix/kWc', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     // Rien n'a été touché : aucun nouvel état, donc rien de neuf à envoyer.
     expect(journal).toHaveLength(0)
+  })
+})
+
+describe('AERR74 — variante de prix servie, jamais arrondie', () => {
+  it('17.50 affichée 17,5 ; enregistrer sans toucher renvoie 17.5, pas 18', async () => {
+    ventesApi.getVarianteConfig.mockResolvedValueOnce({ data: { variante_pct: '17.50' } })
+    rendre()
+    const champ = await screen.findByLabelText('% de variation par défaut des variantes')
+    await waitFor(() => expect(champ).toHaveValue(17.5))
+    fireEvent.click(within(champ.parentElement).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(ventesApi.setVarianteConfig).toHaveBeenCalledWith('17.5'))
   })
 })

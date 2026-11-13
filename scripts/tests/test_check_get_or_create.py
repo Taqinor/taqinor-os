@@ -70,6 +70,18 @@ class GetOrCreateTests(Depot):
         self.assertEqual(guard.AUDIT_DOC.read_text(encoding="utf-8"), avant)  # le registre n'a pas bouge
         self.assertEqual(guard.TYPE_DE_CLE, "par_symbole")
 
+    def test_appel_non_couvert_dans_core_est_signale(self):
+        """ACNC51 — un get_or_create sans unicité dans core/ est relevé, puis enregistré."""
+        core = guard.DJANGO_CORE / "core"
+        core.mkdir()
+        (core / "x.py").write_text(APPEL, encoding="utf-8")
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertEqual(guard.main([]), 1)
+        self.assertIn("backend/django_core/core/x.py::creer::Foo", sortie.getvalue())
+        self.assertEqual(self.lancer("--write"), 0)
+        self.assertEqual(self.lancer(), 0)
+
     def test_depot_reel_vert(self):
         self.restaurer()
         sortie = io.StringIO()

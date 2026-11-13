@@ -481,6 +481,30 @@ def _terminer(instance, moment):
     instance.save(update_fields=['statut', 'ended_le', 'updated_at'])
 
 
+def _recopier_colonnes(source, destination):
+    """Recopie les colonnes relues sous verrou sur l'objet de l'appelant."""
+    for champ in source._meta.concrete_fields:
+        setattr(destination, champ.attname, getattr(source, champ.attname))
+
+
+def _relire_sous_verrou(instance, step):
+    """ACNC49 — instance PUIS étape relues sous verrou (ordre fixe : pas
+    d'interblocage) : une décision sur des copies périmées voit l'état commité.
+
+    L'état verrouillé est recopié SUR les objets de l'appelant (et non sur
+    des copies neuves) : la décision qui suit (``avancer``/``_terminer``)
+    les fait avancer comme avant ACNC49 — un appelant qui relit ensuite
+    ``etape_courante_de(instance)`` voit le palier suivant, pas l'étape
+    qu'il vient de décider (NTWFL16 : refus d'une sélection multi-paliers)."""
+    verrouillee = WorkflowInstance.objects.select_for_update().get(pk=instance.pk)
+    _recopier_colonnes(verrouillee, instance)
+    cible = step if step is not None else etape_courante_de(instance)
+    if cible is not None:
+        etape = WorkflowStepInstance.objects.select_for_update().get(pk=cible.pk)
+        _recopier_colonnes(etape, cible)
+    return instance, cible
+
+
 @transaction.atomic
 def approuver_etape(instance, user=None, commentaire='', now=None, step=None):
     """Approuve l'étape courante puis avance séquentiellement.
@@ -497,9 +521,9 @@ def approuver_etape(instance, user=None, commentaire='', now=None, step=None):
     pas complété (``step.donnees_formulaire``).
     """
     moment = _resolve_now(now)
+    instance, cible = _relire_sous_verrou(instance, step)
     if instance.statut != WorkflowInstance.STATUT_EN_COURS:
         raise ValueError("Aucune étape en attente à approuver.")
-    cible = step if step is not None else etape_courante_de(instance)
     if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
         raise ValueError("Aucune étape en attente à approuver.")
     if _formulaire_incomplet(cible):
@@ -532,9 +556,9 @@ def rejeter_etape(instance, user=None, commentaire='', now=None, step=None):
     Lève ``ValueError`` si aucune étape n'est en attente.
     """
     moment = _resolve_now(now)
+    instance, cible = _relire_sous_verrou(instance, step)
     if instance.statut != WorkflowInstance.STATUT_EN_COURS:
         raise ValueError("Aucune étape en attente à rejeter.")
-    cible = step if step is not None else etape_courante_de(instance)
     if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
         raise ValueError("Aucune étape en attente à rejeter.")
     cible.statut = WorkflowStepInstance.STATUT_REJETE

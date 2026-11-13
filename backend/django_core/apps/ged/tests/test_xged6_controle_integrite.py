@@ -125,6 +125,42 @@ class IntegrityCheckTests(XGed6Base):
             synthese_b = services.verifier_integrite_archives(self.co_b)
         self.assertEqual(synthese_b['total'], 0)
 
+    def test_altere_et_introuvable_notifient_les_admins_une_fois(self):
+        """ACEL62 (C-ACEL-003) — altérée ET introuvable : une notification ERP
+        par archive à l'administrateur + une ligne au résumé des problèmes ;
+        un second contrôle au résultat inchangé ne renotifie pas."""
+        from apps.notifications.models import Notification
+        doc_b = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Bail introuvable')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(self.contenu_original, None)):
+            DocumentVersion.objects.create(
+                company=self.co_a, document=doc_b, version=1,
+                file_key='ged/xged6/doc-b.pdf', filename='doc-b.pdf',
+                mime='application/pdf',
+                checksum=services.compute_checksum(self.contenu_original))
+            services.archiver_legalement(doc_b, user=self.admin_a, motif='ACEL62')
+
+        def lecture(cle):
+            if cle == 'ged/xged6/doc-b.pdf':
+                return None, 'introuvable'
+            return b'contenu MODIFIE', None
+
+        with mock.patch('apps.records.storage.fetch_attachment', side_effect=lecture), \
+                mock.patch('apps.reporting.journal_problemes.consigner_echec_tache') as consigne:
+            services.verifier_integrite_archives(self.co_a)
+            notes = Notification.objects.filter(
+                recipient=self.admin_a, event_type='security_alert')
+            self.assertEqual(notes.count(), 2)
+            titres = ' '.join(notes.values_list('title', flat=True))
+            self.assertIn('Contrat archivé', titres)
+            self.assertIn('Bail introuvable', titres)
+            self.assertFalse(Notification.objects.filter(recipient=self.employe_a).exists())
+            consigne.assert_called_once()
+            services.verifier_integrite_archives(self.co_a)
+        self.assertEqual(notes.count(), 2)
+        consigne.assert_called_once()
+
 
 class DossierPreuveTests(XGed6Base):
     def test_dossier_preuve_contains_hash_and_controles(self):
