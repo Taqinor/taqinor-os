@@ -18,7 +18,7 @@ import {
   Button, IconButton, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, useDirtyGuard, confirmLeaveIfDirty,
 } from '../../ui'
 import { SelectFournisseur, CelluleRetirerLigne } from './ComposantsStock'
 import { EnteteStock } from './EnteteStock'
@@ -300,6 +300,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
   const [payloadAControler, setPayloadAControler] = useState(null)  // AAPV24
+  // AERR37 — saisie ≠ état initial : clic extérieur / Échap demandent avant de fermer.
+  const saisie = JSON.stringify([fournisseur, dateCommande, dateLivraisonPrevue, note, lignes,
+    acheteur, refFournisseur, noteBasPage, incoterm, receptions, tracas])
+  const [saisieInitiale] = useState(saisie)
+  const dirty = saisie !== saisieInitiale
+  useDirtyGuard(dirty)
   // WIR220/XPUR7 — accusé de commande fournisseur (date confirmée + n°) : la
   // date DEMANDÉE (`date_livraison_prevue`, ci-dessus) n'est JAMAIS écrasée —
   // état local séparé mis à jour depuis la réponse serveur (le composant ne
@@ -781,7 +787,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">

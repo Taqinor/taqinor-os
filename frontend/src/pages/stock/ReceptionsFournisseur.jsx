@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Input, Textarea,
   // EZ10 — le sélecteur de bon de commande passe au Combobox (recherche).
-  Combobox,
+  Combobox, useDirtyGuard, confirmLeaveIfDirty,
 } from '../../ui'
 import { TableauStock } from './ComposantsStock'
 
@@ -69,6 +69,9 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   const [ouvertes, setOuvertes] = useState({})  // { ligneCmdId: bool }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // AERR37 — un BCF choisi ou une note saisie : clic extérieur / Échap demandent avant de fermer.
+  const dirty = Boolean(bonId || note.trim())
+  useDirtyGuard(dirty)
 
   // Charge le détail (lignes à jour) du BCF choisi.
   useEffect(() => {
@@ -158,7 +161,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nouvelle réception fournisseur</DialogTitle>
