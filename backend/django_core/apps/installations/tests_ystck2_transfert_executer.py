@@ -15,14 +15,19 @@ Run :
     python manage.py test apps.installations.tests_ystck2_transfert_executer -v2
 """
 import itertools
+import threading
+import time
+from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.installations.models import DemandeTransfert
 from apps.stock.models import TransfertStock
+from core.test_utils import WideTeardownTimeoutMixin
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -148,3 +153,53 @@ class IsolationSocieteTests(TestCase):
             TransfertStock.objects.filter(company=co1).count(), 1)
         self.assertEqual(
             TransfertStock.objects.filter(company=co2).count(), 0)
+
+
+class ExecuterConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC30 — deux VRAIES connexions (patron ``apps/sav/tests_pieces.py::
+    TestSavPiecesConcurrence._course``) : A exécute et tient la transaction
+    pendant son transfert ; B exécute la même demande au même moment. Une
+    classe ``TransactionTestCase`` dédiée : ``ExecuterVentileStockTests`` est un
+    ``TestCase`` (une seule transaction, aucune seconde connexion possible)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.src = make_emplacement(
+            self.company, 'Dépôt principal', is_principal=True)
+        self.dst = make_emplacement(self.company, 'Camionnette 1')
+        self.produit = make_produit(self.company, stock=10)
+        self.dt = make_demande_approuvee(
+            self.company, self.produit, self.src, self.dst, 4)
+
+    def test_deux_executions_croisees_un_seul_transfert(self):
+        from apps.stock import services as stock
+        original = stock.transfer_stock
+        a_tient, b_tente, res = threading.Event(), threading.Event(), {}
+        url = f'{BASE}/demandes-transfert/{self.dt.id}/executer/'
+
+        def transfert_lent(**kwargs):
+            if not a_tient.is_set():  # A : tient sa transaction ouverte
+                a_tient.set()
+                b_tente.wait(5)
+                time.sleep(0.5)  # B atteint la relecture de la demande
+            return original(**kwargs)
+
+        def fil(nom):
+            if nom == 'b':
+                a_tient.wait(5)
+                b_tente.set()
+            res[nom] = auth(self.user).post(url, {}, format='json').status_code
+            connection.close()
+
+        with mock.patch.object(stock, 'transfer_stock', side_effect=transfert_lent):
+            fils = [threading.Thread(target=fil, args=(n,)) for n in ('a', 'b')]
+            for f in fils:
+                f.start()
+            for f in fils:
+                f.join(20)
+        self.assertEqual(sorted(res.values()), [200, 409], res)
+        self.assertEqual(TransfertStock.objects.filter(
+            company=self.company, produit=self.produit).count(), 1)
+        self.dt.refresh_from_db()
+        self.assertEqual(self.dt.statut, DemandeTransfert.Statut.EXECUTE)

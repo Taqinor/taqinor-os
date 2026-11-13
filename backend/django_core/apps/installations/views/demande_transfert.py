@@ -123,25 +123,31 @@ class DemandeTransfertViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         échoue en 409 (aucun changement de statut). IDEMPOTENTE : la garde de
         statut (seule une demande APPROUVÉE peut être exécutée) empêche tout
         second transfert."""
+        from django.db import transaction
         from apps.stock.services import transfer_stock
 
         dt = self.get_object()
-        if dt.statut != DemandeTransfert.Statut.APPROUVE:
-            return Response(
-                {'statut': 'Seule une demande approuvée peut être exécutée.'},
-                status=status.HTTP_409_CONFLICT)
-        try:
-            transfer_stock(
-                company=request.user.company, user=request.user,
-                produit_id=dt.produit_id, source_id=dt.source_id,
-                destination_id=dt.destination_id, quantite=dt.quantite,
-                note=f'Demande de transfert {dt.reference}',
-                demande_approuvee=True)  # AAPV30 — l'approbation EST cette demande
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_409_CONFLICT)
-        dt.statut = DemandeTransfert.Statut.EXECUTE
-        dt.date_execution = timezone.now()
-        dt.save(update_fields=[
-            'statut', 'date_execution', 'date_modification'])
+        # ACNC30 — statut jugé sur la ligne relue SOUS VERROU ; transfert et
+        # statut dans la MÊME transaction (deux « Exécuter » croisés : un seul
+        # transfert, le second rend 409).
+        with transaction.atomic():
+            dt = DemandeTransfert.objects.select_for_update().get(pk=dt.pk)
+            if dt.statut != DemandeTransfert.Statut.APPROUVE:
+                return Response(
+                    {'statut': 'Seule une demande approuvée peut être exécutée.'},
+                    status=status.HTTP_409_CONFLICT)
+            try:
+                transfer_stock(
+                    company=request.user.company, user=request.user,
+                    produit_id=dt.produit_id, source_id=dt.source_id,
+                    destination_id=dt.destination_id, quantite=dt.quantite,
+                    note=f'Demande de transfert {dt.reference}',
+                    demande_approuvee=True)  # AAPV30 — l'approbation EST cette demande
+            except ValueError as exc:
+                return Response({'detail': str(exc)},
+                                status=status.HTTP_409_CONFLICT)
+            dt.statut = DemandeTransfert.Statut.EXECUTE
+            dt.date_execution = timezone.now()
+            dt.save(update_fields=[
+                'statut', 'date_execution', 'date_modification'])
         return Response(self.get_serializer(dt).data)

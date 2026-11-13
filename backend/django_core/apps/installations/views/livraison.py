@@ -220,9 +220,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
                 liv.notifie_transit_le = timezone.now()
                 liv.save(update_fields=['notifie_transit_le'])
         elif statut == Livraison.Statut.LIVREE:
-            # ACHT19 — une seule fois (horodatage persisté).
-            if liv.notifie_livree_le is not None:
-                return
+            # ACHT19/ACNC30 — une seule fois : `livrer` décide sous verrou.
             livraison_client_notify.notify_livraison_transition(
                 liv, 'livree', request=request, user=request.user)
 
@@ -235,12 +233,14 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         from django.db import transaction
 
         liv = self.get_object()
-        _exiger_transition_livraison(liv, Livraison.Statut.EN_TRANSIT)
         # ACHT20 — ventilation exacte PUIS statut, dans la même transaction :
         # une ligne en stock insuffisant refuse l'expédition (400 nommant la
-        # ligne), rien n'est transféré ni notifié.
+        # ligne), rien n'est transféré ni notifié. ACNC30 — transition et
+        # `stock_mouvemente` jugés sur la ligne relue SOUS VERROU.
         try:
             with transaction.atomic():
+                liv = Livraison.objects.select_for_update().get(pk=liv.pk)
+                _exiger_transition_livraison(liv, Livraison.Statut.EN_TRANSIT)
                 ventiler_stock_livraison(liv, request.user)
                 liv.statut = Livraison.Statut.EN_TRANSIT
                 liv.save(update_fields=['statut', 'date_modification'])
@@ -256,11 +256,17 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         (best-effort). XSTK23 : émet le webhook public `livraison.livree`
         (best-effort, jamais bloquant, via le SERVICE publicapi — jamais son
         modèle)."""
+        from django.db import transaction
+
         liv = self.get_object()
-        _exiger_transition_livraison(liv, Livraison.Statut.LIVREE)
-        liv.statut = Livraison.Statut.LIVREE
-        liv.save(update_fields=['statut', 'date_modification'])
-        if liv.notifie_livree_le is None:
+        with transaction.atomic():  # ACNC30 — relue sous verrou : une seule 1re « livrée »
+            liv = Livraison.objects.select_for_update().get(pk=liv.pk)
+            _exiger_transition_livraison(liv, Livraison.Statut.LIVREE)
+            premiere = liv.notifie_livree_le is None
+            liv.statut = Livraison.Statut.LIVREE
+            liv.notifie_livree_le = liv.notifie_livree_le or timezone.now()
+            liv.save(update_fields=['statut', 'date_modification', 'notifie_livree_le'])
+        if premiere:  # émis APRÈS la validation de la transaction
             self._notify_client(liv, Livraison.Statut.LIVREE, request)
             try:
                 from apps.publicapi.services import notify_livraison_livree
@@ -273,9 +279,6 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
                 )
             except Exception:  # pragma: no cover - défensif, best-effort
                 logger.warning("livrer : échec ignoré, comportement dégradé", exc_info=True)
-            # ACHT19 — notification + webhook « livrée » : une seule fois.
-            liv.notifie_livree_le = timezone.now()
-            liv.save(update_fields=['notifie_livree_le'])
         return Response(self.get_serializer(liv).data)
 
     @oa.extend_schema(request=None)
