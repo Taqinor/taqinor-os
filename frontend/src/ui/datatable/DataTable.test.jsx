@@ -566,6 +566,22 @@ describe('VX131 — état vide : CTA et tone d\'erreur', () => {
     expect(iconWrap.className).toContain('bg-destructive/12')
     expect(iconWrap.className).toContain('text-destructive')
   })
+
+  it('AERR58 — erreur avec lignes : lignes gardées + avis + Réessayer ; loading ne les remplace pas', () => {
+    const onRetry = vi.fn()
+    const { container, rerender } = render(
+      <DataTable data={DATA} columns={COLUMNS} error="Délai dépassé" onRetry={onRetry} />,
+      { wrapper },
+    )
+    expect(screen.queryByText('Erreur de chargement')).toBeNull()
+    expect(screen.getAllByText('Kasri').length).toBeGreaterThan(0)
+    expect(screen.getByRole('alert')).toHaveTextContent(/Liste peut-être pas à jour.*Délai dépassé/)
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+    rerender(<DataTable data={DATA} columns={COLUMNS} loading />)
+    expect(container.querySelector('[data-skeleton-row]')).toBeNull()
+    expect(screen.getAllByText('Benani').length).toBeGreaterThan(0)
+  })
 })
 
 /* ============================== ARC49/ARC53 — ÉCHAPPATOIRES ADDITIVES ============================== */
