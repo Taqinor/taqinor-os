@@ -481,13 +481,27 @@ def _terminer(instance, moment):
     instance.save(update_fields=['statut', 'ended_le', 'updated_at'])
 
 
+def _recopier_colonnes(source, destination):
+    """Recopie les colonnes relues sous verrou sur l'objet de l'appelant."""
+    for champ in source._meta.concrete_fields:
+        setattr(destination, champ.attname, getattr(source, champ.attname))
+
+
 def _relire_sous_verrou(instance, step):
     """ACNC49 — instance PUIS étape relues sous verrou (ordre fixe : pas
-    d'interblocage) : une décision sur des copies périmées voit l'état commité."""
-    instance = WorkflowInstance.objects.select_for_update().get(pk=instance.pk)
+    d'interblocage) : une décision sur des copies périmées voit l'état commité.
+
+    L'état verrouillé est recopié SUR les objets de l'appelant (et non sur
+    des copies neuves) : la décision qui suit (``avancer``/``_terminer``)
+    les fait avancer comme avant ACNC49 — un appelant qui relit ensuite
+    ``etape_courante_de(instance)`` voit le palier suivant, pas l'étape
+    qu'il vient de décider (NTWFL16 : refus d'une sélection multi-paliers)."""
+    verrouillee = WorkflowInstance.objects.select_for_update().get(pk=instance.pk)
+    _recopier_colonnes(verrouillee, instance)
     cible = step if step is not None else etape_courante_de(instance)
     if cible is not None:
-        cible = WorkflowStepInstance.objects.select_for_update().get(pk=cible.pk)
+        etape = WorkflowStepInstance.objects.select_for_update().get(pk=cible.pk)
+        _recopier_colonnes(etape, cible)
     return instance, cible
 
 
