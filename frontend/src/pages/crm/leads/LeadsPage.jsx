@@ -825,7 +825,16 @@ export default function LeadsPage() {
         },
       })
     } catch (err) {
-      dispatch(leadStagePatched({ id: lead.id, stage: prev }))
+      // ACNC53 — un rejet SANS corps (délai, réseau) ne prouve pas que le serveur
+      // n'a rien appliqué (sortie de « Signé » appliquée, réponse expirée) : on
+      // RELIT le lead et la carte prend l'étape SERVIE ; seule une relecture en
+      // échec (ou un refus avec corps) remet l'étape précédente.
+      let servie = prev
+      if (typeof err === 'string' || err == null) {
+        try { servie = (await crmApi.getLead(lead.id)).data?.stage ?? prev } catch { servie = prev }
+      }
+      dispatch(leadStagePatched({ id: lead.id, stage: servie }))
+      if (servie === newStage) return
       // Décision fondateur 08/10/2026 — quitter « Signé » est REFUSÉ (409)
       // quand le devis accepté a une suite réelle (facture émise, chantier
       // avancé…) : le texte serveur nomme la cause, on l'affiche tel quel

@@ -97,3 +97,18 @@ test('StockList : désarchiver un produit affiche toastWithUndo ré-archivant vi
   assert.match(block, /toastWithUndo\(/)
   assert.match(block, /patchProduit\(p\.id, \{ is_archived: true \}\)/)
 })
+
+test('LeadsPage.changeStage : un échec sans réponse relit le lead au lieu de revenir en arrière (ACNC53)', () => {
+  const start = LEADS_PAGE.indexOf('const changeStage =')
+  assert.ok(start > 0)
+  const block = LEADS_PAGE.slice(start, start + 6000)
+  const catchBlock = block.slice(block.indexOf('} catch (err) {'))
+  // Rejet sans corps (chaîne) : relecture par getLead, puis l'étape SERVIE.
+  assert.match(catchBlock, /typeof err === 'string' \|\| err == null/)
+  assert.match(catchBlock, /crmApi\.getLead\(lead\.id\)/)
+  assert.match(catchBlock, /leadStagePatched\(\{ id: lead\.id, stage: servie \}\)/)
+  // Relecture en échec : retour arrière sur l'étape précédente.
+  assert.match(catchBlock, /catch \{ servie = prev \}/)
+  // Étape servie = étape demandée : pas de message d'échec.
+  assert.match(catchBlock, /if \(servie === newStage\) return/)
+})
