@@ -347,6 +347,54 @@ class GestesArgentTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(Avoir.objects.count(), avoirs + 1)
 
+    def test_facturer_remplacer_brouillon_legal_exige_encaisser(self):
+        """ASEC96 (C-ASEC-VER7-096, D-ASEC-VER6-1) — « Facturer la vente »
+        avec ``remplacer_brouillons`` sur un brouillon REMIS à référence
+        légale émet son avoir : 403 sans ``encaisser`` (VRAIS rôles Admin
+        Ventes et Responsable), brouillon, factures et avoirs inchangés ;
+        Commercial (porte ``encaisser``) : 201 + avoir 1 200,00 TTC ;
+        ``BROUILLON-<id>`` + Admin Ventes : 201 sans avoir. Mutant : ôter la
+        condition de référence légale ⇒ échec."""
+        from apps.ventes.models import Avoir, Facture
+        corps = {'nature': 'complete', 'remplacer_brouillons': True}
+        commercial = self.users['Commercial']
+        devis = self._devis(commercial)
+        remis = self._facture(commercial)
+        Facture.objects.filter(pk=remis.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE,
+            statut=Facture.Statut.BROUILLON)
+        url = f'/api/django/ventes/devis/{devis.id}/facturer/'
+        avoirs, factures = Avoir.objects.count(), Facture.objects.count()
+        for nom in ('Admin Ventes', 'Responsable'):
+            user = self.users[nom]
+            self.assertNotIn('encaisser', user.role.permissions)
+            r = self._api(user).post(url, corps, format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.data))
+            self.assertIn("droit d'encaissement", str(r.data['detail']))
+        remis.refresh_from_db()
+        self.assertEqual(remis.statut, Facture.Statut.BROUILLON)
+        self.assertEqual((Avoir.objects.count(), Facture.objects.count()),
+                         (avoirs, factures))
+        r = self._api(commercial).post(url, corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Avoir.objects.count(), avoirs + 1)
+        self.assertEqual(Avoir.objects.latest('id').total_ttc,
+                         Decimal('1200.00'))
+        # Brouillon provisoire : rien d'émis, l'Admin Ventes passe.
+        admin_ventes = self.users['Admin Ventes']
+        devis2 = self._devis(admin_ventes)
+        provisoire = self._facture(admin_ventes)
+        Facture.objects.filter(pk=provisoire.pk).update(
+            devis=devis2, type_facture=Facture.TypeFacture.ACOMPTE,
+            statut=Facture.Statut.BROUILLON,
+            reference=f'BROUILLON-{provisoire.pk}')
+        avoirs = Avoir.objects.count()
+        r = self._api(admin_ventes).post(
+            f'/api/django/ventes/devis/{devis2.id}/facturer/', corps,
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Avoir.objects.count(), avoirs)
+
     def test_peut_encaisser_suit_la_route(self):
         """ERR-ACC-ENCAISSER-OFFERT-REFUSE (acceptation ASEC90/91, rôle
         système Admin Ventes) — ``peut.encaisser`` d'une facture émise de la

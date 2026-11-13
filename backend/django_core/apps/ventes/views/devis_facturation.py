@@ -74,8 +74,16 @@ def refus_avant_facturer(vue, request, devis, corps):
     exigent le code d'encaissement (même garde que
     ``factures/<id>/enregistrer-paiement/``) ; avertissement de vente
     bloquant (ZSAL9, ``override_avertissement``)."""
+    # ASEC96 (D-ASEC-VER6-1) — retirer un brouillon à référence LÉGALE émet
+    # son avoir : `encaisser` (prédicat d'ASEC90, BC `creer-facture`).
+    from core.numbering import est_reference_provisoire as provisoire
+    from ..models import Facture
+    from ..vente_facturation import factures_de_la_vente
+    remplace_legal = bool(corps.get('remplacer_brouillons')) and any(
+        f.statut == Facture.Statut.BROUILLON and not provisoire(f.reference)
+        for f in factures_de_la_vente(devis))
     if corps.get('emettre') or corps.get('paiements') \
-            or corps.get('utiliser_avances'):
+            or corps.get('utiliser_avances') or remplace_legal:
         if not HasPermissionOrLegacy('encaisser')().has_permission(
                 request, vue):
             return Response(
