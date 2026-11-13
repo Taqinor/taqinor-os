@@ -9,8 +9,12 @@ import { Save, CheckCircle2, AlertCircle } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import { Card, CardContent, Input, Label, Button, Spinner, Switch } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 
 export default function MonitoringSection() {
+  // ADRG46 (D-ADRG-5) — réglage de toute la société : écriture sous
+  // `parametres_modifier` (garde serveur MonitoringSettingsViewSet).
+  const peutModifier = useCanModifierParametres()
   const [settings, setSettings] = useState(null) // null = chargement
   // ERR62 — distinguer « serveur indisponible » des valeurs par défaut : un
   // échec de chargement affiche un état d'erreur + Réessayer au lieu de faire
@@ -77,6 +81,7 @@ export default function MonitoringSection() {
           ticket SAV (sans doublon par drapeau ouvert).
         </p>
 
+        <fieldset disabled={!peutModifier} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
         <div className="max-w-xs">
           <Label htmlFor="underperf-threshold">Seuil de sous-performance (%)</Label>
           <Input
@@ -98,11 +103,18 @@ export default function MonitoringSection() {
           />
           Créer automatiquement un ticket SAV en cas de sous-performance
         </label>
+        </fieldset>
 
         <div className="flex items-center gap-3">
-          <Button type="button" onClick={save} disabled={saving}>
-            <Save /> Enregistrer
-          </Button>
+          {peutModifier ? (
+            <Button type="button" onClick={save} disabled={saving}>
+              <Save /> Enregistrer
+            </Button>
+          ) : (
+            <p data-testid="supervision-lecture-seule" className="text-xs text-muted-foreground">
+              Lecture seule — le droit « Modifier » des paramètres est requis pour enregistrer.
+            </p>
+          )}
           {saved && (
             <span className="flex items-center gap-1 text-sm text-emerald-600">
               <CheckCircle2 size={16} /> Enregistré

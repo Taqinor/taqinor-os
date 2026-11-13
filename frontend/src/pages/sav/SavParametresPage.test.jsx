@@ -43,6 +43,13 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
+// ADRG46 — la page lit le droit `parametres_modifier` (réglages SLA) ; pas de
+// store Redux dans ce test : compte autorisé.
+vi.mock('../../features/parametres/useCanModifierParametres', () => ({
+  useCanModifierParametres: () => true,
+  default: () => true,
+}))
+
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import SavParametresPage from './SavParametresPage'

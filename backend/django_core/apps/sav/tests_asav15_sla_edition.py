@@ -110,3 +110,66 @@ class SlaEditionTests(TestCase):
         self._patch({'description': 'Précision du client.'})
         self.assertEqual(self.ticket.sla_due_at, self.today + timedelta(days=5))
         self.assertTrue(self.ticket.sla_pre_alert_notifiee)
+
+    def test_ecriture_sla_et_supervision_exige_parametres_modifier(self):
+        """ADRG46 (C-ADRG-036, D-ADRG-5) — délais SLA SAV et réglage de
+        supervision = réglages de toute la société : écriture réservée à
+        ``parametres_modifier`` (Directeur, Administrateur, compte hérité
+        responsable) ; les quatre rôles livrés sans le code → 403, singletons
+        inchangés, aucune ligne ``SettingsAuditLog`` ; lectures inchangées."""
+        from apps.monitoring.models import MonitoringSettings
+        from apps.parametres.models import SettingsAuditLog
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+            DIRECTEUR_PERMISSIONS, RESPONSABLE_PERMISSIONS,
+            TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS)
+        roles = {
+            'Commercial responsable': COMMERCIAL_RESP_PERMISSIONS,
+            'Technicien': TECHNICIEN_PERMISSIONS,
+            'Technicien responsable': TECHNICIEN_RESP_PERMISSIONS,
+            'Responsable': RESPONSABLE_PERMISSIONS,
+            'Directeur': DIRECTEUR_PERMISSIONS,
+            'Administrateur': ADMIN_PERMISSIONS,
+        }
+        autorises = {'Directeur', 'Administrateur', 'hérité'}
+        comptes = {'hérité': User.objects.create_user(
+            username='adrg46_herite', password='x',
+            role_legacy='responsable', company=self.company)}
+        for i, (nom, perms) in enumerate(roles.items()):
+            comptes[nom] = User.objects.create_user(
+                username=f'adrg46_u{i}', password='x', company=self.company,
+                role=Role.objects.create(company=self.company, nom=nom,
+                                         permissions=list(perms)))
+        MonitoringSettings.get(self.company)
+
+        def api_de(nom):
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=(
+                f'Bearer {AccessToken.for_user(comptes[nom])}'))
+            return api
+
+        for nom in set(comptes) - autorises:
+            api = api_de(nom)
+            r = api.post('/api/django/sav/sla-settings/',
+                         {'sla_resolution_days': 30}, format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.content))
+            r = api.post('/api/django/monitoring/settings/',
+                         {'underperf_threshold_pct': '30'}, format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.content))
+            self.assertEqual(api.get('/api/django/sav/sla-settings/')
+                             .status_code, 200, nom)
+            self.assertEqual(api.get('/api/django/monitoring/settings/')
+                             .status_code, 200, nom)
+        self.assertEqual(SavSlaSettings.get(self.company).sla_resolution_days, 7)
+        self.assertEqual(
+            MonitoringSettings.get(self.company).underperf_threshold_pct, 20)
+        self.assertFalse(SettingsAuditLog.objects.filter(
+            company=self.company).exists())
+        for nom in autorises:
+            r = api_de(nom).post('/api/django/sav/sla-settings/',
+                                 {'sla_resolution_days': 30}, format='json')
+            self.assertEqual(r.status_code, 200, (nom, r.content))
+            r = api_de(nom).post('/api/django/monitoring/settings/',
+                                 {'underperf_threshold_pct': '30'}, format='json')
+            self.assertEqual(r.status_code, 200, (nom, r.content))
