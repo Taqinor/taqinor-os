@@ -2763,13 +2763,13 @@ def replay_website_lead_payload(raw):
                 lead, created, detail, _extra = _map_and_link_lead(
                     raw, raw.payload, company)
         except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook (D-ENF22-BLE001)
+            logger.error(
+                'replay_website_lead_payload: mapping échoué (payload #%s)',
+                raw.pk, exc_info=exc)
             echec = exc
     if echec is not None:
         raw.error = f'{type(echec).__name__}: {echec}'
         raw.save(update_fields=['error'])
-        logger.error(
-            'replay_website_lead_payload: mapping échoué (payload #%s)',
-            raw.pk, exc_info=echec)
         return False, f'Rejeu échoué : {echec}', None
     if created:  # hors du bloc atomique (garde DELAY_IN_ATOMIC)
         try:

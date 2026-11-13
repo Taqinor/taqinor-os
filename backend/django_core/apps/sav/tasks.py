@@ -55,6 +55,7 @@ def _verrou_scan(nom):
     try:
         resultat = cache.add(cle, 1, _VERROU_TTL)
     except Exception:  # pragma: no cover - cache KO → on n'empêche pas le scan
+        logger.debug('sav: cache.add du verrou %s a levé', nom, exc_info=True)
         resultat = None
     # ACEL48 — panne avalée (IGNORE_EXCEPTIONS) : ``cache.add`` rend None.
     if resultat is None:
