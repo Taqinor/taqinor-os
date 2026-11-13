@@ -150,7 +150,8 @@ export default function ExcelImport({ target, onClose, onDone }) {
   return (
     <div
       className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/45"
-      onClick={onClose}
+      // AERR75 — pendant un import, un clic sur le fond ne ferme pas (résultat jamais vu).
+      onClick={busy ? undefined : onClose}
     >
       <div
         className="max-h-[85vh] w-full max-w-[640px] overflow-y-auto rounded-xl bg-card p-6"

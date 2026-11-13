@@ -1193,11 +1193,11 @@ CELERY_ENABLE_UTC = False
 # YDATA13 — le broker Redis doit lui aussi border le délai de re-livraison
 # d'un message NON acquitté (acks_late — voir YOPSB8 ci-dessous) : sans
 # `visibility_timeout` explicite, la valeur par défaut de kombu/redis
-# (souvent 1h) est une coïncidence, pas une garantie documentée. Fixé à
-# 3600s — largement > CELERY_TASK_TIME_LIMIT (180s) pour qu'un message ne
-# soit JAMAIS considéré "perdu" et re-livré en double pendant qu'une tâche
-# légitime est encore en cours d'exécution.
-CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600}
+# (souvent 1h) est une coïncidence. ACEL7 : > la plus longue limite dure
+# déclarée + 10 % (core.dump_database / restore_drill : 4 200 s, ADCG35) —
+# sinon un 2e dump démarre sous le 1er. Prix : un message tué au déploiement
+# revient après 90 min au lieu de 60 (test_qx11_beat_reachability).
+CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 5400}
 
 # YOPSB8 — réglages de production durcis. Sans limite de temps ni garde de
 # perte de worker, une tâche bloquée (ex. rendu PDF WeasyPrint qui hangs)
@@ -1274,7 +1274,7 @@ CELERY_TASK_ROUTES = {
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     # NTDMO29 — ré-ancrage quotidien des relances des leads démo.
     'crm.reancrer_relances_demo': {'queue': 'scheduled'},
-    # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
+    # MRY0 (lot C) — miroir Odoo -> ERP ; hors planning depuis AACQ97 (synchro manuelle).
     'crm.sync_odoo_leads': {'queue': 'scheduled'},
     # MRY17 — digest 08:30 des touches dues + escalade premier contact.
     'crm.notifier_relances_dues': {'queue': 'scheduled'},

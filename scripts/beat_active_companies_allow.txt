@@ -48,3 +48,39 @@ backend/django_core/apps/adsengine/tasks.py::purge_expired_mirrors
 backend/django_core/apps/adsengine/tasks.py::rollup_insights_monthly
 backend/django_core/apps/uxviews/tasks.py::_favoris_obsoletes_par_proprietaire
 backend/django_core/core/tasks.py::_purger_exports_reversibilite_expires
+
+# ACEL5 (13/11/2026) - PASSIF GELE : services et commandes de gestion lancés d'un saut par une
+# tâche planifiée (import dans l'app + call_command), mêmes règles. Clé fichier::fonction ;
+# ne peut que décroître. Commentaire = tâche qui la retire.
+# à trier, propriétaire crm (hors constat ACEL5)
+backend/django_core/apps/crm/dispatch.py::attribuer_echeances
+# à trier, propriétaire crm (hors constat ACEL5)
+backend/django_core/apps/crm/dispatch.py::escalader_file
+# à trier, propriétaire crm (hors constat ACEL5)
+backend/django_core/apps/crm/leads_score.py::recalculer_scores_obsoletes
+# à trier, propriétaire identity (hors constat ACEL5)
+backend/django_core/apps/identity/breakglass.py::revoke_expired
+# à trier, propriétaire installations (hors constat ACEL5)
+backend/django_core/apps/installations/gps_tracking_service.py::purge_positions_expirees
+# à trier, propriétaire monitoring (hors constat ACEL5)
+backend/django_core/apps/monitoring/services.py::evaluate_underperformance
+# à trier, propriétaire monitoring (hors constat ACEL5)
+backend/django_core/apps/monitoring/services.py::sync_system
+# à trier, propriétaire notifications (hors constat ACEL5)
+backend/django_core/apps/notifications/services.py::livrer_notifications_differees
+# à trier, propriétaire parametres (hors constat ACEL5)
+backend/django_core/apps/parametres/traductions_manquantes.py::marquer_notifiees
+# à trier, propriétaire publicapi (hors constat ACEL5)
+backend/django_core/apps/publicapi/retry.py::run_due_retries
+# à trier, propriétaire publicapi (hors constat ACEL5)
+backend/django_core/apps/publicapi/retry.py::schedule_first_retry
+# tâche ACEL de docs/plans/PLAN_AUDIT_ANALYSE.md
+backend/django_core/apps/reporting/management/commands/controle_integrite.py::Command.handle
+# tâche ACEL de docs/plans/PLAN_AUDIT_STOCK.md
+backend/django_core/apps/stock/services_wms.py::generer_comptages_tournants
+# tâche ACEL de docs/plans/PLAN_AUDIT_STOCK.md
+backend/django_core/apps/stock/services_wms.py::liberer_vagues_planifiees
+# à trier, propriétaire ventes (hors constat ACEL5)
+backend/django_core/apps/ventes/domain/pdf_signe.py::rendre_pdf_signe
+# à trier, propriétaire securite (hors constat)
+backend/django_core/core/management/commands/escalate_workflow_sla.py::Command.handle

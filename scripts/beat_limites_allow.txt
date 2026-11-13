@@ -1,0 +1,65 @@
+# ACEL2 — passif gelé : @shared_task qui balaient les sociétés sans limite de temps effective
+# (soft_time_limit + time_limit au décorateur, SoftTimeLimitExceeded relevée avant tout except large).
+# Une ligne `chemin::fonction  # tâche qui la retire` ; une clé morte fait échouer la garde.
+backend/django_core/apps/adminops/tasks.py::purger_evenements_usage  # tâche ACEL de l'app adminops (à trier)
+backend/django_core/apps/adminops/tasks.py::recalculer_health_score_tenants  # tâche ACEL de l'app adminops (à trier)
+backend/django_core/apps/adsengine/tasks.py::autopause_blast_radius  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::backfill_complet  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::check_attribution_quality  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::decay_assumptions_weekly  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::emit_capi_signatures  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::evaluate_guardrails  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::evaluate_quarter_hourly  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::flag_dead_branches_weekly  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::flag_stale_assets  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::generate_grounded_variants  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::generate_weekly_brief  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::pull_meta_leads  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::pull_meta_leads_recent  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::run_active_flightplans  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::run_daily_reconciliation  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::run_reward_divergence_check  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::sync_breakdowns_weekly  # tâche ACEL du plan acquisition
+backend/django_core/apps/adsengine/tasks.py::sync_insights_daily  # tâche ACEL du plan acquisition
+backend/django_core/apps/crm/tasks.py::poser_reveils_saisonniers_task  # tâche ACEL de l'app crm (à trier)
+backend/django_core/apps/ged/tasks.py::migrer_pieces_jointes_task  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/ged/tasks.py::notifier_emetteurs_expiration_signature  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/ged/tasks.py::notifier_planifications_echues_task  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/ged/tasks.py::poll_mail_intake_task  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/ged/tasks.py::relancer_demandes_document_dues_task  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/ged/tasks.py::signature_relances_expiration  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/ged/tasks.py::verifier_integrite_archives_task  # tâche ACEL de l'app ged (à trier)
+backend/django_core/apps/installations/tasks.py::generer_interventions_recurrentes_task  # tâche ACEL de l'app installations (à trier)
+backend/django_core/apps/installations/tasks.py::meteo_planning_j3  # tâche ACEL de l'app installations (à trier)
+backend/django_core/apps/installations/tasks.py::purger_demandes_achat_brouillon_task  # tâche ACEL de l'app installations (à trier)
+backend/django_core/apps/installations/tasks.py::rappel_rdv_j1  # tâche ACEL de l'app installations (à trier)
+backend/django_core/apps/installations/tasks.py::relancer_rfq_en_attente_task  # tâche ACEL de l'app installations (à trier)
+backend/django_core/apps/installations/tasks.py::signaler_interruptions_gps_task  # tâche ACEL de l'app installations (à trier)
+backend/django_core/apps/monitoring/tasks.py::balayage_quotidien  # tâche ACEL de l'app monitoring (à trier)
+backend/django_core/apps/outillage/tasks.py::calibrations_a_echeance  # tâche ACEL de l'app outillage (à trier)
+backend/django_core/apps/parametres/scheduled.py::notifier_traductions_manquantes_hebdo  # tâche ACEL de l'app parametres (à trier)
+backend/django_core/apps/parametres/scheduled.py::purger_traductions_orphelines  # tâche ACEL de l'app parametres (à trier)
+backend/django_core/apps/reporting/rapport_abonnements.py::envoyer_rapports_planifies  # tâche ACEL de l'app reporting (à trier)
+backend/django_core/apps/reporting/scheduled_reports.py::email_saved_reports  # tâche ACEL de l'app reporting (à trier)
+backend/django_core/apps/sav/tasks.py::generer_visites_dues_quotidien  # tâche ACEL de l'app sav (à trier)
+backend/django_core/apps/stock/tasks.py::alerter_surcapacite_zones_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::expiration_alerts_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::notifier_bcf_en_retard_buyer_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::notifier_documents_conformite_expirants_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::notifier_documents_fournisseur_expirants_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::recompute_reordering_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::recompute_scores_risque_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/stock/tasks.py::relancer_bcf_en_retard_task  # tâche ACEL de l'app stock (à trier)
+backend/django_core/apps/uxviews/tasks.py::digest_favoris_obsoletes_hebdo  # tâche ACEL de l'app uxviews (à trier)
+backend/django_core/apps/ventes/scheduled.py::check_overdue_factures  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/scheduled.py::devis_a_facturer_reminder  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/scheduled.py::engagement_followup_engine  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/scheduled.py::poll_inbound_mailboxes  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/scheduled.py::pre_echeance_reminders  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/scheduled.py::relance_reminders  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/scheduled.py::releve_mensuel_reminders  # tâche ACEL du plan devis
+backend/django_core/apps/ventes/tasks.py::task_resync_devis_apres_produit_modifie  # tâche ACEL du plan devis
+backend/django_core/core/tasks.py::assurer_alertes_fiabilite_kpi_task  # ACEL10 (PLAN_AUDIT_SECURITE)
+backend/django_core/core/tasks.py::executer_exports_planifies_task  # ACEL10 (PLAN_AUDIT_SECURITE)
+backend/django_core/core/tasks.py::export_reversibilite_tenant  # ACEL10 (PLAN_AUDIT_SECURITE)
+backend/django_core/core/tasks.py::notifier_dossiers_echeance_depassee_task  # ACEL10 (PLAN_AUDIT_SECURITE)

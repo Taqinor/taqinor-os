@@ -23,6 +23,7 @@ vi.mock('react-router-dom', async (orig) => ({
 }))
 
 import ShortcutsProvider from './ShortcutsProvider'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/Dialog'
 import { useFocusedRecordShortcuts } from './focusedRecordShortcuts'
 
 afterEach(() => { cleanup() })
@@ -219,5 +220,32 @@ describe('ShortcutsProvider — ODY28 : séquences « g + lettre » unifiées', 
     const dialog = screen.getByLabelText('Aide des raccourcis clavier')
     expect(within(dialog).getByText(/Menu d’accueil/)).toBeInTheDocument()
     expect(within(dialog).getByText(/Ouvrir le lanceur d’applications/)).toBeInTheDocument()
+  })
+})
+
+describe('ShortcutsProvider — AERR50 : boîte ouverte, raccourcis globaux muets', () => {
+  it('boîte ouverte : « g l » ne navigue pas, « ? » n’ouvre pas l’aide', () => {
+    navigateMock.mockClear()
+    render(
+      <MemoryRouter>
+        <ShortcutsProvider>
+          <Dialog open onOpenChange={() => {}}>
+            <DialogContent>
+              <DialogTitle>Accepter le devis</DialogTitle>
+              <DialogDescription>Saisie en cours</DialogDescription>
+              <button type="button">Confirmer</button>
+            </DialogContent>
+          </Dialog>
+        </ShortcutsProvider>
+      </MemoryRouter>,
+    )
+    const bouton = screen.getByRole('button', { name: 'Confirmer' })
+    bouton.focus()
+    fireEvent.keyDown(bouton, { key: 'g' })
+    fireEvent.keyDown(bouton, { key: 'l' })
+    fireEvent.keyDown(bouton, { key: '?' })
+    expect(navigateMock).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Aide des raccourcis clavier')).toBeNull()
+    expect(screen.getByText('Accepter le devis')).toBeInTheDocument()
   })
 })

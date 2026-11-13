@@ -48,6 +48,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
@@ -61,41 +62,21 @@ ALLOWLIST_PATH = ROOT / "scripts" / "read_modify_write_allow.txt"
 
 
 def _iter_services_files():
-    # AUD828 (M-03) — the THREE dispositions this repo uses for a
-    # "services" surface (same pattern as check_on_delete.py's model-file
-    # iterator): bare services.py, split services_*.py, or a services/
-    # package — across apps/* AND the two foundation dirs.
+    # ACNC50 — TOUT le code serveur (vues, sérialiseurs, tâches… : 26 sites
+    # vivaient hors des seuls services*), hors tests et migrations : même filtre
+    # que ``check_get_or_create._iter_source_files``, sur apps/*, core et
+    # authentication. (Couvre aussi la scission crm SPL3 et AUD828.)
     dirs = list(sorted(APPS_DIR.iterdir())) if APPS_DIR.is_dir() else []
     for app_dir in dirs + [CORE_DIR, AUTH_DIR]:
         if not app_dir.is_dir():
             continue
-        for svc in sorted(app_dir.glob("services.py")):
-            yield svc
-        for svc in sorted(app_dir.glob("services_*.py")):
-            yield svc
-        svc_pkg = app_dir / "services"
-        if svc_pkg.is_dir():
-            for f in sorted(svc_pkg.glob("*.py")):
-                if f.name != "__init__.py":
-                    yield f
-    # SPL3 — la scission de crm/services.py (SPL3-SPL26) déplace ses écritures
-    # dans des modules thématiques : sans ce balayage, une fonction déplacée
-    # sortirait SILENCIEUSEMENT de la garde.
-    crm_dir = APPS_DIR / "crm"
-    if crm_dir.is_dir():
-        vus = set()
-        for motif in _MODULES_SCISSION_CRM:
-            for f in sorted(crm_dir.glob(motif)):
-                if f.name not in vus:
-                    vus.add(f.name)
-                    yield f
-
-
-#: SPL3 — modules issus de la scission de ``apps/crm/services.py``.
-_MODULES_SCISSION_CRM = (
-    "leads_*.py", "fiche_*.py", "clients_*.py", "visites_rdv.py",
-    "visites_retour_lead.py", "cadence_*.py", "devis_chatter.py",
-)
+        for path in sorted(app_dir.rglob("*.py")):
+            parts = path.relative_to(app_dir).parts
+            if "migrations" in parts or "tests" in parts:
+                continue
+            if re.match(r"^tests?(_.*)?\.py$", path.name) or path.name.endswith("_test.py"):
+                continue
+            yield path
 
 
 def _rel(path: Path) -> str:
@@ -107,10 +88,9 @@ def _load_allowlist():
         return set()
     out = set()
     for line in ALLOWLIST_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        out.add(line)
+        line = line.split("#")[0].strip()  # ACNC50 : « clé  # tâche qui la retire »
+        if line:
+            out.add(line)
     return out
 
 
@@ -201,6 +181,7 @@ def _rmw_sites_in_function(func_node):
     ``obj.field += / -= ...`` whose modifying expression is NOT ``F(...)``.
     """
     sites = []
+    derivees = _locales_derivees(func_node)
     for sub in ast.walk(func_node):
         # obj.field += n   /   obj.field -= n   (numeric arithmetic only)
         if isinstance(sub, ast.AugAssign):
@@ -218,8 +199,38 @@ def _rmw_sites_in_function(func_node):
                 continue
             if _expr_is_f_expression(sub.value):
                 continue
-            if _expr_references_attr(sub.value, key):
+            if _expr_references_attr(sub.value, key) or any(
+                    isinstance(n, ast.Name) and derivees.get(n.id) == key
+                    for n in ast.walk(sub.value)):
                 sites.append(key)
+    return sites
+
+
+def _locales_derivees(func_node):
+    """ACNC50 — ``qte = obj.attr - n`` : {'qte': ('obj', 'attr')} (calcul passé par variable)."""
+    out = {}
+    appeles = {id(c.func) for c in ast.walk(func_node) if isinstance(c, ast.Call)}
+    for sub in ast.walk(func_node):
+        if (isinstance(sub, ast.Assign) and len(sub.targets) == 1
+                and isinstance(sub.targets[0], ast.Name) and not _expr_is_f_expression(sub.value)):
+            for n in ast.walk(sub.value):
+                key = None if id(n) in appeles else _attr_key(n)  # ``timezone.now()`` n'est pas un champ
+                if key and _expr_references_attr(sub.value, key):
+                    out[sub.targets[0].id] = key
+                    break
+    return out
+
+
+def _ecritures_par_variable(func_node):
+    """ACNC50 — variable dérivée passée en mot-clé à une écriture (``.update(quantite=qte)``)."""
+    derivees = _locales_derivees(func_node)
+    sites = []
+    for sub in ast.walk(func_node):
+        if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                and sub.func.attr in _WRITE_ATTRS):
+            for kw in sub.keywords:
+                if isinstance(kw.value, ast.Name) and kw.value.id in derivees:
+                    sites.append(derivees[kw.value.id])
     return sites
 
 
@@ -233,22 +244,40 @@ def _params_of(func_node):
     return {n for n in noms if n not in ("self", "cls")}
 
 
+#: ACNC50 — drapeaux d'état (liste figée) lus comme un statut avant d'écrire.
+_ATTRS_ETAT = ("statut", "stock_mouvemente", "stock_reintegre", "notifie_livree_le",
+               "cloturee_notifiee_le")
+
+
 def _status_checked_params(func_node):
-    """Paramètres ``p`` testés par ``if ... p.statut ...: ... raise`` (ASTK53)."""
+    """``p.<état>`` testés par ``if ... p.<état> ...: raise|return`` (ASTK53 ; ACNC50 :
+    garde en ``return`` et drapeaux d'état) — liste de ``'p.attr'``."""
     params = _params_of(func_node)
     trouves = []
     for sub in ast.walk(func_node):
         if not isinstance(sub, ast.If):
             continue
-        if not any(isinstance(n, ast.Raise)
+        if not any(isinstance(n, (ast.Raise, ast.Return))
                    for stmt in sub.body for n in ast.walk(stmt)):
             continue
         for n in ast.walk(sub.test):
-            if (isinstance(n, ast.Attribute) and n.attr == "statut"
-                    and isinstance(n.value, ast.Name)
-                    and n.value.id in params and n.value.id not in trouves):
-                trouves.append(n.value.id)
+            if (isinstance(n, ast.Attribute) and n.attr in _ATTRS_ETAT
+                    and isinstance(n.value, ast.Name) and n.value.id in params
+                    and f"{n.value.id}.{n.attr}" not in trouves):
+                trouves.append(f"{n.value.id}.{n.attr}")
     return trouves
+
+
+def _save_complet_apres_statut(func_node):
+    """ACNC50 — ``a.b.statut`` (instance tenue par un objet : ``serializer.instance``,
+    ``self.instance``) lu dans un ``if`` puis un ``.save()`` sans ``update_fields``."""
+    lus = [ast.unparse(n.value) for s in ast.walk(func_node) if isinstance(s, ast.If)
+           for n in ast.walk(s.test) if isinstance(n, ast.Attribute) and n.attr == "statut"
+           and isinstance(n.value, ast.Attribute)]
+    complet = any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                  and c.func.attr == "save" and not any(k.arg == "update_fields" for k in c.keywords)
+                  for c in ast.walk(func_node))
+    return [f"{lus[0]}.statut save complet"] if lus and complet else []
 
 
 def _function_writes(func_node):
@@ -264,8 +293,8 @@ def _status_findings(func_node):
         return []
     if not _function_writes(func_node):
         return []
-    return [(func_node.name, f"{p}.statut")
-            for p in _status_checked_params(func_node)]
+    return [(func_node.name, cible) for cible in
+            _status_checked_params(func_node) + _save_complet_apres_statut(func_node)]
 
 
 def check_file(path: Path):
@@ -284,7 +313,9 @@ def check_file(path: Path):
         for varname, attr in _rmw_sites_in_function(node):
             if _function_saves_var(node, varname):
                 findings.append((node.name, f"{varname}.{attr}"))
-    return findings
+        for varname, attr in _ecritures_par_variable(node):
+            findings.append((node.name, f"{varname}.{attr} via variable"))
+    return list(dict.fromkeys(findings))
 
 
 def fichiers_morts(cles, root=None):
