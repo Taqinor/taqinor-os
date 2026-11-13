@@ -48,6 +48,17 @@ test('getApiError: timeout (ECONNABORTED)', () => {
   assert.match(getApiError(err).message, /expiré/)
 })
 
+test('getApiError: écriture expirée (ECONNABORTED, post) — ACNC52', () => {
+  const ecriture = { code: 'ECONNABORTED', config: { method: 'post' } }
+  assert.equal(getApiError(ecriture).message,
+    "La réponse n'est pas arrivée : l'action a peut-être abouti. Vérifiez avant de recommencer.")
+  for (const method of ['put', 'PATCH', 'delete']) {
+    assert.match(getApiError({ code: 'ECONNABORTED', config: { method } }).message, /peut-être abouti/)
+  }
+  const lecture = { code: 'ECONNABORTED', config: { method: 'get' } }
+  assert.equal(getApiError(lecture).message, 'La connexion a expiré. Vérifiez votre connexion et réessayez.')
+})
+
 test('getApiError: Network Error', () => {
   // VX156 — le moment « erreur réseau » porte désormais la voix Taqinor
   // (honnête, rassurante : la saisie n'est pas perdue).

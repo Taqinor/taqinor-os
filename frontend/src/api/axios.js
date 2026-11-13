@@ -8,6 +8,7 @@ import { originFrom } from './origin'
 // volontairement sans React : ils émettent un toast / un événement window.
 import { errorMessageFrom, toastError } from '../lib/toast'
 import { apiErrorMessageServi } from '../lib/apiError'
+import { estEcritureExpiree, MESSAGE_ECRITURE_EXPIREE } from '../lib/apiError'
 // NTADM26 — entité active (filtre d'affichage, module pur sans React ici).
 import { lireEntiteActive } from '../lib/entiteActive'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
@@ -138,6 +139,13 @@ api.interceptors.response.use(
     // précisément derrière un état local « Indisponible pour le
     // moment. ». Best-effort absolu : ne lève jamais, n'attend rien.
     signalerErreurRequete(error, { sessionEstActive })
+
+    // ACNC52 — une ÉCRITURE dont la réponse a expiré a peut-être abouti côté serveur
+    // (gunicorn va au bout) : ne jamais inviter à rejouer. Texte unique (lib/apiError).
+    if (estEcritureExpiree(error) && !originalRequest.suppressErrorToast) {
+      toastError(MESSAGE_ECRITURE_EXPIREE)
+      return Promise.reject(error)
+    }
 
     // L53 — Bridge global : toute requête échouée surface un toast d'erreur FR,
     // sauf si l'appelant a explicitement opté pour la gestion locale

@@ -27,6 +27,8 @@ import fieldLabels from '../features/crm/workspace/fieldLabels.js'
 export function getApiError(error, fallback = 'Une erreur est survenue.') {
   // VX55 — timeout (axios ECONNABORTED) : distinct d'une annulation
   // volontaire (gérée séparément par l'appelant via AbortController).
+  // ACNC52 — une ÉCRITURE expirée a peut-être abouti côté serveur : ne pas inviter à rejouer.
+  if (estEcritureExpiree(error)) return { message: MESSAGE_ECRITURE_EXPIREE }
   if (error?.code === 'ECONNABORTED') {
     return { message: 'La connexion a expiré. Vérifiez votre connexion et réessayez.' }
   }
@@ -79,6 +81,16 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
 function libelleChamp(cle) {
   const connu = Object.hasOwn(fieldLabels, cle) ? fieldLabels[cle]?.label : null
   return connu || (cle.charAt(0).toUpperCase() + cle.slice(1)).replace(/_/g, ' ')
+}
+
+/** ACNC52 — texte UNIQUE d'une écriture (POST/PUT/PATCH/DELETE) dont la réponse a expiré. */
+export const MESSAGE_ECRITURE_EXPIREE =
+  "La réponse n'est pas arrivée : l'action a peut-être abouti. Vérifiez avant de recommencer."
+
+/** ACNC52 — vrai pour un délai dépassé (ECONNABORTED) sur un verbe d'écriture. */
+export function estEcritureExpiree(error) {
+  const verbe = (error?.config?.method || 'get').toLowerCase()
+  return error?.code === 'ECONNABORTED' && !['get', 'head', 'options'].includes(verbe)
 }
 
 // Construit `{champ: premier message}` depuis un payload DRF `{champ: [...]}`
