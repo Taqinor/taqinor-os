@@ -751,8 +751,72 @@ def run_catalogue_action(
         "ok": True, "data": res.get("data"),
     }
     if collector is not None:
-        collector.append(result)
-    return json.dumps(result, ensure_ascii=False)
+        collector.append(result)  # entier : les cartes ne sont jamais coupees
+    return _sortie_pour_modele(result)
+
+
+# COP-A6 — taille maximale (caracteres) d'une sortie d'outil rendue au MODELE.
+LIMITE_SORTIE_MODELE = 6000
+
+
+def _liste_principale(data: Any) -> tuple[Optional[str], Optional[list]]:
+    """(cle, lignes) de la plus grosse liste du corps : le corps lui-meme
+    s'il est une liste, sinon sa valeur-liste la plus volumineuse."""
+    if isinstance(data, list):
+        return None, data
+    if not isinstance(data, dict):
+        return None, None
+    listes = [(len(json.dumps(v, ensure_ascii=False, default=str)), k)
+              for k, v in data.items() if isinstance(v, list) and v]
+    if not listes:
+        return None, None
+    cle = max(listes)[1]
+    return cle, data[cle]
+
+
+def _avec_lignes(sortie: dict, cle: Optional[str], lignes: list, n: int) -> dict:
+    data = lignes[:n] if cle is None else {**sortie["data"], cle: lignes[:n]}
+    return {**sortie, "data": data,
+            "suite_coupee": f"… (suite coupée : {len(lignes)} lignes au total)"}
+
+
+def _sortie_pour_modele(sortie: dict) -> str:
+    """JSON rendu au modele, borne a `LIMITE_SORTIE_MODELE` et toujours
+    lisible : les lignes en trop sont retirees de la liste principale (avec la
+    mention « … (suite coupee : N lignes au total) ») ; a defaut de liste, un
+    extrait du corps. Le collecteur, lui, garde les donnees entieres."""
+    def taille(objet):
+        return len(json.dumps(objet, ensure_ascii=False, default=str))
+
+    texte = json.dumps(sortie, ensure_ascii=False, default=str)
+    if len(texte) <= LIMITE_SORTIE_MODELE:
+        return texte
+    cle, lignes = _liste_principale(sortie.get("data"))
+    if lignes and taille(_avec_lignes(sortie, cle, lignes, 0)) <= LIMITE_SORTIE_MODELE:
+        bas, haut = 0, len(lignes) - 1  # le plus grand n qui tient
+        while bas < haut:
+            milieu = (bas + haut + 1) // 2
+            if taille(_avec_lignes(sortie, cle, lignes, milieu)) <= LIMITE_SORTIE_MODELE:
+                bas = milieu
+            else:
+                haut = milieu - 1
+        return json.dumps(_avec_lignes(sortie, cle, lignes, bas), ensure_ascii=False, default=str)
+    return _extrait_pour_modele(sortie)
+
+
+def _extrait_pour_modele(sortie: dict) -> str:
+    """Repli sans liste exploitable : un EXTRAIT texte du corps, raccourci
+    jusqu'a ce que le JSON rendu (echappements compris) tienne."""
+    brut = json.dumps(sortie.get("data"), ensure_ascii=False, default=str)
+    reste = {k: v for k, v in sortie.items() if k != "data"}
+    reste["suite_coupee"] = f"… (suite coupée : {len(brut)} caractères au total)"
+    longueur = LIMITE_SORTIE_MODELE
+    while True:
+        texte = json.dumps({**reste, "data_extrait": brut[:longueur]},
+                           ensure_ascii=False, default=str)
+        if len(texte) <= LIMITE_SORTIE_MODELE or longueur == 0:
+            return texte
+        longueur = max(0, longueur - (len(texte) - LIMITE_SORTIE_MODELE) - 1)
 
 
 _NON_EXECUTEE = " La proposition est consommée : l'action n'a pas été exécutée ; redemande-la."

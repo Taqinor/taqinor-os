@@ -1550,5 +1550,50 @@ class ApercuNommeCop5Tests(_AvecPropositions):
         self.assertEqual(apercu, "Suppression irréversible du produit. (id=3)")
 
 
+# ── COP-A6 — sorties d'outils bornées pour le modèle ──────────────────────────
+
+class SortiesBorneesCop6Tests(unittest.TestCase):
+    def _lancer(self, data):
+        collector: list = []
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": True, "status": 200, "data": data}):
+            texte = at.run_catalogue_action(_ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+        return texte, collector
+
+    @staticmethod
+    def _leads(n):
+        return [{"id": i, "nom": f"Lead « {i} »", "ville": "Casablanca", "note": "x" * 60}
+                for i in range(n)]
+
+    def test_liste_coupee_json_lisible_collecteur_entier(self):
+        leads = self._leads(300)
+        texte, collector = self._lancer(leads)
+        self.assertLessEqual(len(texte), at.LIMITE_SORTIE_MODELE)
+        sortie = json.loads(texte)
+        self.assertEqual(sortie["suite_coupee"], "… (suite coupée : 300 lignes au total)")
+        self.assertTrue(0 < len(sortie["data"]) < 300)
+        self.assertEqual(sortie["data"], leads[:len(sortie["data"])])
+        self.assertEqual(collector[0]["data"], leads)
+
+    def test_page_drf_garde_ses_autres_cles(self):
+        texte, _ = self._lancer({"count": 300, "next": None, "results": self._leads(300)})
+        sortie = json.loads(texte)
+        self.assertLessEqual(len(texte), at.LIMITE_SORTIE_MODELE)
+        self.assertEqual(sortie["data"]["count"], 300)
+        self.assertIn("300 lignes au total", sortie["suite_coupee"])
+
+    def test_petite_sortie_inchangee(self):
+        texte, collector = self._lancer({"results": self._leads(2)})
+        self.assertEqual(json.loads(texte), collector[0])
+        self.assertNotIn("suite_coupee", texte)
+
+    def test_corps_sans_liste_extrait_borne(self):
+        texte, _ = self._lancer({"texte": 'guillemets "échappés" ' * 2000})
+        self.assertLessEqual(len(texte), at.LIMITE_SORTIE_MODELE)
+        sortie = json.loads(texte)
+        self.assertIn("caractères au total", sortie["suite_coupee"])
+        self.assertTrue(sortie["data_extrait"])
+
+
 if __name__ == "__main__":
     unittest.main()
