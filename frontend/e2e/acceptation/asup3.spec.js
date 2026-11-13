@@ -33,22 +33,11 @@ test.afterEach(async () => {
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const SOC = `U.objects.get(username='demo_admin').company_id`
 
-// ÉCART ACCEPTÉ BORNÉ (défaut connu, hors des tâches prouvées) : appels d'arrière-plan du shell refusés en 403
-// pour certains rôles. Seuls CES appels sont admis ; toute autre incidence d'oracle fait échouer l'étape (borne()).
-const DROITS_403 = [/\/stock\/produits\/\?page_size=1\b/, /\/installations\/types-intervention\//,
-  /\/installations\/checklist-etapes\//, /\/core\/dsr-requests\//, /\/crm\/assignable-users\//]
-const ECART_403 = {
-  base: 'FAIL',
-  raison: "403 d'arrière-plan d'appels du shell pour ce rôle, défaut connu hors des tâches prouvées : menu latéral → "
-    + 'stock/produits/?page_size=1 (Commercial terrain) ; /parametres → installations/types-intervention, '
-    + 'installations/checklist-etapes, core/dsr-requests (Commercial responsable) ; liste/fiche leads → '
-    + 'crm/assignable-users (Commercial, Viewer). Borné : toute autre incidence d\'oracle fait échouer l\'étape.',
-}
-async function borne(suivi) {
+// Écart accepté NON déclaré : le run runner c6bec748c n'a observé AUCUN des 403 d'arrière-plan connus du shell
+// (stock/produits, installations/*, core/dsr-requests, crm/assignable-users) sur ces étapes ; toute incidence
+// d'oracle fait donc échouer l'étape. `auRepos` attend le repos réseau pour que les oracles voient TOUT l'écran.
+async function auRepos(suivi) {
   for (const p of suivi.pages.filter((x) => !x.isClosed())) await p.waitForLoadState('networkidle').catch(() => undefined)
-  const hors = suivi.incidents.filter((i) => !(['2', '3'].includes(i.oracle) && /403/.test(i.texte)
-    && DROITS_403.some((r) => r.test(i.texte))))
-  expect(hors, 'écart borné : seuls les 403 connus du shell sont admis').toEqual([])
 }
 
 /** Rejoue une sonde HÔTE (`docs/audits/sondes/ASUP/<c>.py`) ; {ok, res|err}. */
@@ -258,7 +247,7 @@ l = Lead.all_objects.get(pk=${ids.lead}); sortie([l.is_deleted, l.is_archived])`
     // Persistance : recharger puis réaffirmer.
     await p.reload()
     await verifier()
-    await borne(suivi)
+    await auRepos(suivi)
     await montrer(page)
   } finally {
     // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
@@ -267,7 +256,7 @@ l = Lead.all_objects.get(pk=${ids.lead}); sortie([l.is_deleted, l.is_archived])`
     await supprimerLeads([ids.lead])
     })
   }
-}, { ecart: ECART_403 })
+})
 
 // ═══ PF10.3 — ASUP11 : /parametres/corbeille — doublon vivant ⇒ 409 affiché ; sans doublon ⇒ restauré + historique ═══
 etape('PF10.3-ASUP11-ecran', ['ASUP11'], async ({ page, suivi, testInfo }) => {
@@ -317,7 +306,7 @@ sortie(dict(ancien=[a.is_deleted, ElementSupprime.objects.get(pk=${ids.e1}).rest
     await p.reload()
     await expect(ligne('Ancien').getByRole('button', { name: 'Restaurer' }), 'après rechargement : entrée refusée toujours active').toBeVisible({ timeout: 60_000 })
     await expect(ligne('Seul'), 'après rechargement : entrée restaurée hors des actives').toHaveCount(0)
-    await borne(suivi)
+    await auRepos(suivi)
     await montrer(page)
   } finally {
     // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
@@ -326,7 +315,7 @@ sortie(dict(ancien=[a.is_deleted, ElementSupprime.objects.get(pk=${ids.e1}).rest
     await supprimerLeads([ids.ancien, ids.vivant, ids.seul])
     })
   }
-}, { ecart: ECART_403 })
+})
 
 // ═══ PF10.4 — ASUP12 : fiche client → « Anonymiser (RGPD) » ⇒ ses leads s'affichent anonymisés ═══
 etape('PF10.4-ASUP12-ecran', ['ASUP12'], async ({ page, suivi, testInfo }) => {
@@ -492,7 +481,7 @@ sortie([Notification.objects.filter(pk__in=${J(ids.vieilles)}, read=False, archi
     await cloche.click()
     await expect(recentes, 'après rechargement : les 3 toujours listées').toHaveCount(3, { timeout: 30_000 })
     await expect(panneau.locator('.nb-item.nb-item-unread').filter({ hasText: 'ASUP43' }), 'après rechargement : 0 non lue du jeu').toHaveCount(0)
-    await borne(suivi)
+    await auRepos(suivi)
     await montrer(page)
   } finally {
     // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
@@ -502,7 +491,7 @@ sortie([Notification.objects.filter(pk__in=${J(ids.vieilles)}, read=False, archi
 Notification.objects.filter(recipient_id=${co}).delete()`).catch(() => undefined)
     })
   }
-}, { ecart: ECART_403 })
+})
 
 // ═══ PF10.2 — ASUP45 : archiver (à l'écran) un lead à à-faire manuel ⇒ l'à-faire quitte Ma file et le Calendrier ═══
 etape('PF10.2-ASUP45-ecran', ['ASUP45'], async ({ page, suivi, testInfo }) => {
@@ -560,7 +549,7 @@ sortie(dict(leads=[[l.is_archived, l.is_deleted] for l in (Lead.all_objects.get(
     await verifier('après archivage')
     await p.reload()
     await verifier('après rechargement')
-    await borne(suivi)
+    await auRepos(suivi)
     await montrer(page)
   } finally {
     // Nettoyage APRÈS la capture et la clôture des écrans (afterEach) : un écran encore ouvert relirait
@@ -571,4 +560,4 @@ Activity.objects.filter(pk__in=${J(ids.acts)}).delete()`).catch(() => undefined)
     await supprimerLeads(ids.leads)
     })
   }
-}, { ecart: ECART_403 })
+})
