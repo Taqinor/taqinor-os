@@ -317,7 +317,8 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
     setSaving(true)
     try {
       const nonFinanciers = {
-        date_echeance:  fields.date_echeance  || null,
+        // ADRG108 — émise sans `encaisser` : l'échéance ne part pas (403 serveur).
+        ...(horsBrouillon && !peutEncaisser ? {} : { date_echeance: fields.date_echeance || null }),
         conditions_paiement: fields.conditions_paiement || '',
         note:           fields.note || null,
         reference_commande_client: (fields.reference_commande_client || '').trim(),
@@ -581,6 +582,7 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
 
             <FormField label="Date d'échéance" htmlFor="fc-echeance" error={errors.date_echeance}>
               <Input id="fc-echeance" type="date" value={fields.date_echeance} invalid={!!errors.date_echeance}
+                     disabled={horsBrouillon && !peutEncaisser}
                      onChange={e => setField('date_echeance', e.target.value)} />
               {fields.date_echeance && fields.date_echeance < today && (
                 <p className="mt-1 text-xs text-warning">
