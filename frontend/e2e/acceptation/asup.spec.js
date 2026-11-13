@@ -12,7 +12,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { connexionApi, assurerSessionPage, textePdf, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASUP', ['ASUP1', 'ASUP2', 'ASUP3', 'ASUP12'])
+const etape = groupe('ASUP', ['ASUP1', 'ASUP2', 'ASUP3', 'ASUP12', 'ASUP7', 'ASUP9', 'ASUP41', 'ASUP43', 'ASUP46'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -270,5 +270,247 @@ for pk in ${JSON.stringify([...ids.leads, ids.ailleurs])}:
 try: Company.objects.filter(pk=${ids.autre}).delete()
 except Exception: pass
 nettoyer([${ids.client}])`)
+  }
+})
+
+etape('PF10.1-ASUP7', ['ASUP7'], async ({ page, testInfo }) => {
+  const s = sondeHote('C-ASUP-004')
+  expect(s.ok, `sonde C-ASUP-004 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-004 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  const ids = await py(`${FABRIQUE}
+from django.utils import timezone
+from datetime import date
+from apps.installations.models import Installation
+from apps.monitoring.models import ProductionReading, ProductionWarranty
+cl = client_pro('${m}')
+annee = timezone.localdate().year
+i1 = Installation.objects.create(company_id=CO, reference='ASUP7-${m}-1', client=cl, puissance_installee_kwc=Decimal('10'))
+g1 = ProductionWarranty.objects.create(company_id=CO, installation=i1, start_year=annee, guaranteed_year1_kwh=Decimal('12000'), degradation_pct_per_year=Decimal('0'))
+ProductionReading.objects.create(company_id=CO, installation=i1, date=date(annee, 1, 1), period_days=1, energy_kwh=Decimal('40'))
+i2 = Installation.objects.create(company_id=CO, reference='ASUP7-${m}-2', client=cl, puissance_installee_kwc=Decimal('10'))
+g2 = ProductionWarranty.objects.create(company_id=CO, installation=i2, start_year=annee + 1, guaranteed_year1_kwh=Decimal('12000'), degradation_pct_per_year=Decimal('0'))
+sortie(dict(client=cl.pk, inst=[i1.pk, i2.pk], g1=g1.pk, g2=g2.pk))`)
+  try {
+    // Le Technicien (rôle livré, `sav_gerer`) supprime par la vraie route.
+    const te = await session(testInfo, `asup7te_${m}`, 'Technicien')
+    const r1 = await te.ctx.delete(`${API}/monitoring/warranties/${ids.g1}/`, T)
+    const c1 = await r1.text()
+    expect(r1.status(), `garantie commencée + relevé : ${c1.slice(0, 300)}`).toBe(409)
+    expect(c1, 'message nommé').toContain('Garantie en cours : modifiez-la ou clôturez-la, elle fonde la compensation due.')
+    const r2 = await te.ctx.delete(`${API}/monitoring/warranties/${ids.g2}/`, T)
+    expect(r2.status(), 'garantie à venir sans relevé : supprimée comme avant').toBe(204)
+    const reste = await py(`from apps.monitoring.models import ProductionWarranty
+sortie([ProductionWarranty.objects.filter(pk=${ids.g1}).exists(), ProductionWarranty.objects.filter(pk=${ids.g2}).exists()])`)
+    expect(reste, 'persistance : la garantie en cours reste, l\'autre est partie').toEqual([true, false])
+    await te.ctx.dispose()
+    await page.goto('/production/garanties')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await py(`${FABRIQUE}
+from apps.installations.models import Installation
+from apps.monitoring.models import ProductionReading, ProductionWarranty
+ProductionReading.objects.filter(installation_id__in=${JSON.stringify(ids.inst)}).delete()
+ProductionWarranty.objects.filter(installation_id__in=${JSON.stringify(ids.inst)}).delete()
+Installation.objects.filter(pk__in=${JSON.stringify(ids.inst)}).delete()
+nettoyer([${ids.client}])`)
+  }
+})
+
+etape('PF10.3-ASUP9', ['ASUP9'], async ({ page, testInfo }) => {
+  const s = sondeHote('C-ASUP-006')
+  expect(s.ok, `sonde C-ASUP-006 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-006 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  const cr = await session(testInfo, `asup9cr_${m}`, 'Commercial responsable')
+  const [ta, tb, tc, te] = [telephoneMobileUnique(), telephoneMobileUnique(), telephoneMobileUnique(), telephoneMobileUnique()]
+  const ids = await py(`from apps.crm.models import Lead
+from apps.crm.leads_fusion import merge_leads
+own = U.objects.get(pk=${cr.id})
+mk = lambda nom, tel, **k: Lead.objects.create(company_id=${SOC}, nom=nom + ' ${m}', telephone=tel, owner=own, stage='NEW', **k)
+b = mk('Survivant', '${tb}')
+a = mk('Absorbe', '${ta}', email='abs_${m}@asup.invalid')
+merge_leads(b, [a], own)
+a.refresh_from_db()
+c = mk('Archive doublon', '${tc}', is_archived=True)
+d = mk('Doublon vivant', '${tc}')
+e = mk('Archive seul', '${te}', is_archived=True)
+sortie(dict(a=a.pk, b=b.pk, c=c.pk, d=d.pk, e=e.pk, a_archive=a.is_archived))`)
+  const etat = (pks) => py(`from django.contrib.contenttypes.models import ContentType
+from apps.crm.models import Lead, LeadActivity
+from apps.records.models import Activity
+ct = ContentType.objects.get_for_model(Lead)
+sortie({str(pk): [Lead.all_objects.get(pk=pk).is_archived, LeadActivity.objects.filter(lead_id=pk).count(), Activity.objects.filter(content_type=ct, object_id=pk).count()] for pk in ${JSON.stringify(pks)}})`)
+  try {
+    expect(ids.a_archive, 'fusion : A archivé').toBe(true)
+    const avant = await etat([ids.a, ids.c])
+    // Le Commercial responsable (rôle livré) clique « Restaurer » : la vraie route.
+    const ra = await cr.ctx.post(`${API}/crm/leads/${ids.a}/restaurer/`, T)
+    const ca = await ra.text()
+    expect(ra.status(), `A : ${ca.slice(0, 300)}`).toBe(409)
+    expect(ca, 'A : nomme le lead qui l\'a absorbé').toContain(`absorbé par le lead #${ids.b}`)
+    const rc = await cr.ctx.post(`${API}/crm/leads/${ids.c}/restaurer/`, T)
+    const cc = await rc.text()
+    expect(rc.status(), `C : ${cc.slice(0, 300)}`).toBe(409)
+    expect(cc, 'C : nomme le doublon vivant').toContain(`doublon vivant : lead #${ids.d}`)
+    expect(await etat([ids.a, ids.c]), 'A et C : toujours archivés, aucune activité ni prochaine étape').toEqual(avant)
+    const re = await cr.ctx.post(`${API}/crm/leads/${ids.e}/restaurer/`, T)
+    expect(re.status(), 'E : restauré comme avant').toBe(200)
+    expect((await etat([ids.e]))[String(ids.e)][0], 'E relu : non archivé').toBe(false)
+    // Le lot : E ré-archivé, puis « Restaurer » en masse sur A, C, E.
+    await py(`from apps.crm.models import Lead
+Lead.objects.filter(pk=${ids.e}).update(is_archived=True)`)
+    const lot = await cr.ctx.post(`${API}/crm/leads/bulk/`, { ...T, data: { action: 'unarchive', ids: [ids.a, ids.c, ids.e] } })
+    const jl = await lot.json()
+    expect(lot.status(), JSON.stringify(jl).slice(0, 300)).toBe(200)
+    expect(jl.updated, 'lot : E restauré').toBe(1)
+    const motifs = Object.fromEntries((jl.skipped || []).map((x) => [x.id, x.reason]))
+    expect(motifs[ids.a] || '', 'lot : A refusé avec son motif').toContain(`#${ids.b}`)
+    expect(motifs[ids.c] || '', 'lot : C refusé avec son motif').toContain(`#${ids.d}`)
+    const fin = await etat([ids.a, ids.c, ids.e])
+    expect([fin[String(ids.a)][0], fin[String(ids.c)][0], fin[String(ids.e)][0]], 'persistance : A, C archivés ; E restauré').toEqual([true, true, false])
+    await page.goto(`/crm?id=${ids.a}`)
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await cr.ctx.dispose()
+    await py(`from apps.crm.models import Lead
+for pk in ${JSON.stringify([ids.a, ids.b, ids.c, ids.d, ids.e])}:
+    try: Lead.all_objects.filter(pk=pk).delete()
+    except Exception as exc: print('nettoyage', pk, exc)`)
+  }
+})
+
+etape('PF10.2-ASUP41', ['ASUP41'], async ({ page }) => {
+  const s = sondeHote('C-ASUP-015')
+  expect(s.ok, `sonde C-ASUP-015 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-015 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  // Société d'essai isolée dans une transaction ANNULÉE (les commerciaux de la démo ne faussent pas la rotation).
+  const res = await py(`from django.db import transaction
+from authentication.models import Company
+from apps.roles.models import Role
+from apps.crm.models import Lead
+from apps.crm.leads_attribution import _next_balanced_round_robin_commercial, _leads_ouverts_count
+from apps.crm.dispatch import _ligne_membre
+r = {}
+with transaction.atomic():
+    co = Company.objects.create(nom='ASUP41 ${m}', slug='asup41-${m}')
+    role = Role.objects.create(company=co, nom='Commercial', permissions=[])
+    c1 = U.objects.create_user(username='asup41c1_${m}', password='x', company=co, role=role)
+    c2 = U.objects.create_user(username='asup41c2_${m}', password='x', company=co, role=role)
+    mk = lambda o, **k: Lead.objects.create(company=co, nom='L', owner=o, stage='NEW', **k)
+    arch = [mk(c1, is_archived=True) for _ in range(3)]
+    mk(c1); mk(c1, is_deleted=True); mk(c2); mk(c2)
+    r['recoit'] = _next_balanced_round_robin_commercial(co, 3).username
+    ligne = _ligne_membre(c1, 3)
+    r['ligne_c1'] = [ligne['leads_ouverts'], ligne['au_plafond']]
+    Lead.objects.filter(pk=arch[0].pk).update(is_archived=False)
+    r['apres_restauration'] = _leads_ouverts_count(c1)
+    transaction.set_rollback(True)
+r['rien_laisse'] = not Company.objects.filter(slug='asup41-${m}').exists()
+sortie(r)`)
+  expect(res.recoit, 'C1 (1 ouvert + 3 archivés + 1 supprimé) reçoit le lead suivant').toBe(`asup41c1_${m}`)
+  expect(res.ligne_c1, 'file d\'attribution : charge 1, pas au plafond').toEqual([1, false])
+  expect(res.apres_restauration, 'un lead restauré compte de nouveau').toBe(2)
+  expect(res.rien_laisse, 'transaction annulée').toBe(true)
+  await page.goto('/crm')
+  await expect(page.locator('body')).toBeVisible()
+})
+
+etape('PF10.2-ASUP43', ['ASUP43'], async ({ page, testInfo }) => {
+  const s = sondeHote('C-ASUP-017')
+  expect(s.ok, `sonde C-ASUP-017 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-017 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  const co = await session(testInfo, `asup43co_${m}`, 'Commercial')
+  const ids = await py(`from datetime import timedelta
+from django.utils import timezone
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
+u = U.objects.get(pk=${co.id})
+Notification.objects.filter(recipient=u).delete()
+et = EventType.choices[0][0]
+mk = lambda t: Notification.objects.create(company_id=u.company_id, recipient=u, event_type=et, title=t)
+vieilles = [mk('ASUP43 archivée %d' % i) for i in range(12)]
+Notification.objects.filter(pk__in=[n.pk for n in vieilles]).update(archived=True, created_at=timezone.now() - timedelta(days=70))
+recentes = [mk('ASUP43 récente %d' % i) for i in range(3)]
+sortie(dict(vieilles=[n.pk for n in vieilles], recentes=[n.pk for n in recentes]))`)
+  try {
+    const base = `${API}/notifications/notifications/`
+    const n = await (await co.ctx.get(`${base}unread-count/`, T)).json()
+    const liste = await (await co.ctx.get(`${base}?page_size=100`, T)).json()
+    const lignes = Array.isArray(liste) ? liste : liste.results
+    const nonLuesListe = lignes.filter((x) => !x.read).length
+    expect(n.unread, 'badge = 3 non lues récentes').toBe(3)
+    expect(n.unread, 'badge = nombre de non lues de la liste').toBe(nonLuesListe)
+    const tout = await (await co.ctx.post(`${base}read-all/`, T)).json()
+    expect([...tout.ids].sort((a, b) => a - b), '« tout marquer lu » = les 3 récentes').toEqual([...ids.recentes].sort((a, b) => a - b))
+    const lu = await py(`from apps.notifications.models import Notification
+sortie([Notification.objects.filter(pk__in=${JSON.stringify(ids.vieilles)}, read=False, archived=True).count(), Notification.objects.filter(pk__in=${JSON.stringify(ids.recentes)}, read=True).count()])`)
+    expect(lu, 'persistance : 12 archivées non lues intouchées, 3 récentes lues').toEqual([12, 3])
+    const det = await co.ctx.get(`${base}${ids.vieilles[0]}/`, T)
+    expect(det.status(), 'lien profond d\'une archivée : 200').toBe(200)
+    const apres = await (await co.ctx.get(`${base}unread-count/`, T)).json()
+    expect(apres.unread, 'badge après « tout marquer lu »').toBe(0)
+    await page.goto('/apps')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await co.ctx.dispose()
+    await py(`from apps.notifications.models import Notification
+Notification.objects.filter(recipient_id=${co.id}).delete()`)
+  }
+})
+
+etape('PF10.2-ASUP46', ['ASUP46'], async ({ page }) => {
+  const s = sondeHote('C-ASUP-020')
+  expect(s.ok, `sonde C-ASUP-020 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-020 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  // 1) Le beat des rappels (transaction ANNULÉE : rien n'est envoyé hors du rejeu).
+  const beat = await py(`from datetime import timedelta
+from django.db import transaction
+from django.utils import timezone
+from apps.crm.models import Lead, Appointment
+from apps.crm.visites_rdv import send_due_appointment_reminders
+from apps.notifications.models import Notification
+own = U.objects.get(username='demo_admin')
+r = {}
+with transaction.atomic():
+    mk = lambda **k: Lead.objects.create(company_id=${SOC}, nom='ASUP46 ${m}', stage='NEW', owner=own, **k)
+    rdv = lambda l: Appointment.objects.create(company_id=${SOC}, lead=l, scheduled_at=timezone.now() + timedelta(minutes=20))
+    morts = [rdv(mk(is_archived=True)), rdv(mk(perdu=True)), rdv(mk(is_deleted=True))]
+    temoin = rdv(mk())
+    r['envoyes'] = send_due_appointment_reminders()
+    r['temoin'] = Appointment.objects.get(pk=temoin.pk).reminder_sent
+    r['morts'] = [Appointment.objects.get(pk=a.pk).reminder_sent for a in morts]
+    r['notifs_morts'] = sum(Notification.objects.filter(body__contains='(RDV #%d)' % a.pk).count() for a in morts)
+    transaction.set_rollback(True)
+sortie(r)`)
+  expect(beat.temoin, 'témoin (lead actif) rappelé').toBe(true)
+  expect(beat.morts, 'archivé, perdu, supprimé : aucun rappel').toEqual([false, false, false])
+  expect(beat.notifs_morts, 'aucune notification « RDV » pour eux').toBe(0)
+  // 2) Le geste : archiver par la vraie route annule les rendez-vous À VENIR (passé intouché).
+  const ids = await py(`from datetime import timedelta
+from django.utils import timezone
+from apps.crm.models import Lead, Appointment
+own = U.objects.get(username='demo_admin')
+l = Lead.objects.create(company_id=${SOC}, nom='ASUP46 geste ${m}', stage='NEW', owner=own)
+S = Appointment.Statut
+a = Appointment.objects.create(company_id=${SOC}, lead=l, scheduled_at=timezone.now() + timedelta(days=3))
+c = Appointment.objects.create(company_id=${SOC}, lead=l, statut=S.CONFIRME, scheduled_at=timezone.now() + timedelta(days=4))
+p = Appointment.objects.create(company_id=${SOC}, lead=l, scheduled_at=timezone.now() - timedelta(days=1))
+sortie(dict(lead=l.pk, rdv=[a.pk, c.pk, p.pk]))`)
+  try {
+    const r = await page.request.post(`${API}/crm/leads/${ids.lead}/archiver/`, { ...T, data: {} })
+    expect(r.status(), `archiver : ${(await r.text()).slice(0, 200)}`).toBe(200)
+    const st = await py(`from apps.crm.models import Appointment
+sortie([Appointment.objects.get(pk=pk).statut for pk in ${JSON.stringify(ids.rdv)}])`)
+    expect(st, 'à venir et confirmé : annulés ; passé : intouché').toEqual(['annule', 'annule', 'planifie'])
+    await page.goto(`/crm?id=${ids.lead}`)
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await py(`from apps.crm.models import Lead, Appointment
+Appointment.objects.filter(lead_id=${ids.lead}).delete()
+Lead.all_objects.filter(pk=${ids.lead}).delete()`)
   }
 })
