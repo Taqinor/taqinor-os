@@ -115,6 +115,41 @@ class PorteEncaissementTests(TestCase):
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.PAYEE)
 
+    def test_meme_cle_rend_le_meme_paiement(self):
+        """ACNC1 (C-ACNC-001) — le même paiement partiel envoyé deux fois avec
+        la même clé : 201 puis 200, UN paiement, UN `paiement_enregistre`,
+        reste dû 5 000 ; une clé déjà servie sur une autre facture : 409 ;
+        sans clé : inchangé. Mutant : retirer la relecture par clé ⇒ 409."""
+        from core.events import paiement_enregistre
+        from apps.ventes.models import Facture
+        f = self._facture(Facture.Statut.EMISE, ttc=Decimal('10000'))
+        recus = []
+
+        def _ecoute(sender, **kwargs):
+            recus.append(kwargs)
+        paiement_enregistre.connect(_ecoute)
+        self.addCleanup(paiement_enregistre.disconnect, _ecoute)
+        corps = {'montant': '5000', 'date_paiement': str(timezone.localdate()),
+                 'mode': 'virement', 'reference': 'VIR-889',
+                 'idempotency_key': 'ACNC1-K'}
+        url = f'{BASE}{f.id}/enregistrer-paiement/'
+        r1 = self.api.post(url, corps, format='json')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = self.api.post(url, corps, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertEqual(self._nb_paiements(f), 1)
+        self.assertEqual(len(recus), 1)
+        f.refresh_from_db()
+        self.assertEqual(f.montant_du, Decimal('5000'))
+        autre = self._facture(Facture.Statut.EMISE, ttc=Decimal('10000'))
+        r3 = self.api.post(f'{BASE}{autre.id}/enregistrer-paiement/', corps,
+                           format='json')
+        self.assertEqual(r3.status_code, 409, r3.data)
+        self.assertEqual(self._nb_paiements(autre), 0)
+        sans = {k: v for k, v in corps.items() if k != 'idempotency_key'}
+        self.assertEqual(self.api.post(url, sans, format='json').status_code, 201)
+        self.assertEqual(self._nb_paiements(f), 2)
+
     # ── encaissement groupé ─────────────────────────────────────────────
     def test_groupe_sur_annulee_ou_brouillon_refuse(self):
         from apps.ventes.models import Facture, Paiement

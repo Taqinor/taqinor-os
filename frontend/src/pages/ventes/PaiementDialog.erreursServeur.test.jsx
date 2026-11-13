@@ -11,6 +11,8 @@ vi.mock('../../api/ventesApi', () => ({
   default: {
     enregistrerPaiement: vi.fn(),
     arrondiCaisseFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    // ACNC1 — relecture de la facture (défaut : indisponible, l'instantané reste).
+    getFacture: vi.fn(() => Promise.reject(new Error('indisponible'))),
   },
 }))
 vi.mock('../../api/axios', () => ({
@@ -54,5 +56,23 @@ describe('PaiementDialog — AFAC61 : erreurs serveur sous le champ', () => {
     await screen.findByLabelText(/Montant/)
     await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Facture non encaissable.'))
+  })
+
+  it('deux envois après ECONNABORTED portent la même clé ; le reste dû est relu', async () => {
+    // ACNC1 (C-ACNC-001) — mutant : régénérer la clé à chaque clic ⇒ échec.
+    ventesApi.enregistrerPaiement
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+      .mockResolvedValueOnce({ data: { statut: 'emise' } })
+    const user = userEvent.setup()
+    render(<PaiementDialog facture={FACTURE} onOpenChange={() => {}} onSaved={() => {}} />)
+    await screen.findByLabelText(/Montant/)
+    const appelsLecture = ventesApi.getFacture.mock.calls.length
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    await waitFor(() => expect(ventesApi.getFacture.mock.calls.length).toBeGreaterThan(appelsLecture))
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    await waitFor(() => expect(ventesApi.enregistrerPaiement).toHaveBeenCalledTimes(2))
+    const [c1, c2] = ventesApi.enregistrerPaiement.mock.calls.map(([, corps]) => corps.idempotency_key)
+    expect(c1).toBeTruthy()
+    expect(c2).toBe(c1)
   })
 })

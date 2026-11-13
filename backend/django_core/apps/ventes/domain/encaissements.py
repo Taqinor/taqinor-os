@@ -407,6 +407,18 @@ def encaisser_sur_facture(*, facture, donnees, user):
         if locked.statut == Facture.Statut.ANNULEE:
             raise EncaissementRefuse(
                 'Impossible d\'encaisser sur une facture annulée.')
+        # ACNC1 (C-ACNC-001) — rejeu par clé : le paiement de même (société,
+        # clé) est RENDU sans rien écrire, AVANT la porte (un rejeu soldant
+        # tomberait sinon en 409 « soldée ») ; `rejoue` = 200 côté vue.
+        cle = donnees.get('idempotency_key')
+        deja = Paiement.objects.filter(
+            company_id=locked.company_id, idempotency_key=cle).first() if cle else None
+        if deja is not None:
+            if deja.facture_id != locked.pk:
+                raise EncaissementRefuse(
+                    'Cette clé d\'envoi a déjà servi pour une autre facture.')
+            deja.rejoue = True
+            return locked, deja
         # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122 J+7).
         motif = motif_non_encaissable(locked, donnees.get('date_paiement'))
         if motif:

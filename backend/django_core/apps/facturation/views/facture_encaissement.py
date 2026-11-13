@@ -101,14 +101,17 @@ class FactureEncaissementActionsMixin:
             EncaissementRefuse, encaisser_sur_facture,
         )
         try:
-            facture, _paiement = encaisser_sur_facture(
+            facture, paiement = encaisser_sur_facture(
                 facture=facture, donnees=dict(serializer.validated_data),
                 user=request.user)
         except EncaissementRefuse as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_409_CONFLICT)
+        # ACNC1 — un rejeu par clé rend le paiement déjà enregistré : 200.
+        rejoue = getattr(paiement, 'rejoue', False)
         return Response(
-            FactureSerializer(facture, context={'request': request}).data, status=status.HTTP_201_CREATED,
+            FactureSerializer(facture, context={'request': request}).data,
+            status=status.HTTP_200_OK if rejoue else status.HTTP_201_CREATED,
         )
 
     @extend_schema(request=D.AbandonnerSoldeRequest,
