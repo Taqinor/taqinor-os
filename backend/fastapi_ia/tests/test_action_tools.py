@@ -1075,5 +1075,65 @@ class MetriquesGouverneesValeurTests(unittest.TestCase):
         self.assertEqual(sortie["valeur"], 3)
 
 
+class CartesReponseCop1Tests(unittest.TestCase):
+    """COP1 — `app.services.cartes` : toutes les sorties du tour, dans l'ordre,
+    au format du contrat partagé `assistant_reponse.json` (lu ici, pas recopié)."""
+
+    CONTRAT = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core",
+        "apps", "agent", "contract_samples", "assistant_reponse.json")
+
+    def _contrat(self):
+        with open(self.CONTRAT, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_deux_propositions_et_un_resultat_gardent_leur_ordre(self):
+        from app.services.cartes import construire_cartes
+        cartes = construire_cartes([
+            {"type": "proposal", "action_key": "a.b", "libelle": "A",
+             "human_preview": "A (id=1)", "confirm_token": "t1"},
+            {"type": "erreur", "intention": "bug", "status": 500},
+            {"type": "result", "action_key": "c.d", "libelle": "C",
+             "carte": "touche", "ok": True, "data": {"touche": {"id": 4}}},
+            {"type": "proposal", "action_key": "e.f", "libelle": "E",
+             "human_preview": "E", "confirm_token": None},
+            {"type": "signalement", "intention": "manque"},
+        ])
+        self.assertEqual([c["type"] for c in cartes],
+                         ["proposition", "resultat", "proposition"])
+        self.assertEqual([c["action_key"] for c in cartes],
+                         ["a.b", "c.d", "e.f"])
+        self.assertEqual(cartes[1]["carte"], "touche")
+        self.assertEqual(cartes[1]["donnees"], {"touche": {"id": 4}})
+        self.assertIsNone(cartes[2]["confirm_token"])
+
+    def test_donnees_est_toujours_un_objet(self):
+        from app.services.cartes import construire_cartes
+        liste, vide, nue = construire_cartes([
+            {"type": "result", "action_key": "x", "data": [{"id": 1}]},
+            {"type": "result", "action_key": "y", "data": None},
+            {"type": "result", "action_key": "z", "data": 3},
+        ])
+        self.assertEqual(liste["donnees"], {"lignes": [{"id": 1}]})
+        self.assertEqual(vide["donnees"], {})
+        self.assertEqual(nue["donnees"], {"valeur": 3})
+
+    def test_cles_des_cartes_egales_au_contrat(self):
+        from app.services.cartes import construire_cartes
+        contrat = self._contrat()
+        proposition, resultat = construire_cartes([
+            {"type": "proposal", "action_key": "a", "libelle": "A",
+             "human_preview": "A", "confirm_token": "t"},
+            {"type": "result", "action_key": "b", "libelle": "B",
+             "carte": None, "data": {}},
+        ])
+        self.assertEqual(set(proposition), set(contrat["carte_proposition"]))
+        self.assertEqual(set(resultat), set(contrat["carte_resultat"]))
+        for carte in contrat["exemple_deux_propositions"]["cartes"]:
+            self.assertEqual(set(carte), set(contrat["carte_proposition"]))
+        for carte in contrat["exemple"]["cartes"]:
+            self.assertEqual(set(carte), set(contrat["carte_resultat"]))
+
+
 if __name__ == "__main__":
     unittest.main()
