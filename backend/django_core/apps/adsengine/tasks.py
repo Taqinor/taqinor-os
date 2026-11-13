@@ -1619,14 +1619,29 @@ def decay_assumptions_weekly():
     pour une société sans nœud. Best-effort par société ; la logique pure +
     modèle vit dans ``assumption_decay.py``. Renvoie le nombre total de nœuds
     oubliés."""
+    from zoneinfo import ZoneInfo
+
+    from django.db import transaction
+    from django.utils import timezone
+
     from authentication.selectors import active_companies
+    from core.idempotency import dedupe_event
 
     from . import assumption_decay
 
+    # ACEL72 — une société n'oublie qu'UNE fois par semaine ISO (Casablanca).
+    iso = timezone.localtime(
+        timezone.now(), ZoneInfo('Africa/Casablanca')).isocalendar()
+    semaine = f'{iso[0]}-W{iso[1]:02d}'
     total = 0
     for company in active_companies():
         try:
-            total += assumption_decay.run_weekly_decay(company)
+            with transaction.atomic():
+                if not dedupe_event(company=company,
+                                    source='adsengine.oubli_hebdo',
+                                    event_id=semaine):
+                    continue
+                total += assumption_decay.run_weekly_decay(company)
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.decay_assumptions_weekly: échec société %s',
