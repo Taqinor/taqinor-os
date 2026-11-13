@@ -9,6 +9,10 @@ import {
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 
+// AERR54 — le toast global (api/axios) dit déjà le refus servi ; seul le 404,
+// qu'il tait, est dit ici (jamais deux toasts pour une erreur).
+const signaler404 = (e, message) => { if (e?.response?.status === 404) toast.error(message) }
+
 /* ============================================================================
    WIR134 — Écran d'administration « Sécurité & Identité » (apps/identity).
    ----------------------------------------------------------------------------
@@ -51,11 +55,11 @@ function ReseauTab() {
       const p = await ensurePolicy()
       await identityApi.ipRules.create({ policy: p.id, cidr: cidr.trim(), label })
       setCidr(''); setLabel(''); load()
-    } catch (e) { toast.error(e?.response?.data?.cidr ?? e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { signaler404(e, 'Ajout impossible.') }
   }
   const removeRule = async (r) => {
     try { await identityApi.ipRules.remove(r.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { signaler404(e, 'Suppression impossible.') }
   }
 
   if (loading) return <Spinner />
@@ -103,7 +107,7 @@ function AppareilsTab() {
 
   const forget = async (d) => {
     try { await identityApi.trustedDevices.forget(d.id); toast.success('Appareil oublié — MFA reforcée.'); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
+    catch (e) { signaler404(e, 'Action impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -181,7 +185,7 @@ function BreakGlassTab() {
       await identityApi.breakGlass.grant({ user_id: userId, motif: motif.trim(), duree_minutes: Number(duree) || 60 })
       setUserId(''); setMotif(''); load()
       toast.success('Accès break-glass accordé.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? e?.response?.data?.motif ?? 'Octroi impossible.') }
+    } catch (e) { signaler404(e, 'Octroi impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -230,11 +234,11 @@ function ServiceAccountsTab() {
   const create = async () => {
     if (!nom.trim()) { toast.error('Nom requis.'); return }
     try { await identityApi.serviceAccounts.create({ nom: nom.trim() }); setNom(''); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+    catch (e) { signaler404(e, 'Création impossible.') }
   }
   const remove = async (a) => {
     try { await identityApi.serviceAccounts.remove(a.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { signaler404(e, 'Suppression impossible.') }
   }
   if (loading) return <Spinner />
   return (
@@ -282,7 +286,7 @@ function BanniereTab() {
         lockout_max_attempts: Number(lockout) || 0,
       })
       toast.success('Enregistré.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.') }
+    } catch (e) { signaler404(e, 'Enregistrement impossible.') }
   }
   if (loading) return <Spinner />
   return (

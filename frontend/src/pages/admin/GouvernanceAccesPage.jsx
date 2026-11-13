@@ -11,6 +11,10 @@ import { formatDate } from '../../lib/format'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { useConfirmDialog } from '../../ui/confirm'
 
+// AERR54 — le toast global (api/axios) dit déjà le refus servi ; seul le 404,
+// qu'il tait, est dit ici (jamais deux toasts pour une erreur).
+const signaler404 = (e, message) => { if (e?.response?.status === 404) toast.error(message) }
+
 /* ============================================================================
    WIR135 — Écran d'administration « Gouvernance des accès ».
    ----------------------------------------------------------------------------
@@ -51,7 +55,7 @@ function CampagnesTab() {
     try {
       await accessReviewApi.campaigns.create({ nom: nom.trim(), perimetre, statut: 'ouverte' })
       setNom(''); load(); toast.success('Campagne lancée.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Lancement impossible.') }
+    } catch (e) { signaler404(e, 'Lancement impossible.') }
   }
   const nomCompte = (it) => (it.user_nom ? `${it.user_nom} (Compte #${it.user})` : `Compte #${it.user}`)
   const attester = async (campaign, item, decision) => {
@@ -64,7 +68,7 @@ function CampagnesTab() {
       const r = await accessReviewApi.campaigns.get(campaign.id)
       setCampaigns((cs) => cs.map((c) => (c.id === campaign.id ? r.data : c)))
       toast.success(decision === 'revoque' ? 'Accès révoqué (rôle retiré).' : 'Accès maintenu.')
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Décision impossible.') }
+    } catch (e) { signaler404(e, 'Décision impossible.') }
   }
 
   if (loading) return <Spinner />
@@ -144,15 +148,15 @@ function SodTab() {
     try {
       await accessReviewApi.sodRules.create({ permission_a: a.trim(), permission_b: b.trim(), severite: 'warning', libelle: `${a} ⊗ ${b}` })
       setA(''); setB(''); load()
-    } catch (e) { toast.error(e?.response?.data?.permission_a ?? e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { signaler404(e, 'Création impossible.') }
   }
   const remove = async (r) => {
     try { await accessReviewApi.sodRules.remove(r.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { signaler404(e, 'Suppression impossible.') }
   }
   const seed = async () => {
     try { await accessReviewApi.sodRules.seedStandard(); load(); toast.success('Jeu SoD standard semé.') }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Semis impossible.') }
+    catch (e) { signaler404(e, 'Semis impossible.') }
   }
 
   if (loading) return <Spinner />

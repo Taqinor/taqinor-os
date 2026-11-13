@@ -21,6 +21,12 @@ import {
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { frenchError } from '../../lib/frenchError'
+
+// AERR54 — le toast global (api/axios) dit déjà le refus servi ; seul le 404,
+// qu'il tait, est dit ici (jamais deux toasts pour une erreur).
+const signaler404 = (e, message) => { if (e?.response?.status === 404) toast.error(message) }
 
 // Teinte de pastille dérivée du nom de rôle (admin → ambre, responsable →
 // violet, sinon vert) — purement visuel, ne change rien à la sémantique RBAC.
@@ -65,6 +71,8 @@ export default function UsersManagement() {
   const [form, setForm] = useState({ username: '', email: '', password: '', role: '', fonction: '', supervisor: '', must_change_password: false })
   const [saving, setSaving] = useState(false)
   const [createError, setCreateError] = useState(null)
+  // AERR54 — refus serveur rattaché au champ (jamais « Request failed … »).
+  const { errors: erreursChamps, setFromResponse, clearAll: effacerErreursChamps } = useServerFieldErrors()
 
   // ── Édition d'un employé (rôle, poste, mot de passe, photo, actif) ──
   const [editUser, setEditUser] = useState(null)
@@ -199,6 +207,7 @@ export default function UsersManagement() {
   const handleCreate = async (e) => {
     e.preventDefault()
     setCreateError(null)
+    effacerErreursChamps()
     // La fonction est obligatoire dès que la société en a défini (le rôle en découle).
     if (postes.length > 0 && !form.fonction) {
       setCreateError('Choisissez une fonction.')
@@ -235,8 +244,7 @@ export default function UsersManagement() {
       }
       await load()
     } catch (err) {
-      setCreateError('Erreur : ' + (err.response?.data?.username?.[0]
-        ?? err.response?.data?.fonction?.[0] ?? err.message))
+      setFromResponse(err.response?.data, { fallback: frenchError(err, 'Création impossible.') })
     } finally {
       setSaving(false)
     }
@@ -273,7 +281,7 @@ export default function UsersManagement() {
       await handleDelete(u.id)
       toast.success('Utilisateur supprimé.')
     } catch (err) {
-      toast.error(err.response?.data?.detail ?? 'Suppression impossible.')
+      signaler404(err, 'Suppression impossible.')
     }
   }
 
@@ -283,7 +291,7 @@ export default function UsersManagement() {
       await api.patch(`/users/${u.id}/`, { is_active: active })
       setUsers(list => list.map(x => (x.id === u.id ? { ...x, is_active: active } : x)))
     } catch (err) {
-      toast.error(err.response?.data?.detail ?? 'Modification impossible.')
+      signaler404(err, 'Modification impossible.')
     }
   }
 
@@ -447,7 +455,7 @@ export default function UsersManagement() {
           <Card className="p-4 sm:p-5">
             <Form onSubmit={handleCreate} className="gap-4">
               <FormSection title="Nouvel utilisateur">
-                <FormField label="Nom d'utilisateur" required htmlFor="new-username">
+                <FormField label="Nom d'utilisateur" required htmlFor="new-username" error={erreursChamps.username}>
                   {/* IMPORTANT : champ sans attribut `type` (sélecteur e2e
                       input:not([type]) = nom d'utilisateur). On ne passe pas par
                       le primitif Input qui force type="text". */}
@@ -460,7 +468,7 @@ export default function UsersManagement() {
                     className="flex h-[var(--control-h)] w-full rounded-md border border-input bg-card px-[var(--control-px)] text-base text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
                   />
                 </FormField>
-                <FormField label="Email" htmlFor="new-email">
+                <FormField label="Email" htmlFor="new-email" error={erreursChamps.email}>
                   <Input
                     id="new-email"
                     type="email"
@@ -468,7 +476,7 @@ export default function UsersManagement() {
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   />
                 </FormField>
-                <FormField label="Mot de passe" required htmlFor="new-password">
+                <FormField label="Mot de passe" required htmlFor="new-password" error={erreursChamps.password}>
                   <Input
                     id="new-password"
                     type="password"
@@ -479,7 +487,7 @@ export default function UsersManagement() {
                   />
                 </FormField>
                 {postes.length > 0 && (
-                  <FormField label="Fonction" htmlFor="new-fonction" required
+                  <FormField label="Fonction" htmlFor="new-fonction" required error={erreursChamps.fonction}
                     hint="Le rôle est proposé selon la fonction ; vous pouvez le changer ensuite.">
                     <Select
                       value={form.fonction ? String(form.fonction) : undefined}
@@ -499,7 +507,7 @@ export default function UsersManagement() {
                     </Select>
                   </FormField>
                 )}
-                <FormField label="Rôle" htmlFor="new-role">
+                <FormField label="Rôle" htmlFor="new-role" error={erreursChamps.role}>
                   <Select
                     value={form.role ? String(form.role) : undefined}
                     onValueChange={v => setForm(f => ({ ...f, role: Number(v) }))}
@@ -519,7 +527,7 @@ export default function UsersManagement() {
                     oubliée en silence (visibilité des dossiers cassée sans
                     erreur). Optionnel — le toast post-création rappelle de le
                     définir si laissé vide. */}
-                <FormField label="Superviseur direct (optionnel)" htmlFor="new-supervisor">
+                <FormField label="Superviseur direct (optionnel)" htmlFor="new-supervisor" error={erreursChamps.supervisor}>
                   <Select
                     value={form.supervisor ? String(form.supervisor) : '__none__'}
                     onValueChange={v => setForm(f => ({ ...f, supervisor: v === '__none__' ? '' : v }))}
@@ -550,8 +558,8 @@ export default function UsersManagement() {
                   </div>
                 </FormField>
               </FormSection>
-              {createError && (
-                <p role="alert" className="text-sm text-destructive">{createError}</p>
+              {(createError || erreursChamps.submit) && (
+                <p role="alert" className="text-sm text-destructive">{createError || erreursChamps.submit}</p>
               )}
               <FormActions sticky={false}>
                 <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setCreateError(null) }}>
