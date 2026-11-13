@@ -15,14 +15,21 @@ vi.mock('sonner', async (importOriginal) => {
   return { ...actual, toast: { ...actual.toast, error: vi.fn(), success: vi.fn() } }
 })
 
-vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
+vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({
+  default: () => <div data-testid="panneau-devis" />,
+}))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 
 // IdentityRail réel n'est encore qu'un placeholder (LW14-18 pas construit) —
 // on l'intercepte pour exposer le contrat `onAction` à des boutons de test,
 // EXACTEMENT le patron déjà établi (AssigneePicker/CustomFieldsInput ci-dessus).
 vi.mock('./IdentityRail', async () => (await import('../../../test/leadWorkspaceMocks'))
-  .identityRailMock([[['set-field', { key: 'owner', value: '7' }], 'set-field-owner'], [['change-stage', 'CONTACTED'], 'change-stage-contacted']]))
+  .identityRailMock([
+    [['set-field', { key: 'owner', value: '7' }], 'set-field-owner'],
+    [['change-stage', 'CONTACTED'], 'change-stage-contacted'],
+    [['set-field', { key: 'batterie_souhaitee', value: 'les_deux' }], 'set-field-batterie'],
+    [['open-devis', 'auto'], 'open-devis-auto'],
+  ]))
 
 vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
 
@@ -59,6 +66,30 @@ describe("LW16-wire — onAction('set-field'/'change-stage')", () => {
     fireEvent.click(screen.getByText('change-stage-contacted'))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('stage backward'))
     expect(toast.error).toHaveBeenCalledTimes(1)
+  })
+
+  // DEV-202611-0061 (13/11/2026) — choix batterie changé puis « devis
+  // automatique » 1 s après : le devis partait avant l'autosauvegarde et le
+  // serveur lisait l'ancien choix. Le panneau (qui crée le devis) n'ouvre
+  // qu'APRÈS l'enregistrement de la fiche.
+  it("'open-devis' attend l'enregistrement de la fiche avant d'ouvrir le panneau devis", async () => {
+    let resoudre
+    crmApi.updateLead.mockImplementationOnce(() => new Promise((r) => { resoudre = r }))
+    renderEdit()
+    fireEvent.click(screen.getByText('set-field-batterie'))
+    fireEvent.click(screen.getByText('open-devis-auto'))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      1, expect.objectContaining({ batterie_souhaitee: 'les_deux' })))
+    expect(screen.queryByTestId('panneau-devis')).toBeNull()
+    resoudre({ data: { id: 1, batterie_souhaitee: 'les_deux' } })
+    expect(await screen.findByTestId('panneau-devis')).toBeTruthy()
+  })
+
+  it('fiche déjà enregistrée : le panneau devis s’ouvre tout de suite, sans PATCH', async () => {
+    renderEdit()
+    fireEvent.click(screen.getByText('open-devis-auto'))
+    expect(await screen.findByTestId('panneau-devis')).toBeTruthy()
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
   })
 
   it('une autre erreur (réseau/500) n’est plus muette : toast générique distinct', async () => {

@@ -445,10 +445,17 @@ export default function LeadWorkspace({
       // 'onepage', 'premium', 'edit' — IdentityRail, palette, DevisTab sans
       // cible) ; il accepte EN PLUS un objet { mode, targetKwc } quand une
       // puissance cible a été saisie. Aucun appelant existant ne change.
+      // DEV-202611-0061 (13/11/2026) — « Batterie souhaitée » changée puis
+      // « devis automatique » 1 s après : le devis partait AVANT l'autosauvegarde
+      // (debounce 1,5 s) et le serveur lisait l'ancien choix. Le panneau devis
+      // s'ouvre désormais APRÈS le flush de la fiche (leaveGuard, comme
+      // « toiture-3d »).
       case 'open-devis': {
         const intent = (payload && typeof payload === 'object') ? payload : { mode: payload }
-        setDevisKwc(intent.targetKwc || null)
-        return setDevisPanel(intent.mode || 'auto')
+        return leaveGuard(() => {
+          setDevisKwc(intent.targetKwc || null)
+          setDevisPanel(intent.mode || 'auto')
+        })
       }
       // ALEA55 — `payload` = id du devis, ou { id, pdf: 'onepage' | 'full' | 'final' }
       // (format choisi ; 'final' = Premium + modalités de paiement + RIB).
