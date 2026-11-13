@@ -125,6 +125,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const [scanAbsent, setScanAbsent] = useState(false)
   const [erreurNumero, setErreurNumero] = useState('')
   const [erreurComposant, setErreurComposant] = useState('')
+  const [echec, setEchec] = useState(false) // AERR78 — illisible ≠ aucun
   const fileRef = useRef(null)
   // VX94 — refocus sur le premier champ après un ajout réussi (recette
   // `newCatRef` prouvée dans ProduitForm) : la saisie sérialisée au pouce
@@ -133,8 +134,8 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
 
   const load = useCallback(() => Promise.all([
     installationsApi.getSerials(id)
-      .then((r) => setRows(r.data || []))
-      .catch(() => setRows([])),
+      .then((r) => { setRows(r.data || []); setEchec(false) })
+      .catch(() => setEchec(true)),
     Promise.resolve()
       .then(() => installationsApi.getSerialsAttendus(id))
       .then((r) => setAttendus(r?.data || null))
@@ -262,6 +263,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const remove = suppression.remove
 
   if (loading) return <PanelLoading label="numéros de série" />
+  if (echec) return <PanelUnavailable label="Numéros de série non chargés." onRetry={load} />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
@@ -506,12 +508,13 @@ export function MemosPanel({ intervention, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [echec, setEchec] = useState(false)
   const recorder = useRef(null)
   const chunks = useRef([])
 
   const load = useCallback(() => installationsApi.getMemos(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
+    .then((r) => { setRows(r.data || []); setEchec(false) })
+    .catch(() => setEchec(true)) // AERR78 — illisible ≠ aucun
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
@@ -567,6 +570,7 @@ export function MemosPanel({ intervention, onChanged }) {
   }
 
   if (loading) return <PanelLoading label="mémos vocaux" />
+  if (echec) return <PanelUnavailable label="Mémos non chargés." onRetry={load} />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
@@ -609,10 +613,11 @@ export function ReservesPanel({ intervention, onChanged }) {
   const [desc, setDesc] = useState('')
   const [creerTicket, setCreerTicket] = useState(false)
   const [creerSuivi, setCreerSuivi] = useState(false)
+  const [echec, setEchec] = useState(false)
 
   const load = useCallback(() => installationsApi.getReserves(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
+    .then((r) => { setRows(r.data || []); setEchec(false) })
+    .catch(() => setEchec(true)) // AERR78 — illisible ≠ aucun
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
@@ -637,6 +642,7 @@ export function ReservesPanel({ intervention, onChanged }) {
   }
 
   if (loading) return <PanelLoading label="réserves" />
+  if (echec) return <PanelUnavailable label="Réserves non chargées." onRetry={load} />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
@@ -679,10 +685,11 @@ export function ToolReturnPanel({ intervention, onChanged }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [echec, setEchec] = useState(false)
 
   const load = useCallback(() => installationsApi.getToolReturn(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
+    .then((r) => { setRows(r.data || []); setEchec(false) })
+    .catch(() => setEchec(true)) // AERR78 — illisible ≠ aucun
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
@@ -703,6 +710,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
   }
 
   if (loading) return <PanelLoading label="retour d'outillage" />
+  if (echec) return <PanelUnavailable label="Retours d'outils non chargés." onRetry={load} />
   if (rows.length === 0) return <PanelUnavailable label="Aucun outil dans le kit de préparation." />
   return (
     <ErrorBoundary>
@@ -869,6 +877,11 @@ function PanelLoading({ label }) {
   )
 }
 
-function PanelUnavailable({ label }) {
-  return <p className="py-4 text-sm text-muted-foreground">{label}</p>
+function PanelUnavailable({ label, onRetry }) {
+  if (!onRetry) return <p className="py-4 text-sm text-muted-foreground">{label}</p>
+  return (
+    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+      {label} <Button size="sm" variant="outline" onClick={() => onRetry()}>Réessayer</Button>
+    </p>
+  )
 }
