@@ -3,6 +3,7 @@ import { Shield, Plus, Trash2, Network, Smartphone, Activity, KeyRound, ServerCo
 import identityApi from '../../api/identityApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import parametresApi from '../../api/parametresApi'
+import { useConfirmDialog } from '../../ui/confirm'
 import {
   Card, CardContent, CardHeader, CardTitle, Button, Input, Textarea, Label,
   Badge, Spinner, EmptyState, toast,
@@ -32,6 +33,7 @@ function ReseauTab() {
   const [cidr, setCidr] = useState('')
   const [label, setLabel] = useState('')
   const [loading, setLoading] = useState(true)
+  const { confirmDelete } = useConfirmDialog()
 
   // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
   const load = () => Promise.all([
@@ -58,6 +60,11 @@ function ReseauTab() {
     } catch (e) { signaler404(e, 'Ajout impossible.') }
   }
   const removeRule = async (r) => {
+    // AERR64 — retirer la plage du bureau peut couper l'accès de toute la société.
+    if (!await confirmDelete({
+      title: `Supprimer la plage « ${r.cidr} » ?`,
+      description: 'Un poste hors des plages restantes perdra l’accès à l’application.',
+    })) return
     try { await identityApi.ipRules.remove(r.id); load() }
     catch (e) { signaler404(e, 'Suppression impossible.') }
   }
@@ -227,6 +234,7 @@ function ServiceAccountsTab() {
   const [accounts, setAccounts] = useState([])
   const [nom, setNom] = useState('')
   const [loading, setLoading] = useState(true)
+  const { confirmDelete } = useConfirmDialog()
   const load = () => fetchAllPages((page, o) => identityApi.serviceAccounts.list({ page, ...o })
     .then((r) => r?.data))
     .then((data) => setAccounts(asList(data))).catch(() => {}).finally(() => setLoading(false))
@@ -237,6 +245,10 @@ function ServiceAccountsTab() {
     catch (e) { signaler404(e, 'Création impossible.') }
   }
   const remove = async (a) => {
+    if (!await confirmDelete({
+      title: `Supprimer le compte de service « ${a.nom} » ?`,
+      description: 'Les intégrations qui l’utilisent cesseront de fonctionner.',
+    })) return
     try { await identityApi.serviceAccounts.remove(a.id); load() }
     catch (e) { signaler404(e, 'Suppression impossible.') }
   }

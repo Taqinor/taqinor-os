@@ -142,6 +142,7 @@ function SodTab() {
   const [b, setB] = useState('')
   const [loading, setLoading] = useState(true)
   const [echec, setEchec] = useState(false)
+  const { confirmDelete } = useConfirmDialog()
 
   const load = () => Promise.all([
     fetchAllPages((page, o) => accessReviewApi.sodRules.list({ page, ...o }).then((r) => r?.data)),
@@ -159,6 +160,10 @@ function SodTab() {
     } catch (e) { signaler404(e, 'Création impossible.') }
   }
   const remove = async (r) => {
+    if (!await confirmDelete({  // AERR64 — la boîte nomme les deux permissions
+      title: `Supprimer la règle SoD « ${r.permission_a} ⊗ ${r.permission_b} » ?`,
+      description: 'Ce cumul de permissions ne sera plus signalé.',
+    })) return
     try { await accessReviewApi.sodRules.remove(r.id); load() }
     catch (e) { signaler404(e, 'Suppression impossible.') }
   }
