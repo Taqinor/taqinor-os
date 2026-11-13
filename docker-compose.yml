@@ -154,6 +154,10 @@ services:
     volumes:
       - ./backend/django_core:/app
       - ./STAGES.py:/opt/STAGES.py:ro
+      # ACEL8 — même patron que STAGES.py : l'extracteur i18n (1er candidat de
+      # core/tasks_i18n.py::_chemins_candidats) et le front qu'il lit (REPO_ROOT = /opt).
+      - ./scripts/extract_i18n_strings.py:/opt/scripts/extract_i18n_strings.py:ro
+      - ./frontend/src:/opt/frontend/src:ro
     env_file:
       - ./.env
     # SCA10 — même cible cache que django_core (voir commentaire ci-dessus).

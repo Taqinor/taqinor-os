@@ -374,6 +374,16 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIsNotNone(banc.index(r"publier_documents_meryem --company la-vraie$"), banc.appels)
         self.assertNotIn("publier_documents_meryem en échec", banc.journal)
 
+    def test_worker_voit_l_extracteur_i18n(self):
+        """ACEL8 — le worker monte l'extracteur au 1er candidat de _chemins_candidats + frontend/src."""
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
+        bloc = re.search(r"(?ms)^  celery_worker:\n(.*?)(?=^  \S)", compose).group(1)
+        tasks_i18n = (ROOT / "backend/django_core/core/tasks_i18n.py").read_text(encoding="utf-8")
+        premier = re.search(r"candidats = \[Path\('/opt'\) / '(\w+)' / NOM_SCRIPT\]", tasks_i18n).group(1)
+        nom = re.search(r"(?m)^NOM_SCRIPT = ['\"]([^'\"]+)['\"]", tasks_i18n).group(1)
+        self.assertIn(f"- ./scripts/{nom}:/opt/{premier}/{nom}:ro", bloc)
+        self.assertIn("- ./frontend/src:/opt/frontend/src:ro", bloc)
+
     def test_worker_finit_sa_tache_au_redeploiement(self):
         """ACEL3 — Celery = PID 1 (reçoit le SIGTERM) et délai de grâce > limite dure globale."""
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
