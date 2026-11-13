@@ -130,6 +130,9 @@ describe('AteliersPage — AERR81 suppression de ligne confirmée', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(api.deleteLigneAssemblage).not.toHaveBeenCalled()
 
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     fireEvent.click(screen.getAllByRole('button', { name: 'Retirer' })[0])
     const boite2 = await screen.findByRole('alertdialog')
     fireEvent.click(within(boite2).getByRole('button', { name: 'Supprimer' }))
