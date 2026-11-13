@@ -1,0 +1,128 @@
+{
+  "sha": "3e1eb8c360997e302fc9434518038d63e1b8333d",
+  "date": "2026-11-13",
+  "groupe": "ASUP",
+  "verdict": "PASS",
+  "couvre": [
+    "ASUP42",
+    "ASUP44",
+    "ASUP49",
+    "ASUP47",
+    "ASUP52"
+  ],
+  "couvre_avec_ecart": [
+    "ASUP44"
+  ],
+  "etapes": [
+    {
+      "id": "PF10.2-ASUP42",
+      "taches": [
+        "ASUP42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASUP-PF10.2-ASUP42.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF10.3-ASUP44",
+      "taches": [
+        "ASUP44"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASUP-PF10.3-ASUP44.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : coquille du compte Commercial terrain : GET /stock/produits/?page_size=1 → 403 à chaque page (onboardingHelpers.js::lireComptesOnboarding, appelé par Sidebar.jsx ; jumeau d'ERR-SHELL-USERS-403-COMMERCIAL), défaut antérieur hors ASUP44, à classer chez le propriétaire du shell frontend ; oracle 2 — GET http://localhost:4173/api/django/stock/produits/?page_size=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/stock/produits/?page_size=1) ; oracle 2 — GET http://localhost:4173/api/django/stock/produits/?page_size=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/stock/produits/?page_size=1) ; oracle 2 — GET http://localhost:4173/api/django/stock/produits/?page_size=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/stock/produits/?page_size=1)"
+    },
+    {
+      "id": "PF10.3-ASUP49",
+      "taches": [
+        "ASUP49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASUP-PF10.3-ASUP49.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF10.2-ASUP47",
+      "taches": [
+        "ASUP47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASUP-PF10.2-ASUP47.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF10.2-ASUP52",
+      "taches": [
+        "ASUP52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ASUP-PF10.2-ASUP52.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
