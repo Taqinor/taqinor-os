@@ -155,8 +155,6 @@ def build_stage_event(company, lead_id, new_stage, *, old_stage=None, now=None):
     if ids.get('is_erased'):  # AACQ21 — lead effacé : aucun envoi à Meta
         return {'eligible': False, 'reason': 'erased',
                 'event': None, 'match_quality': {}}
-    if ids.get('is_opposed'):  # AMSG10 (D-AMSG-3) — « ne plus contacter » : rien vers Meta
-        return {'eligible': False, 'reason': 'opposed', 'event': None, 'match_quality': {}}
     if not ids['is_meta_origin']:
         return {'eligible': False, 'reason': 'not_meta_origin',
                 'event': None, 'match_quality': {}}
@@ -332,8 +330,6 @@ def build_appointment_event(company, lead_id, appointment_id, statut, *,
     if ids.get('is_erased'):  # AACQ21 — lead effacé : aucun envoi à Meta
         return {'eligible': False, 'reason': 'erased',
                 'event': None, 'match_quality': {}}
-    if ids.get('is_opposed'):  # AMSG10 (D-AMSG-3) — « ne plus contacter » : rien vers Meta
-        return {'eligible': False, 'reason': 'opposed', 'event': None, 'match_quality': {}}
     if not ids['is_meta_origin']:
         return {'eligible': False, 'reason': 'not_meta_origin',
                 'event': None, 'match_quality': {}}

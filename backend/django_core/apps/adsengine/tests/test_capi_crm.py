@@ -57,24 +57,6 @@ class BuildStageEventTests(TestCase):
         self.assertTrue(capi_crm.build_stage_event(
             self.company, vivant.pk, CONTACTED, old_stage=NEW)['eligible'])
 
-    def test_lead_oppose_non_eligible(self):
-        """AMSG10 (D-AMSG-3) — un lead « ne plus contacter » : rien vers Meta."""
-        lead = self._meta_lead(ne_plus_contacter=True, external_id='789456888')
-        built = capi_crm.build_stage_event(
-            self.company, lead.pk, CONTACTED, old_stage=NEW, now=1000)
-        self.assertEqual((built['eligible'], built['reason'], built['event']), (False, 'opposed', None))
-        rdv = capi_crm.build_appointment_event(
-            self.company, lead.pk, 1, 'effectue', now=1000)
-        self.assertEqual((rdv['eligible'], rdv['reason'], rdv['event']), (False, 'opposed', None))
-        transport = mock.Mock()
-        res = capi_crm.emit_lead_stage_event(
-            self.company, lead.pk, CONTACTED, old_stage=NEW, transport=transport)
-        self.assertEqual(res['reason'], 'opposed')
-        transport.assert_not_called()
-        temoin = self._meta_lead()
-        self.assertTrue(capi_crm.build_stage_event(
-            self.company, temoin.pk, CONTACTED, old_stage=NEW)['eligible'])
-
     def test_event_name_is_stage_key_never_hardcoded(self):
         lead = self._meta_lead()
         built = capi_crm.build_stage_event(
