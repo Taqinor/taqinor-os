@@ -10,7 +10,7 @@ import logging
 import os
 
 import requests
-from django.db import transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -62,8 +62,6 @@ def creer_equipement_import(company, champs, *, produit, installation,
     ``champs`` = colonnes déjà mappées/nettoyées (numero_serie, date_pose…).
     Retourne ``('cree'|'doublon'|'erreur', message|None)`` — même contrat que
     ``creer_vehicule_import``/``creer_contrat_import`` (ARC13/XFLT22)."""
-    from django.db import IntegrityError, transaction
-
     from .models import Equipement
 
     champs = dict(champs or {})
@@ -253,8 +251,6 @@ def assurer_equipement_chantier(*, company, installation, produit,
     ``(company, numero_serie)`` + savepoint : jamais d'exception.
 
     Renvoie ``('cree'|'rempli'|'doublon', equipement)``."""
-    from django.db import IntegrityError, transaction
-
     from .models import Equipement
 
     numero_serie = (numero_serie or '').strip() or None
@@ -1003,7 +999,6 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
     if numero_serie or ticket.equipement_id:
         # ASAV8 — verrou de ligne : deux retraits concurrents de la même
         # série ne peuvent pas basculer (ni restocker) deux fois.
-        from django.db import connection
         equipements = Equipement.objects.filter(
             company=company, numero_serie=numero_serie)
         if connection.in_atomic_block:
@@ -1057,7 +1052,6 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
 
     if destination == PieceRetiree.Destination.STOCK_OCCASION:
         if not piece.restockee:
-            from django.db import transaction
             from apps.stock.services import (
                 mouvement_type_entree, record_stock_movement,
                 verrouiller_produit,
@@ -1742,7 +1736,6 @@ def desactiver_contrat_desaccepte(*, devis, user=None):
 def _basculer_contrats_chantier(installation, actif, phrase):
     """ACSV64 — éteint les contrats actifs du chantier (``installation`` ou ``[devis:<id>]``) ou
     rallume ceux marqués ``[chantier-annule:<id>]`` ; rend leur nombre."""
-    from django.db import transaction
     from django.db.models import Q
     from .models import ContratMaintenance
     marqueur = f'[chantier-annule:{installation.pk}]'
