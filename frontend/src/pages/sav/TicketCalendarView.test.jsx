@@ -34,7 +34,7 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
 vi.mock('../../lib/toast', async (importOriginal) => ({ ...(await importOriginal()), toastWithUndo }))
 
 import savApi from '../../api/savApi'
-import { TicketCalendarView } from './TicketsPage.jsx'
+import { TicketCalendarView } from './TicketCalendarView.jsx'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 
 beforeEach(() => {
