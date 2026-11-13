@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import BasePermission
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, P, XLSX
 from ..utils.params import corps_objet, date_ou_400
+from core.idempotency import IdempotentCreateMixin  # ACNC23
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import FactureFournisseur, PaiementFournisseur
 from ..serializers import PaiementFournisseurSerializer
@@ -47,7 +48,7 @@ class PeutLirePaiementsFournisseur(BasePermission):
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('facture', ID_OU_VIDE, False, 'Facture fournisseur (id)')]))
-class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
+class PaiementFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC23 — rejeu sans doublon
     """G5 — Paiements fournisseur (règlements). Lecture + création/suppression ;
     chaque écriture recalcule le statut de la facture. company posée serveur."""
     queryset = PaiementFournisseur.objects.select_related(
@@ -101,6 +102,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
+        # ACNC23 — ``super().create`` passe par IdempotentCreateMixin : même clé + même corps ⇒ rejeu.
         # XPUR1 — gate paiement : refuse la création si la société a activé
         # le blocage et que le fournisseur a un document de conformité
         # obligatoire manquant/expiré. No-op (comportement historique) quand

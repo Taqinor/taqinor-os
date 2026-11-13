@@ -39,7 +39,7 @@ def apply_product_bulk(*, company, user, ids, op, params):
     if op not in BULK_ACTIONS:
         raise ValueError("Action en masse inconnue.")
 
-    produits = list(Produit.objects.filter(company=company, id__in=ids))
+    produits = list(Produit.objects.select_for_update().filter(company=company, id__in=ids))  # ACNC24 (atomic : vue)
     updated, skipped = 0, []
 
     def skip(p, reason):
@@ -1446,6 +1446,8 @@ def apply_retour_fournisseur(retour, user):
                   .get(pk=retour.pk))
         if verrou.statut != RetourFournisseur.Statut.BROUILLON:
             raise EtatIncompatible('Seul un retour en brouillon peut être validé.')
+        from .services_verrous import borner_retour_au_recu
+        borner_retour_au_recu(bc_direct, lignes)  # ACNC28 — jamais plus que le reçu restant (409)
         for ligne in lignes:
             # ERR24 — verrou de ligne produit dans la transaction pour que des
             # retours concurrents du même produit ne perdent pas de décrément.
@@ -1465,12 +1467,11 @@ def apply_retour_fournisseur(retour, user):
             # ASTK54 — jumeau MVT-10 : un retour contre un BCF livré à un
             # emplacement non principal débite cet emplacement (même helper
             # d'inversion que l'annulation de réception).
-            bc_retour = retour.bon_commande if retour.bon_commande_id else None
             _inverser_ventilation_entree(
                 retour.company, produit,
-                emplacement=(bc_retour.emplacement_destination
-                             if bc_retour is not None
-                             and bc_retour.emplacement_destination_id
+                emplacement=(bc_direct.emplacement_destination
+                             if bc_direct is not None
+                             and bc_direct.emplacement_destination_id
                              else None),
                 numero_lot=ligne.numero_lot or None, quantite=ligne.quantite)  # AAPV20
             if retour.bon_commande_id:
@@ -1479,19 +1480,17 @@ def apply_retour_fournisseur(retour, user):
             from .services_wms import imputer_sortie_sur_quarantaine  # AAPV37
             imputer_sortie_sur_quarantaine(
                 company=retour.company, produit=produit, quantite=ligne.quantite,
-                bon_commande=bc_retour, user=user,
+                bon_commande=bc_direct, user=user,
                 motif=f'évacué par le retour {retour.reference}')
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
-        lignes_retour = [{'ligne': lg, 'produit': lg.produit, 'quantite': lg.quantite}
-                         for lg in lignes]
 
         def _emettre_retour():  # AAPV8 — une fois, après commit
             from core.events import retour_fournisseur_valide
             try:
                 retour_fournisseur_valide.send(
-                    sender=RetourFournisseur, retour=retour, company=retour.company,
-                    user=user, lignes=lignes_retour)
+                    sender=RetourFournisseur, retour=retour, company=retour.company, user=user,
+                    lignes=[{'ligne': lg, 'produit': lg.produit, 'quantite': lg.quantite} for lg in lignes])
             except Exception:  # noqa: BLE001 — après commit : journalisé (D-ENF22-BLE001)
                 logger.exception('AAPV8: abonné de retour_fournisseur_valide en '
                                  'échec pour le retour %s', retour.pk)

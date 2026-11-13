@@ -530,8 +530,9 @@ export function CatalogueTable({
     if (onHistorique) acts.push({ id: 'hist', label: 'Historique des mouvements', icon: History, onClick: () => onHistorique(p) })
     if (canWrite && onEdit) acts.push({ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => onEdit(p) })
     // WIR221/XSTK10 — mise au rebut (motif obligatoire) : distincte de la
-    // suppression (icône dédiée), séparée du bloc édition.
-    if (canWrite && onRebut) acts.push({ id: 'rebut', label: 'Mettre au rebut', icon: PackageX, separatorBefore: true, onClick: () => onRebut(p) })
+    // suppression (icône dédiée), séparée du bloc édition. ADRG107 : le parent
+    // décide (`onRebut` fourni sous `stock_mouvement`, le droit de la route).
+    if (onRebut) acts.push({ id: 'rebut', label: 'Mettre au rebut', icon: PackageX, separatorBefore: true, onClick: () => onRebut(p) })
     if (canDelete && onDelete) acts.push({ id: 'del', label: 'Supprimer', icon: Trash2, destructive: true, separatorBefore: !onRebut, onClick: () => onDelete(p) })
     return acts
   }

@@ -10,6 +10,7 @@ from core.champs_stricts import ChaineStricte
 from ..erreurs_achats import EtatIncompatible, statut_refus_metier
 from ..openapi_helpers import P, STR, corps
 from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
+from core.idempotency import IdempotentCreateMixin  # ACNC22
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import TransfertStock
 from ..serializers import TransfertStockSerializer
@@ -52,7 +53,7 @@ def _meme_emplacement(donnees):
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
-class TransfertStockViewSet(CompanyScopedModelViewSet):
+class TransfertStockViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC22 — rejeu sans doublon
     """N15 — transferts de stock entre emplacements (le « transfer record »).
 
     Lecture seule + création. La création passe par le service `transfer_stock`
@@ -87,6 +88,10 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
+        # ACNC22 — même ``Idempotency-Key`` + même corps ⇒ réponse rejouée.
+        return self._avec_idempotence(request, lambda: self._creer_transfert(request))
+
+    def _creer_transfert(self, request):
         from ..services import transfer_stock
         donnees = _corps_transfert(request)
         refus = _meme_emplacement(donnees)

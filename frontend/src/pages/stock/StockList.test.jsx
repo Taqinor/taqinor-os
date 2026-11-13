@@ -441,3 +441,40 @@ describe('StockList — relecture ratée du catalogue (AERR33)', () => {
     expect(fetchProduits.mock.calls.length).toBe(avant + 1)
   })
 })
+
+describe('ADRG106 — « Supprimer » du catalogue suit `stock_supprimer`', () => {
+  const menuDeLigne = async () => {
+    const grid = await screen.findByRole('grid')
+    const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    await screen.findByRole('menu')
+  }
+  it('Admin Ventes (stock_supprimer, palier normal) : « Supprimer » ; Responsable sans le code : absent', async () => {
+    const vue = renderPage({ role: 'normal', permissions: ['stock_voir', 'stock_modifier', 'stock_supprimer'] })
+    await menuDeLigne()
+    expect(screen.getByRole('menuitem', { name: /Supprimer/ })).toBeInTheDocument()
+    vue.unmount()
+    renderPage({ role: 'responsable', permissions: ['stock_voir', 'stock_modifier'] })
+    await menuDeLigne()
+    expect(screen.queryByRole('menuitem', { name: /Supprimer/ })).toBeNull()
+  })
+})
+
+describe('StockList — mise au rebut suit `stock_mouvement`', () => {
+  const ouvrirMenu = async () => {
+    const grille = await screen.findByRole('grid')
+    const ligne = within(grille).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    await userEvent.click(within(ligne).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    return screen.findByRole('menu')
+  }
+  it('Technicien : « Mettre au rebut » au menu de la ligne ; rôle sans `stock_mouvement` : absent', async () => {
+    const vue = renderPage({ role: 'normal', permissions: ['stock_voir', 'stock_mouvement'] })
+    await ouvrirMenu()
+    expect(screen.getByRole('menuitem', { name: /Mettre au rebut/ })).toBeInTheDocument()
+    vue.unmount()
+    renderPage({ role: 'normal', permissions: ['stock_voir', 'stock_modifier'] })
+    await ouvrirMenu()
+    expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
+  })
+})
+

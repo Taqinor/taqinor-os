@@ -91,6 +91,35 @@ class TestReouvertureQuantiteRecue(Yproc8Base):
         self.assertEqual(ligne.quantite_recue, 0)
         self.assertGreaterEqual(ligne.quantite_recue, 0)
 
+    def test_second_retour_au_dela_du_recu_refuse(self):
+        """ACNC28 (C-ACNC-012) — BCF de 10 dont 5 reçus (stock 5) ; un
+        premier retour de 5 validé ramène le reçu à 0 ; un second retour de 5
+        rend 409 nommé, aucune sortie, stock 0, retour brouillon. Mutant :
+        retirer la borne ⇒ seconde sortie."""
+        from apps.stock.erreurs_achats import EtatIncompatible
+        from apps.stock.models import MouvementStock
+        bc, ligne = self._bcf_recu(quantite=10)
+        ligne.quantite_recue = 5
+        ligne.save(update_fields=['quantite_recue'])
+        self.produit.quantite_stock = 5
+        self.produit.save(update_fields=['quantite_stock'])
+        apply_retour_fournisseur(self._retour(bc, 5), user=None)
+        second = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-YPROC8-2',
+            fournisseur=self.fournisseur, bon_commande=bc,
+            statut=RetourFournisseur.Statut.BROUILLON)
+        second.lignes.create(produit=self.produit, quantite=5, motif='Défectueux')
+        with self.assertRaises(EtatIncompatible) as err:
+            apply_retour_fournisseur(second, user=None)
+        self.assertIn('quantité reçue restante (0)', str(err.exception))
+        self.produit.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 0)
+        self.assertEqual(second.statut, RetourFournisseur.Statut.BROUILLON)
+        self.assertEqual(MouvementStock.objects.filter(
+            produit=self.produit,
+            type_mouvement=MouvementStock.TypeMouvement.SORTIE).count(), 1)
+
     def test_retour_total_garde_bcf_envoye_pas_negatif(self):
         bc, ligne = self._bcf_recu(quantite=20)
         retour = self._retour(bc, 20)

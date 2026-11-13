@@ -117,4 +117,18 @@ describe('ASTK220 — ExpeditionsPage', () => {
     fireEvent.click(await within(section).findByRole('button', { name: /Vérifier la capacité/i }))
     expect(await within(section).findByText(/dans la capacité/i)).toBeInTheDocument()
   })
+
+  it('ALEC5 — un tarif masqué (cout null, sans prix_achat_voir) s'affiche « — » sans devise', async () => {
+    const offre = R.expeditions_tarifs.exemple.offres[0]
+    brancher()
+    const get = api.get.getMockImplementation()
+    api.get.mockImplementation((url, cfg) => (url === '/stock/expeditions/tarifs/'
+      ? Promise.resolve({ data: { ...R.expeditions_tarifs.exemple, offres: [{ ...offre, cout: null }] } })
+      : get(url, cfg)))
+    monter()
+    fireEvent.click((await screen.findAllByRole('button', { name: /^Tarifs de l'expédition/ }))[0])
+    expect(await screen.findByText(`${offre.libelle} — —`, { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(`${offre.libelle} — .*${offre.devise}`))).toBeNull()
+  })
 })
+
