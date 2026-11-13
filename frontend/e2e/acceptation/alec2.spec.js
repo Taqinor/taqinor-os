@@ -405,7 +405,7 @@ sortie(dict(ticket=[l.changes for l in AuditLog.objects.filter(content_type=ctt,
     expect(JSON.stringify(dc), 'C1 : aucune marge').not.toMatch(/4000|4100|marge/i)
     const dd = await lireJson(await di.ctx.get(H('ventes.devis', fx.d), T), 'Directeur : historique du devis')
     expect(dd.count, 'Directeur : deux lignes').toBe(2)
-    expect(JSON.stringify(dd), 'Directeur : « Marge HT figée … : — → 4000.00 »').toMatch(/Marge HT fig.*— → 4000\.00/)
+    expect(JSON.stringify(dd), 'Directeur : « Marge ht figée … : — → 4000.00 »').toMatch(/Marge ht fig[^"]*: — → 4000\.00/i)
     // Ticket : C1 ne lit pas le coût ; le Directeur le lit.
     const tc = await lireJson(await c1.ctx.get(H('sav.ticket', fx.t), T), 'C1 : historique du ticket')
     expect(JSON.stringify(tc), 'C1 : pas de coût').not.toMatch(/847[12]/)
