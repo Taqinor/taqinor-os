@@ -143,6 +143,7 @@ def _django_call(
     path: str,
     method: str = "POST",
     payload: dict | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Appel authentifie vers l'API Django interne, methode au choix.
 
@@ -150,12 +151,14 @@ def _django_call(
     a l'endpoint nomme par le catalogue, en GET/POST/PATCH/PUT/DELETE. Django
     reste l'autorite finale (scope societe + permissions). Retourne un dict
     normalise {ok, status, data|error}. Ne leve jamais : les erreurs sont
-    renvoyees comme texte a l'agent.
+    renvoyees comme texte a l'agent. `headers` (COP-A3, ex. `Idempotency-Key`)
+    s'ajoute aux en-tetes, sans jamais remplacer le jeton de l'appelant.
     """
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
     verb = (method or "POST").upper()
     headers = {
         **internal_headers(),
+        **(headers or {}),
         "Authorization": f"Bearer {ctx.token}",
         "Accept": "application/json",
     }
@@ -469,9 +472,10 @@ def _stash_proposal(
     human_preview: str,
 ) -> Optional[str]:
     """Stocke une proposition SIGNEE en Redis sous un jeton aleatoire avec un
-    TTL court. La signature couvre {action_key, inputs, company_id} : une
-    proposition alteree (cle/entrees/societe) echoue a la verification au
-    moment de /confirm. Renvoie le jeton, ou None si Redis indisponible."""
+    TTL court. La signature couvre {action_key, inputs, company_id, user_id} :
+    une proposition alteree (cle/entrees/societe/destinataire) echoue a la
+    verification au moment de /confirm. Renvoie le jeton, ou None si Redis
+    indisponible."""
     r = _proposal_redis()
     if r is None:
         return None
@@ -480,6 +484,8 @@ def _stash_proposal(
         "action_key": action["key"],
         "inputs": inputs,
         "company_id": ctx.company_id,
+        # COP-A3 — l'utilisateur qui a RECU la proposition : lui seul confirme.
+        "user_id": _caller_user_id(ctx),
         "human_preview": human_preview,
         "ts": int(time.time()),
     }
@@ -495,17 +501,43 @@ def _stash_proposal(
     return token
 
 
-def _load_proposal(token: str) -> Optional[dict[str, Any]]:
-    """Charge et VERIFIE la signature d'une proposition stashee. Renvoie le
-    record (sans `sig`) si la signature est valide, sinon None (tampered /
-    expire / absent)."""
+def _reclamer_brut(r, cle: str) -> Optional[str]:
+    """Lit ET supprime la proposition en UNE operation atomique (COP-A3) :
+    `GETDEL` (Redis >= 6.2, client redis-py >= 4.0) ; repli MULTI/EXEC
+    (GET + DEL dans une transaction) si le serveur ne connait pas GETDEL. Le
+    dernier repli (GET puis DEL) ne sert qu'aux doubles de test minimaux sans
+    `getdel` ni `pipeline` : un vrai client redis-py a toujours les deux."""
+    getdel = getattr(r, "getdel", None)
+    if getdel is not None:
+        try:
+            return getdel(cle)
+        except Exception as exc:
+            if "unknown command" not in str(exc).lower():
+                raise
+    pipeline = getattr(r, "pipeline", None)
+    if pipeline is not None:
+        pipe = pipeline(transaction=True)
+        pipe.get(cle)
+        pipe.delete(cle)
+        return pipe.execute()[0]
+    raw = r.get(cle)
+    r.delete(cle)
+    return raw
+
+
+def _claim_proposal(token: str) -> Optional[dict[str, Any]]:
+    """RECLAME (usage unique, atomique) puis VERIFIE la signature d'une
+    proposition stashee. Renvoie le record (sans `sig`) si la signature est
+    valide, sinon None (alteree / expiree / absente / deja reclamee). Le jeton
+    est consomme des la reclamation, avant toute execution : deux
+    confirmations simultanees n'executent jamais deux fois."""
     r = _proposal_redis()
-    if r is None:
+    if r is None or not token:
         return None
     try:
-        raw = r.get(_proposal_key(token))
+        raw = _reclamer_brut(r, _proposal_key(token))
     except Exception as exc:  # pragma: no cover - reseau
-        logger.warning("Lecture proposition echouee: %s", exc)
+        logger.warning("Reclamation de proposition echouee: %s", exc)
         return None
     if not raw:
         return None
@@ -524,15 +556,10 @@ def _load_proposal(token: str) -> Optional[dict[str, Any]]:
     return record
 
 
-def _discard_proposal(token: str) -> None:
-    """Supprime une proposition (usage unique apres confirmation)."""
-    r = _proposal_redis()
-    if r is None:
-        return
-    try:
-        r.delete(_proposal_key(token))
-    except Exception:  # pragma: no cover - reseau
-        pass
+def _cle_idempotence(token: str) -> str:
+    """`Idempotency-Key` relayee a Django pour UNE confirmation : empreinte
+    SHA-256 du jeton, jamais le jeton en clair (COP-A3)."""
+    return "agent-confirm-" + hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # ── Execution d'une action du catalogue ───────────────────────────────────────
@@ -567,6 +594,7 @@ def _lien_document(action: dict[str, Any], inputs: dict[str, Any]) -> dict[str, 
 
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Relaie l'appel a l'endpoint du catalogue avec le JWT. `inputs` sont deja
     valides. Renvoie le dict normalise de `_django_call`. Une action de carte
@@ -574,8 +602,9 @@ def _execute_catalogue_action(
     if action.get("carte") == "document":
         return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
+    extra = {"headers": headers} if headers else {}
     return _django_call(ctx, path, method=action.get("method", "POST"),
-                        payload=body)
+                        payload=body, **extra)
 
 
 def run_catalogue_action(
@@ -645,45 +674,75 @@ def run_catalogue_action(
     return json.dumps(result, ensure_ascii=False)
 
 
+_NON_EXECUTEE = " La proposition est consommée : l'action n'a pas été exécutée ; redemande-la."
+_SANS_REPONSE = (" La proposition est consommée et le serveur n'a pas répondu : "
+                 "vérifie si l'action a été faite avant de la redemander.")
+
+
+def _preparer_confirmation(
+    ctx: ActionContext, record: dict[str, Any],
+) -> tuple[Optional[dict[str, Any]], dict[str, Any], str]:
+    """(action, entrees re-validees, refus) d'une proposition reclamee : meme
+    societe, MEME utilisateur que celui qui l'a recue, action toujours au
+    catalogue courant de l'appelant, entrees conformes a son schema courant."""
+    if int(record.get("company_id") or 0) != ctx.company_id:
+        # Defense en profondeur : un jeton ne vaut que pour SA societe.
+        return None, {}, "Proposition non valable pour cette société."
+    if int(record.get("user_id") or 0) != _caller_user_id(ctx):
+        return None, {}, "Proposition destinée à un autre utilisateur."
+    action = _catalogue_by_key(ctx).get(record.get("action_key"))
+    if action is None:
+        return None, {}, "Action non autorisée ou indisponible pour ce compte."
+    try:
+        inputs = validate_inputs(action.get("inputs") or {}, record.get("inputs") or {})
+    except ActionValidationError as exc:
+        return None, {}, f"Entrées invalides : {exc}."
+    return action, inputs, ""
+
+
+def _avec_cle_corps(action: dict[str, Any], inputs: dict[str, Any],
+                    token: str) -> dict[str, Any]:
+    """Pose `idempotency_key` dans le corps quand le schema de l'action la
+    declare et que l'entree est absente (generer-facture, paiement : Django
+    rejoue sur cette cle au lieu de creer un doublon)."""
+    proprietes = (action.get("inputs") or {}).get("properties") or {}
+    if "idempotency_key" in proprietes and not inputs.get("idempotency_key"):
+        return {**inputs, "idempotency_key": _cle_idempotence(token)}
+    return inputs
+
+
 def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     """Rejoue une proposition stashee par jeton, APRES re-validation.
 
     Etapes de securite :
-      1. charge la proposition et VERIFIE sa signature (rejet si alteree) ;
-      2. exige que la societe du jeton == societe de l'appelant ;
+      1. RECLAME le jeton atomiquement (usage unique, avant toute execution)
+         et VERIFIE sa signature (rejet si alteree) ;
+      2. exige que la societe ET l'utilisateur du jeton soient l'appelant ;
       3. RE-RECUPERE le catalogue de l'appelant et exige que l'action y figure
          (l'appelant a toujours le droit de l'executer) ;
       4. RE-VALIDE les entrees contre le JSON-Schema courant du catalogue
          (rejet des cles hors catalogue) ;
-      5. relaie l'appel a Django (qui re-tranche permission + societe) ;
-      6. consomme le jeton (usage unique).
+      5. relaie l'appel a Django (qui re-tranche permission + societe) avec
+         une `Idempotency-Key` derivee du jeton.
+    Un refus apres la reclamation laisse le jeton consomme et le dit.
     Renvoie {ok, ...}. Ne leve pas pour les refus metier (renvoie ok=False)."""
-    record = _load_proposal(token)
+    record = _claim_proposal(token)
     if record is None:
-        return {"ok": False, "error": "Proposition introuvable, expiree ou alteree."}
-
-    if int(record.get("company_id") or 0) != ctx.company_id:
-        # Defense en profondeur : un jeton ne vaut que pour SA societe.
-        return {"ok": False, "error": "Proposition non valable pour cette societe."}
-
-    action_key = record.get("action_key")
-    catalogue = _catalogue_by_key(ctx)
-    action = catalogue.get(action_key)
-    if action is None:
         return {"ok": False,
-                "error": "Action non autorisee ou indisponible pour ce compte."}
+                "error": "Proposition introuvable, expirée ou déjà confirmée."}
 
-    # Re-validation des entrees contre le catalogue COURANT (fail-closed).
-    try:
-        inputs = validate_inputs(action.get("inputs") or {}, record.get("inputs") or {})
-    except ActionValidationError as exc:
-        return {"ok": False, "error": f"Entrees invalides : {exc}"}
+    action, inputs, refus = _preparer_confirmation(ctx, record)
+    if refus:
+        return {"ok": False, "error": refus + _NON_EXECUTEE}
+    action_key = action["key"]
 
-    res = _execute_catalogue_action(ctx, action, inputs)
-    _discard_proposal(token)  # usage unique, quel que soit le resultat
+    res = _execute_catalogue_action(
+        ctx, action, _avec_cle_corps(action, inputs, token),
+        headers={"Idempotency-Key": _cle_idempotence(token)})
     if not res.get("ok"):
+        suite = _SANS_REPONSE if not res.get("status") else _NON_EXECUTEE
         return {"ok": False, "status": res.get("status"),
-                "error": res.get("error", "L'action a echoue.")}
+                "error": (res.get("error") or "L'action a échoué.") + suite}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
     # `log_confirmed_action` existait côté Django, testée, mais aucun appelant

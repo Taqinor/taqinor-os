@@ -360,7 +360,7 @@ class RunCatalogueActionTests(unittest.TestCase):
         ctx = _ctx(role="admin")
         captured = {}
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             captured["path"] = path
             captured["method"] = method
             return {"ok": True, "status": 200, "data": {}}
@@ -425,7 +425,7 @@ class ConfirmProposalTests(unittest.TestCase):
         token = self._stash_pdf(ctx)
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             calls.append({"path": path, "method": method, "payload": payload})
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
@@ -487,7 +487,7 @@ class ConfirmProposalTests(unittest.TestCase):
         token = self._stash_pdf(ctx)
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             calls.append(path)
             if path.endswith("/logs/confirmer/"):
                 return {"ok": False, "status": 500, "error": "panne"}
@@ -579,7 +579,7 @@ class CollectorTests(unittest.TestCase):
         token = collector[0]["confirm_token"]
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             calls.append(path)
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
@@ -599,7 +599,7 @@ class FetchCatalogueTests(unittest.TestCase):
     def test_relays_get_and_parses_actions(self):
         ctx = _ctx(role="admin")
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             assert method == "GET"
             assert path == at._CATALOGUE_PATH
             return {"ok": True, "status": 200,
@@ -685,7 +685,7 @@ class GuardedWriteToolsTests(unittest.TestCase):
         token = prop["confirm_token"]
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             calls.append({"path": path, "method": method, "payload": payload})
             return {"ok": True, "status": 201, "data": {"id": 42}}
 
@@ -774,7 +774,7 @@ class PreuveConfirmationTests(unittest.TestCase):
         token = json.loads(out)["confirm_token"]
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             calls.append({"path": path, "payload": payload})
             return {"ok": True, "status": 201, "data": {"id": 42}}
 
@@ -823,7 +823,7 @@ class JournalEvenementAic6Tests(unittest.TestCase):
             contrat = json.load(f)
         appels = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             appels.append((path, method, payload))
             return {"ok": True, "status": 201, "data": {"id": 9001}}
 
@@ -863,7 +863,7 @@ class JournalEvenementAic6Tests(unittest.TestCase):
                  "tokens": {"cache_read": 0, "input": 0, "output": 0}}
         appels = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
             appels.append(payload)
             return {"ok": True, "status": 201, "data": {"id": 77}}
 
@@ -1309,6 +1309,127 @@ class SchemaOutilCop2Tests(unittest.TestCase):
             for args in ({"id": "abc"}, {}, {"id": 1, "pirate": 2}):
                 with self.subTest(args=args):
                     self.assertTrue(outil.invoke(args).startswith("Action refusee : "))
+
+
+# ── COP-A3 — confirmation à usage unique, liée à l'utilisateur, idempotente ───
+
+class _RedisCourse(_FakeRedis):
+    """`getdel` atomique (sous verrou) ; un `get` attend l'autre fil : tout
+    code qui LIT puis SUPPRIME laisse passer les deux confirmations."""
+
+    def __init__(self):
+        import threading
+        super().__init__()
+        self.verrou = threading.Lock()
+        self.barriere = threading.Barrier(2, timeout=1)
+
+    def getdel(self, key):
+        with self.verrou:
+            return self.store.pop(key, None)
+
+    def get(self, key):
+        import threading
+        valeur = self.store.get(key)
+        try:
+            self.barriere.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return valeur
+
+
+def _jwt(user_id):
+    import jwt
+    return jwt.encode({"user_id": user_id, "token_type": "access"},
+                      "cle-quelconque", algorithm="HS256")
+
+
+_CAT_PAIEMENT = {
+    "key": "ventes.facture.enregistrer_paiement", "label": "Enregistrer un paiement",
+    "endpoint": "/api/django/facturation/factures/{id}/paiements/", "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "id": {"type": "integer"}, "montant": {"type": "number"},
+        "idempotency_key": {"type": "string"}}, "required": ["id", "montant"]},
+    "risk": "irreversible",
+}
+
+
+class ConfirmationUniqueCop3Tests(_AvecPropositions):
+    def _proposer(self, ctx, entrees=None):
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("propose only")):
+            out = at.run_catalogue_action(ctx, _CAT_PAIEMENT, entrees or {"id": 8, "montant": 100})
+        return json.loads(out)["confirm_token"]
+
+    def _confirmer(self, ctx, jeton, reponse=None):
+        appels = []
+
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+            appels.append({"path": path, "payload": payload, "headers": headers})
+            return reponse or {"ok": True, "status": 201, "data": {"id": 99}}
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [_CAT_PAIEMENT]), \
+                mock.patch.object(at, "_django_call", fake_call):
+            return at.confirm_proposal(ctx, jeton), appels
+
+    def test_deux_confirmations_concurrentes_une_seule_execution(self):
+        import threading
+        self.fake_redis = _RedisCourse()
+        ctx = _ctx(role="admin", token=_jwt(5))
+        jeton = self._proposer(ctx)
+        executions, resultats, verrou = [], [], threading.Lock()
+
+        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+            if "/paiements/" in path:
+                with verrou:
+                    executions.append(path)
+            return {"ok": True, "status": 201, "data": {"id": 99}}
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [_CAT_PAIEMENT]), \
+                mock.patch.object(at, "_django_call", fake_call):
+            fils = [threading.Thread(target=lambda: resultats.append(at.confirm_proposal(ctx, jeton)))
+                    for _ in range(2)]
+            for f in fils:
+                f.start()
+            for f in fils:
+                f.join(5)
+        self.assertEqual(len(executions), 1)
+        self.assertEqual(sorted(r["ok"] for r in resultats), [False, True])
+        refus = next(r for r in resultats if not r["ok"])
+        self.assertEqual(refus["error"], "Proposition introuvable, expirée ou déjà confirmée.")
+
+    def test_autre_utilisateur_de_la_meme_societe_refuse(self):
+        jeton = self._proposer(_ctx(role="admin", token=_jwt(5)))
+        res, appels = self._confirmer(_ctx(role="admin", token=_jwt(6)), jeton)
+        self.assertFalse(res["ok"])
+        self.assertIn("autre utilisateur", res["error"])
+        self.assertEqual(appels, [])
+
+    def test_cle_d_idempotence_derivee_du_jeton(self):
+        import hashlib
+        ctx = _ctx(role="admin", token=_jwt(5))
+        jeton = self._proposer(ctx)
+        res, appels = self._confirmer(ctx, jeton)
+        self.assertTrue(res["ok"])
+        cle = "agent-confirm-" + hashlib.sha256(jeton.encode()).hexdigest()
+        self.assertEqual(appels[0]["headers"], {"Idempotency-Key": cle})
+        self.assertEqual(appels[0]["payload"]["idempotency_key"], cle)
+        self.assertNotIn(jeton, json.dumps(appels))
+        # Une cle deja fournie par l'entree n'est jamais remplacee.
+        jeton = self._proposer(ctx, {"id": 8, "montant": 100, "idempotency_key": "k-1"})
+        _res, appels = self._confirmer(ctx, jeton)
+        self.assertEqual(appels[0]["payload"]["idempotency_key"], "k-1")
+
+    def test_echec_apres_reclamation_jeton_consomme(self):
+        ctx = _ctx(role="admin", token=_jwt(5))
+        for reponse, attendu in (({"ok": False, "status": 409, "error": "Déjà soldée."},
+                                  "n'a pas été exécutée ; redemande-la"),
+                                 ({"ok": False, "status": 0, "error": "Service indisponible."},
+                                  "le serveur n'a pas répondu")):
+            with self.subTest(status=reponse["status"]):
+                jeton = self._proposer(ctx)
+                res, _ = self._confirmer(ctx, jeton, reponse)
+                self.assertFalse(res["ok"])
+                self.assertIn(attendu, res["error"])
+                res, appels = self._confirmer(ctx, jeton)
+                self.assertIn("déjà confirmée", res["error"])
+                self.assertEqual(appels, [])
 
 
 if __name__ == "__main__":
