@@ -36,9 +36,13 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   // L866 — pièces dont l'aperçu image a échoué (objet MinIO supprimé/404).
   const [brokenThumbs, setBrokenThumbs] = useState({})
 
+  // AERR61 — une lecture rejetée n'est jamais « Aucune pièce jointe » : avis + Réessayer.
+  const [erreurLecture, setErreurLecture] = useState(false)
+
   const load = useCallback(() => {
     recordsApi.getAttachments(model, id)
-      .then((r) => setItems(r.data.results ?? r.data)).catch(() => {})
+      .then((r) => { setItems(r.data.results ?? r.data); setErreurLecture(false) })
+      .catch(() => setErreurLecture(true))
   }, [model, id])
   useEffect(() => { load() }, [load])
 
@@ -132,7 +136,13 @@ export default function AttachmentsPanel({ model, id, onChange }) {
       )}
 
       <div className="flex flex-col gap-1.5">
-        {items.length === 0 && (
+        {erreurLecture && (
+          <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+            Pièces jointes non chargées.
+            <button type="button" onClick={load} className="font-medium underline">Réessayer</button>
+          </div>
+        )}
+        {items.length === 0 && !erreurLecture && (
           <p className="text-sm text-muted-foreground">Aucune pièce jointe.</p>
         )}
         {items.map((a) => (
