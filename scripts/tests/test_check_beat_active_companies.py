@@ -120,6 +120,36 @@ class PerimetreTests(unittest.TestCase):
         # Un service n'est PAS un module beat : hors périmètre déclaré.
         self.assertNotIn('backend/django_core/apps/ged/services.py', scannes)
 
+    TACHE = ("@shared_task\ndef t():\n    from .services import balayer\n    balayer()\n"
+             "    call_command('ma_commande')\n")
+
+    def _lancer(self, extra):
+        return BalayageGlobalNonScopeTests._lancer(
+            BalayageGlobalNonScopeTests(), self.TACHE, fichier='tasks.py', extra=extra)
+
+    def test_service_appele_par_une_tache_est_lu(self):
+        """ACEL5 — un service importé et appelé par une tâche passe par les mêmes règles."""
+        code, out = self._lancer({'apps/ventes/services.py':
+                                  "def balayer():\n    return Facture.objects.filter(actif=True)\n"})
+        self.assertEqual(code, 1, out)
+        self.assertIn('apps/ventes/services.py::balayer', out)
+        code, out = self._lancer({'apps/ventes/services.py':
+                                  "def balayer():\n    for c in active_companies():\n"
+                                  "        Facture.objects.filter(company=c)\n"})
+        self.assertEqual(code, 0, out)
+        # Service appelé seulement par une vue : non lu.
+        code, out = self._lancer({'apps/ventes/services.py': "def balayer():\n    pass\n",
+                                  'apps/ventes/views.py': "def v():\n    return Facture.objects.all()\n"})
+        self.assertEqual(code, 0, out)
+
+    def test_commande_lancee_par_call_command_est_lue(self):
+        code, out = self._lancer({
+            'apps/ventes/management/commands/ma_commande.py':
+                "class Command:\n    def handle(self):\n        for c in Company.objects.all():\n"
+                "            traiter(c)\n"})
+        self.assertEqual(code, 1, out)
+        self.assertIn('ma_commande.py::Command.handle', out)
+
 
 class AllowlistTests(unittest.TestCase):
     def test_plus_aucune_exception_sca19_dans_l_allowlist(self):

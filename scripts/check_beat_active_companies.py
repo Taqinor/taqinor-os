@@ -22,6 +22,8 @@ Les modules de tâches périodiques UNIQUEMENT : ``apps/*/tasks.py``,
 ``apps/*/scheduled.py``, ``apps/*/beat_tasks.py`` (y compris en sous-paquet) et,
 APFS63, tout module de ``apps/`` ou ``core/`` qui DÉCORE une fonction
 ``@shared_task`` (AST : ``reporting/scheduled_reports.py``, ``kpi_alertes.py``…).
+ACEL5 : plus, à UN saut, les fonctions de la même app qu'une tâche importe et
+appelle, et ``Command.handle`` des commandes lancées par ``call_command('<nom>')``.
 Le reste du dépôt est hors périmètre : une vue ou un service admin a le droit
 de lister TOUTES les sociétés.
 
@@ -209,12 +211,14 @@ def modeles_a_company(scan_root: Path = None) -> set:
     return noms | (heritiers - {"TenantModel"})
 
 
-def _est_filtre_societe_queryset(n: ast.Call, modeles: set) -> bool:
+def _est_filtre_societe_queryset(n: ast.Call, modeles: set, par_ligne: bool = False) -> bool:
     """``<Modèle>.objects[…].filter/exclude/get(company…=)`` sur un modèle à FK company."""
     f = n.func
     if not (isinstance(f, ast.Attribute) and f.attr in ("filter", "exclude", "get")):
         return False
-    if not any((kw.arg or "").startswith("company") for kw in n.keywords):
+    # ACEL5 — ``par_ligne`` : ``company=plan.company`` (lue sur la ligne balayée) ne borne rien.
+    if not any((kw.arg or "").startswith("company")
+               and not (par_ligne and isinstance(kw.value, ast.Attribute)) for kw in n.keywords):
         return False
     cur = f.value
     while isinstance(cur, (ast.Attribute, ast.Call)):
@@ -224,7 +228,7 @@ def _est_filtre_societe_queryset(n: ast.Call, modeles: set) -> bool:
     return False
 
 
-def _fonction_filtre_societe(fonction: ast.AST, modeles: set) -> bool:
+def _fonction_filtre_societe(fonction: ast.AST, modeles: set, par_ligne: bool = False) -> bool:
     """La fonction itère active_companies*() ou borne un QUERYSET par ``company…``
     (un ``objects.create(company=…)`` ou une lecture de profil ne bornent aucun balayage)."""
     for n in ast.walk(fonction):
@@ -232,7 +236,7 @@ def _fonction_filtre_societe(fonction: ast.AST, modeles: set) -> bool:
             nom = _callee_name(n) or ""
             if nom.split(".")[-1] in _SELECTEURS_SOCIETE:
                 return True
-            if _est_filtre_societe_queryset(n, modeles):
+            if _est_filtre_societe_queryset(n, modeles, par_ligne):
                 return True
     return False
 
@@ -258,24 +262,107 @@ def check_balayage_global(path: Path, modeles: set):
     sorties = []
     fonctions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     for fonction in fonctions:
-        # Seules les requêtes DIRECTEMENT de cette fonction (pas celles d'une fonction imbriquée).
-        imbriquees = {id(x) for f in ast.walk(fonction) if f is not fonction
-                      and isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
-                      for x in ast.walk(f)}
-        if _fonction_filtre_societe(fonction, modeles):
+        site = _balayage_de(fonction, modeles)
+        if site:
+            sorties.append((fonction.name, *site))
+    return sorties
+
+
+def _balayage_de(fonction: ast.AST, modeles: set, par_ligne: bool = False):
+    """(ligne, expression) du 1er balayage non scopé de la fonction, sinon None."""
+    # Seules les requêtes DIRECTEMENT de cette fonction (pas celles d'une fonction imbriquée).
+    imbriquees = {id(x) for f in ast.walk(fonction) if f is not fonction
+                  and isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  for x in ast.walk(f)}
+    if _fonction_filtre_societe(fonction, modeles, par_ligne):
+        return None
+    par_pk = _chaines_par_pk(fonction)
+    for n in ast.walk(fonction):
+        if id(n) in imbriquees or id(n) in par_pk or not isinstance(n, ast.Call):
             continue
-        par_pk = _chaines_par_pk(fonction)
-        for n in ast.walk(fonction):
-            if id(n) in imbriquees or id(n) in par_pk or not isinstance(n, ast.Call):
-                continue
-            nom = _callee_name(n)
-            if not nom:
-                continue
-            seg = nom.split(".")
-            if (len(seg) >= 3 and seg[-2] == "objects" and seg[-3] in modeles
-                    and seg[-1] in _METHODES_REQUETE):
-                sorties.append((fonction.name, n.lineno, f"{nom}()"))
-                break
+        nom = _callee_name(n)
+        if not nom:
+            continue
+        seg = nom.split(".")
+        if (len(seg) >= 3 and seg[-2] == "objects" and seg[-3] in modeles
+                and seg[-1] in _METHODES_REQUETE):
+            return n.lineno, f"{nom}()"
+    return None
+
+
+def _racine_app(path: Path):
+    """``apps/<app>`` ou ``core``/``authentication`` contenant ``path``."""
+    rel = path.relative_to(DJANGO_CORE).parts
+    return DJANGO_CORE.joinpath(*rel[:2]) if rel[0] == "apps" else DJANGO_CORE / rel[0]
+
+
+def _module_vers_fichier(base: Path):
+    for cand in (base.with_suffix(".py"), base / "__init__.py"):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def fonctions_appelees_d_un_saut(path: Path):
+    """ACEL5 — [(fichier, nom)] des fonctions importées dans l'app (``from .x import f``,
+    ``from apps.<même app>.x import f``) et appelées par le module de tâches : un seul saut."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    racine, importes = _racine_app(path), {}
+    for imp in (n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)):
+        if imp.level:
+            base = path.parents[imp.level - 1].joinpath(*(imp.module or "").split("."))
+        else:
+            base = DJANGO_CORE.joinpath(*(imp.module or "").split("."))
+        cible = _module_vers_fichier(base)
+        if cible and racine in cible.parents and not _is_test_path(cible):
+            for alias in imp.names:
+                importes[alias.asname or alias.name] = (cible, alias.name)
+    appeles = {c.func.id for c in ast.walk(tree)
+               if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+    return sorted({importes[n] for n in appeles if n in importes})
+
+
+def commandes_lancees(path: Path):
+    """ACEL5 — [(fichier, 'Command.handle')] des ``call_command('<nom>')`` littéraux."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    noms = {c.args[0].value for c in ast.walk(tree)
+            if isinstance(c, ast.Call) and (_callee_name(c) or "").endswith("call_command")
+            and c.args and isinstance(c.args[0], ast.Constant) and isinstance(c.args[0].value, str)}
+    return sorted((p, "Command.handle") for nom in noms
+                  for p in DJANGO_CORE.rglob(f"management/commands/{nom}.py") if not _is_test_path(p))
+
+
+def _fonction_nommee(path: Path, nom: str):
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return None
+    *classe, fn = nom.split(".")
+    corps = tree.body
+    if classe:
+        corps = next((c.body for c in tree.body if isinstance(c, ast.ClassDef) and c.name == classe[0]), [])
+    return next((f for f in corps if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and f.name == fn), None)
+
+
+def check_un_saut(path: Path, modeles: set, deja_lus: set):
+    """ACEL5 — [(cle_rel, expression)] : service ou commande lancé par une tâche, qui balaie."""
+    sorties = []
+    for cible, nom in fonctions_appelees_d_un_saut(path) + commandes_lancees(path):
+        fonction = None if cible in deja_lus else _fonction_nommee(cible, nom)
+        if fonction is None:
+            continue
+        companies = [_site_company(n) for n in ast.walk(fonction) if isinstance(n, ast.Call)
+                     and _site_company(n)]
+        site = (None, companies[0]) if companies else _balayage_de(fonction, modeles, par_ligne=True)
+        if site:
+            sorties.append((f"{_rel(cible)}::{nom}", site[1]))
     return sorties
 
 
@@ -346,22 +433,27 @@ def check_file(path: Path):
         return []
     findings = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = _callee_name(node)
-        if not name:
-            continue
-        segments = name.split(".")
-        if MODEL_NAME not in segments:
-            continue
-        reste = segments[segments.index(MODEL_NAME) + 1:]
-        if reste[:1] != ["objects"] or len(reste) < 2:
-            continue
-        if reste[1] == "all":
-            findings.append((node.lineno, f"{name}()"))
-        elif reste[1] == "filter" and _est_filtre_actif_vrai(node):
-            findings.append((node.lineno, f"{name}(actif=True)"))
+        if isinstance(node, ast.Call):
+            expr = _site_company(node)
+            if expr:
+                findings.append((node.lineno, expr))
     return findings
+
+
+def _site_company(node: ast.Call):
+    """``Company.objects.all()`` ou ``….filter(actif=True)`` recopié : expression, sinon None."""
+    name = _callee_name(node)
+    segments = name.split(".") if name else []
+    if MODEL_NAME not in segments:
+        return None
+    reste = segments[segments.index(MODEL_NAME) + 1:]
+    if reste[:1] != ["objects"] or len(reste) < 2:
+        return None
+    if reste[1] == "all":
+        return f"{name}()"
+    if reste[1] == "filter" and _est_filtre_actif_vrai(node):
+        return f"{name}(actif=True)"
+    return None
 
 
 def fichiers_morts(cles, root=None):
@@ -388,7 +480,16 @@ def main(argv):
     offenders += _morts_offenders(allow)
     modeles = modeles_a_company()
     cles_vues, limites_vues, allow_limites = set(), set(), _load_limites_allow()
-    for path in _iter_source_files():
+    beat = list(_iter_source_files())
+    for path in beat:
+        # ACEL5 — services et commandes qu'une tâche lance (un saut), mêmes règles.
+        for cle, expr in check_un_saut(path, modeles, set(beat)):
+            cles_vues.add(cle)
+            listed.append(f"{cle}  {expr}")
+            if cle not in allow:
+                offenders.append(f"{cle}  {expr} — appelé par {_rel(path)} : balayage sans "
+                                 f"{SELECTEUR} ni filtre company")
+    for path in beat:
         rel = _rel(path)
         for lineno, expr in check_file(path):
             listed.append(f"{rel}:{lineno}  {expr}")
