@@ -43,7 +43,7 @@ app.conf.enable_utc = False
 
 # Jobs planifiés (toutes les heures sont en Africa/Casablanca) :
 #   - contrôle quotidien des factures en retard (00:30) — apps/ventes/scheduled.py,
-#   - rappels de relance programmés (07:00) — apps/ventes/scheduled.py,
+#   - rappels de relance programmés (08:30, AMSG44) — apps/ventes/scheduled.py,
 #   - QJ4 : relance cadencée des devis envoyés (08:15) — apps/ventes/scheduled.py,
 #   - QJ5 : expiration automatique des devis + hygiène funnel (01:00) — apps/ventes/scheduled.py,
 #   - QJ20 : rappels de rendez-vous (toutes les 15 min) — apps/ventes/scheduled.py,
@@ -129,8 +129,8 @@ app.conf.beat_schedule = {
     },
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',
-        # AMSG43 — jamais un message client le week-end.
-        'schedule': crontab(hour=7, minute=0, day_of_week='mon-fri'),
+        # AMSG43 — jamais un message client le week-end ; AMSG44 — 08:30.
+        'schedule': crontab(hour=8, minute=30, day_of_week='mon-fri'),
     },
     'ventes-devis-followup-nudges': {
         'task': 'ventes.devis_followup_nudges',
@@ -365,8 +365,8 @@ app.conf.beat_schedule = {
     'ventes-releve-mensuel-reminders': {
         'task': 'ventes.releve_mensuel_reminders',
         # AMSG43 — 1er jour ouvré parmi 1-3 (marqueur mensuel : un seul envoi).
-        'schedule': crontab(hour=8, minute=0, day_of_month='1-3',
-                            day_of_week='mon-fri'),
+        'schedule': crontab(hour=8, minute=30, day_of_month='1-3',
+                            day_of_week='mon-fri'),  # AMSG44
     },
     # XFSM6 — rappel client J-1 (interventions non confirmées, demain).
     'installations-rappel-rdv-j1': {
@@ -538,7 +538,7 @@ app.conf.beat_schedule = {
     # XFAC7 — rappels J-N avant échéance de tranche (devis accepté).
     'ventes-pre-echeance-reminders': {
         'task': 'ventes.pre_echeance_reminders',
-        'schedule': crontab(hour=7, minute=20, day_of_week='mon-fri'),  # AMSG43
+        'schedule': crontab(hour=8, minute=30, day_of_week='mon-fri'),  # AMSG43/44
     },
     # ZFAC12 — « accepté mais jamais facturé » : nudge le facturier.
     'ventes-devis-a-facturer-reminder': {

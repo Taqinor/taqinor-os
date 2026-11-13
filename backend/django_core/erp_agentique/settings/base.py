@@ -1526,6 +1526,8 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+# APUB10 (D-APUB-2) — livechat public PARQUÉ : éteint, ses 3 vues rendent 404.
+LIVECHAT_PUBLIC_ENABLED = os.environ.get('LIVECHAT_PUBLIC_ENABLED', '0') == '1'
 
 # VAO22/VAO4 — veille appels d'offres : interrupteur d'ARMEMENT de la collecte
 # automatique, DÉSARMÉ par défaut (règle #5 volet (b) — l'accord explicite et
