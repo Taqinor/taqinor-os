@@ -34,6 +34,8 @@ from django.db import models
 from django.utils import timezone
 from pgvector.django import VectorField
 
+from core.models import TenantModel  # SCA4 — socle multi-tenant
+
 # GED12 — dimension du vecteur d'embedding documentaire (clé-gated). Aligné sur
 # les embeddings Zhipu/OpenAI-compatibles (1024). Fixe : changer la dimension
 # exigerait une migration destructive (jamais fait à la volée).
@@ -3579,20 +3581,16 @@ class VueGedEnregistree(models.Model):
         return self.nom
 
 
-class PieceJointeImportee(models.Model):
+class PieceJointeImportee(TenantModel):
     """ACEL61 — une pièce jointe (`records.Attachment`) déjà importée en GED.
 
     Posé avec le Document importé ; relu AVANT le test du `file_key` : une
-    pièce jointe importée puis purgée n'est plus jamais réimportée."""
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
-        related_name='ged_pieces_jointes_importees')
+    pièce jointe importée puis purgée n'est plus jamais réimportée. SCA4 —
+    ``company`` + horodatage hérités de ``TenantModel``."""
     attachment_id = models.PositiveBigIntegerField()
     document = models.ForeignKey(
         Document, on_delete=models.SET_NULL,  # on_delete: le marqueur survit à la purge du document
         null=True, blank=True, related_name='+')
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(

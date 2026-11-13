@@ -14,9 +14,10 @@ class Migration(migrations.Migration):
             name='PieceJointeImportee',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('attachment_id', models.PositiveBigIntegerField()),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='ged_pieces_jointes_importees', to='authentication.company')),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('attachment_id', models.PositiveBigIntegerField()),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('document', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='ged.document')),
             ],
         ),
