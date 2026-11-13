@@ -532,7 +532,9 @@ export default function FactureList() {
 
   // ERR-AFAC105-SQUELETTE — pendant que la facture se crée, rafraîchir la liste ne démonte jamais le formulaire ouvert :
   // sinon le « Total TTC … identique au devis signé » disparaît aussitôt affiché.
-  if (loading && !showForm) {
+  // AERR1 — écran plein (squelette, erreur) seulement si rien n'a jamais été
+  // chargé : une relecture après un geste garde lignes et boîtes montées.
+  if (loading && !showForm && factures.length === 0) {
     return (
       <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
         showSkeleton={showSkeleton} libelle="Chargement des factures…">
@@ -550,12 +552,13 @@ export default function FactureList() {
       </PageListeChargement>
     )
   }
-  if (error) {
+  if (error && factures.length === 0) {
     return (
       <div className="page">
         {pageHeader}
         <EmptyState className="mt-4" icon={FileWarning} title="Erreur de chargement"
-                    description="Impossible de charger les factures. Réessayez." />
+                    description="Impossible de charger les factures."
+                    action={<Button size="sm" variant="outline" onClick={() => dispatch(fetchFactures())}>Réessayer</Button>} />
       </div>
     )
   }
@@ -563,6 +566,12 @@ export default function FactureList() {
   return (
     <div className="page">
       {pageHeader}
+      {error && (
+        <div role="status" data-testid="factures-pas-a-jour" className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Liste pas à jour — la dernière relecture a échoué ; les lignes datent du dernier chargement réussi.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchFactures())}>Réessayer</Button>
+        </div>
+      )}
 
       {/* EZ13 — le marquage sec explique CE QU'ON PERD, et offre le chemin
           riche en échappatoire (« Encaisser » capture mode/date/référence). */}

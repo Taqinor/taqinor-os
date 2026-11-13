@@ -97,7 +97,7 @@ export default function PaiementsPage() {
   }
 
   const chargerPaiements = () => fetchAllPages((page) => ventesApi.getPaiements({ ordering: '-date_paiement', page, page_size: 200 }).then((r) => r.data))
-    .then((res) => setRows(Array.isArray(res) ? res : (res?.results ?? [])))
+    .then((res) => { setRows(Array.isArray(res) ? res : (res?.results ?? [])); setError(null) })
     .catch(() => setError('Impossible de charger les encaissements. Réessayez.'))
     .finally(() => setLoading(false))
 
@@ -523,13 +523,15 @@ export default function PaiementsPage() {
         </div>
       )}
 
+      {/* AERR1 — une relecture ratée garde les lignes : « Liste pas à jour » + Réessayer. */}
       {error && (
-        <div className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
+        <div role="status" data-testid="paiements-pas-a-jour" className="mb-3 flex flex-wrap items-center gap-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {rows.length > 0 ? 'Liste pas à jour — la dernière relecture a échoué.' : error}
+          <Button type="button" size="sm" variant="outline" onClick={() => chargerPaiements()}>Réessayer</Button>
         </div>
       )}
 
-      {!loading && rows.length > 0 && (
+      {rows.length > 0 && (
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <label className="text-sm">
             <span className="mb-1 block text-xs text-muted-foreground">Mode</span>
@@ -564,7 +566,7 @@ export default function PaiementsPage() {
         </div>
       )}
 
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <SqueletteLignesCarte />
       ) : (
         <Card>

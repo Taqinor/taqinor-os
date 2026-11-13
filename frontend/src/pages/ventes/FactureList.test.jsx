@@ -139,6 +139,41 @@ describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   })
 })
 
+describe('FactureList — AERR1 : relecture en cours ou ratée après un geste', () => {
+  it('relecture rejetée : les lignes restent, avis + Réessayer, boîte Paiement montée', async () => {
+    const trois = [1, 2, 3].map((i) => ({ ...baseFacture, id: i, reference: `FAC-AERR1-000${i}` }))
+    const base = makeStore({ factures: trois }).getState()
+    const store = configureStore({
+      reducer: (etat = base, action) => {
+        if (action.type === 'essai/relecture') return { ...etat, ventes: { ...etat.ventes, loading: true, error: null } }
+        if (action.type === 'essai/rejet') return { ...etat, ventes: { ...etat.ventes, loading: false, error: 'Réseau' } }
+        return etat
+      },
+      middleware: (d) => d({ serializableCheck: false, immutableCheck: false }),
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><FactureList /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    const row = screen.getByText('FAC-AERR1-0001').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Encaisser/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    act(() => { store.dispatch({ type: 'essai/relecture' }) })
+    expect(screen.getByText('FAC-AERR1-0003')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    act(() => { store.dispatch({ type: 'essai/rejet' }) })
+    for (const i of [1, 2, 3]) expect(screen.getByText(`FAC-AERR1-000${i}`)).toBeInTheDocument()
+    const avis = screen.getByTestId('factures-pas-a-jour')
+    expect(avis).toHaveTextContent('Liste pas à jour')
+    expect(within(avis).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByText('Erreur de chargement')).toBeNull()
+  })
+})
+
 describe('FactureList — WR2b : « Payer en ligne »', () => {
   it('crée le lien de paiement et le copie au presse-papier', async () => {
     const writeText = vi.fn(() => Promise.resolve())
