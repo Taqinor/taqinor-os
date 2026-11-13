@@ -113,7 +113,7 @@ def _sweep_warranty_expiring(company):
             date_fin_garantie__lte=horizon,
         ).select_related('produit', 'installation')
         count = 0
-        for eq in qs:
+        for eq in _une_par_une(qs):
             try:
                 produit_nom = (
                     getattr(eq.produit, 'designation', '')
@@ -168,7 +168,7 @@ def _sweep_maintenance_due(company):
             company=company, actif=True
         ).select_related('client', 'installation')
         count = 0
-        for contrat in qs:
+        for contrat in _une_par_une(qs):
             try:
                 if not contrat.is_due() or not _reserver_emission(  # ASOC23
                         company, EventType.MAINTENANCE_DUE, f'contrat:{contrat.pk}',
@@ -282,7 +282,7 @@ def _sweep_chantier_due(company):
             date_pose_prevue__lte=horizon,
         ).select_related('client')
         count = 0
-        for chantier in qs:
+        for chantier in _une_par_une(qs):
             try:
                 client_nom = (
                     getattr(chantier.client, 'nom', '')
@@ -344,6 +344,18 @@ def _reserver_emission(company, event_type, cle, periode=''):
         return True
 
 
+def _une_par_une(elements):
+    """ACEL75 — chaque élément d'un balayage est traité dans SA transaction :
+    le marqueur d'émission (``_reserver_emission``) et la diffusion
+    (``notify``) sont validés ensemble ou pas du tout. Une mort du worker entre
+    les deux (ou une exception non rattrapée) annule le marqueur : l'alerte
+    repart au passage suivant au lieu d'être perdue pour toujours."""
+    from django.db import transaction
+    for element in elements:
+        with transaction.atomic():
+            yield element
+
+
 def _already_notified_today(company, event_type, link):
     """True si `event_type` pour ce `link` a déjà été émis AUJOURD'HUI pour
     cette société — idempotence stricte (une émission/jour), plus stricte que
@@ -380,7 +392,7 @@ def _sweep_facture_overdue(company):
         today = date.today()
         qs = factures_echues(company, today=today)
         count = 0
-        for facture in qs:
+        for facture in _une_par_une(qs):
             try:
                 # AARG53 — le retard de la part encore due, pas celui de la
                 # date brute. Avant le marqueur : rien à émettre, rien à poser.
@@ -439,7 +451,7 @@ def _sweep_da_soumise_stale(company):
         qs = demandes_achat_soumises_stale(company, cutoff)
         today = date.today()
         count = 0
-        for da in qs:
+        for da in _une_par_une(qs):
             try:
                 # WIR176 — `/installations/demandes-achat` n'existe pas côté
                 # front (préfixe réel : `/chantiers/…`) ; DemandesAchatList
@@ -488,7 +500,7 @@ def _sweep_sav_activite_due(company):
             company=company, fait=False, echeance__lte=today,
         ).select_related('ticket', 'assigne')
         count = 0
-        for taf in qs:
+        for taf in _une_par_une(qs):
             try:
                 ticket_ref = getattr(taf.ticket, 'reference', '') or str(
                     taf.ticket_id)
@@ -536,7 +548,7 @@ def _sweep_stock_expiration_soon(company):
             date_peremption__lte=horizon,
         ).select_related('produit')
         count = 0
-        for lot in qs:
+        for lot in _une_par_une(qs):
             try:
                 produit_nom = getattr(lot.produit, 'nom', '') or str(
                     lot.produit_id)
@@ -809,7 +821,7 @@ def _sweep_hot_leads(company, now=None):
     posted = 0
     managers = None
     with horaires.cache_local():
-        for lead in candidats:
+        for lead in _une_par_une(candidats):
             try:
                 ecoulees = horaires.minutes_ouvrees_entre(
                     lead.date_creation, maintenant, company,
