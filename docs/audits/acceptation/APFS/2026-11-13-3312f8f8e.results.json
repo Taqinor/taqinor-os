@@ -1,0 +1,80 @@
+{
+  "sha": "3312f8f8ee41c4727353787660ff1b3ccf4c8d8b",
+  "date": "2026-11-13",
+  "groupe": "APFS",
+  "verdict": "PASS",
+  "couvre": [
+    "APFS117",
+    "APFS29"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF1.sonde_C-APFS-082",
+      "taches": [
+        "APFS117",
+        "APFS29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APFS-PF1.sonde_C-APFS-082.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF1.ecriture_sous_achats_commander",
+      "taches": [
+        "APFS117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APFS-PF1.ecriture_sous_achats_commander.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF1.lecture_prix_installations",
+      "taches": [
+        "APFS29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APFS-PF1.lecture_prix_installations.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
