@@ -162,3 +162,53 @@ def _record_sla_credit_statut_change(sender, snapshot, ancien_statut=None,
         field_label='Statut du crédit SLA', company=company,
         action=AuditLog.Action.STATUS, chatter=False,
     )
+
+
+# ASUP13 (D-ASUP-1) — à l'effacement, les valeurs personnelles (champs des scrubs
+# ``crm.dsr_provider.anonymiser_client`` et ``anonymiser_lead``) du client et de
+# ses leads sortent de ``changes``. Ids REPÉRÉS avant le CRM (ordre 99, la clé
+# existe encore), lignes CAVIARDÉES après lui (ordre 101 : y compris celles que
+# l'anonymisation vient d'écrire). ``object_repr`` (chaîné) inchangé.
+CHAMPS_PERSONNELS = frozenset({
+    'nom', 'prenom', 'email', 'telephone', 'adresse', 'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
+    'whatsapp', 'email_normalise', 'phone_normalise', 'whatsapp_normalise', 'appareil_id', 'gps_lat',
+    'gps_lng', 'note', 'visite_notes', 'ombrage_notes', 'lien_maps', 'contact_secondaire_nom',
+    'contact_secondaire_telephone', 'contact_secondaire_email', 'contact_secondaire_fonction'})
+MASQUE_EFFACE = '[effacé]'
+_SUJETS_REPERES = {}
+
+
+def _ids_du_sujet(company, sujet):
+    from apps.crm.clients_selectors import client_ids_par_identifiant
+    from apps.crm.leads_selectors import lead_ids_par_identifiant
+    return {'lead': [str(i) for i in lead_ids_par_identifiant(company, sujet)],
+            'client': [str(i) for i in client_ids_par_identifiant(company, sujet)]}
+
+
+def _reperer_sujet(company, sujet):
+    _SUJETS_REPERES[(company.pk, sujet)] = ids = _ids_du_sujet(company, sujet)
+    return sum(len(v) for v in ids.values())
+
+
+def _caviarder_journal_du_sujet(company, sujet):
+    from django.db.models import Q
+    ids = _SUJETS_REPERES.pop((company.pk, sujet), None) or _ids_du_sujet(company, sujet)
+    lignes = list(AuditLog.objects.filter(
+        Q(content_type__model='lead', object_id__in=ids['lead'])
+        | Q(content_type__model='client', object_id__in=ids['client']),
+        company=company, content_type__app_label='crm', changes__isnull=False))
+    for ligne in lignes:
+        ligne.changes = [{**c, 'old': MASQUE_EFFACE, 'new': MASQUE_EFFACE}
+                         if isinstance(c, dict) and c.get('field') in CHAMPS_PERSONNELS else c
+                         for c in ligne.changes or []]
+    AuditLog.objects.bulk_update(lignes, ['changes'])
+    return len(lignes)
+
+
+def _enregistrer_fournisseurs_dsr():
+    from core import dsr
+    dsr.register_dsr_provider('audit_reperage', erase=_reperer_sujet, erase_order=99)
+    dsr.register_dsr_provider('audit', erase=_caviarder_journal_du_sujet, erase_order=101)
+
+
+_enregistrer_fournisseurs_dsr()

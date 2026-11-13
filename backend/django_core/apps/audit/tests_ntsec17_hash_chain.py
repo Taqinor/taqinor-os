@@ -76,6 +76,29 @@ class HashChainTests(TestCase):
             effective_retention_days(AUDIT_RETENTION_FLOOR_DAYS + 100),
             AUDIT_RETENTION_FLOOR_DAYS + 100)
 
+    def test_plancher_comptable_dix_ans(self):
+        """ASUP17 (D-ASUP-5) — à 365 j de rétention, les lignes de 2 ans d'une
+        facture, d'un paiement et d'un mouvement de stock restent ; celle d'un
+        lead est purgée ; la trace de purge est écrite comme avant."""
+        from django.contrib.contenttypes.models import ContentType
+        from django.core.management import call_command
+
+        from apps.parametres.models import CompanyProfile, SettingsAuditLog
+        CompanyProfile.objects.create(company=self.company, audit_retention_days=365)
+        lignes = {}
+        for cle in (('facturation', 'facture'), ('facturation', 'paiement'),
+                    ('stock', 'mouvementstock'), ('crm', 'lead')):
+            lignes[cle] = AuditLog.objects.create(
+                company=self.company, action=AuditLog.Action.UPDATE, object_id='1',
+                content_type=ContentType.objects.get_by_natural_key(*cle)).pk
+        AuditLog.objects.filter(pk__in=lignes.values()).update(
+            timestamp=timezone.now() - timedelta(days=730))
+        call_command('purge_audit_log', '--company', str(self.company.id))
+        restantes = set(AuditLog.objects.filter(pk__in=lignes.values()).values_list('pk', flat=True))
+        self.assertEqual(restantes, {lignes[c] for c in lignes if c[0] != 'crm'})
+        self.assertTrue(SettingsAuditLog.objects.filter(
+            company=self.company, new_value='audit_deleted=1').exists())
+
 
 class PurgeRetentionTests(TestCase):
     def test_purge_respects_floor(self):

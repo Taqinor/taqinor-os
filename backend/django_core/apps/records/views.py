@@ -467,9 +467,9 @@ class ActivityViewSet(viewsets.ModelViewSet):
         # VX85(a) — un item snoozé (`snoozed_until` dans le futur) est exclu
         # tant que non échu ; il revient de lui-même à l'heure dite, avec sa
         # `due_date` d'origine intacte (le snooze n'y touche jamais).
-        qs = qs.filter(
+        qs = sans_cibles_archivees(qs.filter(  # ASUP59 — lead archivé/supprimé exclu
             models.Q(snoozed_until__isnull=True)
-            | models.Q(snoozed_until__lte=timezone.now().date()))
+            | models.Q(snoozed_until__lte=timezone.now().date())))
         buckets = {'en_retard': [], 'aujourdhui': [], 'a_venir': []}
         for act in qs:
             # QX25be — passe le contexte requête pour résoudre target_phone.
