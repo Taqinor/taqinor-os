@@ -210,6 +210,8 @@ describe('WIR183 — XPOS7 : retour client', () => {
       motif: 'Panneau cassé',
       restocker: true,
       lignes: [{ produit: 77, quantite: '2' }],
+      // ACNC3 — clé d'envoi créée à l'ouverture du dialogue (rejeu = un avoir).
+      idempotency_key: expect.any(String),
     }))
   })
 

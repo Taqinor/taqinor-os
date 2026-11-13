@@ -3,7 +3,7 @@
 // consolidation, encaissement groupé), l'avoir, l'annulation (AFAC13), le
 // marquage sec « payée » (EZ13) et `doAction`. Déplacés tels quels (move only)
 // depuis FactureList.jsx ; `lot` = useFactureLot (sélection encaissable).
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
@@ -19,6 +19,9 @@ import { todayLocalIso } from '../../../lib/dateLocale.js'
 // AERR3 — LE point « relire après un geste d'argent » : la liste PUIS les
 // tuiles (lues seulement au montage avant) ; `surEchec(true)` si les tuiles
 // n'ont pas pu être relues (anciennes valeurs gardées, dites « pas à jour »).
+// ACNC3 — clé d'envoi d'un geste rejouable (créée à l'ouverture du dialogue).
+const nouvelleCle = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+
 export function relireApresGeste(dispatch, surEchec) {
   dispatch(fetchFactures())
   return Promise.resolve(dispatch(fetchFacturesKpis()))
@@ -126,7 +129,11 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
   const [retourMotif, setRetourMotif] = useState('')
   const [retourRestocker, setRetourRestocker] = useState(false)
   const [retourQtes, setRetourQtes] = useState({})
+  // ACNC3 — clé gardée entre deux clics, renouvelée à l'ouverture et au succès.
+  const cleRetour = useRef(null)
+  const cleAvoir = useRef(null)
   const openRetourClient = async (f) => {
+    cleRetour.current = nouvelleCle()
     setRetourMotif('')
     setRetourRestocker(false)
     setRetourQtes({})
@@ -151,12 +158,15 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
     try {
       await ventesApi.retourClientFacture(retourTarget.id, {
         motif: retourMotif, restocker: retourRestocker, lignes,
+        idempotency_key: cleRetour.current,
       })
+      cleRetour.current = nouvelleCle()
       toast.success(`Retour enregistré pour ${retourTarget.reference}.`)
       setRetourTarget(null)
       relire()
     } catch (err) {
       erreurServeur(err, 'Retour client impossible.')
+      if (!err?.response) relire()  // ACNC3 — sans réponse : la liste est relue
     } finally { setWir183Busy(false) }
   }
 
@@ -216,6 +226,7 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
   const [avoirType, setAvoirType]     = useState('geste_commercial')
 
   const openAvoirModal = async (f) => {
+    cleAvoir.current = nouvelleCle()
     setAvoirMotif('')
     setAvoirQtes({})
     setAvoirType('geste_commercial')
@@ -232,7 +243,7 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
     if (!avoirTarget) return
     setAvoirSaving(true)
     try {
-      const payload = { motif: avoirMotif, type: avoirType }
+      const payload = { motif: avoirMotif, type: avoirType, idempotency_key: cleAvoir.current }
       if (mode === 'partiel') {
         const lignes = (avoirTarget.lignes || [])
           .map(l => ({ ...l, _qte: parseFloat(avoirQtes[l.id] ?? 0) }))
@@ -253,11 +264,13 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
         payload.lignes = lignes
       }
       await ventesApi.creerAvoir(avoirTarget.id, payload)
+      cleAvoir.current = nouvelleCle()
       setAvoirTarget(null)
       relire()
       toast.success('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
     } catch (err) {
       toast.error(frenchError(err, "Création de l'avoir impossible."))
+      if (!err?.response) relire()  // ACNC3 — sans réponse : la liste est relue
     } finally {
       setAvoirSaving(false)
     }
