@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission } from '../../../hooks/useHasPermission'
+import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import ventesApi from '../../../api/ventesApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
 import { fetchFactures, fetchFacturesKpis, annulerFacture } from '../../../features/ventes/store/ventesSlice'
@@ -321,7 +322,10 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
   const [payeeSecheMotif, setPayeeSecheMotif] = useState('')
   const openMarquerPayee = (f) => setPayeeSecheTarget(f)
 
+  // AERR13 — un refus PAR CHAMP s'écrit sous le champ de la boîte ; sans champ, le `detail`.
+  const egErreurs = useServerFieldErrors()
   const openEncaissementGroupe = () => {
+    egErreurs.clearAll()
     setEncaissementRepartition({})
     setEncaissementForm({
       montant: String(facturesEncaissables.reduce(
@@ -354,7 +358,13 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
       clearSelection()
       relire()
     } catch (err) {
-      erreurServeur(err, 'Encaissement groupé impossible.')
+      const d = err?.response?.data
+      if (d && typeof d === 'object' && ['montant', 'date', 'mode', 'reference'].some(k => k in d)) {
+        egErreurs.setFromResponse(d)
+      } else {
+        egErreurs.clearAll()
+        erreurServeur(err, 'Encaissement groupé impossible.')
+      }
     } finally { setWir183Busy(false) }
   }
 
@@ -370,7 +380,7 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
     openConsolider, handleConsolider,
     encaissementOpen, setEncaissementOpen, encaissementForm, setEncaissementForm,
     encaissementRepartition, setEncaissementRepartition,
-    openEncaissementGroupe, handleEncaissementGroupe,
+    openEncaissementGroupe, handleEncaissementGroupe, egErreurs: egErreurs.errors,
     avoirTarget, setAvoirTarget, avoirMotif, setAvoirMotif, avoirSaving, avoirQtes,
     setAvoirQtes, avoirType, setAvoirType, openAvoirModal, handleCreerAvoir,
     actionId, doAction,

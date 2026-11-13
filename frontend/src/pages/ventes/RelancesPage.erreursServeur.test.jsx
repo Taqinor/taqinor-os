@@ -68,6 +68,20 @@ describe('RelancesPage — AFAC61 : refus serveur affichés', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(RAISON)
   })
 
+  it('400 montant_promis : sous le champ', async () => {
+    // AERR13 (C-AERR-012) — le refus par champ s'écrit sous « Montant promis ».
+    const user = userEvent.setup()
+    api.post.mockRejectedValue({ response: { status: 400, data: { montant_promis: ['Montant supérieur au reste dû.'] } } })
+    renderPage()
+    await screen.findByText('ACME SARL')
+    await user.click(screen.getByRole('button', { name: /Plus d'actions — FAC-001/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Promesse de paiement/ }))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la promesse' }))
+    expect(await screen.findByText('Montant supérieur au reste dû.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Montant promis (MAD)')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Enregistrer la promesse' })).toBeInTheDocument()
+  })
+
   it('lot [ouverte, soldée] : bilan « 1 consignée, 1 refusée : raison », la sélection garde la refusée', async () => {
     const user = userEvent.setup()
     ventesApi.relancerFacture.mockImplementation((id) => (

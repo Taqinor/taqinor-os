@@ -342,6 +342,24 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
       .toBeDisabled()
   })
 
+  it('400 montant : message sous Montant, boîte ouverte', async () => {
+    // AERR13 (C-AERR-012) — mutant : remettre `erreurServeur(err, …)` ⇒ échec.
+    api.encaissementGroupeFactures.mockRejectedValueOnce({
+      response: { status: 400, data: { montant: ["Assurez-vous qu'il n'y a pas plus de 2 décimales."] } },
+    })
+    const user = userEvent.setup()
+    renderList({ factures: deux })
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    expect(await within(dialog).findByText("Assurez-vous qu'il n'y a pas plus de 2 décimales.")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Montant reçu (MAD)')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(toast.error).not.toHaveBeenCalledWith('Encaissement groupé impossible.')
+  })
+
   it('affiche TEL QUEL le refus du serveur', async () => {
     api.encaissementGroupeFactures.mockRejectedValueOnce({
       response: { data: { detail: 'Le montant dépasse le total dû des factures.' } },

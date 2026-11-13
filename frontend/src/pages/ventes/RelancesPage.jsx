@@ -11,6 +11,7 @@ import ventesApi from '../../api/ventesApi'
 // (`company` est TOUJOURS imposée par le serveur, jamais envoyée d'ici).
 import api from '../../api/axios'
 import { useHasPermission } from '../../hooks/useHasPermission'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import PaiementDialog from './PaiementDialog'
 import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -89,6 +90,8 @@ export default function RelancesPage() {
   // AFAC61 — erreurs serveur affichées dans la modale concernée / bilan du lot.
   const [relanceErreur, setRelanceErreur] = useState('')
   const [promesseErreur, setPromesseErreur] = useState('')
+  // AERR13 — refus par champ de la promesse, écrit sous le champ fautif.
+  const promErreurs = useServerFieldErrors()
   const [paramErreur, setParamErreur] = useState('')
   const [bilanLot, setBilanLot] = useState('')
   const [histTarget, setHistTarget] = useState(null)  // facture dont on voit l'historique
@@ -200,7 +203,7 @@ export default function RelancesPage() {
 
   const enregistrerPromesse = async () => {
     if (!promesseTarget) return
-    setPromesseBusy(true); setPromesseErreur('')
+    setPromesseBusy(true); setPromesseErreur(''); promErreurs.clearAll()
     try {
       // `company`, `created_by` et `statut` sont imposés par le serveur.
       await api.post('/ventes/promesses-paiement/', {
@@ -213,7 +216,9 @@ export default function RelancesPage() {
       setPromesseTarget(null)
       load()
     } catch (err) {
-      setPromesseErreur(frenchError(err, 'Enregistrement de la promesse impossible.'))
+      const d = err?.response?.data
+      if (d && typeof d === 'object' && ['montant_promis', 'date_promise', 'note'].some(k => k in d)) promErreurs.setFromResponse(d)
+      else setPromesseErreur(frenchError(err, 'Enregistrement de la promesse impossible.'))
     } finally { setPromesseBusy(false) }
   }
 
@@ -980,9 +985,10 @@ export default function RelancesPage() {
           <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="promesse-montant">Montant promis (MAD)</Label>
-              <Input id="promesse-montant" type="number" step="any"
+              <Input id="promesse-montant" type="number" step="any" invalid={!!promErreurs.errors.montant_promis}
                      value={promesseMontant}
                      onChange={e => setPromesseMontant(e.target.value)} />
+              {promErreurs.errors.montant_promis && <p role="alert" className="text-xs text-destructive">{promErreurs.errors.montant_promis}</p>}
               {promesseTarget && (
                 <p className="text-xs text-muted-foreground">
                   Reste dû : {formatMAD(promesseTarget.montant_du)}
@@ -992,12 +998,14 @@ export default function RelancesPage() {
             <div className="grid gap-1.5">
               <Label htmlFor="promesse-date">Date promise</Label>
               <Input id="promesse-date" type="date" value={promesseDate}
-                     onChange={e => setPromesseDate(e.target.value)} />
+                     onChange={e => setPromesseDate(e.target.value)} invalid={!!promErreurs.errors.date_promise} />
+              {promErreurs.errors.date_promise && <p role="alert" className="text-xs text-destructive">{promErreurs.errors.date_promise}</p>}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="promesse-note">Note (contexte de l&apos;engagement)</Label>
               <Textarea id="promesse-note" rows={2} value={promesseNote}
                         onChange={e => setPromesseNote(e.target.value)} />
+              {promErreurs.errors.note && <p role="alert" className="text-xs text-destructive">{promErreurs.errors.note}</p>}
             </div>
           </div>
           {promesseErreur && (
