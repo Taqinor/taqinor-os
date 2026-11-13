@@ -44,7 +44,7 @@ def auth(user):
     return api
 
 
-def make_user(company, role='responsable', username=None):
+def make_user(company, role='admin', username=None):  # ADRG43 — terminer : admin
     return User.objects.create_user(
         username=username or f'ystck1-{next(_seq)}', password='x',
         role_legacy=role, company=company)

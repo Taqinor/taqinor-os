@@ -608,9 +608,9 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         La lib ``qrcode`` est déjà épinglée (cérémonie de signature devis,
         QR QHSE) ; absente, on dégrade proprement en renvoyant ``qr`` à
         ``null`` — le lien reste affichable et copiable."""
+        from apps.ventes.services import public_url  # AMSG90 — base publique (PUBLIC_BASE_URL)
         equipement = self.get_object()
-        url = request.build_absolute_uri(
-            f'/e/{equipement.ensure_public_token()}')
+        url = public_url(f'/e/{equipement.ensure_public_token()}', request)
         return Response({'url': url, 'qr': _qr_data_uri(url)})
 
     @extend_schema(
@@ -661,6 +661,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         telephone = ''
         if public:
             from apps.parametres.models import CompanyProfile
+            from apps.ventes.services import public_url  # AMSG90 — étiquettes collées chez le client
             try:
                 profil = CompanyProfile.get(company=request.user.company)
                 telephone = (getattr(profil, 'telephone', '') or '').strip()
@@ -670,12 +671,9 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
         items = []
         for eq in qs:
-            if public:
-                token = request.build_absolute_uri(
-                    f'/e/{eq.ensure_public_token()}')
-            else:
-                # Assure le jeton présent (rétro-compat équipements sans token).
-                token = eq.equipement_token or f'EQUIP:{eq.pk}'
+            # Interne : jeton assuré présent (rétro-compat équipements sans token).
+            token = (public_url(f'/e/{eq.ensure_public_token()}', request) if public
+                     else eq.equipement_token or f'EQUIP:{eq.pk}')
             titre = eq.produit.nom if eq.produit_id else '—'
             sous_titre = eq.numero_serie or '(sans série)'
             item = {'token': token, 'titre': titre, 'sous_titre': sous_titre}
@@ -2956,9 +2954,10 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
         XSAV10/XSAV19 — l'URL pointe vers la page FRONTEND ``/suivi/<token>``
         (statut + CSAT), pas directement l'API JSON (même origine, même
         patron que XSAL17 ``public_booking_url``)."""
+        from apps.ventes.services import public_url  # AMSG90 — base publique (PUBLIC_BASE_URL)
         ticket = self.get_object()
         token = ticket.ensure_share_token()
-        url = request.build_absolute_uri(f'/suivi/{token}')
+        url = public_url(f'/suivi/{token}', request)
         return Response({'token': token, 'url': url})
 
 
@@ -2977,7 +2976,7 @@ class SavSlaSettingsViewSet(SettingsAuditedMixin, JsonSeulementMixin, CompanySco
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('parametres_modifier')()]  # ADRG46 (D-ADRG-5)
 
     def list(self, request, *args, **kwargs):
         company = request.user.company

@@ -89,6 +89,11 @@ class MasqueCoutTransport(MasqueMontantsAchatMixin):
     champs_montants_achat = ('cout_transport',)
 
 
+class MasqueTarifBase(MasqueMontantsAchatMixin):
+    """ALEC6 (D-ALEC-1) — tarif de référence INTERNE du transporteur, masqué sans ``prix_achat_voir``."""
+    champs_montants_achat = ('tarif_base',)
+
+
 class MasqueMontantApprouve(MasqueMontantsAchatMixin):
     """ALEC8 — montant d'achat HT du BCF figé à l'approbation (masqué comme le BCF, ASTK10)."""
     champs_montants_achat = ('montant_approuve',)

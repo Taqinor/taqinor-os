@@ -28,6 +28,8 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
+// ADRG46 — l'écriture des réglages suit `parametres_modifier` : écran testé en droit d'écrire.
+vi.mock('../../features/parametres/useCanModifierParametres', () => ({ useCanModifierParametres: () => true }))
 import SavParametresPage from './SavParametresPage'
 
 const monter = () => render(<MemoryRouter><ThemeProvider><SavParametresPage /></ThemeProvider></MemoryRouter>)

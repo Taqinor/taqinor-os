@@ -110,3 +110,37 @@ class SlaEditionTests(TestCase):
         self._patch({'description': 'Précision du client.'})
         self.assertEqual(self.ticket.sla_due_at, self.today + timedelta(days=5))
         self.assertTrue(self.ticket.sla_pre_alert_notifiee)
+
+    def test_ecriture_sla_et_supervision_exige_parametres_modifier(self):
+        # ADRG46 (D-ADRG-5) — délais SLA et réglage de supervision : `parametres_modifier`.
+        from decimal import Decimal
+
+        from apps.monitoring.models import MonitoringSettings
+        from apps.parametres.models import SettingsAuditLog
+        from apps.roles import permissions_registre as reg
+        from apps.roles.models import Role
+
+        def api(nom, perms):
+            role = Role.objects.create(company=self.company, nom=f'{nom} ADRG46',
+                                       permissions=list(perms)) if perms is not None else None
+            client = APIClient()
+            client.force_authenticate(User.objects.create_user(
+                username=f'adrg46_{nom}', password='x', company=self.company,
+                role=role, role_legacy='responsable'))
+            return client
+        gestes = (('/api/django/sav/sla-settings/', {'sla_resolution_days': 3}),
+                  ('/api/django/monitoring/settings/', {'underperf_threshold_pct': '30'}))
+        journal = SettingsAuditLog.objects.count()
+        refuses = (('comresp', reg.COMMERCIAL_RESP_PERMISSIONS), ('tech', reg.TECHNICIEN_PERMISSIONS),
+                   ('techresp', reg.TECHNICIEN_RESP_PERMISSIONS), ('resp', reg.RESPONSABLE_PERMISSIONS))
+        for nom, perms in refuses:
+            client = api(nom, perms)
+            for url, corps in gestes:
+                self.assertEqual(client.post(url, corps, format='json').status_code, 403, (nom, url))
+        self.assertEqual(SavSlaSettings.get(self.company).sla_resolution_days, 7)
+        self.assertEqual(MonitoringSettings.get(self.company).underperf_threshold_pct, Decimal('20'))
+        self.assertEqual(SettingsAuditLog.objects.count(), journal)
+        for nom, perms in (('dir', reg.DIRECTEUR_PERMISSIONS), ('legacy', None)):
+            client = api(nom, perms)
+            for url, corps in gestes:
+                self.assertEqual(client.post(url, corps, format='json').status_code, 200, (nom, url))

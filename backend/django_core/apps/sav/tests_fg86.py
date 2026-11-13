@@ -215,6 +215,30 @@ class TestLienClientAction(TestCase):
         resp = self.api.get(self.url)
         self.assertIn(resp.data['token'], resp.data['url'])
 
+    def test_liens_publics_sav_sur_base_publique(self):
+        """AMSG90 — lien client du ticket, QR de partage et étiquettes publiques
+        bâtis sur PUBLIC_BASE_URL, jamais sur l'hôte de la requête."""
+        from unittest import mock
+
+        from django.test import override_settings
+
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(company=self.company, nom='Onduleur AMSG90',
+                                         sku='OND-AMSG90', prix_vente=6000)
+        eq = Equipement.objects.create(company=self.company, produit=produit, numero_serie='SN-AMSG90')
+        base, hote = 'https://erp.example.invalid', {'HTTP_HOST': 'ancien.example.invalid'}
+        with override_settings(PUBLIC_BASE_URL=base, ALLOWED_HOSTS=['*']):
+            self.assertTrue(self.api.get(self.url, **hote).data['url'].startswith(f'{base}/suivi/'))
+            qr = self.api.get(f'/api/django/sav/equipements/{eq.pk}/partage-qr/', **hote)
+            self.assertTrue(qr.data['url'].startswith(f'{base}/e/'), qr.data)
+            with mock.patch('apps.stock.labels.render_labels_html', return_value='<html></html>') as rendu:
+                self.api.get('/api/django/sav/equipements/etiquettes/', {'ids': eq.pk, 'public': 1}, **hote)
+            self.assertTrue(rendu.call_args.args[0][0]['token'].startswith(f'{base}/e/'))
+        with override_settings(PUBLIC_BASE_URL='', ALLOWED_HOSTS=['*']):
+            self.assertTrue(self.api.get(self.url, **hote).data['url'].startswith(
+                'http://ancien.example.invalid/suivi/'))
+
     def test_url_points_to_public_endpoint(self):
         # XSAV10/XSAV19 — pointe vers la page FRONTEND /suivi/<token>
         # (statut + CSAT), pas l'API JSON brute.
