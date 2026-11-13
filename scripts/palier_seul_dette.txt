@@ -70,10 +70,6 @@ backend/django_core/apps/facturation/views/ligne_facture.py::LigneFactureViewSet
 backend/django_core/apps/facturation/views/ligne_facture.py::LigneFactureViewSet.partial_update
 backend/django_core/apps/facturation/views/ligne_facture.py::LigneFactureViewSet.update
 backend/django_core/apps/facturation/views/paiement.py::PaiementViewSet.envoyer_recu
-backend/django_core/apps/ged/views.py::AclGedViewSet.create
-backend/django_core/apps/ged/views.py::AclGedViewSet.destroy
-backend/django_core/apps/ged/views.py::AclGedViewSet.partial_update
-backend/django_core/apps/ged/views.py::AclGedViewSet.update
 backend/django_core/apps/ged/views.py::AnnotationDocumentViewSet.create
 backend/django_core/apps/ged/views.py::AnnotationDocumentViewSet.destroy
 backend/django_core/apps/ged/views.py::AnnotationDocumentViewSet.partial_update
@@ -156,10 +152,6 @@ backend/django_core/apps/ged/views.py::QuotaStockageViewSet.create
 backend/django_core/apps/ged/views.py::QuotaStockageViewSet.destroy
 backend/django_core/apps/ged/views.py::QuotaStockageViewSet.partial_update
 backend/django_core/apps/ged/views.py::QuotaStockageViewSet.update
-backend/django_core/apps/ged/views.py::RegleAclMetadonneeViewSet.create
-backend/django_core/apps/ged/views.py::RegleAclMetadonneeViewSet.destroy
-backend/django_core/apps/ged/views.py::RegleAclMetadonneeViewSet.partial_update
-backend/django_core/apps/ged/views.py::RegleAclMetadonneeViewSet.update
 backend/django_core/apps/ged/views.py::RegleApprobationGedViewSet.create
 backend/django_core/apps/ged/views.py::RegleApprobationGedViewSet.destroy
 backend/django_core/apps/ged/views.py::RegleApprobationGedViewSet.partial_update
@@ -176,10 +168,6 @@ backend/django_core/apps/ged/views.py::RoutageDocumentaireViewSet.create
 backend/django_core/apps/ged/views.py::RoutageDocumentaireViewSet.destroy
 backend/django_core/apps/ged/views.py::RoutageDocumentaireViewSet.partial_update
 backend/django_core/apps/ged/views.py::RoutageDocumentaireViewSet.update
-backend/django_core/apps/ged/views.py::TamponSocieteViewSet.create
-backend/django_core/apps/ged/views.py::TamponSocieteViewSet.destroy
-backend/django_core/apps/ged/views.py::TamponSocieteViewSet.partial_update
-backend/django_core/apps/ged/views.py::TamponSocieteViewSet.update
 backend/django_core/apps/ged/views.py::TypeChampSignatureViewSet.create
 backend/django_core/apps/ged/views.py::TypeChampSignatureViewSet.destroy
 backend/django_core/apps/ged/views.py::TypeChampSignatureViewSet.partial_update

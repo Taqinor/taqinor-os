@@ -30,6 +30,17 @@ def make_user(company, username, role='admin'):
         username=username, password='x', company=company, role_legacy=role)
 
 
+def make_role_user(company, nom, username):
+    """ADRG75 — compte au rôle LIVRÉ du registre (codes canoniques)."""
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+    role = Role.objects.create(
+        company=company, nom=f'{nom} {username}',
+        permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
+    return User.objects.create_user(
+        username=username, password='x', company=company, role=role)
+
+
 def auth(user):
     api = APIClient()
     api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
@@ -89,14 +100,41 @@ class ServiceTests(ZGed9Base):
 
 
 class ViewTests(ZGed9Base):
+    def setUp(self):
+        super().setUp()
+        # ADRG75 (D-ADRG-7) — poser un verrou exige `ged_gerer` : le poseur
+        # est un Technicien du registre (porteur de `ged_gerer`).
+        self.poseur = make_role_user(self.co_a, 'Technicien', 'zged9-poseur-a')
+
+    def test_viewer_ne_verrouille_ni_n_extrait(self):
+        viewer = make_role_user(self.co_a, 'Viewer', 'zged9-viewer-a')
+        base = f'/api/django/ged/documents/{self.doc.pk}'
+        for geste in ('check-out', 'verrouiller'):
+            with self.subTest(geste=geste):
+                self.assertEqual(
+                    auth(viewer).post(f'{base}/{geste}/').status_code, 403)
+        self.doc.refresh_from_db()
+        self.assertFalse(self.doc.is_locked)
+        self.assertFalse(self.doc.est_verrouille_avertissement)
+        # Le Viewer lit toujours le document ; libérer reste ouvert.
+        self.assertEqual(auth(viewer).get(f'{base}/').status_code, 200)
+        for geste in ('check-in', 'deverrouiller'):
+            with self.subTest(geste=geste):
+                self.assertNotEqual(
+                    auth(viewer).post(f'{base}/{geste}/').status_code, 403)
+        for geste in ('check-out', 'verrouiller'):
+            with self.subTest(technicien=geste):
+                self.assertEqual(auth(self.poseur).post(
+                    f'{base}/{geste}/').status_code, 200)
+
     def test_verrouiller_affiche_avertissement_a_tous(self):
-        api = auth(self.autre_a)
+        api = auth(self.poseur)
         resp = api.post(
             f'/api/django/ged/documents/{self.doc.pk}/verrouiller/',
             {'motif': 'Édition'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(resp.data['est_verrouille_avertissement'])
-        self.assertEqual(resp.data['verrou_avertissement_par_nom'], 'zged9-autre-a')
+        self.assertEqual(resp.data['verrou_avertissement_par_nom'], 'zged9-poseur-a')
         # Lecture par un autre utilisateur reste possible pendant le verrou.
         api_admin = auth(self.admin_a)
         resp_get = api_admin.get(f'/api/django/ged/documents/{self.doc.pk}/')
@@ -104,7 +142,7 @@ class ViewTests(ZGed9Base):
         self.assertTrue(resp_get.data['est_verrouille_avertissement'])
 
     def test_verrouille_par_autre_conflit_409(self):
-        api_autre = auth(self.autre_a)
+        api_autre = auth(self.poseur)
         api_autre.post(f'/api/django/ged/documents/{self.doc.pk}/verrouiller/')
         api_admin = auth(self.admin_a)
         resp = api_admin.post(
@@ -113,7 +151,7 @@ class ViewTests(ZGed9Base):
 
     def test_deverrouiller_par_tiers_403(self):
         tiers = make_user(self.co_a, 'zged9-tiers-a2', 'normal')
-        api_autre = auth(self.autre_a)
+        api_autre = auth(self.poseur)
         api_autre.post(f'/api/django/ged/documents/{self.doc.pk}/verrouiller/')
         api_tiers = auth(tiers)
         resp = api_tiers.post(
