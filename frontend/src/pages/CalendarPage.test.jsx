@@ -84,3 +84,24 @@ describe('ATST11 — CalendarPage : régénérer le lien d’abonnement', () => 
       'Régénération du lien impossible.')
   })
 })
+
+describe('AERR109 — CalendarPage : lecture rejetée ≠ mois vide', () => {
+  it('lecture rejetée : jamais « Aucun évènement ce mois-ci », avis + Réessayer', async () => {
+    reportingApi.getCalendar.mockRejectedValueOnce(new Error('500'))
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <ThemeProvider>
+          <ConfirmProvider>
+            <CalendarPage />
+          </ConfirmProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('calendrier-lecture-echec')).toHaveTextContent('Calendrier indisponible')
+    expect(screen.queryByText('Aucun évènement ce mois-ci')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.queryByTestId('calendrier-lecture-echec')).not.toBeInTheDocument())
+    expect(await screen.findByText('Aucun évènement ce mois-ci')).toBeInTheDocument()
+  })
+})
