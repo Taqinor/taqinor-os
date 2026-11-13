@@ -18,6 +18,7 @@ import parametresApi from '../../api/parametresApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { useConfirmDialog } from '../../ui/confirm'
 
 // Icône (chemins bruts) de la section — un toit et un rayon.
 const REAL_ICON = <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></>
@@ -54,6 +55,7 @@ const SEGMENTS = [
 const CLASSE_SELECT = 'h-9 w-full rounded-md border border-input bg-card px-2 text-sm'
 
 export default function RealisationsSection() {
+  const { confirmDelete } = useConfirmDialog()
   const [rows, setRows] = useState(null)
   const [draft, setDraft] = useState(BROUILLON_VIDE)
 
@@ -102,6 +104,8 @@ export default function RealisationsSection() {
     }
   }
   const remove = async (row) => {
+    // AERR66 — la boîte nomme la réalisation avant toute suppression.
+    if (!await confirmDelete({ title: `Supprimer la réalisation « ${row.titre} » ?`, description: `« ${row.titre} » sera définitivement supprimé.` })) return
     try { await parametresApi.deleteRealisation(row.id); load() }
     catch (e) { console.warn('Suppression impossible.', e) }
   }

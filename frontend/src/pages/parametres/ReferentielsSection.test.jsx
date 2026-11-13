@@ -42,6 +42,7 @@ import { toast } from '../../ui/confirm'
 beforeEach(() => {
   parametresApi.getTauxTva.mockClear()
   parametresApi.createUniteMesure.mockClear()
+  parametresApi.deleteUniteMesure.mockClear()
 })
 afterEach(() => cleanup())
 
@@ -101,6 +102,22 @@ describe('WIR66 ReferentielsSection', () => {
     expect(codeInput.value).toBe('kg') // la saisie reste
     erreur.mockRestore()
     alerte.mockRestore()
+  })
+
+  it('Supprimer puis Annuler : aucune suppression ; confirmer : un appel (AERR66)', async () => {
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await renderSection()
+    await screen.findByText('Mètre')
+    const scope = screen.getByTestId('ref-unites')
+    const supprimer = within(scope).getByTitle('Supprimer')
+    fireEvent.click(supprimer)
+    await waitFor(() => expect(confirmer).toHaveBeenCalled())
+    expect(confirmer.mock.calls[0][0]).toContain('Mètre')
+    expect(parametresApi.deleteUniteMesure).not.toHaveBeenCalled()
+    confirmer.mockReturnValue(true)
+    fireEvent.click(supprimer)
+    await waitFor(() => expect(parametresApi.deleteUniteMesure).toHaveBeenCalledTimes(1))
+    confirmer.mockRestore()
   })
 
   it('lit TOUTES les pages des trois référentiels (51 objets ⇒ le 51e est affiché)', async () => {

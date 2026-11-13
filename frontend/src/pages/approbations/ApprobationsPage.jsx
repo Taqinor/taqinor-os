@@ -647,6 +647,7 @@ function ApprobationsFileTab() {
 // approbateur décide. Le backend (automation) porte toute la logique et la
 // séparation des tâches (SOD) ; cet onglet n'est que l'UI qui manquait.
 function DemandesAdHocTab() {
+  const { confirmDelete } = useConfirmDialog()
   const currentUserId = useSelector((s) => s.auth.user?.id)
   const [types, setTypes] = useState([])
   const [demandes, setDemandes] = useState([])
@@ -785,6 +786,8 @@ function DemandesAdHocTab() {
   // serveur) : un 403 (responsable/normal) est toléré proprement, jamais un
   // crash — même patron que les autres refus de séparation des tâches ici.
   const supprimerType = async (type) => {
+    // AERR66 — la boîte nomme le type avant toute suppression.
+    if (!await confirmDelete({ title: `Supprimer le type de demande « ${type.nom} » ?`, description: `« ${type.nom} » sera définitivement supprimé.` })) return
     setBusy(true)
     try {
       await automationApi.deleteApprovalRequestType(type.id)
