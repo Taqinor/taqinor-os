@@ -541,6 +541,76 @@ class TourReelCartesTests(unittest.TestCase):
         groq, _ = svc._contenu_systeme("groq", True, copilote=True)
         self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, groq)
 
+    def test_outils_appeles_complets_et_limite_en_francais(self):
+        """COP-B4 (b, c) — `outils_appeles` porte AUSSI les outils SQL et le
+        signalement ; la limite d'iterations rend une phrase francaise."""
+        from langchain_core.messages import AIMessage
+        sortie, _, _ = _tour(
+            [_appel_outil("sql_db_query", {"query": "SELECT nom FROM crm_client"}),
+             _appel_outil("report_gap", {"intention": "manque", "resume": "x"}, "a2"),
+             _appel_outil("crm_lead_list", {}, "a3"), AIMessage(content="Fini.")],
+            catalogue=[_CAT_LEAD_LIST], ctx=_ctx())
+        self.assertEqual(sortie["outils_appeles"],
+                         ["sql_db_query", "report_gap", "crm.lead.list"])
+        boucle = [_appel_outil("sql_db_schema", {"table_names": "crm_client"}, f"s{i}")
+                  for i in range(12)]
+        sortie, _, _ = _tour(boucle)
+        self.assertTrue(sortie["answer"].startswith("Je n'ai pas fini"))
+        self.assertNotIn("Agent stopped", sortie["answer"])
+
+    def test_erreur_de_configuration_jamais_montree(self):
+        """COP-B4 (a) — une RuntimeError de configuration : message francais
+        generique au commercial, detail technique dans l'evenement `bug`."""
+        import asyncio
+        from app.services import sql_agent_service as svc
+        journal, service = [], svc.SQLAgentService()
+
+        def sans_cle(provider=None):
+            raise RuntimeError("CLAUDE_API_KEY manquante dans .env")
+        with mock.patch.multiple(service, _load_history=lambda uid: [],
+                                 _get_relevant_tables=lambda q: ["crm_client"]), \
+                mock.patch.object(svc.SQLAgentService, "_build_llm", staticmethod(sans_cle)), \
+                mock.patch.object(_ep._database, "create_sql_agent_engine", lambda: None), \
+                mock.patch.object(svc, "_apply_tenant_guc", lambda db, cid: None), \
+                mock.patch("langchain_community.utilities.SQLDatabase", mock.MagicMock()), \
+                mock.patch.object(_at, "journaliser_evenement_assistant",
+                                  lambda ctx, corps: journal.append(corps) or 1):
+            out = asyncio.run(service.query("Bonjour", 1, 7, None))
+        self.assertNotIn("CLAUDE_API_KEY", out["answer"])
+        self.assertIn("pas disponible", out["answer"])
+        self.assertEqual(journal[0]["intention"], "bug")
+        self.assertIn("CLAUDE_API_KEY", journal[0]["erreur"]["message"])
+
+    def test_evenement_porte_tampon_request_id_et_ecritures_de_cache(self):
+        """COP-B4 (d, e) — `tokens.cache_write` compte a part ; un evenement
+        `bug` / `manque` porte le tampon du navigateur et l'id de requete
+        connu du relais ; une `donnee` ne le porte pas."""
+        from langchain_core.messages import AIMessage
+        from langchain_core.outputs import ChatGeneration, LLMResult
+        from app.services import sql_agent_service as svc
+        capture = svc._SQLCapture()
+        capture.on_llm_end(LLMResult(generations=[[ChatGeneration(message=AIMessage(
+            content="", usage_metadata={
+                "input_tokens": 1000, "output_tokens": 40, "total_tokens": 1040,
+                "input_token_details": {"cache_read": 600, "cache_creation": 300}}))]]))
+        self.assertEqual(capture.tokens, {"cache_read": 600, "cache_write": 300,
+                                          "input": 100, "output": 40})
+        intention, erreur = svc._intention_et_erreur([{
+            "type": "erreur", "status": 500, "outil": "crm.lead.note",
+            "message": "x", "request_id": "f" * 32}], "donnee")
+        self.assertEqual((intention, erreur["request_id"]), ("bug", "f" * 32))
+        diag = {"version": "a1", "requetes": [], "erreurs": []}
+        envoyes = []
+        with mock.patch.object(_at, "journaliser_evenement_assistant",
+                               lambda ctx, corps: envoyes.append(corps) or 1):
+            for intention in ("manque", "donnee"):
+                svc.SQLAgentService._journaliser(
+                    "q", {"intention": intention}, None, {"diagnostic": diag})
+        self.assertEqual(envoyes[0]["erreur"]["diagnostic"], diag)
+        self.assertEqual(envoyes[0]["erreur"]["outil"], "report_gap")
+        self.assertIsNone(envoyes[1]["erreur"])
+        self.assertEqual(envoyes[1]["tokens"]["cache_write"], 0)
+
     def test_references_bornees_a_300_caracteres(self):
         from app.services import relais_copilote as relais
         lignes = [{"lead_id": 1000 + i, "touche_id": 5000 + i} for i in range(60)]

@@ -394,8 +394,11 @@ def _intention_et_erreur(sorties: list[dict[str, Any]],
     erreurs = [s for s in sorties or [] if s.get("type") == "erreur"]
     if erreurs:
         e = erreurs[-1]
-        return "bug", {"status": e.get("status"), "outil": e.get("outil"),
-                       "message": e.get("message")}
+        erreur = {"status": e.get("status"), "outil": e.get("outil"),
+                  "message": e.get("message")}
+        if e.get("request_id"):  # COP-B4 — id de la requete Django (relais)
+            erreur["request_id"] = str(e["request_id"])[:64]
+        return "bug", erreur
     signales = [s for s in sorties or [] if s.get("type") == "signalement"]
     if signales:
         s = signales[-1]
@@ -1191,26 +1194,34 @@ class _SQLCapture(BaseCallbackHandler):
         self._action_names = action_tool_names or set()
         self.action_used = False
         self.actions: list[str] = []          # AIC6 — noms d'outils appeles
-        self.tokens = {"cache_read": 0, "input": 0, "output": 0}
+        # COP-B4 — TOUS les outils appeles (SQL et `report_gap` compris).
+        self.outils: list[str] = []
+        self.tokens = {"cache_read": 0, "cache_write": 0, "input": 0,
+                       "output": 0}
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         """AIC6 — somme l'usage de CHAQUE appel du modele de la requete
-        (cache_read separe ; `input` = entree hors lecture de cache)."""
+        (cache_read separe ; `input` = entree hors cache). COP-B4 : les
+        ECRITURES de cache (facturees plus cher) ne sont plus comptees en
+        entree simple : `cache_write`."""
         for gens in getattr(response, "generations", None) or []:
             for gen in gens:
                 usage = getattr(getattr(gen, "message", None),
                                 "usage_metadata", None) or {}
-                lu = int((usage.get("input_token_details") or {})
-                         .get("cache_read") or 0)
+                details = usage.get("input_token_details") or {}
+                lu = int(details.get("cache_read") or 0)
+                ecrit = int(details.get("cache_creation") or 0)
                 self.tokens["cache_read"] += lu
+                self.tokens["cache_write"] += ecrit
                 self.tokens["input"] += max(
-                    int(usage.get("input_tokens") or 0) - lu, 0)
+                    int(usage.get("input_tokens") or 0) - lu - ecrit, 0)
                 self.tokens["output"] += int(usage.get("output_tokens") or 0)
 
     def on_tool_start(
         self, serialized: dict, input_str: str, **kwargs: Any
     ) -> None:
         name = serialized.get("name")
+        self.outils.append(name)
         if name == "sql_db_query":
             self.queries.append(str(input_str))
         elif name in self._action_names:
@@ -1261,8 +1272,11 @@ def _est_refus_fournisseur(exc: BaseException) -> bool:
     if isinstance(exc, anthropic.APIStatusError):
         if exc.status_code >= 500:
             return True
-        # Solde de credits nul : 400 « credit balance is too low ».
-        return bool(re.search(r"credit|billing|balance", str(exc), re.I))
+        # Solde de credits nul : 400 « credit balance is too low » ; COP-B4 :
+        # plafond de depense de l'espace de travail, 400 « You have reached
+        # your specified API usage limits ».
+        return bool(re.search(r"credit|billing|balance|usage limits?",
+                              str(exc), re.I))
     return False
 
 
@@ -1605,8 +1619,8 @@ class SQLAgentService:
                 raise _RefusFournisseur(str(exc)) from exc
             raise
 
-        answer, intention = _extraire_intention(
-            result.get("output", "Aucune reponse obtenue."))
+        answer, intention = _extraire_intention(relais.sortie_lisible(
+            result.get("output", "Aucune reponse obtenue.")))
         intention, erreur = _intention_et_erreur(action_outputs, intention)
         # COP-B1 — TOUTES les sorties structurees du tour, dans l'ordre.
         cartes = construire_cartes(action_outputs)
@@ -1642,7 +1656,7 @@ class SQLAgentService:
             # AIC6 — matiere de l'evenement (journalise par `query`).
             "intention": intention,
             "erreur": erreur,
-            "outils_appeles": [cle_par_outil.get(n, n) for n in capture.actions],
+            "outils_appeles": [cle_par_outil.get(n, n) for n in capture.outils],
             "tokens": dict(capture.tokens),
         }
 
@@ -1706,6 +1720,7 @@ class SQLAgentService:
                      action_ctx: "ActionContext | None",
                      contexte: dict | None = None) -> int | None:
         from app.services.action_tools import journaliser_evenement_assistant
+        from app.services import relais_copilote as relais
         contexte = contexte or {}
         corps = {
             "intention": out.get("intention") or "donnee",
@@ -1714,13 +1729,14 @@ class SQLAgentService:
             "ecran": str(contexte.get("ecran") or "")[:255],
             "lead_id": contexte.get("lead_id"),
             "outils_appeles": list(out.get("outils_appeles") or []),
-            "erreur": out.get("erreur"),
+            "erreur": relais.erreur_de_l_evenement(
+                out.get("intention"), out.get("erreur"), contexte),
             "modele": out.get("modele")
             or _modele_effectif(SQL_AGENT_PROVIDER.lower()),
             "repli": bool(out.get("repli")),
             "manuel_present": bool(out.get("manuel_present")),
-            "tokens": dict(out.get("tokens")
-                           or {"cache_read": 0, "input": 0, "output": 0}),
+            "tokens": dict(out.get("tokens") or {
+                "cache_read": 0, "cache_write": 0, "input": 0, "output": 0}),
         }
         try:
             return journaliser_evenement_assistant(action_ctx, corps)
@@ -1763,7 +1779,7 @@ class SQLAgentService:
                 return {**out, "repli": True,
                         "modele": _modele_effectif(repli)}
         except RuntimeError as exc:
-            return {"answer": str(exc), "sql_query": "", "data": None}
+            return relais.reponse_configuration(exc)
         except Exception as exc:
             err_str = str(exc)
             logger.error("SQL agent error: %s", exc)

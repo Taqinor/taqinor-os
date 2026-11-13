@@ -10,6 +10,7 @@ Les imports de `sql_agent_service` sont locaux (il importe ce module).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
 from app.services import cartes as _cartes
@@ -30,6 +31,50 @@ REFERENCES_MAX = 300
 DIAG_MAX_REQUETES = 15
 DIAG_MAX_ERREURS = 10
 _DIAG_TEXTE = 200
+
+
+# ── COP-B4 — erreurs et mesures dites juste ──────────────────────────────────
+
+#: Texte rendu par LangChain à la limite d'itérations (anglais, inutile).
+_ARRET_DU_CADRE = re.compile(r"^\s*Agent stopped due to", re.I)
+MESSAGE_LIMITE = (
+    "Je n'ai pas fini : ta demande m'a demandé trop d'étapes d'un coup. "
+    "Découpe-la (une fiche, une touche ou un devis à la fois) ou précise le "
+    "nom du lead, et je reprends.")
+MESSAGE_CONFIGURATION = (
+    "L'assistant n'est pas disponible pour le moment (réglage du serveur). "
+    "Le problème est signalé à l'administrateur ; réessaie plus tard.")
+
+
+def sortie_lisible(sortie):
+    """Sortie du modèle, ou phrase française utile si le cadre s'est arrêté
+    sur la limite d'itérations."""
+    if isinstance(sortie, str) and _ARRET_DU_CADRE.match(sortie):
+        return MESSAGE_LIMITE
+    return sortie
+
+
+def reponse_configuration(exc: BaseException) -> dict[str, Any]:
+    """Une `RuntimeError` de configuration (clé absente, fournisseur inconnu)
+    n'est jamais montrée au commercial : message générique, et le détail
+    technique part dans l'événement `bug`."""
+    logger.error("Assistant : configuration invalide : %s", exc)
+    return {"answer": MESSAGE_CONFIGURATION, "sql_query": "", "data": None,
+            "intention": "bug", "erreur": {
+                "status": 503, "outil": "configuration",
+                "message": str(exc)[:200]}}
+
+
+def erreur_de_l_evenement(intention: Optional[str], erreur: Optional[dict],
+                          contexte: Optional[dict]) -> Optional[dict]:
+    """L'événement d'un signalement `bug` / `manque` porte le tampon
+    technique reçu du navigateur (déjà borné par l'endpoint) — jamais une
+    donnée fournie par le modèle."""
+    diagnostic = (contexte or {}).get("diagnostic")
+    if intention not in ("bug", "manque") or not diagnostic:
+        return erreur
+    base = erreur or {"status": 0, "outil": "report_gap", "message": ""}
+    return {**base, "diagnostic": diagnostic}
 
 
 def catalogue_du_tour(ctx) -> list[dict]:

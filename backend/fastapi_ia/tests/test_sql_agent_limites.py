@@ -322,6 +322,29 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertEqual(construits, ["claude", "groq"])
         self.assertTrue(any("credit balance" in m for m in logs.output))
 
+    def test_repli_sur_plafond_de_depense(self):
+        """COP-B4 (f) — le plafond de depense de l'espace de travail (400
+        « specified API usage limits ») declenche le repli comme les credits ;
+        une autre erreur 400 non."""
+        import anthropic
+        import httpx
+        refuse, _credit_nul, groq = _llm_factices()
+
+        def erreur_400(message):
+            return anthropic.BadRequestError(message, response=httpx.Response(
+                400, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")),
+                body=None)
+        plafond = erreur_400("You have reached your specified API usage limits. "
+                             "You will regain access on 2026-12-01 at 00:00 UTC.")
+        self.assertTrue(self.svc._est_refus_fournisseur(plafond))
+        self.assertFalse(self.svc._est_refus_fournisseur(
+            erreur_400("messages.0.content: field required")))
+        construits = self._poser(lambda: refuse(messages=iter([]), erreur=plafond), groq)
+        with self.assertLogs(self.svc.logger, level="WARNING"):
+            out = self._question()
+        self.assertEqual((out["answer"], out["repli"]), ("Reponse du repli.", True))
+        self.assertEqual(construits, ["claude", "groq"])
+
     def test_pas_de_repli_sur_erreur_outil(self):
         refuse, _credit_nul, groq = _llm_factices()
         construits = self._poser(
