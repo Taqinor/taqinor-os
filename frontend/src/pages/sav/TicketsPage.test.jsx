@@ -417,3 +417,27 @@ describe('TicketDetail — AERR82 retrait de pièce confirmé', () => {
     savApi.getTicketPieces.mockImplementation(() => Promise.resolve({ data: [] }))
   }, 60000)
 })
+
+/* ACNC26 — « Retirer » d'une pièce est désactivé pendant l'envoi (un double
+   clic ne lance jamais deux retraits de la même pièce). */
+describe('TicketDetail — ACNC26 retrait de pièce non doublé', () => {
+  it('« Retirer » désactivé pendant l'envoi', async () => {
+    savApi.getTicketPieces.mockResolvedValue({
+      data: [{ id: 31, produit_nom: 'Fusible 15 A', quantite: 2, stock_decremente: true }],
+    })
+    let finir
+    savApi.removeTicketPiece = vi.fn(() => new Promise((ok) => { finir = ok }))
+    render(<Provider store={storeAdrg22([], 'admin')}><MemoryRouter><ConfirmProvider>
+      <TicketDetail ticket={T1} onClose={() => {}} onSaved={() => {}} />
+    </ConfirmProvider></MemoryRouter></Provider>)
+    const ligne = (await screen.findByText(/Fusible 15 A/)).closest('li')
+    fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(savApi.removeTicketPiece).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(within(ligne).getByRole('button', { name: /Retirer/ })).toBeDisabled())
+    finir({ data: {} })
+    savApi.getTicketPieces.mockReset()
+    savApi.getTicketPieces.mockImplementation(() => Promise.resolve({ data: [] }))
+  }, 60000)
+})

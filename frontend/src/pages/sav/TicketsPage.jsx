@@ -350,6 +350,10 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
   const [pieceForm, setPieceForm] = useState(
     { produit: '', quantite: '1', decrement: false })
   const [pieceBusy, setPieceBusy] = useState(false)
+  // ACNC26 — clé de pose créée à l'ouverture du formulaire, renouvelée au succès ;
+  // retrait en cours (« Retirer » désactivé pendant l'envoi).
+  const [clePiece, setClePiece] = useState(() => globalThis.crypto?.randomUUID?.())
+  const [retraitEnCours, setRetraitEnCours] = useState(null)
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [motif, setMotif] = useState('')
   const [confirmVide, setConfirmVide] = useState(false) // L300 — confirmation motif vide
@@ -696,7 +700,8 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
         produit: pieceForm.produit,
         quantite: pieceForm.quantite || '1',
         decrement: pieceForm.decrement,
-      })
+      }, { idempotencyKey: clePiece })
+      setClePiece(globalThis.crypto?.randomUUID?.())
       setPieceForm({ produit: '', quantite: '1', decrement: false })
       loadPieces()
       loadHistorique()
@@ -708,11 +713,12 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     // AERR82 — confirmation qui nomme la pièce et la quantité.
     if (!await confirmer({ title: `Retirer ${p.produit_nom} × ${p.quantite} de ce ticket ?`, confirmLabel: 'Retirer', destructive: true })) return
     setActionError(null)
+    setRetraitEnCours(p.id)
     try {
       await savApi.removeTicketPiece(id, p.id)
       loadPieces()
       loadHistorique()
-    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) }
+    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) } finally { setRetraitEnCours(null) }
   }
 
   const annuler = async () => {
@@ -1205,7 +1211,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
                     {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''} × {p.quantite}
                     {p.stock_decremente && <Badge tone="info" className="ml-2">stock −</Badge>}
                   </span>
-                  {peutGerer && <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p)}>
+                  {peutGerer && <Button type="button" variant="ghost" size="sm" loading={retraitEnCours === p.id} onClick={() => removePiece(p)}>
                     <Trash2 /> Retirer
                   </Button>}
                 </li>
