@@ -135,8 +135,6 @@ const adsengineApi = {
     log: (params) => api.get('/adsengine/actions/', { params }),
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
-    // AERR24 — retire l'approbation (approuvée non appliquée → proposée).
-    desapprouver: (id) => api.post(`/adsengine/actions/${id}/desapprouver/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
     // WIR208 — APPLIQUER une action DÉJÀ APPROUVÉE
     // (`EngineActionViewSet.apply`, views.py:1530 → `services.apply_action`).

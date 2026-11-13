@@ -170,23 +170,6 @@ class EngineActionApiGatingTests(TestCase):
         self.assertEqual(ok.status_code, 200, ok.data)
         self.assertEqual(ok.data['status'], 'approuvee')
 
-    def test_desapprouver_approuvee_redevient_proposee(self):
-        """AERR24 (D-AERR-1) — desapprouver : approuvee ⇒ proposee ; sans
-        droit 403 ; appliquee 400."""
-        action_id = self._propose_via_api(self.manager).data['id']
-        auth(self.approver).post(f'{BASE}{action_id}/approve/')
-        url = f'{BASE}{action_id}/desapprouver/'
-        self.assertEqual(auth(self.manager).post(url).status_code, 403)
-        ok = auth(self.approver).post(url)
-        self.assertEqual(ok.status_code, 200, ok.data)
-        self.assertEqual(ok.data['status'], 'proposee')
-        relue = EngineAction.objects.get(id=action_id)
-        self.assertEqual((relue.status, relue.approved_by_id), ('proposee', None))
-        EngineAction.objects.filter(id=action_id).update(status='appliquee')
-        refus = auth(self.approver).post(url)
-        self.assertEqual(refus.status_code, 400, refus.data)
-        self.assertEqual(EngineAction.objects.get(id=action_id).status, 'appliquee')
-
     def test_status_cannot_be_patched_directly(self):
         action_id = self._propose_via_api(self.manager).data['id']
         auth(self.manager).patch(

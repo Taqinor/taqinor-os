@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
-  Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw, PlayCircle, Undo2,
+  Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw, PlayCircle,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { toastWithUndo } from '../../lib/toast'
 import { useConfirmDialog } from '../../ui/confirm'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 import {
@@ -206,24 +205,10 @@ export default function ApprovalsScreen() {
       const r = await adsengineApi.actions.approve(id)
       // La carte RESTE : approuvée n'est pas appliquée (WIR208).
       mergeAction(id, r?.data)
-      return true
     } catch (e) {
       // AACQ73 — la raison RENVOYÉE par le serveur (403 quatre yeux, 400…),
       // jamais une cause devinée.
       setErr(`${erreurServeur(e, 'Approbation refusée.')} L'action reste dans la boîte.`)
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }, [mergeAction])
-
-  // AERR24 (D-AERR-1) — retirer l'approbation tant que l'action n'est pas appliquée.
-  const desapprouver = useCallback(async (id) => {
-    setBusy(true); setErr('')
-    try {
-      mergeAction(id, (await adsengineApi.actions.desapprouver(id))?.data)
-    } catch (e) {
-      setErr(`${erreurServeur(e, "Retrait de l'approbation refusé.")} L'action reste approuvée.`)
     } finally {
       setBusy(false)
     }
@@ -323,9 +308,7 @@ export default function ApprovalsScreen() {
           title: `Approuver : ${actionTypeLabel(current.type)} ?`,
           description: current.reason_fr || '',
           confirmLabel: 'Confirmer', cancelLabel: 'Annuler', destructive: false,
-        }).then((ok) => ok && approve(current.id)).then((fait) => fait && toastWithUndo({
-          message: 'Action approuvée', onUndo: () => desapprouver(current.id),  // AERR24 — « Annuler » = désapprouver
-        }))
+        }).then((ok) => { if (ok) approve(current.id) })
       } else if (key === 'r') {
         // PUB10 — même garde que le bouton Rejeter.
         if (!canApprove) return
@@ -336,7 +319,7 @@ export default function ApprovalsScreen() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveFocus, approve, desapprouver, openReject, canApprove, confirm])
+  }, [moveFocus, approve, openReject, canApprove, confirm])
 
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
@@ -653,15 +636,6 @@ export default function ApprovalsScreen() {
                               style={{ alignSelf: 'center', color: '#166534', fontSize: '0.85rem' }}>
                               Approuvée — en attente d&apos;application
                             </span>
-                          )}
-                          {isApproved && (
-                            <button type="button" className="btn btn-secondary ae-desapprouver"
-                              data-testid={`ae-desapprouver-${a.id}`} disabled={busy || !canApprove}
-                              onClick={() => desapprouver(a.id)}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                                minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
-                              <Undo2 size={15} aria-hidden="true" /> Retirer l&apos;approbation
-                            </button>
                           )}
                         </div>
 

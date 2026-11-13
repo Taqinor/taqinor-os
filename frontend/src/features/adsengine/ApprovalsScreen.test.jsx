@@ -14,9 +14,6 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   // WIR208 — application RÉELLE d'une action approuvée (POST .../apply/).
   apply: vi.fn(),
-  // AERR24 — retrait de l'approbation + toast « Annuler » après « a ».
-  desapprouver: vi.fn(),
-  toastWithUndo: vi.fn(),
   // AACQ63 — devise du compte publicitaire (connexion).
   connection: vi.fn(),
   // PUB10 — permissions effectives ; pleines par défaut (préserve le
@@ -28,7 +25,7 @@ vi.mock('./adsengineApi', () => ({
   default: {
     actions: {
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
-      create: mocks.create, apply: mocks.apply, desapprouver: mocks.desapprouver,
+      create: mocks.create, apply: mocks.apply,
     },
     connection: { get: mocks.connection },
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
@@ -39,10 +36,6 @@ vi.mock('./adsengineApi', () => ({
     campaigns: { list: () => Promise.resolve({ data: [] }) },
     metrics: { adsCockpit: () => Promise.resolve({ data: [] }) },
   },
-}))
-
-vi.mock('../../lib/toast', async (importOriginal) => ({
-  ...(await importOriginal()), toastWithUndo: mocks.toastWithUndo,
 }))
 
 vi.mock('./useAdsPermissions', () => ({
@@ -83,7 +76,6 @@ beforeEach(() => {
   mocks.pending.mockResolvedValue({ data: ACTIONS })
   mocks.approve.mockImplementation((id) => Promise.resolve(approved(id)))
   mocks.apply.mockImplementation((id) => Promise.resolve(applied(id)))
-  mocks.desapprouver.mockImplementation((id) => Promise.resolve({ data: { id, status: 'proposee' } }))
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
   mocks.connection.mockResolvedValue({ data: { currency: 'MAD' } })
@@ -182,12 +174,6 @@ describe('ApprovalsScreen (ENG25)', () => {
     await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
     expect(await screen.findByTestId('ae-apply-21')).toBeInTheDocument()
     expect(screen.queryByTestId('ae-approve-21')).toBeNull()
-    // AERR24 — et « Retirer l'approbation » : la carte redevient « Approuver / Rejeter ».
-    fireEvent.click(screen.getByTestId('ae-desapprouver-21'))
-    await waitFor(() => expect(mocks.desapprouver).toHaveBeenCalledWith(21))
-    expect(await screen.findByTestId('ae-approve-21')).toBeInTheDocument()
-    expect(screen.getByTestId('ae-reject-21')).toBeInTheDocument()
-    expect(screen.queryByTestId('ae-apply-21')).toBeNull()
   })
 
   it('rejeter est STRUCTURÉ (motif via select, jamais de chat) et retire l\'action', async () => {
@@ -477,10 +463,6 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
     expect(mocks.approve).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))
-    // AERR24 — le toast qui suit porte « Annuler » = désapprouver.
-    await waitFor(() => expect(mocks.toastWithUndo).toHaveBeenCalled())
-    mocks.toastWithUndo.mock.calls[0][0].onUndo()
-    await waitFor(() => expect(mocks.desapprouver).toHaveBeenCalledWith(12))
   })
 
   it('A : confirmation nommée, Annuler ⇒ aucun approve ; « a » sous une boîte ⇒ rien', async () => {

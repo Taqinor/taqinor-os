@@ -34,7 +34,6 @@ from .models import (
     GuardrailConfig,
     InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
     MetaConnection, ProposalTemplate, ReconciliationSnapshot, RulePolicy,
-    VeilleAnnonceur, VeilleDecouverte,  # PLAN_VEILLE (ajout)
     WeeklyBrief,
 )
 from .serializers import (
@@ -53,7 +52,7 @@ from .serializers import (
     MetaConnectionSerializer, ProposalTemplateSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
-from .desapprobation import DesapprouverActionMixin  # AERR24
+from .models import VeilleAnnonceur, VeilleDecouverte  # PLAN_VEILLE (ajout)
 from .serializers import (  # PLAN_VEILLE (ajout)
     VeilleAnnonceurSerializer, VeilleDecouverteSerializer,
 )
@@ -1832,7 +1831,7 @@ class HasAdsengineApprove(BasePermission):
     _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
     _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
 ]))
-class EngineActionViewSet(DesapprouverActionMixin, AdsengineViewSet):
+class EngineActionViewSet(AdsengineViewSet):
     """ENG7 — Boucle propose→approuve→applique.
 
     Proposer (POST) exige ``adsengine_manage`` ; approuver / rejeter / appliquer
@@ -1854,7 +1853,7 @@ class EngineActionViewSet(DesapprouverActionMixin, AdsengineViewSet):
     # (approve/reject/apply/annuler/proposer) sont des POST.
     http_method_names = ['get', 'post', 'head', 'options']
 
-    _APPROVE_ACTIONS = ('approve', 'reject', 'apply', 'desapprouver')  # AERR24
+    _APPROVE_ACTIONS = ('approve', 'reject', 'apply')
 
     def get_permissions(self):
         if getattr(self, 'action', None) in self._APPROVE_ACTIONS:
