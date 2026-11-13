@@ -424,10 +424,16 @@ def _peut_tout_voir(user):
 def _deja_decide(attente):
     """Le lead a changé de main hors de cet écran (fiche du lead, admin) :
     la décision humaine prime, l'attente n'a plus d'objet. Équipe sans
-    responsable : jamais « décidé » — la tâche attribue la proposition."""
+    responsable : jamais « décidé » — la tâche attribue la proposition.
+    ACEL79 : un lead sorti (corbeille, archivé, perdu, « ne plus contacter »)
+    n'attend plus rien — retiré sans attribution ni notification."""
+    lead = attente.lead  # gestionnaire de base : la corbeille reste lisible
+    if (lead.is_deleted or lead.is_archived or lead.perdu
+            or lead.ne_plus_contacter):
+        return True
     responsable_id = attente.equipe.responsable_id
     return (responsable_id is not None
-            and attente.lead.owner_id != responsable_id)
+            and lead.owner_id != responsable_id)
 
 
 def responsable_change(equipe, ancien_id):
