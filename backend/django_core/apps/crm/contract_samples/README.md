@@ -26,6 +26,9 @@ ce dossier s'écarte du cas nominal.
 | `cadences_echues.json` | la liste « cadences échues à clore » du cockpit, en lecture seule (CAD99, moitié écran de CAD75) |
 | `lead_list.json` | l'enveloppe de la LISTE des leads (`count/next/previous/results`), dict explicite de `LeadViewSet.list()` — `forme_serveur: complete` (CRXB1) |
 | `lead_workspace.json` | les clés réservées à la FICHE lead (`retrieve()`), partiel jusqu'à la liste blanche de CRXB3 (CRXB1) |
+| `assistant_leads_recherche.json` (COP2) | la recherche COMPACTE de leads servie à l'assistant (`crm.lead.chercher`) |
+| `assistant_a_relancer.json` (COP2) | la file « à relancer » servie à l'assistant, avec `touche_id` (AIC30 + COP2) |
+| `assistant_touche.json` (COP2) | une touche prête à traiter : ligne de touche, message validé ou script d'appel, refus (`crm.suivi.preparer_touche`) |
 
 ## Écart 1 — un échantillon peut ne PAS décrire une réponse
 

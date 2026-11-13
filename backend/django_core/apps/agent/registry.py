@@ -26,6 +26,26 @@ RISK_IRREVERSIBLE = 'irreversible'  # destructif / non réversible (suppression�
 
 RISK_CHOICES = frozenset({RISK_INTERNAL, RISK_OUTWARD, RISK_IRREVERSIBLE})
 
+# Carte de résultat — indice de RENDU posé par l'action (contrat
+# ``contract_samples/assistant_reponse.json``). Ensemble FERMÉ : l'écran ne sait
+# rendre que ces cartes (« catalogue contrôlé », jamais une interface écrite par
+# le modèle). ``None`` = carte générique « Action effectuée ». Le relais FastAPI
+# recopie cette valeur telle quelle dans ``cartes[].carte`` ; ``donnees`` y est
+# le corps JSON de l'endpoint de l'action, sans remise en forme.
+CARTES = frozenset({
+    'liste_leads',    # recherche de leads : {total, limite, lignes[]}
+    'file_touches',   # file de suivi : {portee, total, limite, lignes[]}
+    'matin',          # digest du matin : {relances, visites, devis_sans_reponse, …}
+    'fiche_lead',     # résumé d'un lead : {identite, etape, chatter[], devis[], …}
+    'touche',         # une touche prête : {touche, lead, message|appel, refus}
+    'suite_touche',   # touche traitée : étape + prochaine_touche
+    'wa_message',     # texte prêt + lien wa.me (brouillon de suivi)
+    'wa_devis',       # envoi d'un ou plusieurs devis : {wa_url, message, links[]}
+    'document',       # lien vers un PDF client (/proposal)
+    'visite',         # visite planifiée : {visite, prochaine_touche}
+    'diagnostic',     # état technique (admin) : santé, problèmes récents
+})
+
 
 @dataclass(frozen=True)
 class AgentAction:
@@ -44,6 +64,8 @@ class AgentAction:
         ``apps.roles.models.ALL_PERMISSIONS``.
       * ``risk`` — ``internal`` | ``outward`` | ``irreversible``.
       * ``confirm_summary`` — résumé optionnel à montrer avant exécution.
+      * ``carte`` — carte de résultat à rendre (clé de :data:`CARTES`), ou
+        ``None`` pour la carte générique.
     """
 
     key: str
@@ -55,6 +77,7 @@ class AgentAction:
     required_permission: Optional[str] = None
     risk: str = RISK_INTERNAL
     confirm_summary: Optional[str] = None
+    carte: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.risk not in RISK_CHOICES:
@@ -64,6 +87,11 @@ class AgentAction:
             )
         if not self.key:
             raise ValueError('AgentAction: key est obligatoire')
+        if self.carte is not None and self.carte not in CARTES:
+            raise ValueError(
+                f"AgentAction {self.key!r}: carte {self.carte!r} inconnue "
+                f"(attendu l'une de {sorted(CARTES)})"
+            )
 
     def as_dict(self) -> Dict[str, Any]:
         """Représentation sérialisable (catalogue exposé par l'API)."""
@@ -77,6 +105,7 @@ class AgentAction:
             'required_permission': self.required_permission,
             'risk': self.risk,
             'confirm_summary': self.confirm_summary,
+            'carte': self.carte,
         }
 
 

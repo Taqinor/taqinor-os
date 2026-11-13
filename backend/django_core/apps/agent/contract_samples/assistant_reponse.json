@@ -1,0 +1,160 @@
+{
+  "endpoint": "POST /api/fastapi/sql-agent/query",
+  "forme_serveur": "partielle",
+  "pourquoi": "COP1 (PACT10, 13/11/2026) — contrat d'abord de la RÉPONSE de l'assistant, servie par le relais FastAPI (aucune vue Django ne sert cette route : `forme_serveur` partielle, la garde de forme ne compare rien dessus ; les deux moitiés la lisent dans leurs tests). Incident à l'origine : `_build_result_payload` (FastAPI) APLATISSAIT le corps de l'action à la racine de `result` pendant que l'écran lisait `result.data` ; chaque moitié avait ses tests verts sur SA forme et aucune carte d'action interne ne s'affichait (pas de bouton WhatsApp). Ce fichier est le porteur unique : `cartes` est la liste ORDONNÉE de toutes les sorties structurées du tour ; `proposal` et `result` (dernière proposition, dernier résultat aplati) sont conservés tels quels pour un écran resté en cache. Une carte ne vient JAMAIS du texte libre du modèle : l'écran ne lit que `cartes`. `carte` est l'indice de rendu posé par le registre (`AgentAction.carte`, ensemble fermé `apps.agent.registry.CARTES`), `donnees` est le corps JSON de l'endpoint Django de l'action, sans remise en forme (sa forme est donc celle de l'échantillon de CET endpoint, nommé dans `cartes_donnees`).",
+  "champs": {
+    "answer": "texte de la réponse (français), sans la balise d'intention",
+    "sql_query": "toujours \"\" (ERR84)",
+    "data": "toujours null",
+    "action_performed": "booléen : au moins une action du registre exécutée ou proposée ce tour",
+    "proposal": "dernière proposition du tour {action_key, human_preview, confirm_token, inputs} ou null — compatibilité",
+    "result": "dernier résultat du tour, corps de l'action APLATI à la racine avec `action_key` — compatibilité",
+    "cartes": "liste ordonnée (peut être vide) de cartes `resultat` et `proposition` ; forme ci-dessous",
+    "evenement_id": "id de l'événement journalisé (AIC6) ou null",
+    "moteur": "\"langchain\" ou \"natif\" — moteur qui a servi la réponse"
+  },
+  "carte_resultat": {
+    "type": "\"resultat\"",
+    "action_key": "clé du registre",
+    "libelle": "label du registre",
+    "carte": "clé de CARTES ou null (carte générique)",
+    "donnees": "objet : corps JSON de l'endpoint de l'action (liste -> {\"lignes\": [...]})"
+  },
+  "carte_proposition": {
+    "type": "\"proposition\"",
+    "action_key": "clé du registre",
+    "libelle": "label du registre",
+    "apercu": "phrase montrée avant confirmation",
+    "confirm_token": "jeton signé à usage unique, ou null si le stockage est indisponible",
+    "expire_dans_s": "durée de vie du jeton en secondes"
+  },
+  "cartes_donnees": {
+    "liste_leads": "apps/crm/contract_samples/assistant_leads_recherche.json",
+    "file_touches": "apps/crm/contract_samples/assistant_a_relancer.json",
+    "matin": "GET crm/assistant/digest-matin/ : {visites, relances, devis_sans_reponse, manques_signales_hier} ; `relances.lignes` a la forme de assistant_a_relancer.json",
+    "fiche_lead": "GET crm/leads/<id>/resume/ : {identite, etape, contact_prefere, chatter[], devis[], visites[], prochaine_touche, alertes[]} ; chaque devis porte `id` et `reference`, `prochaine_touche` porte `touche_id`",
+    "touche": "apps/crm/contract_samples/assistant_touche.json",
+    "suite_touche": "apps/crm/contract_samples/relance_etape_v2.json (une ligne de `results`) + `prochaine_touche`",
+    "wa_message": "POST crm/leads/<id>/brouillon-suivi/ : {texte, wa_url, lien_wa_me, modele_source, langue_servie}",
+    "wa_devis": "apps/crm/contract_samples/whatsapp_devis_apercu.json + `lead_id` et `devis_ids` (l'écran s'en sert pour appeler le commit `whatsapp-devis`)",
+    "document": "{devis_id, reference, url} — `url` est le chemin interne /api/django/ventes/devis/<id>/proposal/ (règle #4), jamais un autre",
+    "visite": "apps/crm/contract_samples/lead_visite_planifier.json",
+    "diagnostic": "apps/reporting/contract_samples/assistant_diagnostic.json"
+  },
+  "exemple_corps": {
+    "question": "Prépare ma prochaine relance",
+    "contexte": {
+      "ecran": "/crm/relances",
+      "lead_id": null,
+      "devis_id": null,
+      "diagnostic": null
+    }
+  },
+  "exemple": {
+    "answer": "Voici le message de la touche « Relance J+1 » pour Aziz Benali. Ouvre WhatsApp, envoie, puis dis-moi ce qu'il a répondu.",
+    "sql_query": "",
+    "data": null,
+    "action_performed": true,
+    "proposal": null,
+    "result": {
+      "action_key": "crm.suivi.preparer_touche",
+      "touche": {"id": 412, "lead": 1489},
+      "lead": {"lead_id": 1489, "nom": "Aziz Benali", "ville": "Casablanca"},
+      "message": {"message": "Bonjour Aziz, …", "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz"},
+      "appel": null,
+      "refus": null
+    },
+    "cartes": [
+      {
+        "type": "resultat",
+        "action_key": "crm.suivi.preparer_touche",
+        "libelle": "Préparer une touche",
+        "carte": "touche",
+        "donnees": {
+          "touche": {"id": 412, "lead": 1489},
+          "lead": {"lead_id": 1489, "nom": "Aziz Benali", "ville": "Casablanca"},
+          "message": {"message": "Bonjour Aziz, …", "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz"},
+          "appel": null,
+          "refus": null
+        }
+      }
+    ],
+    "evenement_id": 9001,
+    "moteur": "langchain"
+  },
+  "exemple_deux_propositions": {
+    "answer": "J'ai préparé l'acceptation du devis puis la facture d'acompte : confirme chacune.",
+    "sql_query": "",
+    "data": null,
+    "action_performed": true,
+    "proposal": {
+      "action_key": "ventes.devis.generer_facture",
+      "human_preview": "Générer la facture (tranche suivante) (id=45)",
+      "confirm_token": "jeton-b",
+      "inputs": {"id": 45}
+    },
+    "result": null,
+    "cartes": [
+      {
+        "type": "proposition",
+        "action_key": "ventes.devis.accepter",
+        "libelle": "Accepter un devis",
+        "apercu": "Accepter un devis (id=45, nom=Benali)",
+        "confirm_token": "jeton-a",
+        "expire_dans_s": 300
+      },
+      {
+        "type": "proposition",
+        "action_key": "ventes.devis.generer_facture",
+        "libelle": "Générer la facture (tranche suivante)",
+        "apercu": "Générer la facture (tranche suivante) (id=45)",
+        "confirm_token": "jeton-b",
+        "expire_dans_s": 300
+      }
+    ],
+    "evenement_id": 9002,
+    "moteur": "langchain"
+  },
+  "confirmation": {
+    "endpoint": "POST /api/fastapi/sql-agent/confirm",
+    "exemple_corps": {"token": "jeton-a"},
+    "exemple": {
+      "ok": true,
+      "action_key": "ventes.devis.accepter",
+      "detail": "Action executee.",
+      "data": {"id": 45, "reference": "DEV-202611-0045", "statut": "accepte"},
+      "carte": {
+        "type": "resultat",
+        "action_key": "ventes.devis.accepter",
+        "libelle": "Accepter un devis",
+        "carte": null,
+        "donnees": {"id": 45, "reference": "DEV-202611-0045", "statut": "accepte"}
+      },
+      "suite": null
+    },
+    "regles": "un jeton ne s'exécute qu'UNE fois (réclamé atomiquement avant l'exécution) ; `suite` vaut null sous le moteur langchain et {answer, cartes, evenement_id} quand le moteur natif reprend la tâche après la confirmation ; `data` est conservé pour un écran resté en cache"
+  },
+  "historique": {
+    "endpoint": "GET /api/fastapi/sql-agent/history",
+    "exemple": [
+      {"role": "user", "content": "Prépare ma prochaine relance"},
+      {"role": "agent", "content": "Voici le message…", "cartes": []}
+    ],
+    "regles": "`cartes` (facultatif) est rejoué tel quel au rechargement ; une proposition rechargée dont le jeton a expiré est rendue inactive par l'écran"
+  },
+  "diagnostic": {
+    "regles": "`contexte.diagnostic` (facultatif, posé par l'écran sur « Signaler un problème » ou sur une question de panne) : tampon technique SANS donnée personnelle — jamais de corps de requête, jamais de chaîne de requête, routes normalisées (<id>), 15 requêtes et 10 erreurs au plus.",
+    "exemple": {
+      "version": "a1b2c3d",
+      "ecran": "/crm/leads/<id>",
+      "navigateur": "Chrome",
+      "en_ligne": true,
+      "requetes": [
+        {"methode": "POST", "route": "/api/django/crm/relance-etapes/<id>/fait/", "statut": 409, "duree_ms": 212, "request_id": "0123456789abcdef0123456789abcdef", "code": "", "il_y_a_s": 12}
+      ],
+      "erreurs": [
+        {"genre": "script", "message": "Cannot read properties of undefined", "il_y_a_s": 40}
+      ]
+    }
+  }
+}
