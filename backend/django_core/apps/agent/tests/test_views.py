@@ -225,6 +225,19 @@ class AssistantEvenementTests(TestCase):
         self.assertEqual(diag['erreurs'][0]['message'], 'appelle [tel]')
         self.assertEqual(set(diag['erreurs'][0]), {'genre', 'message', 'il_y_a_s'})
 
+    def test_outils_du_relais_et_tokens_complets_acceptes(self):
+        """COP-G5 (couture avec le relais) — ``outils_appeles`` porte aussi les
+        outils propres au relais (hors registre) et ``tokens`` les quatre clés."""
+        outils = ['crm.lead.note', 'sql_db_query', 'sql_db_schema', 'report_gap']
+        tokens = {'input': 10, 'output': 20, 'cache_read': 30, 'cache_write': 40}
+        resp = _auth(self.vendeur).post(
+            URL_EVENEMENTS,
+            _corps_signe(self.vendeur, outils_appeles=outils, tokens=tokens),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        ev = AssistantEvent.objects.get(pk=resp.data['id'])
+        self.assertEqual((ev.outils_appeles, ev.tokens), (outils, tokens))
+
     def test_erreur_aux_types_faux_refusee_400(self):
         for erreur in ({'status': '409'}, {'status': True},
                        {'outil': 3}, {'request_id': ['x']},

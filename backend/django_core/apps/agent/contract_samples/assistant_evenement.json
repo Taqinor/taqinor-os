@@ -8,7 +8,7 @@
     "resume_reponse": "résumé de la réponse servie, 500 caractères au plus",
     "ecran": "chemin de route de l'écran d'où part la question (ex. /crm/leads/12)",
     "lead_id": "entier, lead de la société de l'utilisateur (scopé société), ou null",
-    "outils_appeles": "liste de clés du registre d'actions (ex. crm.lead.note)",
+    "outils_appeles": "liste de noms d'outils appelés pendant le tour : clés du registre d'actions (ex. crm.lead.note) ET outils propres au relais (sql_db_query, sql_db_schema, report_gap) ; chaînes libres, aucune n'est vérifiée contre le registre",
     "erreur": "{status, outil, message, request_id?, diagnostic?} ou null : request_id = identifiant de requête Django de l'échec (texte de 64 caractères au plus) ; diagnostic = tampon technique du navigateur joint à un signalement, forme de assistant_reponse.json → diagnostic, BORNÉ à l'écriture (15 requêtes, 10 erreurs, chaînes tronquées, route sans chaîne de requête, tout champ inconnu écarté)",
     "note": "-1 | 0 | 1 (0 = pas encore noté)",
     "commentaire": "200 caractères au plus, ou null",
