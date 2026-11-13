@@ -10,7 +10,9 @@
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
-import { toast, useConfirmDialog } from '../../ui/confirm'
+// AERR84 — les refus servis sont dits par le toast global (api/axios L53) ;
+// un geste refusé relit l'écran (catch { load() }), jamais un toast doublé.
+import { useConfirmDialog } from '../../ui/confirm'
 import outillageApi from '../../api/outillageApi'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -63,20 +65,20 @@ export default function KitsSection() {
         nom, type_intervention: newType === NONE ? '' : newType, ordre: kits.length,
       })
       setNewKit(''); setNewType(NONE); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch { load() }
   }
   const renameKit = async (k, nom) => {
     if (!nom.trim() || nom === k.nom) return
-    try { await outillageApi.saveKit(k.id, { nom }); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
+    try { await outillageApi.saveKit(k.id, { nom }); load() } catch { load() }
   }
   const setKitType = async (k, type) => {
     try {
       await outillageApi.saveKit(k.id, { type_intervention: type === NONE ? '' : type })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    } catch { load() }
   }
   const toggleKitActif = async (k) => {
-    try { await outillageApi.saveKit(k.id, { actif: !k.actif }); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    try { await outillageApi.saveKit(k.id, { actif: !k.actif }); load() } catch { load() }
   }
   const moveKit = async (idx, dir) => {
     const j = idx + dir
@@ -88,12 +90,12 @@ export default function KitsSection() {
         outillageApi.saveKit(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Réordonnancement impossible.') }
+    } catch { load() }
   }
   const delKit = async (k) => {
     if (!(await confirmDelete({ title: `Supprimer le kit « ${k.nom} » ?`, description: "Sa liste d'outils sera supprimée aussi." }))) return
     try { await outillageApi.deleteKit(k.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch { load() }
   }
 
   // ── Outils d'un kit ──
@@ -105,7 +107,7 @@ export default function KitsSection() {
         kit: k.id, outil: Number(outil), ordre: (k.items ?? []).length,
       })
       setNewItem((p) => ({ ...p, [k.id]: undefined })); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible (outil déjà dans le kit ?).') }
+    } catch { load() }
   }
   const moveItem = async (k, idx, dir) => {
     const items = k.items ?? []
@@ -118,12 +120,12 @@ export default function KitsSection() {
         outillageApi.saveKitItem(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Réordonnancement impossible.') }
+    } catch { load() }
   }
   const delItem = async (it, k) => {
     // AERR67 — retrait nommé (outil + kit), comme la suppression du kit.
     if (!(await confirmDelete({ title: `Retirer « ${it.outil_nom ?? outilNom(it.outil)} » du kit « ${k.nom} » ?` }))) return
-    try { await outillageApi.deleteKitItem(it.id); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    try { await outillageApi.deleteKitItem(it.id); load() } catch { load() }
   }
 
   // Outils disponibles à l'ajout dans un kit (hors ceux déjà présents).

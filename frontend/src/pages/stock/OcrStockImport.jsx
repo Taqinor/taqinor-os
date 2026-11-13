@@ -439,8 +439,7 @@ const cp = produitsRef.current
             const res = await stockApi.createProduit(payload)
             produitId = res.data.id
           } catch (e) {
-            const d = e.response?.data
-            push({ ok: false, label, msg: `Création produit : ${d?.nom?.[0] ?? d?.sku?.[0] ?? d?.detail ?? JSON.stringify(d ?? e.message)}` })
+            push({ ok: false, label, msg: `Création produit : ${frenchError(e, 'refusée par le serveur.')}` })  // AERR84
             continue
           }
         }
@@ -471,8 +470,7 @@ const cp = produitsRef.current
             push({ ok: true, label, msg: `${typeLabel} ${delta >= 0 ? '+' : ''}${delta} (stock : ${mv.quantite_avant} → ${mv.quantite_apres})` })
           }
         } catch (e) {
-          const d = e.response?.data
-          push({ ok: false, label, msg: `Mouvement : ${d?.detail ?? d?.quantite?.[0] ?? d?.non_field_errors?.[0] ?? JSON.stringify(d ?? e.message)}` })
+          push({ ok: false, label, msg: `Mouvement : ${frenchError(e, 'refusé par le serveur.')}` })  // AERR84
         }
       }
 
@@ -517,8 +515,7 @@ const cp = produitsRef.current
             }
           }
         } catch (e) {
-          const d = e.response?.data
-          const msg = `BCF : ${d?.detail ?? JSON.stringify(d ?? e.message)}`
+          const msg = `BCF : ${frenchError(e, 'refusé par le serveur.')}`  // AERR84
           for (const l of bcfLignes) {
             log.push({ ligneId: l.ligneId, ok: false, label: l.label, msg })
           }

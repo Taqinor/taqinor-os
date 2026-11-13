@@ -362,39 +362,60 @@ describe('StockList — derniers transferts : page 1 demandée, total affiché (
   })
 })
 
+// Ouvre « Transférer » et remplit Panneau / Dépôt principal → Camionnette / 3, puis valide.
+async function transfererTrois() {
+  http.get.mockImplementation(async (url) => {
+    if (url === '/stock/emplacements/') {
+      return { data: { count: 2, next: null, results: [
+        { id: 5, nom: 'Dépôt principal', is_principal: true, archived: false },
+        { id: 6, nom: 'Camionnette', is_principal: false, archived: false },
+      ] } }
+    }
+    if (url === '/stock/produits/1/emplacements/') {
+      return { data: [
+        { emplacement_id: 5, emplacement_nom: 'Dépôt principal', is_principal: true, quantite: 10 },
+        { emplacement_id: 6, emplacement_nom: 'Camionnette', is_principal: false, quantite: 0 },
+      ] }
+    }
+    return { data: [] }
+  })
+  renderPage()
+  fireEvent.click(screen.getAllByRole('button', { name: /Transférer/ })[0])
+  const dialog = await screen.findByRole('dialog')
+  const choisir = async (nom, option) => {
+    await userEvent.click(within(dialog).getByRole('combobox', { name: nom }))
+    await userEvent.click(await screen.findByRole('option', { name: option }))
+  }
+  await choisir('Produit', /Panneau 550 Wc/)
+  await waitFor(() => expect(http.get).toHaveBeenCalledWith('/stock/produits/1/emplacements/'))
+  await choisir('De', 'Dépôt principal')
+  await choisir('Vers', 'Camionnette')
+  fireEvent.change(within(dialog).getByLabelText('Quantité'), { target: { value: '3' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Transférer' }))
+  return dialog
+}
+
 describe('StockList — dialogue « Transférer » : identifiants envoyés en entiers (AAPV74)', () => {
   it('POST stock/transferts/ porte produit/source/destination en nombres, jamais en chaînes', async () => {
-    http.get.mockImplementation(async (url) => {
-      if (url === '/stock/emplacements/') {
-        return { data: { count: 2, next: null, results: [
-          { id: 5, nom: 'Dépôt principal', is_principal: true, archived: false },
-          { id: 6, nom: 'Camionnette', is_principal: false, archived: false },
-        ] } }
-      }
-      if (url === '/stock/produits/1/emplacements/') {
-        return { data: [
-          { emplacement_id: 5, emplacement_nom: 'Dépôt principal', is_principal: true, quantite: 10 },
-          { emplacement_id: 6, emplacement_nom: 'Camionnette', is_principal: false, quantite: 0 },
-        ] }
-      }
-      return { data: [] }
-    })
-    renderPage()
-    fireEvent.click(screen.getAllByRole('button', { name: /Transférer/ })[0])
-    const dialog = await screen.findByRole('dialog')
-    const choisir = async (nom, option) => {
-      await userEvent.click(within(dialog).getByRole('combobox', { name: nom }))
-      await userEvent.click(await screen.findByRole('option', { name: option }))
-    }
-    await choisir('Produit', /Panneau 550 Wc/)
-    await waitFor(() => expect(http.get).toHaveBeenCalledWith('/stock/produits/1/emplacements/'))
-    await choisir('De', 'Dépôt principal')
-    await choisir('Vers', 'Camionnette')
-    fireEvent.change(within(dialog).getByLabelText('Quantité'), { target: { value: '3' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Transférer' }))
+    await transfererTrois()
     await waitFor(() => expect(http.post).toHaveBeenCalledWith('/stock/transferts/', {
       produit: 1, source: 5, destination: 6, quantite: 3, note: '',
     }))
+  })
+})
+
+describe('StockList — refus serveur du transfert sous le champ (AERR84)', () => {
+  it('transfert refusé sur la quantité : message sous le champ', async () => {
+    http.post.mockImplementation(async (url) => {
+      if (url === '/stock/transferts/') {
+        return Promise.reject({ response: { status: 400, data: { quantite: ['Quantité insuffisante à la source.'] } } })
+      }
+      return { data: {} }
+    })
+    const dialog = await transfererTrois()
+    expect(await within(dialog).findByText('Quantité insuffisante à la source.')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Échec du transfert.')).toBeNull()
+    expect(within(dialog).getByLabelText('Quantité')).toHaveValue(3)
   })
 })
 
