@@ -120,6 +120,52 @@ class TestObjectifCompanyScoping(TestCase):
         self.assertEqual(ObjectifCommercial.objects.filter(company=co1).count(), 1)
         self.assertEqual(ObjectifCommercial.objects.filter(company=co2).count(), 1)
 
+    def test_commercial_voit_ses_objectifs_seulement(self):
+        """ALEC24 (D-ALEC-2 = portee_du_role) — un Commercial lit son objectif
+        complet ; ceux d'un collègue et de la société gardent ``owner_nom``
+        mais ``cible``/``realise``/``taux`` à null ; le Directeur lit tout."""
+        from rest_framework.test import APIClient
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+        co = _co('fg39-portee')
+
+        def compte(nom, perms):
+            role, _ = Role.objects.get_or_create(
+                company=co, nom=perms[0], defaults={'permissions': perms[1]})
+            return CustomUser.objects.create_user(
+                username=nom, password='x', company=co, role=role)
+        commercial = ('Commercial', list(COMMERCIAL_PERMISSIONS))
+        a, b = compte('fg39_a', commercial), compte('fg39_b', commercial)
+        directeur = compte('fg39_dir', ('Directeur', list(DIRECTEUR_PERMISSIONS)))
+        oa = _objectif(co, 'nb_leads', 2026, month=1, owner=a)
+        ob = _objectif(co, 'nb_leads', 2026, month=1, owner=b)
+        osoc = _objectif(co, 'nb_contacts', 2026, month=1)
+        api, base = APIClient(), '/api/django/crm/objectifs/'
+        chiffres = ('cible', 'realise', 'taux')
+
+        def lire(user):
+            api.force_authenticate(user)
+            att = {o['id']: o for o in api.get(base + 'attainment/').json()}
+            une = api.get(f'{base}{ob.pk}/attainment/').json()
+            liste = api.get(base).json()
+            liste = liste.get('results', liste) if isinstance(liste, dict) else liste
+            return att, une, {o['id']: o for o in liste}
+
+        att, une, liste = lire(a)
+        self.assertNotIn(None, [att[oa.pk][c] for c in chiffres])
+        self.assertIsNotNone(liste[oa.pk]['cible'])
+        for oid in (ob.pk, osoc.pk):
+            self.assertEqual([att[oid][c] for c in chiffres], [None] * 3)
+            self.assertIsNone(liste[oid]['cible'])
+        self.assertEqual(att[ob.pk]['owner_nom'], 'fg39_b')
+        self.assertEqual([une[c] for c in chiffres], [None] * 3)
+        att, une, liste = lire(directeur)
+        for oid in (oa.pk, ob.pk, osoc.pk):
+            self.assertNotIn(None, [att[oid][c] for c in chiffres])
+            self.assertIsNotNone(liste[oid]['cible'])
+        self.assertNotIn(None, [une[c] for c in chiffres])
+
 
 # ── Attainment: nb_leads ──────────────────────────────────────────────────────
 
