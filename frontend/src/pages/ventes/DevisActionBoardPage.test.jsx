@@ -162,6 +162,24 @@ describe('DevisActionBoardPage — CHT14 : carte "Chantiers à facturer"', () =>
     expect(await screen.findByText('Aucune tranche due.')).toBeInTheDocument()
   })
 
+  it('AERR22 — 500 : erreur + Réessayer, jamais Aucune tranche due', async () => {
+    installationsApi.getChantiersAFacturer
+      .mockRejectedValueOnce({ response: { status: 500, data: { detail: 'Erreur serveur.' } } })
+      .mockResolvedValueOnce({ data: CHANTIERS_A_FACTURER })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+    const alerte = await screen.findByText(/Lecture impossible/)
+    expect(screen.queryByText('Aucune tranche due.')).toBeNull()
+    await userEvent.setup().click(within(alerte.closest('[role="alert"]')).getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText(/CH-2026-0007/)).toBeInTheDocument()
+  })
+
+  it('AERR22 — 403 (rôle sans accès) : « Aucune tranche due. » comme aujourd\'hui', async () => {
+    installationsApi.getChantiersAFacturer.mockRejectedValueOnce({ response: { status: 403, data: {} } })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+    expect(await screen.findByText('Aucune tranche due.')).toBeInTheDocument()
+    expect(screen.queryByText(/Lecture impossible/)).toBeNull()
+  })
+
   it('rend une carte séparée (jamais fondue dans BUCKETS) avec le compte et les lignes du serveur', async () => {
     installationsApi.getChantiersAFacturer.mockResolvedValue(
       { data: CHANTIERS_A_FACTURER })

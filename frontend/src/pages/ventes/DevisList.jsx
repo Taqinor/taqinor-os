@@ -578,7 +578,8 @@ export default function DevisList() {
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} supprimé.`)
     } catch (err) {
-      toast.error(frenchError(err, 'Suppression impossible.'))
+      // AERR22 — le pont axios toaste déjà le refus (sauf 404) : un seul toast.
+      if (err?.response?.status === 404) toast.error(frenchError(err, 'Suppression impossible.'))
     } finally {
       setDeletingId(null)
     }
@@ -601,6 +602,7 @@ export default function DevisList() {
   // bloquée — les données de perte redeviennent exploitables.
   const [refusTarget, setRefusTarget] = useState(null)
   const [motifsPerte, setMotifsPerte] = useState([])
+  const [motifsErreur, setMotifsErreur] = useState('') // AERR22 — motifs illisibles
   const [refusMotifId, setRefusMotifId] = useState('')
   const [refusNote, setRefusNote] = useState('')
   const [refusBusy, setRefusBusy] = useState(false)
@@ -613,10 +615,11 @@ export default function DevisList() {
     setRefusMotifId('')
     setRefusNote('')
     setRefusBusy(false)
+    setMotifsErreur('')
     fetchAllPages((page, extra) => crmApi.getMotifsPerte({ page, ...extra }).then(r => r.data))
       // ADEV119 — motifs actifs seuls (le refus valide un motif NON archivé).
       .then(rows => setMotifsPerte((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived)))
-      .catch(() => setMotifsPerte([]))
+      .catch((err) => { setMotifsPerte([]); setMotifsErreur(`Les motifs de refus n’ont pas pu être lus (${frenchError(err, 'erreur réseau')}).`) })
   }
   const closeRefusModal = () => { setRefusTarget(null); setRefusBusy(false) }
 
@@ -1101,7 +1104,8 @@ export default function DevisList() {
                   ))}
                 </SelectContent>
               </Select>
-              {motifsPerte.length === 0 && (
+              {motifsErreur && <p role="alert" className="text-xs text-destructive">{motifsErreur} Fermez puis rouvrez pour réessayer.</p>}
+              {motifsPerte.length === 0 && !motifsErreur && (
                 <p className="text-xs text-muted-foreground">
                   Aucun motif configuré — ajoutez-en dans les paramètres CRM.
                 </p>
