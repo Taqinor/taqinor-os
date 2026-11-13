@@ -292,6 +292,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [noteBasPage, setNoteBasPage] = useState(bcf?.note_bas_page ?? '')
   const [incoterm, setIncoterm] = useState(bcf?.incoterm ?? '')
   const [lockVersion, setLockVersion] = useState(bcf?.lock_version)  // ACNC21 — verrou optimiste
+  const [cleReception] = useState(() => globalThis.crypto?.randomUUID?.() ?? `rec-${Date.now()}`)  // ACNC23
   const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
@@ -627,11 +628,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (payload.length === 0) { setError('Saisissez au moins une quantité à recevoir.'); return }
     setBusy(true); setError(null); setPayloadAControler(null)
     try {
-      await stockApi.recevoirBcf(bcf.id, payload)
+      await stockApi.recevoirBcf(bcf.id, payload, { idempotencyKey: cleReception })
       onSaved?.()
       onClose()
     } catch (err) {
       setError(frBcfError(err, 'La réception a échoué.'))
+      if (!err?.response) onSaved?.()  // ACNC23 — réponse perdue : relire le BCF, même clé au prochain clic
       // AAPV24 — plan d'échantillonnage : proposer la réception brouillon à contrôler.
       if (/échantillonnage/i.test(err?.response?.data?.detail ?? '')) setPayloadAControler(payload)
     } finally { setBusy(false) }

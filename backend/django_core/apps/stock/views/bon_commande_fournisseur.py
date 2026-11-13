@@ -15,6 +15,7 @@ from ..openapi_helpers import (
     BINARY, DATE_OU_VIDE, ID_ENTIER, ID_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse,
 )
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+from core.idempotency import IdempotentCreateMixin  # ACNC23
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import Fournisseur, BonCommandeFournisseur, ReceptionFournisseur
@@ -39,7 +40,7 @@ COMMANDER_ACTIONS = WRITE_ACTIONS + [
 
 @extend_schema_view(list=extend_schema(parameters=[
     P('fournisseur', INT, False, 'Identifiant du fournisseur (fiche 360)')]))
-class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
+class BonCommandeFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC23 — rejeu sans doublon
     """Bons de commande fournisseur (achats). Distinct du BC CLIENT de ventes.
 
     - référence numérotée sans trou (préfixe BCF) via references.py ;
@@ -740,6 +741,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         quantité non entière répond 400 (plus de ``int()`` muet). Réponse
         inchangée : le BCF sérialisé.
         """
+        # ACNC23 — même ``Idempotency-Key`` + même corps ⇒ une seule réception.
+        return self._avec_idempotence(request, lambda: self._recevoir(request), suffixe=f'recevoir.{pk}')
+
+    def _recevoir(self, request):
         bc = self.get_object()
         receptions = valider_corps(BcfRecevoirCorps, request)['receptions']
         if bc.statut in (

@@ -270,6 +270,7 @@ function AcompteForm({ bcfs, onClose, onSaved }) {
   })
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [cle] = useState(() => globalThis.crypto?.randomUUID?.() ?? `acompte-${Date.now()}`)  // ACNC23 — par ouverture
   const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
 
   const submit = async (ev) => {
@@ -287,6 +288,7 @@ function AcompteForm({ bcfs, onClose, onSaved }) {
           date_versement: fields.date_versement || null,
           mode: fields.mode,
           note: fields.note.trim() || null,
+          idempotencyKey: cle,
         })
       },
     })
@@ -405,6 +407,7 @@ function AvoirForm({ fournisseurId, onClose, onSaved }) {
   })
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [cle] = useState(() => globalThis.crypto?.randomUUID?.() ?? `avoir-${Date.now()}`)  // ACNC23 — par ouverture
   const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
 
   const submit = async (ev) => {
@@ -421,6 +424,7 @@ function AvoirForm({ fournisseurId, onClose, onSaved }) {
           montant_tva: Number(fields.montant_tva) || 0,
           montant_ttc: ttc,
           note: fields.note.trim() || null,
+          idempotencyKey: cle,
         })
       },
     })
