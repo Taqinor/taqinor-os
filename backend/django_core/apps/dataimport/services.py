@@ -33,6 +33,8 @@ pipeline ``crm.Lead``). Trois protections, toutes actives par défaut :
 Une cellule VIDE n'écrase jamais rien, quel que soit le mode : ``_row_to_fields``
 écarte les valeurs vides avant tout traitement.
 """
+import contextlib
+import hashlib
 import json
 import logging
 import re
@@ -1134,6 +1136,26 @@ def _raison_de_ne_pas_creer(mode, company, f, ext_id, external_system):
     return RAISON_LEAD_HORS_PORTEE if _lead_hors_portee(company, f, ext_id, external_system) else None
 
 
+@contextlib.contextmanager
+def _verrou_lot(company, target):
+    """ACNC45 — sérialise deux imports concurrents du même lot (société, cible).
+
+    Verrou consultatif de TRANSACTION (``pg_advisory_xact_lock``, patron de
+    ``calepinage/services/creation.py::_verrou_creation``) : à prendre DANS le
+    ``transaction.atomic()`` de l'import et AVANT toute lecture de
+    déduplication ; le second import attend le commit du premier puis voit ses
+    lignes (« doublon »). Libéré seul en fin de transaction. No-op hors PostgreSQL."""
+    from django.db import connection
+
+    if connection.vendor == 'postgresql':
+        empreinte = hashlib.blake2b(
+            f'dataimport.lot:{company.pk}:{target}'.encode('utf-8'), digest_size=8).digest()
+        with connection.cursor() as curseur:
+            curseur.execute('SELECT pg_advisory_xact_lock(%s)',
+                            [int.from_bytes(empreinte, 'big', signed=True)])
+    yield
+
+
 def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 external_system=None, mapping_name=None, ecraser=False):
     """Crée (mode=creer, défaut inchangé) ou rapproche+met à jour (maj/upsert)
@@ -1185,8 +1207,8 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
     # ERR51 — Tout l'import est atomique : une erreur en cours de boucle annule
     # l'intégralité du lot (jamais de demi-import laissant le compteur perdu et
-    # une partie des lignes déjà créées).
-    with transaction.atomic():
+    # une partie des lignes déjà créées). ACNC45 — verrou du lot avant toute déduplication.
+    with transaction.atomic(), _verrou_lot(company, target):
         if target == 'leads':
             from apps.crm.models import Lead
             for i, row in enumerate(rows, 1):

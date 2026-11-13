@@ -61,3 +61,32 @@ class TestImportDocumentsIdempotent(ImportBase):
             'factures',
             'reference,client_nom,external_id\nS,Client Migre,EXT-1\n')
         self.assertEqual(facture['created'], 1, facture)
+
+    def test_le_verrou_du_lot_precede_la_deduplication(self):
+        """ACNC45 — le verrou (société, cible) est pris dans la transaction de
+        l'import AVANT la première lecture de déduplication : un second import
+        concurrent attend le commit du premier puis voit ses devis."""
+        from unittest import mock
+        from django.db import connection
+        from . import services
+        ordre = []
+        verrou, dedup = services._verrou_lot, services._document_deja_importe
+
+        def verrou_trace(company, target):
+            ordre.append(('verrou', company.pk, target, connection.in_atomic_block))
+            return verrou(company, target)
+
+        def dedup_trace(*args, **kwargs):
+            ordre.append(('dedup',))
+            return dedup(*args, **kwargs)
+
+        contenu = ('reference,client_nom,external_id\n'
+                   'SRC-L1,Client Migre,EXT-L1\nSRC-L2,Client Migre,EXT-L2\n')
+        with mock.patch.object(services, '_verrou_lot', side_effect=verrou_trace), \
+                mock.patch.object(services, '_document_deja_importe', side_effect=dedup_trace):
+            self._importer('devis', contenu)
+        self.assertEqual(ordre[0], ('verrou', self.company.pk, 'devis', True))
+        self.assertIn(('dedup',), ordre[1:])
+        second = self._importer('devis', contenu)
+        self.assertEqual(second['created'], 0, second)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), 2)
