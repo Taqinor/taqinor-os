@@ -36,16 +36,19 @@ export default function useFactureLot({ factures, dispatch, relire = () => relir
     setBulkBusy(true)
     try {
       const { data } = await ventesApi.bulkFactures(action, selectedIds)
-      const entries = Object.values(data || {})
-      const ok = entries.filter(r => r.ok).length
-      const ko = entries.length - ok
-      if (ko === 0) {
+      // AERR8 — chaque refusée est nommée avec la raison servie et reste cochée.
+      const entries = Object.entries(data || {})
+      const refusees = entries.filter(([, r]) => !r.ok)
+      const ok = entries.length - refusees.length
+      if (refusees.length === 0) {
         toast.success(`${BULK_LABELS[action] ?? action} : ${ok} facture(s) traitée(s).`)
       } else {
-        toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${ko} échec(s).`)
+        const refDe = (id) => factures.find(f => String(f.id) === id)?.reference ?? `#${id}`
+        toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${refusees.length} refusée(s) — `
+          + refusees.map(([id, r]) => `${refDe(id)} : ${r.detail || 'refusée'}`).join(' ; '))
       }
       relire()
-      clearSelection()
+      setSelectedIds(selectedIds.filter(id => refusees.some(([k]) => k === String(id))))
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Action en masse impossible.')
     } finally {

@@ -315,6 +315,28 @@ describe('FactureList — WR2b : barre d\'actions en masse (bulkFactures)', () =
     await waitFor(() => expect(ventesApi.bulkFactures).toHaveBeenCalledWith('emettre', [1, 2]))
   })
 
+  it('bulk partiel : raison de la refusée affichée, sélection = la refusée', async () => {
+    // AERR8 (C-AERR-008) — mutant : remettre `clearSelection()` en échec partiel ⇒ échec.
+    ventesApi.bulkFactures.mockResolvedValueOnce({
+      data: { 1: { ok: true }, 2: { ok: true }, 3: { ok: false, detail: 'ICE du client manquant.' } },
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderList({
+      factures: [1, 2, 3].map(i => ({ ...baseFacture, id: i, reference: `FAC-LOT-${i}`, statut: 'brouillon' })),
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
+    fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    const msg = toastMock.error.mock.calls.at(-1)[0]
+    expect(msg).toMatch(/FAC-LOT-3 : ICE du client manquant\./)
+    expect(msg).not.toMatch(/FAC-LOT-1/)
+    await waitFor(() => expect(within(bulkBar).getByText('1')).toBeVisible())
+    expect(screen.getByRole('checkbox', { name: /Sélectionner la facture FAC-LOT-3/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Sélectionner la facture FAC-LOT-1/ })).not.toBeChecked()
+    confirmSpy.mockRestore()
+  })
+
   it('tout sélectionner coche toutes les lignes filtrées', () => {
     renderList({
       factures: [
