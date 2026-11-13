@@ -63,7 +63,7 @@ entre crochets évite qu'un `pgrep` lancé par SSH se trouve lui-même).
 | `DJANGO_SECRET_KEY` | la clé réelle déjà en place (jamais un `change_me…`) | oui | `RuntimeError` au démarrage / erreur `core.E_AUD410_SECRET_KEY` |
 | `DJANGO_ALLOWED_HOSTS` | `api.taqinor.ma,178-105-192-116.sslip.io` (les deux hôtes de la Caddyfile ; le 2e = `PUBLIC_HOSTNAME`) | oui | **toute requête refusée (400)** et erreur `core.E_QJR423_ALLOWED_HOSTS` : en prod il n'y a plus de défaut `localhost` |
 | `CSRF_TRUSTED_ORIGINS` | `https://api.taqinor.ma,https://178-105-192-116.sslip.io` (déjà posée) | recommandé | complétée automatiquement des origines CORS |
-| `CORS_ALLOWED_ORIGINS` | **absente** — décision de Reda du 10/10/2026 : garder le défaut de `settings.prod` (`https://taqinor.ma,https://www.taqinor.ma`) | non | défaut : les deux domaines publics |
+| `CORS_ALLOWED_ORIGINS` | **absente** — décision de Reda du 10/10/2026 : garder le défaut de `settings.prod` (`https://taqinor.ma,https://www.taqinor.ma`) | non | défaut : les deux domaines publics, sans identifiants (D-APUB-5 : `CORS_ALLOW_CREDENTIALS = False` dans `settings.prod`) |
 | `MINIO_ROOT_PASSWORD` | le mot de passe réel (jamais un `change_me…`) | oui | erreur `core.E_AUD410_MINIO` |
 | `NUM_PROXIES` | absente, ou `1` | non | absente = 1 ; `0` ou illisible ⇒ **démarrage refusé** (tout Internet dans un seul seau de limitation) |
 | `AUTH_COOKIE_SECURE` | **absente** | non | `0` retirerait `Secure` aux cookies JWT — ne jamais la poser en prod |

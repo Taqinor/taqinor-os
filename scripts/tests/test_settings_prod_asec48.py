@@ -73,13 +73,17 @@ http = rf.get('/', HTTP_HOST=HOTE)
 client = Client()
 
 
-def reponse(chemin, proto=None):
+def reponse(chemin, proto=None, origine=None):
     extra = {'HTTP_HOST': HOTE}
     if proto:
         extra['HTTP_X_FORWARDED_PROTO'] = proto
+    if origine:
+        extra['HTTP_ORIGIN'] = origine
     r = client.get(chemin, **extra)
     return {'statut': r.status_code, 'location': r.get('Location', ''),
             'hsts': r.get('Strict-Transport-Security', ''),
+            'acao': r.get('Access-Control-Allow-Origin'),
+            'acac': r.get('Access-Control-Allow-Credentials'),
             'corps': r.content[:4000].decode('utf-8', 'replace')}
 
 
@@ -112,6 +116,8 @@ rapport = {
     'api_https': reponse('/api/django/ventes/devis/', 'https'),
     'api_http': reponse('/api/django/ventes/devis/'),
     'page_404': reponse('/page-inexistante-asec48/', 'https'),
+    'cors_site': [reponse('/api/django/crm/leads/', 'https', o)
+                  for o in ('https://taqinor.ma', 'https://www.taqinor.ma')],
 }
 print('RAPPORT_ASEC48=' + json.dumps(rapport))
 '''
@@ -185,6 +191,14 @@ class SettingsProdAsec48(unittest.TestCase):
             with self.subTest(sonde=cle):
                 self.assertEqual(r[cle]['statut'], 200, r[cle])
                 self.assertEqual(r[cle]['location'], '')
+
+    def test_site_public_sans_identifiants(self):
+        """APUB73 (D-APUB-5) — l'origine du site public est permise sans cookie."""
+        for origine, r in zip(('https://taqinor.ma', 'https://www.taqinor.ma'),
+                              self.rapport['cors_site']):
+            with self.subTest(origine=origine):
+                self.assertIsNone(r['acac'], r)
+                self.assertEqual(r['acao'], origine, r)
 
 
 if __name__ == '__main__':
