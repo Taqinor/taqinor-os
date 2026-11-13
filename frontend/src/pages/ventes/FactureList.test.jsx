@@ -26,6 +26,8 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   return {
     ...actual,
     fetchFactures: () => ({ type: 'ventes/fetchFactures/noop' }),
+    // AERR3 — la relecture après un geste relit aussi les tuiles : même neutralisation.
+    fetchFacturesKpis: () => ({ type: 'ventes/fetchFacturesKpis/noop' }),
   }
 })
 
@@ -125,7 +127,9 @@ describe('FactureList — AERR15 : raccourci « a » de la fiche facture', () =>
   it('boîte par-dessus le formulaire : « a » ne génère pas', async () => {
     // AERR15 (C-AERR-013) — mutant : retirer `{ scopeRef }` ⇒ échec.
     const pdf = vi.spyOn(ventesApi, 'genererPdfFacture').mockResolvedValue({ data: {} })
-    const f = { id: 5, reference: 'FAC-AERR15', client_nom: 'ACME', statut: 'emise',
+    // Brouillon : « Nouveau client » (la boîte posée par-dessus) n'est actif
+    // qu'en brouillon (horsBrouillon ⇒ bouton désactivé).
+    const f = { id: 5, reference: 'FAC-AERR15', client_nom: 'ACME', statut: 'brouillon',
       date_emission: '2026-07-01', date_echeance: '2026-08-01', total_ttc: 5000, montant_paye: 0, montant_du: 5000 }
     render(
       <Provider store={makeStore({ factures: [f] })}>
@@ -136,7 +140,8 @@ describe('FactureList — AERR15 : raccourci « a » de la fiche facture', () =>
     )
     await screen.findByRole('dialog')
     fireEvent.click(screen.getByRole('button', { name: /Nouveau client/ }))
-    await waitFor(() => expect(screen.getAllByRole('dialog').length).toBeGreaterThan(1))
+    // La boîte du dessus rend celle du formulaire aria-hidden : on compte les deux.
+    await waitFor(() => expect(screen.getAllByRole('dialog', { hidden: true }).length).toBeGreaterThan(1))
     fireEvent.keyDown(document.body, { key: 'a' })
     await new Promise((r) => setTimeout(r, 0))
     expect(pdf).not.toHaveBeenCalled()
@@ -242,7 +247,8 @@ describe('FactureList — AERR1 : relecture en cours ou ratée après un geste',
     for (const i of [1, 2, 3]) expect(screen.getByText(`FAC-AERR1-000${i}`)).toBeInTheDocument()
     const avis = screen.getByTestId('factures-pas-a-jour')
     expect(avis).toHaveTextContent('Liste pas à jour')
-    expect(within(avis).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    // La boîte Paiement est modale : le reste de la page est aria-hidden.
+    expect(within(avis).getByRole('button', { name: 'Réessayer', hidden: true })).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.queryByText('Erreur de chargement')).toBeNull()
   })
@@ -251,7 +257,7 @@ describe('FactureList — AERR1 : relecture en cours ou ratée après un geste',
 describe('FactureList — WR2b : « Payer en ligne »', () => {
   it('crée le lien de paiement et le copie au presse-papier', async () => {
     const writeText = vi.fn(() => Promise.resolve())
-    Object.assign(navigator, { clipboard: { writeText } })
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     renderList({ factures: [{ ...baseFacture }] })
     const row = screen.getByText('FAC-2026-07-0001').closest('tr')
     fireEvent.click(within(row).getByRole('button', { name: /Payer en ligne/ }))
@@ -265,7 +271,7 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
 
   it('Payer en ligne, writeText rejeté : pas de « Création … impossible », action Ouvrir', async () => {
     // AERR10 (C-AERR-010) — mutant : remettre la copie dans le `try` commun ⇒ échec.
-    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.reject(new Error('refus'))) } })
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => Promise.reject(new Error('refus'))) }, configurable: true })
     toastMock.error.mockClear()
     renderList({ factures: [{ ...baseFacture }] })
     const row = screen.getByText('FAC-2026-07-0001').closest('tr')
@@ -278,7 +284,7 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
   })
 
   it('le toast annonce montant_a_payer', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.resolve()) } })
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true })
     renderList({ factures: [{ ...baseFacture }] })
     const row = screen.getByText('FAC-2026-07-0001').closest('tr')
     fireEvent.click(within(row).getByRole('button', { name: /Payer en ligne/ }))
@@ -497,16 +503,18 @@ describe('FactureList — VX142(a) : toolbar « Exporter » unique, plus de wind
     expect(promptSpy).not.toHaveBeenCalled()
   })
 
-  it('à 00:30 le 1er décembre (heure du Maroc), le journal propose 2026-12', async () => {
+  it('à 00:30 le 1er décembre (heure du Maroc), le journal propose 2025-12', async () => {
     // AERR18 (C-AERR-016) — mutant : remettre `toISOString().slice(0, 7)` ⇒ échec (UTC = la veille).
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-11-30T23:30:00Z')) // 00:30 à Casablanca (UTC+1)
+    // 2025 et non 2026 : UTC+1 dans TOUTES les bases tz (avant le décret 2.26.530
+    // du 20/09/2026 — la base tz du runner CI place fin 2026 à UTC+0 ; cf. dateLocale.test.mjs).
+    vi.setSystemTime(new Date('2025-11-30T23:30:00Z')) // 00:30 à Casablanca (UTC+1)
     try {
       const user = userEvent.setup()
       renderList({ factures: [{ ...baseFacture }] })
       await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
       await user.click(screen.getByRole('menuitem', { name: /Journal comptable/ }))
-      expect(await screen.findByLabelText('Mois du journal')).toHaveValue('2026-12')
+      expect(await screen.findByLabelText('Mois du journal')).toHaveValue('2025-12')
     } finally {
       vi.useRealTimers()
     }

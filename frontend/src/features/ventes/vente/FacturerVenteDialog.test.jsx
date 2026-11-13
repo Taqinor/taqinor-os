@@ -361,8 +361,10 @@ describe('ATOT60 — avoir de révision à confirmer', () => {
   const monterPanneau = async (variante, onRafraichir = vi.fn()) => {
     const { exempleContrat } = await import('../../../test/fixtures/contractSamples.js')
     const { default: PanneauVente } = await import('./PanneauVente')
+    const { ConfirmProvider } = await import('../../../providers/ConfirmProvider.jsx')
     const vente = exempleContrat('ventes', 'vente_etat', variante).vente
-    render(<PanneauVente devis={{ ...DEVIS, vente }} onRafraichir={onRafraichir} />)
+    // AERR17 — le clic ouvre d'abord la confirmation maison (provider requis).
+    render(<ConfirmProvider><PanneauVente devis={{ ...DEVIS, vente }} onRafraichir={onRafraichir} /></ConfirmProvider>)
     return { vente, onRafraichir }
   }
 
@@ -373,6 +375,7 @@ describe('ATOT60 — avoir de révision à confirmer', () => {
     const { vente, onRafraichir } = await monterPanneau('exemple_avoir_a_confirmer')
     expect(screen.getByText(vente.raison_bloquee)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Confirmer l.avoir/ }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onRafraichir).toHaveBeenCalledTimes(1))
     expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledTimes(1)
     expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledWith(DEVIS.id)
@@ -385,6 +388,7 @@ describe('ATOT60 — avoir de révision à confirmer', () => {
     ventesApi.confirmerAvoirRevision.mockRejectedValue({ response: { status: 409, data: refus } })
     const { onRafraichir } = await monterPanneau('exemple_avoir_a_confirmer')
     await user.click(screen.getByRole('button', { name: /Confirmer l.avoir/ }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(refus.detail)
     expect(onRafraichir).not.toHaveBeenCalled()
   })
