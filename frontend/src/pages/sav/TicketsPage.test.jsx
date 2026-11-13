@@ -409,6 +409,9 @@ describe('TicketDetail — AERR82 retrait de pièce confirmé', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(savApi.removeTicketPiece).not.toHaveBeenCalled()
 
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
     const boite2 = await screen.findByRole('alertdialog')
     fireEvent.click(within(boite2).getByRole('button', { name: 'Retirer' }))
@@ -421,7 +424,7 @@ describe('TicketDetail — AERR82 retrait de pièce confirmé', () => {
 /* ACNC26 — « Retirer » d'une pièce est désactivé pendant l'envoi (un double
    clic ne lance jamais deux retraits de la même pièce). */
 describe('TicketDetail — ACNC26 retrait de pièce non doublé', () => {
-  it('« Retirer » désactivé pendant l'envoi', async () => {
+  it('« Retirer » désactivé pendant l’envoi', async () => {
     savApi.getTicketPieces.mockResolvedValue({
       data: [{ id: 31, produit_nom: 'Fusible 15 A', quantite: 2, stock_decremente: true }],
     })

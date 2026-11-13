@@ -127,7 +127,7 @@ describe('TicketAdvancedPanel — XSAV27 prêts d\'équipement', () => {
     await waitFor(() => expect(savApi.retournerPretEquipement).toHaveBeenCalledWith(5, 1))
   })
 
-  it('ACNC27 — « Retourner » désactivé pendant l'envoi', async () => {
+  it('ACNC27 — « Retourner » désactivé pendant l’envoi', async () => {
     savApi.getPretsEquipement.mockResolvedValue({
       data: [{ id: 1, produit_nom: 'Onduleur de prêt', date_sortie: '2026-07-01', date_retour_reelle: null }],
     })

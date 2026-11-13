@@ -68,7 +68,7 @@ describe('EquipementDetail — ZMFG12 mise au rebut', () => {
   })
 })
 
-describe('EquipementDetail — AERR92 la fiche suit l'équipement reçu', () => {
+describe('EquipementDetail — AERR92 la fiche suit l’équipement reçu', () => {
   it('re-rendu avec un autre équipement : la fiche suit', async () => {
     savApi.updateEquipement.mockResolvedValue({ data: {} })
     const fiche = (e) => (
