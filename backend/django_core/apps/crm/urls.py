@@ -27,7 +27,9 @@ from .public_affiner_views import lead_affiner_pro
 from .views_visite import lead_photo_toit
 # AIC — lectures servies à l'assistant (relais FastAPI, aucun écran en face).
 from .views_assistant import (
-    digest_matin, lead_brouillon_suivi, lead_resume, leads_a_relancer)
+    digest_matin, lead_brouillon_suivi, lead_message_visite, lead_resume,
+    lead_whatsapp_devis_apercu, leads_a_relancer, leads_recherche)
+from .assistant_touches import touche_assistant
 # NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks (SPL80 : clients_views).
 from .clients_views import (
     ConcurrentPerteViewSet, EquipeCommercialeViewSet, ObjectifCommercialViewSet,
@@ -206,6 +208,18 @@ urlpatterns = [
     # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
     # headless: digest du matin servi à l'assistant, aucun écran ERP
     path('assistant/digest-matin/', digest_matin, name='assistant-digest-matin'),
+    # headless: recherche compacte de leads servie à l'assistant (COP-C1)
+    path('assistant/leads/', leads_recherche, name='assistant-leads'),
+    # headless: aperçu WhatsApp d'un devis + de quoi appeler le commit (COP-C7)
+    path('assistant/leads/<int:lead_id>/whatsapp-devis-apercu/',
+         lead_whatsapp_devis_apercu, name='assistant-whatsapp-devis-apercu'),
+    # headless: message de visite à la forme de la carte wa_message (COP-C6)
+    path('assistant/leads/<int:lead_id>/message-visite/', lead_message_visite,
+         name='assistant-message-visite'),
+    # La carte « touche » de l'assistant appelle cette route (écran), elle
+    # n'est donc PAS « headless » (COP-C3/COP-C4).
+    path('assistant/touches/<int:touche_id>/', touche_assistant,
+         name='assistant-touche'),
     path('leads/<int:lead_id>/resume/', lead_resume, name='lead-resume'),
     # headless: brouillon (jamais d'envoi) servi à l'assistant, aucun écran ERP
     path('leads/<int:lead_id>/brouillon-suivi/', lead_brouillon_suivi,
