@@ -180,6 +180,34 @@ class ResponsableParModuleTests(TestCase):
                     self.assertEqual(obtenu, attendu)
                     self.assertFalse(ecriture and not lecture)
 
+    def test_code_hors_registre_n_accorde_aucun_palier(self):
+        """ATST13 (D-ATST-1) — un code absent du registre n'accorde aucun
+        palier d'écriture ; les 15 rôles livrés gardent exactement le leur."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+
+        def responsable(permissions):
+            compte = _compte_en_memoire(
+                permissions, role_legacy=None,
+                _role_grants_write=User._role_grants_write)
+            return User.is_responsable.fget(compte)
+
+        for codes in (['tickets_gerer'], ['stock_gerer', 'reporting_voir'],
+                      ['custom_object.x.gerer']):
+            with self.subTest(codes=codes):
+                self.assertFalse(User._role_grants_write(codes))
+                self.assertFalse(responsable(codes))
+        for codes in (['fiabilite_administration'], ['stock_modifier']):
+            with self.subTest(codes=codes):
+                self.assertTrue(User._role_grants_write(codes))
+                self.assertTrue(responsable(codes))
+        sans_ecriture = {'Viewer', 'Utilisateur', 'Portail client',
+                         'Portail fournisseur', 'Portail partenaire'}
+        self.assertEqual(len(CANONICAL_SYSTEM_ROLES), 15)
+        for nom, permissions in CANONICAL_SYSTEM_ROLES:
+            with self.subTest(role=nom):
+                self.assertEqual(responsable(list(permissions)),
+                                 nom not in sans_ecriture)
+
     def test_vues_sans_module_figees(self):
         modules_registre = set(PERMISSION_MODULE.values())
         non_resolues = set()

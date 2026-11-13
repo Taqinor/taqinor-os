@@ -65,15 +65,19 @@ _REGISTRE_MODULES = None
 #: importé d'ici) ; lu par ``LectureDuModule``.
 _OCTROIS_LECTURE = {}
 
+_CODES_REGISTRE = None  # ATST13 — ``ALL_PERMISSIONS`` injecté (D-ATST-1)
 
-def enregistrer_registre_modules(permission_module, *, octrois_lecture=None):
+
+def enregistrer_registre_modules(permission_module, *, octrois_lecture=None,
+                                 toutes_permissions=None):
     """Branché par ``apps.roles.apps.RolesConfig.ready()`` avec
     ``apps.roles.permissions_registre.PERMISSION_MODULE`` (et, APFS28,
-    ``OCTROIS_LECTURE``)."""
-    global _REGISTRE_MODULES, _OCTROIS_LECTURE
+    ``OCTROIS_LECTURE`` ; ATST13, ``ALL_PERMISSIONS``)."""
+    global _REGISTRE_MODULES, _OCTROIS_LECTURE, _CODES_REGISTRE
     _REGISTRE_MODULES = permission_module
     if octrois_lecture is not None:
         _OCTROIS_LECTURE = octrois_lecture
+    _CODES_REGISTRE = frozenset(toutes_permissions or ())
 
 
 def _registre_modules():
@@ -86,6 +90,12 @@ def _registre_modules():
             "'apps.roles' doit figurer dans INSTALLED_APPS (son ready() "
             'appelle authentication.permissions.enregistrer_registre_modules).')
     return _REGISTRE_MODULES
+
+
+def codes_du_registre():
+    """ATST13 — codes connus ; registre absent → ``ImproperlyConfigured``."""
+    _registre_modules()  # jamais de repli permissif
+    return _CODES_REGISTRE
 
 
 #: AARG52 — apps de FONDATION sans codes au registre : seules à garder la règle

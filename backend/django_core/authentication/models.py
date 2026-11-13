@@ -494,8 +494,12 @@ class CustomUser(AbstractUser):
         """True si la liste de permissions accorde au moins une action
         d'écriture/gestion (toute permission qui n'est ni une lecture
         ``*_voir`` ni un marqueur de portée ``records_scope_*``)."""
+        from authentication.permissions import codes_du_registre
+        connus = codes_du_registre()  # ATST13 — registre absent : ImproperlyConfigured
         for perm in permissions:
             if perm.endswith('_voir') or perm.endswith('_view'):  # _voir FR + _view EN = lecture
+                continue
+            if perm not in connus:  # ATST13 (D-ATST-1) : un code hors registre n'accorde rien
                 continue
             if perm.startswith('records_scope'):
                 continue
