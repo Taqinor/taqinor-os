@@ -86,6 +86,32 @@ class OfflineSyncBatchTests(TestCase):
         self.assertEqual(journal.user, self.user)
         self.assertIsNotNone(journal.date_traitement)
 
+    def test_deux_vidages_croises_n_appliquent_la_note_qu_une_fois(self):
+        """ACNC44 — le second vidage a lu le journal « en attente » AVANT que
+        le premier ne l'applique : la relecture sous verrou le voit appliqué."""
+        from . import services
+        lot = [op('cle-croise', 'crm.lead.noter',
+                  {'lead': self.lead.id, 'body': 'Client rappelé'})]
+        original = services._journaliser
+        etat = {'croise': False}
+
+        def journal_perime(*args, **kwargs):
+            obj = original(*args, **kwargs)  # lu « en attente »…
+            if not etat['croise']:
+                etat['croise'] = True
+                premier = services.apply_batch(self.co_a, self.user, lot)
+                etat['premier'] = premier['results'][0]
+            return obj  # …puis appliqué par l'autre vidage entre-temps
+
+        with patch.object(services, '_journaliser', side_effect=journal_perime):
+            second = services.apply_batch(self.co_a, self.user, lot)
+        self.assertEqual(etat['premier']['status'], 'applied')
+        self.assertEqual(second['results'][0]['status'], 'replayed')
+        self.assertEqual(self.notes().count(), 1)
+        journal = OfflineOperation.objects.get(client_op_id='cle-croise')
+        self.assertEqual(journal.statut, OfflineOperation.Statut.APPLIQUEE)
+        self.assertEqual(journal.resultat, etat['premier']['result'])
+
     def test_note_porte_l_utilisateur_acteur(self):
         self.api.post(BATCH, {'ops': [op('cle-acteur', 'crm.lead.noter',
                                          {'lead': self.lead.id, 'body': 'Hop'})]},

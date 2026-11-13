@@ -28,6 +28,7 @@ export function ListShell({
   rows = [],
   loading,
   error,
+  onRetry,
   onRowClick,
   rowActions,
   bulkActions,
@@ -64,6 +65,7 @@ export function ListShell({
           columns={columns}
           loading={loading}
           error={error}
+          onRetry={onRetry}
           onRowClick={onRowClick}
           rowActions={rowActions}
           bulkActions={bulkActions}

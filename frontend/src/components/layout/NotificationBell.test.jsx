@@ -99,3 +99,47 @@ describe('NotificationBell — panne prolongée du sondage léger (VX204)', () =
     expect(screen.queryByText(/Mise à jour interrompue/)).not.toBeInTheDocument()
   })
 })
+
+describe('NotificationBell — sondage du fil rejeté (AERR127)', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('sondage rejeté : le fil reste, jamais Rien à signaler', async () => {
+    notificationsApi.unreadCount.mockResolvedValue({ data: { unread: 0 } })
+    notificationsApi.list.mockResolvedValueOnce({ data: { results: [
+      { id: 1, title: 'Devis D-1 accepté', read: true, link: '/a' },
+      { id: 2, title: 'Facture F-2 payée', read: true, link: '/b' },
+      { id: 3, title: 'Lead L-3 assigné', read: true, link: '/c' },
+    ] } })
+    renderBell()
+    await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve() })
+
+    notificationsApi.list.mockRejectedValue(new Error('boom'))
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60 * 1000)
+      for (let i = 0; i < 8; i++) await Promise.resolve()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Notifications/ }))
+    await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve() })
+
+    expect(screen.getByText('Devis D-1 accepté')).toBeInTheDocument()
+    expect(screen.getByText('Facture F-2 payée')).toBeInTheDocument()
+    expect(screen.getByText('Lead L-3 assigné')).toBeInTheDocument()
+    expect(screen.queryByText('Rien à signaler 🎉')).not.toBeInTheDocument()
+  })
+
+  it('premier chargement rejeté : « Notifications indisponibles », jamais Rien à signaler', async () => {
+    notificationsApi.unreadCount.mockResolvedValue({ data: { unread: 0 } })
+    notificationsApi.list.mockRejectedValueOnce(new Error('boom'))
+    renderBell()
+    fireEvent.click(screen.getByRole('button', { name: /Notifications/ }))
+    await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve() })
+
+    expect(screen.getByText('Notifications indisponibles')).toBeInTheDocument()
+    expect(screen.queryByText('Rien à signaler 🎉')).not.toBeInTheDocument()
+  })
+})

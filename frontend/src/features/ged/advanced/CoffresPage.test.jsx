@@ -97,9 +97,9 @@ describe('PACT131 CoffresPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer le coffre' }))
     await waitFor(() => {
       expect(gedApi.deleteCoffre).toHaveBeenCalledWith(1)
-      expect(toast.error).toHaveBeenCalledWith(
-        'Le coffre contient 3 document(s) : videz-le avant de le supprimer.')
     })
+    // AERR55 — le motif 409 est dit par le toast global (intercepteur axios).
+    expect(toast.error).not.toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalledWith('Coffre supprimé.')
   })
 })

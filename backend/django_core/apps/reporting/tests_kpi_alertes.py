@@ -111,6 +111,48 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
         self.assertTrue(notifie)
         mock_notify3.assert_called_once()
 
+    def test_erreur_de_calcul_ne_rearme_pas_la_dedup(self):
+        """ACEL37 — un calcul qui lève un jour ne vaut pas « repassé du bon
+        côté » : la dédup reste armée, le lendemain au-delà du seuil = 0 envoi."""
+        alerte = KpiAlerte.objects.create(
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'),
+            deja_notifie=True)
+        alerte.destinataires_utilisateurs.add(self.user)
+        cible = 'apps.reporting.kpi_alertes._compute_valeur_stock_totale'
+        with mock.patch(cible, side_effect=RuntimeError('source HS')), \
+                mock.patch('apps.notifications.services.notify') as envoi:
+            self.assertEqual(evaluate_kpi_alerte(alerte), (None, False, False))
+        alerte.refresh_from_db()
+        self.assertTrue(alerte.deja_notifie)
+        self.assertIsNotNone(alerte.derniere_evaluation_le)
+        self.assertIsNone(alerte.derniere_valeur)
+        with mock.patch(cible, return_value=Decimal('75')), \
+                mock.patch('apps.notifications.services.notify') as envoi2:
+            evaluate_kpi_alerte(alerte)
+        envoi.assert_not_called()
+        envoi2.assert_not_called()
+
+    def test_tache_enregistree_sans_controles_django(self):
+        """ACEL38 — un worker démarré avec CELERY_SKIP_CHECKS=1 (aucun import
+        des URLs) connaît quand même ``reporting.evaluate_kpi_alertes``."""
+        import os
+        import subprocess
+        import sys
+        from django.conf import settings
+        code = (
+            'import sys\n'
+            'from erp_agentique.celery import app\n'
+            'app.loader.import_default_modules()\n'
+            "print('reporting.evaluate_kpi_alertes' in app.tasks, "
+            "'erp_agentique.urls' in sys.modules)\n")
+        env = dict(os.environ, CELERY_SKIP_CHECKS='1')
+        sortie = subprocess.run(
+            [sys.executable, '-c', code], cwd=str(settings.BASE_DIR), env=env,
+            capture_output=True, text=True, timeout=300)
+        self.assertEqual(sortie.returncode, 0, sortie.stderr[-2000:])
+        self.assertEqual(sortie.stdout.strip().splitlines()[-1], 'True False')
+
     def test_valeur_stock_totale_real_selector(self):
         Produit.objects.create(
             company=self.company, nom='Panneau', sku='XPLT6-1',

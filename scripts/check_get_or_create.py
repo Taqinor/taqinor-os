@@ -79,9 +79,9 @@ def _est_test(name: str) -> bool:
 
 
 def _iter_source_files():
-    if not APPS_DIR.is_dir():
-        return
-    for app_dir in sorted(APPS_DIR.iterdir()):
+    # ACNC51 — core et authentication (DJANGO_CORE lu à l'appel) : 57 appels jamais lus.
+    apps = sorted(APPS_DIR.iterdir()) if APPS_DIR.is_dir() else []
+    for app_dir in apps + [DJANGO_CORE / "core", DJANGO_CORE / "authentication"]:
         if not app_dir.is_dir():
             continue
         for path in sorted(app_dir.rglob("*.py")):
@@ -710,7 +710,7 @@ def analyser(path: Path):
     visiteur.visit(tree)
     imports = _imports(tree) if visiteur.appels else {}
     prouves = _prouves_par_appel(tree) if visiteur.appels else {}
-    app = path.relative_to(APPS_DIR).parts[0]
+    app = _app_de(path)
     rows = []
     for node, fonction, classe in visiteur.appels:
         receiver = _call_target_repr(node)

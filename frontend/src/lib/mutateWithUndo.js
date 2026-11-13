@@ -117,9 +117,13 @@ export async function mutateWithUndo({
     // APPLIQUÉ TOUT DE SUITE. Pas de setTimeout, pas de commit différé : quand
     // cette ligne est franchie, le serveur a répondu.
     await apply()
-  } catch {
+  } catch (err) {
     try { rollbackOptimistic?.() } catch { /* idem */ }
-    toastError(errorMessage)
+    // AERR71 — un refus serveur est déjà dit par le toast global de l'intercepteur
+    // (hors 401/404 et suppressErrorToast) : pas de second toast local.
+    const ditParLeGlobal = err?.response && ![401, 404].includes(err.response.status)
+      && !err.config?.suppressErrorToast
+    if (!ditParLeGlobal) toastError(errorMessage)
     return false
   }
 

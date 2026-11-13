@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 #: décision. Lu (puis retiré) par le récepteur ``post_save`` du lead.
 MARQUE = '_dispatch_equipe_id'
 RAISON_ROTATION = 'Rotation équilibrée'
+RAISON_DEFAUT = 'Commercial par défaut'
 RAISON_AUCUN = 'Aucun membre disponible'
 PLAFOND_DEFAUT = 20
 #: CADV115 — paliers de la file « À prendre », en minutes OUVRÉES depuis
@@ -140,6 +141,18 @@ def rotation(equipe):
         charge, _plafond(equipe.company_id))
 
 
+def repli(equipe):
+    """(membre, raison) quand le responsable n'a rien choisi (fondateur,
+    13/11/2026) : le commercial par défaut qu'il a désigné s'il est encore
+    membre actif, sinon la rotation équilibrée ; (None, RAISON_AUCUN) sans
+    personne."""
+    defaut = equipe.commercial_par_defaut
+    if defaut is not None and membre_actif(equipe, defaut):
+        return defaut, RAISON_DEFAUT
+    membre = rotation(equipe)
+    return (membre, RAISON_ROTATION) if membre is not None else (None, RAISON_AUCUN)
+
+
 def _regle_correspond(regle, lead):
     villes = [_sans_accents(v) for v in (regle.villes or '').split(',') if v.strip()]
     if villes and not ({_sans_accents(lead.ville), _sans_accents(lead.ville_reference)}
@@ -214,8 +227,8 @@ def permanence_du_moment(equipe, instant=None):
 def proposer(equipe, lead, instant=None):
     """(membre proposé ou None, raison) — première règle active qui
     correspond (son membre doit être un membre ACTIF de l'équipe), puis le
-    commercial de PERMANENCE de la demi-journée (CADV104), sinon la rotation
-    équilibrée existante."""
+    commercial de PERMANENCE de la demi-journée (CADV104), sinon le
+    commercial par défaut de l'équipe, sinon la rotation équilibrée (``repli``)."""
     regles = RegleAttribution.objects.filter(
         equipe=equipe, company_id=equipe.company_id, actif=True,
     ).select_related('membre').order_by('ordre', 'id')
@@ -225,8 +238,7 @@ def proposer(equipe, lead, instant=None):
     permanent = permanence_du_moment(equipe, instant)
     if permanent is not None:
         return permanent
-    membre = rotation(equipe)
-    return (membre, RAISON_ROTATION) if membre is not None else (None, RAISON_AUCUN)
+    return repli(equipe)
 
 
 def echeance_pour(equipe, depuis):
@@ -386,12 +398,13 @@ def definir_permanences(user, equipe_id, lignes):
 def reglage_equipe(equipe):
     return {'id': equipe.pk, 'nom': equipe.nom,
             'confirmation_responsable': equipe.confirmation_responsable,
-            'delai_minutes': equipe.delai_attribution_minutes}
+            'delai_minutes': equipe.delai_attribution_minutes,
+            'commercial_par_defaut': equipe.commercial_par_defaut_id}
 
 
 def modifier_reglages(user, equipe_id, valeurs):
-    """Écrit l'interrupteur et/ou le délai d'une équipe — ces deux champs
-    SEULS (le CRUD des équipes reste réservé à l'Admin, ACRM26). 404 hors
+    """Écrit l'interrupteur, le délai et/ou le commercial par défaut d'une
+    équipe — ces champs SEULS (le CRUD des équipes reste réservé à l'Admin, ACRM26). 404 hors
     société, 403 sans droit de réglage. Couper la confirmation ne bloque
     aucun lead : les attentes déjà posées gardent leur échéance et la tâche
     ``attribuer_echeances`` les attribue comme avant."""
@@ -410,6 +423,20 @@ def modifier_reglages(user, equipe_id, valeurs):
     if 'delai_minutes' in valeurs:
         equipe.delai_attribution_minutes = valeurs['delai_minutes']
         champs.append('delai_attribution_minutes')
+    if 'commercial_par_defaut' in valeurs:
+        # Fondateur 13/11/2026 — un membre actif de l'équipe (ou son
+        # responsable), jamais une personne d'une autre société ; null = aucun.
+        cible_id = valeurs['commercial_par_defaut']
+        cible = None
+        if cible_id is not None:
+            from django.contrib.auth import get_user_model
+            cible = get_user_model().objects.filter(
+                pk=cible_id, company_id=equipe.company_id).first()
+            if not membre_actif(equipe, cible):
+                raise ValidationError({'commercial_par_defaut': [
+                    "Choisissez un membre actif de l'équipe."]})
+        equipe.commercial_par_defaut = cible
+        champs.append('commercial_par_defaut')
     if champs:
         equipe.save(update_fields=champs)
     return reglage_equipe(equipe)
@@ -552,7 +579,7 @@ def attribuer_echeances(maintenant=None):
                     continue
                 owner = attente.proposee
                 if not membre_actif(equipe, owner):
-                    owner = rotation(equipe)
+                    owner = repli(equipe)[0]
                 if owner is not None:
                     corps = (f'Attribué automatiquement à {nom_affiche(owner)} '
                              '(délai dépassé)')
@@ -633,7 +660,7 @@ def escalader_file(maintenant=None):
                             # ``rotation``) n'a plus d'objet : le lead s'en va.
                             AttributionEnAttente.objects.filter(
                                 pk=verrou.pk).update(proposee=None)
-                            membre = rotation(equipe)
+                            membre = repli(equipe)[0]
                             corps = (f'{marqueur} — délai de prise dépassé : '
                                      + (f'attribué à {nom_affiche(membre)}'
                                         if membre is not None

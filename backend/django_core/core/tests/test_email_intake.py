@@ -85,6 +85,39 @@ class FetchAndPollTests(TestCase):
             provider='imap', actif=True, settings={})
         self.assertEqual(email_intake.fetch_messages(cfg), [])
 
+    def test_message_non_traite_reste_non_lu(self):
+        """ACEL17 — relève sans poser `\\Seen` ; seul le message traité sans
+        erreur est marqué lu ; connexion bornée par un délai."""
+        from unittest import mock
+
+        IntegrationConfig.objects.create(
+            company=self.company, integration_type=integrations.TYPE_EMAIL_IN,
+            provider='imap', actif=True, secret_ref='ACEL17_IMAP_MDP',
+            settings={'host': 'imap.example.invalid', 'user': 'boite'})
+        boite = mock.MagicMock()
+        boite.search.return_value = ('OK', [b'1 2'])
+        bruts = {b'1': b'Message-ID: <un@x>\r\nSubject: un\r\n\r\ncorps',
+                 b'2': b'Message-ID: <deux@x>\r\nSubject: deux\r\n\r\ncorps'}
+        boite.fetch.side_effect = lambda num, quoi: ('OK', [(b'', bruts[num])])
+
+        def handler(msg, company):
+            if msg.message_id == 'un@x':
+                raise RuntimeError('ticket SAV impossible')
+
+        avant = list(email_intake._HANDLERS)
+        email_intake._HANDLERS.clear()
+        self.addCleanup(email_intake._HANDLERS.extend, avant)
+        self.addCleanup(email_intake._HANDLERS.clear)
+        email_intake.register_handler(handler)
+        with mock.patch.dict('os.environ', {'ACEL17_IMAP_MDP': 'x'}), \
+                mock.patch('imaplib.IMAP4_SSL', return_value=boite) as ctor:
+            email_intake.poll_mailbox(self.company)
+        self.assertEqual(boite.fetch.call_count, 2)
+        self.assertTrue(all(c.args[1] == '(BODY.PEEK[])'
+                            for c in boite.fetch.call_args_list))
+        boite.store.assert_called_once_with(b'2', '+FLAGS', '\\Seen')
+        self.assertEqual(ctor.call_args.kwargs.get('timeout'), 30)
+
     def test_poll_noop_without_config(self):
         res = email_intake.poll_mailbox(self.company)
         self.assertEqual(res, {'fetched': 0, 'handled': 0})

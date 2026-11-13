@@ -1,0 +1,195 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_money_rounding -v    [checkout: taqinor-os]  rc=0
+test_base_complete_sort_zero (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_base_complete_sort_zero) ... ok
+test_ligne_morte_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_ligne_morte_fait_sortir_un) ... ok
+test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un) ... ok
+test_la_base_livree_porte_une_raison_pour_chaque_cle (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_la_base_livree_porte_une_raison_pour_chaque_cle) ... ok
+test_lecture_du_format_cle_barre_raison (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_lecture_du_format_cle_barre_raison) ... ok
+test_nouveau_site_est_rouge (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_nouveau_site_est_rouge) ... ok
+test_regeneration_conserve_les_raisons_existantes (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_regeneration_conserve_les_raisons_existantes) ... ok
+test_suppression_de_site_signale_une_entree_orpheline (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_suppression_de_site_signale_une_entree_orpheline) ... ok
+test_deplacement_de_fonction_entre_modules (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deplacement_de_fonction_entre_modules)
+Le chemin change, l'identite de contenu (qualname::sha) survit. ... ok
+test_deux_round_identiques_dans_la_meme_fonction (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deux_round_identiques_dans_la_meme_fonction) ... ok
+test_espaces_normalises (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_espaces_normalises) ... ok
+test_expression_sans_semantique_monetaire_ignoree (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_expression_sans_semantique_monetaire_ignoree) ... ok
+test_forme_de_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_forme_de_la_cle) ... ok
+test_insertion_de_50_lignes_en_amont_ne_change_rien (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_insertion_de_50_lignes_en_amont_ne_change_rien)
+Le coeur de QJR4 : dix recalages manuels en aout, plus aucun. ... ok
+test_qualname_module_et_methode (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_qualname_module_et_methode) ... ok
+test_renommage_de_la_fonction_change_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_renommage_de_la_fonction_change_la_cle)
+Voulu : un renommage est une relecture, pas un recalage muet. ... ok
+test_la_cle_des_sites_round_est_inchangee_par_aud189 (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_la_cle_des_sites_round_est_inchangee_par_aud189)
+La base livree (170 lignes) ne doit PAS se perimer : la graine des ... ok
+test_quantize_avec_rounding_est_ignore (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_avec_rounding_est_ignore) ... ok
+test_quantize_sans_rounding_est_vu (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_sans_rounding_est_vu) ... ok
+test_reintroduction_d_un_quantize_nu_est_rouge (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_reintroduction_d_un_quantize_nu_est_rouge) ... ok
+test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.007s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_money_rounding sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_money_rounding.py    [checkout: taqinor-os]  rc=0
+check_money_rounding: 0 site(s) round() sur une valeur d'apparence monetaire et 0 site(s) quantize() sans rounding= dans les modules de prix/taxe/rendu.
+
+check_money_rounding: OK (bloquant -- tous les sites sont dans la base).
+
+
+==> OK : garde scripts/check_money_rounding.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_money_rounding -v    [copie: depot]  rc=0
+test_base_complete_sort_zero (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_base_complete_sort_zero) ... ok
+test_ligne_morte_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_ligne_morte_fait_sortir_un) ... ok
+test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un) ... ok
+test_la_base_livree_porte_une_raison_pour_chaque_cle (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_la_base_livree_porte_une_raison_pour_chaque_cle) ... ok
+test_lecture_du_format_cle_barre_raison (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_lecture_du_format_cle_barre_raison) ... ok
+test_nouveau_site_est_rouge (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_nouveau_site_est_rouge) ... ok
+test_regeneration_conserve_les_raisons_existantes (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_regeneration_conserve_les_raisons_existantes) ... ok
+test_suppression_de_site_signale_une_entree_orpheline (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_suppression_de_site_signale_une_entree_orpheline) ... ok
+test_deplacement_de_fonction_entre_modules (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deplacement_de_fonction_entre_modules)
+Le chemin change, l'identite de contenu (qualname::sha) survit. ... ok
+test_deux_round_identiques_dans_la_meme_fonction (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deux_round_identiques_dans_la_meme_fonction) ... ok
+test_espaces_normalises (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_espaces_normalises) ... ok
+test_expression_sans_semantique_monetaire_ignoree (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_expression_sans_semantique_monetaire_ignoree) ... ok
+test_forme_de_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_forme_de_la_cle) ... ok
+test_insertion_de_50_lignes_en_amont_ne_change_rien (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_insertion_de_50_lignes_en_amont_ne_change_rien)
+Le coeur de QJR4 : dix recalages manuels en aout, plus aucun. ... ok
+test_qualname_module_et_methode (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_qualname_module_et_methode) ... ok
+test_renommage_de_la_fonction_change_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_renommage_de_la_fonction_change_la_cle)
+Voulu : un renommage est une relecture, pas un recalage muet. ... ok
+test_la_cle_des_sites_round_est_inchangee_par_aud189 (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_la_cle_des_sites_round_est_inchangee_par_aud189)
+La base livree (170 lignes) ne doit PAS se perimer : la graine des ... ok
+test_quantize_avec_rounding_est_ignore (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_avec_rounding_est_ignore) ... ok
+test_quantize_sans_rounding_est_vu (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_sans_rounding_est_vu) ... ok
+test_reintroduction_d_un_quantize_nu_est_rouge (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_reintroduction_d_un_quantize_nu_est_rouge) ... ok
+test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.007s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « if offenders → if False » : scripts/check_money_rounding.py
+    - '    if offenders:'
+    + '    if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_money_rounding -v    [copie: depot]  rc=1
+test_base_complete_sort_zero (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_base_complete_sort_zero) ... ok
+test_ligne_morte_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_ligne_morte_fait_sortir_un) ... ok
+test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un) ... FAIL
+test_la_base_livree_porte_une_raison_pour_chaque_cle (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_la_base_livree_porte_une_raison_pour_chaque_cle) ... ok
+test_lecture_du_format_cle_barre_raison (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_lecture_du_format_cle_barre_raison) ... ok
+test_nouveau_site_est_rouge (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_nouveau_site_est_rouge) ... ok
+test_regeneration_conserve_les_raisons_existantes (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_regeneration_conserve_les_raisons_existantes) ... ok
+test_suppression_de_site_signale_une_entree_orpheline (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_suppression_de_site_signale_une_entree_orpheline) ... ok
+test_deplacement_de_fonction_entre_modules (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deplacement_de_fonction_entre_modules)
+Le chemin change, l'identite de contenu (qualname::sha) survit. ... ok
+test_deux_round_identiques_dans_la_meme_fonction (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deux_round_identiques_dans_la_meme_fonction) ... ok
+test_espaces_normalises (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_espaces_normalises) ... ok
+test_expression_sans_semantique_monetaire_ignoree (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_expression_sans_semantique_monetaire_ignoree) ... ok
+test_forme_de_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_forme_de_la_cle) ... ok
+test_insertion_de_50_lignes_en_amont_ne_change_rien (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_insertion_de_50_lignes_en_amont_ne_change_rien)
+Le coeur de QJR4 : dix recalages manuels en aout, plus aucun. ... ok
+test_qualname_module_et_methode (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_qualname_module_et_methode) ... ok
+test_renommage_de_la_fonction_change_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_renommage_de_la_fonction_change_la_cle)
+Voulu : un renommage est une relecture, pas un recalage muet. ... ok
+test_la_cle_des_sites_round_est_inchangee_par_aud189 (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_la_cle_des_sites_round_est_inchangee_par_aud189)
+La base livree (170 lignes) ne doit PAS se perimer : la graine des ... ok
+test_quantize_avec_rounding_est_ignore (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_avec_rounding_est_ignore) ... ok
+test_quantize_sans_rounding_est_vu (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_sans_rounding_est_vu) ... ok
+test_reintroduction_d_un_quantize_nu_est_rouge (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_reintroduction_d_un_quantize_nu_est_rouge) ... ok
+test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas) ... ok
+
+======================================================================
+FAIL: test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_money_rounding.py", line 292, in test_nouveau_round_fait_sortir_un
+    self.assertEqual((code, "NOUVEAU(X)" in sortie), (1, True), sortie)
+AssertionError: Tuples differ: (0, False) != (1, True)
+
+First differing element 0:
+0
+1
+
+- (0, False)
++ (1, True) : check_money_rounding: 2 site(s) round() sur une valeur d'apparence monetaire et 0 site(s) quantize() sans rounding= dans les modules de prix/taxe/rendu.
+  scripts/tests/_cmr_tmp_2kk0ez5f.py:3  facturer  round(total_ht)
+  scripts/tests/_cmr_tmp_2kk0ez5f.py:8  acompte  round(montant_acompte)
+
+check_money_rounding: OK (bloquant -- tous les sites sont dans la base).
+
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.026s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un)
+
+--- mutant « sites = scan() → sites = [] » : scripts/check_money_rounding.py
+    - '    sites = scan()'
+    + '    sites = []'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_money_rounding -v    [copie: depot]  rc=1
+test_base_complete_sort_zero (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_base_complete_sort_zero) ... ok
+test_ligne_morte_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_ligne_morte_fait_sortir_un) ... ok
+test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un) ... FAIL
+test_la_base_livree_porte_une_raison_pour_chaque_cle (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_la_base_livree_porte_une_raison_pour_chaque_cle) ... ok
+test_lecture_du_format_cle_barre_raison (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_lecture_du_format_cle_barre_raison) ... ok
+test_nouveau_site_est_rouge (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_nouveau_site_est_rouge) ... ok
+test_regeneration_conserve_les_raisons_existantes (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_regeneration_conserve_les_raisons_existantes) ... ok
+test_suppression_de_site_signale_une_entree_orpheline (scripts.tests.test_check_money_rounding.TestBaseDeReference.test_suppression_de_site_signale_une_entree_orpheline) ... ok
+test_deplacement_de_fonction_entre_modules (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deplacement_de_fonction_entre_modules)
+Le chemin change, l'identite de contenu (qualname::sha) survit. ... ok
+test_deux_round_identiques_dans_la_meme_fonction (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_deux_round_identiques_dans_la_meme_fonction) ... ok
+test_espaces_normalises (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_espaces_normalises) ... ok
+test_expression_sans_semantique_monetaire_ignoree (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_expression_sans_semantique_monetaire_ignoree) ... ok
+test_forme_de_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_forme_de_la_cle) ... ok
+test_insertion_de_50_lignes_en_amont_ne_change_rien (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_insertion_de_50_lignes_en_amont_ne_change_rien)
+Le coeur de QJR4 : dix recalages manuels en aout, plus aucun. ... ok
+test_qualname_module_et_methode (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_qualname_module_et_methode) ... ok
+test_renommage_de_la_fonction_change_la_cle (scripts.tests.test_check_money_rounding.TestCleDIdentiteDeContenu.test_renommage_de_la_fonction_change_la_cle)
+Voulu : un renommage est une relecture, pas un recalage muet. ... ok
+test_la_cle_des_sites_round_est_inchangee_par_aud189 (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_la_cle_des_sites_round_est_inchangee_par_aud189)
+La base livree (170 lignes) ne doit PAS se perimer : la graine des ... ok
+test_quantize_avec_rounding_est_ignore (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_avec_rounding_est_ignore) ... ok
+test_quantize_sans_rounding_est_vu (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_quantize_sans_rounding_est_vu) ... ok
+test_reintroduction_d_un_quantize_nu_est_rouge (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_reintroduction_d_un_quantize_nu_est_rouge) ... ok
+test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas (scripts.tests.test_check_money_rounding.TestDetecteurQuantize.test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas) ... ok
+
+======================================================================
+FAIL: test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_money_rounding.py", line 292, in test_nouveau_round_fait_sortir_un
+    self.assertEqual((code, "NOUVEAU(X)" in sortie), (1, True), sortie)
+AssertionError: Tuples differ: (0, False) != (1, True)
+
+First differing element 0:
+0
+1
+
+- (0, False)
++ (1, True) : check_money_rounding: 2 site(s) round() sur une valeur d'apparence monetaire et 0 site(s) quantize() sans rounding= dans les modules de prix/taxe/rendu.
+  scripts/tests/_cmr_tmp_xhecxrpc.py:3  facturer  round(total_ht)
+  scripts/tests/_cmr_tmp_xhecxrpc.py:8  acompte  round(montant_acompte)
+
+check_money_rounding: OK (bloquant -- tous les sites sont dans la base).
+
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.014s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « sites = scan() → sites = [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_nouveau_round_fait_sortir_un (scripts.tests.test_check_money_rounding.MainSurModuleFautifTests.test_nouveau_round_fait_sortir_un)

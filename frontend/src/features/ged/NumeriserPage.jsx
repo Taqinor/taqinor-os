@@ -13,7 +13,7 @@ import {
   Camera, Trash2, RotateCw, Loader2, FileText, Upload, X, FileUp,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
-import { toutesLesPages, errText } from './listesGed'
+import { toutesLesPages, toastSiMuet } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import EnteteGed from './EnteteGed'
 import {
@@ -112,7 +112,7 @@ export default function NumeriserPage() {
       setDescription('')
       return resp
     } catch (err) {
-      toast.error(errText(err, 'Assemblage impossible.'))
+      toastSiMuet(err, 'Assemblage impossible.')
     } finally {
       setBusy(false)
     }
@@ -144,7 +144,7 @@ export default function NumeriserPage() {
       }
       setScanFiles([])
     } catch (err) {
-      toast.error(errText(err, 'Import impossible.'))
+      toastSiMuet(err, 'Import impossible.')
     } finally {
       setScanBusy(false)
     }

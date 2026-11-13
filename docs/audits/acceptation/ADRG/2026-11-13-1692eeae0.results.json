@@ -1,0 +1,337 @@
+{
+  "sha": "1692eeae0251364b7d8130882e3fbbc78f5cdf9f",
+  "date": "2026-11-13",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG2",
+    "ADRG4",
+    "ADRG17",
+    "ADRG18",
+    "ADRG20",
+    "ADRG23",
+    "ADRG82",
+    "ADRG84",
+    "ADRG85",
+    "ADRG88",
+    "ADRG89",
+    "ADRG96",
+    "ADRG97",
+    "ADRG101"
+  ],
+  "couvre_avec_ecart": [
+    "ADRG20",
+    "ADRG82",
+    "ADRG84"
+  ],
+  "etapes": [
+    {
+      "id": "PF4.2-ADRG23",
+      "taches": [
+        "ADRG23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG23.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG85",
+      "taches": [
+        "ADRG85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG85.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG89",
+      "taches": [
+        "ADRG89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG89.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.5-ADRG96",
+      "taches": [
+        "ADRG96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.5-ADRG96.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.5-ADRG97",
+      "taches": [
+        "ADRG97"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.5-ADRG97.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG2",
+      "taches": [
+        "ADRG2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.1-ADRG2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG17",
+      "taches": [
+        "ADRG17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.4-ADRG17.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG18",
+      "taches": [
+        "ADRG18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.4-ADRG18.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG101",
+      "taches": [
+        "ADRG101"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.1-ADRG101.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG4",
+      "taches": [
+        "ADRG4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.1-ADRG4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG20",
+      "taches": [
+        "ADRG20"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.4-ADRG20.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET /crm/assignable-users/ (backend/django_core/apps/crm/views.py::assignable_users, IsResponsableOrAdmin) répond 403 aux rôles livrés de palier normal (Commercial, Viewer) alors que LeadWorkspace.jsx (useEffect de montage) et LeadsPage.jsx (commentaire « Ouvert à la Commerciale ») l'appellent pour tout rôle : 403 + console.error à chaque ouverture de la fiche et de la liste ; appels inchangés par ADRG20, qui ne règle que les gestes (sélecteur inerte, « Responsable » en masse, export) ; oracle 2 — GET http://localhost:4173/api/django/crm/assignable-users/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/assignable-users/) ; oracle 2 — GET http://localhost:4173/api/django/crm/assignable-users/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/assignable-users/)"
+    },
+    {
+      "id": "PF4.4-ADRG88",
+      "taches": [
+        "ADRG88"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.4-ADRG88.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG82",
+      "taches": [
+        "ADRG82"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.4-ADRG82.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/parametres/ParametresEntreprise.jsx (useEffect de montage, l. 365-380) charge pour tout palier GET /installations/types-intervention/ et /installations/checklist-etapes/ (403 + console.error pour le Commercial responsable, sans droit chantiers), et ConfidentialiteSection.jsx (DsrSection.load) lit GET /core/dsr-requests/ (403, affiché « refus ») : lectures d'onglets voisins, sans rapport avec le menu « Vues sauvegardées » ni l'écriture des modèles brandés / du benchmarking ; présentes avant ADRG82/ADRG84 (montage inchangé par ces tâches) ; oracle 2 — GET http://localhost:4173/api/django/installations/types-intervention/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/types-intervention/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/checklist-etapes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/checklist-etapes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/checklist-etapes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/checklist-etapes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/types-intervention/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/types-intervention/?page=1)"
+    },
+    {
+      "id": "PF4.4-ADRG84",
+      "taches": [
+        "ADRG84"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.4-ADRG84.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/parametres/ParametresEntreprise.jsx (useEffect de montage, l. 365-380) charge pour tout palier GET /installations/types-intervention/ et /installations/checklist-etapes/ (403 + console.error pour le Commercial responsable, sans droit chantiers), et ConfidentialiteSection.jsx (DsrSection.load) lit GET /core/dsr-requests/ (403, affiché « refus ») : lectures d'onglets voisins, sans rapport avec le menu « Vues sauvegardées » ni l'écriture des modèles brandés / du benchmarking ; présentes avant ADRG82/ADRG84 (montage inchangé par ces tâches) ; oracle 2 — GET http://localhost:4173/api/django/installations/checklist-etapes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/checklist-etapes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/types-intervention/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/types-intervention/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/core/dsr-requests/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/core/dsr-requests/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/types-intervention/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/types-intervention/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/checklist-etapes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/checklist-etapes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/core/dsr-requests/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/core/dsr-requests/?page=1)"
+    }
+  ]
+}

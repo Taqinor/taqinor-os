@@ -69,7 +69,12 @@ export function useLignesEcran(ctx) {
   // par onProduitChange/onQuantiteChange ci-dessous (exhaustive-deps /
   // preserve-manual-memoization) sans faire recréer ces callbacks à chaque
   // rendu.
+  // AERR126 — jeton par ligne : seule la réponse de la DERNIÈRE demande s'applique.
+  const jetonsTarif = useRef({})
   const refreshTarif = useCallback(async (key, produitId, quantite) => {
+    const jeton = (jetonsTarif.current[key] || 0) + 1
+    jetonsTarif.current[key] = jeton
+    const perime = () => jetonsTarif.current[key] !== jeton
     if (!produitId) {
       setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
       return
@@ -80,6 +85,7 @@ export function useLignesEcran(ctx) {
         client: clientId || undefined,
         quantite: quantite || 1,
       })
+      if (perime()) return
       if (data.source && data.source !== 'standard') {
         setTarifBadges(b => ({ ...b, [key]: data.liste_nom }))
         // N2 — jamais réécrire un prix TAPÉ À LA MAIN (drapeau `prixManuel`,
@@ -103,6 +109,7 @@ export function useLignesEcran(ctx) {
     } catch {
       // Résolution de prix indisponible : on garde le prix standard déjà posé,
       // jamais de blocage de la saisie.
+      if (perime()) return
       setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
     }
   }, [clientId, setLines])

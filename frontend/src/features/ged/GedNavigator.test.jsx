@@ -266,6 +266,39 @@ describe('GedNavigator — écriture (U14)', () => {
     }))
   })
 
+  it('AERR73 — coordonnée vide : message, aucun envoi ; « 12,5 » accepté', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed(AUTH_DIRECTEUR)
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
+    await userEvent.type(await screen.findByLabelText('X0 %'), '12,5')
+    await userEvent.type(screen.getByLabelText('Y0 %'), '0')
+    await userEvent.type(screen.getByLabelText('X1 %'), '20')
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Caviarder$/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /^Caviarder$/i }))
+
+    expect(gedApi.caviarderDocument).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Y1 %')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByText('0 à 100, zone non plate')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Y1 %'), '10')
+    await userEvent.click(screen.getByRole('button', { name: /^Caviarder$/i }))
+    await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
+      zones: [{ page: 0, x0: 12.5, y0: 0, x1: 20, y1: 10 }], version: 22,
+    }))
+  })
+
   it("charge les 60 documents d'un dossier sur deux pages", async () => {
     gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
     gedApi.getDossiers.mockResolvedValue(ok([

@@ -665,6 +665,7 @@ def task_build_async_export(self, company_id, layout, debut_iso, fin_iso, token)
     Le futur ``BackgroundJob`` générique (NTPLT29/30) remplacera cette tâche en
     conservant la même signature de sortie (clé MinIO + nom de fichier)."""
     from datetime import date
+    from celery.exceptions import SoftTimeLimitExceeded
     from django.core.cache import cache
     from django.conf import settings
     from .exports import build_export_xlsx_bytes, export_object_key
@@ -691,6 +692,14 @@ def task_build_async_export(self, company_id, layout, debut_iso, fin_iso, token)
         cache.set(ckey, job, EXPORT_JOB_CACHE_TTL)
         logger.info('task_build_async_export OK: %s', key)
         return key
+    except SoftTimeLimitExceeded:
+        # ACEL66 — limite douce : travail « error », AUCUNE relance.
+        job = cache.get(ckey) or {}
+        job.update({'company_id': company_id, 'layout': layout,
+                    'status': 'error', 'error': 'limite de temps dépassée'})
+        cache.set(ckey, job, EXPORT_JOB_CACHE_TTL)
+        logger.error('task_build_async_export limite douce company=%s', company_id)
+        raise
     except Exception as exc:
         job = cache.get(ckey) or {}
         job.update({'company_id': company_id, 'layout': layout,

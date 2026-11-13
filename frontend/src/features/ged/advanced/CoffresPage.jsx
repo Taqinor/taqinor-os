@@ -11,6 +11,7 @@ import crmApi from '../../../api/crmApi'
 import { errMessage, toutesLesPages } from './shared.js'
 import { ChampDescription, PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    PACT131 — Coffres-forts documentaires (GED8).
@@ -88,7 +89,7 @@ export default function CoffresPage() {
     setASupprimer(null)
     if (!coffre) return
     try { await gedApi.deleteCoffre(coffre.id); toast.success('Coffre supprimé.'); load() }
-    catch (err) { toast.error(errMessage(err)) }
+    catch (err) { toastSiMuet(err) }
   }
 
   const rowActions = (r) => [
@@ -166,7 +167,7 @@ function CreateCoffreDialog({ clients, users, onClose, onDone }) {
       })
       toast.success('Coffre créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

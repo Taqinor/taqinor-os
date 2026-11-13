@@ -13,6 +13,8 @@ import { useState } from 'react'
 import { Building2 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { Button, Card, CardContent, Checkbox, Input, Label } from '../../ui'
+import { useConfirmDialog } from '../../ui/confirm'
+import { isAnyFormDirty } from '../../ui/useDirtyGuard'
 import { formatMAD } from '../../lib/format'
 import { corpsCreationLot, messageErreurLots } from './lotsBoq'
 
@@ -41,6 +43,7 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
   const [form, setForm] = useState(FORM_VIDE)
   const [erreur, setErreur] = useState('')
   const [enCours, setEnCours] = useState(false)
+  const { confirm } = useConfirmDialog()
 
   const charger = async () => {
     setErreur('')
@@ -71,6 +74,11 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
     e.preventDefault()
     const corps = corpsCreationLot(form)
     if (!corps.nom_lot) { setErreur('Nom de lot requis.'); return }
+    // AERR11 — la création recharge le devis (QJR548) : une saisie modifiée serait perdue.
+    if (isAnyFormDirty() && !(await confirm({
+      title: 'Créer le lot ?', confirmLabel: 'Créer le lot',
+      description: 'Créer le lot recharge le devis : vos modifications non enregistrées seront perdues.',
+    }))) return
     setEnCours(true)
     setErreur('')
     try {

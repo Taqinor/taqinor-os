@@ -8,6 +8,7 @@ du viewset (``core/action_permission_scan``). Les imports function-locaux
 des corps restent dans les corps (les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi).
 """
+import functools
 from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
@@ -33,6 +34,21 @@ from authentication.permissions import (
 from apps.facturation.views.facture_gardes import PeutEncaisser
 from ..gardes_lecture import LectureVentes
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
+
+
+def _rejouable(suffixe):
+    """ACNC13 — ``IdempotentCreateMixin._avec_idempotence`` (LA primitive)
+    autour d'une action de création ; clé = champ ``idempotency_key`` du corps
+    (l'en-tête ``Idempotency-Key`` reste lu). Sans clé : appel inchangé."""
+    def decorer(vue):
+        @functools.wraps(vue)
+        def enveloppe(self, request, *args, **kwargs):
+            brute = request.data.get('idempotency_key') if hasattr(request.data, 'get') else None
+            return self._avec_idempotence(
+                request, lambda: vue(self, request, *args, **kwargs), suffixe=suffixe,
+                cle=str(brute).strip()[:255] if brute else None)
+        return enveloppe
+    return decorer
 
 
 class _LotCreationSerializer(serializers.Serializer):
@@ -221,6 +237,7 @@ class DevisCycleActionsMixin:
                    responses={201: DevisSerializer(many=True)})
     @action(pagination_class=None, detail=True, methods=['post'], url_path='dupliquer-variante',
             permission_classes=[IsResponsableOrAdmin])
+    @_rejouable('dupliquer-variante')
     def dupliquer_variante(self, request, pk=None):
         """QJ15 — Crée 2–3 variantes de taille du devis pour comparaison
         côte-à-côte.
@@ -347,6 +364,7 @@ class DevisCycleActionsMixin:
     @extend_schema(request=D.DupliquerVarianteGammeRequest, responses={201: D.GammeResponse})
     @action(detail=True, methods=['post'], url_path='dupliquer-variante-gamme',
             permission_classes=[IsResponsableOrAdmin])
+    @_rejouable('dupliquer-variante-gamme')
     def dupliquer_variante_gamme(self, request, pk=None):
         """GAMME (fondateur 2026-08-18) — crée la SŒUR « gamme » de ce devis.
 
@@ -430,6 +448,7 @@ class DevisCycleActionsMixin:
     @extend_schema(request=None, responses={201: DevisSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer',
             permission_classes=[IsResponsableOrAdmin])
+    @_rejouable('dupliquer')
     def dupliquer(self, request, pk=None):
         """NTUX13 — Duplication INDÉPENDANTE (à ne pas confondre avec
         ``dupliquer-variante``, QJ15, qui groupe ses copies via
@@ -719,7 +738,7 @@ class DevisCycleActionsMixin:
 
     # api-only: TEMPORAIRE (QJR667) — aucun bouton « Renouveler » du devis n'appelle
     # encore cette action ; retirer ce marqueur dès que l'écran la câble.
-    @extend_schema(request=None, responses={201: DevisSerializer})
+    @extend_schema(request=None, responses={200: DevisSerializer, 201: DevisSerializer})
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])
     def renouveler(self, request, pk=None):
@@ -733,7 +752,8 @@ class DevisCycleActionsMixin:
         nouveau = renouveler_devis(self.get_object(), user=request.user)
         return Response(
             DevisSerializer(nouveau, context={'request': request}).data,
-            status=status.HTTP_201_CREATED)
+            # ACNC13 — renouvellement déjà fait : RENDU (200), jamais doublé.
+            status=200 if getattr(nouveau, 'deja_renouvele', False) else 201)
 
     # api-only: TEMPORAIRE (CADV82) — aucun bouton « Prolonger » du devis n'appelle
     # encore cette action ; retirer ce marqueur dès que l'écran la câble.

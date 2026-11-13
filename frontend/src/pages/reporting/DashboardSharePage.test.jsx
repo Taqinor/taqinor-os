@@ -92,6 +92,19 @@ describe('DashboardSharePage (XPLT10 — partage de dashboard)', () => {
 
     await waitFor(() => expect(coreApi.dashboardsPartages.revoke).toHaveBeenCalledWith(1))
   })
+
+  // AERR130 — la relecture qui suit la révocation échoue : les liens restent
+  // affichés et l'écran le dit (jamais « Aucun lien de partage »).
+  it('relecture rejetée après révocation : les liens restent', async () => {
+    renderPage(<DashboardSharePage />)
+    const revokeButtons = await screen.findAllByTestId('revoke-partage-1')
+    coreApi.dashboardsPartages.list.mockRejectedValueOnce(new Error('Network Error'))
+    revokeButtons[0].click()
+
+    expect(await screen.findByText(/Liens pas à jour/)).toBeTruthy()
+    expect(screen.getAllByTestId('revoke-partage-1').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Aucun lien de partage')).toBeNull()
+  })
 })
 
 describe('DashboardSharePage — partage interne (PACT120)', () => {

@@ -11,9 +11,8 @@ et un rendu texte minimal en pur stdlib qui fonctionne MÊME SANS
 optionnel est absent (import paresseux + repli).
 
 Compteurs Celery : incrémentés par des signaux ``task_success``/
-``task_failure`` enregistrés (best-effort, en mémoire process — un compteur
-process-local est suffisant pour une jauge de santé, pas pour de l'analytics
-fine ; un vrai backend d'observabilité agrège across-process si besoin).
+``task_failure`` enregistrés (best-effort) dans le cache PARTAGÉ (ACEL14) :
+le worker écrit, gunicorn lit.
 
 Heartbeat du beat : la tâche ``core.beat_heartbeat`` (cf. ``core/tasks.py``),
 planifiée fréquemment dans ``erp_agentique/celery.py``, écrit un timestamp
@@ -37,16 +36,35 @@ BEAT_HEARTBEAT_CACHE_KEY = 'core_beat_heartbeat_ts'
 # manqués de marge avant de déclarer un problème.
 BEAT_HEARTBEAT_STALE_SECONDS = 15 * 60
 
-# Compteurs process-local (best-effort, jamais persistés). Un redémarrage de
+# Compteurs HTTP process-local (best-effort, jamais persistés). Un redémarrage de
 # worker remet à zéro — attendu pour une jauge de santé "depuis le dernier
 # démarrage", pas un cumul historique (voir apps.audit / apps.reporting pour
 # l'historique durable).
 _lock = threading.Lock()
-_task_counters = {'success': 0, 'failure': 0}
 
-# NTPLT44 — compteurs Celery PAR QUEUE (best-effort, process-local). Clé = nom
-# de queue → {'success': n, 'failure': n}.
-_task_by_queue: dict = {}
+# ACEL14 — compteurs Celery (global et PAR QUEUE, NTPLT44) dans le cache
+# PARTAGÉ (comme le battement du beat) : incrémentés dans le worker, lus par
+# gunicorn — un dictionnaire du processus restait à 0 côté /metrics.
+_CELERY_QUEUES = ('default', 'scheduled', 'interactive', 'bulk')
+_STATUTS = ('success', 'failure')
+
+
+def _cle_tache(statut, queue=None):
+    return f'core_celery_tasks_{queue or "all"}_{statut}'
+
+
+def cles_compteurs_taches():
+    return [_cle_tache(s, q) for q in (None, *_CELERY_QUEUES) for s in _STATUTS]
+
+
+def _incr_tache(statut, queue=None):
+    cle = _cle_tache(statut, queue)
+    try:
+        cache.add(cle, 0, None)
+        cache.incr(cle)
+    except Exception:  # noqa: BLE001 — cache indisponible : jamais bloquant (D-ENF22-BLE001)
+        logger.warning('metrics : compteur Celery %s non incrémenté', cle, exc_info=True)
+
 
 # NTPLT44 — métriques HTTP PAR TENANT avec garde-fou de CARDINALITÉ. Sans garde,
 # `company` comme label Prometheus exploserait la cardinalité (1 série par
@@ -61,31 +79,28 @@ _http_real_companies: set = set()
 
 
 def record_task_success():
-    with _lock:
-        _task_counters['success'] += 1
+    _incr_tache('success')
 
 
 def record_task_failure():
-    with _lock:
-        _task_counters['failure'] += 1
+    _incr_tache('failure')
 
 
 def record_task_queue(queue, ok):
     """NTPLT44 — incrémente le compteur Celery de la queue nommée."""
-    queue = queue or 'default'
-    with _lock:
-        slot = _task_by_queue.setdefault(queue, {'success': 0, 'failure': 0})
-        slot['success' if ok else 'failure'] += 1
+    _incr_tache('success' if ok else 'failure', queue or 'default')
 
 
 def task_counters():
-    with _lock:
-        return dict(_task_counters)
+    lu = cache.get_many([_cle_tache(s) for s in _STATUTS])
+    return {s: int(lu.get(_cle_tache(s)) or 0) for s in _STATUTS}
 
 
 def task_queue_counters():
-    with _lock:
-        return {q: dict(v) for q, v in _task_by_queue.items()}
+    lu = cache.get_many(cles_compteurs_taches())
+    par_file = {q: {s: int(lu.get(_cle_tache(s, q)) or 0) for s in _STATUTS}
+                for q in _CELERY_QUEUES}
+    return {q: v for q, v in par_file.items() if any(v.values())}
 
 
 def _tenant_label(company_id):

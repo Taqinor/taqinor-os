@@ -107,7 +107,8 @@ export default function PortailClientDevis() {
       const data = err?.response?.data
       if (data?.champ && String(data.champ).startsWith('entreprise.')) {
         setErreurs({ [data.champ]: data.detail })
-      } else {
+      } else if (err?.response ? [401, 404].includes(err.response.status) : !err?.request) {
+        // AERR128 — l'intercepteur axios a déjà toasté tout autre refus.
         toast.error(data?.detail || "L'acceptation n'a pas abouti.")
       }
       // ADVS20 — corrigé depuis la lecture : relire le devis avant de signer.

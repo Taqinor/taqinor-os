@@ -32,6 +32,7 @@ second ``save()`` sans nouveau fichier ne redépose rien), et ``raw=True``
 (chargement de fixtures) reste sans effet — comme avant, où ``loaddata``
 court-circuitait ``save()``.
 """
+from django.db import transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 import logging
@@ -105,11 +106,13 @@ def _capture_depuis_minio(instance):
 @receiver(post_save, sender='portail.DocumentClientPortail',
           dispatch_uid='portail_document_depot_ged')
 def deposer_upload_dans_ged(sender, instance, raw=False, **kwargs):
-    """Dépose l'upload capturé dans la GED canonique et lie ``document_ged``.
+    """Dépose l'upload dans la GED canonique et lie ``document_ged``.
 
-    Frontière cross-app : on passe par ``ged.services.deposit_document`` (import
-    FONCTION-LOCAL, jamais ``apps.ged.models``/``views``). Best-effort : un
-    échec GED laisse le document portail enregistré, sans document lié.
+    ACEL65 — un fichier en MinIO (``fichier_key``, seul chemin vivant depuis
+    AUD835) part APRÈS commit dans la tâche ``portail.deposer_document_ged``,
+    relancée en cas d'échec (l'échec définitif est consigné par le récepteur
+    ``task_failure``). Seuls les octets legacy encore en mémoire (``FileField``)
+    sont déposés ici, best-effort : rien d'autre ne peut les relire.
     """
     if raw:
         return
@@ -117,35 +120,48 @@ def deposer_upload_dans_ged(sender, instance, raw=False, **kwargs):
     # Consommé une seule fois : un save() ultérieur sans nouveau fichier ne
     # redépose rien.
     setattr(instance, _CONTENU_ATTR, None)
-    if not capture:
-        capture = _capture_depuis_minio(instance)
-    if not capture:
+    if capture:
+        try:
+            deposer_dans_ged(instance, capture)
+        except Exception:  # noqa: BLE001 — legacy best-effort, journalisé (D-ENF22-BLE001)
+            logger.warning("deposer_upload_dans_ged : erreur absorbée, repli dégradé", exc_info=True)
         return
-    contenu, mime = capture
-    try:
-        from apps.ged import services as ged_services
+    if getattr(instance, 'fichier_key', '') and not instance.document_ged_id:
+        from .tasks import deposer_document_ged
 
-        nom = instance.libelle or instance.get_type_document_display()
-        document, _created = ged_services.deposit_document(
-            company=instance.company,
-            nom=nom,
-            source_type=SOURCE_TYPE,
-            source_id=instance.pk,
-            contenu_bytes=contenu,
-            mime=mime,
-            description=(
-                'Document déposé par le client via le portail '
-                f'(WIR94) — {nom}.'),
-            cabinet_nom='Portail client',
-            folder_nom='Documents clients',
-            created_by=None,
-        )
-    except Exception:  # pragma: no cover - défensif (dépôt best-effort)
-        logger.warning("deposer_upload_dans_ged : erreur absorbée, repli dégradé", exc_info=True)
-        return
+        pk = instance.pk
+        transaction.on_commit(lambda: deposer_document_ged.delay(pk))
+
+
+def deposer_dans_ged(instance, capture):
+    """Dépose ``(contenu, mime)`` en GED et lie ``document_ged`` ; LÈVE si la GED
+    échoue (l'appelant décide : journaliser ou relancer).
+
+    Frontière cross-app : ``ged.services.deposit_document`` (import
+    FONCTION-LOCAL, jamais ``apps.ged.models``/``views``), idempotent par
+    ``source_type``/``source_id``."""
+    contenu, mime = capture
+    from apps.ged import services as ged_services
+
+    nom = instance.libelle or instance.get_type_document_display()
+    document, _created = ged_services.deposit_document(
+        company=instance.company,
+        nom=nom,
+        source_type=SOURCE_TYPE,
+        source_id=instance.pk,
+        contenu_bytes=contenu,
+        mime=mime,
+        description=(
+            'Document déposé par le client via le portail '
+            f'(WIR94) — {nom}.'),
+        cabinet_nom='Portail client',
+        folder_nom='Documents clients',
+        created_by=None,
+    )
     type(instance).objects.filter(pk=instance.pk).update(
         document_ged_id=document.pk)
     instance.document_ged_id = document.pk
+    return document.pk
 
 
 @receiver(ticket_resolu, dispatch_uid='portail_demande_suit_ticket_resolu')

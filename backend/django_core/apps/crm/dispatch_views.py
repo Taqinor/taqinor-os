@@ -163,6 +163,8 @@ class ReglagesEquipeSerializer(serializers.Serializer):
     confirmation_responsable = BooleenStrict(required=False)
     # Minutes OUVRÉES, bornées à une journée de travail (comme l'équipe).
     delai_minutes = EntierStrict(min_value=1, max_value=480, required=False)
+    # Fondateur 13/11/2026 — id d'un membre actif de l'équipe, ou null.
+    commercial_par_defaut = EntierStrict(allow_null=True, required=False)
 
 
 @extend_schema(request=ReglagesEquipeSerializer,
@@ -172,7 +174,9 @@ class ReglagesEquipeSerializer(serializers.Serializer):
                    'id': serializers.IntegerField(),
                    'nom': serializers.CharField(),
                    'confirmation_responsable': serializers.BooleanField(),
-                   'delai_minutes': serializers.IntegerField()}))
+                   'delai_minutes': serializers.IntegerField(),
+                   'commercial_par_defaut': serializers.IntegerField(
+                       allow_null=True)}))
 @api_view(['PATCH'])
 @parser_classes([JSONParser])
 @permission_classes([IsAnyRole])

@@ -1,0 +1,117 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_ci_guards.ToutEstBrancheTests -v    [checkout: taqinor-os]  rc=0
+test_entree_exacte_retiree_rouge (scripts.tests.test_ci_guards.ToutEstBrancheTests.test_entree_exacte_retiree_rouge)
+ADEP105 - retirer l'entree exacte `test_check_stages` n'est plus masque par ... ok
+test_exclusions_datees_et_vivantes (scripts.tests.test_ci_guards.ToutEstBrancheTests.test_exclusions_datees_et_vivantes) ... ok
+test_tout_test_et_garde_est_branche (scripts.tests.test_ci_guards.ToutEstBrancheTests.test_tout_test_et_garde_est_branche) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.034s
+
+OK
+
+
+==> OK : garde branchée : scripts.tests.test_ci_guards.ToutEstBrancheTests (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_no_anon_snapshot -v    [checkout: taqinor-os]  rc=0
+test_depot_propre_sort_zero (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_depot_propre_sort_zero) ... ok
+test_git_en_echec_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_git_en_echec_fait_sortir_un) ... ok
+test_instantane_suivi_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_instantane_suivi_fait_sortir_un) ... ok
+test_offending_voit_les_instantanes_et_rien_d_autre (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_offending_voit_les_instantanes_et_rien_d_autre) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_no_anon_snapshot sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_no_anon_snapshot.py    [checkout: taqinor-os]  rc=0
+OK : aucun instantane anonymise suivi (22562 fichiers vus).
+
+
+==> OK : garde scripts/check_no_anon_snapshot.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_no_anon_snapshot -v    [copie: depot]  rc=0
+test_depot_propre_sort_zero (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_depot_propre_sort_zero) ... ok
+test_git_en_echec_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_git_en_echec_fait_sortir_un) ... ok
+test_instantane_suivi_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_instantane_suivi_fait_sortir_un) ... ok
+test_offending_voit_les_instantanes_et_rien_d_autre (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_offending_voit_les_instantanes_et_rien_d_autre) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « offending rend [] » : scripts/check_no_anon_snapshot.py
+    - '    bad = []\n    for p in paths:'
+    + '    return []\n    bad = []\n    for p in paths:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_no_anon_snapshot -v    [copie: depot]  rc=1
+test_depot_propre_sort_zero (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_depot_propre_sort_zero) ... ok
+test_git_en_echec_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_git_en_echec_fait_sortir_un) ... ok
+test_instantane_suivi_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_instantane_suivi_fait_sortir_un) ... FAIL
+test_offending_voit_les_instantanes_et_rien_d_autre (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_offending_voit_les_instantanes_et_rien_d_autre) ... FAIL
+
+======================================================================
+FAIL: test_instantane_suivi_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_instantane_suivi_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_no_anon_snapshot.py", line 40, in test_instantane_suivi_fait_sortir_un
+    self.assertEqual(code, 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_offending_voit_les_instantanes_et_rien_d_autre (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_offending_voit_les_instantanes_et_rien_d_autre)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_no_anon_snapshot.py", line 35, in test_offending_voit_les_instantanes_et_rien_d_autre
+    self.assertEqual(vus, ["var/anon/snap.json", "backend/var/anon/x.json",
+AssertionError: Lists differ: [] != ['var/anon/snap.json', 'backend/var/anon/x[46 chars]son']
+
+Second list contains 4 additional elements.
+First extra element 0:
+'var/anon/snap.json'
+
+- []
++ ['var/anon/snap.json',
++  'backend/var/anon/x.json',
++  'docs/a.anon.json.gz',
++  'a/var/anon/b.json']
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=2)
+
+
+==> OK : mutant « offending rend [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_instantane_suivi_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_instantane_suivi_fait_sortir_un); test_offending_voit_les_instantanes_et_rien_d_autre (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_offending_voit_les_instantanes_et_rien_d_autre)
+
+--- mutant « except qui rend 0 » : scripts/check_no_anon_snapshot.py
+    - '        return 1\n    paths = [p for p'
+    + '        return 0\n    paths = [p for p'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_no_anon_snapshot -v    [copie: depot]  rc=1
+test_depot_propre_sort_zero (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_depot_propre_sort_zero) ... ok
+test_git_en_echec_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_git_en_echec_fait_sortir_un) ... FAIL
+test_instantane_suivi_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_instantane_suivi_fait_sortir_un) ... ok
+test_offending_voit_les_instantanes_et_rien_d_autre (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_offending_voit_les_instantanes_et_rien_d_autre) ... ok
+
+======================================================================
+FAIL: test_git_en_echec_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_git_en_echec_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_no_anon_snapshot.py", line 46, in test_git_en_echec_fait_sortir_un
+    self.assertEqual(code, 1)
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « except qui rend 0 » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_git_en_echec_fait_sortir_un (scripts.tests.test_check_no_anon_snapshot.NoAnonSnapshotTests.test_git_en_echec_fait_sortir_un)

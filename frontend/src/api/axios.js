@@ -8,9 +8,11 @@ import { originFrom } from './origin'
 // volontairement sans React : ils émettent un toast / un événement window.
 import { errorMessageFrom, toastError } from '../lib/toast'
 import { apiErrorMessageServi } from '../lib/apiError'
+import { estEcritureExpiree, MESSAGE_ECRITURE_EXPIREE } from '../lib/apiError'
 // NTADM26 — entité active (filtre d'affichage, module pur sans React ici).
 import { lireEntiteActive } from '../lib/entiteActive'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
+import { noterEcritureRefusee } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
 import {
@@ -123,6 +125,7 @@ api.interceptors.response.use(
       // réellement (`auth.isAuthenticated`, cf. session-bridge.js) — un 401 sur
       // une page publique n'est pas une expiration, et la modale ne doit pas
       // s'ouvrir par-dessus une vitrine (son overlay bloque tous les clics).
+      noterEcritureRefusee(originalRequest.method)
       emitSessionExpired()
       return Promise.reject(error)
     }
@@ -136,6 +139,13 @@ api.interceptors.response.use(
     // précisément derrière un état local « Indisponible pour le
     // moment. ». Best-effort absolu : ne lève jamais, n'attend rien.
     signalerErreurRequete(error, { sessionEstActive })
+
+    // ACNC52 — une ÉCRITURE dont la réponse a expiré a peut-être abouti côté serveur
+    // (gunicorn va au bout) : ne jamais inviter à rejouer. Texte unique (lib/apiError).
+    if (estEcritureExpiree(error) && !originalRequest.suppressErrorToast) {
+      toastError(MESSAGE_ECRITURE_EXPIREE)
+      return Promise.reject(error)
+    }
 
     // L53 — Bridge global : toute requête échouée surface un toast d'erreur FR,
     // sauf si l'appelant a explicitement opté pour la gestion locale

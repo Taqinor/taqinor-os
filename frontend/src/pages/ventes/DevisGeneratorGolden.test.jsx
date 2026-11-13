@@ -32,6 +32,12 @@ vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+// AERR61 — une lecture de pièces jointes rejetée s'affiche désormais (« non
+// chargées ») : le harnais sert une liste vide, comme à la capture des goldens.
+vi.mock('../../api/recordsApi', async (orig) => {
+  const m = await orig()
+  return { ...m, default: { ...m.default, getAttachments: vi.fn(() => Promise.resolve({ data: [] })) } }
+})
 
 const DOSSIER = './generator/__golden__'
 

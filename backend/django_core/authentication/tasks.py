@@ -93,6 +93,7 @@ def purger_societes_demo_expirees_task():
 
     from datetime import timedelta
 
+    from django.db import transaction
     from django.utils import timezone
 
     from authentication.management.commands.reset_demo_company import (
@@ -110,24 +111,31 @@ def purger_societes_demo_expirees_task():
     expirees = list(Company.objects.filter(
         est_demo=True, profile__essai_expire_le__lt=cutoff))
 
-    purged = []
+    purged, echecs = [], 0
     for company in expirees:
         slug = company.slug
-        # ENF20 — registre d'audit de ``core`` (rempli par apps.audit
-        # ready()) : aucune arête statique authentication.tasks -> apps.audit.
-        audit_registry.record(
-            'demo_company_purge', instance=company, company=company,
-            user=None, actor_username='celery-beat',
-            detail=(f'Société démo "{slug}" purgée automatiquement '
-                    '(essai expiré depuis plus de 90 jours).'))
-        # CustomUser.company est SET_NULL → supprimer explicitement les
-        # comptes de la société démo (sinon ils seraient orphelinés), même
-        # séquence que reset_demo_company.
-        CustomUser.objects.filter(company=company).delete()
-        _delete_cascading(company)
+        try:  # ACEL16 — purge d'UNE démo atomique : tout ou rien, comptes compris
+            with transaction.atomic():
+                # ENF20 — registre d'audit de ``core`` (rempli par apps.audit
+                # ready()) : aucune arête statique authentication.tasks -> apps.audit.
+                audit_registry.record(
+                    'demo_company_purge', instance=company, company=company,
+                    user=None, actor_username='celery-beat',
+                    detail=(f'Société démo "{slug}" purgée automatiquement '
+                            '(essai expiré depuis plus de 90 jours).'))
+                # CustomUser.company est SET_NULL → supprimer explicitement les
+                # comptes de la société démo (sinon ils seraient orphelinés),
+                # même séquence que reset_demo_company.
+                CustomUser.objects.filter(company=company).delete()
+                _delete_cascading(company, company)
+        except Exception:  # noqa: BLE001 — journalisé et compté (D-ENF22-BLE001)
+            echecs += 1
+            logger.exception('purge démo : société %s annulée', slug)
+            continue
         purged.append(slug)
 
     logger.info(
         'authentication.purger_societes_demo_expirees: %d société(s) '
         'purgée(s) : %s', len(purged), purged)
-    return {'purged': len(purged), 'slugs': purged, 'enabled': True}
+    return {'purged': len(purged), 'slugs': purged, 'enabled': True,
+            'echecs': echecs}

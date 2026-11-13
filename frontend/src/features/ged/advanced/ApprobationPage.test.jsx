@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor, within, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 import userEvent from '@testing-library/user-event'
 import { renderGedPage } from './gedPage.testHelpers.jsx'
 import gedApi from '../../../api/gedApi'
@@ -39,6 +42,9 @@ vi.mock('../../../api/gedApi', () => ({
       data: new Blob(['%PDF'], { type: 'application/pdf' }), headers: {},
     })),
     prolongerDemandeSignature: vi.fn(() => Promise.resolve({ data: {} })),
+    // AERR65 — gestes irréversibles confirmés.
+    marquerSigne: vi.fn(() => Promise.resolve({ data: {} })),
+    annulerDemandeSignature: vi.fn(() => Promise.resolve({ data: {} })),
     // ADOC63 / ADOC76 — création mono / circuit multi-signataires.
     createDemandeSignature: vi.fn(),
     creerDemandeMultiSignataires: vi.fn(),
@@ -313,5 +319,42 @@ describe('ADOC76 ApprobationPage — circuit multi-signataires', () => {
       expect.objectContaining({
         destinataires: [expect.objectContaining({ nom: 'Sofia', role: 'approbateur', ordre: 1 })],
       })))
+  })
+})
+
+describe('AERR65 ApprobationPage — confirmation des gestes irréversibles', () => {
+  const ouvrirAction = async (libelle) => {
+    gedApi.getDemandesSignature.mockResolvedValueOnce({ data: [
+      { id: 6, document: 14, document_nom: 'Contrat 2026-14.pdf', statut: 'en_attente',
+        signataire_nom: 'Client Z', signataire_email: 'z@x.ma',
+        date_demande: '2026-07-01T09:00:00Z' },
+    ] })
+    render(<MemoryRouter><ThemeProvider><ConfirmProvider><ApprobationPage /></ConfirmProvider></ThemeProvider></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    const row = (await screen.findAllByText('Contrat 2026-14.pdf')).map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText(libelle))
+    return screen.findByRole('alertdialog')
+  }
+
+  it('Marquer comme signée puis Annuler : aucun appel ; la boîte nomme le document', async () => {
+    const boite = await ouvrirAction('Marquer comme signée')
+    expect(within(boite).getByText(/Contrat 2026-14\.pdf/)).toBeInTheDocument()
+    await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    expect(gedApi.marquerSigne).not.toHaveBeenCalled()
+  })
+
+  it('Marquer comme signée puis Confirmer : un seul appel', async () => {
+    const boite = await ouvrirAction('Marquer comme signée')
+    await userEvent.click(within(boite).getByRole('button', { name: 'Marquer comme signée' }))
+    await waitFor(() => expect(gedApi.marquerSigne).toHaveBeenCalledTimes(1))
+    expect(gedApi.marquerSigne).toHaveBeenCalledWith(6)
+  })
+
+  it('Annuler la demande puis Garder : aucun appel', async () => {
+    const boite = await ouvrirAction('Annuler la demande')
+    expect(within(boite).getByText(/Contrat 2026-14\.pdf/)).toBeInTheDocument()
+    await userEvent.click(within(boite).getByRole('button', { name: 'Garder' }))
+    expect(gedApi.annulerDemandeSignature).not.toHaveBeenCalled()
   })
 })

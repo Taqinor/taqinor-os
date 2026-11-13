@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: c32c1c6ac4b5c37f4308f419f527d5a6e8989ed94750aeaa8ed1fc28468d3c8b
+Structure fingerprint: a7474efeb8049b2f6a029dedbc55d3cca22827c4616efe8b69ad1349685aafb3
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -234,7 +234,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `sav` | `sav/` | 32 | Equipment registry (`Equipement`, warranty clock), tickets + SLA, `ContratMaintenance`, worksheets, `Probleme`, `KbArticle`, `AlarmeOnduleur`. |
 | `monitoring` | `monitoring/` | 9 | Production supervision: `ProductionReading`, `UnderperformanceFlag`, `SlaDisponibilite`, `CertificatCarbone`. Swappable provider, no-op by default. |
 | `documents` | `documents/` | 0 | Field-execution PDFs (PV de réception, bon de livraison, attestation) — no models. |
-| `ged` | `ged/` | 43 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`. |
+| `ged` | `ged/` | 44 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`, `PieceJointeImportee` (ACEL61 — pièces jointes déjà importées, jamais réimportées). |
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). Demandes portail : `demandes-ticket-portail/<id>/refuser/` (refus motivé, `motif_refus`, ASOC98), résolues au ticket résolu (ASOC44). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
 | `reporting` | `reporting/` | 13 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66), real-field Web Vitals (`WebVitalMetric`, VX61) and the user-problem journal (`ProblemeClient`, YJPB1 — `POST reporting/problemes-client/` posted by `frontend/src/lib/journalProblemes.js`, read by `manage.py problemes_utilisateurs`; no screen, see `docs/journal-problemes-utilisateurs.md`) — the app owns no business data. FTS (`global_search` sur `search_vector`, repli icontains) + suggestions trigram `GET reporting/search/suggest/` (NTPLT33/34) ; résumé démo `GET reporting/demo-resume/` + KPI internes `GET reporting/kpi-onboarding-interne/` (superuser, cache nocturne `reporting.recalcul_nocturne_onboarding` — NTDMO21/31/41/42). `POST saved-reports/<id>/couper-partage/` (APUB41) ; gardes de lecture par module source (`gardes_lecture.py`, ADRG70/71). |

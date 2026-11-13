@@ -38,6 +38,7 @@ import logging
 import os
 import re
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
@@ -801,11 +802,22 @@ def executer_exports_dus(now=None, *, companies=None):
     de no-op tracé du dépôt (même vocabulaire que `core.backup`, et ce que
     `core.health.recent_incidents` remonte déjà comme incident d'infra).
     """
+    from .models import ScheduledExport
+
     now = now or timezone.now()
     recap = []
     for export in exports_dus(now, companies=companies):
+        # ACEL15 — RÉSERVATION avant la livraison (UPDATE conditionnel) : un
+        # passage chevauchant, ou un rejeu après un `save` final perdu, ne
+        # livre jamais deux fois ; 0 ligne réservée ⇒ extrait sauté.
+        if not ScheduledExport.objects.filter(
+                pk=export.pk, derniere_execution_le=export.derniere_execution_le,
+        ).update(derniere_execution_le=now):
+            continue
         try:
             executer(export, now=now)
+        except SoftTimeLimitExceeded:
+            raise
         except Exception:  # noqa: BLE001 — un extrait ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning('extraits planifiés : extrait %s en échec',
                            getattr(export, 'pk', None), exc_info=True)

@@ -36,6 +36,8 @@ export default function TagChipInput({ model, id, readOnly = false }) {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const inputRef = useRef(null)
+  // AERR63 — lecture rejetée : avis + Réessayer, jamais une liste vide muette.
+  const [erreurLecture, setErreurLecture] = useState(false)
 
   const loadApplied = useCallback(async () => {
     if (!model || !id) return
@@ -43,7 +45,10 @@ export default function TagChipInput({ model, id, readOnly = false }) {
       const res = await recordsApi.getTaggedItems(model, id)
       const data = res.data
       setApplied(Array.isArray(data) ? data : (data?.results ?? []))
-    } catch { /* ignore */ }
+      setErreurLecture(false)
+    } catch {
+      setErreurLecture(true)
+    }
   }, [model, id])
 
   const loadVocab = useCallback(async (q) => {
@@ -51,7 +56,7 @@ export default function TagChipInput({ model, id, readOnly = false }) {
       const res = await recordsApi.getTags(q)
       const data = res.data
       setVocab(Array.isArray(data) ? data : (data?.results ?? []))
-    } catch { /* ignore */ }
+    } catch { /* AERR63 — le toast global de l'intercepteur parle ; état inchangé */ }
   }, [])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
@@ -67,7 +72,7 @@ export default function TagChipInput({ model, id, readOnly = false }) {
         if (exists) return prev
         return [...prev, res.data]
       })
-    } catch { /* ignore */ }
+    } catch { /* AERR63 — le toast global de l'intercepteur parle ; état inchangé */ }
     setSearch('')
     setOpen(false)
   }
@@ -76,7 +81,7 @@ export default function TagChipInput({ model, id, readOnly = false }) {
     try {
       await recordsApi.removeTag(taggedItem.id)
       setApplied(prev => prev.filter(t => t.id !== taggedItem.id))
-    } catch { /* ignore */ }
+    } catch { /* AERR63 — le toast global de l'intercepteur parle ; état inchangé */ }
   }
 
   async function handleCreate() {
@@ -87,7 +92,7 @@ export default function TagChipInput({ model, id, readOnly = false }) {
       const newTag = res.data
       await handleAdd(newTag)
       await loadVocab('')
-    } catch { /* ignore */ }
+    } catch { /* AERR63 — le toast global de l'intercepteur parle ; état inchangé */ }
     setCreating(false)
     setSearch('')
   }
@@ -104,6 +109,12 @@ export default function TagChipInput({ model, id, readOnly = false }) {
         <TagIcon size={13} />
         <span>Tags</span>
       </div>
+      {erreurLecture && (
+        <div role="alert" className="text-sm text-destructive">
+          Étiquettes non chargées.{' '}
+          <button type="button" onClick={loadApplied} className="font-medium underline">Réessayer</button>
+        </div>
+      )}
       <div className="tag-chip-area">
         {applied.map(t => (
           <Chip key={t.id} tag={t} onRemove={!readOnly ? handleRemove : null} readOnly={readOnly} />

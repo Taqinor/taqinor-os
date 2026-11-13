@@ -192,6 +192,40 @@ class ExpirationAnnulationTests(XGed2Base):
         count = services.expirer_demandes_echues(self.co_a)
         self.assertEqual(count, 0)
 
+    def test_signee_pendant_l_expiration_reste_signee(self):
+        """ACEL63 (C-ACEL-016) — la signature finale committée entre la
+        sélection et l'écriture n'est plus écrasée en « annulée »."""
+        from apps.ged.models import DemandeSignatureDocument
+        echue = timezone.now() - timezone.timedelta(days=1)
+        signee = services.creer_demande_multi_signataires(
+            self.doc_a, destinataires=self._destinataires(), company=self.co_a)
+        oubliee = services.demander_signature(
+            self.doc_a, signataire_nom='X', signataire_email='x@x.com',
+            company=self.co_a)
+        DemandeSignatureDocument.objects.filter(
+            pk__in=[signee.pk, oubliee.pk]).update(expires_at=echue)
+        gestionnaire = DemandeSignatureDocument.objects
+        reel = gestionnaire.filter
+
+        def course(*args, **kwargs):
+            qs = reel(*args, **kwargs)
+            if 'expires_at__lte' not in kwargs:
+                return qs
+            lues = [d for d in qs if d.pk == signee.pk]
+            reel(pk=signee.pk).update(statut=SIGNATURE_SIGNE)  # signature committée
+            return lues
+
+        with mock.patch.object(gestionnaire, 'filter', side_effect=course):
+            self.assertEqual(services.expirer_demandes_echues(self.co_a), 0)
+        signee.refresh_from_db()
+        self.assertEqual(signee.statut, SIGNATURE_SIGNE)
+        self.assertIsNone(signee.annule_le)
+        self.assertEqual(services.expirer_demandes_echues(self.co_a), 1)
+        oubliee.refresh_from_db()
+        self.assertEqual(oubliee.statut, SIGNATURE_ANNULE)
+        signee.refresh_from_db()
+        self.assertEqual(signee.statut, SIGNATURE_SIGNE)
+
     def test_annuler_demande(self):
         demande = services.demander_signature(
             self.doc_a, signataire_nom='X', signataire_email='x@x.com',

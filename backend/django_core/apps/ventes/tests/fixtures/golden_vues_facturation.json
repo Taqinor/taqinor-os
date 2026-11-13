@@ -4,6 +4,7 @@
   "_avec_idempotence",
   "_idempotency_endpoint",
   "_idempotency_key",
+  "_perform_update_tenant",
   "abandonner_solde",
   "allowed_methods",
   "annuler",

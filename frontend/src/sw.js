@@ -170,12 +170,23 @@ self.addEventListener('sync', (event) => {
 // UI : la notification EST l'action). Best-effort : un échec réseau ne fait
 // jamais planter le service worker — au pire l'utilisateur rouvre l'app et
 // décide normalement depuis l'écran d'approbations.
+// AERR123 — un refus (401 jeton expiré, compte introuvable, décision refusée) ou
+// une panne réseau n'est plus muet : une notification d'échec renvoie vers
+// /approbations (la demande y est toujours en attente). 2xx => rien.
 function postApprovalToken(token) {
   return fetch('/api/django/reporting/approbations-en-attente/decider-push/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
-  }).catch(() => undefined)
+  })
+    .then((res) => !res.ok, () => true)
+    .then((echec) => echec && self.registration.showNotification('Décision non enregistrée', {
+      body: 'Ouvrez les approbations pour décider.',
+      icon: '/pwa-192.png',
+      tag: 'approbation-non-enregistree',
+      data: { link: '/approbations', approval: null },
+    }))
+    .catch(() => undefined)
 }
 
 self.addEventListener('notificationclick', (event) => {

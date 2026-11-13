@@ -33,21 +33,35 @@ from django.db import transaction
 from django.db.models import ProtectedError
 
 
-def _delete_cascading(obj, max_depth=60):
+class BloqueurAutreSociete(Exception):
+    """ACEL16 — un bloqueur PROTECT appartient à une AUTRE société : refus."""
+
+
+def _delete_cascading(obj, company=None, max_depth=60):
     """Delete ``obj``, recursively clearing any PROTECT-blocking rows first.
+
+    ACEL16 — ``company`` (par défaut ``obj`` lui-même quand c'est une société) :
+    un bloqueur d'une autre société n'est JAMAIS supprimé — refus (lève).
 
     Never raw SQL — every deletion goes through the ORM's own ``.delete()``.
     ``ProtectedError.protected_objects`` is the queryset of rows actually
     blocking THIS deletion (already filtered to the ids being removed), so
     deleting them first is always scoped/safe, never a blanket company-wide
     wipe of the blocking model."""
+    from authentication.models import Company
+    if company is None and isinstance(obj, Company):
+        company = obj
     for _ in range(max_depth):
         try:
             obj.delete()
             return
         except ProtectedError as exc:
             for blocker in list(exc.protected_objects):
-                _delete_cascading(blocker, max_depth=max_depth - 1)
+                if company is not None and hasattr(blocker, 'company_id') \
+                        and blocker.company_id != company.pk:
+                    raise BloqueurAutreSociete(
+                        f'{blocker._meta.label} #{blocker.pk} appartient à une autre société.') from exc
+                _delete_cascading(blocker, company, max_depth=max_depth - 1)
     # Final attempt: surfaces a real (unresolvable/cyclic) PROTECT chain
     # instead of silently giving up.
     obj.delete()

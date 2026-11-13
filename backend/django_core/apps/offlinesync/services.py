@@ -199,26 +199,34 @@ def _executer(company, user, obj):
                 'module': obj.module, 'status': 'error',
                 'error': f'op_type inconnu : {obj.op_type}.'}
     _module, handler = entree
-    try:
-        with transaction.atomic():
-            resultat = handler(company, user, obj.payload or {})
-    except _ERREURS_APPLICATIVES as exc:
-        # L'effet métier est intégralement annulé (point de sauvegarde), la
-        # ligne de journal SURVIT avec son motif : rien ne disparaît en silence.
-        obj.statut = OfflineOperation.Statut.REJETEE
-        obj.erreur = _message(exc)
-        obj.date_traitement = timezone.now()
-        obj.save(update_fields=['statut', 'erreur', 'date_traitement',
-                                'updated_at'])
-        return {'client_op_id': obj.client_op_id, 'op_type': obj.op_type,
-                'module': obj.module, 'status': 'error', 'error': obj.erreur}
+    # ACNC44 — journal relu SOUS VERROU, effet et statut dans la MÊME
+    # transaction : un vidage concurrent qui a déjà appliqué l'op attend ce
+    # verrou puis la voit « appliquée » (rejeu), jamais un second effet.
+    with transaction.atomic():
+        obj = OfflineOperation.objects.select_for_update().get(pk=obj.pk)
+        if obj.statut == OfflineOperation.Statut.APPLIQUEE:
+            return {'client_op_id': obj.client_op_id, 'op_type': obj.op_type,
+                    'module': obj.module, 'status': 'replayed', 'result': obj.resultat}
+        try:
+            with transaction.atomic():
+                resultat = handler(company, user, obj.payload or {})
+        except _ERREURS_APPLICATIVES as exc:
+            # L'effet métier est intégralement annulé (point de sauvegarde), la
+            # ligne de journal SURVIT avec son motif : rien ne disparaît en silence.
+            obj.statut = OfflineOperation.Statut.REJETEE
+            obj.erreur = _message(exc)
+            obj.date_traitement = timezone.now()
+            obj.save(update_fields=['statut', 'erreur', 'date_traitement',
+                                    'updated_at'])
+            return {'client_op_id': obj.client_op_id, 'op_type': obj.op_type,
+                    'module': obj.module, 'status': 'error', 'error': obj.erreur}
 
-    obj.statut = OfflineOperation.Statut.APPLIQUEE
-    obj.resultat = resultat if isinstance(resultat, dict) else {}
-    obj.erreur = ''
-    obj.date_traitement = timezone.now()
-    obj.save(update_fields=['statut', 'resultat', 'erreur', 'date_traitement',
-                            'updated_at'])
+        obj.statut = OfflineOperation.Statut.APPLIQUEE
+        obj.resultat = resultat if isinstance(resultat, dict) else {}
+        obj.erreur = ''
+        obj.date_traitement = timezone.now()
+        obj.save(update_fields=['statut', 'resultat', 'erreur', 'date_traitement',
+                                'updated_at'])
     return {'client_op_id': obj.client_op_id, 'op_type': obj.op_type,
             'module': obj.module, 'status': 'applied', 'result': obj.resultat}
 

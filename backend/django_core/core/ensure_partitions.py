@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from . import partitioning
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,8 @@ def ensure_all(now=None, months_ahead: int = 2) -> dict:
         try:
             results[table] = partitioning.ensure_partitions(
                 table, months_ahead=months_ahead, now=now)
+        except SoftTimeLimitExceeded:
+            raise
         except Exception:  # noqa: BLE001 — une table KO ne bloque pas le reste (D-ENF22-BLE001)
             logger.exception('ensure_partitions: table %r a échoué', table)
             results[table] = []

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,8 @@ def run_all_policies(now=None, apply_=False):
             count = sweep(now, apply_)
             statut = RetentionRun.STATUT_OK
             erreur = ''
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 — une politique en échec (D-ENF22-BLE001)
             # n'arrête jamais les autres ; journalisée en échec.
             logger.exception('run_retention: politique %r a échoué', name)

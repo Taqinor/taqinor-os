@@ -23,6 +23,7 @@ AUJOURD'HUI (Africa/Casablanca).
 import logging
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import F
 from django.utils import timezone
 
@@ -408,7 +409,7 @@ def expiration_alerts_task():
 # ZÉRO. Les enveloppes ci-dessous appellent le SERVICE (jamais la commande, ni
 # une logique dupliquée) et sont, elles, dans le `beat_schedule`.
 
-@shared_task(name='stock.generer_comptages_tournants')
+@shared_task(name='stock.generer_comptages_tournants', soft_time_limit=540, time_limit=600)  # ACEL2
 def generer_comptages_tournants_task():
     """NTWMS13 (AUD231) — génère les sessions d'inventaire de comptage tournant
     DUES, toutes sociétés. Idempotente : rejouée le même jour elle ne recrée
@@ -421,6 +422,8 @@ def generer_comptages_tournants_task():
     for company in active_companies():  # ACEL39 — une société en échec n'arrête pas les suivantes
         try:
             total += len(generer_comptages_tournants(company=company).get('sessions', []))
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 — société suivante, échec consigné (D-ENF22-BLE001)
             logger.warning('stock.generer_comptages_tournants: échec société %s',
                            company.id, exc_info=True)
@@ -428,7 +431,7 @@ def generer_comptages_tournants_task():
     return total
 
 
-@shared_task(name='stock.liberer_vagues_planifiees')
+@shared_task(name='stock.liberer_vagues_planifiees', soft_time_limit=540, time_limit=600)  # ACEL2
 def liberer_vagues_planifiees_task():
     """NTWMS12 (AUD231) — libère les vagues de prélèvement AUTO_HEURE /
     AUTO_SEUIL dont la condition est atteinte, toutes sociétés. Idempotente :
@@ -442,6 +445,8 @@ def liberer_vagues_planifiees_task():
     for company in active_companies():  # ACEL39 — une société en échec n'arrête pas les suivantes
         try:
             total += len(liberer_vagues_planifiees(company=company).get('liberees', []))
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 — société suivante, échec consigné (D-ENF22-BLE001)
             logger.warning('stock.liberer_vagues_planifiees: échec société %s',
                            company.id, exc_info=True)

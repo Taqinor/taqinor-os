@@ -48,16 +48,16 @@ with no rate column at all — mono-MAD in practice.
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:278` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:556` | montant_commission_du, montant_commission_estime |
 | crm | Client | `apps/crm/models_clients.py:791` | tva_recuperable |
-| crm | ForecastEntry | `apps/crm/models_clients.py:1580` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models_clients.py:1641` | montant_total |
+| crm | ForecastEntry | `apps/crm/models_clients.py:1586` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models_clients.py:1647` | montant_total |
 | crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:833` | prix_unitaire, remise, taux_tva |
 | facturation | Paiement | `apps/facturation/models.py:900` | escompte_montant, montant |
 | facturation | Avoir | `apps/facturation/models.py:1124` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
 | facturation | LigneAvoir | `apps/facturation/models.py:1242` | prix_unitaire, remise, taux_tva |
-| ged | ModeleDocument | `apps/ged/models.py:2393` | corps_html |
-| ged | LotEnvoi | `apps/ged/models.py:3351` | total |
+| ged | ModeleDocument | `apps/ged/models.py:2395` | corps_html |
+| ged | LotEnvoi | `apps/ged/models.py:3353` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
 | installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:73` | montant_approuve |
 | installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:71` | prix_negocie |

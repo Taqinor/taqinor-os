@@ -8,11 +8,13 @@ import {
 import { formatDate } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import {
-  errMessage, toutesLesPages, useChargementGed, actionAvecToast,
+  toutesLesPages, useChargementGed, actionAvecToast,
 } from './shared.js'
 import { ChampDocument } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import { todayLocalIso } from '../../../lib/dateLocale'
+import { toastSiMuet } from '../listesGed'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    PACT137 — Planifications de document (XGED15).
@@ -36,6 +38,7 @@ function statutDe(r) {
 }
 
 export default function PlanificationsPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [planifications, setPlanifications] = useState([])
   const [documents, setDocuments] = useState([])
   const [users, setUsers] = useState([])
@@ -76,7 +79,7 @@ export default function PlanificationsPage() {
     },
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: () => actionAvecToast(
+      onClick: async () => await confirmDelete({ title: 'Supprimer cette planification ?', description: `La planification « ${r.libelle} » sera supprimée.` }) && actionAvecToast(
         () => gedApi.deletePlanificationDocument(r.id), 'Planification supprimée.', load),
     },
   ])
@@ -124,7 +127,7 @@ function CreatePlanificationDialog({ documents, users, onClose, onDone }) {
       })
       toast.success('Planification créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

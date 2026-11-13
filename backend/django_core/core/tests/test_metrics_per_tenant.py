@@ -1,4 +1,5 @@
 """NTPLT44 — métriques HTTP par tenant + compteurs Celery par queue."""
+from django.core.cache import cache
 from django.test import SimpleTestCase
 
 from core import metrics
@@ -9,7 +10,7 @@ class PerTenantMetricsTests(SimpleTestCase):
         # État process-local isolé par test.
         metrics._http_by_tenant.clear()
         metrics._http_real_companies.clear()
-        metrics._task_by_queue.clear()
+        cache.delete_many(metrics.cles_compteurs_taches())  # ACEL14
 
     def test_http_counter_and_histogram_rendered(self):
         metrics.record_http_request(company_id=7, status=200, duration_ms=120)

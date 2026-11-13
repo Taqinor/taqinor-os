@@ -1,0 +1,313 @@
+{
+  "sha": "22edd014f97a8755dabefed890632bfda24d02f2",
+  "date": "2026-11-13",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG5",
+    "ADRG19",
+    "ADRG62",
+    "ADRG21",
+    "ADRG31",
+    "ADRG86",
+    "ADRG99",
+    "ADRG104",
+    "ADRG61",
+    "ADRG63",
+    "ADRG64",
+    "ADRG69",
+    "ADRG73"
+  ],
+  "couvre_avec_ecart": [
+    "ADRG69",
+    "ADRG21"
+  ],
+  "etapes": [
+    {
+      "id": "PF4.3-ADRG61",
+      "taches": [
+        "ADRG61"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.3-ADRG61.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG63",
+      "taches": [
+        "ADRG63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.3-ADRG63.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG64",
+      "taches": [
+        "ADRG64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.3-ADRG64.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG69",
+      "taches": [
+        "ADRG69"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.3-ADRG69.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/Rapports.jsx charge pour tout rôle reporting/insights/job-costing/, commissions/ et profitability/ (réservés, 403 traité comme « erreur » par la page) et reporting/reports/service/ (refusé au Commercial par ADRG71, carte non adaptée) : 403 + console.error hors d'ADRG69 ; la même étape échouait déjà avant ADRG69 ; oracle 2 — GET http://localhost:4173/api/django/reporting/reports/service/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/reports/service/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/job-costing/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/job-costing/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/commissions/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/commissions/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/profitability/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/profitability/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/reports/service/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/reports/service/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/job-costing/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/job-costing/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/commissions/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/commissions/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/profitability/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/profitability/)"
+    },
+    {
+      "id": "PF4.3-ADRG73",
+      "taches": [
+        "ADRG73"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.3-ADRG73.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG5",
+      "taches": [
+        "ADRG5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.1-ADRG5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG19",
+      "taches": [
+        "ADRG19"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.1-ADRG19.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG62",
+      "taches": [
+        "ADRG62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.1-ADRG62.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG21",
+      "taches": [
+        "ADRG21"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG21.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/installations/InstallationDetail.jsx (effet d'ouverture, l. 427) lit installations/types-intervention/ pour TOUT rôle ; le Commercial, entré aux chantiers par l'octroi ventes_voir (APFS105) sans code installations, reçoit 403 + console.error. Lecture antérieure à ADRG21 (qui ne conditionne que les gestes, 0 ligne nette ajoutée à ce fichier), hors de ses gestes d'écriture ; oracle 2 — GET http://localhost:4173/api/django/installations/types-intervention/?page=1&page_size=200 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/types-intervention/?page=1&page_size=200)"
+    },
+    {
+      "id": "PF4.2-ADRG99",
+      "taches": [
+        "ADRG99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG99.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG31",
+      "taches": [
+        "ADRG31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG31.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG86",
+      "taches": [
+        "ADRG86"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG86.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG104",
+      "taches": [
+        "ADRG104"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-ADRG-PF4.2-ADRG104.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

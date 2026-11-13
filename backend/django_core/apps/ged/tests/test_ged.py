@@ -835,9 +835,9 @@ class MigrateAttachmentsToGedTests(GedBase):
             filename='orphelin.pdf', size=10, mime='application/pdf',
             uploaded_by=self.admin_a)
         self._run(company='ged-a')
-        doc = Document.objects.get(company=self.co_a, nom='orphelin.pdf')
-        # Aucun lien vers un objet inexistant.
-        self.assertEqual(DocumentLien.objects.filter(document=doc).count(), 0)
+        # ACEL61 — cible autorisée disparue : ni document orphelin ni lien.
+        self.assertFalse(Document.objects.filter(
+            company=self.co_a, nom='orphelin.pdf').exists())
 
     def test_dry_run_writes_nothing(self):
         self._run(company='ged-a', dry_run=True)

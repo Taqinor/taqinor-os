@@ -11,6 +11,8 @@ import { configureStore } from '@reduxjs/toolkit'
 beforeAll(polyfillResizeObserver)
 
 const MOTIF = 'La remise doit être comprise entre 0 et 100 %'
+// AERR52 — getApiError nomme le champ du refus (« Remise : … »).
+const MOTIF_NOMME = `Remise : ${MOTIF}`
 
 // Faux serveur en mémoire : applique la règle d'AFAC69 (remise 0-100) et
 // garde les lignes réellement enregistrées.
@@ -95,7 +97,7 @@ describe('AFAC70 — FactureForm : motif serveur sous la ligne refusée', () => 
     fireEvent.change(champRemise(1), { target: { value: '150' } })
     enregistrer()
 
-    await waitFor(() => expect(erreurSous(1)).toBe(MOTIF))
+    await waitFor(() => expect(erreurSous(1)).toBe(MOTIF_NOMME))
     expect(erreurSous(0)).toBeNull()
     expect(erreurSous(2)).toBeNull()
     expect(screen.getByText(/Facture enregistrée, mais la ligne 2 n'a pas pu être enregistrée : /))
@@ -112,7 +114,7 @@ describe('AFAC70 — FactureForm : motif serveur sous la ligne refusée', () => 
     fireEvent.change(champRemise(1), { target: { value: '150' } })
     enregistrer()
 
-    await waitFor(() => expect(erreurSous(1)).toBe(MOTIF))
+    await waitFor(() => expect(erreurSous(1)).toBe(MOTIF_NOMME))
     expect(serveur.lignes.size).toBe(2)
     expect([...serveur.lignes.values()].map(l => l.designation).sort()).toEqual(['Ligne 1', 'Ligne 3'])
 

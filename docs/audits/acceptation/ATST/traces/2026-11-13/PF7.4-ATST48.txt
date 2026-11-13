@@ -1,0 +1,227 @@
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_action_permission_override -v    [checkout: taqinor-os]  rc=0
+check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+test_la_ligne_de_base_du_sweep_est_gelee (scripts.tests.test_check_action_permission_override.AllowlistTests.test_la_ligne_de_base_du_sweep_est_gelee) ... ok
+test_le_depot_est_propre (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucune classe hors allowlist). ... ok
+test_le_patron_d_or_reel_est_detecte_sans_allowlist (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_patron_d_or_reel_est_detecte_sans_allowlist)
+`facturation/views/paiement.py` (ex-ventes, ODX18) passe par le ... ok
+test_la_couverture_explicite_est_acceptee (scripts.tests.test_check_action_permission_override.DetectionTests.test_la_couverture_explicite_est_acceptee)
+Le patron `devis.py` d'APRÈS AUD403 : chaque action est nommée, ... ok
+test_le_motif_aud403_est_refuse (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_motif_aud403_est_refuse) ... ok
+test_le_patron_d_or_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_patron_d_or_est_accepte) ... ok
+test_le_repli_super_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_repli_super_est_accepte) ... ok
+test_une_action_sans_permission_classes_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_action_sans_permission_classes_est_hors_perimetre) ... ok
+test_une_classe_sans_get_permissions_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_classe_sans_get_permissions_est_hors_perimetre) ... ok
+test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee) ... ok
+test_repli_identique_accepte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_identique_accepte) ... ok
+test_repli_plus_faible_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_faible_detecte) ... ok
+test_repli_plus_strict_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_strict_detecte)
+ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole. ... ok
+test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un) ... ok
+test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un) ... ok
+test_repli_egal_sort_zero (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_egal_sort_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 8.012s
+
+OK
+
+
+==> OK : module scripts.tests.test_check_action_permission_override sur le dépôt ⇒ vert (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python scripts/check_action_permission_override.py    [checkout: taqinor-os]  rc=0
+check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+
+
+==> OK : garde scripts/check_action_permission_override.py sur le dépôt réel ⇒ 0 (rc=0)
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_action_permission_override -v    [copie: depot]  rc=0
+check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+test_la_ligne_de_base_du_sweep_est_gelee (scripts.tests.test_check_action_permission_override.AllowlistTests.test_la_ligne_de_base_du_sweep_est_gelee) ... ok
+test_le_depot_est_propre (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucune classe hors allowlist). ... ok
+test_le_patron_d_or_reel_est_detecte_sans_allowlist (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_patron_d_or_reel_est_detecte_sans_allowlist)
+`facturation/views/paiement.py` (ex-ventes, ODX18) passe par le ... ok
+test_la_couverture_explicite_est_acceptee (scripts.tests.test_check_action_permission_override.DetectionTests.test_la_couverture_explicite_est_acceptee)
+Le patron `devis.py` d'APRÈS AUD403 : chaque action est nommée, ... ok
+test_le_motif_aud403_est_refuse (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_motif_aud403_est_refuse) ... ok
+test_le_patron_d_or_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_patron_d_or_est_accepte) ... ok
+test_le_repli_super_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_repli_super_est_accepte) ... ok
+test_une_action_sans_permission_classes_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_action_sans_permission_classes_est_hors_perimetre) ... ok
+test_une_classe_sans_get_permissions_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_classe_sans_get_permissions_est_hors_perimetre) ... ok
+test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee) ... ok
+test_repli_identique_accepte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_identique_accepte) ... ok
+test_repli_plus_faible_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_faible_detecte) ... ok
+test_repli_plus_strict_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_strict_detecte)
+ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole. ... ok
+test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un) ... ok
+test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un) ... ok
+test_repli_egal_sort_zero (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_egal_sort_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 7.458s
+
+OK
+
+
+==> OK : contrôle : copie NON mutée ⇒ vert (rc=0)
+
+--- mutant « if offenders → if False » : scripts/check_action_permission_override.py
+    - '    if offenders:'
+    + '    if False:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_action_permission_override -v    [copie: depot]  rc=1
+check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+test_la_ligne_de_base_du_sweep_est_gelee (scripts.tests.test_check_action_permission_override.AllowlistTests.test_la_ligne_de_base_du_sweep_est_gelee) ... ok
+test_le_depot_est_propre (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucune classe hors allowlist). ... ok
+test_le_patron_d_or_reel_est_detecte_sans_allowlist (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_patron_d_or_reel_est_detecte_sans_allowlist)
+`facturation/views/paiement.py` (ex-ventes, ODX18) passe par le ... ok
+test_la_couverture_explicite_est_acceptee (scripts.tests.test_check_action_permission_override.DetectionTests.test_la_couverture_explicite_est_acceptee)
+Le patron `devis.py` d'APRÈS AUD403 : chaque action est nommée, ... ok
+test_le_motif_aud403_est_refuse (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_motif_aud403_est_refuse) ... ok
+test_le_patron_d_or_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_patron_d_or_est_accepte) ... ok
+test_le_repli_super_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_repli_super_est_accepte) ... ok
+test_une_action_sans_permission_classes_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_action_sans_permission_classes_est_hors_perimetre) ... ok
+test_une_classe_sans_get_permissions_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_classe_sans_get_permissions_est_hors_perimetre) ... ok
+test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee) ... FAIL
+test_repli_identique_accepte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_identique_accepte) ... ok
+test_repli_plus_faible_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_faible_detecte) ... ok
+test_repli_plus_strict_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_strict_detecte)
+ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole. ... ok
+test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un) ... FAIL
+test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un) ... FAIL
+test_repli_egal_sort_zero (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_egal_sort_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+======================================================================
+FAIL: test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_action_permission_override.py", line 213, in test_allowlist_sans_raison_propre_refusee
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+
+
+======================================================================
+FAIL: test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_action_permission_override.py", line 189, in test_entree_morte_fait_sortir_un
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+
+
+======================================================================
+FAIL: test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_action_permission_override.py", line 180, in test_repli_divergent_fait_sortir_un
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+
+
+----------------------------------------------------------------------
+Ran 18 tests in 7.218s
+
+FAILED (failures=3)
+
+
+==> OK : mutant « if offenders → if False » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee); test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un); test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un)
+
+--- mutant « for path in [] » : scripts/check_action_permission_override.py
+    - '    for path in _iter_source_files():'
+    + '    for path in []:'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_action_permission_override -v    [copie: depot]  rc=1
+check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+test_la_ligne_de_base_du_sweep_est_gelee (scripts.tests.test_check_action_permission_override.AllowlistTests.test_la_ligne_de_base_du_sweep_est_gelee) ... ok
+test_le_depot_est_propre (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucune classe hors allowlist). ... ok
+test_le_patron_d_or_reel_est_detecte_sans_allowlist (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_patron_d_or_reel_est_detecte_sans_allowlist)
+`facturation/views/paiement.py` (ex-ventes, ODX18) passe par le ... ok
+test_la_couverture_explicite_est_acceptee (scripts.tests.test_check_action_permission_override.DetectionTests.test_la_couverture_explicite_est_acceptee)
+Le patron `devis.py` d'APRÈS AUD403 : chaque action est nommée, ... ok
+test_le_motif_aud403_est_refuse (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_motif_aud403_est_refuse) ... ok
+test_le_patron_d_or_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_patron_d_or_est_accepte) ... ok
+test_le_repli_super_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_repli_super_est_accepte) ... ok
+test_une_action_sans_permission_classes_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_action_sans_permission_classes_est_hors_perimetre) ... ok
+test_une_classe_sans_get_permissions_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_classe_sans_get_permissions_est_hors_perimetre) ... ok
+test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee) ... ok
+test_repli_identique_accepte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_identique_accepte) ... ok
+test_repli_plus_faible_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_faible_detecte) ... ok
+test_repli_plus_strict_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_strict_detecte)
+ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole. ... ok
+test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un) ... ok
+test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un) ... FAIL
+test_repli_egal_sort_zero (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_egal_sort_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+======================================================================
+FAIL: test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_action_permission_override.py", line 180, in test_repli_divergent_fait_sortir_un
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.060s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « for path in [] » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un)
+
+--- mutant « contrôle RAISON_MIN neutralisé » : scripts/check_action_permission_override.py
+    - '        if len(raison) < RAISON_MIN or RAISON_COLLECTIVE in raison.lower():'
+    + '        if RAISON_COLLECTIVE in raison.lower():'
+
+$ /opt/hostedtoolcache/Python/3.11.18/x64/bin/python -m unittest scripts.tests.test_check_action_permission_override -v    [copie: depot]  rc=1
+check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+test_la_ligne_de_base_du_sweep_est_gelee (scripts.tests.test_check_action_permission_override.AllowlistTests.test_la_ligne_de_base_du_sweep_est_gelee) ... ok
+test_le_depot_est_propre (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_depot_est_propre)
+La garde passe sur le dépôt réel (aucune classe hors allowlist). ... ok
+test_le_patron_d_or_reel_est_detecte_sans_allowlist (scripts.tests.test_check_action_permission_override.AllowlistTests.test_le_patron_d_or_reel_est_detecte_sans_allowlist)
+`facturation/views/paiement.py` (ex-ventes, ODX18) passe par le ... ok
+test_la_couverture_explicite_est_acceptee (scripts.tests.test_check_action_permission_override.DetectionTests.test_la_couverture_explicite_est_acceptee)
+Le patron `devis.py` d'APRÈS AUD403 : chaque action est nommée, ... ok
+test_le_motif_aud403_est_refuse (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_motif_aud403_est_refuse) ... ok
+test_le_patron_d_or_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_patron_d_or_est_accepte) ... ok
+test_le_repli_super_est_accepte (scripts.tests.test_check_action_permission_override.DetectionTests.test_le_repli_super_est_accepte) ... ok
+test_une_action_sans_permission_classes_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_action_sans_permission_classes_est_hors_perimetre) ... ok
+test_une_classe_sans_get_permissions_est_hors_perimetre (scripts.tests.test_check_action_permission_override.DetectionTests.test_une_classe_sans_get_permissions_est_hors_perimetre) ... ok
+test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee) ... FAIL
+test_repli_identique_accepte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_identique_accepte) ... ok
+test_repli_plus_faible_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_faible_detecte) ... ok
+test_repli_plus_strict_detecte (scripts.tests.test_check_action_permission_override.DivergenceTests.test_repli_plus_strict_detecte)
+ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole. ... ok
+test_entree_morte_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_entree_morte_fait_sortir_un) ... ok
+test_repli_divergent_fait_sortir_un (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_divergent_fait_sortir_un) ... ok
+test_repli_egal_sort_zero (scripts.tests.test_check_action_permission_override.MainSurArbreFautifTests.test_repli_egal_sort_zero) ... ok
+test_le_code_de_production_est_dans_le_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_le_code_de_production_est_dans_le_perimetre) ... ok
+test_les_tests_et_migrations_sont_hors_perimetre (scripts.tests.test_check_action_permission_override.PerimetreTests.test_les_tests_et_migrations_sont_hors_perimetre) ... ok
+
+======================================================================
+FAIL: test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/atst-copie-j3lzftqr/depot/scripts/tests/test_check_action_permission_override.py", line 213, in test_allowlist_sans_raison_propre_refusee
+    self.assertEqual(code, 1, sortie)
+AssertionError: 0 != 1 : check_action_permission_override : OK — aucun get_permissions() à branchement brut n'affaiblit une @action déclarée (allowlist respectée).
+
+
+----------------------------------------------------------------------
+Ran 18 tests in 7.347s
+
+FAILED (failures=1)
+
+
+==> OK : mutant « contrôle RAISON_MIN neutralisé » sur la copie ⇒ module ROUGE (rc=1) — tests rouges : test_allowlist_sans_raison_propre_refusee (scripts.tests.test_check_action_permission_override.DivergenceTests.test_allowlist_sans_raison_propre_refusee)

@@ -645,12 +645,35 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json(), {'id': self.equipe.pk, 'nom': 'Casa',
                                     'confirmation_responsable': False,
-                                    'delai_minutes': 12})
+                                    'delai_minutes': 12,
+                                    'commercial_par_defaut': None})
         self.equipe.refresh_from_db()
         self.assertEqual(self.equipe.nom, 'Casa')
         self.assertTrue(self.equipe.recoit_leads)
         self.assertFalse(self.equipe.confirmation_responsable)
         self.assertEqual(self.equipe.delai_attribution_minutes, 12)
+
+    def test_reglages_commercial_par_defaut(self):
+        # Fondateur 13/11/2026 — le responsable désigne le commercial qui
+        # reçoit les leads qu'il n'a pas attribués ; un membre actif de
+        # l'équipe seulement, null l'efface.
+        r = self._reglages(self.chef, self.equipe, {'commercial_par_defaut': self.m1.pk})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['commercial_par_defaut'], self.m1.pk)
+        self.equipe.refresh_from_db()
+        self.assertEqual(self.equipe.commercial_par_defaut, self.m1)
+        etranger = User.objects.create_user(
+            username='dsp_defaut_etr', password='x', company=make_company('dsp-defaut-etr'))
+        for cible in (self.autre_chef.pk, etranger.pk, 999999, '5'):
+            r = self._reglages(self.chef, self.equipe, {'commercial_par_defaut': cible})
+            self.assertEqual(r.status_code, 400, (cible, r.content))
+            self.assertIn('commercial_par_defaut', r.json())
+        r = self._reglages(self.chef, self.equipe, {'commercial_par_defaut': None})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.equipe.refresh_from_db()
+        self.assertIsNone(self.equipe.commercial_par_defaut)
+        self.assertEqual(self._reglages(self.m1, self.equipe, {
+            'commercial_par_defaut': self.m1.pk}).status_code, 403)
 
     def test_reglages_types_json_stricts(self):
         for corps in ({'delai_minutes': 0}, {'delai_minutes': 481},
@@ -703,7 +726,8 @@ class TestDispatchLeads(TestCase):
         membres = ligne.pop('membres')
         self.assertEqual(ligne, {'id': self.equipe.pk, 'nom': 'Casa',
                                  'confirmation_responsable': True,
-                                 'delai_minutes': 5})
+                                 'delai_minutes': 5,
+                                 'commercial_par_defaut': None})
         # Membres ACTIFS servis pour l'éditeur de règles (un responsable au
         # rôle Commercial n'a pas accès à /crm/assignable-users/).
         # Le responsable figure en tête des choix (il prend aussi des leads).

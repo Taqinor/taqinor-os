@@ -13,7 +13,7 @@ import crmApi from '../../../api/crmApi'
 import reportingApi from '../../../api/reportingApi'
 import installationsApi from '../../../api/installationsApi'
 import {
-  CardHeader, CardTitle, CardDescription, Badge, Spinner, EmptyState,
+  CardHeader, CardTitle, CardDescription, Badge, Button, Spinner, EmptyState,
   CarteContenu,
 } from '../../../ui'
 // NOTE : le module de logique s'appelle `aFaireItems.js` et NON
@@ -59,22 +59,30 @@ function usePeutVoirRelances() {
 export default function AFaireAujourdhui({ exclure = [] }) {
   const navigate = useNavigate()
   const [items, setItems] = useState(null)
+  const [incomplet, setIncomplet] = useState(false)
+  const [essai, setEssai] = useState(0)
   const peutVoirRelances = usePeutVoirRelances()
   const exclureCle = exclure.join(',')
 
   useEffect(() => {
     let alive = true
+    let panne = false
     const exclus = exclureCle ? exclureCle.split(',') : []
     const veut = (kind) => !exclus.includes(kind)
       && (kind !== 'relance' || peutVoirRelances)
     const today = todayLocalIso()
-    // Chaque source échoue INDÉPENDAMMENT (réseau, droits, module absent) :
-    // le widget se contente alors de ne rien afficher pour elle.
+    // Chaque source échoue INDÉPENDAMMENT. AERR121 — droit ou module absent
+    // (401/403/404) = rien à montrer ; une PANNE (réseau, 5xx) n'est jamais
+    // « rien d'urgent » : elle lève l'avis de lecture incomplète.
+    const echec = (err) => {
+      if (![401, 403, 404].includes(err?.response?.status)) panne = true
+      return []
+    }
     const safe = (call, pick) => {
       try {
-        return Promise.resolve(call()).then((r) => pick(r) ?? []).catch(() => [])
-      } catch {
-        return Promise.resolve([])
+        return Promise.resolve(call()).then((r) => pick(r) ?? []).catch(echec)
+      } catch (err) {
+        return Promise.resolve(echec(err))
       }
     }
     const rien = () => Promise.resolve([])
@@ -93,12 +101,13 @@ export default function AFaireAujourdhui({ exclure = [] }) {
         : rien(),
     ]).then(([relances, approbations, interventions, factures]) => {
       if (!alive) return
+      setIncomplet(panne)
       setItems(aFaireAujourdhui(
         { relances, approbations, interventions, factures }, today,
       ))
     })
     return () => { alive = false }
-  }, [exclureCle, peutVoirRelances])
+  }, [exclureCle, peutVoirRelances, essai])
 
   return (
     <CarteContenu data-widget="a-faire-aujourdhui"
@@ -116,10 +125,18 @@ export default function AFaireAujourdhui({ exclure = [] }) {
         </div>
       </CardHeader>
       )}>
+      {incomplet && (
+        <div role="status" className="mb-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          Une partie de la journée n'a pas pu être lue.
+          <Button type="button" size="sm" variant="outline" onClick={() => setEssai((n) => n + 1)}>
+            Réessayer
+          </Button>
+        </div>
+      )}
       {items === null
         ? <Spinner />
         : items.length === 0
-          ? <EmptyState title="Rien d'urgent aujourd'hui" />
+          ? (!incomplet && <EmptyState title="Rien d'urgent aujourd'hui" />)
           : (
             <ul className="flex flex-col divide-y divide-border">
               {items.map((it) => (

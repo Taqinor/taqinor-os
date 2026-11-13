@@ -215,7 +215,7 @@ describe('EquipeSection — Organisation', () => {
     await waitFor(() => expect(saveEquipe).toHaveBeenCalledWith(null, {
       nom: 'Sud', departement: null, membres: [], chef: null,
     }))
-    expect(await screen.findByText('Membre invalide.')).toBeInTheDocument()
+    expect(await screen.findByText('Membres : Membre invalide.')).toBeInTheDocument() // AERR52
   })
 
   it('crée un département et archive une fonction (onglets)', async () => {
@@ -323,7 +323,8 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
     await user.click(await screen.findByRole('button', { name: /Ajouter une règle/ }))
     await user.click(screen.getByRole('checkbox', { name: 'Résidentiel' }))
     await user.click(screen.getByRole('checkbox', { name: 'Commercial' }))
-    const membre = screen.getByRole('combobox')
+    // Le sélecteur « Commercial par défaut » (13/11/2026) est un autre combobox.
+    const membre = screen.getAllByRole('combobox').find((el) => el.id !== 'defaut-attr-7')
     await waitFor(() => expect(within(membre).getByRole('option', { name: 'Sara' })).toBeInTheDocument())
     await user.selectOptions(membre, 'Sara')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
@@ -342,6 +343,21 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
     await user.type(champ, '9')
     await user.tab()
     await waitFor(() => expect(saveReglagesDispatch).toHaveBeenCalledWith(7, { delai_minutes: 9 }))
+  })
+
+  it('le commercial par défaut choisi passe par saveReglagesDispatch (Aucun = null)', async () => {
+    // Fondateur 13/11/2026 — la responsable désigne qui reçoit les leads
+    // qu'elle n'attribue pas avant le délai.
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    const user = userEvent.setup()
+    rendreAttribution()
+    await user.click(await screen.findByRole('button', { name: /Réglages de l’attribution/ }))
+    const defaut = await screen.findByLabelText('Commercial par défaut')
+    expect(defaut).toHaveValue('4')
+    await user.selectOptions(defaut, 'Amine')
+    await waitFor(() => expect(saveReglagesDispatch).toHaveBeenCalledWith(7, { commercial_par_defaut: 5 }))
+    await user.selectOptions(defaut, '— Aucun (rotation équilibrée) —')
+    await waitFor(() => expect(saveReglagesDispatch).toHaveBeenCalledWith(7, { commercial_par_defaut: null }))
   })
 })
 

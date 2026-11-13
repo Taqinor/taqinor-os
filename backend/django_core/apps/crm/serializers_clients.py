@@ -773,8 +773,11 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
             'membres', 'nb_membres', 'actif', 'recoit_leads', 'date_creation',
             'departement', 'confirmation_responsable',
             'delai_attribution_minutes', 'file_a_prendre',
+            'commercial_par_defaut',
         ]
-        read_only_fields = ['company', 'date_creation']
+        # Le commercial par défaut s'écrit par ``PATCH crm/dispatch/reglages/``
+        # (validé membre actif de l'équipe) ; ici lecture seule.
+        read_only_fields = ['company', 'date_creation', 'commercial_par_defaut']
 
     def validate(self, attrs):
         # Fondateur 26/10/2026 — une personne n'appartient qu'à UNE équipe

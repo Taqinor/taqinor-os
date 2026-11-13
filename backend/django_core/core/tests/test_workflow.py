@@ -114,6 +114,25 @@ class WorkflowRejectTests(TestCase):
         step2 = inst.step_instances.get(ordre=2)
         self.assertEqual(step2.statut, WorkflowStepInstance.STATUT_EN_ATTENTE)
 
+    def test_approbation_sur_copies_perimees_apres_rejet_refusee(self):
+        """ACNC49 — des copies chargées AVANT un rejet commité ne permettent
+        plus d'approuver : « Aucune étape en attente », rien n'est écrit."""
+        wf = _make_def(self.company, code='perime')
+        inst = workflow.demarrer_workflow(wf, self.company, self.company)
+        copie_inst = WorkflowInstance.objects.get(pk=inst.pk)
+        copie_etape = workflow.etape_courante_de(copie_inst)
+        rejet = workflow.rejeter_etape(inst, commentaire='Non')
+        with self.assertRaisesMessage(
+                ValueError, 'Aucune étape en attente à approuver.'):
+            workflow.approuver_etape(copie_inst, step=copie_etape)
+        copie_etape.refresh_from_db()
+        inst.refresh_from_db()
+        self.assertEqual(copie_etape.statut, WorkflowStepInstance.STATUT_REJETE)
+        self.assertEqual(copie_etape.decided_le, rejet.decided_le)
+        self.assertEqual(inst.statut, WorkflowInstance.STATUT_TERMINE)
+        self.assertEqual(inst.step_instances.get(ordre=2).statut,
+                         WorkflowStepInstance.STATUT_EN_ATTENTE)
+
     def test_approve_without_pending_raises(self):
         wf = _make_def(self.company, code='vide2', steps=[])
         inst = workflow.demarrer_workflow(wf, self.company, self.company)

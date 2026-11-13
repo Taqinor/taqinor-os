@@ -42,3 +42,12 @@ test('LeadsSection monte EquipesCommercialesSection avec les assignables déjà 
   assert.match(LEADS_SRC, /import EquipesCommercialesSection from '\.\/EquipesCommercialesSection'/)
   assert.match(LEADS_SRC, /<EquipesCommercialesSection assignables=\{assignables\} \/>/)
 })
+
+test('commercial par défaut : choisi par le responsable, envoyé aux réglages d’attribution (vide = null)', () => {
+  // Fondateur 13/11/2026 — un lead que le responsable n'attribue pas part
+  // chez ce commercial au délai ; le choix passe par PATCH crm/dispatch/reglages/.
+  const EDITEUR = readFileSync(join(HERE, 'ReglesAttributionEditor.jsx'), 'utf8')
+  assert.match(EDITEUR, /value=\{equipe\.commercial_par_defaut \?\? ''\}/)
+  assert.match(EDITEUR, /commercial_par_defaut: e\.target\.value === '' \? null : Number\(e\.target\.value\)/)
+  assert.match(CRMAPI_SRC, /saveReglagesDispatch: \(equipeId, data\) => api\.patch\(`\/crm\/dispatch\/reglages\/\$\{equipeId\}\/`, data\)/)
+})

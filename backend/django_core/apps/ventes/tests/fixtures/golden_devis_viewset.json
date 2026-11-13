@@ -612,6 +612,7 @@
     "_idempotency_key",
     "_offres_tailles_reponse",
     "_overrides_reponse",
+    "_perform_update_tenant",
     "_rafraichir_etudes_apres_surcharge",
     "_refus_derive_fige",
     "_remplacer_lignes",

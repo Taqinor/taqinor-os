@@ -21,6 +21,7 @@ autres tâches du dépôt (cf. apps/ged/tasks.py)."""
 import logging
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +387,9 @@ def _marquer_run(run_id, **champs):
             'core._marquer_run: échec mise à jour run %s.', run_id)
 
 
-@shared_task(name='core.export_reversibilite_tenant')
+# ACEL11 — ZIP construit en mémoire : un processus tué n'est jamais re-livré
+# en boucle ; le balayage ``core.balayer_travaux_orphelins`` le solde.
+@shared_task(name='core.export_reversibilite_tenant', reject_on_worker_lost=False)
 def export_reversibilite_tenant(
         company_id, demande_par_id=None, datasets=None, run_id=None):
     """NTOBS6/NTOBS7 — construit le ZIP de réversibilité complet d'une
@@ -561,7 +564,10 @@ def _purger_exports_reversibilite_expires(now):
     seuil = now - timedelta(days=RETENTION_EXPORT_REVERSIBILITE_JOURS)
     expires = ExportReversibiliteRun.objects.filter(expire_le__lt=seuil)
 
+    # ACEL16 — la ligne n'est supprimée que si son ZIP l'a été : sinon elle
+    # reste (seule clé qui désigne le fichier) et sera retentée.
     client = None
+    gardes = []
     for run in expires.exclude(fichier_key=''):
         try:
             if client is None:
@@ -570,11 +576,12 @@ def _purger_exports_reversibilite_expires(now):
             client.delete_object(
                 Bucket=REVERSIBILITE_BUCKET, Key=run.fichier_key)
         except Exception:  # noqa: BLE001 — best-effort, une clé KO n'en bloque pas d'autres (D-ENF22-BLE001)
+            gardes.append(run.pk)
             logger.exception(
                 'core.purger_donnees_fiabilite: échec suppression MinIO '
                 '%s.', run.fichier_key)
 
-    deleted, _ = expires.delete()
+    deleted, _ = expires.exclude(pk__in=gardes).delete()
     return deleted
 
 
@@ -607,18 +614,24 @@ def purger_donnees_fiabilite_task():
     }
     try:
         resultat['incidents'] = _purger_incidents_resolus_perimes(now)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge IncidentPublic.')
     try:
         resultat['exports_reversibilite'] = (
             _purger_exports_reversibilite_expires(now))
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge '
             'ExportReversibiliteRun.')
     try:
         resultat['uptime_buckets'] = _purger_uptime_buckets_perimes(now)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge UptimeDayBucket.')
@@ -693,6 +706,8 @@ def assurer_alertes_fiabilite_kpi_task():
                     operateur=KpiAlerte.Operateur.SUP_EGAL, seuil=seuil_quota,
                     nom='Quota saturé'):
                 crees += 1
+        except SoftTimeLimitExceeded:
+            raise
         except Exception:  # noqa: BLE001 — best-effort, une société KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.exception(
                 'core.assurer_alertes_fiabilite_kpi: échec société %s.',
@@ -700,3 +715,45 @@ def assurer_alertes_fiabilite_kpi_task():
     logger.info(
         'core.assurer_alertes_fiabilite_kpi: %d alerte(s) créée(s).', crees)
     return {'crees': crees}
+
+
+@shared_task(name='core.balayer_travaux_orphelins', soft_time_limit=540, time_limit=600)  # ACEL2
+def balayer_travaux_orphelins_task():
+    """ACEL11 — un travail à la demande tué (limite dure, SIGKILL au
+    déploiement) n'exécute aucun ``except`` : l'export de réversibilité reste
+    ``en_cours`` et le ``BackgroundJob`` ``running`` à vie. Ce balayage
+    (toutes les 15 min) passe en échec ceux immobiles depuis plus de
+    10 × ``CELERY_TASK_TIME_LIMIT`` (30 min) et prévient leur demandeur."""
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.utils import timezone as dj_timezone
+
+    from authentication.selectors import active_companies
+
+    from . import notify_registry
+    from .export_registry import ExportReversibiliteRun
+    from .models import BackgroundJob
+
+    limite = 10 * int(getattr(settings, 'CELERY_TASK_TIME_LIMIT', 180))
+    seuil = dj_timezone.now() - timedelta(seconds=limite)
+    titre = 'Un travail de fond a été interrompu'
+    corps = 'Le traitement a été interrompu ; relancez-le.'
+    runs = list(ExportReversibiliteRun.objects.filter(
+        company__in=active_companies(),
+        statut=ExportReversibiliteRun.Statut.EN_COURS, updated_at__lt=seuil))
+    jobs = list(BackgroundJob.objects.filter(
+        company__in=active_companies(),
+        statut=BackgroundJob.STATUT_RUNNING, updated_at__lt=seuil))
+    ExportReversibiliteRun.objects.filter(pk__in=[r.pk for r in runs]).update(
+        statut=ExportReversibiliteRun.Statut.ECHEC)
+    BackgroundJob.objects.filter(pk__in=[j.pk for j in jobs]).update(
+        statut=BackgroundJob.STATUT_FAILED,
+        message_erreur='Travail interrompu (processus arrêté) ; relancez-le.')
+    for demandeur, company in ([(r.demande_par, r.company) for r in runs]
+                               + [(j.user, j.company) for j in jobs]):
+        if demandeur is not None:
+            notify_registry.notify(
+                demandeur, 'travail_de_fond_echoue', titre, body=corps,
+                company=company)
+    return {'exports': len(runs), 'jobs': len(jobs)}

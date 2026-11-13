@@ -69,13 +69,19 @@ class PurgerExportsReversibiliteTest(TestCase):
         self.assertTrue(
             ExportReversibiliteRun.objects.filter(pk=run.pk).exists())
 
-    def test_minio_failure_never_blocks_db_row_deletion(self):
+    def test_minio_en_echec_garde_la_ligne(self):
+        """ACEL16 — le ZIP non supprimé garde sa ligne (seule clé qui le
+        désigne) : elle sera retentée au prochain passage."""
         run = ExportReversibiliteRun.objects.create(
             company=self.company, statut=ExportReversibiliteRun.Statut.EXPIRE,
             fichier_key='acme/export-old2.zip',
             expire_le=timezone.now() - datetime.timedelta(days=45))
         with mock.patch(
                 'core.backup._minio_client', side_effect=RuntimeError('boom')):
+            purger_donnees_fiabilite_task()
+        self.assertTrue(
+            ExportReversibiliteRun.objects.filter(pk=run.pk).exists())
+        with mock.patch('core.backup._minio_client', return_value=mock.MagicMock()):
             purger_donnees_fiabilite_task()
         self.assertFalse(
             ExportReversibiliteRun.objects.filter(pk=run.pk).exists())

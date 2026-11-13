@@ -70,7 +70,7 @@ describe('ACHT77 EtapesChantierSection — doublon de clé', () => {
     await screen.findByDisplayValue('Étude site')
     fireEvent.change(screen.getByPlaceholderText('Nouvelle étape…'), { target: { value: 'Etude site' } })
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Cette clé existe déjà.'))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Cle : Cette clé existe déjà.')) // AERR52
     expect(apiMock.saveStageChantier.mock.calls[0][1].cle).toBe('etude_site')
   })
 
@@ -109,7 +109,7 @@ describe('ACHT77 EquipeTerrainSection — suppression refusée', () => {
     await renderWith(<EquipeTerrainSection assignables={[]} />)
     fireEvent.change(await screen.findByPlaceholderText('Nouvelle équipe terrain'), { target: { value: 'E1' } })
     fireEvent.keyDown(screen.getByPlaceholderText('Nouvelle équipe terrain'), { key: 'Enter' })
-    expect(await screen.findByText('Cette équipe existe déjà.')).toBeInTheDocument()
+    expect(await screen.findByText('Nom : Cette équipe existe déjà.')).toBeInTheDocument() // AERR52
   })
 })
 

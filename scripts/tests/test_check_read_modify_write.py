@@ -184,5 +184,71 @@ class MainSurArbreFautifTests(unittest.TestCase):
         self.assertEqual(self._main(LOCKED_SELECT_FOR_UPDATE)[0], 0)
 
 
+def _tous(src):
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / "views.py"
+        f.write_text(src, encoding="utf-8")
+        return crmw.check_file(f)
+
+
+class TestAnglesMortsHorsServices(unittest.TestCase):
+    """ACNC50 — un test par angle mort ; le même motif sous select_for_update est sain."""
+
+    VERROU = "    Doc.objects.select_for_update().get(pk=1)\n"
+
+    def _sain_sous_verrou(self, src):
+        tete, corps = src.split("\n", 1)
+        verrouille = f"{tete}\n{self.VERROU}{corps}"
+        ast.parse(verrouille)  # jamais vert par une SyntaxError avalée
+        self.assertEqual(_tous(verrouille), [])
+
+    def test_vue_hors_services_est_balayee(self):
+        tmp = tempfile.TemporaryDirectory(dir=ROOT / "scripts" / "tests")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        vue = base / "apps" / "facturation" / "views" / "facture.py"
+        vue.parent.mkdir(parents=True)
+        vue.write_text("def perform_destroy(self, instance):\n"
+                       "    if instance.statut != 'brouillon':\n        raise Exception('x')\n"
+                       "    instance.delete()\n", encoding="utf-8")
+        for nom in ("APPS_DIR", "CORE_DIR", "AUTH_DIR", "ALLOWLIST_PATH"):
+            self.addCleanup(setattr, crmw, nom, getattr(crmw, nom))
+        crmw.APPS_DIR, crmw.CORE_DIR = base / "apps", base / "core"
+        crmw.AUTH_DIR, crmw.ALLOWLIST_PATH = base / "authentication", base / "allow.txt"
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code = crmw.main([])
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("views/facture.py::perform_destroy (instance.statut)", out.getvalue())
+
+    def test_garde_en_return(self):
+        src = ("def rendre(pret):\n    if pret.statut == 'rendu':\n        return pret\n"
+               "    pret.statut = 'rendu'\n    pret.save()\n")
+        self.assertIn(("rendre", "pret.statut"), _tous(src))
+        self._sain_sous_verrou(src)
+
+    def test_drapeau_d_etat(self):
+        src = ("def mouvementer(liv):\n    if liv.stock_mouvemente:\n        raise Exception('x')\n"
+               "    Mouvement.objects.create(livraison=liv)\n")
+        self.assertIn(("mouvementer", "liv.stock_mouvemente"), _tous(src))
+        self._sain_sous_verrou(src)
+
+    def test_calcul_par_variable_locale(self):
+        src = ("def sortir(produit, n):\n    qte = produit.quantite - n\n"
+               "    produit.quantite = qte\n    produit.save()\n")
+        self.assertIn(("sortir", "produit.quantite"), _tous(src))
+        src2 = ("def sortir(produit, n):\n    qte = produit.quantite - n\n"
+                "    Produit.objects.filter(pk=produit.pk).update(quantite=qte)\n")
+        self.assertIn(("sortir", "produit.quantite via variable"), _tous(src2))
+        self._sain_sous_verrou(src)
+
+    def test_save_complet_apres_lecture_du_statut(self):
+        src = ("def perform_update(self, serializer):\n"
+               "    if serializer.instance.statut == 'valide':\n        notifier()\n"
+               "    serializer.save()\n")
+        self.assertIn(("perform_update", "serializer.instance.statut save complet"), _tous(src))
+        self.assertEqual(_tous(src.replace("serializer.save()", "serializer.save(update_fields=['x'])")), [])
+        self._sain_sous_verrou(src)
+
+
 if __name__ == "__main__":
     unittest.main()

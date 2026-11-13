@@ -19,6 +19,26 @@ du groupe, due à mi-parcours (18 tâches cochées sur 24 constructibles). Rien 
 | ok | **18** | APUB2, 30, 31, 32, 34, 36, 37, 38, 42, 43, 47, 48, 50, 51, 53, 56, 70, 72 |
 | partiel / non-fait / faux / régression / déjà-présent | **0** | — |
 
+### Seconde passe du 13/11 (soir) : les 24 tâches livrées en attente de preuve en direct
+
+À la demande du fondateur, la contre-visite a été étendue par anticipation aux 24 tâches dont le code est sur `origin/main`
+(`d64fa1e4e4`) et qui n'attendaient que leur rejeu en direct : APUB1, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 33, 35, 40, 41, 44,
+45, 46, 49, 52, 54, 55, 57, 71. Un vérificateur frais (opus, effort élevé), lecture seule, aucun test lancé.
+
+| Verdict | Nombre | Tâches |
+|---|---|---|
+| ok | **24** | les 24 |
+| partiel / non-fait / faux / régression / déjà-présent | **0** | — |
+
+Chaque tâche a son commit et son test nommé sur `main` ; les tests relus jouent le comportement (rôles livrés, appel HTTP
+réel, état relu après un refus). Le test d'APUB41 utilise un compte hérité ; celui d'APUB71 simule le sélecteur, comme la
+tâche le prescrit, et ne frappe que le tableau de bord. Le rejeu en direct des 24 tâches a été joué le même jour sur un
+runner GitHub (deux enregistrements sous `docs/audits/acceptation/APUB/`).
+
+**Texte de tâche à réaligner.** APUB52 cite un évènement de webhook « lead.updated » qui n'existe pas dans le code (les
+évènements de lead sont la création, la perte et le changement d'étape) ; le constructeur a pris « lead.lost » et l'a écrit
+dans son test. C'est le texte de la tâche qui est faux, pas le produit.
+
 ## 2. Tests nommés
 
 Les dix-huit tests nommés existent et sont comportementaux : vrais appels HTTP, état relu en base, aucune simulation de la
@@ -53,16 +73,21 @@ Aucun sur les tâches cochées.
 - Les deux routes d'APUB51 partagent le même seau de limitation de débit.
 - Un commentaire périmé des réglages de base parle encore de l'ancienne garde administrateur.
 - Le point « non vérifié » d'APUB48 (collecteur de production) n'a pas été vérifié ici.
+- Seconde passe : course possible à la création du quatrième ticket d'APUB5 (on compte puis on crée, sans verrou) ; bouton
+  « Couper le lien » d'APUB6 sans confirmation ; la date de coupure du partage d'APUB41 n'est pas montrée à l'écran ; le
+  formulaire public d'APUB49 affiche du JSON brut après envoi ; le motif accepté par APUB54 est plus large que celui de la
+  tâche ; un jumeau possible dans les sélecteurs sémantiques, repéré sans être relu.
 
 ## 6. Couverture et sortie de cycle
 
-- **Couvert.** Les 18 tâches cochées : code, commits, tests nommés, jumeaux, appelants.
-- **Non couvert.** Aucun test Django lancé (la preuve des tests est la CI de `main`) ; aucun rejeu navigateur ; les 6 tâches
-  ouvertes, dont APUB1.
-- **Statut.** Zéro écart S1-S2 sur les tâches cochées. La contre-visite de clôture reste due à 95 %.
+- **Couvert.** Les 18 tâches cochées et les 24 tâches livrées : code, commits, tests nommés, jumeaux, appelants.
+- **Non couvert.** Aucun test Django lancé (la preuve des tests est la CI de `main`) ; les tâches encore ouvertes
+  (APUB7, 10, 15, 39, 73) ; la régénération du schéma d'API ; un jumeau possible dans les sélecteurs sémantiques.
+- **Statut.** Zéro écart S1-S2 sur les 42 tâches relues. La contre-visite de clôture reste due quand les tâches ouvertes
+  seront construites.
 
 ## 7. Coût
 
-- 2 vérificateurs (opus, effort élevé) ≈ 0,4 M de jetons ; aucun appel Fable.
+- 3 vérificateurs (opus, effort élevé) ≈ 0,7 M de jetons ; aucun appel Fable.
 
 <!-- verifie | groupe: APUB | pct: 75 | ecarts_s1_s2: 0 -->

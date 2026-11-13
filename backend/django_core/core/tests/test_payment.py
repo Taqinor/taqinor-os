@@ -82,6 +82,31 @@ class PaymentTransactionFlowTests(TestCase):
         self.assertIsNotNone(tx.paye_le)
         self.assertEqual(received, [tx.pk])
 
+    def test_instance_perimee_n_emet_pas_une_seconde_capture(self):
+        """ACNC43 — l'instance A, chargée avant que B ne marque la ligne
+        payée, ne ré-émet pas la capture et ne réécrit pas ``paye_le``."""
+        tx = payment_infra.creer_transaction(
+            self.company, montant=Decimal('200.00'))
+        perimee = PaymentTransaction.objects.get(pk=tx.pk)
+        autre = PaymentTransaction.objects.get(pk=tx.pk)
+        received = []
+
+        def _handler(sender, transaction, company, **kwargs):
+            received.append(transaction.pk)
+
+        payment_captured.connect(_handler)
+        try:
+            payment_infra.marquer_paye(autre, external_ref='PSP-1')
+            paye_le = PaymentTransaction.objects.get(pk=tx.pk).paye_le
+            payment_infra.marquer_paye(perimee)
+        finally:
+            payment_captured.disconnect(_handler)
+        self.assertEqual(received, [tx.pk])
+        tx.refresh_from_db()
+        self.assertEqual(tx.statut, PaymentTransaction.STATUT_PAYE)
+        self.assertEqual(tx.external_ref, 'PSP-1')
+        self.assertEqual(tx.paye_le, paye_le)
+
     def test_delete_transaction_refuse_405(self):
         """ASUP22 — une transaction de paiement ne se supprime jamais par l'API."""
         from rest_framework.test import APIClient

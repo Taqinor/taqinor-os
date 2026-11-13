@@ -70,6 +70,21 @@ class SandboxTests(TestCase):
         with self.assertRaises(SandboxDejaActif):
             creer_sandbox(self.company, self.admin)
 
+    def test_creation_bloquee_reprise_apres_30_min(self):
+        """ACEL11 — une création tuée restée « en création » plus de 30 min
+        passe en échec au lieu de bloquer toute nouvelle sandbox."""
+        from ..sandbox_service import creer_sandbox
+        bloque = SandboxEnvironment.objects.create(
+            company=self.company,
+            statut=SandboxEnvironment.Statut.EN_CREATION,
+            date_expiration=timezone.now() + timezone.timedelta(days=7))
+        SandboxEnvironment.objects.filter(pk=bloque.pk).update(
+            date_creation=timezone.now() - timezone.timedelta(minutes=45))
+        nouveau = creer_sandbox(self.company, self.admin)
+        bloque.refresh_from_db()
+        self.assertEqual(bloque.statut, SandboxEnvironment.Statut.ECHEC)
+        self.assertNotEqual(nouveau.pk, bloque.pk)
+
     def test_sandbox_non_autorise(self):
         from ..sandbox_service import SandboxNonAutorise, creer_sandbox
         AdminOpsSettings.objects.create(
@@ -100,6 +115,37 @@ class SandboxTests(TestCase):
         self.assertEqual(env.statut, SandboxEnvironment.Statut.EXPIRE)
         env.sandbox_company.refresh_from_db()
         self.assertFalse(env.sandbox_company.actif)
+
+    def test_purge_sandbox_delete_en_echec_garde_le_lien(self):
+        """ACEL16 — un `delete` qui lève garde le lien de son env et n'arrête
+        pas la purge des suivants."""
+        from unittest import mock
+
+        from ..tasks import purger_sandbox_expires
+        echu = timezone.now() - timezone.timedelta(days=30)
+        envs = []
+        for i in range(2):
+            bac = Company.objects.create(nom=f'Bac ACEL16 {i}', slug=f'bac-acel16-{i}')
+            envs.append(SandboxEnvironment.objects.create(
+                company=self.company, sandbox_company=bac,
+                statut=SandboxEnvironment.Statut.EXPIRE, date_expiration=echu))
+        supprimes = []
+
+        def _delete(societe, *args, **kwargs):
+            if societe.pk == envs[0].sandbox_company_id:
+                raise RuntimeError('suppression impossible')
+            supprimes.append(societe.pk)
+            return (1, {})
+
+        with mock.patch.object(Company, 'delete', autospec=True, side_effect=_delete):
+            resultat = purger_sandbox_expires()
+        premier, second = envs
+        premier.refresh_from_db()
+        second.refresh_from_db()
+        self.assertIsNotNone(premier.sandbox_company_id)
+        self.assertIsNone(second.sandbox_company_id)
+        self.assertEqual(len(supprimes), 1)
+        self.assertEqual(resultat['echecs'], 1)
 
 
 class ConfigPackageTests(TestCase):
@@ -187,6 +233,29 @@ class AdoptionTests(TestCase):
             horodatage=timezone.now() - timezone.timedelta(days=200))
         purger_evenements_usage()
         self.assertFalse(EvenementUsage.objects.filter(pk=vieux.pk).exists())
+
+    def test_purge_evenements_societe_suspendue(self):
+        """ACEL12 — la rétention s'applique aussi à une société suspendue."""
+        from ..tasks import purger_evenements_usage
+        suspendue = Company.objects.create(
+            nom='AdminOps suspendue', slug='adminops-suspendue', actif=False)
+        il_y_a_200 = timezone.now() - timezone.timedelta(days=200)
+        gardes, purges = [], []
+        for company in (suspendue, self.company):
+            vieux = EvenementUsage.objects.create(
+                company=company, module='crm', utilisateur=self.admin)
+            recent = EvenementUsage.objects.create(
+                company=company, module='crm', utilisateur=self.admin)
+            EvenementUsage.objects.filter(pk=vieux.pk).update(
+                horodatage=il_y_a_200)
+            EvenementUsage.objects.filter(pk=recent.pk).update(
+                horodatage=timezone.now() - timezone.timedelta(days=10))
+            purges.append(vieux.pk)
+            gardes.append(recent.pk)
+        purger_evenements_usage()
+        self.assertFalse(EvenementUsage.objects.filter(pk__in=purges).exists())
+        self.assertEqual(
+            EvenementUsage.objects.filter(pk__in=gardes).count(), 2)
 
 
 class AdminOpsApiTests(TestCase):
