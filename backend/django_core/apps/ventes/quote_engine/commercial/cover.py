@@ -17,7 +17,12 @@ from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
 from ..ci import blocs as ci_blocs
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
-from ..ci.graphiques import bloc_energie_mensuelle, css_graphique
+from ..ci.graphiques import bloc_energie_mensuelle, bloc_retour_cumul, css_graphique
+
+#: Lead nada (13/11/2026) — l'option « avec batterie » en bleu clair, bien
+#: distinct du marine de la consommation : consommé sur place / surplus.
+BLEU_AVEC = "#3B8FD0"
+BLEU_SURPLUS = "#B7D4EC"
 # CPDF3 — les deux options côte à côte (devis « sans / avec batterie »).
 from ..ci import options_cote
 
@@ -198,17 +203,35 @@ def build(ctx):
 .c1c-bas{{width:100%;border-collapse:collapse;margin-top:2px;}}
 .c1c-bas td{{vertical-align:top;padding:0;}}
 .c1c-bas-d{{width:52mm;padding-left:8px !important;padding-top:10px !important;}}
+.c1c-bas-r{{width:80mm;padding-left:8px !important;}}
 </style>
 """
     # AMOT90 — l'énergie mois par mois (kWh du bilan horaire servi) dans le
     # tiers bas de la page ; retirée par le rendu adaptatif si la page
     # déborde (``_sans_graphiques``).
     # AMOT92 — à côté : les prochaines étapes et le QR de la proposition.
-    bas = ci_couverture.rangee_bas(
-        d, bloc_energie_mensuelle(
-            d, d.get("com_synthese"), (navy, green, gold, line, muted),
-            f_sans, fmt, "c1c", hauteur=150, largeur_mm=124),
-        ci_couverture.bloc_etapes(d, "c1c", (navy, muted, gold)), "c1c")
+    # Lead nada (13/11/2026, Reda) — à côté du graphique, la COURBE DU RETOUR
+    # (cumul servi, une courbe par option) remplace « Prochaines étapes »
+    # (déjà en page 3, « Comment nous procédons ») ; le QR reste. Deux
+    # options : l'énergie mois par mois montre les deux, nommées.
+    blue = BLEU_AVEC
+    retour_html = bloc_retour_cumul(
+        d, "com", (green, blue), muted, muted, f_sans,
+        lambda v: f"{fmt(v)} MAD", "c1c", hauteur=250, largeur_mm=78)
+    if retour_html:
+        bas = ci_couverture.rangee_bas(
+            d, bloc_energie_mensuelle(
+                d, d.get("com_synthese"), (navy, green, gold, line, muted),
+                f_sans, fmt, "c1c", hauteur=190, largeur_mm=98,
+                couleurs_avec=(blue, BLEU_SURPLUS) if deux_options else None),
+            retour_html + ci_couverture.bloc_qr(d, muted), "c1c",
+            classe_droite="c1c-bas-r")
+    else:
+        bas = ci_couverture.rangee_bas(
+            d, bloc_energie_mensuelle(
+                d, d.get("com_synthese"), (navy, green, gold, line, muted),
+                f_sans, fmt, "c1c", hauteur=150, largeur_mm=124),
+            ci_couverture.bloc_etapes(d, "c1c", (navy, muted, gold)), "c1c")
 
     # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
     # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).

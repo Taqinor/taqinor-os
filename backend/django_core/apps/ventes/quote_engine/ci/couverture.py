@@ -775,21 +775,40 @@ def qr_proposition(d):
     return (uri, theme.lien_affiche(lien)) if uri else ("", "")
 
 
-def rangee_bas(d, graphique, etapes, prefixe):
+def rangee_bas(d, graphique, etapes, prefixe, classe_droite=None):
     """AMOT92 — la rangée basse de la couverture : l'énergie mois par mois à
     gauche (AMOT90), les prochaines étapes et le QR à droite ; sans
     graphique servi, les étapes seules. Toute la rangée est CÉDABLE
     (``data-graphique``) : le rendu adaptatif la retire en entier
-    (``_sans_graphiques``) plutôt que de pousser une page de plus."""
+    (``_sans_graphiques``) plutôt que de pousser une page de plus.
+    ``classe_droite`` : la classe de la cellule de droite (défaut
+    ``<prefixe>-bas-d``) — la courbe du retour y prend plus de place."""
     from .graphiques import cede
     if cede(d, "etapes"):
         return ""
     if not graphique:
         return (f'<div data-graphique="etapes" style="margin-top:10px;">'
                 f'{etapes}</div>')
+    classe = classe_droite or f"{prefixe}-bas-d"
     return (f'<table class="{prefixe}-bas" data-graphique="etapes"><tr>'
-            f'<td>{graphique}</td><td class="{prefixe}-bas-d">{etapes}</td>'
+            f'<td>{graphique}</td><td class="{classe}">{etapes}</td>'
             f'</tr></table>')
+
+
+def bloc_qr(d, muted):
+    """Le QR de la proposition en ligne et sa légende, seuls (quand la
+    courbe du retour remplace « Prochaines étapes ») ; '' sans lien."""
+    uri, lien = qr_proposition(d)
+    if not uri:
+        return ""
+    return (f'<table style="border-collapse:collapse;margin-top:3px;"><tr>'
+            f'<td style="width:15mm;vertical-align:middle;">'
+            f'<img src="{uri}" alt="QR" style="width:14mm;height:14mm;'
+            f'display:block;"></td>'
+            f'<td style="vertical-align:middle;font-size:6.5pt;color:{muted};'
+            f'padding-left:4px;">'
+            + libelle(d, "ci_proposition_en_ligne", "Votre proposition en ligne")
+            + f' · {html.escape(lien)}</td></tr></table>')
 
 
 #: AMOT92 — les prochaines étapes, sans date promise.
