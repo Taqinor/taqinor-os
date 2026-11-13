@@ -39,6 +39,9 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import { estEntierSaisi } from './validationEntiers'
+// AERR88 — quantité d'une ligne : saisie brute gardée (effaçable), entier ≥ 1 exigé à l'import.
+const quantiteOcrValide = (q) => estEntierSaisi(q) && Number(q) >= 1
 import OptionsTypeMouvement from './OptionsTypeMouvement'
 
 const DOC_LABELS = {
@@ -400,6 +403,7 @@ const cp = produitsRef.current
         // chaque entrée de ligne porte son ligneId pour permettre le réessai ciblé
         const push = (entry) => log.push({ ligneId: ligne.id, ...entry })
         if (ligne.action === 'skip') { push({ ok: null, label, msg: 'Ignoré' }); continue }
+        if (!quantiteOcrValide(ligne.quantite)) { push({ ok: false, label, msg: 'Quantité : saisissez un nombre entier (1 ou plus).' }); continue }
         let produitId = null
         if (ligne.action === 'match') {
           if (!ligne.produit_id) { push({ ok: false, label, msg: 'Aucun produit sélectionné' }); continue }
@@ -450,7 +454,7 @@ const cp = produitsRef.current
           const prixAchatU = parseFloat(ligne.nouveau_prix_achat)
             || (prod ? parseFloat(prod.prix_achat) : 0) || 0
           bcfLignes.push({
-            produit: produitId, quantite: ligne.quantite,
+            produit: produitId, quantite: Number(ligne.quantite),
             prix_achat_unitaire: prixAchatU, label, ligneId: ligne.id,
           })
           continue
@@ -459,7 +463,7 @@ const cp = produitsRef.current
           // Référence du mouvement : saisie utilisateur, sinon référence
           // document détectée par l'OCR (752), sinon aucune.
           const refMouvement = refDocument.trim() || (stockOcrResult?.reference_document || '').trim() || null
-          const res = await stockApi.createMouvement({ produit: produitId, type_mouvement: mouvementType, quantite: ligne.quantite, reference: refMouvement, note: `Import OCR${ligne.ref_ocr ? ' — ' + ligne.ref_ocr : ''}` })
+          const res = await stockApi.createMouvement({ produit: produitId, type_mouvement: mouvementType, quantite: Number(ligne.quantite), reference: refMouvement, note: `Import OCR${ligne.ref_ocr ? ' — ' + ligne.ref_ocr : ''}` })
           const mv = res.data
           const delta = mv.quantite_apres - mv.quantite_avant
           const typeLabel = mouvementType === 'entree' ? 'Entrée' : mouvementType === 'sortie' ? 'Sortie' : 'Ajust.'
@@ -916,7 +920,7 @@ function Step2Validate({
 }
 
 // ── Carte ligne produit ───────────────────────────────────────────────────────
-function LigneCard({ ligne, produits, categories, onChange, docType, canCreateProduit = true }) {
+export function LigneCard({ ligne, produits, categories, onChange, docType, canCreateProduit = true }) {
   const isPurchase = docType === 'facture_achat' || docType === 'bon_livraison'
   const hasMatchError  = ligne.action === 'match' && !ligne.produit_id
   const hasCreateError = ligne.action === 'create' && (
@@ -977,8 +981,10 @@ function LigneCard({ ligne, produits, categories, onChange, docType, canCreatePr
             id={`qte-${ligne.id}`} type="number" min="1" step="1" inputMode="numeric"
             className="h-9 w-20 text-right"
             value={ligne.quantite}
-            onChange={e => onChange({ quantite: Math.max(1, parseInt(e.target.value) || 1) })}
+            onChange={e => onChange({ quantite: e.target.value })}
+            aria-invalid={!quantiteOcrValide(ligne.quantite)}
           />
+          {!quantiteOcrValide(ligne.quantite) && <p role="alert" className="mt-1 text-xs text-destructive">Nombre entier (1 ou plus)</p>}
         </div>
       </div>
 
