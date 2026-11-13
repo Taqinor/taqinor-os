@@ -1021,11 +1021,13 @@ export default function LeadWorkspace({
       )}
       {dialogueRaisonFroid}
       {dialogueSaisie}
+      {/* AERR120 — en pleine page, la fête joue sur la page : « Confirmer »
+          ferme le dialogue sans quitter `/crm/leads/<id>` (un refus le rouvre). */}
       {signeOpen && (
         <SigneDialog
           lead={state.server}
           onClose={() => setSigneOpen(false)}
-          onConfirmed={() => { setSigneOpen(false); onClose?.() }}
+          onConfirmed={() => { setSigneOpen(false); if (variant !== 'page') onClose?.() }}
           onAccepted={() => onSaved?.()}
           onFailed={(echec) => { onSaved?.(); onSigneRefuse?.(state.server, echec) }}
         />

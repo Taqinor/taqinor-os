@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import crmApi from '../../../api/crmApi'
 import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import FavoriButton from '../../../features/uxviews/FavoriButton'
+import SigneDialog from './SigneDialog'
 import { Spinner, EmptyState, Button } from '../../../ui'
 
 /* VX22 — Une vraie page lead : route `/crm/leads/:id`.
@@ -40,6 +41,21 @@ export default function LeadDetailPage() {
   }, [id])
 
   const backToList = () => navigate('/crm/leads')
+  // Recharge la fiche depuis le serveur pour refléter la modification (ex. devis
+  // créé inline) — même logique que LeadsPage.onSaved, mais ciblée sur CE lead.
+  const recharger = useCallback(
+    () => crmApi.getLead(id).then((r) => setLead(r.data)).catch(() => {}), [id])
+
+  // AERR120 — jumeau d'ACVI68 (patron `LeadsPage.rouvrirSigne`) : un refus
+  // d'acceptation rouvre « Signé » pré-rempli, l'erreur sous son champ, sans
+  // quitter la page.
+  const [signeLead, setSigneLead] = useState(null)
+  const [signeSaisie, setSigneSaisie] = useState(null)
+  const rouvrirSigne = useCallback((fiche, echec) => {
+    if (!echec) return
+    setSigneSaisie({ ...echec.saisie, erreurs: echec.erreurs })
+    setSigneLead(fiche)
+  }, [])
 
   if (loading) {
     return (
@@ -74,13 +90,19 @@ export default function LeadDetailPage() {
         variant="page"
         lead={lead}
         onClose={backToList}
-        onSaved={() => {
-          // Recharge la fiche depuis le serveur pour refléter la modification
-          // (ex. devis créé inline) — même logique que LeadsPage.onSaved, mais
-          // ciblée sur CE lead plutôt qu'un refetch de liste.
-          crmApi.getLead(id).then((r) => setLead(r.data)).catch(() => {})
-        }}
+        onSaved={recharger}
+        onSigneRefuse={rouvrirSigne}
       />
+      {signeLead && (
+        <SigneDialog
+          lead={signeLead}
+          saisieInitiale={signeSaisie}
+          onClose={() => { setSigneLead(null); setSigneSaisie(null); recharger() }}
+          onConfirmed={() => setSigneLead(null)}
+          onAccepted={() => { setSigneSaisie(null); recharger() }}
+          onFailed={(echec) => { recharger(); rouvrirSigne(signeLead, echec) }}
+        />
+      )}
     </>
   )
 }
