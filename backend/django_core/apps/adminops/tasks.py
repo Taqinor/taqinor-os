@@ -136,11 +136,14 @@ def perimer_demandes_impersonation():
 def purger_evenements_usage():
     """NTADM16 — purge des `EvenementUsage` au-delà de la rétention configurée
     (défaut 180j, RGPD/CNDP-safe). Rétention par tenant via `AdminOpsSettings`."""
+    from authentication.models import Company
     from authentication.selectors import active_companies
 
     from .models import AdminOpsSettings, EvenementUsage
 
-    for company in active_companies():
+    # ACEL12 — une société suspendue/fermée garde sa rétention : purgée aussi.
+    suspendues = Company.objects.filter(actif=False)
+    for company in [*active_companies(), *suspendues]:
         reglage = AdminOpsSettings.get_or_default(company)
         seuil = timezone.now() - timezone.timedelta(
             days=reglage.retention_evenements_usage_jours)

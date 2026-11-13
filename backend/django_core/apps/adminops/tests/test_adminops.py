@@ -203,6 +203,29 @@ class AdoptionTests(TestCase):
         purger_evenements_usage()
         self.assertFalse(EvenementUsage.objects.filter(pk=vieux.pk).exists())
 
+    def test_purge_evenements_societe_suspendue(self):
+        """ACEL12 — la rétention s'applique aussi à une société suspendue."""
+        from ..tasks import purger_evenements_usage
+        suspendue = Company.objects.create(
+            nom='AdminOps suspendue', slug='adminops-suspendue', actif=False)
+        il_y_a_200 = timezone.now() - timezone.timedelta(days=200)
+        gardes, purges = [], []
+        for company in (suspendue, self.company):
+            vieux = EvenementUsage.objects.create(
+                company=company, module='crm', utilisateur=self.admin)
+            recent = EvenementUsage.objects.create(
+                company=company, module='crm', utilisateur=self.admin)
+            EvenementUsage.objects.filter(pk=vieux.pk).update(
+                horodatage=il_y_a_200)
+            EvenementUsage.objects.filter(pk=recent.pk).update(
+                horodatage=timezone.now() - timezone.timedelta(days=10))
+            purges.append(vieux.pk)
+            gardes.append(recent.pk)
+        purger_evenements_usage()
+        self.assertFalse(EvenementUsage.objects.filter(pk__in=purges).exists())
+        self.assertEqual(
+            EvenementUsage.objects.filter(pk__in=gardes).count(), 2)
+
 
 class AdminOpsApiTests(TestCase):
     def setUp(self):
