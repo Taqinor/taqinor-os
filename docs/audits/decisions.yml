@@ -4466,9 +4466,9 @@ decisions:
         texte: "Oui : à l'effacement, les anciennes valeurs des champs personnels sont remplacées dans le journal d'audit (la trace du changement reste)"
       - cle: garder
         texte: "Non : le journal d'audit garde les anciennes valeurs (preuve complète, mais la donnée effacée y survit)"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : caviarder)"
+    reponse: caviarder
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : caviarder)"
     taches: [ASUP13]
 
   - id: D-ASUP-2
@@ -4478,9 +4478,9 @@ decisions:
         texte: "Seulement désactivé : un compte qui a laissé des traces (auteur, propriétaire de leads, documents) ne se supprime pas ; seul un compte sans aucune trace se supprime"
       - cle: supprimer
         texte: "Supprimable : la suppression reste offerte, les traces perdent leur auteur"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : desactiver_seulement)"
+    reponse: desactiver_seulement
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : desactiver_seulement)"
     taches: [ASUP5, ASUP6, ASUP55]
 
   - id: D-ASUP-3
@@ -4490,9 +4490,9 @@ decisions:
         texte: "Refuser : un produit qui a des mouvements de stock reste archivé, son historique est gardé"
       - cle: effacer
         texte: "Garder : la suppression définitive efface aussi l'historique de stock du produit"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    reponse: refuser
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
     taches: [ASUP4]
 
   - id: D-ASUP-4
@@ -4502,9 +4502,9 @@ decisions:
         texte: "L'export est supprimé quand la personne est effacée ; seule la trace « demande traitée le … » reste"
       - cle: garder
         texte: "L'export reste gardé comme preuve de la réponse"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : supprimer_a_l_effacement)"
+    reponse: supprimer_a_l_effacement
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : supprimer_a_l_effacement)"
     taches: [ASUP14]
 
   - id: D-ASUP-5
@@ -4514,9 +4514,9 @@ decisions:
         texte: "10 ans pour le journal des factures, avoirs, paiements et mouvements de stock (durée comptable), quel que soit le réglage"
       - cle: reglage_libre
         texte: "Le réglage du Directeur s'applique à tout le journal (plancher actuel : 1 an)"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : dix_ans)"
+    reponse: dix_ans
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : dix_ans)"
     taches: [ASUP17, ASUP18]
 
   - id: D-ASUP-6
@@ -4526,9 +4526,9 @@ decisions:
         texte: "Refuser comme la sortie de « Signé » : 409 tant qu'une facture, un BC ou un chantier avancé existe"
       - cle: laisser_archiver
         texte: "Laisser archiver un lead signé (il sort alors des « signés »)"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    reponse: refuser
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
     taches: [ASUP48]
 
   - id: D-ACEL-1
@@ -4538,9 +4538,9 @@ decisions:
         texte: "Respecter l'heure choisie : la tâche passe chaque heure de 6 h à 23 h et envoie le rapport dès que son heure est atteinte, une fois par jour ; sans heure, il part à 6 h"
       - cle: tout_a_6h
         texte: "Tout part à 6 h : retirer le champ « Heure d'envoi » de l'écran"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : heure_respectee)"
+    reponse: heure_respectee
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : heure_respectee)"
     taches: [ACEL1, ACEL31]
 
   - id: D-ACEL-2
@@ -4550,9 +4550,9 @@ decisions:
         texte: "Les montrer : chaque réglage reçoit son interrupteur ou son champ à l'écran (paramètres, fiche client, fiche chantier)"
       - cle: retirer
         texte: "Les retirer, avec les tâches planifiées qui en dépendent"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : montrer_dans_parametres)"
+    reponse: montrer_dans_parametres
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : montrer_dans_parametres)"
     taches: [ACEL13, ACEL42, ACEL43, ACEL46, ACEL78]
 
   - id: D-ACEL-3
@@ -4562,9 +4562,9 @@ decisions:
         texte: "Oui : au-delà de 15 minutes sans contrôle, la page dit « inconnu, données périmées » et la disponibilité du jour n'est plus comptée à 100 %"
       - cle: garder
         texte: "Non : garder l'affichage actuel"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : donnees_perimees)"
+    reponse: donnees_perimees
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : donnees_perimees)"
     taches: [ACEL36]
 
   - id: D-ACNC-1
@@ -4574,9 +4574,9 @@ decisions:
         texte: "L'accepter seulement après une confirmation explicite : « un paiement de 5 000 DH a déjà été enregistré aujourd'hui sur cette facture : confirmer ? »"
       - cle: refuser
         texte: "Le refuser (409) tant qu'un responsable ne force pas"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : accepter_apres_confirmation)"
+    reponse: accepter_apres_confirmation
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : accepter_apres_confirmation)"
     taches: [ACNC4]
 
   - id: D-ACNC-2
@@ -4586,9 +4586,9 @@ decisions:
         texte: "Le refuser : « ces factures sont déjà soldées ; pour une avance, utilisez Enregistrer une avance »"
       - cle: garder_en_avance
         texte: "Le garder en avance client, comme aujourd'hui"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    reponse: refuser
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF9 (11/11/2026) : non posée (défaut recommandé : refuser)"
     taches: [ACNC10]
 
   - id: D-AERR-1
@@ -4598,9 +4598,9 @@ decisions:
         texte: "Oui : une route de retour tant que l'action n'est pas appliquée, un bouton « Retirer l'approbation » sur la carte et un toast « Annuler » juste après l'approbation par la touche « a »"
       - cle: garder
         texte: "Non : l'approbation reste définitive ; seule la confirmation avant la touche « a » est ajoutée"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : desapprouver)"
+    reponse: desapprouver
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : desapprouver)"
     taches: [AERR24]
 
   - id: D-AERR-2
@@ -4612,7 +4612,7 @@ decisions:
         texte: "Une confirmation qui nomme le lead et l'étape avant chaque changement d'étape par la touche ou la palette"
       - cle: garder
         texte: "Ne rien changer : le changement d'étape au clavier et par la palette reste immédiat"
-    reponse: ouverte
-    date: "2026-11-11"
-    source: "audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : annuler_comme_kanban)"
+    reponse: annuler_comme_kanban
+    date: "2026-11-13"
+    source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : annuler_comme_kanban)"
     taches: [AERR69, AERR119]
