@@ -84,6 +84,36 @@ class Vx214ChantierAssigneTests(TestCase):
         Lead.objects.filter(pk=leads[0].pk).update(is_archived=False)
         self.assertEqual(sorted(_file()[0]), [acts[0].id, acts[2].id])
 
+    def test_a_faire_d_un_lead_archive_ou_supprime_absent_de_mes_activites(self):
+        """ASUP59 — « Mes activités » (``mine``) d'un Commercial livré : l'à-faire
+        d'un lead archivé et celui d'un lead à la corbeille sont absents des
+        paniers ; les deux leads restaurés ⇒ les trois figurent."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.crm.models import Lead
+        from apps.records.models import Activity
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        commercial = _user(self.company, 'asup59_commercial')
+        commercial.role = Role.objects.create(
+            company=self.company, nom='ASUP59 Commercial', permissions=list(COMMERCIAL_PERMISSIONS))
+        commercial.save(update_fields=['role'])
+        ct = ContentType.objects.get_for_model(Lead)
+        jours = [datetime.date.today() + datetime.timedelta(days=d) for d in (-1, 0, 3)]
+        leads = [Lead.objects.create(company=self.company, nom=f'Lead {n}') for n in ('B1', 'B2', 'B3')]
+        acts = [Activity.objects.create(
+            company=self.company, content_type=ct, object_id=lead.pk, summary=lead.nom,
+            assigned_to=commercial, due_date=jour) for lead, jour in zip(leads, jours)]
+        Lead.objects.filter(pk=leads[0].pk).update(is_archived=True)
+        leads[1].soft_delete()
+
+        def _mine():
+            data = _api(commercial).get('/api/django/records/activities/mine/').data
+            return sorted(a['id'] for panier in ('en_retard', 'aujourdhui', 'a_venir') for a in data[panier])
+        self.assertEqual(_mine(), [acts[2].id])
+        Lead.objects.filter(pk=leads[0].pk).update(is_archived=False)
+        Lead.all_objects.get(pk=leads[1].pk).restore()
+        self.assertEqual(_mine(), sorted(a.id for a in acts))
+
     def test_chantier_receptionne_n_apparait_plus(self):
         from apps.installations.models import Installation
         Installation.objects.create(
