@@ -248,8 +248,7 @@ export default function TarificationSection() {
         setErreurs(parChamp)
         toast.error(`Non enregistré : ${Object.keys(parChamp).length} champ(s) à corriger.`)
       } else {
-        toast.error(e?.response?.data?.detail
-          ?? JSON.stringify(e?.response?.data ?? 'Enregistrement impossible.'))
+        console.warn('Enregistrement impossible.', e) // le toast global parle
       }
     } finally {
       setSaving(false)

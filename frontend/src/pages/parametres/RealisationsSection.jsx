@@ -18,7 +18,6 @@ import parametresApi from '../../api/parametresApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { toast } from '../../ui/confirm'
 
 // Icône (chemins bruts) de la section — un toit et un rayon.
 const REAL_ICON = <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></>
@@ -85,13 +84,13 @@ export default function RealisationsSection() {
       setDraft(BROUILLON_VIDE)
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      console.warn('Création impossible.', e)
     }
   }
 
   const toggle = async (row) => {
     try { await parametresApi.updateRealisation(row.id, { actif: !row.actif }); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    catch (e) { console.warn('Modification impossible.', e) }
   }
   // AGR515 — PATCH du seul segment ; vide = null (non renseigné).
   const changeSegment = async (row, valeur) => {
@@ -99,13 +98,12 @@ export default function RealisationsSection() {
       await parametresApi.updateRealisation(row.id, { segment: valeur || null })
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.segment?.[0]
-        ?? e?.response?.data?.detail ?? 'Modification impossible.')
+      console.warn('Modification impossible.', e)
     }
   }
   const remove = async (row) => {
     try { await parametresApi.deleteRealisation(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   return (

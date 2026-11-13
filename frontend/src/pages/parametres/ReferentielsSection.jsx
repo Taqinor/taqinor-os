@@ -10,7 +10,6 @@ import parametresApi from '../../api/parametresApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { toast } from '../../ui/confirm'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
 
 // Icône (chemins bruts) partagée par les trois cartes de référentiel.
@@ -40,16 +39,16 @@ function TauxTvaList() {
       setDraft({ code: '', libelle: '', taux: '' })
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      console.warn('Création impossible.', e)
     }
   }
   const toggle = async (row) => {
     try { await parametresApi.updateTauxTva(row.id, { actif: !row.actif }); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    catch (e) { console.warn('Modification impossible.', e) }
   }
   const remove = async (row) => {
     try { await parametresApi.deleteTauxTva(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   if (rows === null) return <Spinner />
@@ -105,16 +104,16 @@ function ConditionsList() {
       setDraft({ libelle: '', delai_jours: '', escompte_pct: '' })
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      console.warn('Création impossible.', e)
     }
   }
   const toggle = async (row) => {
     try { await parametresApi.updateConditionPaiement(row.id, { actif: !row.actif }); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    catch (e) { console.warn('Modification impossible.', e) }
   }
   const remove = async (row) => {
     try { await parametresApi.deleteConditionPaiement(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   if (rows === null) return <Spinner />
@@ -168,16 +167,16 @@ function UnitesList() {
       setDraft({ code: '', libelle: '' })
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      console.warn('Création impossible.', e)
     }
   }
   const toggle = async (row) => {
     try { await parametresApi.updateUniteMesure(row.id, { actif: !row.actif }); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+    catch (e) { console.warn('Modification impossible.', e) }
   }
   const remove = async (row) => {
     try { await parametresApi.deleteUniteMesure(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { console.warn('Suppression impossible.', e) }
   }
 
   if (rows === null) return <Spinner />
