@@ -104,6 +104,61 @@ class VersionRemplaceeHorsJeuTests(TestCase):
         self._assert_409_v1_intact(self._post(self.v1, 'whatsapp'))
         self._assert_409_v1_intact(self._post(self.v1, 'pdf-partage'))
 
+    def test_whatsapp_lead_v1_et_envoi_refuse_expire_409(self):
+        """AMSG85 (origine AMSG38) — ``whatsapp-preview/`` sur V1, un refusé
+        et un expiré ; les deux routes WhatsApp de la fiche lead sur V1 ;
+        ``whatsapp/``, ``envoyer-email/`` et ``share-link {envoi}`` sur le
+        refusé et l'expiré : 409 ``version_remplacee`` sans ``wa_url``, aucun
+        effet. Mutants : retirer l'appel dans ``whatsapp_preview`` ⇒ échec ;
+        retirer la boucle ``geste_cycle_permis`` de la vue lead ⇒ échec."""
+        from apps.audit.models import AuditLog
+        from apps.crm.models import Lead, LeadActivity
+        from apps.ventes.domain.modifiabilite import MESSAGE_HORS_JEU
+        from apps.ventes.models import ShareLink
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead AMSG85', telephone='+212612340041')
+        Devis.objects.filter(pk__in=[self.v1.pk, self.v2.pk]).update(lead=lead)
+        hors_jeu = {}
+        for statut, ref in ((Devis.Statut.REFUSE, 'DEV-AMSG85-REF'),
+                            (Devis.Statut.EXPIRE, 'DEV-AMSG85-EXP')):
+            d = make_devis(self.company, self.user, self.client_obj, ref)
+            Devis.objects.filter(pk=d.pk).update(statut=statut, date_envoi=self.date_envoi)
+            hors_jeu[statut] = d
+        liens_avant = ShareLink.objects.count()
+
+        def _refus(r, message):
+            self.assertEqual(r.status_code, 409, r.data)
+            self.assertEqual(r.data['code'], 'version_remplacee')
+            self.assertEqual(str(r.data['detail']), message)
+            self.assertNotIn('wa_url', r.data)
+
+        r = self._post(self.v1, 'whatsapp-preview')
+        _refus(r, 'Cette proposition a été remplacée par DEV-ADEV7-0001-V2.')
+        self.assertEqual(r.data['successeur']['id'], self.v2.pk)
+        for route in ('whatsapp-devis-apercu', 'whatsapp-devis'):
+            with self.subTest(route=route):
+                _refus(self.api.post(f'/api/django/crm/leads/{lead.pk}/{route}/',
+                                     {'devis_ids': [self.v1.pk]}, format='json'),
+                       'Cette proposition a été remplacée par DEV-ADEV7-0001-V2.')
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf') as rendu:
+            for d in hors_jeu.values():
+                for action, corps in (('whatsapp-preview', None), ('whatsapp', None),
+                                      ('envoyer-email', {'to_email': 'client@example.com'}),
+                                      ('share-link', {'envoi': True})):
+                    with self.subTest(statut=d.reference, action=action):
+                        _refus(self._post(d, action, corps), MESSAGE_HORS_JEU)
+        rendu.assert_not_called()
+        # CLAUSE PERSISTANCE — relus : statuts et date d'envoi inchangés.
+        self.v1.refresh_from_db()
+        self.assertEqual((self.v1.statut, self.v1.date_envoi), (Devis.Statut.ENVOYE, self.date_envoi))
+        for statut, d in hors_jeu.items():
+            d.refresh_from_db()
+            self.assertEqual((d.statut, d.date_envoi), (statut, self.date_envoi))
+        self.assertEqual(ShareLink.objects.count(), liens_avant)
+        self.assertEqual(self.evenements, [])
+        self.assertFalse(AuditLog.objects.filter(action=AuditLog.Action.WHATSAPP).exists())
+        self.assertFalse(LeadActivity.objects.filter(lead=lead, kind=LeadActivity.Kind.NOTE).exists())
+
     def test_mark_devis_sent_archive_noop(self):
         from apps.ventes.services import mark_devis_sent
         Devis.objects.filter(pk=self.v1.pk).update(
