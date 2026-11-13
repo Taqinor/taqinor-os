@@ -84,6 +84,9 @@ class _FakeRedis:
     def delete(self, key):
         self.store.pop(key, None)
 
+    def getdel(self, key):  # reclamation atomique du jeton (lane RELAIS-A)
+        return self.store.pop(key, None)
+
 
 def _ctx():
     from app.services.action_tools import ActionContext
@@ -268,7 +271,7 @@ class QueryConfirmLoopTests(unittest.TestCase):
 
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None):
+        def fake_call(ctx, path, method="POST", payload=None, **kwargs):
             calls.append(path)
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
@@ -323,7 +326,7 @@ class QueryConfirmLoopTests(unittest.TestCase):
             collector = []
             with mock.patch.object(
                     _at, "_django_call",
-                    lambda ctx, path, method="POST", payload=None:
+                    lambda ctx, path, method="POST", payload=None, **kwargs:
                     {"ok": True, "status": 200,
                      "data": {"reference": "SAV-1", "wa_url": "https://wa/x"}}):
                 _at.run_catalogue_action(_ctx(), _CAT_LEAD_LIST, {}, collector)
@@ -431,21 +434,27 @@ def _appel_outil(nom, args, ident="appel-1"):
     return AIMessage(content="", tool_calls=[{"name": nom, "args": args, "id": ident}])
 
 
+def _moteur_sqlite():
+    """Base en memoire partagee entre fils (`_query` -> asyncio.to_thread)."""
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine("sqlite://", poolclass=StaticPool,
+                           connect_args={"check_same_thread": False})
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE crm_client (id INTEGER, nom TEXT)"))
+    return engine
+
+
 def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
           ctx=None, fournisseur="groq", reglages=None):
     """Un tour du VRAI service (`_query` -> `_run_agent` : executeur, outils,
     gardes) : seuls le LLM, Django et Redis sont simules. Rend (sortie,
     historique ecrit, llm). `reglages` : attributs du service a surcharger."""
     import asyncio
-    from sqlalchemy import create_engine, text
-    from sqlalchemy.pool import StaticPool
     from app.services import metriques_gouvernees as mg
     from app.services import sql_agent_service as svc
 
-    engine = create_engine("sqlite://", poolclass=StaticPool,
-                           connect_args={"check_same_thread": False})
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE crm_client (id INTEGER, nom TEXT)"))
+    engine = _moteur_sqlite()
     service, ecrit, llm = svc.SQLAgentService(), [], _llm_simule(reponses)
     patches = (
         mock.patch.object(_ep._database, "create_sql_agent_engine", lambda: engine),
@@ -643,6 +652,157 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertEqual(relais.references_des_cartes([{"donnees": {}}]), "")
 
 
+def _rendu_natif(answer="Natif.", outils=(), arret="fin"):
+    return {"answer": answer, "outils_appeles": list(outils), "arret": arret,
+            "modele": "claude-sonnet-5-5",
+            "tokens": {"cache_read": 10, "cache_write": 5, "input": 3, "output": 2}}
+
+
+_CAT_COPILOTE = [dict(_CAT_LEAD_LIST, lot="copilote"), _CAT_PROPOSAL_PDF]
+
+
+@unittest.skipUnless(_OK and _HAS_CLIENT, f"service indisponible: {_ERR}")
+class MoteurNatifCop6Tests(unittest.TestCase):
+    """COP-B6 — aiguillage vers le moteur natif (SIMULE : `executer` /
+    `reprendre` remplaces) : reglage `natif` + claude + copilote seulement ;
+    toute panne avant une action => LangChain ; `suite` apres /confirm."""
+
+    def _servir(self, moteur, catalogue, executer, fournisseur="claude"):
+        from langchain_core.messages import AIMessage
+        from app.core import config
+        from app.services import moteur_natif
+        with mock.patch.object(config, "ASSISTANT_MOTEUR", moteur), \
+                mock.patch.object(moteur_natif, "executer", executer):
+            return _tour([AIMessage(content="LangChain.")], catalogue=catalogue,
+                         ctx=_ctx(), fournisseur=fournisseur)
+
+    def test_quatre_combinaisons_d_interrupteurs(self):
+        appels = []
+
+        def executer(**kw):
+            appels.append(kw)
+            return _rendu_natif()
+        for moteur, lot, attendu in (("langchain", "herite", "langchain"),
+                                     ("langchain", "copilote", "langchain"),
+                                     ("natif", "herite", "langchain"),
+                                     ("natif", "copilote", "natif")):
+            sortie, _, _ = self._servir(moteur, [dict(_CAT_LEAD_LIST, lot=lot)], executer)
+            self.assertEqual(sortie["moteur"], attendu, (moteur, lot))
+            self.assertEqual(sortie["answer"],
+                             "Natif." if attendu == "natif" else "LangChain.")
+        self.assertEqual(len(appels), 1)
+        sortie, _, _ = self._servir("natif", _CAT_COPILOTE, executer, fournisseur="groq")
+        self.assertEqual((sortie["moteur"], len(appels)), ("langchain", 1))
+
+    def test_outils_systeme_question_et_forme_du_retour(self):
+        from app.services import prompt_copilote, sql_agent_service as svc
+        vu = {}
+
+        def executer(**kw):
+            outils = {o.nom: o for o in kw["outils"]}
+            vu.update(kw, noms=list(outils))
+            vu["lecture"] = outils["sql_db_query"].executer({"query": "DELETE FROM crm_client"})
+            outils["crm_lead_list"].executer({})
+            outils["ventes_devis_proposal_pdf"].executer({"id": 45})
+            outils["report_gap"].executer({"intention": "manque", "resume": "x"})
+            return _rendu_natif(outils=["crm_lead_list", "sql_db_query", "report_gap"])
+        sortie, ecrit, llm = self._servir("natif", _CAT_COPILOTE, executer)
+        self.assertEqual(vu["noms"], ["crm_lead_list", "ventes_devis_proposal_pdf",
+                                      "sql_db_query", "sql_db_schema", "report_gap"])
+        self.assertEqual(vu["conversation"], "7:1")
+        self.assertTrue(all("cache_control" not in b for b in vu["systeme"]))
+        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, vu["systeme"][0]["text"])
+        self.assertTrue(vu["question"].startswith("[Contexte donné par l'ERP"))
+        self.assertEqual(vu["lecture"], svc._UNSAFE_QUERY_REPLY)
+        self.assertEqual([c["type"] for c in sortie["cartes"]], ["resultat", "proposition"])
+        self.assertEqual(sortie["outils_appeles"],
+                         ["crm.lead.list", "sql_db_query", "report_gap"])
+        self.assertEqual(sortie["tokens"]["cache_write"], 5)
+        self.assertEqual(sortie["intention"], "manque")
+        self.assertEqual([m["role"] for m in ecrit], ["user", "agent"])
+        self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+
+    def test_panne_du_moteur_natif(self):
+        """Panne avant toute action : tour servi par LangChain (journalise) ;
+        panne APRES une action executee : jamais rejoue, erreur + cartes."""
+        from app.services import moteur_natif
+
+        def indisponible(**kw):
+            raise moteur_natif.MoteurIndisponible("cle absente")
+        with self.assertLogs("app.services.relais_copilote", "WARNING"):
+            sortie, _, _ = self._servir("natif", _CAT_COPILOTE, indisponible)
+        self.assertEqual((sortie["moteur"], sortie["answer"]), ("langchain", "LangChain."))
+
+        def apres_action(**kw):
+            next(o for o in kw["outils"] if o.nom == "crm_lead_list").executer({})
+            raise RuntimeError("coupure")
+        with self.assertLogs("app.services.relais_copilote", "ERROR"):
+            sortie, _, llm = self._servir("natif", _CAT_COPILOTE, apres_action)
+        self.assertEqual(sortie["moteur"], "natif")
+        self.assertTrue(sortie["answer"].startswith("Je n'ai pas pu terminer"))
+        self.assertEqual([c["type"] for c in sortie["cartes"]], ["resultat"])
+        self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+
+    def _confirmer(self, moteur, reprendre):
+        """/confirm d'une proposition, moteur natif simule."""
+        from app.core import config, security
+        from app.services import moteur_natif, sql_agent_service as svc
+        app = _FastAPI()
+        app.include_router(_ep.router, prefix="/sql-agent")
+        app.dependency_overrides[security.verify_token] = lambda: {"user_id": 1, "company_id": 7}
+        app.dependency_overrides[security.get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[security.exiger_compte_interne] = lambda: {}
+        redis, journal, engine = _FakeRedis(), [], _moteur_sqlite()
+        with contextlib.ExitStack() as pile:
+            for p in (mock.patch.multiple(_at, ACTION_PROPOSAL_SECRET="s",
+                                          _proposal_redis=lambda: redis,
+                                          fetch_catalogue=lambda c: _CAT_COPILOTE,
+                                          _django_call=lambda *a, **k: {
+                                              "ok": True, "status": 200, "data": {"id": 9}},
+                                          journaliser_evenement_assistant=lambda c, corps:
+                                          journal.append(corps) or 77),
+                      mock.patch.object(config, "ASSISTANT_MOTEUR", moteur),
+                      mock.patch.object(svc, "SQL_AGENT_PROVIDER", "claude"),
+                      mock.patch.object(moteur_natif, "reprendre", reprendre),
+                      mock.patch.object(_ep._database, "create_sql_agent_engine",
+                                        lambda: engine),
+                      mock.patch.multiple(_ep.sql_agent_service,
+                                          _ajouter_historique=lambda uid, m: None,
+                                          _get_relevant_tables=lambda q: ["crm_client"])):
+                pile.enter_context(p)
+            collecteur = []
+            _at.run_catalogue_action(_ctx(), _CAT_PROPOSAL_PDF, {"id": 9}, collecteur)
+            corps = _TestClient(app).post("/sql-agent/confirm", json={
+                "token": collecteur[0]["confirm_token"]}).json()
+        return corps, journal
+
+    def test_suite_apres_confirmation(self):
+        recus = []
+
+        def reprendre(**kw):
+            recus.append(kw)
+            return _rendu_natif(answer="Et maintenant la facture ?")
+        corps, journal = self._confirmer("natif", reprendre)
+        self.assertTrue(corps["ok"])
+        self.assertEqual(corps["suite"], {"answer": "Et maintenant la facture ?",
+                                          "cartes": [], "evenement_id": 77})
+        self.assertEqual(recus[0]["conversation"], "7:1")
+        self.assertTrue(recus[0]["message"].startswith("L'utilisateur a confirmé : "))
+        self.assertIn('"fiabilite": "non_fiable"', recus[0]["message"])
+        self.assertEqual(self._confirmer("natif", lambda **kw: None)[0]["suite"], None)
+        recus.clear()
+        self.assertIsNone(self._confirmer("langchain", reprendre)[0]["suite"])
+        self.assertEqual(recus, [])
+
+    def test_effacer_efface_aussi_la_conversation_native(self):
+        from app.services import moteur_natif
+        effaces = []
+        with mock.patch.object(moteur_natif, "effacer", effaces.append):
+            _ep.sql_agent_service.clear_history(1, 7)
+            _ep.sql_agent_service.clear_history(1, None)
+        self.assertEqual(effaces, ["7:1"])
+
+
 class ContexteEcranAic9Tests(unittest.TestCase):
     """AIC9 — corps de /sql-agent/query : `contexte` {ecran, lead_id} OPTIONNEL,
     injecte dans le message UTILISATEUR et reflete dans l'evenement ; route
@@ -674,7 +834,7 @@ class ContexteEcranAic9Tests(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def _me(self, ctx, path, method="POST", payload=None):
+    def _me(self, ctx, path, method="POST", payload=None, **kwargs):
         self.appels_me = getattr(self, "appels_me", []) + [(path, method)]
         return {"ok": True, "status": 200, "data": dict(self.ME)}
 

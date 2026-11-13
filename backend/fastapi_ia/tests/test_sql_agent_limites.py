@@ -128,7 +128,7 @@ class SqlAgentLimitesTests(unittest.TestCase):
         from app.services import action_tools as _at
         patcher = mock.patch.object(
             _at, "_django_call",
-            lambda ctx, path, method="POST", payload=None: {
+            lambda ctx, path, method="POST", payload=None, **kwargs: {
                 "ok": True, "status": 200, "data": {"permissions": []}})
         patcher.start()
         self.addCleanup(patcher.stop)

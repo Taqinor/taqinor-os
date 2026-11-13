@@ -299,7 +299,8 @@ def apres_confirmation(service, ctx, company_id: int, user_id: int,
                        resultat: dict) -> dict[str, Any]:
     """Après une confirmation RÉUSSIE : la carte du résultat, et l'action
     écrite dans l'historique (au tour suivant, le modèle sait qu'elle a eu
-    lieu). Rend `{carte, suite}` ; `suite` vaut None sous le moteur LangChain."""
+    lieu). Rend `{carte, suite}` ; `suite` vaut None sous le moteur LangChain
+    et `{answer, cartes, evenement_id}` quand le moteur natif reprend."""
     carte = carte_de_confirmation(resultat)
     libelle = (carte or {}).get("libelle") or resultat.get("action_key") or ""
     service._ajouter_historique(user_id, [{
@@ -307,4 +308,215 @@ def apres_confirmation(service, ctx, company_id: int, user_id: int,
         "content": f"Action confirmée par l'utilisateur et exécutée : {libelle}.",
         "cartes": [carte] if carte else [],
     }])
-    return {"carte": carte, "suite": None}
+    return {"carte": carte,
+            "suite": reprise_native(service, ctx, company_id, user_id,
+                                    libelle, resultat)}
+
+
+# ── COP-B6 — aiguillage vers le moteur natif ─────────────────────────────────
+
+MESSAGE_ACTION_INTERROMPUE = (
+    "Je n'ai pas pu terminer : une partie de la demande a déjà été faite (voir "
+    "les cartes). Vérifie la fiche avant de redemander la suite.")
+MESSAGE_REFUS = (
+    "Je ne peux pas traiter cette demande telle quelle. Reformule-la, ou fais "
+    "le geste depuis l'écran.")
+_SUFFIXE_SENSIBLE = (
+    " ATTENTION : action sensible — elle n'est PAS exécutée directement ; "
+    "l'outil rend une PROPOSITION que l'utilisateur confirme sur sa carte.")
+
+
+def moteur_natif_actif(catalogue: Optional[list], fournisseur: str) -> bool:
+    """Moteur natif SEULEMENT si : réglage `natif` ET fournisseur claude ET
+    copilote allumé pour ce compte (catalogue reçu de Django)."""
+    from app.core import config
+    return (config.ASSISTANT_MOTEUR == MOTEUR_NATIF
+            and (fournisseur or "").lower() == "claude"
+            and prompt_copilote.copilote_allume(catalogue))
+
+
+def conversation_de(company_id: int, user_id: int) -> str:
+    """Clé de la conversation native : « société:utilisateur »."""
+    return f"{int(company_id or 0)}:{int(user_id or 0)}"
+
+
+def _outil_action(ctx, action: dict, collecteur: list):
+    """Une action du catalogue -> OutilNatif : nom de `_tool_name_for`,
+    schéma = `inputs` du catalogue, exécution = `run_catalogue_action` (mêmes
+    validations, propositions signées, collecteur de cartes)."""
+    from app.services.action_tools import _tool_name_for, run_catalogue_action
+    from app.services.sql_agent_service import _etiqueter_non_fiable
+    from app.services import moteur_natif
+
+    entrees = action.get("inputs") if isinstance(action.get("inputs"), dict) else {}
+    description = action.get("description") or action.get("label") or action["key"]
+    if action.get("risk") in ("outward", "irreversible"):
+        description += _SUFFIXE_SENSIBLE
+    return moteur_natif.OutilNatif(
+        nom=_tool_name_for(action), description=description,
+        schema={"type": "object", "properties": {}, **entrees},
+        executer=lambda args: _etiqueter_non_fiable(run_catalogue_action(
+            ctx, action, dict(args or {}), collecteur)))
+
+
+def _outils_fixes(lecture, schema, collecteur: list) -> list:
+    """Lecture SQL gardée et schéma (les outils du moteur LangChain,
+    enveloppés : leur sécurité n'est pas réécrite) + le signalement."""
+    from app.services.action_tools import outil_report_gap
+    from app.services.moteur_natif import OutilNatif
+
+    signalement = outil_report_gap(collecteur)
+    texte = {"type": "string"}
+    return [
+        OutilNatif("sql_db_query", lecture.description, {
+            "type": "object", "properties": {"query": texte}, "required": ["query"]},
+            lambda a: lecture.invoke({"query": str((a or {}).get("query") or "")})),
+        OutilNatif("sql_db_schema", schema.description, {
+            "type": "object", "properties": {"table_names": texte},
+            "required": ["table_names"]},
+            lambda a: schema.invoke({"table_names": str((a or {}).get("table_names") or "")})),
+        OutilNatif("report_gap", signalement.description, {
+            "type": "object", "properties": {
+                "intention": {"type": "string", "enum": ["hors_champ", "manque", "bug"]},
+                "resume": texte, "ecran": texte},
+            "required": ["intention", "resume"]},
+            lambda a: signalement.invoke(dict(a or {}))),
+    ]
+
+
+def _preparer(service, question: str, company_id: int, ctx,
+              catalogue: list, collecteur: list) -> dict[str, Any]:
+    """Outils, blocs système (ordre stable, sans point de cache : le moteur
+    les pose) et réglages du modèle pour un tour natif."""
+    from app.services import sql_agent_service as svc
+
+    droits = service._droits_sql(ctx)
+    lecture, schema = service._outils_sql(
+        service._base_sql(question, company_id), company_id, droits)
+    outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
+    outils += _outils_fixes(lecture, schema, collecteur)
+    contenu, present = svc._contenu_systeme("claude", droits[0], copilote=True)
+    blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
+    return {"outils": outils, "manuel_present": present,
+            "cles": {o.nom: a["key"] for o, a in zip(outils, catalogue)},
+            "reglages": {"systeme": [{"type": "text", "text": b["text"]} for b in blocs],
+                         "modele": svc._modele_effectif("claude"),
+                         "effort": (svc.SQL_AGENT_EFFORT or "low").lower()}}
+
+
+def _sortie_native(service, question: Optional[str], user_id: int,
+                   rendu: dict, collecteur: list, prep: dict) -> dict[str, Any]:
+    """Retour du moteur natif mis à la forme de `_run_agent` ; l'historique
+    texte de l'écran est écrit comme sous LangChain (repli instantané)."""
+    from app.services import moteur_natif
+    from app.services import sql_agent_service as svc
+
+    arret, texte = rendu.get("arret"), rendu.get("answer") or ""
+    if arret == moteur_natif.ARRET_ERREUR:
+        raise moteur_natif.MoteurIndisponible("erreur du fournisseur")
+    if arret == moteur_natif.ARRET_REFUS:
+        texte = MESSAGE_REFUS
+    elif arret == moteur_natif.ARRET_LIMITE:
+        texte = f"{texte}\n\n{MESSAGE_LIMITE}" if texte.strip() else MESSAGE_LIMITE
+    answer, intention = svc._extraire_intention(texte)
+    intention, erreur = svc._intention_et_erreur(collecteur, intention)
+    cartes = _cartes.construire_cartes(collecteur)
+    agent = {"role": "agent", "content": answer, "cartes": cartes}
+    service._ajouter_historique(user_id, ([{"role": "user", "content": question}]
+                                          if question is not None else []) + [agent])
+    jetons = rendu.get("tokens") or {}
+    return {
+        "answer": answer, "sql_query": "", "data": None,
+        "action_performed": any(s.get("type") in ("proposal", "result")
+                                for s in collecteur),
+        "proposal": svc.SQLAgentService._build_proposal_payload(collecteur),
+        "result": svc.SQLAgentService._build_result_payload(collecteur),
+        "cartes": cartes, "moteur": MOTEUR_NATIF,
+        "manuel_present": prep["manuel_present"],
+        "intention": intention, "erreur": erreur,
+        "outils_appeles": [prep["cles"].get(n, n) for n in rendu.get("outils_appeles") or []],
+        "tokens": {k: int(jetons.get(k) or 0)
+                   for k in ("cache_read", "cache_write", "input", "output")},
+    }
+
+
+def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
+               contexte: Optional[dict], catalogue: list) -> Optional[dict]:
+    """Un tour servi par le moteur natif quand il est actif pour ce compte ;
+    None = le tour est servi par LangChain (moteur éteint, indisponible, ou
+    panne AVANT toute action exécutée — journalisée). Une panne APRÈS une
+    action exécutée n'est jamais rejouée (doublon) : réponse d'erreur."""
+    from app.services import moteur_natif
+    from app.services import sql_agent_service as svc
+
+    if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER):
+        return None
+    collecteur: list = []
+    try:
+        prep = _preparer(service, question, company_id, ctx, catalogue, collecteur)
+        rendu = moteur_natif.executer(
+            question=question_du_tour(question, contexte, getattr(ctx, "identite", None)),
+            outils=prep["outils"], conversation=conversation_de(company_id, user_id),
+            **prep["reglages"])
+        sortie = _sortie_native(service, question, user_id, rendu, collecteur, prep)
+    except Exception as exc:
+        if not any(s.get("type") == "result" for s in collecteur):
+            logger.warning("Moteur natif indisponible (%s) : tour servi par LangChain.", exc)
+            return None
+        logger.error("Moteur natif en panne après une action exécutée : %s", exc)
+        return {"answer": MESSAGE_ACTION_INTERROMPUE, "sql_query": "", "data": None,
+                "cartes": _cartes.construire_cartes(collecteur), "moteur": MOTEUR_NATIF,
+                "intention": "bug", "repli": False, "modele": svc._modele_effectif("claude"),
+                "erreur": {"status": 500, "outil": "moteur_natif", "message": str(exc)[:200]}}
+    return {**sortie, "repli": False, "modele": svc._modele_effectif("claude")}
+
+
+def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
+                   resultat: dict) -> Optional[dict]:
+    """Après une confirmation, si le moteur natif sert ce compte : il reprend
+    la tâche avec le résultat de l'ERP (sous enveloppe non fiable). Rend
+    `{answer, cartes, evenement_id}`, ou None (autre moteur, rien à reprendre,
+    panne — journalisée)."""
+    from app.services import moteur_natif
+    from app.services import sql_agent_service as svc
+
+    if not (MOTEUR_NATIF == _moteur_regle()
+            and (svc.SQL_AGENT_PROVIDER or "").lower() == "claude"):
+        return None
+    catalogue = catalogue_du_tour(ctx)
+    if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER):
+        return None
+    message = (f"L'utilisateur a confirmé : {libelle}.\n"
+               + svc._etiqueter_non_fiable(resultat.get("data")))
+    collecteur: list = []
+    try:
+        prep = _preparer(service, libelle, company_id, ctx, catalogue, collecteur)
+        rendu = moteur_natif.reprendre(conversation=conversation_de(company_id, user_id),
+                                       message=message, outils=prep["outils"],
+                                       **prep["reglages"])
+        if rendu is None:
+            return None
+        sortie = _sortie_native(service, None, user_id, rendu, collecteur, prep)
+    except Exception as exc:
+        logger.warning("Reprise du moteur natif impossible : %s", exc)
+        return None
+    sortie["modele"] = svc._modele_effectif("claude")
+    return {"answer": sortie["answer"], "cartes": sortie["cartes"],
+            "evenement_id": svc.SQLAgentService._journaliser(message, sortie, ctx)}
+
+
+def _moteur_regle() -> str:
+    from app.core import config
+    return config.ASSISTANT_MOTEUR
+
+
+def effacer_conversation(company_id: Optional[int], user_id: int) -> None:
+    """« Effacer » efface aussi la conversation native (quel que soit le
+    réglage : une conversation a pu naître quand il était allumé)."""
+    if not company_id:
+        return
+    from app.services import moteur_natif
+    try:
+        moteur_natif.effacer(conversation_de(company_id, user_id))
+    except Exception as exc:  # best-effort : l'historique Redis est effacé
+        logger.warning("Conversation native non effacée : %s", exc)

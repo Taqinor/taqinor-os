@@ -165,9 +165,14 @@ def get_history(token_payload: dict = Depends(verify_token)):
 
 @router.delete("/history", status_code=204)
 def clear_history(token_payload: dict = Depends(verify_token)):
-    """Efface la conversation de l'utilisateur."""
+    """Efface la conversation de l'utilisateur (et sa conversation native,
+    rangee sous la societe active, COP-B6)."""
     user_id = int(token_payload.get("user_id", 0))
-    sql_agent_service.clear_history(user_id)
+    try:
+        company_id = _require_company_id(token_payload)
+    except HTTPException:
+        company_id = None
+    sql_agent_service.clear_history(user_id, company_id)
 
 
 @router.get("/suggestions", response_model=list[str])

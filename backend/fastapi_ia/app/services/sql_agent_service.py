@@ -1449,8 +1449,11 @@ class SQLAgentService:
         """Endpoint GET /history — retourne l'historique pour le frontend."""
         return self._load_history(user_id)
 
-    def clear_history(self, user_id: int) -> None:
-        """Endpoint DELETE /history — efface la conversation."""
+    def clear_history(self, user_id: int, company_id: int | None = None) -> None:
+        """Endpoint DELETE /history — efface la conversation (COP-B6 : la
+        conversation du moteur natif aussi)."""
+        from app.services import relais_copilote as relais
+        relais.effacer_conversation(company_id, user_id)
         try:
             import redis as redis_lib
             r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
@@ -1761,6 +1764,13 @@ class SQLAgentService:
             # catalogue recu de Django porte une action du lot `copilote`.
             catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx)
             copilote = prompt_copilote.copilote_allume(catalogue)
+            # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
+            # None = tour servi par LangChain (eteint, ou panne journalisee).
+            natif = await asyncio.to_thread(
+                relais.tour_natif, self, question, company_id or 0,
+                user_id or 0, action_ctx, contexte, catalogue)
+            if natif is not None:
+                return natif
             try:
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
