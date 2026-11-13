@@ -95,7 +95,7 @@ import {
   ticketSlaEcheance, ticketSlaTri,
 } from './ticketsLogique'
 import { TicketCalendarView } from './TicketCalendarView'
-import { BandeauListePasAJour, BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
+import { BandeauListePasAJour, BoutonExportExcel, ChampTypeTicket, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -921,14 +921,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="Type">
-              <Select value={fields.type} onValueChange={(v) => set('type', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </FormField>
+            <ChampTypeTicket value={fields.type} onValueChange={(v) => set('type', v)} />
             <FormField label="Priorité">
               <Select value={fields.priorite} onValueChange={(v) => set('priorite', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>

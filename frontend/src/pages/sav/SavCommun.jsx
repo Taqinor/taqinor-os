@@ -6,7 +6,11 @@ import { AlertTriangle, Check, ChevronRight, Download, RotateCcw, X } from 'luci
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
-import { Button, Card, EmptyState, SelectItem, Skeleton, Spinner } from '../../ui'
+import {
+  Button, Card, EmptyState, FormField, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Skeleton, Spinner,
+} from '../../ui'
+import { TICKET_TYPES } from '../../features/sav/ticketStatuses'
 
 /** Section repliable (ouverte par défaut) à titre et icône. */
 export function CollapsibleSection({ icon: Icon, title, children }) {
@@ -40,6 +44,20 @@ export function ErreurChargement({ description, onRetry, retryIcon = null }) {
       description={description}
       action={<Button size="sm" variant="outline" onClick={onRetry}>{retryIcon ? <>{retryIcon} Réessayer</> : 'Réessayer'}</Button>}
     />
+  )
+}
+
+/** Champ « Type » d'un ticket (fiche et création rapide du calendrier). */
+export function ChampTypeTicket({ value, onValueChange }) {
+  return (
+    <FormField label="Type">
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </FormField>
   )
 }
 

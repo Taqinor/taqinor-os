@@ -9,14 +9,15 @@ import {
 import savApi from '../../api/savApi'
 import { toastErreurNonAffichee, toastWithUndo } from '../../lib/toast'
 import { groupTicketsByDate } from './ticketCalendarUtils'
-import { TICKET_STATUS_COLORS, TICKET_TYPES } from '../../features/sav/ticketStatuses'
+import { TICKET_STATUS_COLORS } from '../../features/sav/ticketStatuses'
 import {
-  Button, Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, FormField,
+  Button, Textarea, FormField,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
 import { frError, formatDateFR } from './ticketsLogique'
 import ComboboxClient from '../../components/ComboboxClient'
+import { ChampTypeTicket } from './SavCommun'
 
 const CAL_WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const CAL_MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -161,14 +162,7 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
             <ComboboxClient id="cqc-client" value={clientId} onChange={(v) => setClientId(v)}
                             invalid={err && !clientId ? true : undefined} />
           </FormField>
-          <FormField label="Type">
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
+          <ChampTypeTicket value={type} onValueChange={setType} />
           <FormField label="Description">
             <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </FormField>
