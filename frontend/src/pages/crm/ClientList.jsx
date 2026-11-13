@@ -382,7 +382,19 @@ export default function ClientList() {
                      onDone={() => dispatch(fetchClients())} />
       )}
 
-      {error ? (
+      {/* AERR111 — relecture échouée alors que des clients sont déjà affichés :
+          les lignes restent, avis + Réessayer (le bloc plein écran n'est que
+          pour un échec SANS aucune ligne). */}
+      {error && clients.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2" role="status" data-testid="clients-pas-a-jour">
+          <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchClients())}>
+            Réessayer
+          </Button>
+        </div>
+      )}
+
+      {error && clients.length === 0 ? (
         // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
         // câblé sur le même thunk que le montage initial (jamais d'objet brut
         // ni de page blanche).
