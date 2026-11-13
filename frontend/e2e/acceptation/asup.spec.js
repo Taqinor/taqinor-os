@@ -252,10 +252,10 @@ sortie(dict(client=Client.objects.get(pk=${ids.client}).is_anonymized,
     const r2 = await di.ctx.post(`${API}/crm/clients/${ids.client}/anonymize/`, T)
     expect(r2.status(), '409 inchangé si déjà anonymisé').toBe(409)
     await di.ctx.dispose()
-    // Écran : la fiche du lead anonymisé s'ouvre et n'affiche plus le nom.
-    await page.goto(`/crm?id=${ids.leads[0]}`)
+    // Page ouverte pour les oracles seulement (`/crm?id=` est l'id d'un CLIENT, pas d'un lead : l'assertion
+    // d'écran « nom absent » du rejeu runner du 13/11 était vide de sens et a été retirée).
+    await page.goto('/crm')
     await expect(page.locator('body')).toBeVisible()
-    await expect(page.getByText(`Jean ${m}`)).toHaveCount(0)
   } finally {
     await py(`${FABRIQUE}
 from authentication.models import Company
@@ -369,7 +369,7 @@ Lead.objects.filter(pk=${ids.e}).update(is_archived=True)`)
     expect(motifs[ids.c] || '', 'lot : C refusé avec son motif').toContain(`#${ids.d}`)
     const fin = await etat([ids.a, ids.c, ids.e])
     expect([fin[String(ids.a)][0], fin[String(ids.c)][0], fin[String(ids.e)][0]], 'persistance : A, C archivés ; E restauré').toEqual([true, true, false])
-    await page.goto(`/crm?id=${ids.a}`)
+    await page.goto('/crm')
     await expect(page.locator('body')).toBeVisible()
   } finally {
     await cr.ctx.dispose()
@@ -506,7 +506,7 @@ sortie(dict(lead=l.pk, rdv=[a.pk, c.pk, p.pk]))`)
     const st = await py(`from apps.crm.models import Appointment
 sortie([Appointment.objects.get(pk=pk).statut for pk in ${JSON.stringify(ids.rdv)}])`)
     expect(st, 'à venir et confirmé : annulés ; passé : intouché').toEqual(['annule', 'annule', 'planifie'])
-    await page.goto(`/crm?id=${ids.lead}`)
+    await page.goto('/crm')
     await expect(page.locator('body')).toBeVisible()
   } finally {
     await py(`from apps.crm.models import Lead, Appointment
