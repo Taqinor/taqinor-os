@@ -5,6 +5,7 @@ import {
 import adsengineApi from './adsengineApi'
 import { useConfirmDialog } from '../../ui/confirm'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
+import { toastWithUndo } from '../../lib/toast'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMoney, formatNumber, REJECTION_REASONS,
   actionWarnings, editCopyDiff, emptyGrid, actionResultKey, erreurServeur,
@@ -199,12 +200,28 @@ export default function ApprovalsScreen() {
       : a)))
   }, [commitActions])
 
+  // AERR24 (D-AERR-1) — retire l'approbation tant que l'action n'est pas
+  // appliquée : la carte redevient « Approuver / Rejeter ».
+  const desapprouver = useCallback(async (id) => {
+    setBusy(true); setErr('')
+    try {
+      const r = await adsengineApi.actions.desapprouver(id)
+      mergeAction(id, r?.data)
+    } catch (e) {
+      setErr(`${erreurServeur(e, "Impossible de retirer l'approbation.")} L'action reste approuvée.`)
+    } finally {
+      setBusy(false)
+    }
+  }, [mergeAction])
+
   const approve = useCallback(async (id) => {
     setBusy(true); setErr('')
     try {
       const r = await adsengineApi.actions.approve(id)
       // La carte RESTE : approuvée n'est pas appliquée (WIR208).
       mergeAction(id, r?.data)
+      // AERR24 — « Annuler » = appel INVERSE (sans onCommit : l'effet a eu lieu).
+      toastWithUndo({ message: 'Action approuvée.', onUndo: () => desapprouver(id) })
     } catch (e) {
       // AACQ73 — la raison RENVOYÉE par le serveur (403 quatre yeux, 400…),
       // jamais une cause devinée.
@@ -212,7 +229,7 @@ export default function ApprovalsScreen() {
     } finally {
       setBusy(false)
     }
-  }, [mergeAction])
+  }, [mergeAction, desapprouver])
 
   // WIR208 — applique une action DÉJÀ APPROUVÉE (POST actions/<id>/apply/).
   const applyAction = useCallback(async (id) => {
@@ -629,6 +646,14 @@ export default function ApprovalsScreen() {
                               style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                                 minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                               <PlayCircle size={15} aria-hidden="true" /> Appliquer
+                            </button>
+                          )}
+                          {isApproved && (
+                            <button type="button" className="btn btn-secondary ae-desapprouver"
+                              data-testid={`ae-desapprouver-${a.id}`} disabled={busy || !canApprove}
+                              onClick={() => desapprouver(a.id)}
+                              style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
+                              Retirer l&apos;approbation
                             </button>
                           )}
                           {isApproved && (
