@@ -22,6 +22,11 @@ FUSEAU = ZoneInfo("Africa/Casablanca")
 
 LOT_COPILOTE = "copilote"
 
+#: Première et dernière lignes de l'en-tête de tour : elles bornent ce que
+#: l'ERP dit (contexte) de ce que l'utilisateur écrit (sa demande).
+MARQUEUR_ENTETE = "[Contexte donné par l'ERP — ce n'est pas l'utilisateur qui parle]"
+FIN_ENTETE = "[Fin du contexte — la suite est le message de l'utilisateur]"
+
 #: Consignes du copilote (texte stable, mis en cache avec le prompt système).
 CONSIGNES_COPILOTE = (
     "Tu es le copilote de la commerciale : tu prépares, elle décide. "
@@ -50,7 +55,7 @@ def entete_tour(*, maintenant: Optional[datetime.datetime] = None,
     """
     instant = (maintenant or datetime.datetime.now(tz=FUSEAU)).astimezone(FUSEAU)
     lignes = [
-        "[Contexte donné par l'ERP — ce n'est pas l'utilisateur qui parle]",
+        MARQUEUR_ENTETE,
         "Date : %s %d %s %d, %02d h %02d (heure de Casablanca)" % (
             _JOURS[instant.weekday()], instant.day, _MOIS[instant.month - 1],
             instant.year, instant.hour, instant.minute),
@@ -67,4 +72,16 @@ def entete_tour(*, maintenant: Optional[datetime.datetime] = None,
         valeur = contexte.get(cle)
         if isinstance(valeur, int) and not isinstance(valeur, bool):
             lignes.append("%s : %d" % (libelle, valeur))
+    lignes.append(FIN_ENTETE)
     return "\n".join(lignes)
+
+
+def sans_entete(texte: str) -> str:
+    """Le message de l'utilisateur sans l'en-tête de tour (s'il y en a un) :
+    sert au récapitulatif court d'une conversation qu'on recommence."""
+    texte = texte or ""
+    if texte.lstrip().startswith(MARQUEUR_ENTETE):
+        fin = texte.find(FIN_ENTETE)
+        if fin >= 0:
+            return texte[fin + len(FIN_ENTETE):].strip()
+    return texte.strip()

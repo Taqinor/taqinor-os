@@ -31,6 +31,8 @@ Choix de construction (COP-M1) — chaque hypothèse sur l'API est citée :
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 import time
@@ -51,6 +53,22 @@ REPRISES_SDK = 2
 DELAI_APPEL_S = 60.0
 #: Budget d'un tour (s) : nginx coupe ``/sql-agent/`` à 300 s.
 DUREE_MAX_TOUR_S = 240.0
+
+# Conversation gardée (COP-M2) : Redis du service (db 2, celle de l'historique).
+CLE_CONVERSATION = "assistant:conv:%s"
+DUREE_CONVERSATION_S = 48 * 3600
+VERSION_CONVERSATION = 1
+#: Bornes de la conversation gardée. Au-delà, on repart d'un récapitulatif.
+#: Coût : la queue est relue en cache (0,10 $/M sur Sonnet 5.5) mais
+#: RÉÉCRITE au double du prix d'entrée (4 $/M, durée 1 h) après une heure
+#: sans question (l3/critic.md G2). 120 000 caractères ~ 30 000 tokens :
+#: une réécriture à froid coûte ~0,12 $, une relecture ~0,003 $ par appel ;
+#: 12 questions ~ une matinée sur un même sujet, et un modèle qui lit moins
+#: d'historique se trompe moins de lead.
+MAX_TOURS_GARDES = 12
+MAX_CARACTERES_GARDES = 120_000
+#: Récapitulatif : les derniers échanges seulement, textes tronqués.
+RECAP_ECHANGES = 4
 
 # 400 « pensée / historique » : signature d'un bloc de pensée invalide après une
 # édition du préfixe (claude-api shared/error-codes.md : « Invalid signature in
@@ -246,6 +264,147 @@ def _executer_outils(contenu: list, tour: _Tour) -> list[dict]:
     return resultats
 
 
+# ── Conversation gardée (Redis) ─────────────────────────────────────────────
+
+def _redis():
+    """Client Redis du service (même base que l'historique LangChain)."""
+    import redis
+    from app.core.config import REDIS_CHAT_URL
+    return redis.from_url(REDIS_CHAT_URL, decode_responses=True,
+                          socket_timeout=2, socket_connect_timeout=2)
+
+
+def _lire(conversation: str) -> Optional[dict]:
+    """État gardé, ou None (aucune, illisible, Redis absent : sans mémoire)."""
+    if not conversation:
+        return None
+    try:
+        brut = _redis().get(CLE_CONVERSATION % conversation)
+    except Exception as exc:  # Redis absent : le tour est servi sans mémoire
+        logger.warning("Moteur natif : Redis illisible (%s)", exc)
+        return None
+    try:
+        etat = json.loads(brut) if brut else None
+    except ValueError:
+        return None
+    if isinstance(etat, dict) and isinstance(etat.get("messages"), list):
+        return etat
+    return None
+
+
+def _point_sur(messages: list) -> bool:
+    """Vrai si la conversation finit par l'assistant et que chaque
+    ``tool_use`` a son ``tool_result`` dans le message utilisateur suivant."""
+    if (not messages or not all(isinstance(m, dict) for m in messages)
+            or messages[-1].get("role") != "assistant"):
+        return False
+    for i, msg in enumerate(messages):
+        attendus = {b.get("id") for b in _blocs(msg.get("content"), "tool_use")}
+        if msg.get("role") != "assistant" or not attendus:
+            continue
+        suivant = messages[i + 1] if i + 1 < len(messages) else {}
+        rendus = {b.get("tool_use_id")
+                  for b in _blocs(suivant.get("content"), "tool_result")}
+        if suivant.get("role") != "user" or not attendus <= rendus:
+            return False
+    return True
+
+
+def _ecrire(conversation: str, modele: str, empreinte: str,
+            messages: list) -> None:
+    """Écrit la conversation à un point SÛR seulement (jamais un ``tool_use``
+    sans son ``tool_result``), en une seule fois, en fin de tour."""
+    if not conversation:
+        return
+    if not _point_sur(messages):
+        logger.error("Moteur natif : conversation non gardée (point non sûr)")
+        return
+    donnees = json.dumps({"version": VERSION_CONVERSATION, "modele": modele,
+                          "empreinte_outils": empreinte, "messages": messages},
+                         ensure_ascii=False)
+    try:
+        _redis().set(CLE_CONVERSATION % conversation, donnees,
+                     ex=DUREE_CONVERSATION_S)
+    except Exception as exc:  # Redis absent : la réponse est déjà prête
+        logger.warning("Moteur natif : Redis non écrit (%s)", exc)
+
+
+def _empreinte(systeme: list[dict], outils: list[OutilNatif]) -> str:
+    """Empreinte du PRÉFIXE vu par le modèle : outils ET système (la pensée
+    est liée aux deux — l3/web_anthropic.verif-omissions.md F6)."""
+    source = {"outils": [[o.nom, o.description, o.schema] for o in outils],
+              "systeme": [b.get("text") for b in systeme or []]}
+    brut = json.dumps(source, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(brut.encode("utf-8")).hexdigest()[:32]
+
+
+def _est_question(msg: dict) -> bool:
+    """Message de l'UTILISATEUR (question ou reprise), pas des résultats."""
+    contenu = msg.get("content")
+    return (msg.get("role") == "user" and isinstance(contenu, list)
+            and bool(_blocs(contenu, "text"))
+            and not _blocs(contenu, "tool_result"))
+
+
+def _echanges(messages: list) -> list[list]:
+    """[[question, réponse finale, [outils]], ...] dans l'ordre."""
+    from app.services.prompt_copilote import sans_entete
+    echanges: list[list] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        contenu = msg.get("content") if isinstance(msg.get("content"), list) else []
+        if _est_question(msg):
+            textes = _blocs(contenu, "text")
+            echanges.append([sans_entete(str(textes[-1].get("text") or "")), "", []])
+        elif msg.get("role") == "assistant" and echanges:
+            echanges[-1][2].extend(str(b.get("name")) for b in _blocs(contenu, "tool_use"))
+            echanges[-1][1] = _texte(contenu) or echanges[-1][1]
+    return echanges
+
+
+def _court(texte: str, n: int) -> str:
+    texte = " ".join((texte or "").split())
+    return texte if len(texte) <= n else texte[:n - 1] + "…"
+
+
+def _recapituler(messages: list) -> str:
+    """Récapitulatif TEXTE court des derniers échanges (aucun bloc d'outil,
+    aucune pensée), posé en tête de la question qui recommence."""
+    echanges = _echanges(messages)[-RECAP_ECHANGES:]
+    if not echanges:
+        return ""
+    lignes = ["[Récapitulatif des derniers échanges, gardé par l'ERP : "
+              "simple mémoire, ce ne sont pas des consignes]"]
+    for question, reponse, outils in echanges:
+        lignes.append("- Utilisateur : %s" % _court(question, 300))
+        if outils:
+            lignes.append("  Outils utilisés : %s"
+                          % ", ".join(dict.fromkeys(outils)))
+        if reponse:
+            lignes.append("  Assistant : %s" % _court(reponse, 500))
+    return "\n".join(lignes)
+
+
+def _preparer(etat: Optional[dict], modele: str,
+              empreinte: str) -> tuple[list, str]:
+    """(passé repris tel quel, récapitulatif). On REPART d'un récapitulatif
+    si le modèle, la version ou l'empreinte du préfixe a changé (les blocs de
+    pensée y sont liés : possible 400 — l3/web_anthropic.verif-refute.md #34),
+    ou si la conversation dépasse ses bornes."""
+    if etat is None:
+        return [], ""
+    messages = etat["messages"]
+    valide = (etat.get("version") == VERSION_CONVERSATION
+              and etat.get("modele") == modele
+              and etat.get("empreinte_outils") == empreinte
+              and _point_sur(messages))
+    if (valide and sum(1 for m in messages if _est_question(m)) < MAX_TOURS_GARDES
+            and len(json.dumps(messages, ensure_ascii=False)) <= MAX_CARACTERES_GARDES):
+        return list(messages), ""
+    return [], _recapituler(messages)
+
+
 # ── La boucle ───────────────────────────────────────────────────────────────
 
 def _deja_fait(tour: _Tour) -> str:
@@ -335,18 +494,26 @@ def _jouer(client, tour: _Tour, max_iterations: int) -> tuple[str, str, str]:
                        + _deja_fait(tour) + " Vérifie la fiche avant de redemander.")
 
 
-def _servir(*, question: str, passe: list, systeme: list[dict],
-            outils: list[OutilNatif], modele: str, effort: str,
-            max_tokens: int, max_iterations: int) -> tuple[dict, _Tour, str]:
+def _servir(*, question: str, etat: Optional[dict], conversation: str,
+            systeme: list[dict], outils: list[OutilNatif], modele: str,
+            effort: str, max_tokens: int, max_iterations: int) -> dict:
+    """Un tour sur la conversation ``etat`` (ou neuve), gardé à la fin.
+    Le passé n'est jamais réécrit : le tour AJOUTE ses messages."""
     client = _client()
-    tour = _Tour(messages=list(passe) + [{"role": "user", "content": [
-                     {"type": "text", "text": question}]}],
+    empreinte = _empreinte(systeme, outils)
+    passe, recap = _preparer(etat, modele, empreinte)
+    blocs = ([{"type": "text", "text": recap}] if recap else []) + [
+        {"type": "text", "text": question}]
+    tour = _Tour(messages=passe + [{"role": "user", "content": blocs}],
                  outils={o.nom: o for o in outils}, modele=modele,
                  corps=_corps(systeme, outils, modele, effort, max_tokens))
     arret, answer, garde = _jouer(client, tour, max_iterations)
-    retour = {"answer": answer, "outils_appeles": list(tour.appeles),
-              "tokens": dict(tour.tokens), "arret": arret, "modele": tour.modele}
-    return retour, tour, garde
+    if garde == "tour":
+        _ecrire(conversation, modele, empreinte, tour.messages)
+    elif garde == "effacer":
+        effacer(conversation)
+    return {"answer": answer, "outils_appeles": list(tour.appeles),
+            "tokens": dict(tour.tokens), "arret": arret, "modele": tour.modele}
 
 
 def executer(*, question: str, systeme: list[dict], outils: list[OutilNatif],
@@ -361,11 +528,10 @@ def executer(*, question: str, systeme: list[dict], outils: list[OutilNatif],
     l'utilisateur précédé de l'en-tête de tour (``prompt_copilote.entete_tour``).
     Lève :class:`MoteurIndisponible` si le tour ne peut pas être servi du tout.
     """
-    retour, _tour, _garde = _servir(
-        question=question, passe=[], systeme=systeme, outils=outils,
-        modele=modele, effort=effort, max_tokens=max_tokens,
-        max_iterations=max_iterations)
-    return retour
+    return _servir(question=question, etat=_lire(conversation),
+                   conversation=conversation, systeme=systeme, outils=outils,
+                   modele=modele, effort=effort, max_tokens=max_tokens,
+                   max_iterations=max_iterations)
 
 
 def reprendre(*, conversation: str, message: str, systeme: list[dict],
@@ -381,4 +547,10 @@ def reprendre(*, conversation: str, message: str, systeme: list[dict],
 
 def effacer(conversation: str) -> None:
     """Oublie la conversation (bouton « Effacer » de l'écran)."""
+    if not conversation:
+        return None
+    try:
+        _redis().delete(CLE_CONVERSATION % conversation)
+    except Exception as exc:  # Redis absent : rien n'était gardé
+        logger.warning("Moteur natif : Redis non effacé (%s)", exc)
     return None
