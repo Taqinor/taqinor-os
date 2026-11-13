@@ -361,6 +361,19 @@ class AutoDeployTests(unittest.TestCase):
         banc.jouer()
         self.assertIsNone(banc.index("DEPLOYED_SHA"))
 
+    def test_publication_meryem_societe_designee_et_echec_journalise(self):
+        """ACEL6 — `--company` passé, échec non bloquant mais journalisé (plus de `|| true`)."""
+        banc = self.banc("meryem-ko", changes="docs/meryem/guide.md\n")
+        rc, sortie = banc.jouer(FAIL="publier_documents_meryem")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
+        self.assertIn("AVERTISSEMENT: publier_documents_meryem en échec", banc.journal)
+        banc = self.banc("meryem-ok", changes="docs/meryem/guide.md\n")
+        rc, sortie = banc.jouer(SEED_COMPANY_SLUG="la-vraie")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIsNotNone(banc.index(r"publier_documents_meryem --company la-vraie$"), banc.appels)
+        self.assertNotIn("publier_documents_meryem en échec", banc.journal)
+
     def test_worker_finit_sa_tache_au_redeploiement(self):
         """ACEL3 — Celery = PID 1 (reçoit le SIGTERM) et délai de grâce > limite dure globale."""
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
