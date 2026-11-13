@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from .gardes_lecture import lecture_source  # ADRG70
+from .services import borner_portee  # ALEC22 — portée du rôle
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.audit.views import CanViewActivityLog  # ADRG69
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
@@ -537,7 +538,7 @@ def analytics(request):
     # ── lead → signature : devis acceptés portant un lead ──
     # AANA19 — devis signés = acceptés ACTIFS (helper unique du reporting).
     from apps.reporting.pipeline import _devis_signes
-    devis_acceptes = (_devis_signes(co)
+    devis_acceptes = (borner_portee(_devis_signes(co), request.user, 'devis')  # ALEC22
                       .exclude(lead__isnull=True)
                       .select_related('lead'))
     lead_to_sign_days = []
@@ -551,8 +552,7 @@ def analytics(request):
 
     # ── signature → mise en service : chantiers réceptionnés/clôturés issus
     #    d'un devis accepté (date d'acceptation → date de réception/clôture) ──
-    chantiers = (Installation.objects
-                 .filter(**co)
+    chantiers = (borner_portee(Installation.objects.filter(**co), request.user, 'chantiers')
                  .select_related('devis'))
     sign_to_commission_days = []
     kwc_par_mois = defaultdict(Decimal)
@@ -812,8 +812,8 @@ def sales_leaderboard(request):
     # reporting.services.build_leaderboard (plus de doublon divergent).
     # AANA21/AANA22 — le taux individuel = LE taux de gain partagé, sur la
     # fenêtre de leads construite DANS build_leaderboard (bornes inclusives).
-    from apps.reporting.services import build_leaderboard
-    rows = build_leaderboard(kwc_by_devis, co, start, end)
+    from apps.reporting.services import build_leaderboard, portee_du_role
+    rows = build_leaderboard(kwc_by_devis, co, start, end, portee_du_role(request.user))  # ALEC22
 
     x = _maybe_xlsx(
         request, 'classement-commerciaux.xlsx',
@@ -1001,11 +1001,11 @@ def cohorts(request):
     if not end:
         end = today
 
-    qs = Lead.objects.filter(
+    qs = borner_portee(Lead.objects.filter(
         **co, is_archived=False,
         date_creation__date__gte=start,
         date_creation__date__lte=end,
-    )
+    ), request.user, 'leads')  # ALEC22
 
     group_by = request.query_params.get('group_by', '').strip()
     valid_group_by = {'canal'}  # champs supportés pour le group-by secondaire

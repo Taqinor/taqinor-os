@@ -102,7 +102,8 @@ def field_service_report(request):
     equipe_id = id_param(request, 'equipe')
 
     # ── Interventions (KPIs terrain : ponctualité amont, trajet/site, types/statuts) ──
-    interv_qs = Intervention.objects.filter(**co, annulee=False)
+    from apps.installations.selectors import scoper_interventions  # ALEC22 — portée du rôle
+    interv_qs = scoper_interventions(Intervention.objects.filter(**co, annulee=False), request.user)
     if start:
         interv_qs = interv_qs.filter(date_prevue__gte=start)
     if end:

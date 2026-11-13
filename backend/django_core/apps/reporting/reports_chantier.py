@@ -32,6 +32,7 @@ from datetime import timedelta
 
 from authentication.permissions import IsResponsableOrAdmin
 from .gardes_lecture import lecture_source  # ADRG70
+from .services import borner_portee  # ALEC22 — portée du rôle
 from core.dates import aujourd_hui_local
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -136,7 +137,7 @@ def _first_reached_map(installations, label_to_key):
     return out
 
 
-def cycle_time_chantiers(company, debut=None, fin=None):
+def cycle_time_chantiers(company, debut=None, fin=None, user=None):
     """CHT27 — durées médianes/moyennes (jours) entre transitions canoniques,
     globalement puis groupées par `type_installation` et par équipe terrain
     (dérivée de la première intervention du chantier portant une `equipe_ref`
@@ -152,7 +153,7 @@ def cycle_time_chantiers(company, debut=None, fin=None):
     d'achat ni marge d'achat."""
     from apps.installations.models import Installation, Intervention
 
-    qs = Installation.objects.filter(company=company, annule=False)
+    qs = borner_portee(Installation.objects.filter(company=company, annule=False), user, 'chantiers')  # ALEC22
     if debut is not None:
         qs = qs.filter(date_creation__date__gte=debut)
     if fin is not None:
@@ -231,7 +232,7 @@ def cycle_time_chantiers(company, debut=None, fin=None):
     }
 
 
-def taux_reprise_post_mes(company, fenetre_jours=30):
+def taux_reprise_post_mes(company, fenetre_jours=30, user=None):
     """CHT27 — proportion des chantiers réceptionnés (MES connue, fenêtre
     ENTIÈREMENT écoulée) ayant subi au moins une intervention DEPANNAGE
     RÉALISÉE (`date_realisee`) dans les `fenetre_jours` suivant
@@ -243,12 +244,12 @@ def taux_reprise_post_mes(company, fenetre_jours=30):
 
     aujourd_hui = aujourd_hui_local()
     seuil = aujourd_hui - timedelta(days=fenetre_jours)
-    eligibles = list(
+    eligibles = list(borner_portee(
         Installation.objects.filter(
             company=company, annule=False,
             date_mise_en_service__isnull=False,
             date_mise_en_service__lte=seuil,
-        ).only('id', 'date_mise_en_service'))
+        ), user, 'chantiers').only('id', 'date_mise_en_service'))
 
     if not eligibles:
         return {
@@ -283,7 +284,7 @@ def taux_reprise_post_mes(company, fenetre_jours=30):
     }
 
 
-def chantiers_en_retard(company):
+def chantiers_en_retard(company, user=None):
     """CHT27 — chantiers dont `date_pose_prevue` est dépassée alors que la
     pose n'a pas encore eu lieu (statut canonique strictement avant INSTALLE
     dans `Installation.STATUT_ORDER` — couvre aussi les alias hérités, ex.
@@ -301,11 +302,9 @@ def chantiers_en_retard(company):
 
     aujourd_hui = aujourd_hui_local()
     qs = (
-        Installation.objects
-        .filter(company=company, annule=False,
-                date_pose_prevue__isnull=False,
-                date_pose_prevue__lt=aujourd_hui,
-                statut__in=statuts_avant_pose)
+        borner_portee(Installation.objects.filter(
+            company=company, annule=False, date_pose_prevue__isnull=False,
+            date_pose_prevue__lt=aujourd_hui, statut__in=statuts_avant_pose), user, 'chantiers')
         .select_related('client')
         .order_by('date_pose_prevue'))
 
@@ -423,8 +422,8 @@ def pilotage_chantiers_report(request):
         fenetre_jours = 30
 
     return Response({
-        'cycle_time': cycle_time_chantiers(company, debut=debut, fin=fin),
+        'cycle_time': cycle_time_chantiers(company, debut=debut, fin=fin, user=request.user),
         'taux_reprise_post_mes': taux_reprise_post_mes(
-            company, fenetre_jours=fenetre_jours),
-        'chantiers_en_retard': chantiers_en_retard(company),
+            company, fenetre_jours=fenetre_jours, user=request.user),
+        'chantiers_en_retard': chantiers_en_retard(company, user=request.user),
     })

@@ -26,6 +26,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from .gardes_lecture import lecture_source  # ADRG70
+from .services import borner_portee  # ALEC22 — portée du rôle
 from apps.crm import stages as stage_mod
 # APRF14 — UNE seule valeur pipeline par lead : le helper de ``pipeline.py``
 # (survivant des deux copies), mémoïsé par lead quand ses devis sont préchargés.
@@ -110,7 +111,7 @@ def commercial_dashboard(request):
     end = _qdate(request.query_params.get('to'))
 
     # APRF14 — devis préchargés AVEC leurs totaux (requêtes constantes).
-    leads_qs = Lead.objects.filter(**co, is_archived=False)
+    leads_qs = borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads')  # ALEC22
     if start:
         leads_qs = leads_qs.filter(date_creation__date__gte=start)
     if end:
@@ -163,7 +164,7 @@ def commercial_dashboard(request):
     # AANA19 — devis signés = acceptés ACTIFS ; AANA62 — la vélocité seule
     # lit les devis à lead (le classement construit sa propre population).
     from apps.reporting.pipeline import _devis_signes
-    signed_devis = (_devis_signes(co).exclude(lead__isnull=True)
+    signed_devis = (borner_portee(_devis_signes(co), request.user, 'devis').exclude(lead__isnull=True)
                     .select_related('lead'))
     if start:
         signed_devis = signed_devis.filter(date_acceptation__gte=start)
@@ -196,8 +197,8 @@ def commercial_dashboard(request):
 
     # AANA21/AANA22 — le taux individuel est LE taux de gain partagé, calculé
     # par build_leaderboard sur SA fenêtre de leads (bornes inclusives).
-    from apps.reporting.services import build_leaderboard
-    leaderboard = build_leaderboard(kwc_by_devis, co, start, end)
+    from apps.reporting.services import build_leaderboard, portee_du_role
+    leaderboard = build_leaderboard(kwc_by_devis, co, start, end, portee_du_role(request.user))
 
     # ── QX31be — délai jusqu'au PREMIER contact (speed-to-lead) ──────────────
     # De la création du lead à la première activité SORTANTE (appel/e-mail),
@@ -307,7 +308,7 @@ def win_loss_by_source(request):
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))
 
-    leads_qs = Lead.objects.filter(**co, is_archived=False)
+    leads_qs = borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads')  # ALEC22
     if start:
         leads_qs = leads_qs.filter(date_creation__date__gte=start)
     if end:
