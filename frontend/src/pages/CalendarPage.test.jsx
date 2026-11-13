@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -103,5 +103,49 @@ describe('AERR109 — CalendarPage : lecture rejetée ≠ mois vide', () => {
     await user.click(screen.getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(screen.queryByTestId('calendrier-lecture-echec')).not.toBeInTheDocument())
     expect(await screen.findByText('Aucun évènement ce mois-ci')).toBeInTheDocument()
+  })
+})
+
+describe('AERR110 — CalendarPage : glisser demande une confirmation nommée', () => {
+  it('glisser : rien ne part sans confirmation nommée', async () => {
+    const jour = new Date()
+    const mois = String(jour.getMonth() + 1).padStart(2, '0')
+    const date = `${jour.getFullYear()}-${mois}-12`
+    const cible = `${jour.getFullYear()}-${mois}-14`
+    reportingApi.getCalendar.mockResolvedValue({ data: { events: [
+      { id: 'v1', type: 'intervention', type_label: 'Intervention', title: 'Visite Ali', date, editable: true, obj_id: 3 },
+    ] } })
+    reportingApi.rescheduleCalendar.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { container } = render(
+      <MemoryRouter>
+        <ThemeProvider>
+          <ConfirmProvider>
+            <CalendarPage />
+          </ConfirmProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    const puce = await screen.findByText('Visite Ali')
+    const cases = [...container.querySelectorAll('.cal-cell')]
+    const caseCible = cases.find((c) => c.querySelector('.cal-day-number')?.textContent === '14'
+      && !c.className.includes('cal-cell-out'))
+    expect(caseCible).toBeTruthy()
+
+    fireEvent.dragStart(puce)
+    fireEvent.drop(caseCible)
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Visite Ali')
+    expect(boite).toHaveTextContent(`12/${mois}`)
+    expect(boite).toHaveTextContent(`14/${mois}`)
+    await user.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    expect(reportingApi.rescheduleCalendar).not.toHaveBeenCalled()
+
+    fireEvent.dragStart(puce)
+    fireEvent.drop(caseCible)
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Déplacer' }))
+    await waitFor(() => expect(reportingApi.rescheduleCalendar)
+      .toHaveBeenCalledWith({ type: 'intervention', id: 3, date: cible }))
+    expect(reportingApi.rescheduleCalendar).toHaveBeenCalledTimes(1)
   })
 })

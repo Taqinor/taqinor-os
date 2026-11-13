@@ -162,6 +162,15 @@ export default function CalendarPage() {
     if (!ev || !ev.editable) return
     const target = ymd(cellDate)
     if (target === ev.date) return
+    // AERR110 — une confirmation NOMMÉE (titre + les deux dates) avant de replanifier.
+    const jm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
+    const ok = await confirm({
+      title: `Déplacer « ${ev.title} » du ${jm(ev.date)} au ${jm(target)} ?`,
+      confirmLabel: 'Déplacer',
+      cancelLabel: 'Annuler',
+      destructive: false,
+    })
+    if (!ok) return
     setErr('')
     try {
       await reportingApi.rescheduleCalendar(
