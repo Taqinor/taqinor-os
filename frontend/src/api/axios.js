@@ -20,6 +20,8 @@ import {
 // transport `fetch` : il n'utilise JAMAIS cette instance axios, donc
 // aucune récursion possible par cet intercepteur).
 import { signalerErreurRequete } from '../lib/journalProblemes'
+// COP-D2 — tampon de diagnostic en mémoire (assistant « Signaler un problème »).
+import { noterRequete } from '../lib/tamponDiagnostic'
 
 const ORIGIN = originFrom(import.meta.env.VITE_API_URL)
 
@@ -45,9 +47,29 @@ const ENDPOINTS_ENTITE = [
   /\/stock\/produits\/$/,
 ]
 
+// COP-D2 — une ligne du tampon de diagnostic par réponse ET par erreur (4xx
+// compris). Jamais de corps ; best-effort absolu, ne lève jamais.
+function noterDansTampon(config, reponse) {
+  try {
+    const debut = config?._debutDiagnosticMs
+    const code = reponse?.data?.code
+    noterRequete({
+      methode: config?.method,
+      url: config?.url,
+      statut: reponse?.status ?? 0,
+      dureeMs: debut ? Date.now() - debut : 0,
+      requestId: reponse?.headers?.['x-request-id'] || reponse?.data?.error?.request_id,
+      code: typeof code === 'string' ? code : '',
+    })
+  } catch {
+    // le tampon ne fait jamais planter une requête
+  }
+}
+
 // ── Requete : prefixe /api/django uniquement ──────────────────
 // Plus d'injection manuelle du token — le cookie est envoye automatiquement
 api.interceptors.request.use((config) => {
+  config._debutDiagnosticMs = Date.now()
   if (config.url && !config.url.startsWith('/api/')) {
     config.url = '/api/django' + config.url
   }
@@ -67,9 +89,13 @@ api.interceptors.request.use((config) => {
 
 // ── Reponse : refresh silencieux sur 401 ──────────────────────
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    noterDansTampon(response.config, response)
+    return response
+  },
   async (error) => {
     const originalRequest = error.config || {}
+    noterDansTampon(originalRequest, error.response)
     const isAuthEndpoint = originalRequest.url?.includes('/token/')
     if (
       error.response?.status === 401 &&
