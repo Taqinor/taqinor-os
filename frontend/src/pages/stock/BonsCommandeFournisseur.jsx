@@ -291,6 +291,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [refFournisseur, setRefFournisseur] = useState(bcf?.ref_fournisseur ?? '')
   const [noteBasPage, setNoteBasPage] = useState(bcf?.note_bas_page ?? '')
   const [incoterm, setIncoterm] = useState(bcf?.incoterm ?? '')
+  const [lockVersion, setLockVersion] = useState(bcf?.lock_version)  // ACNC21 — verrou optimiste
   const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
@@ -486,6 +487,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     ref_fournisseur: refFournisseur || null,
     note_bas_page: noteBasPage || null,
     incoterm: incoterm || null,
+    ...(lockVersion != null ? { lock_version: lockVersion } : {}),  // ACNC21
     // XPUR16 — une ligne libre/service (pas de produit catalogue) est gardée
     // tant qu'elle porte une désignation libre (« Transport Casablanca »…).
     lignes: lignes
@@ -502,6 +504,21 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       })),
   })
 
+  // ACNC21 — 409 « conflit_version » : la version à jour (`actuel`) remplace la saisie.
+  const rechargerSiConflit = (err) => {
+    const data = err?.response?.status === 409 ? err.response.data : null
+    const actuel = data?.code === 'conflit_version' ? data.actuel : null
+    if (!actuel) return false
+    setFournisseur(actuel.fournisseur ?? ''); setNote(actuel.note ?? '')
+    setDateCommande(actuel.date_commande ?? ''); setDateLivraisonPrevue(actuel.date_livraison_prevue ?? '')
+    setAcheteur(actuel.acheteur ?? ''); setRefFournisseur(actuel.ref_fournisseur ?? '')
+    setNoteBasPage(actuel.note_bas_page ?? ''); setIncoterm(actuel.incoterm ?? '')
+    setLignes((actuel.lignes ?? []).map(ligneInitiale)); setLockVersion(actuel.lock_version)
+    setError('Ce bon de commande a été modifié entre-temps : la version à jour est rechargée, refaites vos changements.')
+    onSaved?.()
+    return true
+  }
+
   const save = async () => {
     setError(null)
     const payload = buildPayload()
@@ -516,7 +533,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
+      if (!rechargerSiConflit(err)) setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
     } finally { setBusy(false) }
   }
 
@@ -545,7 +562,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(frBcfError(err, "L'envoi au fournisseur a échoué."))
+      if (!rechargerSiConflit(err)) setError(frBcfError(err, "L'envoi au fournisseur a échoué."))
     } finally { setBusy(false) }
   }
 

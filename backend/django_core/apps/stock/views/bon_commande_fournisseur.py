@@ -333,27 +333,30 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         au lieu d'un refus métier explicite. Même patron que l'action
         `annuler` de `installations/views/facture_soustraitant.py`."""
         from ..erreurs_achats import ConflitEtat
-        if instance.acomptes.filter(montant__gt=0).exists():
-            raise ConflitEtat({
-                'detail': (
-                    'Ce bon de commande fournisseur porte des acomptes '
-                    'réellement versés : suppression refusée.'
-                ),
-            })
-        # ASTK84 — un BCF sorti du brouillon, portant une quantité reçue ou
-        # une facture fournisseur liée garde son historique (coût moyen des
-        # réceptions, lien facture↔BCF) : on l'annule, on ne le supprime pas.
-        if (instance.statut != BonCommandeFournisseur.Statut.BROUILLON
-                or instance.lignes.filter(quantite_recue__gt=0).exists()
-                or instance.factures_fournisseur.exists()):
-            raise ConflitEtat({
-                'detail': (
-                    'Bon de commande reçu ou facturé : suppression refusée '
-                    '(annulez-le).'
-                ),
-            })
-        from ..services import emettre_bcf_annule
-        with transaction.atomic():  # AAPV17 — budget rendu + DA rouverte avant le SET_NULL
+        # ACNC21 — statut relu SOUS VERROU : un « Envoyer » croisé ⇒ 409, BCF gardé.
+        with transaction.atomic():
+            instance = BonCommandeFournisseur.objects.select_for_update().get(pk=instance.pk)
+            if instance.acomptes.filter(montant__gt=0).exists():
+                raise ConflitEtat({
+                    'detail': (
+                        'Ce bon de commande fournisseur porte des acomptes '
+                        'réellement versés : suppression refusée.'
+                    ),
+                })
+            # ASTK84 — un BCF sorti du brouillon, portant une quantité reçue ou
+            # une facture fournisseur liée garde son historique (coût moyen des
+            # réceptions, lien facture↔BCF) : on l'annule, on ne le supprime pas.
+            if (instance.statut != BonCommandeFournisseur.Statut.BROUILLON
+                    or instance.lignes.filter(quantite_recue__gt=0).exists()
+                    or instance.factures_fournisseur.exists()):
+                raise ConflitEtat({
+                    'detail': (
+                        'Bon de commande reçu ou facturé : suppression refusée '
+                        '(annulez-le).'
+                    ),
+                })
+            from ..services import emettre_bcf_annule
+            # AAPV17 — budget rendu + DA rouverte avant le SET_NULL (même transaction).
             emettre_bcf_annule(instance, self.request.user, supprime=True)
             instance.delete()
 
@@ -414,25 +417,29 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # est refusée après l'envoi. Un BROUILLON garde l'édition normale
         # (comportement historique inchangé).
         bc = self.get_object()
-        if bc.statut in (
-            BonCommandeFournisseur.Statut.ENVOYE,
-            BonCommandeFournisseur.Statut.RECU,
-        ):
-            return Response(
-                {'detail': (
-                    "Ce BCF a été envoyé : utilisez l'action « réviser » "
-                    'pour le modifier (traçabilité + ré-approbation).')},
-                status=status.HTTP_409_CONFLICT)
-        from ..utils.params import id_corps
-        donnees = request.data if hasattr(request.data, 'get') else {}
-        nouveau = id_corps(donnees.get('fournisseur'))
-        if nouveau and nouveau != bc.fournisseur_id:  # AAPV29 — réaffectation gardée
-            refus = self._refus_fournisseur(request, nouveau)
-            if refus is not None:
-                return refus
-        response = super().update(request, *args, **kwargs)
-        if response.status_code == status.HTTP_200_OK:
-            self._attach_prix_warnings(response, request)
+        # ACNC21 — statut relu SOUS VERROU jusqu'à l'écriture (super().update
+        # relit le BCF verrouillé) : un « Envoyer » croisé ⇒ 409.
+        with transaction.atomic():
+            bc = BonCommandeFournisseur.objects.select_for_update().get(pk=bc.pk)
+            if bc.statut in (
+                BonCommandeFournisseur.Statut.ENVOYE,
+                BonCommandeFournisseur.Statut.RECU,
+            ):
+                return Response(
+                    {'detail': (
+                        "Ce BCF a été envoyé : utilisez l'action « réviser » "
+                        'pour le modifier (traçabilité + ré-approbation).')},
+                    status=status.HTTP_409_CONFLICT)
+            from ..utils.params import id_corps
+            donnees = request.data if hasattr(request.data, 'get') else {}
+            nouveau = id_corps(donnees.get('fournisseur'))
+            if nouveau and nouveau != bc.fournisseur_id:  # AAPV29 — réaffectation gardée
+                refus = self._refus_fournisseur(request, nouveau)
+                if refus is not None:
+                    return refus
+            response = super().update(request, *args, **kwargs)
+            if response.status_code == status.HTTP_200_OK:
+                self._attach_prix_warnings(response, request)
         return response
 
     @extend_schema(

@@ -1641,7 +1641,7 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
 
 class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMixin,
                                        SameCompanyFKSerializerMixin,
-                                       CompanyScopedRelationsMixin,
+                                       CompanyScopedRelationsMixin, VerrouOptimisteSerializerMixin,  # ACNC21
                                        ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -1700,7 +1700,7 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
             'conditions_paiement', 'nb_relances',
             # ZPUR11 — motif tracé à l'annulation (posé UNIQUEMENT par
             # l'action `annuler`, jamais en écriture libre).
-            'motif_annulation',
+            'motif_annulation', 'lock_version',  # ACNC21 — verrou optimiste (lecture seule)
         ]
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action
