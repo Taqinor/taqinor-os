@@ -907,13 +907,16 @@ def _sweep_reveiller_snoozes_approbations(company):
 def reveiller_snoozes():
     """VX210 — sweep dédié (cadence propre, comme `sweep_hot_leads`) : réveille
     les items snoozés (activités VX85/VX210(c) + approbations VX210(b)) de
-    TOUTES les sociétés, échéance ou déclencheur métier. Best-effort par
+    TOUTES les sociétés, échéance ou déclencheur métier, et publie les annonces
+    programmées échues (ACEL76). Best-effort par
     société ; renvoie le nombre total d'items réveillés."""
     total = 0
     for company in _companies():
         try:
             total += _sweep_reveiller_snoozes_activites(company)
             total += _sweep_reveiller_snoozes_approbations(company)
+            # ACEL76 — annonces programmées : demi-heure, jours chômés compris.
+            total += _sweep_annonces_due(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: reveiller_snoozes société %s échouée',
                            getattr(company, 'pk', None), exc_info=True)
@@ -958,7 +961,7 @@ def sweep_daily():
 
     Pour chaque société active : garanties expirantes, maintenances dues,
     tickets SAV en rupture de délai, chantiers à venir, factures en retard
-    (YEVNT3), annonces programmées à publier (XKB5), relances de lecture
+    (YEVNT3), relances de lecture
     obligatoire en retard (XKB6), relances/escalades d'approbations en
     attente (YEVNT9), relances à mi-SLA des étapes BPM (NTWFL5), demandes
     d'achat soumises non décidées (VX213), activités SAV à échéance et lots
@@ -974,7 +977,6 @@ def sweep_daily():
             total += _sweep_sav_breaching(company)
             total += _sweep_chantier_due(company)
             total += _sweep_facture_overdue(company)
-            total += _sweep_annonces_due(company)
             total += _sweep_annonce_reminders(company)
             total += _sweep_approval_reminders(company)
             total += _sweep_workflow_step_reminders(company)
