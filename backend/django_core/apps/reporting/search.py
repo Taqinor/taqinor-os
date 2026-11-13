@@ -32,6 +32,7 @@ aucun résultat ne disparaît pendant le déploiement, aucune requête de plus.
 Téléphone / e-mail (APFS24) restent en ``icontains`` réservé à
 ``client_pii_voir`` : ils ne sont jamais dans le vecteur.
 """
+import re
 from datetime import date, timedelta
 
 from django.contrib.contenttypes.models import ContentType
@@ -78,9 +79,49 @@ def _classer(qs, fts, *ordre):
         F('rang_fts').desc(nulls_last=True), *ordre)
 
 
+# Message client collé tel quel dans la barre (12/11/2026, Reda : « je veux
+# retrouver le lead depuis ce genre de message ») — le bouton WhatsApp de la
+# proposition préremplit « … ma proposition Taqinor (réf. DEV-202611-0059)
+# avant de signer. » : la référence du document est extraite du texte, et un
+# numéro saisi dans n'importe quel format (+212 661-826837, 0661826837…)
+# retrouve le téléphone stocké (« 212661826837 ») par ses 9 derniers chiffres.
+_REF_DOC_RE = re.compile(r'\b[A-Z]{2,5}-\d{4,6}-\d{2,6}\b', re.IGNORECASE)
+_TEL_SAISI_RE = re.compile(r'[\d\s+().\-/]+')
+
+
+def terme_de_recherche(q):
+    """La référence de document contenue dans ``q`` (en majuscules), sinon
+    ``q`` tel quel."""
+    m = _REF_DOC_RE.search(q or '')
+    return m.group(0).upper() if m else q
+
+
+def _neuf_chiffres_tel(q):
+    """Les 9 derniers chiffres quand ``q`` est un numéro de téléphone saisi
+    (chiffres + séparateurs seulement, au moins 9 chiffres), sinon ''."""
+    if not _TEL_SAISI_RE.fullmatch(q or ''):
+        return ''
+    chiffres = re.sub(r'\D', '', q)
+    return chiffres[-9:] if len(chiffres) >= 9 else ''
+
+
+def _critere_tel(champs, q):
+    """Téléphone tolérant au format : les 9 derniers chiffres, séparateurs
+    permis entre eux, en fin de champ. ``None`` si ``q`` n'est pas un numéro."""
+    neuf = _neuf_chiffres_tel(q)
+    if not neuf:
+        return None
+    motif = r'\D*'.join(neuf) + r'\D*$'
+    critere = Q()
+    for champ in champs:
+        critere |= Q(**{f'{champ}__regex': motif})
+    return critere
+
+
 def _spec_lead(co, q, user=None):
     from apps.crm.models import Lead
     from apps.crm.selectors import portee_leads
+    from apps.ventes.models import Devis
     pii = _voit_pii(user)
     fts = requete_prefixe(q)
     critere = _critere_fts(fts, (
@@ -90,8 +131,15 @@ def _spec_lead(co, q, user=None):
         # lead depuis l'omnibox aussi. (code_parrainage vit sur crm.Client,
         # pas sur Lead — l'y interroger casserait TOUTES les recherches.)
         | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q)))
+    if _REF_DOC_RE.fullmatch(q):
+        # Le lead qui porte ce devis (le client cite sa référence).
+        critere |= Q(pk__in=Devis.objects.filter(**co, reference__iexact=q)
+                     .exclude(lead__isnull=True).values('lead_id'))
     if pii:  # APFS24 — téléphone / e-mail : critère réservé à ``client_pii_voir``
         critere |= Q(email__icontains=q) | Q(telephone__icontains=q)
+        tel = _critere_tel(('telephone', 'whatsapp'), q)
+        if tel is not None:
+            critere |= tel
     qs = Lead.objects.filter(**co).filter(critere)
     # APFS24 — la portée du rôle (propriétaire + entités), comme ``crm/leads/``.
     qs = _classer(portee_leads(qs, user) if user is not None else qs.none(),
@@ -430,6 +478,8 @@ def global_search(request):
     q = (request.query_params.get('q') or '').strip()
     if len(q) < 2:
         return Response({'query': q, 'groups': []})
+    requete = q
+    q = terme_de_recherche(q)
 
     PER = 6
     groups = []
@@ -467,7 +517,7 @@ def global_search(request):
     # modèle natif câblé en dur (adapter générique, permission par objet).
     groups.extend(_custom_record_groups(request.user, co, q))
 
-    return Response({'query': q, 'groups': groups})
+    return Response({'query': requete, 'groups': groups})
 
 
 # ── NTPLT34 — autocomplétion tolérante aux fautes (barre ⌘K) ─────────────────
