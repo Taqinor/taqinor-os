@@ -65,40 +65,16 @@ app.conf.enable_utc = False
 #   - YLEAD14 : recyclage des leads non travaillés (SLA dépassé → escalade,
 #     désassignation optionnelle au 2e seuil), toutes les heures — apps/crm/tasks.py
 #     (best-effort, no-op société par société tant que lead_sla_hours=0).
-#   - YSUBS1 : facturation récurrente auto (échéanciers contrats +
-#     maintenance SAV dus), quotidien (02:00) — apps/contrats/scheduled.py.
-#   - YSUBS2 : reconductions tacites + diffusion des alertes contrat
-#     (préavis/échéance), quotidien (07:15) — apps/contrats/scheduled.py.
-#   - XKB27 : messages chat programmés + rappels dus, toutes les 5 min —
-#     apps/chat/tasks.py (n'envoie jamais avant l'heure choisie).
-#   - XKB32 : sweep de rétention des conversations chat (02:45) —
-#     apps/chat/tasks.py (sans politique active = aucune purge, journalisé
-#     quand même pour traçabilité CNDP).
 #   - XFAC25 : relevé de compte mensuel automatique (opt-in par client),
 #     1er du mois 08:00 — apps/ventes/scheduled.py.
 #   - XFSM6 : rappel client J-1 pour les interventions non confirmées
 #     (07:45) — apps/installations/tasks.py (brouillon wa.me responsable +
 #     email client, key-gated, jamais d'envoi WhatsApp automatique).
-#   - YHIRE8 : alertes d'expiration RH (habilitations/certifs/docs/visites/EPI,
-#     07:50) et alerte fin de CDD (07:55) — apps/rh/tasks.py (idempotent par
-#     jour+échéance, jamais avant branché sur le beat).
 #   - YSERV5 : génération automatique des visites préventives dues (07:45) —
 #     apps/sav/tasks.py (opt-in par société, OFF par défaut = no-op ;
 #     réutilise generer_visites_dues, idempotent).
-#   - NTSAN31 : alerte J-7 avant expiration d'une PriseEnCharge santé (07:40)
-#     — apps/sante/tasks.py (idempotent par jour+PriseEnCharge, miroir du
-#     pattern apps/rh/tasks.py alertes_expiration).
-#   - NTEDU22 : matérialisation hebdomadaire des séances depuis l'emploi du
-#     temps actif (dimanche 20:00, fériés marocains exclus) — apps/education/
-#     tasks.py (idempotent par classe/matière/date/heure de début).
-#   - NTIDE40 : digest feedback produit non-lu par thème (08:40), gated PAR
-#     SOCIÉTÉ (InnovationSettings.feedback_digest_actif, désactivé par
-#     défaut) — apps/innovation/tasks.py (no-op tant qu'aucune société ne
-#     l'active ; la fréquence hebdo, elle, ne notifie que le lundi).
 #   - WIR73 : import GED hebdomadaire des pièces jointes éparses (idempotent,
 #     lundi 03:25) — apps/ged/tasks.py (`migrate_attachments_to_ged`, GED7).
-#   - WIR148 : génération quotidienne de l'échéancier de loyer des baux actifs
-#     (idempotent, 02:38) — apps/immobilier/tasks.py.
 #
 # N4 (décision fondateur du 25/09/2026) — AUCUNE NOTIFICATION UTILISATEUR LA
 # NUIT. Une tâche de nuit ou « toutes les N minutes » peut tourner à toute
@@ -109,6 +85,15 @@ app.conf.enable_utc = False
 # une tâche planifiée la nuit qui en émet est DÉPLACÉE dans la fenêtre
 # (NTSEC25, comptes dormants, 02:20 → 08:50). Une nouvelle tâche qui écrit
 # une `Notification` sans `notify()` n'est PAS couverte par le report.
+
+
+def _expire_dans(secondes):
+    """ACEL4 — un passage fréquent (sans heure ni jour) expire après sa période :
+    après une panne du worker, les messages empilés sont révoqués à la réception
+    au lieu de partir en rafale."""
+    return {'expires': secondes}
+
+
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -121,6 +106,7 @@ app.conf.beat_schedule = {
     'crm-appointment-reminders': {
         'task': 'crm.appointment_reminders',
         'schedule': crontab(minute='*/15'),  # every 15 minutes
+        'options': _expire_dans(900),
     },
     # CRX22 — rafraîchissement quotidien du score des leads NON TOUCHÉS. Le
     # score n'était recalculé qu'à l'édition : la décote de récence (12 pts le
@@ -167,6 +153,7 @@ app.conf.beat_schedule = {
     'notifications-reveiller-snoozes': {
         'task': 'notifications.reveiller_snoozes',
         'schedule': crontab(minute='*/30'),
+        'options': _expire_dans(1800),
     },
     # N1 (décision fondateur 25/09/2026) — livre les notifications DIFFÉRÉES :
     # émises hors de la fenêtre de travail de leur société, elles sont créées
@@ -176,6 +163,7 @@ app.conf.beat_schedule = {
     'notifications-livrer-differees': {
         'task': 'notifications.livrer_differees',
         'schedule': crontab(minute='*/5'),
+        'options': _expire_dans(300),
     },
     # VX209(c) — purge/archive quotidienne des notifications anciennes (lues
     # > 60 j supprimées, non-lues > 60 j archivées) ; heure creuse.
@@ -195,6 +183,7 @@ app.conf.beat_schedule = {
     'core-dispatch-outbox': {
         'task': 'core.dispatch_outbox',
         'schedule': crontab(minute='*/5'),
+        'options': _expire_dans(300),
     },
     # NTPLT36 — crée les partitions mensuelles à l'avance (M + M+1 + M+2,
     # idempotent) ; une passe quotidienne suffit largement.
@@ -217,6 +206,7 @@ app.conf.beat_schedule = {
     'automation-process-due-steps': {
         'task': 'automation.process_due_automation_steps',
         'schedule': crontab(minute='*/5'),
+        'options': _expire_dans(300),
     },
     # AUD231 — UNE seule entrée. Il y en avait DEUX pour la même tâche sans
     # argument (`…-daily` à 6 h 00 et `…-weekly` lundi 6 h 00) : la tâche
@@ -235,6 +225,7 @@ app.conf.beat_schedule = {
     'reporting-envoyer-rapports-planifies': {
         'task': 'reporting.envoyer_rapports_planifies',
         'schedule': crontab(minute=0),
+        'options': _expire_dans(3600),
     },
     # GED25 — purge auto de la corbeille échue (DRY-RUN par défaut, opt-in réel
     # via GED_PURGE_AUTO_APPLY). Tourne à 02:30 (heure creuse, Africa/Casablanca).
@@ -273,6 +264,7 @@ app.conf.beat_schedule = {
     'crm-recycler-leads-non-travailles': {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
+        'options': _expire_dans(3600),
     },
     # AACQ97 (décision fondateur 08/10/2026, D-AACQ) — la synchro Odoo est
     # MANUELLE, jamais automatique : l'entrée `crm-sync-odoo-leads` (toutes
@@ -292,6 +284,7 @@ app.conf.beat_schedule = {
     'crm-escalader-premier-contact': {
         'task': 'crm.escalader_premier_contact',
         'schedule': crontab(minute='*/5'),
+        'options': _expire_dans(300),
     },
     # CADV112 — devis accepté sans acompte : direction prévenue à J+14, chaîne
     # annulée dès l'acompte reçu. Une fois par jour, à l'ouverture.
@@ -305,6 +298,7 @@ app.conf.beat_schedule = {
     'crm-attribuer-leads-echus': {
         'task': 'crm.attribuer_leads_echus',
         'schedule': crontab(minute='*'),
+        'options': _expire_dans(60),
     },
     # MRY21 — bilan hebdomadaire du moteur de relances, lundi 07:00, à la
     # direction. Sept chiffres : la seule vue de HAUT du moteur.
@@ -325,6 +319,7 @@ app.conf.beat_schedule = {
     'crm-escalader-rappels-demandes': {
         'task': 'crm.escalader_rappels_demandes',
         'schedule': crontab(minute='*/30'),
+        'options': _expire_dans(1800),
     },
     # NTCRM6 — snapshot forecast hebdomadaire (glissement visible dans le
     # temps) ; idempotent (upsert par semaine ISO + owner), lundi tôt matin.
@@ -398,6 +393,7 @@ app.conf.beat_schedule = {
     'sav-scan-sla-pre-alerts-and-escalations': {
         'task': 'sav.scan_sla_pre_alerts_and_escalations_quotidien',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # NTSRV38 — violation SLA (FG81, apps/sav/views.py scan_sla_breaches) :
     # bâtie et testée mais SANS aucune entrée beat jusqu'ici (elle ne tournait
@@ -407,6 +403,7 @@ app.conf.beat_schedule = {
     'sav-scan-sla-breaches-quart-heure': {
         'task': 'sav.scan_sla_breaches_quart_heure',
         'schedule': crontab(minute='7,22,37,52'),
+        'options': _expire_dans(900),
     },
     # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
     # sans clé), quotidien, heure creuse matinale.
@@ -438,6 +435,7 @@ app.conf.beat_schedule = {
     'installations-signaler-interruptions-gps': {
         'task': 'installations.signaler_interruptions_gps',
         'schedule': crontab(minute='*/10'),
+        'options': _expire_dans(600),
     },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
@@ -519,6 +517,7 @@ app.conf.beat_schedule = {
     'core-beat-heartbeat': {
         'task': 'core.beat_heartbeat',
         'schedule': crontab(minute='*/5'),
+        'options': _expire_dans(300),
     },
     # NTPLT6 — metering d'usage par tenant, instantané nocturne (idempotent,
     # comptages bornés) ; fondation de N100 (plans/billing, différé).
@@ -557,17 +556,20 @@ app.conf.beat_schedule = {
     'ventes-poll-inbound-mailboxes': {
         'task': 'ventes.poll_inbound_mailboxes',
         'schedule': crontab(minute='*/10'),
+        'options': _expire_dans(600),
     },
     # QX36 — FG373 relève GED (import documentaire par email), toutes les 10 min.
     'ged-poll-mail-intake': {
         'task': 'ged.poll_mail_intake',
         'schedule': crontab(minute='*/10'),
+        'options': _expire_dans(600),
     },
     # NTAPI8 — reprises webhook programmées (1 min, 5 min, 30 min, 2 h, 6 h) :
     # chaque minute, idempotent (ENF15).
     'publicapi-retry-webhook-deliveries': {
         'task': 'publicapi.retry_webhook_deliveries',
         'schedule': crontab(minute='*'),
+        'options': _expire_dans(60),
     },
     # QX30be — moteur de relance déclenchée par le comportement (non-ouverture
     # 24 h / ouvert-non-signé 48 h / rouvert 3×). Toutes les 3 h.
@@ -580,6 +582,7 @@ app.conf.beat_schedule = {
     'notifications-sweep-hot-leads': {
         'task': 'notifications.sweep_hot_leads',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # ENG6 — synchro quotidienne des insights publicitaires (miroirs +
     # snapshots). NO-OP propre tant qu'aucune MetaConnection n'est activée.
@@ -619,6 +622,7 @@ app.conf.beat_schedule = {
     'adsengine-evaluate-quarter-hourly': {
         'task': 'adsengine.evaluate_quarter_hourly',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # ADSENG35 — boucle du FlightRunner (quotidienne, après le gardien de 06:55).
     # NO-OP par défaut : ne tourne que pour les sociétés ayant ACTIVÉ le mode
@@ -660,11 +664,13 @@ app.conf.beat_schedule = {
     'adsengine-pull-meta-leads-recent': {
         'task': 'adsengine.pull_meta_leads_recent',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # AACQ97 (D-AACQ, 08/10/2026) — `adsengine-emit-capi-signatures` (lecture
     # QUOTIDIENNE des deals Odoo, capi_odoo) RETIRÉ du beat : aucune lecture
     # Odoo des leads n'est plus planifiée. La tâche
-    # `adsengine.emit_capi_signatures` reste déclenchable à la main.
+    # `adsengine.emit_capi_signatures` n'a aucun déclenchement prévu
+    # (core/jobs.py::run_job n'accepte que les tâches du planning).
     # PUB89 — score QUOTIDIEN de qualité de la chaîne d'attribution (complétude
     # de jointure de la récompense proxy CtwaReferral) : alerte BRAKE-ONLY sous
     # seuil, jamais une pause auto. NO-OP propre sans référence CTWA.
@@ -680,6 +686,7 @@ app.conf.beat_schedule = {
     'adsengine-autopause-blast-radius': {
         'task': 'adsengine.autopause_blast_radius',
         'schedule': crontab(minute='*/30'),
+        'options': _expire_dans(1800),
     },
     # PUB15 — détecteur HEBDO de divergence CRM/proxy du bandit (ADSENG9). Lundi
     # (après les autres boucles hebdo). Une divergence proxy/CRM ≥2 positions avec
@@ -768,6 +775,7 @@ app.conf.beat_schedule = {
     'identity-revoke-expired-break-glass': {
         'task': 'identity.revoke_expired_break_glass',
         'schedule': crontab(minute='*/10'),
+        'options': _expire_dans(600),
     },
     # NTSEC25 — désactive les comptes dormants au-delà du seuil société
     # (balayage par société, notification Directeur préalable). Quotidien.
@@ -795,6 +803,7 @@ app.conf.beat_schedule = {
     'core-escalate-workflow-sla': {
         'task': 'core.escalate_workflow_sla',
         'schedule': crontab(minute=20),
+        'options': _expire_dans(3600),
     },
     # NTDATA26 — exécute les extraits planifiés DUS (`ScheduledExport.cron`).
     # HORAIRE : le grain de planification des extraits EST l'heure (le champ
@@ -804,6 +813,7 @@ app.conf.beat_schedule = {
     'core-executer-exports-planifies': {
         'task': 'core.executer_exports_planifies',
         'schedule': crontab(minute=35),
+        'options': _expire_dans(3600),
     },
     # WIR73 (GED7) — planifie `migrate_attachments_to_ged` en récurrent :
     # sans cette entrée, une pièce jointe créée après le dernier import MANUEL
@@ -853,6 +863,7 @@ app.conf.beat_schedule = {
     'stock-liberer-vagues-planifiees': {
         'task': 'stock.liberer_vagues_planifiees',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # ZFSM3 — prochaine intervention de chaque récurrence active à échéance
     # (prestation périodique SANS contrat de maintenance). Idempotent.
@@ -867,6 +878,7 @@ app.conf.beat_schedule = {
     'statuspage-rafraichir-composants': {
         'task': 'statuspage.rafraichir_composants',
         'schedule': crontab(minute='*/5'),
+        'options': _expire_dans(300),
     },
     # NTOBS3 — snapshot SLA mensuel (uptime + P95) de toutes les sociétés,
     # le 1er du mois (le mois qui vient de se terminer).
@@ -878,6 +890,7 @@ app.conf.beat_schedule = {
     'core-notifier-fenetres-maintenance': {
         'task': 'core.notifier_fenetres_maintenance',
         'schedule': crontab(minute='*/15'),
+        'options': _expire_dans(900),
     },
     # NTOBS13 — notifie chaque société franchissant 80%/100% d'un quota mesuré.
     'core-notifier-seuils-usage': {

@@ -171,3 +171,21 @@ class Qx11BeatReachabilityTests(SimpleTestCase):
     def test_beat_schedule_imports_and_is_nonempty(self):
         from erp_agentique.celery import app
         self.assertGreater(len(app.conf.beat_schedule), 30)
+
+    def test_passages_frequents_expirent(self):
+        """ACEL4 — une entrée sans heure ni jour expire après sa période (pas de rafale)."""
+        from celery.schedules import crontab
+        from erp_agentique.celery import app
+        frequentes = 0
+        for nom, entree in app.conf.beat_schedule.items():
+            s = entree['schedule']
+            if not isinstance(s, crontab) or (
+                    s.hour != set(range(24)) or s.day_of_week != set(range(7))
+                    or s.day_of_month != set(range(1, 32))):
+                continue
+            frequentes += 1
+            periode = 3600 // len(s.minute)
+            expires = (entree.get('options') or {}).get('expires')
+            self.assertTrue(expires and 0 < expires <= periode,
+                            f'{nom} : expires={expires}, période={periode}')
+        self.assertGreaterEqual(frequentes, 27)

@@ -1274,7 +1274,7 @@ CELERY_TASK_ROUTES = {
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     # NTDMO29 — ré-ancrage quotidien des relances des leads démo.
     'crm.reancrer_relances_demo': {'queue': 'scheduled'},
-    # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
+    # MRY0 (lot C) — miroir Odoo -> ERP ; hors planning depuis AACQ97 (synchro manuelle).
     'crm.sync_odoo_leads': {'queue': 'scheduled'},
     # MRY17 — digest 08:30 des touches dues + escalade premier contact.
     'crm.notifier_relances_dues': {'queue': 'scheduled'},
