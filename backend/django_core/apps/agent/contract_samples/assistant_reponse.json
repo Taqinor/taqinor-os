@@ -24,7 +24,7 @@
     "type": "\"proposition\"",
     "action_key": "clé du registre",
     "libelle": "label du registre",
-    "apercu": "phrase montrée avant confirmation",
+    "apercu": "phrase montrée avant confirmation : libellé de l'action, puis le NOM des objets désignés (lus par `GET agent/libelles/`, contrat `assistant_libelles.json`), puis les autres entrées",
     "confirm_token": "jeton signé à usage unique, ou null si le stockage est indisponible",
     "expire_dans_s": "durée de vie du jeton en secondes"
   },
@@ -122,7 +122,7 @@
         "type": "proposition",
         "action_key": "ventes.devis.accepter",
         "libelle": "Accepter un devis",
-        "apercu": "Accepter un devis (id=45, nom=Benali)",
+        "apercu": "Accepter un devis — DEV-202611-0045 — Benali — 84 500,00 MAD TTC (envoyé)",
         "confirm_token": "jeton-a",
         "expire_dans_s": 300
       },
@@ -130,7 +130,7 @@
         "type": "proposition",
         "action_key": "ventes.devis.generer_facture",
         "libelle": "Générer la facture (tranche suivante)",
-        "apercu": "Générer la facture (tranche suivante) (id=45)",
+        "apercu": "Générer la facture (tranche suivante) — DEV-202611-0045 — Benali — 84 500,00 MAD TTC (envoyé)",
         "confirm_token": "jeton-b",
         "expire_dans_s": 300
       }

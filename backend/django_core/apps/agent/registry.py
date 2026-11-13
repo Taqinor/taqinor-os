@@ -56,6 +56,11 @@ LOT_COPILOTE = 'copilote'
 LOT_HERITE = 'herite'
 LOTS = frozenset({LOT_COPILOTE, LOT_HERITE})
 
+# Types d'objets métier qu'une entrée d'action peut désigner (champ ``objets``),
+# résolus en libellés par ``GET /api/django/agent/libelles/`` (contrat
+# ``contract_samples/assistant_libelles.json``).
+OBJETS = frozenset({'lead', 'devis', 'touche', 'facture', 'client'})
+
 
 @dataclass(frozen=True)
 class AgentAction:
@@ -77,6 +82,10 @@ class AgentAction:
       * ``carte`` — carte de résultat à rendre (clé de :data:`CARTES`), ou
         ``None`` pour la carte générique.
       * ``lot`` — lot de déploiement (clé de :data:`LOTS`) ou ``None``.
+      * ``objets`` — ``{nom d'entrée: type d'objet}`` (types de
+        :data:`OBJETS`) : quelles entrées désignent un objet métier. Le relais
+        s'en sert pour NOMMER l'objet dans l'aperçu d'une proposition
+        (« Accepter un devis — DEV-202611-0045, Benali » au lieu de « id=45 »).
     """
 
     key: str
@@ -90,6 +99,7 @@ class AgentAction:
     confirm_summary: Optional[str] = None
     carte: Optional[str] = None
     lot: Optional[str] = None
+    objets: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.risk not in RISK_CHOICES:
@@ -109,6 +119,12 @@ class AgentAction:
                 f"AgentAction {self.key!r}: lot {self.lot!r} inconnu "
                 f"(attendu l'un de {sorted(LOTS)})"
             )
+        inconnus = sorted(set(self.objets.values()) - OBJETS)
+        if inconnus:
+            raise ValueError(
+                f"AgentAction {self.key!r}: objets {inconnus!r} inconnus "
+                f"(attendu parmi {sorted(OBJETS)})"
+            )
 
     def as_dict(self) -> Dict[str, Any]:
         """Représentation sérialisable (catalogue exposé par l'API)."""
@@ -124,6 +140,7 @@ class AgentAction:
             'confirm_summary': self.confirm_summary,
             'carte': self.carte,
             'lot': self.lot,
+            'objets': dict(self.objets),
         }
 
 
