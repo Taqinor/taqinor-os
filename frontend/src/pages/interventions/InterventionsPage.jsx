@@ -630,7 +630,9 @@ export default function InterventionsPage() {
       </div>
     )
   }
-  if (error) {
+  // AERR34 — l'erreur ne couvre l'écran QUE si rien n'est chargé ; une relecture
+  // de fond rejetée (après un geste, tirer-pour-actualiser) garde la liste.
+  if (error && items.length === 0) {
     return (
       <div className="page lp-page">
         <EmptyState
@@ -646,6 +648,12 @@ export default function InterventionsPage() {
   return (
     <div className="page lp-page overflow-y-auto" {...containerProps}>
       <IndicateurTirerPourActualiser pullDistance={pullDistance} refreshing={refreshing} />
+      {error && (
+        <div role="alert" className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <span className="flex-1">Liste pas à jour — la relecture a échoué.</span>
+          <Button size="sm" variant="outline" onClick={fetchData}>Réessayer</Button>
+        </div>
+      )}
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Interventions

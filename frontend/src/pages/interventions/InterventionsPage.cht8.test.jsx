@@ -224,3 +224,24 @@ describe('InterventionsPage — AERR29 statut depuis le kanban', () => {
     expect(installationsApi.updateIntervention).toHaveBeenLastCalledWith(42, { statut: 'prete' })
   })
 })
+
+// AERR34 — une relecture de fond rejetée garde la liste, avec un avis + « Réessayer ».
+describe('InterventionsPage — AERR34 relecture rejetée', () => {
+  it('liste chargée puis relecture rejetée : lignes visibles + Réessayer', async () => {
+    localStorage.setItem('taqinor.interventions.view', 'kanban')
+    const trois = ITEMS.concat({ id: 303, installation_reference: 'CH-303', client_nom: 'Client Trois',
+      type_intervention: 'pose', statut: 'a_preparer' })
+    installationsApi.getInterventions.mockResolvedValueOnce({ data: trois })
+      .mockRejectedValue(new Error('réseau'))
+    installationsApi.updateIntervention.mockResolvedValue({ data: {} })
+    render(<MemoryRouter initialEntries={['/interventions']}><ConfirmProvider><InterventionsPage /></ConfirmProvider></MemoryRouter>)
+    const select = (await screen.findAllByLabelText('Changer le statut de Client Trois'))[0]
+    fireEvent.change(select, { target: { value: 'prete' } })
+    const avis = (await screen.findByText(/Liste pas à jour/)).closest('[role="alert"]')
+    expect(avis).not.toBeNull()
+    expect(within(avis).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.getAllByText('Client Trois').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Client Cent Un').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Impossible de charger les interventions')).toBeNull()
+  })
+})
