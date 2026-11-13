@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
 
 /* XMFG1-16 — AteliersPage : câble le sous-système MRP-lite (ordres
    d'assemblage / démontage, kits). On vérifie : (1) le chargement liste les
@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   getHistoriqueAssemblage: vi.fn(),
   getEtapesAssemblage: vi.fn(),
   getLignesAssemblage: vi.fn(),
+  deleteLigneAssemblage: vi.fn(),
 }))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
@@ -105,5 +106,34 @@ describe('AteliersPage (XMFG1-16)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Clôturer/ }))
     await screen.findByLabelText(/Quantité produite/)
     expect(screen.queryByLabelText(/Forcer malgré/)).toBeNull()
+  })
+})
+
+// AERR81 — retirer une ligne d'assemblage demande une confirmation nommée.
+describe('AteliersPage — AERR81 suppression de ligne confirmée', () => {
+  it('Supprimer puis Annuler : aucune suppression ; Supprimer ⇒ un appel', async () => {
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider')
+    api.getDisponibiliteAssemblage.mockResolvedValue({ data: [] })
+    api.getControleQualiteAssemblage.mockResolvedValue({ data: [] })
+    api.getHistoriqueAssemblage.mockResolvedValue({ data: [] })
+    api.getEtapesAssemblage.mockResolvedValue({ data: [] })
+    api.getLignesAssemblage.mockResolvedValue({
+      data: [{ id: 77, ordre: 1, produit_nom: 'Coffret AC 6 kW', quantite: '2', origine: 'kit' }],
+    })
+    api.deleteLigneAssemblage.mockResolvedValue({ data: {} })
+    renderAvecAuth(<ConfirmProvider><AteliersPage /></ConfirmProvider>, { role: 'responsable' }, { theme: true })
+    fireEvent.click((await screen.findAllByText('ASM-001'))[0])
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Retirer' }))[0])
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Coffret AC 6 kW × 2')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(api.deleteLigneAssemblage).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retirer' })[0])
+    const boite2 = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite2).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(api.deleteLigneAssemblage).toHaveBeenCalledWith(77))
+    expect(api.deleteLigneAssemblage).toHaveBeenCalledTimes(1)
   })
 })
