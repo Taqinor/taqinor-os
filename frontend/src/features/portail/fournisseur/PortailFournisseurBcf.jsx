@@ -68,7 +68,8 @@ export default function PortailFournisseurBcf() {
     }
   }
 
-  if (loading) {
+  // AERR128 — une relecture (ou son échec) après confirmation garde la liste.
+  if (loading && rows.length === 0) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Spinner /> Chargement de vos commandes…
@@ -76,7 +77,7 @@ export default function PortailFournisseurBcf() {
     )
   }
 
-  if (erreur) {
+  if (erreur && rows.length === 0) {
     return (
       <EmptyState
         title="Commandes indisponibles"
@@ -94,6 +95,11 @@ export default function PortailFournisseurBcf() {
         </h1>
       </div>
 
+      {erreur ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Commandes pas à jour — <Button variant="link" size="sm" onClick={charger}>Réessayer</Button>
+        </p>
+      ) : null}
       {rows.length === 0 ? (
         <EmptyState
           title="Aucun bon de commande"
