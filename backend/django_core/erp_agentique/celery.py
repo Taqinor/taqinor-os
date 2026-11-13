@@ -960,6 +960,11 @@ app.conf.beat_schedule = {
         'task': 'outillage.calibrations_a_echeance',
         'schedule': crontab(hour=7, minute=20),
     },
+    # ACEL32 — job bulk de l'API publique resté « en cours » (worker tué) → échec relançable.
+    'publicapi-expirer-jobs-bloques': {
+        'task': 'publicapi.expirer_jobs_bloques',
+        'schedule': crontab(minute='*/10'),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

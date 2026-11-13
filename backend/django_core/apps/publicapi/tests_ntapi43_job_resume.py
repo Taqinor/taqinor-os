@@ -108,6 +108,44 @@ class Ntapi43RelancerEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['statut'], BulkJob.STATUT_EN_FILE)
 
+    def test_job_bloque_en_cours_passe_en_echec_puis_reprend(self):
+        """ACEL32 — worker tué : le job `en_cours` sans progression depuis
+        > 10 min passe en échec (relançable à son curseur) ; un job actif non."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from .tasks import expirer_jobs_bloques
+
+        def _en_cours(age_min):
+            job = BulkJob.objects.create(
+                company=self.co, api_key=self.api_key, type=BulkJob.TYPE_IMPORT,
+                entite='leads', params={}, statut=BulkJob.STATUT_EN_COURS,
+                cursor=2, total=5)
+            BulkJob.objects.filter(pk=job.pk).update(
+                updated_at=timezone.now() - timedelta(minutes=age_min))
+            return job
+
+        bloque, actif = _en_cours(11), _en_cours(1)
+        expirer_jobs_bloques()
+        api = _client(self.raw)
+        r1 = api.get(f'/api/public/v1/jobs/{bloque.id}/')
+        r2 = api.get(f'/api/public/v1/jobs/{actif.id}/')
+        self.assertEqual(r1.data['statut'], BulkJob.STATUT_ECHEC)
+        self.assertEqual(r2.data['statut'], BulkJob.STATUT_EN_COURS)
+        bloque.refresh_from_db()
+        self.assertIsNotNone(bloque.termine_le)
+        self.assertEqual(
+            bloque.message_erreur,
+            "Traitement interrompu (arrêt du serveur) — relancez le job, "
+            "il reprend à la ligne 3")
+        # Idempotente : un second passage ne change rien.
+        self.assertEqual(expirer_jobs_bloques(), 0)
+        with mock.patch.object(bulk, '_dispatch_import'):
+            resp = api.post(f'/api/public/v1/jobs/{bloque.id}/relancer/')
+        self.assertEqual(resp.status_code, 200)
+        bloque.refresh_from_db()
+        self.assertEqual(bloque.statut, BulkJob.STATUT_EN_FILE)
+        self.assertEqual(bloque.cursor, 2)
+
 
 class Ntapi43ResumeInterruptedImportTests(_MinioMixin, TestCase):
     """« Un import interrompu à la ligne 3000 relancé reprend à 3000 sans

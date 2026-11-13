@@ -400,6 +400,27 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
     job.marquer_termine(erreurs_file_key=erreurs_file_key)
 
 
+# ── ACEL32 — Job resté « en cours » après la mort du worker ──────────────────
+
+DELAI_JOB_BLOQUE_MIN = 10  # > limite dure Celery (180 s) et > l'écart entre deux progressions
+
+
+def expirer_jobs_bloques(now=None):
+    """Passe en `echec` les jobs `en_cours` sans progression (`updated_at`)
+    depuis plus de 10 min — worker tué sans `except`. Idempotent : un job déjà
+    en échec n'est plus `en_cours`. `relancer_job` le reprend à son curseur."""
+    from datetime import timedelta
+    from django.utils import timezone
+    limite = (now or timezone.now()) - timedelta(minutes=DELAI_JOB_BLOQUE_MIN)
+    bloques = list(BulkJob.objects.filter(
+        statut=BulkJob.STATUT_EN_COURS, updated_at__lt=limite))
+    for job in bloques:
+        job.marquer_echec(
+            "Traitement interrompu (arrêt du serveur) — relancez le job, "
+            f"il reprend à la ligne {job.cursor + 1}")
+    return len(bloques)
+
+
 # ── NTAPI43 — Reprise sur curseur ────────────────────────────────────────────
 
 def relancer_job(job):

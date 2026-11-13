@@ -1416,6 +1416,7 @@ CELERY_TASK_ROUTES = {
     # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
     # rappel, health score, purge packages/usage).
     'publicapi.retry_webhook_deliveries': {'queue': 'scheduled'},
+    'publicapi.expirer_jobs_bloques': {'queue': 'scheduled'},  # ACEL32
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
     'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
     # NTMIG30 — alerte planifiée d'expiration de certification partenaire.
