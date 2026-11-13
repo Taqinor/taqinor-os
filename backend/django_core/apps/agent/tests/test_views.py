@@ -570,8 +570,6 @@ class LibellesObjetsTest(TestCase):
             facture=self.facture, designation='Kit', quantite=Decimal('1'),
             prix_unitaire=Decimal('1000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
-        Facture.objects.filter(pk=self.facture.pk).update(
-            montant_du=Decimal('1200'))
 
     def _get(self, user, **params):
         return _auth(user).get(URL_LIBELLES, params)
