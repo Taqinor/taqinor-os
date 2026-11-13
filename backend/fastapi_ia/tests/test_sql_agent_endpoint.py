@@ -488,11 +488,50 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertEqual(ecrit[1], {"role": "agent", "content": "Voici.",
                                     "cartes": sortie["cartes"]})
 
+    def test_references_et_entete_remis_au_modele(self):
+        """COP-B2 — le DERNIER message d'agent remis au modele porte la ligne
+        « Références : … » tiree de ses cartes ; la question porte l'en-tete
+        de tour ; l'historique de l'ecran n'est pas modifie."""
+        from langchain_core.messages import AIMessage
+        touche = {"type": "resultat", "carte": "touche", "donnees": {
+            "touche": {"id": 412, "lead": 1489}, "lead": {"lead_id": 1489}}}
+        fiche = {"type": "resultat", "carte": "fiche_lead", "donnees": {
+            "identite": {"id": 1489}, "devis": [{"id": 45}, {"id": 46}]}}
+        historique = [
+            {"role": "user", "content": "q1"},
+            {"role": "agent", "content": "r1", "cartes": [fiche]},
+            {"role": "user", "content": "q2"},
+            {"role": "agent", "content": "r2", "cartes": [touche, fiche]}]
+        _, _, llm = _tour([AIMessage(content="Noté.")], historique=historique,
+                          contexte={"ecran": "/crm/relances", "touche_id": 412})
+        messages = next(m for genre, m in llm.recus if genre == "messages")
+        textes = [m.content for m in messages]
+        self.assertEqual(textes[2], "r1")
+        self.assertEqual(textes[4], "r2\n\nRéférences : touche 412 (lead 1489) ; "
+                                    "lead 1489 ; devis 45 ; devis 46")
+        self.assertTrue(textes[5].startswith("[Contexte donné par l'ERP"))
+        self.assertIn("Touche en cours : 412", textes[5])
+        self.assertTrue(textes[5].endswith("\n\nPrépare ma relance"))
+        self.assertEqual(historique[3]["content"], "r2")
+
+    def test_references_bornees_a_300_caracteres(self):
+        from app.services import relais_copilote as relais
+        lignes = [{"lead_id": 1000 + i, "touche_id": 5000 + i} for i in range(60)]
+        ligne = relais.references_des_cartes([{"donnees": {"lignes": lignes}}])
+        self.assertLessEqual(len(ligne), relais.REFERENCES_MAX)
+        self.assertTrue(ligne.startswith("Références : touche 5000 (lead 1000) ; "))
+        self.assertEqual(relais.references_des_cartes([{"donnees": {}}]), "")
+
 
 class ContexteEcranAic9Tests(unittest.TestCase):
     """AIC9 — corps de /sql-agent/query : `contexte` {ecran, lead_id} OPTIONNEL,
     injecte dans le message UTILISATEUR et reflete dans l'evenement ; route
-    `GET /sql-agent/suggestions` lue du manifeste."""
+    `GET /sql-agent/suggestions` lue du manifeste. COP-B2 : `devis_id`,
+    `touche_id`, `diagnostic` borne ; en-tete de tour pose par le serveur,
+    prenom et role lus par la SEULE lecture de /auth/me/."""
+
+    ME = {"portee": "interne", "first_name": "Prénom-test",
+          "role_nom": "Commercial", "permissions": ["crm_voir"]}
 
     def setUp(self):
         from app.core.security import exiger_compte_interne, get_raw_token, verify_token
@@ -509,18 +548,25 @@ class ContexteEcranAic9Tests(unittest.TestCase):
         for cible, attrs in (
             (_ep._database, {"check_rate_limit": lambda *a, **k: None,
                              "require_sql_agent_enabled": lambda: None}),
-            (_ep, {"resolve_caller_permissions": lambda ctx: ctx}),
+            (_at, {"_django_call": self._me}),
         ):
             p = mock.patch.multiple(cible, **attrs)
             p.start()
             self.addCleanup(p.stop)
 
+    def _me(self, ctx, path, method="POST", payload=None):
+        self.appels_me = getattr(self, "appels_me", []) + [(path, method)]
+        return {"ok": True, "status": 200, "data": dict(self.ME)}
+
     def _poser(self, corps):
+        from app.services import relais_copilote as relais
         recus, journal = {}, []
 
         async def fake_query(self_, question, user_id, company_id, action_ctx,
                              contexte=None):
-            recus["llm"] = self.svc._question_avec_contexte(question, contexte)
+            recus["contexte"], recus["ctx"] = contexte, action_ctx
+            recus["llm"] = relais.question_du_tour(
+                question, contexte, getattr(action_ctx, "identite", None))
             return {"answer": "Deux devis.", "sql_query": "", "data": None}
 
         with mock.patch.object(self.svc.SQLAgentService, "_query", fake_query), \
@@ -537,8 +583,8 @@ class ContexteEcranAic9Tests(unittest.TestCase):
         self.assertEqual(r.json()["evenement_id"], 9001)
         self.assertEqual((journal[0]["ecran"], journal[0]["lead_id"]),
                          ("/crm/leads/12", 12))
-        self.assertTrue(recus["llm"].startswith("Combien de devis ?"))
-        self.assertIn("Écran courant : /crm/leads/12 ; lead courant : #12",
+        self.assertTrue(recus["llm"].endswith("\n\nCombien de devis ?"))
+        self.assertIn("Écran ouvert : /crm/leads/12\nLead ouvert : 12",
                       recus["llm"])
         # Le contexte ne touche jamais le prompt SYSTEME (cache intact).
         systeme, _ = self.svc._contenu_systeme("claude", True)
@@ -547,11 +593,65 @@ class ContexteEcranAic9Tests(unittest.TestCase):
     def test_contexte_optionnel(self):
         r, recus, journal = self._poser({"question": "Combien de devis ?"})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(recus["llm"], "Combien de devis ?")
+        self.assertTrue(recus["llm"].startswith("[Contexte donné par l'ERP"))
+        self.assertNotIn("Écran ouvert", recus["llm"])
         self.assertEqual((journal[0]["ecran"], journal[0]["lead_id"]), ("", None))
         r = self.client.post("/sql-agent/query", json={
             "question": "x", "contexte": {"ecran": "/", "lead_id": "abc"}})
         self.assertEqual(r.status_code, 422)
+
+    def test_entete_identite_du_serveur_une_seule_lecture(self):
+        """COP-B2 — prenom et role viennent de /auth/me/ (UNE lecture, qui
+        porte aussi les permissions) ; un prenom pose dans le corps est
+        ignore ; devis et touche du contexte entrent dans l'en-tete."""
+        r, recus, _ = self._poser({"question": "Il ne répond pas.", "contexte": {
+            "ecran": "/crm/relances", "devis_id": 45, "touche_id": 412,
+            "prenom": "Pirate", "role": "Administrateur"}})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.appels_me, [("/api/django/auth/me/", "GET")])
+        self.assertEqual(recus["ctx"].permissions, ["crm_voir"])
+        self.assertIn("Utilisateur : Prénom-test (rôle Commercial)", recus["llm"])
+        self.assertIn("Devis ouvert : 45\nTouche en cours : 412", recus["llm"])
+        self.assertNotIn("Pirate", recus["llm"])
+        self.assertNotIn("prenom", recus["contexte"])
+        r = self.client.post("/sql-agent/query", json={
+            "question": "x", "contexte": {"touche_id": "abc"}})
+        self.assertEqual(r.status_code, 422)
+
+    def test_entete_date_de_casablanca(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        from app.services import relais_copilote as relais
+        instant = datetime.datetime(2026, 11, 13, 23, 30, tzinfo=datetime.timezone.utc)
+        local = instant.astimezone(ZoneInfo("Africa/Casablanca"))
+        texte = relais.question_du_tour("Rappelle-le jeudi.", maintenant=instant)
+        self.assertIn("%02d h %02d (heure de Casablanca)" % (local.hour, local.minute),
+                      texte)
+        self.assertNotIn("UTC", texte)
+
+    def test_diagnostic_borne_et_nettoye(self):
+        """COP-B2 — tampon du navigateur : 15 requetes et 10 erreurs au plus
+        (les plus recentes), chaines tronquees, chaine de requete retiree,
+        cles inconnues ecartees."""
+        requetes = [{"methode": "POST", "route": f"/api/x/{i}/?tel=0612", "statut": 409,
+                     "duree_ms": 12, "request_id": "a" * 32, "corps": {"tel": "0612"}}
+                    for i in range(20)]
+        erreurs = [{"genre": "script", "message": "m" * 900, "pile": "secret"}
+                   for _ in range(12)]
+        r, recus, _ = self._poser({"question": "Ça plante", "contexte": {
+            "ecran": "/crm/relances", "diagnostic": {
+                "version": "a1b2c3d", "requetes": requetes, "erreurs": erreurs,
+                "cookies": "sessionid=1"}}})
+        self.assertEqual(r.status_code, 200, r.text)
+        diag = recus["contexte"]["diagnostic"]
+        self.assertEqual(set(diag), {"version", "ecran", "navigateur", "en_ligne",
+                                     "requetes", "erreurs"})
+        self.assertEqual(len(diag["requetes"]), 15)
+        self.assertEqual(diag["requetes"][0]["route"], "/api/x/5/")
+        self.assertNotIn("corps", diag["requetes"][0])
+        self.assertEqual(len(diag["erreurs"]), 10)
+        self.assertEqual(len(diag["erreurs"][0]["message"]), 300)
+        self.assertNotIn("pile", diag["erreurs"][0])
 
     def test_suggestions_servies_depuis_le_manifeste(self):
         import tempfile

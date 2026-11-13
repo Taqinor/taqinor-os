@@ -1,16 +1,14 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core import database as _database
 from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'OCR ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
-from app.services.action_tools import (
-    ActionContext, resolve_caller_permissions,
-)
+from app.services.action_tools import ActionContext
 from app.services import relais_copilote
 from app.services.sql_agent_service import (
     sql_agent_service, suggestions_pour_ecran,
@@ -39,9 +37,20 @@ def _check_sql_agent_rate_limit(user_id) -> None:
 
 class ContexteEcran(BaseModel):
     """AIC9 — contexte de l'ecran d'ou part la question (evenement DOM
-    `taqinor:assistant:ouvrir`, ou `window.location.pathname`)."""
+    `taqinor:assistant:ouvrir`, ou `window.location.pathname`). COP-B2 :
+    fiche de devis ouverte, touche FOYER de la conversation et tampon
+    technique du navigateur (donnee NON fiable : bornee, cles inconnues
+    ecartees). Toute autre cle du corps est ignoree."""
     ecran: str = Field("", max_length=255)
     lead_id: int | None = Field(None, ge=1)
+    devis_id: int | None = Field(None, ge=1)
+    touche_id: int | None = Field(None, ge=1)
+    diagnostic: dict | None = None
+
+    @field_validator("diagnostic", mode="before")
+    @classmethod
+    def _borner_diagnostic(cls, valeur):
+        return relais_copilote.borner_diagnostic(valeur)
 
 
 class SQLQuery(BaseModel):
@@ -117,7 +126,8 @@ async def query_database(
         token=raw_token,
         is_superuser=bool(token_payload.get("is_superuser", False)),
     )
-    await asyncio.to_thread(resolve_caller_permissions, action_ctx)
+    # COP-B2 — UNE lecture de /auth/me/ : permissions + prenom et role.
+    await asyncio.to_thread(relais_copilote.lire_appelant, action_ctx)
 
     options = {}
     if request.contexte is not None:
@@ -224,7 +234,8 @@ async def confirm_action(
         token=raw_token,
         is_superuser=bool(token_payload.get("is_superuser", False)),
     )
-    await asyncio.to_thread(resolve_caller_permissions, action_ctx)
+    # COP-B2 — UNE lecture de /auth/me/ : permissions + prenom et role.
+    await asyncio.to_thread(relais_copilote.lire_appelant, action_ctx)
 
     result = await sql_agent_service.confirm_action(action_ctx, request.token.strip())
     if not result.get("ok"):
