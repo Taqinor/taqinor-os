@@ -36,18 +36,17 @@ def purge_company_audit(company, user=None):
     sous le plancher légal (``effective_retention_days``)."""
     if company is None:
         return (0, 0)
-    from apps.audit.selectors import effective_retention_days
+    from apps.audit.selectors import effective_retention_days, journaux_purgeables
     profile = CompanyProfile.objects.filter(company=company).first()
     configured = getattr(profile, 'audit_retention_days', 0) or 0
     days = effective_retention_days(configured)
     if days <= 0:
         return (0, 0)
     cutoff = timezone.now() - timezone.timedelta(days=days)
-    from apps.audit.models import AuditLog
     try:
         with transaction.atomic():
-            audit_deleted = AuditLog.objects.filter(
-                company=company, timestamp__lt=cutoff).delete()[0]
+            # ASUP18 — pièces comptables gardées 10 ans (D-ASUP-5).
+            audit_deleted = journaux_purgeables(company, cutoff).delete()[0]
             settings_deleted = SettingsAuditLog.objects.filter(
                 company=company, timestamp__lt=cutoff,
             ).exclude(

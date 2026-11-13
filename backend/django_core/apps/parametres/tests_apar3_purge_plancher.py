@@ -109,6 +109,35 @@ class PurgePlancherTests(TestCase):
         self.assertFalse(SettingsAuditLog.objects.filter(
             company=self.company, section=PURGE_SECTION).exists())
 
+    def test_pieces_comptables_gardees_dix_ans(self):
+        """ASUP18 (D-ASUP-5) — à 365 j, les lignes de 2 ans d'une facture,
+        d'un paiement et d'un mouvement de stock restent ; celles du lead
+        (2 ans, 400 j) sont purgées ; la trace de purge est écrite."""
+        from django.contrib.contenttypes.models import ContentType
+        self.profile.audit_retention_days = 365
+        self.profile.save()
+        lignes = {}
+        for cle, jours in ((('facturation', 'facture'), 730),
+                           (('facturation', 'paiement'), 730),
+                           (('stock', 'mouvementstock'), 730),
+                           (('crm', 'lead'), 730), (('crm', 'lead'), 400)):
+            row = AuditLog.objects.create(
+                company=self.company, action=AuditLog.Action.UPDATE,
+                object_id='1',
+                content_type=ContentType.objects.get_by_natural_key(*cle))
+            _age(AuditLog, row, jours)
+            lignes[row.pk] = cle
+        self.assertEqual(
+            purge_company_audit(self.company, user=self.admin), (2, 0))
+        # Persistance : relire les lignes.
+        restantes = set(AuditLog.objects.filter(
+            pk__in=lignes).values_list('pk', flat=True))
+        self.assertEqual(
+            restantes, {pk for pk, cle in lignes.items() if cle[0] != 'crm'})
+        self.assertTrue(SettingsAuditLog.objects.filter(
+            company=self.company, section=PURGE_SECTION, field=PURGE_FIELD,
+            new_value='audit_deleted=2 settings_deleted=0').exists())
+
     def test_retention_illimitee_reste_noop(self):
         self.profile.audit_retention_days = 0
         self.profile.save()
