@@ -520,11 +520,32 @@ def _human_preview(action: dict[str, Any], inputs: dict[str, Any]) -> str:
     return summary
 
 
+def _libelle_action(action: dict[str, Any]) -> str:
+    """Label du registre (repli : la cle) — `libelle` des cartes (COP1)."""
+    return action.get("label") or action["key"]
+
+
+def _lien_document(action: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    """COP1 — carte « document » (contrat `assistant_document.json`) : le
+    relais ne telecharge PAS le PDF (corps binaire) ; il rend le LIEN que
+    l'ecran ouvre avec le jeton de l'utilisateur. Le chemin vient TOUJOURS du
+    registre (`endpoint`), jamais du modele ; `devis_id` des entrees validees."""
+    from urllib.parse import urlencode
+    path, options = _build_path(action.get("endpoint", ""), inputs)
+    url = path + ("?" + urlencode(options) if options else "")
+    return {"ok": True, "status": 200,
+            "data": {"devis_id": inputs.get("id"), "url": url,
+                     "options": options}}
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
 ) -> dict[str, Any]:
     """Relaie l'appel a l'endpoint du catalogue avec le JWT. `inputs` sont deja
-    valides. Renvoie le dict normalise de `_django_call`."""
+    valides. Renvoie le dict normalise de `_django_call`. Une action de carte
+    « document » n'appelle pas Django (COP1) : son lien suffit."""
+    if action.get("carte") == "document":
+        return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
     return _django_call(ctx, path, method=action.get("method", "POST"),
                         payload=body)
@@ -559,9 +580,13 @@ def run_catalogue_action(
         proposal = {
             "type": "proposal",
             "action_key": action["key"],
+            "libelle": _libelle_action(action),
+            "carte": action.get("carte"),
             "inputs": inputs,
             "human_preview": preview,
             "confirm_token": token,
+            # COP1 — duree de vie REELLE du jeton (carte « proposition »).
+            "expire_dans_s": ACTION_PROPOSAL_TTL,
         }
         if token is None:
             # Sans Redis on ne peut pas stasher : on renvoie tout de meme la
@@ -585,6 +610,7 @@ def run_catalogue_action(
         return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
     result = {
         "type": "result", "action_key": action["key"],
+        "libelle": _libelle_action(action), "carte": action.get("carte"),
         "ok": True, "data": res.get("data"),
     }
     if collector is not None:
@@ -641,7 +667,8 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     # ne doit pas faire echouer une action deja executee avec succes.
     _log_confirmed_action(ctx, action_key, action, inputs, token, res.get("data"))
 
-    return {"ok": True, "action_key": action_key, "data": res.get("data")}
+    return {"ok": True, "action_key": action_key, "data": res.get("data"),
+            "libelle": _libelle_action(action), "carte": action.get("carte")}
 
 
 # ── AANA18 — preuve de confirmation (contrat partage avec Django) ─────────────

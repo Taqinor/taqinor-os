@@ -1135,5 +1135,98 @@ class CartesReponseCop1Tests(unittest.TestCase):
             self.assertEqual(set(carte), set(contrat["carte_resultat"]))
 
 
+# ── COP-A1 — sorties du collecteur complètes (cartes) ─────────────────────────
+
+_CONTRATS_AGENT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core",
+    "apps", "agent", "contract_samples")
+
+
+def _contrat_agent(nom):
+    with open(os.path.join(_CONTRATS_AGENT, nom), encoding="utf-8") as f:
+        return json.load(f)
+
+
+_CAT_DOCUMENT = {
+    "key": "ventes.devis.generer_pdf",
+    "label": "Générer le PDF de proposition (devis)",
+    "description": "PDF client via /proposal.",
+    "endpoint": "/api/django/ventes/devis/{id}/proposal/",
+    "method": "GET",
+    "inputs": {"type": "object", "properties": {
+        "id": {"type": "integer"}, "format": {"type": "string"}},
+        "required": ["id"]},
+    "risk": "internal",
+    "carte": "document",
+}
+
+
+class _AvecPropositions(unittest.TestCase):
+    """Secret de signature stable + faux Redis des propositions."""
+
+    def setUp(self):
+        p = mock.patch.object(at, "ACTION_PROPOSAL_SECRET", "test-sig-secret")
+        p.start()
+        self.addCleanup(p.stop)
+        self.fake_redis = _FakeRedis()
+        p = mock.patch.object(at, "_proposal_redis", lambda: self.fake_redis)
+        p.start()
+        self.addCleanup(p.stop)
+
+
+class SortiesCollecteurCop1Tests(_AvecPropositions):
+    def test_resultat_porte_libelle_et_carte(self):
+        from app.services.cartes import construire_cartes
+        collector: list = []
+        action = dict(_CAT_LEAD_LIST, carte="liste_leads")
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": True, "status": 200, "data": {"results": []}}):
+            at.run_catalogue_action(_ctx(role="admin"), action, {}, collector)
+        self.assertEqual(collector[0]["libelle"], "Lister les leads")
+        self.assertEqual(collector[0]["carte"], "liste_leads")
+        carte = construire_cartes(collector)[0]
+        self.assertEqual(set(carte),
+                         set(_contrat_agent("assistant_reponse.json")["carte_resultat"]))
+        self.assertEqual((carte["libelle"], carte["carte"]),
+                         ("Lister les leads", "liste_leads"))
+
+    def test_proposition_porte_libelle_carte_et_duree_reelle(self):
+        from app.services.cartes import construire_cartes
+        collector: list = []
+        with mock.patch.object(at, "ACTION_PROPOSAL_TTL", 120), \
+                mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("propose only")):
+            at.run_catalogue_action(_ctx(role="admin"), _CAT_PROPOSAL_PDF, {"id": 9}, collector)
+        prop = collector[0]
+        self.assertEqual(prop["libelle"], "Générer le PDF")
+        self.assertIsNone(prop["carte"])
+        self.assertEqual(prop["expire_dans_s"], 120)
+        self.assertEqual(construire_cartes(collector)[0]["expire_dans_s"], 120)
+
+    def test_confirmation_rend_libelle_et_carte(self):
+        ctx = _ctx(role="admin")
+        action = dict(_CAT_DELETE, carte=None)
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("propose only")):
+            jeton = json.loads(at.run_catalogue_action(ctx, action, {"id": 3}))["confirm_token"]
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [action]), \
+                mock.patch.object(at, "_django_call", lambda *a, **k: {
+                    "ok": True, "status": 204, "data": {}}):
+            res = at.confirm_proposal(ctx, jeton)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["libelle"], "Supprimer un produit")
+        self.assertIn("carte", res)
+
+    def test_document_rend_le_lien_sans_appeler_django(self):
+        contrat = _contrat_agent("assistant_document.json")
+        for entrees, attendu in (({"id": 45}, contrat["exemple"]),
+                                 ({"id": "45", "format": "onepage"}, contrat["exemple_options"])):
+            with self.subTest(entrees=entrees):
+                collector: list = []
+                with mock.patch.object(at, "_django_call",
+                                       lambda *a, **k: self.fail("aucun appel Django")):
+                    at.run_catalogue_action(_ctx(role="admin"), _CAT_DOCUMENT, entrees, collector)
+                self.assertEqual(collector[0]["carte"], "document")
+                self.assertEqual(collector[0]["data"], attendu)
+
+
 if __name__ == "__main__":
     unittest.main()
