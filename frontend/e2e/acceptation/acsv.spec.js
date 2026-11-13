@@ -5,10 +5,10 @@
 // les VRAIES routes (mise-en-service, renseigner-fiche, valider-consommation, facturer, cloturer) et les vrais écrans
 // (fiche chantier, « Ma journée », fiche ticket). Le balayage d'auto-clôture est joué dans une transaction ANNULÉE
 // (il parcourt toute la société) : seul l'état du ticket de l'étape y est lu.
-import { test, expect } from '@playwright/test'
+import { test, expect, request as pwRequest } from '@playwright/test'
 import { groupe } from './_oracles.js'
-import { py, fermerDjangoApresTout } from './_django.js'
-import { assurerSessionPage, lireJson, API_DJANGO as API } from '../helpers.js'
+import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
+import { assurerSessionPage, lireJson, connexionApi, uiLoginJusquAuxApps, API_DJANGO as API } from '../helpers.js'
 
 const etape = groupe('ACSV', ['ACSV114', 'ACSV115', 'ACSV116', 'ACSV111'])
 fermerDjangoApresTout()
@@ -99,11 +99,35 @@ etape('P.mise_en_service_future', ['ACSV114'], async ({ page, suivi }) => {
   expect([apres.statut, apres.reception], `réceptionné le ${jour}`).toEqual(['receptionne', jour])
 })
 
-// ── ACSV115 : fiche à deux mesures (gabarit du type d'intervention), intervention du jour de demo_admin ────────────
-etape('P.fiche_deux_mesures_reseau_lent', ['ACSV115'], async ({ page, suivi }) => {
-  const r = page.request
+// ── ACSV115 : fiche à deux mesures (gabarit du type d'intervention), intervention du jour d'un compte d'essai au rôle
+//    SYSTÈME « Technicien responsable » (le terrain qui renseigne la fiche), écran « Ma journée » joué sous ce compte ──
+async function technicienResponsable(testInfo) {
+  const nom = 'acsv115_tech_resp'
+  const id = await py(`from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+from authentication.role_tiers import tier_for_role_fields
+co = U.objects.get(username='demo_admin').company_id
+r = Role.objects.filter(company_id=co, nom='Technicien responsable').order_by('id').first()
+if r is None:
+    r = Role.objects.create(company_id=co, nom='Technicien responsable', est_systeme=True, permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Technicien responsable']))
+u = compte(${J(nom)}, role=r.pk, societe=co)
+u.role_legacy = tier_for_role_fields(r.nom, r.est_systeme, r.permissions); u.save(update_fields=['role_legacy'])
+sortie(u.id)`)
+  const api = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
+  await connexionApi(api, { username: nom, password: MDP_ESSAI })
+  // Consentement GPS du compte terrain (écran bloquant sinon) — même geste que asav.spec.js.
+  await api.post(`${API}/installations/gps-consentements/mon-consentement/accepter/`, T)
+  return { api, id, nom }
+}
+
+etape('P.fiche_deux_mesures_reseau_lent', ['ACSV115'], async ({ page, suivi, testInfo }) => {
+  const tech = await technicienResponsable(testInfo)
+  const r = tech.api
   const m = marque()
+  const ctxUi = await page.context().browser().newContext({ baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] }, serviceWorkers: 'block' })
+  const p = suivi.surveiller(await ctxUi.newPage())
   const x = await py(`a = U.objects.get(username='demo_admin'); co = a.company
+tech = U.objects.get(pk=${tech.id})
 from apps.installations.models import Installation, Intervention, FicheInterventionTemplate, FicheInterventionChamp
 types = [c for c, _ in Intervention.Type.choices]
 pris = set(FicheInterventionTemplate.objects.filter(company=co).values_list('type_intervention', flat=True))
@@ -119,7 +143,7 @@ elif not tpl.actif:
 ca = FicheInterventionChamp.objects.create(company=co, template=tpl, cle='acsv115_a_${m.toLowerCase()}', libelle='Tension ACSV115 ${m}', type_champ='mesure', unite='V', ordre=900)
 cb = FicheInterventionChamp.objects.create(company=co, template=tpl, cle='acsv115_b_${m.toLowerCase()}', libelle='Courant ACSV115 ${m}', type_champ='mesure', unite='A', ordre=901)
 inst = Installation.objects.create(company=co, reference='CH-ACSV115-${m}')
-iv = Intervention.objects.create(company=co, installation=inst, type_intervention=t, technicien=a, date_prevue=timezone.localdate(), created_by=a)
+iv = Intervention.objects.create(company=co, installation=inst, type_intervention=t, technicien=tech, date_prevue=timezone.localdate(), created_by=a)
 sortie(dict(itv=iv.id, ref=inst.reference, tpl=tpl.id, cree=cree, actif_avant=actif_avant, champs=[ca.id, cb.id], type=t))`)
   try {
     const fiche = await lireJson(await r.get(`${API}/installations/interventions/${x.itv}/fiche/`, T), 'fiche')
@@ -131,7 +155,12 @@ sortie(dict(itv=iv.id, ref=inst.reference, tpl=tpl.id, cree=cree, actif_avant=ac
     let lacher
     const porte = new Promise((ok) => { lacher = ok })
     const envois = []
-    await page.route(/\/installations\/interventions\/\d+\/renseigner-fiche\/?$/, async (route) => {
+    await p.addInitScript(() => {
+      try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
+      try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
+    })
+    await uiLoginJusquAuxApps(p, { username: tech.nom, password: MDP_ESSAI })
+    await p.route(/\/installations\/interventions\/\d+\/renseigner-fiche\/?$/, async (route) => {
       envois.push(route.request().postDataJSON())
       if (envois.length === 1) {
         const rep = await route.fetch()
@@ -141,24 +170,24 @@ sortie(dict(itv=iv.id, ref=inst.reference, tpl=tpl.id, cree=cree, actif_avant=ac
         await route.continue()
       }
     })
-    await page.goto('/ma-journee')
-    await page.getByRole('button', { name: new RegExp(x.ref) }).first().click({ timeout: 60_000 })
-    await page.getByRole('tab', { name: 'Fiche', exact: true }).click({ timeout: 60_000 })
-    const A = page.getByLabel(new RegExp(`^Tension ACSV115 ${m}`))
-    const B = page.getByLabel(new RegExp(`^Courant ACSV115 ${m}`))
+    await p.goto('/ma-journee')
+    await p.getByRole('button', { name: new RegExp(x.ref) }).first().click({ timeout: 60_000 })
+    await p.getByRole('tab', { name: 'Fiche', exact: true }).click({ timeout: 60_000 })
+    const A = p.getByLabel(new RegExp(`^Tension ACSV115 ${m}`))
+    const B = p.getByLabel(new RegExp(`^Courant ACSV115 ${m}`))
     await expect(A).toBeVisible({ timeout: 60_000 })
     await A.fill('230')
-    const repA = page.waitForResponse((q) => /renseigner-fiche/.test(q.url()) && q.request().postDataJSON()?.valeur_id === vA.id, T)
+    const repA = p.waitForResponse((q) => /renseigner-fiche/.test(q.url()) && q.request().postDataJSON()?.valeur_id === vA.id, T)
     await B.click() // quitter A ⇒ envoi de A (réponse retenue)
     await expect.poll(() => envois.length, { timeout: 30_000 }).toBe(1)
     await B.fill('12') // saisi PENDANT l'envoi de A
-    const relu = page.waitForResponse((q) => q.request().method() === 'GET' && /\/interventions\/\d+\/fiche\/?$/.test(new URL(q.url()).pathname), T)
+    const relu = p.waitForResponse((q) => q.request().method() === 'GET' && /\/interventions\/\d+\/fiche\/?$/.test(new URL(q.url()).pathname), T)
     lacher()
     expect((await repA).status(), 'envoi de A').toBe(200)
     await relu
     await expect(B, 'B affiche toujours 12 après la relecture déclenchée par A').toHaveValue('12')
     await expect(A, 'A relu du serveur').toHaveValue(/^230/)
-    const repB = page.waitForResponse((q) => /renseigner-fiche/.test(q.url()) && q.request().postDataJSON()?.valeur_id === vB.id, T)
+    const repB = p.waitForResponse((q) => /renseigner-fiche/.test(q.url()) && q.request().postDataJSON()?.valeur_id === vB.id, T)
     await B.press('Tab') // quitter B ⇒ envoi de B
     const rb = await repB
     expect(rb.status(), 'envoi de B').toBe(200)
@@ -167,14 +196,15 @@ sortie(dict(itv=iv.id, ref=inst.reference, tpl=tpl.id, cree=cree, actif_avant=ac
     const apres = await lireJson(await r.get(`${API}/installations/interventions/${x.itv}/fiche/`, T), 'fiche relue')
     const lu = (v) => Number((apres.valeurs || []).find((w) => w.id === v.id)?.valeur)
     expect([lu(vA), lu(vB)], 'serveur : A = 230, B = 12').toEqual([230, 12])
-    await page.unroute(/\/installations\/interventions\/\d+\/renseigner-fiche\/?$/)
-    await page.reload()
-    await page.getByRole('button', { name: new RegExp(x.ref) }).first().click({ timeout: 60_000 }).catch(() => undefined)
-    await page.getByRole('tab', { name: 'Fiche', exact: true }).click({ timeout: 60_000 })
-    await expect(page.getByLabel(new RegExp(`^Tension ACSV115 ${m}`))).toHaveValue(/^230/, { timeout: 60_000 })
-    await expect(page.getByLabel(new RegExp(`^Courant ACSV115 ${m}`))).toHaveValue(/^12/)
-    void suivi
+    await p.unroute(/\/installations\/interventions\/\d+\/renseigner-fiche\/?$/)
+    await p.reload()
+    await p.getByRole('button', { name: new RegExp(x.ref) }).first().click({ timeout: 60_000 }).catch(() => undefined)
+    await p.getByRole('tab', { name: 'Fiche', exact: true }).click({ timeout: 60_000 })
+    await expect(p.getByLabel(new RegExp(`^Tension ACSV115 ${m}`))).toHaveValue(/^230/, { timeout: 60_000 })
+    await expect(p.getByLabel(new RegExp(`^Courant ACSV115 ${m}`))).toHaveValue(/^12/)
   } finally {
+    await ctxUi.close().catch(() => undefined)
+    await r.dispose().catch(() => undefined)
     await py(`from apps.installations.models import FicheInterventionTemplate, FicheInterventionChamp, Intervention
 Intervention.objects.filter(pk=${x.itv}).update(annulee=True) if any(f.name == 'annulee' for f in Intervention._meta.fields) else None
 FicheInterventionChamp.objects.filter(pk__in=${J(x.champs)}).delete()
@@ -208,7 +238,7 @@ for i, (nom, pv, q) in enumerate(${J(lignes)}):
                                      justification='remplacé', hors_nomenclature=True)
     prods[nom] = p.id
 Ticket.objects.filter(pk=t.pk).update(couverture='facturable', heures_main_oeuvre=0)
-sortie(dict(ticket=t.id, ref=t.reference, itv=iv.id, prods=prods))`)
+sortie(dict(ticket=t.id, ref=t.reference, itv=iv.id, prods=prods, m='${m}'))`)
   const v = await r.post(`${API}/installations/interventions/${x.itv}/valider-consommation/`, { ...T, data: {} })
   expect(v.status(), `valider-consommation (${(await v.text()).slice(0, 300)})`).toBe(200)
   await py(`from apps.installations.models import Intervention
@@ -249,6 +279,13 @@ sortie([[c.produit.id, str(c.quantite)] for c in consommations_appliquees_du_tic
     await expect(page.getByText('Facture générée').first()).toBeVisible({ timeout: 60_000 })
     const relu = await lireJson(await r.get(`${API}/ventes/factures/${factureId}/`, T), 'facture relue')
     expect((relu.lignes || []).length, 'relu : une ligne').toBe(1)
+    // Écran : la facture rouverte (Ventes › Factures, fiche par lien profond) porte le fusible, jamais le câble à 0.
+    await page.goto(`/ventes/factures?id=${factureId}`)
+    const fiche = page.getByRole('dialog').first()
+    await expect(fiche).toBeVisible({ timeout: 60_000 })
+    const contenu = async () => fiche.evaluate((el) => `${el.innerText} | ${[...el.querySelectorAll('input,textarea')].map((i) => i.value).join(' | ')}`)
+    await expect.poll(contenu, { timeout: 60_000 }).toContain(`Fusible ACSV ${x.m}`)
+    expect(await contenu(), 'écran : aucune ligne « Câble » sur la facture').not.toContain(`Câble ACSV ${x.m}`)
   } finally {
     await supprimerBrouillon(r, factureId)
   }
@@ -292,8 +329,11 @@ sortie(res)`)
     expect((await rep).status(), 'écran : Clôturer ⇒ 409').toBe(409)
     await expect(page.getByTestId('cloture-sans-facture'), 'refus affiché : forçage motivé proposé').toBeVisible({ timeout: 30_000 })
     if (corps.detail) await expect(page.getByRole('alert').filter({ hasText: corps.detail }).first()).toBeVisible()
-    // Persistance : rechargement ⇒ toujours Résolu, sans facture.
+    // Persistance : rechargement ⇒ la fiche affiche toujours « Résolu », sans facture.
     await page.reload()
+    await expect(page.getByText(/Ticket SAV — SAV-/).first()).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('combobox').filter({ hasText: 'Résolu' }).first(), 'écran rechargé : statut Résolu').toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('Facture générée'), 'écran rechargé : aucune facture').toHaveCount(0)
     const relu = await lireTicket(r, x.ticket)
     expect([relu.statut, relu.facture_id_ext || null], 'relu : Résolu, facture_id_ext nul').toEqual(['resolu', null])
     // Après « facturer » : la clôture passe.

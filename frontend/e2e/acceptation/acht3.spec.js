@@ -103,4 +103,13 @@ Activity.objects.filter(pk__in=${J([ids.P, ids.A, ids.A_T])}).delete()
 Lead.objects.filter(pk=${ids.lead}).delete()
 sortie(1)`).catch(() => null)
   }
+}, {
+  ecart: {
+    base: 'FAIL',
+    raison: 'GET /api/django/crm/assignable-users/ → 403 (+ console.error et toast « permission ») au montage de /calendrier '
+      + 'pour le Technicien : frontend/src/pages/CalendarPage.jsx l. 80-82 appelle crmApi.getAssignableUsers() sans garde de '
+      + 'droit (vue IsResponsableOrAdmin) — jumeau, sur l’agenda, d’ERR-ACHT123-ASSIGNABLE-USERS-403-TECHNICIEN corrigé sur '
+      + 'Chantiers ; défaut du shell frontend antérieur, hors ACHT138 (backend reporting/calendar.py, lecture des activités) '
+      + '— rejeu runner 13/11 run 43509702846 : corps de l’étape vert, seuls les oracles 2/3 tombent.',
+  },
 })

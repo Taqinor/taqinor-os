@@ -75,14 +75,24 @@ sortie(v)`)
     expect([Number(f.escompte_pct), f.escompte_jours], `escompte repris du profil (${J({ p: f.escompte_pct, j: f.escompte_jours })})`).toEqual([2, 10])
     const ttc = Number(d1.total_ttc) + Number(d2.total_ttc)
     expect(Math.abs(Number(f.total_ttc) - ttc), `TTC consolidée = Σ devis (${f.total_ttc} vs ${ttc})`).toBeLessThan(0.01)
-    // Rouvrir la facture à l'écran (recherche par référence) puis son PDF ⇒ mention d'escompte.
-    await page.reload()
-    await page.getByPlaceholder('Référence, client').fill(f.reference)
-    await expect(page.locator(`#facture-row-${f.id}`)).toBeVisible({ timeout: 60_000 })
-    const pdf = await r.get(`${API}/ventes/factures/${f.id}/telecharger-pdf/`, T)
-    expect(pdf.status(), `PDF de la facture (${pdf.status()})`).toBe(200)
-    const texte = (await textePdf(await pdf.body())).replace(/\s+/g, ' ')
-    expect(texte, 'PDF : « Escompte 2 % si règlement sous 10 jours »').toMatch(/Escompte 2(?:[.,]0+)? ?% si règlement sous 10 jours/)
+    // Rouvrir la facture à l'écran (recherche par référence) et son PDF ⇒ mention d'escompte. Le premier rendu du PDF
+    // (rendu à la volée, `cle_facture_pdf_a_jour`) pose `fichier_pdf` : la ligne offre alors « PDF » (Télécharger).
+    const rendu = await r.get(`${API}/ventes/factures/${f.id}/telecharger-pdf/`, T)
+    expect(rendu.status(), `premier rendu du PDF (${rendu.status()})`).toBe(200)
+    for (let passe = 0; passe < 2; passe += 1) { // passe 2 = persistance (rechargement)
+      if (passe === 0) await page.goto('/ventes/factures')
+      else await page.reload()
+      await page.getByPlaceholder('Référence, client').fill(f.reference)
+      const ligneEcran = page.locator(`#facture-row-${f.id}`)
+      await expect(ligneEcran).toBeVisible({ timeout: 60_000 })
+      const rep2 = page.waitForResponse((q) => q.request().method() === 'GET' && new RegExp(`/ventes/factures/${f.id}/telecharger-pdf/?$`).test(new URL(q.url()).pathname), T)
+      await ligneEcran.getByTitle('Télécharger le PDF').click({ timeout: 60_000 })
+      const pdf = await rep2
+      expect(pdf.status(), 'PDF servi à l’écran').toBe(200)
+      const texte = (await textePdf(await pdf.body())).replace(/\s+/g, ' ')
+      expect(texte, 'PDF : « Escompte 2 % si règlement sous 10 jours »').toMatch(/Escompte 2(?:[.,]0+)? ?% si règlement sous 10 jours/)
+      expect(texte, 'PDF : la facture rouverte est bien celle consolidée').toContain(f.reference)
+    }
   } finally {
     await py(`from apps.parametres.models import CompanyProfile
 p = CompanyProfile.get(company=U.objects.get(username='demo_admin').company)

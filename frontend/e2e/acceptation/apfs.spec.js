@@ -229,14 +229,21 @@ sortie(1)`)
       try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
     })
     await uiLoginJusquAuxApps(p, { username: dir.nom, password: MDP_ESSAI })
-    await p.goto('/chantiers/approvisionnement')
-    await p.getByRole('tab', { name: "Commandes d'appel" }).click({ timeout: 60_000 })
-    const chiffres = (s) => String(s).replace(/\D/g, '')
-    const attendu = chiffres(Number(appel.montant).toFixed(2))
-    await expect.poll(async () => chiffres(await p.getByRole('tabpanel').innerText()), { timeout: 60_000 })
-      .toContain(attendu)
-    await p.getByRole('tab', { name: 'Contrats de prix' }).click()
-    await expect(p.getByRole('tabpanel').getByText(x.c_ref, { exact: true }).first()).toBeVisible({ timeout: 60_000 })
+    // L'écran arrondit au dirham (« 2 000 MAD ») : la ligne de l'appel (colonne « Ligne cadre » = id de la ligne) porte
+    // le montant arrondi ; passe 2 = persistance (rechargement).
+    const chiffres = (v) => String(v).replace(/\D/g, '')
+    const attendu = chiffres(Math.round(Number(appel.montant)))
+    for (let passe = 0; passe < 2; passe += 1) {
+      if (passe === 0) await p.goto('/chantiers/approvisionnement')
+      else await p.reload()
+      await p.getByRole('tab', { name: "Commandes d'appel" }).click({ timeout: 60_000 })
+      const ligneAppel = p.getByRole('tabpanel').locator('tr').filter({ has: p.locator('td').first().filter({ hasText: new RegExp(`^${x.ccl}$`) }) })
+      await expect(ligneAppel.first(), `ligne de l'appel (ligne cadre ${x.ccl}) affichée au Directeur`).toBeVisible({ timeout: 60_000 })
+      await expect.poll(async () => chiffres(await ligneAppel.first().innerText()), { timeout: 30_000 }).toContain(attendu)
+      await expect(ligneAppel.first(), 'montant en MAD affiché').toContainText('MAD')
+      await p.getByRole('tab', { name: 'Contrats de prix' }).click()
+      await expect(p.getByRole('tabpanel').getByText(x.c_ref, { exact: true }).first()).toBeVisible({ timeout: 60_000 })
+    }
   } finally {
     await ctxUi.close().catch(() => undefined)
   }
