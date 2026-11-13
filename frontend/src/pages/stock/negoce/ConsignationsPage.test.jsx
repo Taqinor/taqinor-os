@@ -146,7 +146,7 @@ describe('ASTK221 — ConsignationsPage', () => {
       consignation_activee: true, atp_horizon_jours: 45 }))
   })
 
-  it('ADRG38 — sans `parametres_modifier` : réglages en lecture seule, pas d'« Enregistrer »', async () => {
+  it("ADRG38 — sans `parametres_modifier` : réglages en lecture seule, pas d'« Enregistrer »", async () => {
     monter(['stock_voir', 'stock_modifier', 'stock_mouvement', 'ventes_creer'])
     fireEvent.click(await screen.findByRole('tab', { name: /Réglages/i }))
     const panneau = await screen.findByRole('tabpanel')

@@ -118,7 +118,7 @@ describe('ASTK220 — ExpeditionsPage', () => {
     expect(await within(section).findByText(/dans la capacité/i)).toBeInTheDocument()
   })
 
-  it('ALEC5 — un tarif masqué (cout null, sans prix_achat_voir) s'affiche « — » sans devise', async () => {
+  it("ALEC5 — un tarif masqué (cout null, sans prix_achat_voir) s'affiche « — » sans devise", async () => {
     const offre = R.expeditions_tarifs.exemple.offres[0]
     brancher()
     const get = api.get.getMockImplementation()

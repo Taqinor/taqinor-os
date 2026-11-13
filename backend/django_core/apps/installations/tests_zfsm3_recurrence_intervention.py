@@ -217,4 +217,5 @@ class TestGenererInterventionsRecurrentes(TestCase):
         api_b = APIClient()
         api_b.force_authenticate(make_user(make_company()))
         self.assertEqual(api_b.get(f"{url}{recs[0]['id']}/").status_code, 404)
-        self.assertEqual(api_b.post(url, corps, format='json').status_code, 404)
+        # Chantier d'une autre société en écriture : « objet inexistant », comme un id absent (ACAL298).
+        self.assertEqual(api_b.post(url, corps, format='json').status_code, 400)

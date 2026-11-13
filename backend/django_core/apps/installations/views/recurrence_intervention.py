@@ -2,23 +2,26 @@
 visibles depuis la fiche chantier. Création, liste, désactivation : la tâche de
 05:35 (``generer_interventions_recurrentes``) lisait une table que rien ne
 remplissait. Société forcée côté serveur ; chantier et technicien validés
-tenant (un chantier d'une autre société = 404).
+tenant par ``SameCompanyFKSerializerMixin`` (id d'une autre société = « objet
+inexistant », comme un id absent — ACAL298).
 Contrat : ``contract_samples/recurrences_intervention.json``."""
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from core.mixins import SameCompanyFKSerializerMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RecurrenceIntervention
 from . import _openapi as oa
 
 
-class RecurrenceInterventionSerializer(serializers.ModelSerializer):
+class RecurrenceInterventionSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    same_company_fields = ('installation', 'technicien_defaut')
+
     class Meta:
         model = RecurrenceIntervention
         fields = ['id', 'installation', 'type_intervention', 'technicien_defaut',
@@ -49,14 +52,7 @@ class RecurrenceInterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
         return qs
 
     def perform_create(self, serializer):
-        company = self.request.user.company
-        inst = serializer.validated_data['installation']
-        if inst.company_id != getattr(company, 'id', None):
-            raise NotFound('Chantier introuvable.')
-        tech = serializer.validated_data.get('technicien_defaut')
-        if tech is not None and tech.company_id != getattr(company, 'id', None):
-            raise NotFound('Technicien introuvable.')
-        serializer.save(company=company)
+        serializer.save(company=self.request.user.company)
 
     @extend_schema(request=None, responses=RecurrenceInterventionSerializer)
     @action(detail=True, methods=['post'])

@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/installations/recurrences-intervention/?installation=<id>",
-  "pourquoi": "ACEL46 — récurrences d'intervention d'un chantier (prestation périodique sans contrat : nettoyage, contrôle). Créées depuis la section « Interventions récurrentes » de la fiche chantier (POST même route, société forcée côté serveur ; chantier d'une autre société = 404), arrêtées par POST <id>/desactiver/. La tâche de 05:35 génère une intervention par échéance passée et avance `prochaine_echeance` ; `jour_ancrage` (jour de la 1re échéance, lecture seule) garde le 31 après un mois court (31/01 → 28/02 → 31/03 → 30/04). Liste paginée : le frontend lit `results` via fetchAllPages.",
+  "pourquoi": "ACEL46 — récurrences d'intervention d'un chantier (prestation périodique sans contrat : nettoyage, contrôle). Créées depuis la section « Interventions récurrentes » de la fiche chantier (POST même route, société forcée côté serveur ; chantier d'une autre société = 400 « objet inexistant », comme un id absent), arrêtées par POST <id>/desactiver/. La tâche de 05:35 génère une intervention par échéance passée et avance `prochaine_echeance` ; `jour_ancrage` (jour de la 1re échéance, lecture seule) garde le 31 après un mois court (31/01 → 28/02 → 31/03 → 30/04). Liste paginée : le frontend lit `results` via fetchAllPages.",
   "exemple": {
     "id": 12,
     "installation": 345,
