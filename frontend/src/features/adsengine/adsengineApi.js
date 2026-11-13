@@ -136,6 +136,9 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // AERR24 — retire l'approbation (approuvee → proposee) tant que l'action
+    // n'est pas appliquée (`EngineActionViewSet.desapprouver`).
+    desapprouver: (id) => api.post(`/adsengine/actions/${id}/desapprouver/`),
     // WIR208 — APPLIQUER une action DÉJÀ APPROUVÉE
     // (`EngineActionViewSet.apply`, views.py:1530 → `services.apply_action`).
     // Aucun autre chemin n'atteint Meta : le backend refuse tout statut ≠
