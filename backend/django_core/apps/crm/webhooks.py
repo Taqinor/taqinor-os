@@ -2744,27 +2744,41 @@ def replay_website_lead_payload(raw):
     payload = raw.payload if isinstance(raw.payload, dict) else {}
     if payload.get('event_type'):
         return False, "Ping d'engagement : jamais rejoué en lead.", None
-    if raw.lead_id:
-        return (True, f'Déjà rattaché au lead #{raw.lead_id} — aucun nouveau '
-                      f'lead.', raw.lead)
-    if raw.processed:
-        return (False, "Événement déjà traité : la soumission d'origine a "
-                       "déjà sa fiche.", None)
-    company = raw.company or _resolve_company()
-    if company is None:
-        return False, 'Aucune Company résolue — rejeu impossible.', None
-    try:
-        lead, created, detail, _extra = _map_and_link_lead(
-            raw, raw.payload, company)
-        if created:
-            _mettre_en_file_devis_automatique(lead, company)
-        return True, detail, lead
-    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook (D-ENF22-BLE001)
-        raw.error = f'{type(exc).__name__}: {exc}'
+    echec = None
+    with transaction.atomic():
+        # ACNC55 — relecture SOUS VERROU : un 2e « Rejouer » simultané voit la
+        # ligne déjà rattachée par le 1er (jamais deux leads / deux devis).
+        raw = type(raw).objects.select_for_update().get(pk=raw.pk)
+        if raw.lead_id:
+            return (True, f'Déjà rattaché au lead #{raw.lead_id} — aucun '
+                          f'nouveau lead.', raw.lead)
+        if raw.processed:
+            return (False, "Événement déjà traité : la soumission d'origine a "
+                           "déjà sa fiche.", None)
+        company = raw.company or _resolve_company()
+        if company is None:
+            return False, 'Aucune Company résolue — rejeu impossible.', None
+        try:
+            with transaction.atomic():
+                lead, created, detail, _extra = _map_and_link_lead(
+                    raw, raw.payload, company)
+        except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook (D-ENF22-BLE001)
+            echec = exc
+    if echec is not None:
+        raw.error = f'{type(echec).__name__}: {echec}'
         raw.save(update_fields=['error'])
-        logger.exception(
-            'replay_website_lead_payload: mapping échoué (payload #%s)', raw.pk)
-        return False, f'Rejeu échoué : {exc}', None
+        logger.error(
+            'replay_website_lead_payload: mapping échoué (payload #%s)',
+            raw.pk, exc_info=echec)
+        return False, f'Rejeu échoué : {echec}', None
+    if created:  # hors du bloc atomique (garde DELAY_IN_ATOMIC)
+        try:
+            _mettre_en_file_devis_automatique(lead, company)
+        except Exception:  # noqa: BLE001 — le rejeu ne lève jamais (D-ENF22-BLE001)
+            logger.exception(
+                'replay_website_lead_payload: devis auto non mis en file '
+                '(payload #%s)', raw.pk)
+    return True, detail, lead
 
 
 # ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle) ──────────

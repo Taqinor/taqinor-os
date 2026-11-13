@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
+import { useConfirmDialog } from '../../../ui/confirm'
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
 import { RAISON_LECTURE_SEULE, lireConflit } from '../conflitEcriture'
 
@@ -589,6 +590,7 @@ export default function PanneauReleve({
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
+  const { confirmDelete } = useConfirmDialog()
 
   const [releveLe, setReleveLe] = useState('')
   const [notes, setNotes] = useState('')
@@ -690,10 +692,13 @@ export default function PanneauReleve({
       .finally(() => setEnCours(false))
   }
 
-  const supprimer = () => {
+  const supprimer = async () => {
     if (!releveAfficheId || !calepinageId) return
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function'
-      && !window.confirm('Supprimer ce relevé ? Ses photos restent au calepinage.')) return
+    // AERR114 — boîte maison qui NOMME le relevé (plus de window.confirm natif).
+    if (!(await confirmDelete({
+      title: `Supprimer le relevé${releveLe ? ` du ${releveLe}` : ''} ?`,
+      description: 'Ses photos restent au calepinage.',
+    }))) return
     setEnCours(true)
     Promise.resolve(calepinageApi.calepinages.supprimerReleve(calepinageId, releveAfficheId))
       .then(() => Promise.resolve(calepinageApi.calepinages.releve?.(calepinageId)))

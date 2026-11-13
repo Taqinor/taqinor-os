@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 import { RACCOURCIS, estSaisieEnCours, raccourciDe } from './RaccourcisAtelier.helpers'
 
 /* ============================================================================
@@ -25,11 +26,14 @@ export const TOUCHE_AIDE = '?'
 
 export default function RaccourcisAtelier({ actions = {} }) {
   const [aideOuverte, setAideOuverte] = useState(false)
+  const racine = useRef(null)
 
   useEffect(() => {
     const surTouche = (evenement) => {
       // LA GARDE : une frappe dans un champ appartient au champ.
       if (estSaisieEnCours(evenement.target)) return
+      // AERR114 — une boîte ouverte par-dessus l'atelier garde ses frappes.
+      if (dialogueParDessus(racine.current)) return
 
       if (evenement.key === TOUCHE_AIDE) {
         evenement.preventDefault()
@@ -54,7 +58,7 @@ export default function RaccourcisAtelier({ actions = {} }) {
   }, [actions])
 
   return (
-    <div data-testid="cal-raccourcis">
+    <div data-testid="cal-raccourcis" ref={racine}>
       <button
         type="button"
         onClick={() => setAideOuverte((ouverte) => !ouverte)}

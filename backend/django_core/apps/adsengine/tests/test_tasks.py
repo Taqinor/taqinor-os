@@ -121,6 +121,81 @@ class SyncInsightsRunTests(TestCase):
             fake.insights_kw.get('params'),
             {'date_preset': 'maximum', 'time_increment': 1})
 
+    def test_limite_douce_fait_echouer_la_tache(self):
+        """ACEL71 — la limite douce Celery n'est jamais avalée par l'isolation
+        par société : la tâche échoue au lieu de finir en « succès »."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        from apps.adsengine.tasks import (
+            pull_meta_leads, pull_meta_leads_recent, sync_ad_creatives,
+        )
+
+        with patch('apps.adsengine.tasks._sync_company',
+                   side_effect=SoftTimeLimitExceeded()):
+            with self.assertRaises(SoftTimeLimitExceeded):
+                sync_insights_daily()
+        for tache in (pull_meta_leads, pull_meta_leads_recent):
+            with patch('apps.adsengine.tasks.pull_ad_leads_for_company',
+                       side_effect=SoftTimeLimitExceeded()):
+                with patch('apps.adsengine.meta_client.MetaClient'):
+                    with self.assertRaises(SoftTimeLimitExceeded):
+                        tache()
+        # Scénario 2 : levée à la 2e annonce — aucune annonce suivante lue.
+        for i in range(3):
+            AdMirror.objects.create(company=self.company, meta_id=f'ad{i}')
+        lus = []
+
+        class Client:
+            def get_ad_creative(self, meta_id):
+                lus.append(meta_id)
+                if len(lus) == 2:
+                    raise SoftTimeLimitExceeded()
+                return {}
+
+        with self.assertRaises(SoftTimeLimitExceeded):
+            sync_ad_creatives(self.company, Client())
+        self.assertEqual(len(lus), 2)
+
+    @patch('apps.adsengine.meta_client.MetaClient')
+    def test_autre_exception_garde_l_isolation(self, mock_cls):
+        mock_cls.from_connection.return_value = FakeMetaClient()
+        with patch('apps.adsengine.tasks._sync_company',
+                   side_effect=RuntimeError('boom')):
+            self.assertEqual(sync_insights_daily(), {'companies_synced': 0})
+
+
+class EmitCapiCommandeManuelleTests(TestCase):
+    """ACEL73 — ``manage.py emit_capi_signatures`` déclenche la tâche."""
+
+    def setUp(self):
+        Company.objects.create(nom='Capi Co', slug='capi-co')
+
+    def test_commande_declenche_la_tache(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        with patch('apps.adsengine.capi_odoo.is_configured',
+                   return_value=False), \
+                patch('apps.adsengine.capi_odoo.emit_lead_received') as lead:
+            call_command('emit_capi_signatures', stdout=out)
+        self.assertIn('CRM Dataset non configuré', out.getvalue())
+        lead.assert_not_called()
+
+        out = StringIO()
+        with patch('apps.adsengine.capi_odoo.is_configured',
+                   return_value=True), \
+                patch('apps.adsengine.capi_odoo.emit_lead_received',
+                      return_value={'emitted': 1}), \
+                patch('apps.adsengine.capi_odoo.emit_signed_deals',
+                      return_value={'emitted': 2}):
+            call_command('emit_capi_signatures', stdout=out)
+        self.assertIn('1 reçu(s), 2 signé(s)', out.getvalue())
+        from erp_agentique.celery import app
+        planifiees = {e['task'] for e in app.conf.beat_schedule.values()}
+        self.assertNotIn('adsengine.emit_capi_signatures', planifiees)
+
 
 class BeatReachabilityTests(SimpleTestCase):
     def test_task_is_scheduled(self):

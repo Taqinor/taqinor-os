@@ -4,9 +4,10 @@
    `contract_samples/gabarits_dossier_reglementaire.json` (liste, 201, refus
    400 nommé, 409) — jamais une charge écrite à la main. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render as renderBrut, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 
 const espions = vi.hoisted(() => ({
   liste: vi.fn(), creer: vi.fn(), modifier: vi.fn(), supprimer: vi.fn(),
@@ -27,6 +28,8 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 }))
 
 const { default: ReglagesGabarits } = await import('./ReglagesGabarits')
+
+const render = (ui) => renderBrut(<ConfirmProvider>{ui}</ConfirmProvider>)
 
 const LISTE = exempleContrat('calepinage', 'gabarits_dossier_reglementaire')
 const VIDE = exempleContrat('calepinage', 'gabarits_dossier_reglementaire', 'exemple_vide')
@@ -97,6 +100,14 @@ describe('ReglagesGabarits (ACAL242)', () => {
     await screen.findByTestId(`acal242-gabarit-${premier.id}`)
 
     await userEvent.click(screen.getByTestId(`acal242-supprimer-${premier.id}`))
+    // AERR114 — boîte maison qui nomme le gabarit ; rien n'est supprimé avant.
+    let boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent(premier.intitule)
+    await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    expect(espions.supprimer).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByTestId(`acal242-supprimer-${premier.id}`))
+    boite = await screen.findByRole('alertdialog')
+    await userEvent.click(within(boite).getByRole('button', { name: 'Supprimer' }))
 
     expect(await screen.findByTestId(`acal242-erreur-gabarit-${premier.id}`))
       .toHaveTextContent(DELETE.refus_409.detail)

@@ -174,6 +174,25 @@ class WebhookTests(TestCase):
             company=self.company, wa_message_id='wamid.pub27b2')
         self.assertEqual(ref1.crm_lead_id, ref2.crm_lead_id)
 
+    def test_livraison_concurrente_du_meme_message_ne_cree_pas_de_second_lead(
+            self):
+        """ACNC48 — le message déjà enregistré (livraison gagnante en cours,
+        sans lead) : la livraison perdante ne crée AUCUN lead."""
+        from unittest.mock import patch
+
+        from apps.crm.models import Lead
+
+        CtwaReferral.objects.create(
+            company=self.company, wa_message_id='wamid.X', ad_id='ad-777')
+        with patch('apps.adsengine.whatsapp_webhook._lead_id_for_phone',
+                   return_value=None):
+            resp = self._post_signed(_referral_payload(
+                wa_message_id='wamid.X', phone='212611223344'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+        self.assertEqual(CtwaReferral.objects.filter(
+            company=self.company, wa_message_id='wamid.X').count(), 1)
+
     def test_referral_with_existing_lead_behaviour_unchanged(self):
         """PUB27 ne touche jamais le chemin « lead déjà trouvé » (rien de
         nouveau écrit sur le lead existant)."""

@@ -3,6 +3,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card } from '../../../ui'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    ACAL242 — « RÉGLAGES › CALEPINAGE › GABARITS » : LE DÉPÔT DES GABARITS.
@@ -208,6 +209,7 @@ function FormulaireGabarit({ onCree }) {
 
 function LigneGabarit({ gabarit, peutGerer, onChange }) {
   const [erreur, setErreur] = useState(null)
+  const { confirmDelete } = useConfirmDialog()
   const refus = (err) => {
     const donnees = err?.response?.data
     setErreur(donnees && typeof donnees === 'object'
@@ -218,7 +220,12 @@ function LigneGabarit({ gabarit, peutGerer, onChange }) {
     setErreur(null)
     calepinageApi.gabarits.modifier(gabarit.id, { actif: !gabarit.actif }).then(onChange).catch(refus)
   }
-  const supprimer = () => {
+  const supprimer = async () => {
+    // AERR114 — la boîte nomme le gabarit avant tout appel.
+    if (!(await confirmDelete({
+      title: `Supprimer le gabarit « ${gabarit.intitule} » ?`,
+      description: 'Le gabarit déposé sera supprimé de la société.',
+    }))) return
     setErreur(null)
     calepinageApi.gabarits.supprimer(gabarit.id).then(onChange).catch(refus)
   }

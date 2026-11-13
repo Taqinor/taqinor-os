@@ -328,6 +328,32 @@ class ReplayAACQ30Tests(TestCase):
         self.assertEqual(
             Lead.objects.filter(telephone='212600300004').count(), 1)
 
+    def test_rejeu_sur_instance_perimee_d_un_payload_deja_rattache_ne_cree_rien(
+            self):
+        """ACNC55 — deux « Rejouer » simultanés : l'instance chargée par le
+        premier est périmée (le second a déjà rattaché la ligne) ; elle est
+        relue sous verrou, aucun lead ni devis automatique de plus."""
+        from unittest.mock import patch
+
+        from apps.crm.webhooks import replay_website_lead_payload
+
+        raw = self._payload_echoue('+212600300006')
+        perimee = WebsiteLeadPayload.objects.get(pk=raw.pk)
+        lead_a = Lead.objects.create(
+            company=self.company, nom='Lead A', telephone='212600300006')
+        WebsiteLeadPayload.objects.filter(pk=raw.pk).update(
+            lead=lead_a, processed=True)
+        avant = Lead.objects.filter(company=self.company).count()
+        with patch(APPLY_ASYNC) as file_:
+            ok, detail, lead = replay_website_lead_payload(perimee)
+        self.assertTrue(ok)
+        self.assertEqual(
+            detail, f'Déjà rattaché au lead #{lead_a.pk} — aucun nouveau lead.')
+        self.assertEqual(lead.pk, lead_a.pk)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(),
+                         avant)
+        file_.assert_not_called()
+
     def test_rejeu_qui_cree_met_en_file_le_devis_auto(self):
         from unittest.mock import patch
         raw = self._payload_echoue('+212600300005')

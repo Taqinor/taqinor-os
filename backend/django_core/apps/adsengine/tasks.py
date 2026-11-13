@@ -18,6 +18,7 @@ import datetime
 import logging
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -707,6 +708,8 @@ def sync_ad_creatives(company, client):
     for ad in AdMirror.objects.filter(company=company):
         try:
             creative = fetch(ad.meta_id)
+        except SoftTimeLimitExceeded:  # ACEL71 — jamais avalée
+            raise
         except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning("tasks.sync_ad_creatives : erreur ignorée (mode dégradé)", exc_info=True)
             continue
@@ -908,6 +911,8 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
         try:
             leads = (get_leads(ad.meta_id, since_unix=since_unix)
                      if since_unix is not None else get_leads(ad.meta_id))
+        except SoftTimeLimitExceeded:  # ACEL71 — jamais avalée
+            raise
         except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
             continue
@@ -1062,6 +1067,8 @@ def pull_meta_leads_recent():
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
+        except SoftTimeLimitExceeded:  # ACEL71 — jamais avalée
+            raise
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.pull_meta_leads_recent: échec société %s',
@@ -1101,6 +1108,8 @@ def pull_meta_leads():
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
+        except SoftTimeLimitExceeded:  # ACEL71 — jamais avalée
+            raise
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.pull_meta_leads: échec société %s',
@@ -1207,6 +1216,8 @@ def sync_insights_daily():
             # PUB20 — token mort : alerte + bandeau, jamais un swallow silencieux.
             _handle_meta_auth_error(conn, exc)
             continue
+        except SoftTimeLimitExceeded:  # ACEL71 — jamais avalée
+            raise
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.sync_insights_daily: échec société %s',
@@ -1608,14 +1619,29 @@ def decay_assumptions_weekly():
     pour une société sans nœud. Best-effort par société ; la logique pure +
     modèle vit dans ``assumption_decay.py``. Renvoie le nombre total de nœuds
     oubliés."""
+    from zoneinfo import ZoneInfo
+
+    from django.db import transaction
+    from django.utils import timezone
+
     from authentication.selectors import active_companies
+    from core.idempotency import dedupe_event
 
     from . import assumption_decay
 
+    # ACEL72 — une société n'oublie qu'UNE fois par semaine ISO (Casablanca).
+    iso = timezone.localtime(
+        timezone.now(), ZoneInfo('Africa/Casablanca')).isocalendar()
+    semaine = f'{iso[0]}-W{iso[1]:02d}'
     total = 0
     for company in active_companies():
         try:
-            total += assumption_decay.run_weekly_decay(company)
+            with transaction.atomic():
+                if not dedupe_event(company=company,
+                                    source='adsengine.oubli_hebdo',
+                                    event_id=semaine):
+                    continue
+                total += assumption_decay.run_weekly_decay(company)
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.decay_assumptions_weekly: échec société %s',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
+import { useConfirmDialog } from '../../../ui/confirm'
 
 /* ============================================================================
    CALX367 — LA POSE RÉELLE (AS-BUILT), EN ONGLET DE L'ATELIER.
@@ -63,6 +64,7 @@ function saisiesDe(lignes) {
 export default function PoseReelle({ calepinageId: idPropose } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
+  const { confirmDelete } = useConfirmDialog()
 
   const [etat, setEtat] = useState(null)
   const [saisies, setSaisies] = useState({})
@@ -138,8 +140,14 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
   /* ACAL268 — retirer le relevé d'un pan ORPHELIN (supprimé du document) :
      DELETE pose-reelle/<zone_id>/, puis relecture. Le refus (404) est rendu
      sur la ligne. */
-  const retirer = (ligne) => {
+  const retirer = async (ligne) => {
     const pan = cleDe(ligne)
+    // AERR114 — la boîte nomme le pan avant tout appel.
+    if (!(await confirmDelete({
+      title: `Retirer le relevé du pan ${libelleDe(ligne)} ?`,
+      description: 'Ce pan n’existe plus dans le calepinage : son relevé de pose réelle sera supprimé.',
+      confirmLabel: 'Retirer',
+    }))) return
     setEnCours(pan)
     setRefus(null)
     setMessage(null)

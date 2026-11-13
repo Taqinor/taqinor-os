@@ -8,9 +8,10 @@
    Réponses au format COMMITTÉ `calepinage_asbuilt_ecarts.json` : l'exemple du
    contrat, dont deux lignes reçoivent le même libellé. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 
 // La porte pose-reelle/ (lecture, saisie, version) + le DELETE d'ACAL268.
 const PORTES_POSE = vi.hoisted(() => ['poseReelle', 'enregistrerPoseReelle',
@@ -35,7 +36,7 @@ const avecLibellesDupliques = () => {
 }
 
 const rendre = () => render(
-  <MemoryRouter><PoseReelle calepinageId={1} /></MemoryRouter>,
+  <ConfirmProvider><MemoryRouter><PoseReelle calepinageId={1} /></MemoryRouter></ConfirmProvider>,
 )
 
 beforeEach(() => {
@@ -68,6 +69,15 @@ describe('PoseReelle — indexée par zone_id (ACAL268)', () => {
     expect(screen.getByTestId('cal-pose-orphelin-z9')).toHaveTextContent('hors totaux')
     expect(screen.queryByTestId('cal-pose-enregistrer-z9')).toBeNull()
     fireEvent.click(screen.getByTestId('cal-pose-retirer-z9'))
+    // AERR114 — boîte maison nommée ; Annuler ⇒ aucun DELETE, Retirer ⇒ DELETE.
+    let boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Retirer le relevé du pan')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(calepinageApi.calepinages.supprimerPoseReelle).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('cal-pose-retirer-z9'))
+    boite = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Retirer' }))
     await waitFor(() => expect(calepinageApi.calepinages.supprimerPoseReelle)
       .toHaveBeenCalledWith(1, 'z9'))
     await waitFor(() => expect(calepinageApi.calepinages.poseReelle).toHaveBeenCalledTimes(2))

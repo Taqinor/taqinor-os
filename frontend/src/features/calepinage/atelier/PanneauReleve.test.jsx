@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 
 /* ============================================================================
    CALX25 — LE RELEVÉ TERRAIN SUR UN PANNEAU, AUCUN CALCUL CÔTÉ ÉCRAN.
@@ -95,8 +96,16 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 const { default: PanneauReleve } = await import('./PanneauReleve')
 
+
+/* AERR114 — la suppression passe par la boîte maison (plus de window.confirm). */
+const confirmerSuppression = async () => {
+  const boite = await screen.findByRole('alertdialog')
+  expect(boite).toHaveTextContent('Supprimer le relevé')
+  fireEvent.click(within(boite).getByRole('button', { name: 'Supprimer' }))
+}
+
 const rendre = () => render(
-  <MemoryRouter><PanneauReleve calepinageId={1} /></MemoryRouter>,
+  <ConfirmProvider><MemoryRouter><PanneauReleve calepinageId={1} /></MemoryRouter></ConfirmProvider>,
 )
 
 beforeEach(() => { vi.clearAllMocks() })
@@ -291,7 +300,6 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
     enregistrerReleve.mockResolvedValue(
       { data: { releve: r2, releve_courant_id: courantId, releves: [...lecture.releves, r2] } })
     corrigerReleve.mockResolvedValue({ data: { releve: r2, releve_courant_id: courantId } })
-    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
     supprimerReleve.mockResolvedValue({})
     rendre()
     await screen.findByDisplayValue(lecture.releves[0].releve_le)
@@ -304,8 +312,8 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
     expect(corrigerReleve.mock.calls[0][1]).toBe(r2.id)
 
     fireEvent.click(screen.getByTestId('cal-releve-supprimer'))
+    await confirmerSuppression()
     await waitFor(() => expect(supprimerReleve).toHaveBeenCalledWith(1, r2.id))
-    confirmation.mockRestore()
   })
 
   it('les photos du calepinage sont cochables et partent en photo_ids', async () => {
@@ -325,17 +333,16 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
   })
 
   it('Supprimer retire le relevé courant', async () => {
-    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
     supprimerReleve.mockResolvedValue({})
     rendre()
     await screen.findByDisplayValue(lectureContrat().data.releves[0].releve_le)
     releve.mockResolvedValue({ data: { releves: [], releve_courant_id: null } })
 
     fireEvent.click(screen.getByTestId('cal-releve-supprimer'))
+    await confirmerSuppression()
 
     await waitFor(() => expect(supprimerReleve).toHaveBeenCalledWith(1, lectureContrat().data.releve_courant_id))
     expect(await screen.findByTestId('cal-releve-message')).toHaveTextContent('supprimé')
-    confirmation.mockRestore()
   })
 
   it('lecture seule : aucun bouton d’écriture actif', async () => {

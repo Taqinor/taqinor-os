@@ -91,6 +91,22 @@ describe('CAL101 — chaque raccourci déclenche SON geste, et lui seul', () => 
   })
 })
 
+describe('AERR114 — une boîte ouverte par-dessus garde ses frappes', () => {
+  it('« Suppr » sous une boîte ouverte : aucun geste', () => {
+    const actions = actionsEspionnees()
+    rendre(actions)
+    const boite = document.createElement('div')
+    boite.setAttribute('role', 'alertdialog')
+    boite.setAttribute('data-state', 'open')
+    document.body.appendChild(boite)
+    fireEvent.keyDown(window, { key: 'Delete' })
+    expect(actions.supprimer).not.toHaveBeenCalled()
+    boite.remove()
+    fireEvent.keyDown(window, { key: 'Delete' })
+    expect(actions.supprimer).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('CAL101 — AUCUNE frappe n’est volée pendant la saisie d’un champ', () => {
   it.each([
     ['input', () => document.createElement('input')],
