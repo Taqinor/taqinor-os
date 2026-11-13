@@ -459,7 +459,7 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
     fireEvent.keyDown(window, { key: 'a' })
     // AERR23 — confirmation maison qui nomme l'action ; rien ne part avant.
     expect(await screen.findByText('Approuver : swap_creative ?')).toBeInTheDocument()
-    expect(screen.getByText('Créatif fatigué (fréquence 3,2).')).toBeInTheDocument()
+    expect(within(screen.getByRole('alertdialog')).getByText('Créatif fatigué (fréquence 3,2).')).toBeInTheDocument()
     expect(mocks.approve).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))

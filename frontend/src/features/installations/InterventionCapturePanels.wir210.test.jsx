@@ -277,6 +277,9 @@ describe('ConsommationPanel — AERR77 confirmation de validation', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(api.validerConsommation).not.toHaveBeenCalled()
 
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
     await user.click(screen.getByRole('button', { name: /Valider la consommation/ }))
     await screen.findByRole('alertdialog')
     await user.click(screen.getByRole('button', { name: 'Valider' }))

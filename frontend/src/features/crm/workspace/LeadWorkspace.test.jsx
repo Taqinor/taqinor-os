@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderLeadWorkspace, echecReseauAutosaveVille } from '../../../test/leadWorkspaceHarness'
-import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { LEAD_A, dupMatches, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
 import LeadWorkspace from './LeadWorkspace'
@@ -19,9 +19,7 @@ import { initState } from './draftCore'
    SIGNED→SigneDialog est prouvé ici au niveau du shell (le lien
    StageControl→onSigne est couvert par StageControl.test.jsx — non dupliqué). */
 
-// AERR108 — doublons pilotables par test (par défaut : aucun).
-const dupMatches = vi.hoisted(() => ({ current: [] }))
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => dupMatches.current }))
+// AERR108 — doublons pilotables par test : `dupMatches` du module de mocks partagé.
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 // SigneDialog rendu en sonde : prouve l'ouverture par onAction('signe').
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => <div data-testid="signe-dialog" /> }))
