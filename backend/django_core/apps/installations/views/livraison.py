@@ -75,13 +75,14 @@ def ecriture_bornee(serializer):
     son mixin) : une transition commitée entre ``get_object()`` et l'écriture
     n'est plus réécrite depuis la copie périmée. Patron
     ``apps/crm/views.py::_save_borne_aux_champs`` (CRX25) ; l'instance est
-    relue après l'écriture (réponse = état de la base)."""
+    relue après l'écriture (réponse = état de la base). Aucun champ validé ⇒
+    rien à écrire (``update_fields=[]``), jamais une réécriture complète
+    (ACNC31 : un PATCH {statut} seul ne réécrit pas la ligne périmée)."""
     instance = serializer.instance
     meta = type(instance)._meta
     champs = sorted({f.name for f in meta.concrete_fields if not f.primary_key and (
         f.name in serializer.validated_data or getattr(f, 'auto_now', False))})
-    if champs:
-        instance.save = lambda *a, **k: type(instance).save(instance, *a, **{'update_fields': champs, **k})
+    instance.save = lambda *a, **k: type(instance).save(instance, *a, **{'update_fields': champs, **k})
     try:
         yield
     finally:

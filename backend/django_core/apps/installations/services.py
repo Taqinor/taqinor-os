@@ -6380,12 +6380,15 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
         # ACHT36 — émis SEULEMENT à la première clôture.
         from django.utils import timezone as _tz
         from core.events import intervention_completed
-        intervention.cloturee_notifiee_le = _tz.now()
-        intervention.save(update_fields=['cloturee_notifiee_le'])
-        intervention_completed.send(
-            sender=_Intervention, intervention=intervention,
-            company=intervention.company, user=user)
-        effets['intervention_completed'] = True
+        maintenant = _tz.now()
+        # ACNC31 — UPDATE conditionnel : seul l'appel qui pose l'horodatage émet.
+        if _Intervention.objects.filter(pk=intervention.pk, cloturee_notifiee_le__isnull=True).update(
+                cloturee_notifiee_le=maintenant):
+            intervention.cloturee_notifiee_le = maintenant
+            intervention_completed.send(
+                sender=_Intervention, intervention=intervention,
+                company=intervention.company, user=user)
+            effets['intervention_completed'] = True
     if ancien not in termines and intervention.statut in termines:
         # ACHT37 — poussée des n° de série vers le parc SAV à la clôture
         # (idempotente via `pousse_parc`), plus depuis le GET compte-rendu.

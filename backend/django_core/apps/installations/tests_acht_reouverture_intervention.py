@@ -12,10 +12,13 @@ Run :
         -Modules "apps.installations.tests_acht_reouverture_intervention"
 """
 import datetime
+import threading
+import time
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -25,6 +28,7 @@ from apps.installations.models import (
     Installation, Intervention, InterventionActivity,
 )
 from core.events import intervention_completed
+from core.test_utils import WideTeardownTimeoutMixin
 
 User = get_user_model()
 SYNC = '/api/django/installations/sync/'
@@ -119,3 +123,57 @@ class ReouvertureInterventionTests(TestCase):
         self._patch('terminee')
         self.assertEqual(self.client.get(f'{PUBLIC}/{token}/').status_code,
                          200)
+
+
+class ClotureInterventionCourseTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC31 — deux VRAIES connexions (patron ``apps/sav/tests_pieces.py::
+    TestSavPiecesConcurrence._course``) : deux passages « terminée » croisés de
+    la même intervention. Classe ``TransactionTestCase`` dédiée :
+    ``ReouvertureInterventionTests`` est un ``TestCase`` (une seule connexion)."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='co-acnc31', defaults={'nom': 'Co ACNC31'})
+        self.user = User.objects.create_user(
+            username='resp-acnc31', password='x', company=self.company,
+            role_legacy='responsable')
+        inst = Installation.objects.create(
+            company=self.company, reference='CH-ACNC31')
+        self.iv = Intervention.objects.create(
+            company=self.company, installation=inst,
+            type_intervention='pose', created_by=self.user,
+            technicien=self.user, statut=Intervention.Statut.SUR_SITE)
+
+    def test_deux_clotures_croisees_completed_une_fois(self):
+        a_tient, b_tente, appels, res = threading.Event(), threading.Event(), [], {}
+
+        def recepteur(sender, intervention, **kwargs):
+            appels.append(intervention.id)
+            if not a_tient.is_set():  # A : tient sa transaction ouverte
+                a_tient.set()
+                b_tente.wait(5)
+                time.sleep(0.5)  # B atteint l'écriture de la clôture
+
+        intervention_completed.connect(recepteur, dispatch_uid='acnc31-cloture', weak=False)
+        self.addCleanup(intervention_completed.disconnect, dispatch_uid='acnc31-cloture')
+
+        def fil(nom):
+            if nom == 'b':
+                a_tient.wait(5)
+                b_tente.set()
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+            res[nom] = api.patch(f'{BASE}/{self.iv.id}/', {'statut': 'terminee'},
+                                 format='json').status_code
+            connection.close()
+
+        fils = [threading.Thread(target=fil, args=(n,)) for n in ('a', 'b')]
+        for f in fils:
+            f.start()
+        for f in fils:
+            f.join(20)
+        self.assertEqual(res.get('a'), 200, res)
+        self.assertEqual(appels, [self.iv.id])
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+        self.assertIsNotNone(self.iv.cloturee_notifiee_le)
