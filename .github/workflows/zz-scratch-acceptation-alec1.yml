@@ -181,7 +181,7 @@ jobs:
           name: acceptation-alec1-enregistrement
           path: |
             docs/audits/acceptation/ALEC/
-            docs/qa-explorer/captures/
+            docs/qa-explorer/captures/*/ACCEPTATION-ALEC-*
           retention-days: 7
           if-no-files-found: warn
       - name: Upload rapport Playwright

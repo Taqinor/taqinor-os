@@ -375,8 +375,17 @@ sortie(dict(bcf=bcf.pk, appr=appr.pk))`)
     }
     const d = await lireJson(await dir.ctx.get(`${API}/installations/approbations-bcf/${x.appr}/`, T), 'Directeur détail')
     expect(parseFloat(d.montant_approuve), 'Directeur : 10 000').toBe(10000)
-    // Écran Approvisionnement en Technicien : colonne « Montant approuvé » = « — ».
+    // Écran Approvisionnement (route au palier responsable/admin) : le Technicien (palier « normal ») n'y entre pas
+    // (page « Accès refusé ») ; le Technicien responsable (rôle livré du constat, sans `prix_achat_voir`) y entre et
+    // lit « — » dans la colonne « Montant approuvé ».
     ui = await pageSous(context, suivi, testInfo, tech)
+    await ui.p.goto('/chantiers/approvisionnement')
+    await expect(ui.p.getByText('Accès refusé (403)')).toBeVisible({ timeout: 30_000 })
+    await ui.ctx.close().catch(() => undefined)
+    const tr = await session(testInfo, 'alec8tr', 'Technicien responsable')
+    const ltr = await lireJson(await tr.ctx.get(`${API}/installations/approbations-bcf/${x.appr}/`, T), 'Technicien responsable détail')
+    expect('montant_approuve' in ltr, 'Technicien responsable : montant_approuve').toBe(false)
+    ui = await pageSous(context, suivi, testInfo, tr)
     const p = ui.p
     await p.goto('/chantiers/approvisionnement')
     await p.getByRole('tab', { name: 'Approbations BCF' }).click()
@@ -409,7 +418,11 @@ sortie(dict(projet=pj.pk, budget=bu.pk))`)
         const r = await s.ctx.get(url, T)
         const corps = await r.json().catch(() => ({}))
         expect(r.status(), `${nom} : ${url}`).toBe(403)
-        expect(Object.keys(corps), `${nom} : corps {detail} seul`).toEqual(['detail'])
+        // Corps `{detail}` (+ l'enveloppe `error` que pose `core.exceptions.taqinor_exception_handler` sur toute
+        // erreur) : aucun montant du budget d'achat.
+        expect(typeof corps.detail, `${nom} : detail`).toBe('string')
+        expect(Object.keys(corps).filter((k) => !['detail', 'error'].includes(k)), `${nom} : aucune autre clé`).toEqual([])
+        expect(JSON.stringify(corps), `${nom} : aucun montant`).not.toMatch(/30 ?000|50 ?000|20 ?000/)
       }
     }
     const dir = await session(testInfo, 'alec9d', 'Directeur')
