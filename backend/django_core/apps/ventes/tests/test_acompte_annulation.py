@@ -15,7 +15,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -669,3 +669,67 @@ class AnnulationRetourStockTests(TestCase):
             montant_ttc=Decimal('1'), created_by=self.admin)
         self.assertEqual(self._annuler(brouillon).status_code, 200)
         self.assertEqual(self._mvts(mouvement_type_entree()), [])
+
+
+class AnnulationsCroiseesTests(TransactionTestCase):
+    """ACNC8 (C-ACNC-003) — deux annulations SIMULTANÉES de l'acompte et du
+    solde d'une même vente (deux fils, barrière) : la vente est verrouillée en
+    tête, la seconde voit la première et rend le stock sorti UNE fois.
+    ``TransactionTestCase`` : chaque fil ouvre sa connexion (patron
+    ``test_afac_retour_client_avoir.RetoursConcurrentsTests``). Mutant : retirer
+    ``verrouiller_vente`` ⇒ 0 retour."""
+
+    def test_deux_annulations_rendent_le_stock_une_fois(self):
+        import threading
+        from django.db import connection
+        from apps.stock.services import (
+            mouvement_type_entree, mouvement_type_sortie, record_stock_movement)
+        from apps.stock.models import MouvementStock
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        company = make_company('acnc8-co', 'ACNC8 Co')
+        client = make_client(company, 'acnc8@example.com')
+        admin = User.objects.create_user(
+            username='acnc8_admin', password='x', role_legacy='admin',
+            company=company)
+        panneau = Produit.objects.create(
+            company=company, nom='Panneau ACNC8', sku='PV-ACNC8',
+            prix_vente=Decimal('100'), quantite_stock=20, tva=Decimal('20.00'))
+        devis = Devis.objects.create(
+            company=company, reference=f'DEV-ACNC8-{MONTH}', client=client,
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+        record_stock_movement(
+            company=company, produit=panneau,
+            type_mouvement=mouvement_type_sortie(), quantite=3,
+            quantite_avant=20, quantite_apres=17, reference=devis.reference,
+            note='Sortie de la vente', created_by=admin)
+        factures = [Facture.objects.create(
+            company=company, reference=f'FAC-ACNC8-{MONTH}-{i}', devis=devis,
+            client=client, statut=Facture.Statut.EMISE, type_facture=t,
+            montant_ht=Decimal('100'), montant_tva=Decimal('20'),
+            montant_ttc=Decimal('120'), created_by=admin)
+            for i, t in enumerate(('acompte', 'solde'))]
+        barriere = threading.Barrier(2, timeout=30)
+        erreurs = []
+
+        def _annuler(facture):
+            try:
+                barriere.wait()
+                annuler_facture(Facture.objects.get(pk=facture.pk), user=admin)
+            except Exception as exc:  # noqa: BLE001 — rapporté par le test
+                erreurs.append(exc)
+            finally:
+                connection.close()
+
+        fils = [threading.Thread(target=_annuler, args=(f,)) for f in factures]
+        for f in fils:
+            f.start()
+        for f in fils:
+            f.join(timeout=60)
+        self.assertEqual(erreurs, [])
+        self.assertEqual(Facture.objects.filter(
+            devis=devis, statut=Facture.Statut.ANNULEE).count(), 2)
+        retours = MouvementStock.objects.filter(
+            produit=panneau, type_mouvement=mouvement_type_entree())
+        self.assertEqual(list(retours.values_list('quantite', flat=True)), [3])
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 20)

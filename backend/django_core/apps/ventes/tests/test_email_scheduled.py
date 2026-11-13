@@ -265,6 +265,53 @@ class TestScheduledJobs(TestCase):
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.EMISE)
 
+    def test_facture_soldee_pendant_le_passage_reste_soldee(self):
+        """ACEL68 (C-ACEL-010) — un encaissement total committé entre la
+        sélection et l'écriture (course injectée sur `_echeance_effective`)
+        laisse la facture hors « en retard » ; une promesse tenue pendant le
+        passage de 07:00 n'est pas écrite « rompue ». Mutant : retirer la
+        relecture sous verrou ⇒ échec."""
+        from unittest.mock import patch
+        from apps.ventes import scheduled
+        from apps.ventes.models import PromessePaiement
+        f = self._facture('FAC-ACEL68-1', date.today() - timedelta(days=5))
+        vrai = scheduled._echeance_effective
+        payee = []
+
+        def _course(facture, today):
+            if not payee:
+                payee.append(Paiement.objects.create(
+                    company=self.company, facture=f, montant=Decimal('1200'),
+                    date_paiement=date.today()))
+            return vrai(facture, today)
+        statut_avant = Facture.objects.get(pk=f.pk).statut
+        with patch.object(scheduled, '_echeance_effective', _course):
+            self.assertEqual(scheduled.check_overdue_factures(), 0)
+        f.refresh_from_db()
+        self.assertNotEqual(f.statut, Facture.Statut.EN_RETARD)
+        self.assertEqual(f.statut, statut_avant)
+        self.assertEqual(scheduled.check_overdue_factures(), 0)
+
+        g = self._facture('FAC-ACEL68-2', date.today() - timedelta(days=5))
+        promesse = PromessePaiement.objects.create(
+            company=self.company, facture=g, montant_promis=Decimal('1200'),
+            date_promise=date.today() - timedelta(days=1),
+            statut=PromessePaiement.Statut.EN_COURS)
+        vraie_honoree = scheduled._promesse_honoree
+        tenue = []
+
+        def _course_promesse(prom, facture):
+            if not tenue:
+                tenue.append(Paiement.objects.create(
+                    company=self.company, facture=g, montant=Decimal('1200'),
+                    date_paiement=date.today()))
+            return vraie_honoree(prom, facture)
+        with patch.object(scheduled, '_promesse_honoree', _course_promesse):
+            self.assertEqual(
+                scheduled._check_promesses_expirees(date.today()), 0)
+        promesse.refresh_from_db()
+        self.assertEqual(promesse.statut, PromessePaiement.Statut.TENUE)
+
     def test_overdue_default_echeance_is_issue_plus_30_days(self):
         """Sans date_echeance, l'échéance par défaut = émission + 30 j.
 

@@ -121,6 +121,80 @@ const baseFacture = {
   total_ttc: 5000, montant_paye: 0, montant_du: 5000,
 }
 
+describe('FactureList — AERR15 : raccourci « a » de la fiche facture', () => {
+  it('boîte par-dessus le formulaire : « a » ne génère pas', async () => {
+    // AERR15 (C-AERR-013) — mutant : retirer `{ scopeRef }` ⇒ échec.
+    const pdf = vi.spyOn(ventesApi, 'genererPdfFacture').mockResolvedValue({ data: {} })
+    const f = { id: 5, reference: 'FAC-AERR15', client_nom: 'ACME', statut: 'emise',
+      date_emission: '2026-07-01', date_echeance: '2026-08-01', total_ttc: 5000, montant_paye: 0, montant_du: 5000 }
+    render(
+      <Provider store={makeStore({ factures: [f] })}>
+        <MemoryRouter initialEntries={['/ventes/factures?id=5']}>
+          <ThemeProvider><FactureList /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: /Nouveau client/ }))
+    await waitFor(() => expect(screen.getAllByRole('dialog').length).toBeGreaterThan(1))
+    fireEvent.keyDown(document.body, { key: 'a' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(pdf).not.toHaveBeenCalled()
+    pdf.mockRestore()
+  })
+})
+
+describe('FactureList — AERR17 : émettre une ligne demande confirmation', () => {
+  it('Émettre d\'une ligne brouillon : confirmation nommée, Annuler ⇒ aucune émission', async () => {
+    // AERR17 (C-AERR-015) — mutant : retirer le `confirmMsg` ⇒ échec.
+    const emettre = vi.spyOn(ventesApi, 'emettreFacture').mockResolvedValue({ data: {} })
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider.jsx')
+    const f = { ...baseFacture, id: 12, reference: 'BROUILLON-12', statut: 'brouillon', total_ttc: 5000 }
+    render(
+      <Provider store={makeStore({ factures: [f] })}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><ConfirmProvider><FactureList /></ConfirmProvider></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    const row = screen.getByText('BROUILLON-12').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Émettre/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Émettre la facture BROUILLON-12')
+    expect(boite).toHaveTextContent('Un numéro légal lui sera attribué.')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(emettre).not.toHaveBeenCalled()
+    emettre.mockRestore()
+  })
+})
+
+describe('FactureList — AERR20 : « Marquer payée sans détail »', () => {
+  it('motif vide : boîte ouverte + erreur sous Motif ; refus serveur : motif gardé', async () => {
+    // AERR20 (C-AERR-018) — mutant : remettre `setPayeeSecheMotif('')` avant le test ⇒ échec.
+    const marquer = vi.spyOn(ventesApi, 'marquerPayeeFacture')
+      .mockRejectedValue({ response: { status: 400, data: { detail: 'Refusé.' } } })
+    const user = userEvent.setup()
+    renderList({ factures: [{ ...baseFacture, id: 42, reference: 'FAC-2026-11-0042' }] })
+    const row = screen.getByText('FAC-2026-11-0042').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Actions/ }))
+    await user.click(await screen.findByTestId('marquer-payee'))
+    const boite = await screen.findByRole('alertdialog')
+    await user.click(within(boite).getByRole('button', { name: 'Marquer payée quand même' }))
+    expect(within(boite).getByText(/Motif obligatoire/)).toBeInTheDocument()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(marquer).not.toHaveBeenCalled()
+
+    await user.type(within(boite).getByLabelText(/Motif/), 'virement hors ERP')
+    await user.click(within(boite).getByRole('button', { name: 'Marquer payée quand même' }))
+    await waitFor(() => expect(marquer).toHaveBeenCalledWith(42, 'virement hors ERP'))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(within(screen.getByRole('alertdialog')).getByLabelText(/Motif/)).toHaveValue('virement hors ERP')
+    marquer.mockRestore()
+  })
+})
+
 describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) et charge les vues serveur', async () => {
     renderList({ factures: [baseFacture] })
@@ -139,6 +213,41 @@ describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   })
 })
 
+describe('FactureList — AERR1 : relecture en cours ou ratée après un geste', () => {
+  it('relecture rejetée : les lignes restent, avis + Réessayer, boîte Paiement montée', async () => {
+    const trois = [1, 2, 3].map((i) => ({ ...baseFacture, id: i, reference: `FAC-AERR1-000${i}` }))
+    const base = makeStore({ factures: trois }).getState()
+    const store = configureStore({
+      reducer: (etat = base, action) => {
+        if (action.type === 'essai/relecture') return { ...etat, ventes: { ...etat.ventes, loading: true, error: null } }
+        if (action.type === 'essai/rejet') return { ...etat, ventes: { ...etat.ventes, loading: false, error: 'Réseau' } }
+        return etat
+      },
+      middleware: (d) => d({ serializableCheck: false, immutableCheck: false }),
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><FactureList /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    const row = screen.getByText('FAC-AERR1-0001').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Encaisser/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    act(() => { store.dispatch({ type: 'essai/relecture' }) })
+    expect(screen.getByText('FAC-AERR1-0003')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    act(() => { store.dispatch({ type: 'essai/rejet' }) })
+    for (const i of [1, 2, 3]) expect(screen.getByText(`FAC-AERR1-000${i}`)).toBeInTheDocument()
+    const avis = screen.getByTestId('factures-pas-a-jour')
+    expect(avis).toHaveTextContent('Liste pas à jour')
+    expect(within(avis).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByText('Erreur de chargement')).toBeNull()
+  })
+})
+
 describe('FactureList — WR2b : « Payer en ligne »', () => {
   it('crée le lien de paiement et le copie au presse-papier', async () => {
     const writeText = vi.fn(() => Promise.resolve())
@@ -152,6 +261,20 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(CONTRAT_LIEN.pay_url)
     })
+  })
+
+  it('Payer en ligne, writeText rejeté : pas de « Création … impossible », action Ouvrir', async () => {
+    // AERR10 (C-AERR-010) — mutant : remettre la copie dans le `try` commun ⇒ échec.
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.reject(new Error('refus'))) } })
+    toastMock.error.mockClear()
+    renderList({ factures: [{ ...baseFacture }] })
+    const row = screen.getByText('FAC-2026-07-0001').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Payer en ligne/ }))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    const [msg, opts] = toastMock.error.mock.calls.at(-1)
+    expect(msg).not.toMatch(/Création du lien de paiement impossible/)
+    expect(msg).toContain(CONTRAT_LIEN.pay_url)
+    expect(opts?.action?.label).toBe('Ouvrir')
   })
 
   it('le toast annonce montant_a_payer', async () => {
@@ -238,11 +361,68 @@ describe('FactureList — WR2b : barre d\'actions en masse (bulkFactures)', () =
 
     const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
     expect(within(bulkBar).getByText('1')).toBeVisible()
+    // AERR7 — l'émission en masse est confirmée (repli hors provider : window.confirm).
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
 
     await waitFor(() => {
       expect(ventesApi.bulkFactures).toHaveBeenCalledWith('emettre', [1])
     })
+    confirmSpy.mockRestore()
+  })
+
+  it('Émettre en masse : confirmation nommée, Annuler ⇒ aucun bulkFactures', async () => {
+    // AERR7 (C-AERR-007) — mutant : retirer l'`await confirm(` ⇒ échec.
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider.jsx')
+    const store = makeStore({
+      factures: [
+        { ...baseFacture, id: 1, reference: 'FAC-BULK-1', statut: 'brouillon' },
+        { ...baseFacture, id: 2, reference: 'FAC-BULK-2', statut: 'brouillon' },
+      ],
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><ConfirmProvider><FactureList /></ConfirmProvider></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
+    fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Émettre 2 factures ?')
+    expect(boite).toHaveTextContent('FAC-BULK-1, FAC-BULK-2')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(ventesApi.bulkFactures).not.toHaveBeenCalled()
+    expect(within(bulkBar).getByText('2')).toBeVisible()
+
+    fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(ventesApi.bulkFactures).toHaveBeenCalledWith('emettre', [1, 2]))
+  })
+
+  it('bulk partiel : raison de la refusée affichée, sélection = la refusée', async () => {
+    // AERR8 (C-AERR-008) — mutant : remettre `clearSelection()` en échec partiel ⇒ échec.
+    ventesApi.bulkFactures.mockResolvedValueOnce({
+      data: { 1: { ok: true }, 2: { ok: true }, 3: { ok: false, detail: 'ICE du client manquant.' } },
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderList({
+      factures: [1, 2, 3].map(i => ({ ...baseFacture, id: i, reference: `FAC-LOT-${i}`, statut: 'brouillon' })),
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
+    fireEvent.click(within(bulkBar).getByRole('button', { name: 'Émettre' }))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    const msg = toastMock.error.mock.calls.at(-1)[0]
+    expect(msg).toMatch(/FAC-LOT-3 : ICE du client manquant\./)
+    expect(msg).not.toMatch(/FAC-LOT-1/)
+    await waitFor(() => expect(within(bulkBar).getByText('1')).toBeVisible())
+    expect(screen.getByRole('checkbox', { name: /Sélectionner la facture FAC-LOT-3/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Sélectionner la facture FAC-LOT-1/ })).not.toBeChecked()
+    confirmSpy.mockRestore()
   })
 
   it('tout sélectionner coche toutes les lignes filtrées', () => {
@@ -315,6 +495,21 @@ describe('FactureList — VX142(a) : toolbar « Exporter » unique, plus de wind
     expect(screen.getByRole('button', { name: 'Mois' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Trimestre' })).toBeVisible()
     expect(promptSpy).not.toHaveBeenCalled()
+  })
+
+  it('à 00:30 le 1er décembre (heure du Maroc), le journal propose 2026-12', async () => {
+    // AERR18 (C-AERR-016) — mutant : remettre `toISOString().slice(0, 7)` ⇒ échec (UTC = la veille).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-30T23:30:00Z')) // 00:30 à Casablanca (UTC+1)
+    try {
+      const user = userEvent.setup()
+      renderList({ factures: [{ ...baseFacture }] })
+      await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
+      await user.click(screen.getByRole('menuitem', { name: /Journal comptable/ }))
+      expect(await screen.findByLabelText('Mois du journal')).toHaveValue('2026-12')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('« Export comptable… » ouvre un Dialog à deux champs date, jamais window.prompt', async () => {

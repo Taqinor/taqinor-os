@@ -65,7 +65,8 @@ export default function RemisesEncaissementPage() {
       setRows(Array.isArray(data) ? data : (data?.results || []))
       setErreur(false)
     })
-    .catch(() => { setRows([]); setErreur(true) })
+    // AERR1 — un échec garde les lignes déjà affichées (avis « Liste pas à jour »).
+    .catch(() => { setErreur(true) })
     .finally(() => setLoading(false))
 
   // `loading`/`erreur` démarrent déjà à leurs valeurs de chargement : aucun
@@ -265,11 +266,18 @@ export default function RemisesEncaissementPage() {
 
       <Card className="overflow-hidden">
         {loading && <Skeleton className="m-4 h-24" />}
-        {!loading && erreur && (
+        {!loading && erreur && rows.length === 0 && (
           <EmptyState
             title="Chargement impossible"
             description="Les remises d'encaissement n'ont pas pu être chargées."
+            action={<Button size="sm" variant="outline" onClick={() => charger()}>Réessayer</Button>}
           />
+        )}
+        {!loading && erreur && rows.length > 0 && (
+          <div role="status" data-testid="remises-pas-a-jour" className="m-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Liste pas à jour — la dernière relecture a échoué.</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => charger()}>Réessayer</Button>
+          </div>
         )}
         {!loading && !erreur && rows.length === 0 && (
           <EmptyState
@@ -278,7 +286,7 @@ export default function RemisesEncaissementPage() {
             description="Aucune collecte terrain déclarée pour votre société."
           />
         )}
-        {!loading && !erreur && rows.length > 0 && (
+        {!loading && rows.length > 0 && (
           <Table
             aria-label="Remises d'encaissement terrain"
             caption="Remises d'encaissement terrain par technicien"

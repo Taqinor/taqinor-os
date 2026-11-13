@@ -76,6 +76,33 @@ class RemiseStatutTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         return r.data['id']
 
+    def test_patch_apres_cloture_409(self):
+        """ACNC6 (C-ACNC-002) — remise clôturée en base APRÈS son chargement
+        par la vue : PATCH et DELETE répondent 409, la remise reste clôturée
+        et en base. Mutant : retirer la relecture sous verrou ⇒ rouverte."""
+        from unittest.mock import patch
+        from apps.facturation.views.remise_encaissement import (
+            RemiseEncaissementViewSet)
+        from apps.ventes.models import RemiseEncaissement
+        rid = self._remise_ouverte()
+        vrai = RemiseEncaissementViewSet.get_object
+
+        def _charge_puis_cloture(vue):
+            obj = vrai(vue)  # instance chargée « ouverte »…
+            RemiseEncaissement.objects.filter(pk=obj.pk).update(
+                statut=RemiseEncaissement.Statut.CLOTUREE)  # …clôturée entre-temps
+            return obj
+        with patch.object(RemiseEncaissementViewSet, 'get_object',
+                          _charge_puis_cloture):
+            r = self.api_resp.patch(f'{URL}{rid}/', {'montant_declare': '1600.00'},
+                                    format='json')
+            self.assertEqual(r.status_code, 409, getattr(r, 'data', None))
+            self.assertEqual(RemiseEncaissement.objects.get(pk=rid).statut, 'cloturee')
+            RemiseEncaissement.objects.filter(pk=rid).update(statut='ouverte')
+            r = self.api_resp.delete(f'{URL}{rid}/')
+            self.assertEqual(r.status_code, 409, getattr(r, 'data', None))
+        self.assertEqual(RemiseEncaissement.objects.get(pk=rid).statut, 'cloturee')
+
     def test_patch_statut_ignore(self):
         from apps.ventes.models import RemiseEncaissement
         rid = self._remise_ouverte()

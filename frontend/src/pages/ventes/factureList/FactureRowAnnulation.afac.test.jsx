@@ -274,6 +274,24 @@ describe('AFAC13 — annulation d’une facture qui porte de l’argent', () => 
     expect(ouvrirBlob).toHaveBeenCalledWith(blob, 'FAC-1.pdf')
   })
 
+  it('useActionsVente : supprimer pendant emettre en vol n’appelle pas supprimerFacture', async () => {
+    // ACNC5 (C-ACNC-002) — un geste en vol par facture ; mutant : retirer la garde ⇒ DELETE envoyé.
+    let finir
+    post.mockImplementation(() => new Promise((ok) => { finir = () => ok({ data: {} }) }))
+    del.mockResolvedValue({ data: {} })
+    const { result } = renderHook(() => useActionsVente())
+    let emission
+    act(() => { emission = result.current.emettre({ id: 7 }) })
+    await waitFor(() => expect(result.current.factureEnVol).toBe(7))
+    let r
+    await act(async () => { r = await result.current.supprimer({ id: 7, reference: 'BROUILLON-7' }) })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe('occupe')
+    expect(del).not.toHaveBeenCalled()
+    await act(async () => { finir(); await emission })
+    expect(result.current.factureEnVol).toBeNull()
+  })
+
   it('le thunk envoie le corps {acompte} (transmet la directive)', async () => {
     post.mockResolvedValue({ data: CONTRAT.exemple })
     const dispatch = vi.fn()

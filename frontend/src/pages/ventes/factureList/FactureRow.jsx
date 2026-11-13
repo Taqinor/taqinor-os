@@ -80,6 +80,8 @@ export default function FactureRow({ f, ctx }) {
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
   } = ctx
+  // AERR17 — émettre attribue un numéro légal : confirmation qui nomme la facture.
+  const confirmerEmission = `Émettre la facture ${f.reference} (${formatMAD(f.total_ttc)}) ? Un numéro légal lui sera attribué.`
   // Déstructuration en deux temps (ACAL345 : la liste miroir de rowCtx dans
   // FactureList.jsx ne doit pas former un bloc littéral identique ≥ 6 lignes).
   const {
@@ -322,7 +324,7 @@ export default function FactureRow({ f, ctx }) {
               apparaître deux fois. */}
           {peutEncaisser && nba === 'emettre' && (
             <Button size="sm" variant="default" loading={busy}
-                    onClick={() => doAction(emettreFacture, f.id)}
+                    onClick={() => doAction(emettreFacture, f.id, confirmerEmission)}
                     title={f.motif_non_encaissable || 'Action recommandée'}>
               <Zap className="size-3.5" aria-hidden="true" /> Émettre
             </Button>
@@ -340,7 +342,7 @@ export default function FactureRow({ f, ctx }) {
           )}
           {peutEncaisser && f.statut === 'brouillon' && nba !== 'emettre' && (
             <Button size="sm" variant="outline"
-                    loading={busy} onClick={() => doAction(emettreFacture, f.id)}
+                    loading={busy} onClick={() => doAction(emettreFacture, f.id, confirmerEmission)}
                     title={f.motif_non_encaissable || undefined}>
               Émettre
             </Button>

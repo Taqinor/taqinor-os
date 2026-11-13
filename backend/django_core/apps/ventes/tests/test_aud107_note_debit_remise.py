@@ -99,6 +99,29 @@ class TestNoteDebitRemiseGlobale(TestCase):
         self.assertEqual(note.total_ht, Decimal('17000.00'))
         self.assertEqual(note.total_ttc, Decimal('20400.00'))
 
+    def test_meme_cle_une_seule_note(self):
+        """ACNC2 (C-ACNC-001) — le même corps envoyé deux fois avec la même
+        clé : 201 puis 201 rejoué (même id, même référence), UNE note ; corps
+        différent sous la même clé : 409 ; sans clé : inchangé. Mutant :
+        retirer l'enveloppe ⇒ 2 notes."""
+        from unittest.mock import patch
+        corps = {'motif': 'pénalité', 'montant': '500', 'taux_tva': '20',
+                 'idempotency_key': 'ACNC2-K'}
+        avant = self.facture.montant_du
+        with patch('apps.ventes.utils.pdf._upload_pdf'):
+            r1 = self._creer(corps)
+            r2 = self._creer(corps)
+        self.assertEqual(r1.status_code, 201, r1.data)
+        self.assertEqual(r2.status_code, 201, r2.data)
+        self.assertEqual((r2.data['id'], r2.data['reference']),
+                         (r1.data['id'], r1.data['reference']))
+        self.assertEqual(NoteDebit.objects.filter(facture=self.facture).count(), 1)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.montant_du, avant + Decimal('600'))
+        r3 = self._creer({**corps, 'montant': '700'})
+        self.assertEqual(r3.status_code, 409, r3.data)
+        self.assertEqual(NoteDebit.objects.filter(facture=self.facture).count(), 1)
+
     def test_le_pdf_note_debit_se_reconcilie_au_centime(self):
         resp = self._creer()
         note = NoteDebit.objects.get(pk=resp.data['id'])

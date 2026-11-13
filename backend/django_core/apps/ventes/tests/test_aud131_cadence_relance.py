@@ -133,6 +133,26 @@ class TestAud131GardeEtatRelanceManuelle(_Base):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertFalse(RelanceLog.objects.filter(facture=facture).exists())
 
+    def test_meme_niveau_meme_jour_une_seule_ligne(self):
+        """ACNC11 (C-ACNC-009) — `{niveau: 1, note}` POSTé deux fois le même
+        jour : une seule `RelanceLog` niveau 1, 2e réponse 200 ; `{}` deux
+        fois sur une autre facture : une seule ligne, aucun niveau 2 ; un
+        niveau différent reste consigné. Mutant : retirer la relecture du
+        jour ⇒ 2 lignes (ou niveau 2)."""
+        facture = self._facture()
+        for _ in range(2):
+            resp = self._post(facture, {'niveau': 1, 'note': 'appel'})
+            self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(list(RelanceLog.objects.filter(
+            facture=facture).values_list('niveau', flat=True)), [1])
+        autre = self._facture()
+        for _ in range(2):
+            self.assertEqual(self._post(autre, {}).status_code, 200)
+        self.assertEqual(list(RelanceLog.objects.filter(
+            facture=autre).values_list('niveau', flat=True)), [1])
+        self.assertEqual(self._post(facture, {'niveau': 2}).status_code, 200)
+        self.assertEqual(RelanceLog.objects.filter(facture=facture).count(), 2)
+
     def test_relancer_une_facture_annulee_est_refuse(self):
         facture = self._facture(statut=Facture.Statut.ANNULEE)
         resp = self._post(facture, {'niveau': 1})

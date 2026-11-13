@@ -59,17 +59,23 @@ export default function useFactureCompta() {
   const [auditBusy, setAuditBusy] = useState(false)
   // VX142(a) — Journal comptable : petit Dialog mois/trimestre à la place du
   // window.prompt() texte libre (regroupé dans le menu « Exporter »).
-  const [journalOpen, setJournalOpen] = useState(false)
+  // AERR18 — période proposée calculée à l'OUVERTURE, en heure locale (jamais UTC).
+  const [journalOpen, setJournalOuvert] = useState(false)
   const [journalMode, setJournalMode] = useState('mois') // 'mois' | 'trimestre'
-  const [journalMois, setJournalMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [journalMois, setJournalMois] = useState(() => todayLocalIso().slice(0, 7))
   const [journalAnnee, setJournalAnnee] = useState(() => String(new Date().getFullYear()))
   const [journalTrimestre, setJournalTrimestre] = useState('1')
   const [journalBusy, setJournalBusy] = useState(false)
   // VX142(a) — Export comptable : même traitement, deux champs date au lieu
   // de deux window.prompt() successifs.
-  const [exportComptableOpen, setExportComptableOpen] = useState(false)
-  const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
+  const [exportComptableOpen, setExportOuvert] = useState(false)
+  const [exportStart, setExportStart] = useState(() => todayLocalIso().slice(0, 8) + '01')
   const [exportEnd, setExportEnd] = useState(() => todayLocalIso())
+  const setJournalOpen = (o) => { if (o) setJournalMois(todayLocalIso().slice(0, 7)); setJournalOuvert(o) }
+  const setExportComptableOpen = (o) => {
+    if (o) { const j = todayLocalIso(); setExportStart(j.slice(0, 8) + '01'); setExportEnd(j) }
+    setExportOuvert(o)
+  }
   const [exportComptableBusy, setExportComptableBusy] = useState(false)
   // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
   // d'erreur ; ceci ajoute juste l'état chargement manquant).

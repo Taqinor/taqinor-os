@@ -60,6 +60,35 @@ class TestAUD124MarquerPayee(TestCase):
     def _url(self, facture):
         return f'/api/django/ventes/factures/{facture.id}/marquer-payee/'
 
+    def test_deux_envois_une_seule_trace(self):
+        """ACNC7 (C-ACNC-002) — facture chargée « émise » alors qu'un collègue
+        vient de la marquer payée : le 2e envoi répond 200 sans 2e ligne de
+        chatter. Mutant : statut lu sur l'instance ⇒ 2e trace."""
+        from unittest.mock import patch
+        from apps.facturation.views.facture import FactureViewSet
+        facture = self._facture('FAC-AUD124-ACNC7', ttc=Decimal('12000'))
+        Paiement.objects.create(
+            company=self.company, facture=facture,
+            montant=Decimal('12000'), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+        corps = {'motif': 'Constaté au relevé'}
+        r = self.api.post(self._url(facture), corps, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        traces = FactureActivity.objects.filter(facture=facture).count()
+        vrai = FactureViewSet.get_object
+
+        def _perime(vue):
+            f = vrai(vue)
+            f.statut = Facture.Statut.EMISE  # vue chargée avant la bascule
+            return f
+        with patch.object(FactureViewSet, 'get_object', _perime):
+            r = self.api.post(self._url(facture), corps, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(
+            FactureActivity.objects.filter(facture=facture).count(), traces)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+
     def test_sans_motif_refuse(self):
         facture = self._facture('FAC-AUD124-0001')
         r = self.api.post(self._url(facture), {}, format='json')

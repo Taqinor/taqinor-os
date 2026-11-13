@@ -175,6 +175,47 @@ class DocumentProduitFactureTests(TestCase):
 
     @patch('apps.ventes.utils.pdf._upload_pdf')
     @patch('apps.ventes.utils.pdf._download', return_value=None)
+    def test_rendu_identique_a_une_minute_ne_cree_pas_de_version(
+            self, mock_dl, mock_upload):
+        """ACEL70 (C-ACEL-037) — deux rendus à une minute d'intervalle
+        (« générée le … à HH:MM » diffère), données inchangées ⇒ 1 document,
+        1 version ; une ligne ajoutée ⇒ 2 versions. Mutant : émettre sans
+        comparer l'empreinte ⇒ 2 versions dès le 2e rendu."""
+        from datetime import datetime, timezone as dt_tz
+        from freezegun import freeze_time
+
+        from apps.ged.models import DocumentVersion
+        from apps.ventes.utils.pdf import (
+            empreinte_donnees_facture_pdf, generate_facture_pdf,
+        )
+
+        cabinet = Cabinet.objects.create(company=self.company, nom='Ventes')
+        RoutageDocumentaire.objects.update_or_create(
+            company=self.company, source='ventes_facture',
+            defaults={'cabinet_cible': cabinet, 'dossier_cible': 'Factures'})
+        facture = make_facture(self.user, self.client_obj, self.produit)
+        versions = DocumentVersion.objects.filter(
+            document__company=self.company)
+        with freeze_time(datetime(2026, 11, 13, 9, 0, tzinfo=dt_tz.utc)) as t:
+            generate_facture_pdf(facture.id)
+            t.tick(60)
+            generate_facture_pdf(facture.id)
+        self.assertEqual(
+            Document.objects.filter(company=self.company).count(), 1)
+        self.assertEqual(versions.count(), 1)
+
+        LigneFacture.objects.create(
+            facture=facture, produit=self.produit, designation='Ajout',
+            quantite=Decimal('1'), prix_unitaire=Decimal('50.00'),
+            remise=Decimal('0'))
+        generate_facture_pdf(facture.id)
+        self.assertEqual(versions.count(), 2)
+        facture.refresh_from_db()
+        self.assertEqual(facture.pdf_render_meta,
+                         {'empreinte': empreinte_donnees_facture_pdf(facture)})
+
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    @patch('apps.ventes.utils.pdf._download', return_value=None)
     def test_echec_du_recepteur_ne_casse_jamais_la_generation_pdf(
             self, mock_dl, mock_upload):
         """Best-effort : une émission qui échoue (ex. panne MinIO côté GED)

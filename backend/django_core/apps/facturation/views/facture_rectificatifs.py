@@ -177,6 +177,25 @@ def _montant_note_debit(donnees, facture):
     return (Decimal(brut), taux), None
 
 
+def cle_du_corps(request):
+    """ACNC2 — la clé d'envoi portée par le corps (``idempotency_key``, même
+    forme que ``Paiement.idempotency_key``) ; ``None`` sans clé."""
+    corps = request.data if isinstance(request.data, dict) else {}
+    cle = corps.get('idempotency_key')
+    return (str(cle).strip()[:255] or None) if cle else None
+
+
+def rejeu_par_cle(vue, request, suffixe, geste):
+    """ACNC3 — joue ``geste()`` (l'action elle-même) sous
+    ``_avec_idempotence`` avec la clé du corps, UNE fois par requête ; rend
+    ``None`` quand l'action tourne déjà sous l'enveloppe."""
+    if getattr(request, '_rejeu_par_cle', False):
+        return None
+    request._rejeu_par_cle = True
+    return vue._avec_idempotence(request, geste, suffixe=suffixe,
+                                 cle=cle_du_corps(request))
+
+
 class FactureRectificatifsActionsMixin:
     """Les documents qui corrigent une facture émise : avoir, note de
     débit, retour client, facture de pénalités."""
@@ -197,6 +216,11 @@ class FactureRectificatifsActionsMixin:
         même avoir CORRECTION (`lignes` et `type` du corps ignorés), mêmes
         refus (403 de ``PEUT_ANNULER``, 409, ``code`` de
         ``facture_annulation.json``)."""
+        # ACNC3 (C-ACNC-001) — rejouable par la clé du corps : un seul avoir.
+        rejeu = rejeu_par_cle(self, request, 'avoir',
+                              lambda: self.creer_avoir(request, pk))
+        if rejeu is not None:
+            return rejeu
         facture = self.get_object()
         # Tour 3 M1 — corps validé (types, listes, enums) AVANT toute lecture.
         valider_corps_lignes(request, D.CreerAvoirRequest)
@@ -314,6 +338,13 @@ class FactureRectificatifsActionsMixin:
         """ZFAC4 — crée une NoteDebit (majoration d'une facture déjà émise) —
         pendant de l'avoir. Total (copie des lignes de la facture) ou
         personnalisé (`lignes` fourni) ; augmente ``Facture.montant_du``."""
+        # ACNC2 (C-ACNC-001) — rejouable : la clé ``idempotency_key`` du corps
+        # (ou l'en-tête ``Idempotency-Key``) rend la note déjà créée, jamais
+        # une seconde note numérotée ; corps différent sous la même clé : 409.
+        rejeu = rejeu_par_cle(self, request, 'note_debit',
+                              lambda: self.creer_note_debit(request, pk))
+        if rejeu is not None:
+            return rejeu
         facture = self.get_object()
         # CI #1000 — corps validé (types, listes) AVANT toute lecture, comme
         # l'avoir : ``taux_tva: null`` / ``motif: 5`` (500) passaient à la main.
@@ -467,6 +498,11 @@ class FactureRectificatifsActionsMixin:
         ENTREE via `stock.services`). Motif de retour OBLIGATOIRE. Une
         quantité retournée supérieure à ce qui a été vendu (moins les retours
         déjà actés) est refusée."""
+        # ACNC3 — rejouable par la clé du corps : un avoir, une entrée de stock.
+        rejeu = rejeu_par_cle(self, request, 'retour',
+                              lambda: self.retour_client(request, pk))
+        if rejeu is not None:
+            return rejeu
         facture = self.get_object()
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             # ENF11 — refus d'ÉTAT (brouillon, annulée) : 409.

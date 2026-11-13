@@ -101,14 +101,17 @@ class FactureEncaissementActionsMixin:
             EncaissementRefuse, encaisser_sur_facture,
         )
         try:
-            facture, _paiement = encaisser_sur_facture(
+            facture, paiement = encaisser_sur_facture(
                 facture=facture, donnees=dict(serializer.validated_data),
                 user=request.user)
         except EncaissementRefuse as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_409_CONFLICT)
+        # ACNC1 — un rejeu par clé rend le paiement déjà enregistré : 200.
+        rejoue = getattr(paiement, 'rejoue', False)
         return Response(
-            FactureSerializer(facture, context={'request': request}).data, status=status.HTTP_201_CREATED,
+            FactureSerializer(facture, context={'request': request}).data,
+            status=status.HTTP_200_OK if rejoue else status.HTTP_201_CREATED,
         )
 
     @extend_schema(request=D.AbandonnerSoldeRequest,
@@ -379,6 +382,13 @@ class FactureEncaissementActionsMixin:
             avance XFAC1 explicite (Paiement sans facture, non affecté),
             renvoyée dans la réponse — jamais abandonnée en silence.
         """
+        # ACNC9 (C-ACNC-008) — rejouable par la clé du corps : le 2e envoi
+        # rend la même répartition, jamais tout le virement en avance.
+        from .facture_rectificatifs import rejeu_par_cle
+        rejeu = rejeu_par_cle(self, request, 'encaissement_groupe',
+                              lambda: self.encaissement_groupe(request))
+        if rejeu is not None:
+            return rejeu
         from decimal import Decimal
 
         from apps.crm.selectors import get_company_client

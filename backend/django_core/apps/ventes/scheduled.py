@@ -97,27 +97,38 @@ def check_overdue_factures():
         company_id__in=active_company_ids(),
     ).select_related('client').prefetch_related(
         *RELATIONS_MONTANT_DU)
-    for facture in candidates:
+    a_basculer = [
+        f.pk for f in candidates
         # CIQ214 — en retard seulement si l'EXIGIBLE reste dû (une retenue de
         # garantie non libérée n'est pas un retard).
-        if facture.montant_exigible <= 0:
-            continue
-        echeance = _echeance_effective(facture, today)
-        if echeance >= today:
-            continue
-        facture.statut = Facture.Statut.EN_RETARD
-        champs = ['statut']
-        # AUD131 — amorce de cadence : sans cette date, le beat ne verrait
-        # JAMAIS cette facture (cf. docstring). AFAC46 — LA règle partagée
-        # (`amorcer_cadence`, aussi appelée à la réouverture après un rejet).
-        cid = facture.company_id
-        if cid not in premiers_niveaux:
-            premiers_niveaux[cid] = niveaux_cadence(facture.company)
-        if amorcer_cadence(facture, echeance=echeance,
-                           niveaux=premiers_niveaux[cid], save=False):
-            champs.append('prochaine_relance')
-        facture.save(update_fields=champs)
-        flipped += 1
+        if f.montant_exigible > 0 and _echeance_effective(f, today) < today]
+    # ACEL68 (C-ACEL-010) — relecture SOUS VERROU (celui que prend déjà
+    # l'encaissement) du statut et de l'exigible avant d'écrire : une facture
+    # soldée pendant le passage reste soldée. Une requête pour le lot (AARG43).
+    from django.db import transaction
+    with transaction.atomic():
+        verrouillees = Facture.objects.select_for_update(of=('self',)).filter(
+            pk__in=a_basculer, statut=Facture.Statut.EMISE,
+        ).select_related('client').prefetch_related(*RELATIONS_MONTANT_DU)
+        for facture in verrouillees:
+            if facture.montant_exigible <= 0:
+                continue
+            echeance = _echeance_effective(facture, today)
+            if echeance >= today:
+                continue
+            facture.statut = Facture.Statut.EN_RETARD
+            champs = ['statut']
+            # AUD131 — amorce de cadence : sans cette date, le beat ne verrait
+            # JAMAIS cette facture (cf. docstring). AFAC46 — LA règle partagée
+            # (`amorcer_cadence`, aussi appelée à la réouverture après un rejet).
+            cid = facture.company_id
+            if cid not in premiers_niveaux:
+                premiers_niveaux[cid] = niveaux_cadence(facture.company)
+            if amorcer_cadence(facture, echeance=echeance,
+                               niveaux=premiers_niveaux[cid], save=False):
+                champs.append('prochaine_relance')
+            facture.save(update_fields=champs)
+            flipped += 1
     logger.info('check_overdue_factures: %s facture(s) basculée(s) en retard',
                 flipped)
     return flipped
@@ -158,22 +169,41 @@ def _check_promesses_expirees(today):
     ).select_related('facture').prefetch_related(
         'facture__paiements', 'facture__avoirs',
         'facture__retenues_subies', 'facture__affectations_paiement')
+    a_rompre = []
     for promesse in en_cours:
         facture = promesse.facture
-        if facture.montant_exigible <= 0 \
-                or _promesse_honoree(promesse, facture):
+        if (facture.montant_exigible <= 0
+                or _promesse_honoree(promesse, facture)):
             # CIQ214 — exigible réglé ; AFAC49 (D-AFAC-C10, option a) — ou le
             # client a payé AU MOINS le montant promis depuis la promesse,
             # même si un solde reste dû : la promesse est TENUE.
             promesse.statut = PromessePaiement.Statut.TENUE
             promesse.save(update_fields=['statut'])
             continue
-        promesse.statut = PromessePaiement.Statut.ROMPUE
-        promesse.save(update_fields=['statut'])
-        if facture.exclu_relances_jusquau is not None:
-            facture.exclu_relances_jusquau = None
-            facture.save(update_fields=['exclu_relances_jusquau'])
-        rompues += 1
+        a_rompre.append((promesse.pk, facture.pk))
+    # ACEL68 (C-ACEL-010) — relecture SOUS VERROU de la facture (celui que
+    # prend l'encaissement) et de la promesse avant d'écrire « rompue ».
+    from django.db import transaction
+    from .models import Facture
+    for pk, facture_pk in a_rompre:
+        with transaction.atomic():
+            facture = Facture.objects.select_for_update().prefetch_related(
+                *RELATIONS_MONTANT_DU).get(pk=facture_pk)
+            promesse = PromessePaiement.objects.select_for_update().filter(
+                pk=pk, statut=PromessePaiement.Statut.EN_COURS).first()
+            if promesse is None:
+                continue
+            tenue = (facture.montant_exigible <= 0
+                     or _promesse_honoree(promesse, facture))
+            promesse.statut = (PromessePaiement.Statut.TENUE if tenue
+                               else PromessePaiement.Statut.ROMPUE)
+            promesse.save(update_fields=['statut'])
+            if tenue:
+                continue
+            if facture.exclu_relances_jusquau is not None:
+                facture.exclu_relances_jusquau = None
+                facture.save(update_fields=['exclu_relances_jusquau'])
+            rompues += 1
     return rompues
 
 

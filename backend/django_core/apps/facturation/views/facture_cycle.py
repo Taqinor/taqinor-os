@@ -239,14 +239,27 @@ class FactureCycleActionsMixin:
         # délibéré qui solde sans encaissement — l'un des deux seuls cas
         # autorisés à sauter la garde centime-près. Le montant informatif
         # porté par l'événement reste le TTC du document, comme avant.
+        from django.db import transaction
         from apps.ventes.domain.encaissements import marquer_facture_soldee
-        marquer_facture_soldee(
-            facture, montant=facture.total_ttc, user=request.user,
-            source='marquer_payee_manuel', force=True)
+        with transaction.atomic():
+            # ACNC7 (C-ACNC-002) — statut RELU SOUS VERROU : déjà payée par un
+            # geste croisé ⇒ 200 sans 2e trace ; annulée entre-temps ⇒ 409.
+            facture = Facture.objects.select_for_update().get(pk=facture.pk)
+            bascule = facture.statut in (Facture.Statut.EMISE,
+                                         Facture.Statut.EN_RETARD)
+            if not bascule and facture.statut != Facture.Statut.PAYEE:
+                return Response({'detail': 'Seule une facture émise ou en '
+                                 'retard peut être marquée payée.'},
+                                status=status.HTTP_409_CONFLICT)
+            if bascule:
+                marquer_facture_soldee(
+                    facture, montant=facture.total_ttc, user=request.user,
+                    source='marquer_payee_manuel', force=True)
         facture.refresh_from_db()
-        # AUD124 — trace systématique : qui, quand, pourquoi.
-        from apps.ventes import activity
-        activity.log_facture_marquee_payee(facture, request.user, motif)
+        # AUD124 — trace systématique : qui, quand, pourquoi (une seule fois).
+        if bascule:
+            from apps.ventes import activity
+            activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture, context={'request': request}).data)
 
     @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee,

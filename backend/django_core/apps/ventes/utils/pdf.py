@@ -495,7 +495,10 @@ def generate_facture_pdf(facture_id):
         facture.fichier_pdf = key
         champs.append('fichier_pdf')
     meta = {'empreinte': empreinte_donnees_facture_pdf(facture)}
-    if facture.pdf_render_meta != meta:
+    # ACEL70 (C-ACEL-037) — la GED ne reçoit le PDF que si les DONNÉES ont
+    # changé (le gabarit imprime l'heure : les octets changent à chaque rendu).
+    donnees_changees = facture.pdf_render_meta != meta
+    if donnees_changees:
         facture.pdf_render_meta = meta
         champs.append('pdf_render_meta')
     if champs:
@@ -510,7 +513,7 @@ def generate_facture_pdf(facture_id):
     # LÉGALE : un brouillon (« BROUILLON-<id> », sans valeur comptable)
     # n'est jamais archivé en GED.
     from core.numbering import est_reference_provisoire
-    if (facture.statut != Facture.Statut.BROUILLON
+    if (donnees_changees and facture.statut != Facture.Statut.BROUILLON
             and not est_reference_provisoire(facture.reference)):
         _emettre_document_produit(
             'ventes_facture', facture.company, pdf_bytes, facture.reference,

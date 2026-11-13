@@ -407,6 +407,18 @@ def encaisser_sur_facture(*, facture, donnees, user):
         if locked.statut == Facture.Statut.ANNULEE:
             raise EncaissementRefuse(
                 'Impossible d\'encaisser sur une facture annulée.')
+        # ACNC1 (C-ACNC-001) — rejeu par clé : le paiement de même (société,
+        # clé) est RENDU sans rien écrire, AVANT la porte (un rejeu soldant
+        # tomberait sinon en 409 « soldée ») ; `rejoue` = 200 côté vue.
+        cle = donnees.get('idempotency_key')
+        deja = Paiement.objects.filter(
+            company_id=locked.company_id, idempotency_key=cle).first() if cle else None
+        if deja is not None:
+            if deja.facture_id != locked.pk:
+                raise EncaissementRefuse(
+                    'Cette clé d\'envoi a déjà servi pour une autre facture.')
+            deja.rejoue = True
+            return locked, deja
         # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122 J+7).
         motif = motif_non_encaissable(locked, donnees.get('date_paiement'))
         if motif:
@@ -974,7 +986,8 @@ def record_payment_from_link(*, link, payload=None):
 # ────────────────────────── factures ───────────────────────────────────────
 
 def enregistrer_avance(*, company, client, montant, date_paiement, mode,
-                       reference='', note='', created_by=None):
+                       reference='', note='', created_by=None,
+                       idempotency_key=None):
     """Enregistre un règlement reçu SANS facture (avance, acompte à la
     commande, trop-perçu). Le paiement reste ``statut_affectation=non_affecte``
     tant qu'il n'a pas été ventilé sur une ou plusieurs factures ouvertes du
@@ -993,10 +1006,18 @@ def enregistrer_avance(*, company, client, montant, date_paiement, mode,
         raise ValidationError({'montant': 'Le montant doit être positif.'})
     if client is None:
         raise ValidationError({'client': 'Client requis pour une avance.'})
+    # ACNC12 (C-ACNC-010) — rejouable par clé (contrainte
+    # ``uniq_paiement_idempotency_par_societe``) : l'avance déjà enregistrée
+    # est rendue, jamais une 2e.
+    deja = Paiement.objects.filter(
+        company=company, idempotency_key=idempotency_key).first() if idempotency_key else None
+    if deja is not None:
+        return deja
     return enregistrer_paiement(
         porte=False, company=company, client=client, montant=montant, user=created_by,
         statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
-        date_paiement=date_paiement, mode=mode, reference=reference, note=note)
+        date_paiement=date_paiement, mode=mode, reference=reference, note=note,
+        idempotency_key=idempotency_key or None)
 
 
 def crediter_trop_percu_en_avance(facture, avoir, *, user=None):

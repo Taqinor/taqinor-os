@@ -85,6 +85,30 @@ class TestTroisDivergencesFermees(_BaseSolde):
         self.assertEqual(solde['paye'], Decimal('0.00'))
         self.assertEqual(solde['restant'], facture.montant_du)
 
+    def test_rejet_sur_paiement_perime_409(self):
+        """ACNC7 (C-ACNC-002) — paiement chargé « valide » puis rejeté par un
+        collègue : le 2e rejet sur l'instance chargée répond 409 et un seul
+        ``paiement_rejete`` part. Mutant : statut lu sur l'instance ⇒ 2."""
+        from core.events import paiement_rejete
+        from apps.ventes.domain.recouvrement import (
+            PaiementRejectError, rejeter_paiement)
+        _devis, facture = self._devis_avec_facture(Decimal('12000'))
+        paiement = Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('12000'),
+            date_paiement=date(2026, 3, 1), mode='cheque')
+        charge = Paiement.objects.get(pk=paiement.pk)
+        recus = []
+
+        def _ecoute(sender, **kwargs):
+            recus.append(kwargs)
+        paiement_rejete.connect(_ecoute)
+        self.addCleanup(paiement_rejete.disconnect, _ecoute)
+        rejeter_paiement(paiement=paiement, motif='Impayé', user=self.user)
+        with self.assertRaises(PaiementRejectError) as ctx:
+            rejeter_paiement(paiement=charge, motif='Impayé', user=self.user)
+        self.assertTrue(ctx.exception.conflict)
+        self.assertEqual(len(recus), 1)
+
     def test_b_devis_solde_par_escompte_affiche_restant_zero(self):
         devis, facture = self._devis_avec_facture(Decimal('12000'))
         Paiement.objects.create(

@@ -108,6 +108,9 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
   // VX92 — « Créer un autre » : persisté, défaut OFF.
   const [payCreerUnAutre, setPayCreerUnAutre] = useState(lireCreerUnAutrePaiement)
   const payMontantRef = useRef(null)
+  // ACNC1 — clé d'envoi : créée au 1er envoi, GARDÉE entre deux clics (rejeu = même
+  // paiement), remise à zéro au succès et à chaque nouvelle facture ciblée.
+  const cleEnvoi = useRef(null)
 
   // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
   const [factureActivites, setFactureActivites] = useState([])
@@ -137,6 +140,7 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
     setPayReference('')
     setArrondiCaisse(null)
     setFactureActivites([])
+    cleEnvoi.current = null
     loadActivites(facture.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- formulaire réinitialisé uniquement quand la facture CIBLE change (facture.id), pas à chaque relecture de l'objet (D-ENF22)
   }, [facture?.id])
@@ -165,13 +169,16 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
     if (!facture) return
     setPaySaving(true)
     clearAll()
+    cleEnvoi.current ??= globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
     try {
       const res = await ventesApi.enregistrerPaiement(facture.id, {
         montant: parseFloat(payMontant),
         date_paiement: payDate,
         mode: payMode,
         reference: payReference || undefined,
+        idempotency_key: cleEnvoi.current,
       })
+      cleEnvoi.current = null
       ecrireDernierMode(payMode)  // VX93 — mémorise le mode pour le prochain paiement
       // VX155 — « facture payée » (résiduel retombé à 0) est un JALON, pas un
       // succès plat : toastMilestone avec réf/client/montant. Un règlement
@@ -202,6 +209,8 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
     } catch (err) {
       // La saisie est conservée ; le message serveur nomme le champ fautif.
       setFromResponse(err?.response?.data, { fallback: 'Enregistrement du paiement impossible.' })
+      // ACNC1 — sans réponse (délai, réseau) : le reste dû est relu avant tout renvoi.
+      if (!err?.response) relireFacture(facture.id)
     } finally {
       setPaySaving(false)
     }

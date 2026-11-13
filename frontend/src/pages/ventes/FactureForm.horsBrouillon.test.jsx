@@ -116,6 +116,24 @@ describe('AFAC71 — FactureForm hors brouillon', () => {
     expect(base.lignes.get(1)).toEqual(LIGNE)
   })
 
+  it('400 date_echeance : message sous Date d\'échéance', async () => {
+    // AERR6 (C-AERR-006) — mutant : remettre `setFromResponse(err)` ⇒ échec.
+    const { default: ventesApi } = await import('../../api/ventesApi')
+    const axiosErr = Object.assign(new Error('Request failed with status code 400'), {
+      isAxiosError: true, name: 'AxiosError', code: 'ERR_BAD_REQUEST',
+      response: { status: 400, data: { date_echeance: ['Période verrouillée.'], champ_inconnu: ['Refusé.'] } },
+    })
+    ventesApi.patchFacture.mockImplementationOnce(() => Promise.reject(axiosErr))
+    rendre({ ...base.facture, lignes: [{ ...LIGNE }] })
+    fireEvent.change(document.getElementById('fc-echeance'), { target: { value: '2026-01-31' } })
+    enregistrer()
+    expect(await screen.findByText('Période verrouillée.')).toBeInTheDocument()
+    expect(document.getElementById('fc-echeance')).toHaveAttribute('aria-invalid', 'true')
+    expect(document.getElementById('fc-echeance').value).toBe('2026-01-31')
+    expect(screen.getByText(/champ_inconnu : Refusé\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Request failed/)).toBeNull()
+  })
+
   it('brouillon : formulaire complet sans Statut/DGI, aucun statut envoyé', async () => {
     base.facture.statut = 'brouillon'
     rendre({ ...base.facture, lignes: [{ ...LIGNE }] })

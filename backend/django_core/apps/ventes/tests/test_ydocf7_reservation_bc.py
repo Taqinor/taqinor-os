@@ -106,6 +106,29 @@ class TestToggleOn(Ydocf7TestBase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 20)
 
+    def test_confirmer_sur_bc_perime_409(self):
+        """ACNC7 (C-ACNC-002) — un BC chargé « en attente » alors qu'un
+        collègue vient de le confirmer : le 2e « Confirmer » répond 409, une
+        seule réservation. Mutant : statut lu sur l'instance ⇒ 2e réservation."""
+        from unittest.mock import patch
+        from apps.ventes.views.bon_commande import BonCommandeViewSet
+        self._toggle(True)
+        url = f'/api/django/ventes/bons-commande/{self.bc.id}/confirmer/'
+        self.assertEqual(self.api.post(url).status_code, 200)
+        vrai = BonCommandeViewSet.get_object
+
+        def _perime(vue):
+            bc = vrai(vue)
+            bc.statut = BonCommande.Statut.EN_ATTENTE  # vue chargée avant
+            return bc
+        with patch.object(BonCommandeViewSet, 'get_object', _perime):
+            r = self.api.post(url)
+        self.assertEqual(r.status_code, 409, r.data)
+        resas = StockReservation.objects.filter(
+            installation=self.installation, produit=self.produit)
+        self.assertEqual(resas.count(), 1)
+        self.assertEqual(resas.get().quantite, 5)
+
     def test_annuler_garde_la_reservation_du_chantier_vivant(self):
         # ASTK123 (C-ASTK-031) — annuler le BC d'un chantier VIVANT ne libère
         # plus sa réservation (son besoin demeure) ; ce test figeait l'ancien
