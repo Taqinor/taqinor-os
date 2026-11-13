@@ -296,6 +296,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [incoterm, setIncoterm] = useState(bcf?.incoterm ?? '')
   const [lockVersion, setLockVersion] = useState(bcf?.lock_version)  // ACNC21 — verrou optimiste
   const [cleReception] = useState(() => globalThis.crypto?.randomUUID?.() ?? `rec-${Date.now()}`)  // ACNC23
+  const bcfCreeRef = useRef(null)  // ACNC29 — brouillon créé par un « Envoyer » échoué : réutilisé, jamais recréé
   const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
@@ -530,8 +531,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (payload.lignes.length === 0) { setError('Ajoutez au moins une ligne.'); return }
     setBusy(true)
     try {
-      const r = isNew ? await stockApi.createBonCommandeFournisseur(payload)
-        : await stockApi.updateBonCommandeFournisseur(bcf.id, payload)
+      const idExistant = bcf?.id ?? bcfCreeRef.current  // ACNC29 — jamais un second brouillon
+      const r = idExistant ? await stockApi.updateBonCommandeFournisseur(idExistant, payload)
+        : await stockApi.createBonCommandeFournisseur(payload)
       const avertissement = texteAvertissementsPrix(r?.data)
       if (avertissement) toast.warning(`Prix à vérifier : ${avertissement}`)
       onSaved?.()
@@ -554,9 +556,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setBusy(true); setError(null)
     try {
       // En brouillon, on enregistre d'abord d'éventuelles modifications.
-      const r = isNew ? await stockApi.createBonCommandeFournisseur(buildPayload())
-        : await stockApi.updateBonCommandeFournisseur(bcf.id, buildPayload())
-      const id = isNew ? r.data.id : bcf?.id
+      const idExistant = bcf?.id ?? bcfCreeRef.current
+      const r = idExistant ? await stockApi.updateBonCommandeFournisseur(idExistant, buildPayload())
+        : await stockApi.createBonCommandeFournisseur(buildPayload())
+      const id = idExistant ?? r.data.id
+      bcfCreeRef.current = id
       const avertissement = texteAvertissementsPrix(r?.data)
       if (avertissement && !(await confirmer({
         title: 'Envoyer malgré l\'avertissement prix ?', description: avertissement,

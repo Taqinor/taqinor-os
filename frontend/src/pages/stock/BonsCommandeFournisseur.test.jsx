@@ -709,3 +709,26 @@ describe('AERR35 — une lecture ratée ne vide jamais la liste des BCF', () => 
     expect(within(grid).getByText('BCF-77')).toBeInTheDocument()
   })
 })
+
+describe('ACNC29 — « Envoyer » sur un BCF neuf : un seul brouillon', () => {
+  it('envoi refusé (409 approbation) puis second « Envoyer » : update + envoi sur le MÊME id, un seul create', async () => {
+    const neuf = { statut: 'brouillon', fournisseur: 1,
+      lignes: [{ produit: 5, produit_nom: 'Onduleur', quantite: 2, prix_achat_unitaire: '100' }] }
+    stockApi.createBonCommandeFournisseur.mockResolvedValue({ data: { ...neuf, id: 55 } })
+    stockApi.updateBonCommandeFournisseur.mockResolvedValue({ data: { ...neuf, id: 55 } })
+    stockApi.envoyerBcf
+      .mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Approbation requise au-delà du seuil.' } } })
+      .mockResolvedValueOnce({ data: {} })
+    renderDetail({ bcf: neuf, fournisseurs: [{ id: 1, nom: 'F1' }] },
+      { role_nom: 'Directeur', permissions: ['achats_commander', 'prix_achat_voir'] })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    expect(await screen.findByText(/Approbation requise/)).toBeInTheDocument()
+    await new Promise((r) => { setTimeout(r, 450) })  // verrou anti double-clic (CAD177)
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledTimes(2))
+    expect(stockApi.createBonCommandeFournisseur).toHaveBeenCalledTimes(1)
+    expect(stockApi.updateBonCommandeFournisseur).toHaveBeenCalledWith(55, expect.any(Object))
+    expect(stockApi.envoyerBcf).toHaveBeenNthCalledWith(2, 55)
+  })
+})
+
