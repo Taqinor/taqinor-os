@@ -76,4 +76,17 @@ LIBELLES_CI = {
               'the {h}-year horizon used: the solar-only option is recommended.',
         'ar': 'مدة استرداد تقديرية {n} سنوات (مع احتساب استبدال البطارية)، تتجاوز '
               'أفق {h} سنوات المعتمد: يوصى بخيار الطاقة الشمسية وحدها.'},
+    # Lead nada (13/11/2026) — page 2 à deux options, sur le modèle résidentiel.
+    'ci_equipement_deux_options': {
+        'fr': 'Équipement des deux options', 'en': 'Equipment of both options',
+        'ar': 'معدات الخيارين'},
+    'ci_deux_valeurs': {
+        'fr': 'deux valeurs : sans · avec batterie',
+        'en': 'two values: without · with battery',
+        'ar': 'قيمتان: بدون بطارية · مع بطارية'},
+    'ci_specifique_option': {
+        'fr': "Spécifique à l'option", 'en': 'Specific to option',
+        'ar': 'خاص بالخيار'},
+    'ci_opt_option': {
+        'fr': 'Option', 'en': 'Option', 'ar': 'الخيار'},
 }
