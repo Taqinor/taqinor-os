@@ -15,6 +15,8 @@ from apps.roles.models import Role
 from apps.roles.permissions_registre import (
     ADMIN_PERMISSIONS,
     COMMERCIAL_PERMISSIONS,
+    COMMERCIAL_RESP_PERMISSIONS,
+    DIRECTEUR_PERMISSIONS,
 )
 
 User = get_user_model()
@@ -96,8 +98,41 @@ class FG18UserAuditTest(TestCase):
             self._user_rows().exclude(field_label='Utilisateur créé').count(),
             0)
 
+    def _api_role(self, nom, permissions):
+        role = Role.objects.create(
+            company=self.company, nom=nom, permissions=list(permissions))
+        compte = User.objects.create_user(
+            username=f'fg18_{nom.lower().replace(" ", "_")}', password='pw',
+            role=role, company=self.company)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(compte)}')
+        return api
+
+    def test_commercial_responsable_sans_journal_403(self):
+        """ALEC28 (D-ALEC-3) — le journal des réglages exige
+        `journal_activite_voir` : Commercial responsable et Administrateur
+        livrés (sans le code) 403 ; Directeur 200 avec la ligne."""
+        SettingsAuditLog.objects.create(
+            company=self.company, user=self.admin, section='roles',
+            field='role:Commercial', field_label='Rôle',
+            old_value='a', new_value='b')
+        resp = self._api_role('Commercial responsable', COMMERCIAL_RESP_PERMISSIONS)
+        for api in (resp, self.api):
+            for url in ('/api/django/parametres/audit/?section=roles',
+                        '/api/django/parametres/audit/sections/'):
+                with self.subTest(url=url):
+                    self.assertEqual(api.get(url).status_code, 403)
+        directeur = self._api_role('Directeur', DIRECTEUR_PERMISSIONS)
+        r = directeur.get('/api/django/parametres/audit/?section=roles')
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(any(
+            ligne['field'] == 'role:Commercial' for ligne in r.data['results']))
+        self.assertEqual(
+            directeur.get('/api/django/parametres/audit/sections/').status_code, 200)
+
     def test_sections_endpoint_lists_known_sections(self):
-        r = self.api.get('/api/django/parametres/audit/sections/')
+        r = self._api_role('Directeur', DIRECTEUR_PERMISSIONS).get(
+            '/api/django/parametres/audit/sections/')
         self.assertEqual(r.status_code, 200)
         values = {s['value'] for s in r.data['sections']}
         # VX233 — 'tarification' rejoint les sections connues (≥ 6 au total).

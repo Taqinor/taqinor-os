@@ -1,8 +1,9 @@
 """Vue du journal d'audit des paramètres (N55) — LECTURE SEULE.
 
-Domaine « Avancé / Journal d'audit ». Ouverte à l'Administrateur ET au
-Responsable (promu) — comme le reste de l'écran Paramètres — jamais au palier
-limité."""
+Domaine « Avancé / Journal d'audit ». ALEC28 (D-ALEC-3) : la lecture exige
+``journal_activite_voir`` (``CanViewActivityLog``, même code que le Journal
+d'activité qui lit la même nature de données), en plus du palier
+admin/responsable — jamais au palier limité."""
 import re
 
 from django.utils.dateparse import parse_date
@@ -14,6 +15,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from apps.audit.views import CanViewActivityLog
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 from .models import SettingsAuditLog
 from .serializers import SettingsAuditLogSerializer
@@ -94,7 +96,7 @@ def _entier_borne(nom, description, mini):
         'next': serializers.IntegerField(allow_null=True),
     }))
 @api_view(['GET'])
-@permission_classes([IsAdminOrResponsableTier])
+@permission_classes([IsAdminOrResponsableTier, CanViewActivityLog])
 def settings_audit_log(request):
     """Journal des changements de paramètres (qui, quoi, quand).
 
@@ -164,7 +166,7 @@ KNOWN_AUDIT_SECTIONS = [
     }, many=True),
 }))
 @api_view(['GET'])
-@permission_classes([IsAdminOrResponsableTier])
+@permission_classes([IsAdminOrResponsableTier, CanViewActivityLog])
 def settings_audit_sections(request):
     """Liste des sections du journal d'audit (filtre UI). Company-scopée.
 

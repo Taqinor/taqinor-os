@@ -7,6 +7,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.parametres.models import SettingsAuditLog
 from apps.parametres.serializers_audit import SettingsAuditLogSerializer
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 
 User = get_user_model()
 
@@ -14,6 +16,18 @@ User = get_user_model()
 def _company(slug='audit-co', nom='Audit Co'):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
     return company
+
+
+def _api_directeur(company, username):
+    """ALEC28 — le journal exige `journal_activite_voir` : lecteur Directeur."""
+    role, _ = Role.objects.get_or_create(
+        company=company, nom='Directeur',
+        defaults={'permissions': list(DIRECTEUR_PERMISSIONS), 'est_systeme': True})
+    lecteur = User.objects.create_user(
+        username=username, password='pw', role=role, company=company)
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(lecteur)}')
+    return api
 
 
 class SettingsAuditTest(TestCase):
@@ -55,7 +69,8 @@ class SettingsAuditTest(TestCase):
     def test_audit_endpoint_lists_changes(self):
         self.api.patch('/api/django/parametres/update/',
                        {'nom': 'Lecture'}, format='json')
-        r = self.api.get('/api/django/parametres/audit/')
+        r = _api_directeur(self.company, 'audit_dir').get(
+            '/api/django/parametres/audit/')
         self.assertEqual(r.status_code, 200)
         self.assertGreaterEqual(r.data['count'], 1)
         self.assertTrue(
@@ -75,13 +90,9 @@ class SettingsAuditTest(TestCase):
         self.api.patch('/api/django/parametres/update/',
                        {'nom': 'Scopé'}, format='json')
         other = _company(slug='audit-other', nom='Other')
-        other_admin = User.objects.create_user(
-            username='other_admin', password='pw',
-            role_legacy='admin', company=other)
-        api = APIClient()
-        token = str(AccessToken.for_user(other_admin))
-        api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
-        r = api.get('/api/django/parametres/audit/')
+        r = _api_directeur(other, 'other_dir').get(
+            '/api/django/parametres/audit/')
+        self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['count'], 0)
 
 
@@ -107,12 +118,7 @@ class AuditBornesEnf11Test(TestCase):
 
     def setUp(self):
         self.company = _company('audit-enf11', 'Audit ENF11')
-        admin = User.objects.create_user(
-            username='audit_enf11', password='pw', role_legacy='admin',
-            company=self.company)
-        self.api = APIClient()
-        self.api.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        self.api = _api_directeur(self.company, 'audit_enf11')
 
     def test_bornes_hors_plage_refusees(self):
         url = '/api/django/parametres/audit/'

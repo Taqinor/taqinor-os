@@ -24,6 +24,7 @@ import {
 } from './reglagesCi'
 // VX233 — feed d'audit extrait, paramétrable par section (filtre dynamique ici).
 import SettingsAuditFeed from './SettingsAuditFeed'
+import { useHasPermission } from '../../hooks/useHasPermission'
 // WIR112 — équipes terrain canoniques (DC40), à côté des Types d'intervention.
 import EquipeTerrainSection from './EquipeTerrainSection'
 // WIR114 (ZFSM3) — modèles de fiche d'intervention (champs de compte-rendu).
@@ -177,6 +178,8 @@ export default function AvanceSection({
   cfEditId, cfEdit, setCfEdit, openCfEdit, cancelCfEdit, saveCfEdit,
   toggleCfActif, moveCf,
 }) {
+  // ALEC28 (D-ALEC-3) — le journal des réglages exige `journal_activite_voir`.
+  const voitJournal = useHasPermission('journal_activite_voir')
   // L787 — impact inline de l'économie : production annuelle d'1 kWc valorisée
   // au tarif ONEE, recalculée en direct à l'édition (repère pédagogique ;
   // autoconsommation/payback restent sur l'écran devis). AMOT64 (D-AMOT-3 = a)
@@ -453,7 +456,7 @@ export default function AvanceSection({
       </CarteContenu>
 
       {/* L765 — Journal des modifications (audit N55, lecture seule) */}
-      <CarteContenu contenu="pt-4 sm:pt-5">
+      {voitJournal && <CarteContenu contenu="pt-4 sm:pt-5">
         <SectionTitle label="Journal des modifications" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
         <p className="mb-3 text-[11.5px] text-muted-foreground">
           Derniers changements de paramètres : qui a modifié quoi et quand.
@@ -461,7 +464,7 @@ export default function AvanceSection({
         </p>
         {/* VX233 — feed extrait, filtre dynamique (≥ 6 sections réelles). */}
         <SettingsAuditFeed />
-      </CarteContenu>
+      </CarteContenu>}
 
       {/* Champs personnalisés */}
       <CarteContenu contenu="pt-4 sm:pt-5">
