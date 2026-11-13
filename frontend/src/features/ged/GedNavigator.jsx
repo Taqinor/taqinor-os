@@ -23,7 +23,7 @@ import gedApi from '../../api/gedApi'
 import { toutesLesPages, toastSiMuet } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import EnteteGed from './EnteteGed'
-import { formatDate } from '../../lib/format'
+import { formatDate, toNumber } from '../../lib/format'
 import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 import {
   Button, EmptyState, Skeleton, Badge,
@@ -1024,16 +1024,20 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
 // n'est pas complète et non vide ; la page se choisit parmi 1..N.
 const EMPTY_ZONE = { page: '0', x0: '', y0: '', x1: '', y1: '' }
 
-const zoneComplete = (z) => {
-  const v = ['x0', 'y0', 'x1', 'y1'].map((k) => (z[k] === '' ? NaN : Number(z[k])))
-  if (v.some((n) => Number.isNaN(n))) return false
-  return Math.abs(v[2] - v[0]) > 0 && Math.abs(v[3] - v[1]) > 0
+// AERR73 — « 12,5 » lu par toNumber ; vide, hors 0-100 ou zone plate = invalide.
+const COORDS = [['x0', 'X0 %'], ['y0', 'Y0 %'], ['x1', 'X1 %'], ['y1', 'Y1 %']]
+const coord = (z, k) => { const n = toNumber(z[k]); return n !== null && n >= 0 && n <= 100 ? n : null }
+const coordsInvalides = (z) => {
+  const fautes = COORDS.filter(([k]) => coord(z, k) === null).map(([k]) => k)
+  if (fautes.length) return fautes
+  return coord(z, 'x1') === coord(z, 'x0') || coord(z, 'y1') === coord(z, 'y0') ? ['x1', 'y1'] : []
 }
 
 function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
   const [zones, setZones] = useState([{ ...EMPTY_ZONE }])
   const [busy, setBusy] = useState(false)
   const [nbPages, setNbPages] = useState(null)
+  const [invalides, setInvalides] = useState(null)
 
   useEffect(() => {
     if (!versionId) return
@@ -1044,7 +1048,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
     return () => { alive = false }
   }, [versionId])
   const pages = Array.from({ length: nbPages || 0 }, (_, i) => i)
-  const pret = pages.length > 0 && zones.length > 0 && zones.every(zoneComplete)
+  const pret = pages.length > 0 && zones.some((z) => COORDS.some(([k]) => z[k] !== ''))
 
   const updateZone = (i, field, value) =>
     setZones((prev) => prev.map((z, idx) => (idx === i ? { ...z, [field]: value } : z)))
@@ -1054,12 +1058,14 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
   const submit = async (e) => {
     e.preventDefault()
     if (busy || !pret) return
+    const fautes = zones.map(coordsInvalides)
+    setInvalides(fautes)
+    if (fautes.some((f) => f.length)) return
     setBusy(true)
     try {
       const payload = zones.map((z) => ({
         page: Number(z.page) || 0,
-        x0: Number(z.x0) || 0, y0: Number(z.y0) || 0,
-        x1: Number(z.x1) || 0, y1: Number(z.y1) || 0,
+        x0: coord(z, 'x0'), y0: coord(z, 'y0'), x1: coord(z, 'x1'), y1: coord(z, 'y1'),
       }))
       await gedApi.caviarderDocument(documentId, { zones: payload, version: versionId })
       toast.success('Copie caviardée créée dans le dossier.')
@@ -1080,7 +1086,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
             la page.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        <form onSubmit={submit} noValidate className="flex flex-col gap-3">
           {zones.map((z, i) => (
             <div key={i} className="flex items-end gap-1.5">
               <div className="flex flex-col gap-0.5">
@@ -1091,26 +1097,15 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
                   {pages.map((p) => <option key={p} value={String(p)}>{p + 1}</option>)}
                 </select>
               </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-x0-${i}`}>X0 %</label>
-                <Input id={`z-x0-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.x0} onChange={(e) => updateZone(i, 'x0', e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-y0-${i}`}>Y0 %</label>
-                <Input id={`z-y0-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.y0} onChange={(e) => updateZone(i, 'y0', e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-x1-${i}`}>X1 %</label>
-                <Input id={`z-x1-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.x1} onChange={(e) => updateZone(i, 'x1', e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-y1-${i}`}>Y1 %</label>
-                <Input id={`z-y1-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.y1} onChange={(e) => updateZone(i, 'y1', e.target.value)} />
-              </div>
+              {COORDS.map(([k, libelle]) => (
+                <div key={k} className="flex flex-col gap-0.5">
+                  <label className="text-xs text-muted-foreground" htmlFor={`z-${k}-${i}`}>{libelle}</label>
+                  <Input id={`z-${k}-${i}`} type="text" inputMode="decimal" className="w-16"
+                    aria-invalid={invalides?.[i]?.includes(k) || undefined}
+                    value={z[k]} onChange={(e) => updateZone(i, k, e.target.value)} />
+                  {invalides?.[i]?.includes(k) && <span className="text-xs text-destructive">0 à 100, zone non plate</span>}
+                </div>
+              ))}
               {zones.length > 1 && (
                 <Button type="button" variant="ghost" size="sm"
                   aria-label="Retirer cette zone" onClick={() => removeZone(i)}>
