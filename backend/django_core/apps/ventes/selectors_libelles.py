@@ -8,6 +8,9 @@ Un objet inconnu, d'une autre société ou hors portée est ABSENT du résultat,
 jamais une erreur. Le montant d'un devis est son total TTC, celui d'une facture
 son total TTC et son reste dû — jamais un prix d'achat ni une marge. Montants
 formatés par le formateur unique ``core.formats_fr`` (comme les documents).
+
+Point d'entrée cross-app : ``apps.ventes.selectors`` (façade) a atteint les 2 000
+lignes et ne grossit plus — l'app ``agent`` importe CE module de sélecteurs.
 """
 from decimal import Decimal
 

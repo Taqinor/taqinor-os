@@ -33,7 +33,7 @@ __all__ = [
     'facture_du_client_portail', 'facture_est_payable_portail', 'factures_du_client_portail',
     'factures_du_devis', 'factures_echues', 'factures_via_bon_commande', 'faits_temoignage_devis',
     'frequence_co_achat', 'get_facture_scoped', 'jours_impaye_facture', 'kpis_factures',
-    'ligne_compte_dans_totaux', 'libelles_ventes', 'lignes_produits_calepinage', 'marquer_declencheur',
+    'ligne_compte_dans_totaux', 'lignes_produits_calepinage', 'marquer_declencheur',
     'nombre_proprietes', 'paiements_des_factures', 'paiements_totaux_par_mode',
     'peremption_layout_devis', 'puissance_kwc_projet', 'references_avoirs', 'references_factures',
     'releve_client_pdf_bytes', 'releve_client_portail', 'resume_dossier_8221',
@@ -1715,7 +1715,6 @@ def promesse_pompage_devis(devis_id, company):
     }
 
 
-from .selectors_libelles import libelles_ventes  # noqa: E402 — COP-G4 : libellés des aperçus de l'assistant
 from .selectors_reglementaire import (  # noqa: E402 — ré-export (CIQ617) (D-ENF22)
     dossier_8221_resume,
     resume_dossier_8221,
