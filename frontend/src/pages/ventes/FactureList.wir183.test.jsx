@@ -314,13 +314,8 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
       reducer: { ventes, auth: (s = { role: 'admin' }) => s },
       preloadedState: { ventes: { ...ventes(undefined, { type: 'init' }), factures: [{ ...emise, total_ttc: 12000, montant_du: 12000 }] } },
     })
-    render(
-      <Provider store={store}>
-        <MemoryRouter initialEntries={['/ventes/factures']}>
-          <ThemeProvider><FactureList /></ThemeProvider>
-        </MemoryRouter>
-      </Provider>,
-    )
+    const page = <ThemeProvider><FactureList /></ThemeProvider>
+    render(<Provider store={store}><MemoryRouter initialEntries={['/ventes/factures']}>{page}</MemoryRouter></Provider>)
     const tuile = () => screen.getByText('Encaissé ce mois').parentElement.parentElement
     await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(1))
     const user = userEvent.setup()
