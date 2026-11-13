@@ -45,7 +45,8 @@ class Command(BaseCommand):
             except Company.DoesNotExist:
                 raise CommandError(f"Company with slug '{slug}' not found.")
         else:
-            companies = list(Company.objects.all())
+            from authentication.selectors import active_companies  # ACEL35
+            companies = list(active_companies())
 
         if not companies:
             self.stdout.write(self.style.WARNING(

@@ -145,6 +145,35 @@ class Ntapi8RetryScheduleTests(TestCase):
                 delivery=wh_delivery, statut=WebhookDeliveryAttempt.Statut.EN_ATTENTE
             ).exists())
 
+    def test_passages_chevauchants_un_seul_envoi(self):
+        """ACEL34 — un passage qui démarre pendant l'envoi d'un autre (cible
+        lente) ne renvoie pas la même tentative ni n'en crée une seconde n° 3."""
+        wh_delivery = self._failed_delivery()
+        attempt = schedule_first_retry(
+            wh_delivery, now=timezone.now() - timedelta(days=1))
+        now = timezone.now()
+        appels = []
+
+        def envoi_lent(*args, **kwargs):
+            appels.append(1)
+            if len(appels) == 1:
+                run_due_retries(now=now)  # passage chevauchant
+            return 'failed', 500, 'HTTP 500'
+
+        with mock.patch('apps.publicapi.retry._send', side_effect=envoi_lent):
+            run_due_retries(now=now)
+        self.assertEqual(len(appels), 1)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.statut, WebhookDeliveryAttempt.Statut.ECHEC)
+        suivantes = WebhookDeliveryAttempt.objects.filter(
+            delivery=wh_delivery, numero_tentative=3)
+        self.assertEqual(suivantes.count(), 1)
+        self.assertEqual(suivantes.get().statut,
+                         WebhookDeliveryAttempt.Statut.EN_ATTENTE)
+        with mock.patch('apps.publicapi.retry._send', side_effect=envoi_lent):
+            self.assertEqual(run_due_retries(now=now), [])  # n° 3 pas encore due
+        self.assertEqual(len(appels), 1)
+
     def test_run_due_retries_ignores_not_yet_due_attempts(self):
         wh_delivery = self._failed_delivery()
         schedule_first_retry(wh_delivery)  # échéance dans le futur (+60s)

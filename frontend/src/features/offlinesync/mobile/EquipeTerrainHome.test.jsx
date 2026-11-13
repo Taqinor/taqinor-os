@@ -83,4 +83,12 @@ describe('EquipeTerrainHome (NTMOB25)', () => {
       expect(screen.getByText('karim : 2 interventions à 9h')).toBeTruthy()
     })
   })
+
+  it("panne de lecture : état d'erreur, jamais « Aucune intervention d'équipe »", async () => {
+    installationsApiMock.getInterventions.mockRejectedValue(new Error('Network Error'))
+    renderPage()
+    expect(await screen.findByText('Lecture impossible')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy()
+    expect(screen.queryByText("Aucune intervention d'équipe aujourd'hui")).toBeNull()
+  })
 })

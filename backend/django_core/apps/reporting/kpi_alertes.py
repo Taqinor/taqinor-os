@@ -501,6 +501,7 @@ def evaluate_kpi_alerte(alerte, *, now=None):
     if user is None:
         return None, False, False
 
+    en_erreur = False
     try:
         # NTDATA41 — le MODE décide de ce qui est comparé au seuil : la valeur
         # du jour (défaut historique), sa variation, ou son écart à l'habitude.
@@ -521,11 +522,14 @@ def evaluate_kpi_alerte(alerte, *, now=None):
     except Exception:  # pragma: no cover - dégradation défensive
         logger.warning("evaluate kpi alerte : échec ignoré, comportement dégradé", exc_info=True)
         valeur = None
+        en_erreur = True  # ACEL37 — une erreur n'est PAS « repassé du bon côté »
 
-    franchi = alerte.est_franchi(valeur)
+    franchi = False if en_erreur else alerte.est_franchi(valeur)
     notifie = False
 
-    if franchi and not alerte.deja_notifie:
+    if en_erreur:
+        pass  # ni franchissement ni ré-armement : la dédup reste intacte
+    elif franchi and not alerte.deja_notifie:
         _notify_kpi_alerte(alerte, valeur)
         alerte.deja_notifie = True
         notifie = True

@@ -143,6 +143,7 @@ def _django_call(
     path: str,
     method: str = "POST",
     payload: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """Appel authentifie vers l'API Django interne, methode au choix.
 
@@ -159,6 +160,8 @@ def _django_call(
         "Authorization": f"Bearer {ctx.token}",
         "Accept": "application/json",
     }
+    if idempotency_key:  # ACNC42 — contrat de core/idempotency.py (ACNC12)
+        headers["Idempotency-Key"] = idempotency_key
     body = payload or {}
     request_kwargs: dict[str, Any] = {"headers": headers}
     # GET/DELETE : pas de corps JSON (les parametres voyagent dans l'URL ou en
@@ -476,7 +479,9 @@ def _load_proposal(token: str) -> Optional[dict[str, Any]]:
     if r is None:
         return None
     try:
-        raw = r.get(_proposal_key(token))
+        # ACNC42 — lecture ET consommation en UNE operation (GETDEL) : deux
+        # confirmations concurrentes du meme jeton n'en voient qu'une.
+        raw = r.getdel(_proposal_key(token))
     except Exception as exc:  # pragma: no cover - reseau
         logger.warning("Lecture proposition echouee: %s", exc)
         return None
@@ -497,17 +502,6 @@ def _load_proposal(token: str) -> Optional[dict[str, Any]]:
     return record
 
 
-def _discard_proposal(token: str) -> None:
-    """Supprime une proposition (usage unique apres confirmation)."""
-    r = _proposal_redis()
-    if r is None:
-        return
-    try:
-        r.delete(_proposal_key(token))
-    except Exception:  # pragma: no cover - reseau
-        pass
-
-
 # ── Execution d'une action du catalogue ───────────────────────────────────────
 
 
@@ -520,14 +514,25 @@ def _human_preview(action: dict[str, Any], inputs: dict[str, Any]) -> str:
     return summary
 
 
+_CLE_DANS_LE_CORPS = frozenset({"ventes.facture.enregistrer_paiement"})  # Paiement.idempotency_key (ACNC1)
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+    *, idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """Relaie l'appel a l'endpoint du catalogue avec le JWT. `inputs` sont deja
-    valides. Renvoie le dict normalise de `_django_call`."""
+    valides. Renvoie le dict normalise de `_django_call`. ACNC42 — la cle
+    d'idempotence voyage dans le corps (paiement) ou l'en-tete (le reste)."""
     path, body = _build_path(action.get("endpoint", ""), inputs)
+    if not idempotency_key:
+        return _django_call(ctx, path, method=action.get("method", "POST"),
+                            payload=body)
+    if action.get("key") in _CLE_DANS_LE_CORPS:
+        return _django_call(ctx, path, method=action.get("method", "POST"),
+                            payload={**(body or {}), "idempotency_key": idempotency_key})
     return _django_call(ctx, path, method=action.get("method", "POST"),
-                        payload=body)
+                        payload=body, idempotency_key=idempotency_key)
 
 
 def run_catalogue_action(
@@ -596,14 +601,15 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     """Rejoue une proposition stashee par jeton, APRES re-validation.
 
     Etapes de securite :
-      1. charge la proposition et VERIFIE sa signature (rejet si alteree) ;
+      1. charge ET consomme la proposition (GETDEL, usage unique) et VERIFIE
+         sa signature (rejet si alteree) ;
       2. exige que la societe du jeton == societe de l'appelant ;
       3. RE-RECUPERE le catalogue de l'appelant et exige que l'action y figure
          (l'appelant a toujours le droit de l'executer) ;
       4. RE-VALIDE les entrees contre le JSON-Schema courant du catalogue
          (rejet des cles hors catalogue) ;
-      5. relaie l'appel a Django (qui re-tranche permission + societe) ;
-      6. consomme le jeton (usage unique).
+      5. relaie l'appel a Django (qui re-tranche permission + societe) avec
+         une cle d'idempotence derivee du jeton.
     Renvoie {ok, ...}. Ne leve pas pour les refus metier (renvoie ok=False)."""
     record = _load_proposal(token)
     if record is None:
@@ -626,8 +632,10 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     except ActionValidationError as exc:
         return {"ok": False, "error": f"Entrees invalides : {exc}"}
 
-    res = _execute_catalogue_action(ctx, action, inputs)
-    _discard_proposal(token)  # usage unique, quel que soit le resultat
+    # Jeton deja consomme par `_load_proposal` (GETDEL) ; la cle d'idempotence
+    # est une EMPREINTE du jeton (jamais le jeton lui-meme).
+    cle = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    res = _execute_catalogue_action(ctx, action, inputs, idempotency_key=cle)
     if not res.get("ok"):
         return {"ok": False, "status": res.get("status"),
                 "error": res.get("error", "L'action a echoue.")}
