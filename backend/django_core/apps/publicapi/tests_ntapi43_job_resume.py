@@ -60,7 +60,7 @@ class _MinioMixin:
 class Ntapi43RelancerGuardTests(TestCase):
     def setUp(self):
         self.co = _company('ntapi43', 'NTAPI43')
-        self.api_key, _raw = _key(self.co, [SCOPE_WRITE_LEADS])
+        self.api_key, self.raw = _key(self.co, [SCOPE_WRITE_LEADS])
 
     def test_relancer_refuses_termine_job(self):
         job = BulkJob.objects.create(
@@ -85,6 +85,34 @@ class Ntapi43RelancerGuardTests(TestCase):
             resumed = bulk.relancer_job(job)
         self.assertEqual(resumed.statut, BulkJob.STATUT_EN_FILE)
         self.assertEqual(resumed.message_erreur, '')
+
+    def test_relancer_refuse_un_job_en_cours_qui_progresse(self):
+        """ACNC46 — un `en_cours` qui a progressé il y a une minute tourne
+        encore : relance refusée (400), job inchangé ; au-delà du délai, il
+        est relançable."""
+        from datetime import timedelta
+        from django.utils import timezone
+        job = BulkJob.objects.create(
+            company=self.co, api_key=self.api_key, type=BulkJob.TYPE_IMPORT,
+            entite='leads', params={}, statut=BulkJob.STATUT_EN_COURS, cursor=4)
+
+        def vieillir(minutes):
+            BulkJob.objects.filter(pk=job.pk).update(
+                updated_at=timezone.now() - timedelta(minutes=minutes))
+
+        vieillir(1)
+        with mock.patch.object(bulk, '_dispatch_import') as dispatch:
+            with self.assertRaises(bulk.BulkJobError):
+                bulk.relancer_job(job)
+            resp = _client(self.raw).post(f'/api/public/v1/jobs/{job.id}/relancer/')
+        self.assertEqual(resp.status_code, 400)
+        dispatch.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual((job.statut, job.cursor), (BulkJob.STATUT_EN_COURS, 4))
+
+        vieillir(bulk.DELAI_JOB_BLOQUE_MIN + 1)
+        with mock.patch.object(bulk, '_dispatch_import'):
+            self.assertEqual(bulk.relancer_job(job).statut, BulkJob.STATUT_EN_FILE)
 
 
 class Ntapi43RelancerEndpointTests(TestCase):
@@ -194,8 +222,10 @@ class Ntapi43ResumeInterruptedImportTests(_MinioMixin, TestCase):
         csv_bytes = b'nom,email\nSeul,seul@example.com\n'
         job = self._make_job_with_cursor(csv_bytes, cursor=0, succes=0)
 
+        # ACNC46 — le dispatch part après le commit de la relance.
         with mock.patch('apps.publicapi.tasks.process_bulk_import_job.delay',
-                        side_effect=RuntimeError('broker down')):
+                        side_effect=RuntimeError('broker down')), \
+                self.captureOnCommitCallbacks(execute=True):
             resp = _client(self.raw).post(
                 f'/api/public/v1/jobs/{job.id}/relancer/')
 

@@ -439,15 +439,23 @@ def relancer_job(job):
     """Relance un `BulkJob` EN ÉCHEC (ou resté bloqué `en_cours`, ex. worker
     tué) depuis son `cursor` PERSISTANT — jamais de zéro, jamais de doublon
     (les lignes déjà appliquées avant `cursor` ne sont jamais rejouées).
-    Refuse un job déjà `termine`/`en_file` (rien à reprendre)."""
-    if job.statut not in (BulkJob.STATUT_ECHEC, BulkJob.STATUT_EN_COURS):
-        raise BulkJobError(
-            "Seul un job en échec (ou bloqué en cours) peut être relancé.")
-    job.statut = BulkJob.STATUT_EN_FILE
-    job.message_erreur = ''
-    job.save(update_fields=['statut', 'message_erreur', 'updated_at'])
-    if job.type == BulkJob.TYPE_EXPORT:
-        _dispatch_export(job)
-    else:
-        _dispatch_import(job)
+    Refuse un job déjà `termine`/`en_file` (rien à reprendre), et (ACNC46) un
+    `en_cours` qui a progressé depuis moins de `DELAI_JOB_BLOQUE_MIN` : il
+    tourne encore, un second traitement repartirait du même curseur."""
+    from datetime import timedelta
+    from django.db import transaction
+    from django.utils import timezone
+    with transaction.atomic():
+        job = BulkJob.objects.select_for_update().get(pk=job.pk)
+        if job.statut not in (BulkJob.STATUT_ECHEC, BulkJob.STATUT_EN_COURS):
+            raise BulkJobError(
+                "Seul un job en échec (ou bloqué en cours) peut être relancé.")
+        if job.statut == BulkJob.STATUT_EN_COURS and job.updated_at > (
+                timezone.now() - timedelta(minutes=DELAI_JOB_BLOQUE_MIN)):
+            raise BulkJobError("Ce job est encore en cours de traitement.")
+        job.statut = BulkJob.STATUT_EN_FILE
+        job.message_erreur = ''
+        job.save(update_fields=['statut', 'message_erreur', 'updated_at'])
+        dispatch = _dispatch_export if job.type == BulkJob.TYPE_EXPORT else _dispatch_import
+        transaction.on_commit(lambda: dispatch(job))
     return job
