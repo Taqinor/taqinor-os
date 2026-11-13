@@ -265,8 +265,8 @@ class BuildToolsTests(unittest.TestCase):
         ctx = _ctx(role="admin")
         with _patch_catalogue([_CAT_PROPOSAL_PDF]):
             tool = at.build_action_tools(ctx)[0]
-        fields = tool.args_schema.model_fields
-        self.assertIn("id", fields)
+        self.assertIn("id", tool.args_schema["properties"])
+        self.assertEqual(tool.args_schema["required"], ["id"])
 
 
 # ── AG2 — validation des entrees contre le JSON-Schema du catalogue ───────────
@@ -1226,6 +1226,89 @@ class SortiesCollecteurCop1Tests(_AvecPropositions):
                     at.run_catalogue_action(_ctx(role="admin"), _CAT_DOCUMENT, entrees, collector)
                 self.assertEqual(collector[0]["carte"], "document")
                 self.assertEqual(collector[0]["data"], attendu)
+
+
+# ── COP-A2 — validation fail-closed complète + tolérance de type ──────────────
+
+_SCHEMA_SUIVI = {"type": "object", "properties": {
+    "id": {"type": "integer", "description": "Lead."},
+    "canal": {"type": "string", "enum": ["whatsapp", "sms", "email"]},
+    "quantite": {"type": "string"},
+    "montant": {"type": "number"},
+    "urgent": {"type": "boolean"},
+    "tags": {"type": "array", "items": {"type": "string", "enum": ["chaud", "froid"]}},
+    "ids": {"type": "array", "items": {"type": "integer"}},
+}, "required": ["id"]}
+_CAT_SUIVI = {"key": "crm.lead.brouillon_suivi", "label": "Brouillon de suivi",
+              "endpoint": "/api/django/crm/leads/{id}/brouillon-suivi/",
+              "method": "GET", "inputs": _SCHEMA_SUIVI, "risk": "internal"}
+
+
+class ValidationCompleteCop2Tests(unittest.TestCase):
+    def _refus(self, entrees):
+        with self.assertRaises(at.ActionValidationError) as ctx:
+            at.validate_inputs(_SCHEMA_SUIVI, dict({"id": 1}, **entrees))
+        return str(ctx.exception)
+
+    def test_enum_refuse_et_liste_les_valeurs_permises(self):
+        message = self._refus({"canal": "fax"})
+        self.assertIn("whatsapp, sms, email", message)
+        self.assertEqual(at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "canal": "sms"})["canal"], "sms")
+
+    def test_elements_de_tableau_verifies_contre_items(self):
+        self.assertIn("chaud, froid", self._refus({"tags": ["chaud", "tiede"]}))
+        self.assertIn("ids[1]", self._refus({"ids": [1, "deux"]}))
+        out = at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "ids": ["3", 4], "tags": ["froid"]})
+        self.assertEqual((out["ids"], out["tags"]), ([3, 4], ["froid"]))
+
+    def test_coercitions_sures(self):
+        out = at.validate_inputs(_SCHEMA_SUIVI, {
+            "id": " 12 ", "quantite": 2.5, "montant": "1500.75", "urgent": "Oui"})
+        self.assertEqual(out, {"id": 12, "quantite": "2.5", "montant": 1500.75, "urgent": True})
+        self.assertIs(at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "urgent": "non"})["urgent"], False)
+        self.assertEqual(at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "quantite": 3})["quantite"], "3")
+
+    def test_aucune_coercition_hasardeuse(self):
+        for entrees in ({"id": "12.5"}, {"id": 12.0}, {"id": "12 lots"},
+                        {"urgent": "1"}, {"quantite": True}, {"montant": "1e3"},
+                        {"montant": "12,5"}, {"inconnue": 1}):
+            with self.subTest(entrees=entrees):
+                with self.assertRaises(at.ActionValidationError):
+                    at.validate_inputs(_SCHEMA_SUIVI, dict({"id": 1}, **entrees))
+
+    def test_refus_rendu_au_modele_en_texte(self):
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("refuse avant appel")):
+            out = at.run_catalogue_action(_ctx(role="admin"), _CAT_SUIVI, {"id": 1, "canal": "fax"})
+        self.assertTrue(out.startswith("Action refusee : "))
+        self.assertIn("valeurs permises", out)
+
+
+class SchemaOutilCop2Tests(unittest.TestCase):
+    def setUp(self):
+        try:
+            __import__('langchain_core.tools')
+        except Exception:
+            self.skipTest("langchain_core indisponible dans cet environnement")
+
+    def _outil(self):
+        with _patch_catalogue([_CAT_SUIVI]):
+            return at.build_action_tools(_ctx(role="admin"))[0]
+
+    def test_enum_items_et_requis_visibles_du_modele(self):
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+        params = convert_to_openai_tool(self._outil())["function"]["parameters"]
+        self.assertEqual(params["properties"]["canal"]["enum"], ["whatsapp", "sms", "email"])
+        self.assertEqual(params["properties"]["tags"]["items"],
+                         {"type": "string", "enum": ["chaud", "froid"]})
+        self.assertEqual(params["properties"]["id"]["type"], "integer")
+        self.assertEqual(params["required"], ["id"])
+
+    def test_mauvais_type_ne_casse_pas_le_tour(self):
+        outil = self._outil()
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("refuse avant appel")):
+            for args in ({"id": "abc"}, {}, {"id": 1, "pirate": 2}):
+                with self.subTest(args=args):
+                    self.assertTrue(outil.invoke(args).startswith("Action refusee : "))
 
 
 if __name__ == "__main__":

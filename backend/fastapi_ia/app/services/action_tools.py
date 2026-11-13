@@ -348,18 +348,7 @@ def validate_inputs(schema: dict[str, Any], inputs: dict[str, Any]) -> dict[str,
         value = inputs[name]
         if value is None:
             continue
-        expected = (spec or {}).get("type")
-        checker = _JSON_TYPE_CHECK.get(expected)
-        # int passe pour un champ number ; on tolere une string numerique pour
-        # un champ integer/number (le LLM renvoie parfois "12").
-        if checker and not checker(value):
-            coerced = _coerce(value, expected)
-            if coerced is None:
-                raise ActionValidationError(
-                    f"Champ '{name}' : type {expected} attendu."
-                )
-            value = coerced
-        cleaned[name] = value
+        cleaned[name] = _valider_valeur(name, spec or {}, value)
 
     missing = [r for r in required if cleaned.get(r) in (None, "")]
     if missing:
@@ -369,15 +358,53 @@ def validate_inputs(schema: dict[str, Any], inputs: dict[str, Any]) -> dict[str,
     return cleaned
 
 
+def _valider_valeur(name: str, spec: dict[str, Any], value: Any) -> Any:
+    """COP-A2 — une valeur contre SA spec : type (coercitions sures
+    seulement), `enum`, et pour un tableau chaque element contre `items`.
+    Renvoie la valeur normalisee ; leve ActionValidationError en francais."""
+    expected = spec.get("type")
+    checker = _JSON_TYPE_CHECK.get(expected)
+    if checker and not checker(value):
+        coerced = _coerce(value, expected)
+        if coerced is None:
+            raise ActionValidationError(
+                f"Champ '{name}' : type {expected} attendu."
+            )
+        value = coerced
+    permises = spec.get("enum")
+    if isinstance(permises, list) and value not in permises:
+        raise ActionValidationError(
+            f"Champ '{name}' : valeur {value!r} non permise (valeurs "
+            "permises : " + ", ".join(str(v) for v in permises) + ")."
+        )
+    items = spec.get("items")
+    if expected == "array" and isinstance(items, dict):
+        value = [_valider_valeur(f"{name}[{i}]", items, v)
+                 for i, v in enumerate(value)]
+    return value
+
+
+_ENTIER_RE = re.compile(r"-?\d+")
+_NOMBRE_RE = re.compile(r"-?\d+(\.\d+)?")
+_BOOLEENS = {"true": True, "oui": True, "false": False, "non": False}
+
+
 def _coerce(value: Any, expected: str) -> Any:
-    """Tente une coercition douce (string numerique -> int/number)."""
-    try:
-        if expected == "integer" and isinstance(value, str) and value.strip().lstrip("-").isdigit():
-            return int(value)
-        if expected == "number" and isinstance(value, str):
-            return float(value)
-    except (ValueError, TypeError):
-        return None
+    """Coercitions SURES seulement (COP-A2), None sinon : chaine numerique ->
+    entier/nombre ; nombre -> chaine (decimaux declares `string`) ;
+    « true/false/oui/non » -> booleen. Jamais de troncature (« 12.5 » n'est
+    pas un entier), jamais de nombre lu dans un texte libre."""
+    is_num = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(value, str):
+        texte = value.strip()
+        if expected == "integer" and _ENTIER_RE.fullmatch(texte):
+            return int(texte)
+        if expected == "number" and _NOMBRE_RE.fullmatch(texte):
+            return float(texte) if "." in texte else int(texte)
+        if expected == "boolean":
+            return _BOOLEENS.get(texte.lower())
+    elif expected == "string" and is_num:
+        return str(value)
     return None
 
 
@@ -841,51 +868,32 @@ def journaliser_evenement_assistant(
 # ── Fabrique d'outils LangChain ───────────────────────────────────────────────
 
 
-# Type JSON-Schema -> annotation Python pour le modele pydantic genere.
-_PY_TYPE = {
-    "integer": int,
-    "number": float,
-    "string": str,
-    "boolean": bool,
-    "array": list,
-    "object": dict,
-}
-
-
 def _tool_name_for(action: dict[str, Any]) -> str:
     """Nom d'outil LangChain valide derive de la cle catalogue
     (ex. `ventes.devis.create` -> `ventes_devis_create`)."""
     return re.sub(r"[^0-9a-zA-Z_]", "_", action["key"])
 
 
-def _args_model_for(action: dict[str, Any]):
-    """Construit un modele pydantic `args_schema` a partir du JSON-Schema
-    `inputs` de l'entree catalogue."""
-    from pydantic import create_model
+def _args_model_for(action: dict[str, Any]) -> dict[str, Any]:
+    """`args_schema` de l'outil : le JSON-Schema `inputs` de l'entree
+    catalogue, recopie tel quel (COP-A2).
+
+    Un DICT et non un modele pydantic : LangChain le montre au modele sans
+    rien perdre (`type`, `enum`, `items`, `required` — un modele pydantic
+    reconstruit par `tool_call_schema` ne gardait que type et description) et
+    ne valide RIEN lui-meme. Un argument du mauvais type ou une cle inconnue
+    ne fait donc plus echouer le TOUR entier : c'est `validate_inputs`
+    (fail-closed) qui refuse, par un texte « Action refusee : … » que le
+    modele lit et corrige."""
+    import copy
 
     schema = action.get("inputs") or {}
-    properties = schema.get("properties") or {}
-    required = set(schema.get("required") or [])
-
-    fields: dict[str, Any] = {}
-    for name, spec in properties.items():
-        spec = spec or {}
-        py_type = _PY_TYPE.get(spec.get("type"), str)
-        desc = spec.get("description", "")
-        if name in required:
-            fields[name] = (py_type, _pyd_field(..., desc))
-        else:
-            fields[name] = (Optional[py_type], _pyd_field(None, desc))
-
-    model_name = f"Args_{_tool_name_for(action)}"
-    if not fields:
-        return create_model(model_name)
-    return create_model(model_name, **fields)
-
-
-def _pyd_field(default, description):
-    from pydantic import Field
-    return Field(default, description=description or "")
+    properties = copy.deepcopy(schema.get("properties") or {})
+    required = [r for r in (schema.get("required") or []) if r in properties]
+    args = {"type": "object", "properties": properties}
+    if required:
+        args["required"] = required
+    return args
 
 
 def build_action_tools(
