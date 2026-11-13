@@ -111,6 +111,28 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
         self.assertTrue(notifie)
         mock_notify3.assert_called_once()
 
+    def test_erreur_de_calcul_ne_rearme_pas_la_dedup(self):
+        """ACEL37 — un calcul qui lève un jour ne vaut pas « repassé du bon
+        côté » : la dédup reste armée, le lendemain au-delà du seuil = 0 envoi."""
+        alerte = KpiAlerte.objects.create(
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'),
+            deja_notifie=True)
+        alerte.destinataires_utilisateurs.add(self.user)
+        cible = 'apps.reporting.kpi_alertes._compute_valeur_stock_totale'
+        with mock.patch(cible, side_effect=RuntimeError('source HS')), \
+                mock.patch('apps.notifications.services.notify') as envoi:
+            self.assertEqual(evaluate_kpi_alerte(alerte), (None, False, False))
+        alerte.refresh_from_db()
+        self.assertTrue(alerte.deja_notifie)
+        self.assertIsNotNone(alerte.derniere_evaluation_le)
+        self.assertIsNone(alerte.derniere_valeur)
+        with mock.patch(cible, return_value=Decimal('75')), \
+                mock.patch('apps.notifications.services.notify') as envoi2:
+            evaluate_kpi_alerte(alerte)
+        envoi.assert_not_called()
+        envoi2.assert_not_called()
+
     def test_valeur_stock_totale_real_selector(self):
         Produit.objects.create(
             company=self.company, nom='Panneau', sku='XPLT6-1',
