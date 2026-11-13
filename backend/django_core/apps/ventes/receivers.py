@@ -163,6 +163,16 @@ def _materialize_paiement_on_payment_captured(sender, transaction, company, **kw
         locked = Facture.objects.select_for_update().get(pk=target.pk)
         if locked.statut == Facture.Statut.ANNULEE:
             return
+        # ACNC14 (C-ACNC-019) — idempotence relue SOUS le verrou : la référence
+        # externe, puis la transaction elle-même (même sans `external_ref`).
+        from core.idempotency import dedupe_event
+        if external_ref and Paiement.objects.filter(
+                facture=locked, reference=external_ref,
+                mode=Paiement.Mode.CARTE).exists():
+            return
+        if not dedupe_event(company=company, source='payment_captured',
+                            event_id=str(transaction.pk)):
+            return
         # AFAC9 — LA porte unique d'encaissement (brouillon, soldée, acompte
         # CAD122 avant J+7) : aucun Paiement n'est matérialisé.
         from .domain.encaissements import enregistrer_paiement, motif_non_encaissable

@@ -90,6 +90,25 @@ class Aud806CaptureBoutEnBoutTests(TestCase):
         self.assertEqual(self.tx.statut, PaymentTransaction.STATUT_PAYE)
         self.assertIsNotNone(self.tx.paye_le)
 
+    def test_deux_captures_un_seul_paiement(self):
+        """ACNC14 (C-ACNC-019) — `payment_captured` envoyé deux fois pour UNE
+        transaction de 4 000 sans `external_ref` : un seul paiement carte,
+        reste dû 2 000. Mutant : retirer `dedupe_event` ⇒ 2 paiements."""
+        from core.events import payment_captured
+        PaymentTransaction.objects.filter(pk=self.tx.pk).update(
+            montant=Decimal('4000'), external_ref='',
+            statut=PaymentTransaction.STATUT_PAYE)
+        self.tx.refresh_from_db()
+        for _ in range(2):
+            payment_captured.send(sender=PaymentTransaction, transaction=self.tx,
+                                  company=self.company)
+        paiements = Paiement.objects.filter(
+            facture=self.facture, mode=Paiement.Mode.CARTE)
+        self.assertEqual(list(paiements.values_list('montant', flat=True)),
+                         [Decimal('4000')])
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.montant_du, Decimal('2000'))
+
     def test_un_second_rafraichir_ne_duplique_pas_le_paiement(self):
         self._rafraichir()
         self._rafraichir()
