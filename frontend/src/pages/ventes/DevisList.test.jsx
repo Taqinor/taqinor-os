@@ -143,6 +143,27 @@ describe('DevisList — états de chargement (J141)', () => {
   })
 })
 
+describe('DevisList — relecture en cours ou ratée (AERR2)', () => {
+  const trois = [1, 2, 3].map(i => ({
+    id: i, reference: `DEV-AERR2-000${i}`, client_nom: 'ACME', statut: i === 1 ? 'brouillon' : 'envoye',
+    date_creation: '2026-07-01', total_ttc: 1000 * i, nb_options: 1, version: 1,
+  }))
+
+  it('store loading: true puis error avec 3 devis chargés : les lignes restent, avis + Réessayer', () => {
+    const { unmount } = renderList({ loading: true, devis: trois })
+    expect(screen.getByText('DEV-AERR2-0002')).toBeVisible()
+    expect(screen.queryByTestId('devis-pas-a-jour')).toBeNull()
+    unmount()
+    renderList({ loading: false, error: 'Network Error', devis: trois })
+    expect(screen.getByText('DEV-AERR2-0003')).toBeVisible()
+    const avis = screen.getByTestId('devis-pas-a-jour')
+    expect(avis.textContent).toContain('Liste pas à jour')
+    fetchDevis.mockClear()
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect(fetchDevis).toHaveBeenCalled()
+  })
+})
+
 describe('DevisList — rendu des données (J141)', () => {
   it('rend les vraies lignes avec une pastille de statut quand le chargement est terminé', () => {
     renderList({

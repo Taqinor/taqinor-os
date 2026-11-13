@@ -879,7 +879,9 @@ export default function DevisList() {
     />
   )
 
-  if (loading) {
+  // AERR2 — squelette / StateBlock seulement si AUCUN devis n'a été chargé :
+  // une relecture (suppression, variante, gamme) ne démonte plus la liste.
+  if (loading && devis.length === 0) {
     return (
       <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
         showSkeleton={showSkeleton} libelle="Chargement des devis…">
@@ -896,7 +898,7 @@ export default function DevisList() {
       </PageListeChargement>
     )
   }
-  if (error) {
+  if (error && devis.length === 0) {
     // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
     // (relance le même thunk que le montage initial), là où l'ancien
     // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
@@ -920,6 +922,14 @@ export default function DevisList() {
   return (
     <div className="page">
       {pageHeader}
+      {error && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="status" data-testid="devis-pas-a-jour">
+          <span className="text-sm text-muted-foreground">
+            Liste pas à jour — {frenchError(error, 'le serveur n’a pas répondu.')} Les lignes datent du dernier chargement réussi.
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchDevis())}>Réessayer</Button>
+        </div>
+      )}
 
       {/* SPL206 — en-tête de page : synthèse, filtres, barre de lot (move only). */}
       <DevisListChrome
