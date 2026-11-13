@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
@@ -60,6 +60,9 @@ export default function RelancesPage() {
   const peutEncaisser = useHasPermission('encaisser')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  // AERR4 — état réel de la dernière lecture + garde d'ordre (patron useResource `runId`).
+  const [erreur, setErreur] = useState(false)
+  const lectureId = useRef(0)
   const [target, setTarget] = useState(null)  // facture being relancée
   // VX230 — encaisser LÀ où on chasse l'impayé : la facture ciblée par la modale
   // de paiement PARTAGÉE (PaiementDialog), sans quitter la vue de recouvrement.
@@ -118,9 +121,11 @@ export default function RelancesPage() {
     const requete = mode === 'mes'
       ? api.get('/ventes/relances/', { params: { mes_relances: 1 } })
       : ventesApi.getRelances()
+    const id = ++lectureId.current
     requete
-      .then(r => setRows(Array.isArray(r.data) ? r.data : []))
-      .catch(() => {}).finally(() => setLoading(false))
+      .then(r => { if (id === lectureId.current) { setRows(Array.isArray(r.data) ? r.data : []); setErreur(false) } })
+      .catch(() => { if (id === lectureId.current) setErreur(true) })
+      .finally(() => { if (id === lectureId.current) setLoading(false) })
   }
 
   const loadParametrages = () => fetchAllPages((page, extra) => api.get('/ventes/parametrages-relance-client/', { params: { page, ...extra } }).then(r => r.data))
@@ -839,11 +844,17 @@ export default function RelancesPage() {
         </div>
       )}
 
-      {loading ? (
+      {erreur && (
+        <div role="alert" data-testid="relances-erreur" className="mb-3 flex flex-wrap items-center gap-2 text-sm text-destructive">
+          {rows.length > 0 ? 'File pas à jour — la dernière lecture a échoué.' : 'Impossible de charger la file de relances.'}
+          <Button type="button" size="sm" variant="outline" onClick={() => load()}>Réessayer</Button>
+        </div>
+      )}
+      {loading && rows.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
           <Spinner /> Chargement…
         </div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && erreur ? null : rows.length === 0 ? (
         <EmptyState
           icon={PartyPopper}
           title={fileFilter === 'mes'
