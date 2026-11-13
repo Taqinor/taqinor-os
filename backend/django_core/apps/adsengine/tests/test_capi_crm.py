@@ -57,6 +57,31 @@ class BuildStageEventTests(TestCase):
         self.assertTrue(capi_crm.build_stage_event(
             self.company, vivant.pk, CONTACTED, old_stage=NEW)['eligible'])
 
+    def test_lead_oppose_non_eligible(self):
+        """AMSG10 (D-AMSG-3) — un lead « ne plus contacter » : rien vers Meta."""
+        # Témoin d'abord, autre numéro : l'opposé pose une empreinte
+        # (ACRM62) qui ferait naître « ne plus contacter » le même numéro.
+        temoin = self._meta_lead(telephone='0698765432')
+        oppose = self._meta_lead(ne_plus_contacter=True,
+                                 external_id='789456555')
+        for build in (
+                lambda pk: capi_crm.build_stage_event(
+                    self.company, pk, CONTACTED, old_stage=NEW, now=1000),
+                lambda pk: capi_crm.build_appointment_event(
+                    self.company, pk, 1, 'effectue', now=1000)):
+            built = build(oppose.pk)
+            self.assertFalse(built['eligible'])
+            self.assertEqual(built['reason'], 'opposed')
+            self.assertIsNone(built['event'])
+            self.assertTrue(build(temoin.pk)['eligible'])
+        sent = []
+        with mock.patch.dict(os.environ, _ENV_ON):
+            res = capi_crm.emit_lead_stage_event(
+                self.company, oppose.pk, CONTACTED, old_stage=NEW,
+                transport=lambda u, p: sent.append((u, p)) or (200, 'ok'))
+        self.assertFalse(res['emitted'])
+        self.assertEqual(sent, [])
+
     def test_event_name_is_stage_key_never_hardcoded(self):
         lead = self._meta_lead()
         built = capi_crm.build_stage_event(
