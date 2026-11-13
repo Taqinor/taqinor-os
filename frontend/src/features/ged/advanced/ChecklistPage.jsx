@@ -17,6 +17,7 @@ import { ChampDocument, ChampDescription, ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import { toastSiMuet } from '../listesGed'
 import { useConfirmDialog } from '../../../ui/confirm'
+import useDroitMetier from '../../sav/useDroitMetier'
 
 /* ============================================================================
    WIR164 — GED avancée, groupe (a) : checklist de pièces (XGED8), validation
@@ -52,6 +53,8 @@ export default function ChecklistPage() {
   const [showExigence, setShowExigence] = useState(false)
   const [showDemande, setShowDemande] = useState(false)
   const [showTampon, setShowTampon] = useState(false)
+  // ADRG80 — créer/supprimer un tampon de société exige `ged_gouvernance`.
+  const peutGouverner = useDroitMetier('ged_gouvernance')
   const [showApposer, setShowApposer] = useState(false)
 
   const load = async () => {
@@ -288,11 +291,11 @@ export default function ChecklistPage() {
                 <Button variant="secondary" onClick={() => setShowApposer(true)}>
                   <Stamp /> Apposer un tampon
                 </Button>
-                <Button onClick={() => setShowTampon(true)}><Plus /> Nouveau tampon</Button>
+                {peutGouverner && <Button onClick={() => setShowTampon(true)}><Plus /> Nouveau tampon</Button>}
               </div>
             )}
             columns={tamponColumns} rows={tampons} loading={loading} error={error}
-            rowActions={tamponActions} searchable exportName="tampons-societe"
+            rowActions={peutGouverner ? tamponActions : undefined} searchable exportName="tampons-societe"
             emptyTitle="Aucun tampon propre" emptyDescription="Ajoutez un tampon propre à votre société."
           />
         </TabsContent>

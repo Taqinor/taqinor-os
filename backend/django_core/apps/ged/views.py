@@ -4060,7 +4060,7 @@ class TamponSocieteViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]  # ADRG80 (D-ADRG-8)
 
     def get_queryset(self):
         return super().get_queryset().filter(company=self.request.user.company)
@@ -4168,7 +4168,7 @@ class AclGedViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]  # ADRG80 (D-ADRG-8)
 
     def get_queryset(self):
         # ADOC37 — les droits posés sur un document invisible de l'appelant
@@ -4248,7 +4248,7 @@ class RegleAclMetadonneeViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]  # ADRG80 (D-ADRG-8)
 
     def get_queryset(self):
         return selectors.regles_acl_metadonnee_for_company(
