@@ -84,61 +84,44 @@ class RegistreOppositionTests(TestCase):
                 self.assertIn('opposition levée par acrm59-resp',
                               derniere.source)
 
-    # ── ACRM63 (D-ACRM-5 (3)=(a)) ──────────────────────────────────────────
+    # ── APUB39 (D-APUB-1 = confirmer_par_commercial ; remplace ACRM63) ────
 
-    def test_rappel_client_leve_opposition(self):
-        from apps.crm.models import LeadActivity
-        from apps.crm.cadence_signaux import notify_client_contact_request
-
-        self._patch(True)
-        self.lead.refresh_from_db()
-        self.assertTrue(self.lead.ne_plus_contacter)
-
-        notify_client_contact_request(
-            'DEV-ACRM63', self.lead, canal='rappel', message='')
-
-        self.lead.refresh_from_db()
-        self.assertFalse(self.lead.ne_plus_contacter)
-        self.assertTrue(LeadActivity.objects.filter(
-            lead=self.lead,
-            body__contains='opposition levée à la demande du client').exists())
-        for identifiant in (EMAIL, TELEPHONE):
-            for finalite in FINALITES_CONTACT:
-                derniere = self._derniere(identifiant, finalite)
-                self.assertTrue(derniere.granted, (identifiant, finalite))
-                self.assertIn('à la demande du client', derniere.source)
-
-    def test_rappel_demande_libere_l_empreinte(self):
-        """ACVI108 (D-ACVI-6) — le rappel demandé par la personne retire
-        l'empreinte de son numéro : une nouvelle fiche au même numéro naît
-        contactable ; un autre lead encore opposé au numéro la garde."""
+    def test_rappel_par_lien_ne_leve_pas_opposition(self):
+        """Le rappel demandé par le lien du devis ne lève pas l'opposition :
+        lead opposé, empreinte et registre intacts ; note « opposition
+        active » et touche « rappel demandé » posées."""
+        from apps.crm.cadence_reperes import RAPPEL_DEMANDE_LIBELLE
         from apps.crm.cadence_signaux import notify_client_contact_request
         from apps.crm.leads_doublons import poser_empreintes_opposition
-        from apps.crm.models import EmpreinteOpposition
-
-        def empreintes_du_numero():
-            return EmpreinteOpposition.objects.filter(
-                company=self.company, nature='telephone').count()
+        from apps.crm.models import EmpreinteOpposition, LeadActivity, RelanceEtape
 
         self._patch(True)
         self.lead.refresh_from_db()
         poser_empreintes_opposition(self.company, self.lead)
-        self.assertEqual(empreintes_du_numero(), 1)
-        notify_client_contact_request('DEV-ACVI108', self.lead, canal='rappel', message='')
+        empreintes = EmpreinteOpposition.objects.filter(
+            company=self.company, nature='telephone').count()
+        self.assertEqual(empreintes, 1)
+
+        notify_client_contact_request(
+            'DEV-APUB39', self.lead, canal='rappel', message='')
+
         self.lead.refresh_from_db()
-        self.assertFalse(self.lead.ne_plus_contacter)
-        self.assertEqual(empreintes_du_numero(), 0)
-        nouvelle = Lead.objects.create(company=self.company, nom='Fiche C', telephone=TELEPHONE)
-        nouvelle.refresh_from_db()
-        self.assertFalse(nouvelle.ne_plus_contacter)
-        # Un autre lead encore opposé au même numéro garde l'empreinte.
-        self._patch(True)
-        self.lead.refresh_from_db()
-        autre = Lead.objects.create(company=self.company, nom='Opposant B',
-                                    telephone=TELEPHONE, ne_plus_contacter=True)
-        poser_empreintes_opposition(self.company, autre)
-        notify_client_contact_request('DEV-ACVI108', self.lead, canal='rappel', message='')
-        self.assertEqual(empreintes_du_numero(), 1)
+        self.assertTrue(self.lead.ne_plus_contacter)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.company, nature='telephone').count(), empreintes)
+        for identifiant in (EMAIL, TELEPHONE):
+            for finalite in FINALITES_CONTACT:
+                self.assertFalse(self._derniere(identifiant, finalite).granted,
+                                 (identifiant, finalite))
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead,
+            body__startswith='Rappel demandé — opposition loi 09-08 active').exists())
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead,
+            body__contains='opposition levée à la demande du client').exists())
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=self.lead, libelle=RAPPEL_DEMANDE_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
 
     def test_rappel_client_lead_non_oppose_sans_note(self):
         from apps.crm.models import LeadActivity
@@ -160,3 +143,53 @@ class RegistreOppositionTests(TestCase):
             'DEV-ACRM63', self.lead, canal='revision', message='')
         self.lead.refresh_from_db()
         self.assertTrue(self.lead.ne_plus_contacter)
+
+    # ── AMSG3 (D-AMSG-2 = toutes_les_fiches) ───────────────────────────────
+
+    def test_stop_coche_les_fiches_existantes_aux_memes_contacts(self):
+        """STOP sur A : les fiches EXISTANTES de la société aux mêmes contacts
+        (B même numéro écrit autrement, D archivée au même e-mail) sont
+        cochées avec la ligne ancien → nouveau ; C d'une autre société ne
+        bouge pas ; un numéro opposé collé sur E la rend opposée ; une case
+        décochée n'est pas recochée par l'enregistrement suivant."""
+        from apps.crm.cadence_reponses import (
+            CONSENT_SOURCE_OPPOSITION_TOUCHE, tracer_opposition_registre)
+        from apps.crm.models import LeadActivity
+        from apps.crm.selectors import peut_contacter
+
+        b = Lead.objects.create(company=self.company, nom='B',
+                                telephone='06 61 59 59 59')
+        d = Lead.objects.create(company=self.company, nom='D',
+                                email=EMAIL.upper(), is_archived=True)
+        autre = Company.objects.create(nom='AMSG3 Autre', slug='amsg3-autre')
+        c = Lead.objects.create(company=autre, nom='C', telephone=TELEPHONE)
+        e = Lead.objects.create(company=self.company, nom='E',
+                                telephone='+212600000303')
+        Lead.objects.filter(pk=self.lead.pk).update(ne_plus_contacter=True)
+        self.lead.refresh_from_db()
+        tracer_opposition_registre(
+            self.lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
+
+        for fiche in (b, d):
+            fiche.refresh_from_db()
+            self.assertTrue(fiche.ne_plus_contacter, fiche.nom)
+            self.assertTrue(LeadActivity.objects.filter(
+                lead=fiche, kind=LeadActivity.Kind.MODIFICATION,
+                field='ne_plus_contacter').exists(), fiche.nom)
+        self.assertFalse(peut_contacter(b))
+        c.refresh_from_db()
+        self.assertFalse(c.ne_plus_contacter)
+        e.refresh_from_db()
+        self.assertFalse(e.ne_plus_contacter)
+
+        e.telephone = TELEPHONE
+        e.save()
+        e.refresh_from_db()
+        self.assertTrue(e.ne_plus_contacter)
+
+        b.ne_plus_contacter = False
+        b.save()
+        b.ville = 'Rabat'
+        b.save()
+        b.refresh_from_db()
+        self.assertFalse(b.ne_plus_contacter)

@@ -232,6 +232,49 @@ class TestLienClientAction(TestCase):
         resp = anon.get(self.url)
         self.assertIn(resp.status_code, [401, 403])
 
+    def test_liens_publics_sav_sur_base_publique(self):
+        """AMSG90 (C-AMSG-VER1-107) — lien de suivi du ticket, QR de partage
+        et étiquettes publiques d'équipement bâtis sur ``PUBLIC_BASE_URL``
+        (``public_url``), jamais sur l'hôte de la requête de l'employé ; sans
+        ``PUBLIC_BASE_URL``, l'hôte de la requête comme avant."""
+        from django.test import override_settings
+
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        responsable = make_user('fg86_amsg90', self.company, role='responsable')
+        api = auth(responsable)
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur AMSG90', sku='OND-AMSG90',
+            prix_vente=6000)
+        eq = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst,
+            numero_serie='SN-AMSG90')
+        base = '/api/django/sav/equipements/'
+        hote = {'HTTP_HOST': 'ancien.example.invalid'}
+        with override_settings(
+                PUBLIC_BASE_URL='https://erp.example.invalid',
+                ALLOWED_HOSTS=['ancien.example.invalid', 'testserver']):
+            r = api.get(self.url, **hote)
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertTrue(r.data['url'].startswith(
+                'https://erp.example.invalid/suivi/'), r.data['url'])
+            r = api.get(f'{base}{eq.pk}/partage-qr/', **hote)
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertTrue(r.data['url'].startswith(
+                'https://erp.example.invalid/e/'), r.data['url'])
+            r = api.get(f'{base}etiquettes/?ids={eq.pk}&public=1', **hote)
+            self.assertEqual(r.status_code, 200, r.content)
+            eq.refresh_from_db()
+            html = r.content.decode()
+            self.assertIn(f'https://erp.example.invalid/e/{eq.public_token}', html)
+            self.assertNotIn('ancien.example.invalid', html)
+        with override_settings(
+                PUBLIC_BASE_URL='',
+                ALLOWED_HOSTS=['ancien.example.invalid', 'testserver']):
+            r = api.get(self.url, **hote)
+            self.assertTrue(r.data['url'].startswith(
+                'http://ancien.example.invalid/suivi/'), r.data['url'])
+
 
 class TestCompanyScopePreserved(TestCase):
     """Vérifie que l'isolation par société reste intacte sur les endpoints normaux."""

@@ -199,6 +199,37 @@ class TestSortieSigneUnitaire(SortieSigneBase):
         self.assertEqual(chantiers.count(), 1)
         self.assertFalse(chantiers.get().annule)
 
+    def test_archiver_un_signe_facture_refuse_409_rien_ecrit(self):
+        """ASUP48 (D-ASUP-6 = refuser) — archiver un lead signé dont le devis
+        accepté porte une facture émise : 409 nommé, rien d'écrit ; un signé
+        sans suite s'archive comme avant."""
+        from apps.crm.portee_selectors import est_lead_signe
+        lead, devis = self._lead_et_devis()
+        self._accepter(devis)
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-8803',
+            devis=devis, client=self.client_obj,
+            statut=Facture.Statut.EMISE, type_facture='acompte',
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'), created_by=self.user)
+        notes = LeadActivity.objects.filter(lead=lead).count()
+        r = self.api.post(f'/api/django/crm/leads/{lead.id}/archiver/', {},
+                          format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn("Impossible d'archiver ce lead signé", r.data['detail'])
+        self.assertIn(facture.reference, r.data['detail'])
+        lead.refresh_from_db()
+        self.assertFalse(lead.is_archived)
+        self.assertTrue(est_lead_signe(lead))
+        self.assertEqual(LeadActivity.objects.filter(lead=lead).count(), notes)
+        libre, devis_libre = self._lead_et_devis()
+        self._accepter(devis_libre)
+        r = self.api.post(f'/api/django/crm/leads/{libre.id}/archiver/', {},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        libre.refresh_from_db()
+        self.assertTrue(libre.is_archived)
+
     def test_lead_signe_sans_devis_accepte_inchange(self):
         lead = Lead.objects.create(
             company=self.company, nom='Signé à la main', stage=stages.SIGNED)
@@ -243,6 +274,32 @@ class TestSortieSigneMasse(SortieSigneBase):
         self.assertEqual(lead_ko.stage, stages.SIGNED)
         self.assertEqual(devis_ko.statut, Devis.Statut.ACCEPTE)
         self.assertFalse(Installation.objects.get(devis=devis_ko).annule)
+
+    def test_archive_masse_saute_le_signe_bloque(self):
+        """ASUP48 — l'archivage en masse saute le signé à suite réelle avec
+        la raison ; l'autre est archivé."""
+        lead_ok, devis_ok = self._lead_et_devis()
+        lead_ko, devis_ko = self._lead_et_devis()
+        self._accepter(devis_ok)
+        self._accepter(devis_ko)
+        Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-8804',
+            devis=devis_ko, client=self.client_obj,
+            statut=Facture.Statut.EMISE, type_facture='acompte',
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'), created_by=self.user)
+        r = self.api.post('/api/django/crm/leads/bulk/', {
+            'action': 'archive', 'ids': [lead_ok.id, lead_ko.id]},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['updated'], 1)
+        sautes = {s['id']: s['reason'] for s in r.data['skipped']}
+        self.assertIn("Impossible d'archiver", sautes[lead_ko.id])
+        self.assertIn('FAC-', sautes[lead_ko.id])
+        lead_ok.refresh_from_db()
+        lead_ko.refresh_from_db()
+        self.assertTrue(lead_ok.is_archived)
+        self.assertFalse(lead_ko.is_archived)
 
 
 class TestSortieSigneApiPublique(SortieSigneBase):

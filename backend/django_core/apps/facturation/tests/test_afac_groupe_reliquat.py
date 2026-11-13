@@ -92,3 +92,29 @@ class GroupeReliquatTests(TestCase):
         self.assertEqual(len(r.data), 1, r.data)
         self.assertFalse(Paiement.objects.filter(
             company=self.company, facture__isnull=True).exists())
+
+    def test_lot_entierement_solde_refuse(self):
+        """ACNC10 (C-ACNC-008, D-ACNC-2) — un lot dont toutes les factures
+        sont déjà soldées est refusé en 409, sans paiement ni avance (il
+        devenait une avance du montant entier). Mutant : retirer le refus ⇒
+        avance de 10 000."""
+        from apps.ventes.models import Paiement
+        solde = self.api.post(URL, {
+            'client': self.client_obj.id, 'montant': '24000',
+            'mode': 'virement', 'date': '2026-10-08',
+            'factures': [self.a.id, self.b.id]}, format='json')
+        self.assertEqual(solde.status_code, 201, solde.data)
+        avant = Paiement.objects.filter(company=self.company).count()
+        r = self.api.post(URL, {
+            'client': self.client_obj.id, 'montant': '10000',
+            'mode': 'virement', 'factures': [self.a.id, self.b.id]},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('déjà soldées', r.data['detail'])
+        self.assertIn('Enregistrer une avance', r.data['detail'])
+        self.assertEqual(
+            Paiement.objects.filter(company=self.company).count(), avant)
+        # CLAUSE PERSISTANCE : les avances du client restent vides.
+        lues = self.api.get(AVANCES_URL, {'client': self.client_obj.id})
+        self.assertEqual(lues.status_code, 200, lues.data)
+        self.assertEqual(lues.data, [])

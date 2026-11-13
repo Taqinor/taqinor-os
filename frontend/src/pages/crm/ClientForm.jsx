@@ -149,6 +149,8 @@ export default function ClientForm({ client = null, onClose }) {
     // XSAL1-2 — liste de prix négociée (tarif revendeur/export). Vide =
     // prix de vente standard (comportement historique inchangé).
     liste_prix: client?.liste_prix ?? null,
+    // ACEL78 (D-ACEL-2) — relevé de compte mensuel automatique (opt-in).
+    releve_mensuel_auto: !!client?.releve_mensuel_auto,
   }), [client])
 
   const [fields, setFields] = useState(initial)
@@ -349,6 +351,9 @@ export default function ClientForm({ client = null, onClose }) {
         liste_prix: fields.liste_prix || null,
         // WIR67 — champs personnalisés du module « client ».
         custom_data: customData,
+        // ACEL78 — clé envoyée seulement si l'utilisateur a touché la case.
+        ...(fields.releve_mensuel_auto !== initial.releve_mensuel_auto
+          ? { releve_mensuel_auto: fields.releve_mensuel_auto } : {}),
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -626,6 +631,17 @@ export default function ClientForm({ client = null, onClose }) {
                 <p className="form-hint" data-testid="cf-langue-document-hint">
                   {t('client.langue_document.help')}
                 </p>
+              </FormField>
+
+              {/* ACEL78 (D-ACEL-2) — relevé mensuel automatique (1er du mois). */}
+              <FormField label={t('client.releve_mensuel_auto.label')} htmlFor="cf-releve-mensuel" fullWidth>
+                <input
+                  id="cf-releve-mensuel"
+                  type="checkbox"
+                  checked={fields.releve_mensuel_auto}
+                  onChange={e => setField('releve_mensuel_auto', e.target.checked)}
+                />
+                <p className="form-hint">{t('client.releve_mensuel_auto.help')}</p>
               </FormField>
 
               {/* XSAL9 — hiérarchie de comptes : société mère (optionnelle).

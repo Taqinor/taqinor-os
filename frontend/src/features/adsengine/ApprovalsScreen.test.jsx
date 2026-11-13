@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   // WIR208 — application RÉELLE d'une action approuvée (POST .../apply/).
   apply: vi.fn(),
+  // AERR24 — retrait d'approbation (POST .../desapprouver/) + toast « Annuler ».
+  desapprouver: vi.fn(),
+  toastWithUndo: vi.fn(),
   // AACQ63 — devise du compte publicitaire (connexion).
   connection: vi.fn(),
   // PUB10 — permissions effectives ; pleines par défaut (préserve le
@@ -25,7 +28,7 @@ vi.mock('./adsengineApi', () => ({
   default: {
     actions: {
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
-      create: mocks.create, apply: mocks.apply,
+      create: mocks.create, apply: mocks.apply, desapprouver: mocks.desapprouver,
     },
     connection: { get: mocks.connection },
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
@@ -37,6 +40,11 @@ vi.mock('./adsengineApi', () => ({
     metrics: { adsCockpit: () => Promise.resolve({ data: [] }) },
   },
 }))
+
+vi.mock('../../lib/toast', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toastWithUndo: mocks.toastWithUndo }
+})
 
 vi.mock('./useAdsPermissions', () => ({
   useAdsPermissions: () => ({
@@ -76,6 +84,8 @@ beforeEach(() => {
   mocks.pending.mockResolvedValue({ data: ACTIONS })
   mocks.approve.mockImplementation((id) => Promise.resolve(approved(id)))
   mocks.apply.mockImplementation((id) => Promise.resolve(applied(id)))
+  mocks.desapprouver.mockImplementation(
+    (id) => Promise.resolve({ data: { id, status: 'proposee' } }))
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
   mocks.connection.mockResolvedValue({ data: { currency: 'MAD' } })
@@ -174,6 +184,33 @@ describe('ApprovalsScreen (ENG25)', () => {
     await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
     expect(await screen.findByTestId('ae-apply-21')).toBeInTheDocument()
     expect(screen.queryByTestId('ae-approve-21')).toBeNull()
+    // AERR24 — et « Retirer l'approbation » tant qu'elle n'est pas appliquée.
+    expect(screen.getByTestId('ae-desapprouver-21')).toHaveTextContent("Retirer l'approbation")
+  })
+
+  it("AERR24 — « Retirer l'approbation » repasse la carte en Approuver / Rejeter", async () => {
+    mocks.pending.mockResolvedValue({ data: [
+      { id: 21, type: 'adjust_budget', status: 'approuvee', reason_fr: 'Déjà approuvée.' },
+    ] })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-desapprouver-21'))
+    await waitFor(() => expect(mocks.desapprouver).toHaveBeenCalledWith(21))
+    expect(await screen.findByTestId('ae-approve-21')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-reject-21')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-apply-21')).toBeNull()
+  })
+
+  it('AERR24 — le toast qui suit l\'approbation porte « Annuler » = desapprouver', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    await waitFor(() => expect(mocks.toastWithUndo).toHaveBeenCalledTimes(1))
+    const opts = mocks.toastWithUndo.mock.calls[0][0]
+    // Appel INVERSE, jamais un commit différé.
+    expect(opts.onCommit).toBeUndefined()
+    opts.onUndo()
+    await waitFor(() => expect(mocks.desapprouver).toHaveBeenCalledWith(11))
+    expect(await screen.findByTestId('ae-approve-11')).toBeInTheDocument()
   })
 
   it('rejeter est STRUCTURÉ (motif via select, jamais de chat) et retire l\'action', async () => {
@@ -463,6 +500,8 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
     expect(mocks.approve).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))
+    // AERR24 — après « a » confirmé, le toast porte « Annuler ».
+    await waitFor(() => expect(mocks.toastWithUndo).toHaveBeenCalled())
   })
 
   it('A : confirmation nommée, Annuler ⇒ aucun approve ; « a » sous une boîte ⇒ rien', async () => {

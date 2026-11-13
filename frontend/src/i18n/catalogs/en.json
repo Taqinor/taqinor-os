@@ -164,6 +164,8 @@
   "client.langue_document.help": "Language of invoices and quotes generated for this client.",
   "client.langue_document.fr": "French",
   "client.langue_document.ar": "Arabic",
+  "client.releve_mensuel_auto.label": "Automatic monthly account statement",
+  "client.releve_mensuel_auto.help": "Automatically emails the PDF account statement on the 1st of the month when the balance is not zero. Off by default.",
 
   "crm.cockpit.subtitle": "Leads, clients, activities and sales map",
   "ventes.cockpit.subtitle": "Quotes, purchase orders, invoicing and follow-ups",

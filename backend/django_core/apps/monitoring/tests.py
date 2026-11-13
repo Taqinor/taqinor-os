@@ -235,7 +235,9 @@ class TestTenantIsolation(TestCase):
             ('post', f'abonnements/{abonnement.pk}/resilier/',
              {'motif': 'Client a vendu la maison.'}, 200),
             ('delete', f'readings/{a_supprimer.pk}/', None, 204),
-            ('post', 'settings/', {'underperf_threshold_pct': '30'}, 200),
+            # ADRG46 (D-ADRG-5) — réglage société : `sav_gerer` ne suffit plus,
+            # il faut `parametres_modifier`.
+            ('post', 'settings/', {'underperf_threshold_pct': '30'}, 403),
             ('post', f'configs/{config.pk}/email-om-report/',
              {'period': 'monthly'}, 200),
         ]

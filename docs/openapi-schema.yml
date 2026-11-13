@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7752, components: 3653}
+counts: {paths: 4968, operations: 7754, components: 3653}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -162,6 +162,7 @@ operations:
 - post /api/django/adsengine/actions/{id}/annuler/ -> django_adsengine_actions_annuler_create
 - post /api/django/adsengine/actions/{id}/apply/ -> django_adsengine_actions_apply_create
 - post /api/django/adsengine/actions/{id}/approve/ -> django_adsengine_actions_approve_create
+- post /api/django/adsengine/actions/{id}/desapprouver/ -> django_adsengine_actions_desapprouver_create
 - post /api/django/adsengine/actions/{id}/reject/ -> django_adsengine_actions_reject_create
 - get /api/django/adsengine/ads/{ad_meta_id}/previews/ -> django_adsengine_ads_previews_retrieve
 - get /api/django/adsengine/ads/{meta_id}/histoire/ -> django_adsengine_ads_histoire_retrieve
@@ -4079,6 +4080,7 @@ operations:
 - post /api/v1/adsengine/actions/{id}/annuler/ -> v1_adsengine_actions_annuler_create
 - post /api/v1/adsengine/actions/{id}/apply/ -> v1_adsengine_actions_apply_create
 - post /api/v1/adsengine/actions/{id}/approve/ -> v1_adsengine_actions_approve_create
+- post /api/v1/adsengine/actions/{id}/desapprouver/ -> v1_adsengine_actions_desapprouver_create
 - post /api/v1/adsengine/actions/{id}/reject/ -> v1_adsengine_actions_reject_create
 - get /api/v1/adsengine/ads/{ad_meta_id}/previews/ -> v1_adsengine_ads_previews_retrieve
 - get /api/v1/adsengine/ads/{meta_id}/histoire/ -> v1_adsengine_ads_histoire_retrieve

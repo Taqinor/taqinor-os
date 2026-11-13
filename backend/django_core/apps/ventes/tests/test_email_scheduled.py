@@ -248,6 +248,22 @@ class TestScheduledJobs(TestCase):
             beats['ventes-releve-mensuel-reminders']['schedule'].day_of_month,
             {1, 2, 3})
 
+    def test_envois_facturation_programmes_a_8h30(self):
+        """AMSG44 (C-AMSG-032, D-AMSG-1 = fenetre_commerciale) — relances,
+        rappels avant échéance et relevés mensuels partent à 08:30 heure de
+        Casablanca, comme les messages commerciaux ; jours inchangés (AMSG43).
+        Mutant : remettre `crontab(hour=7, minute=0)` ⇒ échec."""
+        from erp_agentique.celery import app
+        self.assertEqual(app.conf.timezone, 'Africa/Casablanca')
+        self.assertFalse(app.conf.enable_utc)
+        beats = app.conf.beat_schedule
+        for cle in ('ventes-relance-reminders', 'ventes-pre-echeance-reminders',
+                    'ventes-releve-mensuel-reminders'):
+            self.assertEqual(beats[cle]['schedule'].hour, {8}, cle)
+            self.assertEqual(beats[cle]['schedule'].minute, {30}, cle)
+            self.assertEqual(
+                beats[cle]['schedule'].day_of_week, {1, 2, 3, 4, 5}, cle)
+
     def test_overdue_job_is_idempotent(self):
         from apps.ventes.scheduled import check_overdue_factures
         self._facture('FAC-OV-0002', date.today() - timedelta(days=5))

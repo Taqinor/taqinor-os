@@ -168,3 +168,72 @@ class NudgeOppositionTests(TestCase):
         for gabarit in (recouvrement._NUDGE_MSG_FR, recouvrement._NUDGE_MSG_AR):
             self.assertNotIn('TAQINOR', gabarit)
             self.assertIn('{signature}', gabarit)
+
+    def test_brouillon_vise_le_contact_du_lead(self):
+        """AMSG86 (C-AMSG-VER1-103) — devis lié à un lead ET à un client : le
+        brouillon vise le WhatsApp du lead (règle AMSG33), le témoin sans lead
+        garde le téléphone du client. Mutant : remettre `client.telephone` ⇒
+        échec."""
+        from apps.crm.models import Client, Lead
+        from apps.notifications.models import Notification
+        from apps.ventes.models import Devis
+        from apps.ventes.services import send_devis_followup_nudges
+        client = Client.objects.create(
+            company=self.company, nom='Tel', prenom='AMSG86',
+            email='amsg86@example.invalid', telephone='0600000058')
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead AMSG86', stage=stages.QUOTE_SENT,
+            whatsapp='+212612340021', telephone='+212612340022')
+        lie, temoin = (Devis.objects.create(
+            company=self.company, reference=f'DEV-AMSG86-{n}', client=client,
+            lead=le_lead, statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+            for n, le_lead in ((1, lead), (2, None)))
+        send_devis_followup_nudges()
+
+        def ligne(d):
+            corps = Notification.objects.get(
+                recipient=self.vendeur,
+                link=f'/ventes/devis?devis={d.id}').body
+            return next(x for x in corps.splitlines()
+                        if x.startswith('Brouillon WhatsApp'))
+        self.assertTrue(ligne(lie).startswith(
+            'Brouillon WhatsApp : https://wa.me/212612340021?text='),
+            ligne(lie))
+        self.assertTrue(ligne(temoin).startswith(
+            'Brouillon WhatsApp : https://wa.me/212600000058?text='),
+            ligne(temoin))
+
+    def test_journal_sans_numero_ni_texte_client(self):
+        """AMSG87 (C-AMSG-VER1-104) — la ligne « QJ4 nudge wa_draft » garde
+        référence, niveau, jours et vendeur, sans numéro, ni `wa.me`, ni lien
+        de proposition, ni texte du gabarit ; la notification garde le
+        brouillon. Mutant : remettre `wa_url` dans l'appel ⇒ échec."""
+        from apps.crm.models import Client
+        from apps.notifications.models import Notification
+        from apps.ventes.models import Devis
+        from apps.ventes.services import send_devis_followup_nudges
+        from apps.ventes.utils.whatsapp import build_single_devis_whatsapp
+        client = Client.objects.create(
+            company=self.company, nom='Journal', prenom='AMSG87',
+            email='amsg87@example.invalid', telephone='0600000058')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AMSG87-1', client=client,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+        with self.assertLogs('apps.ventes.services', 'INFO') as journal:
+            send_devis_followup_nudges()
+        ligne = next(m for m in journal.output
+                     if 'QJ4 nudge wa_draft' in m and 'DEV-AMSG87-1' in m)
+        self.assertIn('niveau=0', ligne)
+        self.assertIn('j+2', ligne)
+        self.assertIn('cadv8_vendeur', ligne)
+        texte = build_single_devis_whatsapp(None, devis)[0]
+        premiere = next(x for x in texte.splitlines() if x.strip())
+        for interdit in ('212600000058', '0600000058', 'wa.me', '/proposal',
+                         '/proposition', premiere):
+            self.assertNotIn(interdit, ligne)
+        self.assertIn('Brouillon WhatsApp : https://wa.me/212600000058',
+                      Notification.objects.get(
+                          recipient=self.vendeur,
+                          link=f'/ventes/devis?devis={devis.id}').body)

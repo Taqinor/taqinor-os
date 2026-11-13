@@ -715,9 +715,19 @@ def merge_clients(survivor, others, user):
                'repointes': {}, 'non_repointes': []}
     if not others:
         return rapport
-    _refuser_factures_sous_autre_identite(survivor, others)
 
     with transaction.atomic():
+        # ACNC54 — verrou des fiches par pk croissant (patron merge_leads),
+        # relecture, refus d'une fiche déjà fusionnée ; factures sous verrou.
+        fiches = [survivor, *others]
+        list(Client.objects.select_for_update().filter(
+            pk__in=[f.pk for f in fiches]).order_by('pk'))
+        for fiche in fiches:
+            fiche.refresh_from_db()
+            if (fiche.custom_data or {}).get('fusionne_dans'):
+                raise FusionRefusee(f'{fiche} est déjà fusionnée : fusion refusée.')
+        _refuser_factures_sous_autre_identite(survivor, others)
+        champs_survivant = {'date_modification'}
         for absorbed in others:
             repointes, non_repointes = repointer_relations(absorbed, survivor)
             # AMON82 — ids entiers du monitoring (abonnements, certificats).
@@ -735,6 +745,7 @@ def merge_clients(survivor, others, user):
             # Compléter les champs VIDES du survivant (jamais écraser).
             completes = completer_champs_vides(survivor, absorbed,
                                                _MERGE_CLIENT_FILL_FIELDS)
+            champs_survivant.update(completes)
 
             # Neutraliser le doublon — jamais le supprimer.
             marqueur = dict(absorbed.custom_data or {})
@@ -766,7 +777,7 @@ def merge_clients(survivor, others, user):
 
             _journaliser_fusion_client(survivor, absorbed, user)
 
-        survivor.save()
+        survivor.save(update_fields=sorted(champs_survivant))
     return rapport
 
 

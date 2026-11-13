@@ -826,24 +826,23 @@ def send_devis_followup_nudges():
                 canal = DevisNudgeLog.Canal.EMAIL
             else:
                 # QX13 — brouillon wa.me vers le CLIENT (le lien proposition à
-                # partager), et non le téléphone du vendeur.
-                client_phone = (getattr(client, 'telephone', '') or ''
-                                if client else '')
+                # partager) ; AMSG86 — numéro du lead d'abord (AMSG33).
                 # AMSG39 — le brouillon porte le texte DESTINÉ AU CLIENT
                 # (gabarit `devis_unique` de la société), pas le mot au vendeur.
                 wa_url = None
                 try:
                     from apps.ventes.utils.whatsapp import (
-                        build_single_devis_whatsapp)
+                        build_single_devis_whatsapp, devis_recipient_phone)
                     texte_client, _lien = build_single_devis_whatsapp(None, devis)
-                    wa_url = _build_wa_draft_url(client_phone, texte_client)
+                    wa_url = _build_wa_draft_url(
+                        devis_recipient_phone(devis), texte_client)
                 except Exception:  # noqa: BLE001 — pas de brouillon (D-ENF22-BLE001)
                     logger.warning('QJ4: brouillon client indisponible devis %s',
                                    devis.reference, exc_info=True)
-                logger.info(
-                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
+                logger.info(  # AMSG87 — jamais le numéro ni le texte client
+                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s',
                     devis.reference, idx, jours,
-                    getattr(vendeur, 'username', '?'), wa_url)
+                    getattr(vendeur, 'username', '?'))
                 # QX13 — le brouillon wa.me ne partait qu'en LOG (invisible) :
                 # crée une vraie Notification in-app au vendeur, avec le lien
                 # proposition + le brouillon wa.me prêts et un deep-link devis.

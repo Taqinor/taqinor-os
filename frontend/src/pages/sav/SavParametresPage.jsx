@@ -17,6 +17,7 @@ import { BoutonsEdition } from './SavCommun'
 import SimpleRefListEditor from './SimpleRefListEditor'
 import { useConfirm } from '../../providers/confirm-context'
 import { toastErreurNonAffichee } from '../../lib/toast'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
 // pour le total.
@@ -520,7 +521,26 @@ function HorairesOuvresEditor({ value, onChange }) {
   )
 }
 
+// ADRG46 (D-ADRG-5) — délais SLA et réglages service client = réglages de
+// toute la société : écriture sous `parametres_modifier` (garde serveur
+// `SavSlaSettingsViewSet`), lecture seule sinon.
+function EnregistrerOuLectureSeule({ peutModifier, saving, onClick }) {
+  if (!peutModifier) {
+    return (
+      <p data-testid="sla-lecture-seule" className="text-xs text-muted-foreground">
+        Lecture seule — le droit « Modifier » des paramètres est requis pour enregistrer.
+      </p>
+    )
+  }
+  return (
+    <Button type="button" size="sm" className="self-start" loading={saving} onClick={onClick}>
+      Enregistrer
+    </Button>
+  )
+}
+
 function SlaAutomationSection() {
+  const peutModifier = useCanModifierParametres()
   const [form, setForm] = useState(SLA_SETTINGS_DEFAULTS)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -556,6 +576,7 @@ function SlaAutomationSection() {
         activée explicitement ici.
       </p>
       <Card className="flex flex-col gap-4 p-4">
+        <fieldset disabled={!peutModifier} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
         <div className="grid gap-3 sm:grid-cols-2">
           {SLA_NUMBER_FIELDS.map((f) => (
             <label key={f.key} className="flex flex-col gap-1 text-sm text-foreground">
@@ -587,9 +608,8 @@ function SlaAutomationSection() {
           </div>
           <HorairesOuvresEditor value={form.horaires_ouvres} onChange={setField('horaires_ouvres')} />
         </div>
-        <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
-          Enregistrer
-        </Button>
+        </fieldset>
+        <EnregistrerOuLectureSeule peutModifier={peutModifier} saving={saving} onClick={save} />
       </Card>
     </div>
   )
@@ -627,6 +647,7 @@ const SERVICE_CLIENT_TOGGLES = [
 ]
 
 function ServiceClientSection() {
+  const peutModifier = useCanModifierParametres()
   const [form, setForm] = useState({
     affectation_par_competence: false,
     csat_detaille_actif: false,
@@ -680,7 +701,7 @@ function ServiceClientSection() {
         activée ici.
       </p>
       <Card className="flex flex-col gap-4 p-4">
-        <div className="flex flex-col gap-2">
+        <fieldset disabled={!peutModifier} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
           {SERVICE_CLIENT_TOGGLES.map((t) => (
             <div key={t.key}
                  className="flex items-start justify-between gap-3 rounded-lg border border-border p-2.5 text-sm text-foreground">
@@ -692,15 +713,13 @@ function ServiceClientSection() {
                       onCheckedChange={setField(t.key)} />
             </div>
           ))}
-        </div>
+        </fieldset>
         <p className="text-xs text-muted-foreground">
           Le canal e-mail entrant s'active dans Paramètres → Intégrations
           (boîte e-mail entrante) : c'est la source unique du canal, elle n'est
           pas recopiée ici.
         </p>
-        <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
-          Enregistrer
-        </Button>
+        <EnregistrerOuLectureSeule peutModifier={peutModifier} saving={saving} onClick={save} />
       </Card>
     </div>
   )

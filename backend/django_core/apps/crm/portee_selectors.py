@@ -31,6 +31,21 @@ def peut_contacter(instance, canal=None):
     return not getattr(lead, 'ne_plus_contacter', False)
 
 
+def masquer_objectifs_hors_portee(lignes, user):
+    """ALEC24 (D-ALEC-2 = portee_du_role) — ``cible``, ``realise`` et
+    ``taux`` à ``None`` sur les lignes d'objectif (dicts) dont l'``owner``
+    est hors de la portée du rôle de ``user`` (objectif société compris) ;
+    ``owner_nom`` reste. Portée « tout » (Direction, hérité) : inchangé."""
+    from core.scoping import visible_user_ids
+
+    ids = visible_user_ids(user)
+    for ligne in lignes if ids is not None else ():
+        if ligne.get('owner') not in ids:
+            ligne.update({c: None for c in ('cible', 'realise', 'taux')
+                          if c in ligne})
+    return lignes
+
+
 def portee_leads(qs, user):
     """ACRM28 — restreint un queryset de LEADS à ce que ``user`` voit :
     portée de visibilité du rôle (``scope_queryset`` sur ``owner`` —

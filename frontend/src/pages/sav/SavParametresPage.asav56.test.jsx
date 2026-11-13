@@ -28,6 +28,14 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
+// ADRG46 — droit `parametres_modifier` (useCanModifierParametres) piloté par
+// le test : la page n'a pas de store Redux ici.
+const droit = vi.hoisted(() => ({ peutModifier: true }))
+vi.mock('../../features/parametres/useCanModifierParametres', () => ({
+  useCanModifierParametres: () => droit.peutModifier,
+  default: () => droit.peutModifier,
+}))
+
 import SavParametresPage from './SavParametresPage'
 
 const monter = () => render(<MemoryRouter><ThemeProvider><SavParametresPage /></ThemeProvider></MemoryRouter>)
@@ -94,5 +102,26 @@ describe('SavParametresPage — ASAV56 réglages SLA', () => {
     const interrupteurs = screen.getAllByRole('switch', { name: 'Décompter le SLA en heures ouvrées' })
     expect(interrupteurs).toHaveLength(1)
     expect(interrupteurs[0]).toHaveAttribute('aria-checked', 'true')
+  }, 60000)
+
+  // ADRG46 (D-ADRG-5) — sans `parametres_modifier` : SLA et service client en
+  // lecture seule, aucun enregistrement possible.
+  it('sans le droit Modifier des paramètres : lecture seule, aucun POST', async () => {
+    const user = userEvent.setup()
+    droit.peutModifier = false
+    serveur.posts = []
+    try {
+      monter()
+      await ouvrirSla(user)
+      expect(screen.getByTestId('sla-lecture-seule')).toHaveTextContent(/Lecture seule/)
+      expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+      expect(screen.getByLabelText('Urgente — résolution (jours)')).toBeDisabled()
+      await user.click(screen.getByRole('tab', { name: 'Service client' }))
+      expect(await screen.findByRole('switch', { name: 'Enquête de satisfaction détaillée' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+      expect(serveur.posts).toHaveLength(0)
+    } finally {
+      droit.peutModifier = true
+    }
   }, 60000)
 })
