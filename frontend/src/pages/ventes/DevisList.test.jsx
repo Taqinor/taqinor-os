@@ -143,6 +143,72 @@ describe('DevisList — états de chargement (J141)', () => {
   })
 })
 
+describe('DevisList — relecture en cours ou ratée (AERR2)', () => {
+  const trois = [1, 2, 3].map(i => ({
+    id: i, reference: `DEV-AERR2-000${i}`, client_nom: 'ACME', statut: i === 1 ? 'brouillon' : 'envoye',
+    date_creation: '2026-07-01', total_ttc: 1000 * i, nb_options: 1, version: 1,
+  }))
+
+  it('store loading: true puis error avec 3 devis chargés : les lignes restent, avis + Réessayer', () => {
+    const { unmount } = renderList({ loading: true, devis: trois })
+    expect(screen.getByText('DEV-AERR2-0002')).toBeVisible()
+    expect(screen.queryByTestId('devis-pas-a-jour')).toBeNull()
+    unmount()
+    renderList({ loading: false, error: 'Network Error', devis: trois })
+    expect(screen.getByText('DEV-AERR2-0003')).toBeVisible()
+    const avis = screen.getByTestId('devis-pas-a-jour')
+    expect(avis.textContent).toContain('Liste pas à jour')
+    fetchDevis.mockClear()
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect(fetchDevis).toHaveBeenCalled()
+  })
+})
+
+describe('DevisList — raccourci « a » sous une boîte (AERR14)', () => {
+  it('modale d\'acceptation ouverte : « a » n\'ouvre pas la boîte PDF', async () => {
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+    renderList({
+      devis: [{
+        id: 77, reference: 'DEV-AERR14', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 2, version: 1, is_active: true,
+      }],
+      permissions: ['ventes_valider'],
+    }, ['/ventes/devis?devis=77'])
+    fireEvent.click(within(screen.getByText('DEV-AERR14').closest('tr')).getByRole('button', { name: /Accepter/ }))
+    await screen.findByText(/Accepter le devis — DEV-AERR14/)
+    fireEvent.keyDown(document.body, { key: 'a' })
+    expect(screen.queryByText(/Générer le PDF — DEV-AERR14/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByText(/Accepter le devis — DEV-AERR14/)).toBeNull())
+    fireEvent.keyDown(document.body, { key: 'a' })
+    expect(await screen.findByText(/Générer le PDF — DEV-AERR14/)).toBeTruthy()
+    defile.mockRestore()
+  })
+})
+
+describe('DevisList — approuver la remise (AERR16)', () => {
+  it('Approuver la remise : confirmation nommée, Annuler ⇒ aucun POST', async () => {
+    const user = userEvent.setup()
+    const approuver = vi.spyOn(ventesApi, 'approuverRemise').mockResolvedValue({ data: {} })
+    const demande = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderList({
+      devis: [{
+        id: 88, reference: 'DEV-2026-11-0007', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-11-01', total_ttc: 5000, nb_options: 1, version: 1,
+        remise_globale: '12.00', remise_approuvee: false,
+      }],
+    })
+    const row = screen.getByText('DEV-2026-11-0007').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Approuver la remise/ }))
+    await waitFor(() => expect(demande).toHaveBeenCalledWith(
+      'Approuver la remise de 12 % du devis DEV-2026-11-0007 ?'))
+    expect(approuver).not.toHaveBeenCalled()
+    demande.mockRestore()
+    approuver.mockRestore()
+  })
+})
+
 describe('DevisList — rendu des données (J141)', () => {
   it('rend les vraies lignes avec une pastille de statut quand le chargement est terminé', () => {
     renderList({
@@ -433,6 +499,24 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1,
   }])
 
+  it('ACNC13 — deux envois de variantes après ECONNABORTED portent la même clé', async () => {
+    const user = userEvent.setup()
+    ventesApi.dupliquerVariante.mockClear()
+    ventesApi.dupliquerVariante.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    await user.click(within(screen.getByText('DEV-VAR').closest('tr')).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
+    await screen.findByLabelText(/Pourcentage de variation/)
+    fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
+    await waitFor(() => expect(ventesApi.dupliquerVariante).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Créer les variantes/ })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
+    await waitFor(() => expect(ventesApi.dupliquerVariante).toHaveBeenCalledTimes(2))
+    const [cle1, cle2] = ventesApi.dupliquerVariante.mock.calls.map(c => c[1].idempotency_key)
+    expect(cle1).toBeTruthy()
+    expect(cle2).toBe(cle1)
+  })
+
   it('ouvre une modale pré-remplie depuis la config société (variante_pct)', async () => {
     const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
@@ -460,7 +544,7 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
     await waitFor(() => {
       // Le % (25) est transmis en override de requête.
-      expect(ventesApi.dupliquerVariante).toHaveBeenCalledWith(20, { variante_pct: 25 })
+      expect(ventesApi.dupliquerVariante).toHaveBeenCalledWith(20, { variante_pct: 25, idempotency_key: expect.any(String) })
     })
     // La comparaison s'ouvre : le panneau (WIR225 — servi par getVariantes)
     // apparaît et le groupe est demandé au serveur.
@@ -516,6 +600,7 @@ describe('DevisList — GAMMES : créer une variante de gamme', () => {
     await waitFor(() => {
       expect(ventesApi.dupliquerVarianteGamme).toHaveBeenCalledWith(21, {
         nom: 'Confort Atlas', nom_source: 'Essentielle', recommandee: false,
+        idempotency_key: expect.any(String),
       })
     })
     // WIR225 — le panneau s'appelle desormais « Comparaison des variantes »
@@ -724,6 +809,33 @@ describe('DevisList — WR2/QJR531 : copier le lien de proposition = envoi (D-QJ
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/proposition/int456'))
     })
+  })
+
+  it('AERR9 — writeText rejeté : pas de « Lien copié », l\'URL est affichée', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.reject(new Error('NotAllowedError')))
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
+    const succes = vi.spyOn(toast, 'success')
+    const avertit = vi.spyOn(toast, 'warning')
+    renderList({
+      loading: false,
+      devis: [{
+        id: 40, reference: 'DEV-SHARE', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 7000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-SHARE').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Copier le lien de la proposition/ }))
+    await waitFor(() => { expect(avertit).toHaveBeenCalled() })
+    const [message, opts] = avertit.mock.calls.at(-1)
+    expect(message).toContain('Copie impossible — devis marqué envoyé')
+    expect(opts.description).toContain('/proposition/tok123')
+    expect(succes).not.toHaveBeenCalledWith('Lien copié — devis marqué envoyé.')
+    succes.mockRestore()
+    avertit.mockRestore()
   })
 })
 

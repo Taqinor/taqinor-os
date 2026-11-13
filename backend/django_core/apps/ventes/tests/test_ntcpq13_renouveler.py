@@ -153,3 +153,27 @@ class TestRenouvelerDevis(TestCase):
         self.assertTrue(
             nouveau.activites.filter(
                 body__icontains='Renouvellement n°').exists())
+
+    def test_deux_renouvellements_un_seul_brouillon(self):
+        """ACNC13 — deux « renouveler » (rejeu ou course) ne créent qu'UN
+        brouillon n° N+1 : le 2e le rend (200 à l'API), jamais un second."""
+        url = f'/api/django/ventes/devis/{self.devis.id}/renouveler/'
+        r1 = auth(self.user).post(url, {}, format='json')
+        r2 = auth(self.user).post(url, {}, format='json')
+        self.assertEqual((r1.status_code, r2.status_code), (201, 200), r2.data)
+        self.assertEqual(r1.data['id'], r2.data['id'])
+        self.assertEqual(Devis.objects.filter(
+            company=self.company, devis_origine=self.devis).count(), 1)
+
+    def test_variantes_rejouees_par_cle_un_seul_jeu(self):
+        """ACNC13 — même ``idempotency_key`` : la 2e réponse est la 1re
+        rejouée, aucun 2e jeu de variantes ; sans clé, inchangé."""
+        url = f'/api/django/ventes/devis/{self.devis.id}/dupliquer-variante/'
+        corps = {'variante_pct': 20, 'idempotency_key': 'cle-acnc13'}
+        r1 = auth(self.user).post(url, corps, format='json')
+        avant = Devis.objects.filter(company=self.company).count()
+        r2 = auth(self.user).post(url, corps, format='json')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        self.assertEqual(r2.status_code, 201, r2.data)
+        self.assertEqual([d['id'] for d in r1.data], [d['id'] for d in r2.data])
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), avant)

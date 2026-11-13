@@ -21,6 +21,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import LotsMultiSites from './LotsMultiSites'
+import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import AjouterBoqElectrique from './AjouterBoqElectrique'
 import { bilanBoq, corpsCreationLot, messageErreurLots } from './lotsBoq'
 
@@ -80,6 +81,23 @@ describe('LotsMultiSites', () => {
     const corpsContrat = documentContrat('ventes', 'devis_lots').requete_post.corps
     const envoye = ventesApi.creerLotDevis.mock.calls[0][1]
     Object.keys(envoye).forEach(k => expect(corpsContrat).toHaveProperty(k))
+  })
+
+  it('AERR11 — formulaire modifié monté : confirmation, Annuler ⇒ aucun creerLotDevis', async () => {
+    function FormulaireModifie() { useDirtyGuard(true); return null }
+    const demande = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const onChange = vi.fn()
+    render(<><FormulaireModifie /><LotsMultiSites devisId={7} modifiable onChange={onChange} /></>)
+    await userEvent.click(screen.getByRole('button', { name: 'Afficher' }))
+    await screen.findByLabelText('Nom du lot')
+    await userEvent.type(screen.getByLabelText('Nom du lot'), 'Bâtiment B')
+    await userEvent.click(screen.getByRole('button', { name: 'Créer le lot' }))
+    await waitFor(() => expect(demande).toHaveBeenCalledWith(
+      expect.stringContaining('Créer le lot recharge le devis')))
+    expect(ventesApi.creerLotDevis).not.toHaveBeenCalled()
+    expect(onChange).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Nom du lot').value).toBe('Bâtiment B')
+    demande.mockRestore()
   })
 
   it('refus serveur : le message est affiché, rien n’est relu', async () => {
