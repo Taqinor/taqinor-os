@@ -212,6 +212,10 @@ sortie(e.pk if e else None)`)
     await expect(tp.getByText(noms[0], { exact: true }), 'après restauration : toujours absent du planning').toHaveCount(0)
     // Capture de l'étape : le planning du terrain, vide (la page du terrain est la première capturée si on
     // ferme celle de l'admin, restée vierge).
+    // L'écart déclaré plus bas ne couvre QUE le 403 de la coquille sur /stock/produits/?page_size=1 : tout autre
+    // incident d'oracle fait tomber le corps de l'étape.
+    const autres = suivi.incidents.filter((i) => !(/\/api\/django\/stock\/produits\/\?page_size=1\b/.test(i.texte) && /403/.test(i.texte)))
+    expect(autres, 'aucun incident d\'oracle hors du 403 connu de la coquille').toEqual([])
     await page.close()
   } finally {
     await di.ctx.dispose()
@@ -224,6 +228,19 @@ for pk in ${JSON.stringify(ids.leads)}:
     try: Lead.all_objects.filter(pk=pk).delete()
     except Exception as exc: print('nettoyage', pk, exc)`)
   }
+}, {
+  // Run runner 43507923128 (13/11) : corps de l'étape VERT (toutes les assertions d'ASUP44 passées), seuls les
+  // oracles 2/3 tombent — à CHAQUE chargement de page du compte « Commercial terrain », la coquille
+  // (components/layout/Sidebar.jsx → features/onboarding/onboardingHelpers.js::lireComptesOnboarding) lit
+  // `GET /stock/produits/?page_size=1` sans droit stock ⇒ 403 + console.error. Défaut antérieur et hors
+  // d'ASUP44 (jumeau non traité d'ERR-SHELL-USERS-403-COMMERCIAL, qui n'a borné que /users/) ; il échoue à la
+  // base de la même façon. Assertions du corps intactes.
+  ecart: {
+    base: 'FAIL',
+    raison: 'coquille du compte Commercial terrain : GET /stock/produits/?page_size=1 → 403 à chaque page '
+      + '(onboardingHelpers.js::lireComptesOnboarding, appelé par Sidebar.jsx ; jumeau d\'ERR-SHELL-USERS-403-COMMERCIAL), '
+      + 'défaut antérieur hors ASUP44, à classer chez le propriétaire du shell frontend',
+  },
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,7 +257,8 @@ async function devisEnvoye(r, nom, m) {
   const lead = await lireJson(await r.post(`${API}/crm/leads/`, {
     ...T, data: { nom, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `asup49${m}${nom.length}@example.invalid`, type_installation: 'residentiel', facture_hiver: '1500' },
   }), 'lead')
-  const prod = async (n, pv) => lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `${n} ${m}`, prix_vente: pv, prix_achat: '111.11' } }), 'produit')
+  // Nom de produit propre à CE lead (deux devis par étape : un nom partagé rend 409 « produit actif de ce nom »).
+  const prod = async (n, pv) => lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `${n} ${nom}`, prix_vente: pv, prix_achat: '111.11' } }), 'produit')
   const pan = await prod('Panneau mono 550W ASUP49', '1000.00')
   const ond = await prod('Onduleur réseau 10kW ASUP49', '10000.00')
   const ligne = (p, q, ordre) => ({ produit: p.id, designation: p.nom, quantite: String(q), prix_unitaire: p.prix_vente, remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre })
