@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm.models import Lead, WebsiteLeadPayload
-from apps.crm.webhooks import replay_website_lead_payload
+from apps.crm.webhook_rejeu import replay_website_lead_payload
 from apps.notifications.models import Notification
 from apps.roles.models import Role
 
@@ -335,7 +335,7 @@ class ReplayAACQ30Tests(TestCase):
         relue sous verrou, aucun lead ni devis automatique de plus."""
         from unittest.mock import patch
 
-        from apps.crm.webhooks import replay_website_lead_payload
+        from apps.crm.webhook_rejeu import replay_website_lead_payload
 
         raw = self._payload_echoue('+212600300006')
         perimee = WebsiteLeadPayload.objects.get(pk=raw.pk)
