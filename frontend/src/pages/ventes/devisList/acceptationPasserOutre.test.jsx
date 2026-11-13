@@ -131,6 +131,42 @@ describe('ADEV15 — « Passer outre » à l\'acceptation', () => {
   })
 })
 
+// AERR5 — tout refus 400 rouvre la modale du MÊME devis, saisie conservée, et
+// l'erreur s'affiche sous le champ nommé par `champ` (ou sous la date).
+describe('AERR5 — refus 400 : modale rouverte, erreur sous le champ', () => {
+  const refus400 = (corps) => Object.assign(new Error('400'), { response: { status: 400, data: corps } })
+  const ouvrirCi = async (user) => {
+    renderListeVentes(DevisList, {
+      devis: [{ ...DEVIS[0], mode_installation: 'commercial' }],
+      auth: { role: 'admin', role_nom: 'admin', permissions: ['ventes_valider'] },
+    })
+    fireEvent.click(within(screen.getByText('DEV-A15').closest('tr')).getByRole('button', { name: /Accepter/ }))
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'Karim Alaoui')
+    await user.type(screen.getByLabelText('ICE'), '1234567890123456')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+  }
+
+  it('400 champ entreprise.ice : modale rouverte, saisie gardée, message sous ICE', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockRejectedValueOnce(refus400({ detail: 'ICE invalide.', champ: 'entreprise.ice' }))
+    await ouvrirCi(user)
+    const bloc = await screen.findByTestId('identite-entreprise')
+    expect(within(bloc).getByText('ICE invalide.')).toBeTruthy()
+    expect(effacerAffaireSignee).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Nom de la personne qui accepte').value).toBe('Karim Alaoui')
+    expect(screen.getByLabelText('ICE').value).toBe('1234567890123456')
+  })
+
+  it('400 « Date invalide » : modale rouverte, message sous la date', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockRejectedValueOnce(refus400({ detail: 'Date invalide (attendu AAAA-MM-JJ).' }))
+    await ouvrirCi(user)
+    const date = await screen.findByLabelText("Date d'acceptation")
+    expect(within(date.parentElement).getByText(/Date invalide/)).toBeTruthy()
+    expect(screen.getByLabelText('Nom de la personne qui accepte').value).toBe('Karim Alaoui')
+  })
+})
+
 // VNT80 — un 409 qui NOMME un autre devis (`vente_active_existante.vente_active`,
 // exemple committé devis_prix_negocie.json) : la fête est retirée, le message
 // s'affiche SOUS la ligne et « Ouvrir <réf> » surligne ce devis (?devis=<id>).

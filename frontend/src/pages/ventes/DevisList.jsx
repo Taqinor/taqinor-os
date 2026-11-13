@@ -27,6 +27,7 @@ import { PageListeChargement } from './ElementsListeVentes'
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 // VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
@@ -401,6 +402,8 @@ export default function DevisList() {
   // reste juge (ADEV14), le bouton « Passer outre » n'est qu'une commodité
   // pour Administrateur / Responsable.
   const [acceptBlocage, setAcceptBlocage] = useState(null)
+  // AERR5 — refus 400 : erreur sous le champ nommé (`champ`), saisie conservée.
+  const acceptErreurs = useServerFieldErrors()
 
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
@@ -421,6 +424,7 @@ export default function DevisList() {
     setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)
     setAcceptBlocage(null)
+    acceptErreurs.clearAll()
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
@@ -646,6 +650,7 @@ export default function DevisList() {
     // Décision fondateur 08/10/2026 — la fête part DÈS le clic ; l'acceptation
     // (chantier, contrat, PDF scellé… souvent > 20 s) se fait PENDANT la fête.
     setAcceptTarget(null)
+    acceptErreurs.clearAll()
     annoncerAffaireSignee({
       reference: d.reference,
       montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
@@ -671,6 +676,11 @@ export default function DevisList() {
             detail: data.detail || 'Acceptation bloquée.',
           })
           setAcceptTarget(d)
+        } else if (err?.response?.status === 400) {
+          if (data?.champ) acceptErreurs.setErrors({ [data.champ]: data.detail || 'Valeur refusée.' })
+          else acceptErreurs.setFromResponse(data, { fallbackField: /^Date/.test(data?.detail || '') ? 'date' : 'submit' })
+          setAcceptTarget(d)
+          toast.error(frenchError(err, 'Acceptation impossible.'))
         } else if (!signalerConflit(d, err)) {
           toast.error(frenchError(err, 'Acceptation impossible.'))
         }
@@ -995,6 +1005,9 @@ export default function DevisList() {
         )}
       >
           <div className="flex flex-col gap-4">
+            {acceptErreurs.errors.submit && (
+              <p className="text-sm text-destructive">{acceptErreurs.errors.submit}</p>
+            )}
             {acceptBlocage && (
               <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 {acceptBlocage.detail}
@@ -1010,6 +1023,9 @@ export default function DevisList() {
               <Label htmlFor="accept-date">Date d'acceptation</Label>
               <Input id="accept-date" type="date" value={acceptDate} max={todayLocalIso()}
                      onChange={e => setAcceptDate(e.target.value)} />
+              {(acceptErreurs.errors.date || acceptErreurs.errors.date_acceptation) && (
+                <p className="text-xs text-destructive">{acceptErreurs.errors.date || acceptErreurs.errors.date_acceptation}</p>
+              )}
             </div>
             {acceptTarget?.nb_options === 2 && (
               <div className="grid gap-2">
@@ -1028,7 +1044,7 @@ export default function DevisList() {
             )}
             {estDevisCi(acceptTarget) && (
               <IdentiteEntrepriseFields value={acceptEntreprise} onChange={setAcceptEntreprise}
-                                        idPrefix="accept" />
+                                        idPrefix="accept" errors={acceptErreurs.errors} />
             )}
           </div>
       </ResponsiveDialog>
