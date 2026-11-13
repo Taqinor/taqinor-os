@@ -41,5 +41,5 @@ test('LB15 : supporte le mode CONTRÔLÉ (open/onOpenChange) et le mode auto-dé
 })
 
 test('LB15 : réinitialise le champ motif à la fermeture', () => {
-  assert.match(SRC, /if \(!v\) setMotif\(''\)/)
+  assert.match(SRC, /if \(!v\) \{ setMotif\(''\); setErreurMotif\(''\) \}/)
 })

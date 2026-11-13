@@ -3,7 +3,7 @@
 // cadence puis ordre. Auto-suffisant (comme InitRelanceButton juste
 // au-dessus) : charge lui-même via `crmApi`, jamais un second appel réseau
 // pour les champs déjà posés sur le lead (`prochaine_touche_at` etc., MRY16).
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Check, SkipForward, Clock3, Ban, MapPin,
@@ -125,6 +125,10 @@ export default function CadenceFrise({
   const [erreur, setErreur] = useState(false)
   const [montrerPassees, setMontrerPassees] = useState(false)
   const [etapes, setEtapes] = useState([])
+  // AERR102 — lead dont les touches ont déjà été LUES avec succès (une relecture
+  // qui échoue garde alors la frise précédente) ; `essai` = « Réessayer » interne.
+  const leadLuOkRef = useRef(null)
+  const [essai, setEssai] = useState(0)
   // VISCAD1 — les visites techniques du lead, mêlées à la frise (la visite
   // devient une étape VISIBLE du suivi commercial). État INDÉPENDANT de
   // celui des touches ci-dessus : un échec ici ne doit JAMAIS casser la
@@ -150,16 +154,27 @@ export default function CadenceFrise({
       ? crmApi.getRelanceEtapesLead(leadId)
       : Promise.reject(new Error('getRelanceEtapesLead indisponible'))
     requete
-      .then((r) => { if (active) { setEtapes(r.data?.results ?? []); setLeadLu(leadId) } })
-      .catch(() => { if (active) { setErreur(true); setLeadLu(leadId); setEtapes([]) } })
+      .then((r) => {
+        if (active) { leadLuOkRef.current = leadId; setEtapes(r.data?.results ?? []); setLeadLu(leadId) }
+      })
+      .catch(() => {
+        if (active) {
+          setErreur(true); setLeadLu(leadId)
+          // AERR102 — jamais `[]` si ce lead a déjà été lu : on garde la frise.
+          setEtapes((prec) => (leadLuOkRef.current === leadId ? prec : []))
+        }
+      })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [leadId, reloadToken])
+  }, [leadId, reloadToken, essai])
 
   // SUIVI-BLOCAGE — l'appelant (fenêtre « Appeler » de la fiche) apprend s'il
   // reste une touche actionnable, après CHAQUE lecture (jamais un setState ici).
   useEffect(() => {
-    if (!onEtapes || leadLu !== leadId) return
+    if (!onEtapes || leadLu !== leadId || loading) return
+    // AERR102 — lecture en échec SANS touche en mémoire : signal distinct
+    // `'echec'` (jamais `[]`, qui se lit « aucune étape ouverte »).
+    if (erreur && etapes.length === 0) { onEtapes('echec'); return }
     const aujourdhuiLu = aujourdhuiCasablanca()
     const ouvertes = etapes.filter((e) => e.statut === 'a_faire')
     const prochaine = ouvertes
@@ -169,7 +184,7 @@ export default function CadenceFrise({
     onEtapes(ouvertes.filter((e) => e.overdue || (prochaine && e.id === prochaine.id))
       .map((e) => ({ ...e, enAvance: Boolean(e.due_date) && e.due_date > aujourdhuiLu })))
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `onEtapes` est une fonction du parent recréée à chaque rendu ; la lecture ne dépend que des touches lues. (D-ENF22)
-  }, [etapes, leadLu, leadId])
+  }, [etapes, leadLu, leadId, erreur, loading])
 
   useEffect(() => {
     if (!leadId) return undefined
@@ -224,7 +239,7 @@ export default function CadenceFrise({
 
   if (!leadId) return null
   if (loading && leadLu !== leadId) return <Spinner className="size-3.5" />
-  if (erreur) {
+  if (erreur && etapes.length === 0) {
     if (seulementActionnable) return null
     return <p className="text-xs text-muted-foreground">Frise de cadence indisponible pour le moment.</p>
   }
@@ -293,6 +308,14 @@ export default function CadenceFrise({
 
   return (
     <>
+      {erreur && (
+        <p className="text-xs text-muted-foreground" role="status" data-testid="cadence-frise-pas-a-jour">
+          Frise pas à jour — la relecture a échoué.{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => setEssai((n) => n + 1)}>
+            Réessayer
+          </button>
+        </p>
+      )}
       {!seulementActionnable && passees.length > 0 && (
         <button
           type="button"

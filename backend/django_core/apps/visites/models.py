@@ -116,6 +116,10 @@ class VisiteTerrain(TenantModel):
         verbose_name="État de l'assemblage")
     assemblage_erreur = models.TextField(
         blank=True, default='', verbose_name="Erreur d'assemblage")
+    #: ACEL77 — horodatage de la dernière demande d'assemblage (posé par
+    #: l'action) ; sert à passer « en cours » → « échec » si la tâche est tuée.
+    assemblage_demande_le = models.DateTimeField(
+        null=True, blank=True, verbose_name="Assemblage demandé le")
     #: VT11 — drapage de l'image assemblée sur le contour du toit :
     #: ``{'coins': [[lat, lng] × 4]}``. NULL tant que non calé.
     texture_calage = models.JSONField(

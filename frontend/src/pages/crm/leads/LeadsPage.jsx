@@ -10,7 +10,8 @@ import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Mi
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import useDroitMetier from '../../../features/sav/useDroitMetier' // ADRG20 — code fin, sinon palier
 import StateBlock from '../../../components/StateBlock'
-import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
+import { useSaisieCourte } from '../../../features/crm/useSaisieCourte'
+import { fetchLeads, updateLead, leadStagePatched, leadPatchedFromServer } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
 import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE, devisAccepteReference } from '../../../features/crm/stages'
@@ -143,7 +144,7 @@ export default function LeadsPage() {
   useDocumentTitle('Leads')
   const dispatch = useDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { leads, leadsLoading, error } = useSelector(s => s.crm)
+  const { leads, leadsLoading, leadsError } = useSelector(s => s.crm)
   // VX224 — « Mes leads » par défaut : résout le toggle FilterBar.jsx contre
   // l'utilisateur COURANT (jamais un nom codé en dur) + décide du défaut par
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
@@ -342,9 +343,11 @@ export default function LeadsPage() {
     () => accountViews.map((v) => ({ id: v.id, name: v.name, state: v.payload })),
     [accountViews],
   )
+  // AERR117 — boîte maison (plus de `window.prompt`).
+  const { demanderSaisie, dialogueSaisie } = useSaisieCourte()
   const saveCurrentView = async () => {
-    const name = window.prompt('Nom de la vue enregistrée :')
-    if (!name || !name.trim()) return
+    const name = await demanderSaisie('Enregistrer la vue', 'Nom de la vue enregistrée')
+    if (!name) return
     const ok = await saveView(name, { filters, view })
     if (!ok) toastError('Enregistrement impossible — ce nom existe peut-être déjà.')
   }
@@ -618,7 +621,10 @@ export default function LeadsPage() {
       }, { replace: true })
     }
   }
-  const onSaved = () => refetch()
+  // AERR100 — l'autosauvegarde passe la réponse du PATCH : sa seule ligne
+  // change, sans relire toute la liste ; création/fusion/etc. relisent.
+  const onSaved = (res) => (res && res.id != null
+    ? dispatch(leadPatchedFromServer(res)) : refetch())
 
   // VX220(b) — raccourci clavier « c l » (shortcuts.js/CommandPalette) navigue
   // vers /crm/leads?new=1 : câblage MINIMAL du paramètre — ouvre directement le
@@ -669,11 +675,10 @@ export default function LeadsPage() {
   // mono-lead (updateLead.fulfilled remplace déjà le lead au complet dans le
   // store) ; le catch silencieux toaste désormais (I8).
   const reassign = useCallback(async (lead, ownerId) => {
+    // AERR117 — l'intercepteur axios toaste DÉJÀ le refus : aucun second toast.
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-    } catch {
-      toastError('La réassignation a échoué — réessayez.')
-    }
+    } catch { /* refus déjà signalé par le toast global */ }
   }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
@@ -737,7 +742,8 @@ export default function LeadsPage() {
     dispatch(updateLead({ id: lead.id, data: { perdu: true, motif_perte: motif } }))
       .unwrap()
       .catch((err) => {
-        toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+        // AERR117 — toast global déjà émis ; le refus nommé (400 `{motif_perte}`)
+        // remonte à la popover, qui l'affiche sous le motif.
         throw err
       })
   ), [dispatch])
@@ -819,7 +825,16 @@ export default function LeadsPage() {
         },
       })
     } catch (err) {
-      dispatch(leadStagePatched({ id: lead.id, stage: prev }))
+      // ACNC53 — un rejet SANS corps (délai, réseau) ne prouve pas que le serveur
+      // n'a rien appliqué (sortie de « Signé » appliquée, réponse expirée) : on
+      // RELIT le lead et la carte prend l'étape SERVIE ; seule une relecture en
+      // échec (ou un refus avec corps) remet l'étape précédente.
+      let servie = prev
+      if (typeof err === 'string' || err == null) {
+        try { servie = (await crmApi.getLead(lead.id)).data?.stage ?? prev } catch { servie = prev }
+      }
+      dispatch(leadStagePatched({ id: lead.id, stage: servie }))
+      if (servie === newStage) return
       // Décision fondateur 08/10/2026 — quitter « Signé » est REFUSÉ (409)
       // quand le devis accepté a une suite réelle (facture émise, chantier
       // avancé…) : le texte serveur nomme la cause, on l'affiche tel quel
@@ -878,9 +893,13 @@ export default function LeadsPage() {
   // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
   // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
   // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
+  // AERR100 — la liste ET la fiche restent montées quand une RELECTURE échoue :
+  // le bloc plein écran n'est que pour un échec sans aucun lead en mémoire.
+  const error = leadsError && leads.length === 0 ? leadsError : null
   if (error) return (
     <StateBlock
       error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
+      onRetry={refetch}
     />
   )
 
@@ -1131,6 +1150,17 @@ export default function LeadsPage() {
         </div>
       )}
 
+      {/* AERR100 — relecture échouée alors que des leads sont déjà là : la liste
+          et la fiche restent, on le DIT et on offre de réessayer. */}
+      {leadsError && leads.length > 0 && (
+        <div className="lp-stage-error" role="status" data-testid="leads-pas-a-jour">
+          <span>Liste pas à jour — {errorMessageFrom({ response: { data: leadsError } }, 'Impossible de charger les leads.')}</span>
+          <Button type="button" size="sm" variant="outline" onClick={refetch}>
+            Réessayer
+          </Button>
+        </div>
+      )}
+
       {/* VX187 — atténuation discrète pendant que React rattrape le filtre
           différé (jamais sur l'input lui-même, seulement la liste rendue). */}
       <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
@@ -1280,6 +1310,7 @@ export default function LeadsPage() {
         />
       )}
 
+      {dialogueSaisie}
       {signeLead && (
         <SigneDialog
           lead={signeLead}

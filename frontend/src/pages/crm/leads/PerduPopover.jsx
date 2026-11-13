@@ -55,12 +55,13 @@ export default function PerduPopover({
   const open = controlled ? openProp : openState
   const [motif, setMotif] = useState('')
   const [busy, setBusy] = useState(false)
+  const [erreurMotif, setErreurMotif] = useState('')
   const [motifs, setMotifs] = useState(null) // null = pas encore chargés
 
   const setOpen = (v) => {
     if (controlled) onOpenChangeProp?.(v)
     else setOpenState(v)
-    if (!v) setMotif('')
+    if (!v) { setMotif(''); setErreurMotif('') }
   }
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export default function PerduPopover({
     const m = motif.trim()
     if (!m || !onMarkPerdu) return
     setBusy(true)
+    setErreurMotif('')
     try {
       // LB5 — passe par le store (LeadsPage.onMarkPerdu) : la carte/ligne se
       // grise IMMÉDIATEMENT via Redux, aucun refetch. Toast d'échec déjà émis
@@ -82,8 +84,12 @@ export default function PerduPopover({
       await onMarkPerdu(lead, m)
       setOpen(false)
       setMotif('')
-    } catch {
-      console.warn('PerduPopover (confirm) : Échec réseau : toast déjà affiché en amont, popover reste ouverte.')
+    } catch (err) {
+      // AERR117 — un 400 `{motif_perte: […]}` s'affiche SOUS le motif ; sinon
+      // (réseau…) le toast global est déjà émis en amont, popover ouverte.
+      const refus = err?.motif_perte
+      if (refus) setErreurMotif(Array.isArray(refus) ? refus.join(' ') : String(refus))
+      else console.warn('PerduPopover (confirm) : Échec réseau : toast déjà affiché en amont, popover reste ouverte.')
     } finally {
       setBusy(false)
     }
@@ -112,7 +118,8 @@ export default function PerduPopover({
               list={listId}
               placeholder="Motif de perte"
               value={motif}
-              onChange={(e) => setMotif(e.target.value)}
+              onChange={(e) => { setMotif(e.target.value); setErreurMotif('') }}
+              aria-invalid={erreurMotif ? true : undefined}
               autoFocus
             />
             <DictationButton
@@ -121,6 +128,7 @@ export default function PerduPopover({
             />
             <HelpTip label="Confidentialité de la dictée">{DICTATION_PRIVACY_FR}</HelpTip>
           </div>
+          {erreurMotif && <p role="alert" className="text-xs text-destructive">{erreurMotif}</p>}
           <datalist id={listId}>
             {(motifs ?? []).map((m) => <option key={m.id} value={m.nom} />)}
           </datalist>

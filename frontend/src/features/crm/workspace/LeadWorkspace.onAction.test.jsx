@@ -29,6 +29,7 @@ vi.mock('./IdentityRail', async () => (await import('../../../test/leadWorkspace
     [['change-stage', 'CONTACTED'], 'change-stage-contacted'],
     [['set-field', { key: 'batterie_souhaitee', value: 'les_deux' }], 'set-field-batterie'],
     [['open-devis', 'auto'], 'open-devis-auto'],
+    [['relance-arreter'], 'relance-arreter'],
   ]))
 
 vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
@@ -99,5 +100,20 @@ describe("LW16-wire — onAction('set-field'/'change-stage')", () => {
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalled())
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Échec du changement d'étape — réessayez."))
     expect(toast.error).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("AERR117 — onAction('relance-arreter') : boîte maison, aucun window.prompt", () => {
+  it('ouvre une boîte « Motif », puis arrête la cadence avec ce motif', async () => {
+    const prompt = vi.spyOn(window, 'prompt')
+    crmApi.arreterCadence = vi.fn(() => Promise.resolve({ data: {} }))
+    renderEdit()
+    fireEvent.click(screen.getByText('relance-arreter'))
+    const champ = await screen.findByLabelText("Motif d'arrêt de la cadence")
+    fireEvent.change(champ, { target: { value: 'Client injoignable' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(crmApi.arreterCadence).toHaveBeenCalledWith(1, { motif: 'Client injoignable' }))
+    expect(prompt).not.toHaveBeenCalled()
+    prompt.mockRestore()
   })
 })

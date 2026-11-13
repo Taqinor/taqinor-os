@@ -37,10 +37,10 @@ vi.mock('../../ui/confirm', () => ({
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function makeStore({ clients = [] } = {}) {
+function makeStore({ clients = [], error = null } = {}) {
   return configureStore({
     reducer: {
-      crm: (state = { clients, loading: false, error: null }) => state,
+      crm: (state = { clients, loading: false, error }) => state,
       auth: (state = { role: 'admin', permissions: [], role_nom: 'Admin' }) => state,
     },
   })
@@ -97,5 +97,22 @@ describe('ClientList — NTCRM15 filtre comptes dormants', () => {
     fireEvent.click(screen.getByText('Comptes dormants'))
     await waitFor(() => expect(within(table).queryByText('Actif')).toBeNull())
     expect(within(table).getByText('Dormant')).toBeInTheDocument()
+  })
+})
+
+describe('ClientList — AERR111 relecture en échec', () => {
+  it('relecture en échec : les lignes restent, avis + Réessayer', () => {
+    renderList({ clients: [entrepriseSansIce], error: 'boom' })
+    const table = document.querySelector('[data-dt-table]')
+    expect(within(table).getByText('ACME')).toBeInTheDocument()
+    expect(screen.getByTestId('clients-pas-a-jour')).toHaveTextContent('Liste pas à jour')
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.queryByText(/Impossible de charger les clients/)).toBeNull()
+  })
+
+  it('premier chargement en échec (aucune ligne) : le bloc plein écran reste', () => {
+    renderList({ clients: [], error: 'boom' })
+    expect(screen.getByText(/Impossible de charger les clients/)).toBeInTheDocument()
+    expect(screen.queryByTestId('clients-pas-a-jour')).toBeNull()
   })
 })

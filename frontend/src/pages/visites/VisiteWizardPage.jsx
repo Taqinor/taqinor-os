@@ -14,7 +14,7 @@
 // serait plus : le premier clic sans qualification NE termine donc PAS (il
 // propose d'abord de l'enregistrer), et « Terminer sans qualification »
 // reste possible d'un second clic assumé.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
 import { envoyerPhotoVisite } from '../../features/visites/visitesOffline'
@@ -24,7 +24,7 @@ import {
   Button, Card, Spinner, Badge, ChecklistProgress, Label, Textarea,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   trierCategories, progressionPhotos, titreVisite, estVisitePointEau, estVisiteCi,
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
@@ -40,6 +40,7 @@ import VisiteQualificationForm from './VisiteQualificationForm'
 function SlotTile({ visiteId, slot, onChanged }) {
   const [ouvert, setOuvert] = useState(false)
   const [envoi, setEnvoi] = useState(false)
+  const { confirmDelete } = useConfirmDialog()
 
   // VTA10 — passe par le BRANCHEMENT offline de la plateforme : compression
   // (VX77) puis envoi en ligne ; sur panne RÉSEAU la photo rejoint l'UNIQUE
@@ -69,7 +70,16 @@ function SlotTile({ visiteId, slot, onChanged }) {
     }
   }
 
-  const supprimer = async (mediaId) => {
+  const supprimer = async (mediaId, filename) => {
+    // AERR106 — suppression DÉFINITIVE côté serveur : confirmation nommée
+    // (pas d'« Annuler » différé : suppression dure).
+    const ok = await confirmDelete({
+      title: `Supprimer la photo « ${filename} » (${slot.libelle}) ?`,
+      description: 'Elle ne pourra pas être récupérée.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Garder',
+    })
+    if (!ok) return
     try {
       await visitesApi.deleteVisitePhoto(visiteId, mediaId)
       onChanged()
@@ -110,7 +120,7 @@ function SlotTile({ visiteId, slot, onChanged }) {
                 type="button"
                 aria-label={`Supprimer la photo ${p.filename}`}
                 className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-destructive text-[10px] text-destructive-foreground"
-                onClick={() => supprimer(p.id)}
+                onClick={() => supprimer(p.id, p.filename)}
               >
                 ×
               </button>
@@ -154,15 +164,25 @@ export default function VisiteWizardPage() {
   const [categorieActive, setCategorieActive] = useState(null)
   // ACVI55 — saisie locale : un rechargement (photo, mesures) ne l'écrase pas.
   const [retour, setRetour] = useState(null)
+  // AERR107 — une RELECTURE ratée (visite déjà là) n'est qu'un avis : l'écran
+  // et la saisie locale restent ; « introuvable » = premier chargement raté.
+  const [pasAJour, setPasAJour] = useState(false)
+  const visiteRef = useRef(null)
 
   const recharger = useCallback(() => {
     visitesApi.getVisite(id)
       .then((res) => {
+        visiteRef.current = res.data
+        setPasAJour(false)
+        setErreur(null)
         setVisite(res.data)
         setRetour((prev) => prev ?? res.data.retour_terrain ?? '')
         setCategorieActive((prev) => prev ?? trierCategories(res.data.checklist)[0]?.categorie)
       })
-      .catch(() => setErreur('Visite introuvable ou inaccessible.'))
+      .catch(() => {
+        if (visiteRef.current) setPasAJour(true)
+        else setErreur('Visite introuvable ou inaccessible.')
+      })
       .finally(() => setLoading(false))
   }, [id])
 
@@ -205,7 +225,7 @@ export default function VisiteWizardPage() {
   }
 
   if (loading) return <div className="page"><Spinner /></div>
-  if (erreur || !visite) return <div className="page"><p role="alert" className="text-sm text-destructive">{erreur}</p></div>
+  if (!visite) return <div className="page"><p role="alert" className="text-sm text-destructive">{erreur}</p></div>
 
   const categories = trierCategories(visite.checklist)
   const { done, total } = progressionPhotos(visite.checklist)
@@ -220,6 +240,13 @@ export default function VisiteWizardPage() {
           : (STATUT_VISITE_LABEL[visite.statut] ?? visite.statut)}
         actions={<Button type="button" variant="ghost" onClick={() => navigate('/visites')}>Retour</Button>}
       />
+
+      {pasAJour && (
+        <div role="status" data-testid="visite-pas-a-jour" className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Visite pas à jour — la relecture a échoué.</span>
+          <Button type="button" size="sm" variant="outline" onClick={recharger}>Réessayer</Button>
+        </div>
+      )}
 
       {lectureSeule && visite.raison_lecture_seule && (
         <p role="status" className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

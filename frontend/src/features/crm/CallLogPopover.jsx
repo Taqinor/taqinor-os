@@ -111,8 +111,13 @@ export default function CallLogPopover({
   // on ne peut pas écraser sans avoir dit oui.
   const [conflit, setConflit] = useState('garder')
   const [busy, setBusy] = useState(false)
+  // AERR103 — « l'appel est DÉJÀ journalisé » : un second essai (après l'échec
+  // de la relance) ne rejoue jamais `logInteraction` (aucune clé d'idempotence
+  // serveur → un 2e appel au chatter). Remis à zéro par `reset()`.
+  const appelJournalise = useRef(false)
 
   const reset = () => {
+    appelJournalise.current = false
     setOutcome('')
     setNote('')
     setDateRelance('')
@@ -134,12 +139,16 @@ export default function CallLogPopover({
     if (!planificationSeule && !outcome) return
     if (planificationSeule && !dateRelance) return
     setBusy(true)
+    const reprise = appelJournalise.current
+    let etape = 'journal'
     try {
-      if (!planificationSeule) {
+      if (!planificationSeule && !reprise) {
         await crmApi.logInteraction(leadId, {
           kind, outcome, body: note.trim() || undefined,
         })
+        appelJournalise.current = true
       }
+      etape = 'relance'
       if (ecrasera) {
         // CAD156 — l'heure part AVEC la date (même PATCH) : le serveur
         // reporte la touche à cette date ET à cette heure.
@@ -152,6 +161,7 @@ export default function CallLogPopover({
       // `apps/crm/platform.py`) : zéro backend, l'item apparaît dans « Ma
       // file » comme n'importe quelle autre activité.
       if (objet.trim() && dateRelance) {
+        etape = 'objet'
         await recordsApi.createActivity({
           model: 'crm.lead',
           id: leadId,
@@ -159,7 +169,7 @@ export default function CallLogPopover({
           due_date: dateRelance,
         })
       }
-      toastSuccess(planificationSeule ? 'Relance planifiée.' : 'Appel journalisé.')
+      toastSuccess(planificationSeule || reprise ? 'Relance planifiée.' : 'Appel journalisé.')
       reset()
       setOpen(false)
       onLogged?.()
@@ -170,6 +180,11 @@ export default function CallLogPopover({
         ? err?.response?.data?.relance_heure : null
       if (refusHeure) {
         setErreurHeure(Array.isArray(refusHeure) ? refusHeure.join(' ') : String(refusHeure))
+      } else if (!planificationSeule && etape !== 'journal') {
+        // AERR103 — dire QUELLE étape a échoué : l'appel, lui, est journalisé.
+        toastError(etape === 'relance'
+          ? "Appel journalisé ; la relance n'a pas pu être planifiée — réessayez."
+          : "Appel journalisé ; l'objet de la relance n'a pas pu être enregistré — réessayez.")
       } else {
         toastError(planificationSeule
           ? "La relance n'a pas pu être planifiée — réessayez."

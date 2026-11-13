@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import crmApi from '../../api/crmApi'
+import { useConfirmDialog } from '../../ui/confirm'
 import {
   Badge, Card, CardContent, Button, Spinner, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
@@ -87,6 +88,7 @@ function DialogueObjectif({ cible: ctx, periode, onFermer, onEnregistre }) {
     ctx.cell.cible !== null && ctx.cell.cible !== undefined ? String(ctx.cell.cible) : '')
   const [erreur, setErreur] = useState(null)
   const [envoi, setEnvoi] = useState(false)
+  const { confirmDelete } = useConfirmDialog()
 
   const sauver = async (e) => {
     e.preventDefault()
@@ -117,6 +119,13 @@ function DialogueObjectif({ cible: ctx, periode, onFermer, onEnregistre }) {
   }
 
   const effacer = async () => {
+    // AERR118 — la confirmation NOMME l'indicateur, le membre et la période.
+    const ok = await confirmDelete({
+      title: `Effacer l’objectif ${ctx.metrique.libelle} de ${ctx.membre.nom} (${periode.libelle}) ?`,
+      confirmLabel: 'Effacer',
+      cancelLabel: 'Annuler',
+    })
+    if (!ok) return
     setEnvoi(true)
     try {
       await crmApi.deleteObjectif(ctx.cell.objectif_id)

@@ -26,6 +26,7 @@ const { apiPost } = vi.hoisted(() => ({
 vi.mock('../../api/axios', () => ({ default: { post: apiPost } }))
 
 import crmApi from '../../api/crmApi'
+import { toastError, toastSuccess } from '../../lib/toast'
 import { OUTCOME_LABELS } from '../../components/ChatterTimeline'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import PHRASES from './relances/suite_phrases.json'
@@ -106,6 +107,21 @@ describe('CallLogPopover (VX87)', () => {
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
       42, expect.objectContaining({ relance_date: expect.any(String) }),
     ))
+  })
+
+  it('report en échec : appel dit journalisé, second essai sans second journal (AERR103)', async () => {
+    crmApi.updateLead.mockRejectedValueOnce({ response: { status: 500 } })
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} />)
+    fireEvent.click(screen.getByText('À rappeler'))
+    fireEvent.click(screen.getByText('Dans 3 j'))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(
+      "Appel journalisé ; la relance n'a pas pu être planifiée — réessayez."))
+    expect(crmApi.logInteraction).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledTimes(2))
+    expect(crmApi.logInteraction).toHaveBeenCalledTimes(1)
+    expect(toastSuccess).toHaveBeenCalledWith('Relance planifiée.')
   })
 
   it('appelle onLogged après journalisation réussie', async () => {

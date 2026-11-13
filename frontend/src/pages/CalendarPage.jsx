@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
@@ -49,6 +49,10 @@ export default function CalendarPage() {
   const [users, setUsers] = useState([])
   const [dragId, setDragId] = useState(null)
   const [err, setErr] = useState('')
+  // AERR109 — échec de LECTURE du mois (distinct de `err`, réservé au glisser) :
+  // jamais confondu avec un mois vide ; les évènements déjà lus restent.
+  const [lectureEchec, setLectureEchec] = useState(false)
+  const plageLueRef = useRef('')
   // FG6 — abonnement ICS (Google/Outlook). On ne charge l'URL signée qu'au clic.
   const [subUrl, setSubUrl] = useState('')
   const [subOpen, setSubOpen] = useState(false)
@@ -70,9 +74,18 @@ export default function CalendarPage() {
   const load = useCallback(() => {
     const params = { from: ymd(from), to: ymd(to) }
     if (assignee) params.assignee = assignee
+    const plage = `${params.from}|${params.to}`
     reportingApi.getCalendar(params)
-      .then(r => setEvents(r.data.events || []))
-      .catch(() => setEvents([]))
+      .then(r => {
+        plageLueRef.current = plage
+        setLectureEchec(false)
+        setEvents(r.data.events || [])
+      })
+      .catch(() => {
+        setLectureEchec(true)
+        // Même plage (glisser, responsable) : on garde ; autre mois : on vide.
+        if (plageLueRef.current !== plage) setEvents([])
+      })
       .finally(() => setLoading(false))
   }, [from, to, assignee])
 
@@ -149,6 +162,15 @@ export default function CalendarPage() {
     if (!ev || !ev.editable) return
     const target = ymd(cellDate)
     if (target === ev.date) return
+    // AERR110 — une confirmation NOMMÉE (titre + les deux dates) avant de replanifier.
+    const jm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
+    const ok = await confirm({
+      title: `Déplacer « ${ev.title} » du ${jm(ev.date)} au ${jm(target)} ?`,
+      confirmLabel: 'Déplacer',
+      cancelLabel: 'Annuler',
+      destructive: false,
+    })
+    if (!ok) return
     setErr('')
     try {
       await reportingApi.rescheduleCalendar(
@@ -260,6 +282,12 @@ export default function CalendarPage() {
       </div>
 
       {err && <p className="cp-error" role="alert">{err}</p>}
+      {lectureEchec && (
+        <p className="cp-error" role="alert" data-testid="calendrier-lecture-echec">
+          {events.length === 0 ? 'Calendrier indisponible' : 'Calendrier pas à jour'}{' — '}
+          <Button variant="outline" size="sm" onClick={load}>Réessayer</Button>
+        </p>
+      )}
       {loading && (
         <p className="page-loading"><Spinner /> Chargement…</p>
       )}
@@ -269,7 +297,7 @@ export default function CalendarPage() {
       {/* APX32 — état vide COHÉRENT avec la vue Carte voisine : les deux
           écrans transverses rendaient l'un un `<p>` nu, l'autre un
           `<EmptyState>` illustré. Même primitif des deux côtés. */}
-      {!loading && monthEmpty && (
+      {!loading && monthEmpty && !lectureEchec && (
         <EmptyState
           title="Aucun évènement ce mois-ci"
           description="Les poses, mises en service et visites planifiées apparaîtront ici."

@@ -4,7 +4,7 @@
 // ici. La création se fait normalement depuis la fiche lead (onglet Visite,
 // VisiteTab.jsx) ; ce bouton est un second point d'entrée pour le commercial
 // qui part de sa liste plutôt que d'un lead précis.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
 import PageHeader from '../../components/layout/PageHeader'
@@ -19,14 +19,18 @@ export default function VisitesListPage() {
   const [visites, setVisites] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
+  // AERR115 — jeton de lecture : seule la réponse de la DERNIÈRE demande compte.
+  const jeton = useRef(0)
 
   const load = useCallback(() => {
+    const mien = ++jeton.current
+    const courant = () => mien === jeton.current
     setLoading(true)
     setErreur(null)
     visitesApi.getVisites({ ...(scope === 'mine' ? { mine: 1 } : {}), page })
-      .then((res) => { setVisites(res.data?.results ?? res.data ?? []); setSuivante(Boolean(res.data?.next)) })
-      .catch(() => setErreur('Chargement des visites impossible.'))
-      .finally(() => setLoading(false))
+      .then((res) => { if (courant()) { setVisites(res.data?.results ?? res.data ?? []); setSuivante(Boolean(res.data?.next)) } })
+      .catch(() => { if (courant()) setErreur('Chargement des visites impossible.') })
+      .finally(() => { if (courant()) setLoading(false) })
   }, [scope, page])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial + à chaque bascule de portée (D-ENF22)

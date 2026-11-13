@@ -363,9 +363,12 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=_VISITE_CONTEXTE)
     def retrieve(self, request, *args, **kwargs):
-        return Response(selectors.contexte_visite_terrain(self.get_object()))
+        visite = self.get_object()
+        services.expirer_assemblage_perime(visite)
+        return Response(selectors.contexte_visite_terrain(visite))
 
     def _agregat(self, visite):
+        services.expirer_assemblage_perime(visite)
         return Response(selectors.contexte_visite_terrain(visite))
 
     # ── Création ─────────────────────────────────────────────────────────────
@@ -799,7 +802,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return refus
         visite.assemblage_etat = VisiteTerrain.Assemblage.EN_COURS
         visite.assemblage_erreur = ''
-        visite.save(update_fields=['assemblage_etat', 'assemblage_erreur'])
+        visite.assemblage_demande_le = timezone.now()
+        visite.save(update_fields=['assemblage_etat', 'assemblage_erreur',
+                                   'assemblage_demande_le'])
 
         from .tasks import assembler_photos_toit_task
 
