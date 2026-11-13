@@ -34,7 +34,8 @@ function brancher() {
 }
 
 // ADRG34 — « Déclarer » suit `ventes_creer` : le store de test le porte par défaut.
-const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement', 'ventes_creer']) =>
+// ADRG38 — « Réglages » suit `parametres_modifier` : porté par défaut aussi.
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement', 'ventes_creer', 'parametres_modifier']) =>
   renderStockPage(ConsignationsPage, makeAuthStore({ permissions }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
@@ -143,5 +144,14 @@ describe('ASTK221 — ConsignationsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer/i }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/stock/parametres-negoce/', {
       consignation_activee: true, atp_horizon_jours: 45 }))
+  })
+
+  it('ADRG38 — sans `parametres_modifier` : réglages en lecture seule, pas d'« Enregistrer »', async () => {
+    monter(['stock_voir', 'stock_modifier', 'stock_mouvement', 'ventes_creer'])
+    fireEvent.click(await screen.findByRole('tab', { name: /Réglages/i }))
+    const panneau = await screen.findByRole('tabpanel')
+    expect(await within(panneau).findByLabelText('Consignation activée')).toBeDisabled()
+    expect(within(panneau).getByLabelText('Horizon ATP (jours)')).toBeDisabled()
+    expect(within(panneau).queryByRole('button', { name: /Enregistrer/i })).toBeNull()
   })
 })
