@@ -434,7 +434,13 @@ export default function DevisList() {
   // config société (CompanyProfile.variante_pct via GET variante-config), avec
   // repli à 20 % si la lecture échoue. La saisie n'est autorisée que pour le
   // Directeur / Commercial responsable (sinon champ en lecture seule).
+  // ACNC13 — une clé d'idempotence par ouverture de dialogue (variante, gamme),
+  // gardée entre deux clics (renvoi après coupure réseau), remise à zéro au succès.
+  const cleVarianteRef = useRef(null)
+  const cleGammeRef = useRef(null)
+  const nouvelleCle = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
   const openVarianteModal = async (d) => {
+    cleVarianteRef.current = nouvelleCle()
     setVarianteTarget(d)
     setVariantePct('20')
     setVarianteBusy(false)
@@ -470,7 +476,8 @@ export default function DevisList() {
       const pct = parseFloat(variantePct)
       const payload = (Number.isFinite(pct) && pct > 0 && pct < 100)
         ? { variante_pct: pct } : {}
-      await ventesApi.dupliquerVariante(d.id, payload)
+      await ventesApi.dupliquerVariante(d.id, { ...payload, idempotency_key: cleVarianteRef.current })
+      cleVarianteRef.current = null
       dispatch(fetchDevis())
       toast.success(`Variantes créées pour ${d.reference}.`)
       closeVarianteModal()
@@ -488,6 +495,7 @@ export default function DevisList() {
   // GAMMES — ouvre la modale « Créer une variante de gamme ». Les deux libellés
   // sont pré-remplis avec les défauts proposés et restent librement éditables.
   const openGammeModal = (d) => {
+    cleGammeRef.current = nouvelleCle()
     setGammeTarget(d)
     setGammeNom('Premium')
     setGammeNomSource(d?.etude_params?.gamme?.nom || 'Essentielle')
@@ -509,7 +517,9 @@ export default function DevisList() {
         nom,
         nom_source: (gammeNomSource || '').trim() || undefined,
         recommandee: gammeRecommandee,
+        idempotency_key: cleGammeRef.current,
       })
+      cleGammeRef.current = null
       dispatch(fetchDevis())
       toast.success(`Gamme « ${nom} » créée pour ${d.reference}.`)
       closeGammeModal()

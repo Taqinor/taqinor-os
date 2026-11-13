@@ -42,18 +42,20 @@ def renouveler_devis(devis, *, user=None):
     from core.conflit_etat import ConflitEtat
 
     RENOUVELABLES = (Devis.Statut.EXPIRE,)
-    if devis.statut == Devis.Statut.ACCEPTE:
-        raise ConflitEtat({'code': 'deuxieme_affaire', 'detail': (
-            'Ce devis est accepté : une nouvelle vente se crée sur une '
-            'deuxième affaire (nouvelle fiche lead) ; pour changer le prix, '
-            'utilisez Réviser ou Prix négocié.')})
-    if devis.statut not in RENOUVELABLES:
-        raise ConflitEtat({'statut': (
-            'Seul un devis expiré peut être renouvelé '
-            '(un devis en cours se corrige avec « réviser »).')})
 
+    def _controler_statut(devis):
+        if devis.statut == Devis.Statut.ACCEPTE:
+            raise ConflitEtat({'code': 'deuxieme_affaire', 'detail': (
+                'Ce devis est accepté : une nouvelle vente se crée sur une '
+                'deuxième affaire (nouvelle fiche lead) ; pour changer le prix, '
+                'utilisez Réviser ou Prix négocié.')})
+        if devis.statut not in RENOUVELABLES:
+            raise ConflitEtat({'statut': (
+                'Seul un devis expiré peut être renouvelé '
+                '(un devis en cours se corrige avec « réviser »).')})
+
+    _controler_statut(devis)
     company = devis.company
-    racine = devis.devis_origine or devis
     cree = {}
 
     def _save(ref):
@@ -122,6 +124,17 @@ def renouveler_devis(devis, *, user=None):
     # ``rafraichir_etudes_du_devis`` reste DEHORS : best-effort par contrat
     # (aucun rafraîchisseur ne lève), il n'a pas à tenir la transaction.
     with transaction.atomic():
+        # ACNC13 — source relue SOUS VERROU (patron ``reviser_devis``) : deux
+        # « renouveler » concurrents ne créent qu'UN brouillon ; le 2e le rend.
+        devis = Devis.objects.select_for_update(of=('self',)).get(pk=devis.pk)
+        _controler_statut(devis)
+        racine = devis.devis_origine or devis
+        existant = Devis.objects.filter(
+            company=company, devis_origine=racine, statut=Devis.Statut.BROUILLON,
+            numero_renouvellement=(devis.numero_renouvellement or 0) + 1).first()
+        if existant is not None:
+            existant.deja_renouvele = True
+            return existant
         create_numbered(Devis, company, 'devis', _save)
         nouveau = cree['obj']
         # QJR116 — le renouvellement clone par le MÊME cloneur unique que le

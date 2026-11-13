@@ -499,6 +499,24 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1,
   }])
 
+  it('ACNC13 — deux envois de variantes après ECONNABORTED portent la même clé', async () => {
+    const user = userEvent.setup()
+    ventesApi.dupliquerVariante.mockClear()
+    ventesApi.dupliquerVariante.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    await user.click(within(screen.getByText('DEV-VAR').closest('tr')).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
+    await screen.findByLabelText(/Pourcentage de variation/)
+    fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
+    await waitFor(() => expect(ventesApi.dupliquerVariante).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Créer les variantes/ })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
+    await waitFor(() => expect(ventesApi.dupliquerVariante).toHaveBeenCalledTimes(2))
+    const [cle1, cle2] = ventesApi.dupliquerVariante.mock.calls.map(c => c[1].idempotency_key)
+    expect(cle1).toBeTruthy()
+    expect(cle2).toBe(cle1)
+  })
+
   it('ouvre une modale pré-remplie depuis la config société (variante_pct)', async () => {
     const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
@@ -526,7 +544,7 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
     await waitFor(() => {
       // Le % (25) est transmis en override de requête.
-      expect(ventesApi.dupliquerVariante).toHaveBeenCalledWith(20, { variante_pct: 25 })
+      expect(ventesApi.dupliquerVariante).toHaveBeenCalledWith(20, { variante_pct: 25, idempotency_key: expect.any(String) })
     })
     // La comparaison s'ouvre : le panneau (WIR225 — servi par getVariantes)
     // apparaît et le groupe est demandé au serveur.
@@ -582,6 +600,7 @@ describe('DevisList — GAMMES : créer une variante de gamme', () => {
     await waitFor(() => {
       expect(ventesApi.dupliquerVarianteGamme).toHaveBeenCalledWith(21, {
         nom: 'Confort Atlas', nom_source: 'Essentielle', recommandee: false,
+        idempotency_key: expect.any(String),
       })
     })
     // WIR225 — le panneau s'appelle desormais « Comparaison des variantes »
