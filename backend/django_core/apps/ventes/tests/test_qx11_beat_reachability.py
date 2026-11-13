@@ -189,3 +189,14 @@ class Qx11BeatReachabilityTests(SimpleTestCase):
             self.assertTrue(expires and 0 < expires <= periode,
                             f'{nom} : expires={expires}, période={periode}')
         self.assertGreaterEqual(frequentes, 27)
+
+    def test_visibility_timeout_depasse_toute_limite_dure(self):
+        """ACEL7 — aucun message d'une tâche planifiée n'est re-livré pendant qu'elle tourne."""
+        from django.conf import settings
+        from erp_agentique.celery import app
+        app.loader.import_default_modules()
+        visibilite = settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout']
+        for nom, entree in app.conf.beat_schedule.items():
+            tache = app.tasks.get(entree['task'])
+            limite = getattr(tache, 'time_limit', None) or settings.CELERY_TASK_TIME_LIMIT
+            self.assertLess(limite, visibilite / 1.1, f"{nom} : {limite} s")
