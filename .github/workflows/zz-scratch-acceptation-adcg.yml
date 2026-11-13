@@ -1,0 +1,406 @@
+name: zz scratch - acceptation ADCG (essai runner, TEMPORAIRE)
+
+# ESSAI (13/11/2026) : jouer sur un runner GitHub les preuves en direct dues du groupe ADCG (parcours PF3
+# deploy, CI, gardes) : spec frontend/e2e/acceptation/adcg.spec.js (ADCG115, squelette `e2e-full`),
+# pile docker compose complete (ADCG14, ADCG23) et bancs du deploy (ADCG107-109). Jamais la production.
+# Declenche seulement par un push sur la branche d'essai ; supprime au dernier commit.
+on:
+  push:
+    branches: [acceptation-adcg-runner]
+
+concurrency:
+  group: zz-scratch-acceptation-adcg
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente : $ref"; echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE : $ref"; echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  acceptation-adcg-spec:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'false'
+      - name: Migrate + seed demo
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Playwright chromium (deja dans l'image)
+        working-directory: frontend
+        run: npx playwright install chromium
+      - name: Build frontend (sans service worker)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      - name: Django + spec d'acceptation ADCG
+        working-directory: backend/django_core
+        env:
+          E2E_ACCEPTATION: '1'
+          ACCEPTATION_SHA: ${{ github.sha }}
+        run: |
+          gunicorn erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            --access-logfile /tmp/gunicorn-access.log \
+            --error-logfile /tmp/gunicorn-error.log --capture-output &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then echo "Django pret (HTTP $code)"; break; fi
+            echo "Attente Django ($i)"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+          export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
+          cd ../../frontend
+          npx playwright test --project=acceptation e2e/acceptation/adcg.spec.js 2>&1 | tee /tmp/spec-adcg.log
+          exit "${PIPESTATUS[0]}"
+      - name: Queue des journaux gunicorn (diagnostic)
+        if: ${{ !cancelled() }}
+        run: |
+          tail -n 120 /tmp/gunicorn-error.log || true
+      - name: Upload enregistrement d'acceptation (petit)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-adcg-enregistrement
+          path: |
+            docs/audits/acceptation/ADCG/
+            docs/qa-explorer/captures/*/ACCEPTATION-ADCG-*
+            /tmp/spec-adcg.log
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload rapport Playwright
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-adcg-rapport-playwright
+          path: frontend/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── (b) bancs du deploy : ADCG107/108/109 (preuve = banc ; prod seulement sur demande de Reda) ──
+  # + volets banc d'ADCG2/3/4/19 (dont la preuve exige AUSSI le journal de prod : non couverts ici).
+  bancs-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Banc scripts/tests/test_auto_deploy.py (faux git/docker/flock/systemctl)
+        run: |
+          set -uo pipefail
+          D="docs/audits/acceptation/ADCG/traces/$(date -u +%F)"; mkdir -p "$D"
+          T="$D/bancs-auto-deploy.txt"
+          { echo "# Banc du deploy rejoue sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}"
+            echo "# commande : python3 -m unittest scripts.tests.test_auto_deploy -v"
+            python3 --version; bash --version | head -1; } > "$T"
+          python3 -m unittest scripts.tests.test_auto_deploy -v >> "$T" 2>&1; rc=$?
+          echo "# code de sortie : $rc" >> "$T"
+          cat "$T"
+          python3 - "$T" "$rc" <<'PY'
+          import json, re, sys
+          trace, rc = sys.argv[1], int(sys.argv[2])
+          texte = open(trace, encoding='utf-8').read()
+          def test_ok(nom):
+              return re.search(r'^%s \(.*\) \.\.\. ok$' % re.escape(nom), texte, re.M) is not None
+          carte = {
+              'ADCG107': 'test_retour_arriere_jamais_dans_un_etat_melange',
+              'ADCG108': 'test_zero_downtime_sans_commit_neuf_drapeau_consomme',
+              'ADCG109': 'test_code_neuf_visible_seulement_apres_migrate',
+          }
+          etapes = []
+          for tache, nom in carte.items():
+              ok = rc == 0 and test_ok(nom)
+              etapes.append({
+                  'id': f'PF3.banc.{tache}', 'taches': [tache], 'verdict': 'PASS' if ok else 'FAIL',
+                  'base_verdict': None, 'trace': trace,
+                  'oracles': {str(i): 'NA' for i in range(1, 11)},
+                  'notes': f'banc scripts/tests/test_auto_deploy.py rejoue sur runner (Linux) : {nom} '
+                           f'{"ok" if test_ok(nom) else "NON ok"}, suite entiere code {rc} ; volet production '
+                           '(orchestrateur seulement et sur demande de Reda) non demande, non joue',
+              })
+          json.dump(etapes, open('etapes-bancs.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          print(json.dumps([(e['id'], e['verdict']) for e in etapes]))
+          PY
+          exit "$rc"
+      - name: Upload bancs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-adcg-bancs
+          path: |
+            etapes-bancs.json
+            docs/audits/acceptation/ADCG/traces/
+          retention-days: 7
+
+  # ── (b) pile docker compose COMPLETE sur le runner : ADCG14 (healthchecks) puis ADCG23 (e2e-local) ──
+  pile-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Liberer de la place disque (images + node_modules + paquets pip)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Bibliotheques WeasyPrint (Django sur l'hote pour e2e-local) + socat
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi8 libharfbuzz0b shared-mime-info fonts-liberation fonts-noto-core libxmlsec1-openssl socat
+      - name: .env de la pile = copie de .env.example (aucune retouche)
+        run: |
+          cp .env.example .env
+          D="docs/audits/acceptation/ADCG/traces/$(date -u +%F)"; mkdir -p "$D"; echo "TRACES=$D" >> "$GITHUB_ENV"
+      - name: Construire les images de la pile (journal en fichier)
+        run: |
+          set -o pipefail
+          if ! docker compose build > /tmp/compose-build.log 2>&1; then tail -n 150 /tmp/compose-build.log; exit 1; fi
+          tail -n 15 /tmp/compose-build.log; docker images | head -20; df -h /
+      - name: Base deja migree (comme une pile locale) - dump pre-migre du cache WOW8
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+            /tmp/testdb.manifest
+          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          restore-keys: |
+            testdb-v1-
+      - name: Demarrer db puis y restaurer le dump (accelerateur, hors preuve)
+        run: |
+          set -euo pipefail
+          docker compose up -d db
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U erp_user && break; sleep 2; done
+          if [ -f /tmp/testdb.dump ]; then
+            id=$(docker compose ps -q db)
+            docker cp /tmp/testdb.dump "$id":/tmp/testdb.dump
+            docker compose exec -T db pg_restore -U erp_user -d erp_db --no-owner -j 4 /tmp/testdb.dump || echo "pg_restore : avertissements (non bloquant)"
+            docker compose exec -T db rm -f /tmp/testdb.dump
+            echo "dump restaure"
+          else
+            echo "aucun dump en cache : base vide, migrate a froid par e2e-local"
+          fi
+      - name: Ecrivain d'etapes hors navigateur
+        run: |
+          cat > /tmp/etape.py <<'PY'
+          import json, os, sys
+          fichier, ident, taches, verdict, trace, notes = sys.argv[1:7]
+          etapes = json.load(open(fichier, encoding='utf-8')) if os.path.exists(fichier) else []
+          etapes.append({'id': ident, 'taches': taches.split(','), 'verdict': verdict, 'base_verdict': None,
+                         'trace': trace, 'oracles': {str(i): 'NA' for i in range(1, 11)}, 'notes': notes})
+          json.dump(etapes, open(fichier, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          print(ident, verdict)
+          PY
+      - name: ADCG14 - docker compose up -d, 3 (healthy), pause redis => unhealthy, nginx servi
+        run: |
+          set -uo pipefail
+          T="$TRACES/ADCG14-compose-healthcheck.txt"; v=PASS; motif=""
+          sante() { docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}aucun{{end}}' "$(docker compose ps -q "$1")"; }
+          echo "# ADCG14 rejoue sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA} ; .env = .env.example" > "$T"
+          docker compose up -d >> "$T" 2>&1 || { v=FAIL; motif="docker compose up -d en echec ;"; }
+          ok=0
+          for i in $(seq 1 72); do
+            a=$(sante db); b=$(sante redis); c=$(sante django_core)
+            if [ "$a" = healthy ] && [ "$b" = healthy ] && [ "$c" = healthy ]; then ok=1; break; fi
+            sleep 5
+          done
+          { echo; echo "== docker compose ps apres up -d (attente ~$((i*5)) s ; db=$a redis=$b django_core=$c)"; docker compose ps; } >> "$T"
+          for s in db redis django_core; do
+            docker compose ps "$s" | grep -q '(healthy)' || { v=FAIL; motif="$motif $s sans (healthy) dans docker compose ps ;"; }
+          done
+          docker compose pause redis >> "$T" 2>&1
+          dep=$(date +%s)
+          for i in $(seq 1 36); do [ "$(sante redis)" = unhealthy ] && break; sleep 5; done
+          { echo; echo "== docker compose ps, redis en pause depuis $(( $(date +%s) - dep )) s (State.Health.Status redis = $(sante redis))"; docker compose ps; } >> "$T"
+          if ! docker compose ps redis | grep -q 'unhealthy'; then v=FAIL; motif="$motif redis en pause jamais (unhealthy) dans docker compose ps ;"; fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/ || true)
+          echo "nginx : GET http://localhost/ pendant la pause de redis => HTTP $code" >> "$T"
+          [ "$code" = 200 ] || { v=FAIL; motif="$motif nginx non servi ($code) ;"; }
+          docker compose unpause redis >> "$T" 2>&1
+          # Information (hors verdict) : Redis qui ne repond plus, conteneur EN MARCHE (processus stoppe).
+          for i in $(seq 1 24); do [ "$(sante redis)" = healthy ] && break; sleep 5; done
+          pid=$(docker inspect -f '{{.State.Pid}}' "$(docker compose ps -q redis)")
+          sudo kill -STOP "$pid"; dep=$(date +%s)
+          for i in $(seq 1 36); do [ "$(sante redis)" = unhealthy ] && break; sleep 5; done
+          { echo; echo "== INFORMATION (hors verdict) : redis-server gele par SIGSTOP depuis $(( $(date +%s) - dep )) s, conteneur en marche (State.Health.Status = $(sante redis))"; docker compose ps redis; } >> "$T"
+          code2=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/ || true)
+          echo "nginx : GET http://localhost/ pendant ce gel => HTTP $code2" >> "$T"
+          sudo kill -CONT "$pid"
+          for i in $(seq 1 24); do [ "$(sante redis)" = healthy ] && break; sleep 5; done
+          { echo; echo "== docker compose ps final (redis rendu)"; docker compose ps; echo; echo "VERDICT ADCG14 : $v $motif"; } >> "$T"
+          cat "$T"
+          python3 /tmp/etape.py etapes-pile.json PF3.compose.ADCG14 ADCG14 "$v" "$T" \
+            "pile docker compose complete sur runner (.env = .env.example) : up -d puis docker compose ps, pause redis, GET nginx ; $motif"
+          [ "$v" = PASS ]
+      - name: ADCG23 - pile en marche, e2e-local.sh up puis stop => db, redis, minio toujours Up
+        if: ${{ !cancelled() }}
+        run: |
+          set -uo pipefail
+          T="$TRACES/ADCG23-e2e-local.txt"; v=PASS; motif=""
+          enmarche() { docker compose ps --services --status running | sort | tr '\n' ' '; }
+          { echo "# ADCG23 rejoue sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}"
+            echo "# Environnement : la base compose est publiee sur 5433 (docker-compose.yml), le .env d'exemple"
+            echo "# donne DB_PORT=5432 ; un relais socat 127.0.0.1:5432 -> 5433 tient lieu de port local de la base."
+            echo; echo "== avant up : services en marche = $(enmarche)"; docker compose ps; } > "$T"
+          for s in db redis minio; do enmarche | grep -qw "$s" || { v=FAIL; motif="$motif $s pas en marche avant up ;"; }; done
+          socat TCP-LISTEN:5432,fork,reuseaddr TCP:127.0.0.1:5433 &
+          relais=$!
+          bash scripts/e2e-local.sh up > /tmp/e2e-up.log 2>&1; rc_up=$?
+          { echo; echo "== bash scripts/e2e-local.sh up => code $rc_up (dernieres lignes)"; tail -n 40 /tmp/e2e-up.log
+            echo; echo "== fichier d'etat /tmp/taqinor-e2e-services.txt apres up : [$(tr '\n' ' ' < /tmp/taqinor-e2e-services.txt 2>/dev/null)]"; } >> "$T"
+          [ "$rc_up" = 0 ] || { v=FAIL; motif="$motif up en echec (code $rc_up) ;"; }
+          bash scripts/e2e-local.sh stop > /tmp/e2e-stop.log 2>&1; rc_stop=$?
+          { echo; echo "== bash scripts/e2e-local.sh stop => code $rc_stop"; cat /tmp/e2e-stop.log
+            echo; echo "== apres stop : services en marche = $(enmarche) ; fichier d'etat present ? $([ -e /tmp/taqinor-e2e-services.txt ] && echo oui || echo non)"; docker compose ps; } >> "$T"
+          kill "$relais" 2>/dev/null || true
+          [ "$rc_stop" = 0 ] || { v=FAIL; motif="$motif stop en echec ;"; }
+          grep -q 'services laissés en marche (non démarrés par up)' /tmp/e2e-stop.log || { v=FAIL; motif="$motif message de stop absent ;"; }
+          if grep -q 'Arrêt des services démarrés par up' /tmp/e2e-stop.log; then v=FAIL; motif="$motif stop a arrete des services ;"; fi
+          for s in db redis minio; do enmarche | grep -qw "$s" || { v=FAIL; motif="$motif $s arrete apres stop ;"; }; done
+          if [ -e /tmp/taqinor-e2e-services.txt ]; then v=FAIL; motif="$motif fichier d'etat non efface ;"; fi
+          echo "VERDICT ADCG23 : $v $motif" >> "$T"
+          cat "$T"
+          python3 /tmp/etape.py etapes-pile.json PF3.compose.ADCG23 ADCG23 "$v" "$T" \
+            "pile docker compose en marche sur runner, e2e-local.sh up (migrate, seed_demo, Django, preview) puis stop ; relais socat 5432->5433 ; $motif"
+          [ "$v" = PASS ]
+      - name: Journaux (diagnostic)
+        if: ${{ failure() }}
+        run: |
+          tail -n 60 /tmp/compose-build.log || true
+          tail -n 80 /tmp/e2e-up.log || true
+          docker compose logs --tail 60 django_core nginx redis || true
+      - name: Upload pile
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-adcg-pile
+          path: |
+            etapes-pile.json
+            docs/audits/acceptation/ADCG/traces/
+          retention-days: 7
+          if-no-files-found: warn
