@@ -1196,8 +1196,7 @@ def liberer_vagues_planifiees(*, company=None, maintenant=None):
     from .models import AchatsParametres
     from .models_wms import VaguePicking
 
-    maintenant = maintenant or timezone.now()
-    heure_locale = timezone.localtime(maintenant).time()
+    ici = timezone.localtime(maintenant or timezone.now())
 
     qs = (VaguePicking.objects
           .filter(statut=VaguePicking.Statut.BROUILLON, company__actif=True)
@@ -1217,7 +1216,8 @@ def liberer_vagues_planifiees(*, company=None, maintenant=None):
                 parametres[vague.company_id] = AchatsParametres.for_company(
                     vague.company)
             coupure = parametres[vague.company_id].heure_coupure_vagues
-            declencher = bool(coupure) and heure_locale >= coupure
+            declencher = bool(coupure) and (ici.toordinal(), ici.time()) >= (  # ACEL44 : 1re coupure après création
+                (c := timezone.localtime(vague.created_at)).toordinal() + (c.time() >= coupure), coupure)
         elif vague.mode_liberation == VaguePicking.ModeLiberation.AUTO_SEUIL:
             seuil = vague.seuil_lignes or 0
             declencher = seuil > 0 and vague.lignes.count() >= seuil
