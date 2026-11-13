@@ -358,3 +358,32 @@ describe('TicketsPage — AERR27 raccourcis clavier gardés', () => {
     liste.remove()
   }, 60000)
 })
+
+/* AERR32 — une relecture ratée (store `error`) garde les lignes déjà chargées
+   et offre « Réessayer » ; l'écran d'erreur seul n'existe que sans ticket. */
+describe('TicketsPage — AERR32 liste gardée pendant/après une relecture', () => {
+  function rendre(etat) {
+    const store = configureStore({
+      reducer: {
+        tickets: (state = etat) => state,
+        auth: (state = { role: 'admin', permissions: [] }) => state,
+      },
+    })
+    render(<ThemeProvider><Provider store={store}><MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter></Provider></ThemeProvider>)
+  }
+
+  it('store error avec 2 tickets chargés : lignes visibles + Réessayer', async () => {
+    rendre({ items: [T1, T2], loading: false, error: 'Erreur réseau' })
+    expect(await screen.findAllByText('SAV-1', { exact: false })).not.toHaveLength(0)
+    expect(screen.getAllByText('SAV-2', { exact: false })).not.toHaveLength(0)
+    expect(screen.getByText(/Liste pas à jour/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Réessayer/ })).toBeInTheDocument()
+  }, 60000)
+
+  it('relecture en cours avec tickets chargés : pas de squelette, lignes visibles', async () => {
+    rendre({ items: [T1, T2], loading: true, error: null })
+    expect(await screen.findAllByText('SAV-1', { exact: false })).not.toHaveLength(0)
+  }, 60000)
+})

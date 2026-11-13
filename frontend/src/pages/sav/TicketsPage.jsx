@@ -2345,9 +2345,16 @@ export default function TicketsPage() {
             mobile/tablette inchangé), donc pas de wrapper flex nécessaire ici. */}
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
           <div className="min-w-0 flex-1">
-            {loading ? (
+            {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
+            {error && items.length > 0 && (
+              <div role="status" className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
+                <Button type="button" size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>
+              </div>
+            )}
+            {loading && items.length === 0 ? (
               <SqueletteListe lignes={6} />
-            ) : error ? (
+            ) : error && items.length === 0 ? (
               <ErreurChargement description="Les tickets n'ont pas pu être chargés. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
             ) : rows.length === 0 ? (
               // L315 — distinguer « aucun ticket ouvert » de « aucun match ».

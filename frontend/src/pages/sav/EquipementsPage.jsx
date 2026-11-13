@@ -723,9 +723,16 @@ export default function EquipementsPage() {
           </div>
         )}
 
-        {loading ? (
+        {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
+        {error && items.length > 0 && (
+          <div role="status" className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
+            <Button type="button" size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>
+          </div>
+        )}
+        {loading && items.length === 0 ? (
           <SqueletteListe lignes={6} />
-        ) : error ? (
+        ) : error && items.length === 0 ? (
           <ErreurChargement description="Le parc d'équipements n'a pas pu être chargé. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
         ) : rows.length === 0 ? (
           <EmptyState
