@@ -620,6 +620,9 @@ const ListRow = memo(function ListRow({
   )
 })
 
+// AERR113 — « prénom nom » du lead, pour nommer les confirmations.
+const nomLead = (lead) => `${lead.prenom ?? ''} ${lead.nom ?? ''}`.trim() || 'ce lead'
+
 export default function ListView({
   leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
   selected = new Set(), onToggleSelect, onToggleAll, onInlineSave, onMarkPerdu,
@@ -776,17 +779,27 @@ export default function ListView({
   // suite, « Annuler » = l'action inverse) ; ce qui change, c'est qu'il n'y a
   // plus une variante locale du motif par site d'appel.
   const onArchive = useCallback(async (lead) => {
+    // AERR113 — la confirmation NOMME le lead (comme `LeadWorkspace::doArchive`).
+    const nom = nomLead(lead)
+    const ok = await confirm({
+      title: `Archiver « ${nom} » ?`,
+      confirmLabel: 'Archiver',
+      cancelLabel: 'Annuler',
+      destructive: false,
+    })
+    if (!ok) return
     setBusyId(lead.id)
     try {
       await mutateWithUndo({
         kind: 'lead_archive',
         message: 'Lead archivé.',
+        description: nom,
         apply: () => dispatch(archiveLead(lead.id)).unwrap(),
         revert: () => dispatch(restoreLead(lead.id)).unwrap(),
         errorMessage: "L'archivage a échoué — réessayez.",
       })
     } finally { setBusyId(null) }
-  }, [dispatch])
+  }, [dispatch, confirm])
 
   const onRestore = useCallback(async (lead) => {
     setBusyId(lead.id)
@@ -802,10 +815,9 @@ export default function ListView({
   }, [dispatch])
 
   const onDelete = useCallback(async (lead) => {
-    // VX96 — la suppression est RÉVERSIBLE (soft-delete + corbeille 30 min) :
-    // plus de copie « irréversible », et un toast « Annuler » restaure le lead.
+    // VX96 — suppression RÉVERSIBLE (corbeille 30 min, toast « Annuler »).
     const ok = await confirm({
-      title: 'Supprimer ce lead ?',
+      title: `Supprimer ce lead « ${nomLead(lead)} » ?`,
       description: 'Il ira à la corbeille (restaurable 30 min).',
       confirmLabel: 'Supprimer',
       cancelLabel: 'Annuler',

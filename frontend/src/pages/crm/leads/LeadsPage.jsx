@@ -883,11 +883,12 @@ export default function LeadsPage() {
   // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
   // AERR100 — la liste ET la fiche restent montées quand une RELECTURE échoue :
   // le bloc plein écran n'est que pour un échec sans aucun lead en mémoire.
-  const messageLeadsErreur = leadsError
-    ? `Erreur : ${errorMessageFrom({ response: { data: leadsError } }, 'Impossible de charger les leads.')}`
-    : null
-  if (leadsError && leads.length === 0) return (
-    <StateBlock error={messageLeadsErreur} onRetry={refetch} />
+  const error = leadsError && leads.length === 0 ? leadsError : null
+  if (error) return (
+    <StateBlock
+      error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
+      onRetry={refetch}
+    />
   )
 
   return (
@@ -1141,7 +1142,7 @@ export default function LeadsPage() {
           et la fiche restent, on le DIT et on offre de réessayer. */}
       {leadsError && leads.length > 0 && (
         <div className="lp-stage-error" role="status" data-testid="leads-pas-a-jour">
-          <span>Liste pas à jour — {messageLeadsErreur}</span>
+          <span>Liste pas à jour — {errorMessageFrom({ response: { data: leadsError } }, 'Impossible de charger les leads.')}</span>
           <Button type="button" size="sm" variant="outline" onClick={refetch}>
             Réessayer
           </Button>
