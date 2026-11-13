@@ -254,35 +254,41 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         Chaque refus dépend de l'ÉTAT de la facture, pas du corps : 409
         ``ConflitEtat`` (ENF11, ``core/conflit_etat.py``), jamais un 400.
         """
+        from django.db import transaction
         from django.db.models import ProtectedError
         from core.numbering import est_reference_provisoire
 
-        if instance.statut != Facture.Statut.BROUILLON:
-            raise ConflitEtat({'detail': (
-                'Seule une facture brouillon peut être supprimée. Une facture '
-                'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
-                'légal et, le cas échéant, des encaissements).'
-            )})
-        if not est_reference_provisoire(instance.reference):
-            raise ConflitEtat({'code': 'reference_legale', 'detail': (
-                f'Cette facture porte le numéro {instance.reference} : '
-                'annulez-la (un numéro légal ne se supprime jamais).')})
-        if instance.paiements.exists():
-            raise ConflitEtat({'detail': (
-                'Cette facture porte au moins un paiement : la supprimer '
-                'effacerait des encaissements réels. Annulez-la ou rejetez '
-                'd\'abord ses paiements.'
-            )})
-        pk = instance.pk  # ACSV112 — Django remet ``pk`` à nul à la suppression
-        try:
-            instance.delete()
-        except ProtectedError:
-            raise ConflitEtat({'detail': (
-                'Suppression impossible : cette facture est référencée par un '
-                'avoir, une note de débit ou un paiement du portail client. '
-                'Annulez-la plutôt que de la supprimer.'
-            )})
-        instance.pk = pk  # ACSV112 — mêmes abonnés que l'annulation d'un brouillon (sav, installations)
+        # ACNC5 (C-ACNC-002) — gardes et suppression portent sur la ligne
+        # RELUE SOUS VERROU : un DELETE qui croise « Émettre » attend son
+        # verrou puis voit la facture émise, numérotée (409, rien d'effacé).
+        with transaction.atomic():
+            instance = Facture.objects.select_for_update().get(pk=instance.pk)
+            if instance.statut != Facture.Statut.BROUILLON:
+                raise ConflitEtat({'detail': (
+                    'Seule une facture brouillon peut être supprimée. Une facture '
+                    'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
+                    'légal et, le cas échéant, des encaissements).'
+                )})
+            if not est_reference_provisoire(instance.reference):
+                raise ConflitEtat({'code': 'reference_legale', 'detail': (
+                    f'Cette facture porte le numéro {instance.reference} : '
+                    'annulez-la (un numéro légal ne se supprime jamais).')})
+            if instance.paiements.exists():
+                raise ConflitEtat({'detail': (
+                    'Cette facture porte au moins un paiement : la supprimer '
+                    'effacerait des encaissements réels. Annulez-la ou rejetez '
+                    'd\'abord ses paiements.'
+                )})
+            pk = instance.pk  # ACSV112 — Django remet ``pk`` à nul à la suppression
+            try:
+                instance.delete()
+            except ProtectedError:
+                raise ConflitEtat({'detail': (
+                    'Suppression impossible : cette facture est référencée par un '
+                    'avoir, une note de débit ou un paiement du portail client. '
+                    'Annulez-la plutôt que de la supprimer.'
+                )})
+            instance.pk = pk  # ACSV112 — mêmes abonnés que l'annulation d'un brouillon (sav, installations)
         facture_annulee.send(sender=Facture, instance=instance, company=instance.company)
 
     def perform_update(self, serializer):

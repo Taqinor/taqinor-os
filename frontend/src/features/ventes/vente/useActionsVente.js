@@ -5,7 +5,7 @@
 // rendue par l'écran, SOUS la facture (`erreur`), avec le message du serveur
 // (règle fondateur « erreurs → le champ fautif »). Aucune règle d'argent ici :
 // le serveur reste seul juge (avoir, directive d'acompte, référence légale).
-import { useCallback, useContext, useState } from 'react'
+import { useCallback, useContext, useRef, useState } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import ventesApi from '../../../api/ventesApi'
 import { fetchFactures } from '../store/ventesSlice'
@@ -46,6 +46,10 @@ export function useActionsVente({ onSucces } = {}) {
   const redux = useContext(ReactReduxContext)
   const [occupe, setOccupe] = useState(null)
   const [erreur, setErreur] = useState(null)
+  // ACNC5 — UN geste en vol par facture : un 2e geste (« Supprimer » pendant
+  // « Émettre ») est refusé ici ; `factureEnVol` grise ses autres boutons.
+  const enVol = useRef(new Set())
+  const [factureEnVol, setFactureEnVol] = useState(null)
 
   // VNT76 — le panneau de vente (fiche lead) rafraîchit SA source (`onSucces`,
   // le GET détail du lead) ; la liste des factures garde son store redux.
@@ -77,6 +81,11 @@ export function useActionsVente({ onSucces } = {}) {
   }
 
   const executer = async (geste, facture, action, { rafraichirListe = true, cle = facture.id } = {}) => {
+    if (enVol.current.has(facture.id)) {
+      return { ok: false, message: 'Un geste est déjà en cours sur cette facture.', code: 'occupe' }
+    }
+    enVol.current.add(facture.id)
+    setFactureEnVol(facture.id)
     setOccupe(`${geste}:${cle}`)
     setErreur(null)
     try {
@@ -88,6 +97,8 @@ export function useActionsVente({ onSucces } = {}) {
       setErreur({ geste, factureId: facture.id, message, code })
       return { ok: false, message, code }
     } finally {
+      enVol.current.delete(facture.id)
+      setFactureEnVol(null)
       setOccupe(null)
     }
   }
@@ -140,7 +151,7 @@ export function useActionsVente({ onSucces } = {}) {
     'montant', facture, () => ventesApi.montantTrancheFacture(facture.id, montantTtc))
 
   return {
-    occupe, erreur, effacerErreur, facturesChargees,
+    occupe, erreur, effacerErreur, facturesChargees, factureEnVol,
     annuler, supprimer, emettre, recu, pdf, whatsapp, envoyerEmail, modifierMontant,
   }
 }

@@ -111,6 +111,8 @@ export default function LigneFactureVente({
       cle: 'supprimer', label: 'Supprimer', variant: 'ghost', onClick: () => setSuppOuvert(true),
     },
   ].filter(Boolean)
+    // ACNC5 — un geste en vol sur CETTE facture grise ses autres gestes.
+    .map((g) => (actions.factureEnVol === f.id && !g.loading ? { ...g, disabled: true } : g))
   const visibles = mobile ? gestes.slice(0, 2) : gestes
   const autres = mobile ? gestes.slice(2) : []
 
