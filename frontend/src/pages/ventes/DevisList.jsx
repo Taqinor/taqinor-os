@@ -410,10 +410,13 @@ export default function DevisList() {
   // second concept de « devis actif »). Absent hors deep-link (liste nue) :
   // aucun devis n'est « focalisé » sans lien profond.
   const highlightedDevis = highlightId ? devis.find(d => d.id === highlightId) : null
+  // AERR14 — `scopeRef` : « a » se tait quand une boîte est posée par-dessus.
+  const pageRef = useRef(null)
   useFocusedRecordShortcuts(
     'devisDetail',
     { a: () => openPdfModal(highlightedDevis) },
     !!highlightedDevis,
+    { scopeRef: pageRef },
   )
 
   const openAcceptModal = (d) => {
@@ -930,7 +933,7 @@ export default function DevisList() {
   }
 
   return (
-    <div className="page">
+    <div className="page" ref={pageRef}>
       {pageHeader}
       {error && (
         <div className="mt-3 flex flex-wrap items-center gap-2" role="status" data-testid="devis-pas-a-jour">

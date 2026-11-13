@@ -164,6 +164,28 @@ describe('DevisList — relecture en cours ou ratée (AERR2)', () => {
   })
 })
 
+describe('DevisList — raccourci « a » sous une boîte (AERR14)', () => {
+  it('modale d\'acceptation ouverte : « a » n\'ouvre pas la boîte PDF', async () => {
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+    renderList({
+      devis: [{
+        id: 77, reference: 'DEV-AERR14', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 2, version: 1, is_active: true,
+      }],
+      permissions: ['ventes_valider'],
+    }, ['/ventes/devis?devis=77'])
+    fireEvent.click(within(screen.getByText('DEV-AERR14').closest('tr')).getByRole('button', { name: /Accepter/ }))
+    await screen.findByText(/Accepter le devis — DEV-AERR14/)
+    fireEvent.keyDown(document.body, { key: 'a' })
+    expect(screen.queryByText(/Générer le PDF — DEV-AERR14/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByText(/Accepter le devis — DEV-AERR14/)).toBeNull())
+    fireEvent.keyDown(document.body, { key: 'a' })
+    expect(await screen.findByText(/Générer le PDF — DEV-AERR14/)).toBeTruthy()
+    defile.mockRestore()
+  })
+})
+
 describe('DevisList — rendu des données (J141)', () => {
   it('rend les vraies lignes avec une pastille de statut quand le chargement est terminé', () => {
     renderList({
