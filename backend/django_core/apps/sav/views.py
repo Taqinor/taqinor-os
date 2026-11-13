@@ -1195,8 +1195,6 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
         # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
         client = serializer.validated_data.get('client')
-        # ASAV23 — un double clic ne crée qu'un ticket.
-        self._refuser_doublon_recent(company, serializer.validated_data)
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
         # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
@@ -1206,16 +1204,21 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
         # ASAV21 — horodatage de l'échéance (chemin heures ouvrées seulement).
         sla_echeance_at = compute_sla_echeance(
             company, client, priorite, date_ouverture)[1]
-        create_with_reference(
-            Ticket, 'SAV', company,
-            lambda ref: serializer.save(
-                reference=ref, company=company,
-                created_by=self.request.user,
-                date_ouverture=date_ouverture,
-                sla_due_at=sla_due_at,
-                sla_echeance_at=sla_echeance_at,
-                sla_reponse_due_at=sla_reponse_due_at),
-        )
+        # ASAV23 — un double clic ne crée qu'un ticket ; ACNC33 — contrôle et
+        # création sérialisés par le verrou de la fiche client (sans importer crm).
+        with transaction.atomic():
+            type(client)._base_manager.select_for_update().filter(pk=client.pk).first()
+            self._refuser_doublon_recent(company, serializer.validated_data)
+            create_with_reference(
+                Ticket, 'SAV', company,
+                lambda ref: serializer.save(
+                    reference=ref, company=company,
+                    created_by=self.request.user,
+                    date_ouverture=date_ouverture,
+                    sla_due_at=sla_due_at,
+                    sla_echeance_at=sla_echeance_at,
+                    sla_reponse_due_at=sla_reponse_due_at),
+            )
         # XSAV9 — affectation automatique si aucun technicien n'a été choisi
         # à la création et que la société l'a activée (défaut OFF = inchangé).
         inst = serializer.instance
@@ -2945,21 +2948,30 @@ class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
                 return Response({'lignes': erreurs},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            devis = create_devis_pour_ticket(
-                company=ticket.company, user=request.user,
-                client_id=client_id, lignes=lignes,
-                note=f'Devis de réparation SAV — ticket {ticket.reference}')
-        except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
-            return Response(
-                {'detail': 'Client introuvable pour votre société.'},
-                status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            # ACNC33 — ticket relu SOUS VERROU : un devis déjà lié est rendu
+            # (200, même id), jamais un second brouillon numéroté.
+            ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+            from apps.ventes.selectors import get_devis_by_pk
+            existant = ticket.devis_id_ext and get_devis_by_pk(ticket.devis_id_ext)
+            if existant and existant.company_id == ticket.company_id:
+                return Response(
+                    {'devis_id': existant.id, 'devis_reference': existant.reference})
+            try:
+                devis = create_devis_pour_ticket(
+                    company=ticket.company, user=request.user,
+                    client_id=client_id, lignes=lignes,
+                    note=f'Devis de réparation SAV — ticket {ticket.reference}')
+            except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
+                return Response(
+                    {'detail': 'Client introuvable pour votre société.'},
+                    status=status.HTTP_404_NOT_FOUND)
 
-        ticket.devis_id_ext = devis.id
-        ticket.save(update_fields=['devis_id_ext'])
-        activity.log_note(
-            ticket, request.user,
-            f'Devis de réparation {devis.reference} créé (brouillon)')
+            ticket.devis_id_ext = devis.id
+            ticket.save(update_fields=['devis_id_ext'])
+            activity.log_note(
+                ticket, request.user,
+                f'Devis de réparation {devis.reference} créé (brouillon)')
         return Response(
             {'devis_id': devis.id, 'devis_reference': devis.reference},
             status=status.HTTP_201_CREATED)
