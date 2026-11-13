@@ -1480,5 +1480,75 @@ class ErreursCop4Tests(unittest.TestCase):
         self.assertLessEqual(len(at._normalize_error(_FakeResp(409, long), long)["error"]), 300)
 
 
+# ── COP-A5 — aperçu qui NOMME l'objet ─────────────────────────────────────────
+
+_CAT_ACCEPTER = {
+    "key": "ventes.devis.accepter", "label": "Accepter un devis",
+    "confirm_summary": "Accepter ce devis.",
+    "endpoint": "/api/django/ventes/devis/{id}/accepter/", "method": "POST",
+    "inputs": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]},
+    "risk": "outward", "objets": {"id": "devis"},
+}
+_CAT_TOUCHE_REPORTER = {
+    "key": "crm.suivi.reporter", "label": "Reporter une touche",
+    "endpoint": "/api/django/crm/relance-etapes/{touche_id}/reporter/", "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "touche_id": {"type": "integer"}, "lead_id": {"type": "integer"},
+        "jours": {"type": "integer"}}, "required": ["touche_id"]},
+    "risk": "outward", "objets": {"lead_id": "lead", "touche_id": "touche"},
+}
+
+
+class ApercuNommeCop5Tests(_AvecPropositions):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000")
+        p.start()
+        self.addCleanup(p.stop)
+        self.libelles = _contrat_agent("assistant_libelles.json")
+
+    def _proposer(self, action, entrees, reponse):
+        appels = []
+
+        def fake_call(ctx, path, method="POST", payload=None, headers=None, timeout=None):
+            appels.append({"path": path, "method": method, "payload": payload, "timeout": timeout})
+            return reponse
+        collector: list = []
+        with mock.patch.object(at, "_django_call", fake_call):
+            at.run_catalogue_action(_ctx(role="admin"), action, entrees, collector)
+        return collector[0]["human_preview"], appels
+
+    def test_apercu_nomme_le_devis_comme_le_contrat(self):
+        apercu, appels = self._proposer(_CAT_ACCEPTER, {"id": 45},
+                                        {"ok": True, "status": 200, "data": self.libelles["exemple"]})
+        attendu = _contrat_agent("assistant_reponse.json")["exemple_deux_propositions"]["cartes"][0]["apercu"]
+        self.assertEqual(apercu, attendu)
+        self.assertEqual(len(appels), 1)
+        self.assertEqual((appels[0]["path"], appels[0]["method"], appels[0]["payload"]),
+                         ("/api/django/agent/libelles/", "GET", {"devis": 45}))
+        self.assertLessEqual(appels[0]["timeout"].read, 5)
+
+    def test_plusieurs_objets_et_entrees_restantes(self):
+        apercu, appels = self._proposer(
+            _CAT_TOUCHE_REPORTER, {"touche_id": 412, "lead_id": 1489, "jours": 3},
+            {"ok": True, "status": 200, "data": self.libelles["exemple"]})
+        self.assertEqual(appels[0]["payload"], {"lead": 1489, "touche": 412})
+        self.assertEqual(apercu, "Reporter une touche — " + self.libelles["exemple"]["lead"]
+                         + " ; " + self.libelles["exemple"]["touche"] + " (jours=3)")
+
+    def test_libelle_absent_retombe_sur_la_forme_actuelle(self):
+        for reponse in ({"ok": True, "status": 200, "data": self.libelles["exemple_hors_portee"]},
+                        {"ok": False, "status": 404, "error": "Introuvable."},
+                        {"ok": False, "status": 0, "error": "Service indisponible."}):
+            with self.subTest(reponse=reponse):
+                apercu, _ = self._proposer(_CAT_ACCEPTER, {"id": 45}, reponse)
+                self.assertEqual(apercu, "Accepter ce devis. (id=45)")
+
+    def test_sans_objets_aucun_appel(self):
+        apercu, appels = self._proposer(_CAT_DELETE, {"id": 3}, {"ok": True, "data": {}})
+        self.assertEqual(appels, [])
+        self.assertEqual(apercu, "Suppression irréversible du produit. (id=3)")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -144,6 +144,7 @@ def _django_call(
     method: str = "POST",
     payload: dict | None = None,
     headers: dict[str, str] | None = None,
+    timeout: httpx.Timeout | None = None,
 ) -> dict[str, Any]:
     """Appel authentifie vers l'API Django interne, methode au choix.
 
@@ -152,7 +153,8 @@ def _django_call(
     reste l'autorite finale (scope societe + permissions). Retourne un dict
     normalise {ok, status, data|error}. Ne leve jamais : les erreurs sont
     renvoyees comme texte a l'agent. `headers` (COP-A3, ex. `Idempotency-Key`)
-    s'ajoute aux en-tetes, sans jamais remplacer le jeton de l'appelant.
+    s'ajoute aux en-tetes, sans jamais remplacer le jeton de l'appelant ;
+    `timeout` (COP-A5) raccourcit le delai d'un appel accessoire.
     """
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
     verb = (method or "POST").upper()
@@ -173,7 +175,7 @@ def _django_call(
         # GET avec parametres residuels -> query string.
         request_kwargs["params"] = body
     try:
-        with httpx.Client(timeout=_TIMEOUT) as client:
+        with httpx.Client(timeout=timeout or _TIMEOUT) as client:
             resp = client.request(verb, url, **request_kwargs)
     except Exception as exc:  # pragma: no cover - reseau
         logger.warning("Appel Django interne echoue (%s %s): %s", verb, path, exc)
@@ -604,9 +606,48 @@ def _cle_idempotence(token: str) -> str:
 # ── Execution d'une action du catalogue ───────────────────────────────────────
 
 
-def _human_preview(action: dict[str, Any], inputs: dict[str, Any]) -> str:
-    """Texte court montre a l'utilisateur avant confirmation."""
+_LIBELLES_PATH = "/api/django/agent/libelles/"
+# Delai COURT : un aperçu sans nom vaut mieux qu'une proposition qui tarde.
+_TIMEOUT_LIBELLES = httpx.Timeout(3.0, connect=2.0)
+
+
+def _libelles_objets(
+    ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+) -> dict[str, str]:
+    """COP-A5 — `{nom d'entree: libelle}` des objets designes par les entrees
+    (champ `objets` du registre), lus en UN appel `GET agent/libelles/` avec
+    le JWT de l'utilisateur (contrat `assistant_libelles.json`). Objet hors
+    portee, route indisponible ou Django injoignable : `{}` (jamais bloquant)."""
+    params: dict[str, Any] = {}
+    noms: dict[str, str] = {}
+    for nom, genre in (action.get("objets") or {}).items():
+        if inputs.get(nom) in (None, "") or genre in params:
+            continue
+        params[genre] = inputs[nom]
+        noms[nom] = genre
+    if not params or not DJANGO_INTERNAL_URL or ctx is None or not ctx.token:
+        return {}
+    res = _django_call(ctx, _LIBELLES_PATH, method="GET", payload=params,
+                       timeout=_TIMEOUT_LIBELLES)
+    data = res.get("data") if res.get("ok") else None
+    if not isinstance(data, dict):
+        return {}
+    return {nom: data[genre] for nom, genre in noms.items()
+            if isinstance(data.get(genre), str) and data[genre].strip()}
+
+
+def _human_preview(action: dict[str, Any], inputs: dict[str, Any],
+                   libelles: dict[str, str] | None = None) -> str:
+    """Texte court montre a l'utilisateur avant confirmation. Avec des
+    libelles (COP-A5) : « Label — <libelle(s)> (autres entrees k=v) », les
+    entrees deja nommees n'etant pas repetees ; sinon la forme historique."""
     summary = action.get("confirm_summary") or action.get("label") or action["key"]
+    if libelles:
+        texte = (action.get("label") or summary) + " — " + " ; ".join(libelles.values())
+        autres = {k: v for k, v in inputs.items() if k not in libelles}
+        if autres:
+            texte += " (" + ", ".join(f"{k}={v}" for k, v in sorted(autres.items())) + ")"
+        return texte
     if inputs:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(inputs.items()))
         return f"{summary} ({parts})"
@@ -670,7 +711,7 @@ def run_catalogue_action(
 
     risk = action.get("risk", RISK_INTERNAL)
     if risk in _RISK_NEEDS_CONFIRM:
-        preview = _human_preview(action, inputs)
+        preview = _human_preview(action, inputs, _libelles_objets(ctx, action, inputs))
         token = _stash_proposal(ctx, action, inputs, preview)
         proposal = {
             "type": "proposal",
