@@ -635,6 +635,4 @@ backend/django_core/apps/ventes/views/liste_prix.py::ListePrixViewSet.lignes
 backend/django_core/apps/ventes/views/liste_prix.py::ListePrixViewSet.partial_update
 backend/django_core/apps/ventes/views/liste_prix.py::ListePrixViewSet.regles
 backend/django_core/apps/ventes/views/liste_prix.py::ListePrixViewSet.update
-backend/django_core/apps/ventes/views/parametres_gammes.py::ParametresGammesView.partial_update
-backend/django_core/apps/ventes/views/parametres_gammes.py::ParametresGammesView.update
 backend/django_core/core/views.py::DataExplorerRunView.post

@@ -629,6 +629,47 @@ class ParametresGammesLecturePourTousTests(TestCase):
         resp = APIClient().get('/api/django/ventes/parametres-gammes/')
         self.assertIn(resp.status_code, (401, 403))
 
+    def test_reglage_exige_parametres_modifier_sauf_ordre_lignes(self):
+        """ADRG11 (D-ADRG-5) — l'épinglage de marque est un réglage société
+        (``parametres_modifier``) ; ``ordre_lignes`` seul reste au palier
+        ventes (générateur). Mutant : rétablir ``IsResponsableOrAdmin`` pour
+        tout PATCH ⇒ le Commercial responsable écrit, échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        company = Company.objects.create(slug='adrg11-gammes', nom='ADRG11 G')
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(username, nom, permissions, legacy):
+            role = Role.objects.create(company=company, nom=nom, permissions=permissions)
+            return get_user_model().objects.create_user(
+                username=username, password='x', company=company, role=role,
+                role_legacy=legacy)
+        parametreur = compte('adrg11-param', 'Gestion paramètres',
+                             ['parametres_modifier', 'ventes_voir'], 'normal')
+        com_resp = compte('adrg11-comresp', 'Commercial responsable',
+                          list(livres['Commercial responsable']), 'responsable')
+        commercial = compte('adrg11-com', 'Commercial',
+                            list(livres['Commercial']), 'normal')
+        url = '/api/django/ventes/parametres-gammes/'
+        api = APIClient()
+        api.force_authenticate(com_resp)
+        refus = api.patch(url, {'marques': {'Essentielle': {'panneau': 'Jinko'}}},
+                          format='json')
+        self.assertEqual(refus.status_code, 403)
+        api.force_authenticate(parametreur)
+        ok = api.patch(url, {'marques': {'Essentielle': {'panneau': 'Longi'}}},
+                       format='json')
+        self.assertEqual(ok.status_code, 200, ok.content)
+        api.force_authenticate(commercial)
+        ordre = api.patch(url, {'ordre_lignes': ['panneau', 'batterie']}, format='json')
+        self.assertEqual(ordre.status_code, 200, ordre.content)
+        # CLAUSE PERSISTANCE — relu : seules les valeurs des comptes autorisés.
+        relu = api.get(url).json()
+        self.assertEqual(relu['marques']['Essentielle']['panneau'], 'Longi')
+        self.assertEqual(relu['ordre_lignes'], ['panneau', 'batterie'])
+
 
 # ── 10. STKCAT2 (16/09/2026) — vocabulaire de rôles ADDITIF ───────────────
 #
