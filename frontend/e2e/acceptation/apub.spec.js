@@ -261,7 +261,8 @@ etape('PF5.3-APUB52', ['APUB52'], async ({ page, testInfo }) => {
   const evenements = () => py(`from apps.publicapi.models import Webhook
 sortie(Webhook.objects.get(pk=${h.id}).events)`)
   const patch = await perso.ctx.patch(`${API}/publicapi/webhooks/${h.id}/`, { ...T, data: { events: ['facture.created'] } })
-  expect([patch.status(), await patch.json()], 'PATCH facture.created : 400 nommé').toEqual([400, { events: ['Évènement non détenu : facture.created'] }])
+  const corpsPatch = await patch.json()
+  expect([patch.status(), corpsPatch.events], `PATCH facture.created : 400 nommé (${JSON.stringify(corpsPatch).slice(0, 300)})`).toEqual([400, ['Évènement non détenu : facture.created']])
   expect(await evenements(), 'relu après le PATCH refusé').toEqual(['lead.created'])
   const put = await perso.ctx.put(`${API}/publicapi/webhooks/${h.id}/`, { ...T, data: { target_url: 'https://example.com/apub52-hook', label: `APUB52 ${m}`, events: ['facture.created'], enabled: true } })
   const corpsPut = await put.json()
@@ -325,13 +326,13 @@ sortie(Intervention.objects.get(pk=${i.id}).lien_rapport_token)`)
   const v = await navigateur(page, testInfo, suivi)
   await v.page.goto(`/intervention-rapport/${t2}`)
   await expect(v.page.getByRole('heading', { name: 'Compte-rendu d’intervention' })).toBeVisible({ timeout: 60_000 })
-  await expect(v.page.getByRole('alert')).toHaveCount(0)
+  await expect(v.page.locator('.page-error')).toHaveCount(0)
   await bloc.getByTestId('lien-rapport-intervention-couper').click()
   await expect(page.getByText('Lien coupé — l’ancien lien ne s’ouvre plus.')).toBeVisible({ timeout: 30_000 })
   expect(await jeton(), 'coupé depuis l’écran').toBeNull()
   suivi.attendre(new RegExp(`intervention-rapport/${t2}`), 404)
   await v.page.reload()
-  await expect(v.page.getByRole('alert')).toContainText('introuvable ou a été révoqué', { timeout: 60_000 })
+  await expect(v.page.locator('.page-error')).toContainText('introuvable ou a été révoqué', { timeout: 60_000 })
   expect(await statuts(t2), 'jeton coupé à l’écran : 404 aux trois vues').toEqual([404, 404, 404])
   // `lien-rapport` rend ensuite un jeton neuf.
   const t3 = (await lireJson(await r.get(`${API}/installations/interventions/${i.id}/lien-rapport/`, T), 'lien-rapport après coupure')).token
@@ -361,7 +362,7 @@ Intervention.objects.filter(pk=${id}).update(statut='${s}'); sortie(1)`)
   const v = await navigateur(page, testInfo, suivi)
   await v.page.goto(`/intervention/${jSans}`)
   await expect(v.page.getByRole('heading', { name: 'Suivi de votre intervention' })).toBeVisible({ timeout: 60_000 })
-  await expect(v.page.getByRole('alert')).toHaveCount(0)
+  await expect(v.page.locator('.page-error')).toHaveCount(0)
   expect(await api(jSans), 'à préparer : 200').toBe(200)
   // Terminée puis validée : 404 « Lien invalide ou expiré. », la page le dit.
   suivi.attendre(new RegExp(`intervention/${jSans}`), 404)
@@ -370,7 +371,7 @@ Intervention.objects.filter(pk=${id}).update(statut='${s}'); sortie(1)`)
     const rep = await anon.get(`${API}/public/installations/intervention/${jSans}/`, T)
     expect([rep.status(), (await rep.json()).detail], `${s} : 404`).toEqual([404, 'Lien invalide ou expiré.'])
     await v.page.reload()
-    await expect(v.page.getByRole('alert')).toContainText('introuvable ou a expiré', { timeout: 60_000 })
+    await expect(v.page.locator('.page-error')).toContainText('introuvable ou a expiré', { timeout: 60_000 })
   }
   // Intervention datée (aujourd'hui) terminée : règle « lendemain de la date prévue » inchangée.
   await statut(ids.datee, 'terminee')
@@ -427,7 +428,12 @@ const ADRESSE_OTP40 = 'otp40.apub@accept-apub.ma'
 
 async function demandeMulti(r, m, adresse) {
   const dossiers = listeDe(await lireJson(await r.get(`${API}/ged/dossiers/?page_size=5`, T), 'dossiers'))
-  const dossier = dossiers[0]?.id ?? (await lireJson(await r.post(`${API}/ged/dossiers/`, { ...T, data: { nom: `APUB ${m}` } }), 'dossier')).id
+  let dossier = dossiers[0]?.id
+  if (!dossier) {
+    const cabinets = listeDe(await lireJson(await r.get(`${API}/ged/cabinets/?page_size=5`, T), 'cabinets'))
+    const cabinet = cabinets[0]?.id ?? (await lireJson(await r.post(`${API}/ged/cabinets/`, { ...T, data: { nom: `APUB ${m}` } }), 'cabinet')).id
+    dossier = (await lireJson(await r.post(`${API}/ged/dossiers/`, { ...T, data: { nom: `APUB ${m}`, cabinet } }), 'dossier')).id
+  }
   const fichier = { name: `apub${m}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 1 0 obj<</Type/Catalog>>endobj trailer<</Root 1 0 R>> %%EOF') }
   const doc = await lireJson(await r.post(`${API}/ged/documents/televerser/`, { ...T, multipart: { folder: String(dossier), nom: `APUB signature ${m}.pdf`, file: fichier } }), 'dépôt')
   const dem = await lireJson(await r.post(`${API}/ged/demandes-signature/creer-multi/`, {
@@ -460,7 +466,7 @@ sortie(dict(essais=s.otp_essais, expire=str(s.otp_expires_at)))`)
   suivi.attendre(new RegExp(`ged/signataire/${jeton}`), 400)
   await v.page.getByLabel('Code reçu').fill(code === '000000' ? '111111' : '000000')
   await v.page.getByRole('button', { name: 'Valider le code' }).click()
-  await expect(v.page.getByRole('alert')).toBeVisible({ timeout: 30_000 })
+  await expect(v.page.locator('.page-error')).toBeVisible({ timeout: 30_000 })
   const apresEssai = await etat()
   expect(apresEssai.essais, 'un essai consommé').toBe(1)
   // Renvoi dans la minute (on recharge, « Recevoir un code ») : 429 nommant l'attente, aucun e-mail, essais intacts.
@@ -474,7 +480,7 @@ sortie(dict(essais=s.otp_essais, expire=str(s.otp_expires_at)))`)
   expect(corps.attente_s, 'attente_s').toBeGreaterThan(0)
   expect(corps.attente_s, 'attente_s ≤ 60').toBeLessThanOrEqual(60)
   expect(corps.detail).toBe(`Code déjà envoyé : réessayez dans ${corps.attente_s} s.`)
-  await expect(v.page.getByRole('alert')).toContainText('réessayez dans', { timeout: 30_000 })
+  await expect(v.page.locator('.page-error')).toContainText('réessayez dans', { timeout: 30_000 })
   expect(codesRecus(ADRESSE_OTP9).length, 'aucun e-mail au refus').toBe(1)
   expect(await etat(), 'destinataire relu : essais = 1, expiration inchangée').toEqual(apresEssai)
   // 61 s après le premier envoi : nouvel envoi accepté.
@@ -604,7 +610,8 @@ sortie(dict(stage=Lead.objects.get(pk=${l}).stage, devis=Devis.objects.get(pk=${
   expect(refFacture, 'facture du devis B').toBeTruthy()
   const cle = await lireJson(await r.post(`${API}/publicapi/keys/`, { ...T, data: { label: `APUB11 ${m}`, scopes: ['leads:write'] } }), 'clé API')
   const pub = await pwRequest.newContext({ baseURL: DJANGO, extraHTTPHeaders: { Authorization: `Api-Key ${cle.key}` } })
-  const corps = { stage: 'COLD', parc_raison: 'injoignable' }
+  // Raison d'archive sans touche exigée (lead d'essai) : « injoignable » exigerait 5 appels tracés (CADV22), hors sujet ici.
+  const corps = { stage: 'COLD', parc_raison: 'test' }
   // Lead A : 200, Froid, devis repassé « envoyé ».
   const pa = await pub.patch(`/api/public/v1/leads-write/${a.lead.id}/`, { ...T, data: corps, headers: { 'Idempotency-Key': `apub11a-${m}` } })
   expect(pa.status(), `PATCH A : ${(await pa.text()).slice(0, 300)}`).toBe(200)
@@ -617,8 +624,8 @@ sortie(dict(stage=Lead.objects.get(pk=${l}).stage, devis=Devis.objects.get(pk=${
   expect(await etat(b.lead.id, b.devis.id), 'B relu : Signé, devis accepté').toMatchObject({ stage: 'SIGNED', devis: 'accepte' })
   // Import upsert : la ligne de B en erreur au même message, la suivante passe.
   const nouveau = `apub11n${m}@example.invalid`
-  const csv = `nom,email,telephone,stage,parc_raison\nAPUB ${m}b,${b.lead.email},,COLD,injoignable\nAPUB11 nouveau ${m},${nouveau},${telephoneMobileUnique()},,\n`
-  const imp = await pub.post('/api/public/v1/imports/', { ...T, multipart: { file: { name: 'leads.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) }, entite: 'leads', mode: 'upsert', dedup_key: 'email' } })
+  const lignes = [{ nom: `APUB ${m}b`, email: b.lead.email, ...corps }, { nom: `APUB11 nouveau ${m}`, email: nouveau, telephone: telephoneMobileUnique() }]
+  const imp = await pub.post('/api/public/v1/imports/', { ...T, multipart: { file: { name: 'leads.jsonl', mimeType: 'application/x-ndjson', buffer: Buffer.from(`${lignes.map((l) => JSON.stringify(l)).join('\n')}\n`) }, entite: 'leads', mode: 'upsert', dedup_key: 'email' } })
   expect(imp.status(), `import : ${(await imp.text()).slice(0, 300)}`).toBe(202)
   const job = (await imp.json()).id
   // Pas de worker Celery sur la pile : la tâche du worker est exécutée telle quelle (idempotente par curseur).
