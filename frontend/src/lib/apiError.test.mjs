@@ -15,11 +15,14 @@ test('getApiError: non_field_errors', () => {
   assert.equal(getApiError(err).message, 'Combinaison déjà utilisée')
 })
 
-test('getApiError: erreurs par champ → fieldErrors + message = premier champ', () => {
+test('getApiError: erreurs par champ → fieldErrors + message nomme le champ (AERR52)', () => {
   const err = { response: { status: 400, data: { nom: ['Ce champ est requis'], email: ['Email invalide'] } } }
   const { message, fieldErrors } = getApiError(err)
-  assert.equal(message, 'Ce champ est requis')
+  assert.equal(message, 'Nom : Ce champ est requis')
   assert.deepEqual(fieldErrors, { nom: 'Ce champ est requis', email: 'Email invalide' })
+  // Clé hors carte : clé humanisée.
+  const autre = { response: { status: 400, data: { date_echeance: ['Date invalide'] } } }
+  assert.equal(getApiError(autre).message, 'Date echeance : Date invalide')
 })
 
 test('getApiError: 429 throttle', () => {

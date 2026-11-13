@@ -13,6 +13,8 @@
 // VX156 — le moment « erreur réseau » porte la voix Taqinor (honnête,
 // rassurante) au lieu d'un message générique.
 import { voice } from './voice.js'
+// AERR52 — la seule carte de libellés de champ du dépôt (lecture seule).
+import fieldLabels from '../features/crm/workspace/fieldLabels.js'
 
 /**
  * getApiError(error, fallback?) → { message, fieldErrors? }
@@ -61,8 +63,9 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
     }
     const fieldErrors = fieldErrorsFrom(data)
     if (fieldErrors) {
+      // AERR52 — le message NOMME le champ (« Nom : Ce champ est requis »).
       const firstKey = Object.keys(fieldErrors)[0]
-      return { message: fieldErrors[firstKey], fieldErrors }
+      return { message: `${libelleChamp(firstKey)} : ${fieldErrors[firstKey]}`, fieldErrors }
     }
   }
 
@@ -70,6 +73,12 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
     return { message: 'Erreur serveur. Réessayez ou contactez le support si le problème persiste.' }
   }
   return { message: fallback }
+}
+
+// Libellé de la carte, sinon la clé lisible (« date_echeance » → « Date echeance »).
+function libelleChamp(cle) {
+  const connu = Object.hasOwn(fieldLabels, cle) ? fieldLabels[cle]?.label : null
+  return connu || (cle.charAt(0).toUpperCase() + cle.slice(1)).replace(/_/g, ' ')
 }
 
 // Construit `{champ: premier message}` depuis un payload DRF `{champ: [...]}`
