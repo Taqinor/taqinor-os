@@ -255,6 +255,23 @@ class TestPlansEtGeneration(Ntwms13Base):
         self.assertEqual(consigner.call_args_list[0][0][0],
                          'stock.generer_comptages_tournants')
 
+    def test_societe_suspendue_jamais_comptee(self):
+        """ACEL40 — appelé sans société (commande), le service ne crée aucune
+        session chez une société suspendue."""
+        from authentication.models import Company
+        assurer_plans_comptage_tournant(self.autre)
+        Produit.objects.create(
+            company=self.autre, nom='Vis B', sku='VISB-NTWMS13',
+            prix_achat=Decimal('5'), prix_vente=Decimal('9'))
+        Company.objects.filter(pk=self.autre.pk).update(
+            actif=False, statut=Company.STATUT_SUSPENDU)
+        resultat = generer_comptages_tournants(aujourd_hui=AUJOURD_HUI)
+        self.assertTrue(resultat['sessions'])
+        self.assertTrue(
+            InventaireSession.objects.filter(company=self.company).exists())
+        self.assertEqual(
+            InventaireSession.objects.filter(company=self.autre).count(), 0)
+
     def test_endpoint_generer(self):
         resp = self.api.post(
             '/api/django/stock/plans-comptage-tournant/generer/', {},

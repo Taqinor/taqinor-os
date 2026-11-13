@@ -1200,7 +1200,7 @@ def liberer_vagues_planifiees(*, company=None, maintenant=None):
     heure_locale = timezone.localtime(maintenant).time()
 
     qs = (VaguePicking.objects
-          .filter(statut=VaguePicking.Statut.BROUILLON)
+          .filter(statut=VaguePicking.Statut.BROUILLON, company__actif=True)
           .exclude(mode_liberation=VaguePicking.ModeLiberation.MANUEL)
           .select_related('company'))
     if company is not None:
@@ -1284,8 +1284,8 @@ def generer_comptages_tournants(*, company=None, aujourd_hui=None):
     aujourd_hui = aujourd_hui or timezone.localdate()
     depuis = aujourd_hui - datetime.timedelta(days=FENETRE_ROTATION_JOURS)
 
-    plans = PlanComptageTournant.objects.filter(actif=True).select_related(
-        'company')
+    plans = PlanComptageTournant.objects.filter(
+        actif=True, company__actif=True).select_related('company')
     if company is not None:
         plans = plans.filter(company=company)
 

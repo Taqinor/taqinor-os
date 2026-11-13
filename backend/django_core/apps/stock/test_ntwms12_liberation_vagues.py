@@ -253,6 +253,25 @@ class TestLiberationAutoSeuil(Ntwms12Base):
         self.assertEqual(consigner.call_args[0][0],
                          'stock.liberer_vagues_planifiees')
 
+    def test_societe_suspendue_jamais_liberee(self):
+        """ACEL40 — appelé sans société (commande), le service ne lance
+        jamais la vague d'une société suspendue."""
+        from authentication.models import Company
+        vague_a = self._vague()
+        configurer_liberation_vague(
+            vague=vague_a, mode='auto_seuil', seuil_lignes=1)
+        vague_b = self._vague(company=self.autre)
+        configurer_liberation_vague(
+            vague=vague_b, mode='auto_seuil', seuil_lignes=1)
+        Company.objects.filter(pk=self.autre.pk).update(
+            actif=False, statut=Company.STATUT_SUSPENDU)
+        resultat = liberer_vagues_planifiees(maintenant=instant(10, 0))
+        self.assertEqual(resultat['liberees'], [vague_a.reference])
+        vague_a.refresh_from_db()
+        vague_b.refresh_from_db()
+        self.assertEqual(vague_a.statut, VaguePicking.Statut.LANCEE)
+        self.assertEqual(vague_b.statut, VaguePicking.Statut.BROUILLON)
+
 
 class TestCommandeManagement(Ntwms12Base):
     def test_commande_dry_run_n_ecrit_rien(self):
