@@ -10,6 +10,7 @@ import logging
 import os
 
 import requests
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -1539,6 +1540,7 @@ def ticket_a_facturer_non_facture(ticket, user=None):
     return not any(decision_facturation(ticket, user, False)[k] for k in ('refuse', 'couvert'))
 
 
+@transaction.atomic  # ACNC32 — savepoint quand l'appelant ouvre déjà une transaction
 def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
                                 request=None, canal_resolution_defaut=None,
                                 sans_facture=''):
@@ -1559,7 +1561,10 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
     from .models import Ticket
 
     clotures = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
-    old = Ticket.objects.get(pk=ticket.pk)
+    # ACNC32 — état « avant » relu SOUS VERROU : une transition croisée attend,
+    # puis décide sur le statut commité (jamais deux émissions de ticket_resolu).
+    old = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    ticket.statut = old.statut
     # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
     # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
     if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
