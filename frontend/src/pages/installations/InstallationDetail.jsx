@@ -456,7 +456,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     } finally { setEditEquipBusy(false) }
   }
   const deleteEquip = async (eq) => {
-    if (!window.confirm('Supprimer cet équipement du parc ?')) return
+    if (!(await confirmerMes({ title: `Supprimer l’équipement ${eq.produit_nom ?? ''} n° ${eq.numero_serie || '—'} du parc ?`, confirmLabel: 'Supprimer' }))) return // AERR83
     try {
       await savApi.deleteEquipement(eq.id)
       setActionError(null)
