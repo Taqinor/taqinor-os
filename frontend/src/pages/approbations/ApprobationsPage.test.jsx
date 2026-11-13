@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -20,6 +20,19 @@ function renderPage(ui) {
 /* XKB1/ZCTR7-9 — La boîte d'approbations centralisée charge TOUTES les
    sources (aucun filtre `source=` par défaut), contrairement à la vue étroite
    de WorkflowsScreen (source=workflow uniquement). */
+
+// AERR125 — Select natif (Radix ne s'ouvre pas sous jsdom) et sélecteur de
+// période réduit à un bouton qui choisit « du 10 au 12 novembre » (début de
+// jour, comme le vrai DateRangePicker).
+vi.mock('../../ui', async (importActual) => ({
+  ...(await import('../../test/selectNatif')).avecSelectNatif(await importActual()),
+  DateRangePicker: ({ onChange }) => (
+    <button type="button" onClick={() => onChange({
+      start: new Date(2026, 10, 10), end: new Date(2026, 10, 12) })}>
+      Choisir la période
+    </button>
+  ),
+}))
 
 vi.mock('../../api/reportingApi', () => ({
   default: {
@@ -125,6 +138,36 @@ describe('ApprobationsPage — AERR59 relecture rejetée', () => {
     expect(screen.queryByText('Aucune demande en attente')).toBeNull()
     expect(erreur).not.toHaveBeenCalledWith('Chargement des approbations impossible.')
     erreur.mockRestore()
+  })
+})
+
+describe('ApprobationsPage — AERR125 période de délégation', () => {
+  async function creerDelegation() {
+    renderPage(<ApprobationsPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Délégations' }))
+    await screen.findByTestId('delegation-revoke-5')
+    fireEvent.change(document.getElementById('delegation-suppleant'), { target: { value: '2' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Choisir la période' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
+  }
+
+  it('délégation du 10 au 12 : date_fin en fin de journée locale', async () => {
+    automationApi.createDelegation.mockClear()
+    await creerDelegation()
+    await waitFor(() => expect(automationApi.createDelegation).toHaveBeenCalledTimes(1))
+    const { date_debut: debut, date_fin: fin } = automationApi.createDelegation.mock.calls[0][0]
+    const d = new Date(debut)
+    const f = new Date(fin)
+    expect([d.getDate(), d.getHours(), d.getMinutes()]).toEqual([10, 0, 0])
+    expect([f.getDate(), f.getHours(), f.getMinutes(), f.getSeconds(), f.getMilliseconds()])
+      .toEqual([12, 23, 59, 59, 999])
+  })
+
+  it('un 400 sur date_fin est nommé sous la période', async () => {
+    automationApi.createDelegation.mockRejectedValueOnce({
+      response: { status: 400, data: { date_fin: ['La fin doit suivre le début.'] } } })
+    await creerDelegation()
+    expect(await screen.findByText('La fin doit suivre le début.')).toBeInTheDocument()
   })
 })
 

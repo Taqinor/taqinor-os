@@ -16,6 +16,7 @@ import {
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog } from '../../ui/confirm'
 import { ChargementPage } from '../../ui/ChargementPage'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
 /* ============================================================================
    XKB1/ZCTR7-9 — Boîte d'approbations centralisée (agrégateur cross-app).
@@ -73,6 +74,7 @@ function DelegationsTab() {
   const [saving, setSaving] = useState(false)
   const [suppleant, setSuppleant] = useState('')
   const [range, setRange] = useState({ start: null, end: null })
+  const { errors, setFromResponse, clearAll } = useServerFieldErrors()
 
   const load = () => {
     setLoading(true)
@@ -100,17 +102,29 @@ function DelegationsTab() {
       return
     }
     setSaving(true)
+    clearAll()
+    // AERR125 — le sélecteur ramène `end` à 00:00 : la délégation couvre tout le
+    // dernier jour choisi (fin 23:59:59.999 locale), un seul jour compris.
+    const debut = new Date(range.start)
+    debut.setHours(0, 0, 0, 0)
+    const fin = new Date(range.end)
+    fin.setHours(23, 59, 59, 999)
     try {
       await automationApi.createDelegation({
         suppleant: Number(suppleant),
-        date_debut: range.start.toISOString(),
-        date_fin: range.end.toISOString(),
+        date_debut: debut.toISOString(),
+        date_fin: fin.toISOString(),
       })
       toast.success('Délégation créée.')
       setSuppleant('')
       setRange({ start: null, end: null })
       load()
     } catch (err) {
+      const refus = err?.response?.data
+      if (refus?.date_fin || refus?.date_debut) {
+        setFromResponse(refus) // nommé sous la période (AERR125)
+        return
+      }
       toast.error(err?.response?.data?.detail
         || err?.response?.data?.suppleant?.[0]
         || err?.response?.data?.non_field_errors?.[0]
@@ -185,7 +199,8 @@ function DelegationsTab() {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="Période" required htmlFor="delegation-periode">
+            <FormField label="Période" required htmlFor="delegation-periode"
+                       error={errors.date_fin || errors.date_debut}>
               <DateRangePicker id="delegation-periode" value={range} onChange={setRange} />
             </FormField>
           </FormSection>
