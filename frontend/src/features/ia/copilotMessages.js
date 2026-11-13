@@ -65,12 +65,37 @@ export function canSendQuestion(text, loading) {
 // (fiche lead AIC34 comprise).
 export const EVENEMENT_OUVRIR = 'taqinor:assistant:ouvrir'
 
-// Contexte transmis à /sql-agent/query : celui de l'événement s'il existe,
-// sinon le chemin courant. `lead_id` n'est gardé que s'il est un entier > 0.
-export function contexteEcran(detail, cheminCourant) {
-  const ecran = (detail && typeof detail.ecran === 'string' && detail.ecran) || cheminCourant || '/'
-  const lead = Number(detail?.lead_id)
-  return { ecran: ecran.slice(0, 255), lead_id: Number.isInteger(lead) && lead > 0 ? lead : null }
+// COP-F5 — le CONTEXTE de la question, lu AU MOMENT de l'envoi (jamais un état
+// resté d'une ouverture précédente) : route courante normalisée (sans requête
+// ni fragment ni barre finale), `lead_id` / `devis_id` lus dans la route de la
+// fiche ouverte, `touche_id` = foyer de la conversation (dernière carte
+// « touche » affichée), `diagnostic` = tampon technique (« Signaler un bug »).
+// `detail` (facultatif) = contexte posé par l'écran qui a émis l'événement
+// « Demander à l'assistant » — il ne vaut que pour CETTE question.
+const RE_LEAD = /^\/crm\/leads\/(\d+)(?:\/|$)/
+const RE_DEVIS = /^\/ventes\/devis\/(\d+)(?:\/|$)/
+
+const entierPositif = (v) => {
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
+export function routeNormalisee(chemin) {
+  const brut = typeof chemin === 'string' ? chemin.split(/[?#]/)[0] : ''
+  const sansFin = brut.length > 1 ? brut.replace(/\/+$/, '') : brut
+  return (sansFin || '/').slice(0, 255)
+}
+
+export function construireContexte({ chemin, detail = null, foyer = null, diagnostic = null } = {}) {
+  const ecran = detail && typeof detail.ecran === 'string' && detail.ecran
+    ? routeNormalisee(detail.ecran) : routeNormalisee(chemin)
+  return {
+    ecran,
+    lead_id: entierPositif(detail?.lead_id) ?? entierPositif(RE_LEAD.exec(ecran)?.[1]),
+    devis_id: entierPositif(detail?.devis_id) ?? entierPositif(RE_DEVIS.exec(ecran)?.[1]),
+    touche_id: entierPositif(foyer),
+    diagnostic: diagnostic ?? null,
+  }
 }
 
 // AIC8 — notes d'une réponse (contrat assistant_evenement.json) : 👍 = 1,
@@ -94,4 +119,24 @@ export function enterSubmits(handleSubmit) {
       handleSubmit(e)
     }
   }
+}
+
+// COP-F7 — début de la question envoyée par « Signaler un bug » (le tampon
+// technique du navigateur part avec, dans `contexte.diagnostic`).
+export const PHRASE_SIGNALEMENT = 'Signaler un bug :'
+
+// COP-F7 — le message de l'utilisateur dit-il une panne ? Alors le MÊME tampon
+// part tout seul. Lecture tolérante (accents, casse) ; un faux positif est
+// sans conséquence (le tampon est technique, sans donnée client).
+const MOTS_PANNE = [
+  'ne marche pas', 'marche pas', 'ne fonctionne pas', 'fonctionne pas', 'erreur', 'bug',
+  'bloque', 'rien ne se passe', 'plante', 'planté', 'ne repond pas', 'ne s\'ouvre pas',
+  'ne charge pas', 'impossible',
+]
+const sansAccent = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+export function ditUnePanne(texte) {
+  if (typeof texte !== 'string' || !texte.trim()) return false
+  const t = sansAccent(texte)
+  return MOTS_PANNE.some((m) => t.includes(sansAccent(m)))
 }
