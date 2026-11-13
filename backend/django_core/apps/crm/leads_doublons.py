@@ -5,6 +5,7 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 """
 import re as _re
 
+from . import activity
 from .models import Lead
 import logging
 
@@ -434,12 +435,28 @@ def poser_empreintes_opposition(company, le):
     _opposer_fiches_soeurs(company, le)
 
 
+def _marquer_lead_ne_plus_contacter(lead, user):
+    """CAD5 — coche ``Lead.ne_plus_contacter`` et le JOURNALISE comme la
+    fiche le ferait (ligne « modification » du chatter, ancien → nouveau).
+
+    Idempotente : un lead déjà coché ne produit ni écriture ni ligne.
+    Renvoie ``True`` si la case vient d'être cochée."""
+    import copy
+
+    if lead.ne_plus_contacter:
+        return False
+    avant = copy.copy(lead)
+    lead.ne_plus_contacter = True
+    lead.save(update_fields=['ne_plus_contacter'])
+    activity.log_changes(avant, lead, user)
+    return True
+
+
 def _opposer_fiches_soeurs(company, le):
     """AMSG3 — fiches vivantes de ``company`` aux contacts normalisés de ``le``
     encore contactables ⇒ cochées (une sœur cochée sort du filtre)."""
     from django.db.models import Q
 
-    from .cadence_reponses import _marquer_lead_ne_plus_contacter
     tels = {(normalize_phone(v) or '')[:20] for v in (le.telephone, le.whatsapp)} - {''}
     cible = Q(phone_normalise__in=tels) | Q(whatsapp_normalise__in=tels)
     if normalize_email(le.email):
