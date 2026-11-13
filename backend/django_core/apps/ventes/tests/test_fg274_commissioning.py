@@ -77,6 +77,33 @@ class CommissioningApiTest(TestCase):
         self.api.force_authenticate(self.user)
         self.url = '/api/django/ventes/recettes-mes/'
 
+    def test_ecritures_mise_en_service_exigent_installation_gerer(self):
+        """ADRG16 (D-ADRG-3) — écrire une recette ou une attestation RE : droit
+        chantier ``installation_gerer`` (Technicien 201), plus le palier ventes
+        (Commercial 403, rien écrit)."""
+        from apps.roles import permissions_registre as registre
+        from apps.roles.models import Role
+        from apps.ventes.models import AttestationRE
+
+        def api(nom, codes):
+            role = Role.objects.create(company=self.company, nom=f'{nom} ADRG16', permissions=list(codes))
+            client = APIClient()
+            client.force_authenticate(User.objects.create_user(
+                username=f'adrg16_{nom}', password='x', role=role, company=self.company))
+            return client
+        tech, commercial = api('tech', registre.TECHNICIEN_PERMISSIONS), api('com', registre.COMMERCIAL_PERMISSIONS)
+        corps = {'devis': self.devis.id, 'isolement_ok': True, 'polarite_ok': True,
+                 'continuite_terre_ok': True, 'controle_onduleur_ok': True}
+        refus = commercial.post(self.url, corps, format='json')
+        self.assertEqual(refus.status_code, 403, refus.content)
+        self.assertIn('installation_gerer', str(refus.data))
+        self.assertEqual(tech.post(self.url, corps, format='json').status_code, 201)
+        self.assertEqual(CommissioningTest.objects.filter(company=self.company).count(), 1)
+        att = AttestationRE.objects.create(company=self.company, reference='RE-ADRG16')
+        refus = commercial.delete(f'/api/django/ventes/attestations-re/{att.id}/')
+        self.assertEqual(refus.status_code, 403, refus.content)
+        self.assertTrue(AttestationRE.objects.filter(id=att.id).exists())
+
     def test_lectures_dossier_recette_fiche_bornees(self):
         """APFS109 (D-APFS-4) — Admin RH : 403 sur les dossiers et la
         recette ; Technicien (octroi ``installation_voir``) : la recette et le

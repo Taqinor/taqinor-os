@@ -11,7 +11,8 @@ from ..openapi_params import choix_requete, entier_requete, qint, qstr
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
-from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from apps.roles.permissions import DroitDeLaGrille  # ADRG16
+from authentication.permissions import IsAnyRole, LectureDuModule
 from ..gardes_lecture import BorneAuChantierMixin  # APFS109
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
@@ -26,6 +27,14 @@ from ..commissioning import (
     compute_co2_evite, motif_seuil)
 
 READ_ACTIONS = ['list', 'retrieve']
+
+
+def _permissions_recette(vue):
+    """ADRG16 (D-ADRG-3 = chantiers) — recettes et attestations de mise en service : lecture inchangée (APFS109),
+    écriture par le droit chantier ``installation_gerer`` (plus le palier ventes)."""
+    if vue.action in READ_ACTIONS:
+        return [LectureDuModule()]  # APFS109
+    return [IsAnyRole(), DroitDeLaGrille('installation_gerer')()]
 
 
 def _company_or_none(user):
@@ -87,9 +96,7 @@ class CommissioningTestViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):
     serializer_class = CommissioningTestSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_recette(self)
 
     def get_queryset(self):
         user = self.request.user
@@ -163,9 +170,7 @@ class IVCurveCaptureViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  #
     serializer_class = IVCurveCaptureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_recette(self)
 
     def get_queryset(self):
         user = self.request.user
@@ -282,9 +287,7 @@ class AsBuiltPackViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # AR
     serializer_class = AsBuiltPackSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_recette(self)
 
     def get_queryset(self):
         user = self.request.user
@@ -328,9 +331,7 @@ class AttestationConformiteViewSet(BorneAuChantierMixin, CompanyScopedModelViewS
     serializer_class = AttestationConformiteSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_recette(self)
 
     def get_queryset(self):
         user = self.request.user
@@ -377,9 +378,7 @@ class TestPerformanceReceptionViewSet(BorneAuChantierMixin, CompanyScopedModelVi
     serializer_class = TestPerformanceReceptionSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_recette(self)
 
     def get_queryset(self):
         user = self.request.user
@@ -472,9 +471,7 @@ class AttestationREViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # 
     serializer_class = AttestationRESerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_recette(self)
 
     def get_queryset(self):
         user = self.request.user
