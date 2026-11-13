@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useMemo } from 'react'
+import { Fragment, useEffect, useRef, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -377,10 +377,13 @@ export default function FactureList() {
   // ouverte via `?id=` (VX220) ou un clic « Modifier » — `editFacture` est la
   // seule notion de « fiche » qui existe pour une facture). Absent quand
   // aucune facture n'est ouverte (liste nue).
+  // AERR15 — racine du FORMULAIRE : une boîte posée par-dessus coupe « a ».
+  const formScopeRef = useRef(null)
   useFocusedRecordShortcuts(
     'factureDetail',
     { a: () => editFacture && handleGenererPdf(editFacture) },
     !!editFacture,
+    { scopeRef: formScopeRef },
   )
 
 
@@ -639,7 +642,7 @@ export default function FactureList() {
       )}
 
       {showForm && (
-        <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
+        <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} scopeRef={formScopeRef} />
       )}
 
       {/* ── Modale d'enregistrement de paiement (VX230 — composant partagé) ── */}

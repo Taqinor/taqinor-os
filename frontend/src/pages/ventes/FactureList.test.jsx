@@ -121,6 +121,29 @@ const baseFacture = {
   total_ttc: 5000, montant_paye: 0, montant_du: 5000,
 }
 
+describe('FactureList — AERR15 : raccourci « a » de la fiche facture', () => {
+  it('boîte par-dessus le formulaire : « a » ne génère pas', async () => {
+    // AERR15 (C-AERR-013) — mutant : retirer `{ scopeRef }` ⇒ échec.
+    const pdf = vi.spyOn(ventesApi, 'genererPdfFacture').mockResolvedValue({ data: {} })
+    const f = { id: 5, reference: 'FAC-AERR15', client_nom: 'ACME', statut: 'emise',
+      date_emission: '2026-07-01', date_echeance: '2026-08-01', total_ttc: 5000, montant_paye: 0, montant_du: 5000 }
+    render(
+      <Provider store={makeStore({ factures: [f] })}>
+        <MemoryRouter initialEntries={['/ventes/factures?id=5']}>
+          <ThemeProvider><FactureList /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: /Nouveau client/ }))
+    await waitFor(() => expect(screen.getAllByRole('dialog').length).toBeGreaterThan(1))
+    fireEvent.keyDown(document.body, { key: 'a' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(pdf).not.toHaveBeenCalled()
+    pdf.mockRestore()
+  })
+})
+
 describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) et charge les vues serveur', async () => {
     renderList({ factures: [baseFacture] })

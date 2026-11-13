@@ -53,7 +53,7 @@ const today = todayLocalIso()
 const CHAMPS_FORMULAIRE = ['client', 'bon_commande', 'date_echeance', 'date_livraison', 'taux_tva',
   'remise_globale', 'conditions_paiement', 'reference_commande_client', 'note', 'lines', 'submit']
 
-export default function FactureForm({ facture = null, onClose, onSaved }) {
+export default function FactureForm({ facture = null, onClose, onSaved, scopeRef }) {
   const dispatch = useDispatch()
   const isEdit = !!facture
   // AFAC71 — une facture hors BROUILLON (émise, payée, en retard, annulée) s'ouvre en
@@ -443,7 +443,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent ref={scopeRef} className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>
         </DialogHeader>
