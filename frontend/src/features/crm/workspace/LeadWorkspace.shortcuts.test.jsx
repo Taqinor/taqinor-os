@@ -22,7 +22,7 @@ vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWork
 installerHooksLeadWorkspace()
 
 function renderEdit(lead = LEAD_A) {
-  return renderLeadWorkspace({ lead })
+  return renderLeadWorkspace({ lead }, 42, { permissions: ['crm_modifier'] }) // ADRG121 — l'étape exige le droit
 }
 
 describe('LW23 — raccourcis propres (d/n/1-4)', () => {
@@ -86,7 +86,7 @@ describe('LW23/LW16 — reculer d’étape se confirme avant le PATCH', () => {
   function ouvrirAvecConfirmation(lead) {
     crmApi.getLead.mockResolvedValue({ data: lead })
     return render(
-      <Provider store={makeStore()}>
+      <Provider store={makeStore(42, { permissions: ['crm_modifier'] })}>
         <MemoryRouter>
           <ConfirmProvider>
             <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />

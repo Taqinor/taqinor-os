@@ -19,6 +19,7 @@ import SectionVisite from './sections/SectionVisite'
 import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sections/SectionDivers'
 import SectionPro from './sections/SectionPro'
 import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
+import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, sinon palier
 
 // LW11 — Le centre : registre de sections + nav-chips sticky (scroll-spy rAF,
 // aria-current), repli persisté par section, wrapper `<form>` en création.
@@ -42,7 +43,7 @@ const writeCollapsed = (map) => {
 }
 
 // Entête repliable + anchor de scroll-spy autour du contenu pur d'une section.
-function WorkspaceSection({ id, title, Icon, collapsed, complete, onToggle, children }) {
+function WorkspaceSection({ id, title, Icon, collapsed, complete, onToggle, children, lectureSeule = false }) {
   return (
     <section className="lw-section" data-nav-id={id}>
       <button
@@ -66,7 +67,11 @@ function WorkspaceSection({ id, title, Icon, collapsed, complete, onToggle, chil
       </button>
       {!collapsed && (
         <div className="lw-section-body">
-          <ErrorBoundary>{children}</ErrorBoundary>
+          {/* ADRG121 — sans `crm_modifier` : un seul fieldset désactive tous les
+              champs de la section (display: contents ⇒ aucune boîte, mise en page inchangée). */}
+          <fieldset disabled={lectureSeule} style={{ display: 'contents' }}>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </fieldset>
         </div>
       )}
     </section>
@@ -79,6 +84,7 @@ export default function SectionsPane({
 }) {
   const scrollRef = useRef(null)
   const rafRef = useRef(null)
+  const peutModifier = useDroitMetier('crm_modifier') // ADRG121 — fiche en lecture seule sans le droit
   // LW34 — clavier virtuel iOS : sur mobile <768 le centre est le SEUL
   // conteneur scrollable (la fenêtre est en Sheet bas plein écran) ; sans ce
   // recentrage, un champ bas de formulaire reste caché sous le clavier.
@@ -336,6 +342,7 @@ export default function SectionsPane({
             collapsed={!!collapsed[id]}
             complete={!pointees.has(id) && sectionAutoRepliee(state, id, {})}
             onToggle={() => toggle(id)}
+            lectureSeule={mode === 'edit' && !peutModifier}
           >
             {/* createElement explicite — même faux positif compilateur que
                 LeadWorkspace (balise JSX dynamique « jamais utilisée »). */}

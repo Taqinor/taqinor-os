@@ -216,6 +216,37 @@ class DevisWhatsappActionTests(TestCase):
         Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
         self.assertEqual(self._post(devis).status_code, 409)
 
+    def test_fiche_lead_perdu_ou_archive_apercu_refuse(self):
+        """AMSG84 — aperçu et commit WhatsApp d'un lead perdu ou archivé : 409
+        AVANT tout lien (0 ShareLink, brouillon) ; lead témoin : 200."""
+        self.client_obj.telephone = '0612340031'
+        self.client_obj.save(update_fields=['telephone'])
+        perdu = Lead.objects.create(
+            company=self.company, nom='Perdu', stage=stages.NEW, perdu=True)
+        archive = Lead.objects.create(
+            company=self.company, nom='Archive', stage=stages.NEW,
+            is_archived=True)
+        for lead in (perdu, archive):
+            devis = self._devis(lead=lead)
+            for chemin in ('whatsapp-devis-apercu', 'whatsapp-devis'):
+                with self.subTest(lead=lead.nom, chemin=chemin):
+                    resp = self.api.post(
+                        f'/api/django/crm/leads/{lead.id}/{chemin}/',
+                        {'devis_ids': [devis.id]}, format='json')
+                    self.assertEqual(resp.status_code, 409, resp.content)
+                    self.assertEqual(str(resp.data['detail']),
+                                     'Message refusé : perdu/archivé.')
+                    self.assertNotIn('wa_url', resp.data)
+            devis.refresh_from_db()
+            self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+            self.assertEqual(ShareLink.objects.filter(devis=devis).count(), 0)
+        temoin = self._devis(lead=self.lead)
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis-apercu/',
+            {'devis_ids': [temoin.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('wa_url', resp.data)
+
     def test_lead_oppose_refus_sans_lien_ni_gamme(self):
         """ACVI112 — e-mail et lien d'envoi d'un devis de lead opposé : 409
         AVANT tout effet — 0 ShareLink, mode de gamme jamais appliqué, 0 mail."""

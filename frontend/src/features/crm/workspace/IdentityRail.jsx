@@ -523,6 +523,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           geste que CAD152 après une réponse du panneau d'appel) pour
           rapporter `chatter_recent` À JOUR, jalon d'étape inclus. */}
       <StageControl
+        disabled={!peutModifier}
         state={state}
         onChangeStage={(key) => {
           Promise.resolve(onAction('change-stage', key)).then(() => onAction('refresh'))

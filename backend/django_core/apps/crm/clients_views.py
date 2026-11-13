@@ -226,8 +226,9 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
             # ADOC124 — jumeau d'ADOC123 (vue client) : sans e-mail, le mot
             # de passe temporaire ne part nulle part ⇒ refus NOMMÉ, aucun
             # compte créé, aucun e-mail.
-            user, cree = portail_services.provisionner_compte_partenaire(
-                request.user.company, partenaire.id, exiger_email=True)
+            user, cree, envoye = portail_services.provisionner_compte_partenaire(
+                request.user.company, partenaire.id, exiger_email=True,
+                avec_envoi=True)
         except portail_services.ProvisionnementSansEmail as exc:
             # ENF11 (nocturne 15/10) — la fiche (sans e-mail) s'oppose : 409.
             return Response({'detail': str(exc)}, status=409)
@@ -241,9 +242,13 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
             'email': user.email,
             'actif': user.is_active,
             'cree': cree,
+            'email_envoye': envoye,  # AMSG93 — « envoyé » seulement si parti
             'detail': (
-                'Accès portail créé — mot de passe temporaire envoyé par '
-                'email.' if cree else 'Accès portail déjà existant.'),
+                'Accès portail déjà existant.' if not cree
+                else 'Accès portail créé — mot de passe temporaire envoyé par '
+                'email.' if envoye
+                else 'Accès portail créé — e-mail non opérationnel : '
+                'identifiants non envoyés.'),
         })
 
 
@@ -1003,7 +1008,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         anonymiser_client(client.company, client, nom=f'Client anonymisé #{client.id}',
                           motif='Anonymisation RGPD (action fiche client)')
         # AMSG4 (C-AMSG-004) — ses leads aussi, même scrub que le DSR (cadence arrêtée).
-        for lead in client.leads.exclude(nom=LEAD_NOM_ANONYMISE):
+        for lead in Lead.all_objects.filter(client=client).exclude(nom=LEAD_NOM_ANONYMISE):  # ASUP62 corbeille
             anonymiser_lead(client.company, lead, motif='Anonymisation RGPD (action fiche client)')
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog

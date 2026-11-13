@@ -572,6 +572,21 @@ def _empreinte_opposition_lead(sender, instance, **kwargs):
         poser_empreintes_opposition(instance.company, instance)
 
 
+@receiver(pre_save, sender=Lead, dispatch_uid='crm_garde_restauration_corbeille')
+def _garder_restauration_corbeille(sender, instance, update_fields=None,
+                                   **kwargs):
+    """ASUP56 — « Annuler » (corbeille ``core``) passe par la garde d'ASUP9 :
+    absorbé ou doublon vivant ⇒ 409 nommé, le lead reste supprimé. Même
+    condition que l'abonné ASOC86 ; aucun point de sauvegarde (un refus ne
+    s'avale pas)."""
+    if 'is_deleted' not in (update_fields or ()) or instance.is_deleted:
+        return
+    from core.conflit_etat import ConflitEtat
+    from .fiche_ecritures import refus_restauration_lead
+    if refus := refus_restauration_lead(instance):
+        raise ConflitEtat(refus)
+
+
 @receiver(post_save, sender=Lead, dispatch_uid='crm_rejouer_restauration')
 @_point_de_sauvegarde
 def _rejouer_restauration_corbeille(sender, instance, update_fields=None,
