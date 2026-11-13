@@ -13,6 +13,8 @@
 // VX156 — le moment « erreur réseau » porte la voix Taqinor (honnête,
 // rassurante) au lieu d'un message générique.
 import { voice } from './voice.js'
+// AERR52 — la seule carte de libellés de champ du dépôt (lecture seule).
+import fieldLabels from '../features/crm/workspace/fieldLabels.js'
 
 /**
  * getApiError(error, fallback?) → { message, fieldErrors? }
@@ -25,6 +27,8 @@ import { voice } from './voice.js'
 export function getApiError(error, fallback = 'Une erreur est survenue.') {
   // VX55 — timeout (axios ECONNABORTED) : distinct d'une annulation
   // volontaire (gérée séparément par l'appelant via AbortController).
+  // ACNC52 — une ÉCRITURE expirée a peut-être abouti côté serveur : ne pas inviter à rejouer.
+  if (estEcritureExpiree(error)) return { message: MESSAGE_ECRITURE_EXPIREE }
   if (error?.code === 'ECONNABORTED') {
     return { message: 'La connexion a expiré. Vérifiez votre connexion et réessayez.' }
   }
@@ -61,8 +65,9 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
     }
     const fieldErrors = fieldErrorsFrom(data)
     if (fieldErrors) {
+      // AERR52 — le message NOMME le champ (« Nom : Ce champ est requis »).
       const firstKey = Object.keys(fieldErrors)[0]
-      return { message: fieldErrors[firstKey], fieldErrors }
+      return { message: `${libelleChamp(firstKey)} : ${fieldErrors[firstKey]}`, fieldErrors }
     }
   }
 
@@ -70,6 +75,22 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
     return { message: 'Erreur serveur. Réessayez ou contactez le support si le problème persiste.' }
   }
   return { message: fallback }
+}
+
+// Libellé de la carte, sinon la clé lisible (« date_echeance » → « Date echeance »).
+function libelleChamp(cle) {
+  const connu = Object.hasOwn(fieldLabels, cle) ? fieldLabels[cle]?.label : null
+  return connu || (cle.charAt(0).toUpperCase() + cle.slice(1)).replace(/_/g, ' ')
+}
+
+/** ACNC52 — texte UNIQUE d'une écriture (POST/PUT/PATCH/DELETE) dont la réponse a expiré. */
+export const MESSAGE_ECRITURE_EXPIREE =
+  "La réponse n'est pas arrivée : l'action a peut-être abouti. Vérifiez avant de recommencer."
+
+/** ACNC52 — vrai pour un délai dépassé (ECONNABORTED) sur un verbe d'écriture. */
+export function estEcritureExpiree(error) {
+  const verbe = (error?.config?.method || 'get').toLowerCase()
+  return error?.code === 'ECONNABORTED' && !['get', 'head', 'options'].includes(verbe)
 }
 
 // Construit `{champ: premier message}` depuis un payload DRF `{champ: [...]}`

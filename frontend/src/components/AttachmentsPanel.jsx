@@ -15,6 +15,7 @@ import api from '../api/axios'
 import { FileUpload } from '../ui/FileUpload'
 import { formatFileSize, compressImage } from '../ui/file-utils'
 import { formatDate } from '../lib/format'
+import { useConfirmDialog } from '../ui/confirm'
 
 const ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
 const MAX_SIZE = 10 * 1024 * 1024 // 10 Mo
@@ -26,6 +27,7 @@ const isImage = (mime) => typeof mime === 'string' && mime.startsWith('image/')
 
 export default function AttachmentsPanel({ model, id, onChange }) {
   const isAdmin = useIsAdmin()
+  const { confirmDelete } = useConfirmDialog()
   const [items, setItems] = useState([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(undefined)
@@ -36,9 +38,13 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   // L866 — pièces dont l'aperçu image a échoué (objet MinIO supprimé/404).
   const [brokenThumbs, setBrokenThumbs] = useState({})
 
+  // AERR61 — une lecture rejetée n'est jamais « Aucune pièce jointe » : avis + Réessayer.
+  const [erreurLecture, setErreurLecture] = useState(false)
+
   const load = useCallback(() => {
     recordsApi.getAttachments(model, id)
-      .then((r) => setItems(r.data.results ?? r.data)).catch(() => {})
+      .then((r) => { setItems(r.data.results ?? r.data); setErreurLecture(false) })
+      .catch(() => setErreurLecture(true))
   }, [model, id])
   useEffect(() => { load() }, [load])
 
@@ -97,7 +103,8 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   }
 
   const remove = async (att) => {
-    if (!window.confirm('Supprimer cette pièce jointe ?')) return
+    // AERR68 — boîte maison qui nomme le fichier.
+    if (!(await confirmDelete({ title: 'Supprimer cette pièce jointe ?', description: `${att.filename} sera supprimé.` }))) return
     try { await recordsApi.deleteAttachment(att.id); load(); onChange?.() } catch { /* */ }
   }
 
@@ -132,7 +139,13 @@ export default function AttachmentsPanel({ model, id, onChange }) {
       )}
 
       <div className="flex flex-col gap-1.5">
-        {items.length === 0 && (
+        {erreurLecture && (
+          <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+            Pièces jointes non chargées.
+            <button type="button" onClick={load} className="font-medium underline">Réessayer</button>
+          </div>
+        )}
+        {items.length === 0 && !erreurLecture && (
           <p className="text-sm text-muted-foreground">Aucune pièce jointe.</p>
         )}
         {items.map((a) => (

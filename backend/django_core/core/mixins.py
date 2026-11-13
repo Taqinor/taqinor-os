@@ -4,6 +4,9 @@
 scope les FK ÉCRITES par un sérialiseur — deux moitiés du même contrat, d'où
 leur cohabitation ici (AUD601).
 """
+import copy
+from contextlib import contextmanager
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -138,6 +141,63 @@ def company_qs(qs, user):
     return qs.none()
 
 
+def _instantane(obj):
+    """ACNC41 — valeurs des colonnes CHARGÉES à la lecture (copie des JSON)."""
+    noms = {f.attname for f in obj._meta.concrete_fields}
+    return {k: copy.deepcopy(v) if isinstance(v, (dict, list)) else v
+            for k, v in obj.__dict__.items() if k in noms}
+
+
+def _relire_non_ecrits(instance, champs):
+    """ACNC41 — les colonnes chargées que la borne n'écrit PAS reprennent leur
+    valeur en base AVANT ``pre_save`` : sans cela l'instance garde la valeur lue
+    (périmée si un collègue a commité entre-temps) que les receveurs (journal
+    d'audit, webhooks, notifications de transition) et la réponse prendraient pour
+    une transition jamais écrite."""
+    autres = {f.attname: f for f in instance._meta.concrete_fields
+              if not f.primary_key and f.attname not in champs and f.attname in instance.__dict__}
+    if not autres:
+        return
+    base = type(instance)._base_manager.filter(pk=instance.pk).values(*autres).first()
+    for nom, valeur in (base or {}).items():
+        champ = autres[nom]
+        if champ.is_relation and instance.__dict__[nom] != valeur and champ.is_cached(instance):
+            champ.delete_cached_value(instance)  # objet lié périmé : relu à la demande
+        instance.__dict__[nom] = valeur
+
+
+@contextmanager
+def _ecriture_bornee(instance, lu):
+    """ACNC41 — borne le ``save()`` NU de ``ModelSerializer.update`` (patron CRX25,
+    ``apps/crm/views.py::_save_borne_aux_champs``) aux colonnes que CETTE requête a
+    changées depuis sa lecture (sérialiseur, surcharge, ``save()`` du modèle —
+    calculé dans ``save_base``, après les dérivations) + ``auto_now`` + ``company`` :
+    une transition commitée entre ``get_object()`` et ``save()`` n'est plus
+    réécrite. Borne vide ou lecture inconnue ⇒ aucune borne."""
+    if lu is None:
+        yield
+        return
+    original = instance.save_base
+
+    def _save_base(*args, **kwargs):
+        if kwargs.get('update_fields') is None and not instance._state.adding:
+            champs = {f.attname for f in instance._meta.concrete_fields if not f.primary_key and (
+                getattr(f, 'auto_now', False) or f.name == 'company' or (
+                    f.attname in instance.__dict__ and (
+                        f.attname not in lu or instance.__dict__[f.attname] != lu[f.attname]
+                        or getattr(instance.__dict__[f.attname], '_committed', True) is False)))}
+            if champs:
+                kwargs['update_fields'] = frozenset(champs)
+                _relire_non_ecrits(instance, champs)
+        return original(*args, **kwargs)
+
+    instance.save_base = _save_base
+    try:
+        yield
+    finally:
+        del instance.save_base
+
+
 class TenantMixin:
     """
     Filters querysets to the current user's company.
@@ -172,7 +232,17 @@ class TenantMixin:
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    def get_object(self):
+        obj = super().get_object()
+        if self.request.method in ('PUT', 'PATCH'):  # ACNC41 — lecture de référence
+            obj._acnc41_lu = _instantane(obj)
+        return obj
+
     def perform_update(self, serializer):
+        with _ecriture_bornee(serializer.instance, getattr(serializer.instance, '_acnc41_lu', None)):
+            self._perform_update_tenant(serializer)
+
+    def _perform_update_tenant(self, serializer):
         # Un utilisateur tenant : la société est forcée côté serveur (jamais lue
         # du corps) — identique à avant, et elle vaut déjà celle de l'instance
         # scopée par ``get_queryset``. Un superuser SANS société (acteur

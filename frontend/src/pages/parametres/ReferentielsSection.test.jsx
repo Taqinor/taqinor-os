@@ -37,10 +37,12 @@ vi.mock('../../api/parametresApi', () => ({
 import parametresApi from '../../api/parametresApi'
 import { ThemeProvider } from '../../design/ThemeProvider'
 import ReferentielsSection from './ReferentielsSection'
+import { toast } from '../../ui/confirm'
 
 beforeEach(() => {
   parametresApi.getTauxTva.mockClear()
   parametresApi.createUniteMesure.mockClear()
+  parametresApi.deleteUniteMesure.mockClear()
 })
 afterEach(() => cleanup())
 
@@ -80,6 +82,45 @@ describe('WIR66 ReferentielsSection', () => {
     await waitFor(() =>
       expect(parametresApi.createUniteMesure).toHaveBeenCalledWith(
         { code: 'kg', libelle: 'Kilogramme' }))
+  })
+
+  it('refus par champ à la création : aucun toast local en double (AERR53)', async () => {
+    parametresApi.createUniteMesure.mockRejectedValueOnce({
+      response: { status: 400, data: { nom: ['Ce champ est obligatoire.'] } } })
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const alerte = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await renderSection()
+    await screen.findByText('Mètre')
+    const scope = screen.getByTestId('ref-unites')
+    const [codeInput, libelleInput] = scope.querySelectorAll('input')
+    fireEvent.change(codeInput, { target: { value: 'kg' } })
+    fireEvent.change(libelleInput, { target: { value: 'Kilogramme' } })
+    fireEvent.click(within(scope).getByRole('button', { name: /Ajouter/ }))
+    await waitFor(() => expect(alerte).toHaveBeenCalled())
+    // Le toast global de l'intercepteur parle : aucun second toast local.
+    expect(erreur).not.toHaveBeenCalled()
+    expect(codeInput.value).toBe('kg') // la saisie reste
+    erreur.mockRestore()
+    alerte.mockRestore()
+  })
+
+  it('Supprimer puis Annuler : aucune suppression ; confirmer : un appel (AERR66)', async () => {
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await renderSection()
+    await screen.findByText('Mètre')
+    const scope = screen.getByTestId('ref-unites')
+    const supprimer = within(scope).getByTitle('Supprimer')
+    fireEvent.click(supprimer)
+    await waitFor(() => expect(confirmer).toHaveBeenCalled())
+    expect(confirmer.mock.calls[0][0]).toContain('Mètre')
+    expect(parametresApi.deleteUniteMesure).not.toHaveBeenCalled()
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu du bouton (Annuler ne le re-rend pas).
+    await new Promise((r) => setTimeout(r, 450))
+    confirmer.mockReturnValue(true)
+    fireEvent.click(supprimer)
+    await waitFor(() => expect(parametresApi.deleteUniteMesure).toHaveBeenCalledTimes(1))
+    confirmer.mockRestore()
   })
 
   it('lit TOUTES les pages des trois référentiels (51 objets ⇒ le 51e est affiché)', async () => {

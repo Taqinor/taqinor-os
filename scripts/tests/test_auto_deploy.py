@@ -361,6 +361,42 @@ class AutoDeployTests(unittest.TestCase):
         banc.jouer()
         self.assertIsNone(banc.index("DEPLOYED_SHA"))
 
+    def test_publication_meryem_societe_designee_et_echec_journalise(self):
+        """ACEL6 — `--company` passé, échec non bloquant mais journalisé (plus de `|| true`)."""
+        banc = self.banc("meryem-ko", changes="docs/meryem/guide.md\n")
+        rc, sortie = banc.jouer(FAIL="publier_documents_meryem")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
+        self.assertIn("AVERTISSEMENT: publier_documents_meryem en échec", banc.journal)
+        banc = self.banc("meryem-ok", changes="docs/meryem/guide.md\n")
+        rc, sortie = banc.jouer(SEED_COMPANY_SLUG="la-vraie")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIsNotNone(banc.index(r"publier_documents_meryem --company la-vraie$"), banc.appels)
+        self.assertNotIn("publier_documents_meryem en échec", banc.journal)
+
+    def test_worker_voit_l_extracteur_i18n(self):
+        """ACEL8 — le worker monte l'extracteur au 1er candidat de _chemins_candidats + frontend/src."""
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
+        bloc = re.search(r"(?ms)^  celery_worker:\n(.*?)(?=^  \S)", compose).group(1)
+        tasks_i18n = (ROOT / "backend/django_core/core/tasks_i18n.py").read_text(encoding="utf-8")
+        premier = re.search(r"candidats = \[Path\('/opt'\) / '(\w+)' / NOM_SCRIPT\]", tasks_i18n).group(1)
+        nom = re.search(r"(?m)^NOM_SCRIPT = ['\"]([^'\"]+)['\"]", tasks_i18n).group(1)
+        self.assertIn(f"- ./scripts/{nom}:/opt/{premier}/{nom}:ro", bloc)
+        self.assertIn("- ./frontend/src:/opt/frontend/src:ro", bloc)
+
+    def test_worker_finit_sa_tache_au_redeploiement(self):
+        """ACEL3 — Celery = PID 1 (reçoit le SIGTERM) et délai de grâce > limite dure globale."""
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
+        base = (ROOT / "backend/django_core/erp_agentique/settings/base.py").read_text(encoding="utf-8")
+        limite = int(re.search(r"(?m)^CELERY_TASK_TIME_LIMIT = (\d+)", base).group(1))
+        for service in ("celery_worker", "celery_worker_interactive"):
+            bloc = re.search(rf"(?ms)^  {service}:\n(.*?)(?=^  \S)", compose).group(1)
+            commande = re.search(r"(?ms)^    command: >?\s*(.*?)\n    \w", bloc).group(1)
+            self.assertTrue(commande.startswith("celery ") or 'sh -c "exec celery ' in commande,
+                            f"{service} : {commande}")
+            grace = int(re.search(r"(?m)^    stop_grace_period: (\d+)s", bloc).group(1))
+            self.assertGreater(grace, limite, service)
+
     def test_echec_consigne_dans_redis(self):
         """ADCG12 — un ECHEC pousse {ts, sha, étape fautive} dans erp:deploys_en_echec, borné à 50."""
         banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")

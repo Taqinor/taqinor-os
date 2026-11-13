@@ -7,12 +7,12 @@
 //
 // Section autonome (comme StatutsSection) : charge ses propres réglages, édite
 // en local, enregistre via parametresApi.updateDocumentTemplates.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Save, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, Textarea, Button, IconButton, Spinner } from '../../ui'
 import { SectionTitle, CarteSection } from './peComponents'
-import { BoutonEnregistrer, ChargementSection } from './SectionEnregistrement'
+import { BoutonEnregistrer, ChargementSection, LectureEchouee } from './SectionEnregistrement'
 import { marquerEnregistre, toastEnregistrementImpossible } from './enregistrement'
 
 // Aperçu (placeholder) du littéral historique de chaque champ. Affiché en
@@ -126,10 +126,13 @@ export default function DocumentsSection() {
   const [version, setVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // AERR56 — lecture rejetée : jamais de formulaire vide enregistrable.
+  const [lectureEchouee, setLectureEchouee] = useState(false)
 
-  useEffect(() => {
+  const charger = useCallback(() => {
     parametresApi.getDocumentTemplates()
       .then(r => {
+        setLectureEchouee(false)
         const d = r.data || {}
         setForm({
           validite_badge_p1: d.validite_badge_p1 || '',
@@ -149,15 +152,9 @@ export default function DocumentsSection() {
           : null)
         setVersion(d.version || 1)
       })
-      .catch(() => {
-        setForm({
-          validite_badge_p1: '', validite_onepage: '', cgv_titre: '',
-          garantie_titre: '', garantie_detail: '', garantie_perf_label: '',
-          bpa_titre: '', bpa_mention: '', acceptance_stamp: '',
-        })
-        setBullets(null)
-      })
+      .catch(() => setLectureEchouee(true))
   }, [])
+  useEffect(() => { charger() }, [charger])
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
 
@@ -171,7 +168,7 @@ export default function DocumentsSection() {
   const resetBullets = () => setBullets(null)
 
   const save = async () => {
-    if (!form) return
+    if (!form || lectureEchouee) return
     setSaving(true)
     try {
       const payload = { ...form }
@@ -198,6 +195,7 @@ export default function DocumentsSection() {
     } catch (e) { toastEnregistrementImpossible(e) } finally { setSaving(false) }
   }
 
+  if (lectureEchouee) return <LectureEchouee onRetry={charger} />
   if (form === null) {
     return <ChargementSection />
   }
@@ -302,7 +300,8 @@ export default function DocumentsSection() {
         </CarteSection>
       )}
 
-      <BoutonEnregistrer save={save} saving={saving} saved={saved} />
+      <BoutonEnregistrer save={save} saving={saving} saved={saved}
+        desactive={lectureEchouee} />
     </>
   )
 }

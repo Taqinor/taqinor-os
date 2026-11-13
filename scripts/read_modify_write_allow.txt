@@ -4,3 +4,65 @@
 # (pure increment) or select_for_update() (read-decide-write), do not append.
 # Baseline captured 2026-07-13; many of these are non-concurrent single-actor
 # writes or string/path fields caught by the coarse v1 heuristic.
+# ACNC50 (13/11/2026) — surface étendue à tout le code serveur (garde en return,
+# drapeaux d'état, calcul par variable locale, save() complet après lecture de statut) :
+# DETTE GELÉE, « clé  # tâche ACNC qui la corrige et la retire ».
+backend/django_core/apps/adminops/config_package_service.py::exporter_config  # tâche ACNC du plan securite
+backend/django_core/apps/adminops/sandbox_service.py::prolonger_sandbox  # tâche ACNC du plan securite
+backend/django_core/apps/adsengine/evidence.py::record_node_evidence  # tâche ACNC à trier, propriétaire adsengine
+backend/django_core/apps/adsengine/models.py::register_unresolved_cycle  # tâche ACNC à trier, propriétaire adsengine
+backend/django_core/apps/adsengine/views.py::create  # tâche ACNC à trier, propriétaire adsengine
+backend/django_core/apps/automation/engine.py::_resume_scheduled_step  # tâche ACNC à trier, propriétaire automation (clé déplacée par ACEL74 : réclamation par update conditionnel dans la transaction)
+backend/django_core/apps/automation/models.py::creer_version_automation_rule  # tâche ACNC à trier, propriétaire automation
+backend/django_core/apps/crm/cadence_visite.py::clore_etape_apres_planification  # tâche ACNC à trier, propriétaire crm
+backend/django_core/apps/crm/fiche_ecritures.py::appliquer_plan_activite  # tâche ACNC à trier, propriétaire crm
+backend/django_core/apps/crm/public_chat_views.py::_append_transcript  # tâche ACNC à trier, propriétaire crm
+backend/django_core/apps/facturation/views/facture.py::perform_destroy  # tâche ACNC du plan facturation
+backend/django_core/apps/facturation/views/remise_encaissement.py::perform_destroy  # tâche ACNC du plan facturation
+backend/django_core/apps/ged/services.py::classer_signature_completee  # tâche ACNC à trier, propriétaire ged
+backend/django_core/apps/ged/services.py::marquer_signe  # tâche ACNC à trier, propriétaire ged
+backend/django_core/apps/ged/services.py::relancer_demande_document  # tâche ACNC à trier, propriétaire ged
+backend/django_core/apps/installations/services.py::appliquer_statut_document  # tâche ACNC du plan chantiers
+backend/django_core/apps/installations/services.py::contre_transferer_stock_livraison  # tâche ACNC du plan chantiers
+backend/django_core/apps/installations/services.py::ensure_checklist_items  # tâche ACNC du plan chantiers
+backend/django_core/apps/installations/services.py::snapshot_revision_kit  # tâche ACNC du plan chantiers
+backend/django_core/apps/installations/services.py::ventiler_stock_livraison  # tâche ACNC du plan chantiers
+backend/django_core/apps/installations/views/demande_transfert.py::perform_update  # tâche ACNC du plan chantiers
+backend/django_core/apps/installations/views/livraison.py::_notify_client  # tâche ACNC du plan chantiers
+backend/django_core/apps/portail/services.py::initier_paiement_facture  # tâche ACNC à trier, propriétaire portail
+backend/django_core/apps/publicapi/bulk.py::relancer_job  # tâche ACNC à trier, propriétaire publicapi
+backend/django_core/apps/publicapi/retry.py::_process_attempt  # tâche ACNC à trier, propriétaire publicapi
+backend/django_core/apps/records/views.py::_appliquer_enchainement  # tâche ACNC à trier, propriétaire records
+backend/django_core/apps/sav/services.py::retourner_pret_equipement  # tâche ACNC du plan sav
+backend/django_core/apps/sav/views.py::escalader  # tâche ACNC du plan sav
+backend/django_core/apps/statuspage/tasks.py::_accumuler_uptime_jour  # tâche ACNC à trier, propriétaire statuspage
+backend/django_core/apps/stock/management/commands/seed_catalogue.py::handle  # tâche ACNC du plan stock
+backend/django_core/apps/stock/serializers.py::update  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services.py::_log_revision_change  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services.py::apply_product_bulk  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services.py::creer_revalorisation  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services.py::snapshot_revision_kit  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services_wms.py::cloturer_alerte_rappel  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services_wms.py::lancer_vague  # tâche ACNC du plan stock
+backend/django_core/apps/stock/services_wms.py::lever_quarantaine  # tâche ACNC du plan stock
+backend/django_core/apps/stock/views/bon_commande_fournisseur.py::_mark_bcf_envoye  # tâche ACNC du plan stock
+backend/django_core/apps/stock/views/bon_commande_fournisseur.py::perform_destroy  # tâche ACNC du plan stock
+backend/django_core/apps/stock/views/fournisseur_scm.py::perform_create  # tâche ACNC du plan stock
+backend/django_core/apps/ventes/domain/dossier_8221.py::figer_equipements_dossier_8221  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/encaissements.py::create_payment_link  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/encaissements.py::recalculer_statut_paiement  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/envoi.py::figer_reglages_rendu  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/facturation_ops.py::_recalculer_totaux_facture  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/facturation_ticket_sav.py::completer_brouillon_ticket_sav  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/facturation_vente.py::modifier_montant_tranche  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/historique_config.py::capturer_configuration_devis  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/recouvrement.py::amorcer_cadence  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/recouvrement.py::rejeter_paiement  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/domain/revision.py::renouveler_devis  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/apps/ventes/views/ligne_devis.py::_sauver_sous_garde_t17  # tâche ACNC à trier, propriétaire ventes
+backend/django_core/authentication/password_policy.py::register_failed_login  # tâche ACNC du plan securite
+backend/django_core/core/dispatch_outbox.py::_appliquer_resultat  # tâche ACNC du plan securite
+backend/django_core/core/payment.py::marquer_paye  # tâche ACNC du plan securite
+backend/django_core/core/workflow.py::approuver_etape  # tâche ACNC du plan securite
+backend/django_core/core/workflow.py::avancer  # tâche ACNC du plan securite
+backend/django_core/core/workflow.py::rejeter_etape  # tâche ACNC du plan securite

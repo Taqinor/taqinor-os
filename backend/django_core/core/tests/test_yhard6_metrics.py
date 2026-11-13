@@ -5,6 +5,7 @@ collecteurs custom (compteurs succès/échec, âge du heartbeat du beat, beat
 arrêté → dégradé dans check_services()), et rendu texte toujours disponible
 même sans ``django-prometheus`` installé.
 """
+import importlib
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -22,9 +23,7 @@ User = get_user_model()
 class MetricsRenderTests(TestCase):
     def setUp(self):
         cache.delete(metrics.BEAT_HEARTBEAT_CACHE_KEY)
-        with metrics._lock:
-            metrics._task_counters['success'] = 0
-            metrics._task_counters['failure'] = 0
+        cache.delete_many(metrics.cles_compteurs_taches())
 
     def test_render_includes_up_and_counters(self):
         metrics.record_task_success()
@@ -34,6 +33,20 @@ class MetricsRenderTests(TestCase):
         self.assertIn('taqinor_up 1', text)
         self.assertIn('taqinor_celery_tasks_total{status="success"} 2', text)
         self.assertIn('taqinor_celery_tasks_total{status="failure"} 1', text)
+
+    def test_compteurs_celery_survivent_a_un_autre_processus(self):
+        """ACEL14 — le worker incrémente, gunicorn lit : les compteurs
+        vivent dans le cache partagé, pas dans le processus."""
+        metrics.record_task_failure()
+        metrics.record_task_success()
+        metrics.record_task_success()
+        metrics.record_task_queue('scheduled', ok=False)
+        importlib.reload(metrics)  # nouveau processus : état du module neuf
+        text = metrics.render_prometheus_text()
+        self.assertIn('taqinor_celery_tasks_total{status="failure"} 1', text)
+        self.assertIn('taqinor_celery_tasks_total{status="success"} 2', text)
+        self.assertIn('taqinor_celery_queue_tasks_total'
+                      '{queue="scheduled",status="failure"} 1', text)
 
     def test_beat_heartbeat_age_none_when_never_recorded(self):
         self.assertIsNone(metrics.beat_heartbeat_age_seconds())

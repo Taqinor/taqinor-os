@@ -11,8 +11,9 @@ import {
   Button, Badge, StatusPill, Checkbox, Textarea,
   DropdownMenuItem, DropdownMenuLabel,
   // APX17 — les signaux secondaires du statut passent dans un Popover.
-  Popover, PopoverTrigger, PopoverContent,
+  Popover, PopoverTrigger, PopoverContent, toast,
 } from '../../../ui/index.js'
+import { frenchError } from './devisListHelpers.js'
 import { formatMAD, formatDateTime } from '../../../lib/format.js'
 // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
 // remplacement, jamais stocké), uniquement quand locale=ar ET la préférence
@@ -105,7 +106,7 @@ export default function DevisRow({ d, ctx }) {
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleRevoquerLienPublic,
+    handleChantier, handleRevoquerLienPublic, confirm,
   } = ctx
   // VNT79 — gestes de facturation dits par le serveur (`vente.peut`), jamais
   // sur une version remplacée ; plus aucune comparaison de compteurs.
@@ -786,9 +787,13 @@ export default function DevisRow({ d, ctx }) {
               )}
               {role === 'admin' && d.statut === 'brouillon'
                 && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
-                <DropdownMenuItem onSelect={() => {
+                <DropdownMenuItem onSelect={async () => {
+                  // AERR16 — geste d'argent : confirmation qui nomme le devis et la remise.
+                  if (confirm && !(await confirm({ title: `Approuver la remise de ${parseFloat(d.remise_globale)} % du devis ${d.reference} ?`,
+                    confirmLabel: 'Approuver la remise', destructive: false }))) return
                   ventesApi.approuverRemise(d.id)
-                    .then(() => dispatch(rafraichirDevis(d.id))).catch(() => {})
+                    .then(() => { toast.success('Remise approuvée.'); dispatch(rafraichirDevis(d.id)) })
+                    .catch(err => toast.error(frenchError(err, 'Approbation de la remise impossible.')))
                 }}>
                   Approuver la remise
                 </DropdownMenuItem>

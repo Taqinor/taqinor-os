@@ -80,3 +80,17 @@ describe('ReliabilitySettingsPage — NTOBS21', () => {
     await waitFor(() => expect(toastError).toHaveBeenCalled())
   })
 })
+
+describe('ReliabilitySettingsPage — AERR56', () => {
+  it('lecture rejetée : avis + Réessayer, aucun PATCH', async () => {
+    const user = userEvent.setup()
+    apiMock.getReliabilitySettings.mockReset().mockRejectedValueOnce(new Error('boom'))
+    render(<ReliabilitySettingsPage />)
+    expect(await screen.findByText(/Réglages non chargés/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
+    expect(apiMock.saveReliabilitySettings).not.toHaveBeenCalled()
+    apiMock.getReliabilitySettings.mockResolvedValue({ data: REGLAGES })
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByDisplayValue('Casablanca')).toBeInTheDocument()
+  })
+})

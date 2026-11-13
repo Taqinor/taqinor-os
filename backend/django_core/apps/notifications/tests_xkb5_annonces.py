@@ -77,6 +77,24 @@ class AnnonceSweepTests(TestCase):
         self.assertEqual(second_run, 0)
         self.assertEqual(Notification.objects.count(), first_count)
 
+    def test_annonce_due_un_jour_chome_part_au_balayage_de_30_min(self):
+        """ACEL76 (C-ACEL-033) — une annonce échue est publiée par le
+        balayage ``*/30`` (``reveiller_snoozes``), jour chômé compris ;
+        ``sweep_daily`` n'en publie aucune de plus."""
+        from unittest import mock
+
+        from . import sweeps
+        annonce = Annonce.objects.create(
+            company=self.company, titre='Annonce chômée',
+            date_publication=timezone.now() - timedelta(minutes=5))
+        with mock.patch.object(sweeps, 'is_jour_ouvre', return_value=False):
+            sweeps.reveiller_snoozes()
+            annonce.refresh_from_db()
+            self.assertTrue(annonce.publiee)
+            avant = Notification.objects.count()
+            sweeps.sweep_daily()
+        self.assertEqual(Notification.objects.count(), avant)
+
     def test_annonce_without_date_publication_never_auto_published(self):
         """Pas de date = pas de publication automatique (comportement
         additif préservé — création manuelle non-programmée)."""

@@ -70,8 +70,9 @@ describe('PortailClientDevis — ADVS20 empreinte du contenu lu', () => {
     fireEvent.click(screen.getByRole('button', { name: /Confirmer l’acceptation/ }))
     await waitFor(() => expect(portailApi.devis.accepter).toHaveBeenCalledTimes(1))
     expect(portailApi.devis.accepter.mock.calls[0][1].empreinte_contenu).toBe(r.data.results[0].empreinte_contenu)
-    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith(reponses['409_empreinte_perimee'].detail))
     await waitFor(() => expect(portailApi.devis.liste).toHaveBeenCalledTimes(2))
+    // AERR128 — le 409 est dit par le toast global (intercepteur axios) : pas de double.
+    expect(toastSpy.error).not.toHaveBeenCalled()
   })
 })
 
@@ -173,7 +174,7 @@ describe('PortailClientDevis — APDF36 conditions générales', () => {
     expect(screen.queryByRole('button', { name: 'Accepter' })).toBeNull()
   })
 
-  it('le 400 du serveur s’affiche (aucun catch muet), rien d’accepté', async () => {
+  it('le 400 du serveur : dit par l’intercepteur axios, pas de toast local en double (AERR128), rien d’accepté', async () => {
     const etat = serveurConditions({ refuse: true })
     renderPage()
     await screen.findByText(ligne.reference)
@@ -181,9 +182,11 @@ describe('PortailClientDevis — APDF36 conditions générales', () => {
     fireEvent.change(screen.getByLabelText('Votre nom'), { target: { value: 'Karim Alaoui' } })
     fireEvent.click(screen.getByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: /Confirmer l’acceptation/ }))
-    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith(
-      contrat.acceptation.reponses['400_conditions'].detail,
-    ))
+    await waitFor(() => expect(portailApi.devis.accepter).toHaveBeenCalled())
+    // AERR128 — un 400 servi est toasté par l'intercepteur global (api/axios,
+    // mocké ici) ; l'écran ne le redit pas.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(toastSpy.error).not.toHaveBeenCalled()
     expect(etat.accepte).toBe(false)
   })
 })

@@ -73,5 +73,8 @@ except NameError:  # pragma: no cover - celery absent
 # ``tasks.py``) enregistre bien ``reporting.envoyer_rapports_planifies``.
 try:  # pragma: no cover - dépend de la présence de celery
     import_module(f'{__package__}.rapport_abonnements')
+    # ACEL38 — idem pour ``reporting.evaluate_kpi_alertes`` (jusqu'ici
+    # enregistrée seulement par l'import des URLs, absent avec CELERY_SKIP_CHECKS).
+    import_module(f'{__package__}.kpi_alertes')
 except ImportError:  # pragma: no cover
     pass

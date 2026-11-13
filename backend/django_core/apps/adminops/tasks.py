@@ -4,6 +4,7 @@ Enregistrés dans `erp_agentique/celery.py::beat_schedule` +
 import logging
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -34,17 +35,23 @@ def purger_sandbox_expires():
             env.sandbox_company.save(update_fields=['actif'])
 
     # Hard-delete après le délai de grâce.
+    # ACEL16 — supprimer PUIS détacher, atomiquement et par environnement : un
+    # `delete` qui lève garde le lien (jamais d'orpheline) et n'arrête pas la suite.
     a_purger = SandboxEnvironment.objects.filter(
         statut=SandboxEnvironment.Statut.EXPIRE)
+    echecs = 0
     for env in a_purger:
         reglage = AdminOpsSettings.get_or_default(env.company)
         grace = timezone.timedelta(days=reglage.sandbox_grace_purge_jours)
-        if now >= env.date_expiration + grace:
-            sandbox_company = env.sandbox_company
-            env.sandbox_company = None
-            env.save(update_fields=['sandbox_company'])
-            if sandbox_company is not None:
-                sandbox_company.delete()
+        if now >= env.date_expiration + grace and env.sandbox_company_id:
+            try:
+                with transaction.atomic():
+                    env.sandbox_company.delete()
+                    SandboxEnvironment.objects.filter(pk=env.pk).update(sandbox_company=None)
+            except Exception:  # noqa: BLE001 — journalisé et compté (D-ENF22-BLE001)
+                echecs += 1
+                logger.exception('adminops.purger_sandbox_expires : env %s non purgé', env.pk)
+    return {'echecs': echecs}
 
 
 @shared_task(name='adminops.rappeler_sandbox_a_expirer')
@@ -136,11 +143,14 @@ def perimer_demandes_impersonation():
 def purger_evenements_usage():
     """NTADM16 — purge des `EvenementUsage` au-delà de la rétention configurée
     (défaut 180j, RGPD/CNDP-safe). Rétention par tenant via `AdminOpsSettings`."""
+    from authentication.models import Company
     from authentication.selectors import active_companies
 
     from .models import AdminOpsSettings, EvenementUsage
 
-    for company in active_companies():
+    # ACEL12 — une société suspendue/fermée garde sa rétention : purgée aussi.
+    suspendues = Company.objects.filter(actif=False)
+    for company in [*active_companies(), *suspendues]:
         reglage = AdminOpsSettings.get_or_default(company)
         seuil = timezone.now() - timezone.timedelta(
             days=reglage.retention_evenements_usage_jours)

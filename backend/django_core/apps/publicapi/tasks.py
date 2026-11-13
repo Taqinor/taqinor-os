@@ -101,3 +101,11 @@ def process_bulk_export_job(job_id):
 def process_bulk_import_job(job_id):
     from . import bulk
     bulk.run_import_job(job_id)
+
+
+@shared_task(name='publicapi.expirer_jobs_bloques')
+def expirer_jobs_bloques():
+    """ACEL32 — beat toutes les 10 min : un job bulk `en_cours` sans progression
+    depuis 10 min (worker tué) passe en `echec`, relançable à son curseur."""
+    from . import bulk
+    return bulk.expirer_jobs_bloques()

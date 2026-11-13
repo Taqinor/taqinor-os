@@ -62,6 +62,32 @@ describe('PortailClientSav — ADOC136', () => {
     expect(screen.getByText('Soumise')).toBeTruthy()
   })
 
+  it('relecture rejetée après création : message et liste gardés', async () => {
+    portailApi.demandesSav.liste
+      .mockResolvedValueOnce({ data: { results: [soumise, priseEnCharge] } })
+      .mockRejectedValueOnce({ response: { status: 502, data: {} } })
+    portailApi.demandesSav.creer.mockResolvedValue({ data: contrat.creation.reponses['201'] })
+    portailApi.chantiers.liste.mockResolvedValue(reponseContrat('portail', 'mes_chantiers_liste'))
+    renderPage()
+    await screen.findByText(priseEnCharge.sujet)
+    fireEvent.change(screen.getByLabelText('Sujet'), { target: { value: 'Onduleur muet' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer la demande' }))
+    expect(await screen.findByText(/Liste pas à jour/)).toBeTruthy()
+    expect(screen.getByText(/Demande envoyée/)).toBeTruthy()
+    expect(screen.getByText(soumise.sujet, { selector: 'p' })).toBeTruthy()
+    expect(screen.getByText(priseEnCharge.sujet)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Envoyer la demande' })).toBeTruthy()
+    expect(screen.queryByText('Demandes indisponibles')).toBeNull()
+    expect(portailApi.demandesSav.creer).toHaveBeenCalledTimes(1)
+  })
+
+  it('premier chargement rejeté : « Demandes indisponibles »', async () => {
+    portailApi.demandesSav.liste.mockRejectedValue({ response: { status: 502, data: {} } })
+    portailApi.chantiers.liste.mockResolvedValue(reponseContrat('portail', 'mes_chantiers_liste'))
+    renderPage()
+    expect(await screen.findByText('Demandes indisponibles')).toBeTruthy()
+  })
+
   it('un compte lecture seule voit le refus du serveur', async () => {
     portailApi.demandesSav.liste.mockResolvedValue(reponseContrat('portail', 'mes_demandes_sav_liste'))
     portailApi.chantiers.liste.mockResolvedValue(reponseContrat('portail', 'mes_chantiers_liste'))

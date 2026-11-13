@@ -136,6 +136,40 @@ class PurgeServiceTests(PurgeBase):
         self.assertTrue(res['dry_run'])
         self.assertGreaterEqual(res['eligibles'], 2)
 
+    def test_document_empoisonne_n_arrete_pas_la_purge(self):
+        """ACEL64 (C-ACEL-027) — un document dont le stockage objet lève reste
+        en corbeille, compté en `echecs` et consigné ; les autres documents
+        et l'autre société sont purgés."""
+        from unittest import mock
+
+        from apps.ged.models import DocumentVersion
+        poison = self._doc(self.co_a, self.folder_a, 'poison')
+        DocumentVersion.objects.create(
+            company=self.co_a, document=poison, version=1, file_key='ged/acel64/poison.pdf')
+        docs = [poison, self._doc(self.co_a, self.folder_a, 'a2'),
+                self._doc(self.co_b, self.folder_b, 'b1'),
+                self._doc(self.co_b, self.folder_b, 'b2')]
+        for jours, doc in zip((50, 45, 45, 44), docs):
+            self._en_corbeille_depuis(doc, jours)
+
+        def effacer(cle, lever=False):
+            if cle == 'ged/acel64/poison.pdf':
+                raise OSError('stockage objet en panne')
+
+        with mock.patch('apps.records.storage.delete_attachment', side_effect=effacer), \
+                mock.patch('apps.reporting.journal_problemes.consigner_echec_tache') as consigne:
+            res = services.purger_corbeille_toutes_societes(apply=True)
+        self.assertEqual(res['purges'], 3)
+        self.assertEqual(res['echecs'], 1)
+        consigne.assert_called_once()
+        self.assertEqual(
+            list(Document.objects.filter(pk__in=[d.pk for d in docs]).values_list('pk', flat=True)),
+            [poison.pk])
+        self.assertIsNotNone(Document.objects.get(pk=poison.pk).supprime_le)
+        with mock.patch('apps.records.storage.delete_attachment'):
+            services.purger_corbeille_toutes_societes(apply=True)
+        self.assertFalse(Document.objects.filter(pk=poison.pk).exists())
+
     def test_grace_days_surchargeable(self):
         doc = self._doc(self.co_a, self.folder_a, 'recent')
         self._en_corbeille_depuis(doc, 5)

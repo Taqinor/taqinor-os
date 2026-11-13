@@ -25,7 +25,6 @@
 import { useMemo, useState } from 'react'
 import { FileText, Mail, MessageCircle, Plus, Eye, Save } from 'lucide-react'
 import api from '../../api/axios'
-import { toast } from '../../ui/confirm'
 import useSectionListeAdmin from './useSectionListeAdmin'
 import {
   Card, CardContent, Input, Textarea, Button, Badge, EmptyState, Select,
@@ -146,7 +145,7 @@ export default function ModelesBrandesSection() {
         previsualiser(cree.id)
       }
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      console.warn('Création impossible.', e)
     } finally { setBusy(false) }
   }
 
@@ -160,7 +159,7 @@ export default function ModelesBrandesSection() {
       setDirty(false)
       charger()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+      console.warn('Enregistrement impossible.', e)
     } finally { setBusy(false) }
   }
 
@@ -171,7 +170,7 @@ export default function ModelesBrandesSection() {
       if (selectedId === row.id) { setSelectedId(null); setEdit(null); setApercu(null) }
       charger()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Suppression impossible.')
+      console.warn('Suppression impossible.', e)
     }
   }
 

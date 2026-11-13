@@ -77,10 +77,13 @@ export default function DashboardSharePage() {
     return (id) => map.get(id) || `#${id}`
   }, [membres])
 
+  // AERR130 — relecture en échec : liens et partages restent, avis + Réessayer.
+  const [liensEnEchec, setLiensEnEchec] = useState(false)
+  const [internesEnEchec, setInternesEnEchec] = useState(false)
   const reload = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
     coreApi.dashboardsPartages.list({ page, page_size: pageSize }).then((r) => r.data))
-    .then((rows) => setPartages(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-    .catch(() => setPartages([]))
+    .then((rows) => { setPartages(Array.isArray(rows) ? rows : (rows?.results ?? [])); setLiensEnEchec(false) })
+    .catch(() => setLiensEnEchec(true))
 
   useEffect(() => {
     let active = true
@@ -95,7 +98,7 @@ export default function DashboardSharePage() {
         setDashboards(d.data?.results ?? d.data ?? [])
         setPartages(p)
       })
-      .catch(() => { if (active) { setDashboards([]); setPartages([]) } })
+      .catch(() => { if (active) setLiensEnEchec(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
@@ -121,8 +124,8 @@ export default function DashboardSharePage() {
 
   const reloadInternes = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
     coreApi.dashboardsPartagesInternes.list({ page, page_size: pageSize }).then((r) => r.data))
-    .then((rows) => setInternes(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-    .catch(() => setInternes([]))
+    .then((rows) => { setInternes(Array.isArray(rows) ? rows : (rows?.results ?? [])); setInternesEnEchec(false) })
+    .catch(() => setInternesEnEchec(true))
 
   useEffect(() => {
     let active = true
@@ -135,7 +138,7 @@ export default function DashboardSharePage() {
         setInternes(i)
         setMembres(u)
       })
-      .catch(() => { if (active) { setInternes([]); setMembres([]) } })
+      .catch(() => { if (active) setInternesEnEchec(true) })
     return () => { active = false }
   }, [])
 
@@ -162,7 +165,11 @@ export default function DashboardSharePage() {
 
   const retirerPartageInterne = (partage) => {
     coreApi.dashboardsPartagesInternes.remove(partage.id)
-      .then(() => { toast.success('Partage interne retiré.'); reloadInternes() })
+      .then(() => {
+        toast.success('Partage interne retiré.')
+        setInternes((l) => l.filter((p) => p.id !== partage.id))
+        reloadInternes()
+      })
       .catch(() => toast.error('Retrait impossible.'))
   }
 
@@ -234,16 +241,22 @@ export default function DashboardSharePage() {
         </Button>
       </div>
 
+      {liensEnEchec && (
+        <p role="status" className="mb-3 text-sm text-muted-foreground">
+          Liens pas à jour — le serveur n’a pas répondu.{' '}
+          <Button size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </p>
+      )}
       {loading ? (
         <ChargementPage />
-      ) : partages.length === 0 ? (
+      ) : partages.length === 0 ? (!liensEnEchec && (
         <EmptyState
           icon={Link2}
           title="Aucun lien de partage"
           description="Créez un lien public pour partager un dashboard en lecture seule."
           className="my-6"
         />
-      ) : (
+      )) : (
         <DataTable
           data={partages}
           columns={columns}
@@ -357,14 +370,20 @@ export default function DashboardSharePage() {
           </Button>
         </form>
 
-        {internes.length === 0 ? (
+        {internesEnEchec && (
+          <p role="status" className="mb-3 text-sm text-muted-foreground">
+            Partages internes pas à jour.{' '}
+            <Button size="sm" variant="outline" onClick={reloadInternes}>Réessayer</Button>
+          </p>
+        )}
+        {internes.length === 0 ? (!internesEnEchec && (
           <EmptyState
             icon={Users}
             title="Aucun partage interne"
             description="Personne n’a encore reçu d’accès nommé à un dashboard."
             className="my-6"
           />
-        ) : (
+        )) : (
           <TableauNu className="w-full text-sm" aria-label="Partages internes de tableaux de bord"
             tete={(
               <thead>

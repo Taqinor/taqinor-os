@@ -75,7 +75,7 @@ def _find_client_by_email(from_email, company=None):
 
 
 def capture_inbound_email(from_email='', subject='', body='', company=None,
-                          to_email=''):
+                          to_email='', message_id=''):
     """Rattache un email entrant au bon fil et le consigne dans EmailLog.
 
     Cherche une référence document (DEV-…/FAC-…) dans le sujet puis le corps ;
@@ -106,6 +106,12 @@ def capture_inbound_email(from_email='', subject='', body='', company=None,
         # Rien de reconnaissable : on n'enregistre pas de trace orpheline.
         logger.info('Email entrant non rattaché (from=%s, ref=%s)',
                     from_email, reference)
+        return None
+    # ACNC16 — même ``Message-ID`` relevé deux fois : une seule capture.
+    from core.idempotency import dedupe_event
+    if message_id and company is not None and not dedupe_event(
+            company=company, source='email_ventes', event_id=str(message_id)[:200]):
+        logger.info('Email entrant déjà capturé (message_id=%s)', message_id)
         return None
 
     log = EmailLog.objects.create(
@@ -161,7 +167,7 @@ def ventes_inbound_handler(message, company):
         from_email=getattr(message, 'from_email', '') or '',
         subject=getattr(message, 'subject', '') or '',
         body=getattr(message, 'body', '') or '',
-        company=company)
+        company=company, message_id=getattr(message, 'message_id', '') or '')
 
 
 def register_ventes_inbound_handler():

@@ -322,7 +322,10 @@ if [ "$ok" = "1" ]; then
   # Publie (versionné) le Guide de Meryem/Protocole de rappel/Carte one-page
   # dans la GED — best-effort : docs/meryem/ absent ou inchangé ne doit jamais
   # faire échouer un déploiement.
-  $COMPOSE exec -T django_core python manage.py publier_documents_meryem || true
+  # ACEL6 — société désignée (refus dès 2 sociétés sans --company) ; échec journalisé.
+  $COMPOSE exec -T django_core python manage.py publier_documents_meryem \
+      --company "${SEED_COMPANY_SLUG:-taqinor-demo}" \
+    || log "AVERTISSEMENT: publier_documents_meryem en échec (guide GED non publié)"
   # PVOND (18/08/2026) — ré-applique les fiches catalogue (strictement additif :
   # ne touche jamais un prix ni une quantité). Non bloquant.
   $COMPOSE exec -T django_core python manage.py seed_catalogue \
