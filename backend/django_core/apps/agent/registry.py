@@ -266,6 +266,35 @@ def _hidden_keys_for(user) -> set:
     return hidden
 
 
+def copilote_allume_pour(user) -> bool:
+    """Le copilote commercial est-il ALLUMÉ pour ``user`` (COP-G1) ?
+
+    Lit le réglage Django ``ASSISTANT_COPILOTE`` : ``tous`` → allumé pour tout
+    compte ; ``admins`` (défaut) → seulement pour un administrateur (même
+    critère que les vues de l'agent : ``is_admin_role``, superuser compris) ;
+    ``aucun`` ou toute AUTRE valeur (faute de frappe, chaîne vide) → éteint —
+    un interrupteur mal écrit ne doit jamais allumer un outil que le modèle
+    voit."""
+    from django.conf import settings
+
+    mode = str(getattr(settings, 'ASSISTANT_COPILOTE', 'admins') or '')
+    mode = mode.strip().lower()
+    if mode == 'tous':
+        return True
+    if mode == 'admins':
+        return bool(getattr(user, 'is_admin_role', False))
+    return False
+
+
+def _lot_servi(action: AgentAction, copilote: bool) -> bool:
+    """Le lot de déploiement de ``action`` est-il servi selon l'interrupteur ?"""
+    if action.lot == LOT_COPILOTE:
+        return copilote
+    if action.lot == LOT_HERITE:
+        return not copilote
+    return True
+
+
 def for_user(user) -> List[AgentAction]:
     """Sous-ensemble du catalogue que ``user`` a le droit d'exécuter.
 
@@ -278,11 +307,18 @@ def for_user(user) -> List[AgentAction]:
     ARC33 — les actions AUTO-DÉCOUVERTES d'un module ``ModuleToggle``-OFF pour
     la société du caller sont absentes du catalogue (gatage par société,
     quel que soit le rôle — même sémantique que la recherche globale).
+
+    COP-G1 — l'interrupteur ``ASSISTANT_COPILOTE`` (:func:`copilote_allume_pour`)
+    sert le lot ``copilote`` seulement s'il est allumé pour ce compte et le lot
+    ``herite`` seulement s'il est éteint. Tout appelant (catalogue, confirmation
+    d'une action) passe par cette fonction : la règle n'existe qu'ici.
     """
     hidden = _hidden_keys_for(user)
+    copilote = copilote_allume_pour(user)
     return [
         a for a in all_actions()
-        if a.key not in hidden and _user_may_run(user, a)
+        if a.key not in hidden and _lot_servi(a, copilote)
+        and _user_may_run(user, a)
     ]
 
 

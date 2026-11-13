@@ -124,6 +124,85 @@ class ForUserFilterTest(TestCase):
         self.assertEqual(for_user(None), [])
 
 
+class InterrupteurCopiloteTest(TestCase):
+    """COP-G1 — ``ASSISTANT_COPILOTE`` (aucun | admins | tous ; inconnu =
+    aucun) : une action ``lot='copilote'`` n'est servie que si le copilote est
+    allumé pour le compte, une action ``lot='herite'`` que s'il est éteint,
+    une action sans lot toujours."""
+
+    def setUp(self):
+        company = Company.objects.create(nom='Copilote Co', slug='copilote-co')
+        admin_role = Role.objects.create(
+            company=company, nom='Administrateur',
+            permissions=['roles_gerer', 'crm_voir'])
+        sales_role = Role.objects.create(
+            company=company, nom='Commercial', permissions=['crm_voir'])
+        self.admin = User.objects.create_user(
+            username='cop_admin', password='x', role=admin_role,
+            company=company)
+        self.commercial = User.objects.create_user(
+            username='cop_sales', password='x', role=sales_role,
+            company=company)
+        for cle, lot in (('tmp.cop.copilote', 'copilote'),
+                         ('tmp.cop.herite', 'herite'),
+                         ('tmp.cop.sans_lot', None)):
+            register(AgentAction(key=cle, label=cle, description='d',
+                                 endpoint='/x/', lot=lot))
+            self.addCleanup(unregister, cle)
+
+    def _servies(self, user, valeur):
+        with self.settings(ASSISTANT_COPILOTE=valeur):
+            return {a.key for a in for_user(user)
+                    if a.key.startswith('tmp.cop.')}
+
+    def test_tous_allume_pour_admin_et_commercial(self):
+        attendu = {'tmp.cop.copilote', 'tmp.cop.sans_lot'}
+        self.assertEqual(self._servies(self.admin, 'tous'), attendu)
+        self.assertEqual(self._servies(self.commercial, 'tous'), attendu)
+
+    def test_admins_allume_seulement_pour_admin(self):
+        self.assertEqual(self._servies(self.admin, 'admins'),
+                         {'tmp.cop.copilote', 'tmp.cop.sans_lot'})
+        self.assertEqual(self._servies(self.commercial, 'admins'),
+                         {'tmp.cop.herite', 'tmp.cop.sans_lot'})
+
+    def test_aucun_et_valeur_inconnue_eteignent_pour_tous(self):
+        for valeur in ('aucun', 'TOUS_', 'oui', ''):
+            for user in (self.admin, self.commercial):
+                self.assertEqual(self._servies(user, valeur),
+                                 {'tmp.cop.herite', 'tmp.cop.sans_lot'},
+                                 (valeur, user.username))
+
+    def test_valeur_insensible_a_la_casse_et_aux_blancs(self):
+        self.assertIn('tmp.cop.copilote', self._servies(self.admin, ' Admins '))
+
+    def test_defaut_du_reglage_est_admins(self):
+        from django.conf import settings
+        self.assertEqual(getattr(settings, 'ASSISTANT_COPILOTE', None), 'admins')
+
+    def test_confirmation_suit_la_meme_regle(self):
+        """Une action du lot ``copilote`` éteint pour le compte est refusée par
+        l'endpoint de confirmation (403), comme absente du catalogue."""
+        from rest_framework.test import APIClient
+
+        from apps.agent.services import calculer_preuve_confirmation
+
+        def confirmer(user):
+            client = APIClient()
+            client.force_authenticate(user)
+            corps = {'action_key': 'tmp.cop.copilote', 'risk_level': 'internal',
+                     'inputs': {}, 'preuve': calculer_preuve_confirmation(
+                         secret='s', action_key='tmp.cop.copilote',
+                         company_id=user.company_id, user_id=user.pk,
+                         inputs={}, object_id=None)}
+            return client.post('/api/django/agent/logs/confirmer/', corps,
+                               format='json').status_code
+
+        with self.settings(ASSISTANT_COPILOTE='admins', AGENT_HMAC_SECRET='s'):
+            self.assertEqual(confirmer(self.commercial), 403)
+            self.assertEqual(confirmer(self.admin), 201)
+
+
 class GuardedWriteActionsTest(TestCase):
     """FG351 — les écritures en langage naturel (Devis/Lead/Client) sont des
     actions GARDÉES : risk=outward (=> propose→confirm côté relais) et gatées

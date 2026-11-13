@@ -1524,6 +1524,9 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
 
+# COP-G1 — interrupteur du copilote commercial : `aucun` | `admins` (défaut) | `tous` ; toute autre valeur = `aucun`.
+ASSISTANT_COPILOTE = os.environ.get('ASSISTANT_COPILOTE', 'admins')
+
 # VAO22/VAO4 — veille appels d'offres : interrupteur d'ARMEMENT de la collecte
 # automatique, DÉSARMÉ par défaut (règle #5 volet (b) — l'accord explicite et
 # daté du fondateur est requis AVANT la première exécution réelle). À 0, la
