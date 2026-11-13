@@ -400,7 +400,7 @@ describe('StockList — dialogue « Transférer » : identifiants envoyés en en
     await transfererTrois()
     await waitFor(() => expect(http.post).toHaveBeenCalledWith('/stock/transferts/', {
       produit: 1, source: 5, destination: 6, quantite: 3, note: '',
-    }))
+    }, { headers: { 'Idempotency-Key': expect.any(String) } }))  // ACNC23 — clé d'idempotence en en-tête
   })
 })
 
