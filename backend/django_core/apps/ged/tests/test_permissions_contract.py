@@ -177,3 +177,46 @@ class GedPermissionContractTests(TestCase):
         for doc in (facture, upload):
             self.assertEqual(auth(c2).get(
                 f'{BASE}/documents/{doc.pk}/').status_code, 404)
+
+    # ── ALEC42/ALEC43 — demandes de signature et leurs destinataires ────────
+    def _demande_deux_signataires(self):
+        from django.utils import timezone
+        from apps.ged.models import DemandeSignatureDocument, SignataireDemande
+        demande = DemandeSignatureDocument.objects.create(
+            company=self.co, document=self.doc, signataire_nom='Sara',
+            signataire_email='sara@client.ma', adresse_ip='10.0.0.7',
+            user_agent='Navigateur S')
+        SignataireDemande.objects.create(
+            company=self.co, demande=demande, nom='Sara', ordre=1,
+            email='sara@client.ma', telephone='0600000001',
+            statut='signe',
+            date_action=timezone.now(), adresse_ip='10.0.0.7',
+            user_agent='Navigateur S')
+        SignataireDemande.objects.create(
+            company=self.co, demande=demande, nom='Omar', ordre=2,
+            email='omar@client.ma', telephone='0600000002')
+        return demande
+
+    def test_signatures_reservees_au_module(self):
+        terrain = self._role_livre('Commercial terrain', 'alec42-terrain')
+        commercial = self._role_livre('Commercial', 'alec42-c')
+        directeur = self._role_livre('Directeur', 'alec42-dir')
+        demande = self._demande_deux_signataires()
+        routes = (
+            'demandes-signature/', f'demandes-signature/{demande.pk}/',
+            f'demandes-signature/{demande.pk}/pdf-signe/',
+            f'signataires-demande/?demande={demande.pk}')
+        for path in routes:
+            with self.subTest(path=path):
+                self.assertEqual(
+                    auth(terrain).get(f'{BASE}/{path}').status_code, 403)
+                for user in (commercial, directeur):
+                    self.assertNotEqual(
+                        auth(user).get(f'{BASE}/{path}').status_code, 403)
+        for user in (commercial, directeur):
+            resp = auth(user).get(f'{BASE}/demandes-signature/')
+            self.assertEqual(resp.status_code, 200, user.username)
+            rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+            self.assertEqual([r['id'] for r in rows], [demande.pk])
+            self.assertEqual(auth(user).get(
+                f'{BASE}/demandes-signature/{demande.pk}/').status_code, 200)

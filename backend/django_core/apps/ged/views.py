@@ -3204,7 +3204,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'pdf_signe':
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # ALEC42 — droit du module GED
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3476,7 +3476,7 @@ class SignataireDemandeViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMix
     parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'id']
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]  # ALEC42 — droit du module GED
 
     def get_queryset(self):
         qs = SignataireDemande.objects.filter(
