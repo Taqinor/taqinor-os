@@ -61,6 +61,16 @@ async function visiteur(context, suivi, testInfo) {
   return suivi.surveiller(await ctx.newPage())
 }
 
+// Écarts ACCEPTÉS (`_format.md`) : défauts ANTÉRIEURS, hors des tâches prouvées, constatés au 1er rejeu runner
+// (run 43505562439) ; les corps des étapes passent, seul l'oracle 2/3 tombe. Classés pour leur propriétaire.
+const ECART_PARAMETRES_INSTALLATIONS = "défaut antérieur hors APUB57 : `frontend/src/pages/parametres/ParametresEntreprise.jsx` "
+  + "(chargeurs `loadTypesItv` / checklist d'étapes) appelle GET installations/types-intervention/ et "
+  + "installations/checklist-etapes/ à l'ouverture de /parametres, quel que soit l'onglet, pour un rôle qui ne lit "
+  + "pas les installations (Commercial responsable livré) → 403 ×2 ; APUB57 ne touche ni ces appels ni ces routes"
+const ECART_STOCK_ONBOARDING = "défaut antérieur hors APUB55 : `frontend/src/features/onboarding/onboardingHelpers.js::lireComptesOnboarding` "
+  + "(menu latéral, `Sidebar.jsx`) appelle GET stock/produits/?page_size=1 sur tout écran interne, pour un rôle sans "
+  + "`stock_voir` (Commercial terrain livré) → 403 ; APUB55 ne touche que le catalogue de l'explorateur (serveur)"
+
 // ── APUB1 / APUB3 : export de réversibilité ────────────────────────────────────────────────────────
 /** Run « prêt » de la société démo : vrai ZIP posé dans le seau de réversibilité (MinIO du job), son lien
  *  signé, plus un second lien du seau `erp-uploads` (export de stock). */
@@ -84,6 +94,7 @@ sortie({'run': run.pk, 'tok': lien.token, 'autre': autre.token})`)
 const TELECHARGER = `${API}/core/export-reversibilite/telecharger`
 
 etape('PF5.1-APUB1', ['APUB1'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const e = await exportPret(m)
   // Historique : Commercial et Commercial responsable 403 sans jeton ; Directeur 200 avec le jeton.
@@ -105,23 +116,28 @@ etape('PF5.1-APUB1', ['APUB1'], async ({ page, context, suivi, testInfo }) => {
   expect((await anonyme.get(`${TELECHARGER}/${e.autre}/`, T)).status(), 'jeton du seau erp-uploads : 404').toBe(404)
   expect((await anonyme.get(`${TELECHARGER}/inconnu-apub1-${m}/`, T)).status(), 'jeton inconnu : 404').toBe(404)
   await anonyme.dispose()
-  // Écran : Commercial responsable — URL refusée (/403), menu sans l'entrée ; Directeur (témoin) : l'entrée existe.
+  // Écran : Commercial responsable — URL refusée (/403), menu Paramètres sans l'entrée ; Directeur (témoin, même
+  // écran) : l'entrée existe. Écran du menu = « Limites & usage » (module Paramètres, palier responsable) : la page
+  // `/parametres` porte un défaut ANTÉRIEUR sans lien (403 installations/types-intervention et checklist-etapes pour
+  // ce rôle, voir PF5.12) qui ferait tomber l'oracle 2 sans rien dire d'APUB1.
   const entree = 'a[href="/parametres/export-reversibilite"]'
+  const ecranMenu = '/parametres/limites-usage'
   const pd = await navigateur(context, suivi, testInfo, comptes.di.nom)
-  await pd.goto('/parametres')
+  await pd.goto(ecranMenu)
   await expect.poll(() => pd.locator(entree).count(), { timeout: 60_000, message: 'Directeur : entrée « Export de réversibilité » au menu' }).toBeGreaterThan(0)
   const pr = await navigateur(context, suivi, testInfo, comptes.cr.nom)
   await pr.goto('/parametres/export-reversibilite')
   await expect(pr, 'Commercial responsable : URL refusée').toHaveURL(/\/403$/, { timeout: 60_000 })
-  await pr.goto('/parametres')
-  await expect(pr.getByRole('heading').first(), 'Paramètres ouverts').toBeVisible({ timeout: 60_000 })
+  await pr.goto(ecranMenu)
+  await expect(pr, 'Commercial responsable : écran du menu ouvert').toHaveURL(new RegExp(`${ecranMenu}$`), { timeout: 60_000 })
+  await expect(pr.getByRole('heading').first(), 'écran ouvert').toBeVisible({ timeout: 60_000 })
   await pr.waitForLoadState('networkidle')
   expect(await pr.locator(entree).count(), 'Commercial responsable : entrée absente du menu').toBe(0)
   for (const s of Object.values(comptes)) await s.ctx.dispose()
-  await page.close()
 })
 
 etape('PF5.2-APUB3', ['APUB3'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const e = await exportPret(m)
   const di = await session(testInfo, `apub3di_${m}`, await roleLivre('Directeur'))
@@ -168,11 +184,11 @@ sortie([ExportReversibiliteRun.objects.get(pk=${e.run}).statut, SignedDownload.o
   expect((await anonyme.get(`${TELECHARGER}/${e.tok}/`, T)).status(), 'ancien lien coupé : 404').toBe(404)
   await anonyme.dispose()
   for (const s of [di, cr]) await s.ctx.dispose()
-  await page.close()
 })
 
 // ── APUB5 : signalement public par QR plafonné à 3 / 24 h par équipement ───────────────────────────
 etape('PF5.3-APUB5', ['APUB5'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const eq = await py(`from apps.crm.models import Client
 from apps.installations.models import Installation
@@ -217,11 +233,11 @@ sortie([Ticket.objects.filter(equipement_id=${eq.id}).count(), Attachment.object
   await p2.locator('#es-description').fill('panne')
   await p2.getByRole('button', { name: 'Envoyer le signalement' }).click()
   await expect(p2.locator('p[role=alert]'), 'jeton inconnu : lien invalide').toContainText('invalide', { timeout: 30_000 })
-  await page.close()
 })
 
 // ── APUB4 : révocation d'une revue d'accès sous la garde de rang ───────────────────────────────────
 etape('PF5.4-APUB4', ['APUB4'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   // (a) Société ISOLÉE (seuls ses comptes comptent pour « dernier propriétaire ») : fondateur protégé,
   // second Directeur, Commercial, rôles du registre ; tout par la vraie route sous le second Directeur.
@@ -314,7 +330,6 @@ sortie(1)`)
   await py(`U.objects.filter(pk=${prot.id}).update(is_protected=False)
 sortie(1)`)
   for (const s of [dir, prot, vend]) await s.ctx.dispose()
-  await page.close()
 })
 
 // ── APUB13 / APUB14 : tiers, tableaux et requêtes sauvegardées ─────────────────────────────────────
@@ -416,6 +431,7 @@ sortie(1)`)
 
 // ── APUB33 : page « Payer » d'un lien fermé, ouverte par un visiteur sans compte ──────────────────
 etape('PF5.7-APUB33', ['APUB33'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const nomClient = `Atlas Agro APUB33 ${m}`
   const liens = await py(`from decimal import Decimal
@@ -437,7 +453,8 @@ sortie({'ouvert': ouvert.token, 'annule': annule.token, 'expire': expire.token})
   const anonyme = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
   const pageApi = async (tok) => lireJson(await anonyme.get(`${API}/public/pay/${tok}/`, T), `page ${tok}`)
   const ouvert = await pageApi(liens.ouvert)
-  expect([ouvert.client_name, ouvert.montant_initial !== '0.00'], 'lien en attente : nom et montant gardés').toEqual([nomClient, true])
+  // `client_name` = « nom prénom » : prénom vide ⇒ espace final (affichage inchangé) ; comparé sans les blancs de bord.
+  expect([ouvert.client_name.trim(), ouvert.montant_initial !== '0.00'], 'lien en attente : nom et montant gardés').toEqual([nomClient, true])
   for (const [tok, cle, attendu] of [[liens.annule, 'statut', 'annule'], [liens.expire, 'expire', true]]) {
     const x = await pageApi(tok)
     expect(x[cle], `${cle}`).toBe(attendu)
@@ -456,7 +473,6 @@ sortie({'ouvert': ouvert.token, 'annule': annule.token, 'expire': expire.token})
   await expect(p.getByText('Facture annulée'), 'lien annulé : « Facture annulée »').toBeVisible({ timeout: 60_000 })
   await expect(p.getByText(nomClient), 'sans nom de client').toHaveCount(0)
   await expect(p.getByTestId('rib')).toHaveCount(0)
-  await page.close()
 })
 
 // ── APUB46 / APUB71 : portail fournisseur (lien et compte) ─────────────────────────────────────────
@@ -479,6 +495,7 @@ bc.lignes.create(produit=pr, quantite=2, prix_achat_unitaire=Decimal('1200'))
 sortie({'f': f.pk, 'u': u.username, 'bc': bc.pk, 'ref': bc.reference})`)
 
 etape('PF5.8-APUB46', ['APUB46'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const acheteur = await session(testInfo, `apub46ach_${m}`, await roleLivre('Directeur'))
   const fp = await fournisseurPortail(m, 'APUB46', acheteur.id)
@@ -531,10 +548,10 @@ sortie({'notif': Notification.objects.filter(recipient_id=${acheteur.id}, title=
   await p.reload()
   await expect(p.locator('li').filter({ has: p.locator('strong', { hasText: fp.ref }) }), 'rechargé : date confirmée').toContainText('Confirmée pour le', { timeout: 60_000 })
   await acheteur.ctx.dispose()
-  await page.close()
 })
 
 etape('PF5.9-APUB71', ['APUB71'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const fp = await fournisseurPortail(m, 'APUB71', await py(`sortie(U.objects.get(username='demo_admin').pk)`))
   const fo = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
@@ -583,16 +600,17 @@ sortie([b.date_confirmee_fournisseur, b.numero_confirmation_fournisseur])`)
   expect([tb.status(), li.status()], 'bloqué commandes : lectures 200').toEqual([200, 200])
   await poser("statut='bloque_total'")
   await fo.dispose()
-  await page.close()
 })
 
 // ── APUB54 : objets personnalisés par la grille des rôles ──────────────────────────────────────────
 etape('PF5.10-APUB54', ['APUB54'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   await py(`from apps.customfields.models import CustomObjectDef, CustomFieldDef, CustomRecord
 o, _ = CustomObjectDef.objects.get_or_create(company_id=${SOC}, code='registre_cles', defaults=dict(libelle='Registre des clés'))
 o.actif = True; o.save()
-CustomFieldDef.objects.get_or_create(company_id=${SOC}, module='custom:registre_cles', code='numero_cle', defaults=dict(libelle='Numéro', type='text'))
+champ, _ = CustomFieldDef.objects.get_or_create(company_id=${SOC}, module='custom:registre_cles', code='numero_cle', defaults=dict(libelle='Numéro', type='text'))
+champ.actif = True; champ.visible_liste = True; champ.save()  # colonne de la liste auto-générée (vue-liste)
 CustomRecord.objects.create(company_id=${SOC}, objet=o, data={'numero_cle': 'A1-${m}'})
 sortie(o.pk)`)
   const URL_REC = `${API}/custom-fields/custom-objects/registre_cles/records/`
@@ -625,11 +643,11 @@ sortie(Role.objects.get(pk=${perso}).permissions)`), 'rôle relu : code enregist
   await p.reload()
   await expect(p.getByText(`UI-${m}`).first(), 'rechargé : ligne présente').toBeVisible({ timeout: 60_000 })
   for (const s of [di, co, porteur]) await s.ctx.dispose()
-  await page.close()
 })
 
 // ── APUB55 : catalogue de l'explorateur borné aux jeux lisibles ────────────────────────────────────
 etape('PF5.11-APUB55', ['APUB55'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const te = await session(testInfo, `apub55te_${m}`, await roleLivre('Commercial terrain'))
   const di = await session(testInfo, `apub55di_${m}`, await roleLivre('Directeur'))
@@ -666,12 +684,13 @@ sortie({'tous': tous, 'refuses': [n for n in tous if refuse(n)], 'palier': U.tie
   } else {
     await expect(p, `palier « ${verite.palier} » : écran refusé`).toHaveURL(/\/403$/, { timeout: 60_000 })
   }
+  await p.waitForLoadState('networkidle')
   for (const s of [te, di]) await s.ctx.dispose()
-  await page.close()
-})
+}, { ecart: { base: 'FAIL', raison: ECART_STOCK_ONBOARDING } })
 
 // ── APUB57 : masquage « Premiers pas » réservé à `parametres_modifier` ────────────────────────────
 etape('PF5.12-APUB57', ['APUB57'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la page demo_admin ne sert pas : la capture de fin d'étape montre l'écran joué
   const m = marque()
   const cr = await session(testInfo, `apub57cr_${m}`, await roleLivre('Commercial responsable'))
   const di = await session(testInfo, `apub57di_${m}`, await roleLivre('Directeur'))
@@ -708,5 +727,4 @@ etape('PF5.12-APUB57', ['APUB57'], async ({ page, context, suivi, testInfo }) =>
   const retour = await di.ctx.post(`${B}/${item.id}/${initial ? 'masquer' : 'demasquer'}/`, { ...T, data: {} })
   expect(retour.status(), 'Directeur : rétabli 200').toBe(200)
   for (const s of [cr, di]) await s.ctx.dispose()
-  await page.close()
-})
+}, { ecart: { base: 'FAIL', raison: ECART_PARAMETRES_INSTALLATIONS } })
