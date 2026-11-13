@@ -12,7 +12,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { connexionApi, assurerSessionPage, textePdf, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASUP', ['ASUP1', 'ASUP2', 'ASUP3', 'ASUP12', 'ASUP7', 'ASUP9', 'ASUP41', 'ASUP43', 'ASUP46'])
+const etape = groupe('ASUP', ['ASUP1', 'ASUP2', 'ASUP3', 'ASUP12', 'ASUP7', 'ASUP9', 'ASUP41', 'ASUP43', 'ASUP46', 'ASUP8', 'ASUP10', 'ASUP11', 'ASUP15', 'ASUP45'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -511,6 +511,282 @@ sortie([Appointment.objects.get(pk=pk).statut for pk in ${JSON.stringify(ids.rdv
   } finally {
     await py(`from apps.crm.models import Lead, Appointment
 Appointment.objects.filter(lead_id=${ids.lead}).delete()
+Lead.all_objects.filter(pk=${ids.lead}).delete()`)
+  }
+})
+
+// Entrée ouverte de la corbeille commune (/parametres/corbeille) d'un lead.
+const ENTREE = (pk) => `from django.contrib.contenttypes.models import ContentType
+from apps.trash.models import ElementSupprime
+from apps.crm.models import Lead
+_e = ElementSupprime.objects.filter(content_type=ContentType.objects.get_for_model(Lead), object_id=${pk}).order_by('-pk').first()
+`
+
+etape('PF10.4-ASUP8', ['ASUP8'], async ({ page, testInfo }) => {
+  const s = sondeHote('C-ASUP-005')
+  expect(s.ok, `sonde C-ASUP-005 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-005 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  const tel = telephoneMobileUnique()
+  const di = await session(testInfo, `asup8di_${m}`, 'Directeur')
+  const ids = await py(`from decimal import Decimal
+from authentication.models import Company
+from apps.crm.models import Lead
+l = Lead.objects.create(company_id=${SOC}, nom='Corbeille ${m}', email='corb_${m}@asup.invalid', telephone='${tel}', gps_lat=Decimal('33.5'), gps_lng=Decimal('-7.5'), note='Rappeler après 18h', owner_id=${di.id}, stage='NEW')
+autre = Company.objects.create(nom='ASUP8 autre ${m}', slug='asup8-autre-${m}')
+v = Lead.objects.create(company=autre, nom='Vivant ${m}', telephone='${tel}')
+sortie(dict(lead=l.pk, autre=autre.pk, vivant=v.pk))`)
+  try {
+    // Le Directeur met le lead à la corbeille par la vraie route.
+    const d = await di.ctx.delete(`${API}/crm/leads/${ids.lead}/`, T)
+    expect(d.status(), `suppression : ${(await d.text()).slice(0, 200)}`).toBeLessThan(300)
+    const avant = await py(`from django.db import transaction
+from datetime import timedelta
+from django.utils import timezone
+from apps.crm.models import Lead
+from apps.crm.dsr_provider import prospects_hors_duree
+from apps.crm.leads_selectors import lead_ids_par_identifiant
+from authentication.models import Company
+r = dict(supprime=Lead.all_objects.get(pk=${ids.lead}).is_deleted, selecteur=lead_ids_par_identifiant(Company.objects.get(pk=${SOC}), '${tel}'))
+with transaction.atomic():
+    vieux = Lead.objects.create(company_id=${SOC}, nom='Vieux ${m}', telephone='${telephoneMobileUnique()}')
+    vieux.soft_delete()
+    Lead.all_objects.filter(pk=vieux.pk).update(date_creation=timezone.now() - timedelta(days=4 * 365))
+    r['retention'] = vieux.pk in [x.pk for x in prospects_hors_duree()]
+    transaction.set_rollback(True)
+sortie(r)`)
+    expect(avant.supprime, 'lead en corbeille').toBe(true)
+    expect(avant.selecteur, 'sélecteur des fournisseurs : rend le lead supprimé').toEqual([ids.lead])
+    expect(avant.retention, 'rétention : un prospect supprimé hors durée est compté').toBe(true)
+    // Demande d'effacement sur le téléphone, traitée par le Directeur (vraie route).
+    const dsr = await py(`from core.models import DataSubjectRequest
+sortie(DataSubjectRequest.objects.create(company_id=${SOC}, subject_identifier='${tel}', kind=DataSubjectRequest.KIND_ERASURE).pk)`)
+    ids.dsr = dsr
+    const t = await di.ctx.post(`${API}/core/dsr-requests/${dsr}/traiter/`, T)
+    expect(t.status(), `traiter : ${(await t.text()).slice(0, 300)}`).toBe(200)
+    const apres = await py(`from apps.crm.models import Lead
+l = Lead.all_objects.get(pk=${ids.lead}); v = Lead.all_objects.get(pk=${ids.vivant})
+sortie(dict(lead=[l.nom, l.email, l.telephone, l.gps_lat, l.gps_lng, l.note, l.is_deleted], vivant=[v.nom, v.telephone]))`)
+    expect(apres.lead, 'lead supprimé anonymisé (PII vides), toujours en corbeille').toEqual(['Anonymisé', null, null, null, null, null, true])
+    expect(apres.vivant, 'lead de l\'autre société jamais touché').toEqual([`Vivant ${m}`, tel])
+    await page.goto('/parametres/corbeille')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await di.ctx.dispose()
+    await py(`from apps.crm.models import Lead
+from core.models import DataSubjectRequest
+from authentication.models import Company
+if ${ids.dsr || 0}: DataSubjectRequest.objects.filter(pk=${ids.dsr || 0}).delete()
+for pk in (${ids.lead}, ${ids.vivant}):
+    try: Lead.all_objects.filter(pk=pk).delete()
+    except Exception as exc: print('nettoyage', pk, exc)
+try: Company.objects.filter(pk=${ids.autre}).delete()
+except Exception: pass`)
+  }
+})
+
+etape('PF10.3-ASUP10', ['ASUP10'], async ({ page }) => {
+  const s = sondeHote('C-ASUP-007')
+  const m = marque()
+  const ids = await py(`from datetime import timedelta
+from django.utils import timezone
+from apps.crm.models import Lead
+own = U.objects.get(username='demo_admin')
+quand = timezone.now() - timedelta(days=2)
+l = Lead.objects.create(company_id=${SOC}, nom='ASUP10 ${m}', telephone='${telephoneMobileUnique()}', owner=own, stage='NEW')
+Lead.objects.filter(pk=l.pk).update(is_archived=True, archived_at=quand, archived_by=own)
+Lead.objects.get(pk=l.pk).soft_delete(user=own)
+${ENTREE('l.pk')}
+sortie(dict(lead=l.pk, entree=_e.pk, quand=str(quand), par=own.pk))`)
+  try {
+    // 1) /parametres/corbeille : « Restaurer » (vraie route) sur le lead archivé PUIS supprimé.
+    const r = await page.request.post(`${API}/trash/corbeille/${ids.entree}/restaurer/`, T)
+    expect(r.status(), `restaurer : ${(await r.text()).slice(0, 300)}`).toBe(200)
+    const lu = await py(`from apps.crm.models import Lead
+from apps.trash.models import ElementSupprime
+l = Lead.all_objects.get(pk=${ids.lead})
+sortie([l.is_deleted, l.is_archived, str(l.archived_at), l.archived_by_id, ElementSupprime.objects.get(pk=${ids.entree}).restaure_le is not None])`)
+    expect(lu, 'non supprimé, TOUJOURS archivé, dates d\'archivage gardées, entrée fermée').toEqual([false, true, ids.quand, ids.par, true])
+    // 2) Le repli GÉNÉRIQUE lui-même (sans restaurateur `crm.lead`), transaction ANNULÉE.
+    const rep = await py(`from datetime import timedelta
+from django.db import transaction
+from django.utils import timezone
+from apps.crm.models import Lead
+from apps.trash import registry
+from apps.trash.services import restaurer
+own = U.objects.get(username='demo_admin')
+r = {}
+with transaction.atomic():
+    quand = timezone.now() - timedelta(days=3)
+    l = Lead.objects.create(company_id=${SOC}, nom='ASUP10 repli ${m}', owner=own, stage='NEW')
+    Lead.objects.filter(pk=l.pk).update(is_archived=True, archived_at=quand, archived_by=own)
+    Lead.objects.get(pk=l.pk).soft_delete(user=own)
+${ENTREE('l.pk').split('\n').map((x) => (x ? `    ${x}` : x)).join('\n')}
+    retire = registry._RESTAURATEURS.pop('crm.lead', None)
+    try:
+        restaurer(_e)
+    finally:
+        if retire is not None: registry._RESTAURATEURS['crm.lead'] = retire
+    l = Lead.all_objects.get(pk=l.pk); _e.refresh_from_db()
+    r = dict(restaurateur_enregistre=retire is not None, etat=[l.is_deleted, l.is_archived, l.archived_at == quand, l.archived_by_id == own.pk, _e.restaure_le is not None])
+    transaction.set_rollback(True)
+sortie(r)`)
+    expect(rep.etat, 'repli générique : lève le seul drapeau de suppression').toEqual([false, true, true, true, true])
+    // Sonde à bouchons Django : périmée si elle ne s'exécute plus (nommée dans le journal, jamais comptée).
+    if (!s.ok) console.log(`[ASUP10] sonde C-ASUP-007 non exécutable : ${s.err}`)
+    else expect(s.res.repro, `sonde C-ASUP-007 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+    await page.goto('/parametres/corbeille')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await py(`from apps.crm.models import Lead
+Lead.all_objects.filter(pk=${ids.lead}).delete()`)
+  }
+})
+
+etape('PF10.3-ASUP11', ['ASUP11'], async ({ page, testInfo }) => {
+  const m = marque()
+  const tel = telephoneMobileUnique()
+  const cr = await session(testInfo, `asup11cr_${m}`, 'Commercial responsable')
+  const ids = await py(`from apps.crm.models import Lead
+own = U.objects.get(pk=${cr.id})
+ancien = Lead.objects.create(company_id=${SOC}, nom='Ancien ${m}', telephone='${tel}', owner=own, stage='NEW')
+ancien.soft_delete(user=own)
+vivant = Lead.objects.create(company_id=${SOC}, nom='Nouveau ${m}', telephone='${tel}', owner=own, stage='NEW')
+seul = Lead.objects.create(company_id=${SOC}, nom='Seul ${m}', telephone='${telephoneMobileUnique()}', owner=own, stage='NEW')
+seul.soft_delete(user=own)
+${ENTREE('ancien.pk')}
+e1 = _e.pk
+${ENTREE('seul.pk')}
+sortie(dict(ancien=ancien.pk, vivant=vivant.pk, seul=seul.pk, e1=e1, e2=_e.pk))`)
+  try {
+    const r1 = await cr.ctx.post(`${API}/trash/corbeille/${ids.e1}/restaurer/`, T)
+    const c1 = await r1.text()
+    expect(r1.status(), `doublon : ${c1.slice(0, 300)}`).toBe(409)
+    expect(c1, 'nomme le doublon vivant').toContain(`doublon vivant : lead #${ids.vivant}`)
+    const r2 = await cr.ctx.post(`${API}/trash/corbeille/${ids.e2}/restaurer/`, T)
+    expect(r2.status(), `sans doublon : ${(await r2.text()).slice(0, 300)}`).toBe(200)
+    const lu = await py(`from apps.crm.models import Lead, LeadActivity
+from apps.trash.models import ElementSupprime
+a = Lead.all_objects.get(pk=${ids.ancien}); s = Lead.all_objects.get(pk=${ids.seul})
+sortie(dict(ancien=[a.is_deleted, ElementSupprime.objects.get(pk=${ids.e1}).restaure_le is None],
+  seul=[s.is_deleted, s.is_archived, ElementSupprime.objects.get(pk=${ids.e2}).restaure_le is not None],
+  chatter=LeadActivity.objects.filter(lead_id=${ids.seul}, body__startswith='Lead restauré').count()))`)
+    expect(lu.ancien, 'refusé : lead toujours supprimé, entrée ouverte').toEqual([true, true])
+    expect(lu.seul, 'restauré : non supprimé, archivage inchangé, entrée fermée').toEqual([false, false, true])
+    expect(lu.chatter, 'une ligne « restauré » au chatter').toBe(1)
+    await page.goto('/parametres/corbeille')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await cr.ctx.dispose()
+    await py(`from apps.crm.models import Lead
+for pk in (${ids.ancien}, ${ids.vivant}, ${ids.seul}):
+    try: Lead.all_objects.filter(pk=pk).delete()
+    except Exception as exc: print('nettoyage', pk, exc)`)
+  }
+})
+
+etape('PF10.2-ASUP45', ['ASUP45'], async ({ page, testInfo }) => {
+  const s = sondeHote('C-ASUP-019')
+  expect(s.ok, `sonde C-ASUP-019 exécutée : ${s.err || ''}`).toBe(true)
+  expect(s.res.repro, `sonde C-ASUP-019 : ${JSON.stringify(s.res.observe)}`).toBe(false)
+  const m = marque()
+  const co = await session(testInfo, `asup45co_${m}`, 'Commercial')
+  const ids = await py(`import datetime
+from django.contrib.contenttypes.models import ContentType
+from apps.crm.models import Lead
+from apps.records.models import Activity
+from apps.reporting.calendar import make_ics_token
+u = U.objects.get(pk=${co.id})
+ct = ContentType.objects.get_for_model(Lead)
+hier = datetime.date.today() - datetime.timedelta(days=1)
+leads = [Lead.objects.create(company_id=${SOC}, nom='ASUP45 %s ${m}' % n, owner=u, stage='NEW') for n in ('A1', 'A2', 'A3')]
+acts = [Activity.objects.create(company_id=${SOC}, content_type=ct, object_id=l.pk, summary='Rappeler %s ${m}' % n, assigned_to=u, due_date=hier) for l, n in zip(leads, ('A1', 'A2', 'A3'))]
+Lead.objects.filter(pk=leads[0].pk).update(is_archived=True)
+leads[1].soft_delete(user=u)
+sortie(dict(leads=[l.pk for l in leads], acts=[a.pk for a in acts], token=make_ics_token(u), de=str(hier - datetime.timedelta(days=1)), a=str(datetime.date.today() + datetime.timedelta(days=2))))`)
+  try {
+    const file = async () => {
+      const d = await (await co.ctx.get(`${API}/records/activities/ma-file/`, T)).json()
+      return { ids: d.items.filter((x) => x.kind === 'activite').map((x) => x.activity_id).sort((a, b) => a - b), retard: d.resume?.en_retard }
+    }
+    const f1 = await file()
+    expect(f1.ids, 'Ma file : seul A3').toEqual([ids.acts[2]])
+    expect(f1.retard, 'nb en retard : A3 seul').toBe(1)
+    const cal = await (await co.ctx.get(`${API}/reporting/calendar/?from=${ids.de}&to=${ids.a}&types=activite`, T)).json()
+    const titres = (Array.isArray(cal) ? cal : cal.events).map((e) => e.title).filter((t) => t.includes(m))
+    expect(titres, 'Calendrier : seul A3').toEqual([`Rappeler A3 ${m}`])
+    const anon = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
+    const ics = await (await anon.get(`${API}/reporting/calendar.ics?token=${ids.token}`, T)).text()
+    await anon.dispose()
+    expect(ics, 'flux ICS : A3 présent').toContain(`Rappeler A3 ${m}`)
+    expect(ics, 'flux ICS : A1 (archivé) absent').not.toContain(`Rappeler A1 ${m}`)
+    expect(ics, 'flux ICS : A2 (supprimé) absent').not.toContain(`Rappeler A2 ${m}`)
+    // Le lead de A1 restauré (vraie route, par demo_admin) ⇒ A1 réapparaît.
+    const r = await page.request.post(`${API}/crm/leads/${ids.leads[0]}/restaurer/`, T)
+    expect(r.status(), `restaurer A1 : ${(await r.text()).slice(0, 200)}`).toBe(200)
+    expect((await file()).ids, 'A1 réapparaît').toEqual([ids.acts[0], ids.acts[2]])
+    await page.goto('/apps')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await co.ctx.dispose()
+    await py(`from apps.crm.models import Lead
+from apps.records.models import Activity
+Activity.objects.filter(pk__in=${JSON.stringify(ids.acts)}).delete()
+for pk in ${JSON.stringify(ids.leads)}:
+    try: Lead.all_objects.filter(pk=pk).delete()
+    except Exception as exc: print('nettoyage', pk, exc)`)
+  }
+})
+
+etape('PF10.3-ASUP15', ['ASUP15'], async ({ page }) => {
+  const m = marque()
+  const ids = await py(`from apps.crm.models import Lead
+own = U.objects.get(username='demo_admin')
+l = Lead.objects.create(company_id=${SOC}, nom='ASUP15 ${m}', telephone='${telephoneMobileUnique()}', owner=own, stage='NEW')
+sortie(dict(lead=l.pk))`)
+  try {
+    // Supprimer (vraie route) puis « Annuler » par la route de la fenêtre d'undo (core.trash).
+    const d = await page.request.delete(`${API}/crm/leads/${ids.lead}/`, T)
+    const jd = await d.json()
+    expect(d.status(), JSON.stringify(jd).slice(0, 200)).toBeLessThan(300)
+    expect(jd.corbeille_id, 'corbeille_id rendu par la suppression').toBeTruthy()
+    const entree = await py(`${ENTREE(ids.lead)}
+sortie([_e.pk, _e.restaure_le is None])`)
+    expect(entree[1], 'entrée /parametres/corbeille ouverte après suppression').toBe(true)
+    const a = await page.request.post(`${API}/core/corbeille/${jd.corbeille_id}/restaurer/`, T)
+    expect(a.status(), `annuler : ${(await a.text()).slice(0, 200)}`).toBe(200)
+    const lu = await py(`from apps.crm.models import Lead
+from apps.trash.models import ElementSupprime
+sortie([Lead.all_objects.get(pk=${ids.lead}).is_deleted, ElementSupprime.objects.get(pk=${entree[0]}).restaure_le is not None])`)
+    expect(lu, 'lead vivant ; l\'entrée de /parametres/corbeille porte restaure_le').toEqual([false, true])
+    const liste = await (await page.request.get(`${API}/trash/corbeille/`, T)).json()
+    const actives = (Array.isArray(liste) ? liste : liste.results).map((x) => x.id)
+    expect(actives, 'entrée absente des actives').not.toContain(entree[0])
+    // Purge planifiée des DeletionRecord (transaction ANNULÉE : la purge réelle porte sur toutes les sociétés).
+    const purge = await py(`from datetime import timedelta
+from django.db import transaction
+from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
+from authentication.models import Company
+from core.models import DeletionRecord
+from core.trash import purger_deletion_records
+r = {}
+with transaction.atomic():
+    co = Company.objects.get(pk=${SOC}); ct = ContentType.objects.get_for_model(Company)
+    vieux = [DeletionRecord.objects.create(company=co, content_type=ct, object_id=co.pk, label='ASUP15 vieux %d' % i) for i in range(2)]
+    il_y_a = timezone.now() - timedelta(days=31)
+    DeletionRecord.objects.filter(pk=vieux[0].pk).update(created_at=il_y_a, restored_at=il_y_a)
+    DeletionRecord.objects.filter(pk=vieux[1].pk).update(created_at=il_y_a)
+    purger_deletion_records(company=co)
+    r['vieux_restants'] = DeletionRecord.objects.filter(pk__in=[v.pk for v in vieux]).count()
+    r['recent_garde'] = DeletionRecord.objects.filter(pk=${jd.corbeille_id}).exists()
+    transaction.set_rollback(True)
+sortie(r)`)
+    expect(purge, 'purge : les 2 anciens partis, le récent gardé').toEqual({ vieux_restants: 0, recent_garde: true })
+    await page.goto('/parametres/corbeille')
+    await expect(page.locator('body')).toBeVisible()
+  } finally {
+    await py(`from apps.crm.models import Lead
 Lead.all_objects.filter(pk=${ids.lead}).delete()`)
   }
 })
