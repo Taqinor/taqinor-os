@@ -368,3 +368,136 @@ class AssistantStatsTests(TestCase):
         for brut in ('0', '53', '-17739'):
             resp = _auth(self.admin).get(self.URL, {'semaines': brut})
             self.assertEqual(resp.status_code, 400, brut)
+
+
+# ── COP-G4 — libellés des objets nommés dans l'aperçu d'une proposition ──────
+URL_LIBELLES = '/api/django/agent/libelles/'
+CONTRAT_LIBELLES = json.loads(
+    (Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'assistant_libelles.json').read_text(encoding='utf-8'))
+
+
+class LibellesObjetsTest(TestCase):
+    """``GET agent/libelles/`` : le libellé en clair des objets désignés par
+    une action ; un objet inconnu, d'une autre société ou hors portée est
+    ABSENT (jamais une erreur) ; aucun prix d'achat."""
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from apps.crm.models import Client, Lead, RelanceEtape
+        from apps.ventes.models import Devis, Facture, LigneDevis, LigneFacture
+
+        self.co = Company.objects.create(nom='Lib Co', slug='lib-co')
+        self.autre = Company.objects.create(nom='Lib Autre', slug='lib-autre')
+        # Rôle restreint à SES enregistrements (SCOPE_SELF des commerciaux).
+        role = Role.objects.create(
+            company=self.co, nom='Commercial',
+            permissions=['crm_voir', 'ventes_voir', 'records_scope_soi'])
+        self.moi = User.objects.create_user(
+            username='lib_moi', password='x', role=role, company=self.co)
+        self.collegue = User.objects.create_user(
+            username='lib_col', password='x', role=role, company=self.co)
+        self.client_moi = Client.objects.create(
+            company=self.co, nom='Benali', prenom='Aziz')
+        self.lead = Lead.objects.create(
+            company=self.co, nom='Benali', prenom='Aziz', ville='Casablanca',
+            owner=self.moi, client=self.client_moi,
+            telephone='0612345678', email='aziz@example.com')
+        self.lead_collegue = Lead.objects.create(
+            company=self.co, nom='Alami', prenom='Sara', owner=self.collegue)
+        self.lead_autre = Lead.objects.create(
+            company=self.autre, nom='Etranger', prenom='Zed')
+        horaire = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        self.touche = RelanceEtape.objects.create(
+            company=self.co, lead=self.lead, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.WHATSAPP, libelle='Relance J+1',
+            due_at=horaire, due_date=horaire.date())
+        self.touche_collegue = RelanceEtape.objects.create(
+            company=self.co, lead=self.lead_collegue, cadence='contact',
+            ordre=1, canal=RelanceEtape.Canal.APPEL, libelle='Appel',
+            due_at=horaire, due_date=horaire.date())
+        self.devis = Devis.objects.create(
+            company=self.co, reference='DEV-202611-0045',
+            client=self.client_moi, lead=self.lead, created_by=self.moi,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'))
+        LigneDevis.objects.create(
+            devis=self.devis, designation='Kit', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'))
+        self.devis_collegue = Devis.objects.create(
+            company=self.co, reference='DEV-202611-0046',
+            client=Client.objects.create(company=self.co, nom='Autre'),
+            lead=self.lead_collegue, created_by=self.collegue,
+            taux_tva=Decimal('20.00'))
+        self.facture = Facture.objects.create(
+            company=self.co, reference='FAC-202611-0012',
+            client=self.client_moi, devis=self.devis, created_by=self.moi,
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=self.facture, designation='Kit', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'),
+            taux_tva=Decimal('20.00'))
+        Facture.objects.filter(pk=self.facture.pk).update(
+            montant_du=Decimal('1200'))
+
+    def _get(self, user, **params):
+        return _auth(user).get(URL_LIBELLES, params)
+
+    @staticmethod
+    def _blanc(texte):
+        """Espaces fines / insécables -> espace simple (comparaison au contrat)."""
+        return ' '.join(texte.replace(' ', ' ').replace('\xa0', ' ').split())
+
+    def test_libelles_au_format_du_contrat(self):
+        resp = self._get(self.moi, lead=self.lead.pk, devis=self.devis.pk,
+                         touche=self.touche.pk, facture=self.facture.pk,
+                         client=self.client_moi.pk)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(set(resp.data), set(CONTRAT_LIBELLES['exemple']))
+        corps = {k: self._blanc(v) for k, v in resp.data.items()}
+        self.assertEqual(corps['lead'], 'Aziz Benali — Casablanca')
+        self.assertEqual(corps['client'], 'Benali Aziz')
+        self.assertEqual(
+            corps['devis'], 'DEV-202611-0045 — Benali — 1 200,00 MAD TTC (envoyé)')
+        self.assertEqual(
+            corps['facture'],
+            'FAC-202611-0012 — Benali — 1 200,00 MAD TTC, reste dû 1 200,00')
+        self.assertEqual(
+            corps['touche'],
+            'Aziz Benali — Relance J+1 (WhatsApp, prévue le '
+            f'{self.touche.due_date:%d/%m/%Y})')
+
+    def test_objet_inconnu_autre_societe_ou_hors_portee_est_absent(self):
+        resp = self._get(
+            self.moi, lead=self.lead_collegue.pk, touche=self.touche_collegue.pk,
+            devis=self.devis_collegue.pk, client=999999)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, CONTRAT_LIBELLES['exemple_hors_portee'])
+        resp = self._get(self.moi, lead=self.lead_autre.pk)
+        self.assertEqual((resp.status_code, resp.data), (200, {}))
+
+    def test_chacun_voit_ce_que_voit_sa_portee(self):
+        resp = self._get(self.collegue, lead=self.lead.pk,
+                         devis=self.devis_collegue.pk)
+        self.assertNotIn('lead', resp.data)
+        self.assertIn('devis', resp.data)
+
+    def test_aucune_donnee_personnelle_ni_prix_achat(self):
+        resp = self._get(self.moi, lead=self.lead.pk, devis=self.devis.pk,
+                         facture=self.facture.pk)
+        texte = json.dumps(resp.data, ensure_ascii=False).lower()
+        for interdit in ('0612345678', 'aziz@example.com', 'prix_achat', 'marge'):
+            self.assertNotIn(interdit, texte)
+
+    def test_parametres_invalides_400_et_sans_parametre_vide(self):
+        for brut in ('abc', '-3', '1.5', '99999999999'):
+            self.assertEqual(self._get(self.moi, lead=brut).status_code, 400, brut)
+        repete = f'?lead={self.lead.pk}&lead={self.lead.pk}'
+        self.assertEqual(_auth(self.moi).get(URL_LIBELLES + repete).status_code, 400)
+        resp = self._get(self.moi)
+        self.assertEqual((resp.status_code, resp.data), (200, {}))
+
+    def test_authentification_requise(self):
+        self.assertIn(APIClient().get(URL_LIBELLES).status_code, (401, 403))

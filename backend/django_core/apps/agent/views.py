@@ -656,6 +656,61 @@ class AssistantEventNoteView(APIView):
                          'commentaire': ev.commentaire})
 
 
+# ── COP-G4 — libellés des objets nommés par une proposition de l'assistant ────
+# Contrat ``contract_samples/assistant_libelles.json`` : le relais demande, au
+# moment de préparer une proposition, le libellé des objets que ses entrées
+# désignent (``AgentAction.objets``). Un type -> le sélecteur de l'app qui le
+# possède (jamais un import de ses modèles).
+TYPES_LIBELLES = ('lead', 'devis', 'touche', 'facture', 'client')
+
+
+def _identifiants_libelles(request) -> dict:
+    """Entiers positifs des paramètres ``lead``, ``devis``, ``touche``,
+    ``facture`` et ``client`` (absents ignorés) ; un paramètre répété ou non
+    entier est un 400 nommé."""
+    ids = {}
+    for type_objet in TYPES_LIBELLES:
+        valeurs = request.query_params.getlist(type_objet)
+        if not valeurs:
+            continue
+        brut = valeurs[0].strip()
+        if len(valeurs) > 1 or not brut.isascii() or not brut.isdigit() \
+                or int(brut) >= 2 ** 31:
+            raise ParseError(f'{type_objet} : un entier positif est attendu.')
+        if int(brut):
+            ids[type_objet] = int(brut)
+    return ids
+
+
+class LibellesObjetsView(APIView):
+    """COP-G4 — ``GET /api/django/agent/libelles/`` : libellé en clair de chaque
+    objet demandé (``?lead=``, ``?devis=``, ``?touche=``, ``?facture=``,
+    ``?client=``), dans la société ET la portée de l'utilisateur. Un objet
+    inconnu, d'une autre société ou hors portée est ABSENT de la réponse (jamais
+    une erreur, jamais un indice de son existence). Lecture seule ; aucun prix
+    d'achat, aucune marge."""
+
+    # ASEC43 — vue INTERNE : un compte portail reçoit 403.
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(parameters=[
+        OpenApiParameter(t, int, required=False) for t in TYPES_LIBELLES
+    ], responses=inline_serializer('AssistantLibelles', {
+        t: drf_serializers.CharField(required=False) for t in TYPES_LIBELLES}))
+    def get(self, request):
+        from apps.crm.selectors import libelles_crm
+        from apps.ventes.selectors import libelles_ventes
+
+        ids = _identifiants_libelles(request)
+        libelles = libelles_crm(
+            request.user, **{k: ids[k] for k in ('lead', 'touche', 'client')
+                             if k in ids})
+        libelles.update(libelles_ventes(
+            request.user, **{k: ids[k] for k in ('devis', 'facture')
+                             if k in ids}))
+        return Response(libelles)
+
+
 class AutomationDraftView(APIView):
     """XPLT18 — ``POST /api/django/agent/actions/automation-draft/``.
 
