@@ -18,7 +18,6 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer)
 from rest_framework import serializers
 from rest_framework.decorators import api_view, parser_classes, permission_classes
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
@@ -101,10 +100,9 @@ def _verifier_ecriture(user, *equipes):
     touchée (Admin ; responsable de l'équipe ; tête de son département) —
     jamais l'équipe d'un autre (403)."""
     for equipe in equipes:
-        if not dispatch.peut_regler(user, equipe):
-            raise PermissionDenied(
-                "Seuls le responsable de l'équipe, le directeur commercial et "
-                "la Direction modifient ses règles.")
+        dispatch.exiger_ecriture_equipe(
+            user, equipe, "Seuls le responsable de l'équipe, le directeur "
+            "commercial et la Direction modifient ses règles.")
 
 
 @extend_schema_view(list=extend_schema(parameters=[
