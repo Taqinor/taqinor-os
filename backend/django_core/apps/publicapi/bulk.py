@@ -25,6 +25,8 @@ import io
 import json
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from apps.records.xlsx import neutralize_csv_cell  # APUB47 — ENF12, définition unique
 from .models import BulkJob
 
@@ -363,6 +365,17 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
 
     job.marquer_progression(total=total, cursor=start)
 
+    def _ecrire_journal():
+        if not error_rows:
+            return ''
+        blob = '\n'.join(
+            json.dumps(r, ensure_ascii=False, default=str) for r in error_rows
+        ).encode('utf-8')
+        from apps.records.storage import store_export_result
+        return store_export_result(
+            blob, company_id=job.company_id, job_id=f'{job.id}-erreurs',
+            ext='jsonl', content_type='application/x-ndjson')
+
     # AANA35 — le curseur est l'INDEX de la ligne de DONNÉES traitée (rang
     # dans ``rows``), jamais le numéro de ligne du fichier : un JSONL avec
     # des lignes vides décale ces deux nombres, et reprendre à
@@ -379,6 +392,15 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 else:
                     _process_activite_row(job.company, row)
                 succes += 1
+            except SoftTimeLimitExceeded:
+                # ACEL33 — limite douce : la ligne en cours n'est PAS une erreur ;
+                # curseur laissé avant elle, journal accumulé écrit, job relançable.
+                job.erreurs_file_key = _ecrire_journal()
+                job.save(update_fields=['erreurs_file_key', 'updated_at'])
+                job.marquer_echec(
+                    "Limite de temps atteinte — relancez le job, "
+                    f"il reprend à la ligne {rang}")
+                return
             except Exception as exc:  # noqa: BLE001 — une ligne en erreur n'arrête PAS les suivantes (D-ENF22-BLE001)
                 logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
                 erreurs_count += 1
@@ -387,17 +409,7 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
         job.marquer_progression(
             traites=rang, succes=succes, erreurs=erreurs_count, cursor=rang)
 
-    erreurs_file_key = ''
-    if error_rows:
-        blob = '\n'.join(
-            json.dumps(r, ensure_ascii=False, default=str) for r in error_rows
-        ).encode('utf-8')
-        from apps.records.storage import store_export_result
-        erreurs_file_key = store_export_result(
-            blob, company_id=job.company_id, job_id=f'{job.id}-erreurs',
-            ext='jsonl', content_type='application/x-ndjson')
-
-    job.marquer_termine(erreurs_file_key=erreurs_file_key)
+    job.marquer_termine(erreurs_file_key=_ecrire_journal())
 
 
 # ── ACEL32 — Job resté « en cours » après la mort du worker ──────────────────
