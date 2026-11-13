@@ -2712,7 +2712,7 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
             # 0 = « utiliser le défaut (90 jours) », jamais « purger tout de
             # suite » : l'écran Paramètres → Achats doit pouvoir le poser sans
             # qu'un 0 laissé par défaut efface les brouillons du jour.
-            'purge_brouillon_jours',
+            'purge_brouillon_jours', 'relance_bcf_actif',  # ACEL42
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
