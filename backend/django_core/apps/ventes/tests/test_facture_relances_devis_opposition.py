@@ -168,3 +168,38 @@ class NudgeOppositionTests(TestCase):
         for gabarit in (recouvrement._NUDGE_MSG_FR, recouvrement._NUDGE_MSG_AR):
             self.assertNotIn('TAQINOR', gabarit)
             self.assertIn('{signature}', gabarit)
+
+    def test_brouillon_vise_le_contact_du_lead(self):
+        """AMSG86 (C-AMSG-VER1-103) — devis lié à un lead ET à un client : le
+        brouillon vise le WhatsApp du lead (règle AMSG33), le témoin sans lead
+        garde le téléphone du client. Mutant : remettre `client.telephone` ⇒
+        échec."""
+        from apps.crm.models import Client, Lead
+        from apps.notifications.models import Notification
+        from apps.ventes.models import Devis
+        from apps.ventes.services import send_devis_followup_nudges
+        client = Client.objects.create(
+            company=self.company, nom='Tel', prenom='AMSG86',
+            email='amsg86@example.invalid', telephone='0600000058')
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead AMSG86', stage=stages.QUOTE_SENT,
+            whatsapp='+212612340021', telephone='+212612340022')
+        lie, temoin = (Devis.objects.create(
+            company=self.company, reference=f'DEV-AMSG86-{n}', client=client,
+            lead=le_lead, statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+            for n, le_lead in ((1, lead), (2, None)))
+        send_devis_followup_nudges()
+
+        def ligne(d):
+            corps = Notification.objects.get(
+                recipient=self.vendeur,
+                link=f'/ventes/devis?devis={d.id}').body
+            return next(x for x in corps.splitlines()
+                        if x.startswith('Brouillon WhatsApp'))
+        self.assertTrue(ligne(lie).startswith(
+            'Brouillon WhatsApp : https://wa.me/212612340021?text='),
+            ligne(lie))
+        self.assertTrue(ligne(temoin).startswith(
+            'Brouillon WhatsApp : https://wa.me/212600000058?text='),
+            ligne(temoin))
