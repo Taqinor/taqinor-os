@@ -8,11 +8,12 @@ import {
 import { formatDate } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import {
-  errMessage, toutesLesPages, useChargementGed, actionAvecToast,
+  toutesLesPages, useChargementGed, actionAvecToast,
 } from './shared.js'
 import { ChampDocument } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import { todayLocalIso } from '../../../lib/dateLocale'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    PACT137 — Planifications de document (XGED15).
@@ -124,7 +125,7 @@ function CreatePlanificationDialog({ documents, users, onClose, onDone }) {
       })
       toast.success('Planification créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

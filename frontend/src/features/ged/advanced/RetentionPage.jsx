@@ -18,6 +18,7 @@ import { ChampDocument, PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import DecisionDialogue from './DecisionDialogue.jsx'
 import { useHasPermission, useHasRole } from '../../../hooks/useHasPermission'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    UX46 — Rétention, archivage légal & partage.
@@ -133,7 +134,7 @@ export default function RetentionPage() {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
         try { await gedApi.deletePolitiqueRetention(r.id); toast.success('Politique supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -192,7 +193,7 @@ export default function RetentionPage() {
           load()
         } catch (err) {
           // GED24 — la levée peut être refusée (403) : surfacer proprement.
-          toast.error(errMessage(err, 'Levée refusée pour ce document.'))
+          toastSiMuet(err, 'Levée refusée pour ce document.')
         }
       },
     },
@@ -228,7 +229,7 @@ export default function RetentionPage() {
       id: 'revoquer', label: 'Révoquer', icon: XCircle, destructive: true,
       onClick: async () => {
         try { await gedApi.revoquerPartage(r.id); toast.success('Partage révoqué.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ] : [])
@@ -448,7 +449,7 @@ function PolitiqueDialog({ onClose, onDone }) {
       })
       toast.success('Politique créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -491,7 +492,7 @@ function ArchivageDialog({ documents, onClose, onDone }) {
       })
       toast.success('Document archivé légalement.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -521,7 +522,7 @@ function HoldDialog({ documents, onClose, onDone }) {
       await gedApi.createLegalHold({ document: documentId, motif })
       toast.success('Legal hold posé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -556,7 +557,7 @@ function PartageDialog({ documents, onClose, onDone }) {
       })
       toast.success('Lien de partage créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -604,7 +605,7 @@ function DispositionDialog({ echus, onClose, onDone }) {
       })
       toast.success('Demande de disposition créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -660,7 +661,7 @@ function ExecuterDispositionDialog({ demande, onClose, onDone }) {
       await gedApi.executerDisposition(demande.id)
       toast.success('Disposition exécutée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

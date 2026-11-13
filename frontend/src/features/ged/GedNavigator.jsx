@@ -20,7 +20,7 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
-import { toutesLesPages, errText } from './listesGed'
+import { toutesLesPages, toastSiMuet } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import EnteteGed from './EnteteGed'
 import { formatDate } from '../../lib/format'
@@ -232,7 +232,7 @@ export default function GedNavigator() {
       setSelectedIds(new Set())
       reloadDocuments()
     } catch (err) {
-      toast.error(errText(err, 'Opération en lot impossible.'))
+      toastSiMuet(err, 'Opération en lot impossible.')
     } finally { setBulkBusy(false) }
   }
 
@@ -246,7 +246,7 @@ export default function GedNavigator() {
     setBulkBusy(true)
     gedApi.telechargerZipLot([...selectedIds])
       .then((res) => pending.deliver(res.data, filenameFromResponse(res, 'documents.zip')))
-      .catch((err) => toast.error(errText(err, 'Téléchargement du ZIP impossible.')))
+      .catch((err) => toastSiMuet(err, 'Téléchargement du ZIP impossible.'))
       .finally(() => setBulkBusy(false))
   }
 
@@ -276,25 +276,21 @@ export default function GedNavigator() {
       await gedApi.checkOutDocument(d.id)
       toast.success('Document extrait (verrouillé).')
       reloadDocuments()
-    } catch (err) {
-      if (err?.response?.status === 409) {
-        toast.error(errText(err, 'Document déjà extrait par un autre utilisateur.'))
-      } else { toast.error(errText(err, 'Extraction impossible.')) }
-    }
+    } catch (err) { toastSiMuet(err, 'Extraction impossible.') }
   }
   const checkIn = async (d) => {
     try {
       await gedApi.checkInDocument(d.id)
       toast.success('Document archivé (verrou levé).')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'Archivage impossible.')) }
+    } catch (err) { toastSiMuet(err, 'Archivage impossible.') }
   }
   const mettreEnCorbeille = async (d) => {
     try {
       await gedApi.mettreEnCorbeille(d.id)
       toast.success('Document mis en corbeille.')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'Mise en corbeille impossible.')) }
+    } catch (err) { toastSiMuet(err, 'Mise en corbeille impossible.') }
   }
 
   // GED33/WIR249 — OCR ce document (pièce CIN/facture/BL) → métadonnées
@@ -316,7 +312,7 @@ export default function GedNavigator() {
         ? `${n} métadonnée${n > 1 ? 's' : ''} extraite${n > 1 ? 's' : ''}.`
         : 'OCR effectué — aucune métadonnée reconnue.')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'OCR impossible.')) }
+    } catch (err) { toastSiMuet(err, 'OCR impossible.') }
   }
 
   // ZGED9/WIR249 — verrou d'AVERTISSEMENT léger, DISTINCT du check-out GED16
@@ -331,11 +327,7 @@ export default function GedNavigator() {
         toast.success('Verrou (avertissement) posé.')
       }
       reloadDocuments()
-    } catch (err) {
-      if (err?.response?.status === 409) {
-        toast.error(errText(err, 'Déjà verrouillé par un autre utilisateur.'))
-      } else { toast.error(errText(err, 'Opération impossible.')) }
-    }
+    } catch (err) { toastSiMuet(err, 'Opération impossible.') }
   }
 
   // XGED30/WIR249 — éditeur Office embarqué (KEY-GATED, GED_OFFICE_URL) :
@@ -349,7 +341,7 @@ export default function GedNavigator() {
       if (url) window.open(url, '_blank', 'noopener')
       else toast.error('Aucun éditeur disponible.')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'Éditeur Office indisponible.')) }
+    } catch (err) { toastSiMuet(err, 'Éditeur Office indisponible.') }
   }
 
   // GED17/WIR249 — cycle de vie documentaire (panneau dédié, voir CycleVieDialog).
@@ -799,7 +791,7 @@ function ModifierDocumentDialog({ document: doc, onClose, onDone }) {
       toast.success('Document modifié.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Modification impossible.'))
+      toastSiMuet(err, 'Modification impossible.')
     } finally { setBusy(false) }
   }
 
@@ -845,7 +837,7 @@ function NouvelleVersionDialog({ document: doc, onClose, onDone }) {
         ? `Version ${res.data.version} déposée.` : 'Nouvelle version déposée.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Nouvelle version impossible.'))
+      toastSiMuet(err, 'Nouvelle version impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1073,7 +1065,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
       toast.success('Copie caviardée créée dans le dossier.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Caviardage impossible.'))
+      toastSiMuet(err, 'Caviardage impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1163,7 +1155,7 @@ function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
       toast.success('Document scindé en segments.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Scission impossible.'))
+      toastSiMuet(err, 'Scission impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1215,7 +1207,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
       const r = await gedApi.comparerVersions(documentId, v1, v2)
       setDiff(r.data)
     } catch (err) {
-      toast.error(errText(err, 'Comparaison impossible.'))
+      toastSiMuet(err, 'Comparaison impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1309,7 +1301,7 @@ function VersionsDialog({ documentId, versions, onClose, onDone }) {
       toast.success(`Version ${v.version} restaurée (nouvelle version créée).`)
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Restauration impossible.'))
+      toastSiMuet(err, 'Restauration impossible.')
     } finally { setBusyId(null) }
   }
 
@@ -1366,7 +1358,7 @@ function MergeDocumentsDialog({ documents, onClose, onDone }) {
       toast.success('Documents fusionnés.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Fusion impossible.'))
+      toastSiMuet(err, 'Fusion impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1448,7 +1440,7 @@ function BulkOperationsDialog({ documents, folders, onClose, onDone }) {
         toast.error(`${erreurs.length} document(s) non traité(s) — voir le rapport.`)
       }
     } catch (err) {
-      toast.error(errText(err, 'Opération en lot impossible.'))
+      toastSiMuet(err, 'Opération en lot impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1547,7 +1539,7 @@ function ImportMasseDialog({ folderId, onClose, onDone }) {
         toast.error(`${crees} importé(s), ${erreurs.length} ligne(s) en erreur — voir le rapport.`)
       }
     } catch (err) {
-      toast.error(errText(err, 'Import impossible.'))
+      toastSiMuet(err, 'Import impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1609,7 +1601,7 @@ function CycleVieDialog({ document: doc, onClose, onDone }) {
       toast.success('Statut mis à jour.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Transition impossible.'))
+      toastSiMuet(err, 'Transition impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1661,7 +1653,7 @@ function DocQaDialog({ onClose }) {
       setEnabled(res?.data?.enabled !== false)
       setResults(res?.data?.results || [])
     } catch (err) {
-      toast.error(errText(err, 'Recherche impossible.'))
+      toastSiMuet(err, 'Recherche impossible.')
     } finally { setLoading(false) }
   }
 
@@ -1728,7 +1720,7 @@ function CabinetDialog({ open, onOpenChange, onCreated }) {
       onOpenChange(false)
       onCreated?.(r.data)
     } catch (err) {
-      toast.error(errText(err, "Impossible de créer l'armoire."))
+      toastSiMuet(err, "Impossible de créer l'armoire.")
     } finally {
       setBusy(false)
     }
@@ -1835,7 +1827,7 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
       onClose()
       onChanged?.()
     } catch (err) {
-      toast.error(errText(err, "Action impossible sur le dossier."))
+      toastSiMuet(err, "Action impossible sur le dossier.")
     } finally {
       setBusy(false)
     }
@@ -1917,7 +1909,7 @@ function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
       onOpenChange(false)
       onUploaded?.()
     } catch (err) {
-      toast.error(errText(err, 'Téléversement impossible.'))
+      toastSiMuet(err, 'Téléversement impossible.')
     } finally {
       setBusy(false)
     }

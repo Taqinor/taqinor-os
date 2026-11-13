@@ -152,10 +152,9 @@ describe('UX46 RetentionPage', () => {
 
     await waitFor(() => {
       expect(gedApi.leverLegalHold).toHaveBeenCalledWith(7)
-      expect(toast.error).toHaveBeenCalledWith(
-        'Levée refusée : document sous archivage légal.',
-      )
     })
+    // AERR55 — le 403 est dit par le toast global (intercepteur axios), pas répété.
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })
 

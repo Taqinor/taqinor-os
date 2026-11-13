@@ -14,6 +14,7 @@ import {
 import { PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    PACT132 — Règles de dossier : action automatique au dépôt (XGED19).
@@ -185,7 +186,7 @@ function CreateRegleDialog({ dossiers, tags, users, onClose, onDone }) {
       })
       toast.success('Règle créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

@@ -15,6 +15,7 @@ import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/down
 import { errMessage, toutesLesPages } from './shared.js'
 import { ChampDocument, ChampDescription, ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    WIR164 — GED avancée, groupe (a) : checklist de pièces (XGED8), validation
@@ -116,7 +117,7 @@ export default function ChecklistPage() {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
         try { await gedApi.deleteExigence(r.id); toast.success('Exigence supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -147,7 +148,7 @@ export default function ChecklistPage() {
       id: 'relancer', label: 'Relancer', icon: Bell,
       onClick: async () => {
         try { await gedApi.relancerDemandeDocument(r.id); toast.success('Relance envoyée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ] : [])
@@ -170,7 +171,7 @@ export default function ChecklistPage() {
       id: 'valider', label: 'Valider', icon: CheckCircle2,
       onClick: async () => {
         try { await gedApi.validerOcr(r.id); toast.success('Extraction validée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -188,7 +189,7 @@ export default function ChecklistPage() {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
         try { await gedApi.deleteTamponSociete(r.id); toast.success('Tampon supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -337,7 +338,7 @@ function ExigenceDialog({ cabinets, folders, onClose, onDone }) {
       })
       toast.success('Exigence créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -404,7 +405,7 @@ function DemandeDialog({ folders, exigences, onClose, onDone }) {
       })
       toast.success('Demande créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -460,7 +461,7 @@ function TamponDialog({ onClose, onDone }) {
       await gedApi.createTamponSociete({ libelle: libelle.trim() })
       toast.success('Tampon créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -498,7 +499,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
       })
       toast.success('Tampon apposé.')
       setAnnotatedVersionId(derniere.id)
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   // XGED16/WIR249 — exporte le PDF annoté APLATI (nouveau fichier séparé).
@@ -509,7 +510,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
     setExporting(true)
     gedApi.exportPdfAnnote(annotatedVersionId)
       .then((res) => pending.deliver(res.data, filenameFromResponse(res, 'document-annote.pdf')))
-      .catch((err) => toast.error(errMessage(err, 'Export impossible (PyMuPDF requis côté serveur).')))
+      .catch((err) => toastSiMuet(err, 'Export impossible (PyMuPDF requis côté serveur).'))
       .finally(() => setExporting(false))
   }
 

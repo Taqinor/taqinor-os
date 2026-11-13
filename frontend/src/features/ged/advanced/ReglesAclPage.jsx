@@ -8,10 +8,11 @@ import {
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
 import {
-  errMessage, toutesLesPages, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+  toutesLesPages, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
 } from './shared.js'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    PACT133 — Règles d'accès par métadonnée (XGED21, couche dynamique).
@@ -136,7 +137,7 @@ function CreateRegleAclDialog({ roles, onClose, onDone }) {
       })
       toast.success('Règle créée.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

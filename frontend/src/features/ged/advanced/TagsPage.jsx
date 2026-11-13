@@ -11,6 +11,7 @@ import gedApi from '../../../api/gedApi'
 import { errMessage, CIBLES_LIEN, toutesLesPages } from './shared.js'
 import { ChampDocument } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    UX47 — Tags & liens transverses.
@@ -84,7 +85,7 @@ export default function TagsPage() {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
         try { await gedApi.deleteTag(r.id); toast.success('Tag supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -106,7 +107,7 @@ export default function TagsPage() {
       id: 'detacher', label: 'Détacher', icon: Unlink, destructive: true,
       onClick: async () => {
         try { await gedApi.deleteTagAssignment(r.id); toast.success('Tag détaché.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -130,7 +131,7 @@ export default function TagsPage() {
       id: 'delier', label: 'Délier', icon: Unlink, destructive: true,
       onClick: async () => {
         try { await gedApi.deleteLien(r.id); toast.success('Lien supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
+        catch (err) { toastSiMuet(err) }
       },
     },
   ]
@@ -216,7 +217,7 @@ function TagDialog({ tags, onClose, onDone }) {
       })
       toast.success('Tag créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -258,7 +259,7 @@ function AssignDialog({ documents, tags, onClose, onDone }) {
       await gedApi.createTagAssignment({ document: documentId, tag: tagId })
       toast.success('Tag affecté.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
@@ -290,7 +291,7 @@ function LienDialog({ documents, onClose, onDone }) {
       await gedApi.createLien({ document: documentId, model, id: Number(objectId) })
       toast.success('Lien créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (

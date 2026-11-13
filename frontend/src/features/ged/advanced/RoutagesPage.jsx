@@ -6,10 +6,11 @@ import {
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import {
-  errMessage, toutesLesPages, unpage, useChargementGed, actionAvecToast, actionsActivation,
+  toutesLesPages, unpage, useChargementGed, actionAvecToast, actionsActivation,
 } from './shared.js'
 import { ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
+import { toastSiMuet } from '../listesGed'
 
 /* ============================================================================
    PACT136 — Routage documentaire automatique (ZGED6).
@@ -129,7 +130,7 @@ function CreateRoutageDialog({ cabinets, tags, onClose, onDone }) {
       })
       toast.success('Routage créé.')
       onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+    } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
   return (
