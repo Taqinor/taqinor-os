@@ -220,3 +220,38 @@ class GedPermissionContractTests(TestCase):
             self.assertEqual([r['id'] for r in rows], [demande.pk])
             self.assertEqual(auth(user).get(
                 f'{BASE}/demandes-signature/{demande.pk}/').status_code, 200)
+
+    def test_coordonnees_signataires_sans_client_pii(self):
+        from apps.ged.models import SignataireDemande
+        rh = self._role_livre('Admin RH', 'alec43-rh')
+        commercial = self._role_livre('Commercial', 'alec43-c')
+        directeur = self._role_livre('Directeur', 'alec43-dir')
+        demande = self._demande_deux_signataires()
+        coord = ('email', 'telephone', 'adresse_ip', 'user_agent')
+        coord_demande = ('signataire_email', 'adresse_ip', 'user_agent')
+
+        def lire(user):
+            detail = auth(user).get(f'{BASE}/demandes-signature/{demande.pk}/')
+            dests = auth(user).get(f'{BASE}/signataires-demande/?demande={demande.pk}')
+            self.assertEqual((detail.status_code, dests.status_code), (200, 200))
+            rows = dests.data['results'] if isinstance(dests.data, dict) else dests.data
+            return detail.data, list(rows) + list(detail.data['signataires'])
+
+        detail, dests = lire(rh)
+        self.assertEqual(len(dests), 4)
+        for d in dests:
+            self.assertTrue(d['nom'] and d['statut'])
+            self.assertEqual({c: d[c] for c in coord}, dict.fromkeys(coord))
+        self.assertEqual(
+            {c: detail[c] for c in coord_demande}, dict.fromkeys(coord_demande))
+        for user in (commercial, directeur):
+            detail, dests = lire(user)
+            self.assertEqual(detail['signataire_email'], 'sara@client.ma')
+            self.assertEqual(detail['adresse_ip'], '10.0.0.7')
+            sara = [d for d in dests if d['nom'] == 'Sara']
+            self.assertTrue(sara and all(
+                d['email'] == 'sara@client.ma' and d['telephone'] == '0600000001'
+                and d['adresse_ip'] == '10.0.0.7' for d in sara))
+        # Rendu seulement : la base garde les coordonnées.
+        self.assertEqual(SignataireDemande.objects.filter(
+            demande=demande, email__endswith='@client.ma').count(), 2)
