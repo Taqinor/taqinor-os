@@ -173,7 +173,7 @@ async function ficheEquipement(p, serie) {
   await p.getByPlaceholder('Rechercher (série, produit, chantier, client)…').fill(serie)
   const ligne = p.getByRole('row').filter({ hasText: serie }).first()
   await expect(ligne, `ligne ${serie}`).toBeVisible(V)
-  await ligne.getByRole('cell').nth(1).click()
+  await ligne.getByText(serie).first().click()
   const d = p.getByRole('dialog').filter({ has: p.getByRole('button', { name: /Mettre à jour/ }) }).last()
   await expect(d, 'fiche équipement ouverte').toBeVisible(V)
   return d
