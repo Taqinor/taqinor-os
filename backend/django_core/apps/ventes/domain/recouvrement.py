@@ -839,10 +839,10 @@ def send_devis_followup_nudges():
                 except Exception:  # noqa: BLE001 — pas de brouillon (D-ENF22-BLE001)
                     logger.warning('QJ4: brouillon client indisponible devis %s',
                                    devis.reference, exc_info=True)
-                logger.info(
-                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
+                logger.info(  # AMSG87 — jamais le numéro ni le texte client
+                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s',
                     devis.reference, idx, jours,
-                    getattr(vendeur, 'username', '?'), wa_url)
+                    getattr(vendeur, 'username', '?'))
                 # QX13 — le brouillon wa.me ne partait qu'en LOG (invisible) :
                 # crée une vraie Notification in-app au vendeur, avec le lien
                 # proposition + le brouillon wa.me prêts et un deep-link devis.

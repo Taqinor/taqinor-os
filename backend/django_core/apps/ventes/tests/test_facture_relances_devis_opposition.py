@@ -203,3 +203,37 @@ class NudgeOppositionTests(TestCase):
         self.assertTrue(ligne(temoin).startswith(
             'Brouillon WhatsApp : https://wa.me/212600000058?text='),
             ligne(temoin))
+
+    def test_journal_sans_numero_ni_texte_client(self):
+        """AMSG87 (C-AMSG-VER1-104) — la ligne « QJ4 nudge wa_draft » garde
+        référence, niveau, jours et vendeur, sans numéro, ni `wa.me`, ni lien
+        de proposition, ni texte du gabarit ; la notification garde le
+        brouillon. Mutant : remettre `wa_url` dans l'appel ⇒ échec."""
+        from apps.crm.models import Client
+        from apps.notifications.models import Notification
+        from apps.ventes.models import Devis
+        from apps.ventes.services import send_devis_followup_nudges
+        from apps.ventes.utils.whatsapp import build_single_devis_whatsapp
+        client = Client.objects.create(
+            company=self.company, nom='Journal', prenom='AMSG87',
+            email='amsg87@example.invalid', telephone='0600000058')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AMSG87-1', client=client,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+        with self.assertLogs('apps.ventes.services', 'INFO') as journal:
+            send_devis_followup_nudges()
+        ligne = next(m for m in journal.output
+                     if 'QJ4 nudge wa_draft' in m and 'DEV-AMSG87-1' in m)
+        self.assertIn('niveau=0', ligne)
+        self.assertIn('j+2', ligne)
+        self.assertIn('cadv8_vendeur', ligne)
+        texte = build_single_devis_whatsapp(None, devis)[0]
+        premiere = next(x for x in texte.splitlines() if x.strip())
+        for interdit in ('212600000058', '0600000058', 'wa.me', '/proposal',
+                         '/proposition', premiere):
+            self.assertNotIn(interdit, ligne)
+        self.assertIn('Brouillon WhatsApp : https://wa.me/212600000058',
+                      Notification.objects.get(
+                          recipient=self.vendeur,
+                          link=f'/ventes/devis?devis={devis.id}').body)
