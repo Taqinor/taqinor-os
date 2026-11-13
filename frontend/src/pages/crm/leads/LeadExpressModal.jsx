@@ -293,6 +293,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               id={`${formId}-email`}
               type="email"
               placeholder="contact@exemple.com"
+              invalid={!!errors.email}
               value={email}
               onChange={(e) => { setEmail(e.target.value); clearField('email') }}
               autoComplete="off"
