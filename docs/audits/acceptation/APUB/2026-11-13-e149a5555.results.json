@@ -1,0 +1,290 @@
+{
+  "sha": "e149a555505a6a4c44342a7962fe53575b80d3da",
+  "date": "2026-11-13",
+  "groupe": "APUB",
+  "verdict": "PASS",
+  "couvre": [
+    "APUB1",
+    "APUB3",
+    "APUB4",
+    "APUB5",
+    "APUB13",
+    "APUB14",
+    "APUB33",
+    "APUB46",
+    "APUB54",
+    "APUB55",
+    "APUB57",
+    "APUB71"
+  ],
+  "couvre_avec_ecart": [
+    "APUB55",
+    "APUB57"
+  ],
+  "etapes": [
+    {
+      "id": "PF5.1-APUB1",
+      "taches": [
+        "APUB1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.1-APUB1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.2-APUB3",
+      "taches": [
+        "APUB3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.2-APUB3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.3-APUB5",
+      "taches": [
+        "APUB5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.3-APUB5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.4-APUB4",
+      "taches": [
+        "APUB4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.4-APUB4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.5-APUB13",
+      "taches": [
+        "APUB13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.5-APUB13.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.6-APUB14",
+      "taches": [
+        "APUB14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.6-APUB14.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.7-APUB33",
+      "taches": [
+        "APUB33"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.7-APUB33.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.8-APUB46",
+      "taches": [
+        "APUB46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.8-APUB46.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.9-APUB71",
+      "taches": [
+        "APUB71"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.9-APUB71.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.10-APUB54",
+      "taches": [
+        "APUB54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.10-APUB54.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.11-APUB55",
+      "taches": [
+        "APUB55"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.11-APUB55.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : défaut antérieur hors APUB55 : `frontend/src/features/onboarding/onboardingHelpers.js::lireComptesOnboarding` (menu latéral, `Sidebar.jsx`) appelle GET stock/produits/?page_size=1 sur tout écran interne, pour un rôle sans `stock_voir` (Commercial terrain livré) → 403 ; APUB55 ne touche que le catalogue de l'explorateur (serveur) ; oracle 2 — GET http://localhost:4173/api/django/stock/produits/?page_size=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/stock/produits/?page_size=1)"
+    },
+    {
+      "id": "PF5.12-APUB57",
+      "taches": [
+        "APUB57"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-13/ACCEPTATION-APUB-PF5.12-APUB57.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : défaut antérieur hors APUB57 : `frontend/src/pages/parametres/ParametresEntreprise.jsx` (chargeurs `loadTypesItv` / checklist d'étapes) appelle GET installations/types-intervention/ et installations/checklist-etapes/ à l'ouverture de /parametres, quel que soit l'onglet, pour un rôle qui ne lit pas les installations (Commercial responsable livré) → 403 ×2 ; APUB57 ne touche ni ces appels ni ces routes ; oracle 2 — GET http://localhost:4173/api/django/installations/types-intervention/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/types-intervention/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/checklist-etapes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/checklist-etapes/?page=1)"
+    }
+  ]
+}
