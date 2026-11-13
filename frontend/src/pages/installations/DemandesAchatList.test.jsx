@@ -382,3 +382,24 @@ describe('DemandesAchatList — générer le BCF / étapes', () => {
     expect(screen.getByRole('button', { name: /Approuver l.étape/ })).toBeInTheDocument()
   })
 })
+
+// AERR85 — un refus serveur par champ s'affiche sous le champ fautif (Quantité).
+describe('DemandesAchatList — AERR85 refus serveur sous le champ', () => {
+  beforeEach(() => {
+    installationsApi.getInstallations.mockResolvedValue({ data: [{ id: 3, reference: 'CHT-202609-0001' }] })
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [DA_ACHT63] })
+  })
+
+  it('quantité refusée : message sous le champ, saisie gardée', async () => {
+    installationsApi.createDemandeAchat.mockResolvedValue({ data: { id: 42 } })
+    installationsApi.createDemandeAchatLigne.mockRejectedValueOnce({ response: { status: 400, data: {
+      quantite: ['Assurez-vous que cette valeur est supérieure à 0.'] } } })
+    await ouvrirEtRemplir('12.30')
+    fireEvent.click(screen.getByRole('button', { name: /brouillon/i }))
+    const message = await screen.findByText('Assurez-vous que cette valeur est supérieure à 0.')
+    const champ = screen.getByLabelText('Quantité')
+    expect(champ.parentElement).toContainElement(message)
+    expect(champ).toHaveAttribute('aria-invalid', 'true')
+    expect(champ).toHaveValue(2)
+  })
+})
