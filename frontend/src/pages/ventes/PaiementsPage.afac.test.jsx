@@ -45,6 +45,17 @@ beforeEach(() => {
   ventesApi.getPaiements.mockResolvedValue({ data: [] })
 })
 
+describe('PaiementsPage — AERR21 : état réel de la dernière lecture', () => {
+  it('échec puis Réessayer réussi : bandeau retiré', async () => {
+    // AERR21 (C-AERR-019) — `setError(null)` au succès de la relecture.
+    ventesApi.getPaiements.mockRejectedValueOnce({ response: { status: 500 } })
+    render(<MemoryRouter initialEntries={['/ventes/paiements']}><PaiementsPage /></MemoryRouter>)
+    const bandeau = await screen.findByTestId('paiements-pas-a-jour')
+    fireEvent.click(within(bandeau).getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.queryByTestId('paiements-pas-a-jour')).toBeNull())
+  })
+})
+
 describe('PaiementsPage — AFAC7 : import de relevé (revue, 9 statuts, sélection)', () => {
   it('nomme tous les statuts du contrat : aucun statut brut affiché', async () => {
     const preview = DRY.statuts_ligne.map((statut, i) => ({

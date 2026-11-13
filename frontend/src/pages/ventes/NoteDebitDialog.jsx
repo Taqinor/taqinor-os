@@ -34,6 +34,9 @@ const tauxDeLaFacture = (f) => (f?.taux_tva == null || f.taux_tva === '' ? '' : 
 export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged }) {
   const isAdmin = useIsAdmin()
   const [notes, setNotes] = useState([])
+  // AERR21 — échec de lecture ≠ « aucune note » ; « Réessayer » relance la lecture.
+  const [lectureKo, setLectureKo] = useState(false)
+  const [essai, setEssai] = useState(0)
   // Facture dont `notes` reflète déjà le chargement — `loading` est DÉRIVÉ de
   // la comparaison avec la facture courante (jamais un `setLoading(true)`
   // synchrone dans l'effet, react-hooks/set-state-in-effect).
@@ -68,11 +71,12 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
       .then((data) => {
         if (!active) return
         setNotes(Array.isArray(data) ? data : (data?.results || []))
+        setLectureKo(false)
       })
-      .catch(() => { if (active) setNotes([]) })
+      .catch(() => { if (active) setLectureKo(true) })
       .finally(() => { if (active) setLoadedFactureId(factureId) })
     return () => { active = false }
-  }, [open, factureId])
+  }, [open, factureId, essai])
 
   const creer = async () => {
     if (!facture?.id) return
@@ -131,6 +135,11 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
 
         {loading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : lectureKo && notes.length === 0 ? (
+          <p role="alert" className="flex items-center gap-2 text-sm text-destructive">
+            Notes de débit indisponibles.
+            <Button size="sm" variant="outline" onClick={() => { setLoadedFactureId(null); setEssai((n) => n + 1) }}>Réessayer</Button>
+          </p>
         ) : notes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Aucune note de débit sur cette facture.

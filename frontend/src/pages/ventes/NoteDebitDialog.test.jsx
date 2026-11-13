@@ -53,6 +53,18 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
     expect(await screen.findByText('ND-202607-0001')).toBeInTheDocument()
   })
 
+  it('lecture rejetée : erreur + Réessayer, jamais Aucune note de débit', async () => {
+    // AERR21 (C-AERR-019) — mutant : remettre `setNotes([])` dans le `catch` ⇒ échec.
+    const user = userEvent.setup()
+    ventesApi.getNotesDebit.mockRejectedValueOnce({ response: { status: 500 } })
+    render(<NoteDebitDialog facture={FACTURE} open onOpenChange={() => {}} />)
+    expect(await screen.findByText(/Notes de débit indisponibles/)).toBeInTheDocument()
+    expect(screen.queryByText(/Aucune note de débit/)).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText('ND-202607-0001')).toBeInTheDocument()
+    expect(screen.queryByText(/Notes de débit indisponibles/)).toBeNull()
+  })
+
   it('refuse un motif seul : « Créer » reste inactif sans montant', async () => {
     const user = userEvent.setup()
     render(<NoteDebitDialog facture={FACTURE} open onOpenChange={() => {}} />)

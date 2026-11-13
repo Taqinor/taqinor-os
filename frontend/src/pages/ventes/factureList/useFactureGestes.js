@@ -175,7 +175,9 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
       const res = await fetchAllPages((page) => ventesApi.getDevis({ statut: 'accepte', page, page_size: 200 }).then((r) => r.data))
       setConsoliderDevis(Array.isArray(res) ? res : (res?.results ?? []))
     } catch {
-      setConsoliderDevis([])
+      // AERR21 — un échec n'est pas « aucun devis » : la boîte se referme et le dit.
+      setConsoliderOpen(false)
+      toast.error('Devis à consolider indisponibles.', { action: { label: 'Réessayer', onClick: () => openConsolider() } })
     }
   }
   const handleConsolider = async () => {

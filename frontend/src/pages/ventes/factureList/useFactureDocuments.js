@@ -73,8 +73,10 @@ export default function useFactureDocuments({ dispatch }) {
     try {
       const res = await ventesApi.telechargerPdfFacture(f.id)
       openPdfBlob(res.data, `${f.reference}.pdf`)
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
+    } catch (err) {
+      // AERR21 — « introuvable » seulement sur un 404 ; sinon la raison servie.
+      toast.error(err?.response?.status === 404 ? 'Fichier introuvable. Régénérez le PDF.'
+        : frenchError(err, 'Téléchargement du PDF impossible.'))
     } finally {
       setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
     }
