@@ -154,10 +154,12 @@ def relancer_bcf_en_retard_task():
                     f'{bc.reference}, toujours en attente de livraison. '
                     f'Vous pouvez le consulter ici : {url}\n\n'
                     f'Merci de nous indiquer une date de livraison.')
-                notify_many(
+                crees = notify_many(
                     recipients, EventType.BCF_RELANCE_PROPOSEE,
                     title=f'Brouillon de relance proposé ({bc.reference})',
                     body=message, link=link, company=company)
+                if not crees:  # ACEL43 — aucune notification : rien à compter
+                    continue
                 # AUD829 — F() atomic increment: a bare
                 # `bc.nb_relances = (... or 0) + 1` then save() loses a
                 # concurrent relance under two racing runs on the same BCF
