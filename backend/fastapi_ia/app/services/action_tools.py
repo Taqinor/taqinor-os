@@ -143,6 +143,8 @@ def _django_call(
     path: str,
     method: str = "POST",
     payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: httpx.Timeout | None = None,
 ) -> dict[str, Any]:
     """Appel authentifie vers l'API Django interne, methode au choix.
 
@@ -150,11 +152,14 @@ def _django_call(
     a l'endpoint nomme par le catalogue, en GET/POST/PATCH/PUT/DELETE. Django
     reste l'autorite finale (scope societe + permissions). Retourne un dict
     normalise {ok, status, data|error}. Ne leve jamais : les erreurs sont
-    renvoyees comme texte a l'agent.
+    renvoyees comme texte a l'agent. `headers` (COP-A3, ex. `Idempotency-Key`)
+    s'ajoute aux en-tetes, sans jamais remplacer le jeton de l'appelant ;
+    `timeout` (COP-A5) raccourcit le delai d'un appel accessoire.
     """
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
     verb = (method or "POST").upper()
     headers = {
+        **(headers or {}),  # jamais au-dessus des en-tetes internes ni du jeton
         **internal_headers(),
         "Authorization": f"Bearer {ctx.token}",
         "Accept": "application/json",
@@ -170,7 +175,7 @@ def _django_call(
         # GET avec parametres residuels -> query string.
         request_kwargs["params"] = body
     try:
-        with httpx.Client(timeout=_TIMEOUT) as client:
+        with httpx.Client(timeout=timeout or _TIMEOUT) as client:
             resp = client.request(verb, url, **request_kwargs)
     except Exception as exc:  # pragma: no cover - reseau
         logger.warning("Appel Django interne echoue (%s %s): %s", verb, path, exc)
@@ -189,11 +194,13 @@ def _django_call(
 
 
 # AIC7 — UNE table statut -> intention de l'evenement (lue par le capteur ET
-# par les tests). 403 (permission) et 400 (validation, champ fautif) sont une
-# reponse NORMALE au commercial ; tout autre echec d'une action (5xx, 404, 409,
-# 422 inattendus, Django injoignable = 0) est un `bug`, sans que le modele ait
-# a le decider.
-STATUTS_REPONSE_NORMALE = frozenset({400, 403})
+# par les tests). 403 (permission), 400 (validation, champ fautif), 409 (refus
+# METIER : touche deja close, devis deja accepte…) et 404 (objet inconnu ou
+# hors portee) sont une reponse NORMALE au commercial (COP-A4 : chaque 409 du
+# suivi etait journalise `bug`) ; tout autre echec d'une action (5xx, 422
+# inattendu, Django injoignable = 0) est un `bug`, sans que le modele ait a le
+# decider.
+STATUTS_REPONSE_NORMALE = frozenset({400, 403, 404, 409})
 
 
 def intention_pour_statut(status: Any) -> Optional[str]:
@@ -249,21 +256,58 @@ def _normalize_error(resp, data) -> dict[str, Any]:
 
     # Message d'erreur lisible (Django renvoie souvent {'detail': ...} ou un
     # dict de champs). On masque les internes.
-    detail = ""
-    if isinstance(data, dict):
-        detail = str(data.get("detail") or "")
-        if not detail:
-            # Concatene les premiers messages de champ.
-            parts = []
-            for k, v in data.items():
-                if isinstance(v, (list, tuple)):
-                    v = ", ".join(str(x) for x in v)
-                parts.append(f"{k}: {v}")
-            detail = " ; ".join(parts[:4])
+    detail = _message_lisible(data)
     if resp.status_code in (401, 403):
         detail = detail or "Vous n'avez pas les droits pour cette action."
+    if len(detail) > _MESSAGE_MAX:
+        detail = detail[:_MESSAGE_MAX - 1].rstrip() + "…"
     return {"ok": False, "status": resp.status_code,
-            "error": detail or "La demande a ete refusee."}
+            "error": detail or "La demande a ete refusee.",
+            "request_id": _request_id(resp, data)}
+
+
+# COP-A4 — message d'erreur court, sans enveloppe technique brute.
+_MESSAGE_MAX = 300
+# Cles de l'enveloppe YAPIC3 (`core/exceptions.py`) : jamais recopiees telles
+# quelles dans le message (dict brut) ; `error.message` sert de repli.
+_CLES_ENVELOPPE = frozenset({"error", "request_id"})
+
+
+def _texte_erreur(valeur: Any) -> str:
+    """Valeur d'erreur Django -> texte plat (listes et dicts de champs)."""
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(_texte_erreur(v) for v in valeur)
+    if isinstance(valeur, dict):
+        return " ; ".join(f"{k}: {_texte_erreur(v)}" for k, v in valeur.items())
+    return str(valeur)
+
+
+def _message_lisible(data: Any) -> str:
+    """`detail`, sinon les quatre premiers messages de champ, sinon le
+    `message` de l'enveloppe d'erreur."""
+    if not isinstance(data, dict):
+        return ""
+    if data.get("detail"):
+        return _texte_erreur(data["detail"])
+    parts = [f"{k}: {_texte_erreur(v)}" for k, v in data.items()
+             if k not in _CLES_ENVELOPPE]
+    if parts:
+        return " ; ".join(parts[:4])
+    enveloppe = data.get("error")
+    return str(enveloppe.get("message") or "") if isinstance(enveloppe, dict) else ""
+
+
+def _request_id(resp, data: Any) -> Optional[str]:
+    """COP-A4 — identifiant de la requete Django (en-tete `X-Request-Id` de
+    `RequestIdMiddleware`, sinon `error.request_id` du corps) : il relie
+    l'erreur vue par le commercial aux journaux du serveur."""
+    entetes = getattr(resp, "headers", None) or {}
+    rid = entetes.get("X-Request-Id") or entetes.get("X-Request-ID")
+    if not rid and isinstance(data, dict):
+        enveloppe = data.get("error")
+        rid = (enveloppe.get("request_id") if isinstance(enveloppe, dict)
+               else None) or data.get("request_id")
+    return str(rid)[:64] if rid else None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -348,18 +392,7 @@ def validate_inputs(schema: dict[str, Any], inputs: dict[str, Any]) -> dict[str,
         value = inputs[name]
         if value is None:
             continue
-        expected = (spec or {}).get("type")
-        checker = _JSON_TYPE_CHECK.get(expected)
-        # int passe pour un champ number ; on tolere une string numerique pour
-        # un champ integer/number (le LLM renvoie parfois "12").
-        if checker and not checker(value):
-            coerced = _coerce(value, expected)
-            if coerced is None:
-                raise ActionValidationError(
-                    f"Champ '{name}' : type {expected} attendu."
-                )
-            value = coerced
-        cleaned[name] = value
+        cleaned[name] = _valider_valeur(name, spec or {}, value)
 
     missing = [r for r in required if cleaned.get(r) in (None, "")]
     if missing:
@@ -369,15 +402,53 @@ def validate_inputs(schema: dict[str, Any], inputs: dict[str, Any]) -> dict[str,
     return cleaned
 
 
+def _valider_valeur(name: str, spec: dict[str, Any], value: Any) -> Any:
+    """COP-A2 — une valeur contre SA spec : type (coercitions sures
+    seulement), `enum`, et pour un tableau chaque element contre `items`.
+    Renvoie la valeur normalisee ; leve ActionValidationError en francais."""
+    expected = spec.get("type")
+    checker = _JSON_TYPE_CHECK.get(expected)
+    if checker and not checker(value):
+        coerced = _coerce(value, expected)
+        if coerced is None:
+            raise ActionValidationError(
+                f"Champ '{name}' : type {expected} attendu."
+            )
+        value = coerced
+    permises = spec.get("enum")
+    if isinstance(permises, list) and value not in permises:
+        raise ActionValidationError(
+            f"Champ '{name}' : valeur {value!r} non permise (valeurs "
+            "permises : " + ", ".join(str(v) for v in permises) + ")."
+        )
+    items = spec.get("items")
+    if expected == "array" and isinstance(items, dict):
+        value = [_valider_valeur(f"{name}[{i}]", items, v)
+                 for i, v in enumerate(value)]
+    return value
+
+
+_ENTIER_RE = re.compile(r"-?\d+")
+_NOMBRE_RE = re.compile(r"-?\d+(\.\d+)?")
+_BOOLEENS = {"true": True, "oui": True, "false": False, "non": False}
+
+
 def _coerce(value: Any, expected: str) -> Any:
-    """Tente une coercition douce (string numerique -> int/number)."""
-    try:
-        if expected == "integer" and isinstance(value, str) and value.strip().lstrip("-").isdigit():
-            return int(value)
-        if expected == "number" and isinstance(value, str):
-            return float(value)
-    except (ValueError, TypeError):
-        return None
+    """Coercitions SURES seulement (COP-A2), None sinon : chaine numerique ->
+    entier/nombre ; nombre -> chaine (decimaux declares `string`) ;
+    « true/false/oui/non » -> booleen. Jamais de troncature (« 12.5 » n'est
+    pas un entier), jamais de nombre lu dans un texte libre."""
+    is_num = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(value, str):
+        texte = value.strip()
+        if expected == "integer" and _ENTIER_RE.fullmatch(texte):
+            return int(texte)
+        if expected == "number" and _NOMBRE_RE.fullmatch(texte):
+            return float(texte) if "." in texte else int(texte)
+        if expected == "boolean":
+            return _BOOLEENS.get(texte.lower())
+    elif expected == "string" and is_num:
+        return str(value)
     return None
 
 
@@ -442,9 +513,10 @@ def _stash_proposal(
     human_preview: str,
 ) -> Optional[str]:
     """Stocke une proposition SIGNEE en Redis sous un jeton aleatoire avec un
-    TTL court. La signature couvre {action_key, inputs, company_id} : une
-    proposition alteree (cle/entrees/societe) echoue a la verification au
-    moment de /confirm. Renvoie le jeton, ou None si Redis indisponible."""
+    TTL court. La signature couvre {action_key, inputs, company_id, user_id} :
+    une proposition alteree (cle/entrees/societe/destinataire) echoue a la
+    verification au moment de /confirm. Renvoie le jeton, ou None si Redis
+    indisponible."""
     r = _proposal_redis()
     if r is None:
         return None
@@ -453,6 +525,8 @@ def _stash_proposal(
         "action_key": action["key"],
         "inputs": inputs,
         "company_id": ctx.company_id,
+        # COP-A3 — l'utilisateur qui a RECU la proposition : lui seul confirme.
+        "user_id": _caller_user_id(ctx),
         "human_preview": human_preview,
         "ts": int(time.time()),
     }
@@ -468,17 +542,43 @@ def _stash_proposal(
     return token
 
 
-def _load_proposal(token: str) -> Optional[dict[str, Any]]:
-    """Charge et VERIFIE la signature d'une proposition stashee. Renvoie le
-    record (sans `sig`) si la signature est valide, sinon None (tampered /
-    expire / absent)."""
+def _reclamer_brut(r, cle: str) -> Optional[str]:
+    """Lit ET supprime la proposition en UNE operation atomique (COP-A3) :
+    `GETDEL` (Redis >= 6.2, client redis-py >= 4.0) ; repli MULTI/EXEC
+    (GET + DEL dans une transaction) si le serveur ne connait pas GETDEL. Le
+    dernier repli (GET puis DEL) ne sert qu'aux doubles de test minimaux sans
+    `getdel` ni `pipeline` : un vrai client redis-py a toujours les deux."""
+    getdel = getattr(r, "getdel", None)
+    if getdel is not None:
+        try:
+            return getdel(cle)
+        except Exception as exc:
+            if "unknown command" not in str(exc).lower():
+                raise
+    pipeline = getattr(r, "pipeline", None)
+    if pipeline is not None:
+        pipe = pipeline(transaction=True)
+        pipe.get(cle)
+        pipe.delete(cle)
+        return pipe.execute()[0]
+    raw = r.get(cle)
+    r.delete(cle)
+    return raw
+
+
+def _claim_proposal(token: str) -> Optional[dict[str, Any]]:
+    """RECLAME (usage unique, atomique) puis VERIFIE la signature d'une
+    proposition stashee. Renvoie le record (sans `sig`) si la signature est
+    valide, sinon None (alteree / expiree / absente / deja reclamee). Le jeton
+    est consomme des la reclamation, avant toute execution : deux
+    confirmations simultanees n'executent jamais deux fois."""
     r = _proposal_redis()
-    if r is None:
+    if r is None or not token:
         return None
     try:
-        raw = r.get(_proposal_key(token))
+        raw = _reclamer_brut(r, _proposal_key(token))
     except Exception as exc:  # pragma: no cover - reseau
-        logger.warning("Lecture proposition echouee: %s", exc)
+        logger.warning("Reclamation de proposition echouee: %s", exc)
         return None
     if not raw:
         return None
@@ -497,37 +597,94 @@ def _load_proposal(token: str) -> Optional[dict[str, Any]]:
     return record
 
 
-def _discard_proposal(token: str) -> None:
-    """Supprime une proposition (usage unique apres confirmation)."""
-    r = _proposal_redis()
-    if r is None:
-        return
-    try:
-        r.delete(_proposal_key(token))
-    except Exception:  # pragma: no cover - reseau
-        pass
+def _cle_idempotence(token: str) -> str:
+    """`Idempotency-Key` relayee a Django pour UNE confirmation : empreinte
+    SHA-256 du jeton, jamais le jeton en clair (COP-A3)."""
+    return "agent-confirm-" + hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # ── Execution d'une action du catalogue ───────────────────────────────────────
 
 
-def _human_preview(action: dict[str, Any], inputs: dict[str, Any]) -> str:
-    """Texte court montre a l'utilisateur avant confirmation."""
+_LIBELLES_PATH = "/api/django/agent/libelles/"
+# Delai COURT : un aperçu sans nom vaut mieux qu'une proposition qui tarde.
+_TIMEOUT_LIBELLES = httpx.Timeout(3.0, connect=2.0)
+
+
+def _libelles_objets(
+    ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+) -> dict[str, str]:
+    """COP-A5 — `{nom d'entree: libelle}` des objets designes par les entrees
+    (champ `objets` du registre), lus en UN appel `GET agent/libelles/` avec
+    le JWT de l'utilisateur (contrat `assistant_libelles.json`). Objet hors
+    portee, route indisponible ou Django injoignable : `{}` (jamais bloquant)."""
+    params: dict[str, Any] = {}
+    noms: dict[str, str] = {}
+    for nom, genre in (action.get("objets") or {}).items():
+        if inputs.get(nom) in (None, "") or genre in params:
+            continue
+        params[genre] = inputs[nom]
+        noms[nom] = genre
+    if not params or not DJANGO_INTERNAL_URL or ctx is None or not ctx.token:
+        return {}
+    res = _django_call(ctx, _LIBELLES_PATH, method="GET", payload=params,
+                       timeout=_TIMEOUT_LIBELLES)
+    data = res.get("data") if res.get("ok") else None
+    if not isinstance(data, dict):
+        return {}
+    return {nom: data[genre] for nom, genre in noms.items()
+            if isinstance(data.get(genre), str) and data[genre].strip()}
+
+
+def _human_preview(action: dict[str, Any], inputs: dict[str, Any],
+                   libelles: dict[str, str] | None = None) -> str:
+    """Texte court montre a l'utilisateur avant confirmation. Avec des
+    libelles (COP-A5) : « Label — <libelle(s)> (autres entrees k=v) », les
+    entrees deja nommees n'etant pas repetees ; sinon la forme historique."""
     summary = action.get("confirm_summary") or action.get("label") or action["key"]
+    if libelles:
+        texte = (action.get("label") or summary) + " — " + " ; ".join(libelles.values())
+        autres = {k: v for k, v in inputs.items() if k not in libelles}
+        if autres:
+            texte += " (" + ", ".join(f"{k}={v}" for k, v in sorted(autres.items())) + ")"
+        return texte
     if inputs:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(inputs.items()))
         return f"{summary} ({parts})"
     return summary
 
 
+def _libelle_action(action: dict[str, Any]) -> str:
+    """Label du registre (repli : la cle) — `libelle` des cartes (COP1)."""
+    return action.get("label") or action["key"]
+
+
+def _lien_document(action: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    """COP1 — carte « document » (contrat `assistant_document.json`) : le
+    relais ne telecharge PAS le PDF (corps binaire) ; il rend le LIEN que
+    l'ecran ouvre avec le jeton de l'utilisateur. Le chemin vient TOUJOURS du
+    registre (`endpoint`), jamais du modele ; `devis_id` des entrees validees."""
+    from urllib.parse import urlencode
+    path, options = _build_path(action.get("endpoint", ""), inputs)
+    url = path + ("?" + urlencode(options) if options else "")
+    return {"ok": True, "status": 200,
+            "data": {"devis_id": inputs.get("id"), "url": url,
+                     "options": options}}
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Relaie l'appel a l'endpoint du catalogue avec le JWT. `inputs` sont deja
-    valides. Renvoie le dict normalise de `_django_call`."""
+    valides. Renvoie le dict normalise de `_django_call`. Une action de carte
+    « document » n'appelle pas Django (COP1) : son lien suffit."""
+    if action.get("carte") == "document":
+        return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
+    extra = {"headers": headers} if headers else {}
     return _django_call(ctx, path, method=action.get("method", "POST"),
-                        payload=body)
+                        payload=body, **extra)
 
 
 def run_catalogue_action(
@@ -554,14 +711,18 @@ def run_catalogue_action(
 
     risk = action.get("risk", RISK_INTERNAL)
     if risk in _RISK_NEEDS_CONFIRM:
-        preview = _human_preview(action, inputs)
+        preview = _human_preview(action, inputs, _libelles_objets(ctx, action, inputs))
         token = _stash_proposal(ctx, action, inputs, preview)
         proposal = {
             "type": "proposal",
             "action_key": action["key"],
+            "libelle": _libelle_action(action),
+            "carte": action.get("carte"),
             "inputs": inputs,
             "human_preview": preview,
             "confirm_token": token,
+            # COP1 — duree de vie REELLE du jeton (carte « proposition »).
+            "expire_dans_s": ACTION_PROPOSAL_TTL,
         }
         if token is None:
             # Sans Redis on ne peut pas stasher : on renvoie tout de meme la
@@ -581,56 +742,153 @@ def run_catalogue_action(
         if collector is not None and intention_pour_statut(res.get("status")):
             collector.append({
                 "type": "erreur", "intention": "bug", "status": res.get("status"),
-                "outil": action["key"], "message": str(res.get("error", ""))[:200]})
+                "outil": action["key"], "message": str(res.get("error", ""))[:200],
+                "request_id": res.get("request_id")})
         return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
     result = {
         "type": "result", "action_key": action["key"],
+        "libelle": _libelle_action(action), "carte": action.get("carte"),
         "ok": True, "data": res.get("data"),
     }
     if collector is not None:
-        collector.append(result)
-    return json.dumps(result, ensure_ascii=False)
+        collector.append(result)  # entier : les cartes ne sont jamais coupees
+    return _sortie_pour_modele(result)
+
+
+# COP-A6 — taille maximale (caracteres) d'une sortie d'outil rendue au MODELE.
+LIMITE_SORTIE_MODELE = 6000
+
+
+def _liste_principale(data: Any) -> tuple[Optional[str], Optional[list]]:
+    """(cle, lignes) de la plus grosse liste du corps : le corps lui-meme
+    s'il est une liste, sinon sa valeur-liste la plus volumineuse."""
+    if isinstance(data, list):
+        return None, data
+    if not isinstance(data, dict):
+        return None, None
+    listes = [(len(json.dumps(v, ensure_ascii=False, default=str)), k)
+              for k, v in data.items() if isinstance(v, list) and v]
+    if not listes:
+        return None, None
+    cle = max(listes)[1]
+    return cle, data[cle]
+
+
+def _avec_lignes(sortie: dict, cle: Optional[str], lignes: list, n: int) -> dict:
+    data = lignes[:n] if cle is None else {**sortie["data"], cle: lignes[:n]}
+    return {**sortie, "data": data,
+            "suite_coupee": f"… (suite coupée : {len(lignes)} lignes au total)"}
+
+
+def _sortie_pour_modele(sortie: dict) -> str:
+    """JSON rendu au modele, borne a `LIMITE_SORTIE_MODELE` et toujours
+    lisible : les lignes en trop sont retirees de la liste principale (avec la
+    mention « … (suite coupee : N lignes au total) ») ; a defaut de liste, un
+    extrait du corps. Le collecteur, lui, garde les donnees entieres."""
+    def taille(objet):
+        return len(json.dumps(objet, ensure_ascii=False, default=str))
+
+    texte = json.dumps(sortie, ensure_ascii=False, default=str)
+    if len(texte) <= LIMITE_SORTIE_MODELE:
+        return texte
+    cle, lignes = _liste_principale(sortie.get("data"))
+    if lignes and taille(_avec_lignes(sortie, cle, lignes, 0)) <= LIMITE_SORTIE_MODELE:
+        bas, haut = 0, len(lignes) - 1  # le plus grand n qui tient
+        while bas < haut:
+            milieu = (bas + haut + 1) // 2
+            if taille(_avec_lignes(sortie, cle, lignes, milieu)) <= LIMITE_SORTIE_MODELE:
+                bas = milieu
+            else:
+                haut = milieu - 1
+        return json.dumps(_avec_lignes(sortie, cle, lignes, bas), ensure_ascii=False, default=str)
+    return _extrait_pour_modele(sortie)
+
+
+def _extrait_pour_modele(sortie: dict) -> str:
+    """Repli sans liste exploitable : un EXTRAIT texte du corps, raccourci
+    jusqu'a ce que le JSON rendu (echappements compris) tienne."""
+    brut = json.dumps(sortie.get("data"), ensure_ascii=False, default=str)
+    reste = {k: v for k, v in sortie.items() if k != "data"}
+    reste["suite_coupee"] = f"… (suite coupée : {len(brut)} caractères au total)"
+    longueur = LIMITE_SORTIE_MODELE
+    while True:
+        texte = json.dumps({**reste, "data_extrait": brut[:longueur]},
+                           ensure_ascii=False, default=str)
+        if len(texte) <= LIMITE_SORTIE_MODELE or longueur == 0:
+            return texte
+        longueur = max(0, longueur - (len(texte) - LIMITE_SORTIE_MODELE) - 1)
+
+
+_NON_EXECUTEE = " La proposition est consommée : l'action n'a pas été exécutée ; redemande-la."
+_SANS_REPONSE = (" La proposition est consommée et le serveur n'a pas répondu : "
+                 "vérifie si l'action a été faite avant de la redemander.")
+
+
+def _preparer_confirmation(
+    ctx: ActionContext, record: dict[str, Any],
+) -> tuple[Optional[dict[str, Any]], dict[str, Any], str]:
+    """(action, entrees re-validees, refus) d'une proposition reclamee : meme
+    societe, MEME utilisateur que celui qui l'a recue, action toujours au
+    catalogue courant de l'appelant, entrees conformes a son schema courant."""
+    if int(record.get("company_id") or 0) != ctx.company_id:
+        # Defense en profondeur : un jeton ne vaut que pour SA societe.
+        return None, {}, "Proposition non valable pour cette société."
+    if int(record.get("user_id") or 0) != _caller_user_id(ctx):
+        return None, {}, "Proposition destinée à un autre utilisateur."
+    action = _catalogue_by_key(ctx).get(record.get("action_key"))
+    if action is None:
+        return None, {}, "Action non autorisée ou indisponible pour ce compte."
+    try:
+        inputs = validate_inputs(action.get("inputs") or {}, record.get("inputs") or {})
+    except ActionValidationError as exc:
+        return None, {}, f"Entrées invalides : {exc}."
+    return action, inputs, ""
+
+
+def _avec_cle_corps(action: dict[str, Any], inputs: dict[str, Any],
+                    token: str) -> dict[str, Any]:
+    """Pose `idempotency_key` dans le corps quand le schema de l'action la
+    declare et que l'entree est absente (generer-facture, paiement : Django
+    rejoue sur cette cle au lieu de creer un doublon)."""
+    proprietes = (action.get("inputs") or {}).get("properties") or {}
+    if "idempotency_key" in proprietes and not inputs.get("idempotency_key"):
+        return {**inputs, "idempotency_key": _cle_idempotence(token)}
+    return inputs
 
 
 def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     """Rejoue une proposition stashee par jeton, APRES re-validation.
 
     Etapes de securite :
-      1. charge la proposition et VERIFIE sa signature (rejet si alteree) ;
-      2. exige que la societe du jeton == societe de l'appelant ;
+      1. RECLAME le jeton atomiquement (usage unique, avant toute execution)
+         et VERIFIE sa signature (rejet si alteree) ;
+      2. exige que la societe ET l'utilisateur du jeton soient l'appelant ;
       3. RE-RECUPERE le catalogue de l'appelant et exige que l'action y figure
          (l'appelant a toujours le droit de l'executer) ;
       4. RE-VALIDE les entrees contre le JSON-Schema courant du catalogue
          (rejet des cles hors catalogue) ;
-      5. relaie l'appel a Django (qui re-tranche permission + societe) ;
-      6. consomme le jeton (usage unique).
+      5. relaie l'appel a Django (qui re-tranche permission + societe) avec
+         une `Idempotency-Key` derivee du jeton.
+    Un refus apres la reclamation laisse le jeton consomme et le dit.
     Renvoie {ok, ...}. Ne leve pas pour les refus metier (renvoie ok=False)."""
-    record = _load_proposal(token)
+    record = _claim_proposal(token)
     if record is None:
-        return {"ok": False, "error": "Proposition introuvable, expiree ou alteree."}
-
-    if int(record.get("company_id") or 0) != ctx.company_id:
-        # Defense en profondeur : un jeton ne vaut que pour SA societe.
-        return {"ok": False, "error": "Proposition non valable pour cette societe."}
-
-    action_key = record.get("action_key")
-    catalogue = _catalogue_by_key(ctx)
-    action = catalogue.get(action_key)
-    if action is None:
         return {"ok": False,
-                "error": "Action non autorisee ou indisponible pour ce compte."}
+                "error": "Proposition introuvable, expirée ou déjà confirmée."}
 
-    # Re-validation des entrees contre le catalogue COURANT (fail-closed).
-    try:
-        inputs = validate_inputs(action.get("inputs") or {}, record.get("inputs") or {})
-    except ActionValidationError as exc:
-        return {"ok": False, "error": f"Entrees invalides : {exc}"}
+    action, inputs, refus = _preparer_confirmation(ctx, record)
+    if refus:
+        return {"ok": False, "error": refus + _NON_EXECUTEE}
+    action_key = action["key"]
 
-    res = _execute_catalogue_action(ctx, action, inputs)
-    _discard_proposal(token)  # usage unique, quel que soit le resultat
+    res = _execute_catalogue_action(
+        ctx, action, _avec_cle_corps(action, inputs, token),
+        headers={"Idempotency-Key": _cle_idempotence(token)})
     if not res.get("ok"):
+        suite = _SANS_REPONSE if not res.get("status") else _NON_EXECUTEE
         return {"ok": False, "status": res.get("status"),
-                "error": res.get("error", "L'action a echoue.")}
+                "error": (res.get("error") or "L'action a échoué.") + suite,
+                "request_id": res.get("request_id")}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
     # `log_confirmed_action` existait côté Django, testée, mais aucun appelant
@@ -641,7 +899,8 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     # ne doit pas faire echouer une action deja executee avec succes.
     _log_confirmed_action(ctx, action_key, action, inputs, token, res.get("data"))
 
-    return {"ok": True, "action_key": action_key, "data": res.get("data")}
+    return {"ok": True, "action_key": action_key, "data": res.get("data"),
+            "libelle": _libelle_action(action), "carte": action.get("carte")}
 
 
 # ── AANA18 — preuve de confirmation (contrat partage avec Django) ─────────────
@@ -814,51 +1073,32 @@ def journaliser_evenement_assistant(
 # ── Fabrique d'outils LangChain ───────────────────────────────────────────────
 
 
-# Type JSON-Schema -> annotation Python pour le modele pydantic genere.
-_PY_TYPE = {
-    "integer": int,
-    "number": float,
-    "string": str,
-    "boolean": bool,
-    "array": list,
-    "object": dict,
-}
-
-
 def _tool_name_for(action: dict[str, Any]) -> str:
     """Nom d'outil LangChain valide derive de la cle catalogue
     (ex. `ventes.devis.create` -> `ventes_devis_create`)."""
     return re.sub(r"[^0-9a-zA-Z_]", "_", action["key"])
 
 
-def _args_model_for(action: dict[str, Any]):
-    """Construit un modele pydantic `args_schema` a partir du JSON-Schema
-    `inputs` de l'entree catalogue."""
-    from pydantic import create_model
+def _args_model_for(action: dict[str, Any]) -> dict[str, Any]:
+    """`args_schema` de l'outil : le JSON-Schema `inputs` de l'entree
+    catalogue, recopie tel quel (COP-A2).
+
+    Un DICT et non un modele pydantic : LangChain le montre au modele sans
+    rien perdre (`type`, `enum`, `items`, `required` — un modele pydantic
+    reconstruit par `tool_call_schema` ne gardait que type et description) et
+    ne valide RIEN lui-meme. Un argument du mauvais type ou une cle inconnue
+    ne fait donc plus echouer le TOUR entier : c'est `validate_inputs`
+    (fail-closed) qui refuse, par un texte « Action refusee : … » que le
+    modele lit et corrige."""
+    import copy
 
     schema = action.get("inputs") or {}
-    properties = schema.get("properties") or {}
-    required = set(schema.get("required") or [])
-
-    fields: dict[str, Any] = {}
-    for name, spec in properties.items():
-        spec = spec or {}
-        py_type = _PY_TYPE.get(spec.get("type"), str)
-        desc = spec.get("description", "")
-        if name in required:
-            fields[name] = (py_type, _pyd_field(..., desc))
-        else:
-            fields[name] = (Optional[py_type], _pyd_field(None, desc))
-
-    model_name = f"Args_{_tool_name_for(action)}"
-    if not fields:
-        return create_model(model_name)
-    return create_model(model_name, **fields)
-
-
-def _pyd_field(default, description):
-    from pydantic import Field
-    return Field(default, description=description or "")
+    properties = copy.deepcopy(schema.get("properties") or {})
+    required = [r for r in (schema.get("required") or []) if r in properties]
+    args = {"type": "object", "properties": properties}
+    if required:
+        args["required"] = required
+    return args
 
 
 def build_action_tools(
