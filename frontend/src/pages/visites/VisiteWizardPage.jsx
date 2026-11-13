@@ -24,7 +24,7 @@ import {
   Button, Card, Spinner, Badge, ChecklistProgress, Label, Textarea,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   trierCategories, progressionPhotos, titreVisite, estVisitePointEau, estVisiteCi,
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
@@ -40,6 +40,7 @@ import VisiteQualificationForm from './VisiteQualificationForm'
 function SlotTile({ visiteId, slot, onChanged }) {
   const [ouvert, setOuvert] = useState(false)
   const [envoi, setEnvoi] = useState(false)
+  const { confirmDelete } = useConfirmDialog()
 
   // VTA10 — passe par le BRANCHEMENT offline de la plateforme : compression
   // (VX77) puis envoi en ligne ; sur panne RÉSEAU la photo rejoint l'UNIQUE
@@ -69,7 +70,16 @@ function SlotTile({ visiteId, slot, onChanged }) {
     }
   }
 
-  const supprimer = async (mediaId) => {
+  const supprimer = async (mediaId, filename) => {
+    // AERR106 — suppression DÉFINITIVE côté serveur : confirmation nommée
+    // (pas d'« Annuler » différé : suppression dure).
+    const ok = await confirmDelete({
+      title: `Supprimer la photo « ${filename} » (${slot.libelle}) ?`,
+      description: 'Elle ne pourra pas être récupérée.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Garder',
+    })
+    if (!ok) return
     try {
       await visitesApi.deleteVisitePhoto(visiteId, mediaId)
       onChanged()
@@ -110,7 +120,7 @@ function SlotTile({ visiteId, slot, onChanged }) {
                 type="button"
                 aria-label={`Supprimer la photo ${p.filename}`}
                 className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-destructive text-[10px] text-destructive-foreground"
-                onClick={() => supprimer(p.id)}
+                onClick={() => supprimer(p.id, p.filename)}
               >
                 ×
               </button>

@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
 beforeAll(polyfillResizeObserver)
 
@@ -116,11 +117,13 @@ import { polyfillResizeObserver } from '../../test/selectNatif'
 
 function withProviders() {
   return render(
-    <MemoryRouter initialEntries={['/visites/7']}>
-      <Routes>
-        <Route path="/visites/:id" element={<VisiteWizardPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ConfirmProvider>
+      <MemoryRouter initialEntries={['/visites/7']}>
+        <Routes>
+          <Route path="/visites/:id" element={<VisiteWizardPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ConfirmProvider>,
   )
 }
 
@@ -136,6 +139,24 @@ describe('VisiteWizardPage — VT10', () => {
     expect(bloc).toHaveTextContent('Tableau ouvert (disjoncteurs visibles)')
     expect(bloc).toHaveTextContent('Obstacles et ombrages')
     expect(bloc).toHaveTextContent('Largeur du mur libre (cm)')
+  })
+
+  it('croix de vignette : rien n’est supprimé sans confirmation nommée (AERR106)', async () => {
+    const visitesApi = (await import('../../api/visitesApi')).default
+    visitesApi.deleteVisitePhoto.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la photo toit-1.jpg' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('toit-1.jpg')
+    expect(boite).toHaveTextContent('Vue générale du toit')
+    await user.click(within(boite).getByRole('button', { name: 'Garder' }))
+    expect(visitesApi.deleteVisitePhoto).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Supprimer la photo toit-1.jpg' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }))
+    await vi.waitFor(() => expect(visitesApi.deleteVisitePhoto).toHaveBeenCalledTimes(1))
+    expect(visitesApi.deleteVisitePhoto).toHaveBeenCalledWith('7', 31)
   })
 
   it('la saisie non enregistrée survit au changement d’onglet', async () => {
