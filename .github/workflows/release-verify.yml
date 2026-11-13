@@ -375,6 +375,17 @@ jobs:
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
           cd ../../frontend
+          # ATST54 (D-ATST-2) — apps/web en dev : /proposition FR/AR (AGR318, CIQ334, CIQ346) non sautée.
+          (cd ../apps/web && npm ci --no-audit --no-fund)
+          (cd ../apps/web && PUBLIC_API_BASE=http://127.0.0.1:8000 \
+            npm run dev -- --host 127.0.0.1 --port 4321 > /tmp/web-dev.log 2>&1) &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then echo "apps/web prêt (HTTP $code)"; break; fi
+            sleep 2
+            if [ "$i" = "60" ]; then cat /tmp/web-dev.log; echo "apps/web indisponible"; exit 1; fi
+          done
+          export WEB_URL=http://127.0.0.1:4321
           # Toutes les specs SAUF les captures visuelles (qui ont leur propre étape).
           npx playwright test --grep-invert @visual
       - name: Visual regression (baselines COMMITÉES — bloquant)

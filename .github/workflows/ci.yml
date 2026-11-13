@@ -2400,7 +2400,19 @@ jobs:
             # chaque test tourne exactement une fois, comme avant. Mesuré avant
             # (run 35607493246) : 51 s + 66 s en série ; attendu ~47 s + ~66 s
             # avec health absorbé par le worker libre.
-            npx playwright test --project=chromium devis.spec.js
+            # ATST54 (D-ATST-2) — apps/web en dev : /proposition FR/AR (AGR318, CIQ334, CIQ346) non sautée.
+            (cd ../apps/web && npm ci --prefer-offline --no-audit --no-fund)
+            (cd ../apps/web && PUBLIC_API_BASE=http://127.0.0.1:8000 \
+              npm run dev -- --host 127.0.0.1 --port 4321 > /tmp/web-dev.log 2>&1) &
+            for i in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ || true)
+              if [ -n "$code" ] && [ "$code" != "000" ]; then echo "apps/web prêt (HTTP $code)"; break; fi
+              sleep 2
+              if [ "$i" = "60" ]; then cat /tmp/web-dev.log; echo "apps/web indisponible"; exit 1; fi
+            done
+            export WEB_URL=http://127.0.0.1:4321
+            npx playwright test --project=chromium devis.spec.js devis-agricole-document.spec.js \
+              devis-ci-commercial.spec.js devis-ci-industriel.spec.js
             npx playwright test --project=chromium --project=mobile-safari --workers 2 \
               health.spec.js mobile.spec.js figures-parite.spec.js
           fi

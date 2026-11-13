@@ -34,18 +34,27 @@ const toastError = vi.fn()
 const toastSuccess = vi.fn()
 vi.mock('../ui/confirm', () => ({ toast: { error: (...a) => toastError(...a), success: (...a) => toastSuccess(...a) } }))
 
+// AERR69 — le toast nommé + « Annuler » passe par lib/toast (mutateWithUndo).
+const toastWithUndo = vi.fn()
+vi.mock('../lib/toast', async (orig) => ({ ...(await orig()), toastWithUndo: (...a) => toastWithUndo(...a) }))
+
 import { CommandPalette } from './CommandPalette'
+import { ConfirmContext } from './confirm-context'
 
 const store = configureStore({
   reducer: { auth: (s = { role: 'admin', permissions: [], modulesDesactives: [], user: null }) => s },
 })
 
+const confirmer = vi.fn(() => Promise.resolve(false))
+
 function mountAt(path) {
   return render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={[path]}>
-        <CommandPalette />
-      </MemoryRouter>
+      <ConfirmContext.Provider value={confirmer}>
+        <MemoryRouter initialEntries={[path]}>
+          <CommandPalette />
+        </MemoryRouter>
+      </ConfirmContext.Provider>
     </Provider>,
   )
 }
@@ -79,6 +88,31 @@ describe('NTUX9 — actions contextuelles par écran', () => {
     fireEvent.click(screen.getByText('Changer le stage du lead sélectionné'))
     await waitFor(() => expect(getLead).toHaveBeenCalledWith('5'))
     await waitFor(() => expect(updateLead).toHaveBeenCalledWith('5', { stage: 'QUOTE_SENT' }))
+    await waitFor(() => expect(toastWithUndo).toHaveBeenCalled())
+  })
+
+  it('AERR69 — toast nommé + « Annuler » ; FOLLOW_UP ⇒ confirmation nommée avant SIGNED', async () => {
+    getLead.mockResolvedValueOnce({ data: { stage: 'CONTACTED', nom: 'Karim B.' } })
+    mountAt('/crm/leads?lead=5')
+    openPaletteEvent()
+    fireEvent.click(screen.getByText('Changer le stage du lead sélectionné'))
+    await waitFor(() => expect(toastWithUndo).toHaveBeenCalled())
+    const { message, onUndo } = toastWithUndo.mock.calls[0][0]
+    expect(message).toBe('Karim B. → Devis envoyé')
+    expect(toastSuccess).not.toHaveBeenCalled()
+    await onUndo()
+    expect(updateLead).toHaveBeenLastCalledWith('5', { stage: 'CONTACTED' })
+    cleanup(); vi.clearAllMocks()
+
+    getLead.mockResolvedValueOnce({ data: { stage: 'FOLLOW_UP', nom: 'Karim B.' } })
+    mountAt('/crm/leads?lead=5')
+    openPaletteEvent()
+    fireEvent.click(screen.getByText('Changer le stage du lead sélectionné'))
+    await waitFor(() => expect(confirmer).toHaveBeenCalled())
+    expect(confirmer.mock.calls[0][0].title).toContain('Karim B.')
+    await act(async () => {})
+    expect(updateLead).not.toHaveBeenCalled()
+    expect(toastWithUndo).not.toHaveBeenCalled()
   })
 
   it('lead déjà à la dernière étape active (SIGNED) : toast d’erreur, aucun PATCH', async () => {
