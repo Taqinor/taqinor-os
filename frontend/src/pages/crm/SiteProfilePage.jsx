@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
 import fetchAllPages from '../../utils/fetchAllPages'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, CardContent, Checkbox, Combobox, EmptyState,
@@ -84,6 +85,11 @@ export default function SiteProfilePage() {
   // synchrone dans l'effet ci-dessous, react-hooks/set-state-in-effect).
   const [loadedClientId, setLoadedClientId] = useState(null)
   const [saving, setSaving] = useState(false)
+  // AERR116 — lecture du profil en échec : on NE propose PAS un formulaire vide
+  // dont « Enregistrer » créerait un doublon. `essai` = « Réessayer ».
+  const [echecClientId, setEchecClientId] = useState(null)
+  const [essai, setEssai] = useState(0)
+  const { errors, setFromResponse, clearField, clearAll } = useServerFieldErrors()
 
   // Réinitialisation du profil quand `clientId` redevient vide : ajustement
   // PENDANT LE RENDU (pas dans un effet), la valeur de repli (EMPTY) étant
@@ -98,6 +104,7 @@ export default function SiteProfilePage() {
     }
   }
   const loading = Boolean(clientId) && loadedClientId !== clientId
+  const lectureEchec = Boolean(clientId) && echecClientId === clientId
 
   useEffect(() => {
     let active = true
@@ -125,19 +132,21 @@ export default function SiteProfilePage() {
         const p = rows[0] || null
         setProfileId(p?.id ?? null)
         setForm(toForm(p))
+        setEchecClientId(null)
       })
-      .catch(() => { if (active) { setProfileId(null); setForm(EMPTY) } })
+      .catch(() => { if (active) { setProfileId(null); setForm(EMPTY); setEchecClientId(clientId) } })
       .finally(() => { if (active) setLoadedClientId(clientId) })
     return () => { active = false }
-  }, [clientId])
+  }, [clientId, essai])
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
-  const setInput = (k) => (e) => set(k)(e.target.value)
+  const setInput = (k) => (e) => { set(k)(e.target.value); clearField(k) }
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!clientId) return
+    if (!clientId || lectureEchec) return
     setSaving(true)
+    clearAll()
     try {
       const payload = toPayload(form, clientId)
       const res = profileId
@@ -145,7 +154,10 @@ export default function SiteProfilePage() {
         : await crmApi.createSiteProfile(payload)
       setProfileId(res?.data?.id ?? profileId)
       toast.success('Profil site enregistré.')
-    } catch {
+    } catch (err) {
+      // AERR116 — le refus du serveur se range sous son champ (400 `{champ: […]}`).
+      const data = err?.response?.data
+      if (err?.response?.status === 400 && data && typeof data === 'object') setFromResponse(data)
       toast.error("Enregistrement impossible. Vérifiez les valeurs saisies.")
     } finally {
       setSaving(false)
@@ -188,6 +200,14 @@ export default function SiteProfilePage() {
 
       {clientId && (
         <form onSubmit={submit} noValidate className="mt-4 space-y-4">
+          {lectureEchec && (
+            <div role="alert" className="flex flex-wrap items-center gap-2" data-testid="profil-illisible">
+              <span className="text-sm text-destructive">Profil illisible — impossible de l’enregistrer sans l’avoir lu.</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => { setEchecClientId(null); setLoadedClientId(null); setEssai((n) => n + 1) }}>
+                Réessayer
+              </Button>
+            </div>
+          )}
           <Card>
             <CardContent className="grid gap-4 p-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
@@ -276,7 +296,11 @@ export default function SiteProfilePage() {
                 <Label htmlFor="sp-surface">Surface toiture (m²)</Label>
                 <Input id="sp-surface" type="number" step="any"
                   value={form.surface_toiture_m2}
+                  aria-invalid={errors.surface_toiture_m2 ? true : undefined}
                   onChange={setInput('surface_toiture_m2')} />
+                {errors.surface_toiture_m2 && (
+                  <p role="alert" className="text-xs text-destructive">{errors.surface_toiture_m2}</p>
+                )}
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-incl">Inclinaison (°)</Label>
@@ -287,7 +311,7 @@ export default function SiteProfilePage() {
           </Card>
 
           <div className="flex items-center gap-3">
-            <Button type="submit" disabled={saving || loading}>
+            <Button type="submit" disabled={saving || loading || lectureEchec}>
               {profileId ? 'Enregistrer le profil' : 'Créer le profil'}
             </Button>
             {loading && (

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 /* WIR99/DC12 — l'écran de profil site est le SEUL endroit où un `SiteProfile`
    peut être créé/édité (le modèle et son endpoint existaient, aucun écran ne
@@ -43,5 +44,35 @@ describe('SiteProfilePage (WIR99 — création/édition du profil site)', () => 
     render(<SiteProfilePage />)
     await waitFor(() => expect(crmApi.getClients).toHaveBeenCalled())
     expect(screen.getByText('Profils site')).toBeInTheDocument()
+  })
+})
+
+describe('SiteProfilePage — AERR116', () => {
+  async function choisirClient(user) {
+    await waitFor(() => expect(crmApi.getClients).toHaveBeenCalled())
+    await user.click(screen.getByRole('combobox'))
+    await user.click(await screen.findByText('ACME SARL'))
+  }
+
+  it('lecture rejetée : Enregistrer désactivé, aucun doublon', async () => {
+    crmApi.getSiteProfiles.mockRejectedValueOnce(new Error('500'))
+    const user = userEvent.setup()
+    render(<SiteProfilePage />)
+    await choisirClient(user)
+    expect(await screen.findByTestId('profil-illisible')).toHaveTextContent('Profil illisible')
+    expect(screen.getByRole('button', { name: /Créer le profil|Enregistrer le profil/ })).toBeDisabled()
+    expect(crmApi.createSiteProfile).not.toHaveBeenCalled()
+  })
+
+  it('400 sur un champ : message sous le champ', async () => {
+    crmApi.updateSiteProfile.mockRejectedValueOnce({
+      response: { status: 400, data: { surface_toiture_m2: ['Surface invalide.'] } },
+    })
+    const user = userEvent.setup()
+    render(<SiteProfilePage />)
+    await choisirClient(user)
+    await user.click(await screen.findByRole('button', { name: 'Enregistrer le profil' }))
+    expect(await screen.findByText('Surface invalide.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Surface toiture (m²)')).toHaveAttribute('aria-invalid', 'true')
   })
 })
