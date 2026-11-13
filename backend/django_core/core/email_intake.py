@@ -78,18 +78,23 @@ def register_handler(fn):
     return fn
 
 
-def _dispatch(messages, company):
+def _dispatch(messages, company, traites=None):
     """Passe chaque message à chaque handler ; un handler qui lève n'arrête pas
-    les autres (robustesse). Retourne le nombre de (message, handler) traités."""
+    les autres (robustesse). Retourne le nombre de (message, handler) traités.
+    ACEL17 — ``traites`` (liste) reçoit les messages qu'AUCUN handler n'a fait lever."""
     handled = 0
     for msg in messages:
+        intact = True
         for handler in list(_HANDLERS):
             try:
                 handler(msg, company)
                 handled += 1
             except Exception:  # noqa: BLE001 — un handler défaillant n'arrête rien (D-ENF22-BLE001)
+                intact = False
                 logger.warning("dispatch : échec ignoré, comportement dégradé", exc_info=True)
                 continue
+        if intact and traites is not None:
+            traites.append(msg)
     return handled
 
 
@@ -134,37 +139,48 @@ def _parse_email_message(raw_bytes) -> InboundMessage:
     )
 
 
+IMAP_TIMEOUT = 30  # ACEL17 — un serveur muet ne bloque plus la file `scheduled`
+
+
+def _imap(config_obj):
+    """Connexion IMAP ouverte (login + dossier) ou ``None`` si non configuré."""
+    import imaplib
+
+    settings = config_obj.settings or {}
+    host, user = settings.get('host'), settings.get('user')
+    password = resolve_secret(getattr(config_obj, 'secret_ref', '') or None)
+    if not host or not user or not password:
+        return None
+    conn = imaplib.IMAP4_SSL(host, timeout=IMAP_TIMEOUT)
+    conn.login(user, password)
+    conn.select(settings.get('folder', 'INBOX'))
+    return conn
+
+
 def fetch_messages(config_obj):
     """Récupère les messages NON LUS via IMAP (no-op propre si non configuré).
+
+    ACEL17 — relève en ``BODY.PEEK[]`` : le message reste NON LU sur le serveur
+    tant que ``poll_mailbox`` ne l'a pas marqué après son traitement.
 
     Identifiants : host/user/folder via ``settings`` ; mot de passe via
     ``secret_ref`` (variable d'environnement). Renvoie une liste de
     ``InboundMessage`` (vide si non configuré ou si la lib/serveur est
     indisponible — jamais d'exception remontée).
     """
-    settings = config_obj.settings or {}
-    host = settings.get('host')
-    user = settings.get('user')
-    password = resolve_secret(getattr(config_obj, 'secret_ref', '') or None)
-    if not host or not user or not password:
-        return []  # non configuré → no-op propre.
-    folder = settings.get('folder', 'INBOX')
-    try:
-        import imaplib
-    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-        logger.warning("fetch messages : échec ignoré, comportement dégradé", exc_info=True)
-        return []
     out = []
     try:
-        conn = imaplib.IMAP4_SSL(host)
-        conn.login(user, password)
-        conn.select(folder)
+        conn = _imap(config_obj)
+        if conn is None:
+            return []  # non configuré → no-op propre.
         typ, data = conn.search(None, 'UNSEEN')
         if typ == 'OK':
             for num in data[0].split():
-                t, msg_data = conn.fetch(num, '(RFC822)')
+                t, msg_data = conn.fetch(num, '(BODY.PEEK[])')
                 if t == 'OK' and msg_data and msg_data[0]:
-                    out.append(_parse_email_message(msg_data[0][1]))
+                    msg = _parse_email_message(msg_data[0][1])
+                    msg.imap_num = num
+                    out.append(msg)
         conn.logout()
     except Exception:  # noqa: BLE001 — réseau/auth : dégrade en vide (D-ENF22-BLE001)
         logger.warning("fetch messages : échec ignoré, comportement dégradé", exc_info=True)
@@ -183,5 +199,15 @@ def poll_mailbox(company):
     if cfg is None:
         return {'fetched': 0, 'handled': 0}
     messages = fetch_messages(cfg)
-    handled = _dispatch(messages, company)
+    traites = []
+    handled = _dispatch(messages, company, traites)
+    nums = [m.imap_num for m in traites if getattr(m, 'imap_num', None)]
+    if nums:  # ACEL17 — `\\Seen` posé APRÈS le traitement, sur ceux-là seuls
+        try:
+            conn = _imap(cfg)
+            for num in nums:
+                conn.store(num, '+FLAGS', '\\Seen')
+            conn.logout()
+        except Exception:  # noqa: BLE001 — non marqué = re-relevé, jamais perdu (D-ENF22-BLE001)
+            logger.warning('poll_mailbox : marquage lu en échec', exc_info=True)
     return {'fetched': len(messages), 'handled': handled}

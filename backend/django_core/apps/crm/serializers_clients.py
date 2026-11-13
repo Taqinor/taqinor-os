@@ -625,6 +625,12 @@ class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
     def get_period_type_display(self, obj):
         return obj.get_period_type_display()
 
+    def to_representation(self, instance):
+        # ALEC24 — cible d'un objectif hors portée du rôle : null.
+        from .portee_selectors import masquer_objectifs_hors_portee
+        return masquer_objectifs_hors_portee([super().to_representation(
+            instance)], getattr(self.context.get('request'), 'user', None))[0]
+
     def validate(self, attrs):
         pt = attrs.get('period_type', getattr(self.instance, 'period_type', None))
         for type_periode, champ, message in (
@@ -658,11 +664,13 @@ class ObjectifAttainmentSerializer(serializers.Serializer):
     period_year = serializers.IntegerField()
     period_month = serializers.IntegerField(allow_null=True)
     period_quarter = serializers.IntegerField(allow_null=True)
-    cible = serializers.DecimalField(max_digits=14, decimal_places=2)
+    cible = serializers.DecimalField(max_digits=14, decimal_places=2,
+                                     allow_null=True)  # ALEC24 : hors portée
     owner = serializers.IntegerField(allow_null=True)
     owner_nom = serializers.CharField(allow_null=True)
-    realise = serializers.DecimalField(max_digits=14, decimal_places=2)
-    taux = serializers.FloatField()
+    realise = serializers.DecimalField(max_digits=14, decimal_places=2,
+                                       allow_null=True)
+    taux = serializers.FloatField(allow_null=True)
     period_start = serializers.DateField()
     period_end = serializers.DateField()
 

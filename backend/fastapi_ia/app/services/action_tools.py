@@ -148,6 +148,7 @@ def _django_call(
     path: str,
     method: str = "POST",
     payload: dict | None = None,
+    idempotency_key: str | None = None,
     headers: dict[str, str] | None = None,
     timeout: httpx.Timeout | None = None,
 ) -> dict[str, Any]:
@@ -157,9 +158,10 @@ def _django_call(
     a l'endpoint nomme par le catalogue, en GET/POST/PATCH/PUT/DELETE. Django
     reste l'autorite finale (scope societe + permissions). Retourne un dict
     normalise {ok, status, data|error}. Ne leve jamais : les erreurs sont
-    renvoyees comme texte a l'agent. `headers` (COP-A3, ex. `Idempotency-Key`)
-    s'ajoute aux en-tetes, sans jamais remplacer le jeton de l'appelant ;
-    `timeout` (COP-A5) raccourcit le delai d'un appel accessoire.
+    renvoyees comme texte a l'agent. `idempotency_key` (ACNC42) part dans
+    l'en-tete `Idempotency-Key` — contrat de core/idempotency.py (ACNC12).
+    `headers` s'ajoute aux en-tetes, sans jamais remplacer le jeton de
+    l'appelant ; `timeout` (COP-A5) raccourcit le delai d'un appel accessoire.
     """
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
     verb = (method or "POST").upper()
@@ -169,6 +171,8 @@ def _django_call(
         "Authorization": f"Bearer {ctx.token}",
         "Accept": "application/json",
     }
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     body = payload or {}
     request_kwargs: dict[str, Any] = {"headers": headers}
     # GET/DELETE : pas de corps JSON (les parametres voyagent dans l'URL ou en
@@ -605,7 +609,7 @@ def _claim_proposal(token: str) -> Optional[dict[str, Any]]:
 def _cle_idempotence(token: str) -> str:
     """`Idempotency-Key` relayee a Django pour UNE confirmation : empreinte
     SHA-256 du jeton, jamais le jeton en clair (COP-A3)."""
-    return "agent-confirm-" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # ── Execution d'une action du catalogue ───────────────────────────────────────
@@ -677,19 +681,38 @@ def _lien_document(action: dict[str, Any], inputs: dict[str, Any]) -> dict[str, 
                      "options": options}}
 
 
+#: Actions dont la cle d'idempotence voyage dans le CORPS (ACNC42) :
+#: `Paiement.idempotency_key` (ACNC1). Les autres la recoivent en en-tete.
+_CLE_DANS_LE_CORPS = frozenset({"ventes.facture.enregistrer_paiement"})
+
+
+def _cle_dans_le_corps(action: dict[str, Any]) -> bool:
+    proprietes = (action.get("inputs") or {}).get("properties") or {}
+    return action.get("key") in _CLE_DANS_LE_CORPS or "idempotency_key" in proprietes
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
-    headers: dict[str, str] | None = None,
+    *, idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """Relaie l'appel a l'endpoint du catalogue avec le JWT. `inputs` sont deja
     valides. Renvoie le dict normalise de `_django_call`. Une action de carte
-    « document » n'appelle pas Django (COP1) : son lien suffit."""
+    « document » n'appelle pas Django (COP1) : son lien suffit. ACNC42 — la cle
+    d'idempotence voyage dans le corps (paiement, ou action dont le schema la
+    declare ; une cle deja fournie n'est pas remplacee) ou l'en-tete (le reste)."""
     if action.get("carte") == "document":
         return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
-    extra = {"headers": headers} if headers else {}
-    return _django_call(ctx, path, method=action.get("method", "POST"),
-                        payload=body, **extra)
+    methode = action.get("method", "POST")
+    if not idempotency_key:
+        return _django_call(ctx, path, method=methode, payload=body)
+    if _cle_dans_le_corps(action):
+        corps = dict(body or {})
+        if not corps.get("idempotency_key"):
+            corps["idempotency_key"] = idempotency_key
+        return _django_call(ctx, path, method=methode, payload=corps)
+    return _django_call(ctx, path, method=methode, payload=body,
+                        idempotency_key=idempotency_key)
 
 
 def run_catalogue_action(
@@ -851,17 +874,6 @@ def _preparer_confirmation(
     return action, inputs, ""
 
 
-def _avec_cle_corps(action: dict[str, Any], inputs: dict[str, Any],
-                    token: str) -> dict[str, Any]:
-    """Pose `idempotency_key` dans le corps quand le schema de l'action la
-    declare et que l'entree est absente (generer-facture, paiement : Django
-    rejoue sur cette cle au lieu de creer un doublon)."""
-    proprietes = (action.get("inputs") or {}).get("properties") or {}
-    if "idempotency_key" in proprietes and not inputs.get("idempotency_key"):
-        return {**inputs, "idempotency_key": _cle_idempotence(token)}
-    return inputs
-
-
 def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     """Rejoue une proposition stashee par jeton, APRES re-validation.
 
@@ -874,7 +886,7 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
       4. RE-VALIDE les entrees contre le JSON-Schema courant du catalogue
          (rejet des cles hors catalogue) ;
       5. relaie l'appel a Django (qui re-tranche permission + societe) avec
-         une `Idempotency-Key` derivee du jeton.
+         une cle d'idempotence derivee du jeton (ACNC42 : corps ou en-tete).
     Un refus apres la reclamation laisse le jeton consomme et le dit.
     Renvoie {ok, ...}. Ne leve pas pour les refus metier (renvoie ok=False)."""
     record = _claim_proposal(token)
@@ -888,8 +900,7 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     action_key = action["key"]
 
     res = _execute_catalogue_action(
-        ctx, action, _avec_cle_corps(action, inputs, token),
-        headers={"Idempotency-Key": _cle_idempotence(token)})
+        ctx, action, inputs, idempotency_key=_cle_idempotence(token))
     if not res.get("ok"):
         # Sans reponse (0) ou erreur serveur (5xx) : l'action a PEUT-ETRE ete
         # faite — ne jamais affirmer « non executee », ne jamais pousser a rejouer.

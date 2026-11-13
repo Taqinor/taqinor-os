@@ -164,6 +164,8 @@
   "client.langue_document.help": "لغة الفواتير وعروض الأسعار الصادرة لهذا العميل.",
   "client.langue_document.fr": "الفرنسية",
   "client.langue_document.ar": "العربية",
+  "client.releve_mensuel_auto.label": "كشف الحساب الشهري التلقائي",
+  "client.releve_mensuel_auto.help": "يُرسل كشف الحساب بصيغة PDF تلقائيًا في الأول من كل شهر إذا لم يكن الرصيد صفرًا. معطّل افتراضيًا.",
 
   "crm.cockpit.subtitle": "العملاء المحتملون والعملاء والأنشطة وخريطة المبيعات",
   "ventes.cockpit.subtitle": "عروض الأسعار وأوامر الشراء والفوترة والمتابعات",

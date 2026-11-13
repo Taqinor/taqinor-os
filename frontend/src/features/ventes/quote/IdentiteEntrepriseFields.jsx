@@ -4,8 +4,11 @@
 // serveur (`validate_ice_ma`), qui nomme le champ en cas d'erreur.
 import { Input, Label } from '../../../ui'
 
-export default function IdentiteEntrepriseFields({ value, onChange, idPrefix = 'accept' }) {
+// AERR5 — `errors` (facultatif) : refus serveur par champ (`entreprise.<cle>`).
+export default function IdentiteEntrepriseFields({ value, onChange, idPrefix = 'accept', errors = {} }) {
   const v = value || {}
+  const erreur = (cle) => errors[`entreprise.${cle}`]
+    && <p className="text-xs text-destructive">{errors[`entreprise.${cle}`]}</p>
   const champ = (cle) => (e) => onChange({ ...v, [cle]: e.target.value })
   return (
     <fieldset className="grid gap-3 rounded-lg border border-border p-3" data-testid="identite-entreprise">
@@ -14,16 +17,19 @@ export default function IdentiteEntrepriseFields({ value, onChange, idPrefix = '
         <Label htmlFor={`${idPrefix}-raison-sociale`}>Raison sociale</Label>
         <Input id={`${idPrefix}-raison-sociale`} value={v.raison_sociale ?? ''}
                onChange={champ('raison_sociale')} />
+        {erreur('raison_sociale')}
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${idPrefix}-qualite`}>Qualité du signataire</Label>
         <Input id={`${idPrefix}-qualite`} value={v.signataire_qualite ?? ''}
                onChange={champ('signataire_qualite')} placeholder="ex. Directeur général" />
+        {erreur('signataire_qualite')}
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${idPrefix}-ice`}>ICE</Label>
         <Input id={`${idPrefix}-ice`} inputMode="numeric" value={v.ice ?? ''}
                onChange={champ('ice')} placeholder="15 chiffres" />
+        {erreur('ice')}
       </div>
     </fieldset>
   )

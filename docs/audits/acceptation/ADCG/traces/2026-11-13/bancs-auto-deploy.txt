@@ -1,0 +1,41 @@
+# Banc du deploy rejoue sur runner GitHub (2026-11-13T21:11:15Z), sha 8c4a0a109f5a0e923fee92ca8862cacb8a9faea4
+# commande : python3 -m unittest scripts.tests.test_auto_deploy -v
+Python 3.12.3
+GNU bash, version 5.2.21(1)-release (x86_64-pc-linux-gnu)
+test_caddy_invalide_fait_echouer_le_deploy (scripts.tests.test_auto_deploy.AutoDeployTests.test_caddy_invalide_fait_echouer_le_deploy)
+ADCG8 — validate en échec : 0 reload ; reload en échec : ECHEC ; sinon OK. ... ok
+test_code_neuf_visible_seulement_apres_migrate (scripts.tests.test_auto_deploy.AutoDeployTests.test_code_neuf_visible_seulement_apres_migrate)
+ADCG109 — build et migrate sur un arbre séparé au commit neuf ; ... ok
+test_commit_deploye_passe_aux_conteneurs (scripts.tests.test_auto_deploy.AutoDeployTests.test_commit_deploye_passe_aux_conteneurs)
+ADCG19 — `up -d` reçoit DEPLOYED_SHA = B ; le compose prod le passe aux 4 services. ... ok
+test_echec_consigne_dans_redis (scripts.tests.test_auto_deploy.AutoDeployTests.test_echec_consigne_dans_redis)
+ADCG12 — un ECHEC pousse {ts, sha, étape fautive} dans erp:deploys_en_echec, borné à 50. ... ok
+test_echec_meme_commit_pas_rejoue (scripts.tests.test_auto_deploy.AutoDeployTests.test_echec_meme_commit_pas_rejoue)
+ADCG3 — deux cycles sur un commit en échec = un seul migrate. ... ok
+test_echec_revient_au_dernier_commit_sain (scripts.tests.test_auto_deploy.AutoDeployTests.test_echec_revient_au_dernier_commit_sain)
+ADCG5 — migrate ou santé en échec : retour effectif à last_deployed_commit. ... ok
+test_fetch_en_echec_consigne_une_fois (scripts.tests.test_auto_deploy.AutoDeployTests.test_fetch_en_echec_consigne_une_fois)
+ADCG110 — `git fetch` en échec : UNE entrée {sha déployé, étape fetch} ... ok
+test_fichiers_embarques_declenchent_leur_service (scripts.tests.test_auto_deploy.AutoDeployTests.test_fichiers_embarques_declenchent_leur_service)
+ADCG10 — worker du site, image minio, postgresql.conf monté. ... ok
+test_manuel_declenche_la_sequence_unique (scripts.tests.test_auto_deploy.AutoDeployTests.test_manuel_declenche_la_sequence_unique) ... ok
+test_migrate_avant_tout_redemarrage (scripts.tests.test_auto_deploy.AutoDeployTests.test_migrate_avant_tout_redemarrage)
+ADCG2 — migrate (image neuve) précède `up -d` et `restart django_core`. ... ok
+test_requirements_et_meryem_ne_sont_pas_des_docs (scripts.tests.test_auto_deploy.AutoDeployTests.test_requirements_et_meryem_ne_sont_pas_des_docs)
+ADCG7 — seuls *.md/*.markdown et docs/** (hors docs/meryem/) sont « docs ». ... ok
+test_retour_arriere_jamais_dans_un_etat_melange (scripts.tests.test_auto_deploy.AutoDeployTests.test_retour_arriere_jamais_dans_un_etat_melange)
+ADCG107 — (1) le retour arrière recharge Caddy sur la configuration revenue ; ... ok
+test_sante_vide_ou_http_non_200_est_un_echec (scripts.tests.test_auto_deploy.AutoDeployTests.test_sante_vide_ou_http_non_200_est_un_echec)
+ADCG4 — sonde vide, showmigrations en échec, health/ready ≠ 200 : ECHEC. ... ok
+test_zero_downtime_drapeau_lu_puis_efface (scripts.tests.test_auto_deploy.AutoDeployTests.test_zero_downtime_drapeau_lu_puis_efface) ... ok
+test_zero_downtime_sans_commit_neuf_drapeau_consomme (scripts.tests.test_auto_deploy.AutoDeployTests.test_zero_downtime_sans_commit_neuf_drapeau_consomme)
+ADCG108 — `-ZeroDowntime` sans commit neuf : drapeau effacé et dit au ... ok
+test_dump_en_echec_ne_migre_pas (scripts.tests.test_auto_deploy.DumpAvantMigrateTests.test_dump_en_echec_ne_migre_pas) ... ok
+test_migrations_en_attente_dump_avant_migrate (scripts.tests.test_auto_deploy.DumpAvantMigrateTests.test_migrations_en_attente_dump_avant_migrate) ... ok
+test_un_seul_dump_par_commit (scripts.tests.test_auto_deploy.DumpAvantMigrateTests.test_un_seul_dump_par_commit) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 5.174s
+
+OK
+# code de sortie : 0

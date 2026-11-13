@@ -23,7 +23,7 @@ import {
   buildAppShortcuts, filterShortcutGroups, isTypingTarget,
 } from './shortcuts'
 import {
-  FOCUSED_RECORD_SHORTCUTS, ActiveScreenProvider, useActiveScreen,
+  FOCUSED_RECORD_SHORTCUTS, ActiveScreenProvider, useActiveScreen, dialogueParDessus,
 } from './focusedRecordShortcuts'
 import { moduleConfigs } from '../router/moduleRoutes'
 
@@ -96,6 +96,8 @@ export function ShortcutsProvider({ children }) {
       // Jamais en saisie, jamais avec modificateur (réservé au système / ⌘K).
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (isTypingTarget(e.target)) return
+      // AERR50 — boîte Radix ouverte : aucune séquence globale (navigation, aide) ne passe.
+      if (dialogueParDessus(document.body)) { clearPending(); return }
 
       // « ? » → aide. (Shift+/ sur la plupart des claviers ; on teste la touche.)
       if (e.key === '?') {

@@ -1,0 +1,19 @@
+AANA81 + AAPV60 — pile locale, checkout principal sur bbe833192a (679ee1193 et 6a3737859 ancêtres) — 13/11/2026
+Preuves en direct NON JOUABLES : aucune clé de fournisseur valide sur ce poste.
+
+Constat (valeurs jamais affichées, seulement comparées) :
+  C:\dev\taqinor-os\.env : GROQ_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, CLAUDE_API_KEY présentes par nom mais
+  IDENTIQUES aux valeurs d'exemple de .env.example (placeholders) ; SQL_AGENT_PROVIDER=groq,
+  SQL_AGENT_MODEL=llama-3.3-70b-versatile (modèle retiré chez Groq depuis le 29/10, cf. tokens-ia-commerciaux.md).
+  Conteneur erp-agentique-django_core-1 : mêmes placeholders dans son environnement.
+  Variables Windows (User/Machine/Process) : aucune de ces clés.
+  docker-compose.override.yml : aucune clé IA.
+
+Sonde directe du fournisseur avec les clés du .env (1 appel chacun) :
+  GET  https://api.groq.com/openai/v1/models                       -> HTTP 401 {"error":{"message":"Invalid API Key","code":"invalid_api_key"}}
+  POST https://open.bigmodel.cn/api/paas/v4/chat/completions (OCR)  -> HTTP 401 {"error":{"code":"401","message":"令牌已过期或验证不正确"}}
+
+Aucun service ajouté (fastapi_ia, frontend, nginx non démarrés : l'agent SQL et l'OCR auraient rendu le même 401,
+déjà tracé le 04/11 pour AANA81 dans ../2026-11-04/AANA81-agent-sql-non-joue.txt).
+=> AANA81 et AAPV60 restent [BLOCKED] : poser une vraie clé Groq (et SQL_AGENT_MODEL=openai/gpt-oss-120b) ou
+   CLAUDE_API_KEY (SQL_AGENT_PROVIDER=claude), et une vraie ZHIPU_API_KEY, dans le .env local, puis rejouer.

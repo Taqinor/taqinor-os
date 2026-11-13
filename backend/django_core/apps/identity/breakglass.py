@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,17 @@ def revoke_expired(company=None):
         revoque_le__isnull=True, active_jusqu_a__lte=timezone.now())
     if company is not None:
         qs = qs.filter(company=company)
-    n = 0
+    n = echecs = 0
     for grant in qs:
-        revoke_break_glass(grant)
-        n += 1
+        try:  # ACEL16 — un octroi en échec n'arrête jamais les suivants
+            with transaction.atomic():
+                revoke_break_glass(grant)
+            n += 1
+        except Exception:  # noqa: BLE001 — journalisé et compté (D-ENF22-BLE001)
+            echecs += 1
+            logger.exception("break-glass : révocation de l'octroi %s en échec", grant.pk)
+    if echecs:
+        logger.error('break-glass : %d révocation(s) échue(s) en échec', echecs)
     return n
 
 

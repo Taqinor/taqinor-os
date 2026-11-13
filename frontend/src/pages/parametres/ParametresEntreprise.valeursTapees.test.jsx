@@ -59,3 +59,20 @@ describe('APAR39 — valeurs tapées telles quelles', () => {
     expect(updateProfile.mock.calls[0][0].onee_tarif_kwh).toBe(0)
   })
 })
+
+describe('AERR72 — la saisie d’une section autonome survit au changement d’onglet', () => {
+  beforeEach(() => { definirProfil(PROFIL) })
+  afterEach(() => { cleanup(); updateProfile.mockReset() })
+
+  it('texte tapé dans Documents, passage par Leads et retour : toujours là', async () => {
+    const { container } = rendreParametresEntreprise()
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    fireEvent.click(screen.getAllByRole('button', { name: 'Modèles de documents' })[0])
+    const champ = await screen.findByPlaceholderText('Validité : 30 jours')
+    fireEvent.change(champ, { target: { value: 'Validité : 45 jours' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Leads' })[0])
+    await waitFor(() => expect(container.querySelector('input[name="lead_sla_hours"]')).not.toBeNull())
+    fireEvent.click(screen.getAllByRole('button', { name: 'Modèles de documents' })[0])
+    expect(await screen.findByDisplayValue('Validité : 45 jours')).toBeVisible()
+  })
+})

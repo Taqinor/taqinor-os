@@ -15,11 +15,14 @@ test('getApiError: non_field_errors', () => {
   assert.equal(getApiError(err).message, 'Combinaison déjà utilisée')
 })
 
-test('getApiError: erreurs par champ → fieldErrors + message = premier champ', () => {
+test('getApiError: erreurs par champ → fieldErrors + message nomme le champ (AERR52)', () => {
   const err = { response: { status: 400, data: { nom: ['Ce champ est requis'], email: ['Email invalide'] } } }
   const { message, fieldErrors } = getApiError(err)
-  assert.equal(message, 'Ce champ est requis')
+  assert.equal(message, 'Nom : Ce champ est requis')
   assert.deepEqual(fieldErrors, { nom: 'Ce champ est requis', email: 'Email invalide' })
+  // Clé hors carte : clé humanisée.
+  const autre = { response: { status: 400, data: { date_echeance: ['Date invalide'] } } }
+  assert.equal(getApiError(autre).message, 'Date echeance : Date invalide')
 })
 
 test('getApiError: 429 throttle', () => {
@@ -43,6 +46,17 @@ test('getApiError: 500 HTML brut → message générique, jamais le HTML', () =>
 test('getApiError: timeout (ECONNABORTED)', () => {
   const err = { code: 'ECONNABORTED' }
   assert.match(getApiError(err).message, /expiré/)
+})
+
+test('getApiError: écriture expirée (ECONNABORTED, post) — ACNC52', () => {
+  const ecriture = { code: 'ECONNABORTED', config: { method: 'post' } }
+  assert.equal(getApiError(ecriture).message,
+    "La réponse n'est pas arrivée : l'action a peut-être abouti. Vérifiez avant de recommencer.")
+  for (const method of ['put', 'PATCH', 'delete']) {
+    assert.match(getApiError({ code: 'ECONNABORTED', config: { method } }).message, /peut-être abouti/)
+  }
+  const lecture = { code: 'ECONNABORTED', config: { method: 'get' } }
+  assert.equal(getApiError(lecture).message, 'La connexion a expiré. Vérifiez votre connexion et réessayez.')
 })
 
 test('getApiError: Network Error', () => {

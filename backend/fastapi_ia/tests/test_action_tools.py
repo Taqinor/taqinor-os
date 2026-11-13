@@ -345,6 +345,9 @@ class _FakeRedis:
     def get(self, key):
         return self.store.get(key)
 
+    def getdel(self, key):  # ACNC42 — lecture + consommation atomiques
+        return self.store.pop(key, None)
+
     def delete(self, key):
         self.store.pop(key, None)
 
@@ -375,7 +378,7 @@ class RunCatalogueActionTests(unittest.TestCase):
         ctx = _ctx(role="admin")
         captured = {}
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             captured["path"] = path
             captured["method"] = method
             return {"ok": True, "status": 200, "data": {}}
@@ -440,7 +443,7 @@ class ConfirmProposalTests(unittest.TestCase):
         token = self._stash_pdf(ctx)
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             calls.append({"path": path, "method": method, "payload": payload})
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
@@ -459,6 +462,53 @@ class ConfirmProposalTests(unittest.TestCase):
         self.assertEqual(calls[1]["payload"]["action_key"],
                          "ventes.devis.proposal_pdf")
         self.assertEqual(calls[1]["payload"]["risk_level"], "outward")
+
+    def test_deux_confirmations_du_meme_jeton_n_executent_qu_une_fois(self):
+        """ACNC42 — jeton consomme atomiquement (GETDEL) AVANT l'execution ;
+        cle d'idempotence = empreinte du jeton (corps pour le paiement,
+        en-tete pour generer-facture), jamais le jeton lui-meme."""
+        import hashlib
+        props = {"type": "object", "properties": {
+            "id": {"type": "integer"}, "montant": {"type": "number"}}, "required": ["id"]}
+        paiement = {"key": "ventes.facture.enregistrer_paiement", "label": "Paiement",
+                    "endpoint": "/api/django/ventes/factures/{id}/enregistrer-paiement/",
+                    "method": "POST", "inputs": props, "risk": "irreversible"}
+        facture = {**paiement, "key": "ventes.devis.generer_facture", "risk": "outward",
+                   "endpoint": "/api/django/ventes/devis/{id}/generer-facture/"}
+        ctx = _ctx(role="admin")
+        calls, seconde = [], []
+
+        def fake_call(c, path, method="POST", payload=None, idempotency_key=None):
+            calls.append({"path": path, "payload": payload, "cle": idempotency_key})
+            if len(calls) == 1:  # confirmation concurrente pendant l'execution
+                seconde.append(at.confirm_proposal(ctx, token))
+            return {"ok": True, "status": 200, "data": {}}
+
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {"ok": True}):
+            token = json.loads(at.run_catalogue_action(
+                ctx, paiement, {"id": 30, "montant": 100}))["confirm_token"]
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [paiement, facture]), \
+                mock.patch.object(at, "_django_call", fake_call):
+            res = at.confirm_proposal(ctx, token)
+        self.assertTrue(res["ok"])
+        # COP-A3 — meme refus, libelle du relais (« deja confirmee »).
+        self.assertEqual(seconde[0], {
+            "ok": False, "error": "Proposition introuvable, expirée ou déjà confirmée."})
+        metier = [c for c in calls if "enregistrer-paiement" in c["path"]]
+        self.assertEqual(len(metier), 1)
+        empreinte = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        self.assertEqual(metier[0]["payload"]["idempotency_key"], empreinte)
+        self.assertNotIn(token, json.dumps(metier[0]))
+        self.assertIsNone(self.fake_redis.get(at._proposal_key(token)))
+
+        calls.clear()
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {"ok": True}):
+            token = json.loads(at.run_catalogue_action(ctx, facture, {"id": 12}))["confirm_token"]
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [paiement, facture]), \
+                mock.patch.object(at, "_django_call", fake_call):
+            at.confirm_proposal(ctx, token)
+        self.assertEqual(calls[0]["cle"], hashlib.sha256(token.encode("utf-8")).hexdigest())
+        self.assertNotIn("idempotency_key", calls[0]["payload"] or {})
 
     def test_confirm_unknown_token(self):
         ctx = _ctx(role="admin")
@@ -502,7 +552,7 @@ class ConfirmProposalTests(unittest.TestCase):
         token = self._stash_pdf(ctx)
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             calls.append(path)
             if path.endswith("/logs/confirmer/"):
                 return {"ok": False, "status": 500, "error": "panne"}
@@ -594,7 +644,7 @@ class CollectorTests(unittest.TestCase):
         token = collector[0]["confirm_token"]
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             calls.append(path)
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
@@ -614,7 +664,7 @@ class FetchCatalogueTests(unittest.TestCase):
     def test_relays_get_and_parses_actions(self):
         ctx = _ctx(role="admin")
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             assert method == "GET"
             assert path == at._CATALOGUE_PATH
             return {"ok": True, "status": 200,
@@ -700,7 +750,7 @@ class GuardedWriteToolsTests(unittest.TestCase):
         token = prop["confirm_token"]
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             calls.append({"path": path, "method": method, "payload": payload})
             return {"ok": True, "status": 201, "data": {"id": 42}}
 
@@ -789,7 +839,7 @@ class PreuveConfirmationTests(unittest.TestCase):
         token = json.loads(out)["confirm_token"]
         calls = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             calls.append({"path": path, "payload": payload})
             return {"ok": True, "status": 201, "data": {"id": 42}}
 
@@ -838,7 +888,7 @@ class JournalEvenementAic6Tests(unittest.TestCase):
             contrat = json.load(f)
         appels = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             appels.append((path, method, payload))
             return {"ok": True, "status": 201, "data": {"id": 9001}}
 
@@ -878,7 +928,7 @@ class JournalEvenementAic6Tests(unittest.TestCase):
                  "tokens": {"cache_read": 0, "input": 0, "output": 0}}
         appels = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             appels.append(payload)
             return {"ok": True, "status": 201, "data": {"id": 77}}
 
@@ -1378,8 +1428,8 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
     def _confirmer(self, ctx, jeton, reponse=None):
         appels = []
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
-            appels.append({"path": path, "payload": payload, "headers": headers})
+        def fake_call(ctx, path, method="POST", payload=None, idempotency_key=None, **_k):
+            appels.append({"path": path, "payload": payload, "cle": idempotency_key})
             return reponse or {"ok": True, "status": 201, "data": {"id": 99}}
         with mock.patch.object(at, "fetch_catalogue", lambda c: [_CAT_PAIEMENT]), \
                 mock.patch.object(at, "_django_call", fake_call):
@@ -1392,7 +1442,7 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
         jeton = self._proposer(ctx)
         executions, resultats, verrou = [], [], threading.Lock()
 
-        def fake_call(ctx, path, method="POST", payload=None, headers=None):
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
             if "/paiements/" in path:
                 with verrou:
                     executions.append(path)
@@ -1423,9 +1473,10 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
         jeton = self._proposer(ctx)
         res, appels = self._confirmer(ctx, jeton)
         self.assertTrue(res["ok"])
-        cle = "agent-confirm-" + hashlib.sha256(jeton.encode()).hexdigest()
-        self.assertEqual(appels[0]["headers"], {"Idempotency-Key": cle})
+        cle = hashlib.sha256(jeton.encode()).hexdigest()
+        # Paiement : la cle voyage dans le CORPS (ACNC42), pas dans l'en-tete.
         self.assertEqual(appels[0]["payload"]["idempotency_key"], cle)
+        self.assertIsNone(appels[0]["cle"])
         self.assertNotIn(jeton, json.dumps(appels))
         # Une cle deja fournie par l'entree n'est jamais remplacee.
         jeton = self._proposer(ctx, {"id": 8, "montant": 100, "idempotency_key": "k-1"})

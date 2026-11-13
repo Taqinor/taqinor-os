@@ -154,3 +154,39 @@ class PurgeMinioTests(TestCase):
             [c.kwargs['Key'] for c in client.delete_object.call_args_list],
             ['attachments/natif.pdf'])
         self.assertTrue(Attachment.objects.filter(pk=att.pk).exists())
+
+    def test_piece_jointe_purgee_jamais_reimportee(self):
+        """ACEL61 (C-ACEL-002) — importée puis purgée ⇒ jamais réimportée ;
+        cible autorisée à la corbeille ⇒ sautée ; l'original reste intact."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.crm.models import Lead
+        from apps.ged.management.commands.migrate_attachments_to_ged import (
+            import_attachments,
+        )
+        from apps.records.models import Attachment
+        att = Attachment.objects.create(
+            company=self.co, object_id=self.folder.pk,
+            content_type=ContentType.objects.get_for_model(Folder),
+            uploaded_by=self.admin, file_key='attachments/P.pdf',
+            filename='P.pdf', size=1, mime='application/pdf')
+        import_attachments(company=self.co)
+        doc = DocumentVersion.objects.get(file_key='attachments/P.pdf').document
+        with mock.patch('apps.records.storage.get_minio_client'):
+            services.mettre_en_corbeille(doc, self.admin)
+            services.purger_definitivement(doc)
+        lead = Lead.objects.create(company=self.co, nom='Corbeille')
+        Attachment.objects.create(
+            company=self.co, object_id=lead.pk,
+            content_type=ContentType.objects.get_for_model(Lead),
+            uploaded_by=self.admin, file_key='attachments/L.pdf',
+            filename='L.pdf', size=1, mime='application/pdf')
+        lead.soft_delete(self.admin)
+        for _ in range(2):  # le marqueur est relu en base au 3e import
+            compteurs = import_attachments(company=self.co)
+            self.assertEqual(compteurs['skipped'], 2)
+            self.assertEqual(compteurs['documents'], 0)
+        self.assertFalse(Document.objects.filter(
+            versions__file_key__in=['attachments/P.pdf', 'attachments/L.pdf']).exists())
+        self.assertFalse(DocumentVersion.objects.filter(
+            file_key__in=['attachments/P.pdf', 'attachments/L.pdf']).exists())
+        self.assertTrue(Attachment.objects.filter(pk=att.pk, file_key='attachments/P.pdf').exists())

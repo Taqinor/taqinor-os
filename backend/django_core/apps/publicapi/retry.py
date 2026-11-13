@@ -28,6 +28,8 @@ from .models import WebhookDelivery, WebhookDeliveryAttempt
 # avec l'envoi original (tentative 1, déjà journalisé sur `WebhookDelivery`).
 RETRY_DELAYS_SECONDS = [60, 300, 1800, 7200, 21600]
 MAX_ATTEMPTS = 1 + len(RETRY_DELAYS_SECONDS)  # 6
+LOT_REPRISES = 50  # ACEL34 — borne par passage (beat chaque minute)
+RESERVATION = timedelta(minutes=5)
 
 
 def schedule_first_retry(webhook_delivery, *, now=None):
@@ -60,12 +62,19 @@ def run_due_retries(now=None):
     sans nouvelles tentatives dues ne fait rien). Renvoie la liste des
     `WebhookDeliveryAttempt` traitées (pour logging/tests)."""
     now = now or timezone.now()
-    due = list(
-        WebhookDeliveryAttempt.objects.select_related('delivery', 'delivery__webhook')
-        .filter(statut=WebhookDeliveryAttempt.Statut.EN_ATTENTE,
-                prochain_essai_at__lte=now)
-    )
-    return [_process_attempt(attempt, now=now) for attempt in due]
+    dues = WebhookDeliveryAttempt.objects.filter(
+        statut=WebhookDeliveryAttempt.Statut.EN_ATTENTE, prochain_essai_at__lte=now)
+    ids = list(dues.order_by('prochain_essai_at', 'pk').values_list('pk', flat=True)[:LOT_REPRISES])
+    traitees = []
+    for pk in ids:
+        # ACEL34 — réservation : un passage chevauchant obtient 0 et saute la
+        # ligne ; un worker tué la rend due de nouveau 5 min plus tard.
+        if not dues.filter(pk=pk).update(prochain_essai_at=now + RESERVATION):
+            continue
+        attempt = WebhookDeliveryAttempt.objects.select_related(
+            'delivery', 'delivery__webhook').get(pk=pk)
+        traitees.append(_process_attempt(attempt, now=now))
+    return traitees
 
 
 def _process_attempt(attempt, *, now):

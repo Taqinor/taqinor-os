@@ -14,7 +14,10 @@ import { Input } from '../ui/Input'
 import { Label } from '../ui/Label'
 import api from '../api/axios'
 import { setCredentials, fetchMe, logout } from '../features/auth/store/authSlice'
-import { SESSION_EXPIRED_EVENT, subscribeToSessionLogout, emitAuthLogout } from './session-bridge'
+import {
+  SESSION_EXPIRED_EVENT, subscribeToSessionLogout, emitAuthLogout, prendreEcritureRefusee,
+} from './session-bridge'
+import { toastInfo } from '../lib/toast'
 import { isAnyFormDirty, confirmLeaveIfDirty } from '../ui/useDirtyGuard'
 
 export function SessionProvider({ children }) {
@@ -77,6 +80,10 @@ export function SessionProvider({ children }) {
       // portail déclencherait messages-accueil (403) et la bienvenue ERP.
       dispatch(fetchMe())
       dismiss()
+      // AERR51 — l'enregistrement refusé par l'expiration n'est pas parti.
+      if (prendreEcritureRefusee()) {
+        toastInfo("L'enregistrement interrompu n'est pas parti — cliquez à nouveau sur Enregistrer.")
+      }
     } catch (err) {
       const detail = err?.response?.data?.detail
       if (detail) setError(detail)

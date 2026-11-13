@@ -7,7 +7,9 @@ UNIQUEMENT le provisionnement idempotent, résolu ici via
 ``django.apps.apps.get_model`` (core reste une couche de fondation, aucun
 import statique d'``apps.reporting``)."""
 from decimal import Decimal
+from unittest import mock
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.apps import apps as django_apps
 from django.test import TestCase
 
@@ -91,3 +93,13 @@ class AssurerAlertesFiabiliteKpiTest(TestCase):
         self.assertEqual(existante.destinataire_role, 'responsable')
         # 3 créées (drill A, drill B, quota B) — le quota A existait déjà.
         self.assertEqual(result['crees'], 3)
+
+    def test_limite_douce_remonte(self):
+        """ACEL10 — la limite douce Celery remonte de la tâche au lieu
+        d'être journalisée puis suivie des sociétés restantes."""
+        with mock.patch(
+                'core.tasks._assurer_alerte_fiabilite_defaut',
+                side_effect=SoftTimeLimitExceeded()) as assurer:
+            with self.assertRaises(SoftTimeLimitExceeded):
+                assurer_alertes_fiabilite_kpi_task()
+        self.assertEqual(assurer.call_count, 1)

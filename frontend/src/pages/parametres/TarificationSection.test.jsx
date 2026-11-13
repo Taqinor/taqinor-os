@@ -398,3 +398,20 @@ describe('CIQ227 — Études commerciales et industrielles', () => {
     expect(second.mention_credit_bail_source).toBe(premier.mention_credit_bail_source)
   })
 })
+
+describe('AERR56 — lecture rejetée : jamais enregistrable', () => {
+  it('Enregistrer indisponible, aucun PATCH, Réessayer relance la lecture', async () => {
+    const user = userEvent.setup()
+    getTariffSettings.mockReset()
+    updateTariffSettings.mockReset()
+    getTariffSettings.mockRejectedValueOnce(new Error('boom'))
+    render(<TarificationSection />)
+    expect(await screen.findByText(/Réglages non chargés/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
+    expect(updateTariffSettings).not.toHaveBeenCalled()
+    getTariffSettings.mockResolvedValue({ data: VIERGE })
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByRole('button', { name: /Enregistrer/ })).toBeEnabled()
+    expect(getTariffSettings).toHaveBeenCalledTimes(2)
+  })
+})

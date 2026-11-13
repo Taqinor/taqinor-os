@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
@@ -338,10 +338,13 @@ describe('MaJourneePage (AERR36)', () => {
     installationsApi.getMaTournee.mockRejectedValue(new Error('réseau'))
     render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
 
-    expect(await screen.findByText('Tournée indisponible — vérifiez la connexion')).toBeInTheDocument()
+    const titre = await screen.findByText('Tournée indisponible — vérifiez la connexion')
     expect(screen.queryByText("Aucune intervention aujourd'hui")).not.toBeInTheDocument()
     installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
-    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    // Le « Réessayer » de CET avis : un autre panneau de la page peut afficher le sien sous charge.
+    let avis = titre
+    while (avis && !within(avis).queryByRole('button', { name: 'Réessayer' })) avis = avis.parentElement
+    await userEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(2))
     expect(await screen.findByText("Aucune intervention aujourd'hui")).toBeInTheDocument()
   })

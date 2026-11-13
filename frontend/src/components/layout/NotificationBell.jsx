@@ -198,6 +198,8 @@ export default function NotificationBell() {
   // N75 — notifications in-app PERSISTÉES (moteur unifié) : feed + compteur.
   const [feed, setFeed] = useState([])
   const [feedUnread, setFeedUnread] = useState(0)
+  // AERR127 — sondage du fil rejeté : le fil affiché reste (jamais vidé).
+  const [feedError, setFeedError] = useState(false)
   // VX208(b) — deux compteurs distincts : ACTIONS (badge rouge cloche, un
   // `DIGEST` n'y contribue JAMAIS) vs INFOS (point gris, informationnel).
   const [feedActionsUnread, setFeedActionsUnread] = useState(0)
@@ -283,8 +285,9 @@ export default function NotificationBell() {
       .then((r) => {
         const items = r.data?.results ?? r.data ?? []
         setFeed(Array.isArray(items) ? items.slice(0, 20) : [])
+        setFeedError(false)
       })
-      .catch(() => setFeed([]))
+      .catch(() => setFeedError(true))
   }
 
   // Sondage léger du compteur non-lu. Si une nouvelle notification est arrivée
@@ -536,7 +539,7 @@ export default function NotificationBell() {
 
           {!loaded ? (
             <div className="nb-empty">Chargement…</div>
-          ) : (derivedError && feed.length === 0) ? (
+          ) : ((derivedError || feedError) && feed.length === 0) ? (
             <div className="nb-empty nb-error" role="alert">
               Notifications indisponibles
             </div>

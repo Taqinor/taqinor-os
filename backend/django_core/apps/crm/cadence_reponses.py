@@ -80,7 +80,7 @@ from .cadence_reperes import (
 from .leads_consentement import (
     BASE_LEGALE_NON_COLLECTEE, CONSENT_SOURCE_PROPRIETAIRE,
     _ecrire_registre_contact, enregistrer_base_legale_lead)
-from .leads_doublons import find_duplicates_by_contact, normalize_phone
+from .leads_doublons import _marquer_lead_ne_plus_contacter, find_duplicates_by_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
 
@@ -623,23 +623,6 @@ def tracer_opposition_registre(lead, *, source, occurred_at=None):
             'CAD91 : opposition non écrite au registre pour le lead #%s',
             getattr(lead, 'pk', None), exc_info=True)
         return None
-
-
-def _marquer_lead_ne_plus_contacter(lead, user):
-    """CAD5 — coche ``Lead.ne_plus_contacter`` et le JOURNALISE comme la
-    fiche le ferait (ligne « modification » du chatter, ancien → nouveau).
-
-    Idempotente : un lead déjà coché ne produit ni écriture ni ligne.
-    Renvoie ``True`` si la case vient d'être cochée."""
-    import copy
-
-    if lead.ne_plus_contacter:
-        return False
-    avant = copy.copy(lead)
-    lead.ne_plus_contacter = True
-    lead.save(update_fields=['ne_plus_contacter'])
-    activity.log_changes(avant, lead, user)
-    return True
 
 
 def repondre_ne_plus_contacter(etape, user, *, note='', body=''):

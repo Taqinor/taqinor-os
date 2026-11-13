@@ -1193,11 +1193,11 @@ CELERY_ENABLE_UTC = False
 # YDATA13 — le broker Redis doit lui aussi border le délai de re-livraison
 # d'un message NON acquitté (acks_late — voir YOPSB8 ci-dessous) : sans
 # `visibility_timeout` explicite, la valeur par défaut de kombu/redis
-# (souvent 1h) est une coïncidence, pas une garantie documentée. Fixé à
-# 3600s — largement > CELERY_TASK_TIME_LIMIT (180s) pour qu'un message ne
-# soit JAMAIS considéré "perdu" et re-livré en double pendant qu'une tâche
-# légitime est encore en cours d'exécution.
-CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600}
+# (souvent 1h) est une coïncidence. ACEL7 : > la plus longue limite dure
+# déclarée + 10 % (core.dump_database / restore_drill : 4 200 s, ADCG35) —
+# sinon un 2e dump démarre sous le 1er. Prix : un message tué au déploiement
+# revient après 90 min au lieu de 60 (test_qx11_beat_reachability).
+CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 5400}
 
 # YOPSB8 — réglages de production durcis. Sans limite de temps ni garde de
 # perte de worker, une tâche bloquée (ex. rendu PDF WeasyPrint qui hangs)
@@ -1274,7 +1274,7 @@ CELERY_TASK_ROUTES = {
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     # NTDMO29 — ré-ancrage quotidien des relances des leads démo.
     'crm.reancrer_relances_demo': {'queue': 'scheduled'},
-    # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
+    # MRY0 (lot C) — miroir Odoo -> ERP ; hors planning depuis AACQ97 (synchro manuelle).
     'crm.sync_odoo_leads': {'queue': 'scheduled'},
     # MRY17 — digest 08:30 des touches dues + escalade premier contact.
     'crm.notifier_relances_dues': {'queue': 'scheduled'},
@@ -1414,6 +1414,7 @@ CELERY_TASK_ROUTES = {
     # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
     # rappel, health score, purge packages/usage).
     'publicapi.retry_webhook_deliveries': {'queue': 'scheduled'},
+    'publicapi.expirer_jobs_bloques': {'queue': 'scheduled'},  # ACEL32
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
     'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
     # NTMIG30 — alerte planifiée d'expiration de certification partenaire.
@@ -1481,6 +1482,8 @@ CELERY_TASK_ROUTES = {
         'queue': 'scheduled'},
     # APAR34 — purge quotidienne de rétention des journaux d'audit.
     'parametres.purge_audit_retention': {'queue': 'scheduled'},
+    # ACEL11 — balayage des travaux de fond orphelins (toutes les 15 min).
+    'core.balayer_travaux_orphelins': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -1523,6 +1526,8 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+# APUB10 (D-APUB-2) — livechat public PARQUÉ : éteint, ses 3 vues rendent 404.
+LIVECHAT_PUBLIC_ENABLED = os.environ.get('LIVECHAT_PUBLIC_ENABLED', '0') == '1'
 
 # VAO22/VAO4 — veille appels d'offres : interrupteur d'ARMEMENT de la collecte
 # automatique, DÉSARMÉ par défaut (règle #5 volet (b) — l'accord explicite et

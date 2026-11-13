@@ -98,4 +98,23 @@ describe('PACT133 ReglesAclPage', () => {
       expect(toast.success).toHaveBeenCalledWith('Règle désactivée.')
     })
   })
+
+  // AERR55 — le toast global (intercepteur axios) a déjà dit le refus :
+  // l'écran ne le répète pas et la liste reste affichée.
+  it('suppression refusée : aucun toast local', async () => {
+    gedApi.deleteRegleAclMetadonnee.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'Règle utilisée.' } },
+    })
+    renderPage()
+    await screen.findAllByText('Contrats confidentiels')
+
+    // AERR65 — la suppression est confirmée (repli `window.confirm` hors provider).
+    const confirme = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
+    await waitFor(() => expect(gedApi.deleteRegleAclMetadonnee).toHaveBeenCalledWith(4))
+    expect(confirme).toHaveBeenCalledWith('La règle « Contrats confidentiels » sera supprimée.')
+    confirme.mockRestore()
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(screen.getAllByText('Contrats confidentiels').length).toBeGreaterThan(0)
+  })
 })

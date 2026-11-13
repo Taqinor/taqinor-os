@@ -164,6 +164,8 @@
   "client.langue_document.help": "Langue des factures et devis générés pour ce client.",
   "client.langue_document.fr": "Français",
   "client.langue_document.ar": "Arabe",
+  "client.releve_mensuel_auto.label": "Relevé de compte mensuel automatique",
+  "client.releve_mensuel_auto.help": "Envoie automatiquement le relevé de compte PDF le 1er du mois si l'encours n'est pas nul. Désactivé par défaut.",
 
   "crm.cockpit.subtitle": "Pistes, clients, activités et carte commerciale",
   "ventes.cockpit.subtitle": "Devis, bons de commande, facturation et relances",

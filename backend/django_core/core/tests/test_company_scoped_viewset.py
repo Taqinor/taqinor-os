@@ -141,6 +141,7 @@ with isolate_apps('core'):
             Company, on_delete=models.CASCADE, related_name='+',
             verbose_name='Société')
         nom = models.CharField(max_length=120, blank=True, default="")
+        statut = models.CharField(max_length=20, default="en_cours")
 
         class Meta:
             app_label = "core"
@@ -220,3 +221,42 @@ class PerformUpdateCompanyLessSuperuserTests(_ScopedThingTableMixin, TestCase):
         self.obj.refresh_from_db()
         self.assertEqual(self.obj.nom, "maj")
         self.assertEqual(self.obj.company_id, self.tenant.id)
+
+
+class _ScopedThingTransitionSerializer(serializers.ModelSerializer):
+    """ACNC41 — une transition d'un collègue commite PENDANT la validation."""
+
+    class Meta:
+        model = ScopedThing
+        fields = ["id", "nom", "statut", "company"]
+        read_only_fields = ["statut", "company"]
+
+    def validate(self, attrs):
+        ScopedThing.objects.filter(pk=self.instance.pk).update(statut="resolu")
+        return attrs
+
+
+class _ScopedThingTransitionViewSet(CompanyScopedModelViewSet):
+    queryset = ScopedThing.objects.all()
+    serializer_class = _ScopedThingTransitionSerializer
+
+
+class PerformUpdateBorneTests(_ScopedThingTableMixin, TestCase):
+    def test_statut_commite_pendant_le_patch_survit(self):
+        tenant = Company.objects.create(nom="ACNC41", slug="acnc41-tenant")
+        user = CustomUser.objects.create_user(
+            username="acnc41", email="acnc41@ex.com", password="x",
+            company=tenant)
+        obj = ScopedThing.objects.create(company=tenant, nom="avant")
+        request = APIRequestFactory().patch("/x/", {"nom": "après"}, format="json")
+        force_authenticate(request, user=user)
+        view = _ScopedThingTransitionViewSet.as_view({"patch": "partial_update"})
+        resp = view(request, pk=obj.pk)
+        self.assertEqual(resp.status_code, 200, getattr(resp, "data", resp))
+        obj.refresh_from_db()
+        self.assertEqual(obj.nom, "après")
+        self.assertEqual(obj.statut, "resolu")
+        # La colonne non écrite est relue avant pre_save : la réponse (et tout
+        # receveur post_save) voit la base, jamais la valeur périmée.
+        self.assertEqual(resp.data["statut"], "resolu")
+        self.assertEqual(obj.company_id, tenant.id)

@@ -50,6 +50,20 @@ export function emitSessionExpired() {
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
 }
 
+// AERR51 — une ÉCRITURE refusée par l'expiration n'est pas partie : posé par
+// l'intercepteur juste avant `emitSessionExpired()`, lu (et remis à faux) par
+// le SessionProvider après la reconnexion. Jamais de rejeu automatique.
+let ecritureRefusee = false
+export function noterEcritureRefusee(methode) {
+  const m = (methode || 'get').toLowerCase()
+  if (sessionEstActive() && !['get', 'head', 'options'].includes(m)) ecritureRefusee = true
+}
+export function prendreEcritureRefusee() {
+  const v = ecritureRefusee
+  ecritureRefusee = false
+  return v
+}
+
 // LW45 — événement LOCAL (même onglet) de déconnexion, consommé par les
 // caches "best effort" qui doivent se vider au logout sans dépendre de Redux
 // (ex. `leadPrefetch.js`, module pur qui écoute directement `window`). Émis

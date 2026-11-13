@@ -45,6 +45,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.urls import URLPattern, URLResolver, get_resolver
 from rest_framework import viewsets
 
@@ -511,6 +512,8 @@ def scan_live_isolation() -> dict:
                     f'WHERE t."{col}" IS NOT NULL AND NOT EXISTS ('
                     f'SELECT 1 FROM "authentication_company" c '
                     f'WHERE c.id = t."{col}") LIMIT {_ANOMALY_MAX}) s', [])
+            except SoftTimeLimitExceeded:
+                raise
             except Exception:  # noqa: BLE001 — table KO ne bloque pas le reste (D-ENF22-BLE001)
                 _logger.warning('scan_live_isolation: échec sur %s',
                                 entry.table)

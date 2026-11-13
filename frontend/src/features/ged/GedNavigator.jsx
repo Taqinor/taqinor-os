@@ -20,10 +20,10 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
-import { toutesLesPages, errText } from './listesGed'
+import { toutesLesPages, toastSiMuet } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import EnteteGed from './EnteteGed'
-import { formatDate } from '../../lib/format'
+import { formatDate, toNumber } from '../../lib/format'
 import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 import {
   Button, EmptyState, Skeleton, Badge,
@@ -232,7 +232,7 @@ export default function GedNavigator() {
       setSelectedIds(new Set())
       reloadDocuments()
     } catch (err) {
-      toast.error(errText(err, 'Opération en lot impossible.'))
+      toastSiMuet(err, 'Opération en lot impossible.')
     } finally { setBulkBusy(false) }
   }
 
@@ -246,7 +246,7 @@ export default function GedNavigator() {
     setBulkBusy(true)
     gedApi.telechargerZipLot([...selectedIds])
       .then((res) => pending.deliver(res.data, filenameFromResponse(res, 'documents.zip')))
-      .catch((err) => toast.error(errText(err, 'Téléchargement du ZIP impossible.')))
+      .catch((err) => toastSiMuet(err, 'Téléchargement du ZIP impossible.'))
       .finally(() => setBulkBusy(false))
   }
 
@@ -276,25 +276,21 @@ export default function GedNavigator() {
       await gedApi.checkOutDocument(d.id)
       toast.success('Document extrait (verrouillé).')
       reloadDocuments()
-    } catch (err) {
-      if (err?.response?.status === 409) {
-        toast.error(errText(err, 'Document déjà extrait par un autre utilisateur.'))
-      } else { toast.error(errText(err, 'Extraction impossible.')) }
-    }
+    } catch (err) { toastSiMuet(err, 'Extraction impossible.') }
   }
   const checkIn = async (d) => {
     try {
       await gedApi.checkInDocument(d.id)
       toast.success('Document archivé (verrou levé).')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'Archivage impossible.')) }
+    } catch (err) { toastSiMuet(err, 'Archivage impossible.') }
   }
   const mettreEnCorbeille = async (d) => {
     try {
       await gedApi.mettreEnCorbeille(d.id)
       toast.success('Document mis en corbeille.')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'Mise en corbeille impossible.')) }
+    } catch (err) { toastSiMuet(err, 'Mise en corbeille impossible.') }
   }
 
   // GED33/WIR249 — OCR ce document (pièce CIN/facture/BL) → métadonnées
@@ -316,7 +312,7 @@ export default function GedNavigator() {
         ? `${n} métadonnée${n > 1 ? 's' : ''} extraite${n > 1 ? 's' : ''}.`
         : 'OCR effectué — aucune métadonnée reconnue.')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'OCR impossible.')) }
+    } catch (err) { toastSiMuet(err, 'OCR impossible.') }
   }
 
   // ZGED9/WIR249 — verrou d'AVERTISSEMENT léger, DISTINCT du check-out GED16
@@ -331,11 +327,7 @@ export default function GedNavigator() {
         toast.success('Verrou (avertissement) posé.')
       }
       reloadDocuments()
-    } catch (err) {
-      if (err?.response?.status === 409) {
-        toast.error(errText(err, 'Déjà verrouillé par un autre utilisateur.'))
-      } else { toast.error(errText(err, 'Opération impossible.')) }
-    }
+    } catch (err) { toastSiMuet(err, 'Opération impossible.') }
   }
 
   // XGED30/WIR249 — éditeur Office embarqué (KEY-GATED, GED_OFFICE_URL) :
@@ -349,7 +341,7 @@ export default function GedNavigator() {
       if (url) window.open(url, '_blank', 'noopener')
       else toast.error('Aucun éditeur disponible.')
       reloadDocuments()
-    } catch (err) { toast.error(errText(err, 'Éditeur Office indisponible.')) }
+    } catch (err) { toastSiMuet(err, 'Éditeur Office indisponible.') }
   }
 
   // GED17/WIR249 — cycle de vie documentaire (panneau dédié, voir CycleVieDialog).
@@ -799,7 +791,7 @@ function ModifierDocumentDialog({ document: doc, onClose, onDone }) {
       toast.success('Document modifié.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Modification impossible.'))
+      toastSiMuet(err, 'Modification impossible.')
     } finally { setBusy(false) }
   }
 
@@ -845,7 +837,7 @@ function NouvelleVersionDialog({ document: doc, onClose, onDone }) {
         ? `Version ${res.data.version} déposée.` : 'Nouvelle version déposée.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Nouvelle version impossible.'))
+      toastSiMuet(err, 'Nouvelle version impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1032,16 +1024,20 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
 // n'est pas complète et non vide ; la page se choisit parmi 1..N.
 const EMPTY_ZONE = { page: '0', x0: '', y0: '', x1: '', y1: '' }
 
-const zoneComplete = (z) => {
-  const v = ['x0', 'y0', 'x1', 'y1'].map((k) => (z[k] === '' ? NaN : Number(z[k])))
-  if (v.some((n) => Number.isNaN(n))) return false
-  return Math.abs(v[2] - v[0]) > 0 && Math.abs(v[3] - v[1]) > 0
+// AERR73 — « 12,5 » lu par toNumber ; vide, hors 0-100 ou zone plate = invalide.
+const COORDS = [['x0', 'X0 %'], ['y0', 'Y0 %'], ['x1', 'X1 %'], ['y1', 'Y1 %']]
+const coord = (z, k) => { const n = toNumber(z[k]); return n !== null && n >= 0 && n <= 100 ? n : null }
+const coordsInvalides = (z) => {
+  const fautes = COORDS.filter(([k]) => coord(z, k) === null).map(([k]) => k)
+  if (fautes.length) return fautes
+  return coord(z, 'x1') === coord(z, 'x0') || coord(z, 'y1') === coord(z, 'y0') ? ['x1', 'y1'] : []
 }
 
 function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
   const [zones, setZones] = useState([{ ...EMPTY_ZONE }])
   const [busy, setBusy] = useState(false)
   const [nbPages, setNbPages] = useState(null)
+  const [invalides, setInvalides] = useState(null)
 
   useEffect(() => {
     if (!versionId) return
@@ -1052,7 +1048,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
     return () => { alive = false }
   }, [versionId])
   const pages = Array.from({ length: nbPages || 0 }, (_, i) => i)
-  const pret = pages.length > 0 && zones.length > 0 && zones.every(zoneComplete)
+  const pret = pages.length > 0 && zones.some((z) => COORDS.some(([k]) => z[k] !== ''))
 
   const updateZone = (i, field, value) =>
     setZones((prev) => prev.map((z, idx) => (idx === i ? { ...z, [field]: value } : z)))
@@ -1062,18 +1058,20 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
   const submit = async (e) => {
     e.preventDefault()
     if (busy || !pret) return
+    const fautes = zones.map(coordsInvalides)
+    setInvalides(fautes)
+    if (fautes.some((f) => f.length)) return
     setBusy(true)
     try {
       const payload = zones.map((z) => ({
         page: Number(z.page) || 0,
-        x0: Number(z.x0) || 0, y0: Number(z.y0) || 0,
-        x1: Number(z.x1) || 0, y1: Number(z.y1) || 0,
+        x0: coord(z, 'x0'), y0: coord(z, 'y0'), x1: coord(z, 'x1'), y1: coord(z, 'y1'),
       }))
       await gedApi.caviarderDocument(documentId, { zones: payload, version: versionId })
       toast.success('Copie caviardée créée dans le dossier.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Caviardage impossible.'))
+      toastSiMuet(err, 'Caviardage impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1088,7 +1086,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
             la page.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        <form onSubmit={submit} noValidate className="flex flex-col gap-3">
           {zones.map((z, i) => (
             <div key={i} className="flex items-end gap-1.5">
               <div className="flex flex-col gap-0.5">
@@ -1099,26 +1097,15 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
                   {pages.map((p) => <option key={p} value={String(p)}>{p + 1}</option>)}
                 </select>
               </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-x0-${i}`}>X0 %</label>
-                <Input id={`z-x0-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.x0} onChange={(e) => updateZone(i, 'x0', e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-y0-${i}`}>Y0 %</label>
-                <Input id={`z-y0-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.y0} onChange={(e) => updateZone(i, 'y0', e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-x1-${i}`}>X1 %</label>
-                <Input id={`z-x1-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.x1} onChange={(e) => updateZone(i, 'x1', e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <label className="text-xs text-muted-foreground" htmlFor={`z-y1-${i}`}>Y1 %</label>
-                <Input id={`z-y1-${i}`} type="number" min={0} max={100} className="w-16"
-                  value={z.y1} onChange={(e) => updateZone(i, 'y1', e.target.value)} />
-              </div>
+              {COORDS.map(([k, libelle]) => (
+                <div key={k} className="flex flex-col gap-0.5">
+                  <label className="text-xs text-muted-foreground" htmlFor={`z-${k}-${i}`}>{libelle}</label>
+                  <Input id={`z-${k}-${i}`} type="text" inputMode="decimal" className="w-16"
+                    aria-invalid={invalides?.[i]?.includes(k) || undefined}
+                    value={z[k]} onChange={(e) => updateZone(i, k, e.target.value)} />
+                  {invalides?.[i]?.includes(k) && <span className="text-xs text-destructive">0 à 100, zone non plate</span>}
+                </div>
+              ))}
               {zones.length > 1 && (
                 <Button type="button" variant="ghost" size="sm"
                   aria-label="Retirer cette zone" onClick={() => removeZone(i)}>
@@ -1163,7 +1150,7 @@ function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
       toast.success('Document scindé en segments.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Scission impossible.'))
+      toastSiMuet(err, 'Scission impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1215,7 +1202,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
       const r = await gedApi.comparerVersions(documentId, v1, v2)
       setDiff(r.data)
     } catch (err) {
-      toast.error(errText(err, 'Comparaison impossible.'))
+      toastSiMuet(err, 'Comparaison impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1309,7 +1296,7 @@ function VersionsDialog({ documentId, versions, onClose, onDone }) {
       toast.success(`Version ${v.version} restaurée (nouvelle version créée).`)
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Restauration impossible.'))
+      toastSiMuet(err, 'Restauration impossible.')
     } finally { setBusyId(null) }
   }
 
@@ -1366,7 +1353,7 @@ function MergeDocumentsDialog({ documents, onClose, onDone }) {
       toast.success('Documents fusionnés.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Fusion impossible.'))
+      toastSiMuet(err, 'Fusion impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1448,7 +1435,7 @@ function BulkOperationsDialog({ documents, folders, onClose, onDone }) {
         toast.error(`${erreurs.length} document(s) non traité(s) — voir le rapport.`)
       }
     } catch (err) {
-      toast.error(errText(err, 'Opération en lot impossible.'))
+      toastSiMuet(err, 'Opération en lot impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1547,7 +1534,7 @@ function ImportMasseDialog({ folderId, onClose, onDone }) {
         toast.error(`${crees} importé(s), ${erreurs.length} ligne(s) en erreur — voir le rapport.`)
       }
     } catch (err) {
-      toast.error(errText(err, 'Import impossible.'))
+      toastSiMuet(err, 'Import impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1609,7 +1596,7 @@ function CycleVieDialog({ document: doc, onClose, onDone }) {
       toast.success('Statut mis à jour.')
       onDone()
     } catch (err) {
-      toast.error(errText(err, 'Transition impossible.'))
+      toastSiMuet(err, 'Transition impossible.')
     } finally { setBusy(false) }
   }
 
@@ -1661,7 +1648,7 @@ function DocQaDialog({ onClose }) {
       setEnabled(res?.data?.enabled !== false)
       setResults(res?.data?.results || [])
     } catch (err) {
-      toast.error(errText(err, 'Recherche impossible.'))
+      toastSiMuet(err, 'Recherche impossible.')
     } finally { setLoading(false) }
   }
 
@@ -1728,7 +1715,7 @@ function CabinetDialog({ open, onOpenChange, onCreated }) {
       onOpenChange(false)
       onCreated?.(r.data)
     } catch (err) {
-      toast.error(errText(err, "Impossible de créer l'armoire."))
+      toastSiMuet(err, "Impossible de créer l'armoire.")
     } finally {
       setBusy(false)
     }
@@ -1835,7 +1822,7 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
       onClose()
       onChanged?.()
     } catch (err) {
-      toast.error(errText(err, "Action impossible sur le dossier."))
+      toastSiMuet(err, "Action impossible sur le dossier.")
     } finally {
       setBusy(false)
     }
@@ -1917,7 +1904,7 @@ function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
       onOpenChange(false)
       onUploaded?.()
     } catch (err) {
-      toast.error(errText(err, 'Téléversement impossible.'))
+      toastSiMuet(err, 'Téléversement impossible.')
     } finally {
       setBusy(false)
     }

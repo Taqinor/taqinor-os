@@ -22,10 +22,11 @@ MONTH = timezone.now().strftime('%Y%m')
 
 
 class _StubMessage:
-    def __init__(self, subject='', body='', from_email=''):
+    def __init__(self, subject='', body='', from_email='', message_id=''):
         self.subject = subject
         self.body = body
         self.from_email = from_email
+        self.message_id = message_id
 
 
 class Qx36InboundEmailTests(TestCase):
@@ -66,6 +67,21 @@ class Qx36InboundEmailTests(TestCase):
             recipient=self.owner, event_type=EventType.DEVIS_REPLY).first()
         self.assertIsNotNone(notif)
         self.assertIn(str(self.devis.id), notif.link)
+
+    def test_meme_message_id_une_seule_capture(self):
+        """ACNC16 — deux relevés du même message (même ``message_id``) : un
+        seul EmailLog, une seule note, une seule notification."""
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        msg = _StubMessage(
+            subject=f'Re: {self.devis.reference}', body='Merci',
+            from_email='client@example.com', message_id='a@b')
+        self.assertIsNotNone(ventes_inbound_handler(msg, self.company))
+        self.assertIsNone(ventes_inbound_handler(msg, self.company))
+        self.assertEqual(EmailLog.objects.filter(devis=self.devis).count(), 1)
+        self.assertEqual(self.devis.activites.filter(body__icontains='Réponse email').count(), 1)
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.owner, event_type=EventType.DEVIS_REPLY).count(), 1)
 
     def test_unmatched_reply_creates_nothing(self):
         msg = _StubMessage(subject='Question générale', body='Bonjour',

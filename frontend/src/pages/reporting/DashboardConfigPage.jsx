@@ -109,10 +109,12 @@ export default function DashboardConfigPage() {
     return (id) => map.get(id)?.username || `Utilisateur #${id}`
   }, [users])
 
+  // AERR130 — relecture en échec : la liste reste, l'écran le dit (Réessayer).
+  const [configsEnEchec, setConfigsEnEchec] = useState(false)
   const reload = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
     reportingApi.listDashboardConfigs({ page, page_size: pageSize }).then((r) => r.data))
-    .then((rows) => setConfigs(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-    .catch(() => setConfigs([]))
+    .then((rows) => { setConfigs(Array.isArray(rows) ? rows : (rows?.results ?? [])); setConfigsEnEchec(false) })
+    .catch(() => setConfigsEnEchec(true))
 
   useEffect(() => {
     let active = true
@@ -128,7 +130,7 @@ export default function DashboardConfigPage() {
         setEffective(e.data)
         setUsers(u)
       })
-      .catch(() => {})
+      .catch(() => { if (active) setConfigsEnEchec(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
@@ -170,7 +172,11 @@ export default function DashboardConfigPage() {
     })
     if (!ok) return
     reportingApi.deleteDashboardConfig(cfg.id)
-      .then(() => { toast.success('Configuration supprimée.'); reload() })
+      .then(() => {
+        toast.success('Configuration supprimée.')
+        setConfigs((l) => l.filter((c) => c.id !== cfg.id))
+        reload()
+      })
       .catch(() => toast.error('Suppression impossible.'))
   }
 
@@ -264,16 +270,22 @@ export default function DashboardConfigPage() {
         <Button onClick={openCreate}><Plus /> Nouvelle configuration</Button>
       </div>
 
+      {configsEnEchec && (
+        <p role="status" className="mb-3 text-sm text-muted-foreground">
+          Configurations pas à jour — lecture impossible.{' '}
+          <Button size="sm" variant="outline" onClick={reload}>Réessayer</Button>
+        </p>
+      )}
       {loading ? (
         <ChargementPage />
-      ) : configs.length === 0 ? (
+      ) : configs.length === 0 ? (!configsEnEchec && (
         <EmptyState
           icon={LayoutGrid}
           title="Aucune configuration"
           description="Sans configuration, chaque utilisateur voit les cartes par défaut de son rôle."
           className="my-6"
         />
-      ) : (
+      )) : (
         <DataTable
           data={configs}
           columns={columns}

@@ -836,6 +836,9 @@ class RecepteurRetourVisiteTests(VisiteCadenceBase):
         self.assertIn('Toiture saine', self.lead.visite_notes or '')
         self.assertTrue(self.lead.activites.filter(
             body__startswith='Visite technique planifiée').exists())
+        # ATST57 — la note propre au retour terrain (seul « terminée » l'écrit).
+        self.assertTrue(self.lead.activites.filter(
+            body__contains='Aucun commentaire écrit sur place').exists())
 
 
 class RecepteurPlanificationTests(VisiteCadenceBase):

@@ -2671,8 +2671,10 @@ def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
 
     candidats = list(corbeille_purgeable(
         company, grace_days=grace_days, now=now))
-    purges = 0
-    proteges = 0
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from apps.reporting.journal_problemes import consigner_echec_tache
+    purges = proteges = echecs = 0
     ids = []
     for document in candidats:
         # Garde légale RE-vérifiée par document (état au moment de la purge).
@@ -2686,6 +2688,13 @@ def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
                 # Filet ultime : course avec une protection posée entre-temps.
                 proteges += 1
                 continue
+            except SoftTimeLimitExceeded:
+                raise
+            except Exception as exc:  # ACEL64 — un document fautif n'arrête plus la purge
+                logger.warning('ged.purge : document #%s non purgé', document.pk, exc_info=True)
+                consigner_echec_tache('ged.purge_corbeille_echue', exc)
+                echecs += 1
+                continue
         purges += 1
         ids.append(document.pk)
     return {
@@ -2694,6 +2703,7 @@ def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
         'eligibles': len(candidats),
         'purges': purges,
         'proteges': proteges,
+        'echecs': echecs,
         'ids': ids,
     }
 
@@ -2714,14 +2724,24 @@ def purger_corbeille_toutes_societes(*, grace_days=None, now=None, apply=False):
     DÉFINITIVEMENT chaque nuit à 02:30."""
     from authentication.selectors import active_companies
 
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from apps.reporting.journal_problemes import consigner_echec_tache
     total = {'dry_run': not apply, 'eligibles': 0, 'purges': 0,
-             'proteges': 0, 'par_societe': []}
+             'proteges': 0, 'echecs': 0, 'par_societe': []}
     for company in active_companies():
-        res = purger_corbeille_echue(
-            company, grace_days=grace_days, now=now, apply=apply)
-        total['eligibles'] += res['eligibles']
-        total['purges'] += res['purges']
-        total['proteges'] += res['proteges']
+        try:
+            res = purger_corbeille_echue(
+                company, grace_days=grace_days, now=now, apply=apply)
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:  # ACEL64 — une société fautive n'arrête plus les suivantes
+            logger.warning('ged.purge : société #%s non balayée', company.pk, exc_info=True)
+            consigner_echec_tache('ged.purge_corbeille_echue', exc)
+            total['echecs'] += 1
+            continue
+        for cle in ('eligibles', 'purges', 'proteges', 'echecs'):
+            total[cle] += res[cle]
         if res['eligibles']:
             total['par_societe'].append(res)
     return total
@@ -3969,11 +3989,10 @@ def expirer_demandes_echues(company, *, now=None):
         company=company, statut=SIGNATURE_EN_ATTENTE,
         expires_at__isnull=False, expires_at__lte=now)
     count = 0
-    for demande in echues:
-        demande.statut = SIGNATURE_ANNULE
-        demande.annule_le = now
-        demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
-        count += 1
+    for demande in echues:  # ACEL63 — conditionnel : une signature committée entre-temps gagne
+        count += DemandeSignatureDocument.objects.filter(
+            pk=demande.pk, statut=SIGNATURE_EN_ATTENTE).update(
+            statut=SIGNATURE_ANNULE, annule_le=now, updated_at=now)
     return count
 
 
@@ -4818,9 +4837,10 @@ def verifier_integrite_archives(company):
     synthese = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
     archivages = ArchivageLegal.objects.filter(
         company=company).select_related('version', 'document')
-    alteres = []
+    alteres, a_signaler = [], []
     for archivage in archivages:
         synthese['total'] += 1
+        precedent = archivage.controles.values_list('resultat', flat=True).first()  # ACEL62
         hash_constate = _hash_constate_pour_archivage(archivage)
         if hash_constate is None:
             resultat = CONTROLE_RESULTAT_INDISPONIBLE
@@ -4832,12 +4852,17 @@ def verifier_integrite_archives(company):
             resultat = CONTROLE_RESULTAT_ALTERE
             synthese['altere'] += 1
             alteres.append(archivage)
+        if resultat != CONTROLE_RESULTAT_OK and resultat != precedent:
+            a_signaler.append((archivage, resultat))
         ControleIntegrite.objects.create(
             company=company, archivage=archivage, resultat=resultat,
             hash_constate=hash_constate or '')
 
     if alteres:
         _notifier_alteration_archives(company, alteres)
+    if a_signaler:
+        from .alertes_integrite import alerter_archives_compromises
+        alerter_archives_compromises(company, a_signaler)
     return synthese
 
 

@@ -243,7 +243,9 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
         saisie: {
           devisId, optionChoice, nom, date, entrepriseSaisie,
           // Sous son champ quand il en a un : jamais deux fois à l'écran.
-          message: fieldErrors?.nom ? null : message,
+          // AERR120 — nom, date et entreprise ont chacun leur place.
+          message: (fieldErrors?.nom || fieldErrors?.date
+            || (fieldErrors?.entreprise && estDevisCi(selected))) ? null : message,
         },
         erreurs: fieldErrors ?? {},
       })
@@ -415,10 +417,16 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
+              {saisieInitiale?.erreurs?.date && (
+                <p className="form-error" role="alert">{saisieInitiale.erreurs.date}</p>
+              )}
 
               {estDevisCi(selected) && (
                 <IdentiteEntrepriseFields value={entreprise} onChange={setEntrepriseSaisie}
                                           idPrefix="sd" />
+              )}
+              {estDevisCi(selected) && saisieInitiale?.erreurs?.entreprise && (
+                <p className="form-error" role="alert">{saisieInitiale.erreurs.entreprise}</p>
               )}
             </>
           )}

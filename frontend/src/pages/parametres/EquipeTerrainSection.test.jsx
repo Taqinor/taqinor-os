@@ -215,7 +215,7 @@ describe('EquipeSection — Organisation', () => {
     await waitFor(() => expect(saveEquipe).toHaveBeenCalledWith(null, {
       nom: 'Sud', departement: null, membres: [], chef: null,
     }))
-    expect(await screen.findByText('Membre invalide.')).toBeInTheDocument()
+    expect(await screen.findByText('Membres : Membre invalide.')).toBeInTheDocument() // AERR52
   })
 
   it('crée un département et archive une fonction (onglets)', async () => {
