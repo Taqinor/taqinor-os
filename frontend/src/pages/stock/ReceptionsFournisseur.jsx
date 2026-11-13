@@ -27,6 +27,7 @@ import CellulesProduitQuantite, { EnteteProduitQuantite } from './CellulesProdui
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { erreurComptageSeries, parseSeries } from './numerosSerie.js'
+import { messageSaisieNonEntiere } from './validationEntiers'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -118,6 +119,8 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 
   const submit = async (confirmer) => {
     setError(null)
+    const nonEntiere = messageSaisieNonEntiere(lignes, (l) => saisies[l.id])  // AERR87 — jamais tronquée
+    if (nonEntiere) { setError(nonEntiere); return }
     const lignesEnErreur = lignes.filter((l) => erreurSeries(l))
     if (lignesEnErreur.length > 0) {
       setOuvertes((o) => ({ ...o, ...Object.fromEntries(lignesEnErreur.map((l) => [l.id, true])) }))

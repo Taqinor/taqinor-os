@@ -51,6 +51,7 @@ import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
 import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { messageSaisieNonEntiere } from './validationEntiers'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
@@ -601,6 +602,8 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const recevoir = async () => {
     const trac = Object.fromEntries(Object.entries(tracas).map(([id, t]) => [
       id, { numeros_serie: parseSeries(t.series), numero_lot: t.lot, date_peremption: t.peremption }]))
+    const nonEntiere = messageSaisieNonEntiere(bcf.lignes, (l) => receptions[l.id])  // AERR87 — jamais tronquée
+    if (nonEntiere) { setError(nonEntiere); return }
     const ligneEnErreur = bcf.lignes.find((l) => erreurSeriesLigne(l, receptions, tracas))
     if (ligneEnErreur) { setError(erreurSeriesLigne(ligneEnErreur, receptions, tracas)); return }
     const payload = buildReceptionPayload(bcf.lignes, receptions, trac)

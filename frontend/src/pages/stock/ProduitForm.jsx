@@ -63,6 +63,7 @@ import { TableauLignes } from '../../ui/TableauDefilant'
 import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
 import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
 import { useRetraitPrixFournisseur, fmtAchatDate } from './useRetraitPrixFournisseur'
+import { erreursEntiersProduit } from './validationEntiers'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -862,6 +863,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                                            e.prix_vente = 'Prix de vente requis (> 0)'
     if (skuDuplicate)
       e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`
+    Object.assign(e, erreursEntiersProduit(fields))  // AERR87 — « 7.5 » refusé sous le champ, jamais tronqué
     setErrors(e)
     // CALX355 — une courbe fautive bloque TOUT l'enregistrement (rien n'est
     // écrit, ni le produit ni la fiche) : l'erreur s'affiche sous la cellule
@@ -1383,7 +1385,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
 
           <FormSection title="Stock & alerte">
             <FormField
-              label="Quantité en stock" htmlFor="pf-qte"
+              label="Quantité en stock" htmlFor="pf-qte" error={errors.quantite_stock}
               hint={isEdit ? 'Modifiez via un mouvement de stock' : undefined}
             >
               <Input id="pf-qte" type="number" min="0" step="1" inputMode="numeric"
@@ -1392,7 +1394,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                      disabled={isEdit}
                      title={isEdit ? 'Utilisez un mouvement de stock pour modifier la quantité' : ''} />
             </FormField>
-            <FormField label="Seuil d'alerte" htmlFor="pf-seuil">
+            <FormField label="Seuil d'alerte" htmlFor="pf-seuil" error={errors.seuil_alerte}>
               <Input id="pf-seuil" type="number" min="0" step="1" inputMode="numeric"
                      value={fields.seuil_alerte}
                      onChange={e => setField('seuil_alerte', e.target.value)} />
@@ -1412,14 +1414,14 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                      onChange={e => setField('garantie', e.target.value)}
                      placeholder="ex : 12 ans produit, 25 ans performance" />
             </FormField>
-            <FormField label="Garantie équipement (mois)" htmlFor="pf-gar"
+            <FormField label="Garantie équipement (mois)" htmlFor="pf-gar" error={errors.garantie_mois}
                        hint="Laisser vide si non renseignée.">
               <Input id="pf-gar" type="number" min="0" step="1" inputMode="numeric"
                      value={fields.garantie_mois}
                      onChange={e => setField('garantie_mois', e.target.value)}
                      placeholder="ex : 120 (10 ans)" />
             </FormField>
-            <FormField label="Garantie production (mois)" htmlFor="pf-garprod"
+            <FormField label="Garantie production (mois)" htmlFor="pf-garprod" error={errors.garantie_production_mois}
                        hint="Pour les panneaux. Optionnel.">
               <Input id="pf-garprod" type="number" min="0" step="1" inputMode="numeric"
                      value={fields.garantie_production_mois}
