@@ -127,6 +127,13 @@ function CampagnesTab() {
   )
 }
 
+// AERR62 — lecture rejetée : jamais « aucune règle / aucune violation » (faux
+// rassurant en sécurité), un avis d'échec + « Réessayer ».
+const LectureEchouee = ({ quoi, onRetry }) => (
+  <EmptyState title={`${quoi} illisible(s) : la lecture a échoué.`} className="py-4"
+    action={<Button size="sm" variant="outline" onClick={onRetry}>Réessayer</Button>} />
+)
+
 // ── Règles SoD + violations ───────────────────────────────────────────────────
 function SodTab() {
   const [rules, setRules] = useState([])
@@ -134,13 +141,14 @@ function SodTab() {
   const [a, setA] = useState('')
   const [b, setB] = useState('')
   const [loading, setLoading] = useState(true)
+  const [echec, setEchec] = useState(false)
 
   const load = () => Promise.all([
     fetchAllPages((page, o) => accessReviewApi.sodRules.list({ page, ...o }).then((r) => r?.data)),
     accessReviewApi.sodRules.violations(),
   ]).then(([r, v]) => {
-    setRules(asList(r)); setViolations(asList(v.data))
-  }).catch(() => {}).finally(() => setLoading(false))
+    setRules(asList(r)); setViolations(asList(v.data)); setEchec(false)
+  }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const create = async () => {
@@ -160,6 +168,7 @@ function SodTab() {
   }
 
   if (loading) return <Spinner />
+  if (echec) return <LectureEchouee quoi="Règles et violations SoD" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Règles de séparation des tâches (SoD)</CardTitle></CardHeader>
@@ -207,10 +216,12 @@ function SodTab() {
 // ── Rapport de certification des accès ────────────────────────────────────────
 function RapportTab() {
   const [rows, setRows] = useState(null)
-  useEffect(() => {
+  const charger = () => {
+    setRows(null)
     accessReviewApi.revueAcces()
-      .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows([]))
-  }, [])
+      .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows('echec'))
+  }
+  useEffect(() => { charger() }, [])
   const exportCsv = async () => {
     try {
       const res = await accessReviewApi.revueAccesCsv()
@@ -221,6 +232,7 @@ function RapportTab() {
     } catch { toast.error('Export impossible.') }
   }
   if (rows === null) return <Spinner />
+  if (rows === 'echec') return <LectureEchouee quoi="Rapport de certification" onRetry={charger} />
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
