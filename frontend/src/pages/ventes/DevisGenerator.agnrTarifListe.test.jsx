@@ -70,6 +70,60 @@ describe('AGNR15 — prix de liste HT converti au taux de la ligne', () => {
   }, 60000)
 })
 
+// AERR126 (C-AERR-097) — deux réponses de palier dans le désordre : la réponse
+// de la DERNIÈRE quantité demandée gagne (jeton par ligne), même si la réponse
+// d'une quantité antérieure arrive après.
+describe('AERR126 — réponses de tarif périmées ignorées', () => {
+  it('réponses de palier dans le désordre : la dernière quantité gagne', async () => {
+    let armer = false
+    let libererPalier1
+    const palier1 = new Promise((r) => { libererPalier1 = r })
+    const prixPaliers = (params) => {
+      if (armer && String(params?.produit) === '102') {
+        if (Number(params?.quantite) === 1) {
+          return palier1.then(() => ({ data: { ...LISTE_ONDULEUR, prix: '1500.00', liste_nom: 'Unitaire' } }))
+        }
+        const volume = Number(params?.quantite) >= 10
+        return Promise.resolve({ data: { ...LISTE_ONDULEUR, prix: volume ? '1350.00' : '1450.00', liste_nom: volume ? 'Volume' : 'Moyen' } })
+      }
+      return prixApplicable(params)
+    }
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, {
+      devis: DEVIS_REGISTRE,
+      avant: (apis) => { apis.ventesApi.getPrixApplicable.mockImplementation(prixPaliers) },
+    })
+    const { container } = vue
+    const onduleur = () => ligneDe(container, 'Onduleur réseau 5kW Monophasé')
+    await waitFor(() => expect(onduleur()).toBeTruthy(), { timeout: 5000 })
+    await attendreStable(container, act, { stables: 10 })
+
+    armer = true
+    const qte = () => onduleur().querySelector('[data-role="line-qty"]')
+    // La ligne est à 1 : on la passe à 3 (1 450 HT → 1 740 TTC) pour que « 1 » soit une vraie frappe.
+    await act(async () => { fireEvent.change(qte(), { target: { value: '3' } }) })
+    await waitFor(() => expect(puDe(onduleur()).value).toBe('1740'))
+    await act(async () => { fireEvent.change(qte(), { target: { value: '1' } }) })
+    await act(async () => { fireEvent.change(qte(), { target: { value: '10' } }) })
+    await waitFor(() => expect(puDe(onduleur()).value).toBe('1620'))
+
+    // La réponse du palier « 1 » arrive en dernier : elle est ignorée.
+    await act(async () => { libererPalier1(); await palier1 })
+    await attendreStable(container, act, { stables: 10 })
+    expect(puDe(onduleur()).value).toBe('1620')
+    expect(container.textContent).toMatch(/Tarif : Volume/)
+    expect(container.textContent).not.toMatch(/Tarif : Unitaire/)
+
+    const enregistrer = [...container.querySelectorAll('button')]
+      .find((b) => /Enregistrer les modifications/.test(b.textContent))
+    await act(async () => { fireEvent.click(enregistrer) })
+    await waitFor(() => expect(vue.ventesApi.replaceLignesDevis).toHaveBeenCalled(), { timeout: 5000 })
+    const envoye = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)[1]
+    const lignesEnvoyees = Array.isArray(envoye) ? envoye : envoye.lignes
+    expect(lignesEnvoyees.find((l) => l.designation === 'Onduleur réseau 5kW Monophasé')?.prix_unitaire)
+      .toBe('1350.00')
+  }, 60000)
+})
+
 describe('RGEN6 rendement_global ignoré', () => {
   it('une société à rendement_global = 0,7 garde efficiency = EFFICIENCY (0,8) dans l’aperçu local', async () => {
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, {
