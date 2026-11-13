@@ -219,6 +219,40 @@ class TestLiberationAutoSeuil(Ntwms12Base):
         vague.refresh_from_db()
         self.assertEqual(vague.statut, VaguePicking.Statut.LANCEE)
 
+    def test_une_societe_en_echec_n_arrete_pas_les_suivantes(self):
+        """ACEL39 — le lancement qui lève chez A n'empêche plus la vague de B
+        de partir ; l'échec est consigné au journal des problèmes."""
+        from unittest import mock
+        from apps.stock import services_wms
+        from apps.stock.tasks import liberer_vagues_planifiees_task
+
+        vague_a = self._vague()
+        configurer_liberation_vague(
+            vague=vague_a, mode='auto_seuil', seuil_lignes=1)
+        vague_b = self._vague(company=self.autre)
+        configurer_liberation_vague(
+            vague=vague_b, mode='auto_seuil', seuil_lignes=1)
+        reel = services_wms.lancer_vague
+
+        def _lancer(vague):
+            if vague.company_id == self.company.id:
+                raise RuntimeError('lancement en panne')
+            return reel(vague)
+
+        with mock.patch.object(services_wms, 'lancer_vague',
+                               side_effect=_lancer), \
+                mock.patch('apps.reporting.journal_problemes.'
+                           'consigner_echec_tache') as consigner:
+            total = liberer_vagues_planifiees_task()
+        self.assertEqual(total, 1)
+        vague_a.refresh_from_db()
+        vague_b.refresh_from_db()
+        self.assertEqual(vague_a.statut, VaguePicking.Statut.BROUILLON)
+        self.assertEqual(vague_b.statut, VaguePicking.Statut.LANCEE)
+        consigner.assert_called_once()
+        self.assertEqual(consigner.call_args[0][0],
+                         'stock.liberer_vagues_planifiees')
+
 
 class TestCommandeManagement(Ntwms12Base):
     def test_commande_dry_run_n_ecrit_rien(self):

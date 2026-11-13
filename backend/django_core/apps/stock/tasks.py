@@ -455,14 +455,18 @@ def generer_comptages_tournants_task():
     DUES, toutes sociétés. Idempotente : rejouée le même jour elle ne recrée
     rien (l'échéance du plan vient d'être repoussée). Renvoie le nombre de
     sessions créées."""
+    from authentication.selectors import active_companies
+    from apps.reporting.journal_problemes import consigner_echec_tache
     from .services_wms import generer_comptages_tournants
-    try:
-        resultat = generer_comptages_tournants()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logger.warning('stock.generer_comptages_tournants: échec du balayage',
-                       exc_info=True)
-        return 0
-    return len(resultat.get('sessions', []))
+    total = 0
+    for company in active_companies():  # ACEL39 — une société en échec n'arrête pas les suivantes
+        try:
+            total += len(generer_comptages_tournants(company=company).get('sessions', []))
+        except Exception as exc:  # noqa: BLE001 — société suivante, échec consigné (D-ENF22-BLE001)
+            logger.warning('stock.generer_comptages_tournants: échec société %s',
+                           company.id, exc_info=True)
+            consigner_echec_tache('stock.generer_comptages_tournants', exc)
+    return total
 
 
 @shared_task(name='stock.liberer_vagues_planifiees')
@@ -472,14 +476,18 @@ def liberer_vagues_planifiees_task():
     une vague déjà lancée n'est jamais retouchée. Cadence courte assumée :
     l'heure de coupure est un réglage PAR SOCIÉTÉ, à la minute près. Renvoie le
     nombre de vagues libérées."""
+    from authentication.selectors import active_companies
+    from apps.reporting.journal_problemes import consigner_echec_tache
     from .services_wms import liberer_vagues_planifiees
-    try:
-        resultat = liberer_vagues_planifiees()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logger.warning('stock.liberer_vagues_planifiees: échec du balayage',
-                       exc_info=True)
-        return 0
-    return len(resultat.get('liberees', []))
+    total = 0
+    for company in active_companies():  # ACEL39 — une société en échec n'arrête pas les suivantes
+        try:
+            total += len(liberer_vagues_planifiees(company=company).get('liberees', []))
+        except Exception as exc:  # noqa: BLE001 — société suivante, échec consigné (D-ENF22-BLE001)
+            logger.warning('stock.liberer_vagues_planifiees: échec société %s',
+                           company.id, exc_info=True)
+            consigner_echec_tache('stock.liberer_vagues_planifiees', exc)
+    return total
 
 
 #: APRF34/APRF43 — durée de validité du lien de téléchargement de la notification (24 h).

@@ -221,6 +221,40 @@ class TestPlansEtGeneration(Ntwms13Base):
         self.assertEqual(
             InventaireSession.objects.filter(company=self.autre).count(), 0)
 
+    def test_une_societe_en_echec_n_arrete_pas_les_suivantes(self):
+        """ACEL39 — la 1re société qui lève n'empêche plus la 2e d'avoir sa
+        session ; l'échec est consigné au journal des problèmes."""
+        from unittest import mock
+        from apps.stock import selectors_wms
+        from apps.stock.tasks import generer_comptages_tournants_task
+
+        assurer_plans_comptage_tournant(self.autre)
+        Produit.objects.create(
+            company=self.autre, nom='Vis B', sku='VISB-NTWMS13',
+            prix_achat=Decimal('5'), prix_vente=Decimal('9'))
+        reel = selectors_wms.classes_abc_produits
+
+        def _classes(company, **kwargs):
+            if company.id == self.company.id:
+                raise RuntimeError('classes ABC en panne')
+            return reel(company, **kwargs)
+
+        with mock.patch.object(selectors_wms, 'classes_abc_produits',
+                               side_effect=_classes), \
+                mock.patch('apps.reporting.journal_problemes.'
+                           'consigner_echec_tache') as consigner:
+            total = generer_comptages_tournants_task()
+            rejoue = generer_comptages_tournants_task()
+        self.assertEqual(total, 1)
+        self.assertEqual(rejoue, 0)
+        self.assertEqual(
+            InventaireSession.objects.filter(company=self.autre).count(), 1)
+        self.assertEqual(
+            InventaireSession.objects.filter(company=self.company).count(), 0)
+        self.assertEqual(consigner.call_count, 2)
+        self.assertEqual(consigner.call_args_list[0][0][0],
+                         'stock.generer_comptages_tournants')
+
     def test_endpoint_generer(self):
         resp = self.api.post(
             '/api/django/stock/plans-comptage-tournant/generer/', {},
