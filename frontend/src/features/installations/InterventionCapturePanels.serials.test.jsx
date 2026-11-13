@@ -189,3 +189,17 @@ describe('SerialsPanel — séries attendues (revue chantier 26/10/2026)', () =>
     expect(screen.queryByLabelText('Motif de la suppression')).not.toBeInTheDocument()
   })
 })
+
+// AERR78 — une lecture rejetée n'est pas « aucun » : avis + « Réessayer ».
+describe('SerialsPanel — AERR78 lecture rejetée', () => {
+  it('lecture des séries rejetée : avis + Réessayer, jamais l’état vide', async () => {
+    api.getSerials.mockRejectedValueOnce(new Error('réseau'))
+    render(<SerialsPanel intervention={INTERVENTION} />)
+    expect(await screen.findByText('Numéros de série non chargés.')).toBeInTheDocument()
+    expect(screen.queryByText('Aucun relevé.')).not.toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(api.getSerials).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText('Numéros de série non chargés.')).not.toBeInTheDocument())
+  })
+})

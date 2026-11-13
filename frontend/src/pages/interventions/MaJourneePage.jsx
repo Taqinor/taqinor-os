@@ -219,6 +219,8 @@ export default function MaJourneePage() {
   const lastFetchedAtRef = useRef(0)
   // NTMOB27 — horodatage de la donnée servie DEPUIS LE CACHE (null = en ligne).
   const [cachedAt, setCachedAt] = useState(null)
+  // AERR36 — tournée illisible SANS cache : le dire, jamais une journée vide.
+  const [erreur, setErreur] = useState(false)
   const load = useCallback(() => installationsApi
     .getMaTournee(today)
     .then((r) => {
@@ -244,6 +246,7 @@ export default function MaJourneePage() {
       // NTMOB27 — la tournée fraîche alimente le cache de LECTURE hors-ligne
       // (jamais l'inverse : rien de ce cache ne repart vers le serveur).
       setCachedAt(null)
+      setErreur(false)
       readCache.put('tournee', today, stops)
       // EZ6 — `load()` rend les arrêts frais : le dérivateur de statut compare
       // l'avant/après sans re-lire un état React pas encore commis.
@@ -254,12 +257,13 @@ export default function MaJourneePage() {
     // vide « aucune intervention » qui ferait croire à une journée libre.
     .catch(() => readCache.get('tournee', today)
       .then((entree) => {
-        if (!entree) { setRows([]); return [] }
+        if (!entree) { setRows([]); setErreur(true); return [] }
         setRows(entree.data)
         setCachedAt(entree.cachedAt)
+        setErreur(false)
         return entree.data
       })
-      .catch(() => { setRows([]); return [] }))
+      .catch(() => { setRows([]); setErreur(true); return [] }))
     .finally(() => setLoading(false)), [today])
   useEffect(() => { load() }, [load])
 
@@ -428,6 +432,11 @@ export default function MaJourneePage() {
             <Spinner className="size-4" /> Chargement de vos interventions…
           </p>
         )
+      ) : erreur && rows.length === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          title="Tournée indisponible — vérifiez la connexion"
+          action={<Button size="sm" onClick={load}>Réessayer</Button>} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={ClipboardList}

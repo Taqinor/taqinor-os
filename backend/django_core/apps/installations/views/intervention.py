@@ -525,8 +525,10 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
             new_technicien is not None
             and new_technicien.id != old.technicien_id)
         from django.db import transaction
+        from .livraison import ecriture_bornee
         with transaction.atomic():
-            interv = serializer.save()
+            with ecriture_bornee(serializer):  # ACNC25 — n'écrit que les champs validés
+                interv = serializer.save()
             # CHT9 — le technicien RÉAFFECTÉ est notifié (sa propre clé
             # INTERVENTION_ASSIGNEE).
             if technicien_change:
@@ -1938,19 +1940,22 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
-        if reserve.devis_repare_id:
-            return Response({
-                'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
-                'deja_existant': True,
-            })
+        from django.db import transaction
         from apps.ventes.services import create_devis_from_reserve
-        try:
-            devis = create_devis_from_reserve(reserve=reserve, user=request.user)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        reserve.devis_repare_id = devis.id
-        reserve.save(update_fields=['devis_repare_id'])
+        with transaction.atomic():  # ACNC34 — garde jugée sur la réserve relue SOUS VERROU
+            reserve = type(reserve).objects.select_for_update().get(pk=reserve.pk, intervention=interv)
+            if reserve.devis_repare_id:
+                return Response({
+                    'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
+                    'deja_existant': True,
+                })
+            try:
+                devis = create_devis_from_reserve(reserve=reserve, user=request.user)
+            except ValueError as exc:
+                return Response({'detail': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+            reserve.devis_repare_id = devis.id
+            reserve.save(update_fields=['devis_repare_id'])
         return Response({
             'reserve': reserve.id, 'devis_id': devis.id,
             'devis_reference': devis.reference, 'deja_existant': False,

@@ -22,6 +22,7 @@ import { unwrap, useFilteredList } from './chargementListe'
 import ListShell from './ListeEtat'
 import MaitreDetail from './MaitreDetail'
 import PiedCreation from './PiedCreation'
+import { useConfirm } from '../../providers/confirm-context'
 
 // ── Créer un kit ─────────────────────────────────────────────────────────────
 function CreateKitDialog({ produits, onClose, onCreated }) {
@@ -113,13 +114,14 @@ function CreateComposantDialog({ kitId, produits, onClose, onCreated }) {
   )
 }
 
-function NomenclatureTab({ kitId, produits }) {
+function NomenclatureTab({ kitId, kitNom, produits }) {
   const { rows, loading, error, reload } = useFilteredList(
     installationsApi.getKitComposants, { kit: kitId })
   const [showCreate, setShowCreate] = useState(false)
-  const del = async (id) => {
-    if (!window.confirm('Retirer ce composant de la nomenclature ?')) return
-    await installationsApi.deleteKitComposant(id).catch(() => {})
+  const confirm = useConfirm() // AERR83 — boîte maison nommée
+  const del = async (c) => {
+    if (!(await confirm({ title: `Retirer « ${c.produit_nom || c.designation} » de la nomenclature du kit « ${kitNom} » ?`, confirmLabel: 'Retirer' }))) return
+    await installationsApi.deleteKitComposant(c.id).catch(() => {})
     reload()
   }
   return (
@@ -138,7 +140,7 @@ function NomenclatureTab({ kitId, produits }) {
               <span className="text-xs text-muted-foreground">Perte {c.taux_perte_pct}%</span>
             )}
             <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive"
-              onClick={() => del(c.id)}>
+              onClick={() => del(c)}>
               Retirer
             </Button>
           </div>
@@ -194,13 +196,14 @@ function CreateEtapeDialog({ kitId, ordreSuivant, onClose, onCreated }) {
   )
 }
 
-function GammeTab({ kitId }) {
+function GammeTab({ kitId, kitNom }) {
   const { rows, loading, error, reload } = useFilteredList(
     installationsApi.getEtapesAssemblageKit, { kit: kitId })
   const [showCreate, setShowCreate] = useState(false)
-  const del = async (id) => {
-    if (!window.confirm("Retirer cette étape de la gamme ?")) return
-    await installationsApi.deleteEtapeAssemblageKit(id).catch(() => {})
+  const confirm = useConfirm()
+  const del = async (e) => {
+    if (!(await confirm({ title: `Retirer l’étape « ${e.libelle} » de la gamme du kit « ${kitNom} » ?`, confirmLabel: 'Retirer' }))) return
+    await installationsApi.deleteEtapeAssemblageKit(e.id).catch(() => {})
     reload()
   }
   const sorted = [...rows].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
@@ -222,7 +225,7 @@ function GammeTab({ kitId }) {
               <span className="text-xs text-muted-foreground">{e.duree_attendue_min} min</span>
             )}
             <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive"
-              onClick={() => del(e.id)}>
+              onClick={() => del(e)}>
               Retirer
             </Button>
           </div>
@@ -307,10 +310,10 @@ function KitFiche({ kit, produits }) {
           <TabsTrigger value="qualite">Contrôle qualité</TabsTrigger>
         </TabsList>
         <TabsContent value="nomenclature">
-          <NomenclatureTab kitId={kit.id} produits={produits} />
+          <NomenclatureTab kitId={kit.id} kitNom={kit.nom} produits={produits} />
         </TabsContent>
         <TabsContent value="gamme">
-          <GammeTab kitId={kit.id} />
+          <GammeTab kitId={kit.id} kitNom={kit.nom} />
         </TabsContent>
         <TabsContent value="qualite">
           <ControleQualiteTab kitId={kit.id} />

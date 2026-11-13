@@ -406,6 +406,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             cd.update({k: v for k, v in (old.custom_data or {}).items() if k == cle})
             serializer.validated_data['custom_data'] = cd
         with transaction.atomic():
+            # ACNC31 — état « avant » relu SOUS VERROU (deux PATCH croisés : le
+            # second voit la transition du premier) ; l'instance du sérialiseur
+            # repart de la ligne verrouillée, jamais d'une copie périmée.
+            old = Installation.objects.select_for_update().get(pk=serializer.instance.pk)
+            serializer.instance.refresh_from_db()
             super().perform_update(serializer)
             inst = serializer.instance
             # VX213 (b) — handoff AVAL : réassigner un chantier à un NOUVEAU

@@ -328,10 +328,12 @@ def generer_interventions_recurrentes_task():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += len(generer_interventions_recurrentes(company))
-        except Exception:  # société suivante
+        except Exception as exc:  # société suivante
             logger.warning(
                 'installations.generer_interventions_recurrentes: échec '
                 'société %s', company.id, exc_info=True)
+            from apps.reporting.journal_problemes import consigner_echec_tache
+            consigner_echec_tache('installations.generer_interventions_recurrentes', exc)
     return total
 
 
@@ -547,8 +549,10 @@ def purger_positions_gps_task():
     from .gps_tracking_service import purge_positions_expirees
     try:
         return purge_positions_expirees()
-    except Exception:  # best-effort : relancée la nuit suivante
+    except Exception as exc:  # best-effort : relancée la nuit suivante
         logger.warning('installations.purger_positions_gps: échec', exc_info=True)
+        from apps.reporting.journal_problemes import consigner_echec_tache
+        consigner_echec_tache('installations.purger_positions_gps', exc)  # ACEL45
         return 0
 
 

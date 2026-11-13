@@ -3,9 +3,16 @@
 // prérequis des liens de notification CHT9, règle WIR176 : jamais un
 // paramètre qu'aucune page ne lit).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import InterventionsPage from './InterventionsPage'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
+
+const { toastWithUndoSpy } = vi.hoisted(() => ({ toastWithUndoSpy: vi.fn() }))
+vi.mock('../../lib/toast', async (importOriginal) => ({
+  ...(await importOriginal()),
+  toastWithUndo: (...a) => toastWithUndoSpy(...a),
+}))
 
 vi.mock('../../api/installationsApi', () => ({
   default: {
@@ -162,5 +169,79 @@ describe('InterventionsPage — ACHT65 ?installation=', () => {
     await waitFor(() => expect(screen.getByText('Client Dix')).toBeInTheDocument())
     expect(screen.queryByText('Client Vingt')).toBeNull()
     expect(installationsApi.getInterventions).toHaveBeenCalledWith(expect.objectContaining({ installation: '10' }))
+  })
+})
+
+// AERR29 — kanban : Validée / Terminée exigent une confirmation nommée (le ticket
+// SAV lié est résolu, sans retour) ; les autres statuts : appliqué + « Annuler ».
+describe('InterventionsPage — AERR29 statut depuis le kanban', () => {
+  const INT = { id: 42, reference: 'INT-0042', installation_reference: 'CH-042',
+    client_nom: 'Client Quarante', type_intervention: 'pose', statut: 'sur_site' }
+  const rendre = () => render(
+    <MemoryRouter initialEntries={['/interventions']}>
+      <ConfirmProvider><InterventionsPage /></ConfirmProvider>
+    </MemoryRouter>,
+  )
+
+  it('dépôt vers Validée : confirmation nommée, Annuler ⇒ aucun PATCH', async () => {
+    localStorage.setItem('taqinor.interventions.view', 'kanban')
+    installationsApi.getInterventions.mockResolvedValue({ data: [INT] })
+    installationsApi.updateIntervention.mockResolvedValue({ data: { ...INT, statut: 'validee' } })
+    rendre()
+    const select = (await screen.findAllByLabelText('Changer le statut de Client Quarante'))[0]
+    fireEvent.change(select, { target: { value: 'validee' } })
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent('INT-0042')
+    expect(dialog).toHaveTextContent('Validée')
+    expect(dialog).toHaveTextContent('le ticket SAV lié sera résolu')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(installationsApi.updateIntervention).not.toHaveBeenCalled()
+
+    fireEvent.change(select, { target: { value: 'validee' } })
+    const dialog2 = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog2).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(installationsApi.updateIntervention).toHaveBeenCalledWith(
+      42, { statut: 'validee' }, { suppressErrorToast: true }))
+    expect(toastWithUndoSpy).not.toHaveBeenCalled()
+  })
+
+  it('Prête → En route : PATCH immédiat puis « Annuler » qui repasse Prête', async () => {
+    localStorage.setItem('taqinor.interventions.view', 'kanban')
+    installationsApi.getInterventions.mockResolvedValue({ data: [{ ...INT, statut: 'prete' }] })
+    installationsApi.updateIntervention.mockResolvedValue({ data: {} })
+    rendre()
+    const select = (await screen.findAllByLabelText('Changer le statut de Client Quarante'))[0]
+    fireEvent.change(select, { target: { value: 'en_route' } })
+    await waitFor(() => expect(installationsApi.updateIntervention).toHaveBeenCalledWith(
+      42, { statut: 'en_route' }, { suppressErrorToast: true }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    await waitFor(() => expect(toastWithUndoSpy).toHaveBeenCalled())
+    const opts = toastWithUndoSpy.mock.calls[0][0]
+    expect(opts.message).toContain('INT-0042')
+    expect(opts.onCommit).toBeUndefined()
+    await opts.onUndo()
+    expect(installationsApi.updateIntervention).toHaveBeenLastCalledWith(42, { statut: 'prete' })
+  })
+})
+
+// AERR34 — une relecture de fond rejetée garde la liste, avec un avis + « Réessayer ».
+describe('InterventionsPage — AERR34 relecture rejetée', () => {
+  it('liste chargée puis relecture rejetée : lignes visibles + Réessayer', async () => {
+    localStorage.setItem('taqinor.interventions.view', 'kanban')
+    const trois = ITEMS.concat({ id: 303, installation_reference: 'CH-303', client_nom: 'Client Trois',
+      type_intervention: 'pose', statut: 'a_preparer' })
+    installationsApi.getInterventions.mockResolvedValueOnce({ data: trois })
+      .mockRejectedValue(new Error('réseau'))
+    installationsApi.updateIntervention.mockResolvedValue({ data: {} })
+    render(<MemoryRouter initialEntries={['/interventions']}><ConfirmProvider><InterventionsPage /></ConfirmProvider></MemoryRouter>)
+    const select = (await screen.findAllByLabelText('Changer le statut de Client Trois'))[0]
+    fireEvent.change(select, { target: { value: 'prete' } })
+    const avis = (await screen.findByText(/Liste pas à jour/)).closest('[role="alert"]')
+    expect(avis).not.toBeNull()
+    expect(within(avis).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.getAllByText('Client Trois').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Client Cent Un').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Impossible de charger les interventions')).toBeNull()
   })
 })

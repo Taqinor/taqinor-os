@@ -119,8 +119,11 @@ describe('AteliersPage — WIR247 gamme, lignes, nomenclature', () => {
     await waitFor(() => expect(api.createLigneAssemblage).toHaveBeenCalledWith(
       { ordre: 1, designation: 'Câble 6mm²', quantite: '30' }))
 
+    // AERR81 — la suppression demande d'abord une confirmation (repli natif hors provider).
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
     await user.click(bloc.getAllByRole('button', { name: 'Retirer' })[0])
     await waitFor(() => expect(api.deleteLigneAssemblage).toHaveBeenCalledWith(11))
+    confirmation.mockRestore()
   })
 
   it('l’édition des lignes DISPARAÎT une fois l’ordre démarré', async () => {

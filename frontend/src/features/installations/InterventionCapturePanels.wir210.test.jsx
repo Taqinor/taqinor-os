@@ -50,6 +50,8 @@ const api = vi.hoisted(() => ({
   validerConsommation: vi.fn(),
   getFiche: vi.fn(),
   renseignerFiche: vi.fn(),
+  getReserves: vi.fn(),
+  ajouterReserve: vi.fn(),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
@@ -63,7 +65,7 @@ vi.mock('../../ui', async (importOriginal) => {
   return { ...actual, toast: { ...actual.toast, success: toasts.success, error: toasts.error } }
 })
 
-import { SerialsPanel, ConsommationPanel, FichePanel } from './InterventionCapturePanels'
+import { SerialsPanel, ConsommationPanel, FichePanel, ReservesPanel } from './InterventionCapturePanels'
 
 const INTERVENTION = { id: 42 }
 
@@ -141,7 +143,9 @@ describe('ConsommationPanel — WIR210 hors-ligne (F11)', () => {
     await user.type(champ, '12')
     await user.tab()
 
-    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('Mise à jour impossible.'))
+    // AERR86 — le toast global (intercepteur) dit la cause : aucun toast local en double.
+    await waitFor(() => expect(api.modifierLigneConsommation).toHaveBeenCalled())
+    expect(toasts.error).not.toHaveBeenCalled()
     expect(outbox.enqueue).not.toHaveBeenCalled()
   })
 })
@@ -249,5 +253,52 @@ describe('FichePanel — saisie pendant un envoi', () => {
     expect(screen.getByLabelText(/Courant/).value).toBe('12')
     await user.tab()
     await waitFor(() => expect(api.renseignerFiche).toHaveBeenCalledWith(42, 22, '12'))
+  })
+})
+
+// AERR77 — valider la consommation sort le stock pour de bon : boîte nommée d'abord.
+describe('ConsommationPanel — AERR77 confirmation de validation', () => {
+  it('Valider puis Annuler : aucun appel ; boîte nommée', async () => {
+    const { ConfirmProvider } = await import('../../providers/ConfirmProvider')
+    api.getConsommation.mockResolvedValue({ data: { valide: false, lignes: [
+      { ...CONSOMMATION.lignes[0], id: 5, designation: 'Panneau 450W', quantite_utilisee: '12' },
+      { ...CONSOMMATION.lignes[0], id: 6, designation: 'Onduleur 5 kW', quantite_utilisee: '1' },
+    ] } })
+    api.validerConsommation.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    render(<ConfirmProvider><ConsommationPanel intervention={{ id: 42, reference: 'INT-0042' }} /></ConfirmProvider>)
+    await user.click(await screen.findByRole('button', { name: /Valider la consommation/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('INT-0042')
+    expect(boite).toHaveTextContent('12 × Panneau 450W')
+    expect(boite).toHaveTextContent('1 × Onduleur 5 kW')
+    expect(boite).toHaveTextContent('définitive')
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(api.validerConsommation).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: /Valider la consommation/ }))
+    await screen.findByRole('alertdialog')
+    await user.click(screen.getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(api.validerConsommation).toHaveBeenCalledTimes(1))
+    expect(api.validerConsommation).toHaveBeenCalledWith(42)
+  })
+})
+
+// AERR86 — un refus serveur n'ajoute pas de toast local générique au toast global.
+describe('ReservesPanel — AERR86 pas de toast local en double', () => {
+  it('ajout de réserve refusé : aucun toast local, la saisie reste', async () => {
+    api.getReserves.mockResolvedValue({ data: [] })
+    api.ajouterReserve.mockRejectedValue({ response: { status: 400, data: { detail: 'Réserve déjà levée.' } } })
+    const user = userEvent.setup()
+    render(<ReservesPanel intervention={INTERVENTION} />)
+    const saisie = await screen.findByPlaceholderText(/Réserve à reprendre/)
+    await user.type(saisie, 'Câble manquant')
+    await user.click(screen.getByRole('button', { name: 'Ajouter la réserve' }))
+    await waitFor(() => expect(api.ajouterReserve).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Ajouter la réserve' })).not.toBeDisabled())
+    expect(toasts.error).not.toHaveBeenCalled()
+    expect(outbox.enqueue).not.toHaveBeenCalled()
+    expect(saisie).toHaveValue('Câble manquant')
   })
 })

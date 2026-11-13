@@ -17,6 +17,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { AlerteErreur } from '../../ui/AlertesServeur'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { TableauLignes } from '../../ui/TableauDefilant'
 
 // FG310 — statuts de la demande d'achat. Les codes ne figurent pas dans le
@@ -94,6 +95,8 @@ export default function DemandesAchatList() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  const { errors: champErreurs, setFromResponse, clearAll } = useServerFieldErrors() // AERR85
+  const [ligneErreur, setLigneErreur] = useState(null)
   // ACHT63 — reprise d'une création interrompue : id de la demande déjà créée et
   // nombre de lignes déjà postées (seules les lignes manquantes sont renvoyées).
   const reprise = useRef({ id: null, faites: 0 })
@@ -268,6 +271,7 @@ export default function DemandesAchatList() {
 
   const submitCreate = async (thenSoumettre) => {
     setFormError('')
+    clearAll()
     if (!form.objet.trim()) {
       setFormError("L'objet est obligatoire.")
       return
@@ -317,7 +321,10 @@ export default function DemandesAchatList() {
       setCreating(false)
       await load()
     } catch (err) {
-      setFormError(frError(err, "Impossible d'enregistrer la demande."))
+      if (err?.response?.data?.quantite) {
+        setFromResponse(err.response.data)
+        setLigneErreur(lignes[reprise.current.faites]?._key ?? null)
+      } else setFormError(frError(err, "Impossible d'enregistrer la demande."))
     } finally {
       setSaving(false)
     }
@@ -546,7 +553,10 @@ export default function DemandesAchatList() {
                         aria-label="Quantité" type="number" step="any" min="0"
                         placeholder="Qté" value={l.quantite}
                         onChange={(e) => setLigne(l._key, { quantite: e.target.value })}
+                        aria-invalid={ligneErreur === l._key && champErreurs.quantite ? true : undefined}
                       />
+                      {ligneErreur === l._key && champErreurs.quantite && (
+                        <p role="alert" className="mt-1 text-xs text-destructive">{champErreurs.quantite}</p>)}
                     </div>
                     <div className="col-span-3 sm:col-span-2">
                       <Input

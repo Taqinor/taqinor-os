@@ -170,3 +170,32 @@ describe('RecettePompageDialog — AGR613', () => {
     expect(screen.getByLabelText('HMT mesurée (m)')).toBeDisabled()
   })
 })
+
+// AERR38 — mesure saisie non enregistrée : Échap demande avant de fermer.
+describe('RecettePompageDialog — AERR38 garde de saisie', () => {
+  it('mesure saisie puis Échap : demande, rester ⇒ mesure gardée', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const demande = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<RecettePompageDialog installationId={214} record={VIDE.record} onClose={onClose} />)
+    const debit = screen.getByLabelText('Débit mesuré (m³/h)')
+    await user.clear(debit)
+    await user.type(debit, '27.5')
+    await user.keyboard('{Escape}')
+    expect(demande).toHaveBeenCalledWith('Modifications non enregistrées — quitter cette page ?')
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Débit mesuré (m³/h)')).toHaveValue(27.5)
+    demande.mockRestore()
+  })
+
+  it('aucune saisie : Échap ferme directement, sans demande', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const demande = vi.spyOn(window, 'confirm')
+    render(<RecettePompageDialog installationId={214} record={VIDE.record} onClose={onClose} />)
+    await user.keyboard('{Escape}')
+    expect(demande).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+    demande.mockRestore()
+  })
+})

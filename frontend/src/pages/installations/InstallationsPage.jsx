@@ -8,6 +8,7 @@ import {
   filterInstallations,
   statusLabel,
   statusColor,
+  canonicalStatus,
   upcomingPoses,
   funnelSummary,
   installerLoad,
@@ -24,6 +25,8 @@ import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import KanbanView from './views/KanbanView'
 import InstallationsSkeleton from './views/InstallationsSkeleton'
+import { useConfirmDialog } from '../../ui/confirm'
+import { toastWithUndo } from '../../lib/toast'
 import InstallationDetail from './InstallationDetail'
 import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 import { SelecteurVue } from '../../ui/SelecteurVue'
@@ -108,6 +111,12 @@ function Chip({ item, onOpen, onDragStart }) {
       <span className="cal-chip-name">{name}</span>
     </StatusAccentCard>
   )
+}
+
+const EFFETS_STATUT = { // AERR28 — statuts à effets durables (confirmation nommée)
+  installe: 'le matériel réservé sortira du stock',
+  receptionne: 'l’enquête de satisfaction et la proposition de contrat SAV partiront',
+  cloture: 'le chantier sera verrouillé (réouverture : Directeur avec motif)',
 }
 
 function CalendarView({ items, onOpen, onReschedule }) {
@@ -297,6 +306,7 @@ export default function InstallationsPage() {
   // Les filtres « annulés » et « Mes chantiers » sont des dimensions SERVEUR :
   // on refait l'appel quand ils changent (les autres filtres restent côté client).
   const refetch = () => dispatch(fetchInstallations(serverParams(filters)))
+  const { confirm } = useConfirmDialog()
 
   // N2 — glisser une carte change le statut ; un select réassigne l'installateur.
   // En cas d'échec serveur : message FR + resynchronisation (rollback) du tableau.
@@ -315,17 +325,40 @@ export default function InstallationsPage() {
   const reassignStrict = (inst, technicien) =>
     dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } })).unwrap()
       .catch((err) => { throw new Error(raisonRefus(err, 'Réassignation impossible.')) })
-  const onChangeStatus = (inst, statut) =>
-    changeStatusStrict(inst, statut)
-      .catch(() => { toast.error('Changement de statut impossible.'); refetch() })
+  // AERR28 — Installé / Réceptionné / Clôturé ont des effets durables :
+  // confirmation nommée d'abord ; les autres pas : PATCH immédiat + « Annuler ».
+  const onChangeStatus = async (inst, statut) => {
+    const nom = inst.reference || `#${inst.id}`
+    const effet = EFFETS_STATUT[canonicalStatus(statut)]
+    if (effet && !(await confirm({
+      title: `Passer ${nom} à « ${statusLabel(statut)} » ?`,
+      description: `${nom} passera à « ${statusLabel(statut)} » : ${effet}.`,
+      confirmLabel: 'Confirmer', cancelLabel: 'Annuler', destructive: false,
+    }))) return
+    const avant = inst.statut
+    return changeStatusStrict(inst, statut).then(() => {
+      if (!effet) toastWithUndo({
+        message: `${nom} passé à « ${statusLabel(statut)} ».`,
+        onUndo: () => changeStatusStrict(inst, avant).catch(() => { toast.error('Annulation impossible.'); refetch() }),
+      })
+    }).catch(() => { toast.error('Changement de statut impossible.'); refetch() })
+  }
   const onReassign = (inst, technicien) =>
     reassignStrict(inst, technicien)
       .catch(() => { toast.error('Réassignation impossible.'); refetch() })
   // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
   // journalise le changement de date dans le chatter).
-  const onReschedule = (inst, dateKey) =>
-    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: dateKey } })).unwrap()
-      .catch(() => { toast.error('Replanification impossible.'); refetch() })
+  // AERR30 — toast nommé + « Annuler » (appel inverse, patron PlanificationPage).
+  const replanifier = (inst, date) =>
+    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: date } })).unwrap()
+  const onReschedule = (inst, dateKey) => {
+    const avant = inst.date_pose_prevue ?? null
+    const [, m, d] = dateKey.split('-')
+    return replanifier(inst, dateKey).then(() => toastWithUndo({
+      message: `Pose de ${inst.reference || `#${inst.id}`} déplacée au ${d}/${m}`,
+      onUndo: () => replanifier(inst, avant).catch(() => { toast.error('Annulation impossible.'); refetch() }),
+    })).catch(() => { toast.error('Replanification impossible.'); refetch() })
+  }
   useEffect(() => {
     dispatch(fetchInstallations(serverParams(filters)))
     // intentionally narrow: only `annule`/`mine` are server-side dimensions
