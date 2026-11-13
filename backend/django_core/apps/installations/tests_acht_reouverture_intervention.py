@@ -13,7 +13,6 @@ Run :
 """
 import datetime
 import threading
-import time
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -29,6 +28,7 @@ from apps.installations.models import (
 )
 from core.events import intervention_completed
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 SYNC = '/api/django/installations/sync/'
@@ -152,7 +152,7 @@ class ClotureInterventionCourseTests(WideTeardownTimeoutMixin, TransactionTestCa
             if not a_tient.is_set():  # A : tient sa transaction ouverte
                 a_tient.set()
                 b_tente.wait(5)
-                time.sleep(0.5)  # B atteint l'écriture de la clôture
+                attendre_un_ecrivain_bloque()  # B bloqué sur l'écriture de la clôture
 
         intervention_completed.connect(recepteur, dispatch_uid='acnc31-cloture', weak=False)
         self.addCleanup(intervention_completed.disconnect, dispatch_uid='acnc31-cloture')

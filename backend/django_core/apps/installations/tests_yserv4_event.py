@@ -11,7 +11,6 @@ Run :
 """
 import itertools
 import threading
-import time
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -23,6 +22,7 @@ from apps.crm.models import Client
 from apps.installations.models import Installation
 from core.events import chantier_receptionne
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -166,7 +166,7 @@ class TestChantierReceptionneCourse(WideTeardownTimeoutMixin, TransactionTestCas
             if not a_tient.is_set():  # A : tient sa transaction ouverte
                 a_tient.set()
                 b_tente.wait(5)
-                time.sleep(0.5)  # B atteint la relecture du chantier
+                attendre_un_ecrivain_bloque()  # B bloqué sur la relecture du chantier
 
         chantier_receptionne.connect(recepteur, dispatch_uid='acnc31-course', weak=False)
         self.addCleanup(chantier_receptionne.disconnect, dispatch_uid='acnc31-course')

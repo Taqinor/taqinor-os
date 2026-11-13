@@ -17,7 +17,6 @@ Run :
 """
 import itertools
 import threading
-import time
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -30,6 +29,7 @@ from apps.crm.models import Client
 from apps.installations.models import Installation, Intervention, Reserve
 from apps.ventes.models import Devis
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -148,7 +148,7 @@ class TestGenererDevisReserveCourse(WideTeardownTimeoutMixin, TransactionTestCas
             if not a_tient.is_set():  # A : tient sa transaction ouverte
                 a_tient.set()
                 b_tente.wait(5)
-                time.sleep(0.5)  # B atteint la relecture de la réserve
+                attendre_un_ecrivain_bloque()  # B bloqué sur la relecture de la réserve
             return original(**kwargs)
 
         def fil(nom):

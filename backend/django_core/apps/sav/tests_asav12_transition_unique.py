@@ -36,6 +36,7 @@ from apps.sav.services import ouvrir_downtime
 from apps.stock.models import Produit
 from core.events import ticket_resolu
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -200,7 +201,7 @@ class TransitionCroiseeTests(WideTeardownTimeoutMixin, TransactionTestCase):
                 appliquer_transition_ticket(
                     Ticket.objects.get(pk=self.ticket.pk), Ticket.Statut.RESOLU, self.admin)
                 a_tient.set()
-                threading.Event().wait(1.5)  # B arrive avant le commit de A
+                attendre_un_ecrivain_bloque()  # B bloqué avant le commit de A
             connection.close()
 
         def fil_b():

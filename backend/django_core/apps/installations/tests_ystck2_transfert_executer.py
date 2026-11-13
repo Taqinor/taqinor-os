@@ -16,7 +16,6 @@ Run :
 """
 import itertools
 import threading
-import time
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -28,6 +27,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.installations.models import DemandeTransfert
 from apps.stock.models import TransfertStock
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -182,7 +182,7 @@ class ExecuterConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
             if not a_tient.is_set():  # A : tient sa transaction ouverte
                 a_tient.set()
                 b_tente.wait(5)
-                time.sleep(0.5)  # B atteint la relecture de la demande
+                attendre_un_ecrivain_bloque()  # B bloqué sur la relecture de la demande
             return original(**kwargs)
 
         def fil(nom):

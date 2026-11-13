@@ -16,6 +16,7 @@ from apps.stock.models import MouvementStock, Produit
 from apps.sav.models import (
     Ticket, PieceConsommee, ContratMaintenance, TicketActivity)
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -274,7 +275,8 @@ class TestSavPiecesConcurrence(WideTeardownTimeoutMixin, TransactionTestCase):
         def verrou(pk):
             if threading.current_thread().name == 'A':
                 a_tient.set()
-                b_tente.wait(2)  # B a lu la pièce (non relue : il atteint ce verrou)
+                # B a lu la pièce (non relue : il atteint ce verrou) ou y est bloqué.
+                attendre_un_ecrivain_bloque(ou_bien=b_tente)
             else:
                 b_tente.set()
             return original(pk)

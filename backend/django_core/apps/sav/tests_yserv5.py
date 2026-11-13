@@ -27,6 +27,7 @@ from apps.sav.models import ContratMaintenance, SavSlaSettings, Ticket
 from apps.sav.tasks import generer_visites_dues_quotidien
 from apps.notifications.models import Notification
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -180,7 +181,7 @@ class YSERV5GenerationCroiseeTest(WideTeardownTimeoutMixin, TransactionTestCase)
             with transaction.atomic():
                 res['a'] = generer_visites_dues(self.company, self.admin)
                 a_tient.set()
-                threading.Event().wait(1.5)  # B arrive avant le commit de A
+                attendre_un_ecrivain_bloque()  # B bloqué avant le commit de A
             connection.close()
 
         def fil_b():

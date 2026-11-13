@@ -31,6 +31,7 @@ from apps.sav.services import (
 )
 from apps.stock.models import MouvementStock, Produit
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 
@@ -282,7 +283,7 @@ class XSAV27PretConcurrenceTest(WideTeardownTimeoutMixin, TransactionTestCase):
             with transaction.atomic():
                 geste_a()
                 a_tient.set()
-                b_tente.wait(3)
+                attendre_un_ecrivain_bloque(ou_bien=b_tente)
             connection.close()
 
         def fil_b():
