@@ -673,7 +673,8 @@ class TestDispatchLeads(TestCase):
         membres = ligne.pop('membres')
         self.assertEqual(ligne, {'id': self.equipe.pk, 'nom': 'Casa',
                                  'confirmation_responsable': True,
-                                 'delai_minutes': 5})
+                                 'delai_minutes': 5,
+                                 'commercial_par_defaut': None})
         # Membres ACTIFS servis pour l'éditeur de règles (un responsable au
         # rôle Commercial n'a pas accès à /crm/assignable-users/).
         # Le responsable figure en tête des choix (il prend aussi des leads).
