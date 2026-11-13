@@ -129,6 +129,12 @@ const TABS_ECRITURE_PARAMETRES = [
 // Liste complète des onglets (partagés + ajouts locaux) ; sert aussi à valider `?onglet=` (CCAT101).
 const TOUS_LES_ONGLETS = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, DEMO_ONBOARDING_TAB]
 
+// AERR72 — une section AUTONOME déjà visitée reste montée (masquée) : changer
+// d'onglet n'efface plus la saisie non enregistrée de son brouillon local.
+function SectionGardee({ actif, vue, children }) {
+  return (actif || vue) ? <div hidden={!actif}>{children}</div> : null
+}
+
 export default function ParametresEntreprise() {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
   const { confirm: confirmerAction, confirmDelete: confirmerSuppression } = useConfirmDialog()
@@ -164,6 +170,9 @@ export default function ParametresEntreprise() {
   const tabGroups = groupTabs(allTabs)
   const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
   const jumpToTab = (key) => { setTab(key); setSearch('') }
+  // Onglets déjà visités (état dérivé pendant le rendu — patron React).
+  const [vues, setVues] = useState({})
+  if (!vues[tab]) setVues((v) => ({ ...v, [tab]: true }))
 
   const [form, setForm] = useState({
     nom: '', adresse: '', email: '', telephone: '',
@@ -1064,14 +1073,14 @@ export default function ParametresEntreprise() {
           {tab === 'clients'  && <ClientsSection {...ctx} />}
           {tab === 'devis'    && <DevisSection {...ctx} />}
           {/* D2/N60/N67/N26/N59 — section autonome (textes éditables du devis). */}
-          {tab === 'documents' && <DocumentsSection />}
+          <SectionGardee actif={tab === 'documents'} vue={vues.documents}><DocumentsSection /></SectionGardee>
           {/* N64/N65 — section autonome (barème ONEE + ROI/productible). */}
-          {tab === 'tarification' && <TarificationSection />}
+          <SectionGardee actif={tab === 'tarification'} vue={vues.tarification}><TarificationSection /></SectionGardee>
           {tab === 'stock'    && <StockSection {...ctx} />}
           {/* WR5 — opérations stock avancées + export/sauvegarde (admin). */}
-          {tab === 'donnees'  && <DonneesSection />}
+          <SectionGardee actif={tab === 'donnees'} vue={vues.donnees}><DonneesSection /></SectionGardee>
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
-          {tab === 'statuts'    && <StatutsSection />}
+          <SectionGardee actif={tab === 'statuts'} vue={vues.statuts}><StatutsSection /></SectionGardee>
           {/* N52 — section autonome (seuil de sous-performance + auto-ticket SAV). */}
           {tab === 'monitoring' && <MonitoringSection />}
           {/* N74 — éditeur de modèles de checklist par type d'installation. */}
