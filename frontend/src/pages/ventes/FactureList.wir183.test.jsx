@@ -36,6 +36,8 @@ const api = vi.hoisted(() => ({
   facturerPenalitesFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-PEN-1' } })),
   consoliderFactures: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-CONSO-1' } })),
   encaissementGroupeFactures: vi.fn(() => Promise.resolve({ data: [{ id: 1 }, { id: 2 }] })),
+  // AERR3 — tuiles d'argent relues après un geste d'argent.
+  getFacturesKpis: vi.fn(() => Promise.resolve({ data: { encaisse_mois: '0' } })),
   getFacture: vi.fn(() => Promise.resolve({
     data: {
       id: 1, reference: 'FAC-2026-07-0001', montant_du: 5000,
@@ -294,6 +296,39 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
       .toHaveBeenCalledWith(expect.objectContaining({
         repartition: { 3: '2000' },
       })))
+  })
+
+  it('après l’encaissement groupé, la tuile Encaissé ce mois relit le serveur', async () => {
+    // AERR3 (C-AERR-003) — mutant : retirer fetchFacturesKpis() du point de relecture ⇒ échec.
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const { Provider } = await import('react-redux')
+    const { MemoryRouter } = await import('react-router-dom')
+    const { render } = await import('@testing-library/react')
+    const ventes = (await import('../../features/ventes/store/ventesSlice')).default
+    api.getFacturesKpis
+      .mockResolvedValueOnce({ data: { encaisse_mois: '0' } })
+      .mockResolvedValueOnce({ data: { encaisse_mois: '12000' } })
+    const store = configureStore({
+      reducer: { ventes, auth: (s = { role: 'admin' }) => s },
+      preloadedState: { ventes: { ...ventes(undefined, { type: 'init' }), factures: [{ ...emise, total_ttc: 12000, montant_du: 12000 }] } },
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/factures']}>
+          <ThemeProvider><FactureList /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    const tuile = () => screen.getByText('Encaissé ce mois').parentElement.parentElement
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(1))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(tuile()).toHaveTextContent(/12\s?000/))
   })
 
   it('est désactivé si la sélection mélange plusieurs clients', async () => {

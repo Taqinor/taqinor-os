@@ -27,7 +27,7 @@ import ComptaDialogs from './factureList/ComptaDialogs.jsx'
 // VNT102 — sélection/masse, documents, gestes et dialogues extraits en factureList/.
 import useFactureLot from './factureList/useFactureLot.js'
 import useFactureDocuments from './factureList/useFactureDocuments.js'
-import useFactureGestes from './factureList/useFactureGestes.js'
+import useFactureGestes, { relireApresGeste } from './factureList/useFactureGestes.js'
 import DialoguesFacture from './factureList/DialoguesFacture.jsx'
 import { isPartiallyPaid, isOverdue, today, STATUTS_HORS_ENCAISSEMENT } from './factureList/factureHelpers.js'
 import {
@@ -149,7 +149,10 @@ export default function FactureList() {
   // VNT102 (patron SPL212) — sélection/actions en masse, documents et gestes
   // extraits en factureList/ (move only) ; leurs noms sont re-déstructurés ici
   // pour que le sac de contexte des lignes et le JSX restent identiques.
-  const lot = useFactureLot({ factures, dispatch })
+  // AERR3 — après un geste d'argent : liste ET tuiles relues (un seul point).
+  const [tuilesPasAJour, setTuilesPasAJour] = useState(false)
+  const relire = () => relireApresGeste(dispatch, setTuilesPasAJour)
+  const lot = useFactureLot({ factures, dispatch, relire })
   const {
     selectedIds, setSelectedIds, toggleSelect, clearSelection, bulkBusy,
     BULK_LABELS, handleBulkAction, facturesEncaissables, clientSelectionUnique,
@@ -161,7 +164,7 @@ export default function FactureList() {
     waBusy, waLangue, setWaLangue, handleWhatsApp, handleUbl,
     payLinkBusy, handleLienPaiement, dgiActif, dgiBusy, handleDgiExport, handleDgiConformite,
   } = docs
-  const gestes = useFactureGestes({ dispatch, confirm, lot })
+  const gestes = useFactureGestes({ dispatch, confirm, lot, relire })
   const {
     canManage, peutEncaisser, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
     peutModifier, peutPdf, peutExporter,
@@ -643,7 +646,7 @@ export default function FactureList() {
       <PaiementDialog
         facture={payTarget}
         onOpenChange={(o) => { if (!o) setPayTarget(null) }}
-        onSaved={() => { dispatch(fetchFactures()); setDernierEncaissement(payTarget) }}
+        onSaved={() => { relire(); setDernierEncaissement(payTarget) }}
       />
 
       {/* APX14 — aperçu du PDF de la facture, INLINE. Source = le PDF LEGACY
@@ -678,6 +681,9 @@ export default function FactureList() {
           `<Stat>` (chiffres `.num` tabulaires, delta en icône lucide). Le
           glyphe de tendance en TEXTE posé ici régressait VX129 — c'était le
           dernier site du dossier ventes à ne pas parler ce langage. */}
+      {factures.length > 0 && tuilesPasAJour && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">Indicateurs pas à jour — la relecture a échoué.</p>
+      )}
       {factures.length > 0 && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat

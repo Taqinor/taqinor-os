@@ -8,14 +8,23 @@ import { useSelector } from 'react-redux'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import ventesApi from '../../../api/ventesApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
-import { fetchFactures, annulerFacture } from '../../../features/ventes/store/ventesSlice'
+import { fetchFactures, fetchFacturesKpis, annulerFacture } from '../../../features/ventes/store/ventesSlice'
 import { frenchError } from '../../../lib/frenchError'
 import { errorMessageFrom } from '../../../lib/toast'
 import { toNumber } from '../../../lib/format'
 import { toast } from '../../../ui'
 import { today } from './factureHelpers.js'
 
-export default function useFactureGestes({ dispatch, confirm, lot }) {
+// AERR3 — LE point « relire après un geste d'argent » : la liste PUIS les
+// tuiles (lues seulement au montage avant) ; `surEchec(true)` si les tuiles
+// n'ont pas pu être relues (anciennes valeurs gardées, dites « pas à jour »).
+export function relireApresGeste(dispatch, surEchec) {
+  dispatch(fetchFactures())
+  return Promise.resolve(dispatch(fetchFacturesKpis()))
+    .then((a) => surEchec?.(Boolean(a?.error)), () => surEchec?.(true))
+}
+
+export default function useFactureGestes({ dispatch, confirm, lot, relire = () => relireApresGeste(dispatch) }) {
   const {
     facturesEncaissables, facturesEcartees, clientSelectionUnique, clearSelection,
   } = lot
@@ -61,7 +70,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     try {
       await ventesApi.remettreBrouillonFacture(f.id)
       toast.success(`Facture ${f.reference} remise en brouillon.`)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Remise en brouillon impossible.')
     } finally { setWir183Busy(false) }
@@ -79,7 +88,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
     try {
       const { data } = await ventesApi.facturerPenalitesFacture(f.id)
       toast.success(`Facture de pénalités ${data?.reference ?? ''} créée.`)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Facturation des pénalités impossible.')
     } finally { setWir183Busy(false) }
@@ -102,7 +111,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       await ventesApi.abandonnerSoldeFacture(abandonTarget.id, abandonMotif)
       toast.success(`Solde de ${abandonTarget.reference} abandonné.`)
       setAbandonTarget(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Abandon du solde impossible.')
     } finally { setWir183Busy(false) }
@@ -144,7 +153,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       })
       toast.success(`Retour enregistré pour ${retourTarget.reference}.`)
       setRetourTarget(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Retour client impossible.')
     } finally { setWir183Busy(false) }
@@ -178,7 +187,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       const { data } = await ventesApi.consoliderFactures(consoliderSel)
       toast.success(`Facture consolidée ${data?.reference ?? ''} créée.`)
       setConsoliderOpen(false)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Consolidation impossible.')
     } finally { setWir183Busy(false) }
@@ -242,7 +251,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       }
       await ventesApi.creerAvoir(avoirTarget.id, payload)
       setAvoirTarget(null)
-      dispatch(fetchFactures())
+      relire()
       toast.success('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
     } catch (err) {
       toast.error(frenchError(err, "Création de l'avoir impossible."))
@@ -296,7 +305,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
       await dispatch(annulerFacture({ id: annulTarget.id, directive })).unwrap()
       toast.success(`Facture ${annulTarget.reference} annulée.`)
       setAnnulTarget(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       setAnnulErreur(err?.detail
         || errorMessageFrom({ response: { data: err } }, 'Annulation impossible.'))
@@ -343,7 +352,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
           : ''))
       setEncaissementOpen(false)
       clearSelection()
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       erreurServeur(err, 'Encaissement groupé impossible.')
     } finally { setWir183Busy(false) }

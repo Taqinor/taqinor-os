@@ -3,10 +3,10 @@
 // FactureList.jsx. Aucun flux modifié, aucune valeur transformée.
 import { useMemo, useState } from 'react'
 import ventesApi from '../../../api/ventesApi'
-import { fetchFactures } from '../../../features/ventes/store/ventesSlice'
+import { relireApresGeste } from './useFactureGestes.js'
 import { toast } from '../../../ui'
 
-export default function useFactureLot({ factures, dispatch }) {
+export default function useFactureLot({ factures, dispatch, relire = () => relireApresGeste(dispatch) }) {
   // WR2b — sélection multiple pour la barre d'actions en masse (FG43).
   const [selectedIds, setSelectedIds] = useState([])
   const toggleSelect = (id) => setSelectedIds(prev =>
@@ -32,7 +32,7 @@ export default function useFactureLot({ factures, dispatch }) {
       } else {
         toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${ko} échec(s).`)
       }
-      dispatch(fetchFactures())
+      relire()
       clearSelection()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Action en masse impossible.')
