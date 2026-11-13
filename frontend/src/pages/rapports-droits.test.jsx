@@ -73,4 +73,23 @@ describe('Rapports — cartes selon le droit de leur route', () => {
     await ouvrir('Insights')
     for (const titre of CARTES_ADMIN) expect(await screen.findByText(titre)).toBeInTheDocument()
   })
+
+  const SERVICE = '/reporting/reports/service/'
+  const demandes = () => apiGet.mock.calls.map(([url]) => url)
+
+  it('sans lecture des chantiers : ni requête ni carte Service', async () => {
+    monter({ role: 'normal', permissions: ['ventes_voir', 'crm_voir', 'stock_voir'] })
+    await waitFor(() => expect(demandes()).toContain('/reporting/reports/sales/'))
+    expect(demandes()).not.toContain(SERVICE)
+    await ouvrir('Service')
+    expect(screen.queryByText('Service (chantiers + SAV)')).toBeNull()
+    expect(screen.queryByText('Rapport indisponible')).toBeNull()
+  })
+
+  it('Technicien responsable (installation_voir) : Service demandé, carte rendue', async () => {
+    monter({ role: 'responsable', permissions: ['installation_voir', 'sav_voir'] })
+    await waitFor(() => expect(demandes()).toContain(SERVICE))
+    await ouvrir('Service')
+    expect(await screen.findByText('Service (chantiers + SAV)')).toBeInTheDocument()
+  })
 })

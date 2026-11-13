@@ -27,6 +27,7 @@ import { PageHeader } from '../ui/PageHeader'
 import { Table as SharedTable } from './reporting/Table'
 import { StateBlock } from '../components/StateBlock'
 import { useHasPermission, useIsAdmin } from '../hooks/useHasPermission'
+import useDroitMetier from '../features/sav/useDroitMetier'
 
 // L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
 const AUDIT_TYPES = [
@@ -457,6 +458,8 @@ export function Component() {
   const peutJournal = useHasPermission('journal_activite_voir')
   // ADRG118 — coût de revient, commissions, rentabilité : routes IsAdminRole.
   const estAdmin = useIsAdmin()
+  // ADRG119 — la carte Service lit les chantiers (route : lecture installations, ADRG71).
+  const peutLireChantiers = useDroitMetier('installation_voir')
 
   const setCardStatus = useCallback((key, value) => {
     setStatus((s) => ({ ...s, [key]: value }))
@@ -494,13 +497,13 @@ export function Component() {
     if (to) params.to = to
     load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
     load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
-    load('service', api.get('/reporting/reports/service/', { params }), setService)
+    if (peutLireChantiers) load('service', api.get('/reporting/reports/service/', { params }), setService)
     // ZSAL6 — même période (?debut=&fin=, noms distincts côté CRM).
     const attrParams = {}
     if (from) attrParams.debut = from
     if (to) attrParams.fin = to
     load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
-  }, [from, to, load])
+  }, [from, to, load, peutLireChantiers])
 
   // Les insights (all-time) ne sont chargés qu'une fois.
   useEffect(() => {
@@ -573,7 +576,7 @@ export function Component() {
       if (from) params.from = from
       if (to) params.to = to
       load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
-    } else if (key === 'service') {
+    } else if (key === 'service' && peutLireChantiers) {
       const params = {}
       if (from) params.from = from
       if (to) params.to = to
@@ -783,7 +786,7 @@ export function Component() {
 
         {/* ── Service ── */}
         <TabsContent value="service">
-          {renderReportCard('service', 'Service (chantiers + SAV)', () => (
+          {peutLireChantiers && renderReportCard('service', 'Service (chantiers + SAV)', () => (
             <ReportCard title="Service (chantiers + SAV)" kind="service" params={periodParams}>
               <p className="text-sm">
                 Tickets ouverts : <strong className="tabular-nums">{fmt(service.tickets_ouverts)}</strong>
