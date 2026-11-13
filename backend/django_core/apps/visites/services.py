@@ -594,6 +594,31 @@ def codes_slots_toiture():
             if slot['categorie'] == 'toiture'}
 
 
+#: ACEL77 — au-delà de ce délai (limite dure d'une tâche : 180 s), un assemblage
+#: resté « en cours » est une tâche tuée.
+ASSEMBLAGE_DELAI_MAX_MIN = 10
+
+
+def expirer_assemblage_perime(visite):
+    """ACEL77 — passe « en cours » depuis plus de 10 min à « échec ». True si
+    l'état a changé."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import VisiteTerrain
+
+    if (visite.assemblage_etat != VisiteTerrain.Assemblage.EN_COURS
+            or visite.assemblage_demande_le is None
+            or timezone.now() - visite.assemblage_demande_le
+            < timedelta(minutes=ASSEMBLAGE_DELAI_MAX_MIN)):
+        return False
+    visite.assemblage_etat = VisiteTerrain.Assemblage.ECHEC
+    visite.assemblage_erreur = 'assemblage interrompu — relancez'
+    visite.save(update_fields=['assemblage_etat', 'assemblage_erreur'])
+    return True
+
+
 def invalider_assemblage_toiture(visite):
     """ALEA14 — dès qu'une photo d'un slot toiture est ajoutée, supprimée ou
     renvoyée, l'image ASSEMBLÉE ne correspond plus aux photos : elle est
