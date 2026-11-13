@@ -371,4 +371,31 @@ describe('UsersManagement — DataTable (J145)', () => {
       expect(apiMock.delete).toHaveBeenCalledWith(expect.stringMatching(/^\/users\/\d+\/$/)),
     )
   })
+
+  it('refus 409 pour traces : motif affiché et bouton Désactiver le compte', async () => {
+    // ASUP6 (D-ASUP-2) — le serveur refuse (409) la suppression d'un compte à
+    // traces : le motif s'affiche avec un bouton qui désactive le compte.
+    const motif = 'Ce compte a laissé des traces (auteur de 1 paiement) : désactivez-le au lieu de le supprimer.'
+    apiMock.delete.mockRejectedValueOnce({ response: { status: 409, data: { detail: motif, code: 'compte_avec_traces' } } })
+    const user = userEvent.setup()
+    const { container } = renderPage()
+    await screen.findAllByText('sami')
+    const samiRow = [...container.querySelectorAll('table tbody tr')]
+      .find((tr) => tr.textContent.includes('sami'))
+    await user.click(within(samiRow).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    const dialogue = await screen.findByRole('alertdialog')
+    expect(dialogue.textContent).not.toContain('sera définitivement supprimé')
+    await confirmerSuppression(user)
+
+    expect(await screen.findByText(motif, { exact: false })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Désactiver le compte' }))
+    await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/users/11/', { is_active: false }))
+    await waitFor(() => {
+      const ligne = [...container.querySelectorAll('table tbody tr')]
+        .find((tr) => tr.textContent.includes('sami'))
+      expect(ligne.textContent).toContain('Inactif')
+    })
+    expect(screen.queryByRole('button', { name: 'Désactiver le compte' })).toBeNull()
+  })
 })
