@@ -15,6 +15,7 @@ import { hapticTap } from '../../lib/haptics'
 // chargement (même sous 300 ms). useDelayedLoading (déjà sur InstallationsPage)
 // n'affiche rien tant que l'attente reste imperceptible.
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import PageErreurChargement from '../../components/PageErreurChargement'
 import {
   INTERVENTION_STATUSES,
   INTERVENTION_STATUS_LABELS,
@@ -633,16 +634,7 @@ export default function InterventionsPage() {
   // AERR34 — l'erreur ne couvre l'écran QUE si rien n'est chargé ; une relecture
   // de fond rejetée (après un geste, tirer-pour-actualiser) garde la liste.
   if (error && items.length === 0) {
-    return (
-      <div className="page lp-page">
-        <EmptyState
-          title="Impossible de charger les interventions"
-          description={error}
-          action={<Button size="sm" onClick={reload}>Réessayer</Button>}
-          className="my-8 border-destructive/40"
-        />
-      </div>
-    )
+    return <PageErreurChargement title="Impossible de charger les interventions" error={error} onRetry={reload} />
   }
 
   return (

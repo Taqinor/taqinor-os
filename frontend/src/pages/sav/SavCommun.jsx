@@ -2,7 +2,7 @@
 // équipements, contrats de maintenance, réclamations garantie). Chacune
 // existait en plusieurs copies recopiées à l'identique ; une seule ici.
 import { useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Download, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Download, RotateCcw, X } from 'lucide-react'
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
@@ -40,6 +40,16 @@ export function ErreurChargement({ description, onRetry, retryIcon = null }) {
       description={description}
       action={<Button size="sm" variant="outline" onClick={onRetry}>{retryIcon ? <>{retryIcon} Réessayer</> : 'Réessayer'}</Button>}
     />
+  )
+}
+
+/** AERR32 — bandeau d'une relecture ratée : les lignes chargées restent. */
+export function BandeauListePasAJour({ onRetry, className = '' }) {
+  return (
+    <div role="status" className={`flex flex-wrap items-center gap-2 ${className}`.trim()}>
+      <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
+      <Button type="button" size="sm" variant="outline" onClick={onRetry}><RotateCcw /> Réessayer</Button>
+    </div>
   )
 }
 

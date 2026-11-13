@@ -47,7 +47,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
-import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
+import { BandeauListePasAJour, BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import SelectStatutEquipement from '../../features/sav/SelectStatutEquipement'
 
 const formatDateFR = (iso) => {
@@ -730,12 +730,7 @@ export default function EquipementsPage() {
         )}
 
         {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
-        {error && items.length > 0 && (
-          <div role="status" className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
-            <Button type="button" size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>
-          </div>
-        )}
+        {error && items.length > 0 && <BandeauListePasAJour onRetry={reload} />}
         {loading && items.length === 0 ? (
           <SqueletteListe lignes={6} />
         ) : error && items.length === 0 ? (

@@ -111,11 +111,11 @@ export default function WarrantyClaimsPage() {
   // ACNC35 — « Créer » désactivé pendant sa requête (une réclamation par envoi).
   const [envoiCreation, setEnvoiCreation] = useState(false)
   const create = async () => {
+    if (envoiCreation) return
     if (!form.equipement) {
       setFormError('Équipement requis.')
       return
     }
-    if (envoiCreation) return
     setFormError(null)
     setEnvoiCreation(true)
     try {

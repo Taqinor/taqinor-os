@@ -19,6 +19,7 @@ import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
 import { useCanListAssignableUsers, useHasPermission } from '../../hooks/useHasPermission'
 import { Button, Badge, Spinner, EmptyState, Card, StatusAccentCard, toast } from '../../ui'
+import PageErreurChargement from '../../components/PageErreurChargement'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import FilterBar from './FilterBar'
@@ -421,16 +422,7 @@ export default function InstallationsPage() {
   // s'affiche en bandeau au-dessus du tableau sans démonter le board, les
   // modales ouvertes ni la position de défilement.
   if (error && items.length === 0) {
-    return (
-      <div className="page lp-page">
-        <EmptyState
-          title="Impossible de charger les chantiers"
-          description={typeof error === 'string' ? error : 'Une erreur est survenue. Réessayez.'}
-          action={<Button size="sm" onClick={refetch}>Réessayer</Button>}
-          className="my-8 border-destructive/40"
-        />
-      </div>
-    )
+    return <PageErreurChargement title="Impossible de charger les chantiers" error={error} onRetry={refetch} />
   }
 
   return (

@@ -101,7 +101,7 @@ import {
   ticketSlaEcheance, ticketSlaTri,
 } from './ticketsLogique'
 import ComboboxClient from '../../components/ComboboxClient'
-import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
+import { BandeauListePasAJour, BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -2356,12 +2356,7 @@ export default function TicketsPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
           <div className="min-w-0 flex-1">
             {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
-            {error && items.length > 0 && (
-              <div role="status" className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
-                <Button type="button" size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>
-              </div>
-            )}
+            {error && items.length > 0 && <BandeauListePasAJour onRetry={reload} className="mb-3" />}
             {loading && items.length === 0 ? (
               <SqueletteListe lignes={6} />
             ) : error && items.length === 0 ? (
