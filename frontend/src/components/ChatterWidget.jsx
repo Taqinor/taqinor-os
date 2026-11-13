@@ -13,6 +13,7 @@ import { useSelector } from 'react-redux'
 import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
 import { IconButton } from '../ui/IconButton'
+import { useConfirmDialog } from '../ui/confirm'
 // NTI18N10 — horodatages du chatter affichés dans le fuseau de la SOCIÉTÉ
 // (critère d'acceptation littéral), pas celui du poste qui consulte l'écran.
 import useCompanyTimeZone from '../hooks/useCompanyTimeZone'
@@ -45,6 +46,7 @@ function formatDate(iso, timeZone) {
 
 export default function ChatterWidget({ model, id, readOnly = false }) {
   const user = useSelector((s) => s.auth?.user)
+  const { confirmDelete } = useConfirmDialog()
   const fuseauHoraire = useCompanyTimeZone()
   const [comments, setComments] = useState([])
   const [body, setBody] = useState('')
@@ -93,7 +95,11 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
     }
   }
 
-  async function handleDelete(commentId) {
+  // AERR68 — confirmation maison nommant le commentaire ; « Annuler » n'envoie rien.
+  async function handleDelete(comment) {
+    const extrait = (comment.body || '').slice(0, 60)
+    if (!(await confirmDelete({ title: 'Supprimer ce commentaire ?', description: `« ${extrait} » sera supprimé.` }))) return
+    const commentId = comment.id
     try {
       await recordsApi.deleteComment(commentId)
       setComments(prev => prev.filter(c => c.id !== commentId))
@@ -142,7 +148,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
                   size="icon-sm"
                   title="Supprimer"
                   label="Supprimer le commentaire"
-                  onClick={() => handleDelete(c.id)}
+                  onClick={() => handleDelete(c)}
                 >
                   <Trash2 size={14} />
                 </IconButton>

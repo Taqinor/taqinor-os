@@ -15,6 +15,7 @@ import api from '../api/axios'
 import { FileUpload } from '../ui/FileUpload'
 import { formatFileSize, compressImage } from '../ui/file-utils'
 import { formatDate } from '../lib/format'
+import { useConfirmDialog } from '../ui/confirm'
 
 const ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
 const MAX_SIZE = 10 * 1024 * 1024 // 10 Mo
@@ -26,6 +27,7 @@ const isImage = (mime) => typeof mime === 'string' && mime.startsWith('image/')
 
 export default function AttachmentsPanel({ model, id, onChange }) {
   const isAdmin = useIsAdmin()
+  const { confirmDelete } = useConfirmDialog()
   const [items, setItems] = useState([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(undefined)
@@ -101,7 +103,8 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   }
 
   const remove = async (att) => {
-    if (!window.confirm('Supprimer cette pièce jointe ?')) return
+    // AERR68 — boîte maison qui nomme le fichier.
+    if (!(await confirmDelete({ title: 'Supprimer cette pièce jointe ?', description: `${att.filename} sera supprimé.` }))) return
     try { await recordsApi.deleteAttachment(att.id); load(); onChange?.() } catch { /* */ }
   }
 
