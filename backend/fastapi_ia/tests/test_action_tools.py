@@ -1417,6 +1417,31 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
         _res, appels = self._confirmer(ctx, jeton)
         self.assertEqual(appels[0]["payload"]["idempotency_key"], "k-1")
 
+    def test_en_tetes_relayes_sans_remplacer_le_jeton(self):
+        envois = []
+
+        class _Client:
+            def __init__(self, timeout=None):
+                envois.append({"timeout": timeout})
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def request(self, verb, url, **kwargs):
+                envois[-1]["headers"] = kwargs["headers"]
+                return _FakeResp(200, {})
+        court = at.httpx.Timeout(1.0)
+        with mock.patch.object(at.httpx, "Client", _Client), \
+                mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000"):
+            at._django_call(_ctx(role="admin"), "/x/", payload={"a": 1}, timeout=court, headers={
+                "Idempotency-Key": "k-1", "Authorization": "Bearer pirate"})
+        self.assertEqual(envois[0]["headers"]["Idempotency-Key"], "k-1")
+        self.assertEqual(envois[0]["headers"]["Authorization"], "Bearer jwt-xyz")
+        self.assertIs(envois[0]["timeout"], court)
+
     def test_echec_apres_reclamation_jeton_consomme(self):
         ctx = _ctx(role="admin", token=_jwt(5))
         for reponse, attendu in (({"ok": False, "status": 409, "error": "Déjà soldée."},

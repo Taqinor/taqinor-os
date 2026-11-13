@@ -159,8 +159,8 @@ def _django_call(
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
     verb = (method or "POST").upper()
     headers = {
+        **(headers or {}),  # jamais au-dessus des en-tetes internes ni du jeton
         **internal_headers(),
-        **(headers or {}),
         "Authorization": f"Bearer {ctx.token}",
         "Accept": "application/json",
     }
