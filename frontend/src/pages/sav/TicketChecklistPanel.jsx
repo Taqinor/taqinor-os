@@ -19,19 +19,21 @@ export default function TicketChecklistPanel({ ticketId }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
+  // AERR79 — lecture ratée ≠ « aucune checklist » : avis + Réessayer, pas d'Initialiser.
   const load = () => {
+    setError(null)
     savApi.getTicketChecklist(ticketId)
       .then((r) => setItems(r.data ?? []))
-      .catch(() => setItems([]))
+      .catch(() => setError('Checklist non chargée.'))
   }
 
   useEffect(() => {
     // ENF28 — remise à zéro différée d'une microtâche (aucun setState synchrone
     // dans l'effet) ; elle reste mise en file AVANT la réponse du serveur.
-    Promise.resolve().then(() => setItems(null))
+    Promise.resolve().then(() => { setItems(null); setError(null) })
     savApi.getTicketChecklist(ticketId)
       .then((r) => setItems(r.data ?? []))
-      .catch(() => setItems([]))
+      .catch(() => setError('Checklist non chargée.'))
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       savApi.getChecklistTemplates({ page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => setTemplates((Array.isArray(rows) ? rows : (rows?.results ?? []))))
@@ -80,6 +82,13 @@ export default function TicketChecklistPanel({ ticketId }) {
     }
   }
 
+  if (items == null && error) {
+    return (
+      <p role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+        {error} <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
+      </p>
+    )
+  }
   if (items == null) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
