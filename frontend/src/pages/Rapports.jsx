@@ -26,7 +26,7 @@ import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { Table as SharedTable } from './reporting/Table'
 import { StateBlock } from '../components/StateBlock'
-import { useHasPermission } from '../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin } from '../hooks/useHasPermission'
 
 // L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
 const AUDIT_TYPES = [
@@ -455,6 +455,8 @@ export function Component() {
   const [auditSince, setAuditSince] = useState('')
   // ADRG69 — le journal est réservé à `journal_activite_voir` (serveur : 403).
   const peutJournal = useHasPermission('journal_activite_voir')
+  // ADRG118 — coût de revient, commissions, rentabilité : routes IsAdminRole.
+  const estAdmin = useIsAdmin()
 
   const setCardStatus = useCallback((key, value) => {
     setStatus((s) => ({ ...s, [key]: value }))
@@ -504,15 +506,15 @@ export function Component() {
   useEffect(() => {
     load('recurring', reportingApi.recurringRevenue(), setRecurring)
     // Réservé owner/responsable — un refus (403) est traité comme « erreur ».
-    load('jobCosting', reportingApi.jobCosting(), setJobCosting)
+    if (estAdmin) load('jobCosting', reportingApi.jobCosting(), setJobCosting)
     load('analytics', reportingApi.analytics(), setAnalytics)
     // N99 — réservé admin.
-    load('commissions', reportingApi.commissions(), setCommissions)
+    if (estAdmin) load('commissions', reportingApi.commissions(), setCommissions)
     // WIR22 — réservé responsable/admin (backend IsResponsableOrAdmin).
     load('integrite', reportingApi.integriteInsight(), setIntegrite)
     // WIR100(c) — réservé admin (un 403 est traité comme « erreur »).
-    load('profitability', reportingApi.profitability(), setProfitability)
-  }, [load])
+    if (estAdmin) load('profitability', reportingApi.profitability(), setProfitability)
+  }, [load, estAdmin])
 
   // Paramètres de filtre du Journal (envoyés à l'endpoint et à l'export).
   const auditParams = {}
@@ -878,7 +880,7 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>}
 
-            <InsightCard title="Coût de revient par chantier"
+            {estAdmin && <InsightCard title="Coût de revient par chantier"
                          note="(interne — visible owner/responsable)"
                          onExport={jobCosting ? exportInsight('job-costing') : undefined}
                          busy={insightExportBusy['job-costing']}>
@@ -902,7 +904,7 @@ export function Component() {
                                   fmt(sumBy(jobCosting.chantiers, 'margin')), '']} />
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
-            </InsightCard>
+            </InsightCard>}
 
             <InsightCard title="Analytics (délais & kWc installés)"
                          onExport={exportInsight('analytics')}
@@ -933,7 +935,7 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
-            <InsightCard title="Commissions commerciales"
+            {estAdmin && <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"
                          onExport={commissions?.enabled
                            ? exportInsight('commissions') : undefined}
@@ -962,12 +964,12 @@ export function Component() {
                                   fmt(sumBy(commissions.rows, 'commission'))]} />
                 </>
               )}
-            </InsightCard>
+            </InsightCard>}
 
             {/* WIR100(c) — Rentabilité par segment (FG99) : CA/marge agrégés par
                 type d'installation. Admin uniquement (marge = donnée interne,
                 jamais client-facing), export xlsx. */}
-            <InsightCard title="Rentabilité par segment"
+            {estAdmin && <InsightCard title="Rentabilité par segment"
                          note="(interne — visible admin)"
                          onExport={profitability?.rows?.length
                            ? exportInsight('profitability') : undefined}
@@ -985,7 +987,7 @@ export function Component() {
                          `${fmt(r.margin)} DH`, `${r.margin_pct} %`,
                        ])} />
               )}
-            </InsightCard>
+            </InsightCard>}
 
             {/* WIR22 — badge du contrôle d'intégrité inter-documents (YSERV13) :
                 anomalies visibles ICI sans attendre la notification Beat
