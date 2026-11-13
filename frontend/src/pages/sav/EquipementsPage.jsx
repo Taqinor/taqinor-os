@@ -90,7 +90,13 @@ function frError(data, fallback) {
   return fallback
 }
 
-export function EquipementDetail({ equipement, onClose, onSaved }) {
+// AERR92 — l'enveloppe remonte la fiche à chaque changement d'équipement :
+// son état local ne survit jamais d'un équipement à l'autre (règle d'AERR25).
+export function EquipementDetail(props) {
+  return <EquipementDetailCorps key={props.equipement.id} {...props} />
+}
+
+function EquipementDetailCorps({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
   // ASAV61 / ADRG39 — mise au rebut / réactivation : palier ET equipement_gerer (serveur).
   const palierRebut = useIsAdminOrResponsable(), codeRebut = useDroitMetier('equipement_gerer')
