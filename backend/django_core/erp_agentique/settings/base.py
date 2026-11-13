@@ -1483,6 +1483,8 @@ CELERY_TASK_ROUTES = {
         'queue': 'scheduled'},
     # APAR34 — purge quotidienne de rétention des journaux d'audit.
     'parametres.purge_audit_retention': {'queue': 'scheduled'},
+    # ACEL11 — balayage des travaux de fond orphelins (toutes les 15 min).
+    'core.balayer_travaux_orphelins': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

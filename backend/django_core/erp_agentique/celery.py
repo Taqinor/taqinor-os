@@ -960,6 +960,11 @@ app.conf.beat_schedule = {
         'task': 'outillage.calibrations_a_echeance',
         'schedule': crontab(hour=7, minute=20),
     },
+    # ACEL11 — exports/jobs de fond tués passés en échec, demandeur prévenu.
+    'core-balayer-travaux-orphelins': {
+        'task': 'core.balayer_travaux_orphelins',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

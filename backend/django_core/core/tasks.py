@@ -387,7 +387,9 @@ def _marquer_run(run_id, **champs):
             'core._marquer_run: échec mise à jour run %s.', run_id)
 
 
-@shared_task(name='core.export_reversibilite_tenant')
+# ACEL11 — ZIP construit en mémoire : un processus tué n'est jamais re-livré
+# en boucle ; le balayage ``core.balayer_travaux_orphelins`` le solde.
+@shared_task(name='core.export_reversibilite_tenant', reject_on_worker_lost=False)
 def export_reversibilite_tenant(
         company_id, demande_par_id=None, datasets=None, run_id=None):
     """NTOBS6/NTOBS7 — construit le ZIP de réversibilité complet d'une
@@ -709,3 +711,41 @@ def assurer_alertes_fiabilite_kpi_task():
     logger.info(
         'core.assurer_alertes_fiabilite_kpi: %d alerte(s) créée(s).', crees)
     return {'crees': crees}
+
+
+@shared_task(name='core.balayer_travaux_orphelins')
+def balayer_travaux_orphelins_task():
+    """ACEL11 — un travail à la demande tué (limite dure, SIGKILL au
+    déploiement) n'exécute aucun ``except`` : l'export de réversibilité reste
+    ``en_cours`` et le ``BackgroundJob`` ``running`` à vie. Ce balayage
+    (toutes les 15 min) passe en échec ceux immobiles depuis plus de
+    10 × ``CELERY_TASK_TIME_LIMIT`` (30 min) et prévient leur demandeur."""
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.utils import timezone as dj_timezone
+
+    from . import notify_registry
+    from .export_registry import ExportReversibiliteRun
+    from .models import BackgroundJob
+
+    limite = 10 * int(getattr(settings, 'CELERY_TASK_TIME_LIMIT', 180))
+    seuil = dj_timezone.now() - timedelta(seconds=limite)
+    titre = 'Un travail de fond a été interrompu'
+    corps = 'Le traitement a été interrompu ; relancez-le.'
+    runs = list(ExportReversibiliteRun.objects.filter(
+        statut=ExportReversibiliteRun.Statut.EN_COURS, updated_at__lt=seuil))
+    jobs = list(BackgroundJob.objects.filter(
+        statut=BackgroundJob.STATUT_RUNNING, updated_at__lt=seuil))
+    ExportReversibiliteRun.objects.filter(pk__in=[r.pk for r in runs]).update(
+        statut=ExportReversibiliteRun.Statut.ECHEC)
+    BackgroundJob.objects.filter(pk__in=[j.pk for j in jobs]).update(
+        statut=BackgroundJob.STATUT_FAILED,
+        message_erreur='Travail interrompu (processus arrêté) ; relancez-le.')
+    for demandeur, company in ([(r.demande_par, r.company) for r in runs]
+                               + [(j.user, j.company) for j in jobs]):
+        if demandeur is not None:
+            notify_registry.notify(
+                demandeur, 'travail_de_fond_echoue', titre, body=corps,
+                company=company)
+    return {'exports': len(runs), 'jobs': len(jobs)}

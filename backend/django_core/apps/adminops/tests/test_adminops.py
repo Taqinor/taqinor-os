@@ -70,6 +70,21 @@ class SandboxTests(TestCase):
         with self.assertRaises(SandboxDejaActif):
             creer_sandbox(self.company, self.admin)
 
+    def test_creation_bloquee_reprise_apres_30_min(self):
+        """ACEL11 — une création tuée restée « en création » plus de 30 min
+        passe en échec au lieu de bloquer toute nouvelle sandbox."""
+        from ..sandbox_service import creer_sandbox
+        bloque = SandboxEnvironment.objects.create(
+            company=self.company,
+            statut=SandboxEnvironment.Statut.EN_CREATION,
+            date_expiration=timezone.now() + timezone.timedelta(days=7))
+        SandboxEnvironment.objects.filter(pk=bloque.pk).update(
+            date_creation=timezone.now() - timezone.timedelta(minutes=45))
+        nouveau = creer_sandbox(self.company, self.admin)
+        bloque.refresh_from_db()
+        self.assertEqual(bloque.statut, SandboxEnvironment.Statut.ECHEC)
+        self.assertNotEqual(nouveau.pk, bloque.pk)
+
     def test_sandbox_non_autorise(self):
         from ..sandbox_service import SandboxNonAutorise, creer_sandbox
         AdminOpsSettings.objects.create(
