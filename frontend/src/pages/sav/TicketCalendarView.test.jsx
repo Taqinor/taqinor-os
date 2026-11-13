@@ -21,6 +21,18 @@ vi.mock('../../api/crmApi', () => ({
   default: { searchClients: (...args) => searchClients(...args) },
 }))
 
+// AERR31 — le glisser réel (pointer dnd-kit) n'est pas simulable en jsdom :
+// on capte le `onDragEnd` passé au DndContext pour rejouer un dépôt.
+const { dnd, toastWithUndo } = vi.hoisted(() => ({ dnd: {}, toastWithUndo: vi.fn() }))
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    DndContext: (props) => { dnd.onDragEnd = props.onDragEnd; return <actual.DndContext {...props} /> },
+  }
+})
+vi.mock('../../lib/toast', async (importOriginal) => ({ ...(await importOriginal()), toastWithUndo }))
+
 import savApi from '../../api/savApi'
 import { TicketCalendarView } from './TicketsPage.jsx'
 import { groupTicketsByDate } from './ticketCalendarUtils'
@@ -107,6 +119,36 @@ describe('TicketCalendarView (ZMFG3 — rendu + scoping)', () => {
     // que `handleDragEnd` utilise (mêmes id/date qu'un vrai drop produirait).
     await savApi.replanifierTicket(1, '2026-07-20')
     expect(savApi.replanifierTicket).toHaveBeenCalledWith(1, '2026-07-20')
+  })
+})
+
+describe('TicketCalendarView — AERR31 replanification nommée + Annuler', () => {
+  it("dépôt : toast nommé, Annuler ⇒ replanifierTicket vers l'ancienne date", async () => {
+    const onReload = vi.fn()
+    const sav7 = { id: 7, reference: 'SAV-7', date_tournee: '2026-11-12', statut: 'planifie' }
+    render(<TicketCalendarView tickets={[sav7]} onSelect={() => {}} onReload={onReload} />)
+    await dnd.onDragEnd({
+      active: { data: { current: { ticket: sav7 } } },
+      over: { data: { current: { date: '2026-11-19' } } },
+    })
+    expect(savApi.replanifierTicket).toHaveBeenCalledWith(7, '2026-11-19')
+    expect(toastWithUndo).toHaveBeenCalledTimes(1)
+    const { message, onUndo } = toastWithUndo.mock.calls[0][0]
+    expect(message).toBe('SAV-7 replanifié au 19/11')
+    await onUndo()
+    expect(savApi.replanifierTicket).toHaveBeenLastCalledWith(7, '2026-11-12')
+  })
+
+  it('un refus ne produit aucun second message', async () => {
+    savApi.replanifierTicket.mockRejectedValueOnce(new Error('400'))
+    const sav7 = { id: 7, reference: 'SAV-7', date_tournee: '2026-11-12', statut: 'planifie' }
+    render(<TicketCalendarView tickets={[sav7]} onSelect={() => {}} onReload={() => {}} />)
+    await dnd.onDragEnd({
+      active: { data: { current: { ticket: sav7 } } },
+      over: { data: { current: { date: '2026-11-19' } } },
+    })
+    expect(toastWithUndo).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 

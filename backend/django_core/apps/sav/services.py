@@ -10,6 +10,7 @@ import logging
 import os
 
 import requests
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -1266,10 +1267,13 @@ def creer_pret_equipement(*, company, ticket, produit, numero_serie,
     stock (MouvementStock SORTIE, idempotent via `stock_sorti`). Lève
     `PretEquipementError` si le stock est insuffisant (jamais négatif —
     même garde que `TicketViewSet.pieces`)."""
-    from apps.stock.services import mouvement_type_sortie, record_stock_movement
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement, verrouiller_produit,
+    )
     from .models import PretEquipement
 
-    produit.refresh_from_db()
+    # ACNC27 — stock lu SOUS VERROU (dans l'atomic de l'appelant) avant le calcul.
+    produit = verrouiller_produit(produit.pk)
     if produit.quantite_stock < 1:
         raise PretEquipementError(
             f'Stock insuffisant pour prêter {produit.nom} '
@@ -1305,10 +1309,9 @@ def retourner_pret_equipement(*, pret, date_retour_reelle, user):
 
     if pret.stock_sorti and not pret.stock_reintegre:
         from apps.stock.services import (
-            mouvement_type_entree, record_stock_movement,
+            mouvement_type_entree, record_stock_movement, verrouiller_produit,
         )
-        produit = pret.produit
-        produit.refresh_from_db()
+        produit = verrouiller_produit(pret.produit_id)  # ACNC27
         qte_avant = produit.quantite_stock
         qte_apres = qte_avant + 1
         record_stock_movement(
@@ -1537,6 +1540,7 @@ def ticket_a_facturer_non_facture(ticket, user=None):
     return not any(decision_facturation(ticket, user, False)[k] for k in ('refuse', 'couvert'))
 
 
+@transaction.atomic  # ACNC32 — savepoint quand l'appelant ouvre déjà une transaction
 def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
                                 request=None, canal_resolution_defaut=None,
                                 sans_facture=''):
@@ -1557,7 +1561,10 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
     from .models import Ticket
 
     clotures = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
-    old = Ticket.objects.get(pk=ticket.pk)
+    # ACNC32 — état « avant » relu SOUS VERROU : une transition croisée attend,
+    # puis décide sur le statut commité (jamais deux émissions de ticket_resolu).
+    old = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    ticket.statut = old.statut
     # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
     # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
     if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:

@@ -88,6 +88,21 @@ class XSAV3CreerDevisTest(TestCase):
             self.ticket.activites.filter(
                 body__icontains=devis.reference).exists())
 
+    def test_second_appel_rend_le_devis_existant(self):
+        """ACNC33 — un second « Créer un devis » rend le devis déjà lié (200,
+        même id), sans second brouillon ni nouveau numéro."""
+        url = f'/api/django/sav/tickets/{self.ticket.pk}/creer-devis/'
+        premier = self.api.post(url, {}, format='json')
+        self.assertEqual(premier.status_code, 201, premier.content)
+        second = self.api.post(url, {}, format='json')
+        self.assertEqual(second.status_code, 200, second.content)
+        self.assertEqual(second.data['devis_id'], premier.data['devis_id'])
+        self.assertEqual(second.data['devis_reference'], premier.data['devis_reference'])
+        self.assertEqual(Devis.objects.filter(
+            company=self.company, client=self.client_obj).count(), 1)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.devis_id_ext, premier.data['devis_id'])
+
     def test_prefill_lignes_depuis_pieces_prix_vente(self):
         PieceConsommee.objects.create(
             company=self.company, ticket=self.ticket, produit=self.produit,

@@ -53,11 +53,15 @@ def _verrou_scan(nom):
     """
     cle = f'sav-sla-scan:{nom}'
     try:
-        obtenu = bool(cache.add(cle, 1, _VERROU_TTL))
+        resultat = cache.add(cle, 1, _VERROU_TTL)
     except Exception:  # pragma: no cover - cache KO → on n'empêche pas le scan
+        resultat = None
+    # ACEL48 — panne avalée (IGNORE_EXCEPTIONS) : ``cache.add`` rend None.
+    if resultat is None:
         logger.warning('sav: verrou %s indisponible (cache KO)', nom)
         yield True
         return
+    obtenu = bool(resultat)
     try:
         yield obtenu
     finally:

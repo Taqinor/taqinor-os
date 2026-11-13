@@ -15,7 +15,8 @@ import { ContratStatutPill } from './ContratsMaintenance.jsx'
 // savApi/crmApi/installationsApi/axios mockés (patron
 // EquipementFiabilitePanel.test.jsx pour le store redux).
 const { getContrats, getTourneePreventive, planifierTournee,
-  getRentabiliteContrats, saveContratOm } = vi.hoisted(() => ({
+  getRentabiliteContrats, saveContratOm, genererVisitesDues } = vi.hoisted(() => ({
+  genererVisitesDues: vi.fn(),
   getContrats: vi.fn(() => Promise.resolve({ data: [] })),
   getTourneePreventive: vi.fn(),
   planifierTournee: vi.fn(),
@@ -25,6 +26,7 @@ const { getContrats, getTourneePreventive, planifierTournee,
 vi.mock('../../api/savApi', () => ({
   default: {
     saveContratOm: (...a) => saveContratOm(...a),
+    genererVisitesDues: (...a) => genererVisitesDues(...a),
     getContrats: (...a) => getContrats(...a),
     getTourneePreventive: (...a) => getTourneePreventive(...a),
     planifierTournee: (...a) => planifierTournee(...a),
@@ -118,6 +120,20 @@ describe('ContratsMaintenance — Tournée préventive (WIR230)', () => {
     await user.click(screen.getByRole('button', { name: 'Planifier la tournée' }))
 
     expect(await screen.findByText('Technicien inconnu.')).toBeInTheDocument()
+  })
+})
+
+describe('ContratsMaintenance — ACNC35 génération des visites dues', () => {
+  it('« Générer les visites dues » désactivé pendant genererVisitesDues', async () => {
+    let finir
+    genererVisitesDues.mockImplementationOnce(() => new Promise((ok) => { finir = ok }))
+    renderPage()
+    const bouton = await screen.findByRole('button', { name: /Générer les visites dues/ })
+    await userEvent.click(bouton)
+    expect(genererVisitesDues).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Générer les visites dues/ })).toBeDisabled())
+    finir({ data: { ok: true, tickets_generes: 0 } })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Générer les visites dues/ })).not.toBeDisabled())
   })
 })
 

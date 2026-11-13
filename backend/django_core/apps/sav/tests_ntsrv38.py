@@ -130,6 +130,31 @@ class NTSRV38VerrouTest(TestCase):
         with sav_tasks._verrou_scan('essai') as apres:
             self.assertTrue(apres)
 
+    def test_cache_en_panne_le_balayage_tourne(self):
+        """ACEL48 — panne du cache avalée (``cache.add`` rend ``None``) : le
+        balayage tourne quand même ; un verrou tenu (``False``) le saute."""
+        from unittest import mock
+
+        from apps.sav import tasks as sav_tasks
+
+        with mock.patch.object(sav_tasks.cache, 'add', return_value=False):
+            self.assertEqual(
+                scan_sla_pre_alerts_and_escalations_quotidien(),
+                {'skipped': True})
+        self.assertEqual(self._notifs(), 0)
+
+        with mock.patch.object(sav_tasks.cache, 'add', return_value=None):
+            resultat = scan_sla_pre_alerts_and_escalations_quotidien()
+            self.assertNotIn('skipped', resultat)
+            self.assertEqual(resultat['escalations'], 1)
+            self.assertEqual(self._notifs(), 1)
+            self.ticket.refresh_from_db()
+            self.assertIn(
+                self.palier.pk, self.ticket.sla_escalade_paliers_notifies)
+            second = scan_sla_pre_alerts_and_escalations_quotidien()
+            self.assertEqual(second['escalations'], 0)
+        self.assertEqual(self._notifs(), 1)
+
 
 class NTSRV38BreachesTest(TestCase):
     def setUp(self):

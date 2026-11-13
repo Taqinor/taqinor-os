@@ -15,6 +15,7 @@ import {
 } from '../../ui'
 import { BoutonsEdition } from './SavCommun'
 import SimpleRefListEditor from './SimpleRefListEditor'
+import { useConfirm } from '../../providers/confirm-context'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
 // pour le total.
@@ -279,6 +280,7 @@ function CompatibilitesPieceSection() {
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ produit_equipement: '', piece: '', note: '' })
   const [busy, setBusy] = useState(false)
+  const confirmer = useConfirm()
 
   const load = () => lireTout(savApi.getCompatibilitesPiece)
     .then(setRows)
@@ -309,11 +311,14 @@ function CompatibilitesPieceSection() {
     } finally { setBusy(false) }
   }
 
-  const remove = async (id) => {
+  // AERR82 — confirmation qui nomme la compatibilité ; l'échec garde le seul toast global.
+  const remove = async (r) => {
+    const nom = `${r.produit_equipement_nom ?? `#${r.produit_equipement}`} → ${r.piece_nom ?? `#${r.piece}`}`
+    if (!await confirmer({ title: `Supprimer la compatibilité ${nom} ?`, confirmLabel: 'Supprimer', destructive: true })) return
     try {
-      await savApi.deleteCompatibilitePiece(id)
+      await savApi.deleteCompatibilitePiece(r.id)
       setLoading(true); load()
-    } catch { toast.error('Suppression impossible.') }
+    } catch { /* toast global d'erreur (axios) */ }
   }
 
   const produitOptions = (placeholder) => (
@@ -368,7 +373,7 @@ function CompatibilitesPieceSection() {
                 {r.piece_nom ?? `#${r.piece}`}
                 {r.note ? ` · ${r.note}` : ''}
               </span>
-              <Button type="button" size="sm" variant="ghost" onClick={() => remove(r.id)}>
+              <Button type="button" size="sm" variant="ghost" onClick={() => remove(r)}>
                 <X /> Supprimer
               </Button>
             </li>

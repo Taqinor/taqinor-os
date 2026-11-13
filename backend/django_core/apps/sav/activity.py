@@ -21,6 +21,7 @@ TRACKED_FIELDS = {
     # XSAV14 — taxonomie panne / cause / remède, codifiés à la résolution.
     'cause': 'Cause',
     'remede': 'Remède',
+    'instructions': 'Instructions',  # AERR26 — jamais écrasées sans trace.
 }
 
 _CHOICE_FIELDS = {'statut', 'type', 'priorite', 'sous_garantie'}

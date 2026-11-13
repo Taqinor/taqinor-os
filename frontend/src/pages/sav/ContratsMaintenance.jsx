@@ -240,6 +240,9 @@ export function Component() {
   const [vue, setVue] = useState('tous') // 'tous' | 'dus' | 'renouveler'
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false) // L329 — vide vs erreur
+  // ACNC35 — un envoi à la fois : « Créer » et « Générer » désactivés pendant leur requête.
+  const [envoiCreation, setEnvoiCreation] = useState(false)
+  const [envoiGeneration, setEnvoiGeneration] = useState(false)
   // WIR120 — valeurs par défaut des champs « Avancé » (tous optionnels ;
   // vides = comportement historique inchangé côté serveur).
   const ADVANCED_DEFAULTS = {
@@ -395,7 +398,9 @@ export function Component() {
       setFormError('Client et date de début requis.')
       return
     }
+    if (envoiCreation) return
     setFormError(null)
+    setEnvoiCreation(true)
     try {
       const payload = {
         client: form.client,
@@ -423,7 +428,7 @@ export function Component() {
       load()
     } catch (e) {
       setFormError(e?.response?.data?.detail ?? 'Création impossible.')
-    }
+    } finally { setEnvoiCreation(false) }
   }
 
   // L320 — édition/désactivation inline (saveContrat(id, …) + actif).
@@ -464,6 +469,7 @@ export function Component() {
     } catch { toast.error('Rapport indisponible.') }
   }
   const generer = async () => {
+    setEnvoiGeneration(true)
     try {
       const { data } = await savApi.genererVisitesDues()
       // L328 — confirmer le compte généré et recharger sans race.
@@ -471,7 +477,7 @@ export function Component() {
       await load()
       lireTout(savApi.getTickets, { type: 'preventif', ouvert: 'tous' })
         .then((liste) => setPreventifs(liste)).catch(() => {})
-    } catch { toast.error('Génération impossible.') }
+    } catch { toast.error('Génération impossible.') } finally { setEnvoiGeneration(false) }
   }
 
   const columns = [
@@ -656,7 +662,7 @@ export function Component() {
                 ...(canSeeCouts ? [{ value: 'rentabilite', label: 'Rentabilité' }] : []),
               ]}
             />
-            <Button variant="outline" size="sm" onClick={generer}>
+            <Button variant="outline" size="sm" loading={envoiGeneration} onClick={generer}>
               <Cog /> Générer les visites dues
             </Button>
           </div>
@@ -704,7 +710,7 @@ export function Component() {
               <Input type="number" step="any" value={form.duree_mois}
                      onChange={(e) => setForm((f) => ({ ...f, duree_mois: e.target.value }))} />
             </FormField>
-            <Button type="submit"><Plus /> Ajouter</Button>
+            <Button type="submit" loading={envoiCreation}><Plus /> Ajouter</Button>
             <FormField label="Chantier (optionnel)" className="sm:col-span-2 lg:col-span-2">
               <Select value={form.installation ? String(form.installation) : '__none'}
                       onValueChange={(v) => setForm((f) => ({ ...f, installation: v === '__none' ? '' : v }))}>

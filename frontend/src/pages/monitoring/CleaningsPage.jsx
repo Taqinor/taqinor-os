@@ -31,6 +31,7 @@ export default function CleaningsPage() {
   const [cleanings, setCleanings] = useState([])
   const [soiling, setSoiling] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [pasAJour, setPasAJour] = useState(false) // AERR129 — relecture ratée : liste gardée
   const [form, setForm] = useState({ date: todayISO(), note: '' })
   const [saving, setSaving] = useState(false)
 
@@ -43,8 +44,8 @@ export default function CleaningsPage() {
     if (!cfgId || !instId) return
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       monitoringApi.getCleanings({ installation: instId, page, page_size: pageSize }).then((r) => r.data))
-      .then((rows) => setCleanings(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-      .catch(() => setCleanings([]))
+      .then((rows) => { setCleanings(Array.isArray(rows) ? rows : (rows?.results ?? [])); setPasAJour(false) })
+      .catch(() => setPasAJour(true))
     monitoringApi.getSoiling(cfgId)
       .then((r) => setSoiling(r.data))
       .catch(() => setSoiling(null))
@@ -62,10 +63,10 @@ export default function CleaningsPage() {
         ])
         if (actif()) {
           setCleanings(Array.isArray(c) ? c : (c?.results ?? []))
-          setSoiling(s.data)
+          setSoiling(s.data); setPasAJour(false)
         }
       },
-      surErreur: () => { setCleanings([]); setSoiling(null) },
+      surErreur: () => { setCleanings([]); setSoiling(null); setPasAJour(true) },
     })
   }, [selectedId, installationId])
 
@@ -186,9 +187,15 @@ export default function CleaningsPage() {
           </Card>}
 
           {/* Journal */}
+          {pasAJour && !loading && (
+            <div role="status" className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">{cleanings.length ? 'Liste pas à jour' : 'Nettoyages non chargés'} — le serveur n’a pas répondu.</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => reload(selectedId, installationId)}>Réessayer</Button>
+            </div>
+          )}
           {loading ? (
             <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
-          ) : cleanings.length === 0 ? (
+          ) : cleanings.length === 0 ? (pasAJour ? null :
             <EmptyState
               title="Aucun nettoyage"
               description="Aucun nettoyage enregistré pour ce système."

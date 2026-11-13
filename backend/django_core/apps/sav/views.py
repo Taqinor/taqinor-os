@@ -30,6 +30,7 @@ from core.champs_stricts import (
     DateStricte, DecimalBornee, EntierStrict, entier_ou_400,
 )
 from core.conflit_etat import ConflitEtat
+from core.idempotency import IdempotentCreateMixin  # ACNC26
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
@@ -970,7 +971,7 @@ class TicketEnDoubleError(APIException):
         OpenApiParameter('ouvert', OpenApiTypes.STR, required=False, enum=['tous']),
         OpenApiParameter('annule', OpenApiTypes.STR, required=False, enum=['only', 'sans']),
     ]))
-class TicketViewSet(CompanyScopedModelViewSet):
+class TicketViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC26
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
     Tout est scopé à la société ; acteur et société posés côté serveur."""
@@ -1194,8 +1195,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
         client = serializer.validated_data.get('client')
-        # ASAV23 — un double clic ne crée qu'un ticket.
-        self._refuser_doublon_recent(company, serializer.validated_data)
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
         # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
@@ -1205,16 +1204,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # ASAV21 — horodatage de l'échéance (chemin heures ouvrées seulement).
         sla_echeance_at = compute_sla_echeance(
             company, client, priorite, date_ouverture)[1]
-        create_with_reference(
-            Ticket, 'SAV', company,
-            lambda ref: serializer.save(
-                reference=ref, company=company,
-                created_by=self.request.user,
-                date_ouverture=date_ouverture,
-                sla_due_at=sla_due_at,
-                sla_echeance_at=sla_echeance_at,
-                sla_reponse_due_at=sla_reponse_due_at),
-        )
+        # ASAV23 — un double clic ne crée qu'un ticket ; ACNC33 — contrôle et
+        # création sérialisés par le verrou de la fiche client (sans importer crm).
+        with transaction.atomic():
+            type(client)._base_manager.select_for_update().filter(pk=client.pk).first()
+            self._refuser_doublon_recent(company, serializer.validated_data)
+            create_with_reference(
+                Ticket, 'SAV', company,
+                lambda ref: serializer.save(
+                    reference=ref, company=company,
+                    created_by=self.request.user,
+                    date_ouverture=date_ouverture,
+                    sla_due_at=sla_due_at,
+                    sla_echeance_at=sla_echeance_at,
+                    sla_reponse_due_at=sla_reponse_due_at),
+            )
         # XSAV9 — affectation automatique si aucun technicien n'a été choisi
         # à la création et que la société l'a activée (défaut OFF = inchangé).
         inst = serializer.instance
@@ -2091,63 +2095,67 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if request.method == 'GET':
             qs = ticket.pieces.select_related('produit')
             return Response(PieceConsommeeSerializer(qs, many=True).data)
-        from apps.stock.selectors import (
-            get_produit_or_raise, produit_does_not_exist,
-        )
-        from apps.stock.services import (
-            mouvement_type_sortie, record_stock_movement,
-        )
-        corps = _valider_corps(_SCHEMA_PIECE_CONSOMMEE, request.data)
-        quantite = corps.get('quantite', Decimal('1'))
-        try:
-            produit = get_produit_or_raise(ticket.company, corps['produit'])
-        except (produit_does_not_exist(), ValueError, TypeError):
-            return Response({'detail': 'Produit inconnu.'}, status=404)
-        decrement = bool(corps.get('decrement'))
-        with transaction.atomic():
-            if decrement:
-                # ACSV52 - verrou de ligne AVANT la lecture du stock (deux
-                # poses concurrentes ne lisent plus la meme valeur) ; ERR80 -
-                # garde plancher : ne jamais piloter le stock en negatif ;
-                # ASTK248 - la part en quarantaine n'est jamais prelevee.
-                from apps.stock.services import verrouiller_produit
-                from apps.stock.services_wms import exiger_hors_quarantaine
-                from apps.stock.erreurs_achats import EtatIncompatible
-                produit = verrouiller_produit(produit.pk)
-                if quantite > produit.quantite_stock:
-                    return Response(
-                        {'detail': 'Stock insuffisant : '
-                         f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
-                        status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
-                try:
-                    exiger_hors_quarantaine(ticket.company, produit, quantite)
-                except EtatIncompatible as exc:
-                    raise ConflitEtat(str(exc)) from exc
-            piece = PieceConsommee.objects.create(
-                company=ticket.company, ticket=ticket, produit=produit,
-                quantite=quantite, created_by=request.user)
-            if decrement:
-                try:
-                    record_stock_movement(
-                        company=ticket.company, produit=produit,
-                        type_mouvement=mouvement_type_sortie(),
-                        quantite=quantite, quantite_avant=produit.quantite_stock,
-                        quantite_apres=produit.quantite_stock - quantite,
-                        reference=ticket.reference,
-                        note=f'Consommation SAV {ticket.reference}',
-                        created_by=request.user)
-                except ValidationError as exc:
-                    # ERR-ENF11 : quantité conforme, le stock du produit se compte en unités entières.
-                    raise ConflitEtat(exc.detail) from exc
-                piece.stock_decremente = True
-                piece.save(update_fields=['stock_decremente'])
-            # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
-            activity.log_note(
-                ticket, request.user,
-                f'Pièce {produit.nom} ×{quantite} consommée'
-                + (' (stock −)' if decrement else ''))
-        return Response(
-            PieceConsommeeSerializer(piece).data, status=201)
+
+        # ACNC26 — pose rejouable : même Idempotency-Key => une seule pièce.
+        def _poser():
+            from apps.stock.selectors import (
+                get_produit_or_raise, produit_does_not_exist,
+            )
+            from apps.stock.services import (
+                mouvement_type_sortie, record_stock_movement,
+            )
+            corps = _valider_corps(_SCHEMA_PIECE_CONSOMMEE, request.data)
+            quantite = corps.get('quantite', Decimal('1'))
+            try:
+                produit = get_produit_or_raise(ticket.company, corps['produit'])
+            except (produit_does_not_exist(), ValueError, TypeError):
+                return Response({'detail': 'Produit inconnu.'}, status=404)
+            decrement = bool(corps.get('decrement'))
+            with transaction.atomic():
+                if decrement:
+                    # ACSV52 - verrou de ligne AVANT la lecture du stock (deux
+                    # poses concurrentes ne lisent plus la meme valeur) ; ERR80 -
+                    # garde plancher : ne jamais piloter le stock en negatif ;
+                    # ASTK248 - la part en quarantaine n'est jamais prelevee.
+                    from apps.stock.services import verrouiller_produit
+                    from apps.stock.services_wms import exiger_hors_quarantaine
+                    from apps.stock.erreurs_achats import EtatIncompatible
+                    produit = verrouiller_produit(produit.pk)
+                    if quantite > produit.quantite_stock:
+                        return Response(
+                            {'detail': 'Stock insuffisant : '
+                             f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                            status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
+                    try:
+                        exiger_hors_quarantaine(ticket.company, produit, quantite)
+                    except EtatIncompatible as exc:
+                        raise ConflitEtat(str(exc)) from exc
+                piece = PieceConsommee.objects.create(
+                    company=ticket.company, ticket=ticket, produit=produit,
+                    quantite=quantite, created_by=request.user)
+                if decrement:
+                    try:
+                        record_stock_movement(
+                            company=ticket.company, produit=produit,
+                            type_mouvement=mouvement_type_sortie(),
+                            quantite=quantite, quantite_avant=produit.quantite_stock,
+                            quantite_apres=produit.quantite_stock - quantite,
+                            reference=ticket.reference,
+                            note=f'Consommation SAV {ticket.reference}',
+                            created_by=request.user)
+                    except ValidationError as exc:
+                        # ERR-ENF11 : quantité conforme, le stock du produit se compte en unités entières.
+                        raise ConflitEtat(exc.detail) from exc
+                    piece.stock_decremente = True
+                    piece.save(update_fields=['stock_decremente'])
+                # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
+                activity.log_note(
+                    ticket, request.user,
+                    f'Pièce {produit.nom} ×{quantite} consommée'
+                    + (' (stock −)' if decrement else ''))
+            return Response(
+                PieceConsommeeSerializer(piece).data, status=201)
+        return self._avec_idempotence(request, _poser, suffixe='pieces')
 
     @extend_schema(request=None, responses={204: None},
                    parameters=[OpenApiParameter('piece_id', OpenApiTypes.INT, OpenApiParameter.PATH)])
@@ -2170,6 +2178,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
             if not garde.has_permission(request, self):
                 raise PermissionDenied(garde.message)
         with transaction.atomic():
+            # ACNC26 — pièce relue SOUS VERROU : un retrait croisé de la même
+            # pièce attend, la retrouve supprimée et rend 404 (une seule ENTRÉE).
+            piece = PieceConsommee.objects.select_for_update().filter(
+                pk=piece.pk, ticket=ticket).first()
+            if piece is None:
+                return Response({'detail': 'Introuvable.'}, status=404)
             if piece.stock_decremente:
                 from apps.stock.services import verrouiller_produit
                 produit = verrouiller_produit(piece.produit_id)  # ACSV52
@@ -2513,6 +2527,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         date_retour = (date_du_corps(exiger_objet(request.data), 'date_retour_reelle')
                        or timezone.localdate())
         with transaction.atomic():
+            # ACNC27 — prêt relu SOUS VERROU : un retour croisé le retrouve
+            # « retourné » et ne réintègre rien (une seule ENTRÉE).
+            pret = PretEquipement.objects.select_for_update().get(pk=pret.pk)
             pret = retourner_pret_equipement(
                 pret=pret, date_retour_reelle=date_retour, user=request.user)
         activity.log_note(
@@ -2931,21 +2948,30 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response({'lignes': erreurs},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            devis = create_devis_pour_ticket(
-                company=ticket.company, user=request.user,
-                client_id=client_id, lignes=lignes,
-                note=f'Devis de réparation SAV — ticket {ticket.reference}')
-        except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
-            return Response(
-                {'detail': 'Client introuvable pour votre société.'},
-                status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            # ACNC33 — ticket relu SOUS VERROU : un devis déjà lié est rendu
+            # (200, même id), jamais un second brouillon numéroté.
+            ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+            from apps.ventes.selectors import get_devis_by_pk
+            existant = ticket.devis_id_ext and get_devis_by_pk(ticket.devis_id_ext)
+            if existant and existant.company_id == ticket.company_id:
+                return Response(
+                    {'devis_id': existant.id, 'devis_reference': existant.reference})
+            try:
+                devis = create_devis_pour_ticket(
+                    company=ticket.company, user=request.user,
+                    client_id=client_id, lignes=lignes,
+                    note=f'Devis de réparation SAV — ticket {ticket.reference}')
+            except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
+                return Response(
+                    {'detail': 'Client introuvable pour votre société.'},
+                    status=status.HTTP_404_NOT_FOUND)
 
-        ticket.devis_id_ext = devis.id
-        ticket.save(update_fields=['devis_id_ext'])
-        activity.log_note(
-            ticket, request.user,
-            f'Devis de réparation {devis.reference} créé (brouillon)')
+            ticket.devis_id_ext = devis.id
+            ticket.save(update_fields=['devis_id_ext'])
+            activity.log_note(
+                ticket, request.user,
+                f'Devis de réparation {devis.reference} créé (brouillon)')
         return Response(
             {'devis_id': devis.id, 'devis_reference': devis.reference},
             status=status.HTTP_201_CREATED)

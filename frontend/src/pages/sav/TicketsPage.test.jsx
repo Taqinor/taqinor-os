@@ -1,10 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { mockMatchMedia } from '../../test/matchMedia'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
+import savApi from '../../api/savApi'
 
 // ADRG22 — doublures réseau de la fiche et de la liste (aucun effet sur les
 // briques de présentation testées plus bas, qui n'appellent aucune API).
@@ -318,5 +321,123 @@ describe('TicketsPage — ADRG22 « Assigner à … » en masse', () => {
   it('sans sav_reassign : aucun « Assigner à »', async () => {
     const texte = await actionsGroupees(TECHNICIEN)
     expect(texte).not.toContain('Assigner à')
+  }, 60000)
+})
+
+/* AERR27 — J/K/Entrée/Échap de l'écran se taisent quand une boîte est posée
+   par-dessus ou qu'une liste déroulante est ouverte. */
+describe('TicketsPage — AERR27 raccourcis clavier gardés', () => {
+  async function ouvrirFiche() {
+    mockMatchMedia(true)
+    render(<ThemeProvider><Provider store={storeAdrg22([], 'admin')}><MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter></Provider></ThemeProvider>)
+    await screen.findAllByText('SAV-1', { exact: false })
+    fireEvent.keyDown(document.body, { key: 'j' })
+    await waitFor(() => expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-1/))
+  }
+
+  it("Échap sur la boîte d'annulation : la fiche reste ouverte", async () => {
+    await ouvrirFiche()
+    fireEvent.click(screen.getByRole('button', { name: /Annuler le ticket/ }))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.keyDown(boite, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-1/)
+  }, 60000)
+
+  it('k dans une listbox ouverte : sélection inchangée', async () => {
+    await ouvrirFiche()
+    fireEvent.keyDown(document.body, { key: 'j' })
+    await waitFor(() => expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-2/))
+    // Liste déroulante ouverte (contenu Radix porté dans <body>).
+    const liste = document.createElement('div')
+    liste.setAttribute('role', 'listbox')
+    liste.tabIndex = 0
+    document.body.appendChild(liste)
+    fireEvent.keyDown(liste, { key: 'k' })
+    expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-2/)
+    liste.remove()
+  }, 60000)
+})
+
+/* AERR32 — une relecture ratée (store `error`) garde les lignes déjà chargées
+   et offre « Réessayer » ; l'écran d'erreur seul n'existe que sans ticket. */
+describe('TicketsPage — AERR32 liste gardée pendant/après une relecture', () => {
+  function rendre(etat) {
+    const store = configureStore({
+      reducer: {
+        tickets: (state = etat) => state,
+        auth: (state = { role: 'admin', permissions: [] }) => state,
+      },
+    })
+    render(<ThemeProvider><Provider store={store}><MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter></Provider></ThemeProvider>)
+  }
+
+  it('store error avec 2 tickets chargés : lignes visibles + Réessayer', async () => {
+    rendre({ items: [T1, T2], loading: false, error: 'Erreur réseau' })
+    expect(await screen.findAllByText('SAV-1', { exact: false })).not.toHaveLength(0)
+    expect(screen.getAllByText('SAV-2', { exact: false })).not.toHaveLength(0)
+    expect(screen.getByText(/Liste pas à jour/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Réessayer/ })).toBeInTheDocument()
+  }, 60000)
+
+  it('relecture en cours avec tickets chargés : pas de squelette, lignes visibles', async () => {
+    rendre({ items: [T1, T2], loading: true, error: null })
+    expect(await screen.findAllByText('SAV-1', { exact: false })).not.toHaveLength(0)
+  }, 60000)
+})
+
+/* AERR82 — retirer une pièce (déjà sortie du stock) d'un ticket passe par une
+   confirmation qui nomme la pièce et sa quantité. */
+describe('TicketDetail — AERR82 retrait de pièce confirmé', () => {
+  it('Retirer puis Annuler : aucun retrait ; Retirer confirmé : un appel', async () => {
+    savApi.getTicketPieces.mockResolvedValue({
+      data: [{ id: 31, produit_nom: 'Fusible 15 A', quantite: 2, stock_decremente: true }],
+    })
+    savApi.removeTicketPiece = vi.fn(() => Promise.resolve({ data: {} }))
+    render(<Provider store={storeAdrg22([], 'admin')}><MemoryRouter><ConfirmProvider>
+      <TicketDetail ticket={T1} onClose={() => {}} onSaved={() => {}} />
+    </ConfirmProvider></MemoryRouter></Provider>)
+    const ligne = (await screen.findByText(/Fusible 15 A/)).closest('li')
+    fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite.textContent).toContain('Fusible 15 A × 2')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(savApi.removeTicketPiece).not.toHaveBeenCalled()
+
+    fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
+    const boite2 = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite2).getByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(savApi.removeTicketPiece).toHaveBeenCalledWith(1, 31))
+    savApi.getTicketPieces.mockReset()
+    savApi.getTicketPieces.mockImplementation(() => Promise.resolve({ data: [] }))
+  }, 60000)
+})
+
+/* ACNC26 — « Retirer » d'une pièce est désactivé pendant l'envoi (un double
+   clic ne lance jamais deux retraits de la même pièce). */
+describe('TicketDetail — ACNC26 retrait de pièce non doublé', () => {
+  it('« Retirer » désactivé pendant l'envoi', async () => {
+    savApi.getTicketPieces.mockResolvedValue({
+      data: [{ id: 31, produit_nom: 'Fusible 15 A', quantite: 2, stock_decremente: true }],
+    })
+    let finir
+    savApi.removeTicketPiece = vi.fn(() => new Promise((ok) => { finir = ok }))
+    render(<Provider store={storeAdrg22([], 'admin')}><MemoryRouter><ConfirmProvider>
+      <TicketDetail ticket={T1} onClose={() => {}} onSaved={() => {}} />
+    </ConfirmProvider></MemoryRouter></Provider>)
+    const ligne = (await screen.findByText(/Fusible 15 A/)).closest('li')
+    fireEvent.click(within(ligne).getByRole('button', { name: /Retirer/ }))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(savApi.removeTicketPiece).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(within(ligne).getByRole('button', { name: /Retirer/ })).toBeDisabled())
+    finir({ data: {} })
+    savApi.getTicketPieces.mockReset()
+    savApi.getTicketPieces.mockImplementation(() => Promise.resolve({ data: [] }))
   }, 60000)
 })

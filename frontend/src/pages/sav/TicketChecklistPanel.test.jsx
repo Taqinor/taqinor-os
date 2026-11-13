@@ -71,3 +71,18 @@ describe('TicketChecklistPanel (WR11 — FG82)', () => {
       .toHaveBeenCalledWith(9, { cle: 'panneaux', note: 'à revoir' }))
   })
 })
+
+describe('TicketChecklistPanel — AERR79 lecture rejetée', () => {
+  it("lecture rejetée : pas d'Initialiser, avis + Réessayer", async () => {
+    savApi.getTicketChecklist.mockRejectedValueOnce(new Error('503'))
+    render(<TicketChecklistPanel ticketId={9} />)
+    expect(await screen.findByText(/Checklist non chargée/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Initialiser/ })).toBeNull()
+    expect(screen.queryByText(/Aucune checklist sur ce ticket/)).toBeNull()
+    // Réessayer relit : la checklist (vide) revient avec son « Initialiser ».
+    fireEvent.click(screen.getByRole('button', { name: /Réessayer/ }))
+    await waitFor(() =>
+      expect(screen.getByText(/Aucune checklist sur ce ticket/)).toBeInTheDocument())
+    expect(savApi.getTicketChecklist).toHaveBeenCalledTimes(2)
+  })
+})

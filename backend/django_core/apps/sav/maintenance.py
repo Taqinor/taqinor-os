@@ -14,6 +14,7 @@ tickets, scopée société côté serveur.
 from math import asin, cos, radians, sin, sqrt
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -188,22 +189,29 @@ def generer_visites_dues(company, user, avance_jours=0):
     for contrat in ContratMaintenance.objects.filter(company=company, actif=True):
         if not contrat.is_due(today=horizon):
             continue
-        due = contrat.prochaine_visite()
+        # ACEL47 — ticket + avance du contrat dans UNE transaction, contrat
+        # verrouillé et échéance relue : ni ticket orphelin ni doublon.
+        with transaction.atomic():
+            contrat = ContratMaintenance.objects.select_for_update().get(
+                pk=contrat.pk)
+            if not contrat.is_due(today=horizon):
+                continue
+            due = contrat.prochaine_visite()
 
-        def _save(ref, c=contrat, d=due):
-            return Ticket.objects.create(
-                reference=ref, company=company, client=c.client,
-                installation=c.installation, type=Ticket.Type.PREVENTIF,
-                statut=Ticket.Statut.NOUVEAU, date_ouverture=d,
-                description=f'Visite de maintenance préventive (contrat #{c.pk}).',
-                created_by=user)
+            def _save(ref, c=contrat, d=due):
+                return Ticket.objects.create(
+                    reference=ref, company=company, client=c.client,
+                    installation=c.installation, type=Ticket.Type.PREVENTIF,
+                    statut=Ticket.Statut.NOUVEAU, date_ouverture=d,
+                    description=f'Visite de maintenance préventive (contrat #{c.pk}).',
+                    created_by=user)
 
-        # AUD519 — la visite préventive porte la même échéance SLA que le
-        # chemin manuel (sans quoi elle était exclue des scans quotidiens).
-        from .services import poser_sla_due_at
-        poser_sla_due_at(create_with_reference(Ticket, 'SAV', company, _save))
-        contrat.derniere_visite = due
-        contrat.save(update_fields=['derniere_visite'])
+            # AUD519 — la visite préventive porte la même échéance SLA que le
+            # chemin manuel (sans quoi elle était exclue des scans quotidiens).
+            from .services import poser_sla_due_at
+            poser_sla_due_at(create_with_reference(Ticket, 'SAV', company, _save))
+            contrat.derniere_visite = due
+            contrat.save(update_fields=['derniere_visite'])
         genere += 1
     return genere
 

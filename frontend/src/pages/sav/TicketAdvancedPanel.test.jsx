@@ -127,6 +127,20 @@ describe('TicketAdvancedPanel — XSAV27 prêts d\'équipement', () => {
     await waitFor(() => expect(savApi.retournerPretEquipement).toHaveBeenCalledWith(5, 1))
   })
 
+  it('ACNC27 — « Retourner » désactivé pendant l'envoi', async () => {
+    savApi.getPretsEquipement.mockResolvedValue({
+      data: [{ id: 1, produit_nom: 'Onduleur de prêt', date_sortie: '2026-07-01', date_retour_reelle: null }],
+    })
+    let finir
+    savApi.retournerPretEquipement.mockImplementationOnce(() => new Promise((ok) => { finir = ok }))
+    renderPanel()
+    expect(await screen.findByText(/Onduleur de prêt/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Retourner/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Retourner/ })).toBeDisabled())
+    expect(savApi.retournerPretEquipement).toHaveBeenCalledTimes(1)
+    finir({ data: {} })
+  })
+
   it('WIR118 — crée un prêt depuis le formulaire (produit + retour prévue)', async () => {
     savApi.creerPretEquipement.mockResolvedValue({ data: { id: 2 } })
     renderPanel()

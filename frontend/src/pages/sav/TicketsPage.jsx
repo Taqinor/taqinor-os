@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -14,6 +14,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
+import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
+import { useConfirm } from '../../providers/confirm-context'
 // EZ15 — dictée INLINE navigateur, surface BUREAU.
 import {
   DictationButton, DICTATION_PRIVACY_FR,
@@ -27,6 +29,7 @@ import api from '../../api/axios'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
 import { downloadBlob } from '../../utils/downloadBlob'
+import { toastWithUndo } from '../../lib/toast'
 import { formatMAD, timeAgo } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
 import { fetchAllPages, lireToutesLesPages } from '../../utils/fetchAllPages'
@@ -89,7 +92,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty, isAnyFormDirty,
   DataTable,
   toast,
 } from '../../ui'
@@ -255,7 +258,13 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
-export function TicketDetail({ ticket, onClose, onSaved }) {
+// AERR25 — l'enveloppe remonte la fiche à chaque changement de ticket : son
+// état local (champs, en-tête, actions) ne survit jamais d'un ticket à l'autre.
+export function TicketDetail(props) {
+  return <TicketDetailCorps key={props.ticket.id} {...props} />
+}
+
+function TicketDetailCorps({ ticket, onClose, onSaved }) {
   const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
@@ -267,6 +276,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
+  const confirmer = useConfirm() // AERR82
   const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement'), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
   const F =(k, d = '') => current?.[k] ?? d
 
@@ -340,6 +350,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [pieceForm, setPieceForm] = useState(
     { produit: '', quantite: '1', decrement: false })
   const [pieceBusy, setPieceBusy] = useState(false)
+  // ACNC26 — clé de pose créée à l'ouverture du formulaire, renouvelée au succès ;
+  // retrait en cours (« Retirer » désactivé pendant l'envoi).
+  const [clePiece, setClePiece] = useState(() => globalThis.crypto?.randomUUID?.())
+  const [retraitEnCours, setRetraitEnCours] = useState(null)
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [motif, setMotif] = useState('')
   const [confirmVide, setConfirmVide] = useState(false) // L300 — confirmation motif vide
@@ -686,7 +700,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         produit: pieceForm.produit,
         quantite: pieceForm.quantite || '1',
         decrement: pieceForm.decrement,
-      })
+      }, { idempotencyKey: clePiece })
+      setClePiece(globalThis.crypto?.randomUUID?.())
       setPieceForm({ produit: '', quantite: '1', decrement: false })
       loadPieces()
       loadHistorique()
@@ -694,13 +709,16 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       setActionError(frError(err, "Échec de l'ajout de la pièce."))
     } finally { setPieceBusy(false) }
   }
-  const removePiece = async (pieceId) => {
+  const removePiece = async (p) => {
+    // AERR82 — confirmation qui nomme la pièce et la quantité.
+    if (!await confirmer({ title: `Retirer ${p.produit_nom} × ${p.quantite} de ce ticket ?`, confirmLabel: 'Retirer', destructive: true })) return
     setActionError(null)
+    setRetraitEnCours(p.id)
     try {
-      await savApi.removeTicketPiece(id, pieceId)
+      await savApi.removeTicketPiece(id, p.id)
       loadPieces()
       loadHistorique()
-    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) }
+    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) } finally { setRetraitEnCours(null) }
   }
 
   const annuler = async () => {
@@ -1193,7 +1211,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                     {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''} × {p.quantite}
                     {p.stock_decremente && <Badge tone="info" className="ml-2">stock −</Badge>}
                   </span>
-                  {peutGerer && <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p.id)}>
+                  {peutGerer && <Button type="button" variant="ghost" size="sm" loading={retraitEnCours === p.id} onClick={() => removePiece(p)}>
                     <Trash2 /> Retirer
                   </Button>}
                 </li>
@@ -1771,7 +1789,6 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
     () => ({ year: today.getFullYear(), month: today.getMonth() }))
   const [quickCreateDate, setQuickCreateDate] = useState(null)
   const [dragTicket, setDragTicket] = useState(null)
-  const [err, setErr] = useState('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1792,13 +1809,17 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
     const ticket = active?.data?.current?.ticket
     const targetDate = over?.data?.current?.date
     if (!ticket || !targetDate || targetDate === ticket.date_tournee) return
-    setErr('')
+    // AERR31 — résultat nommé + « Annuler » (appel inverse) ; un refus ne
+    // produit que le toast d'erreur global (axios), jamais un second message.
     try {
       await savApi.replanifierTicket(ticket.id, targetDate)
+      const ancienne = ticket.date_tournee
+      toastWithUndo({
+        message: `${ticket.reference} replanifié au ${targetDate.slice(8, 10)}/${targetDate.slice(5, 7)}`,
+        onUndo: () => savApi.replanifierTicket(ticket.id, ancienne).then(() => onReload?.(), () => {}),
+      })
       onReload?.()
-    } catch {
-      setErr('Replanification impossible.')
-    }
+    } catch { /* toast global d'erreur */ }
   }, [onReload])
 
   return (
@@ -1811,10 +1832,6 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
           {CAL_MONTHS[cursor.month]} {cursor.year}
         </strong>
       </div>
-
-      {err && (
-        <p role="alert" className="text-sm text-destructive">{err}</p>
-      )}
 
       <DndContext sensors={sensors}
                   onDragStart={({ active }) => setDragTicket(active?.data?.current?.ticket ?? null)}
@@ -1949,6 +1966,12 @@ export default function TicketsPage() {
      J/K DÉPLACENT la sélection dans la liste FILTRÉE et TRIÉE affichée
      (`rows`), donc ce que le clavier parcourt est exactement ce que l'œil voit.
      Effet AVEC dep array (jamais un ré-abonnement à chaque rendu). */
+  // AERR25 — UN seul point de changement de sélection (ligne, kanban,
+  // calendrier, J/K), gardé par la saisie non enregistrée de la fiche.
+  const selectionner = useCallback((row) => {
+    if (row?.id !== detailTicket?.id && !confirmLeaveIfDirty(isAnyFormDirty())) return
+    setSelected(row)
+  }, [detailTicket])
   const deplacerSelection = useCallback((pas) => {
     if (!rows.length) return
     const i = detailTicket ? rows.findIndex((r) => r.id === detailTicket.id) : -1
@@ -1956,16 +1979,20 @@ export default function TicketsPage() {
     const cible = i < 0
       ? (pas > 0 ? 0 : rows.length - 1)
       : Math.min(Math.max(i + pas, 0), rows.length - 1)
-    setSelected(rows[cible])
-  }, [rows, detailTicket])
+    selectionner(rows[cible])
+  }, [rows, detailTicket, selectionner])
 
   // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
   // l'effet-événement en lit toujours la version courante.
   const fermerDetail = useEffectEvent(() => closeDetail())
+  // AERR27 — racine de la page : une boîte posée par-dessus fait taire J/K/Entrée/Échap.
+  const racineRef = useRef(null)
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (isTypingTarget(e.target)) return
+      if (e.defaultPrevented) return
+      if (isTypingTarget(e.target) || dialogueParDessus(racineRef.current)) return
+      if (e.target?.closest?.('[role="listbox"], [role="menu"]')) return
       if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
       else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
       else if (e.key === 'Enter' && !detailTicket && rows.length) {
@@ -1975,7 +2002,7 @@ export default function TicketsPage() {
         e.preventDefault()
         setSelected(rows[0])
       } else if (e.key === 'Escape' && detailTicket) {
-        fermerDetail()
+        if (confirmLeaveIfDirty(isAnyFormDirty())) fermerDetail()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -2181,7 +2208,7 @@ export default function TicketsPage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="ui-root flex flex-col gap-5 p-1">
+      <div ref={racineRef} className="ui-root flex flex-col gap-5 p-1">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Tickets SAV</h1>
@@ -2328,9 +2355,16 @@ export default function TicketsPage() {
             mobile/tablette inchangé), donc pas de wrapper flex nécessaire ici. */}
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
           <div className="min-w-0 flex-1">
-            {loading ? (
+            {/* AERR32 — une relecture en cours ou ratée garde les lignes chargées. */}
+            {error && items.length > 0 && (
+              <div role="status" className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">Liste pas à jour — le serveur n’a pas répondu.</span>
+                <Button type="button" size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>
+              </div>
+            )}
+            {loading && items.length === 0 ? (
               <SqueletteListe lignes={6} />
-            ) : error ? (
+            ) : error && items.length === 0 ? (
               <ErreurChargement description="Les tickets n'ont pas pu être chargés. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
             ) : rows.length === 0 ? (
               // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
@@ -2350,13 +2384,13 @@ export default function TicketsPage() {
                 {TICKET_STATUSES.map((k) => (
                   <KanbanColumn key={k} statut={k}
                                 tickets={rows.filter((r) => r.statut === k)}
-                                onSelect={setSelected} />
+                                onSelect={selectionner} />
                 ))}
               </div>
             ) : view === 'calendrier' ? (
               // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
               // glisser-déposer pour replanifier, création rapide depuis un créneau.
-              <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
+              <TicketCalendarView tickets={rows} onSelect={selectionner} onReload={reload} />
             ) : (
               <DataTable
                 data={rows}
@@ -2364,7 +2398,7 @@ export default function TicketsPage() {
                 getRowId={(row) => row.id}
                 searchable={false}
                 selectable
-                onRowClick={(row) => setSelected(row)}
+                onRowClick={selectionner}
                 exportName="tickets"
                 emptyTitle="Aucun ticket"
                 emptyDescription="Aucun ticket ne correspond à votre recherche."
