@@ -1,0 +1,325 @@
+name: zz scratch - acceptation ATST (essai runner, TEMPORAIRE)
+
+# ESSAI (13/11/2026) : jouer les preuves en direct du groupe ATST (parcours PF7 « tests qui ne prouvent
+# rien ») sur un runner GitHub. Trois rejeux en parallele puis une fusion :
+#   gardes-hote      ATST41-53 : sondes, gardes scripts/check_*.py sur le depot, mutants sur une COPIE,
+#                    lecture seule de l'alerte nocturne #726 et d'un journal stage-names (gh)
+#   django-atst      ATST21-23 : sondes + tests Django non tagues (squelette backend-full) + mutants sur copie
+#   acceptation-atst ATST27    : spec navigateur frontend/e2e/acceptation/atst.spec.js (squelette e2e-full)
+#   enregistrement   fusion en UN enregistrement docs/audits/acceptation/ATST/ + check_acceptation
+# Declenche seulement par un push sur la branche d'essai ; supprime au dernier commit.
+on:
+  push:
+    branches: [acceptation-atst-runner]
+
+concurrency:
+  group: zz-scratch-acceptation-atst
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente : $ref"; echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE : $ref"; echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  # ATST41-53 — comme le job `stage-names` : Python 3.11 + PyYAML seulement (Django NON installe).
+  gardes-hote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PyYAML (comme stage-names)
+        run: pip install PyYAML
+      - name: Rejeu ATST41-53 (sondes, gardes, mutants sur copie, lectures gh)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/zz-scratch-atst/rejeu.py hote "$RUNNER_TEMP/atst-hote"
+      - name: Upload journaux hote (petit)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atst-hote
+          path: ${{ runner.temp }}/atst-hote/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ATST21-23 — squelette `backend-full` : image CI (WeasyPrint compris), base de test pre-migree du cache.
+  django-atst:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'false'
+      - name: Rejeu ATST21-23 (sondes, tests non tagues, mutants sur copie)
+        run: python .github/zz-scratch-atst/rejeu.py django /tmp/atst-django
+      - name: Upload journaux django (petit)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atst-django
+          path: /tmp/atst-django/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ATST27 — squelette `e2e-full` (comme l'essai ASUP).
+  acceptation-atst:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'false'
+      - name: Migrate + seed demo
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Playwright chromium (deja dans l'image)
+        working-directory: frontend
+        run: npx playwright install chromium
+      - name: Build frontend (sans service worker)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      - name: Django + spec d'acceptation ATST
+        working-directory: backend/django_core
+        env:
+          E2E_ACCEPTATION: '1'
+          ACCEPTATION_SHA: ${{ github.sha }}
+        run: |
+          gunicorn erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            --access-logfile /tmp/gunicorn-access.log \
+            --error-logfile /tmp/gunicorn-error.log --capture-output &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then echo "Django pret (HTTP $code)"; break; fi
+            echo "Attente Django ($i)"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+          export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
+          cd ../../frontend
+          npx playwright test --project=acceptation e2e/acceptation/atst.spec.js
+      - name: Queue des journaux gunicorn (diagnostic)
+        if: ${{ !cancelled() }}
+        run: |
+          tail -n 120 /tmp/gunicorn-error.log || true
+      - name: Upload enregistrement de la spec (petit)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atst-spec-enr
+          path: docs/audits/acceptation/ATST/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload captures de la spec (petit)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atst-spec-captures
+          path: docs/qa-explorer/captures/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload rapport Playwright
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atst-rapport-playwright
+          path: frontend/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  enregistrement:
+    needs: [gardes-hote, django-atst, acceptation-atst]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # check_acceptation compare la dette a origin/main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install PyYAML
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/art
+      - name: Fusion en UN enregistrement ATST
+        env:
+          ACCEPTATION_SHA: ${{ github.sha }}
+        run: node .github/zz-scratch-atst/fusion.mjs "$RUNNER_TEMP/art"
+      - name: check_acceptation (groupe ATST + garde complete)
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          set +e
+          python scripts/check_acceptation.py --groupe ATST; g=$?; echo "rc groupe=$g"
+          python scripts/check_acceptation.py; a=$?; echo "rc garde=$a"
+          for f in docs/audits/acceptation/ATST/*.md; do echo "=== $f"; cat "$f"; done
+          grep -q '^verdict: PASS' docs/audits/acceptation/ATST/*.md || { echo "ENREGISTREMENT NON PASS"; exit 1; }
+          exit $(( g || a ))
+      - name: Upload enregistrement final
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atst-enregistrement-final
+          path: |
+            docs/audits/acceptation/ATST/
+            docs/qa-explorer/captures/
+          retention-days: 7
+          if-no-files-found: warn
