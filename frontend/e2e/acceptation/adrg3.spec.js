@@ -143,6 +143,15 @@ sortie(1)`)
   for (const n of [/Mettre à jour/, /Annuler le ticket/, /^Noter$/, /Planifier une intervention/, /Ajouter une intervention/]) {
     await expect(bouton(dC, n), `Commercial : pas de « ${n} »`).toHaveCount(0)
   }
+  // Relecture après rechargement : mêmes états à l'écran.
+  const dT2 = await fiche(t1.p)
+  await expect(champ(dT2, 'Technicien responsable'), 'Technicien relu : technicien en lecture').toBeDisabled()
+  await expect(bouton(dT2, /Mettre à jour/), 'Technicien relu : enregistrer présent').toBeVisible()
+  const dC2 = await fiche(c1.p)
+  await expect(champ(dC2, 'Statut'), 'Commercial relu : statut en lecture').toBeDisabled()
+  await expect(bouton(dC2, /Mettre à jour/), 'Commercial relu : pas de « Mettre à jour »').toHaveCount(0)
+  const libC2 = await actionsGroupees(c1.p)
+  expect(libC2.filter((x) => /Assigner à|^Annuler$|^Priorité/.test(x)), `Commercial relu : actions groupées ${J(libC2)}`).toEqual([])
   // Témoin : le Responsable (sav_reassign) garde « Assigner à … » et le sélecteur éditable.
   const r1 = await ecranDe(page, suivi, testInfo, re)
   const libR = await actionsGroupees(r1.p)
@@ -213,6 +222,7 @@ sortie([e.mis_au_rebut, e.motif_rebut or '', c.nom, CategorieEquipement.objects.
   const fCr = await equipement(r, m, 'ADRG39CR', vuCr)
   const cr = await ecranDe(page, suivi, testInfo, vuCr)
   await expect(bouton(await ficheEquipement(cr.p, fCr.serie), /Mettre au rebut/), 'Commercial responsable : pas de « Mettre au rebut »').toHaveCount(0)
+  await expect(bouton(await ficheEquipement(cr.p, fCr.serie), /Mettre au rebut/), 'Commercial responsable relu après rechargement').toHaveCount(0)
   const vuTr = await compteDe('Technicien responsable', 'adrg39tr')
   const fTr = await equipement(r, m, 'ADRG39TR', vuTr)
   const tr = await ecranDe(page, suivi, testInfo, vuTr)
@@ -221,7 +231,7 @@ sortie([e.mis_au_rebut, e.motif_rebut or '', c.nom, CategorieEquipement.objects.
   await py(`from apps.sav.models import CategorieEquipement
 CategorieEquipement.objects.filter(company_id=${SOC}, nom__endswith=${J(` ${m}`)}).delete()
 sortie(1)`).catch(() => null)
-})
+}, { ecart: { base: 'FAIL', raison: "frontend/src/pages/sav/EquipementsPage.jsx::EquipementDetail lit à l'ouverture de la fiche GET sav/equipements/<id>/downtime/ et /releves-compteur/, deux @action réservées à l'administrateur (backend/django_core/apps/sav/views.py::EquipementViewSet.downtime / .releves_compteur, permission_classes=[IsAdminRole], XSAV16/17, posées les 11-12/10/2026) : tout rôle non administrateur (Commercial responsable ET Technicien responsable) reçoit 403 + console.error (oracles 2-3). Défaut antérieur, hors ADRG39 (qui ne touche que rebut/réactivation/catégories) : avant ADRG39 la même fiche échouait déjà sur ces 403." } })
 
 etape('PF4.2-ADRG40', ['ADRG40'], async ({ page, suivi, testInfo }) => {
   const r = page.request
@@ -263,6 +273,10 @@ sortie([list(Ticket.objects.filter(pk__in=${J(prev)}).order_by('pk').values_list
   }
   const t1 = await tournee(te)
   await expect(t1.p.getByText('Technicien (optionnel)'), 'Technicien : pas de choix du technicien').toHaveCount(0)
+  await t1.p.reload()
+  await t1.p.getByRole('radio', { name: 'Tournée' }).or(t1.p.getByRole('button', { name: 'Tournée', exact: true })).or(t1.p.getByRole('tab', { name: 'Tournée' })).first().click()
+  await expect(t1.p.getByLabel('Date de tournée'), 'Tournée relue après rechargement').toBeVisible(V)
+  await expect(t1.p.getByText('Technicien (optionnel)'), 'Technicien relu : pas de choix du technicien').toHaveCount(0)
   const r1 = await tournee(await compteDe('Responsable', 'adrg40re'))
   await expect(r1.p.getByLabel('Technicien (optionnel)'), 'Responsable : choix du technicien').toBeVisible(V)
   await fermer(t1.ctx, r1.ctx)
@@ -321,6 +335,7 @@ sortie(dict(id=inst.pk, ref=inst.reference))`)
     return e
   }
   const ec = await supervision(co, false)
+  await supervision(co, false) // relecture après rechargement : mêmes écrans rouverts, toujours aucun geste
   const ed = await supervision(await compteDe('Directeur', 'adrg47di'), true)
   await fermer(ec.ctx, ed.ctx)
   await py(`from apps.monitoring.models import MonitoringConfig
@@ -336,8 +351,10 @@ etape('PF4.3-ADRG66', ['ADRG66'], async ({ page, suivi, testInfo }) => {
     await expect(bouton(e.p, /Étiquettes QR internes/), 'écran Équipements rendu').toBeVisible(V)
     return { e, n: await bouton(e.p, /^Importer$/).count() }
   }
-  const co = await importer(await compteDe('Commercial', 'adrg66co'))
+  const vuCo = await compteDe('Commercial', 'adrg66co')
+  const co = await importer(vuCo)
   expect(co.n, 'Commercial : pas de « Importer »').toBe(0)
+  expect((await importer(vuCo)).n, 'Commercial relu après rechargement : pas de « Importer »').toBe(0)
   const cr = await importer(await compteDe('Commercial responsable', 'adrg66cr'))
   expect(cr.n, 'Commercial responsable : pas de « Importer »').toBe(0)
   const tr = await importer(await compteDe('Technicien responsable', 'adrg66tr'))
@@ -373,6 +390,7 @@ sortie(Probleme.objects.filter(company_id=${SOC}).count())`)
   await fermer(x)
   const cr = await gestes(crc)
   expect(cr.n, 'Commercial responsable : aucun geste d’écriture').toBe(0)
+  expect((await gestes(crc)).n, 'Commercial responsable relu après rechargement : aucun geste d’écriture').toBe(0)
   // Porteur du code et compte hérité responsable (repli palier) : gestes présents.
   const tr = await gestes(await compteDe('Technicien responsable', 'adrg87tr'))
   expect(tr.n, 'Technicien responsable : gestes d’écriture présents').toBeGreaterThan(0)
@@ -415,6 +433,10 @@ sortie(sorted(PartageDashboard.objects.filter(dashboard_id=${perso.id}).values_l
   await ouvrir(e2.p, '/reporting/dashboards/partage', /\/core\/dashboards-partages\/?$/)
   await expect(e2.p.getByRole('heading', { name: 'Partage de tableaux de bord' }), 'écran rendu').toBeVisible(V)
   await expect(lien(e2.p), 'collègue : le lien de A n’apparaît pas').toHaveCount(0)
+  await ouvrir(e2.p, '/reporting/dashboards/partage', /\/core\/dashboards-partages\/?$/)
+  await expect(e2.p.getByRole('heading', { name: 'Partage de tableaux de bord' }), 'écran relu').toBeVisible(V)
+  await expect(lien(e2.p), 'collègue relu après rechargement : lien de A absent').toHaveCount(0)
+  await expect(lien(ea.p).first(), 'A voit toujours son lien').toBeVisible(V)
   await fermer(xa, xb, ea.ctx, e2.ctx)
 })
 
@@ -441,8 +463,11 @@ etape('PF4.4-ADRG24', ['ADRG24'], async ({ page, suivi, testInfo }) => {
     }
     return { e, mouvements, conformite, masse }
   }
-  const re = await exports(await compteDe('Responsable', 'adrg24re'), true)
+  const vuRe = await compteDe('Responsable', 'adrg24re')
+  const re = await exports(vuRe, true)
   expect([re.mouvements, re.conformite, re.masse], 'Responsable : aucun export serveur (mouvements, conformité, masse)').toEqual([0, 0, 0])
+  const re2 = await exports(vuRe, true)
+  expect([re2.mouvements, re2.conformite, re2.masse], 'Responsable relu après rechargement').toEqual([0, 0, 0])
   const cr = await exports(await compteDe('Commercial responsable', 'adrg24cr'), false)
   expect([cr.mouvements, cr.conformite], 'Commercial responsable : aucun export serveur').toEqual([0, 0])
   const tr = await exports(await compteDe('Technicien responsable', 'adrg24tr'), true)
@@ -493,8 +518,10 @@ sortie(Fournisseur.objects.create(company_id=${SOC}, nom=${J(`F-ADRG32 ${m} ${n}
     await expect(e.p.getByRole('heading', { name: 'Remises arrière (RFA)' }), 'écran RFA rendu').toBeVisible(V)
     return { e, n: await e.p.getByText('Nouvel accord', { exact: true }).count() }
   }
-  const cr = await rfa(await compteDe('Commercial responsable', 'adrg32cr'))
+  const vuCr = await compteDe('Commercial responsable', 'adrg32cr')
+  const cr = await rfa(vuCr)
   expect(cr.n, 'Commercial responsable : pas de « Nouvel accord »').toBe(0)
+  expect((await rfa(vuCr)).n, 'Commercial responsable relu après rechargement').toBe(0)
   const di = await rfa(await compteDe('Directeur', 'adrg32di'))
   expect(di.n, 'Directeur : « Nouvel accord »').toBeGreaterThan(0)
   await fermer(cr.e.ctx, di.e.ctx)
@@ -535,8 +562,10 @@ sortie([str(DepotConsignation.objects.get(pk=${dep.id}).quantite_consommee_decla
     await expect(e.p.getByText(`Site ADRG34 ${m}`).first(), 'dépôt affiché').toBeVisible(V)
     return { e, n: await bouton(e.p, 'Déclarer la consommation').count() }
   }
-  const te = await declarer(await compteDe('Technicien', 'adrg34te'))
+  const vuTe = await compteDe('Technicien', 'adrg34te')
+  const te = await declarer(vuTe)
   expect(te.n, 'Technicien : pas de « Déclarer »').toBe(0)
+  expect((await declarer(vuTe)).n, 'Technicien relu après rechargement : pas de « Déclarer »').toBe(0)
   const di = await declarer(await compteDe('Directeur', 'adrg34di'))
   expect(di.n, 'Directeur : « Déclarer »').toBeGreaterThan(0)
   await fermer(te.e.ctx, di.e.ctx)
@@ -586,6 +615,8 @@ etape('PF4.2-ADRG35', ['ADRG35'], async ({ page, suivi, testInfo }) => {
   }
   const e1 = await picking(cr)
   expect([e1.n, e1.b], 'Commercial responsable : ni « Nouvelle vague » ni geste de vague').toEqual([0, 0])
+  const e1b = await picking(cr)
+  expect([e1b.n, e1b.b], 'Commercial responsable relu après rechargement').toEqual([0, 0])
   const e2 = await picking(await compteDe('Technicien', 'adrg35te'))
   expect(e2.n, 'Technicien : « Nouvelle vague »').toBeGreaterThan(0)
   await fermer(e1.e.ctx, e2.e.ctx)
@@ -641,6 +672,7 @@ sortie(NomenclatureCodeBarres.objects.filter(pk=${nomenclature}).exists())`), 'n
   }
   const e1 = await quais(te)
   expect(e1.n, 'Technicien : pas de « Nouveau rendez-vous »').toBe(0)
+  expect((await quais(te)).n, 'Technicien relu après rechargement : pas de « Nouveau rendez-vous »').toBe(0)
   const e2 = await quais(await compteDe('Technicien responsable', 'adrg36tr'))
   expect(e2.n, 'Technicien responsable : « Nouveau rendez-vous »').toBeGreaterThan(0)
   await fermer(e1.e.ctx, e2.e.ctx)
@@ -681,8 +713,11 @@ sortie([ConditionnementProduit.objects.filter(pk=${o.c}).exists(), PrixFournisse
     await expect(l, 'conditionnement listé').toBeVisible(V)
     return { e, sup: await l.getByRole('button', { name: 'Supprimer' }).count(), mod: await l.getByRole('button', { name: 'Modifier' }).count() }
   }
-  const re = await ligne(await compteDe('Responsable', 'adrg37re'))
+  const vuRe = await compteDe('Responsable', 'adrg37re')
+  const re = await ligne(vuRe)
   expect([re.sup, re.mod > 0], 'Responsable : pas de « Supprimer », « Modifier » présent').toEqual([0, true])
+  const re2 = await ligne(vuRe)
+  expect([re2.sup, re2.mod > 0], 'Responsable relu après rechargement').toEqual([0, true])
   const di = await ligne(await compteDe('Directeur', 'adrg37di'))
   expect(di.sup, 'Directeur : « Supprimer »').toBeGreaterThan(0)
   await fermer(re.e.ctx, di.e.ctx)
