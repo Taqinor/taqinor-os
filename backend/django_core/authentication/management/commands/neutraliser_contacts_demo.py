@@ -67,7 +67,8 @@ class Command(BaseCommand):
             self.stdout.write(f'{len(fiches)} fiche(s) concernée(s) — dry-run, rien écrit.')
             return
         with transaction.atomic():
-            for f in fiches:
+            for lue in fiches:
+                f = type(lue).objects.select_for_update().get(pk=lue.pk)  # relue sous verrou
                 champs = {'email': f'demo-{f._meta.model_name}-{f.pk}@example.invalid',
                           'telephone': f'+212600{f.pk % 1000000:06d}'}
                 if any(c.name == 'search_vector' for c in f._meta.fields):
