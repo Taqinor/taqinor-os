@@ -42,7 +42,8 @@
    "crm_client_mirror_tiers"
   ],
   "pre_save": [
-   "crm_capture_appointment_old_statut"
+   "crm_capture_appointment_old_statut",
+   "crm_garde_restauration_corbeille"
   ],
   "salle_vente_signal_interet": [
    "crm_notifier_interet_salle_vente"

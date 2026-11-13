@@ -328,6 +328,44 @@ class TestSoftDelete(ArchiveTestBase):
         entree.refresh_from_db()
         self.assertIsNotNone(entree.restaure_le)
 
+    def test_annuler_refuse_absorbe_et_doublon_vivant(self):
+        """ASUP56 — « Annuler » (core/corbeille) : absorbé par une fusion ou
+        doublon vivant ⇒ 409 nommé, lead toujours supprimé, entrée ouverte,
+        aucune ligne « restauré » ; sans doublon ⇒ 200. Mutant : retirer
+        l'abonné ``pre_save`` ⇒ restauré."""
+        from core.models import DeletionRecord
+        from apps.crm.leads_fusion import NOTE_FUSION
+        survivant = Lead.objects.create(company=self.company, nom='B', stage='NEW')
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', stage='NEW',
+            note=f'{NOTE_FUSION}{survivant.pk} le 01/11')
+        ancien = Lead.objects.create(company=self.company, nom='C', stage='NEW',
+                                     telephone='0611223399')
+        vivant = Lead.objects.create(company=self.company, nom='D', stage='NEW',
+                                     telephone='0611223399')
+        api = auth(self.admin)
+        ids = {}
+        for cle, lead in (('A', absorbe), ('C', ancien), ('E', self.lead)):
+            ids[cle] = api.delete(
+                f'/api/django/crm/leads/{lead.id}/').data['corbeille_id']
+        for cle, lead, motif in (
+                ('A', absorbe, f'absorbé par le lead #{survivant.pk}'),
+                ('C', ancien, f'doublon vivant : lead #{vivant.pk}')):
+            with self.subTest(lead=cle):
+                r = api.post(f'/api/django/core/corbeille/{ids[cle]}/restaurer/')
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertIn(motif, str(r.data['detail']))
+                self.assertTrue(Lead.all_objects.get(pk=lead.pk).is_deleted)
+                self.assertTrue(DeletionRecord.objects.get(
+                    pk=ids[cle]).restored_at is None)
+                self.assertFalse(LeadActivity.objects.filter(
+                    lead=lead, body__startswith='Lead restauré').exists())
+        r = api.post(f'/api/django/core/corbeille/{ids["E"]}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(Lead.all_objects.get(pk=self.lead.pk).is_deleted)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead, body__startswith='Lead restauré').count(), 1)
+
     def test_restore_is_scoped_to_company(self):
         """La corbeille d'une autre société n'est jamais restaurable ici."""
         api = auth(self.admin)
