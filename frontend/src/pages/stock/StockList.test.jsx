@@ -36,7 +36,7 @@ vi.mock('../../lib/toast', async (importOriginal) => {
 })
 
 vi.mock('../../features/stock/store/stockSlice', () => ({
-  fetchProduits: () => ({ type: 'stock/fetchProduits/noop' }),
+  fetchProduits: vi.fn(() => ({ type: 'stock/fetchProduits/noop' })),
   fetchProduitsArchived: () => ({ type: 'stock/fetchProduitsArchived/noop' }),
   fetchCategories: () => ({ type: 'stock/fetchCategories/noop' }),
   updateProduit: () => ({ type: 'stock/updateProduit/noop' }),
@@ -83,7 +83,7 @@ vi.mock('../../features/uxviews/ViewsManagerPopover', () => ({
 }))
 
 import { toastWithUndo } from '../../lib/toast'
-import { deleteProduit } from '../../features/stock/store/stockSlice'
+import { deleteProduit, fetchProduits } from '../../features/stock/store/stockSlice'
 import { createViewMock } from '../../features/uxviews/useServerSavedViews'
 import StockList from './StockList.jsx'
 import { produitStockBase } from './catalogue.testHelpers.js'
@@ -110,13 +110,13 @@ function makeStore({
   role = 'admin', permissions = [],
   produits = [panneau, onduleur, orphelin],
   categories = [CAT_PANNEAUX, CAT_ONDULEURS],
-  produitsArchived = [],
+  produitsArchived = [], error = null,
 } = {}) {
   return configureStore({
     reducer: {
       auth: (s = { role, role_nom: role, permissions }) => s,
       stock: (s = {
-        produits, produitsArchived, categories, loading: false, error: null,
+        produits, produitsArchived, categories, loading: false, error,
       }) => s,
     },
   })
@@ -395,5 +395,28 @@ describe('StockList — dialogue « Transférer » : identifiants envoyés en en
     await waitFor(() => expect(http.post).toHaveBeenCalledWith('/stock/transferts/', {
       produit: 1, source: 5, destination: 6, quantite: 3, note: '',
     }))
+  })
+})
+
+describe('StockList — relecture ratée du catalogue (AERR33)', () => {
+  it('store `error` avec 3 produits : produits visibles + Réessayer', () => {
+    renderPage({ error: 'Network Error' })
+    expect(screen.queryAllByText('Panneau 550 Wc').length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('Onduleur Deye 5 kW').length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('Produit Sans Categorie').length).toBeGreaterThan(0)
+    const avis = screen.getByTestId('catalogue-pas-a-jour')
+    expect(avis.textContent).toMatch(/Catalogue pas à jour/)
+    const avant = fetchProduits.mock.calls.length
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect(fetchProduits.mock.calls.length).toBe(avant + 1)
+  })
+
+  it('aucun produit chargé : écran d’erreur plein avec Réessayer', () => {
+    renderPage({ error: 'Network Error', produits: [] })
+    expect(screen.getByText('Erreur de chargement')).toBeTruthy()
+    expect(screen.queryByTestId('catalogue-pas-a-jour')).toBeNull()
+    const avant = fetchProduits.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(fetchProduits.mock.calls.length).toBe(avant + 1)
   })
 })

@@ -1141,10 +1141,15 @@ export default function StockList() {
       </div>
     )
   }
-  if (error) {
+  // AERR33 — écran d'erreur plein SEULEMENT si rien n'a jamais été chargé ;
+  // une relecture ratée garde le catalogue affiché (avis « pas à jour » plus bas).
+  const reessayer = (
+    <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchProduits())}>Réessayer</Button>
+  )
+  if (error && produits.length === 0) {
     return (
       <div className="ui-root px-4 py-5 sm:px-5">
-        <EmptyState icon={AlertTriangle} title="Erreur de chargement"
+        <EmptyState icon={AlertTriangle} title="Erreur de chargement" action={reessayer}
                     description={frenchError(error, 'Chargement du catalogue impossible.')} className="border-destructive/40" />
       </div>
     )
@@ -1180,6 +1185,13 @@ export default function StockList() {
           onCancel={() => setConfirmDelete(null)}
           onConfirm={handleForceDelete}
         />
+      )}
+
+      {error && (
+        <div role="status" data-testid="catalogue-pas-a-jour" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>Catalogue pas à jour — la dernière relecture a échoué ; les produits affichés datent du dernier chargement réussi.</span>
+          {reessayer}
+        </div>
       )}
 
       {/* ODY17 — ModuleHero VX15 : identité de cockpit + KPI de synthèse.
