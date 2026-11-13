@@ -303,9 +303,23 @@ export const archivedParam = (value) =>
 // par `filters.owner`, jamais un second champ dupliqué. Sans `myUsername`
 // (repli), `mesLeads` n'a simplement aucun effet (jamais un filtre qui
 // viderait la liste par accident).
+// 12/11/2026 (Reda) — un numéro tapé dans n'importe quel format
+// (« +212 661-826837 », « 06 61 82 68 37 ») retrouve le téléphone stocké
+// (« 212661826837 ») par ses 9 derniers chiffres — même règle que la barre de
+// recherche globale (apps/reporting/search.py::_neuf_chiffres_tel).
+export function neufChiffresTel(q) {
+  const brut = (q ?? '').trim()
+  if (!/^[\d\s+().\-/]+$/.test(brut)) return ''
+  const chiffres = brut.replace(/\D/g, '')
+  return chiffres.length >= 9 ? chiffres.slice(-9) : ''
+}
+
+const telFinitPar = (tel, neuf) => (tel ?? '').replace(/\D/g, '').endsWith(neuf)
+
 export function filterLeads(leads, filters, { myUsername } = {}) {
   const f = { ...EMPTY_FILTERS, ...(filters ?? {}) }
   const q = f.q.trim().toLowerCase()
+  const telQ = neufChiffresTel(f.q)
   const today = todayLocalISO()
   const weekEnd = endOfWeekLocalISO()
   return (leads ?? []).filter((l) => {
@@ -355,6 +369,7 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
       (l.email ?? '').toLowerCase().includes(q) ||
       (l.telephone ?? '').includes(f.q.trim()) ||
       (l.whatsapp ?? '').includes(f.q.trim()) ||
+      (telQ !== '' && (telFinitPar(l.telephone, telQ) || telFinitPar(l.whatsapp, telQ))) ||
       (l.ville ?? '').toLowerCase().includes(q) ||
       // WREF (fondateur 21/08) — le code que le CLIENT reçoit sur l'écran de
       // succès du site (« Votre référence : TQ-XXXX ») doit retrouver le

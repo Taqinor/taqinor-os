@@ -10,6 +10,7 @@ import {
   STAGE_COLORS,
   groupLeadsByStage,
   filterLeads,
+  neufChiffresTel,
   isPerdu,
   tagList,
   latestDevisTotal,
@@ -175,6 +176,20 @@ test('filterLeads : texte libre, canal, responsable, priorité, tag', () => {
   assert.deepEqual(filterLeads(leads, { priorite: 'haute' }).map((l) => l.id), [1])
   assert.deepEqual(filterLeads(leads, { tag: 'VIP' }).map((l) => l.id), [1])
   assert.equal(filterLeads(leads, EMPTY_FILTERS).length, 2)
+})
+
+test("filterLeads : un numéro dans n'importe quel format retrouve le téléphone stocké", () => {
+  const leads = [
+    { id: 1, stage: 'QUOTE_SENT', nom: 'Mr', telephone: '212661826837' },
+    { id: 2, stage: 'NEW', nom: 'Bennani', whatsapp: '+212 6 12 34 56 78' },
+  ]
+  for (const q of ['+212 661-826837', '0661826837', '06 61 82 68 37']) {
+    assert.deepEqual(filterLeads(leads, { q }).map((l) => l.id), [1], q)
+  }
+  assert.deepEqual(filterLeads(leads, { q: '0612345678' }).map((l) => l.id), [2])
+  // Moins de 9 chiffres : la règle ne s'applique pas (recherche partielle inchangée).
+  assert.equal(neufChiffresTel('826837'), '')
+  assert.equal(neufChiffresTel('Mr 0661826837'), '')
 })
 
 test('WREF — la référence client du site retrouve le lead', () => {

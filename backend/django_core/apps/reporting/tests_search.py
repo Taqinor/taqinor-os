@@ -99,6 +99,39 @@ class TestGlobalSearch(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['groups'], [])
 
+    def test_message_client_colle_retrouve_le_lead(self):
+        """12/11/2026 (Reda) — le message du bouton WhatsApp de la proposition,
+        collé TEL QUEL, retrouve le lead qui porte le devis cité, même nommé
+        « Mr » ; un numéro au format WhatsApp (+212 661-826837) ou local
+        retrouve le téléphone stocké « 212661826837 ». Jamais hors société."""
+        from apps.ventes.models import Devis
+        lead = Lead.objects.create(company=self.company, nom='Mr',
+                                   telephone='212661826837')
+        autre = Lead.objects.create(company=self.other, nom='Mr',
+                                    telephone='212661826837')
+        client = Client.objects.create(company=self.company, nom='Mr')
+        Devis.objects.create(company=self.company, reference='DEV-202611-0059',
+                             client=client, lead=lead)
+        client_autre = Client.objects.create(company=self.other, nom='Mr')
+        Devis.objects.create(company=self.other, reference='DEV-202611-0059',
+                             client=client_autre, lead=autre)
+
+        def ids_leads(q):
+            resp = self.api.get('/api/django/reporting/search/', {'q': q})
+            self.assertEqual(resp.status_code, 200)
+            group = next((g for g in resp.data['groups']
+                          if g['type'] == 'lead'), {'results': []})
+            return [r['id'] for r in group['results']]
+
+        message = ('Bonjour, je voudrais discuter de ma proposition Taqinor '
+                   '(réf. DEV-202611-0059) avant de signer.')
+        self.assertEqual(ids_leads(message), [lead.pk])
+        self.assertEqual(ids_leads('dev-202611-0059'), [lead.pk])
+        for numero in ('+212 661-826837', '0661826837', '06 61 82 68 37'):
+            self.assertEqual(ids_leads(numero), [lead.pk], numero)
+        # Un fragment de numéro (< 9 chiffres) ne déclenche pas la règle.
+        self.assertEqual(ids_leads('826837 x'), [])
+
     def test_search_finds_bon_commande_by_reference(self):
         from apps.ventes.models import BonCommande
         client = Client.objects.create(company=self.company, nom='CliBC')
