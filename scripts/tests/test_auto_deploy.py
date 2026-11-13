@@ -361,6 +361,19 @@ class AutoDeployTests(unittest.TestCase):
         banc.jouer()
         self.assertIsNone(banc.index("DEPLOYED_SHA"))
 
+    def test_worker_finit_sa_tache_au_redeploiement(self):
+        """ACEL3 — Celery = PID 1 (reçoit le SIGTERM) et délai de grâce > limite dure globale."""
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
+        base = (ROOT / "backend/django_core/erp_agentique/settings/base.py").read_text(encoding="utf-8")
+        limite = int(re.search(r"(?m)^CELERY_TASK_TIME_LIMIT = (\d+)", base).group(1))
+        for service in ("celery_worker", "celery_worker_interactive"):
+            bloc = re.search(rf"(?ms)^  {service}:\n(.*?)(?=^  \S)", compose).group(1)
+            commande = re.search(r"(?ms)^    command: >?\s*(.*?)\n    \w", bloc).group(1)
+            self.assertTrue(commande.startswith("celery ") or 'sh -c "exec celery ' in commande,
+                            f"{service} : {commande}")
+            grace = int(re.search(r"(?m)^    stop_grace_period: (\d+)s", bloc).group(1))
+            self.assertGreater(grace, limite, service)
+
     def test_echec_consigne_dans_redis(self):
         """ADCG12 — un ECHEC pousse {ts, sha, étape fautive} dans erp:deploys_en_echec, borné à 50."""
         banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
