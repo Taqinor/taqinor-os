@@ -711,24 +711,35 @@ CLE_REPORT_FENETRE = '_report_fenetre'
 def resume_scheduled_step(scheduled, *, user=None):
     """NTEXT7 — reprend UNE séquence suspendue (échéance ``run_at`` atteinte).
 
-    Best-effort et IDEMPOTENT : l'échéance passe à ``reprise`` quoi qu'il
-    arrive, une échéance déjà traitée est ignorée. Sans Celery beat déployé,
-    rien n'appelle cette fonction : la séquence reste simplement suspendue
-    (dégradation propre, aucune erreur).
+    IDEMPOTENT : l'échéance est réclamée par une mise à jour conditionnelle
+    (ACEL74), dans la même transaction que ses étapes — deux passages
+    chevauchants n'exécutent l'étape qu'une fois, et une mort pendant l'étape
+    annule la réclamation (l'échéance reste « en attente »). Sans Celery beat
+    déployé, rien n'appelle cette fonction : la séquence reste suspendue.
     """
+    with transaction.atomic():
+        return _resume_scheduled_step(scheduled, user=user)
+
+
+def _resume_scheduled_step(scheduled, *, user=None):
     from django.utils import timezone
 
     from .models import AutomationScheduledStep
 
-    if scheduled.statut != AutomationScheduledStep.Statut.EN_ATTENTE:
+    maintenant = timezone.now()
+    if scheduled.statut != AutomationScheduledStep.Statut.EN_ATTENTE or not (
+            AutomationScheduledStep.objects.filter(
+                pk=scheduled.pk,
+                statut=AutomationScheduledStep.Statut.EN_ATTENTE,
+            ).update(statut=AutomationScheduledStep.Statut.REPRISE,
+                     date_reprise=maintenant)):
         return AutomationRun.Status.SKIPPED, 'Échéance déjà traitée.'
+    scheduled.statut = AutomationScheduledStep.Statut.REPRISE
+    scheduled.date_reprise = maintenant
     rule = scheduled.rule
     company = scheduled.company
     instance = _resolve_target(
         scheduled.target_model, scheduled.target_id, company)
-    scheduled.statut = AutomationScheduledStep.Statut.REPRISE
-    scheduled.date_reprise = timezone.now()
-    scheduled.save(update_fields=['statut', 'date_reprise'])
     if rule is None or not rule.enabled:
         message = 'Règle supprimée ou désactivée : reprise ignorée.'
         _log_run(rule, company, instance,
