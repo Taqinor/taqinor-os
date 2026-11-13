@@ -156,3 +156,29 @@ class TestGenererInterventionsRecurrentes(TestCase):
             actif=False)
         crees = generer_interventions_recurrentes(self.company)
         self.assertEqual(len(crees), 0)
+
+    def test_societe_en_echec_consignee_et_suivantes_generees(self):
+        # ACEL45 — l'échec d'une société est consigné, les autres générées.
+        from unittest import mock
+
+        from apps.installations import services
+        from apps.installations.tasks import generer_interventions_recurrentes_task
+        autre = make_company()
+        inst_b = make_installation(autre)
+        RecurrenceIntervention.objects.create(
+            company=autre, installation=inst_b, type_intervention='controle',
+            regle='mensuelle', prochaine_echeance=date.today())
+        reel = services.generer_interventions_recurrentes
+
+        def generer(company, *args, **kwargs):
+            if company.id == self.company.id:
+                raise RuntimeError('panne société A')
+            return reel(company, *args, **kwargs)
+
+        with mock.patch.object(services, 'generer_interventions_recurrentes', side_effect=generer):
+            with mock.patch('apps.reporting.journal_problemes.consigner_echec_tache') as consigner:
+                self.assertEqual(generer_interventions_recurrentes_task(), 1)
+        consigner.assert_called_once()
+        self.assertEqual(consigner.call_args.args[0],
+                         'installations.generer_interventions_recurrentes')
+        self.assertEqual(Intervention.objects.filter(installation=inst_b).count(), 1)

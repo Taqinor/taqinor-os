@@ -541,6 +541,19 @@ class PurgeEtPresenceTests(Base):
         self.assertEqual(presence['duree_sur_site_min'], 190)
         self.assertEqual(presence['nb_positions'], 0)
 
+    def test_purge_en_echec_consignee(self):
+        # ACEL45 — une purge qui lève est consignée au journal des problèmes.
+        from django.db import DatabaseError
+
+        from apps.installations.tasks import purger_positions_gps_task
+        with mock.patch.object(gps_tracking_service, 'purge_positions_expirees',
+                               side_effect=DatabaseError('verrou')):
+            with mock.patch('apps.reporting.journal_problemes.consigner_echec_tache') as consigner:
+                self.assertEqual(purger_positions_gps_task(), 0)
+        consigner.assert_called_once()
+        self.assertEqual(consigner.call_args.args[0], 'installations.purger_positions_gps')
+        self.assertIsInstance(consigner.call_args.args[1], DatabaseError)
+
     def test_endpoint_presence_forme_du_contrat(self):
         self.poser(DEHORS, 0)
         self.poser(DEDANS, 5)
