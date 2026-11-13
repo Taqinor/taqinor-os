@@ -8,9 +8,8 @@ import {
   Button, IconButton, EmptyState, Textarea,
 } from '../../ui'
 import { cn } from '../../lib/cn'
-import StateBlock from '../../components/StateBlock'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm,
+  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm, ErreurAgent,
 } from './ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
@@ -18,7 +17,7 @@ import {
 } from './store/iaSlice'
 import iaApi from '../../api/iaApi'
 import {
-  displayMessageText, formatAgentError, canSendQuestion, enterSubmits,
+  displayMessageText, canSendQuestion, enterSubmits,
   EVENEMENT_OUVRIR, routeNormalisee, PHRASE_SIGNALEMENT,
 } from './copilotMessages'
 import { instantaneDiagnostic } from '../../lib/tamponDiagnostic'
@@ -238,11 +237,7 @@ export default function CopilotPanel() {
               </div>
             )}
 
-            {agentError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10">
-                <StateBlock error={formatAgentError(agentError)} />
-              </div>
-            )}
+            {agentError && <ErreurAgent error={agentError} />}
           </div>
           <div ref={messagesEndRef} />
         </div>

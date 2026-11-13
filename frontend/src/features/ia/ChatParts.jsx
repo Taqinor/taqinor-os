@@ -4,7 +4,8 @@ import { Code2, ChevronDown, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { Button, Textarea } from '../../ui'
 import { noterEvenement } from './store/iaSlice'
 import CartesDuMessage from './cartes/CartesDuMessage'
-import { COMMENTAIRE_MAX, NOTE_NEGATIVE, NOTE_POSITIVE } from './copilotMessages'
+import StateBlock from '../../components/StateBlock'
+import { COMMENTAIRE_MAX, NOTE_NEGATIVE, NOTE_POSITIVE, formatAgentError } from './copilotMessages'
 
 /* ENF19 — briques de conversation partagées par le tiroir Copilote
    (features/ia/CopilotPanel.jsx) et l'écran Agent IA (pages/ia/AgentChat.jsx),
@@ -26,6 +27,15 @@ function SqlQueryDetails({ sqlQuery }) {
         <code>{sqlQuery}</code>
       </pre>
     </details>
+  )
+}
+
+// Erreur de l'assistant : une phrase française (jamais du JSON brut, EZ16).
+export function ErreurAgent({ error }) {
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/10">
+      <StateBlock error={formatAgentError(error)} />
+    </div>
   )
 }
 

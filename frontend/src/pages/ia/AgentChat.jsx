@@ -14,15 +14,14 @@ import {
   SimpleTooltip,
 } from '../../ui'
 import { cn } from '../../lib/cn'
-import StateBlock from '../../components/StateBlock'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm,
+  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm, ErreurAgent,
 } from '../../features/ia/ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
 } from '../../features/ia/store/iaSlice'
 import {
-  enterSubmits, CONFIG_MISSING_FR, isConfigMissing, formatAgentError, routeNormalisee,
+  enterSubmits, CONFIG_MISSING_FR, isConfigMissing, routeNormalisee,
 } from '../../features/ia/copilotMessages'
 import useVoiceChat from '../../features/ia/voice/useVoiceChat'
 import { prefersReducedMotion } from '../../ui/charts/chart-theme'
@@ -413,12 +412,7 @@ export default function AgentChat() {
               </div>
             )}
 
-            {agentError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10">
-                {/* L11/L17 — patron d'état partagé : jamais de JSON brut. */}
-                <StateBlock error={formatAgentError(agentError)} />
-              </div>
-            )}
+            {agentError && <ErreurAgent error={agentError} />}
 
             <div ref={messagesEndRef} />
           </div>
