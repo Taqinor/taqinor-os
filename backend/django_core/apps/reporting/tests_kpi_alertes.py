@@ -133,6 +133,26 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
         envoi.assert_not_called()
         envoi2.assert_not_called()
 
+    def test_tache_enregistree_sans_controles_django(self):
+        """ACEL38 — un worker démarré avec CELERY_SKIP_CHECKS=1 (aucun import
+        des URLs) connaît quand même ``reporting.evaluate_kpi_alertes``."""
+        import os
+        import subprocess
+        import sys
+        from django.conf import settings
+        code = (
+            'import sys\n'
+            'from erp_agentique.celery import app\n'
+            'app.loader.import_default_modules()\n'
+            "print('reporting.evaluate_kpi_alertes' in app.tasks, "
+            "'erp_agentique.urls' in sys.modules)\n")
+        env = dict(os.environ, CELERY_SKIP_CHECKS='1')
+        sortie = subprocess.run(
+            [sys.executable, '-c', code], cwd=str(settings.BASE_DIR), env=env,
+            capture_output=True, text=True, timeout=300)
+        self.assertEqual(sortie.returncode, 0, sortie.stderr[-2000:])
+        self.assertEqual(sortie.stdout.strip().splitlines()[-1], 'True False')
+
     def test_valeur_stock_totale_real_selector(self):
         Produit.objects.create(
             company=self.company, nom='Panneau', sku='XPLT6-1',
