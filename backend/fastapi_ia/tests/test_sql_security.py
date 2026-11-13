@@ -154,6 +154,34 @@ class TenantIsolationTests(unittest.TestCase):
             self.assertIn("company_id = 7", out)
             self.assertIn("company_id = 7", self._ok(sql))
 
+    def test_lignes_et_parc_bornes_au_proprietaire(self):
+        """ALEC41 (C-ALEC-VER1-101) — Commercial du registre (portee « soi »)
+        refuse sur les lignes de devis/factures, equipements, contrats et
+        interventions ; Directeur : SQL reecrit ; appel sans `permissions`
+        inchange."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        lignes = ["SELECT designation, quantite, prix_unitaire FROM ventes_lignefacture",
+                  "SELECT designation, quantite, prix_unitaire FROM ventes_lignedevis"]
+        parc = [f"SELECT id FROM {t}" for t in (
+            "sav_equipement", "sav_contratmaintenance", "installations_intervention")]
+        for sql in lignes + parc:
+            motif = "(?i)portee" if sql in lignes + parc[:2] else "(?i)portee|module"
+            with self.assertRaisesRegex(svc.SQLSecurityError, motif):
+                svc._validate_and_secure(
+                    sql, self.CID, permissions=list(roles["Commercial"]))
+            out = svc._validate_and_secure(
+                sql, self.CID, permissions=list(roles["Directeur"]))
+            self.assertIn("company_id = 7", out)
+            self.assertIn("company_id = 7", self._ok(sql))
+
     def test_single_table_injects_company_id(self):
         out = self._ok("SELECT nom FROM stock_produit")
         self.assertIn("company_id = 7", out)

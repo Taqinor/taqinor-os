@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAuthenticatedInterne, IsResponsableOrAdmin
 from .gardes_lecture import lecture_source  # ADRG70
+from .services import borner_portee  # ALEC22 — portée du rôle
 from apps.crm import stages as stage_mod
 from core.score_params import NOM_WIN_PROBA, resoudre
 from core.win_probability import (
@@ -272,7 +273,7 @@ def pipeline(request):
 
     # APRF14 — devis préchargés AVEC leurs totaux (requêtes constantes).
     leads = list(leads_avec_devis_totaux(
-        Lead.objects.filter(**co, is_archived=False)))
+        borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads')))  # ALEC22
 
     # ── Valeur par étape + prévision pondérée ────────────────────────────
     par_etape = []
@@ -305,8 +306,8 @@ def pipeline(request):
     # APRF14 — ``devis_avec_totaux`` (lignes__produit) + la société lue par
     # ``is_expired`` : plus aucune requête par devis.
     from apps.ventes.selectors import devis_avec_totaux
-    devis_actifs = devis_avec_totaux(
-        Devis.objects.filter(**co, is_active=True).select_related('company'))
+    devis_actifs = devis_avec_totaux(borner_portee(
+        Devis.objects.filter(**co, is_active=True), request.user, 'devis').select_related('company'))
     for d in devis_actifs:
         statut = 'expire' if is_expired(d) else d.statut
         b = buckets.setdefault(statut, {'count': 0, 'valeur': Decimal('0')})
@@ -374,7 +375,7 @@ def funnel_velocity(request):
 
     # APRF14 — durées par étape en UNE requête LeadActivity (helper partagé
     # avec commercial_dashboard), au lieu d'une requête par lead.
-    leads = list(Lead.objects.filter(**co, is_archived=False))
+    leads = list(borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads'))  # ALEC22
     stage_dwell = durees_par_etape(leads)
     stalled = {key: 0 for key in stage_mod.STAGES}
     for lead in leads:

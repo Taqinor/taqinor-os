@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from .gardes_lecture import lecture_source  # ADRG70
+from .services import borner_portee  # ALEC22 — portée du rôle
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.crm.exports import build_xlsx_response
 from apps.crm import stages as stage_mod
@@ -150,7 +151,7 @@ def sales_report(request):
     from apps.ventes.utils.expiry import is_expired
 
     start, end = _period(request)
-    leads = Lead.objects.filter(**co, is_archived=False)
+    leads = borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads')  # ALEC22
     if start:
         leads = leads.filter(date_creation__date__gte=start)
     if end:
@@ -180,7 +181,7 @@ def sales_report(request):
     #    apparaît pour les devis en attente dont la validité est dépassée. ──
     # AANA19 — seules les versions ACTIVES (une révision remplacée n'est pas
     # un second devis ; même règle que pipeline.devis_par_statut).
-    devis_qs = Devis.objects.filter(**co, is_active=True)
+    devis_qs = borner_portee(Devis.objects.filter(**co, is_active=True), request.user, 'devis')
     if start:
         devis_qs = devis_qs.filter(date_creation__date__gte=start)
     if end:
@@ -237,7 +238,7 @@ def sales_report(request):
             p_start, p_end = _prior_window(start, end)
         else:
             p_start, p_end = _yoy_window(start, end)
-        prev_leads = Lead.objects.filter(**co, is_archived=False)
+        prev_leads = borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads')
         if p_start:
             prev_leads = prev_leads.filter(date_creation__date__gte=p_start)
         if p_end:

@@ -300,7 +300,7 @@ export default function EnvoisProgrammesPage() {
                   <FormField
                     label="Heure d'envoi (0-23, heure de Casablanca)"
                     htmlFor="ep-heure"
-                    hint="Vide : à l'heure de passage du planificateur."
+                    hint="Vide : 6 h ; de 0 à 5 h, part à 6 h."
                     error={erreurs.heure_envoi}
                   >
                     <Input

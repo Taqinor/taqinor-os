@@ -261,7 +261,7 @@ export default function CommercialDashboard() {
                       { key: 'rang', header: '#', cell: (_r, i) => <span className="text-muted-foreground">{i + 1}</span> },
                       { key: 'commercial', header: 'Commercial', cell: (r) => <span className="font-medium">{r.commercial}</span> },
                       { key: 'ca_ht', header: 'CA HT signé', align: 'right', cell: (r) => mad(r.ca_ht) },
-                      { key: 'nb_devis_signes', header: 'Devis signés', align: 'right' },
+                      { key: 'nb_devis_signes', header: 'Devis signés', align: 'right', cell: (r) => r.nb_devis_signes ?? '—' },
                       { key: 'avg_deal_ht', header: 'Deal moyen HT', align: 'right', cell: (r) => mad(r.avg_deal_ht) },
                       { key: 'win_rate_pct', header: 'Taux victoire', align: 'right', cell: (r) => pct(r.win_rate_pct) },
                       {
