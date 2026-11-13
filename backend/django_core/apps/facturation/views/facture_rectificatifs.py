@@ -341,11 +341,10 @@ class FactureRectificatifsActionsMixin:
         # ACNC2 (C-ACNC-001) — rejouable : la clé ``idempotency_key`` du corps
         # (ou l'en-tête ``Idempotency-Key``) rend la note déjà créée, jamais
         # une seconde note numérotée ; corps différent sous la même clé : 409.
-        return self._avec_idempotence(
-            request, lambda: self._creer_note_debit(request),
-            suffixe='note_debit', cle=cle_du_corps(request))
-
-    def _creer_note_debit(self, request):
+        rejeu = rejeu_par_cle(self, request, 'note_debit',
+                              lambda: self.creer_note_debit(request, pk))
+        if rejeu is not None:
+            return rejeu
         facture = self.get_object()
         # CI #1000 — corps validé (types, listes) AVANT toute lecture, comme
         # l'avoir : ``taux_tva: null`` / ``motif: 5`` (500) passaient à la main.

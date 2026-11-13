@@ -2,7 +2,6 @@
  "noms_publics": [
   "_allowed_methods",
   "_avec_idempotence",
-  "_creer_note_debit",
   "_idempotency_endpoint",
   "_idempotency_key",
   "abandonner_solde",
