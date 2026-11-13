@@ -121,6 +121,37 @@ class NudgeOppositionTests(TestCase):
                 link=f'/ventes/devis?devis={d.id}').exists())
             self.assertFalse(ShareLink.objects.get(devis=d).engagement_triggers_fired)
 
+    def test_lead_supprime_ne_recoit_aucune_relance(self):
+        """ASUP58 (C-ASUP-VER2-105) — lead mis à la corbeille : ni
+        DevisNudgeLog, ni notification (relance et moteur d'engagement) ;
+        restauré ⇒ le palier part au passage suivant. Mutant : retirer
+        ``avec_corbeille=True`` de ``_lead_ecarte`` ⇒ échec."""
+        from apps.crm.models import Lead
+        from apps.notifications.models import Notification
+        from apps.ventes.models import Devis, DevisNudgeLog, ShareLink
+        from apps.ventes.scheduled import engagement_followup_engine
+        from apps.ventes.services import send_devis_followup_nudges
+        lead = Lead.objects.create(
+            company=self.company, nom='Supprime', stage=stages.QUOTE_SENT,
+            telephone='+212612340012')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASUP58-S',
+            client=self.devis_normal.client, lead=lead,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+        lead.soft_delete(self.vendeur)
+        self.assertEqual(send_devis_followup_nudges(), 1)  # le témoin seul
+        for d in (self.devis_normal, devis):
+            ShareLink.for_devis(d)
+        engagement_followup_engine()
+        self.assertFalse(DevisNudgeLog.objects.filter(devis=devis).exists())
+        self.assertFalse(Notification.objects.filter(
+            link=f'/ventes/devis?devis={devis.id}').exists())
+        self.assertFalse(ShareLink.objects.get(devis=devis).engagement_triggers_fired)
+        Lead.all_objects.get(pk=lead.pk).restore()
+        self.assertEqual(send_devis_followup_nudges(), 1)
+        self.assertEqual(DevisNudgeLog.objects.filter(devis=devis).count(), 1)
+
     def test_brouillon_client_texte_client_numero_e164(self):
         """AMSG39 (C-AMSG-027) — le brouillon wa.me de la notification vise le
         numéro E.164 du client et porte le gabarit CLIENT `devis_unique` de la

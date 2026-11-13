@@ -615,15 +615,17 @@ def _get_nudge_days():
 
 def _lead_ecarte(devis):
     """CADV8 + ASUP42 (D-ACVI-7) — le lead du devis est « ne plus contacter »
-    (loi 09-08 art. 9, ACRM17), perdu ou archivé : ni notification, ni wa.me,
-    ni DevisNudgeLog ; lead restauré ⇒ le palier part au passage suivant."""
+    (loi 09-08 art. 9, ACRM17), perdu, archivé ou à la corbeille (ASUP58) :
+    ni notification, ni wa.me, ni DevisNudgeLog ; lead restauré ⇒ le palier
+    part au passage suivant."""
     if not getattr(devis, 'lead_id', None):
         return False
     from apps.crm import selectors as crm_sel
-    lead = crm_sel.get_company_lead(devis.company, devis.lead_id)
+    # ASUP58 — un lead mis à la corbeille est écarté aussi (lu avec_corbeille).
+    lead = crm_sel.get_company_lead(devis.company, devis.lead_id, avec_corbeille=True)
     return lead is not None and (
         not crm_sel.peut_contacter(lead) or bool(getattr(lead, 'perdu', False))
-        or bool(getattr(lead, 'is_archived', False)))
+        or bool(getattr(lead, 'is_archived', False)) or bool(getattr(lead, 'is_deleted', False)))
 
 
 def _nudge_suppressed(devis, today, engagement_days=3):

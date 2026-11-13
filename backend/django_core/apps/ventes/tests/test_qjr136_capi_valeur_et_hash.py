@@ -126,6 +126,25 @@ class LeTelephoneEstHacheEnE164(_BaseCapi):
             _fire_capi_signed_quote(devis=self.devis)
         self.assertNotIn('ph', capi.evenement['user_data'])
 
+    def test_lead_oppose_aucune_conversion(self):
+        """AMSG36 (D-AMSG-3 = rien_vers_meta) — devis accepté d'un lead
+        ``ne_plus_contacter`` : 0 appel réseau et une ligne de journal ; le
+        témoin (lead non opposé) part toujours. Mutant : retirer le retour
+        anticipé ⇒ 1 appel, échec."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Opposé AMSG36', ne_plus_contacter=True)
+        Devis.objects.filter(pk=self.devis.pk).update(lead=lead)
+        self.devis.refresh_from_db()
+        with _CapiEnvoye() as capi, self.assertLogs('apps.ventes.services', 'INFO') as journal:
+            _fire_capi_signed_quote(devis=self.devis)
+        self.assertEqual(capi.appels, [])
+        self.assertTrue(any('opposé : conversion non émise' in ligne for ligne in journal.output))
+        Lead.objects.filter(pk=lead.pk).update(ne_plus_contacter=False)
+        self.devis.refresh_from_db()
+        with _CapiEnvoye() as capi:
+            _fire_capi_signed_quote(devis=self.devis)
+        self.assertEqual(len(capi.appels), 1)
+
 
 class LaValeurDeConversionNEstJamaisDevinee(_BaseCapi):
     """ES8 — plus de repli sur le TTC brut."""

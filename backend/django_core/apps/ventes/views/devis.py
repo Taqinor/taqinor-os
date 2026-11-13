@@ -21,6 +21,7 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
@@ -713,8 +714,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
 
         Le pourcentage vit sur ``CompanyProfile.variante_pct`` (défaut 20),
         scopé à la société de l'utilisateur (jamais lu du corps). La LECTURE est
-        ouverte à tous les rôles ; l'ÉCRITURE est réservée au Directeur et au
-        Commercial responsable (403 sinon). Corps PUT : ``variante_pct`` (0–100,
+        ouverte à tous les rôles ; l'ÉCRITURE exige ``parametres_modifier``
+        (ADRG11, 403 sinon). Corps PUT : ``variante_pct`` (0–100,
         exclusif). Le générateur applique alors les échelles [1−p, 1, 1+p]
         (override par requête toujours possible sur ``dupliquer-variante``)."""
         company = request.user.company
@@ -728,18 +729,12 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         if request.method == 'GET':
             return Response({'variante_pct': str(profile.variante_pct)})
 
-        # PUT — réservé Directeur / Commercial responsable.
+        # PUT — ADRG11 (D-ADRG-5) : réglage société, droit ``parametres_modifier``
+        # (jamais un nom de rôle codé en dur).
         user = request.user
-        role_nom = getattr(getattr(user, 'role', None), 'nom', '')
-        autorise = (
-            getattr(user, 'is_superuser', False)
-            or getattr(user, 'is_admin_role', False)
-            or role_nom in ('Directeur', 'Commercial responsable')
-        )
-        if not autorise:
+        if not HasPermissionOrLegacy('parametres_modifier')().has_permission(request, self):
             return Response(
-                {'detail': ('Seuls le Directeur et le Commercial responsable '
-                            'peuvent modifier ce pourcentage.')},
+                {'detail': 'Droit « Modifier les paramètres » requis pour ce pourcentage.'},
                 status=status.HTTP_403_FORBIDDEN)
         from decimal import Decimal, InvalidOperation
         # ENF11 — corps non objet (null, liste, texte) : 400 qui nomme le champ.

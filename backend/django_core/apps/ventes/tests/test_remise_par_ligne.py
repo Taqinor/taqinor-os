@@ -385,14 +385,16 @@ class TestHtmlRemiseParLigne(_DevisRemise, TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         return G.render_html_for(build_quote_data(devis, pdf_options))
 
-    def _cellule(self, html):
+    def _cellule(self, html, catalogue='4 000,00', remise='3 800,00'):
         self.assertIn(self.BARRE, html)
-        # 4 000,00 barré, 3 800,00 en chiffre principal, dans la MÊME cellule.
-        # Le séparateur de milliers du HTML rendu est l'espace fine insécable
-        # de la maison (``FINE``), pas l'espace simple.
+        # ``catalogue`` barré, ``remise`` en chiffre principal, dans la MÊME
+        # cellule. Le séparateur de milliers du HTML rendu est l'espace fine
+        # insécable de la maison (``FINE``) : l'espace simple des montants
+        # attendus la désigne.
         self.assertRegex(html, re.compile(
-            re.escape(self.BARRE) + '4' + self.FINE + r'000,00</span>\s*'
-            r'<span style="white-space:nowrap;">3' + self.FINE + '800,00</span>'))
+            re.escape(self.BARRE) + re.escape(catalogue.replace(' ', self.FINE))
+            + r'</span>\s*<span style="white-space:nowrap;">'
+            + re.escape(remise.replace(' ', self.FINE)) + '</span>'))
         # La chaîne de totaux est intacte : Sous-total CATALOGUE → Remise → net.
         self.assertIn('Sous-total HT', html)
         self.assertIn('Remise (5', html)
@@ -403,10 +405,16 @@ class TestHtmlRemiseParLigne(_DevisRemise, TestCase):
         ``legacy_onepage.page_onepage`` (une page)."""
         premium = self._render(
             self._devis('5', 'DEV-REM-P3', etude_params=DEUX_OPTIONS))
-        self._cellule(premium)
         self.assertIn('Total TTC', premium)
-        self._cellule(self._render(self._devis('5', 'DEV-REM-1P'),
-                                   {'pdf_mode': 'onepage'}))
+        une_page = self._render(self._devis('5', 'DEV-REM-1P'),
+                                {'pdf_mode': 'onepage'})
+        for html in (premium, une_page):
+            self._cellule(html)
+            # ATST58 — ligne panneau (quantité 14) : la cellule P.U. ET la
+            # cellule total, distinctes. Mutant ``_cellule_prix_remise(pu_ht,
+            # pu_ht)`` dans ``equip_rows`` ou ``page_onepage`` ⇒ échec.
+            self._cellule(html, '1 100,00', '1 045,00')
+            self._cellule(html, '15 400,00', '14 630,00')
 
     def test_la_phrase_explique_le_tableau_quand_il_y_a_une_remise(self):
         """UNE phrase, sur les deux formats — et aucun nombre de plus qu'elle."""

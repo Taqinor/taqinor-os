@@ -964,6 +964,9 @@ def generate_avoir_pdf(avoir_id):
 
     context = _company_context(company=avoir.company)
     context['avoir'] = avoir
+    # ASUP57 — l'acheteur FIGÉ de la facture d'origine (repli : client vivant).
+    from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
+    context['acheteur'] = acheteur_de_la_facture(avoir.facture)
     _contexte_langue(context, avoir.client, avoir.company, traduit=True)
 
     html = _render_html('avoir.html', context)
@@ -1000,6 +1003,9 @@ def generate_note_debit_pdf(note_debit_id):
 
     context = _company_context(company=note_debit.company)
     context['note_debit'] = note_debit
+    # ASUP57 — l'acheteur FIGÉ de la facture d'origine (repli : client vivant).
+    from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
+    context['acheteur'] = acheteur_de_la_facture(note_debit.facture)
     _contexte_langue(context, note_debit.client, note_debit.company,
                      traduit=True)
 
