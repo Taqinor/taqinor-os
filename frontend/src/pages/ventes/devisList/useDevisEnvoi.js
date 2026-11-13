@@ -58,10 +58,22 @@ export function useDevisEnvoi({
   // du deep-link QX12 déjà supporté au montage). Distinct du lien PUBLIC de
   // proposition (règle #4 — handleCopierLienProposition, intouché) : celui-ci
   // pointe vers l'ERP, à envoyer à un collègue (« regarde CE devis »).
+  // AERR9 — « copié » seulement si le presse-papier a RÉELLEMENT reçu l'URL ;
+  // sinon l'URL est montrée (sélectionnable) avec ce qui s'est quand même passé.
+  const copierOuMontrer = async (url, succes, echec) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('presse-papier absent')
+      await navigator.clipboard?.writeText(url)
+      toast.success(succes)
+    } catch (err) {
+      console.warn('useDevisEnvoi.copierOuMontrer : presse-papier indispo', err)
+      toast.warning(echec, { description: url, duration: 20000 })
+    }
+  }
+
   const copierLienInterne = async (d) => {
     const url = `${window.location.origin}/ventes/devis?devis=${d.id}`
-    try { await navigator.clipboard?.writeText(url) } catch (err) { console.warn('useDevisEnvoi.copierLienInterne : presse-papier indispo', err) }
-    toast.success('Lien interne du devis copié.')
+    await copierOuMontrer(url, 'Lien interne du devis copié.', 'Copie impossible — copiez le lien ci-dessous.')
   }
 
   const [shareBusyId, setShareBusyId] = useState(null)
@@ -78,8 +90,8 @@ export function useDevisEnvoi({
       const path = res?.data?.path_interne
       if (path) {
         const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
-        try { await navigator.clipboard?.writeText(url) } catch (err) { console.warn('useDevisEnvoi.handleCopierApercuInterne : presse-papier indispo', err) }
-        toast.success('Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).')
+        await copierOuMontrer(url, 'Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).',
+          'Copie impossible — aperçu interne ci-dessous, ne l’envoyez jamais au client.')
       } else {
         toast.error('Aperçu interne indisponible.')
       }
@@ -109,8 +121,8 @@ export function useDevisEnvoi({
       const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
       if (path) {
         const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
-        try { await navigator.clipboard?.writeText(url) } catch (err) { console.warn('useDevisEnvoi.handleCopierLienProposition : presse-papier indispo', err) }
-        toast.success('Lien copié — devis marqué envoyé.')
+        await copierOuMontrer(url, 'Lien copié — devis marqué envoyé.',
+          'Copie impossible — devis marqué envoyé. Copiez le lien ci-dessous.')
       } else {
         toast.error('Lien de proposition indisponible.')
       }

@@ -746,6 +746,33 @@ describe('DevisList — WR2/QJR531 : copier le lien de proposition = envoi (D-QJ
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/proposition/int456'))
     })
   })
+
+  it('AERR9 — writeText rejeté : pas de « Lien copié », l\'URL est affichée', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.reject(new Error('NotAllowedError')))
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
+    const succes = vi.spyOn(toast, 'success')
+    const avertit = vi.spyOn(toast, 'warning')
+    renderList({
+      loading: false,
+      devis: [{
+        id: 40, reference: 'DEV-SHARE', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 7000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-SHARE').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Copier le lien de la proposition/ }))
+    await waitFor(() => { expect(avertit).toHaveBeenCalled() })
+    const [message, opts] = avertit.mock.calls.at(-1)
+    expect(message).toContain('Copie impossible — devis marqué envoyé')
+    expect(opts.description).toContain('/proposition/tok123')
+    expect(succes).not.toHaveBeenCalledWith('Lien copié — devis marqué envoyé.')
+    succes.mockRestore()
+    avertit.mockRestore()
+  })
 })
 
 describe('DevisList — XSAL16 : résumé d\'engagement par section', () => {
