@@ -1,0 +1,119 @@
+# ADCG14 rejoue sur runner GitHub (2026-11-13T21:15:11Z), sha 8c4a0a109f5a0e923fee92ca8862cacb8a9faea4 ; .env = .env.example
+time="2026-11-13T21:15:11Z" level=warning msg="The \"CELERY_CONCURRENCY\" variable is not set. Defaulting to a blank string."
+ redis Pulling 
+ redis_cache Pulling 
+ f55179448640 Waiting 
+ 0e50696bc150 Waiting 
+ 4f4fb700ef54 Waiting 
+ 4a603bc2424c Waiting 
+ 4a603bc2424c Waiting 
+ f55179448640 Waiting 
+ 0e50696bc150 Waiting 
+ 4f4fb700ef54 Waiting 
+ redis Pulled 
+ redis_cache Pulled 
+ Volume "erp-agentique_minio_data"  Creating
+ Volume "erp-agentique_minio_data"  Created
+ Volume "erp-agentique_hf_cache"  Creating
+ Volume "erp-agentique_hf_cache"  Created
+ Volume "erp-agentique_redis_data"  Creating
+ Volume "erp-agentique_redis_data"  Created
+ Container erp-agentique-redis-1  Creating
+ Container erp-agentique-db-1  Running
+ Container erp-agentique-minio-1  Creating
+ Container erp-agentique-redis_cache-1  Creating
+ Container erp-agentique-redis_cache-1  Created
+ Container erp-agentique-redis-1  Created
+ Container erp-agentique-minio-1  Created
+ Container erp-agentique-django_core-1  Creating
+ Container erp-agentique-fastapi_ia-1  Creating
+ Container erp-agentique-fastapi_ia-1  Created
+ Container erp-agentique-django_core-1  Created
+ Container erp-agentique-frontend-1  Creating
+ Container erp-agentique-celery_worker-1  Creating
+ Container erp-agentique-celery_beat-1  Creating
+ Container erp-agentique-celery_worker_interactive-1  Creating
+ Container erp-agentique-celery_worker_interactive-1  Created
+ Container erp-agentique-frontend-1  Created
+ Container erp-agentique-nginx-1  Creating
+ Container erp-agentique-celery_beat-1  Created
+ Container erp-agentique-celery_worker-1  Created
+ Container erp-agentique-nginx-1  Created
+ Container erp-agentique-minio-1  Starting
+ Container erp-agentique-redis_cache-1  Starting
+ Container erp-agentique-redis-1  Starting
+ Container erp-agentique-redis_cache-1  Started
+ Container erp-agentique-redis-1  Started
+ Container erp-agentique-fastapi_ia-1  Starting
+ Container erp-agentique-redis-1  Waiting
+ Container erp-agentique-db-1  Waiting
+ Container erp-agentique-minio-1  Started
+ Container erp-agentique-fastapi_ia-1  Started
+ Container erp-agentique-db-1  Healthy
+ Container erp-agentique-redis-1  Healthy
+ Container erp-agentique-django_core-1  Starting
+ Container erp-agentique-django_core-1  Started
+ Container erp-agentique-celery_beat-1  Starting
+ Container erp-agentique-celery_worker-1  Starting
+ Container erp-agentique-celery_worker_interactive-1  Starting
+ Container erp-agentique-frontend-1  Starting
+ Container erp-agentique-celery_worker_interactive-1  Started
+ Container erp-agentique-celery_worker-1  Started
+ Container erp-agentique-celery_beat-1  Started
+ Container erp-agentique-frontend-1  Started
+ Container erp-agentique-nginx-1  Starting
+ Container erp-agentique-nginx-1  Started
+
+== docker compose ps apres up -d (attente ~15 s ; db=healthy redis=healthy django_core=healthy)
+NAME                                        IMAGE                       COMMAND                  SERVICE                     CREATED          STATUS                    PORTS
+erp-agentique-celery_beat-1                 erp-agentique-django_core   "celery -A erp_agent…"   celery_beat                 18 seconds ago   Up 11 seconds             8000/tcp
+erp-agentique-celery_worker-1               erp-agentique-django_core   "sh -c 'celery -A er…"   celery_worker               18 seconds ago   Up 11 seconds             8000/tcp
+erp-agentique-celery_worker_interactive-1   erp-agentique-django_core   "celery -A erp_agent…"   celery_worker_interactive   18 seconds ago   Up 11 seconds             8000/tcp
+erp-agentique-db-1                          pgvector/pgvector:pg16      "docker-entrypoint.s…"   db                          22 seconds ago   Up 21 seconds (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-django_core-1                 erp-agentique-django_core   "gunicorn erp_agenti…"   django_core                 18 seconds ago   Up 12 seconds (healthy)   8000/tcp
+erp-agentique-fastapi_ia-1                  erp-agentique-fastapi_ia    "uvicorn app.main:ap…"   fastapi_ia                  18 seconds ago   Up 17 seconds             8001/tcp
+erp-agentique-frontend-1                    erp-agentique-frontend      "/docker-entrypoint.…"   frontend                    18 seconds ago   Up 11 seconds             80/tcp
+erp-agentique-minio-1                       erp-agentique-minio         "/usr/bin/docker-ent…"   minio                       18 seconds ago   Up 17 seconds             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-nginx-1                       erp-agentique-nginx         "/docker-entrypoint.…"   nginx                       18 seconds ago   Up 11 seconds             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 127.0.0.1:8090->8090/tcp
+erp-agentique-redis-1                       redis:7.4-alpine            "docker-entrypoint.s…"   redis                       18 seconds ago   Up 17 seconds (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+erp-agentique-redis_cache-1                 redis:7.4-alpine            "docker-entrypoint.s…"   redis_cache                 18 seconds ago   Up 17 seconds             6379/tcp
+time="2026-11-13T21:15:30Z" level=warning msg="The \"CELERY_CONCURRENCY\" variable is not set. Defaulting to a blank string."
+ Container erp-agentique-redis-1  Paused
+
+== docker compose ps, redis en pause depuis 0 s (State.Health.Status redis = unhealthy)
+NAME                                        IMAGE                       COMMAND                  SERVICE                     CREATED          STATUS                    PORTS
+erp-agentique-celery_beat-1                 erp-agentique-django_core   "celery -A erp_agent…"   celery_beat                 18 seconds ago   Up 12 seconds             8000/tcp
+erp-agentique-celery_worker-1               erp-agentique-django_core   "sh -c 'celery -A er…"   celery_worker               18 seconds ago   Up 12 seconds             8000/tcp
+erp-agentique-celery_worker_interactive-1   erp-agentique-django_core   "celery -A erp_agent…"   celery_worker_interactive   18 seconds ago   Up 12 seconds             8000/tcp
+erp-agentique-db-1                          pgvector/pgvector:pg16      "docker-entrypoint.s…"   db                          22 seconds ago   Up 22 seconds (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-django_core-1                 erp-agentique-django_core   "gunicorn erp_agenti…"   django_core                 18 seconds ago   Up 12 seconds (healthy)   8000/tcp
+erp-agentique-fastapi_ia-1                  erp-agentique-fastapi_ia    "uvicorn app.main:ap…"   fastapi_ia                  18 seconds ago   Up 18 seconds             8001/tcp
+erp-agentique-frontend-1                    erp-agentique-frontend      "/docker-entrypoint.…"   frontend                    18 seconds ago   Up 12 seconds             80/tcp
+erp-agentique-minio-1                       erp-agentique-minio         "/usr/bin/docker-ent…"   minio                       18 seconds ago   Up 18 seconds             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-nginx-1                       erp-agentique-nginx         "/docker-entrypoint.…"   nginx                       18 seconds ago   Up 12 seconds             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 127.0.0.1:8090->8090/tcp
+erp-agentique-redis-1                       redis:7.4-alpine            "docker-entrypoint.s…"   redis                       18 seconds ago   Up 18 seconds (Paused)    0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+erp-agentique-redis_cache-1                 redis:7.4-alpine            "docker-entrypoint.s…"   redis_cache                 18 seconds ago   Up 18 seconds             6379/tcp
+nginx : GET http://localhost/ pendant la pause de redis => HTTP 200
+time="2026-11-13T21:15:31Z" level=warning msg="The \"CELERY_CONCURRENCY\" variable is not set. Defaulting to a blank string."
+ Container erp-agentique-redis-1  Unpaused
+
+== INFORMATION (hors verdict) : redis-server gele par SIGSTOP depuis 76 s, conteneur en marche (State.Health.Status = unhealthy)
+NAME                    IMAGE              COMMAND                  SERVICE   CREATED              STATUS                          PORTS
+erp-agentique-redis-1   redis:7.4-alpine   "docker-entrypoint.s…"   redis     About a minute ago   Up About a minute (unhealthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+nginx : GET http://localhost/ pendant ce gel => HTTP 200
+
+== docker compose ps final (redis rendu)
+NAME                                        IMAGE                       COMMAND                  SERVICE                     CREATED              STATUS                        PORTS
+erp-agentique-celery_beat-1                 erp-agentique-django_core   "celery -A erp_agent…"   celery_beat                 About a minute ago   Up About a minute             8000/tcp
+erp-agentique-celery_worker-1               erp-agentique-django_core   "sh -c 'celery -A er…"   celery_worker               About a minute ago   Up About a minute             8000/tcp
+erp-agentique-celery_worker_interactive-1   erp-agentique-django_core   "celery -A erp_agent…"   celery_worker_interactive   About a minute ago   Up About a minute             8000/tcp
+erp-agentique-db-1                          pgvector/pgvector:pg16      "docker-entrypoint.s…"   db                          2 minutes ago        Up About a minute (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-django_core-1                 erp-agentique-django_core   "gunicorn erp_agenti…"   django_core                 About a minute ago   Up About a minute (healthy)   8000/tcp
+erp-agentique-fastapi_ia-1                  erp-agentique-fastapi_ia    "uvicorn app.main:ap…"   fastapi_ia                  About a minute ago   Up About a minute             8001/tcp
+erp-agentique-frontend-1                    erp-agentique-frontend      "/docker-entrypoint.…"   frontend                    About a minute ago   Up About a minute             80/tcp
+erp-agentique-minio-1                       erp-agentique-minio         "/usr/bin/docker-ent…"   minio                       About a minute ago   Up About a minute             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-nginx-1                       erp-agentique-nginx         "/docker-entrypoint.…"   nginx                       About a minute ago   Up About a minute             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 127.0.0.1:8090->8090/tcp
+erp-agentique-redis-1                       redis:7.4-alpine            "docker-entrypoint.s…"   redis                       About a minute ago   Up About a minute (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+erp-agentique-redis_cache-1                 redis:7.4-alpine            "docker-entrypoint.s…"   redis_cache                 About a minute ago   Up About a minute             6379/tcp
+
+VERDICT ADCG14 : FAIL  redis en pause jamais (unhealthy) dans docker compose ps ;

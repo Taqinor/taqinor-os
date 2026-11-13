@@ -1,0 +1,26 @@
+# ADCG105 — workflow_dispatch de load-smoke sur la branche acceptation-adcg-runner
+# run https://github.com/Taqinor/taqinor-os/actions/runs/43507070635 (tête 15a68fbb06 = origin/main ;
+# le sha rejoué 8c4a0a109 n'ajoute que la spec et le workflow temporaire) — conclusion : failure (étape Locust)
+# seed : python manage.py seed_scale --tag CHARGE --companies 1 --users 20 --leads 5000 --devis 500
+#        --lignes 5000 --mouvements 5000 --force-je-sais (succès, 21:04 → 22:20 UTC)
+
+== locust_stats.csv (artefact locust-report), colonnes Type, Name, Request Count, Failure Count, 95%
+POST  auth:login             20    0    830
+POST  crm:clients:create     20    0    150
+GET   crm:leads:list       1669    0    340
+GET   reporting:dashboard   859    0    460
+GET   reporting:search      852    0    560
+POST  ventes:devis:create   553    0    430
+GET   ventes:devis:list     284    0    830
+GET   ventes:proposal       283  283    170
+      Aggregated           4540  283    520
+
+== Error report de Locust (journal du job)
+283  GET ventes:proposal: HTTPError('409 Client Error: Conflict for url: ventes:proposal')
+
+== porte p95 (journal du job)
+p95 agrégé = 520.0 ms (limite 1000.0 ms)
+
+VERDICT ADCG105 : FAIL — 283 échecs sur 4540 requêtes = 6,23 % (> 1 % exigé par la preuve), tous
+GET ventes:proposal en 409 Conflict ; porte p95 verte (520 ms ≤ 1000 ms). Le compte de charge
+lit et crée des leads/devis sans échec (leads:list 1669/0, devis:create 553/0, devis:list 284/0).
