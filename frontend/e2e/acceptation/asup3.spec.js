@@ -475,7 +475,9 @@ sortie(dict(vieilles=[n.pk for n in vieilles], recentes=[n.pk for n in recentes]
     await panneau.getByRole('button', { name: 'Tout marquer lu', exact: true }).first().click()
     await expect.poll(() => p.locator('[data-sonner-toast]').allInnerTexts(), { message: '« tout lu » porte sur les non lues de la liste', timeout: 30_000 })
       .toEqual(expect.arrayContaining([expect.stringContaining(`${nl.length} marqué${nl.length > 1 ? 's' : ''} lu.`)]))
-    await expect(cloche).toHaveAttribute('aria-label', `Notifications (${base})`, { timeout: 30_000 })
+    // Observé (run 3, hors clause) : « Tout marquer lu » vide la liste tout de suite mais la cloche ne redescend qu'au
+    // sondage suivant de `unread-count` (toutes les 30 s, NotificationBell.jsx) — d'où une attente couvrant ce sondage.
+    await expect(cloche).toHaveAttribute('aria-label', `Notifications (${base})`, { timeout: 45_000 })
     const lu = await py(`from apps.notifications.models import Notification
 sortie([Notification.objects.filter(pk__in=${J(ids.vieilles)}, read=False, archived=True).count(), Notification.objects.filter(pk__in=${J(ids.recentes)}, read=True).count()])`)
     expect(lu, 'en base : 12 archivées non lues intouchées, 3 récentes lues').toEqual([12, 3])
