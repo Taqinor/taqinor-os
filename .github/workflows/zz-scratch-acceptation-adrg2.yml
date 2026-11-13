@@ -172,7 +172,7 @@ jobs:
           name: acceptation-adrg2-enregistrement
           path: |
             docs/audits/acceptation/ADRG/
-            docs/qa-explorer/captures/
+            docs/qa-explorer/captures/*/ACCEPTATION-ADRG-*
           retention-days: 7
           if-no-files-found: warn
       - name: Upload rapport Playwright
