@@ -45,7 +45,10 @@ test('save() enregistre via parametresApi.updateTariffSettings, avec toast d’e
 
 test('la section est câblée sur l’onglet « tarification » de Paramètres > Entreprise', () => {
   assert.match(HOST, /import TarificationSection from '\.\/TarificationSection'/)
-  assert.match(HOST, /tab === 'tarification' && <TarificationSection \/>/)
+  // AERR72 — la section visitée reste montée (masquée) hors de son onglet :
+  // affichée sur l'onglet « tarification », jamais montée avant sa visite.
+  assert.match(HOST, /<SectionGardee actif=\{tab === 'tarification'\} vue=\{vues\.tarification\}><TarificationSection \/><\/SectionGardee>/)
+  assert.match(HOST, /return \(actif \|\| vue\) \? <div hidden=\{!actif\}>\{children\}<\/div> : null/)
 })
 
 test('parametresApi expose getTariffSettings/updateTariffSettings', () => {
