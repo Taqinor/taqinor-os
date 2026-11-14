@@ -337,6 +337,13 @@ def traiter_demande(request):
     # « traité » : il reste ouvert (partielle) et se relance par ``traiter``.
     partiel = (request.kind == DataSubjectRequest.KIND_ERASURE and any(
         'erreur' in v for v in request.resultat.values() if isinstance(v, dict)))
+    if request.kind == DataSubjectRequest.KIND_ERASURE and not partiel:
+        # ASUP14 (D-ASUP-4) — l'export stocké des demandes d'accès/rectification
+        # de la personne part ; statut et date de réponse restent (jamais supprimées).
+        DataSubjectRequest.objects.filter(
+            company=company, subject_identifier__iexact=(subject or '').strip(), traitee_le__isnull=False,
+            kind__in=[DataSubjectRequest.KIND_ACCESS, DataSubjectRequest.KIND_RECTIFICATION],
+        ).update(resultat={'export_supprime_le': timezone.now().isoformat(), 'motif': 'effacement'})
     request.statut = (DataSubjectRequest.STATUT_PARTIELLE if partiel
                       else DataSubjectRequest.STATUT_TRAITEE)
     request.traitee_le = None if partiel else timezone.now()

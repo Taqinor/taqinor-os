@@ -30,6 +30,8 @@ vi.mock('../../ui/confirm', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
 
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import TarificationSection from './TarificationSection'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 
@@ -52,6 +54,14 @@ function champsServis() {
 }
 
 const CHAMPS_LOT5 = champsServis()
+
+// ALEC28 — l'écran lit le droit `journal_activite_voir` (historique masqué sans).
+function rendreEcran() {
+  const store = configureStore({
+    reducer: { auth: (s = { role: 'admin', role_nom: null, permissions: [] }) => s },
+  })
+  return render(<Provider store={store}><TarificationSection /></Provider>)
+}
 
 // Société VIERGE : les défauts du modèle (vides ; les deux déclarations
 // d'aujourd'hui — structure « tranches » et prix TTC — sont servies telles
@@ -82,7 +92,7 @@ const champ = (nom) => document.getElementById(`tarif-${nom}`)
 
 async function rendreVierge() {
   getTariffSettings.mockResolvedValue({ data: { ...VIERGE } })
-  render(<TarificationSection />)
+  rendreEcran()
   await waitFor(() => expect(champ('tou_source')).not.toBeNull())
 }
 
@@ -242,7 +252,7 @@ async function rendrePompage(charges = [], regle = {}) {
   getTariffSettings.mockResolvedValue({ data: {
     ...VIERGE, charges_pompage_solaire: charges, regle_fda_pompage: regle,
   } })
-  render(<TarificationSection />)
+  rendreEcran()
   await waitFor(() => expect(screen.getByTestId('tarif-pompage')).toBeInTheDocument())
 }
 
@@ -321,7 +331,7 @@ async function rendreCi(scenarios = [], autorisee = false, avis = '') {
     ...VIERGE, sensibilites_ci: scenarios,
     mention_credit_bail_autorisee: autorisee, mention_credit_bail_source: avis,
   } })
-  render(<TarificationSection />)
+  rendreEcran()
   await waitFor(() => expect(screen.getByTestId('tarif-ci')).toBeInTheDocument())
 }
 
@@ -405,7 +415,7 @@ describe('AERR56 — lecture rejetée : jamais enregistrable', () => {
     getTariffSettings.mockReset()
     updateTariffSettings.mockReset()
     getTariffSettings.mockRejectedValueOnce(new Error('boom'))
-    render(<TarificationSection />)
+    rendreEcran()
     expect(await screen.findByText(/Réglages non chargés/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
     expect(updateTariffSettings).not.toHaveBeenCalled()

@@ -50,6 +50,7 @@ def signature_relances_expiration():
     des demandes échues (une société à la fois, jamais destructif : n'annule
     QUE des demandes déjà `en_attente` avec `expires_at` dépassée)."""
     from authentication.selectors import active_companies
+    from apps.notifications.selectors import fenetre_notifications
 
     from . import services
 
@@ -57,7 +58,14 @@ def signature_relances_expiration():
     total_expirees = 0
     for company in active_companies():  # SCA19 — exclut les tenants suspendus
         try:
-            total_relances += len(services.relancer_signataires_dus(company))
+            # AMSG73 (D-AMSG-1) — relances dans la fenêtre des messages de la
+            # société (jour ouvré) ; hors fenêtre, reprises à son ouverture.
+            fenetre = fenetre_notifications(company)
+            if fenetre.ouverte:
+                total_relances += len(services.relancer_signataires_dus(company))
+            else:
+                relancer_signataires_societe.apply_async(
+                    args=[company.pk], eta=fenetre.prochaine_ouverture)
             total_expirees += services.expirer_demandes_echues(company)
         except Exception:  # pragma: no cover - défensif, une société KO
             # n'interrompt jamais les suivantes.
@@ -68,6 +76,18 @@ def signature_relances_expiration():
         'ged.signature_relances_expiration: %d relance(s), %d expiration(s)',
         total_relances, total_expirees)
     return {'relances': total_relances, 'expirations': total_expirees}
+
+
+@shared_task(name='ged.relancer_signataires_societe', soft_time_limit=540, time_limit=600)
+def relancer_signataires_societe(company_id):
+    """AMSG73 — relances de signataires d'UNE société, reprises à
+    l'ouverture de sa fenêtre des messages (`eta` posé par le balayage)."""
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    company = active_companies().filter(pk=company_id).first()
+    return len(services.relancer_signataires_dus(company)) if company else 0
 
 
 @shared_task(name='ged.verifier_integrite_archives')

@@ -99,6 +99,51 @@ class PermissionsTests(Wir163Base):
         self.assertEqual(entry.company_id, self.co_a.id)
         self.assertEqual(entry.created_by_id, self.admin_a.id)
 
+    def _role_livre(self, nom, username):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        role = Role.objects.create(
+            company=self.co_a, nom=f'{nom} {username}',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
+        return User.objects.create_user(
+            username=username, password='x', company=self.co_a, role=role)
+
+    def test_ged_gerer_sans_gouvernance_refuse_l_ecriture(self):
+        """ADRG80 (D-ADRG-8) — ACL, règles d'ACL et tampons exigent
+        `ged_gouvernance` : le Commercial (ged_gerer seul) est refusé, le
+        Directeur crée ; les lectures restent ouvertes."""
+        from apps.ged.models import RegleAclMetadonnee, TamponSociete
+        from apps.roles.models import Role
+        commercial = self._role_livre('Commercial', 'adrg80-commercial')
+        directeur = self._role_livre('Directeur', 'adrg80-directeur')
+        role_cible = Role.objects.create(company=self.co_a, nom='ADRG80 cible')
+        ged = '/api/django/ged/'
+        corps = {
+            'acls/': {'document': self.doc_a.id,
+                      'utilisateur': self.normal_a.id, 'niveau': 'lecture'},
+            'regles-acl-metadonnee/': {
+                'nom': 'r', 'role': role_cible.pk, 'niveau': 'lecture',
+                'condition_group': {'op': 'and', 'conditions': [
+                    {'field': 'type', 'operator': 'eq', 'value': 'x'}]}},
+            'tampons-societe/': {'libelle': 'ADRG80'},
+        }
+        for route, body in corps.items():
+            with self.subTest(route=route):
+                self.assertEqual(auth(commercial).post(
+                    f'{ged}{route}', body, format='json').status_code, 403)
+                self.assertEqual(auth(commercial).get(
+                    f'{ged}{route}').status_code, 200)
+        self.assertFalse(AclGed.objects.filter(company=self.co_a).exists())
+        self.assertFalse(
+            RegleAclMetadonnee.objects.filter(company=self.co_a).exists())
+        self.assertFalse(
+            TamponSociete.objects.filter(company=self.co_a).exists())
+        for route, body in corps.items():
+            with self.subTest(directeur=route):
+                resp = auth(directeur).post(
+                    f'{ged}{route}', body, format='json')
+                self.assertEqual(resp.status_code, 201, resp.content)
+
 
 class ValidationTests(Wir163Base):
     def test_ni_dossier_ni_document_refuse(self):

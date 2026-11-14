@@ -173,22 +173,45 @@ class PorteeSortiesTests(TestCase):
         ligne = LigneFacture.objects.create(
             facture=brouillon, produit=produit, designation='Ligne de B',
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
-        api = self._api(self.a)
-        for base in ('/api/django/ventes/factures-lignes/',
-                     '/api/django/facturation/factures-lignes/'):
-            with self.subTest(base=base):
-                r = api.get(base)
-                self.assertEqual(r.status_code, 200, r.data)
-                lignes = (r.data['results'] if isinstance(r.data, dict)
-                          else r.data)
-                self.assertNotIn(ligne.pk, [x['id'] for x in lignes])
-                self.assertEqual(api.get(f'{base}{ligne.pk}/').status_code,
-                                 404)
-        r = api.patch(f'/api/django/ventes/factures-lignes/{ligne.pk}/',
-                      {'designation': 'Pirate'}, format='json')
-        self.assertEqual(r.status_code, 404)
-        ligne.refresh_from_db()
-        self.assertEqual(ligne.designation, 'Ligne de B')
+        # ALEC44 (C-ALEC-VER1-103) — même preuve avec deux comptes au
+        # Commercial LIVRÉ (codes de ``CANONICAL_SYSTEM_ROLES``, portée
+        # « soi », sans superviseur commun) ; B2 liste sa ligne.
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        livre = Role.objects.create(
+            company=self.company, nom='Commercial livré ALEC44',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Commercial']))
+        a2, b2 = (User.objects.create_user(
+            username=f'alec44_{n}', password='x', role=livre,
+            role_legacy='normal', company=self.company) for n in ('a2', 'b2'))
+        ligne2 = LigneFacture.objects.create(
+            facture=Facture.objects.create(
+                company=self.company, reference='BROUILLON-ALEC44',
+                client=self.client_b, statut=Facture.Statut.BROUILLON,
+                taux_tva=Decimal('20'), created_by=b2),
+            produit=produit, designation='Ligne de B2',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+
+        def ids(user, base):
+            r = self._api(user).get(base)
+            self.assertEqual(r.status_code, 200, r.data)
+            return [x['id'] for x in (r.data['results'] if isinstance(r.data, dict) else r.data)]
+        for lecteur, proprio, cible, nom in ((self.a, self.b, ligne, 'Ligne de B'),
+                                             (a2, b2, ligne2, 'Ligne de B2')):
+            api = self._api(lecteur)
+            for base in ('/api/django/ventes/factures-lignes/',
+                         '/api/django/facturation/factures-lignes/'):
+                with self.subTest(base=base, lecteur=lecteur.username):
+                    self.assertNotIn(cible.pk, ids(lecteur, base))
+                    self.assertEqual(api.get(f'{base}{cible.pk}/').status_code,
+                                     404)
+                    if proprio is b2:
+                        self.assertIn(cible.pk, ids(proprio, base))
+            r = api.patch(f'/api/django/ventes/factures-lignes/{cible.pk}/',
+                          {'designation': 'Pirate'}, format='json')
+            self.assertEqual(r.status_code, 404)
+            cible.refresh_from_db()
+            self.assertEqual(cible.designation, nom)
         r = self._api(self.admin).get(
             f'/api/django/ventes/factures-lignes/{ligne.pk}/')
         self.assertEqual(r.status_code, 200, r.data)

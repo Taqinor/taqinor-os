@@ -105,3 +105,63 @@ class TestMemeTauxDeuxEcrans(TestCase):
             self.assertAlmostEqual(float(ligne['ca_ht']), 3000.0, places=2)
             self.assertEqual(ligne['nb_devis_signes'], 2)
         self.assertEqual(lignes[0]['ca_ht'], lignes[1]['ca_ht'])
+
+    def test_commercial_soi_voit_ses_chiffres(self):
+        """ALEC22 (D-ALEC-2 = portee_du_role) — un Commercial (portée « soi »)
+        ne lit que ses montants : le collègue B reste nommé au classement, ses
+        montants à null, son client absent des créances et son archive 404 ;
+        le Directeur lit les valeurs de B."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+        from apps.ventes.models import Facture, LigneFacture
+
+        def compte(nom, role_nom, perms):
+            role, _ = Role.objects.get_or_create(
+                company=self.company, nom=role_nom, defaults={'permissions': list(perms)})
+            return User.objects.create_user(
+                username=nom, password='x', company=self.company, role=role)
+        a = compte('alec22_a', 'Commercial', COMMERCIAL_PERMISSIONS)
+        b = compte('alec22_b', 'Commercial', COMMERCIAL_PERMISSIONS)
+        directeur = compte('alec22_dir', 'Directeur', DIRECTEUR_PERMISSIONS)
+        cli_b = Client.objects.create(company=self.company, nom='Client de B',
+                                      email='alec22-b@example.com')
+        produit = Produit.objects.get(company=self.company, sku='AANA22-P')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ALEC22', client=cli_b,
+            statut=Devis.Statut.ACCEPTE, date_acceptation=self.to, created_by=b)
+        LigneDevis.objects.create(devis=devis, produit=produit, designation='Kit',
+                                  quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-ALEC22', client=cli_b,
+            statut=Facture.Statut.EMISE, created_by=b)
+        LigneFacture.objects.create(facture=facture, produit=produit, designation='Kit',
+                                    quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+
+        def lire(user):
+            self.api.force_authenticate(user)
+            dash = self.api.get(f'{BASE}/dashboard/')
+            comm = self.api.get(f'{BASE}/commercial/dashboard/')
+            clas = self.api.get(f'{BASE}/insights/sales-leaderboard/')
+            arch = self.api.get(f'{BASE}/archive/client/{cli_b.pk}/')
+            for r in (dash, comm, clas):
+                self.assertEqual(r.status_code, 200, r.content)
+            ligne = [next(r for r in rows if r['commercial'] == 'alec22_b')
+                     for rows in (comm.data['leaderboard'], clas.data['rows'])]
+            return dash.data, ligne, arch.status_code
+
+        dash, lignes_b, arch = lire(a)
+        self.assertEqual(dash['kpis']['ca_attente'], 0.0)
+        self.assertNotIn('Client de B', [c['client'].strip() for c in dash['creances']])
+        for ligne in lignes_b:
+            self.assertEqual([ligne[c] for c in ('ca_ht', 'nb_devis_signes', 'avg_deal_ht', 'kwc')],
+                             [None] * 4)
+        self.assertEqual(arch, 404)
+
+        dash, lignes_b, arch = lire(directeur)
+        self.assertIn('Client de B', [c['client'].strip() for c in dash['creances']])
+        self.assertGreater(dash['kpis']['ca_attente'], 0)
+        for ligne in lignes_b:
+            self.assertAlmostEqual(float(ligne['ca_ht']), 1000.0, places=2)
+            self.assertEqual(ligne['nb_devis_signes'], 1)
+        self.assertEqual(arch, 200)

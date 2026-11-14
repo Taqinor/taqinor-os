@@ -12,6 +12,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.parametres.models import CompanyProfile, SettingsAuditLog
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from authentication.models import Company
 
 User = get_user_model()
@@ -51,3 +53,30 @@ class VarianteConfigJournalTests(TestCase):
         resp = self.api.put(URL, {'variante_pct': '150'}, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertFalse(self._journal().exists())
+
+    def test_code_parametres_et_non_nom_de_role(self):
+        """ADRG11 (D-ADRG-5) — le PUT suit ``parametres_modifier``, jamais un
+        nom de rôle : un rôle personnalisé qui porte le code écrit ; le
+        Commercial responsable livré (sans le code) reçoit 403, rien d'écrit.
+        Mutant : rétablir le test ``role_nom in (…)`` ⇒ échec."""
+        gestion = Role.objects.create(
+            company=self.company, nom='Gestion paramètres',
+            permissions=['parametres_modifier', 'ventes_voir'])
+        resp_role = Role.objects.create(
+            company=self.company, nom='Commercial responsable',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Commercial responsable']))
+        parametreur = User.objects.create_user(
+            username='adrg11_param', password='x', company=self.company,
+            role=gestion, role_legacy='normal')
+        commercial_resp = User.objects.create_user(
+            username='adrg11_comresp', password='x', company=self.company,
+            role=resp_role, role_legacy='responsable')
+        api = APIClient()
+        api.force_authenticate(commercial_resp)
+        self.assertEqual(
+            api.put(URL, {'variante_pct': '30'}, format='json').status_code, 403)
+        api.force_authenticate(parametreur)
+        resp = api.put(URL, {'variante_pct': '15'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # CLAUSE PERSISTANCE — relu par GET : seule la valeur autorisée.
+        self.assertEqual(Decimal(api.get(URL).data['variante_pct']), Decimal('15'))

@@ -573,6 +573,7 @@ class DevisEnvoiActionsMixin:
         )
 
         devis = self.get_object()
+        _exiger_version_en_jeu(devis, ENVOYER)  # AMSG85 — V1, refusé, expiré : 409
         valider_corps(request, D.WhatsappRequest)
         # QJR539 — garde T17 : l'aperçu précède un envoi, il est refusé
         # d'emblée (sans écrire l'approbation implicite d'un admin).

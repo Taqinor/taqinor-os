@@ -126,6 +126,49 @@ class TestDashboardBasic(TestCase):
                             str(r.data['detail']), 'Accès aux factures '
                             'réservé aux rôles du module Ventes.')
 
+    def test_commercial_soi_ne_lit_que_ses_chiffres(self):
+        """ALEC23 (D-ALEC-2 = portee_du_role) — sans ``?mine=1``, un Commercial
+        livré (portée « soi ») ne lit que ses totaux ; le collègue reste nommé
+        dans ``par_commercial`` sans ``devis_actifs`` ni ``valeur_pipeline`` ;
+        le Directeur lit tout. Mutant : forcer ``visibles = None`` ⇒ échec."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.co)}
+        a, b, directeur = (
+            User.objects.create_user(
+                username=f'alec23-{nom}', password='x', role_legacy='normal',
+                role=roles[role], company=self.co, first_name=prenom, last_name='Test')
+            for nom, role, prenom in (('a', 'Commercial', 'Amine'), ('b', 'Commercial', 'Basma'),
+                                      ('dir', 'Directeur', 'Dina')))
+        devis_b = _devis(self.co, b, self.cli, statut='envoye', ref='D-ALEC23-B')
+        _ligne_devis(devis_b, prix=Decimal('12000'))
+        facture_b = _facture(self.co, self.cli, statut='emise', ttc=Decimal('9600'))
+        Facture.objects.filter(pk=facture_b.pk).update(
+            created_by=b, date_emission=timezone.now().date())
+        _paiement(self.co, facture_b, montant=Decimal('1000'))
+
+        vue_a = _auth(a).get(URL).data
+        self.assertEqual(vue_a['devis']['total'], 0)
+        self.assertEqual(vue_a['devis']['envoyes'], 0)
+        self.assertEqual(Decimal(vue_a['devis']['valeur_pipeline']), 0)
+        self.assertEqual(vue_a['factures']['total'], 0)
+        self.assertEqual(Decimal(vue_a['factures']['montant_facture']), 0)
+        self.assertEqual(Decimal(vue_a['factures']['montant_encaisse']), 0)
+        ligne_b = next(ligne for ligne in vue_a['par_commercial']
+                       if ligne['commercial'] == 'Basma Test')
+        self.assertIsNone(ligne_b['devis_actifs'])
+        self.assertIsNone(ligne_b['valeur_pipeline'])
+
+        vue_dir = _auth(directeur).get(URL).data
+        self.assertEqual(vue_dir['devis']['total'], 1)
+        self.assertEqual(vue_dir['factures']['total'], 1)
+        self.assertEqual(Decimal(vue_dir['factures']['montant_encaisse']), Decimal('1000'))
+        ligne_b = next(ligne for ligne in vue_dir['par_commercial']
+                       if ligne['commercial'] == 'Basma Test')
+        self.assertEqual(ligne_b['devis_actifs'], 1)
+        self.assertGreater(Decimal(ligne_b['valeur_pipeline']), 0)
+
     def test_periode_mal_formee_400(self):
         # ENF11 — start/end/month illisibles : 400 (ils finissaient en 500
         # dans ``date_creation__date__range``).

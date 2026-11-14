@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderLeadWorkspace, echecReseauAutosaveVille } from '../../../test/leadWorkspaceHarness'
 import { LEAD_A, dupMatches, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
 import LeadWorkspace from './LeadWorkspace'
 import SectionContact from './sections/SectionContact'
+import StageControl from './StageControl'
+import TimelineTab from './TimelineTab'
+import { Provider } from 'react-redux'
+import { makeStore } from '../../../test/leadWorkspaceHarness'
 import { initState } from './draftCore'
 
 /* LW37 — sémantiques MIGRÉES des anciennes suites LeadForm.test.jsx +
@@ -78,6 +82,46 @@ describe('LW37 — fenêtre : édition autosauvée (migré de LeadForm.test / VX
   it('en création, le champ Nom (#lf-nom) porte l’auto-focus (SectionContact)', () => {
     render(<SectionContact state={initState({ mode: 'create' })} setField={vi.fn()} errors={{}} mode="create" refData={{}} />)
     expect(document.activeElement?.id).toBe('lf-nom')
+  })
+})
+
+/* ADRG121 (C-ADRG-VER2-012) — la fiche est en lecture seule pour un rôle sans
+   `crm_modifier` (Viewer : que des `*_voir`) ; le Commercial garde tout. */
+describe('ADRG121 — fiche lead en lecture seule sans crm_modifier', () => {
+  const VIEWER = { permissions: ['crm_voir', 'ventes_voir'] }
+  const COMMERCIAL = { permissions: ['crm_voir', 'crm_modifier', 'ventes_creer'] }
+  const stateEdit = () => initState({ lead: { ...LEAD_A, stage: 'CONTACTED', stage_since_days: 3 }, mode: 'edit' })
+  const composerVide = { note: '', file: null }
+  const rendreGestes = (auth) => {
+    crmApi.getLeadJalonsDevis ??= vi.fn(() => Promise.resolve({ data: { results: [] } }))
+    return render(
+    <Provider store={makeStore(42, auth)}>
+      <StageControl state={stateEdit()} onChangeStage={vi.fn()} onSigne={vi.fn()} disabled={!auth.permissions.includes('crm_modifier')} />
+      <TimelineTab state={stateEdit()} historique={[]} refreshHistorique={vi.fn()}
+        composer={composerVide} setComposer={vi.fn()} resetComposer={vi.fn()} />
+    </Provider>,
+    )
+  }
+
+  it('Viewer : fiche en lecture seule (étape et champs inertes, ni note ni Créer le chantier)', async () => {
+    renderLeadWorkspace({ lead: LEAD_A }, 42, VIEWER)
+    await settled()
+    expect(document.querySelector('#lf-ville')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Créer le chantier/ })).toBeNull()
+    cleanup()
+    const { container } = rendreGestes(VIEWER)
+    expect(container.querySelector('.lw-stagepill')).toBeDisabled()
+    expect(screen.queryByPlaceholderText(/Écrire une note/)).toBeNull()
+  })
+
+  it('Commercial : étape, champs et composeur de note présents et actifs', async () => {
+    renderLeadWorkspace({ lead: LEAD_A }, 42, COMMERCIAL)
+    await settled()
+    expect(document.querySelector('#lf-ville')).not.toBeDisabled()
+    cleanup()
+    const { container } = rendreGestes(COMMERCIAL)
+    expect(container.querySelector('.lw-stagepill')).not.toBeDisabled()
+    expect(screen.getByPlaceholderText(/Écrire une note/)).toBeInTheDocument()
   })
 })
 

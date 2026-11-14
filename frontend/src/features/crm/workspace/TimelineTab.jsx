@@ -13,6 +13,7 @@ import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
 import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
+import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, sinon palier
 
 // LW20 — Onglet Historique : le chatter devient le fil unique — en-tête
 // multi-touch (points-contact/), filtre par type persisté, notes épinglées en
@@ -49,6 +50,7 @@ export default function TimelineTab({
   state, historique, refreshHistorique, composer, setComposer, resetComposer,
 }) {
   const leadId = state.leadId
+  const peutNoter = useDroitMetier('crm_modifier') // ADRG121 — POST noter exige IsResponsableOrAdmin
 
   // LW30 — `chatter_recent` (embarqué sur le GET du lead) alimente le PREMIER
   // rendu sans attendre le round-trip `/historique/` ; dès que `historique`
@@ -268,6 +270,7 @@ export default function TimelineTab({
         ))}
       </div>
 
+      {peutNoter && (
       <div className="chatter-note-box">
         {/* ORDRE FONDATEUR 2026-08-01 — « la zone de NOTE est trop petite ».
             C'était une <input> d'UNE ligne de 36 px : on y écrit le compte
@@ -337,7 +340,8 @@ export default function TimelineTab({
         />
         </div>
       </div>
-      {composer.file && (
+      )}
+      {peutNoter && composer.file && (
         <p className="chatter-note-file-preview" data-testid="chatter-note-file-preview">
           <Paperclip size={12} aria-hidden="true" /> {composer.file.name}
           <button

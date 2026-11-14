@@ -459,16 +459,17 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                 'recherche', 'semantique', 'historique', 'demandes',
                 'corbeille', 'comparer', 'timeline', 'docqa'):
             return [LectureDuModule()]
-        # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
-        if self.action in ('check_out', 'check_in'):
+        # ADRG75 — check_in (libérer son extraction) reste ouvert ; check_out
+        # tombe sur GED_GERER en fin de méthode (D-ADRG-7).
+        if self.action == 'check_in':
             return [LectureDuModule()]
         # ZGED7 — favoriser/défavoriser est personnel, ouvert à tout rôle.
         if self.action == 'favori':
             return [LectureDuModule()]
-        # ZGED9 — verrouiller/déverrouiller (avertissement léger) : tout rôle
-        # peut poser/lever SON PROPRE verrou ; la garde gestionnaire pour le
-        # forçage est appliquée dans `services.deverrouiller_avertissement`.
-        if self.action in ('verrouiller', 'deverrouiller'):
+        # ZGED9/ADRG75 — lever SON PROPRE verrou reste ouvert (forçage gardé
+        # dans `services.deverrouiller_avertissement`) ; poser un verrou exige
+        # GED_GERER (D-ADRG-7), rendu en fin de méthode.
+        if self.action == 'deverrouiller':
             return [LectureDuModule()]
         # XGED14 — le téléchargement ZIP est une lecture (lisible par tout rôle) ;
         # les autres opérations de lot restent réservées aux responsables/admins.
@@ -3203,7 +3204,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'pdf_signe':
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # ALEC42 — droit du module GED
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3475,7 +3476,7 @@ class SignataireDemandeViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMix
     parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'id']
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]  # ALEC42 — droit du module GED
 
     def get_queryset(self):
         qs = SignataireDemande.objects.filter(
@@ -4059,7 +4060,7 @@ class TamponSocieteViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]  # ADRG80 (D-ADRG-8)
 
     def get_queryset(self):
         return super().get_queryset().filter(company=self.request.user.company)
@@ -4167,7 +4168,7 @@ class AclGedViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]  # ADRG80 (D-ADRG-8)
 
     def get_queryset(self):
         # ADOC37 — les droits posés sur un document invisible de l'appelant
@@ -4247,7 +4248,7 @@ class RegleAclMetadonneeViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]  # ADRG80 (D-ADRG-8)
 
     def get_queryset(self):
         return selectors.regles_acl_metadonnee_for_company(

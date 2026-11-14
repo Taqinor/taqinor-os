@@ -64,7 +64,8 @@
         "statut": "en_attente",
         "statut_display": "En attente",
         "date_creation": "2026-10-01T09:00:00+00:00",
-        "date_acceptation": null
+        "date_acceptation": null,
+        "email_envoye": true
       },
       "400": {
         "email": "Ce champ est obligatoire."

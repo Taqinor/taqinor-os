@@ -12,6 +12,7 @@ import {
   Card, CardContent, Button, Spinner, Progress,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import {
   isCompanyProfileComplete, lireComptesOnboarding, replayCoachmarks,
 } from '../../features/onboarding/onboardingHelpers'
@@ -89,6 +90,7 @@ export function VisitesGuideesBlock() {
 export default function OnboardingSection() {
   // Le profil entreprise est déjà chargé dans le store par la page Paramètres.
   const profile = useSelector(s => s.parametres.profile)
+  const peutLireStock = useDroitMetier('stock_voir') // ADRG110
   const [produitCount, setProduitCount] = useState(null)
   const [userCount, setUserCount] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -97,13 +99,13 @@ export default function OnboardingSection() {
     let alive = true
     // En cas d'échec d'une lecture, on laisse null → l'étape reste « à faire »
     // sans jamais casser la page.
-    lireComptesOnboarding(true).then((comptes) => {
+    lireComptesOnboarding(true, peutLireStock).then((comptes) => {
       if (!alive) return
       setProduitCount(comptes.produitCount)
       setUserCount(comptes.userCount)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [])
+  }, [peutLireStock])
 
   const steps = [
     {

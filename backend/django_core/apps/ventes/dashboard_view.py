@@ -102,17 +102,33 @@ def _ttc_affiche(devis):
 
 
 def _cle_commercial(devis):
-    """(username, prénom, nom) du créateur — la clé de regroupement.
+    """(id, username, prénom, nom) du créateur — la clé de regroupement.
 
     Reprend MOT POUR MOT le repli de la version groupée qu'elle remplace : un
-    devis sans créateur se regroupe sous « ? ».
+    devis sans créateur se regroupe sous « ? ». ALEC23 — l'id sert à nuller
+    les lignes hors de la portée du demandeur.
     """
     auteur = devis.created_by
     if auteur is None:
-        return ('?', '', '')
-    return (auteur.username or '?',
+        return (None, '?', '', '')
+    return (auteur.pk, auteur.username or '?',
             (auteur.first_name or '').strip(),
             (auteur.last_name or '').strip())
+
+
+def _portee_devis(user, company):
+    """ALEC23 (D-ALEC-2 = portee_du_role) — (devis visibles, ids visibles) par
+    la règle survivante de ``DevisViewSet.get_queryset`` : auteur dans la
+    portée OU lead dont ``user`` est le responsable. ``None`` = portée « all »."""
+    from core.scoping import visible_user_ids
+    from .models import Devis
+    devis = Devis.objects.filter(company=company)
+    visibles = visible_user_ids(user)
+    if visibles is not None:
+        from apps.crm.selectors import lead_ids_du_responsable
+        devis = devis.filter(Q(created_by__in=visibles)
+                             | Q(lead_id__in=lead_ids_du_responsable(user)))
+    return devis, visibles
 
 
 @extend_schema(
@@ -180,10 +196,12 @@ def dashboard_quote_to_cash(request):
         return Response(invalide, status=400)
     company = request.user.company
     periode = _period_filter(request)
+    # ALEC23 — totaux bornés à la portée du rôle (``None`` = toute la société).
+    devis_base, visibles = _portee_devis(request.user, company)
 
     # ── Devis ────────────────────────────────────────────────────────────────
     # ADEV9 — une installation révisée compte UNE fois (version courante).
-    devis_qs = devis_en_jeu(Devis.objects.filter(company=company)).filter(periode)
+    devis_qs = devis_en_jeu(devis_base).filter(periode)
     agg_devis = devis_qs.aggregate(
         total=Count('id'),
         envoyes=Count('id', filter=Q(statut='envoye')),
@@ -236,9 +254,11 @@ def dashboard_quote_to_cash(request):
     )
     valeur_pipeline = Decimal('0')
     pipeline_par_commercial = {}
+    vus = None if visibles is None else set(
+        devis_base.filter(statut='envoye').values_list('pk', flat=True))
     for devis_ouvert in devis_pipeline:
         ttc = _ttc_affiche(devis_ouvert)
-        valeur_pipeline += ttc
+        valeur_pipeline += ttc if vus is None or devis_ouvert.pk in vus else 0
         cle = _cle_commercial(devis_ouvert)
         ligne_comm = pipeline_par_commercial.setdefault(
             cle, {'devis_actifs': 0, 'valeur': Decimal('0')})
@@ -248,6 +268,8 @@ def dashboard_quote_to_cash(request):
     # ── Factures ─────────────────────────────────────────────────────────────
     # On filtre sur date_emission et date_creation (les deux peuvent exister).
     factures_qs = Facture.objects.filter(company=company)
+    if visibles is not None:  # ALEC23 — factures du créateur dans la portée
+        factures_qs = factures_qs.filter(created_by__in=visibles)
     agg_fac = factures_qs.aggregate(
         total=Count('id'),
         emises=Count('id', filter=Q(statut='emise')),
@@ -260,7 +282,7 @@ def dashboard_quote_to_cash(request):
     # période (sélecteur unique, parité avec l'écran Factures).
     from .selectors_facturation import kpis_q2c_periode
     debut_p, fin_p = _period_bounds(request)
-    kpi_fac = kpis_q2c_periode(company, debut_p, fin_p)
+    kpi_fac = kpis_q2c_periode(company, debut_p, fin_p, createurs=visibles)
     montant_facture = kpi_fac['facture']
     montant_encaisse = kpi_fac['encaisse']
 
@@ -269,7 +291,7 @@ def dashboard_quote_to_cash(request):
     n_acceptes = agg_devis['acceptes']
     # Devis acceptés avec au moins une facture.
     devis_avec_facture = (
-        devis_en_jeu(Devis.objects.filter(company=company, statut='accepte'))
+        devis_en_jeu(devis_base.filter(statut='accepte'))
         .filter(factures__isnull=False)
         .distinct().count()
     )
@@ -303,7 +325,7 @@ def dashboard_quote_to_cash(request):
     # Calcul approximatif côté Python (pas de DeltaField SQL).
     cycle_list = []
     accepted_with_pmt = (
-        devis_en_jeu(Devis.objects.filter(company=company, statut='accepte'))
+        devis_en_jeu(devis_base.filter(statut='accepte'))
         .prefetch_related('factures__paiements')
         .select_related('created_by')
     )[:200]  # cap pour éviter un scan complet
@@ -333,13 +355,14 @@ def dashboard_quote_to_cash(request):
     # `Devis.objects.filter(company=..., statut='envoye')` SANS période, si
     # bien que le sélecteur de période bougeait les compteurs mais pas les
     # montants.
+    # ALEC23 — un collègue hors portée reste nommé, sans ses montants.
     par_commercial = []
-    for (uname, fname, lname), agg in pipeline_par_commercial.items():
-        display = f'{fname} {lname}'.strip() or uname
+    for (uid, uname, fname, lname), agg in pipeline_par_commercial.items():
+        hors = visibles is not None and uid not in visibles
         par_commercial.append({
-            'commercial': display,
-            'devis_actifs': agg['devis_actifs'],
-            'valeur_pipeline': str(round(float(agg['valeur']), 2)),
+            'commercial': f'{fname} {lname}'.strip() or uname,
+            'devis_actifs': None if hors else agg['devis_actifs'],
+            'valeur_pipeline': None if hors else str(round(float(agg['valeur']), 2)),
         })
     par_commercial.sort(key=lambda ligne: ligne['commercial'])
 

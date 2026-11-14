@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 import { useIsAdmin, useCanListAssignableUsers } from '../../hooks/useHasPermission'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import { isDirty } from '../../ui/form-utils'
 import {
@@ -147,6 +148,7 @@ export default function ParametresEntreprise() {
   // de voir/modifier les champs sensibles.
   const canManageSensitive = useIsAdmin()
   const canListAssignables = useCanListAssignableUsers()
+  const peutLireChantiers = useDroitMetier('installation_voir') // ADRG111 — LectureDuModule installations
   // APAR38 — droit d'écrire les réglages : palier admin/responsable + permission
   // `parametres_modifier` (calcul dans useCanModifierParametres).
   const canModifier = useCanModifierParametres()
@@ -260,7 +262,7 @@ export default function ParametresEntreprise() {
   const [newMarque, setNewMarque] = useState('')
   // L777 — états de chargement par liste de référentiel (spinner pendant fetch).
   const [refLoading, setRefLoading] = useState({
-    tags: true, motifs: true, canaux: true, typesItv: true,
+    tags: true, motifs: true, canaux: true, typesItv: peutLireChantiers,
   })
   const setRefDone = (key) =>
     setRefLoading(p => (p[key] ? { ...p, [key]: false } : p))
@@ -385,8 +387,7 @@ export default function ParametresEntreprise() {
     loadMotifs()
     loadMessages()
     loadCanaux()
-    loadTypesItv()
-    loadChecklistEtapes()
+    if (peutLireChantiers) { loadTypesItv(); loadChecklistEtapes() }
     loadMarques()
     loadCfDefs('lead')
     loadNumberingPreview()

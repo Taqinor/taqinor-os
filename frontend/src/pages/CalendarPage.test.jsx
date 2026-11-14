@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import authReducer from '../features/auth/store/authSlice'
 
 /* ATST11 (C-ATST-028) — « Régénérer le lien » iCal JOUÉ sur l'écran rendu
    (plus une regex sur le source) : rougit sur `if (!ok) return` →
@@ -26,16 +29,28 @@ import { ConfirmProvider } from '../providers/ConfirmProvider'
 const ANCIEN = 'https://erp.example.invalid/ics/ancien'
 const NOUVEAU = 'https://erp.example.invalid/ics/nouveau'
 
-async function ouvrirAbonnement(user) {
-  render(
-    <MemoryRouter>
-      <ThemeProvider>
-        <ConfirmProvider>
-          <CalendarPage />
-        </ConfirmProvider>
-      </ThemeProvider>
-    </MemoryRouter>,
+// ADRG113 — l'écran lit les droits (useCanListAssignableUsers) : store auth réel.
+const ADMIN = { role: 'admin', role_nom: 'Directeur', permissions: [] }
+function rendre(auth = ADMIN) {
+  const store = configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: { auth: { user: { id: 1 }, isAuthenticated: true, loading: false, ...auth } },
+  })
+  return render(
+    <Provider store={store}>
+      <MemoryRouter>
+        <ThemeProvider>
+          <ConfirmProvider>
+            <CalendarPage />
+          </ConfirmProvider>
+        </ThemeProvider>
+      </MemoryRouter>
+    </Provider>,
   )
+}
+
+async function ouvrirAbonnement(user) {
+  rendre()
   await user.click(screen.getByRole('button', { name: "S'abonner au calendrier" }))
   const champ = screen.getByPlaceholderText('Génération du lien…')
   await waitFor(() => expect(champ).toHaveValue(ANCIEN))
@@ -89,15 +104,7 @@ describe('AERR109 — CalendarPage : lecture rejetée ≠ mois vide', () => {
   it('lecture rejetée : jamais « Aucun évènement ce mois-ci », avis + Réessayer', async () => {
     reportingApi.getCalendar.mockRejectedValueOnce(new Error('500'))
     const user = userEvent.setup()
-    render(
-      <MemoryRouter>
-        <ThemeProvider>
-          <ConfirmProvider>
-            <CalendarPage />
-          </ConfirmProvider>
-        </ThemeProvider>
-      </MemoryRouter>,
-    )
+    rendre()
     expect(await screen.findByTestId('calendrier-lecture-echec')).toHaveTextContent('Calendrier indisponible')
     expect(screen.queryByText('Aucun évènement ce mois-ci')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Réessayer' }))
@@ -117,15 +124,7 @@ describe('AERR110 — CalendarPage : glisser demande une confirmation nommée', 
     ] } })
     reportingApi.rescheduleCalendar.mockResolvedValue({ data: {} })
     const user = userEvent.setup()
-    const { container } = render(
-      <MemoryRouter>
-        <ThemeProvider>
-          <ConfirmProvider>
-            <CalendarPage />
-          </ConfirmProvider>
-        </ThemeProvider>
-      </MemoryRouter>,
-    )
+    const { container } = rendre()
     const puce = await screen.findByText('Visite Ali')
     const cases = [...container.querySelectorAll('.cal-cell')]
     const caseCible = cases.find((c) => c.querySelector('.cal-day-number')?.textContent === '14'
@@ -147,5 +146,20 @@ describe('AERR110 — CalendarPage : glisser demande une confirmation nommée', 
     await waitFor(() => expect(reportingApi.rescheduleCalendar)
       .toHaveBeenCalledWith({ type: 'intervention', id: 3, date: cible }))
     expect(reportingApi.rescheduleCalendar).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ADRG113 — CalendarPage : employés assignables selon les droits', () => {
+  it('Technicien : aucune lecture des employés assignables', async () => {
+    rendre({ role: 'normal', role_nom: 'Technicien', permissions: ['installation_voir', 'installation_gerer', 'sav_gerer'] })
+    await waitFor(() => expect(reportingApi.getCalendar).toHaveBeenCalled())
+    expect(crmApi.getAssignableUsers).not.toHaveBeenCalled()
+  })
+  it('Viewer non ; Commercial oui', async () => {
+    rendre({ role: 'normal', role_nom: 'Viewer', permissions: ['crm_voir', 'installation_voir', 'ventes_voir'] })
+    await waitFor(() => expect(reportingApi.getCalendar).toHaveBeenCalled())
+    expect(crmApi.getAssignableUsers).not.toHaveBeenCalled()
+    rendre({ role: 'normal', role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer', 'crm_modifier'] })
+    await waitFor(() => expect(crmApi.getAssignableUsers).toHaveBeenCalled())
   })
 })

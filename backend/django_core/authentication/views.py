@@ -1391,7 +1391,38 @@ class UserViewSet(viewsets.ModelViewSet):
         refus = self._refus_rang(target)
         if refus is not None:
             return refus
+        traces = _traces_du_compte(target)  # ASUP5 (D-ASUP-2) : désactiver seulement
+        if traces:
+            return Response(
+                {'detail': f'Ce compte a laissé des traces ({traces}) : '
+                           'désactivez-le au lieu de le supprimer.',
+                 'code': 'compte_avec_traces'},
+                status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
+
+
+def _traces_du_compte(compte):
+    """ASUP5 — objets liés au compte en SET_NULL, PROTECT ou CASCADE (collecteur
+    ``NestedObjects``, patron ASTK81), hors relations un-à-un propres au compte ;
+    rend « auteur de 1 paiement, propriétaire de 1 lead », '' si vierge."""
+    from collections import Counter
+
+    from django.contrib.admin.utils import NestedObjects
+    from django.db import router
+    from django.db.models import QuerySet
+    exclus = {type(compte)} | {r.related_model for r in type(compte)._meta.related_objects if r.one_to_one}
+    collecteur = NestedObjects(using=router.db_for_write(type(compte)))
+    collecteur.collect([compte])
+    comptes = Counter({('lié à', m): len(o) for m, o in collecteur.model_objs.items()})
+    comptes.update(('lié à', type(o)) for o in collecteur.protected)
+    for (champ, _valeur), lots in collecteur.field_updates.items():
+        role = {'owner': 'propriétaire de', 'created_by': 'auteur de'}.get(champ.name, 'lié à')
+        for lot in lots:
+            comptes[(role, champ.model)] += lot.count() if isinstance(lot, QuerySet) else len(lot)
+    return ', '.join(
+        f'{role} {n} {(m._meta.verbose_name if n == 1 else m._meta.verbose_name_plural)}'.lower()
+        for (role, m), n in sorted(comptes.items(), key=lambda e: (e[0][0], e[0][1]._meta.label))
+        if n and m not in exclus)
 
 
 # ── Gestion des entreprises (superuser uniquement) ─────────────

@@ -232,3 +232,37 @@ describe('AERR74 — variante de prix servie, jamais arrondie', () => {
     await waitFor(() => expect(ventesApi.setVarianteConfig).toHaveBeenCalledWith('17.5'))
   })
 })
+
+describe('ADRG12 — % de variante réglé par le droit parametres_modifier', () => {
+  function rendreAvec(auth) {
+    const st = configureStore({ reducer: { auth: (s = auth) => s } })
+    render(
+      <MemoryRouter><Provider store={st}>
+        <DevisSection form={baseForm} set={vi.fn()} setForm={vi.fn()} setPT={vi.fn()}
+                      setPrefix={vi.fn()} setNumbering={vi.fn()}
+                      numberingPreview={() => 'DEV-1'} canManageSensitive />
+      </Provider></MemoryRouter>,
+    )
+  }
+
+  it('Commercial responsable sans parametres_modifier : % de variante en lecture seule', async () => {
+    ventesApi.setVarianteConfig.mockClear()
+    rendreAvec({ role: 'responsable', role_nom: 'Commercial responsable', permissions: [] })
+    const champ = await screen.findByLabelText('% de variation par défaut des variantes')
+    await waitFor(() => expect(champ).toHaveValue(20))
+    expect(champ).toHaveAttribute('readonly')
+    expect(within(champ.parentElement).queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+    expect(ventesApi.setVarianteConfig).not.toHaveBeenCalled()
+  })
+
+  it('un compte qui porte parametres_modifier modifie et enregistre', async () => {
+    ventesApi.setVarianteConfig.mockClear()
+    rendreAvec({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['parametres_modifier'] })
+    const champ = await screen.findByLabelText('% de variation par défaut des variantes')
+    await waitFor(() => expect(champ).toHaveValue(20))
+    expect(champ).not.toHaveAttribute('readonly')
+    fireEvent.change(champ, { target: { value: '12' } })
+    fireEvent.click(within(champ.parentElement).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(ventesApi.setVarianteConfig).toHaveBeenCalledWith('12'))
+  })
+})

@@ -22,6 +22,8 @@ def _refuser_si_oppose(lead):
     """ACVI98 (D-ACVI-7 = refus) — aucun lien WhatsApp vers un lead opposé."""
     if not peut_contacter(lead):
         raise ConflitEtat(MOTIF_CONTACT_REFUSE)
+    from .cadence_messages import garde_contact_du_lead
+    garde_contact_du_lead(lead)  # AMSG84 — perdu/archivé : 409 avant tout lien
 
 
 def _refus_pii_whatsapp(request):

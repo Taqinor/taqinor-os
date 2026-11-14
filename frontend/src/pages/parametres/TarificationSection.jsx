@@ -27,6 +27,7 @@ import { BoutonEnregistrer, ChargementSection, LectureEchouee } from './SectionE
 import { toast } from '../../ui/confirm'
 // VX233 — feed d'audit extrait, verrouillé sur la section « tarification ».
 import SettingsAuditFeed from './SettingsAuditFeed'
+import { useHasPermission } from '../../hooks/useHasPermission'
 
 // Champ numérique étiqueté + indice. step="any" : la frappe reste souveraine.
 function NumField({ label, value, onChange, hint, suffix }) {
@@ -53,6 +54,8 @@ export default function TarificationSection() {
   const [saved, setSaved] = useState(false)
   // VX233 — historique de la tarification, révélé à la demande.
   const [showHistory, setShowHistory] = useState(false)
+  // ALEC28 (D-ALEC-3) — l'historique lit le journal : `journal_activite_voir`.
+  const voitJournal = useHasPermission('journal_activite_voir')
   // CALX72 — réglages du lot 5 (null = non chargés : ils ne sont alors
   // jamais renvoyés, pour ne rien écraser côté serveur) + refus par champ.
   const [lot5, setLot5] = useState(null)
@@ -469,7 +472,7 @@ export default function TarificationSection() {
       {/* VX233 — historique des changements de la TARIFICATION (section
           « tarification » seule) : qui a changé le barème/ROI, quand,
           ancien→nouveau. Révélé à la demande. */}
-      <Card>
+      {voitJournal && <Card>
         <CardContent className="space-y-3 pt-4 sm:pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <SectionTitle label="Historique de la tarification"
@@ -482,7 +485,7 @@ export default function TarificationSection() {
           </div>
           {showHistory && <SettingsAuditFeed section="tarification" />}
         </CardContent>
-      </Card>
+      </Card>}
     </>
   )
 }

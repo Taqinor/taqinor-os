@@ -77,6 +77,14 @@ describe('CommercialHome (NTMOB4)', () => {
     expect(screen.getByRole('button', { name: /Carte de mes leads/ })).toBeInTheDocument()
   })
 
+  it('une facture échue servie sous `factures_impayees` apparaît dans la liste', async () => {
+    reportingApiMock.getNotifications.mockResolvedValue({
+      data: { factures_impayees: [{ id: 77, label: 'FAC-0077', sublabel: 'Alami', overdue: true, date: '2026-07-01' }] },
+    })
+    renderPage()
+    expect(await screen.findByText('FAC-0077')).toBeInTheDocument()
+  })
+
   // AERR121 — l'utilisateur de test n'a pas `crm_voir` : le widget ne lit pas
   // les relances ; sa panne est simulée sur la tournée (même chemin `safe`).
   it("panne des relances : jamais « Rien d'urgent », avis + Réessayer", async () => {

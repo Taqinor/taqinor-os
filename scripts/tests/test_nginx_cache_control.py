@@ -288,6 +288,27 @@ class CacheControlTests(unittest.TestCase):
                                 "Cache-Control littéral au niveau server : hérité par /")
 
 
+class ApiPubliqueServieTests(unittest.TestCase):
+    """APUB15 (D-APUB-3) — l'API publique par clé est routée vers Django."""
+
+    def test_api_publique_routee_vers_django(self):
+        arbre = analyser()
+        server = server_principal(arbre)
+        attendus = {"Host", "X-Real-IP", "X-Forwarded-For"}
+        for uri in ("/api/public/v1/leads/", "/api/public/v1/openapi.json",
+                    "/api/public/v1/oauth/token/"):
+            motif, loc = location_pour(server, uri)
+            self.assertEqual(motif, "/api/public/", uri)
+            directives = {n: a for n, a, _ in loc}
+            self.assertEqual(directives.get("proxy_pass"), ["http://django_backend"], uri)
+            self.assertIn("limit_req", directives, uri)
+            entetes = {a[0]: a[1] for n, a, _ in loc if n == "proxy_set_header"}
+            self.assertTrue(attendus <= set(entetes), uri)
+            self.assertEqual(entetes.get("X-Forwarded-Proto"), "$proto_transmis", uri)
+            self.assertIn("no-store", entetes_effectifs(arbre, uri).get("Cache-Control", ""), uri)
+        self.assertEqual(location_pour(server, "/")[0], "/")
+
+
 FRONT_NGINX = ROOT / "frontend" / "nginx.conf"
 
 

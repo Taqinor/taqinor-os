@@ -12,6 +12,9 @@ import { DEFAULT_MONTHLY_BILLS } from '../../../../features/ventes/solar'
 import { withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { profilCiVide } from '../../../../features/ventes/quote/profilCi'
 
+const signatureLignes = (ls) => JSON.stringify(ls.map((l) => [
+  l._key, l.produit, l.designation, l.quantite, l.prixManuel, l.quantiteManuelle]))
+
 export function useBrouillonEcran(ctx) {
   const {
     editId, leadId, clientId, dateValidite, scenario, recommendedChoice, note, fHiver, fEte,
@@ -86,9 +89,18 @@ export function useBrouillonEcran(ctx) {
   // `draftSnapshot` ci-dessus. Un utilisateur qui n'avait fait qu'ajouter des
   // LIGNES (le cœur du devis) n'était donc ni sauvegardé ni protégé par la
   // garde de fermeture d'onglet. Seul ce prédicat était à corriger.
-  const lignesSaisies = lines.some(
-    (l) => l.produit || (l.designation || '').trim() || parseFloat(l.prix_unit_ttc) > 0,
-  )
+  const [compositionDefaut, setCompositionDefaut] = useState(null)
+  if (compositionDefaut == null && !editId && lines.length > 0 && lines.every((l) => l.compose)) {
+    setCompositionDefaut(signatureLignes(lines))
+  }
+  // ATST56 — la composition par défaut (lignes `compose`) n'est pas une
+  // saisie : sa signature est capturée UNE fois en création, et seul un écart
+  // (désignation, produit, quantité, verrous) compte ; prix et TVA exclus.
+  const lignesSaisies = compositionDefaut != null
+    ? signatureLignes(lines) !== compositionDefaut
+    : lines.some(
+      (l) => l.produit || (l.designation || '').trim() || parseFloat(l.prix_unit_ttc) > 0,
+    )
   const remiseSaisie = parseFloat(discountPct) > 0
   // AGNR28 — le taux d'EN-TÊTE n'est plus saisissable (aucun total ne le lit) :
   // il ne rend plus le formulaire « non vierge ».

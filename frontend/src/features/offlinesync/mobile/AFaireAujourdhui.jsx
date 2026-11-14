@@ -106,7 +106,7 @@ export default function AFaireAujourdhui({ exclure = [] }) {
         ? safe(() => installationsApi.getMaTournee(today, SILENCIEUX), (r) => r.data?.stops)
         : rien(),
       veut('facture')
-        ? safe(() => reportingApi.getNotifications(SILENCIEUX), (r) => r.data?.factures)
+        ? safe(() => reportingApi.getNotifications(SILENCIEUX), (r) => r.data?.factures_impayees) // AERR — la clé servie (reporting/search.py)
         : rien(),
     ]).then(([relances, approbations, interventions, factures]) => {
       if (!alive) return

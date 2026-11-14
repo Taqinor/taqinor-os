@@ -170,11 +170,18 @@ export default function EmailSection() {
                 <Input id={`pe-email-sujet-${t.cle}`} value={t.sujet}
                        onChange={e => setTemplateField(t.cle, 'sujet', e.target.value)} />
               </Field>
-              <Field label="Corps" htmlFor={`pe-email-corps-${t.cle}`}>
-                <Textarea id={`pe-email-corps-${t.cle}`} className="min-h-[80px] resize-y"
-                          value={t.corps}
-                          onChange={e => setTemplateField(t.cle, 'corps', e.target.value)} />
-              </Field>
+              {/* AMSG89 — clé « sujet seul » (rappel J-1) : aucun corps à régler. */}
+              {t.corps_modifiable === false ? (
+                <p className="mb-1.5 text-[11.5px] text-muted-foreground">
+                  Le texte de ce rappel suit le modèle de message WhatsApp du rappel de rendez-vous ; seul le sujet se règle ici.
+                </p>
+              ) : (
+                <Field label="Corps" htmlFor={`pe-email-corps-${t.cle}`}>
+                  <Textarea id={`pe-email-corps-${t.cle}`} className="min-h-[80px] resize-y"
+                            value={t.corps}
+                            onChange={e => setTemplateField(t.cle, 'corps', e.target.value)} />
+                </Field>
+              )}
               {LANGUES_TRADUITES.map(({ code, libelle, dir }) => (
                 <details key={code} className="mb-1.5">
                   <summary className="cursor-pointer text-[11.5px] font-medium text-muted-foreground">
@@ -185,12 +192,14 @@ export default function EmailSection() {
                            value={t[`sujet_${code}`] ?? ''}
                            onChange={e => setTemplateField(t.cle, `sujet_${code}`, e.target.value)} />
                   </Field>
-                  <Field label={`Corps (${libelle.toLowerCase()})`} htmlFor={`pe-email-corps-${code}-${t.cle}`}>
-                    <Textarea id={`pe-email-corps-${code}-${t.cle}`} dir={dir}
-                              className="min-h-[80px] resize-y"
-                              value={t[`corps_${code}`] ?? ''}
-                              onChange={e => setTemplateField(t.cle, `corps_${code}`, e.target.value)} />
-                  </Field>
+                  {t.corps_modifiable !== false && (
+                    <Field label={`Corps (${libelle.toLowerCase()})`} htmlFor={`pe-email-corps-${code}-${t.cle}`}>
+                      <Textarea id={`pe-email-corps-${code}-${t.cle}`} dir={dir}
+                                className="min-h-[80px] resize-y"
+                                value={t[`corps_${code}`] ?? ''}
+                                onChange={e => setTemplateField(t.cle, `corps_${code}`, e.target.value)} />
+                    </Field>
+                  )}
                 </details>
               ))}
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">

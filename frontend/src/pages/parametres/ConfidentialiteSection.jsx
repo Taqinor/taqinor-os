@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { Plus, Trash2, Download, Lock, FileCheck2, ShieldCheck } from 'lucide-react'
 import { useConfirmDialog } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
@@ -179,9 +180,11 @@ function RegistreTraitements() {
 function DsrRequests() {
   // ASOC64 — un effacement est IRRÉVERSIBLE : confirmation maison d'abord.
   const { confirm } = useConfirmDialog()
+  // ADRG112 — sans `dsr_traiter`, la liste n'est pas lue : refus posé d'emblée.
+  const peutTraiter = useDroitMetier('dsr_traiter')
   const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
+  const [loading, setLoading] = useState(peutTraiter)
+  const [loadError, setLoadError] = useState(peutTraiter ? false : 'refus')
   const [draft, setDraft] = useState({ subject_identifier: '', kind: 'acces' })
   const [busy, setBusy] = useState(false)
   const [traitingId, setTraitingId] = useState(null)
@@ -191,7 +194,7 @@ function DsrRequests() {
     .catch((e) => setLoadError(e?.response?.status === 403 ? 'refus' : true))
     .finally(() => setLoading(false))
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (peutTraiter) load() }, [peutTraiter])
 
   const submit = async () => {
     const subject = draft.subject_identifier.trim()

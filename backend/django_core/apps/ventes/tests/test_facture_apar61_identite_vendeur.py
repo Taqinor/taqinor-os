@@ -189,6 +189,61 @@ class IdentiteVendeurFigeeTests(TestCase):
         for f in cibles:
             self.assertNotIn(f.reference, rejeu)
 
+    def test_avoir_et_note_debit_impriment_l_acheteur_fige_apres_anonymisation(self):
+        """ASUP57 (C-ASUP-VER2-101) — après « Anonymiser (RGPD) » du client,
+        l'avoir créé, l'avoir annulé (re-rendu) et la note de débit impriment
+        le nom, l'ICE, l'IF, le RC et l'adresse FIGÉS de la facture d'origine,
+        jamais « Client anonymisé ». Mutant : relire ``avoir.client`` dans
+        ``avoir.html`` ⇒ échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Avoir, NoteDebit
+        from apps.ventes.utils.pdf import generate_avoir_pdf, generate_note_debit_pdf
+        ice = '001234567000089'
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            nom='X SARL', prenom='', type_client='entreprise', ice=ice,
+            if_fiscal='IF-57', rc='RC-57', adresse='Casablanca Anfa')
+        self.client_obj.refresh_from_db()
+        facture = self._facture('FAC-ASUP57-0001')
+        facture.lignes.update(quantite=Decimal('2'))
+        facture = self._emettre(facture)
+        admin = get_user_model().objects.create_user(
+            username='asup57-admin', password='x', role_legacy='admin',
+            company=self.company)
+        api = APIClient()
+        api.force_authenticate(admin)
+        url_avoir = f'/api/django/ventes/factures/{facture.pk}/creer-avoir/'
+        ligne = {'produit': facture.lignes.get().produit_id, 'designation': 'Centrale',
+                 'quantite': '1', 'prix_unitaire': '100', 'taux_tva': '20'}
+        existant = api.post(url_avoir, {'motif': 'geste', 'lignes': [ligne]}, format='json')
+        self.assertEqual(existant.status_code, 201, existant.data)
+        r = api.post(f'/api/django/crm/clients/{self.client_obj.pk}/anonymize/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.client_obj.refresh_from_db()
+        self.assertTrue(self.client_obj.is_anonymized)
+        nouveau = api.post(url_avoir, {'motif': 'geste 2', 'lignes': [ligne]}, format='json')
+        self.assertEqual(nouveau.status_code, 201, nouveau.data)
+        r = api.post(f'/api/django/ventes/avoirs/{existant.data["id"]}/annuler/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        note = api.post(f'/api/django/ventes/factures/{facture.pk}/creer-note-debit/',
+                        {'motif': 'pénalité', 'montant': '50.00', 'taux_tva': '20'},
+                        format='json')
+        self.assertEqual(note.status_code, 201, note.data)
+        pieces = ((Avoir, nouveau.data['id'], generate_avoir_pdf),
+                  (Avoir, existant.data['id'], generate_avoir_pdf),
+                  (NoteDebit, note.data['id'], generate_note_debit_pdf))
+        for modele, pk, generer in pieces:
+            # CLAUSE PERSISTANCE — le PDF stocké, puis un nouveau rendu
+            # (re-téléchargement d'une pièce sans fichier) : même acheteur.
+            for cle in (modele.objects.get(pk=pk).fichier_pdf, generer(pk)):
+                texte = _texte(self.objets[cle])
+                with self.subTest(piece=modele.__name__, pk=pk):
+                    for attendu in ('X SARL', ice, 'IF-57', 'RC-57', 'Casablanca Anfa'):
+                        self.assertIn(attendu, texte)
+                    self.assertNotIn('Client anonymisé', texte)
+
     def test_effacement_refuse_tant_qu_une_facture_emise_n_a_pas_d_identite_figee(self):
         """ASUP3 (C-ASUP-001) — ``traiter`` d'une demande d'effacement rend
         409 nommant la facture et la commande, client intact ; après

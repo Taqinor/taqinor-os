@@ -103,6 +103,28 @@ describe('WIR134 SecuriteIdentitePage', () => {
     expect(screen.getByLabelText(/Seuil de verrouillage/)).toHaveValue(5)
   })
 
+  it('enregistre le seuil des comptes dormants', async () => {
+    // ACEL13 (D-ACEL-2) — lu (45), saisi (60), envoyé avec les autres
+    // réglages de connexion ; un champ vide envoie 0 (jamais).
+    H.getProfile.mockImplementationOnce(() => Promise.resolve(
+      { data: { login_banner_text: 'Accès réservé', lockout_max_attempts: 5, dormant_days: 45 } }))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('tab', { name: /Bannière/ }))
+    const champ = await screen.findByLabelText(/comptes dormants/)
+    expect(champ).toHaveValue(45)
+    await user.clear(champ)
+    await user.type(champ, '60')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(H.updateProfile).toHaveBeenCalledWith(
+      { login_banner_text: 'Accès réservé', lockout_max_attempts: 5, dormant_days: 60 }))
+    await user.clear(champ)
+    await new Promise((r) => setTimeout(r, 450)) // verrou anti-double-clic du Button (CAD177)
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(H.updateProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dormant_days: 0 })))
+  })
+
   it('AERR64 — Supprimer puis Annuler : aucune suppression ; confirmation nommée', async () => {
     H.ipList.mockImplementation(() => Promise.resolve({ data: [{ id: 4, cidr: '10.0.0.0/24', label: 'Bureau' }] }))
     const user = userEvent.setup()

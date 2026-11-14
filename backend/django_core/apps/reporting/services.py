@@ -79,7 +79,32 @@ def leads_de_la_fenetre(co, start=None, end=None):
     return list(qs.only('id', 'owner_id', 'stage', 'perdu'))
 
 
-def build_leaderboard(kwc_by_devis, co, start=None, end=None):
+def portee_du_role(user):
+    """ALEC22 (D-ALEC-2 = portee_du_role) — ids des utilisateurs dont ``user``
+    lit les chiffres ; ``None`` = portée « tout » (Direction, hérité) : inchangé."""
+    from core.scoping import visible_user_ids
+    return visible_user_ids(user) if user is not None else None
+
+
+def borner_portee(qs, user, sorte):
+    """ALEC22 — ``qs`` (déjà borné société) réduit à la portée du rôle :
+    ``devis`` (auteur, ou lead dont il est responsable — règle de
+    ``DevisViewSet``), ``factures`` (auteur), ``leads`` (responsable),
+    ``chantiers`` (``scoper_chantiers``). Portée « tout » : ``qs`` inchangé."""
+    visibles = portee_du_role(user)
+    if visibles is None:
+        return qs
+    if sorte == 'chantiers':
+        from apps.installations.selectors import scoper_chantiers
+        return scoper_chantiers(qs, user)
+    if sorte == 'devis':
+        from django.db.models import Q
+        from apps.crm.selectors import lead_ids_du_responsable
+        return qs.filter(Q(created_by__in=visibles) | Q(lead_id__in=lead_ids_du_responsable(user)))
+    return qs.filter(**{('owner' if sorte == 'leads' else 'created_by') + '__in': visibles})
+
+
+def build_leaderboard(kwc_by_devis, co, start=None, end=None, visibles=None):
     """WIR82 — calcul UNIQUE du classement commercial.
 
     Source partagée consommée à la fois par
@@ -151,9 +176,16 @@ def build_leaderboard(kwc_by_devis, co, start=None, end=None):
             'avg_deal_ht': str(avg_deal),
             'kwc': str(slot['kwc']),
             'win_rate_pct': win_rate,
+            '_uid': uid,
         })
 
     rows.sort(key=lambda r: float(r['ca_ht']), reverse=True)
+    # ALEC22 — ``visibles`` (``portee_du_role``) : un collègue hors portée reste
+    # nommé, ses montants à ``None`` (rang conservé, D-ALEC-2).
+    for row in rows:
+        uid = row.pop('_uid')
+        if visibles is not None and uid not in visibles:
+            row.update(dict.fromkeys(('ca_ht', 'nb_devis_signes', 'avg_deal_ht', 'kwc', 'win_rate_pct')))
     return rows
 
 

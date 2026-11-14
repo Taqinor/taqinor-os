@@ -30,7 +30,9 @@ import {
 import { contextActionsForRoute, nextStageFor } from '../features/uxviews/contextActions'
 import ventesApi from '../api/ventesApi'
 import crmApi from '../api/crmApi'
-import { PIPELINE_STAGES } from '../features/crm/stages'
+import { PIPELINE_STAGES, STAGE_LABELS, CONVERSION_STAGE } from '../features/crm/stages'
+import { mutateWithUndo } from '../lib/mutateWithUndo'
+import { useConfirm } from './confirm-context'
 import { downloadBlob, stampedFilename } from '../utils/downloadBlob'
 import { toast } from '../ui/confirm'
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
@@ -62,6 +64,7 @@ export function CommandPalette() {
   const listRef = useRef(null)
   const navigate = useCrossAppNavigate()
   const location = useLocation()
+  const confirm = useConfirm()
   // ODY27 — source UNIQUE de la visibilité des apps (ODY1), zéro liste locale.
   const { isPathVisible } = useAppVisibility()
 
@@ -95,19 +98,28 @@ export function CommandPalette() {
   // suivante du funnel (miroir STAGES.py — `features/crm/stages.js`), jamais
   // un stage inventé côté client. No-op explicite (toast) si le lead est déjà
   // à la dernière étape active.
-  const changeLeadStage = useCallback((leadId) => {
-    crmApi.getLead(leadId)
-      .then((res) => {
-        const next = nextStageFor(res.data?.stage, PIPELINE_STAGES)
-        if (!next) {
-          toast.error('Ce lead est déjà à la dernière étape active du funnel.')
-          return null
-        }
-        return crmApi.updateLead(leadId, { stage: next })
-      })
-      .then((res) => { if (res) toast.success('Étape du lead mise à jour.') })
-      .catch(() => toast.error("Changement d'étape impossible."))
-  }, [])
+  // AERR69 (D-AERR-2) — toast nommé + « Annuler » (mutateWithUndo, comme le
+  // kanban) ; vers « Signé » une boîte nommée d'abord, sans undo. Un échec
+  // serveur est dit par le seul toast global (intercepteur).
+  const changeLeadStage = useCallback(async (leadId) => {
+    const lead = (await crmApi.getLead(leadId).catch(() => null))?.data
+    if (!lead) return
+    const next = nextStageFor(lead.stage, PIPELINE_STAGES)
+    if (!next) {
+      toast.error('Ce lead est déjà à la dernière étape active du funnel.')
+      return
+    }
+    const message = `${lead.nom || 'Ce lead'} → ${STAGE_LABELS[next]}`
+    const apply = () => crmApi.updateLead(leadId, { stage: next })
+    if (next !== CONVERSION_STAGE) {
+      await mutateWithUndo({ kind: 'lead_stage', message, apply,
+        revert: () => crmApi.updateLead(leadId, { stage: lead.stage }) })
+      return
+    }
+    const ok = await confirm({ title: `Passer « ${lead.nom || 'ce lead'} » en « ${STAGE_LABELS[next]} » ?`,
+      confirmLabel: STAGE_LABELS[next] })
+    if (ok && await apply().then(() => true, () => false)) toast.success(message)
+  }, [confirm])
 
   // NTUX9 — actions contextuelles résolues par ÉCRAN (route active), fusionnées
   // avec les actions « Fiche ouverte » (LW26) dans la même section ci-dessous.

@@ -8,6 +8,7 @@ import {
   ticketsAujourdhui,
   ticketsUrgents,
   ticketsSlaEnRetard,
+  lecturesAccueil,
 } from './Dashboard.jsx'
 
 /* VX27 — Cockpit du matin : layout par rôle + bandeau « aujourd'hui ».
@@ -122,6 +123,17 @@ describe('cartes gardées IsResponsableOrAdmin : accueil du Lecteur (ERR-ACC-ACC
   it("ImpactPastille n'est monté (dans la Sidebar) que si le rôle peut lire le parc", () => {
     const src = lire('../components/layout/Sidebar.jsx')
     expect(src).toMatch(/peutLireParc && \(\s*<Suspense fallback=\{null\}>\s*<ImpactPastille/)
+  })
+  // ADRG120 — droits calculés par useDroitMetier('crm_voir') / useCanLireTableauDeBord
+  // (useHasPermission.test.jsx) : Technicien (installation_*, sav_*, reporting_voir)
+  // = ni CRM ni tableau ; Viewer = CRM seul ; Commercial et légacy responsable = tout.
+  it('lecturesAccueil : le Technicien ne lit ni leads, ni tableau de bord, ni Mes chiffres', () => {
+    expect(lecturesAccueil({ peutLireVentes: false, peutLireCrm: false, peutLireTableau: false }))
+      .toEqual({ ventes: false, leads: false, reporting: false, mesChiffres: false })
+    expect(lecturesAccueil({ peutLireVentes: true, peutLireCrm: true, peutLireTableau: false }))
+      .toMatchObject({ leads: true, reporting: false, mesChiffres: true })
+    expect(lecturesAccueil({ peutLireVentes: true, peutLireCrm: true, peutLireTableau: true }))
+      .toMatchObject({ leads: true, reporting: true, mesChiffres: true })
   })
   it('les deux lectures coupent le toast global sur 403', () => {
     expect(lire('../api/monitoringApi.js')).toMatch(/co2-fleet\/', \{ params, suppressErrorToast: true \}/)

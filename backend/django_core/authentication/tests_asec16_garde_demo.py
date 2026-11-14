@@ -84,3 +84,55 @@ class GardeDemoTests(TestCase):
                              force=True, verbosity=0)
         self.assertTrue(Company.objects.filter(pk=demo.pk).exists())
         self.assertTrue(User.objects.filter(pk=sentinelle.pk).exists())
+
+    def test_neutraliser_contacts_demo_dry_run_puis_appliquer(self):
+        """AMSG62 (D-AMSG-6) — dry-run par défaut (0 écriture), puis
+        ``--appliquer --sauf <id>`` neutralise tout sauf l'exclu et le témoin."""
+        import ast
+        from io import StringIO
+
+        from django.apps import apps as django_apps
+        from django.contrib.contenttypes.models import ContentType
+
+        from authentication.management.commands.neutraliser_contacts_demo import SEED
+        Client = django_apps.get_model('crm', 'Client')
+        Fournisseur = django_apps.get_model('stock', 'Fournisseur')
+        AuditLog = django_apps.get_model('audit', 'AuditLog')
+        fiches = []
+        for noeud in ast.walk(ast.parse(SEED.read_text(encoding='utf-8'))):  # adresses lues du seed
+            if isinstance(noeud, ast.Assign) and getattr(noeud.targets[0], 'id', '') == 'clients_data':
+                for nom, prenom, email, tel, _adresse in ast.literal_eval(noeud.value):
+                    fiches.append(Client.objects.create(
+                        company=self.reelle, nom=nom, prenom=prenom, email=email, telephone=tel))
+            if isinstance(noeud, ast.Call) and getattr(noeud.func, 'attr', '') == 'create' \
+                    and 'Fournisseur' in ast.unparse(noeud.func):
+                kw = {k.arg: ast.literal_eval(k.value) for k in noeud.keywords if k.arg != 'company'}
+                fiches.append(Fournisseur.objects.create(company=self.reelle, **kw))
+        self.assertEqual((len(fiches), sum(isinstance(f, Fournisseur) for f in fiches)), (7, 2))
+        temoin = Client.objects.create(company=self.reelle, nom='Témoin', prenom='Réel',
+                                       email='temoin@client-reel.ma', telephone='+212611111111')
+
+        def etat():
+            return [type(f).objects.values_list('email', 'telephone').get(pk=f.pk)
+                    for f in fiches + [temoin]]
+
+        avant, out = etat(), StringIO()
+        call_command('neutraliser_contacts_demo', societe='taqinor-demo', stdout=out)
+        self.assertEqual(etat(), avant)  # dry-run : 0 écriture
+        self.assertIn('7 fiche(s) concernée(s)', out.getvalue())
+        for f in fiches:
+            self.assertNotIn(f.email, out.getvalue())  # jamais l'adresse complète
+        exclu = fiches[0]
+        out = StringIO()
+        call_command('neutraliser_contacts_demo', societe='taqinor-demo', appliquer=True,
+                     sauf=[exclu.pk], stdout=out)
+        self.assertIn('6 fiche(s) neutralisée(s)', out.getvalue())
+        apres = etat()
+        self.assertEqual(apres[0], avant[0])  # l'exclu
+        self.assertEqual(apres[-1], avant[-1])  # le témoin
+        for (email, tel), f in zip(apres[1:-1], fiches[1:]):
+            self.assertTrue(email.endswith('@example.invalid'), email)
+            self.assertTrue(tel.startswith('+212600'), tel)
+            self.assertEqual(AuditLog.objects.filter(
+                content_type=ContentType.objects.get_for_model(f), object_id=str(f.pk),
+                detail__startswith='AMSG62').count(), 1)

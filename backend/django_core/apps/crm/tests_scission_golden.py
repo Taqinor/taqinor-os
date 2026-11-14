@@ -551,7 +551,8 @@ class ScissionGoldenTests(_Base):
         # 25 + crm_client_mirror_tiers + crm_dispatch_mise_en_attente + crm_stop_cadence_on_archive
         # + crm_empreinte_opposition_lead (ERR-ACVI6-OPPOSITION, ``models.py`` non touché)
         # + crm_rejouer_restauration (ASOC86, restauration corbeille d'un lead)
-        self.assertEqual(total, 30)
+        # + crm_garde_restauration_corbeille (ASUP56, garde pre_save de « Annuler »)
+        self.assertEqual(total, 31)
 
     def test_facades(self):
         for module in ('selectors', 'models'):

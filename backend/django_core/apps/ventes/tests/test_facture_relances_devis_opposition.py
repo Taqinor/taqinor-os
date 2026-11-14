@@ -121,6 +121,50 @@ class NudgeOppositionTests(TestCase):
                 link=f'/ventes/devis?devis={d.id}').exists())
             self.assertFalse(ShareLink.objects.get(devis=d).engagement_triggers_fired)
 
+    def test_lead_supprime_ne_recoit_aucune_relance(self):
+        """ASUP58 (C-ASUP-VER2-105) — lead mis à la corbeille : ni
+        DevisNudgeLog, ni notification (relance et moteur d'engagement) ;
+        restauré ⇒ le palier part au passage suivant. Mutant : retirer
+        ``avec_corbeille=True`` de ``_lead_ecarte`` ⇒ échec."""
+        from apps.crm.models import Lead
+        from apps.notifications.models import Notification
+        from apps.ventes.models import Devis, DevisNudgeLog, ShareLink
+        from apps.ventes.scheduled import engagement_followup_engine
+        from apps.ventes.services import send_devis_followup_nudges
+        lead = Lead.objects.create(
+            company=self.company, nom='Supprime', stage=stages.QUOTE_SENT,
+            telephone='+212612340012')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASUP58-S',
+            client=self.devis_normal.client, lead=lead,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            date_envoi=self.devis_normal.date_envoi, created_by=self.vendeur)
+        lead.soft_delete(self.vendeur)
+        self.assertEqual(send_devis_followup_nudges(), 1)  # le témoin seul
+        for d in (self.devis_normal, devis):
+            ShareLink.for_devis(d)
+        engagement_followup_engine()
+        self.assertFalse(DevisNudgeLog.objects.filter(devis=devis).exists())
+        self.assertFalse(Notification.objects.filter(
+            link=f'/ventes/devis?devis={devis.id}').exists())
+        self.assertFalse(ShareLink.objects.get(devis=devis).engagement_triggers_fired)
+        Lead.all_objects.get(pk=lead.pk).restore()
+        # ASOC86 — la restauration rejoue la prochaine étape du lead : le suivi
+        # (RelanceEtape ouverte) reprend la relance, et MRY7 / QX13 diffèrent
+        # alors QJ4 pour ne pas doubler le message au client.
+        from apps.crm.models import RelanceEtape
+        from apps.ventes.domain.recouvrement import _lead_ecarte
+        ouvertes = RelanceEtape.objects.filter(
+            lead_id=lead.pk, statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertTrue(ouvertes.exists())
+        self.assertFalse(_lead_ecarte(devis))
+        # Sans suivi ouvert ni rappel planifié, le palier QJ4 repart au passage
+        # suivant : la corbeille n'écarte plus le devis une fois restauré.
+        ouvertes.update(statut=RelanceEtape.Statut.ANNULEE)
+        Lead.objects.filter(pk=lead.pk).update(relance_date=None)
+        self.assertEqual(send_devis_followup_nudges(), 1)
+        self.assertEqual(DevisNudgeLog.objects.filter(devis=devis).count(), 1)
+
     def test_brouillon_client_texte_client_numero_e164(self):
         """AMSG39 (C-AMSG-027) — le brouillon wa.me de la notification vise le
         numéro E.164 du client et porte le gabarit CLIENT `devis_unique` de la

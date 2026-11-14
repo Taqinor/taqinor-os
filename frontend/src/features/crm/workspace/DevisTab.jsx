@@ -26,6 +26,7 @@ import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
+import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, sinon palier
 import { missingFieldTarget, missingChampPourLead } from './missingFields'
 import { getField } from './draftCore'
 import {
@@ -145,6 +146,10 @@ function BlocCatalogueCi({ devisAuto, leadId }) {
 export default function DevisTab({
   state, onAction, wa, onWaToggle, onWaLangue, onWaPreview, onWaReset,
 }) {
+  // ADRG121 — « Créer le chantier » : la règle de la route (ventes_creer, ou le palier).
+  const droitVentesCreer = useDroitMetier('ventes_creer')
+  const droitInstallGerer = useDroitMetier('installation_gerer')
+  const peutCreerChantier = droitVentesCreer || droitInstallGerer
   const devisList = state.server?.devis ?? []
   const devisAuto = state.server?.devis_auto ?? { pret: false, manquants: [] }
   const leadPhone = (state.server?.whatsapp || state.server?.telephone || '').trim()
@@ -479,7 +484,7 @@ export default function DevisTab({
                             className="gen-hint" title="Voir le chantier">
                         🏗 {d.chantier.reference}
                       </Link>
-                    ) : d.is_active !== false && (
+                    ) : d.is_active !== false && peutCreerChantier && (
                       // ACHT5 — seule la tête de chaîne active propose la
                       // création : une version remplacée (is_active=false)
                       // n'a jamais de chantier à elle.

@@ -136,6 +136,50 @@ class MachineAEtatsTests(TestCase):
             dsr._PROVIDERS.clear()
             dsr._PROVIDERS.update(sauvegarde)
 
+    def test_effacement_supprime_l_export_des_demandes_d_acces(self):
+        """ASUP14 (D-ASUP-4) — l'effacement traité par le Directeur
+        (``dsr_traiter``) supprime l'export stocké des demandes d'accès et de
+        rectification de la même personne ; statut et date restent ; l'autre
+        personne intacte ; aucune demande supprimée."""
+        from importlib import import_module
+
+        from django.apps import apps as django_apps
+        registre = import_module('apps.roles.permissions_registre')
+        directeur = User.objects.create_user(
+            username='asup14_directeur', password='x', company=self.company,
+            role=django_apps.get_model('roles', 'Role').objects.create(
+                company=self.company, nom='ASUP14 Directeur',
+                permissions=list(registre.DIRECTEUR_PERMISSIONS)))
+        sauvegarde = dict(dsr._PROVIDERS)
+        try:
+            dsr._PROVIDERS.clear()
+            dsr.register_dsr_provider(
+                'crm', export=lambda co, subj: {'identite': subj}, erase=lambda co, subj: 1)
+            acces = self._demande()
+            rectif = self._demande(kind=DataSubjectRequest.KIND_RECTIFICATION)
+            autre = DataSubjectRequest.objects.create(
+                company=self.company, subject_identifier='autre@b.ma',
+                kind=DataSubjectRequest.KIND_ACCESS)
+            for demande in (acces, rectif, autre):
+                dsr.traiter_demande(demande)
+            avant = {d.pk: (d.statut, d.traitee_le) for d in (acces, rectif, autre)}
+            effacement = self._demande(kind=DataSubjectRequest.KIND_ERASURE)
+            requete = APIRequestFactory().post(f'/dsr-requests/{effacement.pk}/traiter/')
+            force_authenticate(requete, user=directeur)
+            reponse = DataSubjectRequestViewSet.as_view({'post': 'traiter'})(requete, pk=effacement.pk)
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            for demande in (acces, rectif):
+                demande.refresh_from_db()
+                self.assertEqual((demande.statut, demande.traitee_le), avant[demande.pk])
+                self.assertEqual(set(demande.resultat), {'export_supprime_le', 'motif'})
+                self.assertEqual(demande.resultat['motif'], 'effacement')
+            autre.refresh_from_db()
+            self.assertEqual(autre.resultat, {'crm': {'identite': 'autre@b.ma'}, 'core': {'consentements': []}})
+            self.assertEqual(DataSubjectRequest.objects.filter(company=self.company).count(), 4)
+        finally:
+            dsr._PROVIDERS.clear()
+            dsr._PROVIDERS.update(sauvegarde)
+
     def test_echec_differe_les_sources_d_ordre_superieur(self):
         """ASOC65 — ventes en échec ⇒ le CRM (erase_order=100, porteur de
         l'identité) n'est PAS lancé : « partielle », puis la relance efface
