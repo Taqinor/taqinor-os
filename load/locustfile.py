@@ -89,9 +89,20 @@ class ErpUser(HttpUser):
         if resp.status_code != 201:
             return
         devis_id = resp.json().get("id")
-        for designation, quantite, prix in (("Onduleur réseau 5 kW", 1, "9000"), ("Panneau 550 Wc", 10, "1200")):
+        # Une ligne produit DOIT référencer un produit (LigneDevisSerializer.validate, 400 sinon) :
+        # deux produits du catalogue semé par seed_scale ; la désignation garde le mot que le moteur classe.
+        try:
+            produits = [p.get("id") for p in self.client.get(
+                "/api/django/stock/produits/?page=1", name="stock:produits:list").json().get("results", [])]
+        except (ValueError, AttributeError):
+            produits = []
+        if not produits:
+            return
+        for (designation, quantite, prix), produit in zip(
+                (("Onduleur réseau 5 kW", 1, "9000"), ("Panneau 550 Wc", 10, "1200")), produits * 2):
             ligne = self.client.post("/api/django/ventes/devis-lignes/", json={
-                "devis": devis_id, "designation": designation, "quantite": quantite, "prix_unitaire": prix,
+                "devis": devis_id, "produit": produit, "designation": designation,
+                "quantite": quantite, "prix_unitaire": prix,
             }, name="ventes:devis-lignes:create")
             if ligne.status_code != 201:
                 return

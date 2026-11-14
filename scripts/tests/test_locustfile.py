@@ -36,6 +36,8 @@ class _FauxClient:
 
     def get(self, url, name=None):
         self.appels.append(("GET", url, None))
+        if "/stock/produits/" in url:  # ADCG117 — catalogue semé : deux produits
+            return _Reponse(200, {"count": 2, "results": [{"id": 11}, {"id": 12}]})
         return _Reponse(200, {"count": self.count, "results": []})
 
     def post(self, url, json=None, name=None):
@@ -88,6 +90,8 @@ class ScenarioTests(unittest.TestCase):
         lignes = [c[2] for c in user.client.appels if c[1] == "/api/django/ventes/devis-lignes/"]
         self.assertEqual([ligne["designation"] for ligne in lignes], ["Onduleur réseau 5 kW", "Panneau 550 Wc"])
         self.assertTrue(all(ligne["devis"] == 7 and ligne["quantite"] and ligne["prix_unitaire"] for ligne in lignes))
+        # Une ligne produit sans `produit` vaut 400 (LigneDevisSerializer.validate) : chaque ligne en porte un.
+        self.assertEqual([ligne["produit"] for ligne in lignes], [11, 12])
         user.rendu_proposal()
         self.assertEqual(user.client.appels[-1][:2], ("GET", "/api/django/ventes/devis/7/proposal/"))
         refuse = self._utilisateur(0)
