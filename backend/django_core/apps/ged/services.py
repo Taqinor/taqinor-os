@@ -4800,7 +4800,8 @@ def sceller_pdf(pdf_bytes, *, company=None):
 
 def _hash_constate_pour_archivage(archivage):
     """XGED6 — Recalcule le hash SHA-256 ACTUEL du contenu archivé, ou None si
-    indisponible (stockage KO). Ne lève jamais."""
+    indisponible (stockage KO). Ne lève jamais — sauf la limite douce de la tâche (ACEL91)."""
+    from celery.exceptions import SoftTimeLimitExceeded
     version = archivage.version
     if version is None:
         return None
@@ -4809,6 +4810,8 @@ def _hash_constate_pour_archivage(archivage):
         if err or data is None:
             return None
         return compute_checksum(data)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # pragma: no cover - défensif.
         logger.warning("ged._hash_constate_pour_archivage : exception ignorée", exc_info=True)
         return None
@@ -4829,6 +4832,7 @@ def verifier_integrite_archives(company):
     Ne modifie JAMAIS `ArchivageLegal` (write-once, GED23 intact) — ne fait
     QUE journaliser. Renvoie un dict de synthèse
     `{'total', 'ok', 'altere', 'indisponible'}`."""
+    from .alertes_integrite import alerter_archives_compromises
     from .models import (
         ArchivageLegal, CONTROLE_RESULTAT_ALTERE, CONTROLE_RESULTAT_INDISPONIBLE,
         CONTROLE_RESULTAT_OK, ControleIntegrite,
@@ -4836,8 +4840,8 @@ def verifier_integrite_archives(company):
 
     synthese = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
     archivages = ArchivageLegal.objects.filter(
-        company=company).select_related('version', 'document')
-    alteres, a_signaler = [], []
+        company=company).select_related('version', 'document').order_by('id')
+    alteres = []
     for archivage in archivages:
         synthese['total'] += 1
         precedent = archivage.controles.values_list('resultat', flat=True).first()  # ACEL62
@@ -4852,17 +4856,14 @@ def verifier_integrite_archives(company):
             resultat = CONTROLE_RESULTAT_ALTERE
             synthese['altere'] += 1
             alteres.append(archivage)
-        if resultat != CONTROLE_RESULTAT_OK and resultat != precedent:
-            a_signaler.append((archivage, resultat))
+        if resultat != CONTROLE_RESULTAT_OK and resultat != precedent:  # ACEL91 : alerte AVANT le contrôle
+            alerter_archives_compromises(company, [(archivage, resultat)])
         ControleIntegrite.objects.create(
             company=company, archivage=archivage, resultat=resultat,
             hash_constate=hash_constate or '')
 
     if alteres:
         _notifier_alteration_archives(company, alteres)
-    if a_signaler:
-        from .alertes_integrite import alerter_archives_compromises
-        alerter_archives_compromises(company, a_signaler)
     return synthese
 
 
