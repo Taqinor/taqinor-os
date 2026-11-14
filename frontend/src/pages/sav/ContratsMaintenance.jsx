@@ -16,7 +16,7 @@ import fetchAllPages from '../../utils/fetchAllPages'
 import installationsApi from '../../api/installationsApi'
 import api from '../../api/axios'
 import { openPdfBlob } from '../../utils/pdfBlob'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useCanListUsers, useHasPermission } from '../../hooks/useHasPermission'
 import useDroitMetier from '../../features/sav/useDroitMetier'
 import {
   TooltipProvider,
@@ -265,6 +265,7 @@ export function Component() {
   // n'apparaît même pas dans le Segmented sans la permission (unmount total,
   // jamais un simple masquage CSS — cf. EquipementFiabilitePanel).
   const canSeeCouts = useHasPermission('prix_achat_voir')
+  const peutListerUsers = useCanListUsers() // ADRG114 — /users/ : palier admin ou users_gerer (ASEC10)
   // ADRG40 — affecter un technicien à la tournée = `sav_reassign` (serveur).
   const peutReassigner = useDroitMetier('sav_reassign')
 
@@ -315,10 +316,10 @@ export function Component() {
     if (vue === 'rentabilite' && canSeeCouts) Promise.resolve().then(() => chargerRentabilite())
   }, [vue, canSeeCouts])
   useEffect(() => {
-    // Best-effort (réservé admin) — sinon dropdown technicien vide, comme
-    // TicketsPage.jsx pour la même liste.
-    api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
-  }, [])
+    // Lue seulement avec le droit de lister les comptes — sinon dropdown
+    // technicien vide, comme TicketsPage.jsx pour la même liste.
+    if (peutListerUsers) api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }, [peutListerUsers])
 
   const toggleTourneeSelected = (id) => setTourneeSelected((s) => {
     const next = new Set(s)
