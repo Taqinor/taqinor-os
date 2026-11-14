@@ -1,0 +1,102 @@
+{
+  "sha": "8cd81386ea0ca9bcc87e83eb35dbd4c5d5819da0",
+  "date": "2026-11-14",
+  "groupe": "ACNC",
+  "verdict": "PASS",
+  "couvre": [
+    "ACNC70",
+    "ACNC71",
+    "ACNC72"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF9.7-ACNC70-course",
+      "taches": [
+        "ACNC70"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.7-ACNC70-course.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.2-ACNC71-ecran",
+      "taches": [
+        "ACNC71"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.2-ACNC71-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.4-ACNC72-grand-livre",
+      "taches": [
+        "ACNC72"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.4-ACNC72-grand-livre.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.4-ACNC72-fiche-facture",
+      "taches": [
+        "ACNC72"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.4-ACNC72-fiche-facture.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
