@@ -3,8 +3,8 @@ import iaApi from '../../../api/iaApi'
 import { marquerNote, construireContexte, ditUnePanne } from '../copilotMessages.js'
 import { instantaneDiagnostic } from '../../../lib/tamponDiagnostic.js'
 import {
-  ETATS, messageDeReponse, carteDeConfirmation, messageDeSuite, messagesDeLHistorique,
-  foyerTouche,
+  ETATS, MESSAGE_INCERTAIN, messageDeReponse, carteDeConfirmation, messageDeSuite,
+  messagesDeLHistorique, foyerTouche,
 } from '../cartes/cartes.js'
 
 // COP-F1 — les cartes (proposition / résultat) viennent UNIQUEMENT de `cartes[]`
@@ -56,24 +56,35 @@ export const noterEvenement = createAsyncThunk(
 // AG3/COP-F1 — confirme UNE proposition par son jeton (POST /confirm). L'argument
 // porte aussi `index` (message) et `carte` (rang de la proposition dans ses
 // cartes) pour que CETTE carte, et elle seule, change d'état. Un jeton ne
-// s'exécute qu'une fois : sur échec avec réponse du serveur, la carte passe en
-// « échec » (il faut redemander) ; sans réponse (réseau), elle redevient
-// confirmable.
+// s'exécute qu'une fois, et il est RÉCLAMÉ avant l'exécution : « échec »
+// seulement quand le serveur a répondu avec un refus nommé (`ok:false` + détail,
+// ou 4xx + détail) ; sans réponse, en 5xx ou sans détail, l'action a pu être
+// faite — la carte passe en « incertain » (vérifier avant de redemander).
+// `donneesPatch` FUSIONNE dans `donnees` (le composant n'a pas à relire l'état
+// courant : plusieurs callbacks asynchrones peuvent se croiser) ; le reste du
+// patch s'applique à la carte.
+function appliquerPatchCarte(c, patch) {
+  const { donneesPatch, ...reste } = patch
+  if (donneesPatch) c.donnees = { ...c.donnees, ...donneesPatch }
+  Object.assign(c, reste)
+}
+
+const refusNomme = (detail) => (typeof detail === 'string' && detail.trim() ? detail : null)
+
 export const confirmAgentAction = createAsyncThunk(
   'ia/confirmAgentAction',
   async ({ token }, { rejectWithValue }) => {
     try {
       const res = await iaApi.confirmAction(token)
       if (res.data && res.data.ok === false) {
-        return rejectWithValue({ message: res.data.detail || 'L\'action n\'a pas pu être exécutée.', sansReponse: false })
+        const message = refusNomme(res.data.detail)
+        return rejectWithValue({ message, incertain: message == null })
       }
       return { ...res.data, recu_le: Date.now() }
     } catch (err) {
-      const detail = err.response?.data?.detail
-      return rejectWithValue({
-        message: typeof detail === 'string' ? detail : null,
-        sansReponse: !err.response,
-      })
+      const statut = err.response?.status ?? 0
+      const message = statut >= 400 && statut < 500 ? refusNomme(err.response?.data?.detail) : null
+      return rejectWithValue({ message, incertain: message == null })
     }
   },
 )
@@ -190,12 +201,23 @@ const iaSlice = createSlice({
     majCarte(state, action) {
       const { index, carte, patch } = action.payload
       const c = state.messages[index]?.cartes?.[carte]
-      if (!c) return
-      // `donneesPatch` FUSIONNE dans `donnees` (le composant n'a pas à relire
-      // l'état courant : plusieurs callbacks asynchrones peuvent se croiser).
-      const { donneesPatch, ...reste } = patch
-      if (donneesPatch) c.donnees = { ...c.donnees, ...donneesPatch }
-      Object.assign(c, reste)
+      if (c) appliquerPatchCarte(c, patch)
+    },
+    // COP-F2 — une réponse enregistrée sur une touche vaut pour TOUTES les
+    // cartes « touche » de la conversation qui portent cette touche (carte
+    // « Préparer » puis carte-écho) : aucune carte restée « à faire » ne rouvre
+    // WhatsApp sur une touche close.
+    majCartesTouche(state, action) {
+      const { toucheId, patch } = action.payload
+      const id = Number(toucheId)
+      if (!Number.isInteger(id) || id <= 0) return
+      for (const msg of state.messages) {
+        for (const c of msg?.cartes ?? []) {
+          if (c?.type === 'resultat' && c.carte === 'touche' && Number(c.donnees?.touche?.id) === id) {
+            appliquerPatchCarte(c, patch)
+          }
+        }
+      }
     },
     clearOcrResult(state) {
       state.ocrResult = null
@@ -261,12 +283,13 @@ const iaSlice = createSlice({
         const c = state.messages[index]?.cartes?.[carte]
         if (!c) return
         const p = action.payload ?? {}
-        if (p.sansReponse) {
-          c.etat = ETATS.A_CONFIRMER
-          c.erreur = 'Pas de connexion au serveur — réessayez.'
-        } else {
+        if (p.message) {
           c.etat = ETATS.ECHEC
-          c.erreur = p.message || 'L\'action n\'a pas pu être exécutée — redemandez-la à l\'assistant.'
+          c.erreur = p.message
+        } else {
+          // Le jeton a pu être consommé et l'action faite : jamais « non exécutée ».
+          c.etat = ETATS.INCERTAIN
+          c.erreur = MESSAGE_INCERTAIN
         }
       })
 
@@ -349,5 +372,5 @@ const iaSlice = createSlice({
   },
 })
 
-export const { openCopilot, closeCopilot, toggleCopilot, clearMessages, historyLoaded, dismissProposal, ajouterMessageLocal, majCarte, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
+export const { openCopilot, closeCopilot, toggleCopilot, clearMessages, historyLoaded, dismissProposal, ajouterMessageLocal, majCarte, majCartesTouche, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
 export default iaSlice.reducer

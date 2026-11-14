@@ -18,7 +18,13 @@ export const ETATS = Object.freeze({
   EXPIREE: 'expiree',
   ANNULEE: 'annulee',
   ECHEC: 'echec',
+  // Sans réponse du serveur (ou 5xx) : le jeton a pu être consommé et l'action
+  // faite — ni confirmable de nouveau, ni dite « non exécutée ».
+  INCERTAIN: 'incertain',
 })
+
+/** Phrase d'une confirmation au résultat incertain (COP-A3 côté relais). */
+export const MESSAGE_INCERTAIN = 'Résultat incertain : vérifie si l’action a été faite avant de la redemander.'
 
 /** Cartes de résultat que l'écran sait rendre (miroir de `CARTES`, registre
  *  Django). Toute autre valeur — ou `null` — tombe sur la carte générique. */
@@ -159,10 +165,17 @@ export function messageLocal(cartes, recuLe = Date.now()) {
   return { role: 'agent', content: '', local: true, cartes: preparerCartes(cartes, { recuLe }) }
 }
 
+// Une carte « touche » rechargée ne garde pas sa proposition (carte-écho) : le
+// corps validé hier ne doit plus pouvoir être posté d'un doigt aujourd'hui.
+function sansPropositionDeTouche(carte) {
+  if (carte.type !== 'resultat' || carte.carte !== 'touche' || carte.donnees.proposition == null) return carte
+  return { ...carte, donnees: { ...carte.donnees, proposition: null } }
+}
+
 /** Historique rechargé : les cartes sont rejouées, les propositions inactives. */
 export function messagesDeLHistorique(liste) {
   return liste.map((m) => (m?.role === 'agent'
-    ? { ...m, cartes: preparerCartes(m.cartes, { historique: true }) }
+    ? { ...m, cartes: preparerCartes(m.cartes, { historique: true }).map(sansPropositionDeTouche) }
     : m))
 }
 

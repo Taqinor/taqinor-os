@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider, useSelector } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -57,6 +57,31 @@ function monter(donnees, { recuLe = Date.now() } = {}) {
   render(<Provider store={store}><MemoryRouter><Vue /></MemoryRouter></Provider>)
   return store
 }
+
+// Plusieurs messages, chacun avec ses cartes (carte « Préparer » + carte-écho).
+function VueTous() {
+  const msgs = useSelector((s) => s.ia.messages)
+  return msgs.map((m, i) => (
+    <div key={i} data-testid={`msg-${i}`}><CartesDuMessage msg={m} index={i} variant="page" /></div>
+  ))
+}
+
+function monterPlusieurs(listeDonnees) {
+  const initial = iaReducer(undefined, { type: '@@init' })
+  const messages = listeDonnees.map((donnees) => ({
+    role: 'agent', content: '',
+    cartes: preparerCartes([{ type: 'resultat', action_key: 'crm.suivi.preparer_touche', libelle: 'P', carte: 'touche', donnees }],
+      { recuLe: Date.now() }),
+  }))
+  const store = configureStore({ reducer: { ia: iaReducer }, preloadedState: { ia: { ...initial, messages } } })
+  render(<Provider store={store}><MemoryRouter><VueTous /></MemoryRouter></Provider>)
+  return store
+}
+
+// Touche WhatsApp dont le message a déjà été ouvert (la réponse se donne sans
+// la case « message non ouvert »).
+const TOUCHE_WA_OUVERTE = { ...TOUCHE_WA, message_ouvert_le: '2026-11-13T09:00:00Z' }
+const DONNEES_WA_OUVERTE = { ...DONNEES_WA, touche: TOUCHE_WA_OUVERTE }
 
 const avecProposition = (geste, corps, libelle = 'Salma Idrissi — Appel : fait') => ({
   ...AUTRES, touche: TOUCHE_APPEL,
@@ -130,6 +155,35 @@ describe('carte touche — WhatsApp (RELANCE-WA)', () => {
     expect(window.open).not.toHaveBeenCalled()
   })
 
+  it('client qui dit STOP (« Ne plus me contacter ») : l\'accusé passe par la modale, JAMAIS le message d\'origine ni le journal', async () => {
+    crmApi.marquerRelanceEtapeFait.mockResolvedValue({ data: { ...TOUCHE_WA_OUVERTE, statut: 'fait', prochaine_touche: null } })
+    monter(DONNEES_WA_OUVERTE)
+    await userEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.getRelanceEtapeMessage).toHaveBeenCalledWith(TOUCHE_WA.id, 'stop_contact'))
+    expect(window.open).not.toHaveBeenCalled()
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+  })
+
+  it('touche déjà close (rechargée) : ni bouton WhatsApp, ni aperçu à ouvrir', () => {
+    monter({ ...DONNEES_WA, touche: { ...TOUCHE_WA, statut: 'fait' } })
+    expect(screen.queryByRole('button', { name: /WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Langue et aperçu complet/ })).not.toBeInTheDocument()
+  })
+
+  it('relecture au clic qui rend un refus : pas de « appuyez de nouveau », aucun bouton d\'ouverture', async () => {
+    iaApi.getToucheAssistant
+      .mockRejectedValueOnce(new Error('réseau'))
+      .mockResolvedValueOnce({ data: REFUS })
+    monter(DONNEES_WA, { recuLe: Date.now() - 10 * 60 * 1000 })
+    await screen.findByText(/Touche impossible à relire/)
+    await userEvent.click(screen.getByRole('button', { name: /WhatsApp/ }))
+    expect(await screen.findByTestId('touche-refus')).toBeInTheDocument()
+    expect(screen.queryByText(/appuyez de nouveau/)).not.toBeInTheDocument()
+    expect(window.open).not.toHaveBeenCalled()
+  })
+
   it('carte fraîche : aucune relecture', () => {
     monter(DONNEES_WA)
     expect(iaApi.getToucheAssistant).not.toHaveBeenCalled()
@@ -162,6 +216,52 @@ describe('carte touche — la proposition du serveur (carte-écho)', () => {
     expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(TOUCHE_APPEL.id, corps)
     await waitFor(() => expect(screen.queryByRole('button', { name: /Enregistrer :/ })).not.toBeInTheDocument())
     expect(screen.queryByTestId('touche-traitee')).not.toBeInTheDocument()
+  })
+
+  it('« Ne plus me contacter » enregistré : l\'accusé de la table (stop_contact) est PROPOSÉ dans la modale, rien ne s\'ouvre seul', async () => {
+    crmApi.marquerRelanceEtapeFait.mockResolvedValue({ data: { ...TOUCHE_WA, statut: 'fait', prochaine_touche: null } })
+    monter({ ...DONNEES_WA, proposition: { geste: 'fait', libelle: 'Aziz Benali — ne plus contacter', effet: 'e', corps: { reponse: 'ne_plus_contacter' } } })
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer :/ }))
+    expect(crmApi.marquerRelanceEtapeFait).toHaveBeenCalledWith(TOUCHE_WA.id, { reponse: 'ne_plus_contacter' })
+    await waitFor(() => expect(crmApi.getRelanceEtapeMessage).toHaveBeenCalledWith(TOUCHE_WA.id, 'stop_contact'))
+    expect(window.open).not.toHaveBeenCalled()
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+  })
+
+  it('réponse sans accusé dans la table : aucune modale', async () => {
+    crmApi.marquerRelanceEtapeFait.mockResolvedValue({ data: { ...TOUCHE_APPEL, statut: 'fait', prochaine_touche: null } })
+    monter(avecProposition('fait', { outcome: 'non_joint' }))
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer :/ }))
+    await screen.findByTestId('touche-traitee')
+    expect(crmApi.getRelanceEtapeMessage).not.toHaveBeenCalled()
+  })
+
+  it('deux cartes pour la même touche : la réponse enregistrée sur la carte-écho clôt AUSSI la première', async () => {
+    crmApi.marquerRelanceEtapeFait.mockResolvedValue({ data: { ...TOUCHE_WA, statut: 'fait', prochaine_touche: null } })
+    const store = monterPlusieurs([
+      DONNEES_WA,
+      { ...DONNEES_WA, proposition: { geste: 'fait', libelle: 'Aziz — non joint', effet: 'e', corps: { outcome: 'non_joint' } } },
+    ])
+    await userEvent.click(within(screen.getByTestId('msg-1')).getByRole('button', { name: /Enregistrer :/ }))
+    await waitFor(() => expect(within(screen.getByTestId('msg-0')).getByTestId('touche-traitee')).toBeInTheDocument())
+    expect(within(screen.getByTestId('msg-0')).queryByRole('button', { name: /WhatsApp/ })).not.toBeInTheDocument()
+    expect(store.getState().ia.messages[0].cartes[0].donnees.touche.statut).toBe('fait')
+    expect(window.open).not.toHaveBeenCalled()
+  })
+
+  it('« Reporter » qui rend une AUTRE touche (veille) : la carte relit la touche rendue, jamais l\'ancien message', async () => {
+    const reprise = { ...TOUCHE_WA, id: 9999, libelle: 'Reprise après veille' }
+    crmApi.reporterRelanceEtape.mockResolvedValue({ data: reprise })
+    let livrer
+    iaApi.getToucheAssistant.mockReturnValue(new Promise((r) => { livrer = r }))
+    const store = monter({ ...DONNEES_WA, proposition: { geste: 'reporter', libelle: 'Veille', effet: 'e', corps: { rappel_le: '2026-12-01', rappel_heure: '09:00', mode: 'veille' } } })
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer :/ }))
+    await waitFor(() => expect(iaApi.getToucheAssistant).toHaveBeenCalledWith(9999))
+    // Pendant la relecture : plus le message de l'ancienne touche.
+    expect(screen.queryByTestId('touche-texte')).not.toBeInTheDocument()
+    livrer({ data: { ...SAMPLE, touche: reprise, message: { ...SAMPLE.message, message: 'Texte de la reprise.' } } })
+    expect(await screen.findByTestId('touche-texte')).toHaveTextContent('Texte de la reprise.')
+    expect(store.getState().ia.messages[0].cartes[0].donnees.touche.id).toBe(9999)
   })
 
   it('un geste hors de la table fixe (fait / reporter / sauter) n\'offre aucun bouton', () => {

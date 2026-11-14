@@ -34,6 +34,20 @@ describe('iaSlice - loadChatHistory.fulfilled', () => {
     expect(s.messages[1].cartes[1].donnees.reference).toBe('R')
   })
 
+  it('une carte touche rechargee perd sa proposition (carte-echo) : plus de « Enregistrer » d\'hier', () => {
+    const proposition = { geste: 'fait', libelle: 'L', effet: 'E', corps: { outcome: 'non_joint' } }
+    const liste = [{
+      role: 'agent', content: 'Voici.',
+      cartes: [{ type: 'resultat', action_key: 'crm.suivi.proposer_reponse', libelle: 'P', carte: 'touche',
+        donnees: { touche: { id: 412 }, proposition, proposition_refus: null } }],
+    }]
+    const s = reducer(etat(), loadChatHistory.fulfilled(liste, 'rid'))
+    expect(s.messages[0].cartes[0].donnees.proposition).toBeNull()
+    expect(s.messages[0].cartes[0].donnees.touche.id).toBe(412)
+    // L'historique reçu n'est pas modifié en place.
+    expect(liste[0].cartes[0].donnees.proposition).toEqual(proposition)
+  })
+
   it('n\'ecrase JAMAIS une conversation deja en cours (cartes locales, question envoyee pendant le chargement)', () => {
     const encours = { ...etat(), messages: [{ role: 'user', content: 'plus recent' }] }
     const s = reducer(encours, loadChatHistory.fulfilled([{ role: 'user', content: 'ancien' }], 'rid'))

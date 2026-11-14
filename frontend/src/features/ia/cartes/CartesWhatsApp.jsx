@@ -66,16 +66,31 @@ function detailErreur(err, repli) {
   return typeof detail === 'string' && detail ? detail : repli
 }
 
+const entierPositif = (v) => (Number.isInteger(v) && v > 0 ? v : null)
+
+// Corps de l'aperçu ET du commit : les devis de la carte, et la langue SERVIE
+// quand le serveur la donne. Sans elle, aucune langue n'est imposée : le serveur
+// reprend celle du lead, comme pour l'aperçu (jamais un `fr` qui écraserait un
+// aperçu en darija). `null` quand la carte ne permet pas d'enregistrer l'envoi.
+function corpsEnvoi(d) {
+  const ids = Array.isArray(d.devis_ids) ? d.devis_ids : []
+  if (!entierPositif(d.lead_id) || ids.length === 0 || !ids.every(entierPositif)) return null
+  const langue = typeof d.langue === 'string' && d.langue ? d.langue : null
+  return langue ? { devis_ids: ids, langue } : { devis_ids: ids }
+}
+
 // `wa_devis` : ouvrir PUIS valider (commit) l'envoi — sans le commit le devis
 // reste brouillon et le suivi ne démarre pas. Aperçu revalidé s'il est ancien.
+// Sans lead ni devis identifiés, AUCUNE ouverture : une conversation ouverte sans
+// envoi enregistré ne doit jamais avoir lieu.
 export function CarteWaDevis({ carte, index, carteIdx }) {
   const patch = usePatchCarte(index, carteIdx)
   const d = carte.donnees
   const [erreur, setErreur] = useState('')
   const [occupe, setOccupe] = useState(false)
-  const corps = { devis_ids: d.devis_ids ?? [], langue: d.langue ?? 'fr' }
+  const corps = corpsEnvoi(d)
   const age = () => Date.now() - (carte.verifie_le ?? carte.recu_le ?? 0)
-  const commitPossible = Boolean(d.lead_id) && corps.devis_ids.length > 0
+  const commitPossible = corps != null
 
   const revalider = async () => {
     setOccupe(true)
@@ -111,18 +126,19 @@ export function CarteWaDevis({ carte, index, carteIdx }) {
   }
 
   const ouvrir = async () => {
+    if (!commitPossible) return
     if (age() > AGE_MAX_CARTE_MS) {
       if (await revalider()) setErreur('Aperçu mis à jour — appuyez de nouveau sur WhatsApp.')
       return
     }
     // Ouverture dans le geste, puis le commit (`whatsapp-devis`).
     window.open(lienWhatsAppSur(d.wa_url), '_blank', 'noopener')
-    if (commitPossible) enregistrerEnvoi()
+    enregistrerEnvoi()
   }
 
   return (
     <div>
-      <Texte texte={d.message || ''} langue={corps.langue} />
+      <Texte texte={d.message || ''} langue={d.langue} />
       {d.links?.length > 0 && (
         <ul className="mt-1.5 text-xs text-muted-foreground">
           {d.links.map((l) => <li key={l.devis_id}>{l.reference}</li>)}
@@ -132,11 +148,19 @@ export function CarteWaDevis({ carte, index, carteIdx }) {
         {carte.envoye
           ? <p className="text-sm font-medium" data-testid="wa-devis-envoye">Envoi enregistré : devis marqué envoyé.</p>
           : (
-            <Button className="min-h-11" disabled={occupe || !lienWhatsAppSur(d.wa_url)} loading={occupe} onClick={ouvrir}>
+            <Button
+              className="min-h-11" disabled={occupe || !commitPossible || !lienWhatsAppSur(d.wa_url)}
+              loading={occupe} onClick={ouvrir}
+            >
               <MessageCircle className="size-4" aria-hidden="true" />
               Ouvrir WhatsApp
             </Button>
           )}
+        {!carte.envoye && !commitPossible && (
+          <p className="text-xs text-muted-foreground" data-testid="wa-devis-sans-commit">
+            Envoi à faire depuis la fiche du lead.
+          </p>
+        )}
       </div>
       {erreur && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-destructive" role="alert">

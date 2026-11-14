@@ -219,7 +219,8 @@ describe('cartes — WhatsApp et documents (COP-F4)', () => {
     expect(screen.getByTestId('wa-texte')).toHaveTextContent(/DEV-202609-0012/)
     await userEvent.click(screen.getByRole('button', { name: /Ouvrir WhatsApp/ }))
     expect(window.open).toHaveBeenCalledWith('https://wa.me/212612345678?text=Bonjour%20Amina', '_blank', 'noopener')
-    await waitFor(() => expect(crmApi.whatsappDevis).toHaveBeenCalledWith(9, { devis_ids: [413, 414], langue: 'fr' }))
+    await waitFor(() => expect(crmApi.whatsappDevis).toHaveBeenCalledWith(9, { devis_ids: [413, 414] }))
+    expect(crmApi.whatsappDevis).toHaveBeenCalledTimes(1)
     expect(await screen.findByTestId('wa-devis-envoye')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Ouvrir WhatsApp/ })).not.toBeInTheDocument()
   })
@@ -228,9 +229,35 @@ describe('cartes — WhatsApp et documents (COP-F4)', () => {
     const apercu = exempleContrat('crm', 'whatsapp_devis_apercu')
     crmApi.whatsappDevisApercu.mockResolvedValue({ data: { ...apercu, message: 'Texte à jour.' } })
     monter([resultat('wa_devis', { ...apercu, lead_id: 9, devis_ids: [413] })], { recuLe: Date.now() - 10 * 60 * 1000 })
-    await waitFor(() => expect(crmApi.whatsappDevisApercu).toHaveBeenCalledWith(9, { devis_ids: [413], langue: 'fr' }))
+    await waitFor(() => expect(crmApi.whatsappDevisApercu).toHaveBeenCalledWith(9, { devis_ids: [413] }))
     await screen.findByText('Texte à jour.')
     expect(window.open).not.toHaveBeenCalled()
+  })
+
+  it('wa_devis sans lead_id / devis_ids (corps tel que le relais le sert) : AUCUNE ouverture sans enregistrement', async () => {
+    monter([resultat('wa_devis', exempleContrat('crm', 'whatsapp_devis_apercu'))])
+    const bouton = screen.getByRole('button', { name: /Ouvrir WhatsApp/ })
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('wa-devis-sans-commit')).toHaveTextContent('Envoi à faire depuis la fiche du lead.')
+    await userEvent.click(bouton)
+    expect(window.open).not.toHaveBeenCalled()
+    expect(crmApi.whatsappDevis).not.toHaveBeenCalled()
+  })
+
+  it('wa_devis aux identifiants non entiers : aucune ouverture', () => {
+    const apercu = exempleContrat('crm', 'whatsapp_devis_apercu')
+    monter([resultat('wa_devis', { ...apercu, lead_id: '9', devis_ids: [413, 'x'] })])
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeDisabled()
+  })
+
+  it('wa_devis : la langue SERVIE part au commit et à la revalidation (jamais un fr en dur)', async () => {
+    const apercu = exempleContrat('crm', 'whatsapp_devis_apercu')
+    crmApi.whatsappDevisApercu.mockResolvedValue({ data: apercu })
+    monter([resultat('wa_devis', { ...apercu, lead_id: 9, devis_ids: [413], langue: 'darija' })], { recuLe: 0 })
+    await waitFor(() => expect(crmApi.whatsappDevisApercu).toHaveBeenCalledWith(9, { devis_ids: [413], langue: 'darija' }))
+    expect(screen.getByTestId('wa-texte')).toHaveAttribute('dir', 'rtl')
+    await userEvent.click(screen.getByRole('button', { name: /Ouvrir WhatsApp/ }))
+    await waitFor(() => expect(crmApi.whatsappDevis).toHaveBeenCalledWith(9, { devis_ids: [413], langue: 'darija' }))
   })
 
   it('wa_devis ancien dont l\'aperçu est refusé (garde de remise) : le motif, rien ne s\'ouvre', async () => {

@@ -2,7 +2,7 @@
 import { useCallback, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import iaApi from '../../../api/iaApi'
-import { ajouterMessageLocal, majCarte } from '../store/iaSlice'
+import { ajouterMessageLocal, majCarte, majCartesTouche } from '../store/iaSlice'
 import { messageLocal } from './cartes'
 
 /** Écrit dans l'état d'UNE carte (rangée dans le store : le tiroir est remonté
@@ -13,6 +13,15 @@ export function usePatchCarte(index, carteIdx) {
     if (index == null || carteIdx == null) return
     dispatch(majCarte({ index, carte: carteIdx, patch }))
   }, [dispatch, index, carteIdx])
+}
+
+/** Écrit dans TOUTES les cartes « touche » de la conversation qui portent la
+ *  touche `toucheId` (une réponse enregistrée vaut pour chacune d'elles). */
+export function useMajCartesTouche() {
+  const dispatch = useDispatch()
+  return useCallback((toucheId, patch) => {
+    dispatch(majCartesTouche({ toucheId, patch }))
+  }, [dispatch])
 }
 
 /** La carte « touche » d'une touche lue par `GET crm/assistant/touches/<id>/`. */

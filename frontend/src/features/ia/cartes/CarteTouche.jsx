@@ -9,8 +9,9 @@ import { STAGE_LABELS } from '../../crm/stages'
 import RelanceEtapeRow from '../../crm/relances/RelanceEtapeRow'
 import ToucheMessageDialog from '../../crm/relances/ToucheMessageDialog'
 import { traiterGesteTouche } from '../../crm/relances/refusGeste'
+import { typeEtape, reponsesDeLEtape } from '../../crm/relances/parcours'
 import { lienWhatsAppSur, AGE_MAX_CARTE_MS, GESTES_PROPOSITION } from './cartes'
-import { usePatchCarte, usePreparerTouche } from './useCarte'
+import { usePatchCarte, usePreparerTouche, useMajCartesTouche } from './useCarte'
 
 /* COP-F2 — la carte « touche » : on EMBARQUE `RelanceEtapeRow` (l'écran Relances)
    pour hériter de tout — script d'appel, questions à poser, lien `tel:`,
@@ -103,6 +104,16 @@ function EtatTraite({ traitee, onAnnuler, onSuivante, occupe, erreur }) {
   )
 }
 
+// L'accusé que la table du parcours PROPOSE après cette réponse (ex.
+// `ne_plus_contacter` → `stop_contact`), exactement comme la ligne de l'écran
+// Relances le propose après son « Confirmer » — ou `null`.
+function accuseDeLaReponse(touche, corps) {
+  const cle = corps?.reponse
+  if (!cle) return null
+  const reponse = reponsesDeLEtape(typeEtape(touche), touche).find((r) => r.reponse === cle)
+  return reponse?.message || null
+}
+
 // Ouvre WhatsApp en UN clic : la fenêtre part dans le geste (les navigateurs
 // bloquent une ouverture après une attente) et le journal « WhatsApp ouvert »
 // part dans la foulée, sans l'attendre (l'application passe en arrière-plan sur
@@ -117,6 +128,9 @@ function ouvrirEtJournaliser(url, etape, surJournal) {
 export default function CarteTouche({ carte, index, carteIdx }) {
   const navigate = useNavigate()
   const patch = usePatchCarte(index, carteIdx)
+  // Une réponse, une annulation, un journal : valent pour TOUTES les cartes de
+  // la conversation qui portent cette touche (carte « Préparer » + carte-écho).
+  const majCartesTouche = useMajCartesTouche()
   const { preparer, occupe: occupeSuivante, erreur: erreurSuivante } = usePreparerTouche()
   const [busyId, setBusyId] = useState(null)
   const [dialogue, setDialogue] = useState(null)
@@ -150,13 +164,30 @@ export default function CarteTouche({ carte, index, carteIdx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- relecture au montage seulement
   }, [])
 
+  // « Reporter » en mode veille rend une AUTRE touche (la reprise) : son message
+  // n'est pas celui de l'ancienne — on la relit, sans message entre-temps (le
+  // bouton WhatsApp passe alors par la modale, qui rend le bon texte).
+  const relireReprise = async (id) => {
+    try {
+      const res = await iaApi.getToucheAssistant(id)
+      majCartesTouche(id, { donneesPatch: res.data, verifie_le: Date.now() })
+    } catch {
+      setMessage('Touche reprise : relecture impossible pour le moment — le message s’affichera à l’ouverture.')
+    }
+  }
+
   const appliquer = (action, ligne) => {
     const nouvelle = ligne?.id ? ligne : touche
     const fini = nouvelle.statut !== 'a_faire'
-    patch({
-      donneesPatch: { touche: nouvelle, proposition: null, proposition_refus: null },
+    const autreTouche = nouvelle.id !== touche.id
+    majCartesTouche(touche.id, {
+      donneesPatch: {
+        touche: nouvelle, proposition: null, proposition_refus: null,
+        ...(autreTouche ? { message: null } : {}),
+      },
       traitee: fini ? { geste: action, prochaine: ligne?.prochaine_touche ?? null } : null,
     })
+    if (autreTouche && !fini) relireReprise(nouvelle.id)
   }
 
   const traiter = (id, action, payload) => traiterGesteTouche({
@@ -166,28 +197,38 @@ export default function CarteTouche({ carte, index, carteIdx }) {
   const enregistrerProposition = async () => {
     const corps = proposition.corps ?? {}
     const payload = proposition.geste === 'sauter' ? corps.note : corps
+    const accuse = proposition.geste === 'fait' ? accuseDeLaReponse(touche, corps) : null
     try {
       await traiter(touche.id, proposition.geste, payload)
       setMessage('')
+      // CAD-A — l'accusé convenu est PROPOSÉ dans la modale d'aperçu (rien ne
+      // part sans le clic « Ouvrir WhatsApp »), comme après la ligne.
+      if (accuse) setDialogue({ ...touche, message_cle: accuse })
     } catch {
       setMessage('Enregistrement refusé par le serveur — utilisez les réponses ci-dessous.')
     }
   }
 
-  const aOuvrirParLeFlux = () => !refus && messageTouche && touche.canal === 'whatsapp'
+  const aOuvrirParLeFlux = () => !refus && messageTouche && touche.statut === 'a_faire'
+    && touche.canal === 'whatsapp'
     && lienWhatsAppSur(messageTouche.wa_url) && !messageTouche.crochets?.length
     && !messageTouche.preuve_manquante && !messageTouche.vocal
 
   const ouvrirWhatsApp = async (etape) => {
+    // CAD-A — l'accusé d'une réponse (« stop_contact »…) suit une touche DÉJÀ
+    // close : le flux EXACT de l'écran Relances (modale), jamais le message
+    // d'origine, et rien n'est journalisé sur la touche.
+    if (etape?.message_cle) { setDialogue(etape); return }
+    if (touche.statut !== 'a_faire') { setMessage('Touche déjà traitée : rien à ouvrir.'); return }
     // Cas riches (appel, vocal, crochets, e-mail, preuve) : le flux complet de l'écran.
     if (!aOuvrirParLeFlux()) { setDialogue(etape); return }
     if (Date.now() - verifieLe > AGE_MAX_CARTE_MS) {
       const fraiche = await relire()
-      if (fraiche) setMessage('Touche relue — appuyez de nouveau sur WhatsApp.')
+      if (fraiche && !fraiche.refus) setMessage('Touche relue — appuyez de nouveau sur WhatsApp.')
       return
     }
     ouvrirEtJournaliser(messageTouche.wa_url, etape, (ligne) => {
-      if (ligne?.id) patch({ donneesPatch: { touche: ligne } })
+      if (ligne?.id) majCartesTouche(touche.id, { donneesPatch: { touche: ligne } })
     })
   }
 
@@ -195,7 +236,7 @@ export default function CarteTouche({ carte, index, carteIdx }) {
     setBusyId(touche.id)
     try {
       const res = await crmApi.annulerRelanceEtape(touche.id)
-      patch({ donneesPatch: { touche: res.data?.id ? res.data : touche }, traitee: null })
+      majCartesTouche(touche.id, { donneesPatch: { touche: res.data?.id ? res.data : touche }, traitee: null })
       setMessage('')
     } catch {
       setMessage('Annulation impossible (plus de 24 h, ou déjà reprise).')
@@ -249,7 +290,7 @@ export default function CarteTouche({ carte, index, carteIdx }) {
             onReporter={(id, rappel) => traiter(id, 'reporter', rappel)}
             onOuvrirMessage={ouvrirWhatsApp}
           />
-          {messageTouche && (
+          {messageTouche && touche.statut === 'a_faire' && (
             <Button variant="ghost" size="sm" className="mt-1 min-h-10" onClick={() => setDialogue(touche)}>
               <Languages className="size-4" aria-hidden="true" />
               Langue et aperçu complet
@@ -263,7 +304,7 @@ export default function CarteTouche({ carte, index, carteIdx }) {
         onOpenChange={(o) => { if (!o) setDialogue(null) }}
         onSent={(id, data) => {
           setDialogue(null)
-          if (data?.etape?.id) patch({ donneesPatch: { touche: data.etape } })
+          if (data?.etape?.id) majCartesTouche(data.etape.id, { donneesPatch: { touche: data.etape } })
         }}
       />
     </div>

@@ -41,7 +41,7 @@ vi.mock('../../api/iaApi', () => ({
 
 import iaApi from '../../api/iaApi'
 import iaReducer, { dismissProposal } from '../../features/ia/store/iaSlice'
-import { messageDeReponse, preparerCartes } from '../../features/ia/cartes/cartes'
+import { messageDeReponse, preparerCartes, MESSAGE_INCERTAIN } from '../../features/ia/cartes/cartes'
 import AgentChat from './AgentChat'
 
 // jsdom n'implémente pas scrollIntoView (appelé dans un effet d'auto-scroll).
@@ -190,6 +190,34 @@ describe('AgentChat — cartes proposition / résultat (AG3, COP-F1)', () => {
     expect(iaApi.confirmAction).not.toHaveBeenCalled()
     expect(screen.getByTestId('proposal-card')).toHaveAttribute('data-etat', 'annulee')
     expect(screen.queryByRole('button', { name: /Confirmer/ })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['sans réponse du serveur (réseau)', () => Promise.reject(new Error('Network Error'))],
+    ['5xx de la passerelle (corps HTML)', () => Promise.reject({ response: { status: 502, data: '<html>' } })],
+    ['5xx avec détail', () => Promise.reject({ response: { status: 500, data: { detail: 'boom' } } })],
+    ['ok:false SANS détail', () => Promise.resolve({ data: { ok: false, detail: '' } })],
+  ])('confirmation %s : « résultat incertain », jamais « non exécutée », plus confirmable', async (_cas, reponse) => {
+    iaApi.confirmAction.mockImplementationOnce(reponse)
+    const store = makeStore([msgProposition()])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    await userEvent.click(screen.getByRole('button', { name: /Confirmer/ }))
+    expect(await screen.findByText(MESSAGE_INCERTAIN)).toBeInTheDocument()
+    expect(screen.getByTestId('proposal-card')).toHaveAttribute('data-etat', 'incertain')
+    expect(screen.queryByText(/n.a pas pu être exécutée/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Confirmer/ })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['ok:false avec détail', () => Promise.resolve({ data: { ok: false, detail: 'Proposition introuvable, expirée ou déjà confirmée.' } })],
+    ['4xx avec détail', () => Promise.reject({ response: { status: 400, data: { detail: 'Proposition introuvable, expirée ou déjà confirmée.' } } })],
+  ])('confirmation refusée %s : « échec » avec le détail du serveur', async (_cas, reponse) => {
+    iaApi.confirmAction.mockImplementationOnce(reponse)
+    const store = makeStore([msgProposition()])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    await userEvent.click(screen.getByRole('button', { name: /Confirmer/ }))
+    expect(await screen.findByText('Proposition introuvable, expirée ou déjà confirmée.')).toBeInTheDocument()
+    expect(screen.getByTestId('proposal-card')).toHaveAttribute('data-etat', 'echec')
   })
 
   it('une proposition périmée est inactive (« expirée »)', () => {
