@@ -162,7 +162,9 @@ class GatingTests(TestCase):
             return [object()]
 
         with mock.patch('core.email_intake._active_imap_config',
-                        return_value=object()),                 mock.patch('core.email_intake._imap', return_value=conn),                 mock.patch.object(services, 'importer_message_email',
+                        return_value=object()), \
+                mock.patch('core.email_intake._imap', return_value=conn), \
+                mock.patch.object(services, 'importer_message_email',
                                   side_effect=importer):
             result = services.poll_mail_intake(self.co)
         self.assertEqual(result, {'fetched': 2, 'imported': 1})

@@ -391,8 +391,10 @@ class RelancesTests(XGed2Base):
             expires_at=timezone.now() - timezone.timedelta(days=1))
         ouverture = timezone.now() + timezone.timedelta(days=2)
         with mock.patch('apps.notifications.selectors.fenetre_notifications',
-                        return_value=FenetreNotifications(False, ouverture)),                 mock.patch.object(tasks.relancer_signataires_societe,
-                                  'apply_async') as differee,                 mock.patch('apps.ged.services._send_signataire_email',
+                        return_value=FenetreNotifications(False, ouverture)), \
+                mock.patch.object(tasks.relancer_signataires_societe,
+                                  'apply_async') as differee, \
+                mock.patch('apps.ged.services._send_signataire_email',
                            return_value=True) as envoi:
             result = tasks.signature_relances_expiration()
         self.assertEqual(result['relances'], 0)
