@@ -11,13 +11,14 @@
 //      présent, `quote.eco_s_ann` et `quote.roi_s` NULS (aucun chiffre
 //      résidentiel), `mode_kpis` sans `bassin_m3` ni `fda_eligible`, aucun
 //      « 30 % » isolé ;
-//   4. (optionnel, `WEB_URL` = apps/web en dev) page /proposition capturée en
-//      FR puis en AR, jointe au rapport.
+//   4. (`WEB_URL` = apps/web, servi par le job e2e — ATST30) page /proposition en
+//      FR puis en AR : montants `data-figure` = `/data/`, captures jointes.
 // Aucun mock réseau. Base partagée, workers: 1 : nettoyage best-effort.
 import { test, expect } from '@playwright/test'
 import {
   nombrePagesPdf, cliquerCreerDevis, ouvrirGenerateurDepuisLeadAgricole, retirerLignesPrixARenseigner,
 } from './helpers'
+import { cleDe, comparer, figuresDepuisProposition, identitesComparees, lireFiguresPage } from './figures'
 
 const API = '/api/django'
 const devisIds = []
@@ -132,14 +133,20 @@ test('AGR318 — lien public : synthèse agricole, aucun chiffre résidentiel', 
 })
 
 test('AGR318 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis)', async ({ page, request }) => {
-  test.skip(!process.env.WEB_URL, 'WEB_URL (apps/web en dev) non fourni : captures non prises')
+  expect(process.env.WEB_URL, 'WEB_URL (apps/web) non servi').toBeTruthy()
   expect(devisId, 'le test de création doit précéder').toBeTruthy()
   const lien = await json(await request.post(`${API}/ventes/devis/${devisId}/share-link/`,
     { data: {} }), 'lien de partage')
+  // ATST30 — les montants de la page = ceux de `/data/` de la même proposition.
+  const data = figuresDepuisProposition(await json(await request.get(
+    `${API}/public/proposal/${lien.token_interne}/data/`), 'données publiques'))
   for (const langue of ['fr', 'ar']) {
     await page.goto(`${process.env.WEB_URL}/proposition/${lien.token_interne}`)
     await page.locator(`#prop-lang-${langue}`).click()
-    await expect(page.locator('body')).toContainText(/\S/, { timeout: 30_000 })
+    await expect(page.locator('[data-figure="total_ttc"]:visible').first()).toBeVisible({ timeout: 30_000 })
+    const surfaces = { page: await lireFiguresPage(page), data }
+    expect(comparer(surfaces), `/proposition (${langue}) ≠ /data/`).toEqual([])
+    expect([...identitesComparees(surfaces)].some((id) => cleDe(id) === 'total_ttc'), 'total_ttc comparé').toBe(true)
     await test.info().attach(`proposition-${langue}`, {
       body: await page.screenshot({ fullPage: true }), contentType: 'image/png',
     })

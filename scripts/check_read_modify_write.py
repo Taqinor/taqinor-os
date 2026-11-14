@@ -330,6 +330,13 @@ def fichiers_morts(cles, root=None):
     return morts
 
 
+def cles_perimees(allow, signalees):
+    """ACNC61 — clés gelées que la garde ne signale plus (fonction devenue saine) :
+    gardées, elles laisseraient passer une régression ; la garde les refuse."""
+    morts = set(fichiers_morts(allow))
+    return [c for c in sorted(allow) if c not in signalees and c not in morts]
+
+
 def _morts_offenders(cles):
     return [f"{c} — ligne d'allowlist morte (fichier absent) : retirez-la"
             for c in fichiers_morts(cles)]
@@ -339,14 +346,16 @@ def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
     offenders = _morts_offenders(allow)
-    listed = []
+    listed, signalees = [], set()
     for path in _iter_services_files():
         rel = _rel(path)
         for funcname, target in check_file(path):
             key = f"{rel}::{funcname}"
             listed.append(f"{key} ({target})")
+            signalees.add(key)
             if key not in allow:
                 offenders.append(f"{key} ({target})")
+    offenders += [f"{c} — clé gelée plus signalée : retirez-la" for c in cles_perimees(allow, signalees)]
 
     if list_mode:
         for line in listed:

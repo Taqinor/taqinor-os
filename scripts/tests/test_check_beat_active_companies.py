@@ -150,6 +150,14 @@ class PerimetreTests(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn('ma_commande.py::Command.handle', out)
 
+    def test_authentication_est_dans_le_perimetre(self):
+        """ACEL82 — un balayage sans limite de ``authentication/tasks.py`` est lu, pas ignoré."""
+        src = LimitesBalayageTests.TETE.format(lim='') + "        traiter(c)\n"
+        code, out = BalayageGlobalNonScopeTests._lancer(
+            BalayageGlobalNonScopeTests(), '', extra={'authentication/tasks.py': src}, limites='')
+        self.assertEqual(code, 1, out)
+        self.assertIn('authentication/tasks.py::balayer', out)
+
 
 class AllowlistTests(unittest.TestCase):
     def test_plus_aucune_exception_sca19_dans_l_allowlist(self):

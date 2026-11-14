@@ -183,6 +183,14 @@ class MainSurArbreFautifTests(unittest.TestCase):
         self.allow.unlink()
         self.assertEqual(self._main(LOCKED_SELECT_FOR_UPDATE)[0], 0)
 
+    def test_cle_gelee_plus_signalee_refusee(self):
+        """ACNC61 — une clé gelée dont la fonction est devenue saine est refusée."""
+        cle = f"{crmw._rel(self.svc)}::incr"
+        self.allow.write_text(f"{cle}  # tâche X\n", encoding="utf-8")
+        code, out = self._main(LOCKED_SELECT_FOR_UPDATE)
+        self.assertEqual(code, 1, out)
+        self.assertIn(f"{cle} — clé gelée plus signalée : retirez-la", out)
+
 
 def _tous(src):
     with tempfile.TemporaryDirectory() as tmp:
