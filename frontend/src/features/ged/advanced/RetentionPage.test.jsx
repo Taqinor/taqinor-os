@@ -62,6 +62,24 @@ beforeEach(() => {
   })
 })
 
+describe('ADRG135 RetentionPage — gouvernance', () => {
+  it('sans ged_gouvernance : ni politique ni disposition', async () => {
+    gedApi.getPolitiquesRetention.mockResolvedValue({ data: [{ id: 1, nom: 'Devis', actif: true }] })
+    renderPage(AUTH_COMMERCIAL_RESP)
+    await screen.findByText('Politiques de rétention')
+    expect(screen.queryByRole('button', { name: /Nouvelle politique/ })).toBeNull()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Dispositions' }))
+    await screen.findAllByText('Purge devis 2023')
+    expect(screen.queryByRole('button', { name: 'Approuver' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Exécuter' })).toBeNull()
+  })
+
+  it('Directeur : garde les gestes de politique', async () => {
+    renderPage(AUTH_DIRECTEUR)
+    expect(await screen.findByRole('button', { name: /Nouvelle politique/ })).toBeInTheDocument()
+  })
+})
+
 describe('PACT134 RetentionPage — Dispositions', () => {
   it('liste les demandes de disposition et propose un nouveau lot', async () => {
     renderPage()
