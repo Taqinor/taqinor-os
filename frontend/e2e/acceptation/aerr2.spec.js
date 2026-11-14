@@ -633,6 +633,7 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
   })
   await p.goto(`/crm/leads?lead=${a}`)
   const fiche = p.getByRole('dialog').filter({ has: p.getByRole('heading', { name: new RegExp(`AERR108 A ${m}`) }) })
+  await deplierContact(p)
   const lien = fiche.locator('.lw-dup-warning .lw-dup-link').filter({ hasText: `AERR108 B ${m}` })
   await expect(lien, 'doublon signalé').toBeVisible({ timeout: 60_000 })
   const v2 = 'Tanger'
