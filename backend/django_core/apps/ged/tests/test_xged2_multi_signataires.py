@@ -370,6 +370,39 @@ class RelancesTests(XGed2Base):
         alice.refresh_from_db()
         self.assertEqual(alice.nb_relances, 1)
 
+    def test_ouverture_lointaine_aucune_reprise_differee(self):
+        """AMSG98 — fenêtre rouverte dans 2 jours (samedi → lundi) : aucun
+        `apply_async` (au-delà du délai de re-livraison du broker), 0 relance,
+        les demandes échues expirent quand même."""
+        from apps.ged import tasks
+        from apps.ged.models import DemandeSignatureDocument
+        from apps.notifications.selectors import FenetreNotifications
+        demande = services.creer_demande_multi_signataires(
+            self.doc_a, destinataires=self._destinataires(),
+            company=self.co_a, relance_cadence_jours=3)
+        alice = demande.signataires.get(nom='Alice')
+        alice.notifie_le = timezone.now() - timezone.timedelta(days=4)
+        alice.save(update_fields=['notifie_le'])
+        echue = services.creer_demande_multi_signataires(
+            Document.objects.create(
+                company=self.co_a, folder=self.folder_a, nom='Échue'),
+            destinataires=self._destinataires(), company=self.co_a)
+        DemandeSignatureDocument.objects.filter(pk=echue.pk).update(
+            expires_at=timezone.now() - timezone.timedelta(days=1))
+        ouverture = timezone.now() + timezone.timedelta(days=2)
+        with mock.patch('apps.notifications.selectors.fenetre_notifications',
+                        return_value=FenetreNotifications(False, ouverture)),                 mock.patch.object(tasks.relancer_signataires_societe,
+                                  'apply_async') as differee,                 mock.patch('apps.ged.services._send_signataire_email',
+                           return_value=True) as envoi:
+            result = tasks.signature_relances_expiration()
+        self.assertEqual(result['relances'], 0)
+        envoi.assert_not_called()
+        differee.assert_not_called()
+        alice.refresh_from_db()
+        self.assertEqual((alice.nb_relances, alice.derniere_relance_le), (0, None))
+        echue.refresh_from_db()
+        self.assertEqual(echue.statut, SIGNATURE_ANNULE)
+
 
 class ScopingApiTests(XGed2Base):
     def test_signataire_scoped_by_company(self):
