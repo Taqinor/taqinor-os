@@ -24,17 +24,7 @@ const SOC = `U.objects.get(username='demo_admin').company_id`
 test.describe.configure({ timeout: 480_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 const ouverts = []
-test.afterEach(async () => {
-  const testInfo = test.info()
-  for (const c of ouverts.splice(0)) {
-    // Trace du contexte du rôle joué, gardée seulement quand l'étape tombe (diagnostic du rapport Playwright).
-    if (testInfo.status !== testInfo.expectedStatus) {
-      const chemin = testInfo.outputPath('trace-ecran-role.zip')
-      await c.tracing.stop({ path: chemin }).then(() => testInfo.attachments.push({ name: 'trace', path: chemin, contentType: 'application/zip' }), () => undefined)
-    }
-    await c.close().catch(() => undefined)
-  }
-})
+test.afterEach(async () => { for (const c of ouverts.splice(0)) await c.close().catch(() => undefined) })
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const note = (testInfo, type, description) => {
   testInfo.annotations.push({ type, description })
@@ -78,7 +68,6 @@ async function ecran(page, suivi, testInfo, nom) {
     ...(u.viewport ? { viewport: u.viewport } : {}),
   })
   ouverts.push(ctx)
-  await ctx.tracing.start({ screenshots: true, snapshots: true })
   // Pré-chargement matinal de la tournée (NTMOB28, `PrechargementTournee.jsx`, monté par Layout sur tout écran avant
   // midi) marqué « fait aujourd'hui » : pour un rôle sans lecture des interventions il appelle `ma-tournee` en 403
   // (défaut antérieur, hors des Files des tâches AERR, rapporté à part) — il n'est pas l'objet de ces étapes.
@@ -700,7 +689,18 @@ etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
     if (await bascule.isVisible()) await bascule.click()
     await expect(carte.getByTestId('lot-formulaire')).toBeVisible({ timeout: 30_000 })
   }
+  const lotsPost = (x) => x.request().method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(new URL(x.url()).pathname)
   await ouvrirGenerateur(p, d, { ci: true })
+  await ouvrirLots()
+  // Témoin d'abord (saisie NON modifiée) : création directe, sans question, sans navigation.
+  ecritures.length = 0
+  await carte.locator('#lot-nom').fill(`Lot initial ${m}`)
+  const cree0 = p.waitForResponse(lotsPost, { timeout: 30_000 })
+  await carte.getByRole('button', { name: 'Créer le lot' }).click()
+  const r0 = await cree0.catch(() => null)
+  expect(Boolean(r0) && r0.status() < 300, `saisie non modifiée : « Créer le lot » crée le lot ; écritures/navigations du clic : ${J(ecritures)}`).toBe(true)
+  await expect(conf, 'témoin : aucune question').toHaveCount(0)
+  await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
   await ouvrirLots()
   const { valeur, cle, brouillon } = await modifierPrix(p, d)
   ecritures.length = 0
@@ -721,7 +721,7 @@ etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
   // « Créer le lot » confirmé : un POST, le devis est rechargé (la saisie non enregistrée est perdue, comme annoncé).
   await carte.locator('#lot-nom').fill(`Lot confirmé ${m}`)
   await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  const cree1 = p.waitForResponse((x) => x.request().method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(new URL(x.url()).pathname), T)
+  const cree1 = p.waitForResponse(lotsPost, T)
   await conf.getByRole('button', { name: 'Créer le lot' }).click()
   expect((await cree1).status()).toBeLessThan(300)
   await expect(PRIX(p), 'devis rechargé depuis le serveur').not.toHaveValue(valeur, { timeout: 60_000 })
@@ -729,27 +729,27 @@ etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
   // Témoin : saisie NON modifiée ⇒ aucune question.
   await ouvrirLots()
   await carte.locator('#lot-nom').fill(`Lot témoin ${m}`)
-  const cree2 = p.waitForResponse((x) => x.request().method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(new URL(x.url()).pathname), T)
+  const cree2 = p.waitForResponse(lotsPost, T)
   await carte.getByRole('button', { name: 'Créer le lot' }).click()
   expect((await cree2).status(), 'saisie non modifiée : création directe').toBeLessThan(300)
   await expect(conf, 'aucune question').toHaveCount(0)
-  expect(posts.map((x) => x.nom_lot), 'deux créations seulement').toEqual([`Lot confirmé ${m}`, `Lot témoin ${m}`])
+  expect(posts.map((x) => x.nom_lot), 'trois créations seulement (jamais le lot annulé)').toEqual([`Lot initial ${m}`, `Lot confirmé ${m}`, `Lot témoin ${m}`])
   // Persistance : les lots servis ; les lignes du devis inchangées.
   const lots = await lireJson(await api.get(`${API}/ventes/devis/${d.id}/lots/`, T), 'lots')
-  expect(lots.lots.map((l) => l.nom_lot).sort(), 'persistance : lots en base').toEqual([`Lot confirmé ${m}`, `Lot témoin ${m}`].sort())
+  expect(lots.lots.map((l) => l.nom_lot).sort(), 'persistance : lots en base').toEqual([`Lot initial ${m}`, `Lot confirmé ${m}`, `Lot témoin ${m}`].sort())
   expect((await lireJson(await api.get(`${API}/ventes/devis/${d.id}/`, T), 'devis')).lignes.map((l) => [l.id, l.prix_unitaire]), 'lignes inchangées').toEqual(lignesAvant)
   await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
   await p.reload()
   await expect(p.locator('#gen-form')).toBeVisible({ timeout: 90_000 })
   await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
   await ouvrirLots()
-  for (const n of [`Lot confirmé ${m}`, `Lot témoin ${m}`]) await expect(carte, `rechargé : ${n}`).toContainText(n)
+  for (const n of [`Lot initial ${m}`, `Lot confirmé ${m}`, `Lot témoin ${m}`]) await expect(carte, `rechargé : ${n}`).toContainText(n)
   // Réaffirmé sur l'écran rechargé ; l'étape finit sur la question affichée.
   await modifierPrix(p, d)
   await carte.locator('#lot-nom').fill(`Lot final ${m}`)
   await carte.getByRole('button', { name: 'Créer le lot' }).click()
   await expect(conf).toContainText(PERTE)
-  expect(posts.length, 'rien n\'est parti').toBe(2)
+  expect(posts.length, 'rien n\'est parti').toBe(3)
 })
 
 // ═══ PF12.2 — AERR12 : « Ajouter le BOQ électrique » sur un générateur à saisie modifiée ═══
