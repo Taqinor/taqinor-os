@@ -247,10 +247,12 @@ class AnnulerConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
             note__startswith='Annulation livraison').count(), 1)
         van = EmplacementStock.objects.get(
             company=self.company, is_principal=False)
-        quantite = {e: StockEmplacement.objects.get(
-            produit=self.produit, emplacement=e).quantite
-            for e in (van, self.depot)}
-        self.assertEqual(quantite, {van: 5, self.depot: 5})
+        # Le dépôt principal n'a pas de ligne StockEmplacement (stock implicite) :
+        # le van garde la seule livraison encore en transit, le total est inchangé.
+        self.assertEqual(StockEmplacement.objects.get(
+            produit=self.produit, emplacement=van).quantite, 5)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
         liv = Livraison.objects.get(pk=self.livs[0].pk)
         self.assertEqual(liv.statut, Livraison.Statut.ANNULEE)
         self.assertFalse(liv.stock_mouvemente)
@@ -304,9 +306,12 @@ class ExpedierConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
         self.assertEqual(TransfertStock.objects.filter(
             company=company, produit=produit).count(), 1)
         van = EmplacementStock.objects.get(company=company, is_principal=False)
-        self.assertEqual({e: StockEmplacement.objects.get(
-            produit=produit, emplacement=e).quantite for e in (van, depot)},
-            {van: 4, depot: 6})
+        # Dépôt principal sans ligne StockEmplacement : une seule ventilation ⇒ van à 4,
+        # total société inchangé (un transfert n'est pas une sortie).
+        self.assertEqual(StockEmplacement.objects.get(
+            produit=produit, emplacement=van).quantite, 4)
+        produit.refresh_from_db()
+        self.assertEqual(produit.quantite_stock, Decimal('10'))
         liv.refresh_from_db()
         self.assertEqual(liv.statut, Livraison.Statut.EN_TRANSIT)
         self.assertTrue(liv.stock_mouvemente)
