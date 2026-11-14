@@ -149,6 +149,7 @@ jobs:
         env:
           E2E_ACCEPTATION: '1'
           E2E_SONDE_LOCALE: '1'
+          AERR4_DEFAUTS: '1'
           ACCEPTATION_SHA: ${{ github.sha }}
         run: |
           gunicorn erp_agentique.wsgi:application \
