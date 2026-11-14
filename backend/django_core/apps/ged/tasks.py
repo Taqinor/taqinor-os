@@ -78,7 +78,7 @@ def signature_relances_expiration():
     return {'relances': total_relances, 'expirations': total_expirees}
 
 
-@shared_task(name='ged.relancer_signataires_societe')
+@shared_task(name='ged.relancer_signataires_societe', soft_time_limit=540, time_limit=600)
 def relancer_signataires_societe(company_id):
     """AMSG73 — relances de signataires d'UNE société, reprises à
     l'ouverture de sa fenêtre des messages (`eta` posé par le balayage)."""
