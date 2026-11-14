@@ -123,7 +123,9 @@ class ForUserFilterTest(TestCase):
 
     def test_superuser_sees_everything(self):
         keys = {a.key for a in for_user(self.superuser)}
-        builtin = {a.key for a in all_actions()}
+        # COP-G1 — le superuser est administrateur : copilote allumé par défaut
+        # (``admins``), donc les actions du lot « herite » lui sont masquées.
+        builtin = {a.key for a in all_actions() if a.lot != 'herite'}
         self.assertTrue(builtin.issubset(keys))
 
     def test_action_without_permission_open_to_authenticated(self):

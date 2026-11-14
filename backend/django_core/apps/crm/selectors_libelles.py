@@ -6,6 +6,9 @@ sélecteurs que les écrans : ``leads_visibles``, ``scope_client_queryset``). Un
 objet inconnu, d'une autre société ou hors portée est simplement ABSENT du
 résultat — jamais une erreur, jamais un indice de son existence. Aucun
 téléphone, aucune adresse e-mail : un nom, une ville, un libellé de touche.
+
+Point d'entrée cross-app : l'app ``agent`` importe CE module de sélecteurs (la
+façade ``selectors.py`` a une empreinte AST figée par le golden de scission).
 """
 from core.formats_fr import formater_date
 

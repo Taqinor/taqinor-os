@@ -694,7 +694,7 @@ class LibellesObjetsView(APIView):
     ], responses=inline_serializer('AssistantLibelles', {
         t: drf_serializers.CharField(required=False) for t in TYPES_LIBELLES}))
     def get(self, request):
-        from apps.crm.selectors import libelles_crm
+        from apps.crm.selectors_libelles import libelles_crm
         from apps.ventes.selectors_libelles import libelles_ventes
 
         ids = _identifiants_libelles(request)

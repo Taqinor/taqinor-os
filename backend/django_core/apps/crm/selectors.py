@@ -101,7 +101,6 @@ from .fiche_selectors import (
     leads_actifs_sans_prochaine_etape, leads_parques_sans_touche,
     leads_reveil_aveugle, leads_fermes_avec_touche_ouverte, saisies_joint_anormales,
 )
-from .selectors_libelles import libelles_crm  # COP-G4 — libellés des aperçus de l'assistant
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
 __all__ = [
@@ -150,7 +149,7 @@ __all__ = [
     'lead_ids_du_responsable', 'lead_ids_par_identifiant', 'lead_jalons_devis',
     'lead_known_field_codes', 'lead_merge_fields', 'lead_provenance_champs_energie_toit',
     'lead_provenance_omissions', 'lead_provenance_stamp', 'lead_signe_q',
-    'lead_touchpoints_attribution', 'lead_values_changed_since', 'leads_callback_sla_depasse', 'libelles_crm',
+    'lead_touchpoints_attribution', 'lead_values_changed_since', 'leads_callback_sla_depasse',
     'leads_chauds_non_contactes', 'leads_en_portee', 'leads_export_rows',
     'leads_froid_sans_raison', 'leads_matching_regles',
     'leads_actifs_sans_prochaine_etape', 'leads_parques_sans_touche',

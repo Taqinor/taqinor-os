@@ -532,6 +532,7 @@ class LibellesObjetsTest(TestCase):
         from django.utils import timezone
 
         from apps.crm.models import Client, Lead, RelanceEtape
+        from apps.stock.models import Produit
         from apps.ventes.models import Devis, Facture, LigneDevis, LigneFacture
 
         self.co = Company.objects.create(nom='Lib Co', slug='lib-co')
@@ -579,8 +580,12 @@ class LibellesObjetsTest(TestCase):
             company=self.co, reference='FAC-202611-0012',
             client=self.client_moi, devis=self.devis, created_by=self.moi,
             statut=Facture.Statut.EMISE, taux_tva=Decimal('20.00'))
+        produit = Produit.objects.create(
+            company=self.co, nom='Kit', sku='LIB-KIT',
+            prix_vente=Decimal('1000'), quantite_stock=10)
         LigneFacture.objects.create(
-            facture=self.facture, designation='Kit', quantite=Decimal('1'),
+            facture=self.facture, produit=produit, designation='Kit',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('1000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
 
