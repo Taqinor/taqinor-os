@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -8,6 +9,7 @@ from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'OCR ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
+from app.services import action_tools as _at
 from app.services.action_tools import ActionContext
 from app.services import relais_copilote
 from app.services.sql_agent_service import (
@@ -35,6 +37,9 @@ def _check_sql_agent_rate_limit(user_id) -> None:
     )
 
 
+_PROGRESSION_ID = r"^[A-Za-z0-9_-]{8,64}$"  # AIC91 — identifiant donne par l'ecran
+
+
 class ContexteEcran(BaseModel):
     """AIC9 — contexte de l'ecran d'ou part la question (evenement DOM
     `taqinor:assistant:ouvrir`, ou `window.location.pathname`). COP-B2 :
@@ -58,6 +63,8 @@ class SQLQuery(BaseModel):
     question: str = Field(..., max_length=SQL_AGENT_QUESTION_MAX_LENGTH)
     # AIC9 — optionnel : injecte dans le message UTILISATEUR, journalise.
     contexte: ContexteEcran | None = None
+    # AIC91 — optionnel : identifiant aleatoire pour sonder les etapes du tour.
+    progression_id: str | None = Field(None, pattern=_PROGRESSION_ID)
 
 
 class SQLResponse(BaseModel):
@@ -128,17 +135,22 @@ async def query_database(
     )
     # COP-B2 — UNE lecture de /auth/me/ : permissions + prenom et role.
     await asyncio.to_thread(relais_copilote.lire_appelant, action_ctx)
+    if request.progression_id:
+        action_ctx.progression_cle = _at.cle_progression(user_id, request.progression_id)
 
     options = {}
     if request.contexte is not None:
         options["contexte"] = request.contexte.model_dump()
-    result = await sql_agent_service.query(
-        question=request.question,
-        user_id=user_id,
-        company_id=company_id,
-        action_ctx=action_ctx,
-        **options,
-    )
+    try:
+        result = await sql_agent_service.query(
+            question=request.question,
+            user_id=user_id,
+            company_id=company_id,
+            action_ctx=action_ctx,
+            **options,
+        )
+    finally:  # AIC91 — l'ecran arrete de sonder
+        await asyncio.to_thread(_at.noter_etape, action_ctx, None, True)
     return SQLResponse(
         answer=result["answer"],
         # ERR84 — jamais le SQL brut : redige cote serveur.
@@ -180,6 +192,17 @@ def get_suggestions(ecran: str = "/", token_payload: dict = Depends(verify_token
     """AIC9 — trois questions suggerees pour l'ecran, lues du manifeste
     `capacites.yml` deja charge (cle `suggestions`) ; [] sans manifeste."""
     return suggestions_pour_ecran(ecran[:255])
+
+
+@router.get("/progression/{progression_id}")
+def get_progression(progression_id: str, token_payload: dict = Depends(verify_token)):
+    """AIC91 — etapes du tour en cours `{etapes: [{libelle, t}], fini}`,
+    sondees par l'ecran ; identifiant inconnu ou d'un autre utilisateur ->
+    vide (la cle porte l'utilisateur du jeton)."""
+    if not re.match(_PROGRESSION_ID, progression_id or ""):
+        return {"etapes": [], "fini": False}
+    return _at.lire_progression(_at.cle_progression(
+        int(token_payload.get("user_id", 0)), progression_id))
 
 
 @router.get("/schema")

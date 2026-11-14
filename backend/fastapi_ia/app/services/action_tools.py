@@ -99,6 +99,8 @@ class ActionContext:
         # catalogue déjà lu ce tour (une seule lecture Django par question).
         self.identite: dict[str, str] = {}
         self.catalogue_tour: Optional[list[dict[str, Any]]] = None
+        # AIC91 — clé Redis de la progression du tour (posée par la route).
+        self.progression_cle: Optional[str] = None
 
     # ── Gating cote FastAPI (defense en profondeur) ───────────────────────
 
@@ -505,6 +507,48 @@ def _proposal_redis():
     except Exception as exc:  # pragma: no cover - reseau
         logger.warning("Redis propositions indisponible: %s", exc)
         return None
+
+
+# ── AIC91 — progression d'un tour (sondée par l'écran, aucun flux SSE) ───────
+
+PROGRESSION_TTL = 600  # s : la clé s'efface seule après 10 minutes
+
+
+def cle_progression(user_id: int, progression_id: str) -> str:
+    return f"assistant:progression:{int(user_id)}:{progression_id}"
+
+
+def _progression_redis():
+    """Client Redis de la progression (même base que les propositions)."""
+    return _proposal_redis()
+
+
+def lire_progression(cle: str) -> dict[str, Any]:
+    """{etapes: [{libelle, t}], fini} ; clé inconnue ou Redis absent -> vide."""
+    vide = {"etapes": [], "fini": False}
+    try:
+        brut = (_progression_redis() or {}).get(cle) if cle else None
+        lu = json.loads(brut) if brut else vide
+    except Exception:  # Redis ou JSON illisible : rien à montrer
+        return vide
+    return {"etapes": list(lu.get("etapes") or []), "fini": bool(lu.get("fini"))}
+
+
+def noter_etape(ctx, libelle: Optional[str] = None, fini: bool = False) -> None:
+    """AIC91 — publie une étape du tour (libellé du REGISTRE, jamais un argument
+    d'outil) ou sa fin. No-op sans `progression_cle` ; jamais bloquant."""
+    cle = getattr(ctx, "progression_cle", None)
+    r = _progression_redis() if cle else None
+    if r is None:
+        return
+    etat = lire_progression(cle)
+    if libelle:
+        etat["etapes"].append({"libelle": str(libelle)[:120], "t": int(time.time())})
+    etat["fini"] = etat["fini"] or fini
+    try:
+        r.set(cle, json.dumps(etat, ensure_ascii=False), ex=PROGRESSION_TTL)
+    except Exception as exc:  # pragma: no cover - réseau
+        logger.warning("Progression du tour non publiée: %s", exc)
 
 
 def _proposal_key(token: str) -> str:
@@ -1164,7 +1208,10 @@ def build_action_tools(
             )
 
         def _make_func(act):
-            return lambda **kw: run_catalogue_action(ctx, act, kw, collector)
+            def _func(**kw):
+                noter_etape(ctx, act.get("label") or act["key"])  # AIC91
+                return run_catalogue_action(ctx, act, kw, collector)
+            return _func
 
         tools.append(StructuredTool.from_function(
             name=_tool_name_for(action),

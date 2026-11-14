@@ -376,7 +376,7 @@ def _outil_action(ctx, action: dict, collecteur: list):
     """Une action du catalogue -> OutilNatif : nom de `_tool_name_for`,
     schéma = `inputs` du catalogue, exécution = `run_catalogue_action` (mêmes
     validations, propositions signées, collecteur de cartes)."""
-    from app.services.action_tools import _tool_name_for, run_catalogue_action
+    from app.services.action_tools import _tool_name_for, noter_etape, run_catalogue_action
     from app.services.sql_agent_service import _etiqueter_non_fiable
     from app.services import moteur_natif
 
@@ -384,11 +384,14 @@ def _outil_action(ctx, action: dict, collecteur: list):
     description = action.get("description") or action.get("label") or action["key"]
     if action.get("risk") in ("outward", "irreversible"):
         description += _SUFFIXE_SENSIBLE
+
+    def executer(args):
+        noter_etape(ctx, action.get("label") or action["key"])  # AIC91
+        return _etiqueter_non_fiable(run_catalogue_action(
+            ctx, action, dict(args or {}), collecteur))
     return moteur_natif.OutilNatif(
         nom=_tool_name_for(action), description=description,
-        schema={"type": "object", "properties": {}, **entrees},
-        executer=lambda args: _etiqueter_non_fiable(run_catalogue_action(
-            ctx, action, dict(args or {}), collecteur)))
+        schema={"type": "object", "properties": {}, **entrees}, executer=executer)
 
 
 def _outils_fixes(lecture, schema, collecteur: list) -> list:

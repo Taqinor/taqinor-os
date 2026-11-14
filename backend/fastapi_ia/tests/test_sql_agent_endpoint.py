@@ -527,6 +527,37 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertEqual(ecrit[1], {"role": "agent", "content": "Voici.",
                                     "cartes": sortie["cartes"]})
 
+    def test_progression_publiee_par_outil(self):
+        """AIC91 — un tour a trois outils publie trois etapes (libelles du
+        registre, jamais un argument) sous la cle de l'utilisateur ; la route
+        les rend a la forme du contrat ; autre utilisateur ou identifiant mal
+        forme -> vide ; `fini` pose a la fin du tour."""
+        from langchain_core.messages import AIMessage
+        chemin = os.path.join(os.path.dirname(__file__), "..", "..", "django_core",
+                              "apps", "agent", "contract_samples", "assistant_reponse.json")
+        with open(chemin, encoding="utf-8") as f:
+            contrat = json.load(f)["progression"]["exemple"]
+        redis, ctx = _FakeRedis(), _ctx()
+        ctx.progression_cle = _at.cle_progression(1, "tour-abc12345")
+        with mock.patch.object(_at, "_progression_redis", lambda: redis):
+            _tour([_appel_outil("crm_lead_list", {}),
+                   _appel_outil("ventes_devis_proposal_pdf", {"id": 45}, "appel-2"),
+                   _appel_outil("crm_lead_list", {}, "appel-3"),
+                   AIMessage(content="Voici.")],
+                  catalogue=_FULL_CATALOGUE, ctx=ctx)
+            lu = _ep.get_progression("tour-abc12345", token_payload={"user_id": 1})
+            self.assertEqual(set(lu), set(contrat))
+            self.assertEqual(set(lu["etapes"][0]), set(contrat["etapes"][0]))
+            self.assertEqual([e["libelle"] for e in lu["etapes"]],
+                             ["Lister les leads", "Générer le PDF", "Lister les leads"])
+            self.assertFalse(lu["fini"])
+            self.assertNotIn("45", json.dumps(lu["etapes"]))
+            vide = {"etapes": [], "fini": False}
+            self.assertEqual(_ep.get_progression("tour-abc12345", token_payload={"user_id": 2}), vide)
+            self.assertEqual(_ep.get_progression("x", token_payload={"user_id": 1}), vide)
+            _at.noter_etape(ctx, None, True)
+            self.assertTrue(_ep.get_progression("tour-abc12345", token_payload={"user_id": 1})["fini"])
+
     def test_references_et_entete_remis_au_modele(self):
         """COP-B2 — le DERNIER message d'agent remis au modele porte la ligne
         « Références : … » tiree de ses cartes ; la question porte l'en-tete

@@ -42,7 +42,7 @@ const SUGGESTIONS = [
 export default function CopilotPanel() {
   const dispatch = useDispatch()
   const open = useSelector((s) => s.ia.copilotOpen)
-  const { messages, agentLoading, agentError } = useSelector((s) => s.ia)
+  const { messages, agentLoading, agentError, etapeEnCours } = useSelector((s) => s.ia)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -231,8 +231,14 @@ export default function CopilotPanel() {
                 <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                   <Bot className="size-3.5" aria-hidden="true" />
                 </span>
-                <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2.5">
-                  <TypingDots />
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2.5">
+                    <TypingDots />
+                  </div>
+                  {/* AIC91 — dernière étape du tour (sondage de progression). */}
+                  {etapeEnCours && (
+                    <p className="text-xs text-muted-foreground" data-testid="etape-en-cours" aria-live="polite">{etapeEnCours}</p>
+                  )}
                 </div>
               </div>
             )}
