@@ -1,127 +1,137 @@
-# Vérifie ACEL — contre-visite de mi-parcours du parcours PF11 « tâches planifiées », 14/11/2026
+<!-- verifie | groupe: ACEL | pct: 96 | ecarts_s1_s2: 1 -->
 
-Commande `loop audit` (14/11). L'audit de parcours PF11 (11/11) avait déposé ACEL1-80. Première contre-visite du groupe, due à
-mi-parcours : 30 tâches cochées sur 38 constructibles. Rien n'a été construit ni déployé.
+# Vérifie ACEL — contre-visite de clôture du parcours PF11 « tâches planifiées », 14/11/2026 (2e passe)
+
+Commande `loop audit` (14/11, soir). Le groupe ACEL a franchi 95 % : 55 tâches cochées sur 57 constructibles. Cette passe
+remplace celle du matin (même déclencheur, même jour). Rien n'a été construit ni déployé.
 
 ## 0. Préconditions
 
-- **SHA.** `origin/main` = `47f925be1`. Branche de claim : `verifie-pf9-11-12-1411`.
-- **Registre.** PF11 `taches-planifiees`, groupe ACEL : 30 tâches cochées sur 38 constructibles (78 %). 18 autres tâches sont
-  livrées et attendent leur preuve en direct ; 8 sont ouvertes.
-- **Échantillon.** Les 30 tâches cochées sont relues, pas seulement le tirage : ACEL2, 5, 6, 7, 10, 12, 15, 16, 17, 18, 33, 34,
-  35, 37, 38, 40, 41, 44, 47, 63, 64, 66, 67, 68, 69, 71, 72, 74, 75 et 80.
-- **Méthode.** Commits, code sur `origin/main` et tests nommés, tout lu ; mutants raisonnés. Aucune pile, aucun test Django
-  lancé, aucune production consultée. Joué sur l'hôte : la garde `check_beat_active_companies.py` et ses 43 tests, deux tests
-  du script de déploiement, le registre Celery chargé sans contrôles Django.
+- **SHA.** `origin/main` = `84561dcd3` (merge de la PR #1411). Branche de claim : `verifie-cloture-1411b`.
+- **Registre.** 55 cochées, 8 bloquées « code livré, preuve en direct due » (ACEL3, 4, 8, 13, 31, 36, 42, 46), 2 ouvertes
+  (ACEL1, ACEL9).
+- **Échantillon.** Les 25 tâches cochées depuis la passe du matin, toutes relues (aucun tirage) :
+  - 16 tâches cochées sur l'acceptation du runner : ACEL11, 14, 32, 39, 43, 45, 48, 61, 62, 65, 70, 73, 76, 77, 78, 79 ;
+  - les 9 tâches d'écart déposées le matin : ACEL81 à ACEL89.
+  Elles couvrent les catégories obligatoires : argent (ACEL43, ACEL70), envoi à un tiers (ACEL73 vers Meta, ACEL78, ACEL88
+  webhooks), suppression de données (ACEL61, ACEL87), multi-société (ACEL39, 45, 87, 88, 89).
+- **Méthode.** Commits, code sur `origin/main`, tests nommés, appelants et jumeaux lus. Aucune pile, aucun test Django lancé,
+  aucun conteneur ni base, aucune production.
 
-## 1. Vérificateurs (3 lots, opus, effort élevé, frais, même répertoire)
+## 1. Verdicts
 
 | Verdict | Nombre | Tâches |
 |---|---|---|
-| ok | **28** | ACEL5, 6, 7, 10, 12, 15, 16, 17, 18, 33, 34, 35, 37, 38, 40, 41, 44, 47, 63, 64, 66, 67, 68, 69, 72, 74, 75, 80 |
-| partiel | **2** | ACEL2 (la garde ne lit pas `authentication/`), ACEL71 (14 `except Exception` encore sans relève) |
+| ok | **24** | ACEL11, 14, 32, 39, 43, 45, 48, 61, 62, 65, 70, 73, 76, 77, 78, 79, 82, 83, 84, 85, 86, 87, 88, 89 |
+| partiel | **1** | ACEL81 (deux lectures réseau et le backfill avalent encore la limite douce, §4) |
 | non-fait / faux / régression / déjà-présent | **0** | — |
 
-Les livraisons du lot de fin de parcours sont dans `main` par les PR #1389 et #1391, dont les contrôles requis sont verts.
-Trois tâches « ok » portent un écart hors de leur « fini quand » : ACEL16, ACEL17 et ACEL33 (§4).
+Trois tâches « ok » ont ouvert un vecteur de défaut hors de leur « fini quand » : ACEL11, ACEL62 et ACEL70 (§4). ACEL84 a un
+jumeau non traité, signalé « à vérifier » le matin et confirmé ce soir (§4).
 
 ## 2. Tests nommés
 
-- **Les 30 tests nommés existent** et sont comportementaux : vraie tâche ou vrai service appelé, état relu en base, dépendance
-  externe seule simulée (client Meta, IMAP, stockage). Les tests à deux connexions d'ACEL47 (verrou, avec ACNC35) existent.
-- Le mutant de chaque test est raisonné, pas joué. Le mutant écrit dans le texte d'ACEL34 (« retirer `statut=EN_ATTENTE` ») n'est
-  pas tué par son test ; le vrai mutant tueur est « retirer la réservation » (§5).
-- ACEL10 : deux des sept sites ont un test ; les cinq autres survivraient à un mutant (§5).
-- Aucun test Django n'a été lancé ici ; la seule preuve d'un vert est la CI des PR #1389 et #1391.
+- Les tests nommés des 25 tâches existent et sont comportementaux. Exemples : la limite douce au 2e lead (ACEL81), le bloqueur
+  sans `company_id` d'une autre société (ACEL87), la tentative due d'une société suspendue (ACEL88), le rendu identique à une
+  minute d'intervalle (ACEL70), l'alerte d'archive altérée et introuvable (ACEL62).
+- Aucun test Django lancé ici. La seule preuve d'un vert est la CI des PR mergées (#1404, #1406, #1411) et l'enregistrement
+  d'acceptation `docs/audits/acceptation/ACEL/2026-11-14-d83ed340c.md`. Il couvre les 15 tâches à preuve en direct ; ACEL76 et
+  ACEL79 y figurent avec un écart accepté (préchargement antérieur, hors `Files:`).
+- ACEL43 et les neuf tâches d'écart portent « Preuve en direct : n/a » avec une raison : aucun enregistrement n'est dû.
 
-## 3. Sondes, calendrier et preuve en direct
+## 3. Sondes, calendrier, gardes
 
-- **Garde.** `python scripts/check_beat_active_companies.py` : « OK — tout fan-out beat passe par active_companies() » (rejoué
-  le 14/11) ; ses 43 tests passent.
-- **Calendrier.** Les tâches touchées sont toutes au planning, routées vers la file `scheduled` (ou `interactive` pour l'export
-  à la demande d'ACEL66), et ces files sont consommées par les workers du compose. Le registre chargé sans contrôles Django
-  confirme ACEL38 (tâche enregistrée hors des URL) et ACEL41 (ni tâche, ni entrée de planning, ni route).
-- **Sondes du dossier PF11.** Aucune tâche cochée ne cite de sonde. Rejouées pour information le 14/11 : la sonde 001 reproduit
-  encore (sa tâche ACEL1 est ouverte) ; la 002 plante à l'extraction ; la 003 est inconclusive ; la 004 rend « non reproduit »
-  pour une mauvaise raison (bouchon périmé : `NameError` sur `active_companies`). Les quatre relèvent d'ACEL9, rejeu de
-  l'orchestrateur, encore ouvert : elles sont à rafraîchir avant lui.
-- **Preuve en direct.** Les 30 tâches portent « Preuve en direct : n/a » (tâche planifiée, garde de dépôt, clé absente) : aucun
-  enregistrement n'est dû. Les 18 tâches livrées en attente de preuve se rejouent sur un runner, en cours le 14/11.
+- **Garde.** `python scripts/check_beat_active_companies.py` : « OK ». `python -m unittest
+  scripts.tests.test_check_beat_active_companies` : 44 tests OK. `authentication/` est lu (ACEL82).
+- **Calendrier.** Script hôte joué ce soir (planning lu dans `celery.py`, décorateurs relus par expression régulière) :
+  - 127 tâches au planning, toutes définies par un `@shared_task` ;
+  - toutes ont une route (deux en forme multi-ligne : interventions récurrentes, traductions) ;
+  - fuseau : `CELERY_TIMEZONE` et `app.conf.timezone` valent Africa/Casablanca, avec `CELERY_ENABLE_UTC = False` ;
+  - `visibility_timeout` vaut 5 400 s ; le seul `eta` long (relances de signature GED) est déjà borné par lui (AMSG98).
+- **Sondes du dossier PF11** (rejouées sur l'hôte) :
+  - 001 reproduit encore (`repro: true`, planning à 6 h seulement) ; sa tâche ACEL1 est ouverte ;
+  - 002 plante sur `NameError: PieceJointeImportee`. Le marqueur d'ACEL61 est absent de son bouchon : la sonde est périmée ;
+  - 003 est inconclusive (bouchon sans `controles`) ;
+  - 004 rend « non reproduit » pour une mauvaise raison (`NameError: active_companies`). Sa partie statique lit pourtant
+    « consigné au journal : vrai » sur les quatre sites (ACEL39, ACEL45).
+  Le rafraîchissement des sondes 002 à 004 relève d'ACEL9 (ouverte).
+- **Constats d'origine S2.** C-ACEL-002, 003 et 004 sont fermés par la lecture du code (ACEL61, ACEL62, ACEL39, ACEL45).
+  C-ACEL-001 n'est pas fermé : ACEL1 est ouverte et la sonde reproduit (§6).
 
 ## 4. Écarts retenus
 
-| C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâches |
+| C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâche |
 |---|---|---|---|---|---|
-| C-ACEL-VER1-100 | ACEL71 | S3 | 14 `except Exception` des boucles Meta avalent encore la limite douce : la tâche peut finir « succès » (`backend/django_core/apps/adsengine/tasks.py::pull_ad_leads_for_company`) | STATIQUE (lecture : `relever_si_delai` sur 5 sites seulement) | ACEL81 |
-| C-ACEL-VER1-101 | ACEL2 | S3 | La garde ne lit pas `authentication/` : la purge démo planifiée sans limite de temps passe (`scripts/check_beat_active_companies.py::_iter_source_files`) | STATIQUE (garde jouée sur `authentication/` : un signalement) | ACEL82 |
-| C-ACEL-VER1-102 | ACEL33 | S3 | Ligne d'import non transactionnelle : une limite douce après la création du lead le laisse, la reprise le recrée (`backend/django_core/apps/publicapi/bulk.py::run_import_job`) | STATIQUE (lecture : aucun `atomic` autour de la ligne) | ACEL83 |
-| C-ACEL-VER1-103 | ACEL17 | S3 | Relève GED jamais alignée : message marqué lu avant import, aucun délai réseau (`backend/django_core/apps/ged/services.py::poll_mail_intake`) | STATIQUE (lecture : `(RFC822)`, `IMAP4_SSL(host)`) | ACEL84 |
-| C-ACEL-VER1-104 | ACEL17 | S3 | `\Seen` posé par numéro de séquence sur une seconde connexion : après un EXPUNGE, un autre message est marqué lu et perdu (`backend/django_core/core/email_intake.py::poll_mailbox`) | STATIQUE (lecture : `msg.imap_num`, `store(num, …)`) | ACEL85 |
-| C-ACEL-VER1-105 | ACEL17 | S3 | Message sans `Message-ID` redistribué à chaque relève : un ticket SAV par passage (`backend/django_core/core/email_intake.py::_parse_email_message`) | STATIQUE (lecture : `message_id=''`, marqueur absent) | ACEL86 |
-| C-ACEL-VER1-106 | ACEL16 | S3 | La purge démo ne refuse un bloqueur d'une autre société que s'il porte `company_id` (`backend/django_core/authentication/management/commands/reset_demo_company.py::_delete_cascading`) | STATIQUE (lecture : `hasattr(blocker, 'company_id')`) | ACEL87 |
-| C-ACEL-VER1-107 | ACEL5 (hors lot) | S3 | Relance des webhooks et escalade des workflows balaient encore les sociétés suspendues (`backend/django_core/apps/publicapi/retry.py::run_due_retries`, `backend/django_core/core/management/commands/escalate_workflow_sla.py::Command.handle`) | STATIQUE (lecture : gelés « à trier ») | ACEL88, ACEL89 |
+| C-ACEL-VER2-200 | ACEL81 | S3 | `check_prepaid_balance` et `check_account_health` avalent la limite douce de leur appel réseau avant le `degrader` de `_sync_company` ; `backfill_complet` avale celle du relevé des leads (`backend/django_core/apps/adsengine/tasks.py::check_prepaid_balance`) | STATIQUE (lecture : `exc_info=True` sur 6 sites) | ACEL90 |
+| C-ACEL-VER2-201 | ACEL62 | S3 | Contrôles enregistrés dans la boucle, alerte après elle ; la limite douce est avalée au re-téléchargement (faux « introuvable »). Une mise à mort laisse « altéré » sans alerte, et la déduplication ne la refait jamais (`backend/django_core/apps/ged/services.py::verifier_integrite_archives`) | STATIQUE (lecture) | ACEL91 |
+| C-ACEL-VER2-202 | ACEL70 | S3 | Empreinte enregistrée avant l'envoi GED, qui est best-effort : un routage en échec n'est plus repris à données inchangées (`backend/django_core/apps/ventes/utils/pdf.py::generate_facture_pdf`) | STATIQUE (lecture : receveur qui avale, `pdf_render_meta` posé avant) | ACEL92 |
+| C-ACEL-VER2-203 | ACEL11 | S3 | Le balayage des travaux orphelins passe `failed` une découverte de veille en pause de quota (3 pauses = 2 100 s, job non touché) et prévient à tort son demandeur (`backend/django_core/apps/adsengine/veille_decouverte.py::executer_etape`) | STATIQUE (lecture : `_progression` après succès seulement) | ACEL93 |
+| C-ACEL-VER2-204 | ACEL84 (jumeau) | S3 | Relève GED et relève du cœur lisent la même boîte en `UNSEEN`. La GED marque lu même ce qu'elle ignore : un courriel client n'atteint plus le SAV, un courriel à un alias GED n'atteint plus la GED (`backend/django_core/apps/ged/services.py::poll_mail_intake`) | STATIQUE (lecture : `store` hors condition sur `created`) | ACEL94 |
 
-**Pourquoi S3.** Tous ces écarts sont latents ou sans perte, comme les constats d'origine qu'ils prolongent (PF11 les classe S3) :
-- la limite dure de 180 s reste consignée ; seule la limite douce est avalée (VER1-100) ;
-- la garde rate un seul site, éteint par réglage (VER1-101) ;
-- l'import en masse n'a jamais servi en production (VER1-102) ;
-- relève GED éteinte par défaut, relève IMAP non mesurée en production (VER1-103 à 105) ;
-- purge démo éteinte, reset réservé aux sociétés de démonstration (VER1-106) ;
-- une seule société en production (VER1-107).
+**Pourquoi S3.** Tous ces écarts sont latents, comme les constats qu'ils prolongent :
+- VER2-200 : la limite dure de 180 s reste consignée par `task_failure` ; seule la limite douce est avalée ;
+- VER2-201 : il faut plus de 120 s de re-téléchargement ou une erreur avant l'alerte ; le volume d'archives en production n'est
+  pas mesuré ;
+- VER2-202 : il faut un échec du routage GED ; le PDF de la facture reste stocké, seule la copie GED manque ;
+- VER2-203 : il faut trois pauses de quota de suite ; c'est une fausse alerte, sans perte (le job finit `done`) ;
+- VER2-204 : la relève GED est éteinte par défaut (`GED_MAIL_INTAKE_ENABLED`).
 
-**Le ticket SAV en double (VER1-105) n'est pas S2.** Le doublon est un vrai objet métier : un ticket par passage, toutes les 10
-minutes. Mais il faut trois conditions à la fois : la relève IMAP allumée, un message sans `Message-ID` (Microsoft 365 en
-estampille un) et un autre handler qui lève à chaque passage. PF11 et PF9 classent S3 un doublon latent de ce type (deux tickets
-préventifs, réglage éteint). Il deviendrait S2 le jour où la relève est allumée et un handler échoue durablement.
+**Routage** (`check_ownership.py --owner-of`) :
+- ACEL90 et ACEL93 → acquisition ;
+- ACEL91 → documents ;
+- ACEL92 → transverse (facturation, documents) ;
+- ACEL94 → transverse (sécurité, documents, deploy).
 
-**Routage.** Une tâche par propriétaire (`check_ownership.py --owner-of`) :
-- ACEL81 → acquisition ;
-- ACEL82 → deploy ;
-- ACEL83, ACEL88 → analyse ;
-- ACEL84 → documents ;
-- ACEL85, ACEL86, ACEL87, ACEL89 → sécurité.
-
-C-ACEL-VER1-107 touche deux propriétaires : il est scindé en deux tâches sœurs. L'écart d'ACEL17 est scindé en trois (GED,
-marquage, identifiant).
-
-**Réfuté ou requalifié.** Aucun écart n'est réfuté. Le message redistribué n'est corrigé qu'à un endroit, l'analyse du message,
-qui rend effectifs les dédoublonnages déjà présents chez tous les handlers ; « ne redistribuer qu'aux handlers en échec » n'est pas
-retenu (il faudrait un état par message).
+**Réfuté ou écarté.**
+- ACEL83 : aucun effet hors base n'échappe à la transaction par ligne.
+- ACEL85 : seul le marquage change de connexion ; il se fait par UID.
+- ACEL87 : un parent déjà purgé compte pour la société purgée ; c'est voulu, lu en base, et la ligne est ignorée si elle est
+  déjà supprimée.
+- ACEL88 : le filtre `active_company_ids()` porte aussi sur la réservation.
 
 ## 5. Optionnel (non déposé)
 
-- ACEL34 : le mutant écrit dans la tâche n'est pas celui que le test tue ; la docstring de `run_due_retries` parle encore de
-  « toute tentative » alors que le lot est borné à 50.
-- ACEL10 : seuls deux des sept sites ont un test ; `core/tasks.py::_purger_exports_reversibilite_expires` avale encore la limite douce.
-- ACEL67 : la libération de la marque après un échec avant la transaction peut effacer celle d'un autre worker (sans effet :
-  le lead porte déjà un devis) ; deux docstrings périmées.
-- ACEL68 : une seule transaction pour tout le lot de factures ; une erreur annulerait la bascule de toutes.
-- ACEL72 : `assumption_decay.py::oublier_toutes_les_societes` avale aussi la limite douce.
-- ACEL75 : le test appelle `gc.collect()` par précaution ; une sonde hôte montre que le générateur se referme sans lui.
-- ACEL63 : l'isolation par société des tâches de signature GED avale la limite douce.
-- ACEL44, ACEL47, ACEL40 : docstring non mise à jour ; une erreur persistante sur un contrat arrête encore les suivants de la
-  même société ; la commande manuelle `--creer-plans` amorce encore des plans chez les sociétés suspendues.
-- ACEL2 : la garde tient pour relevée toute clause qui contient un `raise` ; elle ne lit pas le service qui fait la boucle.
-- ACEL16 : `adminops/tasks.py::purger_sandbox_expires` supprime par `delete()` brut.
-- À vérifier : la relève GED et la relève du cœur lisent la même configuration IMAP ; la première qui passe marque les messages
-  lus et l'autre ne les voit plus (relève GED éteinte par défaut).
+- `core/workflow.py::escalader_etape` réécrit le statut sans verrou ni relecture : une approbation concurrente peut être
+  écrasée par « escaladée » (fenêtre de quelques millisecondes, une fois par heure). De plus, la commande
+  `escalate_workflow_sla` n'isole pas les sociétés entre elles.
+- `core/tasks.py::balayer_travaux_orphelins_task` met à jour par `pk` sans re-filtrer le statut : un job qui se termine pendant
+  le balayage peut repasser `failed`.
+- ACEL77 : un assemblage déjà « en cours » avant la migration (`assemblage_demande_le` nul) n'expire jamais.
+- ACEL43 : `relancer_bcf_en_retard_task` n'a pas de limite au décorateur, et ses deux `except` avalent la limite douce.
+- ACEL73 : la docstring de `emit_capi_signatures` parle encore d'un « Beat quotidien ».
+- Rappels du matin, non revus : ACEL10 (5 sites sans test), ACEL68 (une transaction pour tout le lot), ACEL72 et ACEL63
+  (limite douce avalée).
 
 ## 6. Couverture et sortie de cycle
 
-- **Couvert.** Les 30 tâches cochées : code, commits, tests nommés, jumeaux, appelants, inscription au planning et files.
+- **Couvert.** Les 25 tâches cochées depuis le matin : code, commits, tests nommés, appelants, jumeaux, inscription au
+  planning, routes, fuseau.
 - **Non couvert.**
-  - Aucun test Django lancé, aucun rejeu en direct ; les huit écarts sont statiques.
-  - Les 18 tâches livrées en attente de preuve en direct (ACEL3, 4, 8, 11, 14, 32, 39, 45, 48, 61, 62, 65, 70, 73, 76, 77, 78,
-    79) : leur rejeu sur un runner est en cours le 14/11.
-  - Les 8 tâches ouvertes : ACEL1, 31 (heure des rapports), 36 (données périmées), 13, 42, 43, 46 (interrupteurs à l'écran),
-    toutes débloquées par les décisions du 13/11, et ACEL9 (rejeu des quatre sondes du dossier).
-  - Durées réelles des tâches et boîte IMAP de production : non mesurées.
-- **Statut.** Aucun écart S1-S2 sur les 30 tâches relues. Le groupe n'est pas encore « construit » : tâches ouvertes et
-  preuves en direct manquent. La contre-visite de clôture sera due à 95 %.
+  - Aucun test Django lancé, aucun rejeu en direct ; les cinq écarts sont statiques.
+  - Les 8 tâches bloquées en attente de preuve en direct.
+  - ACEL1 : C-ACEL-001 (S2) reproduit encore, tâche ouverte.
+  - ACEL9 : rejeu des sondes ; 002 à 004 sont périmées.
+  - Volumes réels : archives légales, pauses de quota de la veille, boîte IMAP de production ; non mesurés.
+- **Statut.** Aucun écart S1-S2 nouveau. Le marqueur compte 1 : C-ACEL-001, dont la tâche n'est pas cochée (§C.4.6). Le
+  groupe est « construit », pas « vérifié ».
 
-## 7. Coût
+## 7. Rappel de la passe du matin
 
-- 3 vérificateurs (opus, effort élevé) et 1 rédacteur (opus) ; jetons non mesurés ici.
-- Aucun appel Fable.
+La passe du matin (mi-parcours, `47f925be1`) a relu 30 tâches : 28 ok, 2 partielles (ACEL2, ACEL71), aucun écart S1-S2. Elle
+a déposé huit écarts S3, de C-ACEL-VER1-100 à 107. Ce qu'ils sont devenus ce soir :
 
-<!-- verifie | groupe: ACEL | pct: 78 | ecarts_s1_s2: 0 -->
+| C-id du matin | Tâche | État au 14/11 soir |
+|---|---|---|
+| VER1-100 (limite douce, boucles Meta) | ACEL81 cochée | partiellement fermé : 14 sites relevés ; 6 restent → VER2-200 |
+| VER1-101 (garde sans `authentication/`) | ACEL82 cochée | fermé (garde jouée, 44 tests OK, purge démo gelée « à trier ») |
+| VER1-102 (import non transactionnel) | ACEL83 cochée | fermé (`transaction.atomic()` par ligne) |
+| VER1-103 (relève GED marquée lue avant import) | ACEL84 cochée | fermé (BODY.PEEK, marquage après import) ; jumeau → VER2-204 |
+| VER1-104 (marquage par numéro de séquence) | ACEL85 cochée | fermé (UID en relève et en marquage) |
+| VER1-105 (message sans Message-ID) | ACEL86 cochée | fermé (`sans-id-<sha256>` stable) |
+| VER1-106 (bloqueur sans `company_id`) | ACEL87 cochée | fermé (sociétés des parents lues en base, refus si différente) |
+| VER1-107 (sociétés suspendues) | ACEL88, ACEL89 cochées | fermé (webhooks et escalade bornés aux sociétés actives) |
+
+## 8. Coût
+
+- 1 vérificateur (opus, effort élevé), rédacteur compris ; jetons non mesurés.
+- Aucun appel Fable, aucun sous-agent.
