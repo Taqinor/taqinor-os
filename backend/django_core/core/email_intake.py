@@ -127,8 +127,12 @@ def _parse_email_message(raw_bytes) -> InboundMessage:
         if payload:
             body = payload.decode(msg.get_content_charset() or 'utf-8',
                                   'replace')
+    import hashlib
+    # ACEL86 — sans en-tête, un identifiant STABLE tiré des octets (dédoublonnage).
+    message_id = (msg.get('Message-ID', '').strip('<> ')
+                  or 'sans-id-' + hashlib.sha256(raw_bytes).hexdigest()[:32])
     return InboundMessage(
-        message_id=msg.get('Message-ID', '').strip('<> '),
+        message_id=message_id,
         in_reply_to=msg.get('In-Reply-To', '').strip('<> '),
         references=msg.get('References', ''),
         subject=msg.get('Subject', ''),

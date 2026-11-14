@@ -151,6 +151,32 @@ class FetchAndPollTests(TestCase):
         self.assertEqual({m['uid']: m['seen'] for m in etat['msgs']},
                          {11: True, 12: True, 13: False})
 
+    def test_message_sans_message_id_garde_le_meme_identifiant(self):
+        """ACEL86 — un message sans `Message-ID`, redistribué à chaque relève
+        parce qu'un handler lève, garde le même identifiant non vide."""
+        brut = b'From: Ali <ali@example.com>\r\nSubject: Panne\r\n\r\nonduleur'
+        lu1 = email_intake._parse_email_message(brut).message_id
+        lu2 = email_intake._parse_email_message(brut).message_id
+        self.assertTrue(lu1.startswith('sans-id-'))
+        self.assertGreater(len(lu1), len('sans-id-'))
+        self.assertEqual(lu1, lu2)
+        avec = b'Message-ID: <abc@x>\r\n\r\nc'
+        self.assertEqual(
+            email_intake._parse_email_message(avec).message_id, 'abc@x')
+
+        etat, _ = self._boite_imap([{'uid': 7, 'raw': brut}])
+        recus = []
+
+        def boom(msg, company):
+            raise RuntimeError('autre handler en échec')
+
+        email_intake.register_handler(boom)
+        email_intake.register_handler(lambda m, c: recus.append(m.message_id))
+        email_intake.poll_mailbox(self.company)
+        self.assertFalse(etat['msgs'][0]['seen'])  # redistribué au passage suivant
+        email_intake.poll_mailbox(self.company)
+        self.assertEqual(recus, [lu1, lu1])
+
     def test_poll_noop_without_config(self):
         res = email_intake.poll_mailbox(self.company)
         self.assertEqual(res, {'fetched': 0, 'handled': 0})
