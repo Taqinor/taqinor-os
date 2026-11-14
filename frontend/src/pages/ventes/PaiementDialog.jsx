@@ -111,6 +111,8 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
   // ACNC1 — clé d'envoi : créée au 1er envoi, GARDÉE entre deux clics (rejeu = même
   // paiement), remise à zéro au succès et à chaque nouvelle facture ciblée.
   const cleEnvoi = useRef(null)
+  // ACNC4 — phrase serveur d'un paiement identique déjà enregistré (409 `paiement_similaire`).
+  const [doublon, setDoublon] = useState(null)
 
   // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
   const [factureActivites, setFactureActivites] = useState([])
@@ -141,6 +143,7 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
     setArrondiCaisse(null)
     setFactureActivites([])
     cleEnvoi.current = null
+    setDoublon(null)
     loadActivites(facture.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- formulaire réinitialisé uniquement quand la facture CIBLE change (facture.id), pas à chaque relecture de l'objet (D-ENF22)
   }, [facture?.id])
@@ -164,11 +167,12 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
     }
   }
 
-  const handleEnregistrerPaiement = async (e) => {
-    e.preventDefault()
+  const handleEnregistrerPaiement = async (e, confirmerDoublon = false) => {
+    e?.preventDefault?.()
     if (!facture) return
     setPaySaving(true)
     clearAll()
+    setDoublon(null)
     cleEnvoi.current ??= globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
     try {
       const res = await ventesApi.enregistrerPaiement(facture.id, {
@@ -177,6 +181,7 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
         mode: payMode,
         reference: payReference || undefined,
         idempotency_key: cleEnvoi.current,
+        ...(confirmerDoublon ? { confirmer_doublon: true } : {}),
       })
       cleEnvoi.current = null
       ecrireDernierMode(payMode)  // VX93 — mémorise le mode pour le prochain paiement
@@ -208,7 +213,9 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
       }
     } catch (err) {
       // La saisie est conservée ; le message serveur nomme le champ fautif.
-      setFromResponse(err?.response?.data, { fallback: 'Enregistrement du paiement impossible.' })
+      const corps = err?.response?.data
+      if (corps?.code === 'paiement_similaire') setDoublon(corps.detail)  // ACNC4
+      else setFromResponse(corps, { fallback: 'Enregistrement du paiement impossible.' })
       // ACNC1 — sans réponse (délai, réseau) : le reste dû est relu avant tout renvoi.
       if (!err?.response) relireFacture(facture.id)
     } finally {
@@ -236,6 +243,13 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
         <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
           {erreursSrv.submit && (
             <p role="alert" className="text-sm text-destructive">{erreursSrv.submit}</p>
+          )}
+          {doublon && (
+            <div role="alert" className="flex items-center justify-between gap-3 text-sm">
+              <span>{doublon}</span>
+              <Button type="button" size="sm" loading={paySaving}
+                      onClick={() => handleEnregistrerPaiement(null, true)}>Confirmer</Button>
+            </div>
           )}
           <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth error={erreursSrv.montant}>
             <Input id="pay-montant" ref={payMontantRef} type="number" min="0" step="any" required

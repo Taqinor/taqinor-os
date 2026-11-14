@@ -109,8 +109,9 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
                 if du <= 0:
                     continue
                 try:
+                    # ACNC4 — deux fractions égales le même jour : voulues.
                     encaisser_sur_facture(
-                        facture=f, user=admin, donnees={
+                        facture=f, user=admin, confirmer_doublon=True, donnees={
                             'montant': montant, 'date_paiement': date.today(),
                             'mode': 'virement', 'reference': ''})
                 except EncaissementRefuse:

@@ -147,7 +147,36 @@ class PorteEncaissementTests(TestCase):
         self.assertEqual(r3.status_code, 409, r3.data)
         self.assertEqual(self._nb_paiements(autre), 0)
         sans = {k: v for k, v in corps.items() if k != 'idempotency_key'}
+        sans['confirmer_doublon'] = True  # ACNC4 — même montant, même jour
         self.assertEqual(self.api.post(url, sans, format='json').status_code, 201)
+        self.assertEqual(self._nb_paiements(f), 2)
+
+    def test_paiement_identique_demande_confirmation(self):
+        """ACNC4 (C-ACNC-001, D-ACNC-1) — un 2e paiement de même montant et
+        même date, sous une AUTRE clé : 409 `paiement_similaire`, rien
+        d'écrit ; avec `confirmer_doublon` : 201, 2 paiements. Mutant :
+        ignorer `confirmer_doublon` ⇒ 409 au lieu de 201."""
+        from apps.ventes.models import Facture
+        f = self._facture(Facture.Statut.EMISE, ttc=Decimal('10000'))
+        url = f'{BASE}{f.id}/enregistrer-paiement/'
+        corps = {'montant': '5000', 'date_paiement': str(timezone.localdate()),
+                 'mode': 'cheque', 'idempotency_key': 'ACNC4-A'}
+        self.assertEqual(
+            self.api.post(url, corps, format='json').status_code, 201)
+        corps['idempotency_key'] = 'ACNC4-B'
+        r = self.api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'paiement_similaire')
+        self.assertEqual(
+            ' '.join(r.data['detail'].split()),
+            "Un paiement de 5 000 MAD a déjà été enregistré aujourd'hui sur "
+            'cette facture : confirmer ?')
+        self.assertEqual(self._nb_paiements(f), 1)
+        f.refresh_from_db()
+        self.assertEqual(f.montant_du, Decimal('5000'))
+        corps['confirmer_doublon'] = True
+        r = self.api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(self._nb_paiements(f), 2)
 
     # ── encaissement groupé ─────────────────────────────────────────────
