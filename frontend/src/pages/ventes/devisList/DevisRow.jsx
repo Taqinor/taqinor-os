@@ -621,8 +621,8 @@ export default function DevisRow({ d, ctx }) {
                 </DropdownMenuItem>
               )}
               {/* WR2/QJR531 — Copier le lien de proposition (share_link) :
-                  copier le lien CLIENT vaut envoi (D-QJR5-3). */}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && d.is_active !== false && (
+                  copier le lien CLIENT vaut envoi (D-QJR5-3). ADRG127 — POST share-link : peutModifier. */}
+              {peutModifier && (d.statut === 'brouillon' || d.statut === 'envoye') && d.is_active !== false && (
                 <DropdownMenuItem
                   disabled={shareBusyId === d.id}
                   onSelect={() => handleCopierLienProposition(d)}
@@ -634,7 +634,7 @@ export default function DevisRow({ d, ctx }) {
               {/* L-INTPREV/QJ1bis — même page, jeton INTERNE : vérifier la
                   proposition sans déclencher la notification d'ouverture
                   ni aucune trace. Jamais à envoyer au client. */}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && d.is_active !== false && (
+              {peutModifier && (d.statut === 'brouillon' || d.statut === 'envoye') && d.is_active !== false && (
                 <DropdownMenuItem
                   disabled={shareBusyId === d.id}
                   onSelect={() => handleCopierApercuInterne(d)}
@@ -745,7 +745,7 @@ export default function DevisRow({ d, ctx }) {
               {/* ZSAL8 — PDF du bon de commande lié (client `getBonCommandePdf`
                   déjà présent dans ventesApi.js, jamais appelé). Endpoint BC
                   distinct, ne touche pas au rendu /proposal du devis (règle #4). */}
-              {d.bon_commande_etat?.exists && (
+              {peutPdf && d.bon_commande_etat?.exists && (
                 <DropdownMenuItem onSelect={() => handleBonCommandePdf(d)}>
                   Bon de commande (PDF)
                 </DropdownMenuItem>

@@ -1676,4 +1676,20 @@ describe('DevisList — ADRG19 : gestes gardés par le code de leur route', () =
     await menuDe(user, 'DEV-ADRG-B')
     for (const nom of MENU) expect(await screen.findByRole('menuitem', { name: nom })).toBeInTheDocument()
   })
+
+  it('ADRG127 — Viewer : pas de copie de lien ni de PDF de BC ; Commercial : les trois', async () => {
+    // C-ADRG-VER2-204 — mutant : retirer `peutModifier` ⇒ échec.
+    const ENVOYE = [{ id: 43, reference: 'DEV-ADRG-E', client_nom: 'ACME', statut: 'envoye', is_active: true,
+      date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1, bon_commande_etat: { exists: true } }]
+    const TROIS = [/Copier le lien de la proposition/, /Copier l.aperçu interne/, /Bon de commande \(PDF\)/]
+    const user = userEvent.setup()
+    const { unmount } = renderList({ loading: false, devis: ENVOYE, ...VIEWER })
+    await menuDe(user, 'DEV-ADRG-E')
+    await screen.findByRole('menu')
+    for (const nom of TROIS) expect(screen.queryByRole('menuitem', { name: nom })).toBeNull()
+    unmount()
+    renderList({ loading: false, devis: ENVOYE, ...COMMERCIAL })
+    await menuDe(user, 'DEV-ADRG-E')
+    for (const nom of TROIS) expect(await screen.findByRole('menuitem', { name: nom })).toBeInTheDocument()
+  })
 })
