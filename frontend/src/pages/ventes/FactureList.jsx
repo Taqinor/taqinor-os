@@ -776,7 +776,8 @@ export default function FactureList() {
       ) : (
         <>
           {/* ── FG43/WR2b — barre d'actions en masse (visible dès une sélection) ── */}
-          {selectedIds.length > 0 && (
+          {/* ADRG128 — un geste de lot par code de route ; aucun (Viewer) ⇒ aucune barre. */}
+          {selectedIds.length > 0 && (peutModifier || peutPdf || peutEncaisser) && (
             <div
               role="region"
               aria-label="Actions factures en masse"
@@ -787,7 +788,8 @@ export default function FactureList() {
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {/* ADRG18 — « Émettre » en masse exige `encaisser` (AARG9). */}
-                {Object.entries(BULK_LABELS).filter(([action]) => action !== 'emettre' || peutEncaisser).map(([action, label]) => (
+                {Object.entries(BULK_LABELS).filter(([action]) => (
+                  action === 'emettre' ? peutEncaisser : action === 'generer-pdf' ? peutPdf : peutModifier)).map(([action, label]) => (
                   <button
                     key={action}
                     type="button" disabled={bulkBusy}
