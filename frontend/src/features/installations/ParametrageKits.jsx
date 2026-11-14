@@ -133,7 +133,7 @@ function NomenclatureTab({ kitId, kitNom, produits }) {
           <PlusCircle className="size-4" aria-hidden="true" /> Nouveau composant
         </Button>
       </div>}
-      <ListShell loading={loading} error={error} empty="Nomenclature vide">
+      <ListShell loading={loading} error={error} onRetry={reload} empty="Nomenclature vide">
         {rows.length > 0 && rows.map((c) => (
           <div key={c.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" data-testid={`composant-${c.id}`}>
             <span className="font-medium text-sm">{c.produit_nom || c.designation}</span>
@@ -219,7 +219,7 @@ function GammeTab({ kitId, kitNom }) {
           <PlusCircle className="size-4" aria-hidden="true" /> Nouvelle étape
         </Button>
       </div>}
-      <ListShell loading={loading} error={error} empty="Aucune étape définie">
+      <ListShell loading={loading} error={error} onRetry={reload} empty="Aucune étape définie">
         {sorted.length > 0 && sorted.map((e) => (
           <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" data-testid={`etape-${e.id}`}>
             <Badge tone="neutral">#{e.ordre}</Badge>
@@ -271,7 +271,7 @@ function ControleQualiteTab({ kitId }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <ListShell loading={loading} error={error} empty="Aucun modèle de contrôle qualité configuré">
+      <ListShell loading={loading} error={error} onRetry={reload} empty="Aucun modèle de contrôle qualité configuré">
         {modele != null && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" data-testid={`controle-qualite-${modele.id}`}>
             <span className="text-sm">Modèle de contrôle qualité</span>

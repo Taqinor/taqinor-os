@@ -110,6 +110,21 @@ describe('ParametrageKits (PACT61)', () => {
     expect(screen.queryByRole('button', { name: /Configurer un modèle de contrôle/ })).toBeNull()
   })
 
+  it('AERR140 — nomenclature illisible : Réessayer relit', async () => {
+    inst.getKitComposants
+      .mockRejectedValueOnce(new Error('réseau'))
+      .mockResolvedValueOnce({ data: { count: 1, results: [
+        { id: 81, kit: 12, produit_nom: 'Onduleur 5 kW', quantite: '1' },
+      ] } })
+    const user = userEvent.setup()
+    render(<ParametrageKits />)
+    const boutons = await screen.findAllByRole('button', { name: 'Réessayer' })
+    expect(inst.getKitComposants).toHaveBeenCalledTimes(1)
+    await user.click(boutons[0])
+    expect(await screen.findByTestId('composant-81')).toBeInTheDocument()
+    expect(inst.getKitComposants).toHaveBeenCalledTimes(2)
+  })
+
   it('configure le modèle de contrôle qualité du kit', async () => {
     const user = userEvent.setup()
     render(<ParametrageKits />)
