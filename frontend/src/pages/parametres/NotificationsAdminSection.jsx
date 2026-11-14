@@ -9,6 +9,7 @@ import { estFerieFixeMa } from '../../lib/feriesMaroc'
 import { SectionTitle } from './peComponents'
 import toutesLesPages from './toutesLesPages'
 import { toastErreurNonAffichee } from '../../lib/toast'
+import { useConfirmDialog } from '../../ui/confirm'
 
 /* ============================================================================
    WIR154 — Administration Notifications (Paramètres > Notifications). Quatre
@@ -44,6 +45,7 @@ const ROLES = [
 ]
 
 function RoutingRulesPanel() {
+  const { confirmDelete } = useConfirmDialog()
   const [rules, setRules] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ event_type: '', target_role: 'responsable' })
@@ -77,8 +79,10 @@ function RoutingRulesPanel() {
       load()
     } catch (e) { toastErreurNonAffichee(e, 'Création impossible (événement invalide ?).') }
   }
-  const supprimer = async (id) => {
-    try { await notificationsApi.deleteRoutingRule(id); load() }
+  const supprimer = async (r) => {
+    // AERR147 — la boîte nomme l'événement et le rôle avant toute suppression.
+    if (!await confirmDelete({ title: `Supprimer la règle « ${r.event_label || r.event_type} → ${r.target_role_label || r.target_role || `#${r.target_user}`} » ?` })) return
+    try { await notificationsApi.deleteRoutingRule(r.id); load() }
     catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
@@ -126,7 +130,7 @@ function RoutingRulesPanel() {
               </span>
               <IconButton size="md" variant="ghost" label="Supprimer"
                           className="text-destructive hover:text-destructive"
-                          onClick={() => supprimer(r.id)}>
+                          onClick={() => supprimer(r)}>
                 <Trash2 className="size-4" />
               </IconButton>
             </li>
@@ -138,6 +142,7 @@ function RoutingRulesPanel() {
 }
 
 function CalendrierPanel() {
+  const { confirmDelete } = useConfirmDialog()
   const [wh, setWh] = useState(null)
   const [holidays, setHolidays] = useState([])
   const [loading, setLoading] = useState(true)
@@ -182,8 +187,9 @@ function CalendrierPanel() {
       load()
     } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
-  const supprimerFerie = async (id) => {
-    try { await notificationsApi.deleteHoliday(id); load() }
+  const supprimerFerie = async (h) => {
+    if (!await confirmDelete({ title: `Supprimer le jour férié « ${h.date}${h.nom ? ` — ${h.nom}` : ''} » ?` })) return
+    try { await notificationsApi.deleteHoliday(h.id); load() }
     catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
@@ -252,7 +258,7 @@ function CalendrierPanel() {
               <span>{h.date} — {h.nom}{h.recurrent_annuel ? ' (récurrent)' : ''}</span>
               <IconButton size="md" variant="ghost" label="Supprimer"
                           className="text-destructive hover:text-destructive"
-                          onClick={() => supprimerFerie(h.id)}>
+                          onClick={() => supprimerFerie(h)}>
                 <Trash2 className="size-4" />
               </IconButton>
             </li>
@@ -264,6 +270,7 @@ function CalendrierPanel() {
 }
 
 function AnnoncesPanel() {
+  const { confirmDelete } = useConfirmDialog()
   const [annonces, setAnnonces] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ titre: '', corps: '', lecture_obligatoire: false })
@@ -294,8 +301,9 @@ function AnnoncesPanel() {
     try { await notificationsApi.publierAnnonce(id); toast.success('Annonce publiée.'); load() }
     catch (e) { toastErreurNonAffichee(e, 'Publication impossible.') }
   }
-  const supprimer = async (id) => {
-    try { await notificationsApi.deleteAnnonce(id); load() }
+  const supprimer = async (a) => {
+    if (!await confirmDelete({ title: `Supprimer l'annonce « ${a.titre} » ?` })) return
+    try { await notificationsApi.deleteAnnonce(a.id); load() }
     catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
@@ -339,7 +347,7 @@ function AnnoncesPanel() {
                 )}
                 <IconButton size="md" variant="ghost" label="Supprimer"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => supprimer(a.id)}>
+                            onClick={() => supprimer(a)}>
                   <Trash2 className="size-4" />
                 </IconButton>
               </span>
@@ -352,6 +360,7 @@ function AnnoncesPanel() {
 }
 
 function WhatsAppTemplatesPanel() {
+  const { confirmDelete } = useConfirmDialog()
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ name: '', body_fr: '', language: 'fr' })
@@ -389,8 +398,9 @@ function WhatsAppTemplatesPanel() {
       load()
     } catch (e) { toastErreurNonAffichee(e, 'Décision impossible.') }
   }
-  const supprimer = async (id) => {
-    try { await notificationsApi.deleteWhatsAppTemplate(id); load() }
+  const supprimer = async (t) => {
+    if (!await confirmDelete({ title: `Supprimer le gabarit « ${t.name} » ?` })) return
+    try { await notificationsApi.deleteWhatsAppTemplate(t.id); load() }
     catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
@@ -438,7 +448,7 @@ function WhatsAppTemplatesPanel() {
                 )}
                 <IconButton size="md" variant="ghost" label="Supprimer"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => supprimer(t.id)}>
+                            onClick={() => supprimer(t)}>
                   <Trash2 className="size-4" />
                 </IconButton>
               </span>
