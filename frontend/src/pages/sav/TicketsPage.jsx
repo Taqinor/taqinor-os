@@ -266,7 +266,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
   const confirmer = useConfirm() // AERR82
-  const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement'), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
+  const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement'), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign'), peutLireChantiers = useDroitMetier('installation_voir') // ADRG22 / ADRG115
   const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
@@ -428,16 +428,16 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
 
   const chargerFiche = useEffectEvent(() => {
     loadHistorique()
-    loadInterventions()
-    loadPieces()
-    loadPiecesUnifiees()
+    if (peutLireChantiers) loadInterventions() // ADRG115 — lecture du module chantiers
+    if (peutGerer) loadPieces() // ADRG115 — routes sav_gerer, même en GET
+    if (peutGerer) loadPiecesUnifiees()
     lireTout((params) => api.get('/stock/produits/', { params }))
       .then(setProduits).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
     // d'abord dans le picker). Vide silencieusement si pas d'équipement mappé,
     // et aussi si savApi.getPiecesCompatibles est absent (mocks partiels
     // préexistants dans d'autres tests qui rendent TicketDetail).
-    savApi.getPiecesCompatibles?.(id)
+    if (peutGerer) savApi.getPiecesCompatibles?.(id)
       ?.then((r) => setPiecesCompatibles(r.data?.results ?? [])).catch?.(() => {})
     // Équipements du chantier concerné (pour lier l'équipement précis).
     if (current.installation) {
@@ -1101,7 +1101,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
 
         {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
         <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
-          <TicketChecklistPanel key={`ck-${fusions}`} ticketId={id} />
+          {peutGerer && <TicketChecklistPanel key={`ck-${fusions}`} ticketId={id} />}
         </CollapsibleSection>
 
         {/* ── WIR119/ZMFG6 — feuille de maintenance (worksheet) à remplir ── */}

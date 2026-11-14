@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
@@ -8,6 +8,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { mockMatchMedia } from '../../test/matchMedia'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import savApi from '../../api/savApi'
+import installationsApi from '../../api/installationsApi'
 
 // ADRG22 — doublures réseau de la fiche et de la liste (aucun effet sur les
 // briques de présentation testées plus bas, qui n'appellent aucune API).
@@ -248,7 +249,7 @@ describe('KanbanColumn (J144 — vue Kanban par statut)', () => {
    écriture du ticket = `sav_gerer` ; réaffectation (« Technicien responsable »,
    « Assigner à … » en masse) = `sav_reassign`. Codes recopiés du registre
    (`apps/roles/permissions_registre.py`, rôles LIVRÉS Technicien / Commercial). */
-const TECHNICIEN = ['equipement_voir', 'sav_voir', 'sav_gerer', 'sav_repondre_client_externe']
+const TECHNICIEN = ['installation_voir', 'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_repondre_client_externe']
 const COMMERCIAL = ['equipement_voir', 'sav_voir', 'ventes_creer']
 const T1 = {
   id: 1, reference: 'SAV-1', statut: 'en_cours', type: 'correctif', priorite: 'normale',
@@ -296,6 +297,33 @@ describe("TicketDetail — ADRG22 gestes d'écriture selon les droits de la rout
     }
     expect(screen.getAllByRole('combobox').find((c) => c.textContent === 'En cours')).toBeDisabled()
     expect(comboTechnicien()).toBeDisabled()
+  }, 60000)
+
+  /* ADRG115 — pièces, pièces unifiées, compatibles, checklist et prêts sont
+     des routes `sav_gerer` (même en GET) ; les interventions exigent la
+     lecture des chantiers : aucun 403 à l'ouverture pour le Commercial. */
+  const LECTURES = () => [savApi.getTicketPieces, savApi.getTicketPiecesUnifiees, savApi.getPiecesCompatibles,
+    savApi.getTicketChecklist, savApi.getPretsEquipement, installationsApi.getInterventions]
+  // Le mock partagé n'a pas `getPiecesCompatibles` : on le pose par test et on le retire après.
+  let compatiblesAvant
+  beforeEach(() => {
+    compatiblesAvant = savApi.getPiecesCompatibles
+    savApi.getPiecesCompatibles = vi.fn(() => Promise.resolve({ data: { results: [] } }))
+  })
+  afterEach(() => { savApi.getPiecesCompatibles = compatiblesAvant })
+  it("Commercial : aucune lecture réservée à sav_gerer ni aux chantiers à l'ouverture", async () => {
+    vi.clearAllMocks()
+    renderFiche(COMMERCIAL)
+    await screen.findByText('SAV-1', { exact: false })
+    await waitFor(() => expect(savApi.getTicketHistorique).toHaveBeenCalled())
+    for (const lecture of LECTURES()) expect(lecture).not.toHaveBeenCalled()
+  }, 60000)
+
+  it('Technicien : pièces, checklist, prêts et interventions lus', async () => {
+    vi.clearAllMocks()
+    renderFiche(TECHNICIEN)
+    await screen.findByText('SAV-1', { exact: false })
+    for (const lecture of LECTURES()) await waitFor(() => expect(lecture).toHaveBeenCalled())
   }, 60000)
 })
 

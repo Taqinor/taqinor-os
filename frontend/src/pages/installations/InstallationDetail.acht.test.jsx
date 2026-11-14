@@ -148,4 +148,22 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
     await ouvrirJalons(user)
     expect(screen.getByRole('button', BTN)).toBeInTheDocument()
   })
+
+  // ADRG117 — les types d'intervention ne servent qu'au formulaire d'intervention (`intervention_gerer`).
+  it('Commercial (lecture par ventes_voir) : aucun GET des types d’intervention', async () => {
+    const user = userEvent.setup()
+    const lecture = vi.spyOn(installationsApi, 'getTypesIntervention')
+      .mockResolvedValue({ data: [{ cle: 'pose_speciale', libelle: 'Pose spéciale', archived: false }] })
+    rendre({ id: 13, reference: 'CH-13', statut: 'installe', annule: false },
+      { role: 'normal', role_nom: 'Commercial', permissions: ['ventes_voir', 'ventes_creer', 'crm_voir'] })
+    await screen.findByLabelText('Statut')
+    expect(lecture).not.toHaveBeenCalled()
+    cleanup()
+    rendre({ id: 14, reference: 'CH-14', statut: 'installe', annule: false },
+      { role: 'normal', role_nom: 'Technicien', permissions: ['chantiers_voir', 'installation_gerer', 'intervention_gerer'] })
+    await waitFor(() => expect(lecture).toHaveBeenCalled())
+    await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
+    expect(await screen.findByRole('option', { name: 'Pose spéciale' })).toBeInTheDocument()
+    lecture.mockRestore()
+  })
 })
