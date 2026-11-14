@@ -1036,6 +1036,7 @@ _MODULE_DES_TABLES = (
     ("ventes_", ("ventes_", "encaisser")), ("crm_", ("crm_",)),
     ("installations_", ("installation_", "intervention_")),
     ("sav_", ("sav_",)), ("stock_", ("stock_",)),
+    ("adsengine_", ("adsengine_",)),  # ALEC46 : miroirs publicitaires
 )
 _TABLES_A_PROPRIETAIRE = frozenset({
     "ventes_devis", "ventes_facture", "ventes_boncommande", "crm_client",

@@ -209,6 +209,31 @@ class TenantIsolationTests(unittest.TestCase):
                 "WHERE campaign_id = '123'", self.CID, permissions=codes)
             self.assertIn("company_id = 7", out)
 
+    def test_miroirs_publicitaires_sous_le_droit_du_module(self):
+        """ALEC46 (C-ALEC-VER2-202) — miroirs `adsengine_` : Admin Ventes,
+        Admin RH, Commercial terrain (sans `adsengine_*`) refuses « module » ;
+        Commercial et Directeur : SQL reecrit ; sans `permissions` inchange."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        for sql in ("SELECT SUM(spend) FROM adsengine_insightsnapshot",
+                    "SELECT name, budget FROM adsengine_adcampaignmirror"):
+            for nom in ("Admin Ventes", "Admin RH", "Commercial terrain"):
+                with self.assertRaisesRegex(svc.SQLSecurityError, "droit du module"):
+                    svc._validate_and_secure(
+                        sql, self.CID, permissions=list(roles[nom]))
+            for nom in ("Commercial", "Directeur"):
+                out = svc._validate_and_secure(
+                    sql, self.CID, permissions=list(roles[nom]))
+                self.assertIn("company_id = 7", out)
+            self.assertIn("company_id = 7", self._ok(sql))
+
     def test_single_table_injects_company_id(self):
         out = self._ok("SELECT nom FROM stock_produit")
         self.assertIn("company_id = 7", out)
