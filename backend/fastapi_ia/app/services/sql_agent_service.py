@@ -150,12 +150,12 @@ _TABLE_DESCRIPTIONS: dict[str, str] = {
     ),
     "crm_client": "Clients de l'entreprise : nom, prenom, email, telephone, adresse",
     "ventes_devis": (
-        "Devis commerciaux : numero, date, client, montant total, "
-        "statut (brouillon / accepte / refuse / expire)"
+        "Devis commerciaux : reference, date_creation, client, "
+        "statut (brouillon / envoye / accepte / refuse / expire)"
     ),
     "ventes_lignedevis": (
-        "Lignes de produits dans les devis : produit, quantite, "
-        "prix unitaire, remise, montant"
+        "Lignes de produits dans les devis : designation, produit, quantite, "
+        "prix_unitaire, remise, taux_tva"
     ),
     "ventes_boncommande": "Bons de commande clients confirmes depuis un devis accepte",
     "ventes_facture": (

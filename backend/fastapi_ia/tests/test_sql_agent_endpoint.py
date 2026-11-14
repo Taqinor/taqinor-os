@@ -396,6 +396,32 @@ class RelevantTableSelectionTests(unittest.TestCase):
         self.assertTrue(tables)
         self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
 
+    def test_descriptions_devis_sans_colonne_inexistante(self):
+        """AANA91 (C-AANA-VER5-001) — descriptions de `ventes_devis` et
+        `ventes_lignedevis` : colonnes reelles seulement, aucun « montant »
+        (totaux calcules), `reference` au lieu de « numero » ; servies telles
+        quelles par `get_schema_summary`."""
+        import asyncio
+        from app.services.sql_agent_service import (
+            SQLAgentService, _TABLE_DESCRIPTIONS,
+        )
+        resume = asyncio.run(SQLAgentService().get_schema_summary())
+        servies = {t["table"]: t["description"] for t in resume["tables"]}
+        attendus = {
+            "ventes_devis": ("reference", "date_creation", "client",
+                             "statut", "envoye"),
+            "ventes_lignedevis": ("designation", "quantite", "prix_unitaire",
+                                  "remise", "taux_tva"),
+        }
+        for table, colonnes in attendus.items():
+            for desc in (_TABLE_DESCRIPTIONS[table], servies[table]):
+                self.assertNotIn("montant", desc.lower())
+                self.assertNotIn("numero", desc.lower())
+                for col in colonnes:
+                    self.assertIn(col, desc)
+        self.assertIn("ventes_devis", SQLAgentService._keyword_relevant_tables(
+            "combien de devis ce mois-ci", k=5))
+
     def test_get_relevant_tables_bounded_when_embeddings_fail(self):
         from app.services.sql_agent_service import (
             SQLAgentService, _TABLE_DESCRIPTIONS,
