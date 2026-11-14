@@ -127,12 +127,13 @@ async function couperLecture(p, cheminOk) {
 }
 /** Compteur de requêtes (méthode + chemin) observées par la page. */
 function compteur(p, methode, cheminOk) {
-  const c = { n: 0, corps: [] }
+  const c = { n: 0, corps: [], urls: [] }
   p.on('request', (r) => {
     if (r.method() !== methode) return
     const u = new URL(r.url())
     if (!cheminOk(u.pathname, u)) return
     c.n += 1
+    c.urls.push(`${u.pathname}${u.search}`)
     c.corps.push(r.postData() || '')
   })
   return c
@@ -179,23 +180,11 @@ etapeCR('PF12.1-AERR100', ['AERR100'], async ({ page, suivi, testInfo }) => {
   await ligneB.locator('button.lv-lead-name').click()
   const fiche = p.getByRole('dialog').filter({ has: p.getByRole('heading', { name: new RegExp(`AERR100 B ${m}`) }) })
   await expect(fiche, 'la fiche du 2e lead est ouverte').toBeVisible({ timeout: 60_000 })
-  // Panne : la relecture de la liste (GET /crm/leads/?page=…) répond 500.
+  // Panne : la relecture de la liste (GET /crm/leads/?page=…) répond 500 — coupée AVANT tout geste.
   suivi.attendre(/\/api\/django\/crm\/leads\/\?/, 500)
   const retablir = await couperLecture(p, (ch) => ch === `${API}/crm/leads/`)
-  // Geste qui relit la liste : changement d'étape au clavier (« 2 » → Contacté).
-  await fiche.getByRole('heading', { name: new RegExp(`AERR100 B ${m}`) }).click()
-  const patchEtape = p.waitForResponse((r) => r.url().endsWith(`/crm/leads/${ids[1]}/`) && r.request().method() === 'PATCH', T)
-  await p.keyboard.press('2')
-  expect((await patchEtape).status(), 'changement d\'étape enregistré').toBe(200)
   const avis = p.getByTestId('leads-pas-a-jour')
-  await expect(avis, 'avis « Liste pas à jour »').toBeVisible({ timeout: 30_000 })
-  await expect(avis).toContainText('Liste pas à jour')
-  // La fiche est modale (Radix) : la liste derrière est `aria-hidden`, d'où un repérage CSS du bouton.
-  const reessayer = avis.locator('button', { hasText: 'Réessayer' })
-  await expect(reessayer, 'bouton « Réessayer » de l\'avis').toBeVisible()
-  await expect(fiche, 'la fiche reste montée').toBeVisible()
-  await expect(lignes, 'les 3 lignes restent').toHaveCount(3)
-  // Autosauvegarde réussie : sa seule ligne change, AUCUNE relecture de la liste.
+  // 1) API coupée puis un champ modifié : l'autosauvegarde réussie change sa seule ligne, AUCUNE relecture de la liste.
   const relectures = compteur(p, 'GET', (ch) => ch === `${API}/crm/leads/`)
   // Ville canonique (le serveur normalise la ville saisie : « Fes x » est servie « Fès ») : on tape un nom déjà canonique.
   const ville = 'Rabat'
@@ -206,7 +195,22 @@ etapeCR('PF12.1-AERR100', ['AERR100'], async ({ page, suivi, testInfo }) => {
   expect((await patchVille).status(), 'autosauvegarde réussie').toBe(200)
   await historique
   await expect(ligneB, 'la ligne du lead porte la ville enregistrée').toContainText(ville, { timeout: 15_000 })
-  expect(relectures.n, 'aucune relecture de toute la liste après l\'autosauvegarde').toBe(0)
+  expect(relectures.n, `aucune relecture de toute la liste après l'autosauvegarde : ${relectures.urls.join(', ')}`).toBe(0)
+  await expect(avis, 'aucune relecture ⇒ aucun avis').toHaveCount(0)
+  // 2) Geste qui relit la liste : changement d'étape au clavier (« 2 » → Contacté) ⇒ relecture en 500.
+  await fiche.getByRole('heading', { name: new RegExp(`AERR100 B ${m}`) }).click()
+  const patchEtape = p.waitForResponse((r) => r.url().endsWith(`/crm/leads/${ids[1]}/`) && r.request().method() === 'PATCH'
+    && (r.request().postData() || '').includes('CONTACTED'), T)
+  await p.keyboard.press('2')
+  expect((await patchEtape).status(), 'changement d\'étape enregistré').toBe(200)
+  await expect(avis, 'avis « Liste pas à jour »').toBeVisible({ timeout: 30_000 })
+  await expect(avis).toContainText('Liste pas à jour')
+  // La fiche est modale (Radix) : la liste derrière est `aria-hidden`, d'où un repérage CSS du bouton.
+  const reessayer = avis.locator('button', { hasText: 'Réessayer' })
+  await expect(reessayer, 'bouton « Réessayer » de l\'avis').toBeVisible()
+  await expect(fiche, 'la fiche reste montée').toBeVisible()
+  await expect(lignes, 'les 3 lignes restent').toHaveCount(3)
+  await expect(ligneB, 'la ligne garde la ville').toContainText(ville)
   await expect(avis, 'l\'avis reste tant que la relecture n\'a pas réussi').toBeVisible()
   // Réessayer après rétablissement (fiche fermée : la liste redevient cliquable) : l'avis s'efface.
   await fiche.getByRole('button', { name: 'Fermer' }).first().click()
@@ -610,7 +614,7 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
   await patch1
   await expect.poll(() => villeDe(a), { timeout: 30_000, message: 'en base : la ville tapée est enregistrée' }).toBe(v1)
   // Rouvrir le lead dans un autre onglet : la ville est servie par le serveur.
-  const onglet = suivi.surveiller(await p.context().newPage())
+  const onglet = await ecran(page, suivi, testInfo, nom)
   await onglet.goto(`/crm/leads/${a}`)
   await expect(onglet.locator('#lf-ville'), 'autre onglet : ville servie').toHaveValue(v1, { timeout: 60_000 })
   await onglet.close()
@@ -839,6 +843,11 @@ l = Lead.all_objects.get(pk=${pk}); sortie([l.is_archived, bool(getattr(l, 'is_d
   const ligne = (n) => p.locator('tr.lv-row').filter({ hasText: n })
   const nA = `Ahmed Benali ${m}`
   await expect(ligne(`Benali ${m}`), 'lead listé').toBeVisible({ timeout: 60_000 })
+  // Compte neuf : la visite guidée de l'écran (ProductTour, bulle non modale) se pose sur la liste ; on la ferme
+  // par son bouton, comme un utilisateur.
+  const fermerVisite = p.getByRole('button', { name: 'Fermer la visite guidée' })
+  await fermerVisite.waitFor({ state: 'visible', timeout: 10_000 }).then(() => fermerVisite.click()).catch(() => undefined)
+  await expect(fermerVisite).toHaveCount(0)
   const archivages = compteur(p, 'POST', (ch) => ch === `${API}/crm/leads/${a}/archiver/`)
   const boite = p.getByRole('alertdialog')
   // 1er tour : « Annuler » ⇒ aucun archiveLead.
@@ -1079,7 +1088,7 @@ sortie(ObjectifCommercial.objects.filter(pk=${ids.obj}).exists())`)
   await boite.getByRole('button', { name: 'Effacer', exact: true }).click()
   await expect(dlg, 'confirmé : la boîte se ferme').toHaveCount(0, { timeout: 30_000 })
   expect(suppressions.n, 'un seul deleteObjectif').toBe(1)
-  expect(await existe(), 'en base : objectif effacé').toBe(false)
+  await expect.poll(existe, { timeout: 15_000, message: 'en base : objectif effacé' }).toBe(false)
   await p.reload()
   await expect(ligne.getByRole('button').nth(4), 'après rechargement : plus d\'objectif').toContainText('Fixer un objectif', { timeout: 60_000 })
   await auRepos(suivi)
