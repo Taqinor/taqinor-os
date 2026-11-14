@@ -6,15 +6,19 @@ est rejoué deux fois. Plus : société posée serveur (jamais du corps), isolat
 multi-société, op_type inconnu, refus journalisé et rejouable après correction,
 plafond de lot, journal en lecture seule et scopé.
 """
+import threading
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Lead, LeadActivity
+from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 from . import registry, selectors
 from .models import OfflineOperation
@@ -839,3 +843,58 @@ class VisiteMesuresHorsLigneTests(TestCase):
         version = visites_selectors.get_company_visite_version(
             self.co_a, self.visite.id)
         self.assertEqual(version.updated_at, self.visite.updated_at)
+
+
+class VidagesCroisesConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC64 — deux vidages du même lot sur DEUX vraies connexions : le second
+    lit le journal « en attente » PENDANT le handler du premier (verrou de
+    ``_executer`` tenu) ; sa reprise attend ce verrou et ne doit jamais remettre
+    « en attente » une op appliquée (sinon : handler rejoué, seconde note)."""
+
+    def setUp(self):
+        self.company = make_company('ofs-acnc64', 'Société ACNC64')
+        self.user = make_user(self.company, 'ofs-acnc64-resp')
+        self.lead = Lead.objects.create(company=self.company, nom='Karim Alaoui')
+
+    def test_second_vidage_lu_pendant_le_handler_ne_rejoue_pas(self):
+        from . import services
+        lot = [op('cle-x', 'crm.lead.noter',
+                  {'lead': self.lead.id, 'body': 'Client rappelé'})]
+        module, original = registry.get('crm.lead.noter')
+        dans_handler, b_fini, res = threading.Event(), threading.Event(), {}
+
+        def handler(company, user, payload):
+            resultat = original(company, user, payload)
+            if threading.current_thread().name == 'vidage-a':
+                dans_handler.set()
+                # B lit le journal pendant ce handler, puis bute sur le verrou.
+                attendre_un_ecrivain_bloque(ou_bien=b_fini)
+            return resultat
+
+        def vidage(nom):
+            try:
+                if nom == 'b':
+                    dans_handler.wait(10)
+                res[nom] = services.apply_batch(
+                    self.company, self.user, lot)['results'][0]
+            finally:
+                if nom == 'b':
+                    b_fini.set()
+                connection.close()
+
+        with patch.dict(registry._HANDLERS, {'crm.lead.noter': (module, handler)}):
+            fils = [threading.Thread(target=vidage, args=(n,), name=f'vidage-{n}')
+                    for n in ('a', 'b')]
+            for fil in fils:
+                fil.start()
+            for fil in fils:
+                fil.join(30)
+        self.assertEqual(res['a']['status'], 'applied')
+        self.assertEqual(res['b']['status'], 'replayed')
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE)
+        self.assertEqual(notes.count(), 1)
+        journal = OfflineOperation.objects.get(
+            company=self.company, client_op_id='cle-x')
+        self.assertEqual(journal.statut, OfflineOperation.Statut.APPLIQUEE)
+        self.assertEqual(journal.resultat, res['a']['result'])

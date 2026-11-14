@@ -78,7 +78,15 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
             if company is not None:
                 sonde = SavedReport(company=company, target_kind=kind,
                                     cible_id=cible)
-                if sonde.resoudre_cible() is None:
+                cible_obj = sonde.resoudre_cible()
+                if cible_obj is not None:
+                    # ADRG124 — cible que l'acteur VOIT (la sienne, partagée, sans
+                    # propriétaire : même règle que les listes Dashboard/SavedQuery).
+                    from core.dashboard_partage import dashboards_visibles_q
+                    if not type(cible_obj).objects.filter(
+                            dashboards_visibles_q(requete.user), pk=cible_obj.pk).exists():
+                        cible_obj = None
+                if cible_obj is None:
                     # ERR-ENF11-FUZZ-REPORTING : id bien formé sans ligne de
                     # la société = ressource introuvable, 404 (même corps).
                     # ENF51 (règle d'ENF46) : sur une MISE À JOUR le rapport
@@ -91,6 +99,12 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                     if instance is not None:
                         raise _id_corps_inconnu_409(erreurs)
                     raise NotFound(erreurs)
+                if kind == SavedReport.TargetKind.QUERY and (
+                        not self.partial or {'cible_id', 'target_kind'} & set(attrs)):
+                    # ADRG123 — programmer l'envoi d'une requête = l'exporter :
+                    # code ``*_export`` du module du jeu (403 sinon).
+                    from core import data_explorer
+                    data_explorer.exiger_export_dataset(cible_obj.dataset, requete.user)
         return attrs
 
 

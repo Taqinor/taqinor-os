@@ -74,5 +74,3 @@ backend/django_core/apps/parametres/traductions_manquantes.py::marquer_notifiees
 backend/django_core/apps/publicapi/retry.py::schedule_first_retry
 # à trier, propriétaire ventes (hors constat ACEL5)
 backend/django_core/apps/ventes/domain/pdf_signe.py::rendre_pdf_signe
-# à trier, propriétaire securite (hors constat)
-backend/django_core/core/management/commands/escalate_workflow_sla.py::Command.handle

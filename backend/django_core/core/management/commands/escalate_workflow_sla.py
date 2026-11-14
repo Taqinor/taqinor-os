@@ -19,7 +19,7 @@ import datetime
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from authentication.models import Company
+from authentication.selectors import active_companies
 from core.workflow import escalader_etape, etapes_sla_depassees
 
 
@@ -42,7 +42,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         now = self._resolve_now(options['now'])
-        companies = Company.objects.all()
+        companies = active_companies()  # ACEL89 — jamais une société suspendue
         if options['company_id'] is not None:
             companies = companies.filter(id=options['company_id'])
 

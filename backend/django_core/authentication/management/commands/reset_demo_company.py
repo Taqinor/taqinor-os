@@ -37,6 +37,17 @@ class BloqueurAutreSociete(Exception):
     """ACEL16 — un bloqueur PROTECT appartient à une AUTRE société : refus."""
 
 
+def _societes_du_bloqueur(obj):
+    """ACEL87 — sociétés d'un bloqueur : sa ``company_id`` directe, sinon celles
+    de TOUS ses parents directs par clé étrangère non nulle (une ``LigneDevis``
+    atteint son devis ET son produit). Ensemble vide = société inconnue."""
+    if hasattr(obj, 'company_id'):
+        return {obj.company_id} - {None}
+    parents = (getattr(obj, f.name) for f in obj._meta.concrete_fields
+               if (f.many_to_one or f.one_to_one) and getattr(obj, f.attname) is not None)
+    return {p.company_id for p in parents if getattr(p, 'company_id', None) is not None}
+
+
 def _delete_cascading(obj, company=None, max_depth=60):
     """Delete ``obj``, recursively clearing any PROTECT-blocking rows first.
 
@@ -57,8 +68,7 @@ def _delete_cascading(obj, company=None, max_depth=60):
             return
         except ProtectedError as exc:
             for blocker in list(exc.protected_objects):
-                if company is not None and hasattr(blocker, 'company_id') \
-                        and blocker.company_id != company.pk:
+                if company is not None and _societes_du_bloqueur(blocker) != {company.pk}:
                     raise BloqueurAutreSociete(
                         f'{blocker._meta.label} #{blocker.pk} appartient à une autre société.') from exc
                 _delete_cascading(blocker, company, max_depth=max_depth - 1)
