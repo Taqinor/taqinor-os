@@ -234,6 +234,48 @@ export function buildSatelliteStyle(opts: {
   };
 }
 
+/** ACAL377 — statut affiché quand le STYLE d'imagerie est refusé (403, panne). */
+export const STATUT_IMAGERIE_INDISPONIBLE =
+  'Imagerie satellite indisponible — fond neutre : tracez et enregistrez normalement.';
+
+/** ACAL377 — fond de repli LOCAL : aucune source distante (seules les polices des
+ *  étiquettes de mesure, `glyphs`, restent chez MapTiler). Jamais écrit dans le document. */
+export function styleSansImagerie(maptilerKey = ''): object {
+  return {
+    version: 8,
+    glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${encodeURIComponent(maptilerKey)}`,
+    sources: {},
+    layers: [{ id: 'fond-sans-imagerie', type: 'background', paint: { 'background-color': '#e7e5df' } }],
+  };
+}
+
+/** ACAL377 — MapLibre ne lève jamais `load` quand le STYLE est refusé : une erreur
+ *  SANS `sourceId` avant tout style chargé bascule UNE fois sur `styleSansImagerie`
+ *  (le `load` suivant hydrate la scène) ; une erreur de tuile reste non bloquante. */
+export function brancherRepliImagerie<S>(
+  map: {
+    on(ev: 'error', h: (e: unknown) => void): unknown;
+    once(ev: 'load', h: () => void): unknown;
+    isStyleLoaded(): boolean | void;
+    // Générique : `maplibregl.Map#setStyle` attend un StyleSpecification (module pur,
+    // aucun import maplibre-gl) — un paramètre `object` le rendait non assignable.
+    setStyle(style: S): unknown;
+  },
+  setStatus: (msg: string) => void,
+  maptilerKey = '',
+): void {
+  let bascule = false;
+  map.on('error', (e: unknown) => {
+    const err = e as { error?: { message?: string }; sourceId?: string } | undefined;
+    console.warn('[roof-tool-pro6] erreur carte (non bloquante) :', err?.error?.message ?? e);
+    if (bascule || err?.sourceId || map.isStyleLoaded()) return;
+    bascule = true;
+    setStatus(STATUT_IMAGERIE_INDISPONIBLE);
+    map.setStyle(styleSansImagerie(maptilerKey) as S);
+    map.once('load', () => setStatus(STATUT_IMAGERIE_INDISPONIBLE));
+  });
+}
+
 // ————————————————————————————————————————————————————————————————————————
 // CAL48 — REGISTRE DE FOURNISSEURS D'IMAGERIE
 //

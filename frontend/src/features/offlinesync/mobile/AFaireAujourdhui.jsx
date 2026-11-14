@@ -22,6 +22,7 @@ import {
 // le composant deviendrait `undefined` au rendu.
 import { aFaireAujourdhui } from './aFaireItems'
 import { todayLocalIso } from '../../../lib/dateLocale'
+import { peutLireInterventions } from '../../../hooks/useHasPermission'
 
 // Lecture d'arrière-plan : une source indisponible ne doit jamais faire
 // surgir un toast rouge (le widget se contente de ne rien montrer pour elle).
@@ -39,15 +40,22 @@ const TONE = {
 // l'état d'auth servi (une seule source). Hors Provider redux (widget monté
 // seul, ex. suites de test d'écrans), `useSelector` lève : on garde alors le
 // comportement historique — la source est tentée, son échec reste silencieux.
-function usePeutVoirRelances() {
+// ADRG122 — même lecture pour la tournée : `ma-tournee` exige la lecture des
+// interventions (un Commercial ne l'a pas → 403), règle `peutLireInterventions`.
+const TOUT_TENTER = { relances: true, tournee: true }
+
+function useDroitsDesSources() {
   let auth = null
   try {
     auth = useSelector((s) => s.auth) // eslint-disable-line react-hooks/rules-of-hooks
   } catch {
-    return true
+    return TOUT_TENTER
   }
-  if (!auth) return true
-  return auth.role === 'admin' || (auth.permissions || []).includes('crm_voir')
+  if (!auth) return TOUT_TENTER
+  return {
+    relances: auth.role === 'admin' || (auth.permissions || []).includes('crm_voir'),
+    tournee: peutLireInterventions(auth),
+  }
 }
 
 /**
@@ -61,7 +69,7 @@ export default function AFaireAujourdhui({ exclure = [] }) {
   const [items, setItems] = useState(null)
   const [incomplet, setIncomplet] = useState(false)
   const [essai, setEssai] = useState(0)
-  const peutVoirRelances = usePeutVoirRelances()
+  const { relances: peutVoirRelances, tournee: peutLireTournee } = useDroitsDesSources()
   const exclureCle = exclure.join(',')
 
   useEffect(() => {
@@ -70,6 +78,7 @@ export default function AFaireAujourdhui({ exclure = [] }) {
     const exclus = exclureCle ? exclureCle.split(',') : []
     const veut = (kind) => !exclus.includes(kind)
       && (kind !== 'relance' || peutVoirRelances)
+      && (kind !== 'intervention' || peutLireTournee)
     const today = todayLocalIso()
     // Chaque source échoue INDÉPENDAMMENT. AERR121 — droit ou module absent
     // (401/403/404) = rien à montrer ; une PANNE (réseau, 5xx) n'est jamais
@@ -107,7 +116,7 @@ export default function AFaireAujourdhui({ exclure = [] }) {
       ))
     })
     return () => { alive = false }
-  }, [exclureCle, peutVoirRelances, essai])
+  }, [exclureCle, peutVoirRelances, peutLireTournee, essai])
 
   return (
     <CarteContenu data-widget="a-faire-aujourdhui"

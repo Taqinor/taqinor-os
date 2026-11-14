@@ -34,11 +34,11 @@ with no rate column at all — mono-MAD in practice.
 
 | App | Model | File | Money fields |
 | --- | --- | --- | --- |
-| achats | PrixFournisseur | `apps/achats/models.py:37` | prix_achat |
-| achats | LigneBonCommandeFournisseur | `apps/achats/models.py:269` | prix_achat_unitaire, prix_achat_unitaire_devise |
-| achats | ImputationAcompteFournisseur | `apps/achats/models.py:627` | montant, montant_ras_tva |
-| achats | LigneFactureFournisseur | `apps/achats/models.py:664` | prix_unitaire_ht, taux_tva |
-| achats | PaiementFournisseur | `apps/achats/models.py:714` | montant, montant_ras_tva |
+| achats | PrixFournisseur | `apps/achats/models.py:38` | prix_achat |
+| achats | LigneBonCommandeFournisseur | `apps/achats/models.py:270` | prix_achat_unitaire, prix_achat_unitaire_devise |
+| achats | ImputationAcompteFournisseur | `apps/achats/models.py:628` | montant, montant_ras_tva |
+| achats | LigneFactureFournisseur | `apps/achats/models.py:665` | prix_unitaire_ht, taux_tva |
+| achats | PaiementFournisseur | `apps/achats/models.py:715` | montant, montant_ras_tva |
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
@@ -115,7 +115,7 @@ with no rate column at all — mono-MAD in practice.
 
 | App | Model | File | Money fields | Has exchange rate? |
 | --- | --- | --- | --- | --- |
-| achats | FactureFournisseur | `apps/achats/models.py:472` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
+| achats | FactureFournisseur | `apps/achats/models.py:473` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
 | crm | ConcurrentPerte | `apps/crm/models_clients.py:1267` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:35` | abandon_montant, acompte_auto_le, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, total_ht_stocke, total_ttc_stocke, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:15` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |

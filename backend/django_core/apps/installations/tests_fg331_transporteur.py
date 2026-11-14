@@ -124,6 +124,26 @@ class TestScopingAndRoles(TestCase):
         results = resp.data.get('results', resp.data)
         self.assertEqual(len(results), 0)
 
+    def test_technicien_livre_ne_lit_pas_tarif_base(self):
+        # ALEC6 (D-ALEC-1) — tarif INTERNE masqué sans `prix_achat_voir`.
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS
+
+        def fin(nom, perms):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(
+                username=f'fg331-{next(_seq)}', password='x', company=self.company, role=role)
+        t = Transporteur.objects.create(company=self.company, nom='T', tarif_base=Decimal('350'))
+        tech, dirigeant = auth(fin('Tech ALEC6', TECHNICIEN_PERMISSIONS)), auth(fin('Dir ALEC6', DIRECTEUR_PERMISSIONS))
+        for url in (f'{BASE}/transporteurs/', f'{BASE}/transporteurs/{t.id}/'):
+            rep = tech.get(url)
+            self.assertEqual(rep.status_code, 200, rep.content)
+            ligne = rep.data['results'][0] if 'results' in rep.data else rep.data
+            self.assertNotIn('tarif_base', ligne)
+        rep = dirigeant.patch(f'{BASE}/transporteurs/{t.id}/', {'tarif_base': '400.00'}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(Decimal(dirigeant.get(f'{BASE}/transporteurs/{t.id}/').data['tarif_base']), Decimal('400'))
+
 
 class TestChampsStrictsFuzzR12(TestCase):
     """api-fuzz r12 (CI #956) — `note` entier (POST ou PATCH) → 400, comme le

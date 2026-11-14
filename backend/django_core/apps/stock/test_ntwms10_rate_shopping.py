@@ -161,6 +161,34 @@ class TestEndpointTarifs(Ntwms10Base):
         self.assertEqual(len(resp.data['offres']), 2)
         self.assertEqual(resp.data['offres'][0]['cout'], Decimal('120.00'))
 
+    def test_commercial_livre_recoit_cout_null(self):
+        """ALEC5 (C-ALEC-004, D-ALEC-1 = masque_prix_achat) — un rôle sans
+        ``prix_achat_voir`` reçoit les mêmes offres, ``cout`` à null ; le
+        Directeur garde les coûts. Mutant : retirer la mise à null ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'alec5-{nom.lower()}', password='x',
+                company=self.company, role=role)
+        url = ('/api/django/stock/expeditions/tarifs/'
+               f'?unite_logistique={self.colis.id}')
+        ref = auth(compte('Directeur')).get(url)
+        self.assertEqual(ref.status_code, 200, ref.content)
+        self.assertEqual(ref.data['offres'][0]['cout'], Decimal('120.00'))
+        rep = auth(compte('Commercial')).get(url)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(len(rep.data['offres']), len(ref.data['offres']))
+        for offre, vue in zip(rep.data['offres'], ref.data['offres']):
+            self.assertIsNone(offre['cout'])
+            self.assertEqual({k: v for k, v in offre.items() if k != 'cout'},
+                             {k: v for k, v in vue.items() if k != 'cout'})
+
     def test_unite_inconnue_404(self):
         resp = self.api.get(
             '/api/django/stock/expeditions/tarifs/?unite_logistique=999999')

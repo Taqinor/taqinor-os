@@ -473,6 +473,8 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
   const dispatch = useDispatch()
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  // ACNC22 — une clé par ouverture du dialogue, gardée entre deux clics (le dialogue se ferme au succès).
+  const [cleIdempotence] = useState(() => globalThis.crypto?.randomUUID?.() ?? `mv-${Date.now()}-${Math.random()}`)
 
   const [fields, setFields] = useState({
     // Pré-sélection du produit quand le formulaire est ouvert depuis sa fiche.
@@ -543,9 +545,14 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
       quantite:       quantiteSaisie,
       reference:      fields.reference.trim() || null,
       note:           fields.note.trim()      || null,
+      idempotencyKey: cleIdempotence,
     })).unwrap()
     onSaved()
   }, (err) => {
+    // Échec sans réponse (err = message) ou requête encore en vol : relire le stock, même clé.
+    if (typeof err === 'string' || err?.code === 'idempotency_en_cours') {
+      dispatch(fetchProduits()); dispatch(fetchMouvements())
+    }
     setErrors(prev => ({
       ...prev,
       submit: frenchError(err, 'Enregistrement du mouvement impossible.'),

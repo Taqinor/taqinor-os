@@ -139,7 +139,7 @@ class TestReapproHorsSaisonInchange(Xstk17Base):
             quantite_stock=2, seuil_alerte=5)
         with mock.patch('django.utils.timezone.now') as mock_now:
             import datetime
-            mock_now.return_value = datetime.datetime(2026, 1, 15)
+            mock_now.return_value = datetime.datetime(2026, 1, 15, tzinfo=datetime.timezone.utc)
             besoins = produits_a_reapprovisionner(self.company)
         item = next(b for b in besoins if b['produit_id'] == produit.id)
         # seuil × 2 − stock (ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE)
@@ -163,7 +163,7 @@ class TestReapproEnSaison(Xstk17Base):
             seuil_min=10, quantite_cible=25)
         with mock.patch('django.utils.timezone.now') as mock_now:
             import datetime
-            mock_now.return_value = datetime.datetime(2026, 6, 1)
+            mock_now.return_value = datetime.datetime(2026, 6, 1, tzinfo=datetime.timezone.utc)
             besoins = produits_a_reapprovisionner(self.company)
         item = next(
             (b for b in besoins if b['produit_id'] == produit.id), None)
@@ -181,7 +181,7 @@ class TestReapproEnSaison(Xstk17Base):
             mois_fin=12, seuil_min=8, quantite_cible=20)
         with mock.patch('django.utils.timezone.now') as mock_now:
             import datetime
-            mock_now.return_value = datetime.datetime(2026, 6, 1)
+            mock_now.return_value = datetime.datetime(2026, 6, 1, tzinfo=datetime.timezone.utc)
             besoins = produits_a_reapprovisionner(self.company)
         ids = [b['produit_id'] for b in besoins]
         self.assertIn(p1.id, ids)

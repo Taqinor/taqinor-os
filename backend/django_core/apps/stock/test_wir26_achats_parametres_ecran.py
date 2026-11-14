@@ -126,6 +126,40 @@ class TestAchatsParametresApi(Wir26Base):
         self.assertEqual(self.api.patch(
             url, {'sod_stricte': False}, format='json').status_code, 200)
 
+    def test_relance_bcf_activee_par_l_ecran_propose_une_relance(self):
+        """ACEL42 (C-ACEL-021, D-ACEL-2) — l'interrupteur de relance des BCF
+        en retard se pose par l'écran (PATCH) et la passe suivante propose
+        la relance. Mutant : retirer le champ de ``Meta.fields`` ⇒ 0."""
+        import datetime
+        from django.utils import timezone
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        from apps.stock.models import (
+            BonCommandeFournisseur, LigneBonCommandeFournisseur)
+        from apps.stock.tasks import relancer_bcf_en_retard_task
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ACEL42-0001',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            date_livraison_prevue=timezone.now().date()
+            - datetime.timedelta(days=5))
+        LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bcf, produit=self.produit, quantite=10,
+            prix_achat_unitaire=Decimal('1000'), quantite_recue=0)
+        pk = self.api.get('/api/django/stock/achats-parametres/').data['id']
+        resp = self.api.patch(f'/api/django/stock/achats-parametres/{pk}/',
+                              {'relance_bcf_actif': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(self.api.get(
+            '/api/django/stock/achats-parametres/').data['relance_bcf_actif'])
+        self.assertTrue(
+            AchatsParametres.for_company(self.company).relance_bcf_actif)
+        self.assertEqual(
+            relancer_bcf_en_retard_task().get(self.company.id), 1)
+        self.assertTrue(Notification.objects.filter(
+            company=self.company,
+            event_type=EventType.BCF_RELANCE_PROPOSEE).exists())
+
     def test_patch_refuse_sans_permission(self):
         readonly_user = _user(self.company, 'wir26-lecture', permissions=[])
         api = _api(readonly_user)

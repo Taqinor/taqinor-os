@@ -100,3 +100,16 @@ describe('AERR124 — lecture ratée : on le dit', () => {
     expect(screen.queryByText(/Réglages illisibles/)).toBeNull()
   })
 })
+
+describe('ACEL42 — relance proposée des BCF en retard', () => {
+  it('cocher « Proposer la relance des BCF en retard » puis enregistrer envoie relance_bcf_actif: true', async () => {
+    renderPage(<AchatsParametresPage />)
+    const relance = await screen.findByRole('switch', { name: /relance des BCF en retard/i })
+    expect(relance).not.toBeChecked()
+    await userEvent.click(relance)
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer/i }))
+    await waitFor(() => expect(stockApi.updateAchatsParametres).toHaveBeenCalledWith(
+      9, expect.objectContaining({ relance_bcf_actif: true }),
+    ))
+  })
+})

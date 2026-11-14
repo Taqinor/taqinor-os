@@ -11,6 +11,7 @@ Run :
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -19,7 +20,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.sav import selectors
-from apps.sav.models import SavSlaSettings, Ticket
+from apps.sav.models import SavSlaSettings, Ticket, TicketEmailThread
 
 User = get_user_model()
 BASE = '/api/django/sav/tickets'
@@ -136,6 +137,21 @@ class SlaReponseTests(TestCase):
             'issue': 'joint'}, format='json')
         t.refresh_from_db()
         self.assertEqual(t.date_premiere_reponse, premiere)
+
+    @override_settings(ANYMAIL={},  # AMSG95 — aucun e-mail ne part : 409, rien posé
+                       EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_email_non_operationnel_409_premiere_reponse_non_posee(self):
+        t = self._creer()
+        r = self.api.post(f'{BASE}/{t.pk}/repondre-email/', {
+            'corps': 'Nous passons jeudi.', 'sujet': 'Votre ticket',
+            'destinataire': 'asav19-client@example.invalid'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn("rien n'est parti", r.data['detail'])
+        self.assertEqual(mail.outbox, [])
+        t.refresh_from_db()
+        self.assertIsNone(t.date_premiere_reponse)
+        self.assertFalse(TicketEmailThread.objects.filter(
+            ticket=t, direction=TicketEmailThread.Direction.SORTANT).exists())
 
     def test_appel_et_note_visible_posent(self):
         t1 = self._creer()

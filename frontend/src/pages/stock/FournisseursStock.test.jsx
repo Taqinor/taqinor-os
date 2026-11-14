@@ -290,6 +290,21 @@ describe('FournisseursStock — catégories fournisseur (WIR108)', () => {
     ))
   })
 
+  it('ADRG106 — « Supprimer » une catégorie suit `stock_supprimer` : Admin Ventes oui, Responsable non', async () => {
+    const ouvrir = async () => {
+      await screen.findByRole('grid', { name: 'Fournisseurs' })
+      await userEvent.click(screen.getByRole('button', { name: 'Catégories' }))
+      const dialog = await screen.findByRole('dialog')
+      await within(dialog).findByText('Panneaux')
+      return dialog
+    }
+    const vue = renderPage(makeStore({ role: 'normal', permissions: ['stock_voir', 'stock_modifier', 'stock_supprimer'] }))
+    expect(within(await ouvrir()).getByRole('button', { name: 'Supprimer' })).toBeInTheDocument()
+    vue.unmount()
+    renderPage(makeStore({ role: 'responsable', permissions: ['stock_voir', 'stock_modifier'] }))
+    expect(within(await ouvrir()).queryByRole('button', { name: 'Supprimer' })).toBeNull()
+  })
+
   it('assigne une catégorie à un fournisseur depuis la fiche', async () => {
     renderPage()
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })

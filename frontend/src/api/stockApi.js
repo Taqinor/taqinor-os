@@ -16,6 +16,10 @@ async function lireListeStock(url, params) {
   return { data: tous }
 }
 
+// ACNC22/ACNC23 — `idempotencyKey` (une par ouverture de dialogue) part en en-tête
+// `Idempotency-Key` : un 2ᵉ envoi après une réponse perdue est rejoué, jamais doublé.
+const avecCle = (idempotencyKey) => (idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined)
+
 const stockApi = {
   // Produits
   // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
@@ -100,10 +104,10 @@ const stockApi = {
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
-  createMouvement: (data) => api.post('/stock/mouvements/', data),
+  createMouvement: (data, { idempotencyKey } = {}) => api.post('/stock/mouvements/', data, avecCle(idempotencyKey)),
 
   // Édition en masse du catalogue (T8) + export Excel d'une sélection.
-  bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
+  bulkProduits: ({ idempotencyKey, ...payload }) => api.post('/stock/produits/bulk/', payload, avecCle(idempotencyKey)),  // ACNC24
   // N16 — inventaire physique : comptage par produit → ajustement de stock.
   inventaire: (payload) => api.post('/stock/produits/inventaire/', payload),
   // N18 — valorisation du stock par emplacement (coût moyen, INTERNE/admin).
@@ -125,7 +129,7 @@ const stockApi = {
   deleteEmplacement: (id) => api.delete(`/stock/emplacements/${id}/`),
   getProduitEmplacements: (id) => api.get(`/stock/produits/${id}/emplacements/`),
   getTransferts: (params) => api.get('/stock/transferts/', { params }),
-  createTransfert: (data) => api.post('/stock/transferts/', data),
+  createTransfert: (data, { idempotencyKey } = {}) => api.post('/stock/transferts/', data, avecCle(idempotencyKey)),
 
   // NTFSM19 — réappro automatique van-stock (étend FG62).
   getVanStockAReapprovisionner: () =>
@@ -199,8 +203,8 @@ const stockApi = {
     api.post(`/stock/bons-commande-fournisseur/${id}/whatsapp/`),
   envoyerEmailBcf: (id, payload) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/envoyer-email/`, payload ?? {}),
-  recevoirBcf: (id, receptions) =>
-    api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }),
+  recevoirBcf: (id, receptions, { idempotencyKey } = {}) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }, avecCle(idempotencyKey)),
   // ZPUR11 — motif OBLIGATOIRE (le backend refuse un motif vide) ; `rouvrir`
   // repasse un BCF ANNULE en brouillon (refusé si des réceptions confirmées existent).
   annulerBcf: (id, motifAnnulation) =>
@@ -288,8 +292,8 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/', { params }),
   getFactureFournisseur: (id) =>
     api.get(`/stock/factures-fournisseur/${id}/`),
-  createFactureFournisseur: (data) =>
-    api.post('/stock/factures-fournisseur/', data),
+  createFactureFournisseur: (data, { idempotencyKey } = {}) =>
+    api.post('/stock/factures-fournisseur/', data, avecCle(idempotencyKey)),
   updateFactureFournisseur: (id, data) =>
     api.patch(`/stock/factures-fournisseur/${id}/`, data),
   deleteFactureFournisseur: (id) =>
@@ -302,8 +306,8 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/en-exception/'),
   resoudreExceptionFacture: (id, data) =>
     api.post(`/stock/factures-fournisseur/${id}/resoudre-exception/`, data ?? {}),
-  ajouterPaiementFournisseur: (factureId, data) =>
-    api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
+  ajouterPaiementFournisseur: (factureId, data, { idempotencyKey } = {}) =>
+    api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data, avecCle(idempotencyKey)),
   // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
   // scan d'origine, rattaché en pièce jointe côté serveur).
   factureFournisseurDepuisOcr: ({ fields, file }) => {
@@ -574,8 +578,9 @@ const stockApi = {
       bcfs.map((b) => api.get('/stock/acomptes-fournisseur/', { params: { bon_commande: b.id } })))
     return parBcf.flatMap((r) => (Array.isArray(r.data?.results) ? r.data.results : (r.data ?? [])))
   },
-  createAcompteFournisseur: (data) =>
-    api.post('/stock/acomptes-fournisseur/', data),
+  // ACNC23 — clé portée par la propriété `idempotencyKey` du corps, retirée avant l'envoi.
+  createAcompteFournisseur: ({ idempotencyKey, ...data }) =>
+    api.post('/stock/acomptes-fournisseur/', data, avecCle(idempotencyKey)),
   updateAcompteFournisseur: (id, data) =>
     api.patch(`/stock/acomptes-fournisseur/${id}/`, data),
   deleteAcompteFournisseur: (id) =>
@@ -611,8 +616,8 @@ const stockApi = {
   // fournisseur ; `valider` fait passer brouillon → validé.
   getAvoirsFournisseurDe: (fournisseurId, params) =>
     api.get('/stock/avoirs-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
-  createAvoirFournisseur: (data) =>
-    api.post('/stock/avoirs-fournisseur/', data),
+  createAvoirFournisseur: ({ idempotencyKey, ...data }) =>
+    api.post('/stock/avoirs-fournisseur/', data, avecCle(idempotencyKey)),  // ACNC23
   validerAvoirFournisseur: (id) =>
     api.post(`/stock/avoirs-fournisseur/${id}/valider/`),
   imputerAvoirFournisseur: (id, data) =>

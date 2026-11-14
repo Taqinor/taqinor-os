@@ -12,6 +12,7 @@ from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR
 from ..erreurs_achats import IntrouvableMetier, debordement_compteur_en_409
 from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.champs_stricts import ChaineStricte
+from core.idempotency import IdempotentCreateMixin  # ACNC23
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import FactureFournisseur
@@ -64,7 +65,7 @@ _REGEX_OBJET_JSON_PLAT = (
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('statut', STR,
                                                                                                        False,
                                                                                                        'Statut')]))
-class FactureFournisseurViewSet(CompanyScopedModelViewSet):
+class FactureFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC23 — rejeu sans doublon
     """G5 — Factures fournisseur / comptes à payer (AP).
 
     Numérotation sans trou (préfixe FF). Le solde dû = TTC − Σ paiements ; le
@@ -239,6 +240,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             instance.delete()
 
     def create(self, request, *args, **kwargs):
+        # ACNC23 — ``super().create`` passe par IdempotentCreateMixin : même clé + même corps ⇒ rejeu.
         # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
         # même ref_fournisseur, ou même montant TTC ± 7 jours. La création
         # n'est jamais empêchée ; un override est journalisé (best-effort)
@@ -490,6 +492,11 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             qs = facture.paiements.select_related('created_by').all()
             return Response(
                 PaiementFournisseurSerializer(qs, many=True).data)
+        # ACNC23 — POST rejouable sous la même ``Idempotency-Key`` : un seul règlement.
+        return self._avec_idempotence(
+            request, lambda: self._ajouter_paiement(request, facture), suffixe=f'paiements.{pk}')
+
+    def _ajouter_paiement(self, request, facture):
         # api-fuzz : un corps JSON non objet (``""``, ``[]``) faisait un TypeError (500).
         donnees = corps_objet(request)
         # XPUR1/XPUR4/XPUR10 — mêmes gates que PaiementFournisseurViewSet.

@@ -158,6 +158,40 @@ class TestNotificationTransit(TestCase):
         self.assertIn('wa.me/', taches.get().note)
         self.assertIn('LIV-XSTK22-2', taches.get().note)
 
+    def test_tache_whatsapp_assignee_au_responsable_du_chantier(self):
+        """AMSG96 — sans clé d'envoi, la tâche « Envoyer ce WhatsApp » de
+        l'expédition va au technicien responsable actif (chantier A), à défaut
+        au créateur (chantier B, puis A au responsable inactif), sinon non
+        assignée ; T la voit dans « Mes activités » ; ``created_by`` inchangé."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity
+        t, c = make_user(self.company), make_user(self.company)
+        Installation.objects.filter(pk=self.inst.pk).update(technicien_responsable=t)
+        inst_b = make_installation(self.company, self.client_crm)
+        Installation.objects.filter(pk=inst_b.pk).update(created_by=c)
+        inst_c = make_installation(self.company, self.client_crm)
+
+        def tache_de(installation, ref):
+            liv = Livraison.objects.create(
+                company=self.company, installation=installation, reference=ref)
+            r = self.api.post(f'{BASE}/livraisons/{liv.id}/expedier/')
+            self.assertEqual(r.status_code, 200, r.data)
+            return Activity.objects.get(
+                content_type=ContentType.objects.get_for_model(Livraison),
+                object_id=liv.pk, summary='Envoyer ce WhatsApp')
+        tache_a = tache_de(self.inst, 'LIV-AMSG96-A')
+        self.assertEqual(tache_a.assigned_to_id, t.id)
+        self.assertEqual(tache_a.created_by_id, self.user.id)
+        self.assertEqual(tache_de(inst_b, 'LIV-AMSG96-B').assigned_to_id, c.id)
+        self.assertIsNone(tache_de(inst_c, 'LIV-AMSG96-C').assigned_to_id)
+        mine = auth(t).get('/api/django/records/activities/mine/')
+        self.assertEqual(mine.status_code, 200, mine.data)
+        self.assertIn(tache_a.id, [a['id'] for bucket in mine.data.values() for a in bucket])
+        t.is_active = False
+        t.save(update_fields=['is_active'])
+        Installation.objects.filter(pk=self.inst.pk).update(created_by=c)
+        self.assertEqual(tache_de(self.inst, 'LIV-AMSG96-D').assigned_to_id, c.id)
+
     def test_no_client_no_crash(self):
         """Chantier sans client email/tel → aucune exception, pas d'envoi."""
         client_sans_contact = make_client_crm(self.company)
