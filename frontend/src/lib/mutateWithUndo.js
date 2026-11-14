@@ -121,8 +121,10 @@ export async function mutateWithUndo({
     try { rollbackOptimistic?.() } catch { /* idem */ }
     // AERR71 — un refus serveur est déjà dit par le toast global de l'intercepteur
     // (hors 401/404 et suppressErrorToast) : pas de second toast local.
-    const ditParLeGlobal = err?.response && ![401, 404].includes(err.response.status)
-      && !err.config?.suppressErrorToast
+    // AERR136 — un rejet `.unwrap()` (corps servi, pas une Error) est un refus déjà dit.
+    const ditParLeGlobal = err?.response
+      ? ![401, 404].includes(err.response.status) && !err.config?.suppressErrorToast
+      : err != null && !(err instanceof Error)
     if (!ditParLeGlobal) toastError(errorMessage)
     return false
   }
