@@ -85,4 +85,18 @@ describe('TicketChecklistPanel — AERR79 lecture rejetée', () => {
       expect(screen.getByText(/Aucune checklist sur ce ticket/)).toBeInTheDocument())
     expect(savApi.getTicketChecklist).toHaveBeenCalledTimes(2)
   })
+
+  it('AERR144 — note refusée : le message reste après la relecture', async () => {
+    savApi.getTicketChecklist
+      .mockResolvedValueOnce({ data: ITEMS })
+      .mockResolvedValueOnce({ data: ITEMS })
+    savApi.patchTicketChecklistItem.mockRejectedValueOnce(new Error('500'))
+    render(<TicketChecklistPanel ticketId={7} />)
+    const note = await screen.findByLabelText('Note — Serrage des connexions')
+    fireEvent.change(note, { target: { value: 'couple à revoir' } })
+    fireEvent.blur(note)
+    await waitFor(() => expect(savApi.getTicketChecklist).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Note non enregistrée.')).toBeInTheDocument()
+    expect(screen.getByText('Serrage des connexions')).toBeInTheDocument()
+  })
 })
