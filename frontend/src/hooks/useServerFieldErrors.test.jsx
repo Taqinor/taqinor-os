@@ -34,6 +34,18 @@ describe('useServerFieldErrors (VX171)', () => {
     expect(result.current.errors).toEqual({ submit: 'Action non autorisée.' })
   })
 
+  const PHRASE = 'Cet enregistrement a été modifié par quelqu’un d’autre. Rechargez-le.'
+  it('{detail, code} d’un 409 : la phrase detail, jamais un champ code', () => {
+    const { result } = renderHook(() => useServerFieldErrors())
+    act(() => {
+      result.current.setFromResponse({ detail: PHRASE, code: 'conflit_version', lock_version: 4 })
+    })
+    expect(result.current.errors).toEqual({ submit: PHRASE })
+    expect(result.current.errors.code).toBeUndefined()
+    act(() => { result.current.setFromResponse({ code: ['Ce code existe déjà.'] }) })
+    expect(result.current.errors).toEqual({ code: 'Ce code existe déjà.' })
+  })
+
   it('forme array nue (non_field_errors implicite) — replié sur `submit`', () => {
     const { result } = renderHook(() => useServerFieldErrors())
     act(() => {
