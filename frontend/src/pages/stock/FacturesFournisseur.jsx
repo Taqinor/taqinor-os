@@ -240,6 +240,8 @@ export function FactureDetail({
   const [resolving, setResolving] = useState(false)
   const [commentaire, setCommentaire] = useState('')
   const cleReglement = useRef(null)  // ACNC23 — gardée entre deux clics, neuve après un succès
+  // ACNC72 — clé neuve dès que la saisie change (sinon 409 « clé déjà utilisée »).
+  useEffect(() => { cleReglement.current = null }, [montant, datePaiement, mode])
 
   const paiements = facture?.paiements ?? []
   const solde = Number(facture?.solde_du) || 0
