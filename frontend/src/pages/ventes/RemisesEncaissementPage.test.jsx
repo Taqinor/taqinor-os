@@ -88,6 +88,31 @@ describe('RemisesEncaissementPage (PACT46)', () => {
     expect(alerte).toHaveTextContent(/Écart constaté à la clôture/)
   })
 
+  it('clôture puis relecture retenue : lignes gardées, aucun squelette', async () => {
+    // AERR150 (C-AERR-VER2-101) — mutant : remettre `{loading && <Skeleton…>}` seul ⇒ lignes absentes.
+    const user = userEvent.setup()
+    const R12 = { ...OUVERTE, id: 12, reference: 'RE-2026-0012' }
+    const R13 = { ...CLOTUREE, id: 13, reference: 'RE-2026-0013' }
+    api.get.mockImplementation(getFor([R12, R13]))
+    api.post.mockResolvedValue({ data: { ...R12, statut: 'cloturee' } })
+    const { container } = render(<RemisesEncaissementPage />)
+    expect(container.querySelector('.skeleton-shimmer')).not.toBeNull()
+    await screen.findByText('RE-2026-0012')
+    let rejeter
+    api.get.mockImplementation((url) => (url === '/ventes/remises-encaissement/'
+      ? new Promise((_, ko) => { rejeter = ko }) : getFor([])(url)))
+    await user.click(screen.getByRole('button', { name: 'Clôturer' }))
+    await waitFor(() => expect(rejeter).toBeTypeOf('function'))
+    expect(screen.getByText('RE-2026-0012')).toBeInTheDocument()
+    expect(screen.getByText('RE-2026-0013')).toBeInTheDocument()
+    expect(container.querySelector('.skeleton-shimmer')).toBeNull()
+    rejeter({ response: { status: 500 } })
+    expect(await screen.findByText('Liste pas à jour — la dernière relecture a échoué.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.getByText('RE-2026-0012')).toBeInTheDocument()
+    expect(screen.getByText('RE-2026-0013')).toBeInTheDocument()
+  })
+
   it('télécharge le bordereau PDF d\'une remise clôturée', async () => {
     const user = userEvent.setup()
     api.get.mockImplementation(getFor([CLOTUREE]))
