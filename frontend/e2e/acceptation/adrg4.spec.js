@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { assurerSessionPage, uiLoginJusquAuxApps, boutonNouveauLead } from '../helpers.js'
+import { assurerSessionPage, connexionApi, uiLoginJusquAuxApps, boutonNouveauLead } from '../helpers.js'
 
 const etape = groupe('ADRG', ['ADRG122'])
 fermerDjangoApresTout()
@@ -39,8 +39,8 @@ sortie(compte(${J(username)}, role=r, societe=${SOC}).id)`)
 
 /** Onglet NEUF (aucune session, horloge au matin), observé par les oracles ; `appels` reçoit chaque
  *  requête de tournée émise par cet onglet (méthode, URL). */
-async function ongletDuMatin(page, suivi, testInfo, options = {}) {
-  const ctx = await page.context().browser().newContext({
+async function ongletDuMatin(navigateur, suivi, testInfo, options = {}) {
+  const ctx = await navigateur.newContext({
     baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] }, serviceWorkers: 'block',
     timezoneId: 'UTC', ...options,
   })
@@ -53,7 +53,15 @@ async function ongletDuMatin(page, suivi, testInfo, options = {}) {
   const p = suivi.surveiller(await ctx.newPage())
   const appels = []
   p.on('request', (q) => { if (TOURNEE.test(q.url())) appels.push(`${q.method()} ${q.url()}`) })
-  return { p, appels }
+  return { ctx, p, appels }
+}
+
+/** L'onglet d'administration de l'étape ne sert à rien ici : fermé, la capture de l'étape est celle
+ *  du premier onglet de rôle. Renvoie le navigateur pour ouvrir ces onglets. */
+async function navigateurDe(page) {
+  const navigateur = page.context().browser()
+  await page.close()
+  return navigateur
 }
 
 /** L'accueil est rendu et le réseau s'est tu : une absence de requête vaut alors preuve. */
@@ -73,8 +81,10 @@ c = APIClient(); c.force_authenticate(U.objects.get(pk=${co.id}))
 sortie(c.get('/api/django/installations/interventions/ma-tournee/', {'date': ${J(JOUR)}}, HTTP_HOST='localhost').status_code)`)
   expect(temoin, 'la route refuse la tournée au Commercial').toBe(403)
 
+  const navigateur = await navigateurDe(page)
+
   // 1) Bureau : connexion réelle → accueil `/apps`, puis une app, puis retour (la coquille se remonte).
-  const { p, appels } = await ongletDuMatin(page, suivi, testInfo)
+  const { p, appels } = await ongletDuMatin(navigateur, suivi, testInfo)
   await uiLoginJusquAuxApps(p, { username: co.username, password: MDP_ESSAI })
   expect(await p.evaluate(() => new Date().getHours()), 'horloge de l’onglet : le matin').toBe(8)
   await accueilRendu(p, 'Commercial')
@@ -90,9 +100,10 @@ sortie(c.get('/api/django/installations/interventions/ma-tournee/', {'date': ${J
   expect(await p.evaluate(() => localStorage.getItem('taqinor.prechargementTournee')), 'aucun témoin de pré-chargement posé').toBeNull()
 
   // 2) Largeur mobile : l'accueil mobile du commercial et son bloc « À faire aujourd'hui ».
-  const m = await ongletDuMatin(page, suivi, testInfo, MOBILE)
-  await uiLoginJusquAuxApps(m.p, { username: co.username, password: MDP_ESSAI })
+  const m = await ongletDuMatin(navigateur, suivi, testInfo, MOBILE)
+  await connexionApi(m.ctx.request, { username: co.username, password: MDP_ESSAI })
   await m.p.goto('/mobile/commercial')
+  await expect(m.p, 'accueil mobile du commercial').toHaveURL(/\/mobile\/commercial/, { timeout: 60_000 })
   const bloc = m.p.locator('[data-widget="a-faire-aujourdhui"]')
   await expect(bloc, 'bloc « À faire aujourd’hui » rendu').toBeVisible({ timeout: 60_000 })
   // Le bloc a fini de lire ses sources (liste, « rien d'urgent » ou avis de lecture incomplète).
@@ -115,7 +126,7 @@ iv = Intervention.objects.create(company_id=co, installation=inst, type_interven
     technicien_id=${te.id}, date_prevue=${J(JOUR)}, created_by=a)
 sortie(dict(itv=iv.id, inst=inst.id))`)
   try {
-    const { p, appels } = await ongletDuMatin(page, suivi, testInfo)
+    const { p, appels } = await ongletDuMatin(await navigateurDe(page), suivi, testInfo)
     const reponse = p.waitForResponse((r) => TOURNEE.test(r.url()), { timeout: 120_000 })
     await uiLoginJusquAuxApps(p, { username: te.username, password: MDP_ESSAI })
     await accueilRendu(p, 'Technicien')
