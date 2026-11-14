@@ -63,7 +63,7 @@ async function ecran(page, suivi, testInfo, nom, { fermer = true } = {}) {
 // ════════════════════════════════════════════════════════════════════════════════════════════
 // ACNC4 — second paiement identique (même montant, même date) : 409 `paiement_similaire`, puis confirmé
 // ════════════════════════════════════════════════════════════════════════════════════════════
-const PHRASE = /Un paiement de 5\s?000 MAD a déjà été enregistré (aujourd.hui|le \d{2}\/\d{2}\/\d{4}) sur cette facture : confirmer \?/
+const PHRASE = /Un\s+paiement\s+de\s+5\s?000\s+MAD\s+a\s+déjà\s+été\s+enregistré\s+(aujourd.hui|le\s+\d{2}\/\d{2}\/\d{4})\s+sur\s+cette\s+facture\s*:\s*confirmer\s*\?/
 const etatPaiements = (id) => bd(`f = Facture.objects.get(pk=${id})
 sortie({'paiements': [[str(p.montant), p.idempotency_key, str(p.date_paiement)] for p in Paiement.objects.filter(facture=f).order_by('pk')],
         'du': str(f.montant_du), 'ttc': str(f.total_ttc), 'statut': f.statut})`)

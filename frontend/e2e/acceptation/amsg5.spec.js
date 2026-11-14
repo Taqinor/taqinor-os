@@ -202,12 +202,13 @@ sortie([[a.assigned_to_id, a.created_by_id, a.note] for a in Activity.objects.fi
   const pd = await ecran(page, suivi, testInfo, dirNom)
   await pd.goto(`/sav?id=${x.t1}`)
   await expect(pd.getByText('Pièces consommées').first(), 'fiche ticket ouverte').toBeVisible({ timeout: 60_000 })
-  const fiche = pd.getByRole('dialog').filter({ hasText: 'Pièces consommées' })
-  await fiche.locator('xpath=.//label[normalize-space()="Statut"]/following::button[@role="combobox"][1]').click()
+  // Fiche du ticket : panneau latéral (« Ticket SAV — <réf.> ») ; le sélecteur « Statut » suit son libellé.
+  await expect(pd.getByText(`Ticket SAV — ${x.ref1}`)).toBeVisible({ timeout: 30_000 })
+  await pd.locator('xpath=//label[normalize-space()="Statut"]/following::button[@role="combobox"][1]').click()
   await pd.getByRole('option', { name: 'Planifié', exact: true }).click()
   const [rep] = await Promise.all([
     pd.waitForResponse((r) => r.request().method() === 'POST' && new RegExp(`/sav/tickets/${x.t1}/planifier/$`).test(new URL(r.url()).pathname), T),
-    fiche.getByRole('button', { name: 'Mettre à jour' }).click(),
+    pd.getByRole('button', { name: 'Mettre à jour' }).first().click(),
   ])
   expect(rep.status(), `planifier : ${(await rep.text()).slice(0, 200)}`).toBe(200)
   await expect(pd.locator('[data-sonner-toast]').filter({ hasText: 'Ticket mis à jour' }).first()).toBeVisible({ timeout: 30_000 })
