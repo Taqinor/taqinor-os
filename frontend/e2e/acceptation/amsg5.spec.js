@@ -225,10 +225,14 @@ sortie([[a.assigned_to_id, a.created_by_id, a.note] for a in Activity.objects.fi
   const servies = Object.values(mine).flat().filter((a) => a && a.summary === 'Envoyer ce WhatsApp')
   expect(servies.length, 'servie au technicien : une tâche « Envoyer ce WhatsApp »').toBe(1)
   note(testInfo, 'tâche servie', `cible « ${servies[0].target_label} », note avec wa.me : ${String(servies[0].note || '').includes('wa.me/')}`)
-  const ligne = pt.getByRole('row').filter({ hasText: 'Envoyer ce WhatsApp' })
+  // « Mes activités » (tableaux par échéance : la tâche du jour est sous « Aujourd'hui ») ; la même tâche figure
+  // aussi dans « Ma file » (file de travail, chargée à part) — affirmée séparément.
+  const mesActivites = () => pt.getByRole('table', { name: "Aujourd'hui" }).getByRole('row').filter({ hasText: 'Envoyer ce WhatsApp' })
+  const ligne = mesActivites()
   await expect(ligne, '« Mes activités » du technicien : la tâche est listée').toHaveCount(1, { timeout: 60_000 })
   await pt.reload()
-  await expect(pt.getByRole('row').filter({ hasText: 'Envoyer ce WhatsApp' }), 'rechargé : toujours listée').toHaveCount(1, { timeout: 60_000 })
+  await expect(mesActivites(), 'rechargé : toujours listée dans « Mes activités »').toHaveCount(1, { timeout: 60_000 })
+  await expect(pt.getByRole('row').filter({ hasText: 'Envoyer ce WhatsApp' }), 'rechargé : listée aussi dans « Ma file »').toHaveCount(2, { timeout: 60_000 })
   // T2 (sans technicien) transitée SANS utilisateur (user=None, chemin des tâches planifiées) ⇒ tâche au créateur C ;
   // GET records/activities/mine/ de C la liste.
   await py(`from apps.sav.models import Ticket
