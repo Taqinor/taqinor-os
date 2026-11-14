@@ -200,6 +200,31 @@ class GardePiiTests(TestCase):
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
         self.assertIn(self.client_c.pk, ids(api, TEMOIN))
 
+    def test_recherche_lead_sans_pii_ne_revele_pas_le_numero(self):
+        """ALEC47 (C-ALEC-VER2-203) — sans ``client_pii_voir``, ``?search=``
+        des leads n'interroge ni le téléphone ni l'e-mail (vide), le nom
+        trouve toujours ses leads ; un Commercial livré trouve son lead par
+        le numéro. Mutant : remettre ``filters.SearchFilter`` ⇒ échec."""
+        url = '/api/django/crm/leads/'
+
+        def ids(api, terme):
+            r = api.get(url, {'search': terme})
+            self.assertEqual(r.status_code, 200, r.content)
+            lignes = r.data['results'] if isinstance(r.data, dict) else r.data
+            return {ligne['id'] for ligne in lignes}
+        self.assertEqual(ids(self.api, TEMOIN), set())
+        self.assertEqual(ids(self.api, 'Temoin'), {self.lead.pk, self.lead_bis.pk})
+        self.assertEqual(ids(self.api, 'temoin-acrm53@example.com'), set())
+        commercial = User.objects.create_user(
+            username='alec47-commercial', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Commercial',
+                                     permissions=list(COMMERCIAL_PERMISSIONS)))
+        sien = Lead.objects.create(company=self.company, nom='Autre', owner=commercial,
+                                   stage=stages.CONTACTED, telephone=TEMOIN)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
+        self.assertIn(sien.pk, ids(api, TEMOIN))
+
     def test_exclusions_a_jour(self):
         noms = {(vs.__name__, a.__name__)
                 for vs in (LeadViewSet, ClientViewSet)
