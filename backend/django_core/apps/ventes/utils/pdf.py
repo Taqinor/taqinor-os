@@ -407,7 +407,7 @@ def _emettre_document_produit(source, company, pdf_bytes, reference, *,
         from core.events import document_produit
 
         filename = f'{reference}.pdf'
-        document_produit.send(
+        reponses = document_produit.send(
             sender=None, source=source, company=company,
             file=ContentFile(pdf_bytes, name=filename),
             filename=filename, reference=reference,
@@ -417,6 +417,7 @@ def _emettre_document_produit(source, company, pdf_bytes, reference, *,
                 'client': client_nom or '',
             },
             uploaded_by=uploaded_by)
+        return any(r is not None for _recepteur, r in reponses)  # ACEL92 : vrai = routé
     except Exception:  # noqa: BLE001 — émission best-effort (D-ENF22-BLE001)
         logger.exception(
             'document_produit (%s) — échec émission pour %s', source, reference)
@@ -494,12 +495,13 @@ def generate_facture_pdf(facture_id):
     if facture.fichier_pdf != key:
         facture.fichier_pdf = key
         champs.append('fichier_pdf')
-    meta = {'empreinte': empreinte_donnees_facture_pdf(facture)}
+    ancien = facture.pdf_render_meta if isinstance(facture.pdf_render_meta, dict) else {}
+    empreinte = empreinte_donnees_facture_pdf(facture)
     # ACEL70 (C-ACEL-037) — la GED ne reçoit le PDF que si les DONNÉES ont
     # changé (le gabarit imprime l'heure : les octets changent à chaque rendu).
-    donnees_changees = facture.pdf_render_meta != meta
-    if donnees_changees:
-        facture.pdf_render_meta = meta
+    # ACEL92 — « changé » = depuis le dernier ROUTAGE RÉUSSI (``ged``) : un échec se reprend.
+    if ancien.get('empreinte') != empreinte:
+        facture.pdf_render_meta = {**ancien, 'empreinte': empreinte}
         champs.append('pdf_render_meta')
     if champs:
         facture.save(update_fields=champs)
@@ -513,13 +515,15 @@ def generate_facture_pdf(facture_id):
     # LÉGALE : un brouillon (« BROUILLON-<id> », sans valeur comptable)
     # n'est jamais archivé en GED.
     from core.numbering import est_reference_provisoire
-    if (donnees_changees and facture.statut != Facture.Statut.BROUILLON
+    if (ancien.get('ged') != empreinte and facture.statut != Facture.Statut.BROUILLON
             and not est_reference_provisoire(facture.reference)):
-        _emettre_document_produit(
-            'ventes_facture', facture.company, pdf_bytes, facture.reference,
-            date=facture.date_emission,
-            client_nom=getattr(facture.client, 'nom', '') or '',
-            uploaded_by=facture.created_by)
+        if _emettre_document_produit(
+                'ventes_facture', facture.company, pdf_bytes, facture.reference,
+                date=facture.date_emission,
+                client_nom=getattr(facture.client, 'nom', '') or '',
+                uploaded_by=facture.created_by):
+            facture.pdf_render_meta = {**facture.pdf_render_meta, 'ged': empreinte}
+            facture.save(update_fields=['pdf_render_meta'])
 
     return key
 

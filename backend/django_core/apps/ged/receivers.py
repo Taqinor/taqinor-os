@@ -86,11 +86,12 @@ def _router_document_on_document_produit(
 
     No-op silencieux sans réglage pour cette source (comportement actuel
     inchangé). Best-effort : une erreur ne doit jamais remonter à
-    l'émetteur (son propre traitement est déjà acté)."""
+    l'émetteur (son propre traitement est déjà acté). ACEL92 — rend le
+    Document routé, ``None`` sans routage ou en échec (l'émetteur reprend)."""
     try:
         from . import services
 
-        services.router_document_module(
+        return services.router_document_module(
             source, company=company, file=file, filename=filename,
             reference=reference, contexte=contexte or {},
             uploaded_by=uploaded_by)
