@@ -118,3 +118,31 @@ class PurgeDemoExpireeEnabledTest(TestCase):
         self.assertTrue(CustomUser.objects.filter(pk=bloqueur.pk).exists())
         self.assertTrue(Company.objects.filter(pk=demo.pk).exists())
         self.assertTrue(CustomUser.objects.filter(username='u-demo-bloquee').exists())
+
+    @override_settings(DEMO_AUTO_PURGE_ENABLED=True)
+    def test_ligne_enfant_d_une_autre_societe_jamais_supprimee(self):
+        """ACEL87 — un bloqueur SANS ``company_id`` (une ``LigneDevis``, rattachée
+        par son devis) d'une autre société n'est jamais supprimé : refus."""
+        from django.db import transaction
+
+        from authentication.management.commands.reset_demo_company import (
+            BloqueurAutreSociete, _delete_cascading,
+        )
+        from testkit.factories import (
+            DevisFactory, LigneDevisFactory, ProduitFactory,
+        )
+        demo = _demo_company('demo-acel87', EXPIRED_91J)
+        produit_a = ProduitFactory(company=demo)
+        autre = Company.objects.create(nom='Autre ACEL87', slug='autre-acel87')
+        devis_b = DevisFactory(company=autre, reference='DEV-ACEL87-B')
+        ligne_b = LigneDevisFactory(devis=devis_b, produit=produit_a)
+        with self.assertRaises(BloqueurAutreSociete):
+            with transaction.atomic():
+                _delete_cascading(demo, demo)
+        result = purger_societes_demo_expirees_task()
+        self.assertEqual(result['purged'], 0)
+        self.assertEqual(result['echecs'], 1)
+        ligne_b.refresh_from_db()
+        devis_b.refresh_from_db()
+        self.assertEqual(ligne_b.devis_id, devis_b.pk)
+        self.assertTrue(Company.objects.filter(pk=demo.pk).exists())
