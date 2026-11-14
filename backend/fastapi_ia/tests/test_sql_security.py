@@ -182,6 +182,33 @@ class TenantIsolationTests(unittest.TestCase):
             self.assertIn("company_id = 7", out)
             self.assertIn("company_id = 7", self._ok(sql))
 
+    def test_cle_telephone_des_leads_meta_jamais_servie(self):
+        """ALEC45 (C-ALEC-VER2-201) — `phone_key` (numero du lead en clair)
+        refusee, nommee ou par ligne entiere, au Commercial et au Directeur du
+        registre comme sans `permissions` ; `COUNT(*)` par campagne accepte."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        appels = [None, list(roles["Commercial"]), list(roles["Directeur"])]
+        for sql in ("SELECT phone_key, crm_lead_id FROM adsengine_metaleadmirror",
+                    "SELECT * FROM adsengine_metaleadmirror",
+                    "SELECT COUNT(*) FROM adsengine_metaleadmirror "
+                    "WHERE phone_key = '661028028'"):
+            for codes in appels:
+                with self.assertRaises(svc.SQLSecurityError):
+                    svc._validate_and_secure(sql, self.CID, permissions=codes)
+        for codes in appels:
+            out = svc._validate_and_secure(
+                "SELECT COUNT(*) FROM adsengine_metaleadmirror "
+                "WHERE campaign_id = '123'", self.CID, permissions=codes)
+            self.assertIn("company_id = 7", out)
+
     def test_single_table_injects_company_id(self):
         out = self._ok("SELECT nom FROM stock_produit")
         self.assertIn("company_id = 7", out)

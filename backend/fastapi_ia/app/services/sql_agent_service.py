@@ -895,10 +895,13 @@ _SECRET_COLUMNS = (
     "is_staff",
     "totp_secret",         # graine 2FA (chiffree au repos, dechiffree par l'ORM)
     "totp_recovery_codes",
+    "phone_key",           # ALEC45 : numero du lead Meta en clair (adsengine_metaleadmirror)
 )
 
 # Tables dont une projection LIGNE ENTIERE exposerait un secret de compte.
 _SECRET_TABLES = ("authentication_customuser",)
+# ALEC45 — ligne entiere refusee aussi (porte `phone_key`), table restant GRANTee (COUNT).
+_TABLES_LIGNE_SECRETE = ("adsengine_metaleadmirror",)
 
 _FORBIDDEN_COLUMNS = (
     "prix_achat",
@@ -967,7 +970,7 @@ def _references_forbidden_column(sql: str, allow_price: bool = False,
     except SQLSecurityError:
         return True
     colonnes = set(_SECRET_COLUMNS)
-    tables = set(_SECRET_TABLES)
+    tables = set(_SECRET_TABLES) | set(_TABLES_LIGNE_SECRETE)
     if not allow_price:
         colonnes |= set(_FORBIDDEN_COLUMNS)
         tables |= set(_PRICE_TABLES)
