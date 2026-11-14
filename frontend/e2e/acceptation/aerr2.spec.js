@@ -8,14 +8,15 @@
 // quatre détecteurs NOMMÉS dans PERIMEES (motif lu sur l'ancienne forme, voir la note) — jamais comptés.
 import { test, expect, request as pwRequest } from '@playwright/test'
 import { spawnSync } from 'node:child_process'
-import { join } from 'node:path'
-import { RACINE } from './_enregistrement.js'
-import { groupe } from './_oracles.js'
+import { mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { RACINE, cheminCapture } from './_enregistrement.js'
+import { groupe, Suivi } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { assurerSessionPage, telephoneMobileUnique, uiLoginJusquAuxApps, connexionApi, PNG_1PX, STAGE_LABELS } from '../helpers.js'
 
 const etape = groupe('AERR', ['AERR100', 'AERR101', 'AERR102', 'AERR103', 'AERR104', 'AERR105', 'AERR106', 'AERR107',
-  'AERR108', 'AERR109', 'AERR110', 'AERR111', 'AERR113', 'AERR116', 'AERR117', 'AERR118', 'AERR119', 'AERR120',
+  'AERR108', 'AERR109', 'AERR110', 'AERR111', 'AERR113', 'AERR116', 'AERR117', 'AERR118', 'AERR119',
   'AERR122', 'AERR23', 'AERR24'])
 fermerDjangoApresTout()
 const API = '/api/django'
@@ -1124,10 +1125,14 @@ sortie(Lead.objects.get(pk=${lead}).stage)`)
   await montrer(page)
 })
 
-// ═══ PF12 — AERR120 : /crm/leads/<id> → « Signé », acceptation refusée 400 {date} ⇒ dialogue rouvert pré-rempli,
-// erreur sous la date, page gardée ═══
-etapeCR('PF12.18-AERR120', ['AERR120'], async ({ page, suivi, testInfo }) => {
+// ═══ PF12 — AERR120 : /crm/leads/<id> → « Signé » avec une date d'acceptation FUTURE ⇒ VRAI refus du serveur
+// (409 {date_acceptation}, ADEV34) ⇒ dialogue rouvert pré-rempli, message SOUS la date, page gardée.
+// HORS ENREGISTREMENT (test Playwright simple, AERR120 hors de `couvre`) : à la lecture du code, `SigneDialog` ne rend
+// sous la date que `erreurs.date`, jamais `erreurs.date_acceptation` que sert le serveur — si l'écran ne montre pas le
+// message sous le champ, c'est un DÉFAUT PRODUIT laissé rouge (jamais contourné par une réponse injectée).
+test('PF12.18-AERR120 — refus réel du serveur (hors enregistrement)', async ({ page }, testInfo) => {
   sonde('C-AERR-091')
+  const suivi = new Suivi(new URL(testInfo.project.use.baseURL).origin)
   const m = marque()
   const nom = `aerr120_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
@@ -1151,31 +1156,36 @@ Client.objects.filter(pk=${devis.client}).delete()`))
   await p.getByRole('menuitem', { name: new RegExp(STAGE_LABELS.SIGNED) }).click()
   const dlg = p.getByRole('dialog').filter({ has: p.getByRole('heading', { name: /Passer en « Signé »/ }) })
   await expect(dlg).toBeVisible({ timeout: 30_000 })
-  const hier = new Date(); hier.setDate(hier.getDate() - 1)
+  const demain = new Date(); demain.setDate(demain.getDate() + 1)
   await dlg.locator('#sd-nom').fill('K. Alami')
-  await dlg.locator('#sd-date').fill(isoJour(hier))
-  suivi.attendre(/\/api\/django\/ventes\/devis\/\d+\/accepter\/$/, 400)
-  await p.route(/\/api\/django\/ventes\/devis\/\d+\/accepter\/$/, (route) => route.fulfill({
-    status: 400, contentType: 'application/json', body: J({ date: ['Date invalide.'] }),
-  }))
+  await dlg.locator('#sd-date').fill(isoJour(demain))
   const refus = p.waitForResponse((r) => /\/ventes\/devis\/\d+\/accepter\/$/.test(r.url()), T)
   await dlg.getByRole('button', { name: /Confirmer l.acceptation/ }).click()
-  await refus
+  // Date future : l'écran demande d'abord une confirmation explicite.
+  await p.getByRole('alertdialog').getByRole('button', { name: 'Confirmer', exact: true }).click({ timeout: 30_000 })
+  const r = await refus
+  const corps = await r.json().catch(() => ({}))
+  console.log(`[AERR120] refus réel du serveur : ${r.status()} ${J(corps)}`)
+  expect(r.status(), 'le serveur refuse la date future').toBe(409)
+  const msg = corps.date_acceptation?.[0]
+  expect(msg, 'refus nommé sur date_acceptation').toBeTruthy()
   const rouvert = p.getByRole('dialog').filter({ has: p.getByRole('heading', { name: /Passer en « Signé »/ }) })
   await expect(rouvert, 'le dialogue « Signé » réapparaît').toBeVisible({ timeout: 30_000 })
   await expect(p, 'la page reste la fiche du lead').toHaveURL(new RegExp(`/crm/leads/${lead}$`))
   await expect(rouvert.locator('#sd-nom'), 'signataire gardé').toHaveValue('K. Alami')
-  await expect(rouvert.locator('#sd-date'), 'date gardée').toHaveValue(isoJour(hier))
-  await expect(rouvert.locator('#sd-date').locator('xpath=following::p[@role="alert"][1]'), '« Date invalide. » sous la date').toHaveText('Date invalide.')
-  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  await expect(rouvert.locator('#sd-date'), 'date gardée').toHaveValue(isoJour(demain))
+  // Capture de l'écran tel qu'il est AVANT l'assertion sous le champ (preuve du défaut s'il échoue).
+  const capture = join(RACINE, cheminCapture('AERR', 'PF12.18-AERR120-refus-reel'))
+  mkdirSync(dirname(capture), { recursive: true })
+  await p.screenshot({ path: capture, type: 'jpeg', quality: 60 })
   const lu = await py(`from apps.ventes.models import Devis
 from apps.crm.models import Lead
 sortie([Devis.objects.get(pk=${devis.id}).statut, Lead.objects.get(pk=${lead}).stage])`)
   expect(lu, 'refus : rien n\'est accepté').toEqual(['envoye', 'QUOTE_SENT'])
+  // Sous le champ « Date d'acceptation » : le paragraphe d'erreur IMMÉDIATEMENT après l'entrée.
+  await expect(rouvert.locator('#sd-date + p.form-error'), `« ${msg} » sous la date`).toHaveText(msg, { timeout: 10_000 })
   await p.reload()
   await expect(p.getByTitle("Changer l'étape du lead"), 'après rechargement : toujours « Devis envoyé »').toContainText(STAGE_LABELS.QUOTE_SENT, { timeout: 60_000 })
-  await auRepos(suivi)
-  await montrer(page)
 })
 
 // ═══ PF12 — AERR122 : /crm/relances → « Décider la suite » → Perdu, lecture des motifs rejetée ⇒ « Motifs illisibles »
