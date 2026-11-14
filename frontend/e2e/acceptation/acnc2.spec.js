@@ -11,7 +11,7 @@
 //   · écran nommé par la clause : bouton AFFIRMÉ occupé (`disabled` + `aria-busy`) pendant l'envoi tenu par une
 //     route Playwright, un seul envoi compté, message affiché, puis relu après rechargement.
 // Compte : demo_admin (rôle système « Administrateur » de la démo) sauf mention ; second compte au rôle
-// livré « Commercial responsable » pour les deux sessions d'ACNC55. Données propres créées par le shell ou
+// livré « Directeur » pour la seconde session d'ACNC55. Données propres créées par le shell ou
 // l'API, retirées en fin d'étape (best-effort : la base du runner est jetable).
 import { test, expect, request as pwRequest } from '@playwright/test'
 import { spawnSync } from 'node:child_process'
@@ -999,8 +999,10 @@ etape('PF9.4-ACNC55-ecran', ['ACNC55'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const id = await payloadSansTel(m, 'ACNC55E')
   apres.push(() => nettoyerPayload(id, m, 'ACNC55E'))
-  const nomCr = `acnc55cr_${m}`
-  await compteRole(nomCr, 'Commercial responsable')
+  // Seconde session : rôle livré « Directeur » (responsable). Sous « Commercial responsable » le run 2 a vu 6 × 403
+  // d'arrière-plan sur `installations/interventions/ma-tournee/` (préchargement hors ligne du shell, hors ACNC55).
+  const nomCr = `acnc55di_${m}`
+  await compteRole(nomCr, 'Directeur')
   const p2 = await ecran(page, suivi, testInfo, nomCr)
   const ligne = (p) => p.getByRole('row').filter({ has: p.getByRole('cell', { name: String(id), exact: true }) })
   for (const p of [page, p2]) {
