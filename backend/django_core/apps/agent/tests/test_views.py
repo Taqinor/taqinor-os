@@ -7,7 +7,7 @@ Couvre :
   avec le même nom de permission voient leur catalogue filtré par LEUR rôle,
   sans fuite de l'autre société.
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -51,8 +51,30 @@ class AgentActionsEndpointTest(TestCase):
         keys = {a['key'] for a in resp.data['actions']}
         self.assertEqual(resp.data['count'], len(resp.data['actions']))
         self.assertIn('ventes.devis.creer_auto', keys)
-        self.assertIn('ventes.devis.proposal_pdf', keys)
+        self.assertIn('ventes.devis.generer_pdf', keys)
         self.assertNotIn('stock.produit.delete', keys)
+
+    def test_catalogue_suit_l_interrupteur_du_copilote(self):
+        """COP-G1 — ``ASSISTANT_COPILOTE`` : l'endpoint ne sert le lot
+        ``copilote`` qu'aux comptes pour qui il est allumé (ici un
+        commercial : éteint par défaut, allumé par ``tous``) et ``lot`` figure
+        dans chaque action servie."""
+        from apps.agent.registry import (
+            AgentAction, register, unregister)
+        for cle, lot in (('tmp.vw.copilote', 'copilote'),
+                         ('tmp.vw.herite', 'herite')):
+            register(AgentAction(key=cle, label=cle, description='d',
+                                 endpoint='/x/', lot=lot))
+            self.addCleanup(unregister, cle)
+        for reglage, attendu in (('admins', {'tmp.vw.herite'}),
+                                 ('aucun', {'tmp.vw.herite'}),
+                                 ('tous', {'tmp.vw.copilote'})):
+            with self.settings(ASSISTANT_COPILOTE=reglage):
+                resp = _auth(self.sales).get(URL)
+            servies = {a['key']: a['lot'] for a in resp.data['actions']
+                       if a['key'].startswith('tmp.vw.')}
+            self.assertEqual(set(servies), attendu, reglage)
+            self.assertTrue(all(servies.values()), reglage)
 
     def test_readonly_user_gets_limited_catalogue(self):
         resp = _auth(self.readonly).get(URL)
@@ -60,16 +82,17 @@ class AgentActionsEndpointTest(TestCase):
         keys = {a['key'] for a in resp.data['actions']}
         self.assertIn('crm.lead.list', keys)
         self.assertNotIn('ventes.devis.creer_auto', keys)
-        self.assertNotIn('ventes.devis.proposal_pdf', keys)
+        self.assertNotIn('ventes.devis.generer_pdf', keys)
 
     def test_action_metadata_present(self):
         resp = _auth(self.sales).get(URL)
         action = next(a for a in resp.data['actions']
-                      if a['key'] == 'ventes.devis.proposal_pdf')
+                      if a['key'] == 'ventes.devis.generer_pdf')
         for fld in ('key', 'label', 'description', 'inputs', 'endpoint',
-                    'method', 'required_permission', 'risk', 'confirm_summary'):
+                    'method', 'required_permission', 'risk', 'confirm_summary',
+                    'carte', 'lot', 'objets'):
             self.assertIn(fld, action)
-        self.assertEqual(action['risk'], 'outward')
+        self.assertEqual(action['risk'], 'internal')
 
 
 class CrossTenantNoLeakageTest(TestCase):
@@ -161,9 +184,77 @@ class AssistantEvenementTests(TestCase):
         # company/user poses cote serveur ; lead 12 hors societe => null.
         self.assertEqual((ev.company, ev.user), (self.co, self.vendeur))
         self.assertIsNone(ev.lead_id)
-        self.assertEqual(ev.tokens, {'cache_read': 1800, 'input': 420, 'output': 96})
+        self.assertEqual(ev.tokens, {
+            'cache_read': 1800, 'cache_write': 300, 'input': 420, 'output': 96})
         self.assertEqual(ev.outils_appeles, ['crm.lead.note'])
         self.assertEqual(ev.note, 0)
+
+    def test_erreur_avec_request_id_et_tampon_borne(self):
+        """COP-G5 — ``erreur`` porte ``request_id`` et ``diagnostic`` ; le
+        tampon est BORNÉ (15 requêtes, 10 erreurs, chaînes tronquées, route sans
+        chaîne de requête) et tout champ inconnu est écarté."""
+        requete = dict(
+            CONTRAT_EVENEMENT['exemple_erreur_avec_tampon']['diagnostic']['requetes'][0],
+            route='/api/django/crm/leads/12/?telephone=0612345678#x' + 'a' * 400,
+            corps={'secret': 'x'})
+        erreur = dict(CONTRAT_EVENEMENT['exemple_erreur_avec_tampon'])
+        erreur['inconnu'] = 'ecarte'
+        erreur['message'] = 'm' * 900
+        erreur['diagnostic'] = dict(
+            erreur['diagnostic'], requetes=[dict(requete) for _ in range(20)],
+            erreurs=[{'genre': 'script', 'message': 'appelle 0612345678',
+                      'il_y_a_s': 3, 'pile': 'x'}] * 14,
+            cookie='ecarte')
+        resp = _auth(self.vendeur).post(
+            URL_EVENEMENTS, _corps_signe(self.vendeur, erreur=erreur),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        stocke = AssistantEvent.objects.get(pk=resp.data['id']).erreur
+        self.assertEqual(set(stocke), {
+            'status', 'outil', 'message', 'request_id', 'diagnostic'})
+        self.assertEqual(len(stocke['message']), 300)
+        self.assertEqual(stocke['request_id'], erreur['request_id'])
+        diag = stocke['diagnostic']
+        self.assertEqual(set(diag), {'version', 'ecran', 'navigateur',
+                                     'en_ligne', 'requetes', 'erreurs'})
+        self.assertEqual((len(diag['requetes']), len(diag['erreurs'])), (15, 10))
+        self.assertEqual(set(diag['requetes'][0]), {
+            'methode', 'route', 'statut', 'duree_ms', 'request_id', 'code',
+            'il_y_a_s'})
+        self.assertEqual(diag['requetes'][0]['route'], '/api/django/crm/leads/12/')
+        self.assertEqual(diag['erreurs'][0]['message'], 'appelle [tel]')
+        self.assertEqual(set(diag['erreurs'][0]), {'genre', 'message', 'il_y_a_s'})
+
+    def test_outils_du_relais_et_tokens_complets_acceptes(self):
+        """COP-G5 (couture avec le relais) — ``outils_appeles`` porte aussi les
+        outils propres au relais (hors registre) et ``tokens`` les quatre clés."""
+        outils = ['crm.lead.note', 'sql_db_query', 'sql_db_schema', 'report_gap']
+        tokens = {'input': 10, 'output': 20, 'cache_read': 30, 'cache_write': 40}
+        resp = _auth(self.vendeur).post(
+            URL_EVENEMENTS,
+            _corps_signe(self.vendeur, outils_appeles=outils, tokens=tokens),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        ev = AssistantEvent.objects.get(pk=resp.data['id'])
+        self.assertEqual((ev.outils_appeles, ev.tokens), (outils, tokens))
+
+    def test_erreur_aux_types_faux_refusee_400(self):
+        for erreur in ({'status': '409'}, {'status': True},
+                       {'outil': 3}, {'request_id': ['x']},
+                       {'diagnostic': []}, ['liste']):
+            resp = _auth(self.vendeur).post(
+                URL_EVENEMENTS, _corps_signe(self.vendeur, erreur=erreur),
+                format='json')
+            self.assertEqual(resp.status_code, 400, erreur)
+        self.assertFalse(AssistantEvent.objects.exists())
+
+    def test_erreur_simple_du_contrat_reste_acceptee(self):
+        erreur = CONTRAT_EVENEMENT['exemple_erreur_outil']
+        resp = _auth(self.vendeur).post(
+            URL_EVENEMENTS, _corps_signe(self.vendeur, erreur=erreur),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(AssistantEvent.objects.get(pk=resp.data['id']).erreur, erreur)
 
     def test_preuve_dun_autre_utilisateur_refusee(self):
         corps = _corps_signe(self.collegue)
@@ -236,6 +327,38 @@ class AnonymiserTexteTests(TestCase):
             'Ahmedou paie 12 345 DH', ['Ahmed']), 'Ahmedou paie 12 345 DH')
 
 
+class BornerErreurEvenementTests(SimpleTestCase):
+    """COP-G5 — ``borner_erreur`` / ``borner_diagnostic`` (fonctions pures)."""
+
+    def test_non_objet_donne_none(self):
+        for valeur in (None, 'x', [], 3):
+            self.assertIsNone(agent_services.borner_erreur(valeur))
+            self.assertIsNone(agent_services.borner_diagnostic(valeur))
+
+    def test_diagnostic_du_contrat_traverse_a_l_identique(self):
+        diag = CONTRAT_EVENEMENT['exemple_erreur_avec_tampon']['diagnostic']
+        self.assertEqual(agent_services.borner_diagnostic(diag), diag)
+
+    def test_bornes_chaines_et_champs_inconnus(self):
+        sortie = agent_services.borner_diagnostic({
+            'version': 'v' * 100, 'navigateur': 'Chrome', 'en_ligne': 'oui',
+            'requetes': [{'methode': 'post', 'route': '/x/?a=1', 'statut': True,
+                          'duree_ms': 12.5, 'corps': 'secret'}, 'pas un objet'],
+            'erreurs': 'pas une liste', 'inconnu': 1})
+        self.assertEqual(len(sortie['version']), 40)
+        self.assertIsNone(sortie['en_ligne'])
+        self.assertEqual(sortie['erreurs'], [])
+        self.assertEqual(sortie['requetes'], [{
+            'methode': 'POST', 'route': '/x/', 'statut': None, 'duree_ms': None,
+            'request_id': '', 'code': '', 'il_y_a_s': None}])
+        self.assertNotIn('inconnu', sortie)
+
+    def test_erreur_sans_request_id_ni_tampon_reste_a_trois_cles(self):
+        self.assertEqual(
+            agent_services.borner_erreur({'status': 502, 'outil': 'o', 'message': 'm'}),
+            {'status': 502, 'outil': 'o', 'message': 'm'})
+
+
 @override_settings(AGENT_HMAC_SECRET=SECRET_AIC6)
 class AssistantExportTests(TestCase):
     URL = URL_EVENEMENTS + 'export/'
@@ -260,6 +383,16 @@ class AssistantExportTests(TestCase):
                                       intention='hors_champ', question='Météo ?')
         AssistantEvent.objects.create(company=self.autre, intention='bug',
                                       question='Autre société 0699999999')
+
+    def test_export_garde_trois_cles_d_erreur_sans_le_tampon(self):
+        """COP-G5 — le tampon technique et le request_id d'un événement ne
+        partent pas dans l'export (le tri nocturne dépose des lignes au dépôt)."""
+        AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, intention='bug', question='Bug',
+            erreur=CONTRAT_EVENEMENT['exemple_erreur_avec_tampon'])
+        resp = _auth(self.admin).get(self.URL)
+        bug = next(e for e in resp.data['evenements'] if e['intention'] == 'bug')
+        self.assertEqual(set(bug['erreur']), {'status', 'outil', 'message'})
 
     def test_export_anonymise_sans_tel_ni_nom_ni_email(self):
         resp = _auth(self.admin).get(self.URL)
@@ -340,6 +473,18 @@ class AssistantStatsTests(TestCase):
         self.assertEqual(resp.data['manques_recents'], [
             {'question_anonymisee': 'Envoie-le sur WhatsApp au [tel]', 'vu_n_fois': 1}])
 
+    def test_cout_compte_les_ecritures_de_cache(self):
+        """COP-G5 — ``cache_write`` a son prix NOMMÉ (2 × l'entrée, écriture
+        d'une heure) : 1 M de tokens écrits en cache = 4 USD sur Sonnet 5.5."""
+        AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, modele='claude-sonnet-5-5',
+            question='Manuel ?', tokens={'cache_write': 1_000_000})
+        resp = _auth(self.admin).get(self.URL, {'semaines': 1})
+        self.assertEqual(resp.data['cout_estime_usd'], 7.40)
+        self.assertEqual(agent_services.cout_estime_usd(
+            'claude-sonnet-5-5', {'cache_write': 500_000}), 2.0)
+        self.assertEqual(agent_services.cout_estime_usd('inconnu', {'cache_write': 5}), 0.0)
+
     def test_stats_admin_seul(self):
         self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 403)
         self.assertEqual(_auth(self.admin).get(self.URL, {'semaines': 'x'}).status_code, 400)
@@ -367,3 +512,139 @@ class AssistantStatsTests(TestCase):
         for brut in ('0', '53', '-17739'):
             resp = _auth(self.admin).get(self.URL, {'semaines': brut})
             self.assertEqual(resp.status_code, 400, brut)
+
+
+# ── COP-G4 — libellés des objets nommés dans l'aperçu d'une proposition ──────
+URL_LIBELLES = '/api/django/agent/libelles/'
+CONTRAT_LIBELLES = json.loads(
+    (Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'assistant_libelles.json').read_text(encoding='utf-8'))
+
+
+class LibellesObjetsTest(TestCase):
+    """``GET agent/libelles/`` : le libellé en clair des objets désignés par
+    une action ; un objet inconnu, d'une autre société ou hors portée est
+    ABSENT (jamais une erreur) ; aucun prix d'achat."""
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from apps.crm.models import Client, Lead, RelanceEtape
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis, Facture, LigneDevis, LigneFacture
+
+        self.co = Company.objects.create(nom='Lib Co', slug='lib-co')
+        self.autre = Company.objects.create(nom='Lib Autre', slug='lib-autre')
+        # Rôle restreint à SES enregistrements (SCOPE_SELF des commerciaux).
+        role = Role.objects.create(
+            company=self.co, nom='Commercial',
+            permissions=['crm_voir', 'ventes_voir', 'records_scope_soi'])
+        self.moi = User.objects.create_user(
+            username='lib_moi', password='x', role=role, company=self.co)
+        self.collegue = User.objects.create_user(
+            username='lib_col', password='x', role=role, company=self.co)
+        self.client_moi = Client.objects.create(
+            company=self.co, nom='Benali', prenom='Aziz')
+        self.lead = Lead.objects.create(
+            company=self.co, nom='Benali', prenom='Aziz', ville='Casablanca',
+            owner=self.moi, client=self.client_moi,
+            telephone='0612345678', email='aziz@example.com')
+        self.lead_collegue = Lead.objects.create(
+            company=self.co, nom='Alami', prenom='Sara', owner=self.collegue)
+        self.lead_autre = Lead.objects.create(
+            company=self.autre, nom='Etranger', prenom='Zed')
+        horaire = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        self.touche = RelanceEtape.objects.create(
+            company=self.co, lead=self.lead, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.WHATSAPP, libelle='Relance J+1',
+            due_at=horaire, due_date=horaire.date())
+        self.touche_collegue = RelanceEtape.objects.create(
+            company=self.co, lead=self.lead_collegue, cadence='contact',
+            ordre=1, canal=RelanceEtape.Canal.APPEL, libelle='Appel',
+            due_at=horaire, due_date=horaire.date())
+        self.devis = Devis.objects.create(
+            company=self.co, reference='DEV-202611-0045',
+            client=self.client_moi, lead=self.lead, created_by=self.moi,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'))
+        LigneDevis.objects.create(
+            devis=self.devis, designation='Kit', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'))
+        self.devis_collegue = Devis.objects.create(
+            company=self.co, reference='DEV-202611-0046',
+            client=Client.objects.create(company=self.co, nom='Autre'),
+            lead=self.lead_collegue, created_by=self.collegue,
+            taux_tva=Decimal('20.00'))
+        self.facture = Facture.objects.create(
+            company=self.co, reference='FAC-202611-0012',
+            client=self.client_moi, devis=self.devis, created_by=self.moi,
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20.00'))
+        produit = Produit.objects.create(
+            company=self.co, nom='Kit', sku='LIB-KIT',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        LigneFacture.objects.create(
+            facture=self.facture, produit=produit, designation='Kit',
+            quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'),
+            taux_tva=Decimal('20.00'))
+
+    def _get(self, user, **params):
+        return _auth(user).get(URL_LIBELLES, params)
+
+    @staticmethod
+    def _blanc(texte):
+        """Espaces fines / insécables -> espace simple (comparaison au contrat)."""
+        return ' '.join(texte.replace(' ', ' ').replace('\xa0', ' ').split())
+
+    def test_libelles_au_format_du_contrat(self):
+        resp = self._get(self.moi, lead=self.lead.pk, devis=self.devis.pk,
+                         touche=self.touche.pk, facture=self.facture.pk,
+                         client=self.client_moi.pk)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(set(resp.data), set(CONTRAT_LIBELLES['exemple']))
+        corps = {k: self._blanc(v) for k, v in resp.data.items()}
+        self.assertEqual(corps['lead'], 'Aziz Benali — Casablanca')
+        self.assertEqual(corps['client'], 'Benali Aziz')
+        self.assertEqual(
+            corps['devis'], 'DEV-202611-0045 — Benali — 1 200,00 MAD TTC (envoyé)')
+        self.assertEqual(
+            corps['facture'],
+            'FAC-202611-0012 — Benali — 1 200,00 MAD TTC, reste dû 1 200,00')
+        self.assertEqual(
+            corps['touche'],
+            'Aziz Benali — Relance J+1 (WhatsApp, prévue le '
+            f'{self.touche.due_date:%d/%m/%Y})')
+
+    def test_objet_inconnu_autre_societe_ou_hors_portee_est_absent(self):
+        resp = self._get(
+            self.moi, lead=self.lead_collegue.pk, touche=self.touche_collegue.pk,
+            devis=self.devis_collegue.pk, client=999999)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, CONTRAT_LIBELLES['exemple_hors_portee'])
+        resp = self._get(self.moi, lead=self.lead_autre.pk)
+        self.assertEqual((resp.status_code, resp.data), (200, {}))
+
+    def test_chacun_voit_ce_que_voit_sa_portee(self):
+        resp = self._get(self.collegue, lead=self.lead.pk,
+                         devis=self.devis_collegue.pk)
+        self.assertNotIn('lead', resp.data)
+        self.assertIn('devis', resp.data)
+
+    def test_aucune_donnee_personnelle_ni_prix_achat(self):
+        resp = self._get(self.moi, lead=self.lead.pk, devis=self.devis.pk,
+                         facture=self.facture.pk)
+        texte = json.dumps(resp.data, ensure_ascii=False).lower()
+        for interdit in ('0612345678', 'aziz@example.com', 'prix_achat', 'marge'):
+            self.assertNotIn(interdit, texte)
+
+    def test_parametres_invalides_400_et_sans_parametre_vide(self):
+        for brut in ('abc', '-3', '1.5', '99999999999'):
+            self.assertEqual(self._get(self.moi, lead=brut).status_code, 400, brut)
+        repete = f'?lead={self.lead.pk}&lead={self.lead.pk}'
+        self.assertEqual(_auth(self.moi).get(URL_LIBELLES + repete).status_code, 400)
+        resp = self._get(self.moi)
+        self.assertEqual((resp.status_code, resp.data), (200, {}))
+
+    def test_authentification_requise(self):
+        self.assertIn(APIClient().get(URL_LIBELLES).status_code, (401, 403))
