@@ -534,6 +534,21 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     expect(input).not.toHaveAttribute('readonly')
   })
 
+  it('AERR148 — 17.50 pré-rempli 17,5, envoyé 17.5', async () => {
+    // C-AERR-VER1-165 — mutant : remettre `Math.round` ⇒ 18.
+    ventesApi.getVarianteConfig.mockResolvedValueOnce({ data: { variante_pct: '17.50' } })
+    ventesApi.dupliquerVariante.mockClear()
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur', permissions: ['parametres_modifier'] })
+    await user.click(within(screen.getByText('DEV-VAR').closest('tr')).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
+    const input = await screen.findByLabelText(/Pourcentage de variation/)
+    await waitFor(() => { expect(input.value).toBe('17.5') })
+    fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
+    await waitFor(() => expect(ventesApi.dupliquerVariante)
+      .toHaveBeenCalledWith(20, { variante_pct: 17.5, idempotency_key: expect.any(String) }))
+  })
+
   it('crée les variantes avec le % puis ouvre la comparaison (panneau versions)', async () => {
     const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Commercial responsable' })
