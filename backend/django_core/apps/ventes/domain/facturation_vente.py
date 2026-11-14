@@ -637,8 +637,11 @@ def _encaisser(facture, *, user, saisis, utiliser_avances):
             ventiler_avance(paiement=avance, facture=facture, montant=part,
                             user=user)
         for donnees in saisis:
+            # ACNC4 — paiements déjà déclarés par la saisie : pas de
+            # confirmation de doublon à redemander.
             facture, paiement = encaisser_sur_facture(
-                facture=facture, donnees=donnees, user=user)
+                facture=facture, donnees=donnees, user=user,
+                confirmer_doublon=True)
             crees.append(paiement)
     except (EncaissementRefuse, ValueError, ValidationError) as exc:
         raise FacturationVenteRefusee(_motif(exc),
