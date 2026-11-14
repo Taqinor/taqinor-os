@@ -449,8 +449,8 @@ export default function DevisList() {
       const res = await ventesApi.getVarianteConfig()
       const pct = res?.data?.variante_pct
       if (pct != null) {
-        // Le backend renvoie une chaîne décimale (« 20.00 ») — on l'arrondit.
-        const n = Math.round(parseFloat(pct))
+        // Chaîne décimale (« 17.50 ») gardée telle quelle, jamais arrondie (AERR148).
+        const n = parseFloat(pct)
         if (Number.isFinite(n)) setVariantePct(String(n))
       }
     } catch (err) {

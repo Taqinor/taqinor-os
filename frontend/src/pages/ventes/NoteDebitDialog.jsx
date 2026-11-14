@@ -57,13 +57,16 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   // (`null`) étant déjà connue — même motif que SiteProfilePage.jsx /
   // « Adjusting some state when a prop changes »
   // (react.dev/learn/you-might-not-need-an-effect).
+  // AERR133 — aussi au changement de facture : les notes (et l'échec) de A ne
+  // s'affichent jamais sous B.
+  const factureId = facture?.id ?? null
   const [wasOpen, setWasOpen] = useState(open)
-  if (open !== wasOpen) {
-    setWasOpen(open)
-    if (open) { setLoadedFactureId(null); setTauxTva(tauxDeLaFacture(facture)) }
+  const [vuFactureId, setVuFactureId] = useState(factureId)
+  if (open !== wasOpen || factureId !== vuFactureId) {
+    setWasOpen(open); setVuFactureId(factureId)
+    if (open) { setLoadedFactureId(null); setTauxTva(tauxDeLaFacture(facture)); setNotes([]); setLectureKo(false) }
   }
 
-  const factureId = facture?.id ?? null
   const loading = Boolean(open && factureId) && loadedFactureId !== factureId
 
   useEffect(() => {

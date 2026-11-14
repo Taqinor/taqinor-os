@@ -100,6 +100,22 @@ describe('LotsMultiSites', () => {
     demande.mockRestore()
   })
 
+  it('monté dans un formulaire parent : Créer le lot et Entrée ne soumettent pas le parent', async () => {
+    // AERR149 (C-AERR-VER2-100) — mutant : rétablir `<form onSubmit>` + `type="submit"` ⇒ `espion` appelé.
+    ventesApi.creerLotDevis.mockResolvedValue(reponseContrat('ventes', 'devis_lots'))
+    const espion = vi.fn(e => e.preventDefault())
+    render(<form onSubmit={espion}><LotsMultiSites devisId={7} modifiable /></form>)
+    await userEvent.click(screen.getByRole('button', { name: 'Afficher' }))
+    await screen.findByLabelText('Nom du lot')
+    await userEvent.type(screen.getByLabelText('Nom du lot'), 'Bâtiment B')
+    await userEvent.click(screen.getByRole('button', { name: 'Créer le lot' }))
+    await waitFor(() => expect(ventesApi.creerLotDevis).toHaveBeenCalledTimes(1))
+    await userEvent.type(screen.getByLabelText('Nom du lot'), 'Bâtiment C{Enter}')
+    await waitFor(() => expect(ventesApi.creerLotDevis).toHaveBeenCalledTimes(2))
+    expect(ventesApi.creerLotDevis).toHaveBeenLastCalledWith(7, { nom_lot: 'Bâtiment C' })
+    expect(espion).not.toHaveBeenCalled()
+  })
+
   it('refus serveur : le message est affiché, rien n’est relu', async () => {
     ventesApi.creerLotDevis.mockRejectedValue(
       { response: { data: { nom_lot: ['Ce lot existe déjà sur ce devis.'] } } })

@@ -534,6 +534,21 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     expect(input).not.toHaveAttribute('readonly')
   })
 
+  it('AERR148 — 17.50 pré-rempli 17,5, envoyé 17.5', async () => {
+    // C-AERR-VER1-165 — mutant : remettre `Math.round` ⇒ 18.
+    ventesApi.getVarianteConfig.mockResolvedValueOnce({ data: { variante_pct: '17.50' } })
+    ventesApi.dupliquerVariante.mockClear()
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur', permissions: ['parametres_modifier'] })
+    await user.click(within(screen.getByText('DEV-VAR').closest('tr')).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
+    const input = await screen.findByLabelText(/Pourcentage de variation/)
+    await waitFor(() => { expect(input.value).toBe('17.5') })
+    fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
+    await waitFor(() => expect(ventesApi.dupliquerVariante)
+      .toHaveBeenCalledWith(20, { variante_pct: 17.5, idempotency_key: expect.any(String) }))
+  })
+
   it('crée les variantes avec le % puis ouvre la comparaison (panneau versions)', async () => {
     const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Commercial responsable' })
@@ -1660,5 +1675,21 @@ describe('DevisList — ADRG19 : gestes gardés par le code de leur route', () =
     expect(within(row).getByRole('button', { name: /Envoyer/ })).toBeInTheDocument()
     await menuDe(user, 'DEV-ADRG-B')
     for (const nom of MENU) expect(await screen.findByRole('menuitem', { name: nom })).toBeInTheDocument()
+  })
+
+  it('ADRG127 — Viewer : pas de copie de lien ni de PDF de BC ; Commercial : les trois', async () => {
+    // C-ADRG-VER2-204 — mutant : retirer `peutModifier` ⇒ échec.
+    const ENVOYE = [{ id: 43, reference: 'DEV-ADRG-E', client_nom: 'ACME', statut: 'envoye', is_active: true,
+      date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1, bon_commande_etat: { exists: true } }]
+    const TROIS = [/Copier le lien de la proposition/, /Copier l.aperçu interne/, /Bon de commande \(PDF\)/]
+    const user = userEvent.setup()
+    const { unmount } = renderList({ loading: false, devis: ENVOYE, ...VIEWER })
+    await menuDe(user, 'DEV-ADRG-E')
+    await screen.findByRole('menu')
+    for (const nom of TROIS) expect(screen.queryByRole('menuitem', { name: nom })).toBeNull()
+    unmount()
+    renderList({ loading: false, devis: ENVOYE, ...COMMERCIAL })
+    await menuDe(user, 'DEV-ADRG-E')
+    for (const nom of TROIS) expect(await screen.findByRole('menuitem', { name: nom })).toBeInTheDocument()
   })
 })

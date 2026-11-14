@@ -479,6 +479,31 @@ describe('FactureList — ZFAC9 : bascule Liste/Kanban', () => {
   })
 })
 
+describe('AERR138 — date du jour au rendu', () => {
+  it("horloge avancée d'un jour : Kanban en retard et encaissement groupé à la nouvelle date", async () => {
+    // C-AERR-VER1-102 — mutant : relire `today` du module ⇒ FAC-9 hors « en retard ».
+    // 2099 : après tout chargement réel du module ; midi UTC = même jour à Casablanca (UTC+0 ou +1).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2099-11-14T12:00:00Z'))
+    try {
+      const user = userEvent.setup()
+      renderList({ factures: [{ ...baseFacture, id: 9, client: 9, reference: 'FAC-9', date_echeance: '2099-11-14' }] })
+      expect(screen.getByText(/^1 facture · 7 prochains jours$/)).toBeInTheDocument()
+      vi.setSystemTime(new Date('2099-11-15T12:00:00Z'))
+      await user.click(screen.getByRole('button', { name: /Kanban/ }))
+      expect(screen.getByTestId('fkb-count-en_retard')).toHaveTextContent('1')
+      expect(screen.getByText(/^0 facture · 7 prochains jours$/)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /^Liste/ }))
+      await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+      const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+      await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+      expect(within(await screen.findByRole('dialog')).getByLabelText('Date')).toHaveValue('2099-11-15')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('FactureList — VX142(a) : toolbar « Exporter » unique, plus de window.prompt', () => {
   it('le menu « Exporter » regroupe Exporter Excel / Journal comptable / Export comptable / Audit numérotation', async () => {
     const user = userEvent.setup()

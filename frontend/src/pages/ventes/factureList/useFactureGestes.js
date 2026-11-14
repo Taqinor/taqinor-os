@@ -381,8 +381,11 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
       relire()
     } catch (err) {
       const d = err?.response?.data
-      if (d && typeof d === 'object' && ['montant', 'date', 'mode', 'reference'].some(k => k in d)) {
-        egErreurs.setFromResponse(d)
+      // AERR139 — `repartition: {<id facture>: [msg]}` : erreur sous la part de CETTE facture.
+      const rep = d?.repartition && typeof d.repartition === 'object' && !Array.isArray(d.repartition)
+        ? Object.fromEntries(Object.entries(d.repartition).map(([id, m]) => [`repartition.${id}`, m])) : {}
+      if (d && typeof d === 'object' && (Object.keys(rep).length || ['montant', 'date', 'mode', 'reference'].some(k => k in d))) {
+        egErreurs.setFromResponse({ ...d, repartition: undefined, ...rep })
       } else {
         egErreurs.clearAll()
         erreurServeur(err, 'Encaissement groupé impossible.')

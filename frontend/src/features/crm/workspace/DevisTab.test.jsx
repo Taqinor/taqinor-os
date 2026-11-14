@@ -509,8 +509,12 @@ describe('VNT76 — panneau : Émettre, PDF, Envoyer, Encaisser, Reçu par paiem
     expect(within(ligne).queryByRole('button', { name: 'Encaisser' })).toBeNull()
     expect(within(ligne).queryByRole('button', { name: 'WhatsApp' })).toBeNull()
     expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    // AERR137 — confirmation nommée d'abord (hors ConfirmProvider : window.confirm).
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(true)
     await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    expect(confirmer).toHaveBeenCalledWith(expect.stringContaining('Émettre la facture BROUILLON-117'))
     await waitFor(() => expect(ventesApi.emettreFacture).toHaveBeenCalledWith(117))
+    confirmer.mockRestore()
     await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
   })
 
@@ -521,9 +525,11 @@ describe('VNT76 — panneau : Émettre, PDF, Envoyer, Encaisser, Reçu par paiem
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
     const ligne = screen.getByTestId('facture-vente-117')
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(true)
     await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
     expect(await within(ligne).findByRole('alert')).toHaveTextContent(`BROUILLON-117 : ${refus.detail}`)
     expect(toastErreur).not.toHaveBeenCalled()
+    confirmer.mockRestore()
   })
 
   it('émise payée : Envoyer (WhatsApp / e-mail) et Reçu PAR paiement encaissé', async () => {

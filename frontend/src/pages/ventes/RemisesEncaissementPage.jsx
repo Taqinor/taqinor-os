@@ -265,7 +265,8 @@ export default function RemisesEncaissementPage() {
       )}
 
       <Card className="overflow-hidden">
-        {loading && <Skeleton className="m-4 h-24" />}
+        {/* AERR150 — une relecture garde les lignes : squelette au premier chargement seul. */}
+        {loading && rows.length === 0 && <Skeleton className="m-4 h-24" />}
         {!loading && erreur && rows.length === 0 && (
           <EmptyState
             title="Chargement impossible"
@@ -273,7 +274,7 @@ export default function RemisesEncaissementPage() {
             action={<Button size="sm" variant="outline" onClick={() => charger()}>Réessayer</Button>}
           />
         )}
-        {!loading && erreur && rows.length > 0 && (
+        {erreur && rows.length > 0 && (
           <div role="status" data-testid="remises-pas-a-jour" className="m-3 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">Liste pas à jour — la dernière relecture a échoué.</span>
             <Button type="button" size="sm" variant="outline" onClick={() => charger()}>Réessayer</Button>
@@ -286,7 +287,7 @@ export default function RemisesEncaissementPage() {
             description="Aucune collecte terrain déclarée pour votre société."
           />
         )}
-        {!loading && rows.length > 0 && (
+        {rows.length > 0 && (
           <Table
             aria-label="Remises d'encaissement terrain"
             caption="Remises d'encaissement terrain par technicien"
