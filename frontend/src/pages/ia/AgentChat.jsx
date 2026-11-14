@@ -15,7 +15,7 @@ import {
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm, ErreurAgent,
+  MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent,
 } from '../../features/ia/ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
@@ -406,15 +406,7 @@ export default function AgentChat() {
                 <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                   <Bot className="size-4" aria-hidden="true" />
                 </span>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-1 rounded-xl bg-muted px-3.5 py-3">
-                    <TypingDots />
-                  </div>
-                  {/* AIC91 — dernière étape du tour (sondage de progression). */}
-                  {etapeEnCours && (
-                    <p className="text-xs text-muted-foreground" data-testid="etape-en-cours" aria-live="polite">{etapeEnCours}</p>
-                  )}
-                </div>
+                <BulleAttente etape={etapeEnCours} bulleClassName="px-3.5 py-3" />
               </div>
             )}
 

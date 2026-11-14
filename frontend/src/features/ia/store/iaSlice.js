@@ -28,16 +28,22 @@ const nouvelIdProgression = () => (globalThis.crypto?.randomUUID?.()
   ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`)
 
 function sonderProgression(id, dispatch) {
-  return setInterval(async () => {
+  let echecsDeSuite = 0
+  const sonde = setInterval(async () => {
     try {
       const res = await iaApi.getProgression(id)
+      echecsDeSuite = 0
       const etapes = res?.data?.etapes
       const derniere = Array.isArray(etapes) ? etapes[etapes.length - 1]?.libelle : null
       if (derniere) dispatch({ type: 'ia/etapeRecue', payload: String(derniere) })
     } catch {
-      // sondage best-effort : la réponse arrive de toute façon
+      // Sondage best-effort (la réponse du tour arrive de toute façon) : trois
+      // échecs de suite ⇒ on cesse de sonder plutôt que de marteler la route.
+      echecsDeSuite += 1
+      if (echecsDeSuite >= 3) clearInterval(sonde)
     }
   }, PROGRESSION_MS)
+  return sonde
 }
 
 export const queryAgent = createAsyncThunk('ia/queryAgent', async (arg, { rejectWithValue, getState, dispatch }) => {
