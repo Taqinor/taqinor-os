@@ -12,10 +12,11 @@ export function estEntierSaisi(valeur, { vide = false } = {}) {
 
 const CHAMPS_ENTIERS_PRODUIT = ['quantite_stock', 'seuil_alerte', 'garantie_mois', 'garantie_production_mois', 'tension_v']
 
-/** Fiche produit : `{champ: message}` pour chaque champ entier (optionnel) mal saisi. */
-export function erreursEntiersProduit(fields) {
+/** Fiche produit : `{champ: message}` pour chaque champ entier (optionnel) mal saisi.
+    AERR132 — en `edition`, `quantite_stock` (grisé, non envoyé, peut être négatif) n'est pas jugé. */
+export function erreursEntiersProduit(fields, { edition = false } = {}) {
   return Object.fromEntries(CHAMPS_ENTIERS_PRODUIT
-    .filter((nom) => !estEntierSaisi(fields?.[nom], { vide: true }))
+    .filter((nom) => !(edition && nom === 'quantite_stock') && !estEntierSaisi(fields?.[nom], { vide: true }))
     .map((nom) => [nom, 'Saisissez un nombre entier.']))
 }
 
