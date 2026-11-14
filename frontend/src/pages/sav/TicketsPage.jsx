@@ -1538,7 +1538,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
 
   // ── Mobile/tablette (<1280px) : tiroir Sheet plein-tiroir (fallback inchangé). ──
   return (
-    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
+    <Sheet open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }}>
       <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle className="flex flex-wrap items-center gap-2">
@@ -1686,8 +1686,8 @@ export default function TicketsPage() {
   // AERR25 — UN seul point de changement de sélection (ligne, kanban,
   // calendrier, J/K), gardé par la saisie non enregistrée de la fiche.
   const selectionner = useCallback((row) => {
-    if (row?.id !== detailTicket?.id && !confirmLeaveIfDirty(isAnyFormDirty())) return
-    setSelected(row)
+    if (row?.id === detailTicket?.id) setSelected(row)
+    else confirmLeaveIfDirty(isAnyFormDirty()).then((ok) => ok && setSelected(row))
   }, [detailTicket])
   const deplacerSelection = useCallback((pas) => {
     if (!rows.length) return
@@ -1719,7 +1719,7 @@ export default function TicketsPage() {
         e.preventDefault()
         setSelected(rows[0])
       } else if (e.key === 'Escape' && detailTicket) {
-        if (confirmLeaveIfDirty(isAnyFormDirty())) fermerDetail()
+        confirmLeaveIfDirty(isAnyFormDirty()).then((ok) => ok && fermerDetail())
       }
     }
     window.addEventListener('keydown', onKey)

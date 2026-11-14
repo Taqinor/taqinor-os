@@ -465,7 +465,7 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }}>
       <DialogContent ref={scopeRef} className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>

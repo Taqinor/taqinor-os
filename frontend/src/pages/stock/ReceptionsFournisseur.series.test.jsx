@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
 vi.mock('../../api/stockApi', () => ({
   default: {
@@ -77,19 +78,24 @@ describe('Réception — n° de série', () => {
 describe('Réception — fermeture d’une saisie modifiée (AERR37)', () => {
   it('saisie puis Échap : demande, rester ⇒ saisie gardée', async () => {
     const onClose = vi.fn()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    render(<ThemeProvider>
+    // AERR155 — la demande est la boîte de l'application, jamais window.confirm.
+    const natif = vi.spyOn(window, 'confirm')
+    render(<ConfirmProvider><ThemeProvider>
       <NouvelleReception bonsRecevables={[{ id: 5, reference: 'BCF-5' }]} onClose={onClose} onSaved={() => {}} />
-    </ThemeProvider>)
+    </ThemeProvider></ConfirmProvider>)
     fireEvent.click(screen.getByText('choisir-bon'))
     fireEvent.click(await screen.findByRole('button', { name: /N° de série \/ lot/ }))
     const champ = screen.getByLabelText(/N° de série \(un par ligne/)
     fireEvent.change(champ, { target: { value: 'S1\nS2\nS3' } })
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
-    expect(confirm).toHaveBeenCalled()
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText('Quitter sans enregistrer ?')).toBeInTheDocument()
+    fireEvent.click(within(boite).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByLabelText(/N° de série \(un par ligne/)).toHaveValue('S1\nS2\nS3')
-    confirm.mockRestore()
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
   })
 
   it('formulaire non modifié : Échap ferme sans demander', () => {

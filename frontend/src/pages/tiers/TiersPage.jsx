@@ -76,7 +76,7 @@ function TiersDialog({ record, onClose, onSaved }) {
   const serverError = Object.entries(erreurs).map(([k, m]) => (LIBELLES_CHAMPS[k] ? `${LIBELLES_CHAMPS[k]} : ${m}` : m))[0]
 
   const dirty = Boolean(nom || prenom || raisonSociale || telephone || email)
-  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const closeIfConfirmed = () => { confirmLeaveIfDirty(dirty).then((ok) => ok && onClose?.()) }
   const peutEnregistrer = Boolean(nom)
 
   const submit = async (e) => {

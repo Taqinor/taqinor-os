@@ -817,7 +817,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }}>
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">

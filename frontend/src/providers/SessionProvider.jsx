@@ -18,9 +18,10 @@ import {
   SESSION_EXPIRED_EVENT, subscribeToSessionLogout, emitAuthLogout, prendreEcritureRefusee,
 } from './session-bridge'
 import { toastInfo } from '../lib/toast'
-import { isAnyFormDirty, confirmLeaveIfDirty } from '../ui/useDirtyGuard'
+import { isAnyFormDirty, confirmLeaveIfDirty, useConfirmationSortie } from '../ui/useDirtyGuard'
 
 export function SessionProvider({ children }) {
+  useConfirmationSortie() // AERR155 — boîte « Quitter sans enregistrer ? » pour toute l'application
   const [open, setOpen] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -101,9 +102,11 @@ export function SessionProvider({ children }) {
   // VX62 — un rechargement dur (`window.location.href`) détruit tout formulaire
   // en cours : si un formulaire modifié est monté, on confirme d'abord.
   const goToLogin = useCallback(() => {
-    if (isAnyFormDirty() && !confirmLeaveIfDirty(true)) return
-    dismiss()
-    window.location.href = '/login'
+    confirmLeaveIfDirty(isAnyFormDirty()).then((ok) => {
+      if (!ok) return
+      dismiss()
+      window.location.href = '/login'
+    })
   }, [dismiss])
 
   return (

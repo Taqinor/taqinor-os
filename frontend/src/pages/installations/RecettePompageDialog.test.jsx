@@ -19,6 +19,7 @@ vi.mock('../../api/installationsApi', () => ({ default: api }))
 
 import ChantierGateTimeline from './ChantierGateTimeline'
 import RecettePompageDialog from './RecettePompageDialog'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 const EXEMPLE = exempleContrat('installations', 'recette_pompage')
@@ -176,16 +177,20 @@ describe('RecettePompageDialog — AERR38 garde de saisie', () => {
   it('mesure saisie puis Échap : demande, rester ⇒ mesure gardée', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
-    const demande = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    render(<RecettePompageDialog installationId={214} record={VIDE.record} onClose={onClose} />)
+    // AERR155 — la demande est la boîte de l'application, jamais window.confirm.
+    const natif = vi.spyOn(window, 'confirm')
+    render(<ConfirmProvider><RecettePompageDialog installationId={214} record={VIDE.record} onClose={onClose} /></ConfirmProvider>)
     const debit = screen.getByLabelText('Débit mesuré (m³/h)')
     await user.clear(debit)
     await user.type(debit, '27.5')
     await user.keyboard('{Escape}')
-    expect(demande).toHaveBeenCalledWith('Modifications non enregistrées — quitter cette page ?')
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText('Quitter sans enregistrer ?')).toBeInTheDocument()
+    await user.click(within(boite).getByRole('button', { name: 'Rester' }))
     expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Débit mesuré (m³/h)')).toHaveValue(27.5)
-    demande.mockRestore()
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
   })
 
   it('aucune saisie : Échap ferme directement, sans demande', async () => {

@@ -862,9 +862,8 @@ function AtelierToiture({
   // « Fermer » confirme d'abord (calcul frais au clic, pas seulement le sondage).
   const fermer = () => {
     const modifiee = sceneHydratee && !lectureSeuleContexte && sceneEstModifiee()
-    if (!confirmLeaveIfDirty(modifiee,
-      'La conception porte des modifications non enregistrées — fermer quand même ?')) return
-    navigate(-1)
+    confirmLeaveIfDirty(modifiee,
+      'La conception porte des modifications non enregistrées — fermer quand même ?').then((ok) => ok && navigate(-1))
   }
 
   // ACAL23 — L'UNIQUE rechargement de l'atelier (relayé par le Rail à chaque
