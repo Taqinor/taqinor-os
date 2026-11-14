@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille  # ADRG41
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -34,7 +35,7 @@ class RegleReapproViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()

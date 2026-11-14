@@ -114,6 +114,7 @@ def restreindre_aux_siens(lignes, user):
     from django.db.models import Q
 
     from core.permissions import _user_has_or_legacy
+    from core.scoping import scope_client_queryset, visible_user_ids
 
     from .permissions import CAL_APPROUVER
 
@@ -121,6 +122,13 @@ def restreindre_aux_siens(lignes, user):
         return lignes
     if _user_has_or_legacy(user, CAL_APPROUVER):
         return lignes
+    if visible_user_ids(user) is not None:  # ALEC29 (D-ALEC-4) — la portée du rôle suit la lecture
+        from apps.crm.selectors import client_base_qs, leads_visibles
+        company = getattr(user, 'company', None)
+        lignes = lignes.filter(
+            Q(lead_id__in=leads_visibles(user, company).values('id'))
+            | Q(lead_id__isnull=True, client__in=scope_client_queryset(client_base_qs(company), user))
+            | Q(responsable=user) | Q(cree_par=user))
     if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
         return lignes
     return lignes.filter(Q(responsable=user) | Q(cree_par=user))

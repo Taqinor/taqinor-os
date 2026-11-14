@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4968, operations: 7754, components: 3653}
+counts: {paths: 4974, operations: 7762, components: 3657}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2156,6 +2156,10 @@ operations:
 - get /api/django/installations/recettes-pompage/ -> django_installations_recettes_pompage_list
 - get /api/django/installations/recettes-pompage/{id}/ -> django_installations_recettes_pompage_retrieve
 - patch /api/django/installations/recettes-pompage/{id}/ -> django_installations_recettes_pompage_partial_update
+- get /api/django/installations/recurrences-intervention/ -> django_installations_recurrences_intervention_list
+- post /api/django/installations/recurrences-intervention/ -> django_installations_recurrences_intervention_create
+- get /api/django/installations/recurrences-intervention/{id}/ -> django_installations_recurrences_intervention_retrieve
+- post /api/django/installations/recurrences-intervention/{id}/desactiver/ -> django_installations_recurrences_intervention_desactiver_create
 - get /api/django/installations/regles-approbation-achat/ -> django_installations_regles_approbation_achat_list
 - post /api/django/installations/regles-approbation-achat/ -> django_installations_regles_approbation_achat_create
 - delete /api/django/installations/regles-approbation-achat/{id}/ -> django_installations_regles_approbation_achat_destroy
@@ -6074,6 +6078,10 @@ operations:
 - get /api/v1/installations/recettes-pompage/ -> v1_installations_recettes_pompage_list
 - get /api/v1/installations/recettes-pompage/{id}/ -> v1_installations_recettes_pompage_retrieve
 - patch /api/v1/installations/recettes-pompage/{id}/ -> v1_installations_recettes_pompage_partial_update
+- get /api/v1/installations/recurrences-intervention/ -> v1_installations_recurrences_intervention_list
+- post /api/v1/installations/recurrences-intervention/ -> v1_installations_recurrences_intervention_create
+- get /api/v1/installations/recurrences-intervention/{id}/ -> v1_installations_recurrences_intervention_retrieve
+- post /api/v1/installations/recurrences-intervention/{id}/desactiver/ -> v1_installations_recurrences_intervention_desactiver_create
 - get /api/v1/installations/regles-approbation-achat/ -> v1_installations_regles_approbation_achat_list
 - post /api/v1/installations/regles-approbation-achat/ -> v1_installations_regles_approbation_achat_create
 - delete /api/v1/installations/regles-approbation-achat/{id}/ -> v1_installations_regles_approbation_achat_destroy
@@ -8195,6 +8203,7 @@ query_params:
   get /api/django/installations/receptions-non-facturees/: bon_commande lettre ordering page page_size search
   get /api/django/installations/recettes-commissioning/: installation ordering page page_size search
   get /api/django/installations/recettes-pompage/: installation ordering page page_size search
+  get /api/django/installations/recurrences-intervention/: installation ordering page page_size search
   get /api/django/installations/regles-approbation-achat/: ordering page page_size search
   get /api/django/installations/regles-rangement/: actif ordering page page_size produit search
   get /api/django/installations/regles-reappro/: active emplacement_cible ordering page page_size produit search
@@ -8996,6 +9005,7 @@ query_params:
   get /api/v1/installations/receptions-non-facturees/: bon_commande lettre ordering page page_size search
   get /api/v1/installations/recettes-commissioning/: installation ordering page page_size search
   get /api/v1/installations/recettes-pompage/: installation ordering page page_size search
+  get /api/v1/installations/recurrences-intervention/: installation ordering page page_size search
   get /api/v1/installations/regles-approbation-achat/: ordering page page_size search
   get /api/v1/installations/regles-rangement/: actif ordering page page_size produit search
   get /api/v1/installations/regles-reappro/: active emplacement_cible ordering page page_size produit search
@@ -11491,6 +11501,7 @@ components:
 - PaginatedReceptionNonFactureeList
 - PaginatedRecettePompageList
 - PaginatedReconciliationSnapshotList
+- PaginatedRecurrenceInterventionList
 - PaginatedRegleAclMetadonneeList
 - PaginatedRegleApprobationAchatList
 - PaginatedRegleApprobationGedList
@@ -12287,6 +12298,9 @@ components:
 - RecordsPiecesJointesPage
 - RecordsSnoozeApprobationCorpsRequest
 - RecordsTagAssocCreationRequest
+- RecurrenceIntervention
+- RecurrenceInterventionRequest
+- RecurrenceMensuelleAnnuelleEnum
 - RefusDemandeAchatRequeteRequest
 - RefusTransfertRequeteRequest
 - Regime8221Enum

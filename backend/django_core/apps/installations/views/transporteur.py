@@ -5,6 +5,7 @@ serveur. Le coût de course se porte sur la livraison (FG329, champ
 `cout_transport`). Lecture tout rôle, écriture responsable/admin. Multi-tenant
 via ``TenantMixin``.
 """
+from apps.roles.permissions import DroitDeLaGrille  # ADRG41
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -29,7 +30,7 @@ class TransporteurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()

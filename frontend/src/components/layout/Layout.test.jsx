@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -17,15 +17,24 @@ vi.mock('react-router-dom', async (orig) => ({
   ...(await orig()),
   useNavigation: () => ({ state: 'idle' }),
 }))
+// ADRG122 — seule la lecture de la tournée est observée ; le reste du client
+// d'API reste le vrai.
+vi.mock('../../api/installationsApi', async (orig) => {
+  const reel = (await orig()).default
+  return { default: { ...reel, getMaTournee: vi.fn() } }
+})
 
 import Layout from './Layout'
 import * as LayoutModule from './Layout'
+import installationsApi from '../../api/installationsApi'
+import { todayLocalIso } from '../../lib/dateLocale'
 
-// Store minimal.
-function makeStore() {
+// Store minimal (`auth` : droits du compte connecté, compte hérité par défaut).
+function makeStore(auth = {}) {
+  const session = { isAuthenticated: true, user: { username: 'u' }, ...auth }
   return configureStore({
     reducer: {
-      auth: (s = { isAuthenticated: true, user: { username: 'u' } }) => s,
+      auth: (s = session) => s,
       parametres: (s = { profile: {} }) => s,
       // VX57 — Layout lit désormais s.ia.copilotOpen (mount paresseux du copilote).
       ia: (s = { copilotOpen: false }) => s,
@@ -33,9 +42,9 @@ function makeStore() {
   })
 }
 
-function renderLayout(children = <p>content</p>) {
+function renderLayout(children = <p>content</p>, auth) {
   return render(
-    <Provider store={makeStore()}>
+    <Provider store={makeStore(auth)}>
       <MemoryRouter>
         <Layout>{children}</Layout>
       </MemoryRouter>
@@ -95,5 +104,57 @@ describe('Layout — coquille unique (ODY33)', () => {
     const { container } = renderLayout(<p>sentinel-ody33</p>)
     expect(container.querySelector('.sidebar')).not.toBeNull()
     expect(container.querySelector('header.header')).not.toBeNull()
+  })
+})
+
+/* ADRG122 — la coquille de tout écran connecté (dont l'accueil `/apps`) monte
+   le pré-chargement matinal de la tournée : il ne part que pour un compte
+   auquel le serveur sert `ma-tournee` (lecture du module chantiers). */
+describe('Layout — pré-chargement de la tournée selon le droit (ADRG122)', () => {
+  const MATIN = new Date(2026, 10, 14, 8, 30)
+  // Profils tels que `/auth/me/` les sert (`portee` comprise).
+  const COMMERCIAL = {
+    user: { username: 'co', portee: 'interne' }, role: 'normal', role_nom: 'Commercial',
+    permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'ventes_creer', 'sav_voir'],
+  }
+  const TECHNICIEN = {
+    user: { username: 'te', portee: 'interne' }, role: 'normal', role_nom: 'Technicien',
+    permissions: ['installation_voir', 'installation_gerer', 'intervention_gerer', 'sav_voir'],
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(MATIN)
+    window.localStorage.clear()
+    installationsApi.getMaTournee.mockReset()
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('Technicien, le matin : la tournée du jour est toujours pré-chargée', async () => {
+    renderLayout(<p>accueil</p>, TECHNICIEN)
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(1))
+    expect(installationsApi.getMaTournee)
+      .toHaveBeenCalledWith(todayLocalIso(MATIN), { suppressErrorToast: true })
+  })
+
+  it('Commercial, le matin : `ma-tournee` n’est jamais demandé', async () => {
+    const { findByText } = renderLayout(<p>accueil</p>, COMMERCIAL)
+    expect(await findByText('accueil')).toBeInTheDocument()
+    expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
+  })
+
+  it('état posé par la connexion, profil pas encore servi par `/auth/me/` : rien ne part', async () => {
+    // `setCredentials` après `/token/` (Login, fenêtre de session expirée) : même pour un Technicien.
+    const { findByText } = renderLayout(<p>accueil</p>,
+      { user: { username: 'te' }, role: 'normal', role_nom: null, permissions: [] })
+    expect(await findByText('accueil')).toBeInTheDocument()
+    expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
+  })
+
+  it('session fermée : rien ne part, même avec un profil resté en mémoire', async () => {
+    const { findByText } = renderLayout(<p>accueil</p>, { ...TECHNICIEN, isAuthenticated: false })
+    expect(await findByText('accueil')).toBeInTheDocument()
+    expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
   })
 })

@@ -7117,7 +7117,7 @@ def cloturer_lot_prelevement(lot):
 
 
 # ── ZFSM3 — Interventions récurrentes autonomes (sans contrat) ──────────────
-def _prochaine_echeance_intervention(echeance, regle, intervalle):
+def _prochaine_echeance_intervention(echeance, regle, intervalle, jour_ancrage=None):
     """ZFSM3 — avance `echeance` d'un pas de la règle. Même patron que
     `apps.gestion_projet.services._prochaine_echeance_suivante` (mensuelle
     clampée en fin de mois), étendu trimestrielle/semestrielle/annuelle en
@@ -7141,7 +7141,7 @@ def _prochaine_echeance_intervention(echeance, regle, intervalle):
     annee = echeance.year + mois_total // 12
     mois = mois_total % 12 + 1
     dernier_jour = calendar.monthrange(annee, mois)[1]
-    jour = min(echeance.day, dernier_jour)
+    jour = min(jour_ancrage or echeance.day, dernier_jour)  # ACEL46 — ancrage gardé
     return echeance.replace(year=annee, month=mois, day=jour)
 
 
@@ -7203,7 +7203,7 @@ def generer_interventions_recurrentes(company, *, aujourd_hui=None):
 
                 rec.nb_generees += 1
                 rec.prochaine_echeance = _prochaine_echeance_intervention(
-                    rec.prochaine_echeance, rec.regle, rec.intervalle)
+                    rec.prochaine_echeance, rec.regle, rec.intervalle, rec.jour_ancrage)
                 if rec.date_fin is not None \
                         and rec.prochaine_echeance > rec.date_fin:
                     rec.actif = False

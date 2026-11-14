@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..openapi_helpers import ID_OU_VIDE, LISTE, P
 from ..utils.params import id_requete_ou_400
+from core.idempotency import IdempotentCreateMixin  # ACNC23
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import AcompteFournisseur
 from ..serializers import AcompteFournisseurSerializer
@@ -16,7 +17,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('bon_commande', ID_OU_VIDE)]))
-class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
+class AcompteFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC23 — rejeu sans doublon
     """XPUR8 — acomptes/avances fournisseur sur BCF. Imputés automatiquement
     (idempotent) sur la première facture du BCF via
     `services.facturer_reception` → `imputer_acomptes_bcf`, ET dès leur
@@ -54,6 +55,19 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         from ..services import imputer_acomptes_bcf
         with transaction.atomic():
+            bcf = serializer.validated_data.get('bon_commande')
+            if bcf is not None:  # ACNC23 — Σ acomptes ≤ total TTC du BCF, relu sous verrou
+                from django.db.models import Sum
+                from ..erreurs_achats import ConflitEtat
+                from ..services import ventiler_tva_achats
+                bcf = type(bcf).objects.select_for_update().get(pk=bcf.pk)
+                ttc = ventiler_tva_achats((lg.total_achat, lg.produit) for lg in bcf.lignes.select_related(
+                    'produit'))['total_ttc']
+                deja = bcf.acomptes.aggregate(s=Sum('montant'))['s'] or 0
+                if deja + serializer.validated_data['montant'] > ttc:
+                    raise ConflitEtat({'detail': (
+                        f'Acompte refusé : le total des acomptes dépasserait le total TTC du BCF ({ttc} MAD ; '
+                        f'déjà versé {deja} MAD).')})
             acompte = serializer.save(
                 company=self.request.user.company,
                 created_by=self.request.user)

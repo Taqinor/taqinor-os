@@ -21,7 +21,7 @@ from decimal import Decimal
 from django.test import TestCase
 
 from authentication.models import Company
-from apps.stock.models import BonCommandeFournisseur, Fournisseur, Produit, MouvementStock
+from apps.stock.models import BonCommandeFournisseur, Fournisseur, PrixFournisseur, Produit, MouvementStock
 from apps.stock.services import (
     produits_a_reapprovisionner, generer_bcf_reappro,
 )
@@ -107,6 +107,23 @@ class TestNettingPipeline(Yproc9Base):
             prix_achat_unitaire=Decimal('20'))
         self.assertEqual(
             quantite_en_commande_produit(self.company, self.produit.id), 12)
+
+    def test_fournisseur_archive_jamais_suggere(self):
+        """ASUP61 — le tarif le moins cher chez un fournisseur ARCHIVÉ n'est
+        jamais suggéré ; le BCF sans fournisseur part chez l'actif."""
+        archive = Fournisseur.objects.create(
+            company=self.company, nom='Archivé YPROC9', is_archived=True)
+        PrixFournisseur.objects.create(company=self.company, produit=self.produit,
+                                       fournisseur=archive, prix_achat=Decimal('80'))
+        PrixFournisseur.objects.create(company=self.company, produit=self.produit,
+                                       fournisseur=self.fournisseur, prix_achat=Decimal('100'))
+        besoin = produits_a_reapprovisionner(self.company)[0]
+        self.assertEqual((besoin['fournisseur_id'], besoin['prix_achat']),
+                         (self.fournisseur.id, '100.00'))
+        bcf = BonCommandeFournisseur.objects.get(
+            pk=generer_bcf_reappro(self.company, None, None)['bon_commande_id'])
+        self.assertEqual(bcf.fournisseur_id, self.fournisseur.id)
+        self.assertEqual(bcf.lignes.get().prix_achat_unitaire, Decimal('100'))
 
 
 class TestFusionBcfReappro(Yproc9Base):

@@ -103,3 +103,25 @@ def constater_creance_ras_acompte(imputation):
         return avoir
 
     return create_with_reference(AvoirFournisseur, 'AVF', company, _save)
+
+
+def borner_retour_au_recu(bon_commande, lignes):
+    """ACNC28 (C-ACNC-012) — un retour lié à un BCF ne rend jamais plus que ce
+    qui reste reçu : par produit, Σ quantités des lignes du retour ≤ Σ
+    ``quantite_recue`` des lignes BCF relues SOUS verrou (dans la transaction
+    de la validation). Lève ``EtatIncompatible`` (409) sinon. Sans BCF : sans
+    objet (aucune quantité reçue de référence)."""
+    from .erreurs_achats import EtatIncompatible
+    if bon_commande is None:
+        return
+    demande = {}
+    for ligne in lignes:
+        demande[ligne.produit_id] = demande.get(ligne.produit_id, 0) + ligne.quantite
+    for produit_id, quantite in demande.items():
+        lignes_bcf = list(bon_commande.lignes.select_for_update().filter(produit_id=produit_id))
+        recu = sum(lg.quantite_recue or 0 for lg in lignes_bcf)
+        # Produit absent du BCF : aucune quantité reçue de référence (AAPV41 le
+        # refuse déjà à la création par l'API) — borne sans objet.
+        if lignes_bcf and quantite > recu:
+            raise EtatIncompatible(
+                f'Quantité retournée supérieure à la quantité reçue restante ({recu}).')

@@ -16,6 +16,7 @@ from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille  # ADRG41
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 
 from apps.stock import selectors as stock_selectors
@@ -60,7 +61,7 @@ class SousTraitantViewSet(oa.JsonOnlyMixin, viewsets.ViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     # ── Helpers ──────────────────────────────────────────────────────────────
     def _company(self):

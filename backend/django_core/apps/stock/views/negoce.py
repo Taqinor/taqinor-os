@@ -633,6 +633,14 @@ def parametres_negoce_view(request):
 
     params = ParametresNegoce.get(request.user.company)
     if request.method == 'PATCH':
+        # ADRG38 (D-ADRG-5) : modifier un réglage de toute la société exige
+        # `parametres_modifier` (comptes hérités : leur palier, inchangé).
+        if not HasPermissionOrLegacy('parametres_modifier')().has_permission(
+                request, None):
+            return Response(
+                {'detail': "Vous n'avez pas la permission de modifier ces "
+                           "paramètres."},
+                status=status.HTTP_403_FORBIDDEN)
         serializer = ParametresNegoceSerializer(
             params, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

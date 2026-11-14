@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -17,6 +17,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
 import ProduitDetail, { RebutModal } from './ProduitDetail'
+import usePeutEcrireStock from './usePeutEcrireStock'
 import { CatalogueTable } from './CatalogueTable'
 import PretDevisCi from './PretDevisCi'
 import PilotageStock from './PilotageStock'
@@ -433,6 +434,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   // AERR84 — refus serveur par champ (quantité sous « Quantité », le reste dans l'alerte).
   const { errors: refus, setErrors: setRefus, setFromResponse } = useServerFieldErrors()
   const [saving, setSaving] = useState(false)
+  const cleTransfert = useRef(null)  // ACNC22 — clé gardée entre deux clics, neuve après un succès
   // WR4 / FG62 — suggestions de réappro par emplacement (admin).
   const [suggestions, setSuggestions] = useState([])
   const rows = (produits ?? []).filter((p) => !p.is_archived)
@@ -470,15 +472,19 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
     try {
       // AAPV74 (rejeu 08/11) — les Select rendent des chaînes ; le corps du
       // transfert exige des identifiants ENTIERS (garde stricte côté serveur).
+      cleTransfert.current ??= globalThis.crypto?.randomUUID?.() ?? `tr-${Date.now()}-${Math.random()}`
       await stockApi.createTransfert({
         produit: Number(produitId), source: Number(source), destination: Number(destination),
         quantite: parseInt(quantite, 10), note,
-      })
+      }, { idempotencyKey: cleTransfert.current })
+      cleTransfert.current = null
       await loadBreakdown(produitId)
       await loadTransferts()
       setQuantite(''); setNote('')
       onDone?.()
     } catch (err) {
+      // Réponse perdue ou transfert encore en vol : relire le stock (même clé au prochain clic).
+      if (!err?.response || err.response.data?.code === 'idempotency_en_cours') { loadBreakdown(produitId); loadTransferts() }
       setFromResponse(err?.response?.data, { fallback: frenchError(err, 'Le transfert a été refusé.') })
     } finally { setSaving(false) }
   }
@@ -732,6 +738,9 @@ export default function StockList() {
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
   const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
   const canDelete = useIsAdmin()
+  // ADRG106 — « Supprimer » suit la route (PeutSupprimerStock) : administrateur ou `stock_supprimer`.
+  const peutSupprimer = useHasPermission('stock_supprimer') || canDelete
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')  // ADRG107 — « Mettre au rebut » suit sa route
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
   // modification/l'import, séparés de la création.
@@ -858,8 +867,11 @@ export default function StockList() {
       const { data } = await stockApi.bulkProduits({ ids: [...visibleSelected], action, ...params })
       setBulkMsg(bulkResultMessage(data))
       dispatch(fetchProduits())
+      return true
     } catch (e) {
       setBulkMsg(e?.response?.data?.detail ?? "L'action en masse a échoué.")
+      dispatch(fetchProduits())  // ACNC24 — relire les prix après un échec (jamais ré-appliquer à l'aveugle)
+      return false
     } finally { setBulkBusy(false) }
   }
   const exportSelection = async () => {
@@ -1429,6 +1441,7 @@ export default function StockList() {
       {canWrite && visibleSelected.size > 0 && (
         <BulkProductBar
           count={visibleSelected.size}
+          prixExemple={(produits ?? []).find((p) => visibleSelected.has(p.id))?.prix_vente}
           categories={categories}
           marques={marquesList}
           busy={bulkBusy}
@@ -1459,7 +1472,7 @@ export default function StockList() {
           produit={detailProduit}
           onClose={() => setDetailProduit(null)}
           onEdit={canWrite ? ((prod, champ) => { setDetailProduit(null); openEdit(prod, champ) }) : null}
-          onRebut={canWrite ? () => dispatch(fetchProduits()) : null}
+          onRebut={peutMouvement ? () => dispatch(fetchProduits()) : null}
         />
       )}
       {/* WIR221/XSTK10 — mise au rebut depuis la grille catalogue. */}
@@ -1600,12 +1613,12 @@ export default function StockList() {
               loading={loading}
               canWrite={canWrite}
               canEditPrix={canEditPrix}
-              canDelete={canDelete}
+              canDelete={peutSupprimer}
               onEdit={openEdit}
               onDelete={handleDelete}
               onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
               onDetail={(prod) => setDetailProduit(prod)}
-              onRebut={canWrite ? (prod) => setRebutProduit(prod) : null}
+              onRebut={peutMouvement ? (prod) => setRebutProduit(prod) : null}
               onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
                 state: { prefillBcf: {
                   produit: prod.id,

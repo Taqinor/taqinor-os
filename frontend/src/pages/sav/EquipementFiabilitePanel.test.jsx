@@ -50,14 +50,15 @@ const RECUL = exempleContrat('sav', 'releves_compteur', 'exemple_400_recul')
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function makeStore(permissions = []) {
+// ADRG116 — palier admin par défaut : downtime/ et releves-compteur/ sont IsAdminRole.
+function makeStore(permissions = [], role = 'admin') {
   return configureStore({
-    reducer: { auth: (state = { role_nom: 'Technicien', permissions }) => state },
+    reducer: { auth: (state = { role_nom: 'Technicien', role, permissions }) => state },
   })
 }
 
-function renderPanel(permissions = []) {
-  const store = makeStore(permissions)
+function renderPanel(permissions = [], role) {
+  const store = makeStore(permissions, role)
   return render(
     <Provider store={store}>
       <EquipementFiabilitePanel equipementId={1} />
@@ -139,6 +140,21 @@ describe('EquipementFiabilitePanel — XSAV16 disponibilité + immobilisation', 
     await screen.findByText(/En cours depuis/)
     fireEvent.click(screen.getByRole('button', { name: 'Clôturer' }))
     await waitFor(() => expect(savApi.cloturerEquipementDowntime).toHaveBeenCalledWith(1, 9))
+  })
+
+  it("hors palier admin : ni journal d'immobilisation ni relevés lus", async () => {
+    savApi.getEquipementFiabilite.mockResolvedValue({ data: { mtbf_jours: 12, mttr_jours: 3 } })
+    savApi.getEquipementDisponibilite.mockResolvedValue({ data: { disponibilite_pct: 97.3 } })
+    for (const role of ['normal', 'responsable']) {
+      renderPanel([], role)
+      expect(await screen.findByText(/97,3\s?%/)).toBeInTheDocument()
+      expect(screen.getByText('12 j')).toBeInTheDocument()
+      expect(screen.queryByText('Immobilisation')).toBeNull()
+      expect(screen.queryByText('Relevés compteur')).toBeNull()
+      cleanup()
+    }
+    expect(savApi.getEquipementDowntime).not.toHaveBeenCalled()
+    expect(savApi.getEquipementReleves).not.toHaveBeenCalled()
   })
 })
 

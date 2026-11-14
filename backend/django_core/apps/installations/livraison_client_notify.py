@@ -36,6 +36,22 @@ def _livraison_lien(livraison, request=None):
     return public_url('/portail/client/livraisons', request)
 
 
+def assigne_tache_chantier(tache, installation):
+    """AMSG96 — la tâche « Envoyer ce WhatsApp » va au technicien responsable
+    actif du chantier, à défaut à son créateur actif (ordre de
+    ``gps_tracking_service._responsables_a_notifier``) ; sinon non assignée,
+    motif journalisé. Rend l'utilisateur assigné ou ``None``."""
+    for user in (getattr(installation, 'technicien_responsable', None),
+                 getattr(installation, 'created_by', None)):
+        if user is not None and user.is_active:
+            tache.assigned_to = user
+            tache.save(update_fields=['assigned_to'])
+            return user
+    logger.info('AMSG96 : tâche %s non assignée (chantier sans responsable '
+                'ni créateur actif)', tache.pk)
+    return None
+
+
 def notify_livraison_transition(livraison, statut, *, request=None, user=None):
     """XSTK22 — notifie le client d'une transition de livraison (best-effort).
 
@@ -98,8 +114,9 @@ def notify_livraison_transition(livraison, statut, *, request=None, user=None):
             # AMSG56 — e-mail non parti : le brouillon devient une tâche
             # « Envoyer ce WhatsApp » sur la livraison (patron APAR25).
             from apps.automation.actions import RESUME_TACHE_WHATSAPP, _creer_tache
-            _creer_tache(livraison, livraison.company, user, RESUME_TACHE_WHATSAPP,
-                         f"{wa_corps}\n\n{result['wa_draft_url']}")
+            assigne_tache_chantier(_creer_tache(
+                livraison, livraison.company, user, RESUME_TACHE_WHATSAPP,
+                f"{wa_corps}\n\n{result['wa_draft_url']}"), installation)
             result['tache_whatsapp'] = True
 
         result['sent'] = bool(result['email_sent'] or result['tache_whatsapp'])

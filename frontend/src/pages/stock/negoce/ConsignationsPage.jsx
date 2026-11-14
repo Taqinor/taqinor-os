@@ -8,6 +8,7 @@ import {
 } from '../../../features/stock/api/erreurs'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
 import usePeutEcrireStock from '../usePeutEcrireStock'
+import useCanModifierParametres from '../../../features/parametres/useCanModifierParametres'
 
 /* ASTK221 — Consignation : dépôts chez les clients, déclaration de
    consommation (la facture brouillon créée est affichée avec son lien),
@@ -117,6 +118,8 @@ function Reglages({ onErreur }) {
   const [actif, setActif] = useState(true)
   const [horizon, setHorizon] = useState('')
   const [info, setInfo] = useState(null)
+  // ADRG38 — réglage de toute la société : `parametres_modifier`, comme le serveur.
+  const peutModifier = useCanModifierParametres()
 
   useEffect(() => {
     negoceApi.getParametres()
@@ -138,14 +141,14 @@ function Reglages({ onErreur }) {
   return (
     <div className="flex flex-wrap items-end gap-4">
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={actif} onChange={(e) => setActif(e.target.checked)} />
+        <input type="checkbox" disabled={!peutModifier} checked={actif} onChange={(e) => setActif(e.target.checked)} />
         <span>Consignation activée</span>
       </label>
       <label className="flex flex-col gap-1 text-xs">
         <span>Horizon ATP (jours)</span>
-        <Input type="number" step="any" className="w-28" value={horizon} onChange={(e) => setHorizon(e.target.value)} />
+        <Input type="number" step="any" className="w-28" disabled={!peutModifier} value={horizon} onChange={(e) => setHorizon(e.target.value)} />
       </label>
-      <Button onClick={enregistrer}>Enregistrer</Button>
+      {peutModifier && <Button onClick={enregistrer}>Enregistrer</Button>}
       {info && <span role="status" className="text-sm text-success">{info}</span>}
     </div>
   )

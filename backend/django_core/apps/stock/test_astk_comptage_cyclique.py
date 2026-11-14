@@ -44,7 +44,7 @@ class ComptageCycliqueTests(TestCase):
         self.company = Company.objects.create(
             slug=f'astk38-co-{n}', nom=f'ASTK38 Co {n}')
         self.user = User.objects.create_user(
-            username=f'astk38-{n}', password='x', role_legacy='responsable',
+            username=f'astk38-{n}', password='x', role_legacy='admin',  # ADRG43 — terminer : admin
             company=self.company)
         self.api = APIClient()
         self.api.credentials(
