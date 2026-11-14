@@ -52,6 +52,7 @@ vi.mock('../../api/stockApi', () => ({
 import OutillagePage from './OutillagePage'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 import { withProviders } from '../../test/renderAvecProviders'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -106,7 +107,8 @@ describe('OutillagePage — ACHT62 pages complètes', () => {
 describe('AERR146 — refus d\'un outil', () => {
   it('numero_serie refusé : sous le champ, absent sur l\'outil suivant', async () => {
     majOutil.mockRejectedValueOnce({ response: { status: 400, data: { numero_serie: ['Ce numéro existe déjà.'] } } })
-    withProviders(<OutillagePage />)
+    // L'édition d'un outil existant monte AttachmentsPanel (lit state.auth) : store minimal.
+    renderAvecAuth(<OutillagePage />, { role: 'admin' }, { theme: true })
     fireEvent.click(await screen.findByText('Multimètre Fluke'))
     fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(majOutil).toHaveBeenCalledWith(1, expect.anything()))
