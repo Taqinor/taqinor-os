@@ -993,7 +993,8 @@ ApprovalDelegation.objects.filter(delegant_id=${ad.id}).delete()`))
   ])
   const corpsRefus = reqRefus.postDataJSON()
   expect([corpsRefus.date_debut, corpsRefus.date_fin], 'un seul jour : début 00:00 et fin 23:59:59.999 locales').toEqual(attendu)
-  await expect(p.getByText(motif), 'le refus est rendu sous la période').toBeVisible({ timeout: 30_000 })
+  // `exact` : le toast global dit aussi « Date fin : <motif> » (AERR52) ; ici seul le message SOUS le champ.
+  await expect(p.getByText(motif, { exact: true }), 'le refus est rendu sous la période').toBeVisible({ timeout: 30_000 })
   const sousPeriode = await periode.evaluate((el, texte) => {
     let n = el.parentElement
     for (let i = 0; i < 4 && n; i += 1, n = n.parentElement) if (n.textContent.includes(texte)) return n.textContent.includes('Période')
