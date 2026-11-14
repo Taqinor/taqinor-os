@@ -169,3 +169,21 @@ describe('CCAT5 — rôle de devis : libellés français et aide batterie C&I', 
     expect(screen.queryByText(/option « avec batterie » des devis C&I/)).toBeNull()
   })
 })
+
+describe('AERR132 — fiche à stock négatif', () => {
+  it('édition d’un produit à stock -3 : changer le prix ⇒ updateProduit appelé', async () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <ProduitForm produit={{ ...BATTERIE, nom: 'Câble 6 mm²', quantite_stock: -3, prix_vente: '12' }}
+                   onClose={onClose} onSaved={() => {}} />,
+      { wrapper: wrapperProduitForm })
+    await screen.findByText('Données maîtres')
+    fireEvent.change(container.querySelector('#pf-vente'), { target: { value: '13' } })
+    enregistrer()
+    await waitFor(() => expect(espionsStock.updateProduitApi).toHaveBeenCalled())
+    expect(dernierPatch()).toMatchObject({ prix_vente: '13' })
+    expect(dernierPatch()).not.toHaveProperty('quantite_stock')
+    expect(screen.queryByText('Saisissez un nombre entier.')).toBeNull()
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+})
