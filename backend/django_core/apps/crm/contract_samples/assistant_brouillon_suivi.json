@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/crm/leads/<id>/brouillon-suivi/",
-  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « wa_message » de l'assistant (AIC32). Incident : la vue rendait `lien_wa_me` pendant que la carte lisait `wa_url` — aucun bouton « Ouvrir WhatsApp ». `wa_url` est désormais la clé lue par l'écran ; `lien_wa_me` reste servi (même valeur) pour un écran resté en cache. Règle du Guide (« Jamais \"vous avez vu le devis ?\" ») : sans modèle société pour l'objectif, AUCUNE phrase de repli n'est écrite — `texte` vaut \"\" et `wa_url` ouvre la conversation sans texte pré-rempli (la commerciale écrit elle-même). `wa_url` et `lien_wa_me` valent null sans numéro joignable, pour un rôle sans `client_pii_voir` ou pour un canal autre que whatsapp. Rien n'est écrit, rien n'est envoyé. Lot `herite` : le copilote lui préfère `crm.suivi.preparer_touche` (textes validés du suivi).",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « wa_message » de l'assistant (AIC32). Incident : la vue rendait `lien_wa_me` pendant que la carte lisait `wa_url` — aucun bouton « Ouvrir WhatsApp ». `wa_url` est désormais la clé lue par l'écran ; `lien_wa_me` reste servi (même valeur) pour un écran resté en cache. Règle du Guide (« Jamais \"vous avez vu le devis ?\" ») : sans modèle société pour l'objectif, AUCUNE phrase de repli n'est écrite — `texte` vaut \"\" et `wa_url` ouvre la conversation sans texte pré-rempli (la commerciale écrit elle-même). `wa_url` et `lien_wa_me` valent null sans numéro joignable, pour un rôle sans `client_pii_voir` ou pour un canal autre que whatsapp. Rien n'est écrit, rien n'est envoyé. Lot `herite` : le copilote lui préfère `crm.suivi.preparer_touche` (textes validés du suivi). AIC96 (14/11/2026) : `objectif` accepte aussi les textes MANUELS validés de Paramètres → Messages (`objectifs_manuels`), rendus pour CE lead par la machinerie des touches (`message_pour_etape`) : `modele_source` vaut alors la clé, `placeholders_manquants` liste les placeholders sans valeur (leur phrase est omise) et `crochets` les blancs `[…]` à compléter à la main (jamais remplis). Ces deux clés ne sont servies que pour un texte manuel (les trois objectifs historiques gardent leur forme). Un objectif hors liste ⇒ 400 qui nomme les objectifs permis ; un lead opposé, perdu ou archivé ⇒ 409 nommé.",
   "exemple_corps": {
     "canal": "whatsapp",
     "objectif": "relance_devis",
@@ -19,5 +19,29 @@
     "lien_wa_me": "https://wa.me/212651971400",
     "modele_source": null,
     "langue_servie": "fr"
+  },
+  "objectifs": [
+    "apres_visite",
+    "relance_devis",
+    "reveil_froid"
+  ],
+  "objectifs_manuels": [
+    "annonce_appel_reda",
+    "debrief_visite",
+    "avis_google",
+    "parrainage"
+  ],
+  "exemple_corps_manuel": {
+    "canal": "whatsapp",
+    "objectif": "parrainage"
+  },
+  "exemple_manuel": {
+    "texte": "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.",
+    "wa_url": "https://wa.me/212651971400?text=Si%20quelqu%27un%20autour%20de%20vous",
+    "lien_wa_me": "https://wa.me/212651971400?text=Si%20quelqu%27un%20autour%20de%20vous",
+    "modele_source": "parrainage",
+    "langue_servie": "fr",
+    "placeholders_manquants": [],
+    "crochets": []
   }
 }
