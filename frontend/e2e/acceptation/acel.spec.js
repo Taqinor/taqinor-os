@@ -123,10 +123,20 @@ async function ecran(page, suivi, testInfo, nom) {
 }
 /** Ferme l'écran administrateur : la capture de l'étape montre l'écran du rôle joué. */
 const montrer = async (page) => { await page.close().catch(() => undefined) }
-async function cloche(p, titre) {
+/** Ouvre la cloche UNE fois et y lit chaque titre. */
+async function cloche(p, ...titres) {
   await p.getByRole('button', { name: /^Notifications \(/ }).first().click()
-  await expect(p.getByText(titre).first(), `cloche : « ${titre} »`).toBeVisible({ timeout: 30_000 })
+  for (const titre of titres) await expect(p.getByText(titre).first(), `cloche : « ${titre} »`).toBeVisible({ timeout: 30_000 })
   await p.keyboard.press('Escape')
+}
+/** Écart accepté (base FAIL) des étapes jouées sous un rôle commercial : défaut ANTÉRIEUR et hors des `Files:` d'ACEL. */
+const ECART_PRECHARGEMENT = {
+  base: 'FAIL',
+  raison: 'le préchargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, monté par '
+    + 'components/layout/Layout.jsx depuis NTMOB28 du 13/08/2026) appelle GET installations/interventions/ma-tournee/ '
+    + 'avant midi pour TOUT compte connecté : un rôle commercial sans droit installations reçoit 403 + console.error '
+    + '(oracles 2 et 3). Antérieur aux commits ACEL du 13/11 et hors de leurs Files (notifications/sweeps.py, '
+    + 'crm/dispatch.py) ; à classer chez le propriétaire du hors-ligne / installations.',
 }
 /** GED : armoire puis chemin de dossiers dans l'arbre. */
 async function ouvrirDossierGed(p, cabinet, chemin) {
@@ -575,8 +585,8 @@ sortie(livrer(list(Notification.objects.filter(event_type='security_alert', titl
   expect((e1['ged.verifier_integrite_archives'] || 0) - (avantEchecs['ged.verifier_integrite_archives'] || 0), 'résumé des problèmes : une ligne').toBe(1)
   // Cloche de l'administrateur : les deux archives nommées.
   await page.goto('/ged')
-  await cloche(page, `Archive légale introuvable : « ACEL62 bail introuvable ${m}.pdf »`)
-  await cloche(page, `Archive légale altérée : « ACEL62 contrat altere ${m}.pdf »`)
+  await cloche(page, `Archive légale introuvable : « ACEL62 bail introuvable ${m}.pdf »`,
+    `Archive légale altérée : « ACEL62 contrat altere ${m}.pdf »`)
   // 2e passage au résultat inchangé : aucune notification ni ligne de plus.
   const c2 = manage(['verifier_archives', '--company', f.slug])
   expect(c2.code, '2e passage : rc 0').toBe(0)
@@ -807,7 +817,7 @@ sortie(dict(publiee=an.publiee, notes=notes, notes_daily=notes_daily,
   await p.reload()
   await expect(p.getByText(titre).first(), 'après rechargement').toBeVisible({ timeout: 60_000 })
   await montrer(page)
-})
+}, { ecart: ECART_PRECHARGEMENT })
 
 // ═══ PF11.4 — ACEL77 : assemblage des photos de toit tué → « échec — relancez » après 10 min ═══
 etape('PF11.4-ACEL77', ['ACEL77'], async ({ page }) => {
@@ -987,4 +997,4 @@ sortie(dict(p1=p1, p2=p2, avert2=[x for x in h.lignes if 'attente' in x], restan
   await expect(p.getByText('0 en attente', { exact: true })).toBeVisible()
   for (const k of ['corbeille', 'archive', 'perdu', 'npc']) await expect(p.getByText(nomLead(k)), `${k} : toujours absent`).toHaveCount(0)
   await montrer(page)
-})
+}, { ecart: ECART_PRECHARGEMENT })
