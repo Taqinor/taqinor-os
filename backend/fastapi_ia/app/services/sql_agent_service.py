@@ -1518,17 +1518,24 @@ class SQLAgentService:
         )
 
     @staticmethod
-    def _outils_sql(db, company_id: int, droits: tuple) -> list:
+    def _outils_sql(db, company_id: int, droits: tuple, llm=None,
+                    copilote: bool = True) -> list:
         """COP-B5 — lecture gardee (`_validate_and_secure`, inchangee) et
         schema. Retires : `sql_db_query_checker` (un appel modele CACHE de plus
         par requete, hors prompt et hors cache ; la vraie garde est
         `_validate_and_secure`) et `sql_db_list_tables` (le GUIDE DES TABLES
         du prompt nomme les tables ; une table absente est rappelee par
-        l'erreur de l'outil de schema)."""
+        l'erreur de l'outil de schema). Copilote ETEINT : le jeu d'avant (les
+        quatre outils du toolkit, la lecture remplacee par sa version gardee)
+        — rien de neuf pour le modele tant que l'interrupteur n'est pas leve."""
         from app.services import relais_copilote as relais
         allow_price, allow_pii, permissions = droits
         lecture = _make_secure_query_tool(db, company_id, allow_price,
                                           allow_pii, permissions)
+        if not copilote:
+            from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+            return [lecture if outil.name == "sql_db_query" else outil
+                    for outil in SQLDatabaseToolkit(db=db, llm=llm).get_tools()]
         lecture.description = relais.DESCRIPTION_LECTURE_SQL
         return [lecture, relais.outil_schema(db)]
 
@@ -1559,7 +1566,7 @@ class SQLAgentService:
         llm = self._build_llm(provider)
         droits = self._droits_sql(action_ctx)
         allow_price = droits[0]
-        tools = self._outils_sql(db, company_id, droits)
+        tools = self._outils_sql(db, company_id, droits, llm, copilote)
 
         # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
         # a un droit d'ecriture et qu'une URL Django interne est configuree. Un

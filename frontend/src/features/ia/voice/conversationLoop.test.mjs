@@ -141,6 +141,19 @@ test('confirmée au doigt PENDANT l\'écoute : micro fermé, accusé lu, clip en
   assert.equal(spy.names().filter((n) => n === 'startListening').length, 2)
 })
 
+test('réponse reçue PENDANT l\'écoute (question tapée) : micro fermé avant la lecture, une seule capture', () => {
+  const spy = makeSpyHandlers()
+  const loop = createConversationLoop(spy.handlers)
+  loop.start()
+  loop.onAnswer({ role: 'agent', content: 'Trois devis.' })
+  const noms = spy.names()
+  assert.ok(noms.indexOf('stopListening') !== -1 && noms.indexOf('stopListening') < noms.indexOf('speak'))
+  loop.onSpeechSpoken()
+  assert.equal(loop.getState(), LOOP_STATES.LISTENING)
+  assert.equal(spy.names().filter((n) => n === 'startListening').length, 2)
+  assert.equal(spy.names().filter((n) => n === 'stopListening').length, 1)
+})
+
 test('barge-in : parler pendant la lecture coupe la synthèse et ré-ouvre le micro', () => {
   const spy = makeSpyHandlers()
   const loop = createConversationLoop(spy.handlers)

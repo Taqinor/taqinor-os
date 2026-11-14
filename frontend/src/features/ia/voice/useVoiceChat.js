@@ -427,6 +427,13 @@ export function useVoiceChat(deps = {}) {
     const last = messages[idx]
     if (!last || last.role !== 'agent') return
     lastHandledIndexRef.current = idx
+    // Carte posée par un BOUTON de l'écran (« Préparer », « Touche suivante ») :
+    // rien à lire, la boucle garde son tour (sinon une seconde capture s'ouvrait
+    // sur le micro déjà ouvert, ou la question en cours de transcription se perdait).
+    if (last.local) {
+      if (confirmee) loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })
+      return
+    }
     // Reprise du moteur natif sans texte (des cartes seulement) : l'accusé vaut annonce.
     if (confirmee && !last.content) {
       loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })

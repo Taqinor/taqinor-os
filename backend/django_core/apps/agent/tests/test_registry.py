@@ -196,6 +196,18 @@ class InterrupteurCopiloteTest(TestCase):
     def test_valeur_insensible_a_la_casse_et_aux_blancs(self):
         self.assertIn('tmp.cop.copilote', self._servies(self.admin, ' Admins '))
 
+    def test_description_hors_lot_ne_cite_aucun_outil_du_lot_copilote(self):
+        """Critique finale F1 — une action servie à TOUS ne renvoie jamais le
+        modèle vers un outil que le compte peut ne pas avoir (copilote éteint) :
+        registre réel de toutes les apps, aucune description hors lot ne cite
+        la clé d'une action du lot « copilote »."""
+        actions = list(all_actions())
+        du_lot = sorted(a.key for a in actions if a.lot == 'copilote')
+        self.assertIn('crm.suivi.preparer_touche', du_lot)
+        fautes = {a.key: [cle for cle in du_lot if cle in a.description]
+                  for a in actions if a.lot != 'copilote'}
+        self.assertEqual({k: v for k, v in fautes.items() if v}, {})
+
     def test_defaut_du_reglage_est_admins(self):
         from django.conf import settings
         self.assertEqual(getattr(settings, 'ASSISTANT_COPILOTE', None), 'admins')

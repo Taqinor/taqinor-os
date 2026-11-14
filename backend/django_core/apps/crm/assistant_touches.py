@@ -257,6 +257,12 @@ def _effet_issue(etape, issue, quand_texte):
     froid = stages.STAGE_LABELS[stages.COLD]
     if issue == 'rappel':
         return _effet_rappel(etape, quand_texte)
+    from .cadence_config import CLE_PLANIFIER, est_etape
+    if issue == 'non_joint' and est_etape(etape, CLE_PLANIFIER):
+        # SUIVI E12 — ``_marquer`` : l'appel compte, l'étape est REPOSÉE (demain,
+        # ou à la date donnée) ; jamais « la touche suivante du protocole ».
+        return ("L'appel est compté ; l'étape « Planifier la visite » est "
+                'reposée ' + (f'au {quand_texte}.' if quand_texte else 'pour demain.'))
     if issue in ('non_joint', '') and _dernier_barreau(etape):
         return ("C'est la dernière touche de la cadence : aucune suite n'est "
                 f'programmée et le dossier part à « {froid} » s\'il n\'y est '

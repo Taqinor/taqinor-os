@@ -113,12 +113,18 @@ export function createConversationLoop(handlers = {}) {
     if (message?.proposition) {
       // ACTION SENSIBLE : on lit l'aperçu et on dit d'appuyer ; on ne confirme PAS.
       const apercu = message.apercu || texte
+      const ecoutaitAvant = state === LOOP_STATES.LISTENING
       setState(LOOP_STATES.SPEAKING)
+      if (ecoutaitAvant) h.stopListening?.()
       h.speak?.(apercu ? `${apercu} ${PHRASE_CONFIRMER_AU_DOIGT}` : PHRASE_CONFIRMER_AU_DOIGT)
       return
     }
-    // Réponse normale : on la lit, puis (à la fin) on ré-ouvre le micro.
+    // Réponse normale : on la lit, puis (à la fin) on ré-ouvre le micro. Arrivée
+    // PENDANT l'écoute (question tapée au clavier) : le micro se ferme d'abord —
+    // jamais deux captures ouvertes.
+    const ecoutait = state === LOOP_STATES.LISTENING
     setState(LOOP_STATES.SPEAKING)
+    if (ecoutait) h.stopListening?.()
     h.speak?.(texte)
   }
 

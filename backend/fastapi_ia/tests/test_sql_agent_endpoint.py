@@ -529,14 +529,22 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertEqual(historique[3]["content"], "r2")
 
     def test_copilote_eteint_texte_identique_a_main(self):
-        """F7 — copilote ÉTEINT : le modèle ne voit RIEN de neuf. La question
-        et l'historique remis au modèle sont, octet pour octet, ceux
-        d'`origin/main` (`_question_avec_contexte` : suffixe d'écran et de
-        lead ; aucun en-tête, aucune ligne « Références »)."""
+        """F7 — copilote ÉTEINT : la question, l'historique et les outils SQL
+        remis au modèle sont ceux d'`origin/main` (`_question_avec_contexte` :
+        suffixe d'écran et de lead ; aucun en-tête, aucune ligne « Références »,
+        aucune ligne de confirmation, les quatre outils SQL du toolkit, aucune
+        consigne du copilote). Restent neufs pour tous au merge, et seulement
+        eux : le manuel régénéré du bloc système (AIC79) et les schémas
+        d'arguments des actions (AIC67)."""
         from langchain_core.messages import AIMessage
+        from app.services import prompt_copilote
         touche = {"type": "resultat", "carte": "touche", "donnees": {
             "touche": {"id": 412, "lead": 1489}}}
-        historique = [{"role": "user", "content": "q1"},
+        historique = [{"role": "user", "content": "q0"},
+                      {"role": "agent", "content": "r0"},
+                      {"role": "agent", "confirmation": True, "cartes": [touche],
+                       "content": "Action confirmée par l'utilisateur et exécutée : X."},
+                      {"role": "user", "content": "q1"},
                       {"role": "agent", "content": "r1", "cartes": [touche]}]
         attendus = (
             ({"ecran": "/crm/leads/12", "lead_id": 12, "devis_id": 45, "touche_id": 412},
@@ -552,7 +560,42 @@ class TourReelCartesTests(unittest.TestCase):
                                   catalogue=[dict(_CAT_LEAD_LIST, lot="herite")])
                 textes = [m.content for m in
                           next(m for genre, m in llm.recus if genre == "messages")]
-                self.assertEqual(textes[1:], ["q1", "r1", attendu])
+                self.assertEqual(textes[1:], ["q0", "r0", "q1", "r1", attendu])
+                self.assertNotIn(prompt_copilote.CONSIGNES_COPILOTE[:80], textes[0])
+                noms = next(n for genre, n in llm.recus if genre == "outils")
+                self.assertEqual(sorted(n for n in noms if n.startswith("sql_db_")), [
+                    "sql_db_list_tables", "sql_db_query", "sql_db_query_checker",
+                    "sql_db_schema"])
+
+    def test_fenetre_d_historique_jamais_ouverte_par_l_assistant(self):
+        """Critique finale F1 — une ligne de confirmation décalait la coupe :
+        la fenêtre relue commençait par un tour d'assistant et en portait deux
+        de suite. Elle part toujours d'une question ; copilote allumé, la ligne
+        de confirmation est relue DANS le tour d'assistant qui la précède."""
+        from langchain_core.messages import AIMessage, HumanMessage
+        from app.services import relais_copilote as relais
+        confirmee = {"role": "agent", "confirmation": True, "cartes": [],
+                     "content": "Action confirmée par l'utilisateur et exécutée : Créer un client."}
+        brut = [{"role": "user", "content": "q0"}, {"role": "agent", "content": "r0"},
+                {"role": "user", "content": "crée le client"},
+                {"role": "agent", "content": "Je te propose de créer le client."},
+                confirmee]
+        for copilote, attendus in (
+                (True, ["q0", "r0", "crée le client",
+                        "Je te propose de créer le client.\n\n" + confirmee["content"]]),
+                (False, ["q0", "r0", "crée le client",
+                         "Je te propose de créer le client."])):
+            with self.subTest(copilote=copilote):
+                messages = relais.historique_langchain(brut, copilote)
+                self.assertEqual([m.content for m in messages], attendus)
+                self.assertIsInstance(messages[0], HumanMessage)
+                genres = [type(m) for m in messages]
+                self.assertFalse(any(a is AIMessage and b is AIMessage
+                                     for a, b in zip(genres, genres[1:])))
+        # Historique qui ne contient plus aucune question : rien n'est relu.
+        self.assertEqual(relais.historique_langchain([confirmee], True), [])
+        self.assertEqual(relais.fenetre_du_modele(brut + [
+            {"role": "user", "content": "q2"}], True)[0]["content"], "crée le client")
 
     def test_consignes_du_copilote_dans_le_bloc_en_cache(self):
         """COP-B3 — catalogue avec une action du lot `copilote` : les consignes
@@ -654,9 +697,14 @@ class TourReelCartesTests(unittest.TestCase):
         (une ecriture est refusee sans etre executee)."""
         from langchain_core.messages import AIMessage
         from app.services import sql_agent_service as svc
-        _, _, llm = _tour([AIMessage(content="ok")])
+        # Copilote ALLUMÉ seulement (critique finale F1 : éteint, le jeu d'outils
+        # reste celui d'avant — `test_copilote_eteint_texte_identique_a_main`).
+        _, _, llm = _tour([AIMessage(content="ok")], ctx=_ctx(),
+                          catalogue=[dict(_CAT_LEAD_LIST, lot="copilote")])
         noms = next(n for g, n in llm.recus if g == "outils")
-        self.assertEqual(noms, ["sql_db_query", "sql_db_schema", "report_gap"])
+        self.assertEqual([n for n in noms if n.startswith("sql_db_")],
+                         ["sql_db_query", "sql_db_schema"])
+        self.assertIn("report_gap", noms)
         from sqlalchemy import create_engine, text
         from langchain_community.utilities import SQLDatabase
         engine = create_engine("sqlite://")

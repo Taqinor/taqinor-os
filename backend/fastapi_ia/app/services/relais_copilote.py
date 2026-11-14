@@ -269,15 +269,32 @@ def references_des_cartes(cartes: Optional[list]) -> str:
     return ligne if vus else ""
 
 
+def fenetre_du_modele(brut: Optional[list], copilote: bool = True) -> list:
+    """Les messages de l'historique relus au modèle : les 2 derniers ÉCHANGES,
+    à partir d'une question de l'utilisateur — la fenêtre ne commence jamais
+    par un message d'agent (une ligne « Action confirmée… » décalait la coupe
+    et ouvrait la conversation par un tour d'assistant). Copilote ÉTEINT : les
+    lignes de confirmation ne sont pas relues (rien de neuf pour le modèle ;
+    elles restent à l'écran)."""
+    messages = [m for m in (brut or []) if isinstance(m, dict)
+                and (copilote or not m.get("confirmation"))]
+    questions = [i for i, m in enumerate(messages) if m.get("role") == "user"]
+    if not questions:
+        return []
+    return messages[questions[-(HISTORIQUE_MODELE // 2):][0]:]
+
+
 def historique_langchain(brut: Optional[list], copilote: bool = True) -> list:
     """Historique Redis -> messages LangChain (2 derniers échanges seulement :
     d'anciens résultats ne doivent pas contaminer une nouvelle question ; tout
     l'historique reste dans Redis pour l'écran). Un message ancien sans
     `cartes` se relit tel quel ; copilote allumé, le DERNIER message d'agent
-    reçoit la ligne « Références : … » de ses cartes (éteint : rien de neuf)."""
+    reçoit la ligne « Références : … » de ses cartes (éteint : rien de neuf).
+    Deux messages d'agent qui se suivent (réponse puis ligne de confirmation)
+    sont relus comme UN seul tour d'assistant."""
     from langchain_core.messages import AIMessage, HumanMessage
 
-    recents = [m for m in (brut or []) if isinstance(m, dict)][-HISTORIQUE_MODELE:]
+    recents = fenetre_du_modele(brut, copilote)
     dernier = max((i for i, m in enumerate(recents) if m.get("role") == "agent"),
                   default=None)
     messages = []
@@ -287,7 +304,11 @@ def historique_langchain(brut: Optional[list], copilote: bool = True) -> list:
             messages.append(HumanMessage(content=texte))
         elif msg.get("role") == "agent":
             refs = references_des_cartes(msg.get("cartes")) if copilote and i == dernier else ""
-            messages.append(AIMessage(content=f"{texte}\n\n{refs}" if refs else texte))
+            contenu = f"{texte}\n\n{refs}" if refs else texte
+            if messages and isinstance(messages[-1], AIMessage):
+                messages[-1] = AIMessage(content=f"{messages[-1].content}\n\n{contenu}")
+            else:
+                messages.append(AIMessage(content=contenu))
     return messages
 
 
@@ -316,6 +337,8 @@ def apres_confirmation(service, ctx, company_id: int, user_id: int,
         "role": "agent",
         "content": f"Action confirmée par l'utilisateur et exécutée : {libelle}.",
         "cartes": [carte] if carte else [],
+        # Marque lue par `fenetre_du_modele` : copilote éteint, pas relue.
+        "confirmation": True,
     }])
     return {"carte": carte,
             "suite": reprise_native(service, ctx, company_id, user_id,

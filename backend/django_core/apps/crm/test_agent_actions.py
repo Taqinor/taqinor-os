@@ -876,9 +876,12 @@ class CrmAssistantFileEtResumeTest(_CopiloteBase):
         self.assertEqual(LEADS_A_RELANCER.carte, 'file_touches')
         self.assertEqual(DIGEST_MATIN.carte, 'matin')
         self.assertEqual(RESUME_LEAD.carte, 'fiche_lead')
+        # Les lectures hors lot DISENT le touche_id ; c'est l'outil du lot
+        # copilote qui dit d'où il vient (jamais l'inverse : une action servie
+        # à tous ne cite pas un outil que le compte peut ne pas avoir).
         for action in (LEADS_A_RELANCER, RESUME_LEAD):
             self.assertIn('touche_id', action.description)
-            self.assertIn('crm.suivi.preparer_touche', action.description)
+        self.assertIn('touche_id', PREPARER_TOUCHE.description)
 
 
 class CrmAssistantToucheTest(_CopiloteBase):
@@ -1245,6 +1248,18 @@ class CrmAssistantPropositionTest(_CopiloteBase):
         self.assertEqual(reel.status_code, 200, reel.data)
         visite.refresh_from_db()
         self.assertEqual(visite.statut, RelanceEtape.Statut.A_FAIRE)
+        # « Pas de réponse » sur « Planifier la visite » : l'étape est reposée
+        # pour demain (SUIVI E12), l'effet le dit — et le vrai geste le fait.
+        sans = self._proposer(visite, geste='fait',
+                              outcome='non_joint').data['proposition']
+        self.assertIn('reposée pour demain', sans['effet'])
+        reel = auth(self.alice).post(
+            f'/api/django/crm/relance-etapes/{visite.pk}/fait/',
+            sans['corps'], format='json')
+        self.assertEqual(reel.status_code, 200, reel.data)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=lead, cle=CLE_PLANIFIER,
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
         joint = self._proposer(geste='fait', outcome='joint',
                                rappel_le=jour).data['proposition']
         self.assertIn("La touche suivante, s'il en reste une, est placée au",

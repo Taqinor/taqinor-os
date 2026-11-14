@@ -17,6 +17,22 @@ const EXEMPLE = CONTRAT.diagnostic.exemple
 
 test.beforeEach(() => viderTampon())
 
+test('déconnexion : le relevé est vidé (événement taqinor:auth-logout)', async () => {
+  const cible = new EventTarget()
+  globalThis.addEventListener = cible.addEventListener.bind(cible)
+  try {
+    // Module frais : l'écoute se pose au chargement, comme dans le navigateur.
+    const frais = await import('./tamponDiagnostic.js?deconnexion')
+    frais.noterRequete({ methode: 'GET', url: '/api/django/crm/leads/12/', statut: 200, dureeMs: 5 })
+    frais.noterErreur({ genre: 'script', message: 'boum' })
+    assert.equal(frais.instantaneDiagnostic().requetes.length, 1)
+    cible.dispatchEvent(new Event(frais.EVENEMENT_DECONNEXION))
+    assert.deepEqual([frais.instantaneDiagnostic().requetes, frais.instantaneDiagnostic().erreurs], [[], []])
+  } finally {
+    delete globalThis.addEventListener
+  }
+})
+
 test('routes : identifiants, UUID, jetons, origine et chaîne de requête disparaissent', () => {
   assert.equal(normaliserRoute('/api/django/crm/leads/1637/'), '/api/django/crm/leads/<id>/')
   assert.equal(

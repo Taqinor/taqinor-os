@@ -141,3 +141,10 @@ export function viderTampon() {
   requetes.length = 0
   erreurs.length = 0
 }
+
+// Déconnexion (événement émis par `logoutUser`, LW45) : le relevé d'un compte ne
+// suit jamais le compte suivant sur le même navigateur.
+export const EVENEMENT_DECONNEXION = 'taqinor:auth-logout'
+if (typeof globalThis.addEventListener === 'function') {
+  globalThis.addEventListener(EVENEMENT_DECONNEXION, viderTampon)
+}

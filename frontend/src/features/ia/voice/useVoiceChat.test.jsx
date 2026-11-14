@@ -13,7 +13,7 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import React from 'react'
 
-import iaReducer, { confirmAgentAction } from '../store/iaSlice'
+import iaReducer, { confirmAgentAction, ajouterMessageLocal } from '../store/iaSlice'
 import { ETATS } from '../cartes/cartes'
 import {
   useVoiceChat,
@@ -230,6 +230,22 @@ describe('useVoiceChat — sécurité AG12 (pas d\'auto-confirmation)', () => {
     act(() => { result.current.stopConversation() })
     await act(async () => { result.current.startConversation() })
     expect(env.speechSynthesis.speak).toHaveBeenCalledTimes(1)
+    act(() => { result.current.stopConversation() })
+  })
+
+  it('COP-F6 : une carte posée par un bouton (message local) ne lit rien et n\'ouvre pas une seconde capture', async () => {
+    const store = makeStore([{ role: 'user', content: 'ma file' }, { role: 'agent', content: 'Voici.', cartes: [] }])
+    const env = makeMockEnv()
+    const { result } = renderHook(() => useVoiceChat({ env, transcribe: vi.fn() }), { wrapper: wrapper(store) })
+    await act(async () => { result.current.startConversation() })
+    await waitFor(() => expect(env.navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      store.dispatch(ajouterMessageLocal({ role: 'agent', content: '', local: true, cartes: [] }))
+    })
+    expect(store.getState().ia.messages).toHaveLength(3)
+    expect(env.speechSynthesis.speak).not.toHaveBeenCalled()
+    expect(env.navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+    expect(result.current.loopState).toBe('listening')
     act(() => { result.current.stopConversation() })
   })
 

@@ -86,8 +86,8 @@ METTRE_A_JOUR_LEAD = AgentAction(
         "Sert à : poser la date de relance d'un lead (la prochaine touche "
         "du suivi est déplacée à cette date). "
         "Ne pas utiliser pour : changer l'étape (crm.lead.changer_etape), "
-        "qualifier (crm.lead.qualifier), noter (crm.lead.note) ni "
-        "enregistrer la réponse d'une touche (crm.suivi.proposer_reponse). "
+        "noter (crm.lead.note), qualifier le lead ni enregistrer la réponse "
+        "d'une touche. "
         "Exemple : « Relance le lead 12 le 3 ». "
         "Résultat : le lead mis à jour ; la société n'est jamais modifiable."
     ),
@@ -190,8 +190,8 @@ LEADS_A_RELANCER = AgentAction(
     description=(
         "Sert à : lister les leads que le commercial connecté doit relancer "
         "(nom, étape, touche prévue, retard, canal, dernier contact), 20 "
-        "lignes max avec le total ; touche_id de chaque ligne = l'entrée de "
-        "crm.suivi.preparer_touche. "
+        "lignes max avec le total ; chaque ligne porte le touche_id de sa "
+        "touche. "
         "Ne pas utiliser pour : relancer, écrire ou chercher un lead précis. "
         "Exemple : « Qui dois-je relancer aujourd'hui ? » (portee=aujourd_hui). "
         "Résultat : {portee, total, limite, lignes[]}, même file que le cockpit."
@@ -223,8 +223,7 @@ RESUME_LEAD = AgentAction(
     description=(
         "Sert à : préparer un appel — identité, étape, contact préféré, "
         "5 dernières entrées du chatter, devis (avec leur id), visites, "
-        "prochaine touche (touche_id, entrée de crm.suivi.preparer_touche), "
-        "alertes. "
+        "prochaine touche (avec son touche_id), alertes. "
         "Ne pas utiliser pour : écrire une note (crm.lead.note) ni modifier "
         "le lead. "
         "Exemple : « Résume-moi le lead 12 avant mon appel ». "
