@@ -139,9 +139,13 @@ etape('PF12.3-AERR133', ['AERR133'], async ({ page, suivi, testInfo }) => {
     await p.getByRole('menuitem', { name: 'Note de débit' }).click()
     await expect(boite(f), `boîte ouverte sur ${f.reference}`).toBeVisible({ timeout: 30_000 })
   }
+  // « Note de débit » ouvre la boîte SANS refermer le menu de la ligne (`onSelect` + `preventDefault`) : Échap ferme la
+  // boîte, puis le menu resté ouvert derrière elle.
   const fermer = async (f) => {
     await p.keyboard.press('Escape')
     await expect(boite(f), `boîte de ${f.reference} refermée`).toBeHidden({ timeout: 30_000 })
+    if (await p.getByRole('menu').isVisible()) await p.keyboard.press('Escape')
+    await expect(p.getByRole('menu'), 'menu de ligne refermé').toHaveCount(0)
   }
   const jouer = async (passe) => {
     await p.goto('/ventes/factures')
@@ -398,7 +402,14 @@ etape('PF12.2-AERR149', ['AERR149', 'AERR11'], async ({ page, suivi, testInfo })
   await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
   expect(ecritures, 'rechargé, Entrée : ni soumission ni navigation').toEqual([])
   await ouvrirLots()
-  await modifierPrix(p, d)
+  await expect(carte, 'rechargé, Entrée : lot listé').toContainText(`Bâtiment D ${m}`, { timeout: 30_000 })
+  // Le devis est relu après la création (QJR548) : la saisie ne se modifie qu'une fois cette relecture finie.
+  await p.waitForTimeout(3_000)
+  await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
+  const fin = await modifierPrix(p, d)
+  await p.waitForTimeout(1_500)
+  await expect(PRIX(p), 'rechargé : saisie modifiée tenue').toHaveValue(fin.valeur)
+  await expect(p.getByTestId('gen-barre-non-enregistre'), 'rechargé : « Modifications non enregistrées »').toBeVisible()
   await carte.locator('#lot-nom').fill(`Lot final ${m}`)
   await carte.getByRole('button', { name: 'Créer le lot' }).click()
   await expect(conf, 'rechargé, saisie modifiée : question').toContainText(PERTE)

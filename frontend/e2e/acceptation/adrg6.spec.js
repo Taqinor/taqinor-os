@@ -3,13 +3,13 @@
 // droit de modifier, « Bon de commande (PDF) » sous le droit PDF) et ADRG128 (Ventes › Factures : « Aperçu du PDF »
 // sous le droit PDF, barre d'actions de lot sous le code de route de chaque geste, aucune barre pour un Viewer).
 // Comptes d'essai aux rôles SYSTÈME du registre (`init_roles`, relus par leur nom dans la société démo — jamais un
-// rôle fabriqué), connectés par le VRAI écran de connexion. Données posées par demo_admin par les vraies routes, puis
+// rôle fabriqué), connectés par /token/ (voir `ecran`). Données posées par demo_admin par les vraies routes, puis
 // attribuées (created_by) au compte qui doit les voir ; Viewer et ce compte ont le même encadrant (portée « équipe »
 // du Viewer : ses pairs). Persistance : n/a (rendu) — chaque écran est relu après rechargement.
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { assurerSessionPage, lireJson, telephoneMobileUnique, uiLoginJusquAuxApps } from '../helpers.js'
+import { assurerSessionPage, connexionApi, lireJson, telephoneMobileUnique } from '../helpers.js'
 
 const etape = groupe('ADRG', ['ADRG127', 'ADRG128'])
 fermerDjangoApresTout()
@@ -45,8 +45,11 @@ async function ecran(page, suivi, testInfo, nom) {
       localStorage.setItem('taqinor.prechargementTournee', `${v('year')}-${v('month')}-${v('day')}`)
     } catch { /* mode privé */ }
   })
+  // Connexion par /token/ (même geste qu'adrg.spec.js PF4.1-ADRG19), pas par l'écran de connexion : l'accueil `/apps`
+  // où il atterrit demande `reporting/reports/kpi-federes/?vue=badges`, que le serveur refuse (403) au Viewer —
+  // défaut de l'accueil (HomeMenu.jsx › useAppBadges), hors des Files d'ADRG127/ADRG128, rapporté à part.
+  await connexionApi(ctx.request, { username: nom, password: MDP_ESSAI })
   const p = suivi.surveiller(await ctx.newPage())
-  await uiLoginJusquAuxApps(p, { username: nom, password: MDP_ESSAI })
   const visites = await ctx.request.get(`${API}/onboarding/tours/`, T)
   if (visites.ok()) {
     for (const v of await visites.json()) {

@@ -150,6 +150,7 @@ jobs:
           grep -vE '^(sentence-transformers|faster-whisper)' requirements.txt > /tmp/fa-req.txt
           /tmp/fa/bin/pip install --quiet --upgrade pip
           /tmp/fa/bin/pip install --quiet -r /tmp/fa-req.txt
+          export DJANGO_INTERNAL_URL=http://127.0.0.1:8000 DJANGO_INTERNAL_HOST=localhost
           nohup /tmp/fa/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/fastapi.log 2>&1 &
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health || true)
