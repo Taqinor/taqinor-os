@@ -527,7 +527,8 @@ test('iaApi : journal et délai sur la seconde instance axios (copilote, agent S
   assert.ok(signal > source.indexOf('emitSessionExpired()'))
   assert.ok(signal < source.indexOf('toastError(getApiError(error).message)'))
   // L'agent SQL a droit au délai que nginx lui laisse (300 s, pas 120 s).
-  assert.match(source, /'\/sql-agent\/query',[^\n]*\{ timeout: DELAI_AGENT_SQL_MS \}/)
+  // AIC91 — corps sur plusieurs lignes (progression_id facultatif) : le délai reste celui de l'agent SQL.
+  assert.match(source, /'\/sql-agent\/query', \{[\s\S]*?\}, \{ timeout: DELAI_AGENT_SQL_MS \}\)/)
   assert.match(source, /'\/sql-agent\/confirm', \{ token \}, \{ timeout: DELAI_AGENT_SQL_MS \}/)
 })
 
