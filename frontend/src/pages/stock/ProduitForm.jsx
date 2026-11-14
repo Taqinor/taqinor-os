@@ -1101,7 +1101,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
   const margeNegative = venteN > 0 && achatN > 0 && venteN < achatN
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${produit.nom}` : 'Nouveau produit'}</DialogTitle>

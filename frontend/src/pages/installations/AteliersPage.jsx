@@ -1202,7 +1202,7 @@ export default function AteliersPage() {
           className="my-6"
         />
       ) : (
-        <DataTable
+        <DataTable codeExport="installation_export"
           data={rows}
           columns={columns}
           getRowId={(row) => row.id}

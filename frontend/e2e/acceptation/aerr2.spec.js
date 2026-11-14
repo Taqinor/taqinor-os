@@ -43,23 +43,12 @@ async function auRepos(suivi) {
   for (const p of suivi.pages.filter((x) => !x.isClosed())) await p.waitForLoadState('networkidle').catch(() => undefined)
 }
 
-// ÉCART ACCEPTÉ, BORNÉ (décision de l'orchestrateur du lot, METHODE §C.4 point 7 (b)) — la question avant de quitter une
-// fiche lead en création est la boîte NATIVE `window.confirm` de `frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty`
-// (oracle 4), appelée telle quelle par `useLeadDraft.leaveGuard` avant AERR108, fichier hors des Files d'AERR108. Borné :
-// le corps de l'étape échoue sur TOUT autre incident d'oracle. (Le 403 du pré-chargement matinal de la tournée vu aux
-// runs du 14/11 avant 12 h est corrigé sur main par ADRG122 — branche fusionnée, plus aucun écart pour lui.)
-const RAISON_NATIF = 'la question avant de quitter une fiche en création est la boîte NATIVE window.confirm « Modifications '
-  + 'non enregistrées — quitter cette page ? » de frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty (oracle 4), '
-  + 'appelée telle quelle par useLeadDraft.leaveGuard avant AERR108, fichier hors des Files d\'AERR108 (deploy) ; '
-  + 'borné : seul cet oracle 4 est excusé, le corps (question posée, fiche gardée, doublon non lu) doit passer'
-/** Étape jouée sous le Commercial responsable : écarts bornés ci-dessus seulement. */
-function etapeCR(id, taches, corps, { natif = false } = {}) {
-  if (!natif) { etape(id, taches, corps); return }
-  etape(id, taches, async (args) => {
-    await corps(args)
-    const autres = args.suivi.incidents.filter((i) => !(i.oracle === '4' && /quitter cette page/.test(i.texte)))
-    expect(autres, 'écart borné : aucun autre incident d\'oracle').toEqual([])
-  }, { ecart: { base: 'FAIL', raison: RAISON_NATIF } })
+// AERR155 — l'ancien écart borné (boîte NATIVE de `confirmLeaveIfDirty` avant de quitter une fiche lead en création,
+// oracle 4) est levé : la question est la boîte de l'application « Quitter sans enregistrer ? », aucun écart restant.
+// (Le 403 du pré-chargement matinal de la tournée vu aux runs du 14/11 avant 12 h est corrigé sur main par ADRG122.)
+/** Étape jouée sous le Commercial responsable. */
+function etapeCR(id, taches, corps) {
+  etape(id, taches, corps)
 }
 
 // Détecteurs dont le motif lit l'ANCIENNE forme et rend `repro` True sur le code corrigé (vérifié à la lecture le
@@ -650,8 +639,6 @@ etapeCR('PF12.9b-AERR108-creation', ['AERR108'], async ({ page, suivi, testInfo 
   const [a] = await creerLeads(cr, [{ nom: `AERR108C ${m}`, prenom: 'Essai', telephone: tel, stage: 'NEW' }])
   apres.push(() => supprimerLeads([a]))
   const p = await ecran(page, suivi, testInfo, nom)
-  const questions = []
-  p.on('dialog', (d) => questions.push(`${d.type()} : ${d.message()}`))
   const lectures = compteur(p, 'GET', (ch) => ch === `${API}/crm/leads/${a}/`)
   await p.goto('/crm/leads?new=1')
   const fiche = p.getByRole('dialog').filter({ has: p.getByRole('heading', { name: 'Nouveau lead' }) })
@@ -661,9 +648,12 @@ etapeCR('PF12.9b-AERR108-creation', ['AERR108'], async ({ page, suivi, testInfo 
   const lien = fiche.locator('.lw-dup-warning .lw-dup-link').filter({ hasText: `AERR108C ${m}` })
   await expect(lien, 'doublon signalé en création').toBeVisible({ timeout: 30_000 })
   await lien.click()
-  await expect.poll(() => questions.length, { timeout: 15_000, message: 'une question est posée avant de quitter' }).toBe(1)
-  expect(questions[0], `question posée : ${questions[0]}`).toMatch(/quitter/i)
-  // Refusée (l'oracle referme la boîte native par « Annuler ») : la fiche en création reste, le doublon n'est pas ouvert.
+  // AERR155 — la question est la boîte de l'application (aucun dialogue natif : oracle 4 sans écart).
+  const boite = p.getByRole('alertdialog').filter({ hasText: 'Quitter sans enregistrer ?' })
+  await expect(boite, 'une question est posée avant de quitter').toBeVisible({ timeout: 15_000 })
+  await boite.getByRole('button', { name: 'Rester', exact: true }).click()
+  await expect(boite).toHaveCount(0)
+  // « Rester » : la fiche en création reste, le doublon n'est pas ouvert.
   await expect(fiche, 'la fiche en création reste').toBeVisible()
   await expect(fiche.locator('#lf-nom')).toHaveValue(`AERR108C nouveau ${m}`)
   expect(lectures.n, 'le doublon n\'est pas lu').toBe(0)
@@ -671,7 +661,7 @@ etapeCR('PF12.9b-AERR108-creation', ['AERR108'], async ({ page, suivi, testInfo 
 sortie(Lead.all_objects.filter(nom=${J(`AERR108C nouveau ${m}`)}).count())`), 'rien n\'est créé').toBe(0)
   await auRepos(suivi)
   await montrer(page)
-}, { natif: true })
+})
 
 // Évènement d'agenda modifiable (activité du compte, rattachée à son lead) daté du `jour` du mois courant.
 const MOIS = new Date()

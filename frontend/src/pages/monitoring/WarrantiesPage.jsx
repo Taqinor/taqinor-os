@@ -261,7 +261,7 @@ export default function WarrantiesPage() {
           className="my-6"
         />
       ) : (
-        <DataTable
+        <DataTable codeExport="sav_export"
           data={warranties}
           columns={columns}
           getRowId={(row) => row.id}
@@ -339,7 +339,7 @@ export default function WarrantiesPage() {
                     : <ChartEmpty description="Aucune année avec production mesurée." />}
                   {curvePoints.length > 0 && (
                     <div className="mt-4">
-                      <DataTable
+                      <DataTable codeExport="sav_export"
                         data={curvePoints}
                         columns={curveColumns}
                         getRowId={(row) => row.year}

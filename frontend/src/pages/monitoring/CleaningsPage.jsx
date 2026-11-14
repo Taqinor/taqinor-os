@@ -202,7 +202,7 @@ export default function CleaningsPage() {
               className="my-4"
             />
           ) : (
-            <DataTable
+            <DataTable codeExport="sav_export"
               data={cleanings}
               columns={columns}
               getRowId={(row) => row.id}

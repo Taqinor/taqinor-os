@@ -1678,7 +1678,7 @@ export default function StockList() {
                         description="Les produits supprimés avec historique apparaissent ici." />
           ) : (
             <div className="opacity-80">
-              <DataTable
+              <DataTable codeExport="stock_export"
                 data={produitsArchived}
                 columns={archivedColumns}
                 getRowId={(p) => p.id}

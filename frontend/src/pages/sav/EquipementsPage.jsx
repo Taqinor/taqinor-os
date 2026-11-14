@@ -236,7 +236,7 @@ function EquipementDetailCorps({ equipement, onClose, onSaved }) {
   }
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
+    <Sheet open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }}>
       <SheetContent side="right" className="w-[min(34rem,calc(100%-2rem))] sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>Équipement — {equipement.produit_nom ?? ''}</SheetTitle>
@@ -749,7 +749,7 @@ export default function EquipementsPage() {
               : undefined}
           />
         ) : (
-          <DataTable
+          <DataTable codeExport="sav_export"
             data={rows}
             columns={columns}
             getRowId={(row) => row.id}

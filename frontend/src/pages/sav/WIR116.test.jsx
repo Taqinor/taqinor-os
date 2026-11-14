@@ -13,7 +13,8 @@ const items = [
   { id: 12, numero_serie: 'SN-12', produit: 1, produit_nom: 'Onduleur', garantie_etat: 'hors_garantie', date_fin_garantie: '2020-01-01', statut: 'en_service' },
 ]
 
-vi.mock('react-redux', () => ({
+vi.mock('react-redux', async (importOriginal) => ({
+  ...(await importOriginal()), // ADRG77 — DataTable lit `ReactReduxContext` (codeExport)
   useDispatch: () => vi.fn(),
   useSelector: (sel) => sel({ equipements: { items, loading: false, error: null } }),
 }))

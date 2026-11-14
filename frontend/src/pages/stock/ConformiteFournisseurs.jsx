@@ -64,7 +64,7 @@ function DocumentsExpirants() {
         </FormField>
       </div>
       <AlerteErreurStock error={error} />
-      <DataTable
+      <DataTable codeExport="stock_export"
         data={rows ?? []}
         columns={columns}
         loading={rows === null && !error}
@@ -163,7 +163,7 @@ function ListeConformite({ voitMontants }) {
         )}
       </div>
       <AlerteErreurStock error={error} />
-      <DataTable
+      <DataTable codeExport="stock_export"
         data={rows ?? []}
         columns={columns}
         loading={rows === null && !error}

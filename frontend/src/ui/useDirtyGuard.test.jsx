@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { useDirtyGuard, confirmLeaveIfDirty, isAnyFormDirty } from './useDirtyGuard'
+import { ConfirmProvider } from '../providers/ConfirmProvider'
 
 /* VX170 — repli WebKit `pagehide`/`visibilitychange`→`hidden` : on ne peut pas
    bloquer un `pagehide` (aucune confirmation synchrone n'y survit), donc la
@@ -66,8 +67,10 @@ describe('useDirtyGuard — persistance défensive WebKit (VX170)', () => {
 })
 
 describe('confirmLeaveIfDirty / isAnyFormDirty — inchangés (non-régression)', () => {
-  it('confirmLeaveIfDirty renvoie true sans confirmation quand non modifié', () => {
-    expect(confirmLeaveIfDirty(false)).toBe(true)
+  it('confirmLeaveIfDirty répond true sans confirmation quand non modifié (sur-le-champ)', () => {
+    let reponse
+    confirmLeaveIfDirty(false).then((ok) => { reponse = ok })
+    expect(reponse).toBe(true)
   })
 
   it('isAnyFormDirty reflète le registre partagé (VX62)', () => {
@@ -76,5 +79,28 @@ describe('confirmLeaveIfDirty / isAnyFormDirty — inchangés (non-régression)'
     expect(isAnyFormDirty()).toBe(true)
     unmount()
     expect(isAnyFormDirty()).toBe(false)
+  })
+})
+
+describe('AERR155 — sortie d\'un formulaire modifié : boîte de l\'application', () => {
+  function Fiche({ onReponse }) {
+    useDirtyGuard(true)
+    return <button type="button" onClick={() => confirmLeaveIfDirty(true).then(onReponse)}>Fermer</button>
+  }
+
+  it('sortie d\'un formulaire modifié : boîte maison, jamais window.confirm', async () => {
+    const natif = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onReponse = vi.fn()
+    render(<ConfirmProvider><Fiche onReponse={onReponse} /></ConfirmProvider>)
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText('Quitter sans enregistrer ?')).toBeInTheDocument()
+    fireEvent.click(within(boite).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(onReponse).toHaveBeenCalledWith(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onReponse).toHaveBeenLastCalledWith(true))
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
   })
 })

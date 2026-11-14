@@ -418,7 +418,7 @@ export default function ProductionPage() {
               className="my-4"
             />
           ) : (
-            <DataTable
+            <DataTable codeExport="sav_export"
               data={readings}
               columns={columns}
               getRowId={(row) => row.id}
@@ -441,7 +441,7 @@ export default function ProductionPage() {
                   className="my-2"
                 />
               ) : (
-                <DataTable
+                <DataTable codeExport="sav_export"
                   data={history}
                   columns={historyColumns}
                   getRowId={(row) => row.month}

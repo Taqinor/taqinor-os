@@ -310,7 +310,7 @@ export default function WarrantyClaimsPage() {
             description="Créez une réclamation garantie fournisseur (RMA) ci-dessus."
           />
         ) : (
-          <DataTable data={visibleRows} columns={columns} getRowId={(row) => row.id}
+          <DataTable codeExport="sav_export" data={visibleRows} columns={columns} getRowId={(row) => row.id}
             searchable={false}
             exportName="warranty-claims"
             emptyTitle="Aucune réclamation"

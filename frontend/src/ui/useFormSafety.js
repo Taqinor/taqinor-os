@@ -56,7 +56,7 @@ export function useFormSafety(initial, current, onClose, options = {}) {
   useNavigationGuard(routeLevel ? dirty : false, message)
 
   const guardedClose = () => {
-    if (confirmLeaveIfDirty(dirty, message)) onClose?.()
+    confirmLeaveIfDirty(dirty, message).then((ok) => ok && onClose?.())
   }
 
   return { dirty, guardedClose, snapshot: current }

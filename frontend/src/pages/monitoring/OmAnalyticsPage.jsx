@@ -137,7 +137,7 @@ export default function OmAnalyticsPage() {
           />
 
           {!loading && !error && monthly.length > 0 && (
-            <DataTable
+            <DataTable codeExport="sav_export"
               data={monthly}
               columns={columns}
               getRowId={(row) => row.month}
