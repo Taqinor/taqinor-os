@@ -727,7 +727,9 @@ class ApprovalDelegationViewSet(TenantMixin, viewsets.ModelViewSet):
         if getattr(user, 'menu_tier', None) not in ('admin', 'responsable'):
             serializer.save(company=user.company, delegant=user)
         else:
-            serializer.save(company=user.company)
+            serializer.save(
+                company=user.company,
+                delegant=serializer.validated_data.get('delegant') or user)  # AERR153
 
 
 # ─────────────────────────────────────────────────────────────────────────────

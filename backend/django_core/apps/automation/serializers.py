@@ -426,6 +426,8 @@ class ApprovalDelegationSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             'date_debut', 'date_fin', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+        # AERR153 — « Déléguer » n'envoie pas `delegant` : posé côté vue.
+        extra_kwargs = {'delegant': {'required': False}}
 
     def validate(self, attrs):
         # ENF11 — une fenêtre inversée (fin avant début) n'est jamais active :
