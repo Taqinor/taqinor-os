@@ -142,14 +142,24 @@ etape('PF12.3-AERR133', ['AERR133'], async ({ page, suivi, testInfo }) => {
       boutons: [...el.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean),
     })).catch((e) => ({ erreur: String(e).slice(0, 200) }))
     console.log(`[AERR133] ligne ${f.reference} avant « Actions » : ${J(etat)}`)
-    await ligne(f).locator('button', { hasText: 'Actions' }).click()
+    const bouton = ligne(f).locator('button', { hasText: 'Actions' })
+    if (etat.pointeurs === 'none') {
+      // DÉFAUT ANTÉRIEUR, hors des Files d'AERR133 (FactureRow.jsx : « Note de débit » ouvre la boîte sans refermer le
+      // menu de la ligne) : la boîte refermée, la page reste inerte au pointeur (body pointer-events:none, aria-hidden).
+      // Nommé dans le rapport ; la ligne suivante est ouverte au CLAVIER (Tab/Entrée), geste réel d'un utilisateur.
+      testInfo.annotations.push({ type: 'défaut antérieur', description: `page inerte au pointeur après la boîte de ${A.reference} : ${J(etat)}` })
+      await bouton.focus()
+      await p.keyboard.press('Enter')
+    } else {
+      await bouton.click()
+    }
     await p.getByRole('menuitem', { name: 'Note de débit' }).click()
     await expect(boite(f), `boîte ouverte sur ${f.reference}`).toBeVisible({ timeout: 30_000 })
   }
   // « Note de débit » ouvre la boîte SANS refermer le menu de la ligne (`onSelect` + `preventDefault`) : Échap ferme la
   // boîte, puis le menu resté ouvert derrière elle.
   const fermer = async (f) => {
-    await p.keyboard.press('Escape')
+    await boite(f).getByRole('button', { name: 'Fermer' }).click()
     await expect(boite(f), `boîte de ${f.reference} refermée`).toBeHidden({ timeout: 30_000 })
     if (await p.getByRole('menu').isVisible()) await p.keyboard.press('Escape')
     await expect(p.getByRole('menu'), 'menu de ligne refermé').toHaveCount(0)
