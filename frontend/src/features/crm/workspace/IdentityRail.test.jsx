@@ -53,9 +53,10 @@ vi.mock('../../../ui', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
-    DatePicker: ({ value, onChange }) => (
+    DatePicker: ({ value, onChange, disabled }) => (
       <input
         data-testid="relance-input"
+        disabled={disabled}
         type="date"
         defaultValue={value instanceof Date && !Number.isNaN(value.getTime())
           ? value.toISOString().slice(0, 10) : ''}
@@ -697,6 +698,18 @@ describe('IdentityRail — CIQ419 bandeaux de segment C&I', () => {
    `crm_reassign` ; Viewer : ni l'un ni l'autre. */
 describe('ADRG20 — droits de la fiche lead', () => {
   afterEach(() => { droitsRefuses.clear() })
+
+  it("Viewer : aucun geste d'écriture du rail (relance, segment, fiche client, doublons)", async () => {
+    droitsRefuses.add('crm_modifier')
+    const GET_LEAD = exempleContrat('crm', 'lead_client_ecart', 'exemple_get_lead')
+    const INCOHERENT = exempleContrat('crm', 'lead_pompage', 'exemple_incoherent')
+    crmApi.getLeadDuplicates.mockResolvedValueOnce({ data: [{ id: 11, nom: 'Karim', telephone: '0612345678' }] })
+    render(<IdentityRail state={makeState({ ...GET_LEAD, ...INCOHERENT, id: 7 })} onAction={vi.fn()} users={[]} />)
+    expect(screen.getByTestId('relance-input')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Mettre à jour la fiche client' })).toBeDisabled()
+    for (const b of screen.getAllByRole('button', { name: /^Passer en / })) expect(b).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /Examiner/ })).toBeDisabled()
+  })
 
   it('sans crm_reassign : le sélecteur « Responsable » est inerte (Commercial)', () => {
     droitsRefuses.add('crm_reassign')

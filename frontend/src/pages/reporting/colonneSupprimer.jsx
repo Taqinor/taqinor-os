@@ -9,7 +9,7 @@ export function colonneSupprimer(onRemove, width = 100) {
     id: 'actions', header: '', width, align: 'right',
     accessor: () => '',
     cell: (v, r) => (
-      <IconButton variant="ghost" label="Supprimer" onClick={() => onRemove(r)}>
+      <IconButton variant="ghost" label="Supprimer" onClick={(e) => { e.stopPropagation(); onRemove(r) }}>
         <Trash2 />
       </IconButton>
     ),

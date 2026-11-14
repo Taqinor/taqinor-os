@@ -86,6 +86,24 @@ describe('Rapports — cartes selon le droit de leur route', () => {
     expect(screen.queryByText('Rapport indisponible')).toBeNull()
   })
 
+  it('sans lecture ventes : pas de GET sales (Technicien responsable) ; Admin RH : ni sales ni stock', async () => {
+    monter({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'sav_voir'] })
+    await waitFor(() => expect(demandes()).toContain(SERVICE))
+    expect(demandes()).not.toContain('/reporting/reports/sales/')
+    cleanup(); vi.clearAllMocks()
+    monter({ role: 'responsable', role_nom: 'Admin RH', permissions: ['rh_voir'] })
+    await waitFor(() => expect(reporting.analytics).toHaveBeenCalled())
+    expect(demandes()).not.toContain('/reporting/reports/sales/')
+    expect(demandes()).not.toContain('/reporting/reports/stock/')
+    expect(screen.queryByText('Ventes & pipeline', { selector: 'h3,h2,h4' })).toBeNull()
+  })
+
+  it('Directeur : ventes, stock et service demandés', async () => {
+    monter({ role: 'admin', role_nom: 'Directeur', permissions: ['ventes_voir', 'stock_voir', 'installation_voir'] })
+    await waitFor(() => expect(demandes()).toEqual(expect.arrayContaining(
+      ['/reporting/reports/sales/', '/reporting/reports/stock/', SERVICE])))
+  })
+
   it('Technicien responsable (installation_voir) : Service demandé, carte rendue', async () => {
     monter({ role: 'responsable', permissions: ['installation_voir', 'sav_voir'] })
     await waitFor(() => expect(demandes()).toContain(SERVICE))

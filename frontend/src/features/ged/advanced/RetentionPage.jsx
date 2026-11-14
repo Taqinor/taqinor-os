@@ -131,7 +131,7 @@ export default function RetentionPage() {
     },
   ], [])
 
-  const politiqueActions = (r) => [
+  const politiqueActions = (r) => !peutGouverner ? [] : [ // ADRG135
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
       onClick: async () => {
@@ -273,13 +273,13 @@ export default function RetentionPage() {
 
   const dispositionActions = (r) => {
     const acts = []
-    if (r.statut === 'en_attente') {
+    if (r.statut === 'en_attente' && peutGouverner) {
       acts.push(
         { id: 'approuver', label: 'Approuver', icon: CheckCircle2, onClick: () => setDecisionDisposition({ demande: r, type: 'approuver' }) },
         { id: 'rejeter', label: 'Rejeter', icon: XCircle, destructive: true, onClick: () => setDecisionDisposition({ demande: r, type: 'rejeter' }) },
       )
     }
-    if (r.statut === 'approuvee') {
+    if (r.statut === 'approuvee' && peutGouverner) {
       acts.push({ id: 'executer', label: 'Exécuter', icon: PlayCircle, destructive: true, onClick: () => setExecuteDisposition(r) })
     }
     if (r.certificats?.length > 0) {
@@ -305,7 +305,7 @@ export default function RetentionPage() {
           <ListShell
             title="Politiques de rétention"
             subtitle="Durée de conservation par classe de documents (consultatif — aucune suppression automatique)."
-            actions={<Button onClick={() => setShowPolitique(true)}><Plus /> Nouvelle politique</Button>}
+            actions={peutGouverner && <Button onClick={() => setShowPolitique(true)}><Plus /> Nouvelle politique</Button>}
             columns={politiqueColumns} rows={politiques} loading={loading} error={error}
             rowActions={politiqueActions} searchable exportName="politiques-retention"
             emptyTitle="Aucune politique" emptyDescription="Définissez une durée de conservation."

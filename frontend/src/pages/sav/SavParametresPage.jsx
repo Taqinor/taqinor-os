@@ -17,6 +17,7 @@ import { BoutonsEdition } from './SavCommun'
 import SimpleRefListEditor from './SimpleRefListEditor'
 import { useConfirm } from '../../providers/confirm-context'
 import { toastErreurNonAffichee } from '../../lib/toast'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
@@ -155,6 +156,7 @@ function EquipesMaintenanceSection() {
 // ticket correctif pré-catégorisé (câblé dans apps.py) ; l'équipe responsable
 // est affectée automatiquement. Jusqu'ici seul `nom` était éditable. ──
 function CategoriesEquipementSection() {
+  const peutGerer = useDroitMetier('equipement_gerer') // ADRG132 — écriture serveur
   const [rows, setRows] = useState([])
   const [equipes, setEquipes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -218,7 +220,7 @@ function CategoriesEquipementSection() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid items-end gap-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+      {peutGerer && <div className="grid items-end gap-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
         <Input placeholder="Nouvelle catégorie…" value={form.nom}
                onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
                onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
@@ -235,7 +237,7 @@ function CategoriesEquipementSection() {
           </SelectContent>
         </Select>
         <Button type="button" size="sm" loading={busy} onClick={add}><Plus /> Ajouter</Button>
-      </div>
+      </div>}
       {rows.length === 0 ? (
         <EmptyState title="Aucune catégorie d'équipement" />
       ) : (
@@ -261,9 +263,9 @@ function CategoriesEquipementSection() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button type="button" size="sm" variant="outline" onClick={() => saveRow(r)}>
+                {peutGerer && <Button type="button" size="sm" variant="outline" onClick={() => saveRow(r)}>
                   <Check /> Enregistrer
-                </Button>
+                </Button>}
               </li>
             )
           })}

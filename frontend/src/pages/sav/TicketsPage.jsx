@@ -1106,7 +1106,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
 
         {/* ── WIR119/ZMFG6 — feuille de maintenance (worksheet) à remplir ── */}
         <CollapsibleSection icon={FileText} title="Feuille de maintenance">
-          <TicketWorksheetPanel ticketId={id} />
+          {peutGerer && <TicketWorksheetPanel ticketId={id} />} {/* ADRG132 — route sav_gerer */}
         </CollapsibleSection>
 
         {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,
@@ -1485,7 +1485,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
             <AlertDialogHeader>
               <AlertDialogTitle>Annuler ce ticket ?</AlertDialogTitle>
               <AlertDialogDescription>
-                Le ticket sera marqué annulé (avec motif). Vous pourrez le réactiver ensuite.
+                Le ticket {current.reference} sera marqué annulé (avec motif). Vous pourrez le réactiver ensuite.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="grid gap-1.5">
