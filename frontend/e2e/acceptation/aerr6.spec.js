@@ -135,7 +135,14 @@ etape('PF12.3-AERR133', ['AERR133'], async ({ page, suivi, testInfo }) => {
   const ligne = (f) => p.locator(`#facture-row-${f.id}`)
   const boite = (f) => p.getByRole('dialog').filter({ hasText: `Notes de débit — ${f.reference}` })
   const ouvrir = async (f) => {
-    await ligne(f).getByRole('button', { name: /Actions/ }).click()
+    // État d'accessibilité de la ligne avant le clic (diagnostic : une couche modale mal refermée la rend aria-hidden).
+    const etat = await ligne(f).evaluate((el) => ({
+      cachee: Boolean(el.closest('[aria-hidden="true"]')), inerte: Boolean(el.closest('[inert]')),
+      pointeurs: getComputedStyle(document.body).pointerEvents,
+      boutons: [...el.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean),
+    })).catch((e) => ({ erreur: String(e).slice(0, 200) }))
+    console.log(`[AERR133] ligne ${f.reference} avant « Actions » : ${J(etat)}`)
+    await ligne(f).locator('button', { hasText: 'Actions' }).click()
     await p.getByRole('menuitem', { name: 'Note de débit' }).click()
     await expect(boite(f), `boîte ouverte sur ${f.reference}`).toBeVisible({ timeout: 30_000 })
   }
