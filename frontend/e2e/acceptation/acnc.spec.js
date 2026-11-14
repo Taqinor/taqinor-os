@@ -17,178 +17,44 @@
 // tranche, « marquer payée » et le formulaire de facture. Données propres créées par l'API à chaque étape ;
 // les factures, avoirs et notes à numéro LÉGAL ne se suppriment pas (règle des numéros) : ils restent dans la
 // base jetable du runner.
-import { test, expect, request as pwRequest } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
-import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
+import { py } from './_django.js'
+import { lireJson, telephoneMobileUnique } from '../helpers.js'
+import {
+  monter,
+  API,
+  T,
+  marque,
+  SOC,
+  AUJ,
+  f2,
+  cents,
+  plat,
+  statuts,
+  note,
+  ECART_TOURNEE,
+  bd,
+  acteur,
+  navigateur,
+  onglet,
+  tenir,
+  couper,
+  reponse,
+  venteAcceptee,
+  lireF,
+  factureEmise,
+  payer,
+  brouillonAcompte,
+  etatFacture,
+  LEGALE,
+  ligneFacture,
+  enCours,
+} from './_acnc.js'
 
 const etape = groupe('ACNC', ['ACNC1', 'ACNC2', 'ACNC3', 'ACNC5', 'ACNC6', 'ACNC7', 'ACNC8', 'ACNC9', 'ACNC10',
-  'ACNC11', 'ACNC12', 'ACNC13', 'ACNC15'])
-fermerDjangoApresTout()
-const API = '/api/django'
-const T = { timeout: 120_000 }
-test.describe.configure({ timeout: 600_000 })
-test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
-const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
-const SOC = `U.objects.get(username='demo_admin').company_id`
-const AUJ = () => new Date().toISOString().slice(0, 10)
-const f2 = (v) => Number(v).toFixed(2)
-const cents = (v) => Math.round(Number(v) * 100)
-const plat = (s) => String(s).replace(/\s+/g, '').replace(/,(\d{2})(?!\d)/g, '.$1')
-const statuts = (reps) => reps.map((x) => x.status()).sort((a, b) => a - b)
-const ouverts = []
-test.afterEach(async () => { for (const c of ouverts.splice(0)) await (c.dispose ? c.dispose() : c.close()).catch(() => undefined) })
-const note = (testInfo, type, description) => {
-  testInfo.annotations.push({ type, description })
-  console.log(`[ACNC] ${type} : ${description}`)
-}
-// ÉCART ACCEPTÉ (écrans joués sous le rôle Commercial, avant midi) : défaut ANTÉRIEUR et hors des Files des tâches ACNC.
-const ECART_TOURNEE = {
-  base: 'FAIL',
-  raison: "GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée "
-    + '(frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran '
-    + "authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent "
-    + "avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync",
-}
-const IMPORTS = `from apps.ventes.models import Facture, Paiement, Avoir, RelanceLog, Devis, BonCommande, LigneFacture
-from apps.ventes.models_facturation import NoteDebit, FactureActivity, ProformaDocument, RemiseEncaissement
-from apps.stock.models import MouvementStock, Produit
-`
-const bd = (code) => py(`${IMPORTS}${code}`)
-
-// ── comptes, contextes, écrans ───────────────────────────────────────────────────────────────
-
-/** Compte d'essai du rôle SYSTÈME `nomRole` de la société démo ; {id, encaisser, admin, systeme}. */
-async function compteDuRole(nom, nomRole) {
-  return py(`from apps.roles.models import Role
-r = Role.objects.get(company_id=${SOC}, nom=${JSON.stringify(nomRole)})
-u = compte(${JSON.stringify(nom)}, role=r.pk, societe=${SOC})
-sortie({'id': u.id, 'encaisser': 'encaisser' in (r.permissions or []), 'admin': 'roles_gerer' in (r.permissions or []), 'systeme': r.est_systeme})`)
-}
-/** Compte du rôle + contexte API connecté par la vraie route /token/. */
-async function acteur(testInfo, prefixe, nomRole) {
-  const nom = `${prefixe}_${marque()}`
-  const role = await compteDuRole(nom, nomRole)
-  expect([role.systeme, role.encaisser], `${nomRole} : rôle système du registre qui porte encaisser`).toEqual([true, true])
-  if (nomRole === 'Directeur') expect(role.admin, 'Directeur : palier IsAdminRole (roles_gerer)').toBe(true)
-  const ctx = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
-  ouverts.push(ctx)
-  await connexionApi(ctx, { username: nom, password: MDP_ESSAI })
-  return { nom, ctx }
-}
-/** Contexte navigateur neuf connecté sous `nom` (accueil et visites guidées vus, SW bloqué). */
-async function navigateur(page, testInfo, nom) {
-  const ctx = await page.context().browser().newContext({
-    baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] }, serviceWorkers: 'block',
-  })
-  ouverts.push(ctx)
-  await ctx.addInitScript(() => {
-    try { localStorage.setItem('taqinor-pwa-install-dismissed', '1'); localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
-  })
-  await connexionApi(ctx.request, { username: nom, password: MDP_ESSAI })
-  const visites = await ctx.request.get(`${API}/onboarding/tours/`, T)
-  if (visites.ok()) {
-    for (const v of await visites.json()) {
-      if (!v.vu) await ctx.request.post(`${API}/onboarding/tours/${v.tour_key}/vu/`, T)
-    }
-  }
-  return ctx
-}
-/** Un onglet observé (oracles) du contexte ; la page demo_admin de l'étape est refermée (capture = rôle joué). */
-async function onglet(page, suivi, ctx) {
-  if (!page.isClosed()) await page.close()
-  return suivi.surveiller(await ctx.newPage())
-}
-
-/** Tient les POST qui matchent `rx` jusqu'à `liberer()` (le bouton est affirmé désactivé entre-temps). */
-async function tenir(p, rx) {
-  const envois = []
-  let ouvrir
-  const tenu = new Promise((r) => { ouvrir = r })
-  await p.route(rx, async (route) => {
-    if (route.request().method() !== 'POST') return route.continue()
-    envois.push(route.request().postDataJSON())
-    await tenu
-    return route.continue()
-  })
-  return { envois, liberer: () => ouvrir(), fin: () => p.unroute(rx) }
-}
-/** Coupe la réponse du 1er POST qui matche `rx` APRÈS l'avoir livré au serveur ; les suivants passent. */
-async function couper(p, rx, suivi) {
-  suivi.attendre(rx, 'reseau')
-  const envois = []
-  let coupe = true
-  await p.route(rx, async (route) => {
-    if (route.request().method() !== 'POST') return route.continue()
-    envois.push(route.request().postDataJSON())
-    if (coupe) {
-      coupe = false
-      await route.fetch()
-      return route.abort('failed')
-    }
-    return route.continue()
-  })
-  return envois
-}
-const reponse = (p, rx, methode = 'POST') => p.waitForResponse((x) => x.request().method() === methode && rx.test(new URL(x.url()).pathname), T)
-
-// ── données ──────────────────────────────────────────────────────────────────────────────────
-
-/** Vente ACCEPTÉE : lead + devis portés par `cree`, produit + acceptation par demo_admin (`r`). */
-async function venteAcceptee(r, cree, m, { prixHt = '5000.00', qte = '1', stock = null, echeancier = null, email = true, client = null } = {}) {
-  let leadId = null
-  if (!client) {
-    leadId = (await lireJson(await cree.post(`${API}/crm/leads/`, {
-      ...T, data: { nom: `ACNC ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), ...(email ? { email: `acnc-${m}@example.invalid` } : {}) },
-    }), 'lead')).id
-  }
-  const p = await lireJson(await r.post(`${API}/stock/produits/`, {
-    ...T, data: { nom: `Panneau ACNC ${m}`, prix_vente: prixHt, prix_achat: '111.11', ...(stock !== null ? { quantite_stock: stock } : {}) },
-  }), 'produit')
-  const d = await lireJson(await cree.post(`${API}/ventes/devis/atomic/`, {
-    ...T,
-    data: {
-      taux_tva: '20.00', remise_globale: '0', ...(client ? { client } : { lead: leadId }),
-      lignes: [{ produit: p.id, designation: p.nom, quantite: qte, prix_unitaire: prixHt, remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }],
-    },
-  }), 'devis')
-  if (echeancier) await lireJson(await r.put(`${API}/ventes/devis/${d.id}/echeancier/`, { ...T, data: { tranches: echeancier } }), 'échéancier')
-  await lireJson(await cree.post(`${API}/ventes/devis/${d.id}/share-link/`, { ...T, data: { envoi: true } }), 'envoi')
-  await lireJson(await r.post(`${API}/ventes/devis/${d.id}/accepter/`, { ...T, data: { nom: 'Client ACNC' } }), 'accepter')
-  const relu = await lireJson(await r.get(`${API}/ventes/devis/${d.id}/`, T), 'devis relu')
-  return { devisId: d.id, reference: relu.reference, leadId, produitId: p.id, produitNom: p.nom, client: relu.client, ttc: relu.total_ttc, liees: relu.factures_liees || [] }
-}
-const lireF = async (ctx, id) => lireJson(await ctx.get(`${API}/ventes/factures/${id}/`, T), `facture ${id}`)
-/** Facture COMPLÈTE émise du devis par `c` (créée par lui : portée du rôle). */
-async function factureEmise(c, v) {
-  const rep = await lireJson(await c.post(`${API}/ventes/devis/${v.devisId}/facturer-complet/`, { ...T, data: { remplacer_brouillons: true } }), 'facturer-complet')
-  const f = await lireF(c, rep.facture_id)
-  expect(f.statut, `facture ${f.reference} émise`).toBe('emise')
-  return f
-}
-const payer = async (c, id, montant, mode = 'virement') => lireJson(await c.post(`${API}/ventes/factures/${id}/enregistrer-paiement/`, {
-  ...T, data: { montant: f2(montant), date_paiement: AUJ(), mode, reference: `PAY-${marque()}` },
-}), 'paiement')
-/** Le brouillon d'acompte provisoire posé à l'acceptation (VNT62). */
-async function brouillonAcompte(r, v) {
-  const d = await lireJson(await r.get(`${API}/ventes/devis/${v.devisId}/`, T), 'devis relu')
-  const b = (d.factures_liees || []).find((x) => x.statut === 'brouillon')
-  expect(b, 'un brouillon d\'acompte posé à l\'acceptation').toBeTruthy()
-  return lireF(r, b.id)
-}
-const etatFacture = (id) => bd(`f = Facture.objects.filter(pk=${id}).first()
-sortie(None if f is None else {'statut': f.statut, 'reference': f.reference, 'ttc': str(f.total_ttc), 'du': str(f.montant_du)})`)
-const LEGALE = /^FAC-/
-
-/** Ligne de la facture dans /ventes/factures. */
-async function ligneFacture(p, ref, id) {
-  await p.goto('/ventes/factures')
-  await p.getByPlaceholder('Référence, client').fill(ref, { timeout: 60_000 })
-  const ligne = p.locator(`#facture-row-${id}`).first()
-  await expect(ligne, `ligne ${ref}`).toBeVisible({ timeout: 60_000 })
-  return ligne
-}
-
+  'ACNC11', 'ACNC12', 'ACNC13'])
+monter()
 // ════════════════════════════════════════════════════════════════════════════════════════════
 // ACNC1 — « Enregistrer un paiement » rejouable par clé
 // ════════════════════════════════════════════════════════════════════════════════════════════
@@ -396,7 +262,6 @@ async function facturePayee3(r, c, m) {
   expect(fp.statut, 'Given : facture payée').toBe('payee')
   return { v, f: fp, ligne: fp.lignes.find((l) => l.produit === v.produitId) }
 }
-const enCours = (x) => x.s === 409 && x.j.code === 'idempotency_en_cours'
 
 etape('PF9.3-reseau', ['ACNC3'], async ({ page, testInfo }) => {
   const r = page.request
@@ -1206,70 +1071,3 @@ etape('PF9.13-ecran', ['ACNC13'], async ({ page, suivi, testInfo }) => {
   await p.reload()
   await expect(p.getByRole('table', { name: `Comparaison des variantes de ${db.reference}` }), 'rechargé (?variantes=) : la comparaison des variantes est servie').toBeVisible({ timeout: 60_000 })
 }, { ecart: ECART_TOURNEE })
-
-// ════════════════════════════════════════════════════════════════════════════════════════════
-// ACNC15 — ligne de facture jamais re-postée après une réponse perdue ; onglet périmé ⇒ 409
-// ════════════════════════════════════════════════════════════════════════════════════════════
-etape('PF9.15', ['ACNC15'], async ({ page, suivi, testInfo }) => {
-  const r = page.request
-  const { nom } = await acteur(testInfo, 'acnc15', 'Directeur')
-  const m = marque()
-  const v = await venteAcceptee(r, r, m, { prixHt: '1000.00' })
-  const f = await lireJson(await r.post(`${API}/ventes/factures/`, { ...T, data: { client: v.client, date_emission: AUJ() } }), 'brouillon')
-  for (const des of ['Ligne A', 'Ligne B']) {
-    await lireJson(await r.post(`${API}/ventes/factures-lignes/`, { ...T, data: { facture: f.id, produit: v.produitId, designation: des, quantite: '1', prix_unitaire: '1000.00', remise: '0', taux_tva: '20.00' } }), des)
-  }
-  const fr = await lireF(r, f.id)
-  expect([fr.statut, fr.lignes.length], 'Given : brouillon à 2 lignes').toEqual(['brouillon', 2])
-  const etat = () => bd(`f = Facture.objects.get(pk=${f.id})
-sortie({'lignes': sorted(LigneFacture.objects.filter(facture=f).values_list('designation', flat=True)), 'note': f.note or '', 'version': f.lock_version})`)
-  const ctx = await navigateur(page, testInfo, nom)
-  const pA = await onglet(page, suivi, ctx)
-  const pB = suivi.surveiller(await ctx.newPage())
-  const editer = async (p) => {
-    const ligne = await ligneFacture(p, fr.reference, f.id)
-    await ligne.getByRole('button', { name: 'Éditer' }).click()
-    const dlg = p.getByRole('dialog').filter({ hasText: `Éditer — ${fr.reference}` })
-    await expect(dlg).toBeVisible({ timeout: 30_000 })
-    return dlg
-  }
-  const dlgB = await editer(pB) // onglet B ouvert AVANT la modification de l'onglet A
-  const dlgA = await editer(pA)
-  await dlgA.getByRole('button', { name: 'Ajouter une ligne' }).click()
-  const neuve = dlgA.locator('tr[data-line-key]').last()
-  await neuve.getByRole('button', { name: /Produit/ }).click()
-  await pA.getByPlaceholder('Chercher un produit… (Entrée = premier résultat)').fill(v.produitNom)
-  await expect(pA.getByRole('option').filter({ hasText: v.produitNom }).first()).toBeVisible({ timeout: 30_000 })
-  await pA.getByPlaceholder('Chercher un produit… (Entrée = premier résultat)').press('Enter')
-  await neuve.getByPlaceholder('Désignation').fill('Ligne C')
-  await neuve.locator('[data-role="line-qty"]').fill('1')
-  // La création de la 3e ligne atteint le serveur, sa réponse est perdue (délai dépassé simulé).
-  const rxL = /\/factures-lignes\/$/
-  const envois = await couper(pA, rxL, suivi)
-  await dlgA.getByRole('button', { name: 'Mettre à jour' }).click()
-  await expect(dlgA, 'ligne perdue relue et rapprochée : enregistrement terminé').toBeHidden({ timeout: 60_000 })
-  await pA.unroute(rxL)
-  expect(envois.length, 'la ligne neuve n\'a été postée qu\'UNE fois').toBe(1)
-  let e = await etat()
-  expect(e.lignes, '3 lignes en base (pas 4)').toEqual(['Ligne A', 'Ligne B', 'Ligne C'])
-  // « Enregistrer » de nouveau (formulaire rouvert) : toujours 3 lignes.
-  await pA.reload()
-  const dlgA2 = await editer(pA)
-  await dlgA2.getByRole('button', { name: 'Mettre à jour' }).click()
-  await expect(dlgA2).toBeHidden({ timeout: 60_000 })
-  e = await etat()
-  expect(e.lignes, 'ré-enregistré : toujours 3 lignes').toEqual(['Ligne A', 'Ligne B', 'Ligne C'])
-  // Onglet B (périmé) : il modifie la note et enregistre ⇒ bannière, puis forcé ⇒ 409 conflit_version, rien écrit.
-  await dlgB.locator('#fc-note').fill(`écrasement onglet périmé ${m}`)
-  await dlgB.getByRole('button', { name: 'Mettre à jour' }).click()
-  await expect(dlgB.getByText(/pendant votre édition/), 'bannière d\'édition périmée').toBeVisible({ timeout: 30_000 })
-  const rxF = new RegExp(`/ventes/factures/${f.id}/$`)
-  suivi.attendre(rxF, 409)
-  const [rep] = await Promise.all([pB.waitForResponse((x) => ['PUT', 'PATCH'].includes(x.request().method()) && rxF.test(new URL(x.url()).pathname), T),
-    dlgB.getByRole('button', { name: 'Enregistrer quand même' }).click()])
-  const corps = await rep.json()
-  expect([rep.status(), corps.code], `onglet périmé : ${JSON.stringify(corps).slice(0, 200)}`).toEqual([409, 'conflit_version'])
-  const apres = await etat()
-  expect(apres, 'aucune écriture de l\'onglet périmé (lignes, note, version)').toEqual(e)
-  await expect.poll(async () => (await dlgB.getByRole('alert').allInnerTexts()).join(' | '), { timeout: 30_000, message: 'message « modifié par quelqu\'un d\'autre… Rechargez-le » affiché' }).toMatch(/modifié par quelqu.un d.autre/)
-})
