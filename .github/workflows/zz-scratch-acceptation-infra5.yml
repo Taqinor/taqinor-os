@@ -71,7 +71,7 @@ jobs:
           fi
       - name: ADCG116 - e2e-local.sh up sans relais (port publie lu par docker compose port) puis stop
         run: |
-          set -uo pipefail
+          set +e; set -uo pipefail
           T="$TRACES/ADCG116-e2e-local-port-publie.txt"; v=PASS; motif=""
           enmarche() { docker compose ps --services --status running | sort | tr '\n' ' '; }
           { echo "# ADCG116 rejoue sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}"
@@ -85,9 +85,11 @@ jobs:
           bash scripts/e2e-local.sh up > /tmp/e2e-up.log 2>&1; rc_up=$?
           { echo; echo "== bash scripts/e2e-local.sh up => code $rc_up"
             echo "-- lignes cles (attente Postgres, migrate, seed, Django, preview) :"
-            grep -n -E 'Attente de Postgres|Postgres prêt|Postgres indisponible|Backend : install|Operations to perform|Running migrations|No migrations to apply|Applying |Démarrage de Django|Preview prêt|Pile e2e prête|✗' /tmp/e2e-up.log | head -n 60
-            echo; echo "-- 25 dernieres lignes :"; tail -n 25 /tmp/e2e-up.log
-            echo; echo "== ecoute TCP sur 5432 apres up (attendu : rien) :"; ss -ltnp 2>/dev/null | awk 'NR==1 || /:5432 /'; } >> "$T"
+            grep -n -E 'Attente de Postgres|Postgres prêt|Postgres indisponible|Backend : install|Operations to perform|Running migrations|No migrations to apply|Démarrage de Django|Preview prêt|Pile e2e prête|✗' /tmp/e2e-up.log
+            echo "-- migrate : $(grep -c '^  Applying .*\.\.\. OK' /tmp/e2e-up.log) migrations « Applying … OK », derniere : $(grep '^  Applying ' /tmp/e2e-up.log | tail -n 1)"
+            echo; echo "-- 12 dernieres lignes :"; tail -n 12 /tmp/e2e-up.log
+            echo; echo "== ecoute TCP sur 5432 apres up (attendu : rien) :"; ss -ltnp 2>/dev/null | awk 'NR==1 || /:5432 /'
+            echo; echo "== connexions TCP etablies vers 5432/5433 (Django sur l'hote => 5433 attendu) :"; ss -tn 2>/dev/null | awk 'NR==1 || /:543[23] /'; } >> "$T"
           [ "$rc_up" = 0 ] || { v=FAIL; motif="$motif up en echec (code $rc_up) ;"; }
           grep -q 'Postgres prêt' /tmp/e2e-up.log || { v=FAIL; motif="$motif « Postgres prêt » absent ;"; }
           grep -q 'Postgres indisponible' /tmp/e2e-up.log && { v=FAIL; motif="$motif « Postgres indisponible » ;"; }
