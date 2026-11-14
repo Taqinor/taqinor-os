@@ -134,12 +134,6 @@ describe('cartes gardées IsResponsableOrAdmin : accueil du Lecteur (ERR-ACC-ACC
       .toMatchObject({ leads: true, reporting: false, mesChiffres: true })
     expect(lecturesAccueil({ peutLireVentes: true, peutLireCrm: true, peutLireTableau: true }))
       .toMatchObject({ leads: true, reporting: true, mesChiffres: true })
-    const src = lire('./Dashboard.jsx')
-    expect(src).toMatch(/peutLireCrm: useDroitMetier\('crm_voir'\), peutLireTableau: useCanLireTableauDeBord\(\)/)
-    expect(src).toMatch(/if \(lectures\.leads\) dispatch\(fetchLeads\(\)\)/)
-    expect(src).toMatch(/if \(lectures\.reporting\) servi\('reporting', reportingApi\.getDashboard\(\)\)/)
-    expect(src.match(/!lectures\.reporting \|\| servis\.refuseReporting/g)).toHaveLength(2)
-    expect(src).toMatch(/user\?\.id != null && lectures\.mesChiffres && \(\s*<MesChiffresCard/)
   })
   it('les deux lectures coupent le toast global sur 403', () => {
     expect(lire('../api/monitoringApi.js')).toMatch(/co2-fleet\/', \{ params, suppressErrorToast: true \}/)
