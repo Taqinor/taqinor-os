@@ -8,7 +8,10 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
    retirer le `confirm` de `confirmerAvoir` ⇒ échec. */
 
 vi.mock('../../../api/ventesApi', () => ({
-  default: { confirmerAvoirRevision: vi.fn(() => Promise.resolve({ data: {} })) },
+  default: {
+    confirmerAvoirRevision: vi.fn(() => Promise.resolve({ data: {} })),
+    emettreFacture: vi.fn(() => Promise.resolve({ data: {} })),
+  },
 }))
 
 import ventesApi from '../../../api/ventesApi'
@@ -44,5 +47,34 @@ describe('PanneauVente — AERR17 : « Confirmer l\'avoir » confirmé', () => {
     await user.click(screen.getByRole('button', { name: /Confirmer l'avoir/ }))
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledWith(318))
+  })
+})
+
+describe('AERR137 — Émettre depuis la ligne de vente', () => {
+  it('confirmation nommée, Annuler ⇒ aucune émission', async () => {
+    // C-AERR-VER1-101 — mutant : rappeler `actions.emettre(f)` sans confirmation ⇒ rouge.
+    const user = userEvent.setup()
+    const base = exempleContrat('ventes', 'vente_etat', 'exemple_acompte_brouillon').vente
+    const vente = { ...base, factures: [{ ...base.factures[0], id: 12, reference: 'BROUILLON-12', total_ttc: '5000.00' }] }
+    render(
+      <ConfirmProvider>
+        <PanneauVente devis={{ id: 502, reference: 'DEV-AERR137', vente }} />
+      </ConfirmProvider>,
+    )
+    const ligne = screen.getByTestId('facture-vente-12')
+    await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent(/Émettre la facture BROUILLON-12 \(5.000,00 MAD\) \?/)
+    expect(boite).toHaveTextContent('Un numéro légal lui sera attribué.')
+    await user.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(ventesApi.emettreFacture).not.toHaveBeenCalled()
+    expect(within(ligne).getByText('BROUILLON-12')).toBeInTheDocument()
+
+    await new Promise((r) => setTimeout(r, 450))
+    await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(ventesApi.emettreFacture).toHaveBeenCalledTimes(1))
+    expect(ventesApi.emettreFacture).toHaveBeenCalledWith(12)
   })
 })
