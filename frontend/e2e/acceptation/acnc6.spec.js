@@ -85,6 +85,7 @@ sortie({'bc': b.statut, 'vivantes_bc': Facture.objects.filter(bon_commande_id=b.
 async function course(verrou, facturer, annuler, quoi) {
   await py(`from django.db import transaction
 transaction.set_autocommit(False)
+from apps.ventes.models import Devis, BonCommande
 ${verrou}
 sortie(True)`)
   let fa = null
