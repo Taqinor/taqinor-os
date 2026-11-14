@@ -480,7 +480,6 @@ def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
     return sortie, ecrit, llm
 
 
-@unittest.skipUnless(_OK and _HAS_CLIENT, f"service indisponible: {_ERR}")
 class TourReelCartesTests(unittest.TestCase):
     """COP-B1 — le vrai `_run_agent` rend toutes les cartes et les ecrit dans
     l'historique avec la reponse."""
@@ -661,7 +660,6 @@ def _rendu_natif(answer="Natif.", outils=(), arret="fin"):
 _CAT_COPILOTE = [dict(_CAT_LEAD_LIST, lot="copilote"), _CAT_PROPOSAL_PDF]
 
 
-@unittest.skipUnless(_OK and _HAS_CLIENT, f"service indisponible: {_ERR}")
 class MoteurNatifCop6Tests(unittest.TestCase):
     """COP-B6 — aiguillage vers le moteur natif (SIMULE : `executer` /
     `reprendre` remplaces) : reglage `natif` + claude + copilote seulement ;

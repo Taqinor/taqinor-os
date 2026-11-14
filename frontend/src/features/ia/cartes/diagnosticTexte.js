@@ -33,7 +33,7 @@ function blocSignalement(s) {
 
 /** `donnees` = corps de la carte diagnostic ; `instantane` = tampon de CE navigateur. */
 export function texteDiagnostic(donnees, instantane = null) {
-  const out = [`Diagnostic TAQINOR OS — ${donnees?.jours ?? 1} dernier(s) jour(s), généré le ${donnees?.genere_le ?? ''}`]
+  const out = [`Diagnostic de l'ERP — ${donnees?.jours ?? 1} dernier(s) jour(s), généré le ${donnees?.genere_le ?? ''}`]
   const problemes = donnees?.problemes ?? []
   out.push('', `Problèmes vécus (${problemes.length}) :`)
   out.push(...(problemes.length ? problemes.map(blocProbleme) : ['- aucun']))

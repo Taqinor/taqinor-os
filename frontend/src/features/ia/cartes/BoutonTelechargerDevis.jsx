@@ -11,12 +11,15 @@ import { idDevisSur } from './cartes'
    construit que depuis un `devis_id` entier (carte `document` ou ligne de devis
    d'une `fiche_lead`), jamais depuis un `id` quelconque. */
 
-// Options de rendu : objet plat de valeurs simples seulement (liste blanche
-// vérifiée par le serveur).
+// Options de rendu admises ici : le format et l'étude, nommés un à un (le
+// serveur garde sa propre liste blanche, `clean_pdf_options`). Toute autre clé
+// reçue dans la carte est ignorée.
 function optionsSures(options) {
-  if (!options || typeof options !== 'object' || Array.isArray(options)) return {}
-  return Object.fromEntries(Object.entries(options)
-    .filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v)))
+  const o = options && typeof options === 'object' && !Array.isArray(options) ? options : {}
+  const params = {}
+  if (o.pdf_mode === 'onepage' || o.pdf_mode === 'full') params.pdf_mode = o.pdf_mode
+  if (typeof o.include_etude === 'boolean') params.include_etude = o.include_etude
+  return params
 }
 
 export default function BoutonTelechargerDevis({
@@ -32,10 +35,12 @@ export default function BoutonTelechargerDevis({
     // Fenêtre ouverte dans le geste, avant le premier await (iOS / PWA).
     const pending = downloadBlobInGesture()
     try {
+      // parametres-requete: pdf_mode, include_etude
       const res = await ventesApi.getProposalPdf(id, optionsSures(options))
       pending.deliver(res.data, filenameFromResponse(res, `${reference || 'Devis'}.pdf`))
     } catch {
-      try { pending.win?.close() } catch { /* fenêtre déjà fermée */ }
+      // L'onglet d'attente ouvert dans le geste ne reste pas vide.
+      if (pending.win && !pending.win.closed) pending.win.close()
       setErreur('Téléchargement du PDF indisponible. Réessayez.')
     } finally {
       setOccupe(false)

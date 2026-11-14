@@ -275,11 +275,10 @@ class VraiSdkTests(unittest.TestCase):
     """Le corps RÉELLEMENT sérialisé par le SDK installé (transport simulé)."""
 
     def test_corps_envoye_par_le_sdk(self):
-        try:
-            import anthropic
-            import httpx
-        except ImportError:  # pragma: no cover - dépendances de l'image
-            self.skipTest("SDK anthropic absent")
+        # Le SDK est une dépendance du service : son absence doit faire ÉCHOUER
+        # ce test (jamais le sauter en silence — ENF23).
+        import anthropic
+        import httpx
         envoyes = []
         inconnu = {"type": "bloc_futur_2027", "x": 1}
         reponses = [_rep([inconnu, _appel("t1", "a")], stop="tool_use"),

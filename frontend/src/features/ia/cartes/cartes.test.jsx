@@ -205,7 +205,7 @@ describe('cartes — WhatsApp et documents (COP-F4)', () => {
     monter([resultat('document', doc.exemple_options)])
     await userEvent.click(screen.getByRole('button', { name: 'Télécharger le devis' }))
     expect(downloadBlobInGesture).toHaveBeenCalled()
-    await waitFor(() => expect(ventesApi.getProposalPdf).toHaveBeenCalledWith(45, { format: 'onepage' }))
+    await waitFor(() => expect(ventesApi.getProposalPdf).toHaveBeenCalledWith(45, { pdf_mode: 'onepage' }))
   })
 
   it('document sans devis_id entier : aucun bouton', () => {
@@ -274,7 +274,7 @@ describe('diagnostic — texte « Copier pour Claude Code »', () => {
     monter([resultat('diagnostic', exempleContrat('reporting', 'assistant_diagnostic'))])
     await userEvent.click(screen.getByRole('button', { name: /Copier pour Claude Code/ }))
     expect(ecrire).toHaveBeenCalledTimes(1)
-    expect(ecrire.mock.calls[0][0]).toMatch(/Diagnostic TAQINOR OS/)
+    expect(ecrire.mock.calls[0][0]).toMatch(/Diagnostic de l'ERP/)
     const carte = screen.getByTestId('carte-diagnostic')
     expect(within(carte).getByText(/Diagnostic \(1 j\)/)).toBeInTheDocument()
   })

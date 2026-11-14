@@ -1220,7 +1220,7 @@ _CAT_DOCUMENT = {
     "endpoint": "/api/django/ventes/devis/{id}/proposal/",
     "method": "GET",
     "inputs": {"type": "object", "properties": {
-        "id": {"type": "integer"}, "format": {"type": "string"}},
+        "id": {"type": "integer"}, "pdf_mode": {"type": "string"}},
         "required": ["id"]},
     "risk": "internal",
     "carte": "document",
@@ -1284,7 +1284,7 @@ class SortiesCollecteurCop1Tests(_AvecPropositions):
     def test_document_rend_le_lien_sans_appeler_django(self):
         contrat = _contrat_agent("assistant_document.json")
         for entrees, attendu in (({"id": 45}, contrat["exemple"]),
-                                 ({"id": "45", "format": "onepage"}, contrat["exemple_options"])):
+                                 ({"id": "45", "pdf_mode": "onepage"}, contrat["exemple_options"])):
             with self.subTest(entrees=entrees):
                 collector: list = []
                 with mock.patch.object(at, "_django_call",
@@ -1350,12 +1350,8 @@ class ValidationCompleteCop2Tests(unittest.TestCase):
 
 
 class SchemaOutilCop2Tests(unittest.TestCase):
-    def setUp(self):
-        try:
-            __import__('langchain_core.tools')
-        except Exception:
-            self.skipTest("langchain_core indisponible dans cet environnement")
-
+    # langchain_core est une dépendance du service : son absence doit faire
+    # ÉCHOUER ces tests (jamais les sauter en silence — ENF23).
     def _outil(self):
         with _patch_catalogue([_CAT_SUIVI]):
             return at.build_action_tools(_ctx(role="admin"))[0]
