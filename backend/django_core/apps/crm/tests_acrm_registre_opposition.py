@@ -193,3 +193,63 @@ class RegistreOppositionTests(TestCase):
         b.save()
         b.refresh_from_db()
         self.assertFalse(b.ne_plus_contacter)
+
+    def test_commande_coche_les_soeurs_d_une_opposition_anterieure(self):
+        """AMSG97 — paire (A opposée, B au même numéro écrit autrement) laissée
+        par la migration 0154 : le dry-run liste B sans le numéro ni rien
+        écrire ; ``--appliquer`` la coche avec sa ligne ancien → nouveau ; C
+        (autre société) et D (aucun contact commun) ne bougent pas ; une
+        seconde application ne trouve rien. Mutant : ``--appliquer`` sans
+        ``_marquer_lead_ne_plus_contacter`` ⇒ B reste contactable."""
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from apps.crm.leads_doublons import empreintes_contact
+        from apps.crm.models import EmpreinteOpposition, LeadActivity
+        from apps.crm.selectors import peut_contacter
+
+        a = Lead.objects.create(company=self.company, nom='A97',
+                                telephone='0600000000')
+        b = Lead.objects.create(company=self.company, nom='B97',
+                                telephone='+212 6 00 00 00 00')
+        autre = Company.objects.create(nom='AMSG97 Autre', slug='amsg97-autre')
+        c = Lead.objects.create(company=autre, nom='C97',
+                                telephone='0600000000')
+        d = Lead.objects.create(company=self.company, nom='D97',
+                                telephone='+212600009797')
+        # L'état laissé par 0154 : la case posée sans signal, l'empreinte
+        # écrite en masse — aucune sœur cochée.
+        Lead.objects.filter(pk=a.pk).update(ne_plus_contacter=True)
+        EmpreinteOpposition.objects.bulk_create([
+            EmpreinteOpposition(company=self.company, nature=nature,
+                                empreinte=empreinte)
+            for nature, empreinte in empreintes_contact(telephone='0600000000')])
+
+        def lancer(*options):
+            sortie = StringIO()
+            call_command('opposer_fiches_soeurs', *options, stdout=sortie)
+            return sortie.getvalue()
+
+        apercu = lancer()
+        self.assertIn(f'lead #{b.pk} ', apercu)
+        self.assertIn(self.company.slug, apercu)
+        self.assertIn('contact commun : téléphone', apercu)
+        self.assertNotIn('600000000', apercu)
+        self.assertNotIn(f'lead #{c.pk} ', apercu)
+        self.assertNotIn(f'lead #{d.pk} ', apercu)
+        self.assertIn('1 fiche(s) — dry-run, rien écrit', apercu)
+        b.refresh_from_db()
+        self.assertFalse(b.ne_plus_contacter)
+
+        lancer('--appliquer')
+        b.refresh_from_db()
+        self.assertTrue(b.ne_plus_contacter)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=b, kind=LeadActivity.Kind.MODIFICATION,
+            field='ne_plus_contacter').exists())
+        self.assertFalse(peut_contacter(b))
+        for fiche in (c, d):
+            fiche.refresh_from_db()
+            self.assertFalse(fiche.ne_plus_contacter, fiche.nom)
+        self.assertIn('0 fiche(s)', lancer('--appliquer'))

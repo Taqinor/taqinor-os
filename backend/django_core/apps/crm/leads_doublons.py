@@ -452,17 +452,25 @@ def _marquer_lead_ne_plus_contacter(lead, user):
     return True
 
 
-def _opposer_fiches_soeurs(company, le):
-    """AMSG3 — fiches vivantes de ``company`` aux contacts normalisés de ``le``
-    encore contactables ⇒ cochées (une sœur cochée sort du filtre)."""
+def fiches_soeurs_contactables(company, le):
+    """AMSG3, AMSG97 — les fiches vivantes de ``company`` aux contacts
+    normalisés de ``le`` encore contactables (queryset, ``le`` exclue) : la
+    SEULE requête des sœurs (STOP et commande ``opposer_fiches_soeurs``)."""
     from django.db.models import Q
 
     tels = {(normalize_phone(v) or '')[:20] for v in (le.telephone, le.whatsapp)} - {''}
     cible = Q(phone_normalise__in=tels) | Q(whatsapp_normalise__in=tels)
     if normalize_email(le.email):
         cible |= Q(email_normalise=normalize_email(le.email))
-    for pk in Lead.objects.filter(cible, company=company).exclude(
-            pk=le.pk).values_list('pk', flat=True):
+    return Lead.objects.filter(
+        cible, company=company, ne_plus_contacter=False).exclude(pk=le.pk)
+
+
+def _opposer_fiches_soeurs(company, le):
+    """AMSG3 — fiches vivantes de ``company`` aux contacts normalisés de ``le``
+    encore contactables ⇒ cochées (une sœur cochée sort du filtre)."""
+    for pk in fiches_soeurs_contactables(company, le).values_list(
+            'pk', flat=True):
         soeur = Lead.objects.filter(pk=pk, ne_plus_contacter=False).first()
         if soeur is not None:
             _marquer_lead_ne_plus_contacter(soeur, None)
