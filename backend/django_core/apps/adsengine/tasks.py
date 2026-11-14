@@ -19,7 +19,7 @@ import logging
 
 from celery import shared_task
 
-from .isolation import relever_si_delai
+from .isolation import degrader, relever_si_delai
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +163,8 @@ def sync_adset_learning(company, client):
         return 0
     try:
         rows = reader(fields=ADSET_LEARNING_FIELDS)
-    except Exception:  # noqa: BLE001 — l'apprentissage n'empêche jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks.sync_adset_learning : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — l'apprentissage n'empêche jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks.sync_adset_learning : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
         return 0
     by_id = {
         str(r.get('id') or '').strip(): r
@@ -439,20 +439,20 @@ def _sync_company(conn):
         if currency and currency != conn.currency:
             conn.currency = currency
             conn.save(update_fields=['currency'])
-    except Exception:  # noqa: BLE001 — la devise n'empêche jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — la devise n'empêche jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
 
     # PUB97 — surveillance du solde prépayé Meta (best-effort, jamais bloquant).
     try:
         check_prepaid_balance(company, conn, client)
-    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
 
     # PUB101 — santé du compte lue au sync (best-effort, jamais bloquant).
     try:
         check_account_health(company, conn, client)
-    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — la santé n'empêche jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
 
     sync.sync_campaigns(company, client.get_campaigns())
     sync.sync_adsets(company, client.get_adsets())
@@ -464,8 +464,8 @@ def _sync_company(conn):
     incremental_available = False
     try:
         incremental_available = client.incremental_attribution_available()
-    except Exception:  # noqa: BLE001 — le probe ne bloque jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — le probe ne bloque jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
         incremental_available = False
 
     # ADSDEEP2 — snapshots niveau adset PUIS ad (edge compte, level=…). Placés
@@ -735,16 +735,16 @@ def sync_page_posts(company, conn, client):
         return 0
     try:
         posts = reader()
-    except Exception:  # noqa: BLE001 — les posts n'empêchent jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks.sync_page_posts : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — les posts n'empêchent jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks.sync_page_posts : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
         return 0
     ad_ids = set()
     get_ads = getattr(client, 'get_ads_posts_ids', None)
     if callable(get_ads):
         try:
             ad_ids = get_ads()
-        except Exception:  # noqa: BLE001 — cross-check best-effort (D-ENF22-BLE001)
-            logger.warning("tasks.sync_page_posts : erreur ignorée (mode dégradé)", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — cross-check best-effort (D-ENF22-BLE001)
+            logger.warning("tasks.sync_page_posts : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
             ad_ids = set()
     app_id = str((conn.credentials or {}).get('app_id') or '')
     mirrors = sync.sync_page_posts(
@@ -773,8 +773,8 @@ def sync_comments_for_company(company, client):
             return
         try:
             rows = reader(object_meta_id)
-        except Exception:  # noqa: BLE001 — un objet en échec n'arrête pas les autres (D-ENF22-BLE001)
-            logger.warning("tasks.sync_comments_for_company._pull : erreur ignorée (mode dégradé)", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — un objet en échec n'arrête pas les autres (D-ENF22-BLE001)
+            logger.warning("tasks.sync_comments_for_company._pull : erreur ignorée (dégradé)", exc_info=degrader(exc))
             return
         mirrors = comments_mod.sync_comments(
             company, rows, object_meta_id=object_meta_id, source=source)
@@ -816,8 +816,8 @@ def sync_instagram_for_company(company, conn, client):
         if callable(resolver) and (conn.page_id or ''):
             try:
                 ig_id = str(resolver() or '').strip()
-            except Exception:  # noqa: BLE001 — la résolution IG n'arrête pas la synchro (D-ENF22-BLE001)
-                logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 — la résolution IG n'arrête pas la synchro (D-ENF22-BLE001)
+                logger.warning("tasks.sync_instagram_for_company : erreur ignorée (dégradé)", exc_info=degrader(exc))
                 ig_id = ''
             if ig_id:
                 client.ig_user_id = ig_id
@@ -829,8 +829,8 @@ def sync_instagram_for_company(company, conn, client):
 
     try:
         media_rows = reader()
-    except Exception:  # noqa: BLE001 — les médias n'empêchent jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — les médias n'empêchent jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
         return 0
     mirrors = ig.sync_ig_media(company, media_rows)
 
@@ -839,8 +839,8 @@ def sync_instagram_for_company(company, conn, client):
         for m in mirrors:
             try:
                 rows = get_comments(m.meta_id)
-            except Exception:  # noqa: BLE001 — un média en échec n'arrête pas les autres (D-ENF22-BLE001)
-                logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 — un média en échec n'arrête pas les autres (D-ENF22-BLE001)
+                logger.warning("tasks.sync_instagram_for_company : erreur ignorée (dégradé)", exc_info=degrader(exc))
                 continue
             ig.sync_ig_comments(company, rows, media_meta_id=m.meta_id)
     return len(mirrors)
@@ -919,8 +919,8 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
             continue
         try:
             targeting = client.get_ad_targeting_ids(ad.meta_id)
-        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-            logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+            logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
             targeting = {'adset_id': '', 'campaign_id': ''}
         for lead_row in leads:
             leadgen_id = str(lead_row.get('id') or '').strip()
@@ -949,10 +949,10 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                     access_token=token,
                     created_time=lead_row.get('created_time'),
                     origine='Meta Lead Ads (pull)')
-            except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas (D-ENF22-BLE001)
+            except Exception as exc:  # noqa: BLE001 — un lead en échec n'arrête pas (D-ENF22-BLE001)
                 logger.warning(
                     'adsengine.pull_ad_leads: création lead échouée (%s)',
-                    leadgen_id, exc_info=True)
+                    leadgen_id, exc_info=degrader(exc))
                 continue
             if alerter_rattrapage and not deja_connu:
                 _alerter_lead_rattrape(company, lead, lead_row)
@@ -965,8 +965,8 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                     campaign_id=targeting.get('campaign_id', ''),
                     form_id=form_id, created_time=lead_row.get('created_time'),
                     is_organic=False)
-            except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
-                logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+                logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (dégradé)", exc_info=degrader(exc))
             processed += 1
     return processed
 
