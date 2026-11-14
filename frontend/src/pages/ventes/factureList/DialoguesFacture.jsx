@@ -332,9 +332,14 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                     <Input
                       type="number" min="0" step="any" className="w-28"
                       aria-label={`Montant affecté à ${f.reference}`}
+                      invalid={!!egErreurs[`repartition.${f.id}`]}
+                      aria-describedby={egErreurs[`repartition.${f.id}`] ? `eg-rep-${f.id}-err` : undefined}
                       value={encaissementRepartition[f.id] ?? ''}
                       onChange={e => setEncaissementRepartition(r => ({ ...r, [f.id]: e.target.value }))}
                     />
+                    {egErreurs[`repartition.${f.id}`] && (
+                      <p id={`eg-rep-${f.id}-err`} role="alert" className="text-xs text-destructive">{egErreurs[`repartition.${f.id}`]}</p>
+                    )}
                   </td>
                 </tr>
               ))}

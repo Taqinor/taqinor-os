@@ -375,6 +375,30 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
     expect(toast.error).not.toHaveBeenCalledWith('Encaissement groupé impossible.')
   })
 
+  it('400 repartition : message sous la part de FAC-2', async () => {
+    // AERR139 (C-AERR-VER1-103) — mutant : retirer `repartition` des clés ⇒ texte fixe seul.
+    const msg = "Assurez-vous qu'il n'y a pas plus de 2 chiffres après la virgule."
+    api.encaissementGroupeFactures.mockRejectedValueOnce({
+      response: { status: 400, data: { repartition: { 2: [msg] } } },
+    })
+    const fac = [{ ...emise, reference: 'FAC-1' }, { ...emise, id: 2, reference: 'FAC-2', montant_du: 2000 }]
+    const user = userEvent.setup()
+    renderList({ factures: fac })
+    await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
+    const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
+    await user.click(within(barre).getByRole('button', { name: 'Encaissement groupé' }))
+    const dialog = await screen.findByRole('dialog')
+    const part = within(dialog).getByLabelText('Montant affecté à FAC-2')
+    await user.clear(part)
+    await user.type(part, '100.555')
+    await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
+    expect(await within(dialog).findByText(msg)).toBeInTheDocument()
+    expect(part).toHaveAttribute('aria-invalid', 'true')
+    expect(part).toHaveValue(100.555)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(toast.error).not.toHaveBeenCalledWith('Encaissement groupé impossible.')
+  })
+
   it('affiche TEL QUEL le refus du serveur', async () => {
     api.encaissementGroupeFactures.mockRejectedValueOnce({
       response: { data: { detail: 'Le montant dépasse le total dû des factures.' } },
