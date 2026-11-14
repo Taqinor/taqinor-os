@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   creerInterventionsStandard: vi.fn(),
   updateIntervention: vi.fn(),
   updateInstallation: vi.fn(),
+  noter: vi.fn(),
 }))
 
 vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
@@ -36,6 +37,7 @@ vi.mock('../../api/installationsApi', async () => ({
     creerInterventionsStandard: (...a) => mocks.creerInterventionsStandard(...a),
     updateIntervention: (...a) => mocks.updateIntervention(...a),
     updateInstallation: (...a) => mocks.updateInstallation(...a),
+    noter: (...a) => mocks.noter(...a),
   },
 }))
 vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
@@ -171,5 +173,21 @@ describe('InstallationDetail — AERR91 changement de chantier', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
     await waitFor(() => expect(mocks.updateInstallation).toHaveBeenCalledTimes(1))
     expect(mocks.updateInstallation).toHaveBeenCalledWith(2, { site_ville: 'Salé' })
+  })
+
+  it('note tapée sur A : champ vide sur B, aucun noter', async () => {
+    const A = { ...CHANTIER, id: 1, reference: 'CH-001' }
+    const B = { ...CHANTIER, id: 2, reference: 'CH-002' }
+    const user = userEvent.setup()
+    const store = nouveauStore()
+    const { rerender } = render(arbre(A, store))
+    await user.click(await screen.findByRole('tab', { name: /Documents & historique/ }))
+    fireEvent.change(await screen.findByPlaceholderText('Écrire une note…'),
+      { target: { value: 'Câble posé côté nord' } })
+    expect(screen.getByDisplayValue('Câble posé côté nord')).toBeTruthy()
+    rerender(arbre(B, store))
+    await waitFor(() => expect(screen.getByPlaceholderText('Écrire une note…')).toHaveValue(''))
+    fireEvent.click(screen.getByRole('button', { name: /Noter/ }))
+    expect(mocks.noter).not.toHaveBeenCalled()
   })
 })

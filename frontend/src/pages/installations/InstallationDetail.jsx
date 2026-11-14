@@ -255,12 +255,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // CIQ637 — motif de dérogation (Directeur) demandé quand le serveur refuse
   // un passage de statut (CIQ621/CIQ630) ; envoyé tel quel au prochain
   // enregistrement.
-  const [motifDerogation, setMotifDerogation] = useState('')
+  const [motifDerogation, setMotifDerogation] = useEtatSuivi(id, '')
   // ACHT60 — dérogations lues par le serveur : acompte non reçu avant
   // « Planifié » (`motif_override_acompte`) et réouverture d'un chantier
   // clôturé (`motif_reouverture`, Directeur).
-  const [motifAcompte, setMotifAcompte] = useState('')
-  const [motifReouverture, setMotifReouverture] = useState('')
+  const [motifAcompte, setMotifAcompte] = useEtatSuivi(id, '')
+  const [motifReouverture, setMotifReouverture] = useEtatSuivi(id, '')
   // CIQ637 — réception définitive : refus serveur (liste des réserves).
   const [receptionBusy, setReceptionBusy] = useState(false)
   const [receptionRefus, setReceptionRefus] = useState(null)
@@ -279,10 +279,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   // Historique (chatter)
   const [historique, setHistorique] = useState([])
-  const [noteBody, setNoteBody] = useState('')
+  const [noteBody, setNoteBody] = useEtatSuivi(id, '')
 
   // Intervention en cours d'ajout
-  const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '', technicien: '' })
+  const [interv, setInterv] = useEtatSuivi(id, { type_intervention: '', date_prevue: '', compte_rendu: '', technicien: '' })
   const [intervBusy, setIntervBusy] = useState(false)
   // N5 — édition en place d'une intervention existante (ligne du tableau).
   const [editInterv, setEditInterv] = useState(null) // { id, date_prevue, date_realisee, compte_rendu, technicien }
