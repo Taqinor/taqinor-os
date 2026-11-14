@@ -1,0 +1,55 @@
+{
+ "id": "P1.3",
+ "tache": "AIC74",
+ "titre": "Recharger la page : les cartes reviennent, les propositions sont « expirées »",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "les deux cartes de proposition reviennent de l'historique (2)",
+  "aucune proposition rejouée n'est confirmable : expiree, expiree",
+  "plus aucun bouton « Confirmer » sur l'historique",
+  "la carte de résultat revient aussi"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 GET /api/django/auth/me/",
+  "201 POST /api/django/adminops/tracker-usage/",
+  "200 GET /api/django/parametres/traductions/effective/",
+  "200 GET /api/django/core/jobs-status/ ×2",
+  "200 GET /api/django/notifications/attention-summary/ ×4",
+  "200 GET /api/django/reporting/notifications/",
+  "200 GET /api/django/notifications/notifications/",
+  "200 GET /api/django/notifications/notifications/unread-count/ ×2",
+  "200 GET /api/django/stock/produits/",
+  "200 GET /api/django/adminops/impersonation/session-active/",
+  "200 GET /api/django/users/",
+  "200 GET /api/django/entites/entites/mes-entites/",
+  "200 GET /api/django/core/maintenance-windows/actives/",
+  "200 GET /api/django/onboarding/tours/",
+  "200 GET /api/django/monitoring/configs/co2-fleet/",
+  "200 GET /api/django/core/theme/courant/",
+  "200 GET /api/django/notifications/messages-accueil/a-lire/",
+  "200 GET /api/django/parametres/",
+  "200 GET /api/django/agent/evenements/stats/",
+  "200 GET /api/fastapi/sql-agent/history",
+  "200 GET /api/fastapi/sql-agent/suggestions"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P1.3-historique.png"
+ ]
+}

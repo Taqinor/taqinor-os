@@ -1,0 +1,38 @@
+{
+ "id": "P2.2",
+ "tache": "AIC75",
+ "titre": "« Mon matin » : relances, visites, devis sans réponse ; « Télécharger » passe par /proposal",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "carte matin avec ses trois blocs (visites, relances, devis_sans_reponse, manques_signales_hier)",
+  "le devis envoyé depuis 9 jours y figure ([[7,\"DEV-202611-0002\",9]])",
+  "la carte « Votre matin » affiche les relances du jour",
+  "GET ventes/devis/7/proposal/ → 200 application/pdf",
+  "PDF téléchargé : 3 page(s), il porte la référence DEV-202611-0002",
+  "le PDF ne montre ni prix d'achat ni marge"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "PASS",
+  "6": "PASS",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "PASS"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query",
+  "200 GET /api/django/ventes/devis/7/proposal/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P2.2-matin.png"
+ ]
+}

@@ -1,0 +1,34 @@
+{
+ "id": "P6.3",
+ "tache": "AIC86",
+ "titre": "La carte diagnostic de l'administrateur montre le signalement : route <id> normalisée, statut 404, aucune donnée de client",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "signalement servi avec la requête en 404 sur la route normalisée ([{\"code\":\"\",\"route\":\"/api/django/crm/leads/<id>/\",\"statut\":404,\"methode\":\"GET\",\"duree_ms\":136,\"il_y_a_s\":3,\"request_id\":\"abfefd620cd2483fb65a82d1cbb2a2d2\"}])",
+  "le texte copié porte la ligne « … leads/<id> → 404 »",
+  "toutes les routes du relevé sont normalisées, écran du relevé compris (/crm/leads/<id>)",
+  "aucun nom ni numéro de client dans le signalement servi",
+  "la carte affiche le nombre de signalements"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P6.3-diagnostic.png"
+ ]
+}

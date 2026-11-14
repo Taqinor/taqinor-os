@@ -1,0 +1,63 @@
+{
+ "id": "P1.1",
+ "tache": "AIC74",
+ "titre": "Sur /ia/agent (administrateur) : une question qui rend deux propositions et un résultat",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "la réponse porte 2 propositions et 1 résultat ([\"crm.lead.changer_etape\",\"ventes.devis.accepter\",\"crm.lead.resume\"])",
+  "les aperçus nomment l'objet : « Changer l'étape d'un lead — Karim Alami — Bouskoura (stage=CONTACTED) » ; « Accepter un devis — DEV-202611-0002 — Idrissi — 59 700,00 MAD TTC (envoyé) »",
+  "deux cartes de proposition à l'écran, chacune « à confirmer »",
+  "la carte de résultat (fiche du lead) est affichée",
+  "rien n'est fait avant confirmation (étape NEW)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 GET /api/django/public/portail/theme/",
+  "200 GET /api/django/identity/login-banner/",
+  "200 POST /api/django/token/",
+  "200 GET /api/django/auth/me/ ×3",
+  "200 GET /api/django/notifications/messages-accueil/a-lire/ ×2",
+  "200 GET /api/django/parametres/traductions/effective/ ×2",
+  "201 POST /api/django/adminops/tracker-usage/ ×2",
+  "200 GET /api/django/notifications/attention-summary/ ×4",
+  "200 GET /api/django/installations/interventions/ma-tournee/",
+  "200 GET /api/django/core/jobs-status/ ×2",
+  "200 GET /api/django/reporting/notifications/ ×2",
+  "200 GET /api/django/stock/produits/ ×3",
+  "200 GET /api/django/notifications/notifications/ ×2",
+  "200 GET /api/django/notifications/notifications/unread-count/ ×2",
+  "200 GET /api/django/users/ ×3",
+  "200 GET /api/django/adminops/impersonation/session-active/ ×2",
+  "200 GET /api/django/entites/entites/mes-entites/ ×2",
+  "200 GET /api/django/core/maintenance-windows/actives/ ×2",
+  "200 POST /api/django/crm/appareils-equipe/ce-navigateur/",
+  "200 GET /api/django/onboarding/tours/ ×2",
+  "200 GET /api/django/parametres/ ×2",
+  "200 GET /api/django/core/theme/courant/ ×2",
+  "200 GET /api/django/monitoring/configs/co2-fleet/ ×2",
+  "200 GET /api/django/reporting/reports/kpi-federes/",
+  "200 GET /api/django/agent/evenements/stats/",
+  "200 GET /api/fastapi/sql-agent/suggestions",
+  "200 GET /api/fastapi/sql-agent/history",
+  "200 POST /api/fastapi/sql-agent/query"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P1.1-deux-propositions.png"
+ ]
+}

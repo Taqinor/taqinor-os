@@ -635,7 +635,7 @@ Seconde contre-visite de clôture du groupe ALEA (dossier `docs/audits/2026-11-0
 
 ## DONE LOG
 - 2026-11-14 — AIC87 — cochée (12dfbbac98, b9519a37a3, dc39966ec2) : porte `fastapi-security` élargie (six modules, plancher 300), plancher nocturne 380, test d'historique de l'écran ; preuve : `iaSlice.history.test.js` vert (rejoué le 14/11) ; CI de la PR #1397.
-- 2026-11-14 — AIC86 — cochée (6c29544af9, 738e3587f5, 2347ab399d, b0c3e4cebc) : tampon de diagnostic du navigateur et son alimentation ; preuve : `tamponDiagnostic.test.mjs` vert (rejoué le 14/11 avec deux autres modules `node --test` : 29 tests) ; rejeu d'écran P6 dû à l'orchestrateur.
+- 2026-11-14 — AIC86 — cochée (6c29544af9, 738e3587f5, 2347ab399d, b0c3e4cebc) : tampon de diagnostic du navigateur et son alimentation ; preuve : `tamponDiagnostic.test.mjs` vert (rejoué le 14/11 avec deux autres modules `node --test` : 29 tests) ; rejeu d'écran JOUÉ le 14/11 sur les deux moteurs (P6.1 à P6.3 et N6.1 à N6.3, PASS : fiche inexistante en 404, relevé à la route `/crm/leads/<id>`, lu dans le diagnostic de l'administrateur) : `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md`.
 - 2026-11-13 — AMET105 — seconde vague des rejeux sur runner : complément à l'écran (12 coches), ADCG (5 coches), 13 tâches pour les défauts trouvés.
 - 2026-11-13 — ADCG23 — cochée : rejeu en direct PASS du 13/11 sur un runner GitHub (docs/audits/acceptation/ADCG/).
 - 2026-11-13 — ADCG107 — cochée : rejeu en direct PASS du 13/11 sur un runner GitHub (docs/audits/acceptation/ADCG/).
