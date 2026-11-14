@@ -608,13 +608,8 @@ def pre_echeance_reminders():
     ).select_related('client', 'company').prefetch_related(
         *RELATIONS_MONTANT_DU)
     clients_manuels = _clients_manuels()
-    # AMSG88 — beat du lundi au vendredi (AMSG43) : la fenêtre court jusqu'à
-    # la veille du prochain passage + N (le vendredi couvre le week-end).
-    veille = today
-    while (veille + timedelta(days=1)).weekday() >= 5:
-        veille += timedelta(days=1)
-
-    profiles_cache = {}
+    from apps.notifications.calendar_utils import feries_entre
+    profiles_cache, veilles = {}, {}
     for facture in candidates:
         if (facture.company_id, facture.client_id) in clients_manuels:
             continue
@@ -629,7 +624,19 @@ def pre_echeance_reminders():
         n = getattr(profile, 'rappel_pre_echeance_jours', 5) or 0
         if n <= 0:
             continue
-        if not (today < facture.date_echeance <= veille + timedelta(days=n)):
+        if company_id not in veilles:
+            # AMSG88 — beat du lundi au vendredi (AMSG43) : la fenêtre court
+            # jusqu'à la veille du prochain passage + N (le vendredi couvre le
+            # week-end) ; AMSG101 — un férié de la société (Holiday) n'envoie
+            # rien et allonge la borne comme un jour de week-end.
+            feries = set(feries_entre(facture.company, today, today + timedelta(days=31)))
+            veille = today
+            while (veille + timedelta(days=1)).weekday() >= 5 or veille + timedelta(days=1) in feries:
+                veille += timedelta(days=1)
+            veilles[company_id] = None if today in feries else veille
+        veille = veilles[company_id]
+        if veille is None or not (
+                today < facture.date_echeance <= veille + timedelta(days=n)):
             continue
         # Idempotence : un seul rappel par facture (le marqueur reste tant
         # que la facture n'a qu'une échéance figée — pas de doublon possible
@@ -692,7 +699,13 @@ def releve_mensuel_reminders():
         company_id__in=active_company_ids(),
     ).exclude(email__isnull=True).exclude(email='')
 
+    from apps.notifications.calendar_utils import feries_entre
+    feries = {}  # AMSG101 — jour férié de la société : aucun relevé (rattrapé)
     for client in clients:
+        if client.company_id not in feries:
+            feries[client.company_id] = bool(feries_entre(client.company, today, today))
+        if feries[client.company_id]:
+            continue
         # Idempotence : un seul envoi par client et par mois.
         # AFAC45 — seul un relevé réellement PARTI compte (échec retenté).
         deja_envoye = EmailLog.objects.filter(
