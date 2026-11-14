@@ -50,6 +50,7 @@ class ErpUser(HttpUser):
     wait_time = between(1, 4)
 
     client_id = None
+    devis_rendable_id = None
     nb_pages = 1
 
     def on_start(self):
@@ -75,6 +76,26 @@ class ErpUser(HttpUser):
         )
         if resp.status_code == 201:
             self.client_id = resp.json().get("id")
+            self._creer_devis_rendable()
+
+    def _creer_devis_rendable(self):
+        """ADCG117 — un devis CHIFFRÉ (onduleur + panneaux) que ``rendu_proposal`` rend.
+
+        Le devis vide de ``creation_devis`` est refusé en 409 nommé par ``/proposal``
+        (aucun onduleur : comportement voulu du moteur) — jamais excusé ici.
+        """
+        resp = self.client.post("/api/django/ventes/devis/", json={"client": self.client_id, "taux_tva": "20"},
+                                name="ventes:devis:create")
+        if resp.status_code != 201:
+            return
+        devis_id = resp.json().get("id")
+        for designation, quantite, prix in (("Onduleur réseau 5 kW", 1, "9000"), ("Panneau 550 Wc", 10, "1200")):
+            ligne = self.client.post("/api/django/ventes/devis-lignes/", json={
+                "devis": devis_id, "designation": designation, "quantite": quantite, "prix_unitaire": prix,
+            }, name="ventes:devis-lignes:create")
+            if ligne.status_code != 201:
+                return
+        self.devis_rendable_id = devis_id
 
     @task(6)
     def liste_leads(self):
@@ -117,17 +138,11 @@ class ErpUser(HttpUser):
 
     @task(1)
     def rendu_proposal(self):
-        """Rendu PDF /proposal du dernier devis listé (chemin le plus lourd)."""
-        resp = self.client.get(
+        """Rendu PDF /proposal du devis rendable du scénario (chemin le plus lourd)."""
+        self.client.get(
             "/api/django/ventes/devis/?page=1", name="ventes:devis:list")
-        try:
-            data = resp.json()
-            results = data.get("results") or data
-            devis_id = results[0]["id"] if results else None
-        except (ValueError, LookupError, TypeError, AttributeError):  # réponse inattendue → skip
-            devis_id = None
-        if devis_id:
+        if self.devis_rendable_id:
             self.client.get(
-                f"/api/django/ventes/devis/{devis_id}/proposal/",
+                f"/api/django/ventes/devis/{self.devis_rendable_id}/proposal/",
                 name="ventes:proposal",
             )
