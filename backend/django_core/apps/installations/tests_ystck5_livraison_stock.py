@@ -254,3 +254,59 @@ class AnnulerConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
         liv = Livraison.objects.get(pk=self.livs[0].pk)
         self.assertEqual(liv.statut, Livraison.Statut.ANNULEE)
         self.assertFalse(liv.stock_mouvemente)
+
+
+class ExpedierConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC58 — deux « Expédier » croisés (deux VRAIES connexions) : une seule
+    ventilation dépôt → camionnette, le second répond 409."""
+
+    def test_deux_expeditions_croisees_une_seule_ventilation(self):
+        from apps.stock import services as stock
+        company = make_company()
+        user = make_user(company)
+        produit = make_produit(company, quantite_stock=Decimal('10'))
+        depot = EmplacementStock.objects.create(
+            company=company, nom='Dépôt principal', is_principal=True)
+        liv = Livraison.objects.create(
+            company=company, reference='LIV-ACNC58-1',
+            installation=make_installation(company), depot=depot,
+            statut=Livraison.Statut.PLANIFIEE)
+        LivraisonLigne.objects.create(
+            livraison=liv, produit=produit, designation=produit.nom, quantite=4)
+        original = stock.transfer_stock
+        a_tient, b_tente, b_fini, res = (
+            threading.Event(), threading.Event(), threading.Event(), {})
+
+        def transfert_lent(**kwargs):
+            if not a_tient.is_set():  # A : tient sa transaction ouverte
+                a_tient.set()
+                b_tente.wait(5)
+                attendre_un_ecrivain_bloque(ou_bien=b_fini)
+            return original(**kwargs)
+
+        def fil(nom):
+            if nom == 'b':
+                a_tient.wait(5)
+                b_tente.set()
+            res[nom] = auth(user).post(
+                f'{BASE}/livraisons/{liv.id}/expedier/', {}, format='json').status_code
+            if nom == 'b':
+                b_fini.set()
+            connection.close()
+
+        with mock.patch.object(stock, 'transfer_stock', side_effect=transfert_lent):
+            fils = [threading.Thread(target=fil, args=(n,)) for n in ('a', 'b')]
+            for f in fils:
+                f.start()
+            for f in fils:
+                f.join(20)
+        self.assertEqual(sorted(res.values()), [200, 409], res)
+        self.assertEqual(TransfertStock.objects.filter(
+            company=company, produit=produit).count(), 1)
+        van = EmplacementStock.objects.get(company=company, is_principal=False)
+        self.assertEqual({e: StockEmplacement.objects.get(
+            produit=produit, emplacement=e).quantite for e in (van, depot)},
+            {van: 4, depot: 6})
+        liv.refresh_from_db()
+        self.assertEqual(liv.statut, Livraison.Statut.EN_TRANSIT)
+        self.assertTrue(liv.stock_mouvemente)
