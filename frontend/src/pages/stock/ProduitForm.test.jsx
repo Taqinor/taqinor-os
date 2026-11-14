@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -40,6 +40,7 @@ vi.mock('../../ui', async (importActual) => {
 })
 
 import ProduitForm from './ProduitForm.jsx'
+import stockApi from '../../api/stockApi'
 import { wrapperProduitForm, espionsStock } from '../../test/fixtures/produitFormHarness.jsx'
 
 const BATTERIE = {
@@ -185,5 +186,37 @@ describe('AERR132 — fiche à stock négatif', () => {
     expect(dernierPatch()).not.toHaveProperty('quantite_stock')
     expect(screen.queryByText('Saisissez un nombre entier.')).toBeNull()
     await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+})
+
+describe('AERR142 — retrait d’un prix fournisseur', () => {
+  it('Annuler ⇒ aucun appel ; confirmé ⇒ un appel ; rejet dit', async () => {
+    const lignes = [
+      { id: 71, fournisseur: 5, fournisseur_nom: 'Solarys', prix_achat: '1250.00' },
+      { id: 72, fournisseur: 6, fournisseur_nom: 'Atlas Energie', prix_achat: '1400.00' },
+    ]
+    const lire = vi.spyOn(stockApi, 'getProduitPrixFournisseurs').mockResolvedValue({ data: lignes })
+    const retirer = vi.spyOn(stockApi, 'deletePrixFournisseur').mockResolvedValue({ data: {} })
+    await ouvrir()
+    const supprimerLigne = async (nom) => fireEvent.click(within((await screen.findByText(nom)).closest('tr'))
+      .getByRole('button', { name: 'Supprimer' }))
+    await supprimerLigne('Solarys')
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(retirer).not.toHaveBeenCalled()
+    const lecturesAvant = lire.mock.calls.length
+    await new Promise((r) => setTimeout(r, 450))  // verrou anti-double-clic (CAD177)
+    await supprimerLigne('Solarys')
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(retirer).toHaveBeenCalledWith(71))
+    await waitFor(() => expect(lire.mock.calls.length).toBe(lecturesAvant + 1))
+    await new Promise((r) => setTimeout(r, 450))
+    retirer.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Prix lié à un bon de commande.' } } })
+    await supprimerLigne('Atlas Energie')
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }))
+    expect(await screen.findByText('Prix lié à un bon de commande.')).toBeInTheDocument()
+    expect(retirer).toHaveBeenCalledTimes(2)
+    lire.mockRestore()
+    retirer.mockRestore()
   })
 })
