@@ -240,6 +240,10 @@ class DevisWhatsappActionTests(TestCase):
             devis.refresh_from_db()
             self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
             self.assertEqual(ShareLink.objects.filter(devis=devis).count(), 0)
+        # La fiche lead lit le numéro du LEAD (whatsapp, sinon téléphone),
+        # jamais celui du client : le témoin porte donc un numéro valide.
+        self.lead.telephone = '0612340031'
+        self.lead.save(update_fields=['telephone'])
         temoin = self._devis(lead=self.lead)
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis-apercu/',
