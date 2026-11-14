@@ -257,6 +257,24 @@ class TestEmplacementApi(EmplacementBase):
             produit=self.produit, emplacement=camionnette)
         self.assertEqual(se.quantite, 2)
 
+    def test_transfert_meme_cle_un_seul_transfert(self):
+        """ACNC22 (C-ACNC-005) — le même transfert POSTé deux fois sous
+        ``Idempotency-Key: k2`` ⇒ un seul transfert (réponse rejouée), 2 en
+        camionnette. Mutant : retirer ``IdempotentCreateMixin`` ⇒ 4."""
+        principal, camionnette = self._emplacements()
+        corps = {'produit': self.produit.id, 'source': principal.id,
+                 'destination': camionnette.id, 'quantite': 2}
+        url = '/api/django/stock/transferts/'
+        r1 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k2')
+        r2 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k2')
+        self.assertEqual(r1.status_code, 201, r1.content)
+        self.assertEqual(r2.status_code, 201, r2.content)
+        self.assertEqual(r2.json()['id'], r1.json()['id'])
+        self.assertEqual(TransfertStock.objects.filter(
+            produit=self.produit).count(), 1)
+        self.assertEqual(StockEmplacement.objects.get(
+            produit=self.produit, emplacement=camionnette).quantite, 2)
+
     def _emplacements(self):
         ensure_emplacements(self.company)
         return (EmplacementStock.objects.get(company=self.company, is_principal=True),

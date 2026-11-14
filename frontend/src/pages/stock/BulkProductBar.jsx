@@ -1,7 +1,8 @@
 // T8 — barre d'actions EN MASSE du catalogue produit. Visible dès qu'un produit
 // est coché. Prix (% ou fixe), garantie, catégorie, marque, export Excel. La
 // règle (prix d'achat jamais touché) est appliquée SERVEUR ; ici, UI seulement.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { formatNumber } from '../../lib/format'
 import { Download, QrCode, LayoutGrid, X } from 'lucide-react'
 import {
   Button, Input, Segmented,
@@ -24,7 +25,7 @@ const PANELS = [
 ]
 
 export default function BulkProductBar({
-  count, categories = [], marques = [], busy, labelsBusy, kanbanBusy,
+  count, prixExemple, categories = [], marques = [], busy, labelsBusy, kanbanBusy,
   onAction, onExport, onPrintLabels, onPrintKanban, onClear,
 }) {
   // ASTK242 — « Prix » (set_price) exige `catalogue_prix_modifier` côté serveur.
@@ -38,8 +39,19 @@ export default function BulkProductBar({
   const [cat, setCat] = useState('')
   const [marque, setMarque] = useState('')
 
-  const toggle = (n) => setPanel((p) => (p === n ? null : n))
+  // ACNC24 — prix : confirmation (nombre + exemple avant → après), clé gardée jusqu'au succès.
+  const [aConfirmer, setAConfirmer] = useState(false)
+  const clePrix = useRef(null)
+  const toggle = (n) => { setPanel((p) => (p === n ? null : n)); setAConfirmer(false) }
   const run = (action, params) => { onAction(action, params); setPanel(null) }
+  const fmt = (v) => formatNumber(v, { decimals: 2 })
+  const apres = priceMode === 'percent' ? Number(prixExemple) * (1 + Number(priceVal) / 100) : Number(priceVal)
+  const appliquerPrix = async () => {
+    clePrix.current ??= globalThis.crypto?.randomUUID?.() ?? `prix-${Date.now()}`
+    setAConfirmer(false); setPanel(null)
+    const ok = await onAction('set_price', { mode: priceMode, valeur: priceVal, idempotencyKey: clePrix.current })
+    if (ok) { clePrix.current = null; setPriceVal('') }
+  }
 
   return (
     <div
@@ -113,10 +125,16 @@ export default function BulkProductBar({
             placeholder={priceMode === 'percent' ? 'ex. 10 ou -5' : 'ex. 1200'}
             value={priceVal} onChange={(e) => setPriceVal(e.target.value)}
           />
-          <Button size="sm" disabled={priceVal === ''}
-                  onClick={() => run('set_price', { mode: priceMode, valeur: priceVal })}>
+          <Button size="sm" disabled={priceVal === ''} onClick={() => setAConfirmer(true)}>
             Appliquer
           </Button>
+          {aConfirmer && (
+            <span role="alert" className="flex items-center gap-2 text-sm">
+              {count} produit{count > 1 ? 's' : ''}
+              {prixExemple != null ? ` — ex. ${fmt(prixExemple)} → ${fmt(apres)}` : ''}
+              <Button size="sm" onClick={appliquerPrix}>Confirmer</Button>
+            </span>
+          )}
           <span className="text-xs text-white/60">Le prix d&apos;achat n&apos;est jamais modifié.</span>
         </div>
       )}

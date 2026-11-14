@@ -4,6 +4,7 @@ import {
   Bell, BellOff, Sparkles, Copy, GitMerge, PackagePlus, UserPlus2, Undo2,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
+import useDroitMetier from '../../features/sav/useDroitMetier' // ADRG115
 import { ROUTE } from '../../lib/search/entityRoutes'
 import stockApi from '../../api/stockApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
@@ -90,12 +91,13 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
 
   // ── WIR118 (XSAV27) — prêts d'équipement (loaner) : liste + création ──
   const [prets, setPrets] = useState([])
+  const peutGerer = useDroitMetier('sav_gerer') // ADRG115 — route réservée à sav_gerer, même en GET
   const loadPrets = () => {
     savApi.getPretsEquipement(ticketId).then((r) => setPrets(r.data ?? [])).catch(() => {})
   }
   // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
   const chargerPrets = useEffectEvent(loadPrets)
-  useEffect(() => { chargerPrets() }, [ticketId])
+  useEffect(() => { if (peutGerer) chargerPrets() }, [ticketId, peutGerer])
   // ACNC27 — retour en cours : « Retourner » désactivé pendant l'envoi.
   const [retourEnCours, setRetourEnCours] = useState(null)
   const retournerPret = async (pretId) => {

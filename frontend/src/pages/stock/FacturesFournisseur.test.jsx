@@ -204,6 +204,26 @@ describe("Nouvelle facture — nature d'achat (AAPV6)", () => {
     await user.type(screen.getByLabelText('Montant TTC'), '12000')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(stockApi.createFactureFournisseur).toHaveBeenCalledWith(
-      expect.objectContaining({ fournisseur: 5, type_achat: 'services' })))
+      expect.objectContaining({ fournisseur: 5, type_achat: 'services' }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) })))  // ACNC23
+  })
+
+  it('ACNC23 — une facture au même ref_fournisseur dit « Facture déjà saisie : <référence> »', async () => {
+    const user = userEvent.setup()
+    const onSaved = vi.fn()
+    stockApi.createFactureFournisseur.mockResolvedValueOnce({
+      data: { id: 10, doublon_warning: [{ id: 9, reference: 'FAF-2026-11-0009' }] } })
+    render(
+      <ThemeProvider>
+        <NouvelleFacture fournisseurs={[{ id: 6, nom: 'Grossiste', type: 'materiel' }]}
+          bons={[]} onClose={() => {}} onSaved={onSaved} />
+      </ThemeProvider>,
+    )
+    await user.click(screen.getByLabelText('Fournisseur'))
+    await user.click(await screen.findByRole('option', { name: 'Grossiste' }))
+    await user.type(screen.getByLabelText('Montant TTC'), '10000')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(
+      expect.stringContaining('Facture déjà saisie : FAF-2026-11-0009')))
   })
 })

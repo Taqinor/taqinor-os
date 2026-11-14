@@ -18,6 +18,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from apps.stock.permissions import PeutVoirPrixAchat
+from apps.roles.permissions import DroitDeLaGrille  # ADRG41
 from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin, LectureDuModule,
 )
@@ -140,7 +141,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + ['revisions', 'composition_au']:
             # XMFG18 — lecture seule (aucun prix dans les snapshots).
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -245,7 +246,7 @@ class KitComposantViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -312,7 +313,7 @@ class ControleQualiteModeleViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -348,7 +349,7 @@ class EtapeAssemblageViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()

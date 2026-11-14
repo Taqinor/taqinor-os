@@ -83,6 +83,26 @@ class TestAcompteCreation(Xpur8Base):
         self.assertEqual(
             Decimal(resp.data['montant_non_consomme']), Decimal('3000.00'))
 
+    def test_acomptes_plafonnes_au_total_du_bcf(self):
+        """ACNC23 (C-ACNC-005) — un acompte renvoyé sous la même
+        ``Idempotency-Key`` n'est versé qu'une fois ; un acompte qui
+        porterait Σ au-delà du total TTC du BCF (10 × 1000 HT) ⇒ 409, rien
+        de créé. Mutant : retirer le plafond ⇒ 201."""
+        url = '/api/django/stock/acomptes-fournisseur/'
+        corps = {'bon_commande': self.bcf.id, 'montant': '2000',
+                 'date_versement': '2026-06-01'}
+        for _ in range(2):
+            resp = self.api.post(url, corps, format='json',
+                                 HTTP_IDEMPOTENCY_KEY='acompte-k1')
+            self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(AcompteFournisseur.objects.filter(
+            bon_commande=self.bcf).count(), 1)
+        resp = self.api.post(url, dict(corps, montant='11000'), format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('total TTC du BCF', resp.json()['detail'])
+        self.assertEqual(AcompteFournisseur.objects.filter(
+            bon_commande=self.bcf).count(), 1)
+
     def test_visible_on_bcf_detail(self):
         AcompteFournisseur.objects.create(
             company=self.company, bon_commande=self.bcf,

@@ -86,7 +86,7 @@ import {
 import { isSimplePolygon, roofAreaLabel, zoomToFitRing, type LngLat } from '../lib/roof';
 import { inferZoneFacingAmong } from '../lib/roofAdjacency';
 import { type Obstacle } from '../lib/obstacles';
-import { buildSatelliteStyle, imageryAttribution, resolveImageryProvider } from '../lib/roofConfig';
+import { brancherRepliImagerie, buildSatelliteStyle, imageryAttribution, resolveImageryProvider } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
 import {
@@ -1262,10 +1262,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   opts.onReady?.();
 
-  map.on('error', (e: unknown) => {
-    const msg = (e as { error?: { message?: string } } | undefined)?.error?.message ?? e;
-    console.warn('[roof-tool-pro6] erreur carte (non bloquante) :', msg);
-  });
+  brancherRepliImagerie(map, setStatus, opts.maptilerKey); // ACAL377 — style refusé ⇒ fond de repli
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
   // W91 — bouton « ma position » : GeolocateControl natif de MapLibre (aucune dépendance
   // ajoutée). Sur `geolocate`, on recentre nous-mêmes en zoom 19 (le contrôle natif ne

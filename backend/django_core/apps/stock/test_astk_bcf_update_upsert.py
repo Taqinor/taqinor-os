@@ -167,3 +167,57 @@ class BcfUpdateUpsertTests(TestCase):
             [self.ligne.pk])
         self.assertEqual(self.bcf.lignes.get().frais_annexes,
                          Decimal('500'))
+
+    def test_version_perimee_rend_409_et_garde_la_ligne(self):
+        """ACNC21 (C-ACNC-004) — A et B lisent le BCF à ``lock_version`` 0 ;
+        A ajoute une ligne (P3 × 7) ; B enregistre avec la version 0 ⇒ 409
+        ``conflit_version`` avec ``actuel``, la ligne de A reste en base.
+        Mutant : retirer ``VerrouOptimisteSerializerMixin`` ⇒ 200, P3 effacée."""
+        p3 = Produit.objects.create(
+            company=self.company, nom='Batterie ACNC21', sku='ACNC21-3',
+            prix_vente=Decimal('100'), prix_achat=Decimal('50'))
+        lu = self.api.get(f'{URL}{self.bcf.pk}/').data
+        self.assertEqual(lu['lock_version'], 0)
+        base = {'id': self.ligne.pk, 'produit': self.produit.pk,
+                'quantite': 2, 'prix_achat_unitaire': '800'}
+        rep_a = self.api.patch(f'{URL}{self.bcf.pk}/', {
+            'lock_version': 0, 'lignes': [base, {
+                'produit': p3.pk, 'quantite': 7,
+                'prix_achat_unitaire': '50'}]}, format='json')
+        self.assertEqual(rep_a.status_code, 200, rep_a.data)
+        rep_b = self.api.patch(f'{URL}{self.bcf.pk}/', {
+            'lock_version': 0, 'lignes': [dict(base, quantite=4)]},
+            format='json')
+        self.assertEqual(rep_b.status_code, 409, rep_b.content)
+        self.assertEqual(rep_b.json()['code'], 'conflit_version')
+        self.assertIn('actuel', rep_b.json())
+        self.assertTrue(self.bcf.lignes.filter(produit=p3, quantite=7).exists())
+        self.assertEqual(self.bcf.lignes.get(pk=self.ligne.pk).quantite, 2)
+
+    def test_patch_et_delete_croises_avec_envoyer_rendent_409(self):
+        """ACNC21 — le BCF passe ENVOYE entre ``get_object()`` (instance
+        périmée, encore brouillon) et l'écriture : statut relu sous verrou ⇒
+        409, BCF présent et ENVOYE."""
+        from unittest import mock
+        from apps.stock.views.bon_commande_fournisseur import (
+            BonCommandeFournisseurViewSet)
+        perime = BonCommandeFournisseur.objects.get(pk=self.bcf.pk)
+        BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        with mock.patch.object(BonCommandeFournisseurViewSet, 'get_object',
+                               return_value=perime):
+            rep = self.api.patch(f'{URL}{self.bcf.pk}/', {'note': 'X'},
+                                 format='json')
+            self.assertEqual(rep.status_code, 409, rep.content)
+            # La suppression d'un BCF est réservée à l'admin (IsAdminRole) :
+            # le refus attendu ici est le 409 du statut relu, pas le 403 du rôle.
+            admin = User.objects.create_user(
+                username='astk67-admin', password='x', company=self.company,
+                role_legacy='admin')
+            self.api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+            rep = self.api.delete(f'{URL}{self.bcf.pk}/')
+            self.assertEqual(rep.status_code, 409, rep.content)
+        self.bcf.refresh_from_db()
+        self.assertEqual(self.bcf.statut, BonCommandeFournisseur.Statut.ENVOYE)
+        self.assertEqual(self.bcf.note, 'NOTE')

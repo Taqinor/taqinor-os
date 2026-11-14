@@ -234,6 +234,50 @@ class TestLienRapportToken(TestCase):
         self.interv.refresh_from_db()
         self.assertEqual(self.interv.lien_rapport_token, r.data['token'])
 
+    def test_lien_expire_90_jours_apres_la_cloture(self):
+        """APUB7 (D-APUB-4) — page, PDF et photo publics : 404 quand la clôture
+        date de plus de 90 jours (``cloturee_notifiee_le`` J-91, ou à défaut
+        ``date_realisee`` J-120), 200 à J-89 ; ``lien-rapport`` ne tourne pas
+        le jeton expiré."""
+        import datetime
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentType
+        from django.utils import timezone
+
+        from apps.installations import field_services
+        from apps.records.models import Attachment
+        field_services.seed_shotlist_slots(self.company)
+        slot = next(s for s in field_services.active_shotlist(self.company)
+                    if s.phase == 'avant')
+        maintenant = timezone.now()
+        cas = (({'cloturee_notifiee_le': maintenant - datetime.timedelta(days=91)}, 404),
+               ({'cloturee_notifiee_le': maintenant - datetime.timedelta(days=89)}, 200),
+               ({'date_realisee': timezone.localdate() - datetime.timedelta(days=120)}, 404))
+        pub = APIClient()
+        jetons = []
+        for champs, attendu in cas:
+            interv = Intervention.objects.create(
+                company=self.company, installation=self.inst, type_intervention='pose',
+                created_by=self.user, technicien=self.user,
+                statut=Intervention.Statut.VALIDEE, signataire_nom='Client', **champs)
+            photo = Attachment.objects.create(
+                company=self.company,
+                content_type=ContentType.objects.get_for_model(Intervention),
+                object_id=interv.id, file_key=f'k/apub7/{interv.id}', mime='image/jpeg',
+                filename=field_services.encode_slot_filename(slot.cle, 'p.jpg'))
+            jeton = interv.ensure_lien_rapport_token()
+            jetons.append((interv, jeton))
+            with mock.patch('apps.records.storage.fetch_attachment',
+                            lambda key: (b'JPEG-test', None)):
+                for chemin in ('', 'pdf/', f'photos/{photo.id}/'):
+                    rep = pub.get(f'{PUBLIC_BASE}/intervention-rapport/{jeton}/{chemin}')
+                    self.assertEqual(rep.status_code, attendu, (champs, chemin))
+        interv, jeton = jetons[0]
+        r = self.api.get(f'{BASE}/interventions/{interv.id}/lien-rapport/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['token'], jeton)
+
     def test_public_page_unknown_token_404(self):
         pub = APIClient()
         resp = pub.get(f'{PUBLIC_BASE}/intervention-rapport/does-not-exist/')

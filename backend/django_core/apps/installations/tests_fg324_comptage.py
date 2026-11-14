@@ -62,7 +62,7 @@ def make_produit(company, nom='Panneau 550W', stock=42):
 class TestSessionComptage(TestCase):
     def setUp(self):
         self.company = make_company()
-        self.user = make_user(self.company)
+        self.user = make_user(self.company, role='admin')  # ADRG43 — terminer : admin
         self.api = auth(self.user)
         self.emp = make_emplacement(self.company)
         self.produit = make_produit(self.company, stock=42)
@@ -187,3 +187,40 @@ class TestScopingAndRoles(TestCase):
         resp = api.get(f'{BASE}/sessions-comptage/')
         results = resp.data.get('results', resp.data)
         self.assertEqual(len(results), 0)
+
+    def test_terminer_reserve_admin_roles_livres(self):
+        # ADRG43 (D-ADRG-11) — clôturer poste des ajustements de stock : admin seul.
+        from apps.roles.models import Role
+        from apps.roles import permissions_registre as reg
+        from apps.stock.models import MouvementStock
+        produit = make_produit(self.company, stock=42)
+
+        def session_en_cours():
+            s = SessionComptage.objects.create(
+                company=self.company, reference=f'CYC-ADRG43-{next(_seq)}',
+                statut=SessionComptage.Statut.EN_COURS)
+            ComptageLigne.objects.create(
+                session=s, produit=produit, quantite_theorique=42, quantite_comptee=40, compte=True)
+            return s
+
+        def role(nom, perms):
+            r = Role.objects.create(company=self.company, nom=f'{nom} ADRG43', permissions=list(perms))
+            return User.objects.create_user(
+                username=f'fg324-{next(_seq)}', password='x', company=self.company, role=r)
+        ajustements = MouvementStock.objects.filter(
+            produit=produit, type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT)
+        for nom, perms in (('Technicien', reg.TECHNICIEN_PERMISSIONS),
+                           ('Technicien responsable', reg.TECHNICIEN_RESP_PERMISSIONS),
+                           ('Responsable', reg.RESPONSABLE_PERMISSIONS)):
+            s = session_en_cours()
+            r = auth(role(nom, perms)).post(f'{BASE}/sessions-comptage/{s.id}/terminer/', {}, format='json')
+            self.assertEqual(r.status_code, 403, (nom, r.content))
+            s.refresh_from_db()
+            self.assertEqual(s.statut, SessionComptage.Statut.EN_COURS)
+        produit.refresh_from_db()
+        self.assertEqual((produit.quantite_stock, ajustements.count()), (42, 0))
+        s = session_en_cours()
+        r = auth(make_user(self.company, role='admin')).post(
+            f'{BASE}/sessions-comptage/{s.id}/terminer/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(ajustements.get().quantite_apres - ajustements.get().quantite_avant, -2)

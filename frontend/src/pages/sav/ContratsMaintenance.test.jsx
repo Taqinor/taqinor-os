@@ -47,17 +47,18 @@ vi.mock('../../api/axios', () => ({
 
 import { Component as ContratsMaintenance, PrestationsOmEditor } from './ContratsMaintenance.jsx'
 import { documentContrat } from '../../test/fixtures/contractSamples'
+import api from '../../api/axios'
 
-function makeStore(permissions = []) {
+function makeStore(permissions = [], role) {
   return configureStore({
-    reducer: { auth: (state = { role_nom: 'Responsable', permissions }) => state },
+    reducer: { auth: (state = { role_nom: 'Responsable', role, permissions }) => state },
   })
 }
-function renderPage(permissions = []) {
+function renderPage(permissions = [], role) {
   // DataTable a besoin d'un <Router> (useSearchParams) et d'un <ThemeProvider>
   // (useDensity) — patron DataTable.test.jsx.
   return render(
-    <Provider store={makeStore(permissions)}>
+    <Provider store={makeStore(permissions, role)}>
       <MemoryRouter>
         <ThemeProvider>
           <ContratsMaintenance />
@@ -120,6 +121,19 @@ describe('ContratsMaintenance — Tournée préventive (WIR230)', () => {
     await user.click(screen.getByRole('button', { name: 'Planifier la tournée' }))
 
     expect(await screen.findByText('Technicien inconnu.')).toBeInTheDocument()
+  })
+
+  // ADRG114 — `/users/` est réservé au palier admin ou à `users_gerer` (ASEC10).
+  it('sans droit de lister les comptes : aucun GET /users/ au montage', async () => {
+    const appelsUsers = () => api.get.mock.calls.filter(([url]) => url === '/users/').length
+    for (const [permissions, role] of [[['sav_voir'], 'normal'], [['sav_gerer'], 'normal']]) {
+      renderPage(permissions, role) // Commercial puis Technicien du registre
+      await waitFor(() => expect(getContrats).toHaveBeenCalled())
+      cleanup()
+    }
+    expect(appelsUsers()).toBe(0)
+    renderPage([], 'admin')
+    await waitFor(() => expect(appelsUsers()).toBe(1))
   })
 })
 
