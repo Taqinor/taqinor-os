@@ -296,7 +296,10 @@ def lead_brouillon_suivi(request, lead_id):
     responsable du lead (aucun prénom codé en dur) ; rien n'est écrit.
     ACVI110 — règle MRY13 des touches : seules les valeurs non vides sont
     remplacées, toute phrase qui garde un placeholder est omise (jamais un
-    « { » ni « je suis  de »), repli sans modèle compris."""
+    « { » ni « je suis  de »). COP-C7 — sans modèle société AUCUNE phrase de
+    repli n'est écrite (le Guide interdit « avez-vous pu le consulter ? ») :
+    ``texte`` vaut ``""`` et le lien ouvre la conversation nue. ``wa_url`` est
+    la clé lue par la carte ; ``lien_wa_me`` (même valeur) reste servi."""
     from apps.ventes import selectors as ventes
     from apps.ventes.utils.whatsapp import build_wa_url
 
