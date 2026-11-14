@@ -1,0 +1,289 @@
+{
+  "sha": "df74c8d8134f7f8aa4cc18dd106cc42827785eb9",
+  "date": "2026-11-14",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG125",
+    "ADRG129",
+    "ADRG130",
+    "ADRG131",
+    "ADRG132",
+    "ADRG133",
+    "ADRG134",
+    "ADRG135",
+    "ADRG136",
+    "ADRG137"
+  ],
+  "couvre_avec_ecart": [
+    "ADRG125",
+    "ADRG133",
+    "ADRG134"
+  ],
+  "etapes": [
+    {
+      "id": "PF4.4-ADRG125",
+      "taches": [
+        "ADRG125"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG125.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/Rapports.jsx::Component charge pour tout rôle, sans garde, GET crm/rapports/attribution/ (carte « Attribution des leads » de l'onglet Ventes) et reporting/insights/analytics/ + reporting/insights/recurring-revenue/ (onglet Insights) : le Technicien responsable et l'Admin RH livrés y prennent 403 + console.error (oracles 2-3, observé au run 43640330000). Défaut antérieur, hors ADRG125 (qui ne garde que les trois cartes ventes/stock/service, toutes vérifiées ici : aucun appel refusé, aucune carte « Rapport indisponible ») ; avant ADRG125 la même page échouait déjà (sales/ en 403 pour ces deux rôles). ; oracle 2 — GET http://localhost:4173/api/django/crm/rapports/attribution/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/rapports/attribution/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/analytics/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/analytics/) ; oracle 2 — GET http://localhost:4173/api/django/crm/rapports/attribution/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/rapports/attribution/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/analytics/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/analytics/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/analytics/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/analytics/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/recurring-revenue/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/recurring-revenue/) ; oracle 2 — GET http://localhost:4173/api/django/crm/rapports/attribution/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/rapports/attribution/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/recurring-revenue/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/recurring-revenue/) ; oracle 2 — GET http://localhost:4173/api/django/reporting/insights/analytics/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/insights/analytics/) ; oracle 2 — GET http://localhost:4173/api/django/crm/rapports/attribution/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/crm/rapports/attribution/)"
+    },
+    {
+      "id": "PF4.4-ADRG129",
+      "taches": [
+        "ADRG129"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG129.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG130",
+      "taches": [
+        "ADRG130"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG130.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG131",
+      "taches": [
+        "ADRG131"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG131.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG132",
+      "taches": [
+        "ADRG132"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG132.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG133",
+      "taches": [
+        "ADRG133"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG133.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG133-directeur",
+      "taches": [
+        "ADRG133"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG133-directeur.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/installations/DemandesAchatList.jsx::approuver ne charge le plan d'approbation qu'après un POST demandes-achat/<id>/approuver/ refusé en 409 (« Un plan d'approbation est en cours », backend apps/installations/views/demande_achat.py::approuver) : 409 + console.error (oracles 2-3) à chaque affichage du plan. Défaut antérieur à ADRG133 (même parcours avant la tâche), hors de son périmètre (la garde des deux boutons d'étape). ; oracle 2 — POST http://localhost:4173/api/django/installations/demandes-achat/2/approuver/ → 409 ; oracle 2 — POST http://localhost:4173/api/django/installations/demandes-achat/2/approuver/ → 409 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 409 (Conflict) (http://localhost:4173/api/django/installations/demandes-achat/2/approuver/) ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 409 (Conflict) (http://localhost:4173/api/django/installations/demandes-achat/2/approuver/)"
+    },
+    {
+      "id": "PF4.4-ADRG134",
+      "taches": [
+        "ADRG134"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG134.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG134-cr",
+      "taches": [
+        "ADRG134"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG134-cr.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/pages/interventions/InterventionsPage.jsx::InterventionsPage (route /interventions sans garde, features/installations/module.config.jsx) lit GET installations/interventions/ pour tout rôle : le Commercial responsable livré (aucun code chantiers) y prend 403 + console.error et l'écran « Impossible de charger les interventions » (observé au run 43640330000). Défaut antérieur à ADRG134, hors de son périmètre (la seule lecture crm/assignable-users/). ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/?page=1&page_size=200 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/?page=1&page_size=200) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/?page=1&page_size=200 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/?page=1&page_size=200)"
+    },
+    {
+      "id": "PF4.4-ADRG135",
+      "taches": [
+        "ADRG135"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG135.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG136",
+      "taches": [
+        "ADRG136"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG136.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG137",
+      "taches": [
+        "ADRG137"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ADRG-PF4.4-ADRG137.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
