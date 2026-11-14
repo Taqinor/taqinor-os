@@ -10,17 +10,23 @@ facture émise que plus aucun écran ne rattachait à son origine.
 La voie correcte : annuler d'abord la FACTURE (action dédiée, qui émet
 ``facture_annulee`` et déclenche l'extourne), puis le bon de commande.
 """
+import threading
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.models import BonCommande, Devis, Facture, LigneDevis
+from apps.ventes.models import (
+    BonCommande, Devis, Facture, LigneDevis, LivraisonBC)
 from authentication.models import Company
+from core.test_utils import WideTeardownTimeoutMixin
+from testkit.verrous import attendre_un_ecrivain_bloque
 
 User = get_user_model()
 _CTR = [0]
@@ -112,3 +118,68 @@ class TestAnnulerBcFacture(TestCase):
                      if r['id'] == self.bc.id)
         self.assertTrue(ligne['has_facture'])
         self.assertFalse(ligne['facture_active'])
+
+
+class AnnulerBcConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC62 (C-ACNC-VER2-100) — « Annuler » croisé avec « Créer la
+    facture » / « Livrer partiellement » (deux VRAIES connexions) : A tient
+    le verrou du BC après avoir écrit la facture (resp. la livraison), B
+    annule et attend ; après le commit de A, B répond 409 et le BC reste
+    confirmé. Mutant : retirer ``select_for_update`` d'``annuler`` ⇒ 200,
+    BC annulé portant une facture vivante (resp. une livraison)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='ACNC62 Co', slug=f'acnc62-{_nxt()}')
+        self.user = User.objects.create_user(
+            username=f'acnc62_{_nxt()}', password='x',
+            role_legacy='responsable', company=self.company)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='ACNC62', prenom='Client',
+            telephone='+212600000162')
+        devis = Devis.objects.create(
+            company=self.company, created_by=self.user,
+            client=self.client_obj, reference=f'DEV-ACNC62-{_nxt()}',
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+        self.bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ACNC62-{_nxt()}',
+            devis=devis, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME)
+
+    def _croiser(self, ecrire_sous_verrou):
+        res, b_fini = {}, threading.Event()
+
+        def annuler():
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=(
+                f'Bearer {AccessToken.for_user(self.user)}'))
+            res['b'] = api.post(
+                f'/api/django/ventes/bons-commande/{self.bc.id}/annuler/')
+            b_fini.set()
+            connection.close()
+
+        fil = threading.Thread(target=annuler)
+        with transaction.atomic():
+            BonCommande.objects.select_for_update().get(pk=self.bc.pk)
+            ecrire_sous_verrou()
+            fil.start()
+            self.assertTrue(attendre_un_ecrivain_bloque(ou_bien=b_fini))
+        fil.join(20)
+        self.assertEqual(res['b'].status_code, 409, res['b'].data)
+        self.bc.refresh_from_db()
+        self.assertEqual(self.bc.statut, BonCommande.Statut.CONFIRME)
+
+    def test_annuler_croise_creer_facture(self):
+        self._croiser(lambda: Facture.objects.create(
+            company=self.company, client=self.client_obj,
+            bon_commande=self.bc, reference=f'BROUILLON-ACNC62-{_nxt()}',
+            statut=Facture.Statut.BROUILLON, taux_tva=Decimal('20')))
+        self.assertTrue(Facture.objects.filter(bon_commande=self.bc).exclude(
+            statut=Facture.Statut.ANNULEE).exists())
+
+    def test_annuler_croise_livrer_partiel(self):
+        self._croiser(lambda: LivraisonBC.objects.create(
+            company=self.company, bon_commande=self.bc,
+            date_livraison=date.today(), created_by=self.user))
+        self.assertEqual(LivraisonBC.objects.filter(
+            bon_commande=self.bc).count(), 1)
