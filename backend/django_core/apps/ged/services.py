@@ -5250,12 +5250,10 @@ def checklist_dossier(folder):
 
 # ── XGED9 — Ingestion par email → GED (alias par cabinet/dossier) ───────────
 #
-# KEY-GATED (`settings.GED_MAIL_INTAKE_ENABLED`) : sans le flag, `poll_mail_intake`
-# est un no-op propre. Réutilise la résolution de config IMAP de
-# `core.email_intake` (foundation) mais fait sa PROPRE lecture des messages —
-# avec pièces jointes, ce que le parseur générique FG373 n'extrait pas. GED ne
-# s'abonne pas au registre de handlers générique (celui-ci route vers
-# leads/tickets, pas vers des documents).
+# KEY-GATED (`settings.GED_MAIL_INTAKE_ENABLED`) : sans le flag, `handler_mail_intake`
+# est un no-op propre. ACEL94 — la GED s'abonne au registre de handlers de
+# `core.email_intake` (UNE seule relève IMAP, partagée avec SAV/ventes) et lit
+# les pièces jointes dans les octets bruts du message (`InboundMessage.raw_bytes`).
 
 _re_mod = re  # alias local de la section XGED9 auto-contenue.
 
@@ -5390,42 +5388,12 @@ def importer_message_email(raw_bytes, *, company):
     return created
 
 
-def poll_mail_intake(company):
-    """XGED9 — Relève la boîte IMAP configurée (FG373) et route les pièces
-    jointes vers la GED. No-op propre si le flag est désactivé OU si aucune
-    config IMAP active n'existe pour la société. Renvoie
-    `{"fetched": int, "imported": int}` (jamais d'exception remontée)."""
-    if not mail_intake_enabled():
-        return {'fetched': 0, 'imported': 0}
-    from core.email_intake import _active_imap_config, _imap
-    cfg = _active_imap_config(company)
-    if cfg is None:
-        return {'fetched': 0, 'imported': 0}
-    fetched = 0
-    imported = 0
-    try:
-        conn = _imap(cfg)  # ACEL84 — délai, login, dossier : 1 définition
-        if conn is None:
-            return {'fetched': 0, 'imported': 0}
-        typ, data = conn.search(None, 'UNSEEN')
-        if typ == 'OK':
-            for num in data[0].split():
-                t, msg_data = conn.fetch(num, '(BODY.PEEK[])')
-                if t == 'OK' and msg_data and msg_data[0]:
-                    fetched += 1
-                    try:
-                        created = importer_message_email(
-                            msg_data[0][1], company=company)
-                    except Exception:  # noqa: BLE001 — reste non lu (ACEL84)
-                        logger.warning("ged.poll_mail_intake : import en échec", exc_info=True)
-                        continue
-                    imported += len(created)
-                    conn.store(num, '+FLAGS', '\\Seen')
-        conn.logout()
-    except Exception:  # pragma: no cover - réseau/auth : dégrade proprement.
-        logger.warning("ged.poll_mail_intake : exception ignorée", exc_info=True)
-        return {'fetched': fetched, 'imported': imported}
-    return {'fetched': fetched, 'imported': imported}
+def handler_mail_intake(msg, company):
+    """XGED9/ACEL94 — handler du bus `core.email_intake` (enregistré par
+    `GedConfig.ready`) : importe les pièces jointes du message relevé par
+    `poll_mailbox`. No-op sans le flag ; une erreur LÈVE (le message reste non lu)."""
+    if mail_intake_enabled():
+        importer_message_email(msg.raw_bytes, company=company)
 
 
 # ── XGED10 — Outils PDF : scission et fusion ─────────────────────────

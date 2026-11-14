@@ -24,7 +24,6 @@ backend/django_core/apps/crm/tasks.py::poser_reveils_saisonniers_task  # tâche 
 backend/django_core/apps/ged/tasks.py::migrer_pieces_jointes_task  # tâche ACEL de l'app ged (à trier)
 backend/django_core/apps/ged/tasks.py::notifier_emetteurs_expiration_signature  # tâche ACEL de l'app ged (à trier)
 backend/django_core/apps/ged/tasks.py::notifier_planifications_echues_task  # tâche ACEL de l'app ged (à trier)
-backend/django_core/apps/ged/tasks.py::poll_mail_intake_task  # tâche ACEL de l'app ged (à trier)
 backend/django_core/apps/ged/tasks.py::relancer_demandes_document_dues_task  # tâche ACEL de l'app ged (à trier)
 backend/django_core/apps/ged/tasks.py::signature_relances_expiration  # tâche ACEL de l'app ged (à trier)
 backend/django_core/apps/ged/tasks.py::verifier_integrite_archives_task  # tâche ACEL de l'app ged (à trier)

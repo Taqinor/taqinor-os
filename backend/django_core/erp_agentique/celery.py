@@ -546,15 +546,9 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=7, minute=25),
     },
     # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
-    # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
+    # SAV email→ticket, ventes réponse→devis, GED pièces jointes — ACEL94). No-op sans boîte.
     'ventes-poll-inbound-mailboxes': {
         'task': 'ventes.poll_inbound_mailboxes',
-        'schedule': crontab(minute='*/10'),
-        'options': _expire_dans(600),
-    },
-    # QX36 — FG373 relève GED (import documentaire par email), toutes les 10 min.
-    'ged-poll-mail-intake': {
-        'task': 'ged.poll_mail_intake',
         'schedule': crontab(minute='*/10'),
         'options': _expire_dans(600),
     },

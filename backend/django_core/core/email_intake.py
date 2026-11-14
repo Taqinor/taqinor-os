@@ -11,7 +11,7 @@ Découplage par REGISTRE de HANDLERS
 * ``core`` fait le travail GÉNÉRIQUE : se connecter en IMAP, récupérer les
   nouveaux messages, les parser en ``InboundMessage`` (objet pur), gérer le
   threading (Message-ID / In-Reply-To / References).
-* Les apps métier (crm, sav) S'ABONNENT en enregistrant un handler via
+* Les apps métier (crm, sav, ventes, ged) S'ABONNENT en enregistrant un handler via
   ``register_handler(fn)`` (typiquement dans leur ``apps.py ready()``).
 * ``poll_mailbox(company)`` récupère les messages et les passe à chaque handler
   enregistré ; chaque handler décide s'il crée un lead/ticket. ``core`` ne sait
@@ -40,7 +40,8 @@ class InboundMessage:
 
     def __init__(self, *, message_id='', in_reply_to='', references='',
                  subject='', from_email='', from_name='', body='',
-                 received_at=None, raw_headers=None):
+                 received_at=None, raw_headers=None, raw_bytes=b''):
+        self.raw_bytes = raw_bytes  # ACEL94 — octets bruts (pièces jointes : handler GED)
         self.message_id = message_id
         self.in_reply_to = in_reply_to
         self.references = references
@@ -140,6 +141,7 @@ def _parse_email_message(raw_bytes) -> InboundMessage:
         from_name=from_name,
         body=body,
         raw_headers={k: v for k, v in msg.items()},
+        raw_bytes=raw_bytes,
     )
 
 
