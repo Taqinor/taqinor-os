@@ -24,7 +24,17 @@ const SOC = `U.objects.get(username='demo_admin').company_id`
 test.describe.configure({ timeout: 480_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 const ouverts = []
-test.afterEach(async () => { for (const c of ouverts.splice(0)) await c.close().catch(() => undefined) })
+test.afterEach(async () => {
+  const testInfo = test.info()
+  for (const c of ouverts.splice(0)) {
+    // Trace du contexte du rôle joué, gardée seulement quand l'étape tombe (diagnostic du rapport Playwright).
+    if (testInfo.status !== testInfo.expectedStatus) {
+      const chemin = testInfo.outputPath('trace-ecran-role.zip')
+      await c.tracing.stop({ path: chemin }).then(() => testInfo.attachments.push({ name: 'trace', path: chemin, contentType: 'application/zip' }), () => undefined)
+    }
+    await c.close().catch(() => undefined)
+  }
+})
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const note = (testInfo, type, description) => {
   testInfo.annotations.push({ type, description })
@@ -68,8 +78,17 @@ async function ecran(page, suivi, testInfo, nom) {
     ...(u.viewport ? { viewport: u.viewport } : {}),
   })
   ouverts.push(ctx)
+  await ctx.tracing.start({ screenshots: true, snapshots: true })
+  // Pré-chargement matinal de la tournée (NTMOB28, `PrechargementTournee.jsx`, monté par Layout sur tout écran avant
+  // midi) marqué « fait aujourd'hui » : pour un rôle sans lecture des interventions il appelle `ma-tournee` en 403
+  // (défaut antérieur, hors des Files des tâches AERR, rapporté à part) — il n'est pas l'objet de ces étapes.
   await ctx.addInitScript(() => {
-    try { localStorage.setItem('taqinor-pwa-install-dismissed', '1'); localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
+    try {
+      localStorage.setItem('taqinor-pwa-install-dismissed', '1'); localStorage.setItem('taqinor:welcome:seen:v1', '1')
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+      const v = (t) => parts.find((x) => x.type === t).value
+      localStorage.setItem('taqinor.prechargementTournee', `${v('year')}-${v('month')}-${v('day')}`)
+    } catch { /* mode privé */ }
   })
   await connexionApi(ctx.request, { username: nom, password: MDP_ESSAI })
   const visites = await ctx.request.get(`${API}/onboarding/tours/`, T)
@@ -99,11 +118,12 @@ async function devisDe(cree, admin, m, { ci = false, envoye = false, ht = '10000
   const relu = await lireJson(await cree.get(`${API}/ventes/devis/${d.id}/`, T), 'devis relu')
   return { id: d.id, reference: relu.reference, statut: relu.statut, leadId: l.id }
 }
-/** Vente acceptée (demo_admin) puis facturée « complete » par `cree` (créateur = le rôle joué) ; 10 000 HT = 12 000 TTC. */
+/** Vente acceptée (demo_admin) puis facturée « complete » par `cree` (créateur = le rôle joué) ; 10 000 HT = 12 000 TTC.
+ *  L'acceptation pose un acompte automatique BROUILLON (référence provisoire) : il est remplacé (`remplacer_brouillons`). */
 async function factureDe(cree, admin, m, { emettre }) {
   const d = await devisDe(cree, admin, m, { envoye: true })
   await lireJson(await admin.post(`${API}/ventes/devis/${d.id}/accepter/`, { ...T, data: { nom: 'Client AERR' } }), 'accepter')
-  const rep = await lireJson(await cree.post(`${API}/ventes/devis/${d.id}/facturer/`, { ...T, data: { nature: 'complete', emettre } }), 'facturer')
+  const rep = await lireJson(await cree.post(`${API}/ventes/devis/${d.id}/facturer/`, { ...T, data: { nature: 'complete', emettre, remplacer_brouillons: true } }), 'facturer')
   return { id: rep.facture.id, reference: rep.facture.reference, statut: rep.facture.statut, ttc: Number(rep.facture.total_ttc) }
 }
 const factureLue = async (api, id) => lireJson(await api.get(`${API}/ventes/factures/${id}/`, T), 'facture relue')
@@ -219,6 +239,10 @@ etape('PF12.3-AERR2-ecran', ['AERR2'], async ({ page, suivi, testInfo }) => {
     const del = p.waitForResponse((x) => x.request().method() === 'DELETE' && new RegExp(`/ventes/devis/${d.id}/$`).test(new URL(x.url()).pathname), T)
     await conf.getByRole('button', { name: 'Supprimer' }).click()
     expect((await del).status(), `suppression de ${d.reference}`).toBeLessThan(300)
+    // Le menu « Plus d'actions » reste ouvert derrière la confirmation (onSelect + preventDefault) : Échap le ferme.
+    await expect(conf).toBeHidden()
+    if (await p.getByRole('menu').count()) await p.keyboard.press('Escape')
+    await expect(p.getByRole('menu')).toHaveCount(0)
   }
   await p.goto('/ventes/devis')
   for (const d of [b1, b2, e3, b4]) await expect(ligne(d)).toBeVisible({ timeout: 90_000 })
@@ -574,9 +598,10 @@ etape('PF12.1-AERR9-ecran', ['AERR9'], async ({ page, suivi, testInfo }) => {
     if (navigator.clipboard) Object.defineProperty(navigator.clipboard, 'writeText', { value: writeText, configurable: true })
     else Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   }, mode)
+  // Menus ouverts au CLAVIER : les avis d'échec (20 s, coin bas-droit) recouvrent le bouton « ⋯ » des lignes.
   const menu = async (d, item) => {
-    await p.locator(`#devis-row-${d.id}`).getByRole('button', { name: `Plus d'actions — ${d.reference}` }).click()
-    await p.getByRole('menuitem', { name: item }).click()
+    await p.locator(`#devis-row-${d.id}`).getByRole('button', { name: `Plus d'actions — ${d.reference}` }).press('Enter')
+    await p.getByRole('menuitem', { name: item }).press('Enter')
   }
   const lienServi = async (d, item) => {
     const rep = p.waitForResponse((x) => x.request().method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/share-link/$`).test(new URL(x.url()).pathname), T)
@@ -620,7 +645,7 @@ etape('PF12.1-AERR9-ecran', ['AERR9'], async ({ page, suivi, testInfo }) => {
   await expect(toast(p, SUCCES)).toHaveCount(0)
 })
 
-/** Générateur ouvert sur `d` ; prix de la 1ʳᵉ ligne modifié jusqu'à ce que le brouillon de secours existe (saisie « modifiée »). */
+/** Générateur ouvert sur `d` (Édition complète). */
 async function ouvrirGenerateur(p, d, { ci }) {
   await p.goto(`/ventes/devis/nouveau?edit=${d.id}`)
   await expect(p.locator('#gen-form')).toBeVisible({ timeout: 90_000 })
@@ -628,17 +653,26 @@ async function ouvrirGenerateur(p, d, { ci }) {
   await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
 }
 const PRIX = (p) => p.locator('td[data-label="Prix unit. TTC"] input').first()
+/** Prix de la 1ʳᵉ ligne modifié jusqu'à ce que l'écran se dise « Modifications non enregistrées » (le `dirty` qui arme
+ *  la garde) — une frappe dans la fenêtre de référence (QJR581, 1,5 s après le chargement) ne compte pas : on refrappe. */
 async function modifierPrix(p, d) {
   const cle = `taqinor:draft:devis:edit:${d.id}`
   let n = 0
   await expect(async () => {
     n += 1
-    await p.evaluate((k) => localStorage.removeItem(k), cle)
     await PRIX(p).fill(String(15000 + n))
-    await expect.poll(() => p.evaluate((k) => localStorage.getItem(k) !== null, cle), { timeout: 4_000 }).toBe(true)
-  }, 'saisie modifiée (brouillon de secours écrit)').toPass({ timeout: 60_000 })
-  return { valeur: String(15000 + n), cle }
+    await expect(p.getByTestId('gen-barre-non-enregistre')).toBeVisible({ timeout: 4_000 })
+  }, 'saisie modifiée (« Modifications non enregistrées »)').toPass({ timeout: 60_000 })
+  // Brouillon de secours (autosave débouncé 800 ms) : lu tel quel pour vérifier qu'« Annuler » le laisse intact.
+  await expect.poll(() => p.evaluate((k) => localStorage.getItem(k), cle), { timeout: 10_000 }).not.toBeNull().catch(() => undefined)
+  return { valeur: String(15000 + n), cle, brouillon: await lireBrouillon(p, cle) }
 }
+/** Contenu (`data`) du brouillon de secours, sans son horodatage ; null s'il n'existe pas. */
+const lireBrouillon = (p, cle) => p.evaluate((k) => {
+  const v = localStorage.getItem(k)
+  if (v === null) return null
+  try { return JSON.stringify(JSON.parse(v).data ?? null) } catch { return v }
+}, cle)
 
 // ═══ PF12.2 — AERR11 : « Créer le lot » sur un générateur à saisie modifiée ═══
 etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
@@ -651,7 +685,13 @@ etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
   const d = await devisDe(api, admin, `${m}ci`, { ci: true })
   const lignesAvant = (await lireJson(await api.get(`${API}/ventes/devis/${d.id}/`, T), 'devis')).lignes.map((l) => [l.id, l.prix_unitaire])
   const posts = []
-  p.on('request', (q) => { if (q.method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(new URL(q.url()).pathname)) posts.push(q.postDataJSON()) })
+  const ecritures = [] // toute autre écriture sur le devis pendant les gestes « Créer le lot »
+  p.on('request', (q) => {
+    const chemin = new URL(q.url()).pathname
+    if (q.method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(chemin)) posts.push(q.postDataJSON())
+    else if (q.method() !== 'GET' && chemin.includes(`/ventes/devis/${d.id}/`)) ecritures.push(`${q.method()} ${chemin}`)
+  })
+  p.on('framenavigated', (f) => { if (f === p.mainFrame()) ecritures.push(`navigation ${f.url()}`) })
   const carte = p.getByTestId('lots-multi-sites')
   const conf = p.getByRole('alertdialog')
   const PERTE = 'Créer le lot recharge le devis : vos modifications non enregistrées seront perdues.'
@@ -662,16 +702,21 @@ etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
   }
   await ouvrirGenerateur(p, d, { ci: true })
   await ouvrirLots()
-  const { valeur, cle } = await modifierPrix(p, d)
+  const { valeur, cle, brouillon } = await modifierPrix(p, d)
+  ecritures.length = 0
   await carte.locator('#lot-nom').fill(`Lot annulé ${m}`)
   await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  await expect(conf, 'confirmation maison').toBeVisible()
+  await expect(conf, 'confirmation maison').toBeVisible().catch((e) => {
+    throw new Error(`pas de confirmation après « Créer le lot » ; écritures/navigations du clic : ${J(ecritures)} ; ${e.message.split('\n')[0]}`)
+  })
   await expect(conf).toContainText(PERTE)
   await conf.getByRole('button', { name: 'Annuler' }).click()
   await expect(conf).toBeHidden()
   expect(posts, '« Annuler » : aucun creerLotDevis').toEqual([])
+  expect(ecritures, 'le clic n\'a rien écrit d\'autre (ni enregistrement du générateur, ni navigation)').toEqual([])
   await expect(PRIX(p), 'saisie intacte').toHaveValue(valeur)
-  expect(await p.evaluate((k) => localStorage.getItem(k) !== null, cle), 'brouillon de secours intact').toBe(true)
+  await expect(p.getByTestId('gen-barre-non-enregistre'), 'toujours « Modifications non enregistrées »').toBeVisible()
+  expect(await lireBrouillon(p, cle), `brouillon de secours intact (${brouillon ? 'présent' : 'absent'} avant le geste)`).toBe(brouillon)
   await expect(carte.locator('#lot-nom')).toHaveValue(`Lot annulé ${m}`)
   // « Créer le lot » confirmé : un POST, le devis est rechargé (la saisie non enregistrée est perdue, comme annoncé).
   await carte.locator('#lot-nom').fill(`Lot confirmé ${m}`)
@@ -736,7 +781,7 @@ etape('PF12.2-AERR12-ecran', ['AERR12'], async ({ page, suivi, testInfo }) => {
   await expect(bloc().getByRole('alert'), 'refus servi affiché').toContainText('conception électrique')
   expect(posts.length).toBe(1)
   // Saisie modifiée ⇒ confirmation qui dit la perte ; « Annuler » n'envoie rien.
-  const { valeur, cle } = await modifierPrix(p, d)
+  const { valeur, cle, brouillon } = await modifierPrix(p, d)
   await bloc().getByRole('button', { name: 'Ajouter le BOQ électrique' }).click()
   await expect(conf(), 'confirmation maison').toBeVisible()
   await expect(conf()).toContainText(PERTE)
@@ -744,7 +789,8 @@ etape('PF12.2-AERR12-ecran', ['AERR12'], async ({ page, suivi, testInfo }) => {
   await expect(conf()).toBeHidden()
   expect(posts.length, '« Annuler » : aucun ajouterBoqElectrique').toBe(1)
   await expect(PRIX(p), 'saisie intacte').toHaveValue(valeur)
-  expect(await p.evaluate((k) => localStorage.getItem(k) !== null, cle), 'brouillon de secours intact').toBe(true)
+  await expect(p.getByTestId('gen-barre-non-enregistre'), 'toujours « Modifications non enregistrées »').toBeVisible()
+  expect(await lireBrouillon(p, cle), `brouillon de secours intact (${brouillon ? 'présent' : 'absent'} avant le geste)`).toBe(brouillon)
   // Persistance : rien d'écrit en base.
   expect((await lireJson(await api.get(`${API}/ventes/devis/${d.id}/`, T), 'devis')).lignes.map((l) => [l.id, l.prix_unitaire]), 'persistance : lignes inchangées').toEqual(lignesAvant)
   // Recharger : la saisie modifiée arme la garde de sortie (beforeunload) ; l'onglet est refermé sans elle et le
