@@ -202,6 +202,8 @@
     count:nombre, results:inconnu
 - frontend/src/api/iaApi.js :: getAgentActions -> /api/django/agent/actions
     actions:inconnu, count:nombre
+- frontend/src/api/iaApi.js :: getFileTouchesAssistant -> /api/django/crm/assistant/a-relancer
+    lignes:inconnu, limite:inconnu, portee:inconnu, total:inconnu
 - frontend/src/api/iaApi.js :: noterEvenement -> /api/django/agent/evenements/<>/note
     commentaire:inconnu, detail:texte, id:inconnu, note:inconnu
 - frontend/src/api/iaApi.js :: statsAssistant -> /api/django/agent/evenements/stats
