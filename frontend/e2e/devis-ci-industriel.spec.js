@@ -12,8 +12,8 @@
 //      avec la VAN ;
 //   3. lien public → `GET /api/django/ventes/proposal/<token>/` :
 //      `synthese_ci.argent` égal à celui du PDF, aucune clé P90 ;
-//   4. (optionnel, `WEB_URL` = apps/web en dev) /proposition : aucun « heures
-//      les plus chères », aucun « CBAM » sans déclaration ; captures FR et AR ;
+//   4. (`WEB_URL` = apps/web, servi par le job e2e — ATST30) /proposition : montants
+//      = `/data/`, aucun « heures les plus chères » ni « CBAM » ; captures FR et AR ;
 //   5. signature en ligne avec raison sociale, qualité et ICE → copie signée
 //      complète.
 // Base partagée, workers: 1 : nettoyage best-effort en afterAll.
@@ -23,6 +23,7 @@ import {
   nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner, tariferPostesCiDemo,
   retablirPrixPartages,
 } from './helpers'
+import { cleDe, comparer, figuresDepuisProposition, identitesComparees, lireFiguresPage } from './figures'
 
 const ANNEE_FACTURES = new Date().getFullYear() - 1
 // Montants TTC de facture de TEST (fixture e2e, jamais imprimés comme un fait) :
@@ -199,13 +200,19 @@ test('CIQ346 — lien public : synthese_ci.argent = celui du PDF, aucune clé P9
   expect(formes.some((f) => chiffresPdf.includes(f)), `VAN ${van} MAD imprimée`).toBeTruthy()
 })
 
-test('CIQ346 — page /proposition : ni « heures les plus chères » ni « CBAM », FR et AR (WEB_URL requis)', async ({ page }) => {
-  test.skip(!process.env.WEB_URL, 'WEB_URL (apps/web en dev) non fourni : captures non prises')
+test('CIQ346 — page /proposition : ni « heures les plus chères » ni « CBAM », FR et AR (WEB_URL requis)', async ({ page, request }) => {
+  expect(process.env.WEB_URL, 'WEB_URL (apps/web) non servi').toBeTruthy()
   expect(etat.token, 'le test du lien doit précéder').toBeTruthy()
+  // ATST30 — les montants de la page = ceux de `/data/` de la même proposition.
+  const data = figuresDepuisProposition(await lireJson(await request.get(
+    `${API}/public/proposal/${etat.token}/data/`), 'données publiques'))
   for (const langue of ['fr', 'ar']) {
     await page.goto(`${process.env.WEB_URL}/proposition/${etat.token}`)
     await page.locator(`#prop-lang-${langue}`).click()
-    await expect(page.locator('body')).toContainText(/\S/, { timeout: 30_000 })
+    await expect(page.locator('[data-figure="total_ttc"]:visible').first()).toBeVisible({ timeout: 30_000 })
+    const surfaces = { page: await lireFiguresPage(page), data }
+    expect(comparer(surfaces), `/proposition (${langue}) ≠ /data/`).toEqual([])
+    expect([...identitesComparees(surfaces)].some((id) => cleDe(id) === 'total_ttc'), 'total_ttc comparé').toBe(true)
     if (langue === 'fr') {
       await expect(page.locator('body')).not.toContainText(/heures les plus chères/i)
       await expect(page.locator('body')).not.toContainText(/CBAM/)
