@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import INT, P, corps
+from core.idempotency import IdempotentCreateMixin  # ACNC23
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import AvoirFournisseur, FactureFournisseur
@@ -17,7 +18,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
-class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
+class AvoirFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC23 — rejeu sans doublon
     """XPUR9 — avoirs fournisseur (notes de crédit AP). Numérotation sans
     trou (préfixe AVF). `valider` passe brouillon → validé ; `imputer`
     réduit le solde dû d'une facture du même fournisseur. INTERNE."""

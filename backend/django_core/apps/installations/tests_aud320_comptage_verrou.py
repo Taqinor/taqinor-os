@@ -43,7 +43,7 @@ class TestVerrouSessionComptage(TestCase):
         self.company = Company.objects.create(
             slug=f'aud320-co-{n}', nom=f'AUD320 Co {n}')
         self.user = User.objects.create_user(
-            username=f'aud320-{n}', password='x', role_legacy='responsable',
+            username=f'aud320-{n}', password='x', role_legacy='admin',  # ADRG43 — terminer : admin
             company=self.company)
         self.api = APIClient()
         self.api.credentials(

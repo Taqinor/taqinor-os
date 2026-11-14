@@ -100,10 +100,11 @@ const fmtDateFR = (iso) => {
 
 // ── N19 — Modal de retour fournisseur (créé + validé depuis un BCF) ──────────
 // La validation décrémente le stock. Lien automatique vers le BCF d'origine.
-export function RetourModal({ bcf, onClose, onDone }) {
+export function RetourModal({ bcf: bcfInitial, onClose, onDone }) {
   const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif, lot, series } }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [bcf, setBcf] = useState(bcfInitial)  // ACNC28 — relu après un échec : plafonds rebasés sur le reçu serveur
   const lignes = bcf?.lignes ?? []
 
   const setLigne = (id, patch) =>
@@ -140,6 +141,8 @@ export function RetourModal({ bcf, onClose, onDone }) {
       onClose()
     } catch (err) {
       setError(frBcfError(err, 'Échec du retour fournisseur.'))
+      stockApi.getBonCommandeFournisseur(bcf.id).then((r) => { setBcf(r.data); setSaisies({}) })
+        .catch((e) => setError(frBcfError(e, 'Échec du retour fournisseur ; BCF non relu.')))
     } finally { setBusy(false) }
   }
 
@@ -291,6 +294,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [refFournisseur, setRefFournisseur] = useState(bcf?.ref_fournisseur ?? '')
   const [noteBasPage, setNoteBasPage] = useState(bcf?.note_bas_page ?? '')
   const [incoterm, setIncoterm] = useState(bcf?.incoterm ?? '')
+  const [lockVersion, setLockVersion] = useState(bcf?.lock_version)  // ACNC21 — verrou optimiste
+  const [cleReception] = useState(() => globalThis.crypto?.randomUUID?.() ?? `rec-${Date.now()}`)  // ACNC23
+  const bcfCreeRef = useRef(null)  // ACNC29 — brouillon créé par un « Envoyer » échoué : réutilisé, jamais recréé
   const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
@@ -486,6 +492,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     ref_fournisseur: refFournisseur || null,
     note_bas_page: noteBasPage || null,
     incoterm: incoterm || null,
+    ...(lockVersion != null ? { lock_version: lockVersion } : {}),  // ACNC21
     // XPUR16 — une ligne libre/service (pas de produit catalogue) est gardée
     // tant qu'elle porte une désignation libre (« Transport Casablanca »…).
     lignes: lignes
@@ -502,6 +509,21 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       })),
   })
 
+  // ACNC21 — 409 « conflit_version » : la version à jour (`actuel`) remplace la saisie.
+  const rechargerSiConflit = (err) => {
+    const data = err?.response?.status === 409 ? err.response.data : null
+    const actuel = data?.code === 'conflit_version' ? data.actuel : null
+    if (!actuel) return false
+    setFournisseur(actuel.fournisseur ?? ''); setNote(actuel.note ?? '')
+    setDateCommande(actuel.date_commande ?? ''); setDateLivraisonPrevue(actuel.date_livraison_prevue ?? '')
+    setAcheteur(actuel.acheteur ?? ''); setRefFournisseur(actuel.ref_fournisseur ?? '')
+    setNoteBasPage(actuel.note_bas_page ?? ''); setIncoterm(actuel.incoterm ?? '')
+    setLignes((actuel.lignes ?? []).map(ligneInitiale)); setLockVersion(actuel.lock_version)
+    setError('Ce bon de commande a été modifié entre-temps : la version à jour est rechargée, refaites vos changements.')
+    onSaved?.()
+    return true
+  }
+
   const save = async () => {
     setError(null)
     const payload = buildPayload()
@@ -509,14 +531,15 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (payload.lignes.length === 0) { setError('Ajoutez au moins une ligne.'); return }
     setBusy(true)
     try {
-      const r = isNew ? await stockApi.createBonCommandeFournisseur(payload)
-        : await stockApi.updateBonCommandeFournisseur(bcf.id, payload)
+      const idExistant = bcf?.id ?? bcfCreeRef.current  // ACNC29 — jamais un second brouillon
+      const r = idExistant ? await stockApi.updateBonCommandeFournisseur(idExistant, payload)
+        : await stockApi.createBonCommandeFournisseur(payload)
       const avertissement = texteAvertissementsPrix(r?.data)
       if (avertissement) toast.warning(`Prix à vérifier : ${avertissement}`)
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
+      if (!rechargerSiConflit(err)) setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
     } finally { setBusy(false) }
   }
 
@@ -533,9 +556,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setBusy(true); setError(null)
     try {
       // En brouillon, on enregistre d'abord d'éventuelles modifications.
-      const r = isNew ? await stockApi.createBonCommandeFournisseur(buildPayload())
-        : await stockApi.updateBonCommandeFournisseur(bcf.id, buildPayload())
-      const id = isNew ? r.data.id : bcf?.id
+      const idExistant = bcf?.id ?? bcfCreeRef.current
+      const r = idExistant ? await stockApi.updateBonCommandeFournisseur(idExistant, buildPayload())
+        : await stockApi.createBonCommandeFournisseur(buildPayload())
+      const id = idExistant ?? r.data.id
+      bcfCreeRef.current = id
       const avertissement = texteAvertissementsPrix(r?.data)
       if (avertissement && !(await confirmer({
         title: 'Envoyer malgré l\'avertissement prix ?', description: avertissement,
@@ -545,7 +570,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(frBcfError(err, "L'envoi au fournisseur a échoué."))
+      if (!rechargerSiConflit(err)) setError(frBcfError(err, "L'envoi au fournisseur a échoué."))
     } finally { setBusy(false) }
   }
 
@@ -610,11 +635,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (payload.length === 0) { setError('Saisissez au moins une quantité à recevoir.'); return }
     setBusy(true); setError(null); setPayloadAControler(null)
     try {
-      await stockApi.recevoirBcf(bcf.id, payload)
+      await stockApi.recevoirBcf(bcf.id, payload, { idempotencyKey: cleReception })
       onSaved?.()
       onClose()
     } catch (err) {
       setError(frBcfError(err, 'La réception a échoué.'))
+      if (!err?.response) onSaved?.()  // ACNC23 — réponse perdue : relire le BCF, même clé au prochain clic
       // AAPV24 — plan d'échantillonnage : proposer la réception brouillon à contrôler.
       if (/échantillonnage/i.test(err?.response?.data?.detail ?? '')) setPayloadAControler(payload)
     } finally { setBusy(false) }

@@ -135,6 +135,10 @@ export default function OcrStockImport() {
   // Fournisseur déjà résolu/créé lors d'une première application, réutilisé lors
   // d'un réessai ciblé des échecs pour ne pas le recréer en double (750).
   const resolvedFournisseurRef = useRef(null)
+  // ACNC29 — BCF déjà créé par l'import (réessai : relu, jamais recréé) et une
+  // clé d'idempotence par ligne en mode mouvements (rejeu serveur, ACNC22).
+  const bcfImportRef = useRef(null)
+  const clesMouvementRef = useRef({})
 
   // ARC47 — accès à l'écran gaté via le hook partagé (responsable/admin).
   const canAccess = useIsAdminOrResponsable()
@@ -323,12 +327,14 @@ const cp = produitsRef.current
     dispatch(clearStockOcrResult())
     setStep(1); setDocType(null); setLignes([]); setResults([])
     setCreerBcf(false); resolvedFournisseurRef.current = null
+    bcfImportRef.current = null; clesMouvementRef.current = {}
   }
 
   const handleNewFile = () => {
     dispatch(clearStockOcrResult())
     setStep(2); setLignes([]); setResults([])
     setCreerBcf(false); resolvedFournisseurRef.current = null
+    bcfImportRef.current = null; clesMouvementRef.current = {}
   }
 
   const updateLigne = (idx, updates) =>
@@ -463,7 +469,9 @@ const cp = produitsRef.current
           // Référence du mouvement : saisie utilisateur, sinon référence
           // document détectée par l'OCR (752), sinon aucune.
           const refMouvement = refDocument.trim() || (stockOcrResult?.reference_document || '').trim() || null
-          const res = await stockApi.createMouvement({ produit: produitId, type_mouvement: mouvementType, quantite: Number(ligne.quantite), reference: refMouvement, note: `Import OCR${ligne.ref_ocr ? ' — ' + ligne.ref_ocr : ''}` })
+          clesMouvementRef.current[ligne.id] ??= globalThis.crypto?.randomUUID?.() ?? `ocr-${ligne.id}-${Date.now()}`
+          const res = await stockApi.createMouvement({ produit: produitId, type_mouvement: mouvementType, quantite: Number(ligne.quantite), reference: refMouvement, note: `Import OCR${ligne.ref_ocr ? ' — ' + ligne.ref_ocr : ''}` },
+            { idempotencyKey: clesMouvementRef.current[ligne.id] })
           const mv = res.data
           const delta = mv.quantite_apres - mv.quantite_avant
           const typeLabel = mouvementType === 'entree' ? 'Entrée' : mouvementType === 'sortie' ? 'Sortie' : 'Ajust.'
@@ -474,6 +482,7 @@ const cp = produitsRef.current
             push({ ok: true, label, msg: `${typeLabel} ${delta >= 0 ? '+' : ''}${delta} (stock : ${mv.quantite_avant} → ${mv.quantite_apres})` })
           }
         } catch (e) {
+          if (e?.response) delete clesMouvementRef.current[ligne.id]  // refus serveur : rien créé, clé neuve au réessai
           push({ ok: false, label, msg: `Mouvement : ${frenchError(e, 'refusé par le serveur.')}` })  // AERR84
         }
       }
@@ -482,16 +491,19 @@ const cp = produitsRef.current
       if (modeBcf && bcfLignes.length > 0) {
         try {
           const refDoc = refDocument.trim() || (stockOcrResult?.reference_document || '').trim()
-          const created = await stockApi.createBonCommandeFournisseur({
-            fournisseur: resolvedFournisseurId,
-            note: `Import OCR${refDoc ? ' — ' + refDoc : ''}`,
-            lignes: bcfLignes.map(l => ({
-              produit: l.produit, quantite: l.quantite,
-              prix_achat_unitaire: l.prix_achat_unitaire,
-            })),
-          })
-          const bcf = created.data
-          await stockApi.envoyerBcf(bcf.id)
+          // ACNC29 — réessai : le BCF mémorisé est RELU (étape atteinte côté serveur), jamais recréé.
+          const bcf = retryIds && bcfImportRef.current
+            ? (await stockApi.getBonCommandeFournisseur(bcfImportRef.current.id)).data
+            : (await stockApi.createBonCommandeFournisseur({
+              fournisseur: resolvedFournisseurId,
+              note: `Import OCR${refDoc ? ' — ' + refDoc : ''}`,
+              lignes: bcfLignes.map(l => ({
+                produit: l.produit, quantite: l.quantite,
+                prix_achat_unitaire: l.prix_achat_unitaire,
+              })),
+            })).data
+          bcfImportRef.current = bcf
+          if ((bcf.statut ?? 'brouillon') === 'brouillon') await stockApi.envoyerBcf(bcf.id)
           // Réception totale : chaque ligne du BCF à sa quantité commandée.
           // Source autoritative des lignes : si la réponse de création ne les
           // renvoie pas, on re-fetch le BCF créé — sinon on enverrait une
@@ -504,7 +516,9 @@ const cp = produitsRef.current
           const receptions = bcfLignesSrc.map(l => ({
             ligne: l.id, quantite: l.quantite,
           }))
-          if (receptions.length === 0) {
+          if (bcf.statut === 'recu') {
+            for (const l of bcfLignes) log.push({ ligneId: l.ligneId, ok: true, label: l.label, msg: `Reçu via le bon de commande ${bcf.reference}` })
+          } else if (receptions.length === 0) {
             // Aucune ligne autoritative : ne PAS marquer « Reçu » (le stock
             // n'a pas bougé) — on remonte un échec rejouable.
             for (const l of bcfLignes) {

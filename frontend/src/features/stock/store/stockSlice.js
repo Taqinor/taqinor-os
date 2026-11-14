@@ -173,9 +173,10 @@ export const fetchMouvements = createAsyncThunk('stock/fetchMouvements', async (
   }
 })
 
-export const createMouvement = createAsyncThunk('stock/createMouvement', async (data, { rejectWithValue }) => {
+// ACNC22 — `idempotencyKey` est retirée du corps et posée en en-tête par stockApi.
+export const createMouvement = createAsyncThunk('stock/createMouvement', async ({ idempotencyKey, ...data }, { rejectWithValue }) => {
   try {
-    const res = await stockApi.createMouvement(data)
+    const res = await stockApi.createMouvement(data, { idempotencyKey })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

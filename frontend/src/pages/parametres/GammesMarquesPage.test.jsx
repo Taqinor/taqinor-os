@@ -36,6 +36,12 @@ vi.mock('../../api/ventesApi', () => ({
   },
 }))
 
+// ADRG13 — le droit `parametres_modifier` (useCanModifierParametres) gouverne l'édition.
+const droit = vi.hoisted(() => ({ peut: true }))
+vi.mock('../../features/parametres/useCanModifierParametres', () => ({
+  default: () => droit.peut,
+}))
+
 import ventesApi from '../../api/ventesApi'
 import GammesMarquesPage from './GammesMarquesPage'
 import { polyfillResizeObserver } from '../../test/selectNatif'
@@ -123,5 +129,20 @@ describe('AERR124 — lecture ratée : enregistrement bloqué', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled())
     expect(screen.queryByText(/Réglages illisibles/)).toBeNull()
+  })
+})
+
+describe('ADRG13 — sans parametres_modifier : lecture seule', () => {
+  it('champs désactivés et aucun bouton « Enregistrer » ; avec le droit, enregistrement possible', async () => {
+    droit.peut = false
+    const { unmount } = renderPage(<GammesMarquesPage />)
+    expect(await screen.findByLabelText(/Marque Essentielle — Panneaux/i)).toBeDisabled()
+    expect(screen.getByRole('switch', { name: /deux gammes/i })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Enregistrer/i })).toBeNull()
+    unmount()
+    droit.peut = true
+    renderPage(<GammesMarquesPage />)
+    expect(await screen.findByLabelText(/Marque Essentielle — Panneaux/i)).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Enregistrer/i })).toBeEnabled()
   })
 })

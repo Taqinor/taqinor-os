@@ -21,6 +21,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from core.champs_plateforme import VerrouOptimisteMixin  # ACNC21
 from core.models import TenantModel  # SCA4 — socle multi-tenant
 
 
@@ -95,7 +96,7 @@ class PrixFournisseur(models.Model):
         return True
 
 
-class BonCommandeFournisseur(models.Model):
+class BonCommandeFournisseur(VerrouOptimisteMixin, models.Model):
     """Bon de commande FOURNISSEUR (achat / approvisionnement) — N12.
 
     À NE PAS confondre avec `ventes.BonCommande`, qui est un bon de commande

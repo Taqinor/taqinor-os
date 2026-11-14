@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, LISTE, P, STR, XLSX, corps
+from core.idempotency import IdempotentCreateMixin  # ACNC22
 from core.viewsets import CompanyScopedModelViewSet
 from core.champs_stricts import QUANTITE_MAX
 from ..erreurs_achats import ConflitEtat, debordement_compteur_en_409
@@ -28,7 +29,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 @extend_schema_view(list=extend_schema(parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
                                                    P('produit', ID_OU_VIDE, False, 'Produit (id)'),
                                                    P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE)]))
-class MouvementStockViewSet(CompanyScopedModelViewSet):
+class MouvementStockViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):  # ACNC22 — rejeu sans doublon
     # ARC4 — sweep : base transverse unique (TenantMixin + ModelViewSet, via
     # CompanyScopedModelViewSet). get_queryset AJOUTE le garde-fou
     # produit__company (belt-and-braces contre une référence produit

@@ -72,3 +72,29 @@ describe('BulkProductBar — suggestions de marque (ASUP52)', () => {
     expect(screen.getByPlaceholderText('Marque')).not.toBeDisabled() // saisie libre conservée
   })
 })
+
+describe('BulkProductBar — variation de prix confirmée et rejouable (ACNC24)', () => {
+  it('« Appliquer » confirme « 2 produits — ex. 1 000,00 → 1 100,00 » ; même clé après un échec, valeur vidée au succès', async () => {
+    const onAction = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    render(<BulkProductBar {...baseProps} prixExemple="1000.00" onAction={onAction} />)
+    const prix = async (ouvrir = true) => {
+      if (ouvrir) await userEvent.click(screen.getByRole('radio', { name: 'Prix' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
+      expect(screen.getByRole('alert')).toHaveTextContent(/2 produits — ex\. 1\s?000,00 → 1\s?100,00/)
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    }
+    await userEvent.click(screen.getByRole('radio', { name: 'Prix' }))
+    await userEvent.type(screen.getByPlaceholderText('ex. 10 ou -5'), '10')
+    await prix(false)
+    expect(onAction).toHaveBeenCalledTimes(1)
+    await prix()
+    expect(onAction).toHaveBeenCalledTimes(2)
+    const [premier, second] = onAction.mock.calls.map(([, p]) => p.idempotencyKey)
+    expect(premier).toBeTruthy()
+    expect(second).toBe(premier)
+    expect(onAction.mock.calls[0][1]).toMatchObject({ mode: 'percent', valeur: '10' })
+    await userEvent.click(screen.getByRole('radio', { name: 'Prix' }))
+    expect(screen.getByPlaceholderText('ex. 10 ou -5')).toHaveValue(null)
+  })
+})
+

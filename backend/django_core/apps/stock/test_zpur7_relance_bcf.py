@@ -104,6 +104,21 @@ class TestGateOn(Zpur7Base):
         self.assertEqual(notifs.count(), 1)
         self.assertIn(bcf.reference, notifs.first().body)
 
+    def test_sans_destinataire_le_compteur_ne_bouge_pas(self):
+        """ACEL43 (C-ACEL-021) — sans aucun porteur d'``achats_commander``,
+        0 notification ⇒ ``nb_relances`` reste à 0, même rejoué le même jour.
+        Mutant : incrément inconditionnel ⇒ 2."""
+        self.user.role.permissions = []
+        self.user.role.save(update_fields=['permissions'])
+        bcf = self._bcf_en_retard()
+        self.assertEqual(relancer_bcf_en_retard_task()[self.company.id], 0)
+        self.assertEqual(relancer_bcf_en_retard_task()[self.company.id], 0)
+        bcf.refresh_from_db()
+        self.assertEqual(bcf.nb_relances, 0)
+        self.assertFalse(Notification.objects.filter(
+            company=self.company,
+            event_type=EventType.BCF_RELANCE_PROPOSEE).exists())
+
     def test_jamais_de_doublon_avec_alerte_buyer_bcf_late(self):
         self._bcf_en_retard()
         relancer_bcf_en_retard_task()

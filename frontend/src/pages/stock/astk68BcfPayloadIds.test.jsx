@@ -48,7 +48,7 @@ const BCF = {
   ],
 }
 
-function renderDetail() {
+function renderDetail(bcf = BCF) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: { auth: { user: { id: 1 }, ...DIRECTEUR, isAuthenticated: true, loading: false } },
@@ -57,7 +57,7 @@ function renderDetail() {
     <Provider store={store}>
       <MemoryRouter>
         <ThemeProvider>
-          <BcfDetail bcf={BCF} fournisseurs={[{ id: 3, nom: 'JA Solar' }]}
+          <BcfDetail bcf={bcf} fournisseurs={[{ id: 3, nom: 'JA Solar' }]}
                      produits={[{ id: 5, nom: 'Onduleur 5 kW' }]} onClose={() => {}} onSaved={() => {}} />
         </ThemeProvider>
       </MemoryRouter>
@@ -91,5 +91,19 @@ describe('ASTK68 — ids des lignes dans le payload du BCF', () => {
     await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledWith(42))
     const payload = stockApi.updateBonCommandeFournisseur.mock.calls[0][1]
     expect(payload.lignes.map((l) => l.id)).toEqual([9, 10])
+  })
+
+  it('ACNC21 — « Enregistrer » joint la lock_version lue ; un 409 conflit_version recharge et dit « modifié entre-temps »', async () => {
+    stockApi.updateBonCommandeFournisseur.mockRejectedValueOnce({ response: { status: 409, data: {
+      code: 'conflit_version', lock_version: 4, actuel: { ...BCF, note: 'Note de B', lock_version: 4 } } } })
+    renderDetail({ ...BCF, lock_version: 3 })
+    fireEvent.click(await screen.findByRole('button', { name: /^Enregistrer$/ }))
+    await waitFor(() => expect(stockApi.updateBonCommandeFournisseur).toHaveBeenCalled())
+    expect(stockApi.updateBonCommandeFournisseur.mock.calls[0][1].lock_version).toBe(3)
+    expect(await screen.findByText(/modifié entre-temps/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Note de B')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    await waitFor(() => expect(stockApi.updateBonCommandeFournisseur).toHaveBeenCalledTimes(2))
+    expect(stockApi.updateBonCommandeFournisseur.mock.calls[1][1].lock_version).toBe(4)
   })
 })
