@@ -1,0 +1,35 @@
+{
+ "id": "N2.5",
+ "tache": "AIC75",
+ "titre": "Administrateur : « qu'est-ce qui a cassé hier ? » → carte diagnostic ; « Copier pour Claude Code » copie un texte sans nom de client",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "carte diagnostic servie et affichée (diagnostic)",
+  "le presse-papiers reçoit le diagnostic (4472 caractères, « Diagnostic de l'ERP — 1 dernier(s) jour(s), généré le 2026-11-14T02:25 »)",
+  "aucun nom ni numéro de client dans le texte copié",
+  "aucun nom ni numéro de client dans les données de la carte"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P2.5-diagnostic.png"
+ ]
+}

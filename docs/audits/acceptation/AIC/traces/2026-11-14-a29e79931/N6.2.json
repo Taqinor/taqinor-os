@@ -1,0 +1,35 @@
+{
+ "id": "N6.2",
+ "tache": "AIC86",
+ "titre": "« Signaler un bug » + « la fiche ne s'ouvre pas » : le relevé porte la requête en 404",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "le relevé porte la requête en 404 sur la route normalisée ([{\"methode\":\"GET\",\"route\":\"/api/django/crm/leads/<id>/\",\"statut\":404,\"duree_ms\":198,\"request_id\":\"2ee0759f10a24ce28a1cb9d8f6f99626\",\"code\":\"\",\"il_y_a_s\":3}])",
+  "ni identifiant ni donnée de client dans le relevé",
+  "le relevé reste en mémoire : rien dans le stockage du navigateur ([[\"tq_equipe_enregistre_33\",\"taqinor:welcome:seen:v1\",\"tq_appareil_erp\",\"taqinor.cmdk.recent\",\"taqinor.lastModule\"],[\"ta)",
+  "le diagnostic est refusé à la commerciale (403)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P6.2-signalement.png"
+ ]
+}

@@ -1,0 +1,41 @@
+{
+ "id": "N2.4",
+ "tache": "AIC75",
+ "titre": "« Envoie-lui le devis » : la carte ouvre WhatsApp et le devis passe « envoyé » (une seule fois)",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "l'écran envoie le lead ouvert (4) ; carte wa_devis reçue",
+  "la carte porte lead_id, devis_ids et langue (4, [6], fr)",
+  "l'aperçu n'a rien enregistré : devis brouillon",
+  "WhatsApp s'ouvre une fois, sur le numéro du lead, avec le message du devis",
+  "envoi enregistré : POST crm/leads/4/whatsapp-devis/ → 200",
+  "la carte dit « Envoi enregistré : devis marqué envoyé. »",
+  "le devis est passé à « envoyé » : envoye",
+  "un seul enregistrement d'envoi"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query",
+  "200 POST /api/django/crm/leads/4/whatsapp-devis/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P2.4-carte-envoi.png",
+  "P2.4-envoye.png"
+ ]
+}

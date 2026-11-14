@@ -1,0 +1,38 @@
+{
+ "id": "E1.2",
+ "tache": "AIC74",
+ "titre": "Confirmer la première : elle passe « confirmée » avec sa carte de résultat ; la seconde reste à confirmer",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "confirmation → 200 ok=true",
+  "états à l'écran : la première « confirmée », la seconde toujours « à confirmer »",
+  "la carte confirmée affiche son résultat",
+  "le lead est passé à l'étape demandée (CONTACTED)",
+  "le devis de la seconde proposition n'a pas bougé (envoye)",
+  "le même jeton rejoué est refusé (ok=false)",
+  "pas de suite sous le moteur LangChain"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/confirm"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P1.2-confirmee.png"
+ ]
+}

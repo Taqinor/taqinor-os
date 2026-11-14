@@ -1,0 +1,37 @@
+{
+ "id": "P4.3",
+ "tache": "AIC77",
+ "titre": "« Signaler un bug » + une phrase : le signalement arrive dans le diagnostic de l'administrateur avec ses routes et statuts",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "le relevé technique part avec le signalement (15 requêtes)",
+  "routes du relevé normalisées, sans chaîne de requête ni identifiant",
+  "aucune donnée de client dans le relevé",
+  "le signalement de la commerciale figure au diagnostic avec son relevé (2 signalement(s))",
+  "chaque requête du relevé a sa route et son statut (ex. {\"code\":\"\",\"route\":\"/api/django/crm/leads/<id>/photo-toit/\",\"statut\":200,\"methode\":\"GET\",\"duree_ms\":390,\"il_y_a_s\":2,\"request_id\":\"9e8504c2b53f45109913cccb6f1c2826\"})",
+  "le texte copié liste le signalement avec son écran"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P4.3-signalement.png"
+ ]
+}
