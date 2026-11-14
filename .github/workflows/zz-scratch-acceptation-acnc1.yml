@@ -141,7 +141,7 @@ jobs:
         env:
           VITE_E2E: '1'
         run: npm run build
-      - name: Django + spec d'acceptation ACNC (4 workers gunicorn : courses reelles)
+      - name: Django + spec d'acceptation ACNC (4 workers gunicorn, courses reelles)
         working-directory: backend/django_core
         env:
           E2E_ACCEPTATION: '1'
