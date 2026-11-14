@@ -123,6 +123,24 @@ describe('carte touche — ce qu\'elle montre', () => {
     expect(screen.queryByRole('button', { name: /WhatsApp/ })).not.toBeInTheDocument()
   })
 
+  it('hors fenêtre : bandeau et bouton actif', async () => {
+    // AIC94 — `hors_fenetre` servi par le serveur (AIC95, échantillon « 22 h »).
+    monter(DONNEES_WA)
+    const bandeau = screen.getByTestId('touche-hors-fenetre')
+    expect(bandeau).toHaveTextContent(SAMPLE.hors_fenetre.raison)
+    const bouton = screen.getByRole('button', { name: /WhatsApp/ })
+    expect(bouton).toBeEnabled()
+    // Au-dessus d'« Ouvrir WhatsApp » ; elle décide : le clic ouvre quand même.
+    expect(bandeau.compareDocumentPosition(bouton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await userEvent.click(bouton)
+    expect(window.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('dans la fenêtre d\'envoi : aucun bandeau', () => {
+    monter({ ...DONNEES_WA, hors_fenetre: null })
+    expect(screen.queryByTestId('touche-hors-fenetre')).not.toBeInTheDocument()
+  })
+
   it('le foyer de la conversation = la touche de la dernière carte « touche »', () => {
     const store = monter(DONNEES_WA)
     expect(foyerTouche(store.getState().ia.messages)).toBe(TOUCHE_WA.id)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Languages, TriangleAlert, Undo2, SkipForward } from 'lucide-react'
+import { Check, Clock, Languages, TriangleAlert, Undo2, SkipForward } from 'lucide-react'
 import { Button } from '../../../ui'
 import iaApi from '../../../api/iaApi'
 import crmApi from '../../../api/crmApi'
@@ -286,6 +286,15 @@ export default function CarteTouche({ carte, index, carteIdx }) {
       )}
       {!refus && !traitee && (
         <div className="mt-2.5">
+          {/* AIC94 — l'heure d'envoi est déconseillée (règle lue du serveur,
+              AIC95) : on le DIT, le bouton reste actif — elle décide. */}
+          {donnees.hors_fenetre?.raison && (
+            <p data-testid="touche-hors-fenetre" role="note"
+              className="mb-2 flex items-start gap-1.5 rounded-md border border-border bg-muted/40 p-2 text-xs text-warning">
+              <Clock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              {donnees.hors_fenetre.raison}
+            </p>
+          )}
           <RelanceEtapeRow
             etape={touche} busyId={busyId} navigate={navigate} showStatut
             readOnly={touche.statut !== 'a_faire'}
