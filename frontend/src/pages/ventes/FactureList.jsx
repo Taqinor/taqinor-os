@@ -29,7 +29,8 @@ import useFactureLot from './factureList/useFactureLot.js'
 import useFactureDocuments from './factureList/useFactureDocuments.js'
 import useFactureGestes, { relireApresGeste } from './factureList/useFactureGestes.js'
 import DialoguesFacture from './factureList/DialoguesFacture.jsx'
-import { isPartiallyPaid, isOverdue, today, STATUTS_HORS_ENCAISSEMENT } from './factureList/factureHelpers.js'
+import { isPartiallyPaid, isOverdue, STATUTS_HORS_ENCAISSEMENT } from './factureList/factureHelpers.js'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   // APX12 — le langage UNIQUE des KPI d'argent.
@@ -340,9 +341,10 @@ export default function FactureList() {
   const totalAEcheoirSoon = toNumber(facturesKpis?.total_a_echoir_7j) || 0
   // Le decompte des factures a echoir se lit sur la page chargee (aucun
   // montant : c'est un simple cardinal d'affichage).
+  const today = todayLocalIso() // AERR138 — lue au rendu, jamais au chargement du module.
   const nbAEcheoirSoon = useMemo(() => factures.filter(f =>
-    f.statut === 'emise' && !isOverdue(f) && f.date_echeance
-    && f.date_echeance >= today).length, [factures])
+    f.statut === 'emise' && !isOverdue(f, today) && f.date_echeance
+    && f.date_echeance >= today).length, [factures, today])
   const openNew   = () => { setEditFacture(null); setShowForm(true) }
   const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }
