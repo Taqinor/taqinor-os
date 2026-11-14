@@ -198,12 +198,6 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         with ecriture_bornee(serializer):  # ACNC25
             serializer.save(company=self.request.user.company)
 
-    def _set_statut(self, request, statut):
-        liv = self.get_object()
-        liv.statut = statut
-        liv.save(update_fields=['statut', 'date_modification'])
-        return Response(self.get_serializer(liv).data)
-
     def _notify_client(self, liv, statut, request):
         """XSTK22 — notification client best-effort au passage en transit/
         livrée, UNE SEULE FOIS (garde ``notifie_transit_le`` pour le
@@ -287,13 +281,21 @@ class LivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
     def annuler(self, request, pk=None):
         """FG329 — annule la livraison. YSTCK5 : contre-transfert van → dépôt
         si le stock avait été ventilé (idempotent, best-effort)."""
+        from django.db import transaction
+
         liv = self.get_object()
-        _exiger_transition_livraison(liv, Livraison.Statut.ANNULEE)
-        try:
-            contre_transferer_stock_livraison(liv, request.user)
-        except Exception:  # pragma: no cover - défensif, best-effort
-            logger.warning("annuler : échec ignoré, comportement dégradé", exc_info=True)
-        return self._set_statut(request, Livraison.Statut.ANNULEE)
+        with transaction.atomic():  # ACNC57 — relue sous verrou : un seul contre-transfert
+            liv = Livraison.objects.select_for_update().get(pk=liv.pk)
+            _exiger_transition_livraison(liv, Livraison.Statut.ANNULEE)
+            try:
+                with transaction.atomic():  # savepoint : le best-effort n'annule pas le statut
+                    contre_transferer_stock_livraison(liv, request.user)
+            except Exception:  # pragma: no cover - défensif, best-effort
+                logger.warning("annuler : échec ignoré, comportement dégradé", exc_info=True)
+            liv.statut = Livraison.Statut.ANNULEE
+            liv.save(update_fields=['statut', 'date_modification'])
+        liv.refresh_from_db()
+        return Response(self.get_serializer(liv).data)
 
     @oa.extend_schema(
         request=oa.body('GenererRetourLivraisonRequete', motif=oa.s()),

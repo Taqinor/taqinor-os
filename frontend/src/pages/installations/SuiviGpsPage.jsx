@@ -76,7 +76,7 @@ function ConsentementsTab({ techniciens }) {
           <PlusCircle className="size-4" aria-hidden="true" /> Enregistrer un consentement
         </Button>
       </div>
-      <ListShell loading={loading} error={error} icon={ShieldCheck}
+      <ListShell loading={loading} error={error} onRetry={reload} icon={ShieldCheck}
         empty="Aucun consentement enregistré">
         {rows.length > 0 && rows.map((r) => (
           <div key={r.id}
@@ -399,7 +399,7 @@ function AlertesTab() {
         <option value="acquittees">Acquittées</option>
         <option value="toutes">Toutes</option>
       </select>
-      <ListShell loading={loading} error={error} icon={TriangleAlert}
+      <ListShell loading={loading} error={error} onRetry={reload} icon={TriangleAlert}
         empty={filtre === 'ouvertes' ? 'Aucune alerte ouverte' : 'Aucune alerte de géofence'}>
         {visibles.length > 0 && visibles.map((a) => (
           <div key={a.id}

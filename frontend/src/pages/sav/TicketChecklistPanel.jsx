@@ -20,8 +20,8 @@ export default function TicketChecklistPanel({ ticketId }) {
   const [error, setError] = useState(null)
 
   // AERR79 — lecture ratée ≠ « aucune checklist » : avis + Réessayer, pas d'Initialiser.
-  const load = () => {
-    setError(null)
+  const load = ({ garderErreur = false } = {}) => { // AERR144 — le refus d'une note survit à la relecture
+    if (!garderErreur) setError(null)
     savApi.getTicketChecklist(ticketId)
       .then((r) => setItems(r.data ?? []))
       .catch(() => setError('Checklist non chargée.'))
@@ -78,7 +78,7 @@ export default function TicketChecklistPanel({ ticketId }) {
         (it) => (it.cle === item.cle ? r.data : it)))
     } catch (err) {
       setError(err?.response?.data?.detail ?? 'Note non enregistrée.')
-      load()
+      load({ garderErreur: true })
     }
   }
 

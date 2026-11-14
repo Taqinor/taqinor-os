@@ -163,6 +163,46 @@ class SyncInsightsRunTests(TestCase):
                    side_effect=RuntimeError('boom')):
             self.assertEqual(sync_insights_daily(), {'companies_synced': 0})
 
+    def test_limite_douce_au_deuxieme_lead_fait_echouer_le_releve(self):
+        """ACEL81 — la limite douce levée à la création du 2e lead n'est pas
+        avalée par l'``except`` par lead de ``pull_ad_leads_for_company``."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        from apps.adsengine.tasks import pull_meta_leads
+
+        AdMirror.objects.create(company=self.company, meta_id='ad-acel81')
+
+        class Client:
+            def get_ad_leads(self, meta_id, **kw):
+                return [{'id': 'lg1', 'field_data': []},
+                        {'id': 'lg2', 'field_data': []}]
+
+            def get_ad_targeting_ids(self, meta_id):
+                return {'adset_id': 's1', 'campaign_id': 'c1'}
+
+        with patch('apps.adsengine.meta_client.MetaClient') as mock_cls, \
+                patch('apps.crm.services.create_lead_from_meta_lead_ads',
+                      side_effect=[object(), SoftTimeLimitExceeded()]), \
+                patch('core.events.meta_lead_captured'):
+            mock_cls.from_connection.return_value = Client()
+            with self.assertRaises(SoftTimeLimitExceeded):
+                pull_meta_leads()
+
+    def test_societe_suivante_synchronisee_apres_une_erreur(self):
+        """ACEL81 — une ``RuntimeError`` d'une société reste isolée : la
+        suivante est synchronisée."""
+        autre = Company.objects.create(nom='Live Co 2', slug='live-co-2')
+        MetaConnection.objects.create(
+            company=autre, enabled=True,
+            credentials={'access_token': 'tok-2'}, ad_account_id='act_2')
+
+        def sync(conn):
+            if conn.company_id == self.company.pk:
+                raise RuntimeError('boom')
+
+        with patch('apps.adsengine.tasks._sync_company', side_effect=sync):
+            self.assertEqual(sync_insights_daily(), {'companies_synced': 1})
+
 
 class EmitCapiCommandeManuelleTests(TestCase):
     """ACEL73 — ``manage.py emit_capi_signatures`` déclenche la tâche."""
