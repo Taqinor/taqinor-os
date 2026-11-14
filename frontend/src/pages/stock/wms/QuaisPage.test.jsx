@@ -35,13 +35,32 @@ function brancher() {
 }
 
 // ADRG36 — les rendez-vous suivent `stock_modifier` : le store de test le porte.
-const monter = (permissions = ['stock_voir', 'stock_modifier']) =>
-  renderStockPage(QuaisPage, makeAuthStore({ permissions }))
+// ADRG130 — l'import ASN suit `stock_mouvement` (porté par défaut) ; les quais, le palier admin.
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement'], role = 'admin') =>
+  renderStockPage(QuaisPage, makeAuthStore({ permissions, role }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
 afterEach(() => { cleanup() })
 
 describe('ASTK218 — QuaisPage', () => {
+  it('Commercial responsable : ni import ASN ni gestes de quai', async () => {
+    monter(['stock_voir', 'crm_voir'], 'responsable')
+    expect((await screen.findAllByText('Quai R1', { selector: 'strong' })).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Fichier ASN')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Ajouter le quai/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /(Activer|Désactiver) le quai/ })).toBeNull()
+    cleanup()
+    monter(['stock_voir', 'stock_mouvement'], 'normal')  // Technicien : l'import ASN seul
+    expect(await screen.findByLabelText('Fichier ASN')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Ajouter le quai/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /(Activer|Désactiver) le quai/ })).toBeNull()
+    cleanup()
+    monter()  // Directeur : tous
+    expect(await screen.findByLabelText('Fichier ASN')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ajouter le quai/i })).toBeInTheDocument()
+    expect((await screen.findAllByRole('button', { name: /(Activer|Désactiver) le quai/ })).length).toBeGreaterThan(0)
+  })
+
   it('le planning affiche fournisseur et BCF', async () => {
     monter()
     const planning = await screen.findByRole('region', { name: /Planning/i })

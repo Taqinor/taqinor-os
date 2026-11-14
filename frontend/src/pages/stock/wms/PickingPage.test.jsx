@@ -119,6 +119,13 @@ describe('ASTK217 — PickingPage', () => {
     expect(await screen.findByText(/INV-2026-10-0003/)).toBeInTheDocument()
   })
 
+  it('ADRG130 — non-administrateur : pas de « Générer les comptages »', async () => {
+    renderStockPage(PickingPage, makeAuthStore({ role: 'responsable', permissions: ['stock_voir', 'stock_mouvement'] }))
+    fireEvent.click(await screen.findByRole('tab', { name: /Comptages/i }))
+    expect(await screen.findByText(/30 jours/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Générer les comptages/i })).toBeNull()
+  })
+
   it('affiche productivité et pertes', async () => {
     monter()
     fireEvent.click(await screen.findByRole('tab', { name: /Productivité/i }))
