@@ -8,6 +8,15 @@ import { refusEtape } from '../../../../features/crm/raisonsFroid'
 // ERR-ACVI9-KANBAN-FROID — le vrai DndContext, dont on capte `onDragEnd` : un
 // glisser au pointeur n'est pas jouable dans jsdom.
 const dnd = vi.hoisted(() => ({ onDragEnd: null }))
+const toasts = vi.hoisted(() => ({ withUndo: vi.fn() }))
+vi.mock('../../../../lib/toast', async (original) => {
+  const reel = await original()
+  return {
+    ...reel,
+    toastError: vi.fn(),
+    toastWithUndo: (...a) => { toasts.withUndo(...a); return reel.toastWithUndo(...a) },
+  }
+})
 vi.mock('@dnd-kit/core', async (original) => {
   const reel = await original()
   return {
@@ -209,5 +218,24 @@ describe('LeadCard — Devis auto (ALEA63)', () => {
   it('actif quand le catalogue est prêt ou non servi', () => {
     const { container } = monter(lead({ devis_auto: { pret: true, catalogue_ci: { pret: true, manquants: [] } } }))
     expect(container.querySelector('button.kb-flash')).not.toBeDisabled()
+  })
+})
+
+describe('AERR135 — réassignation refusée', () => {
+  it('refus 400 : ni Responsable modifié ni Annuler', async () => {
+    toasts.withUndo.mockClear()
+    // Comme `LeadsPage.reassign` : le refus n'est relancé qu'avec `relancer`.
+    const onReassign = vi.fn((l, id, opts) => (opts?.relancer
+      ? Promise.reject({ response: { status: 400, data: { owner: ['Utilisateur inactif.'] } } })
+      : Promise.resolve()))
+    const users = [{ id: 1, username: 'sami' }, { id: 2, username: 'nadia' }]
+    render(<KanbanView leads={[lead({ owner: 1 })]} users={users} onReassign={onReassign} />)
+    fireEvent.click(screen.getByTitle('Responsable : sami'))
+    fireEvent.click(await screen.findByRole('button', { name: /nadia/ }))
+    await waitFor(() => expect(onReassign).toHaveBeenCalledWith(
+      expect.anything(), 2, { relancer: true }))
+    expect(toasts.withUndo).not.toHaveBeenCalled()
+    expect(screen.queryByText('Responsable modifié.')).toBeNull()
+    expect(screen.getByTitle('Responsable : sami')).toBeInTheDocument()
   })
 })
