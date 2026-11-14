@@ -11,14 +11,19 @@ import { idDevisSur } from './cartes'
    construit que depuis un `devis_id` entier (carte `document` ou ligne de devis
    d'une `fiche_lead`), jamais depuis un `id` quelconque. */
 
-// Options de rendu admises ici : le format et l'étude, nommés un à un (le
-// serveur garde sa propre liste blanche, `clean_pdf_options`). Toute autre clé
-// reçue dans la carte est ignorée.
+// Options de rendu admises ici : celles que l'action `ventes.devis.generer_pdf`
+// déclare, nommées une à une (le serveur garde sa propre liste blanche,
+// `clean_pdf_options`). Toute autre clé reçue dans la carte est ignorée.
+const BOOLEENS_PDF = ['include_etude', 'include_calepinage', 'show_monthly', 'devis_final']
+
 function optionsSures(options) {
   const o = options && typeof options === 'object' && !Array.isArray(options) ? options : {}
   const params = {}
   if (o.pdf_mode === 'onepage' || o.pdf_mode === 'full') params.pdf_mode = o.pdf_mode
-  if (typeof o.include_etude === 'boolean') params.include_etude = o.include_etude
+  if (typeof o.langue === 'string' && /^[a-z]{2,6}$/.test(o.langue)) params.langue = o.langue
+  for (const cle of BOOLEENS_PDF) {
+    if (typeof o[cle] === 'boolean') params[cle] = o[cle]
+  }
   return params
 }
 
@@ -35,7 +40,7 @@ export default function BoutonTelechargerDevis({
     // Fenêtre ouverte dans le geste, avant le premier await (iOS / PWA).
     const pending = downloadBlobInGesture()
     try {
-      // parametres-requete: pdf_mode, include_etude
+      // parametres-requete: pdf_mode, langue, include_etude, include_calepinage, show_monthly, devis_final
       const res = await ventesApi.getProposalPdf(id, optionsSures(options))
       pending.deliver(res.data, filenameFromResponse(res, `${reference || 'Devis'}.pdf`))
     } catch {

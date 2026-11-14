@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4968, operations: 7754, components: 3653}
+counts: {paths: 4980, operations: 7766, components: 3656}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -445,6 +445,7 @@ operations:
 - get /api/django/agent/evenements/export/ -> django_agent_evenements_export_retrieve
 - get /api/django/agent/evenements/stats/ -> django_agent_evenements_stats_retrieve
 - patch /api/django/agent/evenements/{id}/note/ -> django_agent_evenements_note_partial_update
+- get /api/django/agent/libelles/ -> django_agent_libelles_retrieve
 - get /api/django/agent/logs/ -> django_agent_logs_retrieve
 - post /api/django/agent/logs/confirmer/ -> django_agent_logs_confirmer_create
 - post /api/django/agent/logs/{id}/annuler/ -> django_agent_logs_annuler_create
@@ -911,6 +912,10 @@ operations:
 - get /api/django/crm/assignable-users/ -> django_crm_assignable_users_list
 - get /api/django/crm/assistant/a-relancer/ -> django_crm_assistant_a_relancer_retrieve
 - get /api/django/crm/assistant/digest-matin/ -> django_crm_assistant_digest_matin_retrieve
+- get /api/django/crm/assistant/leads/ -> django_crm_assistant_leads_retrieve
+- get /api/django/crm/assistant/leads/{lead_id}/message-visite/ -> django_crm_assistant_leads_message_visite_retrieve
+- post /api/django/crm/assistant/leads/{lead_id}/whatsapp-devis-apercu/ -> django_crm_assistant_leads_whatsapp_devis_apercu_create
+- get /api/django/crm/assistant/touches/{touche_id}/ -> django_crm_assistant_touches_retrieve
 - get /api/django/crm/canaux/ -> django_crm_canaux_list
 - post /api/django/crm/canaux/ -> django_crm_canaux_create
 - delete /api/django/crm/canaux/{id}/ -> django_crm_canaux_destroy
@@ -2686,6 +2691,7 @@ operations:
 - post /api/django/reporting/approbations-en-attente/decider/ -> django_reporting_approbations_en_attente_decider_create
 - get /api/django/reporting/archive/chantier/{id}/ -> django_reporting_archive_chantier_retrieve
 - get /api/django/reporting/archive/client/{id}/ -> django_reporting_archive_client_retrieve
+- get /api/django/reporting/assistant/diagnostic/ -> django_reporting_assistant_diagnostic_retrieve
 - get /api/django/reporting/balance-agee/export/ -> django_reporting_balance_agee_export_retrieve
 - get /api/django/reporting/calendar.ics -> django_reporting_calendar.ics_retrieve
 - get /api/django/reporting/calendar/ -> django_reporting_calendar_retrieve
@@ -4363,6 +4369,7 @@ operations:
 - get /api/v1/agent/evenements/export/ -> v1_agent_evenements_export_retrieve
 - get /api/v1/agent/evenements/stats/ -> v1_agent_evenements_stats_retrieve
 - patch /api/v1/agent/evenements/{id}/note/ -> v1_agent_evenements_note_partial_update
+- get /api/v1/agent/libelles/ -> v1_agent_libelles_retrieve
 - get /api/v1/agent/logs/ -> v1_agent_logs_retrieve
 - post /api/v1/agent/logs/confirmer/ -> v1_agent_logs_confirmer_create
 - post /api/v1/agent/logs/{id}/annuler/ -> v1_agent_logs_annuler_create
@@ -4829,6 +4836,10 @@ operations:
 - get /api/v1/crm/assignable-users/ -> v1_crm_assignable_users_list
 - get /api/v1/crm/assistant/a-relancer/ -> v1_crm_assistant_a_relancer_retrieve
 - get /api/v1/crm/assistant/digest-matin/ -> v1_crm_assistant_digest_matin_retrieve
+- get /api/v1/crm/assistant/leads/ -> v1_crm_assistant_leads_retrieve
+- get /api/v1/crm/assistant/leads/{lead_id}/message-visite/ -> v1_crm_assistant_leads_message_visite_retrieve
+- post /api/v1/crm/assistant/leads/{lead_id}/whatsapp-devis-apercu/ -> v1_crm_assistant_leads_whatsapp_devis_apercu_create
+- get /api/v1/crm/assistant/touches/{touche_id}/ -> v1_crm_assistant_touches_retrieve
 - get /api/v1/crm/canaux/ -> v1_crm_canaux_list
 - post /api/v1/crm/canaux/ -> v1_crm_canaux_create
 - delete /api/v1/crm/canaux/{id}/ -> v1_crm_canaux_destroy
@@ -6570,6 +6581,7 @@ operations:
 - post /api/v1/reporting/approbations-en-attente/decider/ -> v1_reporting_approbations_en_attente_decider_create
 - get /api/v1/reporting/archive/chantier/{id}/ -> v1_reporting_archive_chantier_retrieve
 - get /api/v1/reporting/archive/client/{id}/ -> v1_reporting_archive_client_retrieve
+- get /api/v1/reporting/assistant/diagnostic/ -> v1_reporting_assistant_diagnostic_retrieve
 - get /api/v1/reporting/balance-agee/export/ -> v1_reporting_balance_agee_export_retrieve
 - get /api/v1/reporting/calendar.ics -> v1_reporting_calendar.ics_retrieve
 - get /api/v1/reporting/calendar/ -> v1_reporting_calendar_retrieve
@@ -7865,6 +7877,7 @@ query_params:
   get /api/django/adsengine/veille/decouvertes/: ordering page page_size search
   get /api/django/agent/evenements/export/: depuis jusqu_a
   get /api/django/agent/evenements/stats/: semaines
+  get /api/django/agent/libelles/: client devis facture lead touche
   get /api/django/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/django/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/django/audit/objets/{content_type}/{object_id}/history/: limit
@@ -7944,6 +7957,9 @@ query_params:
   get /api/django/crm/appointments/: lead ordering page page_size search
   get /api/django/crm/apporteurs/: ordering page page_size search
   get /api/django/crm/assistant/a-relancer/: portee
+  get /api/django/crm/assistant/leads/: etape limite q
+  get /api/django/crm/assistant/leads/{lead_id}/message-visite/: cle langue
+  get /api/django/crm/assistant/touches/{touche_id}/: due_at geste langue mode motif_perte motif_refus note outcome perdu_junk raison_attente rappel_heure rappel_le reponse
   get /api/django/crm/canaux/: ordering page page_size search
   get /api/django/crm/clients/: ordering page page_size search
   get /api/django/crm/clients/dormants/: seuil
@@ -8292,6 +8308,7 @@ query_params:
   get /api/django/reporting/approbations-en-attente/: categorie priorite source trier
   get /api/django/reporting/archive/chantier/{id}/: export
   get /api/django/reporting/archive/client/{id}/: export
+  get /api/django/reporting/assistant/diagnostic/: jours
   get /api/django/reporting/calendar.ics: token
   get /api/django/reporting/calendar/: assignee from to types
   get /api/django/reporting/classeurs/: ordering page page_size search
@@ -8666,6 +8683,7 @@ query_params:
   get /api/v1/adsengine/veille/decouvertes/: ordering page page_size search
   get /api/v1/agent/evenements/export/: depuis jusqu_a
   get /api/v1/agent/evenements/stats/: semaines
+  get /api/v1/agent/libelles/: client devis facture lead touche
   get /api/v1/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/v1/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/v1/audit/objets/{content_type}/{object_id}/history/: limit
@@ -8745,6 +8763,9 @@ query_params:
   get /api/v1/crm/appointments/: lead ordering page page_size search
   get /api/v1/crm/apporteurs/: ordering page page_size search
   get /api/v1/crm/assistant/a-relancer/: portee
+  get /api/v1/crm/assistant/leads/: etape limite q
+  get /api/v1/crm/assistant/leads/{lead_id}/message-visite/: cle langue
+  get /api/v1/crm/assistant/touches/{touche_id}/: due_at geste langue mode motif_perte motif_refus note outcome perdu_junk raison_attente rappel_heure rappel_le reponse
   get /api/v1/crm/canaux/: ordering page page_size search
   get /api/v1/crm/clients/: ordering page page_size search
   get /api/v1/crm/clients/dormants/: seuil
@@ -9091,6 +9112,7 @@ query_params:
   get /api/v1/reporting/approbations-en-attente/: categorie priorite source trier
   get /api/v1/reporting/archive/chantier/{id}/: export
   get /api/v1/reporting/archive/client/{id}/: export
+  get /api/v1/reporting/assistant/diagnostic/: jours
   get /api/v1/reporting/calendar.ics: token
   get /api/v1/reporting/calendar/: assignee from to types
   get /api/v1/reporting/classeurs/: ordering page page_size search
@@ -9633,10 +9655,12 @@ components:
 - AsBuiltPack
 - AsBuiltPackRequest
 - AssetTypeEnum
+- AssistantDiagnostic
 - AssistantEvenement
 - AssistantEvenementNote
 - AssistantEvenementsExport
 - AssistantEvenementsPage
+- AssistantLibelles
 - AssistantStats
 - AssumptionNode
 - AssumptionNodeRequest
@@ -10123,6 +10147,7 @@ components:
 - CrmAppliquerPlanRequestRequest
 - CrmArreterRelanceRequestRequest
 - CrmAssistantBrouillonSuiviRequestRequest
+- CrmAssistantWhatsappApercuRequestRequest
 - CrmBulkLeadsRequestActionEnum
 - CrmBulkLeadsRequestRequest
 - CrmCadencesEchues

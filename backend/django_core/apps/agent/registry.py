@@ -40,7 +40,7 @@ CARTES = frozenset({
     'touche',         # une touche prête : {touche, lead, message|appel, refus}
     'suite_touche',   # touche traitée : étape + prochaine_touche
     'wa_message',     # texte prêt + lien wa.me (brouillon de suivi)
-    'wa_devis',       # envoi d'un ou plusieurs devis : {wa_url, message, links[]}
+    'wa_devis',       # envoi de devis : {wa_url, message, links[], lead_id, devis_ids}
     'document',       # lien vers un PDF client (/proposal)
     'visite',         # visite planifiée : {visite, prochaine_touche}
     'diagnostic',     # état technique (admin) : santé, problèmes récents
