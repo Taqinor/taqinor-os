@@ -214,6 +214,9 @@ test('CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requ
   for (const langue of ['fr', 'ar']) {
     await page.goto(`${process.env.WEB_URL}/proposition/${etat.token}`)
     await page.locator(`#prop-lang-${langue}`).click()
+    // La chaîne de prix (ChainePrix) vit dans un pli <details> fermé : l'ouvrir comme le lecteur.
+    await page.locator('[data-figure="total_ttc"]').first().waitFor({ state: 'attached', timeout: 30_000 })
+    await page.locator('details:has([data-figure="total_ttc"])').evaluateAll((els) => els.forEach((d) => { d.open = true }))
     await expect(page.locator('[data-figure="total_ttc"]:visible').first()).toBeVisible({ timeout: 30_000 })
     const surfaces = { page: await lireFiguresPage(page), data }
     expect(comparer(surfaces), `/proposition (${langue}) ≠ /data/`).toEqual([])
