@@ -130,3 +130,41 @@ class GatingTests(TestCase):
     def test_poll_enabled_without_config_is_noop(self):
         result = services.poll_mail_intake(self.co)
         self.assertEqual(result, {'fetched': 0, 'imported': 0})
+
+    @override_settings(GED_MAIL_INTAKE_ENABLED=True)
+    def test_message_en_echec_reste_non_lu(self):
+        """ACEL84 — relève en BODY.PEEK[] ; `\\Seen` posé seulement après un
+        import réussi."""
+        from unittest import mock
+
+        class FauxImap:
+            def __init__(self):
+                self.fetches, self.stores = [], []
+
+            def search(self, *_a):
+                return 'OK', [b'1 2']
+
+            def fetch(self, num, spec):
+                self.fetches.append(spec)
+                return 'OK', [(b'', b'raw-' + num)]
+
+            def store(self, num, *args):
+                self.stores.append((num, args))
+
+            def logout(self):
+                pass
+
+        conn = FauxImap()
+
+        def importer(raw, company):
+            if raw == b'raw-1':
+                raise ValueError('boom')
+            return [object()]
+
+        with mock.patch('core.email_intake._active_imap_config',
+                        return_value=object()),                 mock.patch('core.email_intake._imap', return_value=conn),                 mock.patch.object(services, 'importer_message_email',
+                                  side_effect=importer):
+            result = services.poll_mail_intake(self.co)
+        self.assertEqual(result, {'fetched': 2, 'imported': 1})
+        self.assertEqual(conn.fetches, ['(BODY.PEEK[])'] * 2)
+        self.assertEqual(conn.stores, [(b'2', ('+FLAGS', '\\Seen'))])

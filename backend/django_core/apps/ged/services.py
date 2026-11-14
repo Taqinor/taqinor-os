@@ -5398,37 +5398,30 @@ def poll_mail_intake(company):
     `{"fetched": int, "imported": int}` (jamais d'exception remontée)."""
     if not mail_intake_enabled():
         return {'fetched': 0, 'imported': 0}
-    from core.email_intake import _active_imap_config
-    from core.integrations import resolve_secret
+    from core.email_intake import _active_imap_config, _imap
     cfg = _active_imap_config(company)
     if cfg is None:
-        return {'fetched': 0, 'imported': 0}
-    settings_dict = cfg.settings or {}
-    host = settings_dict.get('host')
-    user = settings_dict.get('user')
-    password = resolve_secret(getattr(cfg, 'secret_ref', '') or None)
-    if not host or not user or not password:
-        return {'fetched': 0, 'imported': 0}
-    folder_name = settings_dict.get('folder', 'INBOX')
-    try:
-        import imaplib
-    except Exception:  # pragma: no cover - stdlib toujours présente en prod.
-        logger.warning("ged.poll_mail_intake : exception ignorée", exc_info=True)
         return {'fetched': 0, 'imported': 0}
     fetched = 0
     imported = 0
     try:
-        conn = imaplib.IMAP4_SSL(host)
-        conn.login(user, password)
-        conn.select(folder_name)
+        conn = _imap(cfg)  # ACEL84 — délai, login, dossier : 1 définition
+        if conn is None:
+            return {'fetched': 0, 'imported': 0}
         typ, data = conn.search(None, 'UNSEEN')
         if typ == 'OK':
             for num in data[0].split():
-                t, msg_data = conn.fetch(num, '(RFC822)')
+                t, msg_data = conn.fetch(num, '(BODY.PEEK[])')
                 if t == 'OK' and msg_data and msg_data[0]:
                     fetched += 1
-                    created = importer_message_email(msg_data[0][1], company=company)
+                    try:
+                        created = importer_message_email(
+                            msg_data[0][1], company=company)
+                    except Exception:  # noqa: BLE001 — reste non lu (ACEL84)
+                        logger.warning("ged.poll_mail_intake : import en échec", exc_info=True)
+                        continue
                     imported += len(created)
+                    conn.store(num, '+FLAGS', '\\Seen')
         conn.logout()
     except Exception:  # pragma: no cover - réseau/auth : dégrade proprement.
         logger.warning("ged.poll_mail_intake : exception ignorée", exc_info=True)
