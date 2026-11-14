@@ -73,8 +73,11 @@ l'appelle.
 **Tâche :** ACNC57, dans `docs/plans/PLAN_AUDIT_CHANTIERS.md`.
 
 **Autres sondes du dossier PF9, rejouées le 14/11.**
-- 004, 005 et 006 (stock) **reproduisent encore** : bon fournisseur à deux onglets écrasé et remis en brouillon ; mouvement et
-  transfert rejoués créés deux fois ; « +10 % » en masse rejoué qui donne +21 %. Leurs tâches ACNC21 à 24 sont ouvertes (§6).
+- 004, 005 et 006 (stock) rendent encore « reproduit », mais **ces trois sondes sont périmées** (rectificatif du 14/11 au
+  soir). Elles ne rejouent que la fonction d'avant le correctif : la garde de version du bon fournisseur, la clé de rejeu des
+  mouvements et la transaction de l'action de masse vivent dans la vue ou dans un mixin qu'elles ne chargent pas. Une copie
+  de chacune, adaptée pour passer par le vrai code corrigé, ne reproduit plus ; son témoin sans le correctif reproduit
+  toujours. Le code d'ACNC21 à 24 est sur `main` depuis la PR #1395 ; ces tâches attendent leur preuve en direct (§6).
 - 001 montre toujours deux paiements pour le même corps envoyé sans clé, ce qui est attendu tant qu'ACNC4 n'est pas construite ;
   sa partie « avec clé » plante sur un bouchon périmé.
 - 002 et 008 ne reproduisent plus : ACNC5 et ACNC10 sont livrées.
@@ -125,10 +128,11 @@ deux tâches. ACNC58 et ACNC60 ne sont pas regroupées : fichiers et propriétai
 - **Ce qui reste ouvert, et c'est le risque d'argent et de stock du groupe.**
   - **Argent : ACNC4** (second paiement identique sans clé, décision D-ACNC-1 du 13/11 : accepté seulement après
     confirmation). Aucun code n'existe. La sonde 001 montre toujours deux paiements pour le même corps envoyé deux fois.
-  - **Stock : ACNC21 à 24.** Les sondes 004, 005 et 006 du dossier PF9 reproduisent encore le 14/11 :
-    - un bon fournisseur ouvert dans deux onglets perd la ligne de l'autre acheteur et repasse en brouillon après « Envoyer » ;
-    - un mouvement ou un transfert renvoyé après un délai est créé deux fois ;
-    - « +10 % » en masse rejoué donne +21 %, et une panne à mi-boucle laisse des prix décalés.
+  - **Stock et achats : ACNC21 à 24** (rectificatif du 14/11 au soir). Leur code est livré (PR #1395) et relu : ACNC21, 22
+    et 24 sont conformes, ainsi qu'ACNC28 et 29 ; leurs tests jouent deux gestes et relisent un seul effet. Il leur manque
+    la preuve en direct. **ACNC23 est incomplète** : l'écran du grand livre des paiements fournisseur enregistre un règlement
+    sans clé de rejeu, donc un nouveau clic après une réponse coupée crée un second règlement (C-ACNC-VER3-100, S1, latent :
+    aucune facture fournisseur en production au 11/11 ; tâche ACNC67). Deux écarts S3 au passage : ACNC68 et ACNC69.
   - **Stock : ACNC57**, le S2 nouveau de §3.
   - ACNC28, ACNC29 (S3) ; ACNC56, l'acceptation en direct du groupe, jamais jouée.
 - **Non couvert.**
@@ -144,4 +148,4 @@ deux tâches. ACNC58 et ACNC60 ne sont pas regroupées : fichiers et propriétai
 - 1 vérificateur (opus, effort élevé) et 1 rédacteur (opus) ; jetons non mesurés ici.
 - Aucun appel Fable.
 
-<!-- verifie | groupe: ACNC | pct: 60 | ecarts_s1_s2: 1 -->
+<!-- verifie | groupe: ACNC | pct: 60 | ecarts_s1_s2: 2 -->
