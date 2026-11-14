@@ -152,7 +152,7 @@ function FraisTab({ dossierId }) {
           <PlusCircle className="size-4" aria-hidden="true" /> Nouveau frais
         </Button>}
       </div>
-      <ListShell loading={loading} error={error} empty="Aucun frais saisi">
+      <ListShell loading={loading} error={error} onRetry={reload} empty="Aucun frais saisi">
         {rows.length > 0 && rows.map((f) => (
           <div key={f.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" data-testid={`frais-${f.id}`}>
             <Badge tone="neutral">{f.categorie_display || f.categorie}</Badge>
@@ -239,7 +239,7 @@ function CoutDebarqueTab({ dossierId }) {
           <PlusCircle className="size-4" aria-hidden="true" /> Nouvelle ligne SKU
         </Button>}
       </div>
-      <ListShell loading={loading} error={error} empty="Aucune ligne SKU">
+      <ListShell loading={loading} error={error} onRetry={reload} empty="Aucune ligne SKU">
         {rows.length > 0 && rows.map((l) => {
           const detail = calcul?.lignes?.find((d) => d.ligne_id === l.id)
           return (

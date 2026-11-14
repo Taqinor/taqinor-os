@@ -863,7 +863,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                                            e.prix_vente = 'Prix de vente requis (> 0)'
     if (skuDuplicate)
       e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`
-    Object.assign(e, erreursEntiersProduit(fields))  // AERR87 — « 7.5 » refusé sous le champ, jamais tronqué
+    Object.assign(e, erreursEntiersProduit(fields, { edition: isEdit }))  // AERR87/AERR132 — « 7.5 » refusé sous le champ, jamais tronqué
     setErrors(e)
     // CALX355 — une courbe fautive bloque TOUT l'enregistrement (rien n'est
     // écrit, ni le produit ni la fiche) : l'erreur s'affiche sous la cellule

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /* WIR28 (FG80) — le backend calcule déjà `a_calibrer`/`date_prochaine_calibration`
@@ -27,7 +27,8 @@ const OUTIL_NON_SUIVI = {
   a_calibrer: false,
 }
 
-const { calibrer, lireOutils } = vi.hoisted(() => ({
+const { calibrer, lireOutils, majOutil } = vi.hoisted(() => ({
+  majOutil: vi.fn(() => Promise.resolve({ data: {} })),
   lireOutils: { fn: null },
   // Résolution par défaut sans intérêt — chaque test surcharge via
   // `mockResolvedValueOnce` avant d'agir.
@@ -39,7 +40,7 @@ vi.mock('../../api/outillageApi', () => ({
     getOutils: (...args) => (lireOutils.fn ? lireOutils.fn(...args) : Promise.resolve({ data: [OUTIL_A_CALIBRER, OUTIL_NON_SUIVI] })),
     getOutil: () => Promise.resolve({ data: OUTIL_A_CALIBRER }),
     createOutil: () => Promise.resolve({ data: {} }),
-    updateOutil: () => Promise.resolve({ data: {} }),
+    updateOutil: (...args) => majOutil(...args),
     deleteOutil: () => Promise.resolve({ data: {} }),
     calibrer: (...args) => calibrer(...args),
   },
@@ -51,6 +52,7 @@ vi.mock('../../api/stockApi', () => ({
 import OutillagePage from './OutillagePage'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 import { withProviders } from '../../test/renderAvecProviders'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -99,5 +101,24 @@ describe('OutillagePage — ACHT62 pages complètes', () => {
       await user.type(screen.getByPlaceholderText(/Rechercher/), 'SONDE-054')
       await waitFor(() => expect(screen.getByText('Outil 54')).toBeInTheDocument())
     } finally { lireOutils.fn = null }
+  })
+})
+
+describe('AERR146 — refus d\'un outil', () => {
+  it('numero_serie refusé : sous le champ, absent sur l\'outil suivant', async () => {
+    majOutil.mockRejectedValueOnce({ response: { status: 400, data: { numero_serie: ['Ce numéro existe déjà.'] } } })
+    // L'édition d'un outil existant monte AttachmentsPanel (lit state.auth) : store minimal.
+    renderAvecAuth(<OutillagePage />, { role: 'admin' }, { theme: true })
+    fireEvent.click(await screen.findByText('Multimètre Fluke'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(majOutil).toHaveBeenCalledWith(1, expect.anything()))
+    const alerte = await screen.findByText('Ce numéro existe déjà.')
+    expect(alerte.closest('label').querySelector('input')).toHaveValue('SN-123')
+    expect(screen.queryByText('Enregistrement impossible.')).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Fermer' })[0])
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull())
+    fireEvent.click(screen.getByText('Perceuse Bosch'))
+    expect(await screen.findByDisplayValue('SN-456')).toBeInTheDocument()
+    expect(screen.queryByText('Ce numéro existe déjà.')).toBeNull()
   })
 })

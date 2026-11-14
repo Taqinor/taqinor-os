@@ -8,11 +8,12 @@ Run:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from core.test_utils import WideTeardownTimeoutMixin
 from apps.roles.models import Role
 from apps.stock.models import (
     AcompteFournisseur, AvoirFournisseur, BonCommandeFournisseur,
@@ -188,3 +189,49 @@ class DelettrageSuppressionTests(TestCase):
         provision.refresh_from_db()
         self.assertTrue(provision.lettre)
         self.assertEqual(provision.facture_id, f2.pk)
+
+
+class SuppressionAvoirConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACNC60 — deux VRAIES connexions (patron test_reception_ap.TestFactureFournisseurConcurrence) :
+    A impute l'avoir et tient sa transaction ; B le supprime par l'API. `delete` espionné : il
+    n'est atteint (et ne libère A) que si B a lu les imputations SANS attendre le verrou."""
+
+    setUp = SuppressionFactureFournisseurTests.setUp
+
+    def test_imputation_commitee_pendant_la_suppression_refuse(self):
+        import threading
+        from unittest import mock
+        from django.db import connection
+        from apps.stock import services as stock
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-ACNC60', fournisseur=self.fournisseur,
+            montant_ht=Decimal('8333.33'), montant_tva=Decimal('1666.67'), montant_ttc=Decimal('10000'))
+        avoir = AvoirFournisseur.objects.create(
+            company=self.company, reference='AVF-ACNC60', fournisseur=self.fournisseur,
+            montant_ttc=Decimal('2000'), statut=AvoirFournisseur.Statut.VALIDE)
+        recalcul, supprimer = stock.recompute_facture_fournisseur_statut, AvoirFournisseur.delete
+        a_tient, b_supprime, res = threading.Event(), threading.Event(), {}
+
+        def fil_a():
+            imputer_avoir_fournisseur(avoir, facture, Decimal('2000'), user=self.user)
+            connection.close()
+
+        def fil_b():
+            a_tient.wait(5)
+            res['b'] = self.api.delete(f'/api/django/stock/avoirs-fournisseur/{avoir.pk}/')
+            connection.close()
+
+        # A tient facture + avoir verrouillés jusqu'à ce que B atteigne `delete` (au plus 5 s).
+        with mock.patch.object(stock, 'recompute_facture_fournisseur_statut', side_effect=lambda f: (
+                a_tient.set(), b_supprime.wait(5), recalcul(f))[2]), \
+                mock.patch.object(AvoirFournisseur, 'delete', autospec=True, side_effect=lambda o, *a, **k: (
+                    b_supprime.set(), supprimer(o, *a, **k))[1]):
+            fils = [threading.Thread(target=fil_a), threading.Thread(target=fil_b)]
+            for fil in fils:
+                fil.start()
+            for fil in fils:
+                fil.join(15)
+        self.assertEqual(res['b'].status_code, 409, res['b'].data)
+        self.assertIn('FF-ACNC60', str(res['b'].data['detail']))
+        self.assertEqual(AvoirFournisseur.objects.get(pk=avoir.pk).imputations.count(), 1)
+        self.assertEqual(FactureFournisseur.objects.get(pk=facture.pk).solde_du, Decimal('8000.00'))
