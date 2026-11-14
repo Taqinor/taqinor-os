@@ -916,9 +916,9 @@ etape('PF12.2-AERR78', ['AERR78'], async ({ page, suivi, testInfo }) => {
   await panneau('Numéros de série non chargés.').getByRole('button', { name: 'Réessayer' }).click()
   await expect.poll(() => coupure.vues.filter((u) => u.includes('/serials/')).length, { message: 'Réessayer relance la lecture' }).toBe(avant + 1)
   await expect(p.getByText('Numéros de série non chargés.')).toBeVisible()
-  // Rechargement : l'avis est réaffirmé.
+  // Rechargement : la fiche et son onglet sont restaurés (VX105), l'avis est réaffirmé.
   await p.reload()
-  await ouvrir()
+  await expect(onglet('N° série'), 'après rechargement : fiche restaurée').toBeVisible({ timeout: 60_000 })
   await onglet('Réserves').click()
   await expect(p.getByText('Réserves non chargées.'), 'après rechargement : avis réaffirmé').toBeVisible({ timeout: 30_000 })
   // Serveur revenu : Réessayer rend chaque panneau (« aucun » seulement quand la lecture a RÉUSSI).
@@ -965,8 +965,9 @@ c = MaterielConsommation.objects.get(intervention_id=${iv}); sortie(c.valide)`)
   await p.getByRole('button', { name: 'Valider la consommation' }).click()
   const boite = p.getByRole('alertdialog')
   await expect(boite, 'boîte nommée : l\'intervention').toContainText(`Valider la consommation de ${nomI} ?`)
-  await expect(boite, 'article 1 et quantité').toContainText(`12 × Panneau 450 W ${m}`)
-  await expect(boite, 'article 2 et quantité').toContainText(`1 × Onduleur 5 kW ${m}`)
+  // Quantités servies telles que la boîte les écrit (décimal du serveur : « 12.00 × … »).
+  await expect(boite, 'article 1 et quantité').toContainText(new RegExp(`(^|[^\\d.])12(\\.0+)? × Panneau 450 W ${m}`))
+  await expect(boite, 'article 2 et quantité').toContainText(new RegExp(`(^|[^\\d.])1(\\.0+)? × Onduleur 5 kW ${m}`))
   await expect(boite, 'caractère définitif').toContainText('Validation définitive : la consommation ne sera plus modifiable.')
   await capturer(p, 'PF12.2-AERR77', 1)
   await boite.getByRole('button', { name: 'Annuler' }).click()
@@ -997,7 +998,7 @@ etape('PF12.2-AERR38', ['AERR38'], async ({ page, suivi, testInfo }) => {
   const nom = `aerr38re_${m}`
   await compteRole(nom, 'Responsable')
   const { p, dem } = await ecran(page, suivi, testInfo, nom)
-  const recette = p.getByRole('dialog').filter({ hasText: 'Recette de pompage (IEC 62253)' })
+  const recette = p.getByRole('dialog', { name: 'Recette de pompage (IEC 62253)' })
   const debit = recette.locator('#recette-pompage-debit_mesure_m3h')
   // Fiche chantier → onglet « Jalons & gates » → « … fiche de recette » (fiche rouverte à chaque fois : au run
   // 43539824114, l'Échap qui ferme la recette ferme aussi la fiche chantier qui la porte).
