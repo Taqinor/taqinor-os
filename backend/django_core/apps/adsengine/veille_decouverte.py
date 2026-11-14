@@ -487,6 +487,16 @@ def _progression(dec):
     dec.background_job.marquer_progression(int(100 * faites / total))
 
 
+def _job_en_pause(dec):
+    """ACEL93 — pause de quota : le job repasse ``queued`` (le balayage des
+    travaux orphelins ne vise que ``running``) ; la reprise le remet ``running``
+    via ``marquer_progression``."""
+    job = dec.background_job
+    if job is not None and job.statut == job.STATUT_RUNNING:
+        job.statut = job.STATUT_QUEUED
+        job.save(update_fields=['statut', 'updated_at'])
+
+
 def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
     """UNE étape : au plus UN appel HTTP. Renvoie ``{action, countdown,
     etape}`` où ``action`` ∈ ``continuer`` | ``attendre`` | ``fin`` |
@@ -517,6 +527,7 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
                 and dec.reprise_a > now:
             reste = int((dec.reprise_a - now).total_seconds()) + 1
             dec.save(update_fields=champs)
+            _job_en_pause(dec)
             return {'action': 'attendre', 'countdown': reste,
                     'etape': dec.numero_etape}
 
@@ -578,6 +589,7 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
                 dec.dernier_usage_app = dict(exc.usage)
             _erreur(dec, exc.code, exc.message_fr, now)
             dec.save(update_fields=champs)
+            _job_en_pause(dec)
             return {'action': 'attendre', 'countdown': palier,
                     'etape': dec.numero_etape}
         except alc.AccesInvalide as exc:
@@ -615,6 +627,7 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
             dec.statut = 'en_pause_quota'
             dec.reprise_a = now + datetime.timedelta(seconds=palier)
             dec.save(update_fields=champs)
+            _job_en_pause(dec)
             return {'action': 'attendre', 'countdown': palier,
                     'etape': dec.numero_etape}
         except alc.AdLibraryErreur as exc:

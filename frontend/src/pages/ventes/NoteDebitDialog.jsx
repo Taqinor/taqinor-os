@@ -64,8 +64,15 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   const [vuFactureId, setVuFactureId] = useState(factureId)
   if (open !== wasOpen || factureId !== vuFactureId) {
     setWasOpen(open); setVuFactureId(factureId)
-    if (open) { setLoadedFactureId(null); setTauxTva(tauxDeLaFacture(facture)); setNotes([]); setLectureKo(false) }
+    if (open) {
+      setLoadedFactureId(null); setTauxTva(tauxDeLaFacture(facture)); setNotes([]); setLectureKo(false)
+      // ACNC71 — saisie vide à chaque ouverture / changement de facture.
+      setMotif(''); setMontant('')
+    }
   }
+  // ACNC71 — clé neuve à chaque ouverture / changement de facture (un ref ne se
+  // touche pas pendant le rendu : react-hooks/refs).
+  useEffect(() => { if (open) cleEnvoi.current = null }, [open, factureId])
 
   const loading = Boolean(open && factureId) && loadedFactureId !== factureId
 

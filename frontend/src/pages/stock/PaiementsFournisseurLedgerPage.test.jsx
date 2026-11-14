@@ -153,6 +153,32 @@ describe('PaiementsFournisseurLedgerPage (PACT51)', () => {
     expect(post.mock.calls[2][2]?.headers?.['Idempotency-Key']).not.toBe(cle1)
   })
 
+  it('réponse coupée puis saisie changée : clé neuve', async () => {
+    // ACNC72 (C-ACNC-VER2-202) — mutant : retirer la remise à zéro sur changement de saisie ⇒ échec.
+    const user = userEvent.setup()
+    mockGets()
+    post.mockRejectedValueOnce(Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))
+      .mockResolvedValue({ data: { id: 7 } })
+    afficher()
+    await screen.findByTestId('table-paiements')
+
+    await user.click(screen.getByRole('combobox', { name: 'Facture fournisseur' }))
+    await user.click(await screen.findByRole('option', { name: /FF-2026-08-0001/ }))
+    await user.type(screen.getByLabelText('Montant du règlement'), '3000')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+
+    await user.clear(screen.getByLabelText('Montant du règlement'))
+    await user.type(screen.getByLabelText('Montant du règlement'), '1000')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+    const cle1 = post.mock.calls[0][2]?.headers?.['Idempotency-Key']
+    const cle2 = post.mock.calls[1][2]?.headers?.['Idempotency-Key']
+    expect(cle1).toEqual(expect.any(String))
+    expect(cle2).toEqual(expect.any(String))
+    expect(cle2).not.toBe(cle1)
+  })
+
   it('montant 0 : message sous le champ, aucun appel (AERR90)', async () => {
     const user = userEvent.setup()
     mockGets()
