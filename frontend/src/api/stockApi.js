@@ -306,6 +306,8 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/en-exception/'),
   resoudreExceptionFacture: (id, data) =>
     api.post(`/stock/factures-fournisseur/${id}/resoudre-exception/`, data ?? {}),
+  createPaiementFournisseur: (data, { idempotencyKey } = {}) =>  // ACNC67 — grand livre
+    api.post('/stock/paiements-fournisseur/', data, avecCle(idempotencyKey)),
   ajouterPaiementFournisseur: (factureId, data, { idempotencyKey } = {}) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data, avecCle(idempotencyKey)),
   // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
