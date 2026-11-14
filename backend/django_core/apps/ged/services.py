@@ -4807,9 +4807,7 @@ def _hash_constate_pour_archivage(archivage):
         return None
     try:
         data, err = _fetch_version_bytes(version)
-        if err or data is None:
-            return None
-        return compute_checksum(data)
+        return None if err or data is None else compute_checksum(data)
     except SoftTimeLimitExceeded:
         raise
     except Exception:  # pragma: no cover - défensif.
