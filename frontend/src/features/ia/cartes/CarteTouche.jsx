@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Check, Languages, TriangleAlert, Undo2, SkipForward } from 'lucide-react'
 import { Button } from '../../../ui'
 import iaApi from '../../../api/iaApi'
@@ -11,7 +10,7 @@ import ToucheMessageDialog from '../../crm/relances/ToucheMessageDialog'
 import { traiterGesteTouche } from '../../crm/relances/refusGeste'
 import { typeEtape, reponsesDeLEtape } from '../../crm/relances/parcours'
 import { lienWhatsAppSur, AGE_MAX_CARTE_MS, GESTES_PROPOSITION } from './cartes'
-import { usePatchCarte, usePreparerTouche, useMajCartesTouche } from './useCarte'
+import { useOuvrirEcran, usePatchCarte, usePreparerTouche, useMajCartesTouche } from './useCarte'
 
 /* COP-F2 — la carte « touche » : on EMBARQUE `RelanceEtapeRow` (l'écran Relances)
    pour hériter de tout — script d'appel, questions à poser, lien `tel:`,
@@ -72,9 +71,14 @@ function BoutonProposition({ proposition, onEnregistrer, occupe }) {
   if (!proposition || !GESTES_PROPOSITION.includes(proposition.geste)) return null
   return (
     <div className="mt-2.5">
-      <Button className="min-h-11 w-full" disabled={occupe} loading={occupe} onClick={onEnregistrer}>
-        <Check className="size-4" aria-hidden="true" />
-        Enregistrer : {proposition.libelle}
+      {/* Le libellé nomme le lead, la touche et la réponse : il passe à la ligne
+          DANS le bouton (sur un téléphone il débordait de la carte). */}
+      <Button
+        className="h-auto min-h-11 w-full whitespace-normal py-2 text-left"
+        disabled={occupe} loading={occupe} onClick={onEnregistrer}
+      >
+        <Check className="size-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 break-words">Enregistrer : {proposition.libelle}</span>
       </Button>
       {proposition.effet && <p className="mt-1 text-xs text-muted-foreground">{proposition.effet}</p>}
     </div>
@@ -126,7 +130,7 @@ function ouvrirEtJournaliser(url, etape, surJournal) {
 }
 
 export default function CarteTouche({ carte, index, carteIdx }) {
-  const navigate = useNavigate()
+  const navigate = useOuvrirEcran()
   const patch = usePatchCarte(index, carteIdx)
   // Une réponse, une annulation, un journal : valent pour TOUTES les cartes de
   // la conversation qui portent cette touche (carte « Préparer » + carte-écho).

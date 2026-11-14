@@ -91,6 +91,9 @@ export function createConversationLoop(handlers = {}) {
   // TOUJOURS une question : il ne confirme jamais rien (COP-F6).
   function onTranscript(text) {
     if (!running) return
+    // Un accusé (action confirmée au doigt) a pu prendre la main pendant
+    // l'écoute : le clip en cours est ignoré, la fin de lecture rouvre le micro.
+    if (state !== LOOP_STATES.TRANSCRIBING) return
     const utterance = (text || '').trim()
     if (!utterance) {
       // Rien d'exploitable : on ré-ouvre le micro.
@@ -130,7 +133,11 @@ export function createConversationLoop(handlers = {}) {
   // accusé puis on repart en écoute.
   function onActionDone(message) {
     if (!running) return
+    // Confirmée au doigt PENDANT l'écoute : le micro se ferme le temps de lire
+    // l'accusé (jamais deux captures ouvertes), puis `onSpeechSpoken` le rouvre.
+    const ecoutait = state === LOOP_STATES.LISTENING
     setState(LOOP_STATES.SPEAKING)
+    if (ecoutait) h.stopListening?.()
     h.speak?.(message?.content || 'Action effectuée.')
   }
 

@@ -120,6 +120,27 @@ test('une action confirmée au doigt : accusé lu puis ré-écoute', () => {
   assert.equal(loop.getState(), LOOP_STATES.LISTENING)
 })
 
+test('confirmée au doigt PENDANT l\'écoute : micro fermé, accusé lu, clip en cours ignoré, puis ré-écoute', () => {
+  const spy = makeSpyHandlers()
+  const loop = createConversationLoop(spy.handlers)
+  loop.start()
+  assert.equal(loop.getState(), LOOP_STATES.LISTENING)
+  loop.onActionDone({ content: 'C’est fait : remise.' })
+  assert.equal(loop.getState(), LOOP_STATES.SPEAKING)
+  // Le micro se ferme AVANT la lecture : jamais deux captures ouvertes.
+  const noms = spy.names()
+  assert.ok(noms.indexOf('stopListening') !== -1 && noms.indexOf('stopListening') < noms.indexOf('speak'))
+  // Le clip coupé revient transcrit : il ne pose aucune question et ne rouvre rien.
+  loop.onSpeechEnd()
+  loop.onTranscript('bruit capté pendant la confirmation')
+  assert.equal(loop.getState(), LOOP_STATES.SPEAKING)
+  assert.equal(spy.names().filter((n) => n === 'ask').length, 0)
+  assert.equal(spy.names().filter((n) => n === 'startListening').length, 1)
+  loop.onSpeechSpoken()
+  assert.equal(loop.getState(), LOOP_STATES.LISTENING)
+  assert.equal(spy.names().filter((n) => n === 'startListening').length, 2)
+})
+
 test('barge-in : parler pendant la lecture coupe la synthèse et ré-ouvre le micro', () => {
   const spy = makeSpyHandlers()
   const loop = createConversationLoop(spy.handlers)

@@ -1,8 +1,9 @@
 // COP-F2/F3 — crochets partagés par les cartes de l'assistant.
 import { useCallback, useState } from 'react'
 import { useDispatch } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import iaApi from '../../../api/iaApi'
-import { ajouterMessageLocal, majCarte, majCartesTouche } from '../store/iaSlice'
+import { ajouterMessageLocal, closeCopilot, majCarte, majCartesTouche } from '../store/iaSlice'
 import { messageLocal } from './cartes'
 
 /** Écrit dans l'état d'UNE carte (rangée dans le store : le tiroir est remonté
@@ -13,6 +14,19 @@ export function usePatchCarte(index, carteIdx) {
     if (index == null || carteIdx == null) return
     dispatch(majCarte({ index, carte: carteIdx, patch }))
   }, [dispatch, index, carteIdx])
+}
+
+/** Une carte qui OUVRE un écran (« Ouvrir la fiche », « Ouvrir la visite », le
+ *  lead d'une touche) : la navigation se fait ET le tiroir du Copilote se referme
+ *  — il est modal, et sur un téléphone il couvre toute la page : sans cela
+ *  l'appui ne montrait rien. Sur la page de l'assistant, fermer est sans effet. */
+export function useOuvrirEcran() {
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+  return useCallback((...args) => {
+    navigate(...args)
+    dispatch(closeCopilot())
+  }, [navigate, dispatch])
 }
 
 /** Écrit dans TOUTES les cartes « touche » de la conversation qui portent la

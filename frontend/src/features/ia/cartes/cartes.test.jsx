@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider, useSelector } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
@@ -58,15 +58,19 @@ function Vue() {
   return <CartesDuMessage msg={msg} index={0} variant="page" />
 }
 
-function monter(cartes, { recuLe = Date.now() } = {}) {
+function Route() {
+  return <span data-testid="route">{useLocation().pathname}</span>
+}
+
+function monter(cartes, { recuLe = Date.now(), copilotOpen = false } = {}) {
   const initial = iaReducer(undefined, { type: '@@init' })
   const msg = { role: 'agent', content: '', cartes: preparerCartes(cartes, { recuLe }) }
   const store = configureStore({
-    reducer: { ia: iaReducer }, preloadedState: { ia: { ...initial, messages: [msg] } },
+    reducer: { ia: iaReducer }, preloadedState: { ia: { ...initial, messages: [msg], copilotOpen } },
   })
   const vue = render(
     <Provider store={store}>
-      <MemoryRouter><Vue /></MemoryRouter>
+      <MemoryRouter><Vue /><Route /></MemoryRouter>
     </Provider>,
   )
   return { store, ...vue }
@@ -100,6 +104,14 @@ describe('cartes — tout échantillon du contrat rend sans erreur', () => {
     monter([resultat('touche', touche('assistant_touche', 'exemple_refus'))])
     expect(screen.getByTestId('touche-refus')).toHaveTextContent(/plus être contacté/)
     expect(screen.queryByRole('button', { name: /WhatsApp/ })).not.toBeInTheDocument()
+  })
+
+  it('« Ouvrir la fiche » mène à la fiche ET referme le tiroir (modal, plein écran sur téléphone)', async () => {
+    const { store } = monter([resultat('file_touches', touche('assistant_a_relancer'))], { copilotOpen: true })
+    expect(store.getState().ia.copilotOpen).toBe(true)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Ouvrir la fiche' })[0])
+    expect(screen.getByTestId('route')).toHaveTextContent(/^\/crm\/leads\/\d+$/)
+    expect(store.getState().ia.copilotOpen).toBe(false)
   })
 
   it('file de touches : une rangée par touche, « Préparer » quand elle porte un touche_id', () => {

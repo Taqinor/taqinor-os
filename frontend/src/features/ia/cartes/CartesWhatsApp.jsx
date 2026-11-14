@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { MessageCircle, TriangleAlert } from 'lucide-react'
 import { Button, buttonVariants } from '../../../ui'
 import { cn } from '../../../lib/cn'
@@ -7,7 +6,7 @@ import crmApi from '../../../api/crmApi'
 import { formatDate } from '../../../lib/format'
 import { lienWhatsAppSur, AGE_MAX_CARTE_MS } from './cartes'
 import BoutonTelechargerDevis from './BoutonTelechargerDevis'
-import { usePatchCarte } from './useCarte'
+import { useOuvrirEcran, usePatchCarte } from './useCarte'
 
 /* COP-F4 — cartes WhatsApp et documents. L'assistant n'ENVOIE rien : il prépare,
    la commerciale appuie (D-WHATSAPP, wa.me). Un lien WhatsApp n'est ouvert que
@@ -185,7 +184,7 @@ export function CarteDocument({ carte }) {
 
 // `visite` : visite planifiée (+ la prochaine touche du lead).
 export function CarteVisite({ carte }) {
-  const navigate = useNavigate()
+  const navigate = useOuvrirEcran()
   const d = carte.donnees
   const v = d.visite ?? {}
   const p = d.prochaine_touche

@@ -1,9 +1,8 @@
-import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../ui'
 import { formatDate, formatMAD } from '../../../lib/format'
 import { STAGE_LABELS } from '../../crm/stages'
 import BoutonTelechargerDevis from './BoutonTelechargerDevis'
-import { usePreparerTouche } from './useCarte'
+import { useOuvrirEcran, usePreparerTouche } from './useCarte'
 
 /* COP-F3 — la file, le matin, la recherche, la fiche. Les boutons appellent
    Django DIRECTEMENT (zéro appel au modèle) : « Préparer » ajoute la carte de la
@@ -15,7 +14,7 @@ const etapeLibelle = (cle) => STAGE_LABELS[cle] ?? cle ?? ''
 const dateCourte = (iso) => (iso ? formatDate(iso) : '')
 
 function OuvrirFiche({ leadId }) {
-  const navigate = useNavigate()
+  const navigate = useOuvrirEcran()
   if (!leadId) return null
   return (
     <Button variant="outline" size="sm" className="min-h-10" onClick={() => navigate(`/crm/leads/${leadId}`)}>

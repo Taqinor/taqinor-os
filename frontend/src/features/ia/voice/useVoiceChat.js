@@ -100,6 +100,23 @@ export function computeRms(samples) {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 // `deps` permet d'injecter les API navigateur en test (toutes optionnelles).
+// COP-F6 — propositions confirmées de la conversation : leur nombre et le libellé
+// de la dernière (pour lire l'accusé d'une confirmation faite au doigt). PUR.
+export function propositionsConfirmees(messages) {
+  let nombre = 0
+  let libelle = ''
+  for (const m of Array.isArray(messages) ? messages : []) {
+    for (const c of Array.isArray(m?.cartes) ? m.cartes : []) {
+      if (c?.type !== 'proposition' || c.etat !== ETATS.CONFIRMEE) continue
+      nombre += 1
+      libelle = c.resultat?.libelle || c.libelle || ''
+    }
+  }
+  return { nombre, libelle }
+}
+
+export const accuseDeConfirmation = (libelle) => (libelle ? `C’est fait : ${libelle}.` : 'Action effectuée.')
+
 export function useVoiceChat(deps = {}) {
   const dispatch = useDispatch()
   const { messages, agentLoading } = useSelector((s) => s.ia)
@@ -148,6 +165,8 @@ export function useVoiceChat(deps = {}) {
   // COP-F6 — où va la dictée : la zone de saisie de l'écran (relecture), jamais
   // directement le modèle. Ref : l'identité du rappel peut changer à chaque rendu.
   const onTexteRef = useRef(deps.onTexte)
+  // Nombre de propositions déjà confirmées quand la boucle a regardé la dernière fois.
+  const confirmeesRef = useRef(0)
   useEffect(() => { onTexteRef.current = deps.onTexte })
 
   // ── Synthèse vocale ────────────────────────────────────────────────────────
@@ -375,10 +394,11 @@ export function useVoiceChat(deps = {}) {
     }
     setConversationMode(true)
     lastHandledIndexRef.current = messages.length - 1
+    confirmeesRef.current = propositionsConfirmees(messages).nombre
     const loop = buildLoop()
     loopRef.current = loop
     loop.start()
-  }, [conversationSupported, buildLoop, messages.length])
+  }, [conversationSupported, buildLoop, messages])
 
   const stopConversation = useCallback(() => {
     loopRef.current?.stop()
@@ -393,11 +413,25 @@ export function useVoiceChat(deps = {}) {
   useEffect(() => {
     if (!conversationMode || !loopRef.current) return
     if (agentLoading) return
+    // COP-F6 — une proposition confirmée AU DOIGT : l'accusé est lu puis le
+    // micro se rouvre. Sans reprise du moteur (LangChain), aucun message neuf
+    // n'arrive : c'est l'état de la carte qui l'annonce.
+    const { nombre, libelle } = propositionsConfirmees(messages)
+    const confirmee = nombre > confirmeesRef.current
+    confirmeesRef.current = nombre
     const idx = messages.length - 1
-    if (idx <= lastHandledIndexRef.current) return
+    if (idx <= lastHandledIndexRef.current) {
+      if (confirmee) loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })
+      return
+    }
     const last = messages[idx]
     if (!last || last.role !== 'agent') return
     lastHandledIndexRef.current = idx
+    // Reprise du moteur natif sans texte (des cartes seulement) : l'accusé vaut annonce.
+    if (confirmee && !last.content) {
+      loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })
+      return
+    }
     // Une réponse portant une proposition à confirmer : lue puis « appuyez sur
     // Confirmer » — la boucle ne confirme rien. Un résultat d'action confirmée
     // au doigt (aucun texte, des cartes) est annoncé comme tel.
