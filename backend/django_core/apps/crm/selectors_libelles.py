@@ -40,15 +40,17 @@ def _libelle_client(client):
 def libelles_crm(user, *, lead=None, touche=None, client=None):
     """``{'lead': …, 'touche': …, 'client': …}`` pour les identifiants donnés
     qui existent dans la société ET la portée de ``user`` (les autres clés
-    manquent). Un utilisateur sans société ne voit rien."""
+    manquent). Un utilisateur sans société, ou sans le droit de LIRE le CRM
+    (``crm_voir``, la garde de la fiche lead), ne voit rien."""
     from authentication.scoping import scope_client_queryset
+    from core.permissions import _user_has_or_legacy
 
     from .clients_selectors import client_base_qs
     from .models import RelanceEtape
     from .portee_selectors import leads_visibles
 
     societe = getattr(user, 'company', None)
-    if societe is None:
+    if societe is None or not _user_has_or_legacy(user, 'crm_voir'):
         return {}
     visibles = leads_visibles(user, societe)
     out = {}

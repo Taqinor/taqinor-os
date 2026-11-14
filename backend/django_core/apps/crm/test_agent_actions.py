@@ -1149,25 +1149,123 @@ class CrmAssistantPropositionTest(_CopiloteBase):
         self.assertIsNone(close.data['proposition'])
         self.assertIn('déjà traitée', close.data['proposition_refus'])
 
+    @staticmethod
+    def _corps_poste_par_l_ecran(prop):
+        """Le corps que la carte poste VRAIMENT (``crmApi``) : ``fait`` =
+        le corps entier ; ``reporter`` = ``rappel_le``/``rappel_heure``/``mode``
+        seulement ; ``sauter`` = ``note`` seulement."""
+        corps = prop['corps']
+        gardees = {'reporter': ('rappel_le', 'rappel_heure', 'mode'),
+                   'sauter': ('note',)}.get(prop['geste'])
+        if gardees is None:
+            return corps
+        return {k: v for k, v in corps.items() if k in gardees}
+
     def test_le_corps_propose_est_accepte_par_le_vrai_geste(self):
-        """Parité : ce que la carte poste passe au geste existant (200)."""
+        """Parité : ce que la carte poste (corps FILTRÉ comme l'écran) passe
+        au geste existant (200)."""
         jour = self._jeudi().isoformat()
         for params in ({'geste': 'fait', 'outcome': 'non_joint'},
                        {'geste': 'fait', 'outcome': 'rappel',
                         'rappel_le': jour, 'rappel_heure': '11:00'},
                        {'geste': 'fait', 'outcome': 'joint'},
+                       {'geste': 'fait', 'outcome': 'joint',
+                        'rappel_le': jour, 'note': 'Rappel convenu'},
                        {'geste': 'reporter', 'rappel_le': jour},
-                       {'geste': 'sauter'}):
+                       {'geste': 'reporter', 'rappel_le': jour,
+                        'rappel_heure': '15:30', 'mode': 'veille'},
+                       {'geste': 'sauter', 'note': 'Doublon'}):
             with self.subTest(params=params):
                 lead = self._lead(f'Parite{len(params)}{params["geste"]}')
                 etape = self._touche(lead, canal='appel',
                                      cle='appel_ouverture')
                 prop = self._proposer(etape, **params).data['proposition']
                 self.assertIsNotNone(prop, params)
+                corps = self._corps_poste_par_l_ecran(prop)
+                self.assertEqual(corps, prop['corps'], 'clé perdue par l\'écran')
                 reel = auth(self.alice).post(
                     f'/api/django/crm/relance-etapes/{etape.pk}/'
-                    f'{prop["geste"]}/', prop['corps'], format='json')
+                    f'{prop["geste"]}/', corps, format='json')
                 self.assertEqual(reel.status_code, 200, reel.data)
+
+    def test_report_jamais_en_due_at(self):
+        """F2 — ``due_at`` n'est ni une entrée de l'action ni un paramètre lu :
+        le report se propose en ``rappel_le`` + ``rappel_heure`` (Casablanca)."""
+        self.assertNotIn('due_at', PROPOSER_REPONSE.inputs['properties'])
+        jour = self._jeudi().isoformat()
+        seul = self._proposer(geste='reporter',
+                              due_at=f'{jour}T11:00:00+01:00')
+        self.assertIsNone(seul.data['proposition'])
+        self.assertIn('Reporter au', seul.data['proposition_refus'])
+        prop = self._proposer(geste='reporter', rappel_le=jour,
+                              due_at=f'{jour}T18:00:00+01:00').data['proposition']
+        self.assertEqual(prop['corps'],
+                         {'rappel_le': jour, 'rappel_heure': '09:00'})
+
+    def test_issue_hors_vocabulaire_de_fait_refusee(self):
+        """F3 — une réponse du client ou « sauter » passée en ``outcome`` est
+        refusée par la carte comme par ``fait`` (400 « Issue inconnue »)."""
+        for outcome in ('sauter', 'ne_plus_contacter', 'plus_tard'):
+            with self.subTest(outcome=outcome):
+                resp = self._proposer(geste='fait', outcome=outcome)
+                self.assertIsNone(resp.data['proposition'])
+                self.assertIn("n'est pas proposée",
+                              resp.data['proposition_refus'])
+
+    def test_compte_sans_droit_d_enregistrer_aucune_proposition(self):
+        """F4 — lecture ouverte à ``crm_voir`` ; proposition refusée à qui ne
+        passe pas la garde des vrais gestes."""
+        from apps.crm.assistant_touches import MESSAGE_ROLE_SANS_ENREGISTREMENT
+        lecteur = User.objects.create_user(
+            username='cop_lecteur', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Lecteur CRM',
+                permissions=['crm_voir', 'client_pii_voir']))
+        etape = self._touche(self._lead('Lecture', owner=lecteur),
+                             canal='appel', cle='appel_ouverture')
+        url = PROPOSER_REPONSE.endpoint.format(touche_id=etape.pk)
+        lu = auth(lecteur).get(url)
+        self.assertEqual((lu.status_code, lu.data['touche']['id']),
+                         (200, etape.pk))
+        resp = auth(lecteur).get(url, {'geste': 'fait', 'outcome': 'non_joint'})
+        self.assertIsNone(resp.data['proposition'])
+        self.assertEqual(resp.data['proposition_refus'],
+                         MESSAGE_ROLE_SANS_ENREGISTREMENT)
+        self.assertEqual(auth(lecteur).post(
+            f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
+            {'outcome': 'non_joint'}, format='json').status_code, 403)
+
+    def test_effet_du_rappel_dit_ce_que_fait_le_geste(self):
+        """F6 — « À rappeler » sur une étape de visite REPORTE la touche (elle
+        n'est pas close) ; une date avec une autre issue place la suivante."""
+        from apps.crm.cadence_config import CLE_PLANIFIER
+        from apps.crm.models import RelanceEtape
+        jour = self._jeudi().isoformat()
+        lead = self._lead('Visite', telephone='0661000777')
+        visite = self._touche(lead, canal='appel', cle='', cadence='suivi',
+                              libelle='Planifier la visite technique')
+        RelanceEtape.objects.filter(pk=visite.pk).update(cle=CLE_PLANIFIER)
+        visite.refresh_from_db()
+        prop = self._proposer(visite, geste='fait', outcome='rappel',
+                              rappel_le=jour).data['proposition']
+        self.assertTrue(prop['effet'].startswith('La touche est reportée au'),
+                        prop['effet'])
+        reel = auth(self.alice).post(
+            f'/api/django/crm/relance-etapes/{visite.pk}/fait/',
+            prop['corps'], format='json')
+        self.assertEqual(reel.status_code, 200, reel.data)
+        visite.refresh_from_db()
+        self.assertEqual(visite.statut, RelanceEtape.Statut.A_FAIRE)
+        joint = self._proposer(geste='fait', outcome='joint',
+                               rappel_le=jour).data['proposition']
+        self.assertIn("La touche suivante, s'il en reste une, est placée au",
+                      joint['effet'])
+
+    def test_geste_inconnu_typographie(self):
+        resp = self._proposer(geste='danser')
+        self.assertTrue(resp.data['proposition_refus'].startswith(
+            'Geste inconnu : « danser ». Gestes : fait'),
+            resp.data['proposition_refus'])
 
     def test_vocabulaires_de_l_action_egaux_a_ceux_du_serveur(self):
         from apps.crm.cadence_reponses import (
@@ -1334,10 +1432,18 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
             {'devis_ids': [devis.pk]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         attendu = set(_echantillon('whatsapp_devis_apercu.json')) | {
-            'lead_id', 'devis_ids'}
+            'lead_id', 'devis_ids', 'langue'}
         self.assertEqual(set(resp.data), attendu)
         self.assertEqual(resp.data['lead_id'], lead.pk)
         self.assertEqual(resp.data['devis_ids'], [devis.pk])
+        # La langue RENDUE (repli : celle du lead, sinon le français), puis
+        # celle demandée : la carte la repasse au commit (même texte journalisé).
+        self.assertEqual(resp.data['langue'], lead.langue_preferee or 'fr')
+        darija = auth(self.alice).post(
+            PREPARER_ENVOI_WHATSAPP.endpoint.format(id=lead.pk),
+            {'devis_ids': [devis.pk], 'langue': 'darija'}, format='json')
+        self.assertEqual((darija.status_code, darija.data['langue']),
+                         (200, 'darija'))
         devis.refresh_from_db()
         self.assertEqual((devis.statut, devis.date_envoi), ('brouillon', None))
         self.assertEqual(PREPARER_ENVOI_WHATSAPP.carte, 'wa_devis')

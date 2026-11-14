@@ -75,7 +75,7 @@ _BASE = [
        ["remise globale en pourcentage du devis brouillon"], outil="ventes.devis.remise"),
     _c("act_pdf", "action", "Sors le PDF du devis 12 en une page.",
        ["pdf_mode onepage via /proposal", "aucun statut ne change"],
-       un_parmi=("ventes.devis.generer_pdf", "ventes.devis.proposal_pdf")),
+       outil="ventes.devis.generer_pdf"),
     # -- bug (5) : l'ERP dysfonctionne -------------------------------------
     _c("bug_pdf_500", "bug", "J'ai une erreur quand je clique sur PDF du devis 12.",
        ["signale le problème sans inventer de cause"], outil="report_gap"),
@@ -189,7 +189,7 @@ CLES_COPILOTE = frozenset({
     "crm.visite.planifier", "crm.visite.message", "crm.lead.whatsapp_prepare",
     "crm.lead.brouillon_suivi", "crm.lead.list", "crm.lead.update",
     "reporting.assistant.diagnostic", "ventes.devis.generer_pdf",
-    "ventes.devis.proposal_pdf", "ventes.devis.creer_auto", "ventes.devis.accepter",
+    "ventes.devis.creer_auto", "ventes.devis.accepter",
     "ventes.devis.generer_facture", "ventes.devis.remise",
     "ventes.devis.ligne_modifier", "report_gap",
 })

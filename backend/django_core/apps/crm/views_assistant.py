@@ -543,10 +543,17 @@ def lead_whatsapp_devis_apercu(request, lead_id):
     if erreur is not None:
         return erreur
     devis, phone, message, links = construit
+    # La langue RÉELLEMENT rendue (même règle que ``_whatsapp_devis_message`` :
+    # celle du corps, sinon celle du lead, sinon le français) : la carte la
+    # repasse au commit pour que le message journalisé soit celui envoyé.
+    langue = request.data.get('langue')
+    if langue is None:
+        langue = lead.langue_preferee or 'fr'
     return Response({
         'wa_url': build_wa_url(phone, message), 'phone': phone,
         'message': message, 'links': links,
         'lead_id': lead.pk, 'devis_ids': [d.pk for d in devis],
+        'langue': langue,
     })
 
 

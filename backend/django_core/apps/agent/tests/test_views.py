@@ -631,6 +631,28 @@ class LibellesObjetsTest(TestCase):
         self.assertNotIn('lead', resp.data)
         self.assertIn('devis', resp.data)
 
+    def test_role_sans_le_droit_du_module_cle_absente(self):
+        """Un rôle sans ``crm_voir`` ne lit ni lead, ni touche, ni client ;
+        sans ``ventes_voir``, ni devis ni facture — même en portée « tous »
+        (la fiche lead lui répond 403 : le libellé ne doit pas la contourner)."""
+        ids = dict(lead=self.lead.pk, touche=self.touche.pk,
+                   client=self.client_moi.pk, devis=self.devis.pk,
+                   facture=self.facture.pk)
+        cas = ((['rh_voir'], set()),
+               (['crm_voir'], {'lead', 'touche', 'client'}),
+               (['ventes_voir'], {'devis', 'facture'}))
+        for permissions, attendu in cas:
+            with self.subTest(permissions=permissions):
+                role = Role.objects.create(
+                    company=self.co, nom='Sans ' + '-'.join(permissions),
+                    permissions=permissions)
+                user = User.objects.create_user(
+                    username='lib_' + '_'.join(permissions), password='x',
+                    role=role, company=self.co)
+                resp = self._get(user, **ids)
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(set(resp.data), attendu)
+
     def test_aucune_donnee_personnelle_ni_prix_achat(self):
         resp = self._get(self.moi, lead=self.lead.pk, devis=self.devis.pk,
                          facture=self.facture.pk)

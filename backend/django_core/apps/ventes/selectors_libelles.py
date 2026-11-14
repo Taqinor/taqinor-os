@@ -84,8 +84,12 @@ def _libelle_facture(facture):
 def libelles_ventes(user, *, devis=None, facture=None):
     """``{'devis': …, 'facture': …}`` pour les identifiants donnés qui existent
     dans la société ET la portée de ``user`` (les autres clés manquent). Un
-    utilisateur sans société ne voit rien."""
-    if getattr(user, 'company_id', None) is None:
+    utilisateur sans société, ou sans le droit de LIRE les ventes
+    (``ventes_voir``, la garde des listes devis et factures), ne voit rien."""
+    from core.permissions import _user_has_or_legacy
+
+    if (getattr(user, 'company_id', None) is None
+            or not _user_has_or_legacy(user, 'ventes_voir')):
         return {}
     out = {}
     if devis:

@@ -895,7 +895,8 @@ class JournalEvenementAic6Tests(unittest.TestCase):
         out = {"answer": "Deux devis.", "intention": "donnee",
                "outils_appeles": ["crm.lead.note"], "repli": False,
                "modele": "claude-sonnet-5-5", "manuel_present": True,
-               "tokens": {"cache_read": 1800, "input": 420, "output": 96}}
+               "tokens": {"cache_read": 1800, "cache_write": 300,
+                          "input": 420, "output": 96}}
         with mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": "s3cret"}), \
                 mock.patch.object(at, "_django_call", fake_call):
             ev_id = SQLAgentService._journaliser(

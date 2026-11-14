@@ -120,8 +120,8 @@ NOTER_LEAD = AgentAction(
     description=(
         "Sert à : ajouter une note manuelle (appel, commentaire) au chatter "
         "d'un lead. "
-        "Ne pas utiliser pour : changer l'étape (crm.lead.update) ni lire le "
-        "lead (crm.lead.resume). "
+        "Ne pas utiliser pour : changer l'étape (crm.lead.changer_etape) ni "
+        "lire le lead (crm.lead.resume). "
         "Exemple : « Note sur le lead 12 : client intéressé, rappeler lundi ». "
         "Résultat : la note créée ; auteur et société posés côté serveur."
     ),
@@ -409,9 +409,7 @@ def _entrees_proposer_reponse():
             'note': {'type': 'string'},
             'langue': {'type': 'string', 'enum': voc['langues']},
             'mode': {'type': 'string', 'enum': ['decaler', 'veille'],
-                     'description': 'geste reporter.'},
-            'due_at': {'type': 'string', 'format': 'date-time',
-                       'description': 'geste reporter (ou rappel_le).'},
+                     'description': 'geste reporter (date : rappel_le).'},
         },
         'required': ['touche_id', 'geste'],
     }

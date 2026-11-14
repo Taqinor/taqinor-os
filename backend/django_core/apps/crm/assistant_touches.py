@@ -33,11 +33,17 @@ from . import stages
 GESTES = ('fait', 'reporter', 'sauter')
 
 #: Paramètres de requête lus pour la proposition (les corps de ``fait``,
-#: ``reporter`` et ``sauter`` — ``body`` reste réservé à l'écran).
+#: ``reporter`` et ``sauter`` — ``body`` reste réservé à l'écran). Jamais
+#: ``due_at`` : l'écran ne poste un report qu'en ``rappel_le`` / ``rappel_heure``
+#: (ancrés à Casablanca côté serveur), un ``due_at`` proposé y serait perdu.
 PARAMETRES_PROPOSITION = (
     'geste', 'outcome', 'reponse', 'motif_refus', 'perdu_junk', 'motif_perte',
-    'raison_attente', 'rappel_le', 'rappel_heure', 'note', 'langue', 'mode',
-    'due_at')
+    'raison_attente', 'rappel_le', 'rappel_heure', 'note', 'langue', 'mode')
+
+#: Refus de la carte-écho pour un compte qui ne passe pas la garde des vrais
+#: gestes (``fait`` / ``reporter`` / ``sauter``).
+MESSAGE_ROLE_SANS_ENREGISTREMENT = (
+    "Votre rôle ne permet pas d'enregistrer la réponse d'une touche.")
 
 #: Refus du rendu (``cadence_messages.refus_rendu_whatsapp``) -> (code, phrase).
 _REFUS_RENDU = {
@@ -222,9 +228,35 @@ def _dernier_barreau(etape):
         etape, ordres_de_la_cadence(etape.company_id, etape.cadence)))
 
 
+def _effet_rappel(etape, quand_texte):
+    """« À rappeler le… » : les MÊMES branches, dans le même ordre, que
+    ``RelanceEtapeViewSet._marquer`` (SUIVI E10/E17/E23/E25, puis CAD3/E3)."""
+    from .cadence_config import CLE_MESSAGE_CRENEAU, est_etape
+    from .cadence_plan import est_etape_de_filet
+    from .cadence_reperes import est_etape_de_visite
+    from .cadence_reponses import (
+        est_dernier_reveil, est_derniere_touche_de_contact,
+        est_derniere_touche_du_suivi)
+
+    if (est_etape(etape, CLE_MESSAGE_CRENEAU) or est_dernier_reveil(etape)
+            or est_derniere_touche_de_contact(etape)
+            or est_derniere_touche_du_suivi(etape)):
+        return ('La touche est faite ; l\'appel « Rappeler le client — '
+                f'rappel convenu » est posé pour {quand_texte}.')
+    if est_etape_de_filet(etape) or est_etape_de_visite(etape):
+        return (f'La touche est reportée au {quand_texte} : elle n\'est pas '
+                'close et garde sa place dans le suivi.')
+    return ('La touche est faite ; la touche suivante du suivi est placée au '
+            f'{quand_texte}. Annulable 24 h.')
+
+
 def _effet_issue(etape, issue, quand_texte):
-    """La conséquence réelle, en français clair, d'une issue enregistrée."""
+    """La conséquence réelle, en français clair, d'une issue enregistrée ;
+    ``quand_texte`` (date saisie) avec une autre issue que « À rappeler »
+    PLACE la touche suivante à cette date (``_marquer``, placement final)."""
     froid = stages.STAGE_LABELS[stages.COLD]
+    if issue == 'rappel':
+        return _effet_rappel(etape, quand_texte)
     if issue in ('non_joint', '') and _dernier_barreau(etape):
         return ("C'est la dernière touche de la cadence : aucune suite n'est "
                 f'programmée et le dossier part à « {froid} » s\'il n\'y est '
@@ -234,15 +266,19 @@ def _effet_issue(etape, issue, quand_texte):
                   "le suivi pose l'étape suivante."),
         'non_joint': ('La touche est faite ; la touche suivante du protocole '
                       'est programmée à son délai. Annulable 24 h.'),
-        'rappel': (f'La touche est faite ; un rappel est programmé pour '
-                   f'{quand_texte}. Annulable 24 h.'),
         'refuse': ('La touche est faite avec l\'issue « Refus » : le suivi '
                    "s'arrête pour ce lead."),
         'visite_acceptee': ('La touche est faite ; la visite technique est à '
                             'planifier (étape posée par le suivi).'),
     }
-    return effets.get(issue, 'La touche est faite ; le suivi pose '
-                      "l'étape suivante. Annulable 24 h.")
+    effet = effets.get(issue, 'La touche est faite ; le suivi pose '
+                       "l'étape suivante. Annulable 24 h.")
+    if quand_texte:
+        # ``reporter_prochaine_touche`` ne place rien s'il ne reste aucune
+        # touche ouverte : la phrase ne promet pas plus que le geste.
+        effet += (' La touche suivante, s\'il en reste une, est placée au '
+                  f'{quand_texte}.')
+    return effet
 
 
 def _effet_reponse(cle, spec, quand_texte, motif):
@@ -357,10 +393,16 @@ def _valider_issue(etape, p, corps):
     ``(mot, effet)``."""
     from .cadence_config import CLE_DECIDER_SUITE, est_etape
     from .cadence_views import MESSAGE_REFUS_SUR_DECIDER_SUITE
+    from .models import LeadActivity
     from .suite_touche import cles_de_reponse
 
     outcome = p.get('outcome', '')
-    if outcome and outcome not in cles_de_reponse(etape):
+    # Une ISSUE du chatter (ce que ``_marquer`` accepte) ET proposée sur cette
+    # touche : ``cles_de_reponse`` mêle issues, réponses du client et
+    # « sauter », que ``fait`` refuserait en 400 « Issue inconnue ».
+    issues = {k for k, _libelle in LeadActivity.OUTCOMES if k}
+    if outcome and (outcome not in issues
+                    or outcome not in cles_de_reponse(etape)):
         raise PropositionRefusee(
             f'« {_MOT_ISSUE.get(outcome, outcome)} » n\'est pas proposée sur '
             'cette touche (réponses possibles : '
@@ -420,24 +462,16 @@ def _valider_sauter(etape, p):
 
 
 def _quand_du_report(p):
-    """L'instant du report (``due_at`` ISO ou ``rappel_le`` + heure), refusé
-    comme ``reporter`` : illisible, trop ancien, passé."""
-    from django.utils.dateparse import parse_datetime
-
+    """L'instant du report (``rappel_le`` + heure facultative, Casablanca),
+    refusé comme ``reporter`` : illisible, trop ancien, passé."""
     from .cadence_temps import instant_utc
     from .cadence_views import _parse_rappel, _refus_date_passee
 
-    brut = p.get('due_at', '')
-    try:
-        quand = (parse_datetime(brut) if brut else
-                 _parse_rappel(p.get('rappel_le', ''),
-                               p.get('rappel_heure', '')))
-    except ValueError:
-        quand = None
+    quand = _parse_rappel(p.get('rappel_le', ''), p.get('rappel_heure', ''))
     if quand is None:
         raise PropositionRefusee(
-            'Échéance invalide : donnez rappel_le (AAAA-MM-JJ, heure HH:MM '
-            'optionnelle) ou due_at (date-heure ISO).')
+            '« Reporter au » : date invalide (rappel_le AAAA-MM-JJ, heure '
+            'HH:MM optionnelle).')
     quand, trop_ancien = instant_utc(quand)
     refus = ('« Reporter au » : cette date est déjà passée — choisissez '
              'aujourd’hui ou une date à venir.' if trop_ancien
@@ -449,19 +483,21 @@ def _quand_du_report(p):
 
 def _valider_reporter(etape, p):
     """Le geste « Reporter » (décaler, ou mettre en veille) :
-    ``(corps, mot, effet)``."""
+    ``(corps, mot, effet)``. Le corps est TOUJOURS ``rappel_le`` +
+    ``rappel_heure`` (jour et heure de Casablanca) — la forme que l'écran
+    poste à ``reporter`` (``crmApi.reporterRelanceEtape``), jamais ``due_at``."""
+    from apps.crm import horaires
+
     mode = p.get('mode', '')
     if mode not in ('', 'decaler', 'veille'):
         raise PropositionRefusee(
             f'Geste inconnu : « {mode} ». Choisir « decaler » ou « veille ».')
-    quand = _quand_du_report(p)
-    corps = ({'due_at': p['due_at']} if p.get('due_at') else
-             {'rappel_le': p['rappel_le'],
-              **({'rappel_heure': p['rappel_heure']}
-                 if p.get('rappel_heure') else {})})
+    local = _quand_du_report(p).astimezone(horaires.CASABLANCA)
+    corps = {'rappel_le': local.date().isoformat(),
+             'rappel_heure': local.strftime('%H:%M')}
     if mode:
         corps['mode'] = mode
-    texte = _quand_en_clair(quand)
+    texte = _avec_heure(local, p)
     if mode == 'veille':
         return (corps, f'mise en veille jusqu\'au {texte}',
                 'Le suivi se tait jusqu\'à cette date puis reprend au même '
@@ -479,7 +515,7 @@ def proposition_pour(etape, p):
 
     geste = p.get('geste', '')
     if geste not in GESTES:
-        return None, ('Geste inconnu : « ' + geste + '». Gestes : '
+        return None, ('Geste inconnu : « ' + geste + ' ». Gestes : '
                       + ', '.join(GESTES) + '.')
     try:
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
@@ -492,6 +528,20 @@ def proposition_pour(etape, p):
     libelle = f'{nom_du_lead(etape.lead)} — {etape.libelle} : {mot}'
     return {'geste': geste, 'libelle': libelle, 'effet': effet,
             'corps': corps}, None
+
+
+def _peut_enregistrer(request):
+    """Le compte passe-t-il la garde des VRAIS gestes (``fait`` /
+    ``reporter`` / ``sauter``) ? Lue sur ``RelanceEtapeViewSet.get_permissions``
+    pour un POST de geste — jamais une seconde règle ici."""
+    from types import SimpleNamespace
+
+    from .cadence_views import RelanceEtapeViewSet
+
+    vue = RelanceEtapeViewSet(action='fait')
+    geste = SimpleNamespace(user=request.user, method='POST')
+    return all(garde.has_permission(geste, vue)
+               for garde in vue.get_permissions())
 
 
 @extend_schema(
@@ -510,9 +560,13 @@ def touche_assistant(request, touche_id):
     corps = touche_prete(request, etape)
     proposition, refus = None, None
     if request.query_params.get('geste') is not None:
-        p = {cle: (request.query_params.get(cle) or '').strip()
-             for cle in PARAMETRES_PROPOSITION}
-        proposition, refus = proposition_pour(etape, p)
+        # COP-C4 — la carte ne propose que ce que le compte pourra poster.
+        if not _peut_enregistrer(request):
+            refus = MESSAGE_ROLE_SANS_ENREGISTREMENT
+        else:
+            p = {cle: (request.query_params.get(cle) or '').strip()
+                 for cle in PARAMETRES_PROPOSITION}
+            proposition, refus = proposition_pour(etape, p)
     corps['proposition'] = proposition
     corps['proposition_refus'] = refus
     return Response(corps)
