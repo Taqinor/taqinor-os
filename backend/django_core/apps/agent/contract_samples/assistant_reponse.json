@@ -34,7 +34,7 @@
     "matin": "apps/crm/contract_samples/assistant_digest_matin.json",
     "fiche_lead": "apps/crm/contract_samples/assistant_lead_resume.json",
     "touche": "apps/crm/contract_samples/assistant_touche.json",
-    "suite_touche": "apps/crm/contract_samples/relance_etape_v2.json (une ligne de `results`) + `prochaine_touche`",
+    "suite_touche": "RÉSERVÉE (aucune action ne la sert encore : la suite d'une touche s'affiche dans la carte `touche`) — apps/crm/contract_samples/relance_etape_v2.json (une ligne de `results`) + `prochaine_touche`",
     "wa_message": "apps/crm/contract_samples/assistant_brouillon_suivi.json",
     "wa_devis": "apps/crm/contract_samples/whatsapp_devis_apercu.json + `lead_id`, `devis_ids` et `langue` (la langue réellement rendue ; l'écran s'en sert pour appeler le commit `whatsapp-devis` avec le même texte)",
     "document": "apps/agent/contract_samples/assistant_document.json",

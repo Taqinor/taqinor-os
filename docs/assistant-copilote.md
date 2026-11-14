@@ -196,7 +196,7 @@ les administrateurs), ou quand `ASSISTANT_MOTEUR=natif` ; « ouvert » = pas enc
 | AIC68 | Une confirmation ne s'exécute qu'une fois, et seulement par la personne qui l'a reçue | actif au merge |
 | AIC69 | Toutes les cartes d'une réponse s'affichent et restent dans l'historique ; la date et l'heure données au modèle | cartes actives au merge ; date et identité derrière interrupteur |
 | AIC70 | Les consignes de travail du copilote (une touche à la fois, jamais de texte client inventé…) | derrière interrupteur |
-| AIC71 | Messages d'erreur en français, coût juste, moins d'appels inutiles au modèle | actif au merge |
+| AIC71 | Messages d'erreur en français, coût juste, moins d'appels inutiles au modèle | erreurs et coût actifs au merge ; jeu d'outils allégé derrière interrupteur |
 | AIC72 | Le moteur natif qui se souvient des identifiants et reprend après une confirmation | derrière interrupteur (éteint, jamais essayé avec une vraie clé) |
 | AIC73 | Le jeu d'essai de l'assistant réparé, avec les quinze phrases du jour | actif (l'essai réel demande une clé : AIC88) |
 | AIC74 | L'écran n'affiche que les vraies cartes, chacune avec son état | actif au merge |
@@ -204,7 +204,7 @@ les administrateurs), ou quand `ASSISTANT_MOTEUR=natif` ; « ouvert » = pas enc
 | AIC76 | La carte d'une touche : texte validé, ouvrir WhatsApp, enregistrer la réponse d'un doigt, touche suivante | active par le bouton « Préparer » de la file ; proposée par le modèle derrière interrupteur |
 | AIC77 | Le bon contexte envoyé à chaque question, le premier clic qui marche, le bouton « Signaler un bug » | actif au merge |
 | AIC78 | La voix ne confirme plus rien ; la dictée se relit avant d'être envoyée | actif au merge |
-| AIC79 | Le manuel de l'assistant mis à jour (suivi v4, quatre marchés, outils du copilote) et plus court | actif au merge |
+| AIC79 | Le manuel de l'assistant mis à jour (suivi v4, quatre marchés, outils du copilote) et plus court | actif au merge pour tous (les passages sur le copilote sont étiquetés « servi seulement avec le copilote activé ») |
 | AIC80 | Les formes des lectures du suivi pour l'assistant | actif au merge |
 | AIC81 | Retrouver un lead ; la file, le matin et la fiche donnent les numéros de touche et de devis | identifiants actifs ; recherche derrière interrupteur |
 | AIC82 | Une touche prête et la carte qui propose d'enregistrer sa réponse | page active (bouton) ; outils du modèle derrière interrupteur |
