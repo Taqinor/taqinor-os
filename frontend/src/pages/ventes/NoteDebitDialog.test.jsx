@@ -65,6 +65,24 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
     expect(screen.queryByText(/Notes de débit indisponibles/)).toBeNull()
   })
 
+  it('ouverte sur A puis sur B en échec : aucune note de A', async () => {
+    // AERR133 (C-AERR-VER1-100) — mutant : retirer la remise à zéro de `notes` ⇒ ND-2026-11-0001 visible.
+    ventesApi.getNotesDebit
+      .mockResolvedValueOnce({ data: [{ id: 7, reference: 'ND-2026-11-0001', total_ttc: '600.00', statut: 'emise', annulee: false }] })
+      .mockRejectedValueOnce({ response: { status: 500 } })
+    const A = { ...FACTURE, id: 21, reference: 'FAC-A' }
+    const B = { ...FACTURE, id: 22, reference: 'FAC-B' }
+    const { rerender } = render(<NoteDebitDialog facture={A} open onOpenChange={() => {}} />)
+    expect(await screen.findByText('ND-2026-11-0001')).toBeInTheDocument()
+    rerender(<NoteDebitDialog facture={null} open={false} onOpenChange={() => {}} />)
+    rerender(<NoteDebitDialog facture={B} open onOpenChange={() => {}} />)
+    expect(await screen.findByText(/Notes de débit indisponibles/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.queryByText('ND-2026-11-0001')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /PDF/ })).toBeNull()
+  })
+
   it('refuse un motif seul : « Créer » reste inactif sans montant', async () => {
     const user = userEvent.setup()
     render(<NoteDebitDialog facture={FACTURE} open onOpenChange={() => {}} />)
