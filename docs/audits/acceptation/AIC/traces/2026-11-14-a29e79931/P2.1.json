@@ -1,0 +1,43 @@
+{
+ "id": "P2.1",
+ "tache": "AIC75",
+ "titre": "« Ma file du jour » : carte file ; « Préparer » ajoute la carte touche sans nouvelle question",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "réponse 200 avec une carte file_touches ([\"file_touches\"])",
+  "moteur servi : langchain",
+  "copilote allumé : les outils du copilote sont au catalogue de la commerciale",
+  "3 lignes, chacune avec son numéro de touche",
+  "la file ne montre que les leads de la commerciale (4, 5, 6)",
+  "la touche 1 du lead choisi est servie par l'ERP (200)",
+  "aucune nouvelle question au modèle pour préparer la touche",
+  "la carte touche est ajoutée à la conversation"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "PASS",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 GET /api/fastapi/sql-agent/suggestions",
+  "200 GET /api/fastapi/sql-agent/history",
+  "200 POST /api/fastapi/sql-agent/query",
+  "200 GET /api/django/crm/assistant/touches/1/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P2.1-file.png",
+  "P2.1-touche-preparee.png"
+ ]
+}

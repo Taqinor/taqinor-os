@@ -22,6 +22,10 @@ import { signalerErreurRequete } from '../lib/journalProblemes'
 // transcription vocale gère déjà son cas localement).
 import { getApiError } from '../lib/apiError'
 import { toastError } from '../lib/toast'
+// COP-F7 — tampon de diagnostic du navigateur : l'instance `api` d'axios.js le
+// nourrit, MAIS les appels de l'assistant passent par CETTE instance-ci : une
+// panne de l'assistant lui-même doit se voir dans le tampon (sans corps).
+import { noterRequete } from '../lib/tamponDiagnostic'
 
 const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
@@ -45,6 +49,41 @@ iaApi_instance.interceptors.request.use((config) => {
   }
   return config
 })
+
+// ── Tampon de diagnostic : chaque appel de l'assistant, succès ou échec ───────
+// Enregistré AVANT l'intercepteur de refresh (il voit donc chaque tentative,
+// 401 compris). Jamais de corps, jamais de chaîne de requête ; ne lève jamais.
+const APPEL_ASSISTANT = /\/sql-agent|\/agent\/|\/crm\/assistant\//
+iaApi_instance.interceptors.request.use((config) => {
+  config.metadata = { debut: Date.now() }
+  return config
+})
+
+function noterAppelAssistant(config, reponse, erreur) {
+  try {
+    const url = String(config?.url || '').split('?')[0]
+    if (!APPEL_ASSISTANT.test(url)) return
+    const debut = config?.metadata?.debut ?? Date.now()
+    noterRequete({
+      methode: String(config?.method || 'get').toUpperCase(),
+      url,
+      statut: reponse?.status ?? 0,
+      dureeMs: Date.now() - debut,
+      requestId: reponse?.headers?.['x-request-id'] ?? '',
+      code: erreur?.code ?? '',
+    })
+  } catch {
+    // Le tampon est best-effort : il ne doit jamais casser un appel.
+  }
+}
+
+iaApi_instance.interceptors.response.use(
+  (response) => { noterAppelAssistant(response.config, response); return response },
+  (error) => {
+    noterAppelAssistant(error.config, error.response, error)
+    return Promise.reject(error)
+  },
+)
 
 // ── Reponse : refresh silencieux sur 401 ──────────────────────
 iaApi_instance.interceptors.response.use(
@@ -115,6 +154,14 @@ const iaApi = {
   // AIC9 — `contexte` {ecran, lead_id} facultatif (écran d'où part la question).
   queryAgent: (question, contexte = null) =>
     iaApi_instance.post('/sql-agent/query', contexte ? { question, contexte } : { question }, { timeout: DELAI_AGENT_SQL_MS }),
+
+  // COP-F2/F3 — lectures Django de l'assistant (zéro appel au modèle) : une
+  // touche prête (`assistant_touche.json`) et la file de suivi
+  // (`assistant_a_relancer.json`). Chemins absolus : pas de préfixe fastapi.
+  getToucheAssistant: (id, params = {}) =>
+    iaApi_instance.get(`/api/django/crm/assistant/touches/${id}/`, { params, suppressErrorToast: true }),
+  getFileTouchesAssistant: (params = {}) =>
+    iaApi_instance.get('/api/django/crm/assistant/a-relancer/', { params, suppressErrorToast: true }),
 
   // AIC9 — trois questions suggérées pour l'écran (manifeste `capacites.yml`).
   getSuggestions: (ecran) =>

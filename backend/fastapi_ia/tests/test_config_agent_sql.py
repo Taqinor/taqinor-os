@@ -111,6 +111,19 @@ class ConfigAgentSqlTests(unittest.TestCase):
         engine = _db.create_sql_agent_engine()  # aucune connexion ouverte
         self.assertEqual(engine.url.username, "erp_sql_agent")
 
+    def test_reglage_assistant_moteur(self):
+        """COP-B6 — ASSISTANT_MOTEUR : `langchain` par defaut, `natif` lu,
+        toute autre valeur ramenee a `langchain` (eteint au merge)."""
+        for valeur, attendu in ((None, "langchain"), (" Natif ", "natif"),
+                                ("sdk", "langchain")):
+            env = {k: v for k, v in os.environ.items() if k != "ASSISTANT_MOTEUR"}
+            if valeur is not None:
+                env["ASSISTANT_MOTEUR"] = valeur
+            with mock.patch.dict(os.environ, env, clear=True):
+                importlib.reload(_config)
+            self.addCleanup(importlib.reload, _config)
+            self.assertEqual(_config.ASSISTANT_MOTEUR, attendu, valeur)
+
     def test_dev_sans_role_dedie_avertit(self):
         with self.assertLogs("app.core.config", level="WARNING") as logs:
             self._reload(debug=True, agent_user=None)

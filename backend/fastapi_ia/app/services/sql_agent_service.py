@@ -42,6 +42,8 @@ except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
 
+from app.services import prompt_copilote
+from app.services.cartes import construire_cartes
 from app.core.config import (
     CHAT_HISTORY_MAX,
     CHAT_HISTORY_TTL,
@@ -392,8 +394,11 @@ def _intention_et_erreur(sorties: list[dict[str, Any]],
     erreurs = [s for s in sorties or [] if s.get("type") == "erreur"]
     if erreurs:
         e = erreurs[-1]
-        return "bug", {"status": e.get("status"), "outil": e.get("outil"),
-                       "message": e.get("message")}
+        erreur = {"status": e.get("status"), "outil": e.get("outil"),
+                  "message": e.get("message")}
+        if e.get("request_id"):  # COP-B4 — id de la requete Django (relais)
+            erreur["request_id"] = str(e["request_id"])[:64]
+        return "bug", erreur
     signales = [s for s in sorties or [] if s.get("type") == "signalement"]
     if signales:
         s = signales[-1]
@@ -469,14 +474,19 @@ def _manifeste_allege(manifeste: dict | None) -> str:
             + "".join(f"- {i}\n" for i in items if isinstance(i, str)))
 
 
-def _contenu_systeme(provider: str, allow_price: bool) -> tuple[Any, bool]:
+def _contenu_systeme(provider: str, allow_price: bool,
+                     copilote: bool = False) -> tuple[Any, bool]:
     """AIC5 — bloc SYSTEME = _AGENT_PREFIX (+ marge) + politique + manifeste +
     manuel ; sous `claude`, marque `cache_control` ephemere 1 h (>= 512
     tokens). Renvoie (contenu du SystemMessage, manuel_present). Hors claude
     (repli AIC4, ou Groq en fournisseur principal) : bloc ALLEGE sans manuel
-    ni manifeste complet (voir _manifeste_allege), manuel_present=False."""
+    ni manifeste complet (voir _manifeste_allege), manuel_present=False.
+    COP-B3 — copilote allume : ses consignes (texte STABLE) entrent dans le
+    MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
+    if copilote:
+        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.CONSIGNES_COPILOTE + "\n"
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
     texte = base + docs["texte"]
@@ -1197,26 +1207,34 @@ class _SQLCapture(BaseCallbackHandler):
         self._action_names = action_tool_names or set()
         self.action_used = False
         self.actions: list[str] = []          # AIC6 — noms d'outils appeles
-        self.tokens = {"cache_read": 0, "input": 0, "output": 0}
+        # COP-B4 — TOUS les outils appeles (SQL et `report_gap` compris).
+        self.outils: list[str] = []
+        self.tokens = {"cache_read": 0, "cache_write": 0, "input": 0,
+                       "output": 0}
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         """AIC6 — somme l'usage de CHAQUE appel du modele de la requete
-        (cache_read separe ; `input` = entree hors lecture de cache)."""
+        (cache_read separe ; `input` = entree hors cache). COP-B4 : les
+        ECRITURES de cache (facturees plus cher) ne sont plus comptees en
+        entree simple : `cache_write`."""
         for gens in getattr(response, "generations", None) or []:
             for gen in gens:
                 usage = getattr(getattr(gen, "message", None),
                                 "usage_metadata", None) or {}
-                lu = int((usage.get("input_token_details") or {})
-                         .get("cache_read") or 0)
+                details = usage.get("input_token_details") or {}
+                lu = int(details.get("cache_read") or 0)
+                ecrit = int(details.get("cache_creation") or 0)
                 self.tokens["cache_read"] += lu
+                self.tokens["cache_write"] += ecrit
                 self.tokens["input"] += max(
-                    int(usage.get("input_tokens") or 0) - lu, 0)
+                    int(usage.get("input_tokens") or 0) - lu - ecrit, 0)
                 self.tokens["output"] += int(usage.get("output_tokens") or 0)
 
     def on_tool_start(
         self, serialized: dict, input_str: str, **kwargs: Any
     ) -> None:
         name = serialized.get("name")
+        self.outils.append(name)
         if name == "sql_db_query":
             self.queries.append(str(input_str))
         elif name in self._action_names:
@@ -1267,8 +1285,11 @@ def _est_refus_fournisseur(exc: BaseException) -> bool:
     if isinstance(exc, anthropic.APIStatusError):
         if exc.status_code >= 500:
             return True
-        # Solde de credits nul : 400 « credit balance is too low ».
-        return bool(re.search(r"credit|billing|balance", str(exc), re.I))
+        # Solde de credits nul : 400 « credit balance is too low » ; COP-B4 :
+        # plafond de depense de l'espace de travail, 400 « You have reached
+        # your specified API usage limits ».
+        return bool(re.search(r"credit|billing|balance|usage limits?",
+                              str(exc), re.I))
     return False
 
 
@@ -1410,17 +1431,25 @@ class SQLAgentService:
             return []
 
     def _save_history(
-        self, user_id: int, question: str, answer: str
+        self, user_id: int, question: str, answer: str,
+        cartes: list | None = None,
     ) -> None:
-        """Sauvegarde un echange dans Redis avec TTL 24h."""
+        """Sauvegarde un echange dans Redis avec TTL 24h. COP-B1 : le message
+        d'agent porte ses `cartes` (rejouees au rechargement de l'ecran)."""
+        self._ajouter_historique(user_id, [
+            {"role": "user", "content": question},
+            {"role": "agent", "content": answer, "cartes": list(cartes or [])},
+        ])
+
+    def _ajouter_historique(self, user_id: int, messages: list[dict]) -> None:
+        """Ajoute des messages a l'historique Redis (ecriture best-effort)."""
         try:
-            import json
             import redis as redis_lib
             r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
             key = self._history_key(user_id)
             pipe = r.pipeline()
-            pipe.rpush(key, json.dumps({"role": "user", "content": question}))
-            pipe.rpush(key, json.dumps({"role": "agent", "content": answer}))
+            for message in messages:
+                pipe.rpush(key, json.dumps(message, default=str))
             # Garde seulement les CHAT_HISTORY_MAX derniers messages
             pipe.ltrim(key, -CHAT_HISTORY_MAX, -1)
             # Renouvelle le TTL a chaque echange
@@ -1433,8 +1462,11 @@ class SQLAgentService:
         """Endpoint GET /history — retourne l'historique pour le frontend."""
         return self._load_history(user_id)
 
-    def clear_history(self, user_id: int) -> None:
-        """Endpoint DELETE /history — efface la conversation."""
+    def clear_history(self, user_id: int, company_id: int | None = None) -> None:
+        """Endpoint DELETE /history — efface la conversation (COP-B6 : la
+        conversation du moteur natif aussi)."""
+        from app.services import relais_copilote as relais
+        relais.effacer_conversation(company_id, user_id)
         try:
             import redis as redis_lib
             r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
@@ -1442,98 +1474,99 @@ class SQLAgentService:
         except Exception as exc:
             logger.warning("Redis historique indisponible (suppression): %s", exc)
 
+    # ── Base et outils SQL (partages par les deux moteurs, COP-B5/B6) ─────
+
+    def _base_sql(self, question: str, company_id: int):
+        """SQLDatabase filtree pour CETTE question.
+
+        ERR43 — tables pertinentes RESTREINTES a l'allowlist company-scoped :
+        aucune table hors allowlist n'est jamais exposee a l'outil de schema ;
+        sample_rows_in_table_info=0 : aucune ligne reelle dans le contexte du
+        LLM (sinon fuite incidente inter-tenant). ERR3 — connexion DEDIEE
+        LECTURE SEULE ; AANA5 — moteur de app.core.database (statement_timeout
+        15 s). NTPLT4 — pose app.current_company sur les connexions de CE
+        moteur quand RLS est actif (no-op sans POSTGRES_RLS_ENABLED)."""
+        from langchain_community.utilities import SQLDatabase
+        from app.core import database as _database
+        relevant_tables = [
+            t for t in self._get_relevant_tables(question)
+            if t in _ALLOWED_TABLES
+        ] or list(_ALLOWED_TABLES)
+        db = SQLDatabase(
+            _database.create_sql_agent_engine(),
+            include_tables=relevant_tables,
+            sample_rows_in_table_info=0,
+        )
+        _apply_tenant_guc(db, company_id)
+        return db
+
+    @staticmethod
+    def _droits_sql(action_ctx: "ActionContext | None") -> tuple:
+        """(allow_price, allow_pii, permissions) de l'appelant.
+
+        L17 — prix d'achat / marge : UNIQUEMENT `prix_achat_voir` (ou
+        superuser) ; ALEC15 — donnees personnelles du client :
+        `client_pii_voir` ; ALEC16 — codes de l'appelant (/auth/me/) ;
+        superuser et compte sans role fin (aucun code) : regle inchangee."""
+        if action_ctx is None:
+            return False, False, None
+        perms = action_ctx.permissions
+        return (
+            bool(action_ctx.is_superuser or "prix_achat_voir" in perms),
+            bool(action_ctx.is_superuser or "client_pii_voir" in perms),
+            None if action_ctx.is_superuser or not perms else perms,
+        )
+
+    @staticmethod
+    def _outils_sql(db, company_id: int, droits: tuple, llm=None,
+                    copilote: bool = True) -> list:
+        """COP-B5 — lecture gardee (`_validate_and_secure`, inchangee) et
+        schema. Retires : `sql_db_query_checker` (un appel modele CACHE de plus
+        par requete, hors prompt et hors cache ; la vraie garde est
+        `_validate_and_secure`) et `sql_db_list_tables` (le GUIDE DES TABLES
+        du prompt nomme les tables ; une table absente est rappelee par
+        l'erreur de l'outil de schema). Copilote ETEINT : le jeu d'avant (les
+        quatre outils du toolkit, la lecture remplacee par sa version gardee)
+        — rien de neuf pour le modele tant que l'interrupteur n'est pas leve."""
+        from app.services import relais_copilote as relais
+        allow_price, allow_pii, permissions = droits
+        lecture = _make_secure_query_tool(db, company_id, allow_price,
+                                          allow_pii, permissions)
+        if not copilote:
+            from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+            return [lecture if outil.name == "sql_db_query" else outil
+                    for outil in SQLDatabaseToolkit(db=db, llm=llm).get_tools()]
+        lecture.description = relais.DESCRIPTION_LECTURE_SQL
+        return [lecture, relais.outil_schema(db)]
+
     # ── Methode principale ────────────────────────────────────────────────
 
     def _run_agent(
         self, question: str, company_id: int, user_id: int = 0,
         action_ctx: "ActionContext | None" = None,
         provider: str | None = None,
-        contexte: dict | None = None,
+        contexte: dict | None = None, copilote: bool = False,
     ) -> dict[str, Any]:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread).
-        `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER."""
-        from langchain_community.utilities import SQLDatabase
-        from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+        `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER.
+        `copilote` : consignes du copilote dans le prompt systeme (COP-B3)."""
         from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-        from langchain_core.messages import HumanMessage, AIMessage
         from app.services.action_tools import (
             actions_available, build_action_tools, outil_report_gap,
         )
+        from app.services import relais_copilote as relais
 
-        # 1. Historique Redis → messages LangChain (2 derniers echanges seulement)
-        # On limite volontairement pour eviter que d'anciens resultats incorrects
-        # contaminent les nouvelles questions. L'historique complet reste dans Redis
-        # pour l'affichage frontend, mais le LLM ne recoit que le contexte recent.
-        raw_history = self._load_history(user_id)
-        recent = raw_history[-4:] if len(raw_history) >= 4 else raw_history
-        lc_history = []
-        for msg in recent:
-            if msg.get("role") == "user":
-                lc_history.append(HumanMessage(content=msg["content"]))
-            elif msg.get("role") == "agent":
-                lc_history.append(AIMessage(content=msg["content"]))
+        # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
+        lc_history = relais.historique_langchain(self._load_history(user_id), copilote)
 
-        # 2. Tables pertinentes via pgvector. ERR43 — on RESTREINT a l'allowlist
-        # company-scoped : aucune table hors allowlist n'est jamais exposee aux
-        # outils sql_db_list_tables / sql_db_schema.
-        relevant_tables = [
-            t for t in self._get_relevant_tables(question)
-            if t in _ALLOWED_TABLES
-        ] or list(_ALLOWED_TABLES)
-
-        # 2. SQLDatabase filtre.
-        # ERR3 — connexion DEDIEE LECTURE SEULE (SQL_AGENT_DATABASE_URL) : l'agent
-        # ne se connecte jamais avec le role owner. Retombe sur DATABASE_URL si
-        # SQL_AGENT_DB_USER n'est pas defini (non-cassant).
-        # ERR43 — sample_rows_in_table_info=0 : aucune ligne reelle n'est injectee
-        # dans le contexte du LLM (sinon fuite incidente inter-tenant).
-        # AANA5 — moteur cree par app.core.database (statement_timeout 15 s).
-        from app.core import database as _database
-        db = SQLDatabase(
-            _database.create_sql_agent_engine(),
-            include_tables=relevant_tables,
-            sample_rows_in_table_info=0,
-        )
-        # NTPLT4 — defense en profondeur : pose app.current_company sur les
-        # connexions de CE moteur (mono-societe, ephemere) quand RLS est actif,
-        # de sorte que meme une requete ecrite par le LLM ne puisse pas lire un
-        # autre tenant. No-op sans POSTGRES_RLS_ENABLED (defaut).
-        _apply_tenant_guc(db, company_id)
-
-        # 3. LLM
+        # 2. Base filtree (allowlist, moteur lecture seule, GUC RLS) ; 3. LLM ;
+        # 4. outils SQL gardes (COP-B5 : lecture + schema seulement).
+        db = self._base_sql(question, company_id)
         llm = self._build_llm(provider)
-
-        # L17 — autorisation de voir le prix d'achat / la marge : UNIQUEMENT les
-        # appelants disposant de la permission `prix_achat_voir` (ou superuser).
-        # Sinon le garde DUR de l'outil SQL bloque toute requete confidentielle.
-        allow_price = bool(
-            action_ctx is not None
-            and (
-                action_ctx.is_superuser
-                or "prix_achat_voir" in action_ctx.permissions
-            )
-        )
-
-        # 4. Toolkit → remplacement de l'outil sql_db_query par la version securisee
-        # On compare par nom d'outil (fiable) et non par classe (nom instable selon version)
-        # ALEC15 — donnees personnelles du client : `client_pii_voir` (meme
-        # chemin `resolve_caller_permissions` que `prix_achat_voir`).
-        allow_pii = bool(action_ctx is not None and (
-            action_ctx.is_superuser
-            or "client_pii_voir" in action_ctx.permissions))
-        toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-        tools = [
-            _make_secure_query_tool(
-                db, company_id, allow_price, allow_pii,
-                # ALEC16 — codes de l'appelant (/auth/me/) ; superuser et
-                # compte sans role fin (aucun code) : regle inchangee.
-                None if action_ctx is None or action_ctx.is_superuser
-                or not action_ctx.permissions else action_ctx.permissions)
-            if t.name == "sql_db_query"
-            else t
-            for t in toolkit.get_tools()
-        ]
+        droits = self._droits_sql(action_ctx)
+        allow_price = droits[0]
+        tools = self._outils_sql(db, company_id, droits, llm, copilote)
 
         # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
         # a un droit d'ecriture et qu'une URL Django interne est configuree. Un
@@ -1578,7 +1611,7 @@ class SQLAgentService:
         # contenir des accolades) ; manifeste + manuel en cache 1 h (claude).
         from langchain_core.messages import SystemMessage
         systeme, manuel_present = _contenu_systeme(
-            (provider or SQL_AGENT_PROVIDER).lower(), allow_price)
+            (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote)
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=systeme),
             MessagesPlaceholder(variable_name="chat_history"),
@@ -1599,7 +1632,9 @@ class SQLAgentService:
 
         try:
             result = executor.invoke(
-                {"input": _question_avec_contexte(question, contexte),
+                # COP-B2 — en-tete de tour, copilote allume seulement (F7).
+                {"input": relais.question_du_tour(
+                    question, contexte, getattr(action_ctx, "identite", None), copilote=copilote),
                  "chat_history": lc_history},
                 config={"callbacks": [capture]},
             )
@@ -1610,12 +1645,12 @@ class SQLAgentService:
                 raise _RefusFournisseur(str(exc)) from exc
             raise
 
-        answer, intention = _extraire_intention(
-            result.get("output", "Aucune reponse obtenue."))
+        answer, intention = _extraire_intention(relais.sortie_lisible(
+            result.get("output", "Aucune reponse obtenue.")))
         intention, erreur = _intention_et_erreur(action_outputs, intention)
-
-        # Sauvegarde l'echange dans Redis
-        self._save_history(user_id, question, answer)
+        # COP-B1 — TOUTES les sorties structurees du tour, dans l'ordre.
+        cartes = construire_cartes(action_outputs)
+        self._save_history(user_id, question, answer, cartes)
 
         # ERR84 — le SQL genere (avec les vrais noms de tables) reste cote
         # serveur (log de debug uniquement) et n'est JAMAIS renvoye au client :
@@ -1642,11 +1677,12 @@ class SQLAgentService:
             # d'une action interne deja executee. None quand aucune action.
             "proposal": proposal,
             "result": action_result,
+            "cartes": cartes, "moteur": relais.MOTEUR_LANGCHAIN,
             "manuel_present": manuel_present,
             # AIC6 — matiere de l'evenement (journalise par `query`).
             "intention": intention,
             "erreur": erreur,
-            "outils_appeles": [cle_par_outil.get(n, n) for n in capture.actions],
+            "outils_appeles": [cle_par_outil.get(n, n) for n in capture.outils],
             "tokens": dict(capture.tokens),
         }
 
@@ -1710,6 +1746,7 @@ class SQLAgentService:
                      action_ctx: "ActionContext | None",
                      contexte: dict | None = None) -> int | None:
         from app.services.action_tools import journaliser_evenement_assistant
+        from app.services import relais_copilote as relais
         contexte = contexte or {}
         corps = {
             "intention": out.get("intention") or "donnee",
@@ -1718,13 +1755,14 @@ class SQLAgentService:
             "ecran": str(contexte.get("ecran") or "")[:255],
             "lead_id": contexte.get("lead_id"),
             "outils_appeles": list(out.get("outils_appeles") or []),
-            "erreur": out.get("erreur"),
+            "erreur": relais.erreur_de_l_evenement(
+                out.get("intention"), out.get("erreur"), contexte),
             "modele": out.get("modele")
             or _modele_effectif(SQL_AGENT_PROVIDER.lower()),
             "repli": bool(out.get("repli")),
             "manuel_present": bool(out.get("manuel_present")),
-            "tokens": dict(out.get("tokens")
-                           or {"cache_read": 0, "input": 0, "output": 0}),
+            "tokens": dict(out.get("tokens") or {
+                "cache_read": 0, "cache_write": 0, "input": 0, "output": 0}),
         }
         try:
             return journaliser_evenement_assistant(action_ctx, corps)
@@ -1740,11 +1778,23 @@ class SQLAgentService:
         action_ctx: "ActionContext | None",
         contexte: dict | None = None,
     ) -> dict[str, Any]:
+        from app.services import relais_copilote as relais
         try:
+            # COP-B3 — le copilote est allume pour ce compte quand le
+            # catalogue recu de Django porte une action du lot `copilote`.
+            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx)
+            copilote = prompt_copilote.copilote_allume(catalogue)
+            # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
+            # None = tour servi par LangChain (eteint, ou panne journalisee).
+            natif = await asyncio.to_thread(
+                relais.tour_natif, self, question, company_id or 0,
+                user_id or 0, action_ctx, contexte, catalogue)
+            if natif is not None:
+                return natif
             try:
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
-                    action_ctx, None, contexte,
+                    action_ctx, None, contexte, copilote,
                 )
                 return {**out, "repli": False,
                         "modele": _modele_effectif(SQL_AGENT_PROVIDER.lower())}
@@ -1757,12 +1807,12 @@ class SQLAgentService:
                                SQL_AGENT_PROVIDER, refus, repli)
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
-                    action_ctx, repli, contexte,
+                    action_ctx, repli, contexte, copilote,
                 )
                 return {**out, "repli": True,
                         "modele": _modele_effectif(repli)}
         except RuntimeError as exc:
-            return {"answer": str(exc), "sql_query": "", "data": None}
+            return relais.reponse_configuration(exc)
         except Exception as exc:
             err_str = str(exc)
             logger.error("SQL agent error: %s", exc)

@@ -201,11 +201,15 @@ def run_eval(sql_producer: Optional[Callable[[str], str]] = None) -> dict:
 #: Prix API en USD par million de tokens, releves le 27/10/2026
 #: (docs/claude-memory/tokens-ia-commerciaux.md). UNIQUE endroit ou ils vivent.
 #: Haiku 5.5 : prix de lecture de cache non releve -> on le facture au prix
-#: d'entree (borne haute, jamais sous-estimee).
+#: d'entree (borne haute, jamais sous-estimee). COP-B7 : `cache_write` =
+#: ecriture de cache 1 h, facturee 2x l'entree (avant COP-B4 elle etait
+#: comptee en entree simple : cout sous-estime).
 DATE_PRIX_MTOK = "2026-10-27"
 PRIX_MTOK_USD = {
-    "claude-sonnet-5-5": {"input": 2.0, "output": 10.0, "cache_read": 0.10},
-    "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "cache_read": 0.10},
+    "claude-sonnet-5-5": {"input": 2.0, "output": 10.0, "cache_read": 0.10,
+                          "cache_write": 4.0},
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "cache_read": 0.10,
+                         "cache_write": 0.20},
 }
 RAPPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rapports")
 CRITERES_JUGE = ("exacte", "n_invente_pas", "je_ne_sais_pas", "hors_champ")
@@ -237,13 +241,36 @@ def _criteres_requis(case: dict) -> list[str]:
     return requis
 
 
+def outils_requis(case: dict) -> list[str]:
+    """Outils que la reponse DOIT avoir appeles (tous)."""
+    return list(case.get("outils") or ()) + ([case["outil"]] if case.get("outil") else [])
+
+
 def _bon_outil(case: dict, reponse: dict) -> bool:
-    outil = case.get("outil")
-    if not outil:
-        return True
-    if outil == "sql_db_query":
-        return bool(reponse.get("sql_query"))
-    return outil in (reponse.get("outils_appeles") or [])
+    """COP-B7 — lu dans `outils_appeles` pour TOUS les outils : `sql_query`
+    est toujours vide (ERR84) et `report_gap` / les outils SQL n'y entraient
+    pas avant COP-B4 (12 cas sur 50 etaient impossibles). `un_parmi` : au
+    moins un de ces outils."""
+    appeles = reponse.get("outils_appeles") or []
+    if any(o not in appeles for o in outils_requis(case)):
+        return False
+    un_parmi = case.get("un_parmi") or ()
+    return not un_parmi or any(o in appeles for o in un_parmi)
+
+
+def _sans_ecriture_hors_carte(case: dict, reponse: dict) -> bool:
+    """Ce qui NE doit PAS arriver : un outil `interdits` appele, ou une
+    ecriture `a_confirmer` executee (carte `resultat`) au lieu d'etre
+    proposee (carte `proposition`)."""
+    appeles = set(reponse.get("outils_appeles") or [])
+    if appeles & set(case.get("interdits") or ()):
+        return False
+    cartes = [c for c in reponse.get("cartes") or [] if isinstance(c, dict)]
+    for cle in case.get("a_confirmer") or ():
+        genres = {c.get("type") for c in cartes if c.get("action_key") == cle}
+        if "resultat" in genres or (cle in appeles and "proposition" not in genres):
+            return False
+    return True
 
 
 def run_eval_commerciaux(repondre: Callable[[dict], dict],
@@ -256,7 +283,8 @@ def run_eval_commerciaux(repondre: Callable[[dict], dict],
     l'outil est verifie sans juge. Cout = modele evalue seul (juge exclu)."""
     from .cases_commerciaux import CASES_COMMERCIAUX
     verifier_juge_different(modele_evalue, modele_juge)
-    questions, somme = [], {"cache_read": 0, "input": 0, "output": 0}
+    questions = []
+    somme = {"cache_read": 0, "cache_write": 0, "input": 0, "output": 0}
     for case in (cases or CASES_COMMERCIAUX):
         rep = repondre(case) or {}
         tokens = {k: int((rep.get("tokens") or {}).get(k) or 0) for k in somme}
@@ -264,6 +292,8 @@ def run_eval_commerciaux(repondre: Callable[[dict], dict],
         echecs = [c for c in _criteres_requis(case) if not verdict.get(c)]
         if not _bon_outil(case, rep):
             echecs.append("bon_outil")
+        if not _sans_ecriture_hors_carte(case, rep):
+            echecs.append("ecriture_sans_carte")
         for k in somme:
             somme[k] += tokens[k]
         questions.append({
@@ -312,7 +342,7 @@ def repondeur_reel(company_id: int, user_id: int, action_ctx=None):
     def repondre(case: dict) -> dict:
         return asyncio.run(sql_agent_service.query(
             case["question"], user_id=user_id, company_id=company_id,
-            action_ctx=action_ctx))
+            action_ctx=action_ctx, contexte=case.get("contexte")))
     return repondre
 
 

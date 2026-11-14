@@ -1,0 +1,43 @@
+{
+  "endpoint": "GET /api/django/crm/assistant/a-relancer/",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — la file « mes leads à relancer » servie à l'assistant (AIC30) n'avait aucun échantillon et ses lignes ne portaient PAS l'identifiant de la touche : l'assistant savait QUI relancer mais ne pouvait ni préparer le message de la touche ni enregistrer la réponse. Ajouts (les clés existantes ne changent pas) : `touche_id` (identifiant de la `RelanceEtape`, attendu par `crm.suivi.preparer_touche`, `crm.suivi.repondre`, `crm.suivi.reporter`), `touche_cle` (clé du gabarit, vide pour une tâche) et `cadence`. `etape` reste l'étape du FUNNEL du lead (clé de STAGES.py), jamais un identifiant de touche. Même file, même ordre et même compte que le cockpit « contrôle du suivi » (`selectors.relance_etapes_dues`). Le bloc `relances` du digest du matin (`GET crm/assistant/digest-matin/`) sert les mêmes lignes.",
+  "exemple": {
+    "portee": "aujourd_hui",
+    "total": 2,
+    "limite": 20,
+    "lignes": [
+      {
+        "lead_id": 1489,
+        "nom": "Aziz Benali",
+        "etape": "QUOTE_SENT",
+        "touche": "Relance J+1",
+        "touche_prevue": "2026-11-14",
+        "retard_jours_ouvres": 0,
+        "canal": "whatsapp",
+        "dernier_contact": "2026-11-12T10:05:00+00:00",
+        "touche_id": 412,
+        "touche_cle": "j1_pdf",
+        "cadence": "apres_devis"
+      },
+      {
+        "lead_id": 412,
+        "nom": "Salma Idrissi",
+        "etape": "NEW",
+        "touche": "Appel d'ouverture",
+        "touche_prevue": "2026-11-13",
+        "retard_jours_ouvres": 1,
+        "canal": "appel",
+        "dernier_contact": null,
+        "touche_id": 1287,
+        "touche_cle": "appel_ouverture",
+        "cadence": "contact"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "portee": "retard",
+    "total": 0,
+    "limite": 20,
+    "lignes": []
+  }
+}

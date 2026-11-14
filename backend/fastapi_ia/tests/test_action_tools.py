@@ -261,12 +261,27 @@ class BuildToolsTests(unittest.TestCase):
             tool = at.build_action_tools(ctx)[0]
         self.assertIn("PROPOSITION", tool.description)
 
+    def test_catalogue_du_tour_deja_lu_n_est_pas_relu(self):
+        """Une seule lecture Django par question : le catalogue que le relais
+        a déjà lu ce tour (`ctx.catalogue_tour`) sert à construire les outils."""
+        ctx = _ctx(role="admin")
+        ctx.catalogue_tour = [_CAT_PROPOSAL_PDF]
+
+        def _interdit(ctx):
+            raise AssertionError("catalogue relu")
+        with mock.patch.object(at, "fetch_catalogue", _interdit):
+            names = [t.name for t in at.build_action_tools(ctx)]
+        self.assertEqual(names, ["ventes_devis_proposal_pdf"])
+        # Sans catalogue du tour (défaut None) : lecture normale.
+        self.assertIsNone(_ctx(role="admin").catalogue_tour)
+        self.assertEqual(_ctx(role="admin").identite, {})
+
     def test_tool_args_schema_from_inputs(self):
         ctx = _ctx(role="admin")
         with _patch_catalogue([_CAT_PROPOSAL_PDF]):
             tool = at.build_action_tools(ctx)[0]
-        fields = tool.args_schema.model_fields
-        self.assertIn("id", fields)
+        self.assertIn("id", tool.args_schema["properties"])
+        self.assertEqual(tool.args_schema["required"], ["id"])
 
 
 # ── AG2 — validation des entrees contre le JSON-Schema du catalogue ───────────
@@ -352,7 +367,7 @@ class RunCatalogueActionTests(unittest.TestCase):
         ctx = _ctx(role="admin")
         fake, cap = _patch_post(200, {"results": []})
         with mock.patch.object(at, "_django_call",
-                               lambda ctx, path, method="POST", payload=None, **_k:
+                               lambda ctx, path, method="POST", payload=None:
                                {"ok": True, "status": 200, "data": {"results": []}}):
             out = at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {})
         parsed = json.loads(out)
@@ -476,8 +491,9 @@ class ConfirmProposalTests(unittest.TestCase):
                 mock.patch.object(at, "_django_call", fake_call):
             res = at.confirm_proposal(ctx, token)
         self.assertTrue(res["ok"])
+        # COP-A3 — meme refus, libelle du relais (« deja confirmee »).
         self.assertEqual(seconde[0], {
-            "ok": False, "error": "Proposition introuvable, expiree ou alteree."})
+            "ok": False, "error": "Proposition introuvable, expirée ou déjà confirmée."})
         metier = [c for c in calls if "enregistrer-paiement" in c["path"]]
         self.assertEqual(len(metier), 1)
         empreinte = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -595,7 +611,7 @@ class CollectorTests(unittest.TestCase):
         collector: list = []
         with mock.patch.object(
                 at, "_django_call",
-                lambda ctx, path, method="POST", payload=None, **_k:
+                lambda ctx, path, method="POST", payload=None:
                 {"ok": True, "status": 200, "data": {"results": []}}):
             at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {}, collector)
         self.assertEqual(len(collector), 1)
@@ -879,7 +895,8 @@ class JournalEvenementAic6Tests(unittest.TestCase):
         out = {"answer": "Deux devis.", "intention": "donnee",
                "outils_appeles": ["crm.lead.note"], "repli": False,
                "modele": "claude-sonnet-5-5", "manuel_present": True,
-               "tokens": {"cache_read": 1800, "input": 420, "output": 96}}
+               "tokens": {"cache_read": 1800, "cache_write": 300,
+                          "input": 420, "output": 96}}
         with mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": "s3cret"}), \
                 mock.patch.object(at, "_django_call", fake_call):
             ev_id = SQLAgentService._journaliser(
@@ -997,7 +1014,7 @@ class CapteurErreursAic7Tests(unittest.TestCase):
                          ("hors_champ", None))
 
     def test_5xx_devient_evenement_bug(self):
-        for status in (500, 404, 409, 422, 0):
+        for status in (500, 422, 0):
             with self.subTest(status=status):
                 texte, collector = self._lancer(status)
                 self.assertIn("a echoue", texte)  # reponse au commercial inchangee
@@ -1009,7 +1026,8 @@ class CapteurErreursAic7Tests(unittest.TestCase):
                                           "message": "boom"})
 
     def test_403_et_400_ne_sont_pas_des_bugs(self):
-        self.assertEqual(at.STATUTS_REPONSE_NORMALE, frozenset({400, 403}))
+        # COP-A4 — 409 (refus metier) et 404 (objet hors portee) non plus.
+        self.assertEqual(at.STATUTS_REPONSE_NORMALE, frozenset({400, 403, 404, 409}))
         for status in sorted(at.STATUTS_REPONSE_NORMALE):
             with self.subTest(status=status):
                 _texte, collector = self._lancer(status)
@@ -1122,6 +1140,580 @@ class MetriquesGouverneesValeurTests(unittest.TestCase):
             sortie = json.loads(outil.func(cle="dso"))
         self.assertEqual(outil.name, "metrique_gouvernee")
         self.assertEqual(sortie["valeur"], 3)
+
+
+class CartesReponseCop1Tests(unittest.TestCase):
+    """COP1 — `app.services.cartes` : toutes les sorties du tour, dans l'ordre,
+    au format du contrat partagé `assistant_reponse.json` (lu ici, pas recopié)."""
+
+    CONTRAT = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core",
+        "apps", "agent", "contract_samples", "assistant_reponse.json")
+
+    def _contrat(self):
+        with open(self.CONTRAT, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_deux_propositions_et_un_resultat_gardent_leur_ordre(self):
+        from app.services.cartes import construire_cartes
+        cartes = construire_cartes([
+            {"type": "proposal", "action_key": "a.b", "libelle": "A",
+             "human_preview": "A (id=1)", "confirm_token": "t1"},
+            {"type": "erreur", "intention": "bug", "status": 500},
+            {"type": "result", "action_key": "c.d", "libelle": "C",
+             "carte": "touche", "ok": True, "data": {"touche": {"id": 4}}},
+            {"type": "proposal", "action_key": "e.f", "libelle": "E",
+             "human_preview": "E", "confirm_token": None},
+            {"type": "signalement", "intention": "manque"},
+        ])
+        self.assertEqual([c["type"] for c in cartes],
+                         ["proposition", "resultat", "proposition"])
+        self.assertEqual([c["action_key"] for c in cartes],
+                         ["a.b", "c.d", "e.f"])
+        self.assertEqual(cartes[1]["carte"], "touche")
+        self.assertEqual(cartes[1]["donnees"], {"touche": {"id": 4}})
+        self.assertIsNone(cartes[2]["confirm_token"])
+
+    def test_donnees_est_toujours_un_objet(self):
+        from app.services.cartes import construire_cartes
+        liste, vide, nue = construire_cartes([
+            {"type": "result", "action_key": "x", "data": [{"id": 1}]},
+            {"type": "result", "action_key": "y", "data": None},
+            {"type": "result", "action_key": "z", "data": 3},
+        ])
+        self.assertEqual(liste["donnees"], {"lignes": [{"id": 1}]})
+        self.assertEqual(vide["donnees"], {})
+        self.assertEqual(nue["donnees"], {"valeur": 3})
+
+    def test_cles_des_cartes_egales_au_contrat(self):
+        from app.services.cartes import construire_cartes
+        contrat = self._contrat()
+        proposition, resultat = construire_cartes([
+            {"type": "proposal", "action_key": "a", "libelle": "A",
+             "human_preview": "A", "confirm_token": "t"},
+            {"type": "result", "action_key": "b", "libelle": "B",
+             "carte": None, "data": {}},
+        ])
+        self.assertEqual(set(proposition), set(contrat["carte_proposition"]))
+        self.assertEqual(set(resultat), set(contrat["carte_resultat"]))
+        for carte in contrat["exemple_deux_propositions"]["cartes"]:
+            self.assertEqual(set(carte), set(contrat["carte_proposition"]))
+        for carte in contrat["exemple"]["cartes"]:
+            self.assertEqual(set(carte), set(contrat["carte_resultat"]))
+
+
+# ── COP-A1 — sorties du collecteur complètes (cartes) ─────────────────────────
+
+_CONTRATS_AGENT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core",
+    "apps", "agent", "contract_samples")
+
+
+def _contrat_agent(nom):
+    with open(os.path.join(_CONTRATS_AGENT, nom), encoding="utf-8") as f:
+        return json.load(f)
+
+
+_CAT_DOCUMENT = {
+    "key": "ventes.devis.generer_pdf",
+    "label": "Générer le PDF de proposition (devis)",
+    "description": "PDF client via /proposal.",
+    "endpoint": "/api/django/ventes/devis/{id}/proposal/",
+    "method": "GET",
+    "inputs": {"type": "object", "properties": {
+        "id": {"type": "integer"}, "pdf_mode": {"type": "string"}},
+        "required": ["id"]},
+    "risk": "internal",
+    "carte": "document",
+}
+
+
+class _AvecPropositions(unittest.TestCase):
+    """Secret de signature stable + faux Redis des propositions."""
+
+    def setUp(self):
+        p = mock.patch.object(at, "ACTION_PROPOSAL_SECRET", "test-sig-secret")
+        p.start()
+        self.addCleanup(p.stop)
+        self.fake_redis = _FakeRedis()
+        p = mock.patch.object(at, "_proposal_redis", lambda: self.fake_redis)
+        p.start()
+        self.addCleanup(p.stop)
+
+
+class SortiesCollecteurCop1Tests(_AvecPropositions):
+    def test_resultat_porte_libelle_et_carte(self):
+        from app.services.cartes import construire_cartes
+        collector: list = []
+        action = dict(_CAT_LEAD_LIST, carte="liste_leads")
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": True, "status": 200, "data": {"results": []}}):
+            at.run_catalogue_action(_ctx(role="admin"), action, {}, collector)
+        self.assertEqual(collector[0]["libelle"], "Lister les leads")
+        self.assertEqual(collector[0]["carte"], "liste_leads")
+        carte = construire_cartes(collector)[0]
+        self.assertEqual(set(carte),
+                         set(_contrat_agent("assistant_reponse.json")["carte_resultat"]))
+        self.assertEqual((carte["libelle"], carte["carte"]),
+                         ("Lister les leads", "liste_leads"))
+
+    def test_proposition_porte_libelle_carte_et_duree_reelle(self):
+        from app.services.cartes import construire_cartes
+        collector: list = []
+        with mock.patch.object(at, "ACTION_PROPOSAL_TTL", 120), \
+                mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("propose only")):
+            at.run_catalogue_action(_ctx(role="admin"), _CAT_PROPOSAL_PDF, {"id": 9}, collector)
+        prop = collector[0]
+        self.assertEqual(prop["libelle"], "Générer le PDF")
+        self.assertIsNone(prop["carte"])
+        self.assertEqual(prop["expire_dans_s"], 120)
+        self.assertEqual(construire_cartes(collector)[0]["expire_dans_s"], 120)
+
+    def test_confirmation_rend_libelle_et_carte(self):
+        ctx = _ctx(role="admin")
+        action = dict(_CAT_DELETE, carte=None)
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("propose only")):
+            jeton = json.loads(at.run_catalogue_action(ctx, action, {"id": 3}))["confirm_token"]
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [action]), \
+                mock.patch.object(at, "_django_call", lambda *a, **k: {
+                    "ok": True, "status": 204, "data": {}}):
+            res = at.confirm_proposal(ctx, jeton)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["libelle"], "Supprimer un produit")
+        self.assertIn("carte", res)
+
+    def test_document_rend_le_lien_sans_appeler_django(self):
+        contrat = _contrat_agent("assistant_document.json")
+        for entrees, attendu in (({"id": 45}, contrat["exemple"]),
+                                 ({"id": "45", "pdf_mode": "onepage"}, contrat["exemple_options"])):
+            with self.subTest(entrees=entrees):
+                collector: list = []
+                with mock.patch.object(at, "_django_call",
+                                       lambda *a, **k: self.fail("aucun appel Django")):
+                    at.run_catalogue_action(_ctx(role="admin"), _CAT_DOCUMENT, entrees, collector)
+                self.assertEqual(collector[0]["carte"], "document")
+                self.assertEqual(collector[0]["data"], attendu)
+
+    def test_document_booleens_lus_juste_par_la_route_proposal(self):
+        """Aller-retour : l'URL du lien relue avec la regle de
+        `apps/ventes/views/devis_pdf.py` (`include_etude`/`devis_final` vrais
+        sur '1'/'true' ; `show_monthly` faux sur '0'/'false')."""
+        from urllib.parse import parse_qs, urlparse
+        action = dict(_CAT_DOCUMENT, inputs={"type": "object", "properties": {
+            "id": {"type": "integer"}, "include_etude": {"type": "boolean"},
+            "devis_final": {"type": "boolean"}, "show_monthly": {"type": "boolean"}},
+            "required": ["id"]})
+        for valeur in (True, False):
+            with self.subTest(valeur=valeur):
+                collector: list = []
+                at.run_catalogue_action(_ctx(role="admin"), action, {
+                    "id": 45, "include_etude": valeur, "devis_final": valeur,
+                    "show_monthly": valeur}, collector)
+                q = {k: v[0] for k, v in parse_qs(
+                    urlparse(collector[0]["data"]["url"]).query).items()}
+                self.assertEqual(q["include_etude"] in ("1", "true"), valeur)
+                self.assertEqual(q["devis_final"] in ("1", "true"), valeur)
+                self.assertEqual(q["show_monthly"] not in ("0", "false"), valeur)
+
+
+# ── COP-A2 — validation fail-closed complète + tolérance de type ──────────────
+
+_SCHEMA_SUIVI = {"type": "object", "properties": {
+    "id": {"type": "integer", "description": "Lead."},
+    "canal": {"type": "string", "enum": ["whatsapp", "sms", "email"]},
+    "quantite": {"type": "string"},
+    "montant": {"type": "number"},
+    "urgent": {"type": "boolean"},
+    "tags": {"type": "array", "items": {"type": "string", "enum": ["chaud", "froid"]}},
+    "ids": {"type": "array", "items": {"type": "integer"}},
+}, "required": ["id"]}
+_CAT_SUIVI = {"key": "crm.lead.brouillon_suivi", "label": "Brouillon de suivi",
+              "endpoint": "/api/django/crm/leads/{id}/brouillon-suivi/",
+              "method": "GET", "inputs": _SCHEMA_SUIVI, "risk": "internal"}
+
+
+class ValidationCompleteCop2Tests(unittest.TestCase):
+    def _refus(self, entrees):
+        with self.assertRaises(at.ActionValidationError) as ctx:
+            at.validate_inputs(_SCHEMA_SUIVI, dict({"id": 1}, **entrees))
+        return str(ctx.exception)
+
+    def test_enum_refuse_et_liste_les_valeurs_permises(self):
+        message = self._refus({"canal": "fax"})
+        self.assertIn("whatsapp, sms, email", message)
+        self.assertEqual(at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "canal": "sms"})["canal"], "sms")
+
+    def test_elements_de_tableau_verifies_contre_items(self):
+        self.assertIn("chaud, froid", self._refus({"tags": ["chaud", "tiede"]}))
+        self.assertIn("ids[1]", self._refus({"ids": [1, "deux"]}))
+        out = at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "ids": ["3", 4], "tags": ["froid"]})
+        self.assertEqual((out["ids"], out["tags"]), ([3, 4], ["froid"]))
+
+    def test_coercitions_sures(self):
+        out = at.validate_inputs(_SCHEMA_SUIVI, {
+            "id": " 12 ", "quantite": 2.5, "montant": "1500.75", "urgent": "Oui"})
+        self.assertEqual(out, {"id": 12, "quantite": "2.5", "montant": 1500.75, "urgent": True})
+        self.assertIs(at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "urgent": "non"})["urgent"], False)
+        self.assertEqual(at.validate_inputs(_SCHEMA_SUIVI, {"id": 1, "quantite": 3})["quantite"], "3")
+
+    def test_aucune_coercition_hasardeuse(self):
+        for entrees in ({"id": "12.5"}, {"id": 12.0}, {"id": "12 lots"},
+                        {"urgent": "1"}, {"quantite": True}, {"montant": "1e3"},
+                        {"montant": "12,5"}, {"inconnue": 1}):
+            with self.subTest(entrees=entrees):
+                with self.assertRaises(at.ActionValidationError):
+                    at.validate_inputs(_SCHEMA_SUIVI, dict({"id": 1}, **entrees))
+
+    def test_refus_rendu_au_modele_en_texte(self):
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("refuse avant appel")):
+            out = at.run_catalogue_action(_ctx(role="admin"), _CAT_SUIVI, {"id": 1, "canal": "fax"})
+        self.assertTrue(out.startswith("Action refusee : "))
+        self.assertIn("valeurs permises", out)
+
+
+class SchemaOutilCop2Tests(unittest.TestCase):
+    # langchain_core est une dépendance du service : son absence doit faire
+    # ÉCHOUER ces tests (jamais les sauter en silence — ENF23).
+    def _outil(self):
+        with _patch_catalogue([_CAT_SUIVI]):
+            return at.build_action_tools(_ctx(role="admin"))[0]
+
+    def test_enum_items_et_requis_visibles_du_modele(self):
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+        params = convert_to_openai_tool(self._outil())["function"]["parameters"]
+        self.assertEqual(params["properties"]["canal"]["enum"], ["whatsapp", "sms", "email"])
+        self.assertEqual(params["properties"]["tags"]["items"],
+                         {"type": "string", "enum": ["chaud", "froid"]})
+        self.assertEqual(params["properties"]["id"]["type"], "integer")
+        self.assertEqual(params["required"], ["id"])
+
+    def test_mauvais_type_ne_casse_pas_le_tour(self):
+        outil = self._outil()
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("refuse avant appel")):
+            for args in ({"id": "abc"}, {}, {"id": 1, "pirate": 2}):
+                with self.subTest(args=args):
+                    self.assertTrue(outil.invoke(args).startswith("Action refusee : "))
+
+
+# ── COP-A3 — confirmation à usage unique, liée à l'utilisateur, idempotente ───
+
+class _RedisCourse(_FakeRedis):
+    """`getdel` atomique (sous verrou) ; un `get` attend l'autre fil : tout
+    code qui LIT puis SUPPRIME laisse passer les deux confirmations."""
+
+    def __init__(self):
+        import threading
+        super().__init__()
+        self.verrou = threading.Lock()
+        self.barriere = threading.Barrier(2, timeout=1)
+
+    def getdel(self, key):
+        with self.verrou:
+            return self.store.pop(key, None)
+
+    def get(self, key):
+        import threading
+        valeur = self.store.get(key)
+        try:
+            self.barriere.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return valeur
+
+
+def _jwt(user_id):
+    import jwt
+    return jwt.encode({"user_id": user_id, "token_type": "access"},
+                      "cle-quelconque", algorithm="HS256")
+
+
+_CAT_PAIEMENT = {
+    "key": "ventes.facture.enregistrer_paiement", "label": "Enregistrer un paiement",
+    "endpoint": "/api/django/facturation/factures/{id}/paiements/", "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "id": {"type": "integer"}, "montant": {"type": "number"},
+        "idempotency_key": {"type": "string"}}, "required": ["id", "montant"]},
+    "risk": "irreversible",
+}
+
+
+class ConfirmationUniqueCop3Tests(_AvecPropositions):
+    def _proposer(self, ctx, entrees=None):
+        with mock.patch.object(at, "_django_call", lambda *a, **k: self.fail("propose only")):
+            out = at.run_catalogue_action(ctx, _CAT_PAIEMENT, entrees or {"id": 8, "montant": 100})
+        return json.loads(out)["confirm_token"]
+
+    def _confirmer(self, ctx, jeton, reponse=None):
+        appels = []
+
+        def fake_call(ctx, path, method="POST", payload=None, idempotency_key=None, **_k):
+            appels.append({"path": path, "payload": payload, "cle": idempotency_key})
+            return reponse or {"ok": True, "status": 201, "data": {"id": 99}}
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [_CAT_PAIEMENT]), \
+                mock.patch.object(at, "_django_call", fake_call):
+            return at.confirm_proposal(ctx, jeton), appels
+
+    def test_deux_confirmations_concurrentes_une_seule_execution(self):
+        import threading
+        self.fake_redis = _RedisCourse()
+        ctx = _ctx(role="admin", token=_jwt(5))
+        jeton = self._proposer(ctx)
+        executions, resultats, verrou = [], [], threading.Lock()
+
+        def fake_call(ctx, path, method="POST", payload=None, **_k):
+            if "/paiements/" in path:
+                with verrou:
+                    executions.append(path)
+            return {"ok": True, "status": 201, "data": {"id": 99}}
+        with mock.patch.object(at, "fetch_catalogue", lambda c: [_CAT_PAIEMENT]), \
+                mock.patch.object(at, "_django_call", fake_call):
+            fils = [threading.Thread(target=lambda: resultats.append(at.confirm_proposal(ctx, jeton)))
+                    for _ in range(2)]
+            for f in fils:
+                f.start()
+            for f in fils:
+                f.join(5)
+        self.assertEqual(len(executions), 1)
+        self.assertEqual(sorted(r["ok"] for r in resultats), [False, True])
+        refus = next(r for r in resultats if not r["ok"])
+        self.assertEqual(refus["error"], "Proposition introuvable, expirée ou déjà confirmée.")
+
+    def test_autre_utilisateur_de_la_meme_societe_refuse(self):
+        jeton = self._proposer(_ctx(role="admin", token=_jwt(5)))
+        res, appels = self._confirmer(_ctx(role="admin", token=_jwt(6)), jeton)
+        self.assertFalse(res["ok"])
+        self.assertIn("autre utilisateur", res["error"])
+        self.assertEqual(appels, [])
+
+    def test_cle_d_idempotence_derivee_du_jeton(self):
+        import hashlib
+        ctx = _ctx(role="admin", token=_jwt(5))
+        jeton = self._proposer(ctx)
+        res, appels = self._confirmer(ctx, jeton)
+        self.assertTrue(res["ok"])
+        cle = hashlib.sha256(jeton.encode()).hexdigest()
+        # Paiement : la cle voyage dans le CORPS (ACNC42), pas dans l'en-tete.
+        self.assertEqual(appels[0]["payload"]["idempotency_key"], cle)
+        self.assertIsNone(appels[0]["cle"])
+        self.assertNotIn(jeton, json.dumps(appels))
+        # ACNC42 — une cle fournie par l'entree (donc par le modele) est
+        # ECRASEE par l'empreinte du jeton : jamais une cle rejouable choisie.
+        jeton = self._proposer(ctx, {"id": 8, "montant": 100, "idempotency_key": "k-1"})
+        _res, appels = self._confirmer(ctx, jeton)
+        self.assertEqual(appels[0]["payload"]["idempotency_key"],
+                         hashlib.sha256(jeton.encode()).hexdigest())
+
+    def test_confirmation_rend_l_apercu_signe(self):
+        ctx = _ctx(role="admin", token=_jwt(5))
+        jeton = self._proposer(ctx)
+        apercu = json.loads(self.fake_redis.get(at._proposal_key(jeton)))["human_preview"]
+        res, _appels = self._confirmer(ctx, jeton)
+        self.assertIn("Enregistrer un paiement", apercu)
+        self.assertEqual(res["apercu"], apercu)
+
+    def test_en_tetes_relayes_sans_remplacer_le_jeton(self):
+        envois = []
+
+        class _Client:
+            def __init__(self, timeout=None):
+                envois.append({"timeout": timeout})
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def request(self, verb, url, **kwargs):
+                envois[-1]["headers"] = kwargs["headers"]
+                return _FakeResp(200, {})
+        court = at.httpx.Timeout(1.0)
+        with mock.patch.object(at.httpx, "Client", _Client), \
+                mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000"):
+            at._django_call(_ctx(role="admin"), "/x/", payload={"a": 1}, timeout=court, headers={
+                "Idempotency-Key": "k-1", "Authorization": "Bearer pirate"})
+        self.assertEqual(envois[0]["headers"]["Idempotency-Key"], "k-1")
+        self.assertEqual(envois[0]["headers"]["Authorization"], "Bearer jwt-xyz")
+        self.assertIs(envois[0]["timeout"], court)
+
+    def test_echec_apres_reclamation_jeton_consomme(self):
+        ctx = _ctx(role="admin", token=_jwt(5))
+        for reponse, attendu in (({"ok": False, "status": 409, "error": "Déjà soldée."},
+                                  "n'a pas été exécutée ; redemande-la"),
+                                 ({"ok": False, "status": 0, "error": "Service indisponible."},
+                                  "vérifie si l'action a été faite"),
+                                 ({"ok": False, "status": 500, "error": "Erreur interne."},
+                                  "vérifie si l'action a été faite")):
+            with self.subTest(status=reponse["status"]):
+                jeton = self._proposer(ctx)
+                res, _ = self._confirmer(ctx, jeton, reponse)
+                self.assertFalse(res["ok"])
+                self.assertIn(attendu, res["error"])
+                res, appels = self._confirmer(ctx, jeton)
+                self.assertIn("déjà confirmée", res["error"])
+                self.assertEqual(appels, [])
+
+
+# ── COP-A4 — erreurs dites juste ──────────────────────────────────────────────
+
+class _RespEntetes(_FakeResp):
+    def __init__(self, status_code, payload, headers=None):
+        super().__init__(status_code, payload)
+        self.headers = headers or {}
+
+
+class ErreursCop4Tests(unittest.TestCase):
+    def test_refus_metier_409_et_404_ne_sont_pas_des_bugs(self):
+        for status in (409, 404):
+            with self.subTest(status=status):
+                collector: list = []
+                with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                        "ok": False, "status": status, "error": "Touche déjà close."}):
+                    texte = at.run_catalogue_action(_ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+                self.assertIsNone(at.intention_pour_statut(status))
+                self.assertEqual(collector, [])
+                self.assertIn("Touche déjà close.", texte)
+
+    def test_identifiant_de_requete_conserve(self):
+        par_entete = at._normalize_error(
+            _RespEntetes(500, {"detail": "Erreur serveur."}, {"X-Request-Id": "abc123"}), {"detail": "Erreur serveur."})
+        self.assertEqual(par_entete["request_id"], "abc123")
+        corps = {"detail": "Erreur.", "error": {"code": "server_error", "message": "Erreur.", "request_id": "r-9"}}
+        self.assertEqual(at._normalize_error(_FakeResp(500, corps), corps)["request_id"], "r-9")
+        self.assertIsNone(at._normalize_error(_FakeResp(500, {}), {})["request_id"])
+
+    def test_request_id_dans_l_entree_erreur_pas_dans_le_texte_du_modele(self):
+        collector: list = []
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": False, "status": 500, "error": "Erreur serveur.", "request_id": "rid-77"}):
+            texte = at.run_catalogue_action(_ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+        self.assertEqual(collector[0]["request_id"], "rid-77")
+        self.assertNotIn("rid-77", texte)
+
+    def test_message_court_sans_enveloppe_brute(self):
+        champs = {"nom": ["Ce champ est obligatoire."], "erreurs": {"rappel_le": "Date passée."},
+                  "error": {"code": "validation_error", "message": "Données invalides.", "request_id": "x"}}
+        message = at._normalize_error(_FakeResp(400, champs), champs)["error"]
+        self.assertEqual(message, "nom: Ce champ est obligatoire. ; erreurs: rappel_le: Date passée.")
+        seule = {"error": {"code": "conflict", "message": "Conflit.", "request_id": "x"}}
+        self.assertEqual(at._normalize_error(_FakeResp(409, seule), seule)["error"], "Conflit.")
+        long = {"detail": "x" * 1000}
+        self.assertLessEqual(len(at._normalize_error(_FakeResp(409, long), long)["error"]), 300)
+
+
+# ── COP-A5 — aperçu qui NOMME l'objet ─────────────────────────────────────────
+
+_CAT_ACCEPTER = {
+    "key": "ventes.devis.accepter", "label": "Accepter un devis",
+    "confirm_summary": "Accepter ce devis.",
+    "endpoint": "/api/django/ventes/devis/{id}/accepter/", "method": "POST",
+    "inputs": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]},
+    "risk": "outward", "objets": {"id": "devis"},
+}
+_CAT_TOUCHE_REPORTER = {
+    "key": "crm.suivi.reporter", "label": "Reporter une touche",
+    "endpoint": "/api/django/crm/relance-etapes/{touche_id}/reporter/", "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "touche_id": {"type": "integer"}, "lead_id": {"type": "integer"},
+        "jours": {"type": "integer"}}, "required": ["touche_id"]},
+    "risk": "outward", "objets": {"lead_id": "lead", "touche_id": "touche"},
+}
+
+
+class ApercuNommeCop5Tests(_AvecPropositions):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000")
+        p.start()
+        self.addCleanup(p.stop)
+        self.libelles = _contrat_agent("assistant_libelles.json")
+
+    def _proposer(self, action, entrees, reponse):
+        appels = []
+
+        def fake_call(ctx, path, method="POST", payload=None, headers=None, timeout=None):
+            appels.append({"path": path, "method": method, "payload": payload, "timeout": timeout})
+            return reponse
+        collector: list = []
+        with mock.patch.object(at, "_django_call", fake_call):
+            at.run_catalogue_action(_ctx(role="admin"), action, entrees, collector)
+        return collector[0]["human_preview"], appels
+
+    def test_apercu_nomme_le_devis_comme_le_contrat(self):
+        apercu, appels = self._proposer(_CAT_ACCEPTER, {"id": 45},
+                                        {"ok": True, "status": 200, "data": self.libelles["exemple"]})
+        attendu = _contrat_agent("assistant_reponse.json")["exemple_deux_propositions"]["cartes"][0]["apercu"]
+        self.assertEqual(apercu, attendu)
+        self.assertEqual(len(appels), 1)
+        self.assertEqual((appels[0]["path"], appels[0]["method"], appels[0]["payload"]),
+                         ("/api/django/agent/libelles/", "GET", {"devis": 45}))
+        self.assertLessEqual(appels[0]["timeout"].read, 5)
+
+    def test_plusieurs_objets_et_entrees_restantes(self):
+        apercu, appels = self._proposer(
+            _CAT_TOUCHE_REPORTER, {"touche_id": 412, "lead_id": 1489, "jours": 3},
+            {"ok": True, "status": 200, "data": self.libelles["exemple"]})
+        self.assertEqual(appels[0]["payload"], {"lead": 1489, "touche": 412})
+        self.assertEqual(apercu, "Reporter une touche — " + self.libelles["exemple"]["lead"]
+                         + " ; " + self.libelles["exemple"]["touche"] + " (jours=3)")
+
+    def test_libelle_absent_retombe_sur_la_forme_actuelle(self):
+        for reponse in ({"ok": True, "status": 200, "data": self.libelles["exemple_hors_portee"]},
+                        {"ok": False, "status": 404, "error": "Introuvable."},
+                        {"ok": False, "status": 0, "error": "Service indisponible."}):
+            with self.subTest(reponse=reponse):
+                apercu, _ = self._proposer(_CAT_ACCEPTER, {"id": 45}, reponse)
+                self.assertEqual(apercu, "Accepter ce devis. (id=45)")
+
+    def test_sans_objets_aucun_appel(self):
+        apercu, appels = self._proposer(_CAT_DELETE, {"id": 3}, {"ok": True, "data": {}})
+        self.assertEqual(appels, [])
+        self.assertEqual(apercu, "Suppression irréversible du produit. (id=3)")
+
+
+# ── COP-A6 — sorties d'outils bornées pour le modèle ──────────────────────────
+
+class SortiesBorneesCop6Tests(unittest.TestCase):
+    def _lancer(self, data):
+        collector: list = []
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": True, "status": 200, "data": data}):
+            texte = at.run_catalogue_action(_ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+        return texte, collector
+
+    @staticmethod
+    def _leads(n):
+        return [{"id": i, "nom": f"Lead « {i} »", "ville": "Casablanca", "note": "x" * 60}
+                for i in range(n)]
+
+    def test_liste_coupee_json_lisible_collecteur_entier(self):
+        leads = self._leads(300)
+        texte, collector = self._lancer(leads)
+        self.assertLessEqual(len(texte), at.LIMITE_SORTIE_MODELE)
+        sortie = json.loads(texte)
+        self.assertEqual(sortie["suite_coupee"], "… (suite coupée : 300 lignes au total)")
+        self.assertTrue(0 < len(sortie["data"]) < 300)
+        self.assertEqual(sortie["data"], leads[:len(sortie["data"])])
+        self.assertEqual(collector[0]["data"], leads)
+
+    def test_page_drf_garde_ses_autres_cles(self):
+        texte, _ = self._lancer({"count": 300, "next": None, "results": self._leads(300)})
+        sortie = json.loads(texte)
+        self.assertLessEqual(len(texte), at.LIMITE_SORTIE_MODELE)
+        self.assertEqual(sortie["data"]["count"], 300)
+        self.assertIn("300 lignes au total", sortie["suite_coupee"])
+
+    def test_petite_sortie_inchangee(self):
+        texte, collector = self._lancer({"results": self._leads(2)})
+        self.assertEqual(json.loads(texte), collector[0])
+        self.assertNotIn("suite_coupee", texte)
+
+    def test_corps_sans_liste_extrait_borne(self):
+        texte, _ = self._lancer({"texte": 'guillemets "échappés" ' * 2000})
+        self.assertLessEqual(len(texte), at.LIMITE_SORTIE_MODELE)
+        sortie = json.loads(texte)
+        self.assertIn("caractères au total", sortie["suite_coupee"])
+        self.assertTrue(sortie["data_extrait"])
 
 
 if __name__ == "__main__":

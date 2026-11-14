@@ -7,7 +7,7 @@
 //   • le bandeau d'état vocal s'affiche (écoute / transcription / lecture / attente).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -41,7 +41,8 @@ const voiceState = {
 }
 vi.mock('../../features/ia/voice/useVoiceChat', () => ({
   __esModule: true,
-  default: () => voiceState,
+  // COP-F6 : on garde les `deps` reçus (rappel `onTexte` de la dictée).
+  default: (deps) => { voiceState.deps = deps; return voiceState },
 }))
 
 import iaReducer from '../../features/ia/store/iaSlice'
@@ -134,11 +135,11 @@ describe('AgentChat — mode conversation (AG12)', () => {
     expect(voiceState.stopConversation).toHaveBeenCalledTimes(1)
   })
 
-  it('bandeau « attente de confirmation » quand la boucle attend un « confirmer »', () => {
+  it('COP-F6 : aucun bandeau « dites confirmer » (la confirmation est un geste du doigt)', () => {
     voiceState.conversationMode = true
     voiceState.loopState = 'awaiting_confirm'
     renderChat()
-    expect(screen.getByTestId('voice-status')).toHaveTextContent(/confirmer/i)
+    expect(screen.queryByTestId('voice-status')).not.toBeInTheDocument()
   })
 
   it('repli : pas de bascule conversation quand non supporté', () => {
@@ -148,19 +149,34 @@ describe('AgentChat — mode conversation (AG12)', () => {
   })
 })
 
-describe('AgentChat — les cartes AG3 restent intactes avec la voix', () => {
+describe('AgentChat — dictée (COP-F6)', () => {
+  it('le texte dicté REMPLIT la zone de saisie sans partir tout seul', () => {
+    renderChat()
+    act(() => { voiceState.deps.onTexte('bonjour la dictée') })
+    expect(screen.getByPlaceholderText(/Posez votre question/)).toHaveValue('bonjour la dictée')
+    act(() => { voiceState.deps.onTexte('suite') })
+    expect(screen.getByPlaceholderText(/Posez votre question/)).toHaveValue('bonjour la dictée suite')
+  })
+})
+
+describe('AgentChat — les cartes restent intactes avec la voix', () => {
   it('la carte proposition reste rendue (la voix ne la casse pas)', () => {
-    renderChat([
-      { role: 'agent', kind: 'proposal', content: '', human_preview: 'Envoyer le devis ?', confirm_token: 'tok-1' },
-    ])
+    renderChat([{
+      role: 'agent', content: '',
+      cartes: [{
+        type: 'proposition', action_key: 'x', libelle: 'X', apercu: 'Envoyer le devis ?',
+        confirm_token: 'tok-1', expire_dans_s: 300, expire_le: Date.now() + 300000, etat: 'a_confirmer',
+      }],
+    }])
     expect(screen.getByTestId('proposal-card')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Confirmer/ })).toBeInTheDocument()
   })
 
   it('la carte résultat reste rendue', () => {
-    renderChat([
-      { role: 'agent', kind: 'result', content: '', reference: 'DEV-1', proposal_url: '/api/django/ventes/devis/1/proposal/' },
-    ])
+    renderChat([{
+      role: 'agent', content: '',
+      cartes: [{ type: 'resultat', action_key: 'x', libelle: 'X', carte: null, donnees: { reference: 'DEV-1' } }],
+    }])
     expect(screen.getByTestId('result-card')).toBeInTheDocument()
   })
 })

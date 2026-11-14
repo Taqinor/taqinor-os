@@ -1,0 +1,67 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/resume/",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « fiche_lead » de l'assistant (AIC31) : la réponse n'avait aucun échantillon, les devis ne portaient pas leur identifiant et la prochaine touche ne portait pas le sien (l'assistant savait qu'un devis existait sans pouvoir le rouvrir, l'envoyer ni préparer la touche). Ajouts (les clés existantes ne changent pas) : `devis[].id`, `prochaine_touche.touche_id` et `prochaine_touche.libelle`. Aucun prix d'achat, aucune marge. `identite.telephone` est vide pour un rôle sans `client_pii_voir`. Lead d'une autre société ou hors portée : 404.",
+  "exemple": {
+    "identite": {
+      "id": 1489,
+      "nom": "Benali",
+      "prenom": "Aziz",
+      "societe": "",
+      "ville": "Casablanca",
+      "telephone": "+212651971400"
+    },
+    "etape": "QUOTE_SENT",
+    "contact_prefere": "whatsapp",
+    "chatter": [
+      {
+        "type": "note",
+        "champ": "",
+        "texte": "Rappeler après 18 h.",
+        "le": "2026-11-12T10:05:00+00:00"
+      }
+    ],
+    "devis": [
+      {
+        "id": 45,
+        "reference": "DEV-202611-0045",
+        "statut": "envoye",
+        "total_ttc": "84500.00",
+        "envoye_le": "2026-11-12T09:40:00+00:00"
+      }
+    ],
+    "visites": [
+      {
+        "date": "2026-11-08",
+        "resultat": "Réalisée"
+      }
+    ],
+    "prochaine_touche": {
+      "touche_id": 412,
+      "libelle": "Relance J+1",
+      "due_at": "2026-11-14T09:30:00+00:00",
+      "due_date": "2026-11-14",
+      "cadence": "apres_devis",
+      "canal": "whatsapp"
+    },
+    "alertes": [
+      "relance_en_retard"
+    ]
+  },
+  "exemple_sans_touche": {
+    "identite": {
+      "id": 77,
+      "nom": "Idrissi",
+      "prenom": "",
+      "societe": "",
+      "ville": "",
+      "telephone": ""
+    },
+    "etape": "NEW",
+    "contact_prefere": "",
+    "chatter": [],
+    "devis": [],
+    "visites": [],
+    "prochaine_touche": null,
+    "alertes": []
+  }
+}

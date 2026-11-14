@@ -480,13 +480,12 @@ class GuardrailTest(TestCase):
         from apps.ventes.agent_actions import (
             LIGNE_AJOUTER, LIGNE_MODIFIER, LIGNE_SUPPRIMER, REMISE_DEVIS,
         )
-        from apps.agent.registry import RISK_INTERNAL, RISK_OUTWARD
-        self.assertEqual(LIGNE_AJOUTER.risk, RISK_INTERNAL)
-        self.assertEqual(LIGNE_MODIFIER.risk, RISK_INTERNAL)
-        self.assertEqual(REMISE_DEVIS.risk, RISK_INTERNAL)
-        # Suppression → confirmation (outward).
-        self.assertEqual(LIGNE_SUPPRIMER.risk, RISK_OUTWARD)
-        self.assertTrue(LIGNE_SUPPRIMER.confirm_summary)
+        from apps.agent.registry import RISK_OUTWARD
+        # COP-G3 — tout ce qui change un montant du devis → confirmation.
+        for action in (LIGNE_AJOUTER, LIGNE_MODIFIER, REMISE_DEVIS,
+                       LIGNE_SUPPRIMER):
+            self.assertEqual(action.risk, RISK_OUTWARD, action.key)
+            self.assertTrue(action.confirm_summary, action.key)
 
     def test_creer_auto_inputs_have_no_company(self):
         from apps.ventes.agent_actions import CREER_AUTO

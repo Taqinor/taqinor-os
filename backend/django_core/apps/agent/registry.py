@@ -26,6 +26,41 @@ RISK_IRREVERSIBLE = 'irreversible'  # destructif / non réversible (suppression�
 
 RISK_CHOICES = frozenset({RISK_INTERNAL, RISK_OUTWARD, RISK_IRREVERSIBLE})
 
+# Carte de résultat — indice de RENDU posé par l'action (contrat
+# ``contract_samples/assistant_reponse.json``). Ensemble FERMÉ : l'écran ne sait
+# rendre que ces cartes (« catalogue contrôlé », jamais une interface écrite par
+# le modèle). ``None`` = carte générique « Action effectuée ». Le relais FastAPI
+# recopie cette valeur telle quelle dans ``cartes[].carte`` ; ``donnees`` y est
+# le corps JSON de l'endpoint de l'action, sans remise en forme.
+CARTES = frozenset({
+    'liste_leads',    # recherche de leads : {total, limite, lignes[]}
+    'file_touches',   # file de suivi : {portee, total, limite, lignes[]}
+    'matin',          # digest du matin : {relances, visites, devis_sans_reponse, …}
+    'fiche_lead',     # résumé d'un lead : {identite, etape, chatter[], devis[], …}
+    'touche',         # une touche prête : {touche, lead, message|appel, refus}
+    'suite_touche',   # touche traitée : étape + prochaine_touche
+    'wa_message',     # texte prêt + lien wa.me (brouillon de suivi)
+    'wa_devis',       # envoi de devis : {wa_url, message, links[], lead_id, devis_ids}
+    'document',       # lien vers un PDF client (/proposal)
+    'visite',         # visite planifiée : {visite, prochaine_touche}
+    'diagnostic',     # état technique (admin) : santé, problèmes récents
+})
+
+# Lot de déploiement d'une action (interrupteur ``ASSISTANT_COPILOTE`` lu par
+# :func:`for_user`) : ``None`` = toujours au catalogue ; ``copilote`` = servie
+# seulement aux comptes pour qui le copilote commercial est ALLUMÉ ; ``herite``
+# = servie seulement tant qu'il est ÉTEINT pour le compte (ancien outil que le
+# copilote remplace). Un outil neuf vu par le modèle change le comportement de
+# production au merge : il naît dans le lot ``copilote``, jamais hors lot.
+LOT_COPILOTE = 'copilote'
+LOT_HERITE = 'herite'
+LOTS = frozenset({LOT_COPILOTE, LOT_HERITE})
+
+# Types d'objets métier qu'une entrée d'action peut désigner (champ ``objets``),
+# résolus en libellés par ``GET /api/django/agent/libelles/`` (contrat
+# ``contract_samples/assistant_libelles.json``).
+OBJETS = frozenset({'lead', 'devis', 'touche', 'facture', 'client'})
+
 
 @dataclass(frozen=True)
 class AgentAction:
@@ -44,6 +79,13 @@ class AgentAction:
         ``apps.roles.models.ALL_PERMISSIONS``.
       * ``risk`` — ``internal`` | ``outward`` | ``irreversible``.
       * ``confirm_summary`` — résumé optionnel à montrer avant exécution.
+      * ``carte`` — carte de résultat à rendre (clé de :data:`CARTES`), ou
+        ``None`` pour la carte générique.
+      * ``lot`` — lot de déploiement (clé de :data:`LOTS`) ou ``None``.
+      * ``objets`` — ``{nom d'entrée: type d'objet}`` (types de
+        :data:`OBJETS`) : quelles entrées désignent un objet métier. Le relais
+        s'en sert pour NOMMER l'objet dans l'aperçu d'une proposition
+        (« Accepter un devis — DEV-202611-0045, Benali » au lieu de « id=45 »).
     """
 
     key: str
@@ -55,6 +97,9 @@ class AgentAction:
     required_permission: Optional[str] = None
     risk: str = RISK_INTERNAL
     confirm_summary: Optional[str] = None
+    carte: Optional[str] = None
+    lot: Optional[str] = None
+    objets: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.risk not in RISK_CHOICES:
@@ -64,6 +109,22 @@ class AgentAction:
             )
         if not self.key:
             raise ValueError('AgentAction: key est obligatoire')
+        if self.carte is not None and self.carte not in CARTES:
+            raise ValueError(
+                f"AgentAction {self.key!r}: carte {self.carte!r} inconnue "
+                f"(attendu l'une de {sorted(CARTES)})"
+            )
+        if self.lot is not None and self.lot not in LOTS:
+            raise ValueError(
+                f"AgentAction {self.key!r}: lot {self.lot!r} inconnu "
+                f"(attendu l'un de {sorted(LOTS)})"
+            )
+        inconnus = sorted(set(self.objets.values()) - OBJETS)
+        if inconnus:
+            raise ValueError(
+                f"AgentAction {self.key!r}: objets {inconnus!r} inconnus "
+                f"(attendu parmi {sorted(OBJETS)})"
+            )
 
     def as_dict(self) -> Dict[str, Any]:
         """Représentation sérialisable (catalogue exposé par l'API)."""
@@ -77,6 +138,9 @@ class AgentAction:
             'required_permission': self.required_permission,
             'risk': self.risk,
             'confirm_summary': self.confirm_summary,
+            'carte': self.carte,
+            'lot': self.lot,
+            'objets': dict(self.objets),
         }
 
 
@@ -202,6 +266,35 @@ def _hidden_keys_for(user) -> set:
     return hidden
 
 
+def copilote_allume_pour(user) -> bool:
+    """Le copilote commercial est-il ALLUMÉ pour ``user`` (COP-G1) ?
+
+    Lit le réglage Django ``ASSISTANT_COPILOTE`` : ``tous`` → allumé pour tout
+    compte ; ``admins`` (défaut) → seulement pour un administrateur (même
+    critère que les vues de l'agent : ``is_admin_role``, superuser compris) ;
+    ``aucun`` ou toute AUTRE valeur (faute de frappe, chaîne vide) → éteint —
+    un interrupteur mal écrit ne doit jamais allumer un outil que le modèle
+    voit."""
+    from django.conf import settings
+
+    mode = str(getattr(settings, 'ASSISTANT_COPILOTE', 'admins') or '')
+    mode = mode.strip().lower()
+    if mode == 'tous':
+        return True
+    if mode == 'admins':
+        return bool(getattr(user, 'is_admin_role', False))
+    return False
+
+
+def _lot_servi(action: AgentAction, copilote: bool) -> bool:
+    """Le lot de déploiement de ``action`` est-il servi selon l'interrupteur ?"""
+    if action.lot == LOT_COPILOTE:
+        return copilote
+    if action.lot == LOT_HERITE:
+        return not copilote
+    return True
+
+
 def for_user(user) -> List[AgentAction]:
     """Sous-ensemble du catalogue que ``user`` a le droit d'exécuter.
 
@@ -214,11 +307,18 @@ def for_user(user) -> List[AgentAction]:
     ARC33 — les actions AUTO-DÉCOUVERTES d'un module ``ModuleToggle``-OFF pour
     la société du caller sont absentes du catalogue (gatage par société,
     quel que soit le rôle — même sémantique que la recherche globale).
+
+    COP-G1 — l'interrupteur ``ASSISTANT_COPILOTE`` (:func:`copilote_allume_pour`)
+    sert le lot ``copilote`` seulement s'il est allumé pour ce compte et le lot
+    ``herite`` seulement s'il est éteint. Tout appelant (catalogue, confirmation
+    d'une action) passe par cette fonction : la règle n'existe qu'ici.
     """
     hidden = _hidden_keys_for(user)
+    copilote = copilote_allume_pour(user)
     return [
         a for a in all_actions()
-        if a.key not in hidden and _user_may_run(user, a)
+        if a.key not in hidden and _lot_servi(a, copilote)
+        and _user_may_run(user, a)
     ]
 
 
@@ -230,19 +330,21 @@ def _register_builtin_actions() -> None:
     ``apps.roles.models.ALL_PERMISSIONS``.
     """
     builtins = [
-        # FG351 — Actions d'ÉCRITURE en langage naturel (« crée un devis pour… »,
-        # « ajoute un lead… », « crée le client… »). Ce sont des écritures
-        # GARDÉES : `risk=RISK_OUTWARD` force le motif propose→confirm côté
-        # relais FastAPI (l'outil renvoie une PROPOSITION signée à confirmer,
-        # il n'exécute JAMAIS directement). Django reste l'autorité finale :
-        # permission ERP + société sont re-vérifiées à l'exécution (la société
-        # est toujours imposée côté serveur via perform_create, jamais lue du
-        # corps fourni par l'agent).
-        # NOTE — l'action « créer un devis » VIDE est retirée à dessein : le
-        # Copilote crée TOUJOURS un devis dimensionné via l'auto-devis
-        # (``ventes.devis.creer_auto`` → POST /ventes/devis/auto/, déclaré dans
-        # apps/ventes/agent_actions.py). On n'expose plus de chemin produisant
-        # un brouillon à 0 DH.
+        # FG351 — Action d'ÉCRITURE en langage naturel (« crée le client… »).
+        # Écriture GARDÉE : `risk=RISK_OUTWARD` force le motif propose→confirm
+        # côté relais FastAPI (l'outil renvoie une PROPOSITION signée à
+        # confirmer, il n'exécute JAMAIS directement). Django reste l'autorité
+        # finale : permission ERP + société sont re-vérifiées à l'exécution (la
+        # société est toujours imposée côté serveur via perform_create, jamais
+        # lue du corps fourni par l'agent).
+        # COP-G2 — retirés du catalogue : ``crm.lead.create`` (doublon masqué :
+        # la déclaration de ``apps/crm/agent_actions.py`` est la seule) et
+        # ``ventes.devis.proposal_pdf`` (même route /proposal que
+        # ``ventes.devis.generer_pdf``, déclarée dans ``apps/ventes``). L'action
+        # « créer un devis » VIDE reste retirée à dessein : le Copilote crée
+        # TOUJOURS un devis dimensionné via l'auto-devis
+        # (``ventes.devis.creer_auto`` → POST /ventes/devis/auto/). On n'expose
+        # plus de chemin produisant un brouillon à 0 DH.
         AgentAction(
             key='crm.client.create',
             label='Créer un client',
@@ -269,51 +371,6 @@ def _register_builtin_actions() -> None:
             required_permission='crm_creer',
             risk=RISK_OUTWARD,
             confirm_summary='Créer la fiche client.',
-        ),
-        AgentAction(
-            key='crm.lead.create',
-            label='Créer un lead',
-            description=(
-                "Crée un nouveau lead (opportunité) pour la société. L'agent "
-                "fournit au moins le nom ; le serveur impose la société et le "
-                "propriétaire. Écriture sensible : confirmation requise avant "
-                "exécution."
-            ),
-            endpoint='/api/django/crm/leads/',
-            method='POST',
-            inputs={
-                'type': 'object',
-                'properties': {
-                    'nom': {'type': 'string'},
-                    'prenom': {'type': 'string'},
-                    'email': {'type': 'string'},
-                    'telephone': {'type': 'string'},
-                    'ville': {'type': 'string'},
-                    'source': {'type': 'string'},
-                },
-                'required': ['nom'],
-            },
-            required_permission='crm_creer',
-            risk=RISK_OUTWARD,
-            confirm_summary='Créer le lead.',
-        ),
-        AgentAction(
-            key='ventes.devis.proposal_pdf',
-            label='Générer le PDF de proposition',
-            description=(
-                "Génère le PDF client (premium) d'un devis via /proposal — "
-                "l'unique chemin de PDF de devis destiné au client."
-            ),
-            endpoint='/api/django/ventes/devis/{id}/proposal/',
-            method='GET',
-            inputs={
-                'type': 'object',
-                'properties': {'id': {'type': 'integer'}},
-                'required': ['id'],
-            },
-            required_permission='ventes_pdf',
-            risk=RISK_OUTWARD,
-            confirm_summary='Produire le PDF de devis destiné au client.',
         ),
         # FG352 — Outil de RÉCUPÉRATION RAG / DocQA. Action de LECTURE pure
         # (risk=internal) : renvoie les passages de documents/manuels les plus
@@ -353,6 +410,9 @@ def _register_builtin_actions() -> None:
             inputs={'type': 'object', 'properties': {}},
             required_permission='crm_voir',
             risk=RISK_INTERNAL,
+            # COP-G2 — outil sans entrée, remplacé par ``crm.lead.chercher``
+            # (lot copilote) : servi seulement tant que le copilote est éteint.
+            lot=LOT_HERITE,
         ),
         # XPLT18 — Proposer une règle d'automatisation en langage naturel.
         # Le LLM produit un brouillon STRUCTURÉ (trigger_type/action_type du
@@ -386,11 +446,48 @@ def _register_builtin_actions() -> None:
                 },
                 'required': ['nom', 'trigger_type', 'action_type'],
             },
-            required_permission=None,
+            # COP-G2 — la route est ``IsAdminRole`` (``roles_gerer``, le critère
+            # d'administrateur) : la permission du catalogue suit la garde réelle
+            # (offerte à un commercial, elle répondait toujours 403).
+            required_permission='roles_gerer',
             risk=RISK_OUTWARD,
             confirm_summary=(
                 "Créer un brouillon de règle d'automatisation (désactivée, "
                 "à valider par un administrateur)."),
+        ),
+        # COP-G6 — diagnostic pour l'ADMINISTRATEUR (« qu'est-ce qui a cassé
+        # hier ? », « l'assistant marche-t-il ? ») : lecture seule de
+        # ``reporting/assistant/diagnostic/`` (problèmes de SA société, santé de
+        # la plateforme pour un super-utilisateur, journal de l'assistant).
+        # Neuve : lot ``copilote`` (le modèle ne la voit que copilote allumé) ;
+        # ``roles_gerer`` = le critère d'administrateur de la route (``IsAdminRole``).
+        AgentAction(
+            key='reporting.assistant.diagnostic',
+            label="Diagnostic de l'ERP et de l'assistant",
+            description=(
+                "Sert à : dire ce qui a cassé récemment dans l'ERP (problèmes "
+                "vécus par les utilisateurs de la société, regroupés), l'état "
+                "de l'assistant (erreurs, repli, coût) et ses signalements "
+                "récents. Ne pas utiliser pour : une question métier (leads, "
+                "devis) ni une panne que tu peux voir à l'écran. Exemple : "
+                "« qu'est-ce qui a cassé hier ? » → jours=1. Résultat : "
+                "problèmes, assistant, signalements ; administrateurs seulement."
+            ),
+            endpoint='/api/django/reporting/assistant/diagnostic/',
+            method='GET',
+            inputs={
+                'type': 'object',
+                'properties': {
+                    'jours': {
+                        'type': 'integer',
+                        'description': 'Fenêtre en jours, de 1 à 7 (défaut 1 : hier).',
+                    },
+                },
+            },
+            required_permission='roles_gerer',
+            risk=RISK_INTERNAL,
+            carte='diagnostic',
+            lot=LOT_COPILOTE,
         ),
         AgentAction(
             key='stock.produit.delete',

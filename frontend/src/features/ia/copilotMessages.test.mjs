@@ -11,6 +11,9 @@ import {
   displayMessageText,
   formatAgentError,
   canSendQuestion,
+  construireContexte,
+  routeNormalisee,
+  ditUnePanne,
   marquerNote,
   NOTE_NEGATIVE,
   NOTE_POSITIVE,
@@ -74,4 +77,41 @@ test('marquerNote pose la note, borne le commentaire et passe à « merci »', (
   const renote = marquerNote(note, NOTE_POSITIVE, '   ')
   assert.equal(renote.note, 1)
   assert.equal(renote.commentaire, null)
+})
+
+// COP-F5 — le contexte est lu AU MOMENT de l'envoi, depuis la route courante.
+test('construireContexte : route normalisée, fiche et devis lus dans la route', () => {
+  assert.deepEqual(construireContexte({ chemin: '/crm/leads/123/' }), {
+    ecran: '/crm/leads/123', lead_id: 123, devis_id: null, touche_id: null, diagnostic: null,
+  })
+  assert.deepEqual(construireContexte({ chemin: '/ventes/devis/45/design?x=1#haut' }), {
+    ecran: '/ventes/devis/45/design', lead_id: null, devis_id: 45, touche_id: null, diagnostic: null,
+  })
+  assert.equal(construireContexte({ chemin: '/crm/relances' }).lead_id, null)
+  assert.equal(construireContexte({ chemin: '/crm/leads/abc' }).lead_id, null)
+})
+
+test('construireContexte : le foyer et le tampon sont posés par l\'écran, l\'événement ne vaut que pour une question', () => {
+  const ctx = construireContexte({
+    chemin: '/crm/relances', foyer: 412, diagnostic: { requetes: [] },
+    detail: { ecran: '/crm/leads/12', lead_id: 12 },
+  })
+  assert.deepEqual(ctx, {
+    ecran: '/crm/leads/12', lead_id: 12, devis_id: null, touche_id: 412, diagnostic: { requetes: [] },
+  })
+  // Sans événement : la route courante, jamais l'ancien lead.
+  assert.equal(construireContexte({ chemin: '/stock/produits' }).lead_id, null)
+  assert.equal(construireContexte({ chemin: '/x', foyer: 'pas un id' }).touche_id, null)
+  assert.equal(routeNormalisee(undefined), '/')
+  assert.equal(routeNormalisee('/a'.repeat(300)).length, 255)
+})
+
+test('ditUnePanne reconnaît une panne dite en français courant, pas une question métier', () => {
+  for (const phrase of ['ça ne marche pas', 'Le bouton Fait ne fonctionne pas', 'j\'ai une erreur', 'bug sur le devis',
+    'c\'est bloqué', 'rien ne se passe quand je clique', 'la page a planté']) {
+    assert.equal(ditUnePanne(phrase), true, phrase)
+  }
+  for (const phrase of ['Combien de leads aujourd\'hui ?', 'Prépare ma prochaine relance', '', null]) {
+    assert.equal(ditUnePanne(phrase), false, String(phrase))
+  }
 })

@@ -1,0 +1,43 @@
+{
+ "id": "P3.3",
+ "tache": "AIC76",
+ "titre": "« Il n'a pas répondu » : carte-écho « Enregistrer : … » avec son effet ; l'appui clôt la touche et annonce la suivante",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "l'écran envoie la touche en cours (1) et reçoit une carte touche",
+  "proposition validée par l'ERP : {\"outcome\":\"non_joint\"}",
+  "le libellé nomme le lead : Aziz Benali — Message d'identité : pas de réponse",
+  "rien n'est écrit tant qu'elle n'a pas appuyé",
+  "bouton « Enregistrer : Aziz Benali — Message d'identité : pas de réponse » visible",
+  "l'effet est écrit sous le bouton : « La touche est faite ; la touche suivante du protocole est programmée à son délai. Annulable 24 h. »",
+  "POST relance-etapes/1/fait/ → 200",
+  "le corps posté est exactement le corps proposé par l'ERP",
+  "la touche est faite en base : fait",
+  "la carte annonce la prochaine touche (« Fait — prochaine touche : Appel d'ouverture — 16/11/2026 »)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query",
+  "200 POST /api/django/crm/relance-etapes/1/fait/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P3.3-carte-echo.png",
+  "P3.3-enregistree.png"
+ ]
+}

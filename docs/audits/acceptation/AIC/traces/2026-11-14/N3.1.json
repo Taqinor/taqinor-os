@@ -1,0 +1,33 @@
+{
+ "id": "N3.1",
+ "tache": "AIC76",
+ "titre": "Carte touche d'un message WhatsApp : texte validé et canal affichés",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "texte validé servi par l'ERP (« Bonjour Aziz, je suis Salma de TAQINOR Démo. Vous venez de n… »)",
+  "le texte affiché sur la carte est exactement le texte validé",
+  "canal WhatsApp affiché avec son bouton",
+  "la carte nomme le lead"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P3.1-carte-touche.png"
+ ]
+}

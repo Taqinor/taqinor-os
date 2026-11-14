@@ -1,0 +1,38 @@
+{
+ "id": "N3.2",
+ "tache": "AIC76",
+ "titre": "« Ouvrir WhatsApp » ouvre wa.me avec le texte validé ; la touche reste à faire, l'ouverture est journalisée",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "une fenêtre s'ouvre dans le geste",
+  "wa.me s'ouvre sur le numéro du lead avec le texte validé (https://wa.me/212651971400?text=Bonjour Aziz, je suis Salma de TAQINOR Démo. Vou…)",
+  "une seule ouverture de WhatsApp (1)",
+  "ouverture journalisée : POST relance-etapes/1/whatsapp/ → 200",
+  "la touche reste à faire : a_faire",
+  "l'heure d'ouverture est portée par la touche",
+  "l'historique du lead porte l'ouverture du message ({\"id\":10,\"kind\":\"whatsapp\",\"field\":null,\"field_label\":null,\"old_value\":null,\"new_value\":null,\"body\":\"WhatsApp ouvert — touche « Message d'identité » (cadence co)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/django/crm/relance-etapes/1/whatsapp/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P3.2-apres-whatsapp.png"
+ ]
+}

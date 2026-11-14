@@ -37,6 +37,7 @@ from .p2p_kpi import kpi_p2p
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
 from .demo_views import demo_resume_view, kpi_onboarding_interne  # NTDMO21/41
+from .assistant_diagnostic import DiagnosticAssistantView
 from .journal_problemes import resume_problemes_service, signaler_probleme
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
@@ -175,4 +176,8 @@ urlpatterns = [
     # BPQ4 — résumé pour la routine de tri quotidien (jeton de service seul).
     path('problemes/resume/', resume_problemes_service,
          name='reporting-problemes-resume'),
+    # COP-G6 — le même résumé, pour l'ADMINISTRATEUR, borné à sa société
+    # (carte « diagnostic » de l'assistant).
+    path('assistant/diagnostic/', DiagnosticAssistantView.as_view(),
+         name='reporting-assistant-diagnostic'),
 ]

@@ -1,0 +1,37 @@
+{
+ "id": "N5.3",
+ "tache": "AIC78",
+ "titre": "Confirmer au doigt : l'accusé est lu, le micro se rouvre",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "confirmation au doigt → 200 ok=true",
+  "l'accusé est lu à voix haute : « Bien noté (faux fournisseur d'acceptation). »",
+  "après la lecture le micro se rouvre (« Écoute en cours… »)",
+  "la remise de 2 % est enregistrée (2.00)",
+  "la carte passe « confirmée »"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/confirm",
+  "200 POST /api/fastapi/sql-agent/transcribe"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P5.3-accuse-lu.png"
+ ]
+}

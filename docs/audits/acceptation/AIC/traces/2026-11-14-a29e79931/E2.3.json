@@ -1,0 +1,62 @@
+{
+ "id": "E2.3",
+ "tache": "AIC75",
+ "titre": "Réglage du merge : la recherche par nom n'est pas servie à la commerciale (l'assistant le dit) ; « Ouvrir la fiche » depuis la file mène à la fiche",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "réglage du merge : la recherche par nom n'est pas servie à la commerciale (« Outil « crm.lead.chercher » absent du catalogue de ce compte. »)",
+  "la file du jour reste servie ; le lead y figure",
+  "la fiche du lead s'ouvre (/crm/leads/4)",
+  "la fiche est chargée depuis l'ERP (200)",
+  "le tiroir du Copilote se referme : la fiche est à l'écran (téléphone)",
+  "la fiche affiche le lead"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "PASS",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query ×2",
+  "200 GET /api/django/core/jobs-status/",
+  "200 GET /api/django/notifications/attention-summary/ ×2",
+  "200 GET /api/django/notifications/notifications/unread-count/",
+  "201 POST /api/django/adminops/tracker-usage/",
+  "200 GET /api/django/crm/leads/4/ ×2",
+  "200 GET /api/django/crm/relance-etapes/journal/",
+  "200 GET /api/django/crm/relance-etapes/ ×2",
+  "200 GET /api/django/crm/leads/4/visites/ ×2",
+  "200 GET /api/django/crm/leads/4/photo-toit/",
+  "200 GET /api/django/crm/leads/4/duplicates/",
+  "200 GET /api/django/crm/leads/4/client-match/",
+  "200 GET /api/django/custom-fields/definitions/",
+  "200 GET /api/django/crm/assignable-users/",
+  "200 GET /api/django/uxviews/favoris/",
+  "200 GET /api/django/crm/leads/4/jalons-devis/",
+  "200 GET /api/django/crm/appointments/",
+  "200 GET /api/django/crm/leads/4/points-contact/",
+  "200 GET /api/django/crm/canaux/",
+  "200 GET /api/django/records/activities/",
+  "200 GET /api/django/records/attachments/",
+  "200 GET /api/django/stock/produits/",
+  "200 GET /api/django/crm/leads/check-duplicates/",
+  "200 GET /api/django/crm/tags/",
+  "200 GET /api/django/crm/motifs-perte/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P2.3-recherche.png",
+  "P2.3-fiche.png"
+ ]
+}

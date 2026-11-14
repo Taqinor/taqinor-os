@@ -1,0 +1,37 @@
+{
+ "id": "P4.1",
+ "tache": "AIC77",
+ "titre": "Depuis une fiche lead, panneau jamais ouvert : « Demander à l'assistant » ouvre le tiroir et la réponse parle de ce lead",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "le panneau n'a pas encore été ouvert sur cette page",
+  "le tiroir s'ouvre au premier clic",
+  "la question part avec le contexte de la fiche ({\"ecran\":\"/crm/leads/4\",\"lead_id\":4})",
+  "la réponse est la fiche de ce lead (carte fiche_lead)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 GET /api/fastapi/sql-agent/history",
+  "200 GET /api/fastapi/sql-agent/suggestions",
+  "200 POST /api/fastapi/sql-agent/query"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P4.1-demander.png"
+ ]
+}

@@ -37,6 +37,30 @@
  },
  {
   "actions_map": null,
+  "motif": "assistant/leads/",
+  "nom": "assistant-leads",
+  "vue": "leads_recherche"
+ },
+ {
+  "actions_map": null,
+  "motif": "assistant/leads/<int:lead_id>/message-visite/",
+  "nom": "assistant-message-visite",
+  "vue": "lead_message_visite"
+ },
+ {
+  "actions_map": null,
+  "motif": "assistant/leads/<int:lead_id>/whatsapp-devis-apercu/",
+  "nom": "assistant-whatsapp-devis-apercu",
+  "vue": "lead_whatsapp_devis_apercu"
+ },
+ {
+  "actions_map": null,
+  "motif": "assistant/touches/<int:touche_id>/",
+  "nom": "assistant-touche",
+  "vue": "touche_assistant"
+ },
+ {
+  "actions_map": null,
   "motif": "cockpit-equipe/",
   "nom": "cockpit-equipe",
   "vue": "cockpit_equipe"

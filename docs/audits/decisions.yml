@@ -4616,3 +4616,43 @@ decisions:
     date: "2026-11-13"
     source: "Reda, question interactive, 13/11/2026 (session loop audit) ; avant : audit de parcours PF12 (11/11/2026) : non posée (défaut recommandé : annuler_comme_kanban)"
     taches: [AERR69, AERR119]
+
+  - id: D-COP-1
+    question: "L'assistant des commerciaux est payé par les crédits API inclus (100 $ par mois, sans report) ; une journée de travail « tout à la voix » d'une commerciale est estimée à 4-5 $, soit l'essentiel du crédit. Que fait l'ERP quand le budget est atteint ?"
+    options:
+      - cle: plafond_jour_message_arret
+        texte: "Rester dans les crédits inclus : un plafond par jour et par commercial lu du journal de l'assistant, un avertissement à 80 %, puis un message d'arrêt clair (les boutons des cartes restent utilisables) ; revoir après deux semaines de coût mesuré"
+      - cle: credit_prepaye
+        texte: "Ajouter un crédit prépayé sur la Console (revient sur le choix « aucune carte sur la Console »)"
+      - cle: repli_groq_seul
+        texte: "Au plafond, tout passe au modèle gratuit de repli (Groq), sans arrêt"
+    reponse: ouverte
+    date: "2026-11-14"
+    source: "copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 1, critique de complétude G2) : non posée, fondateur absent pendant la construction (défaut recommandé : plafond_jour_message_arret)"
+    taches: [AIC90]
+
+  - id: D-COP-2
+    question: "Sur le chemin de l'assistant, faut-il appliquer strictement le Guide de la commerciale (sa marge de remise, aucun prix de ligne modifié) ? Aujourd'hui le seuil d'approbation des remises est vide par défaut (sa valeur en production n'a pas été lue) et une baisse de prix de LIGNE n'est jamais comptée comme une remise, même seuil réglé."
+    options:
+      - cle: guide_strict
+        texte: "Oui : régler en production le seuil d'approbation à la marge de la commerciale, et compter une baisse de prix de ligne comme une remise pour ce seuil (à l'écran comme par l'assistant)"
+      - cle: memes_libertes_que_l_ecran
+        texte: "Non : l'assistant a les mêmes libertés que les écrans ; seule la confirmation (déjà livrée) s'ajoute"
+    reponse: ouverte
+    date: "2026-11-14"
+    source: "copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 2 ; vérification de l'enquête : profondeur_remise_effective prend le prix courant de la ligne) : non posée (défaut recommandé : guide_strict)"
+    taches: [AIC98]
+
+  - id: D-COP-4
+    question: "Allumer le copilote et le moteur natif pour toute l'équipe envoie au fournisseur du modèle, à chaque question, des noms et numéros de clients (avis du juriste sur la loi 09-08 et le transfert hors du Maroc attendu depuis le 27/10). Combien de temps garder les conversations, et peut-on allumer pour l'équipe avant l'avis ?"
+    options:
+      - cle: redis_48h_avant_avis
+        texte: "Rien de durable : conversations gardées 48 h au plus en Redis (défaut de la construction), allumage pour l'équipe permis après l'essai réel, données minimisées (noms et téléphones seulement par les outils)"
+      - cle: attendre_avis_juriste
+        texte: "Ne rien allumer pour l'équipe avant l'avis du juriste ; administrateurs seulement"
+      - cle: garde_30_jours_base
+        texte: "Garder les conversations 30 jours en base"
+    reponse: ouverte
+    date: "2026-11-14"
+    source: "copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 4, critique de complétude G13) : non posée (défaut recommandé : redis_48h_avant_avis)"
+    taches: [AIC89]

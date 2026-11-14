@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: d11f087c380fb9eea2d554822c115c6b9bc7c92f592dc7c40e242cf8323e4f77
+Structure fingerprint: 8417b1aab14d946a35151d350eac93a536a7eb0879005434cc2aec31ef5ee4a7
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -381,11 +381,24 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **ged** : `pdf_etat.py` (`PdfInexploitable`), `corps_requete.py` (arbres de conditions typés, `nom_fichier_sur`).
 - **crm** : `params_requete.py` (`rejeter_param_repete`, corps `reorder`), `schema_docs.py` (`param_*_ou_vide`), `champs_api.CoordonneeGps`.
 
+### agent / crm / ventes / reporting / fastapi_ia / frontend ia — Copilote commercial (14/11/2026, tâches AIC60-AIC99, dossier `docs/assistant-copilote.md`)
+
+- **Deux interrupteurs** (éteints pour l'équipe au merge) : Django `ASSISTANT_COPILOTE` = `aucun` | `admins` (défaut) | `tous` (qui reçoit les actions du lot `copilote`) ; FastAPI `ASSISTANT_MOTEUR` = `langchain` (défaut) | `natif`.
+- **agent** : `registry.py` — `AgentAction.carte` (catalogue fermé `CARTES`), `.lot` (`copilote` / `herite`), `.objets` ; `copilote_allume_pour(user)` filtre `for_user` ET la confirmation ; `GET agent/libelles/` (`views.py::LibellesObjetsView` : nom lisible d'un lead / devis / touche / facture / client, dans la portée et le droit de lire le module) ; journal `AssistantEvent` : `tokens.cache_write` compté au coût (`services.py::PRIX_MTOK_USD`), `erreur.request_id` et `erreur.diagnostic` bornés (`borner_erreur`). Contrats : `contract_samples/assistant_{reponse,document,libelles,evenement,stats}.json`.
+- **crm** : `assistant_touches.py` (`GET crm/assistant/touches/<id>/` = touche prête + texte validé ; `?geste=fait|reporter|sauter` = carte-écho : le serveur VALIDE sans écrire et rend `proposition {geste, libelle, effet, corps}` postée telle quelle au vrai geste `relance-etapes/<id>/…`), `views_assistant.py` (recherche de leads, file, matin, fiche, message de visite, aperçu d'envoi de devis avec `lead_id` / `devis_ids` / `langue`), `selectors_libelles.py`, actions `crm.*` dans `agent_actions.py` (jamais `SIGNED` ni `COLD` par l'assistant).
+- **ventes** : actions de devis à confirmer (remise, lignes), `ventes.devis.generer_pdf` → carte `document` (lien `/proposal`, règle #4), `selectors_libelles.py`.
+- **reporting** : `assistant_diagnostic.py` — `GET reporting/assistant/diagnostic/` (administrateur, borné à la société ; `plateforme` au super-utilisateur seulement).
+- **fastapi_ia** (`app/services/`) : `action_tools.py` (catalogue → outils, propositions signées à usage unique, clé d'idempotence = empreinte du jeton, cartes), `cartes.py`, `relais_copilote.py` (en-tête de tour, moteur du tour, reprise après confirmation), `prompt_copilote.py` (consignes + date et heure de Casablanca), `moteur_natif.py` (boucle Messages native, conversation en Redis 48 h), `sql_agent_service.py` (moteur LangChain) ; manuel et manifeste générés dans `assistant/`.
+- **frontend** : `features/ia/cartes/` (`CartesDuMessage.jsx` aiguille par `carte` ; `CarteTouche.jsx` embarque `RelanceEtapeRow` ; `useCarte.js`), `features/ia/voice/` (aucune confirmation à la voix), `CopilotPanel.jsx` (« Signaler un bug »), `lib/tamponDiagnostic.js` (relevé technique en mémoire, alimenté par `api/axios.js` et `lib/globalErrors.js`).
+- **Acceptation en direct** : `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md` (23 étapes d'écran, deux moteurs).
+
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
 `ocr.py` (Zhipu/GLM vision invoice + document OCR, key-gated by `ZHIPU_API_KEY`) and
-`sql_agent.py` (LangChain natural-language -> SQL with a propose/confirm step, key-gated by
-`GROQ_API_KEY` or an alternative). Both JWT-protected, both no-op without their key.
+`sql_agent.py` (the sales assistant: natural-language questions, registry-driven actions with a
+propose/confirm step, typed result cards; key-gated by the key of `SQL_AGENT_PROVIDER` —
+`GROQ_API_KEY` by default, `CLAUDE_API_KEY` when the provider is `claude` — see the Copilote
+commercial section above). Both JWT-protected, both no-op without their key.
 
 ---
 
@@ -469,7 +482,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 - **adsengine** — the « Publicité » console (module.config-registered, no slice: `hooks.js`/`adsengineApi.js`), 25 screens under `/publicite`, `TenantBrand.jsx` (white-label clean), DOM hooks `ae-*`.
 - **portail** — client-portal administration + the client-facing portal screens.
 - **admin / adminops / entites / audit / uxviews / tiers / notifications / onboarding / core** — administration, audit log, saved views, party directory, notification prefs, « Premiers pas », the « Données » explorer.
-- **ia** — AI assistant chat (registry-driven actions with propose->confirm + result cards, voice input, hands-free mode) + OCR; `iaSlice.js`, `voice/`.
+- **ia** — AI assistant chat (registry-driven actions with propose->confirm + typed result cards in `cartes/`, voice input, hands-free mode) + OCR; `iaSlice.js`, `voice/`, `cartes/`.
 - **offlinesync** — mobile-first role homes under `/mobile/*` + `readCache.js`, `AFaireAujourdhui.jsx`.
 - **pwa** — auto-update service worker UI, `appLock.js` + `AppLockGate.jsx`.
 - **kanban / queue** — shared libraries **deliberately kept** (consumed by CRM and notifications), not modules.

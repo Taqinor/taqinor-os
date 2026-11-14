@@ -530,13 +530,13 @@ jobs:
       - name: Run FastAPI test suite (NL→SQL security / JWT / OCR / margin guard)
         working-directory: backend/fastapi_ia
         # ADEP14 : un test sauté (import cassé, dépendance absente) ou un nombre
-        # de tests sous le plancher mesuré (218, ne fait que monter) rougit le
+        # de tests sous le plancher mesuré (380 le 13/11/2026 — 392 tests —, ne fait que monter) rougit le
         # job — `OK (skipped=8)` laissait la garde de marge prix_achat « passer »
         # sans avoir tourné. Le verificateur recopie la sortie telle quelle.
         run: |
           set -o pipefail
           python -m unittest discover -s tests -v 2>&1 \
-            | python ../../scripts/verifier_sortie_unittest.py --plancher 218
+            | python ../../scripts/verifier_sortie_unittest.py --plancher 380
 
   # api-fuzz — DÉPLACÉ (24/10/2026, décision fondateur) : le fuzz d'API tourne sur
   # la population ENTIÈRE, en 16 tranches, chaque dimanche dans

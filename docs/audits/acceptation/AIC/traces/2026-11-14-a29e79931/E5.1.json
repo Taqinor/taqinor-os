@@ -1,0 +1,34 @@
+{
+ "id": "E5.1",
+ "tache": "AIC78",
+ "titre": "Dicter « fais une remise de 2 % … » : le texte remplit la zone de saisie, rien ne part",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "le micro écoute (« Écoute en cours… »)",
+  "la dictée remplit la zone de saisie : « Fais une remise de 2 % sur le devis 8 »",
+  "rien n'est parti : aucune question envoyée au modèle"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/transcribe"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P5.1-dictee.png"
+ ]
+}

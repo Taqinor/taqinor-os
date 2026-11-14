@@ -5,12 +5,13 @@
 // l'arrête. Avec barge-in (parler interrompt la réponse parlée) et un arrêt
 // toujours disponible.
 //
-// SÉCURITÉ CRITIQUE (rule founder #4 / AG3) : la boucle NE confirme JAMAIS
-// automatiquement une action sortante/irréversible. Quand une réponse de l'agent
-// est une PROPOSITION (carte de confirmation AG3), la machine passe à
-// `awaiting_confirm` : elle lit l'aperçu à voix haute et ATTEND un « confirmer »
-// parlé explicite (ou un tap) avant d'exécuter. N'importe quel autre énoncé est
-// traité comme une nouvelle question — jamais comme une confirmation implicite.
+// SÉCURITÉ CRITIQUE (rule founder #4 / AG3 ; COP-F6) : AUCUNE confirmation à la
+// voix. Une action sensible est une PROPOSITION (carte de confirmation) que la
+// commerciale confirme d'un DOIGT : la boucle lit l'aperçu, dit d'appuyer sur
+// « Confirmer » à l'écran, puis ré-ouvre le micro. Rien de ce qui se dit ne
+// confirme quoi que ce soit — avant COP-F6, « non je ne confirme pas » EXÉCUTAIT
+// l'action (la phrase contenait « confirme »). Il n'existe donc plus de chemin
+// voix → confirmation (ni mots-clés, ni état d'attente, ni `confirm()`).
 //
 // Ce module est PUR (aucune dépendance DOM / navigateur) pour être testable en
 // `node:test`. Le hook `useVoiceChat` câble les effets réels (micro, synthèse
@@ -23,60 +24,23 @@ export const LOOP_STATES = Object.freeze({
   TRANSCRIBING: 'transcribing', // clip envoyé à /transcribe
   THINKING: 'thinking',    // question envoyée à l'agent, on attend la réponse
   SPEAKING: 'speaking',    // réponse lue à voix haute
-  AWAITING_CONFIRM: 'awaiting_confirm', // action sensible : on attend « confirmer »
 })
 
-// Mots déclenchant une confirmation explicite parlée (FR + darija courante).
-// Normalisés (sans accents, minuscules) avant comparaison.
-const CONFIRM_WORDS = ['confirmer', 'confirme', 'confirmé', 'oui confirme', 'valider', 'valide']
-// Mots d'annulation explicite parlée.
-const CANCEL_WORDS = ['annuler', 'annule', 'non', 'annulé', 'stop']
-
-// Normalise un énoncé pour la comparaison : minuscules, sans accents, espaces
-// réduits. Renvoie '' pour une entrée vide / non-chaîne.
-export function normalizeUtterance(text) {
-  if (!text || typeof text !== 'string') return ''
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // retire les diacritiques
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-// Vrai si l'énoncé est une CONFIRMATION explicite (« confirmer »…).
-export function isConfirmUtterance(text) {
-  const n = normalizeUtterance(text)
-  if (!n) return false
-  return CONFIRM_WORDS.some((w) => n === w || n.startsWith(w + ' ') || n.endsWith(' ' + w) || n.includes(' ' + w + ' '))
-}
-
-// Vrai si l'énoncé est une ANNULATION explicite (« annuler »…).
-export function isCancelUtterance(text) {
-  const n = normalizeUtterance(text)
-  if (!n) return false
-  return CANCEL_WORDS.some((w) => n === w || n.startsWith(w + ' ') || n.endsWith(' ' + w) || n.includes(' ' + w + ' '))
-}
+// Phrase lue après l'aperçu d'une proposition : la confirmation est un geste du doigt.
+export const PHRASE_CONFIRMER_AU_DOIGT = 'Pour valider, appuyez sur « Confirmer » à l’écran.'
 
 // Crée une machine à états de la boucle conversation.
 //
 // `handlers` (tous optionnels — la machine reste pure et synchrone) :
 //   startListening()  — ouvrir le micro pour un tour
 //   stopListening()   — fermer le micro
-//   transcribe(blob)  — renvoyer (async, géré par le hook) le texte
 //   ask(text)         — envoyer la question à l'agent
 //   speak(text)       — lire un texte à voix haute
 //   stopSpeaking()    — couper la synthèse (barge-in)
-//   confirm(token)    — exécuter l'action sensible confirmée
 //   onState(state)    — notifié à chaque changement d'état
-//
-// La machine n'appelle JAMAIS confirm() sans un `event('confirm')` (ou
-// `userSays` reconnu comme confirmation) reçu pendant `awaiting_confirm`.
 export function createConversationLoop(handlers = {}) {
   let state = LOOP_STATES.IDLE
   let running = false
-  // Proposition en attente quand on est dans `awaiting_confirm`.
-  let pendingProposal = null
 
   const h = handlers
 
@@ -104,7 +68,6 @@ export function createConversationLoop(handlers = {}) {
   // Arrête tout immédiatement (bouton stop toujours visible).
   function stop() {
     running = false
-    pendingProposal = null
     h.stopListening?.()
     h.stopSpeaking?.()
     setState(LOOP_STATES.IDLE)
@@ -124,47 +87,14 @@ export function createConversationLoop(handlers = {}) {
     setState(LOOP_STATES.TRANSCRIBING)
   }
 
-  // Appelé par le hook avec le texte transcrit du dernier clip.
+  // Appelé par le hook avec le texte transcrit du dernier clip. Un énoncé est
+  // TOUJOURS une question : il ne confirme jamais rien (COP-F6).
   function onTranscript(text) {
     if (!running) return
+    // Un accusé (action confirmée au doigt) a pu prendre la main pendant
+    // l'écoute : le clip en cours est ignoré, la fin de lecture rouvre le micro.
+    if (state !== LOOP_STATES.TRANSCRIBING) return
     const utterance = (text || '').trim()
-
-    // En attente de confirmation : SEUL un « confirmer » exécute ; « annuler »
-    // écarte ; tout autre énoncé est traité comme une nouvelle question (jamais
-    // une confirmation implicite).
-    if (state === LOOP_STATES.AWAITING_CONFIRM) {
-      if (isConfirmUtterance(utterance)) {
-        const token = pendingProposal?.confirm_token ?? null
-        pendingProposal = null
-        if (token) {
-          h.confirm?.(token)
-          // L'exécution est asynchrone (gérée par le hook) ; on repassera en
-          // SPEAKING via onAnswer/onActionDone, puis en écoute.
-          setState(LOOP_STATES.THINKING)
-          return
-        }
-        // Pas de token confirmable : on repart en écoute sans rien exécuter.
-        beginListening()
-        return
-      }
-      if (isCancelUtterance(utterance)) {
-        pendingProposal = null
-        beginListening()
-        return
-      }
-      // Énoncé non reconnu pendant l'attente : on NE confirme PAS. On le traite
-      // comme une nouvelle question.
-      pendingProposal = null
-      if (!utterance) {
-        beginListening()
-        return
-      }
-      setState(LOOP_STATES.THINKING)
-      h.ask?.(utterance)
-      return
-    }
-
-    // Tour normal.
     if (!utterance) {
       // Rien d'exploitable : on ré-ouvre le micro.
       beginListening()
@@ -174,49 +104,47 @@ export function createConversationLoop(handlers = {}) {
     h.ask?.(utterance)
   }
 
-  // Appelé par le hook quand l'agent a répondu. `message` est le message agent
-  // normalisé (peut être `{ kind:'proposal', human_preview, confirm_token }`).
+  // Appelé par le hook quand l'agent a répondu. `message` : `{ content,
+  // proposition?: true, apercu? }` — `proposition` vrai quand la réponse porte
+  // une carte à confirmer.
   function onAnswer(message) {
     if (!running) return
-    const isProposal = message?.kind === 'proposal'
-
-    if (isProposal) {
-      // ACTION SENSIBLE : on NE confirme PAS. On lit l'aperçu et on attend un
-      // « confirmer » explicite.
-      pendingProposal = message
-      const preview = message.human_preview || message.content || ''
-      setState(LOOP_STATES.AWAITING_CONFIRM)
-      const prompt = preview
-        ? `${preview} Dites « confirmer » pour valider, ou « annuler ».`
-        : 'Confirmation requise. Dites « confirmer » pour valider, ou « annuler ».'
-      h.speak?.(prompt)
+    const texte = message?.content ?? (typeof message === 'string' ? message : '')
+    if (message?.proposition) {
+      // ACTION SENSIBLE : on lit l'aperçu et on dit d'appuyer ; on ne confirme PAS.
+      const apercu = message.apercu || texte
+      const ecoutaitAvant = state === LOOP_STATES.LISTENING
+      setState(LOOP_STATES.SPEAKING)
+      if (ecoutaitAvant) h.stopListening?.()
+      h.speak?.(apercu ? `${apercu} ${PHRASE_CONFIRMER_AU_DOIGT}` : PHRASE_CONFIRMER_AU_DOIGT)
       return
     }
-
-    // Réponse normale : on la lit, puis (à la fin) on ré-ouvre le micro.
-    const text = message?.content ?? (typeof message === 'string' ? message : '')
+    // Réponse normale : on la lit, puis (à la fin) on ré-ouvre le micro. Arrivée
+    // PENDANT l'écoute (question tapée au clavier) : le micro se ferme d'abord —
+    // jamais deux captures ouvertes.
+    const ecoutait = state === LOOP_STATES.LISTENING
     setState(LOOP_STATES.SPEAKING)
-    h.speak?.(text)
+    if (ecoutait) h.stopListening?.()
+    h.speak?.(texte)
   }
 
-  // Appelé par le hook quand la synthèse vocale d'un tour normal est terminée.
+  // Appelé par le hook quand la lecture est terminée (ou impossible) : le micro
+  // se ré-ouvre TOUJOURS — il ne reste jamais bloqué après une réponse.
   function onSpeechSpoken() {
     if (!running) return
-    if (state === LOOP_STATES.SPEAKING) {
-      beginListening()
-    }
-    // En AWAITING_CONFIRM la fin de lecture de l'aperçu NE relance PAS l'écoute
-    // libre : on attend explicitement la confirmation (le hook ré-ouvre le micro
-    // pour capter « confirmer » sans changer d'état — voir useVoiceChat).
+    if (state === LOOP_STATES.SPEAKING) beginListening()
   }
 
-  // Appelé par le hook quand l'exécution d'une action confirmée est terminée
-  // (carte résultat) — on lit un accusé puis on repart en écoute.
+  // Une action confirmée au doigt est terminée (carte résultat) — on lit un
+  // accusé puis on repart en écoute.
   function onActionDone(message) {
     if (!running) return
-    const text = message?.content || 'Action effectuée.'
+    // Confirmée au doigt PENDANT l'écoute : le micro se ferme le temps de lire
+    // l'accusé (jamais deux captures ouvertes), puis `onSpeechSpoken` le rouvre.
+    const ecoutait = state === LOOP_STATES.LISTENING
     setState(LOOP_STATES.SPEAKING)
-    h.speak?.(text)
+    if (ecoutait) h.stopListening?.()
+    h.speak?.(message?.content || 'Action effectuée.')
   }
 
   // Barge-in : l'utilisateur parle pendant que l'agent lit → on coupe la synthèse
@@ -225,21 +153,6 @@ export function createConversationLoop(handlers = {}) {
     if (!running) return
     if (state === LOOP_STATES.SPEAKING) {
       h.stopSpeaking?.()
-      beginListening()
-    }
-  }
-
-  // Tap explicite « Confirmer » (équivalent au « confirmer » parlé) pendant
-  // l'attente — JAMAIS automatique.
-  function confirmByTap() {
-    if (!running) return
-    if (state !== LOOP_STATES.AWAITING_CONFIRM) return
-    const token = pendingProposal?.confirm_token ?? null
-    pendingProposal = null
-    if (token) {
-      h.confirm?.(token)
-      setState(LOOP_STATES.THINKING)
-    } else {
       beginListening()
     }
   }
@@ -255,8 +168,5 @@ export function createConversationLoop(handlers = {}) {
     onSpeechSpoken,
     onActionDone,
     onBargeIn,
-    confirmByTap,
-    // Exposé pour les tests / le hook.
-    get pendingProposal() { return pendingProposal },
   }
 }

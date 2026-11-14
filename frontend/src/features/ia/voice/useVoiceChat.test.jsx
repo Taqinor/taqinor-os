@@ -3,8 +3,9 @@
 // l'injection `deps.env`, donc le test tourne headless. On couvre :
 //   • les helpers purs (support, choix de voix, MIME, RMS),
 //   • le repli navigateur non supporté (recordingSupported=false),
-//   • le happy path AG11 (capture → transcribe → queryAgent),
-//   • le garde-fou de sécurité AG12 (une proposition NE confirme JAMAIS seule).
+//   • le happy path AG11 (capture → transcribe → zone de saisie, COP-F6 : la
+//     dictée ne part plus toute seule),
+//   • le garde-fou de sécurité AG12/COP-F6 (aucune confirmation à la voix).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
@@ -12,9 +13,12 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import React from 'react'
 
-import iaReducer from '../store/iaSlice'
+import iaReducer, { confirmAgentAction, ajouterMessageLocal } from '../store/iaSlice'
+import { ETATS } from '../cartes/cartes'
 import {
   useVoiceChat,
+  propositionsConfirmees,
+  accuseDeConfirmation,
   isRecordingSupported,
   isSpeechSynthesisSupported,
   isSilenceDetectionSupported,
@@ -70,8 +74,10 @@ describe('useVoiceChat — helpers purs', () => {
 })
 
 // ── Harnais hook ────────────────────────────────────────────────────────────
-function makeStore() {
-  return configureStore({ reducer: { ia: iaReducer } })
+function makeStore(messages = null) {
+  if (!messages) return configureStore({ reducer: { ia: iaReducer } })
+  const initial = iaReducer(undefined, { type: '@@INIT' })
+  return configureStore({ reducer: { ia: iaReducer }, preloadedState: { ia: { ...initial, messages } } })
 }
 
 function wrapper(store) {
@@ -130,15 +136,16 @@ describe('useVoiceChat — repli navigateur non supporté', () => {
   })
 })
 
-describe('useVoiceChat — happy path AG11 (capture → transcribe → queryAgent)', () => {
+describe('useVoiceChat — happy path AG11 (capture → transcribe → zone de saisie)', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
-  it('un tour micro transcrit puis dispatch queryAgent avec le texte', async () => {
+  it('un tour micro transcrit puis REMPLIT la saisie (aucune question envoyée seule)', async () => {
     const store = makeStore()
     const env = makeMockEnv()
     const transcribe = vi.fn(() => Promise.resolve({ data: { text: 'combien de clients', language: 'fr' } }))
+    const onTexte = vi.fn()
     const { result } = renderHook(
-      () => useVoiceChat({ env, transcribe }),
+      () => useVoiceChat({ env, transcribe, onTexte }),
       { wrapper: wrapper(store) },
     )
     expect(result.current.recordingSupported).toBe(true)
@@ -152,11 +159,9 @@ describe('useVoiceChat — happy path AG11 (capture → transcribe → queryAgen
     await act(async () => { result.current.toggleRecording() })
     await waitFor(() => expect(transcribe).toHaveBeenCalled())
 
-    // queryAgent a poussé un message user dans le store.
-    await waitFor(() => {
-      const msgs = store.getState().ia.messages
-      expect(msgs.some((m) => m.role === 'user' && m.content === 'combien de clients')).toBe(true)
-    })
+    // COP-F6 : le texte est remis à l'écran pour relecture ; rien n'est envoyé.
+    await waitFor(() => expect(onTexte).toHaveBeenCalledWith('combien de clients'))
+    expect(store.getState().ia.messages).toEqual([])
   })
 
   it('transcription indisponible (available:false) → erreur visible, pas de question', async () => {
@@ -183,16 +188,74 @@ describe('useVoiceChat — sécurité AG12 (pas d\'auto-confirmation)', () => {
     expect(result.current.voiceError).toMatch(/mode conversation/i)
   })
 
-  it('confirmByVoiceTap NE confirme PAS hors d\'une proposition en attente', async () => {
+  it('COP-F6 : propositionsConfirmees compte les cartes confirmées et rend le dernier libellé', () => {
+    expect(propositionsConfirmees(null)).toEqual({ nombre: 0, libelle: '' })
+    const messages = [
+      { role: 'agent', cartes: [{ type: 'proposition', etat: ETATS.A_CONFIRMER, libelle: 'A' }] },
+      { role: 'agent', cartes: [
+        { type: 'proposition', etat: ETATS.CONFIRMEE, libelle: 'Appliquer une remise au devis' },
+        { type: 'resultat', etat: ETATS.CONFIRMEE, libelle: 'jamais compté' },
+      ] },
+    ]
+    expect(propositionsConfirmees(messages)).toEqual({ nombre: 1, libelle: 'Appliquer une remise au devis' })
+    expect(accuseDeConfirmation('Appliquer une remise au devis')).toBe('C’est fait : Appliquer une remise au devis.')
+    expect(accuseDeConfirmation('')).toBe('Action effectuée.')
+  })
+
+  it('COP-F6 : confirmée au doigt en mode conversation, sans nouveau message → l\'accusé est lu', async () => {
+    // Moteur sans reprise (LangChain) : /confirm ne pousse aucun message, la
+    // carte change seulement d'état — c'est ce changement qui déclenche la lecture.
+    const store = makeStore([
+      { role: 'user', content: 'fais une remise de 2 %' },
+      { role: 'agent', content: '', cartes: [
+        { type: 'proposition', etat: ETATS.A_CONFIRMER, libelle: 'Appliquer une remise au devis', confirm_token: 'j' },
+      ] },
+    ])
+    const env = makeMockEnv()
+    const { result } = renderHook(() => useVoiceChat({ env, transcribe: vi.fn() }), { wrapper: wrapper(store) })
+    await act(async () => { result.current.startConversation() })
+    expect(result.current.conversationMode).toBe(true)
+    expect(env.speechSynthesis.speak).not.toHaveBeenCalled()
+    await act(async () => {
+      store.dispatch({
+        type: confirmAgentAction.fulfilled.type,
+        payload: { ok: true, action_key: 'ventes.devis.remise', data: {} },
+        meta: { arg: { token: 'j', index: 1, carte: 0 } },
+      })
+    })
+    expect(store.getState().ia.messages).toHaveLength(2)
+    await waitFor(() => expect(env.speechSynthesis.speak).toHaveBeenCalledTimes(1))
+    expect(env.speechSynthesis.speak.mock.calls[0][0].text).toBe('C’est fait : Appliquer une remise au devis.')
+    // Une proposition DÉJÀ confirmée avant l'ouverture du mode n'est jamais relue.
+    act(() => { result.current.stopConversation() })
+    await act(async () => { result.current.startConversation() })
+    expect(env.speechSynthesis.speak).toHaveBeenCalledTimes(1)
+    act(() => { result.current.stopConversation() })
+  })
+
+  it('COP-F6 : une carte posée par un bouton (message local) ne lit rien et n\'ouvre pas une seconde capture', async () => {
+    const store = makeStore([{ role: 'user', content: 'ma file' }, { role: 'agent', content: 'Voici.', cartes: [] }])
+    const env = makeMockEnv()
+    const { result } = renderHook(() => useVoiceChat({ env, transcribe: vi.fn() }), { wrapper: wrapper(store) })
+    await act(async () => { result.current.startConversation() })
+    await waitFor(() => expect(env.navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      store.dispatch(ajouterMessageLocal({ role: 'agent', content: '', local: true, cartes: [] }))
+    })
+    expect(store.getState().ia.messages).toHaveLength(3)
+    expect(env.speechSynthesis.speak).not.toHaveBeenCalled()
+    expect(env.navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+    expect(result.current.loopState).toBe('listening')
+    act(() => { result.current.stopConversation() })
+  })
+
+  it('COP-F6 : le hook n\'expose aucun chemin de confirmation vocale', () => {
     const store = makeStore()
     const env = makeMockEnv()
     const { result } = renderHook(() => useVoiceChat({ env, transcribe: vi.fn() }), { wrapper: wrapper(store) })
+    expect(result.current.confirmByVoiceTap).toBeUndefined()
     act(() => { result.current.startConversation() })
     expect(result.current.conversationMode).toBe(true)
-    // Aucune proposition en attente → un tap ne déclenche AUCUNE confirmation :
-    // le store ne porte aucun index de confirmation en cours.
-    act(() => { result.current.confirmByVoiceTap() })
-    expect(store.getState().ia.confirmingIndex).toBe(null)
     act(() => { result.current.stopConversation() })
     expect(result.current.conversationMode).toBe(false)
   })
