@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/assistant/digest-matin/",
-  "forme_serveur": "partielle",
-  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « matin » de l'assistant (AIC35) : la réponse n'avait aucun échantillon. `relances.lignes` a EXACTEMENT la forme d'une ligne de `assistant_a_relancer.json` (donc `touche_id`) : la carte du matin rend la même rangée et le même bouton « Préparer » que la file. `devis_sans_reponse.lignes` gagne `devis_id` (l'assistant enchaîne sur le devis sans seconde lecture). `visites.lignes` sont les lignes de `visites.selectors.ma_journee_du_commercial` (clés du sélecteur des visites, non figées ici : `forme_serveur` partielle). Un rôle sans CRM ne reçoit que `visites`.",
+  "forme_serveur": "complete",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « matin » de l'assistant (AIC35) : la réponse n'avait aucun échantillon. `relances.lignes` a EXACTEMENT la forme d'une ligne de `assistant_a_relancer.json` (donc `touche_id`) : la carte du matin rend la même rangée et le même bouton « Préparer » que la file. `devis_sans_reponse.lignes` gagne `devis_id` (l'assistant enchaîne sur le devis sans seconde lecture). `visites.lignes` sont les lignes de `visites.selectors.ma_journee_du_commercial`, chacune EXACTEMENT `visites.selectors.ligne_ma_journee` (même forme que `visites/contract_samples/ma_journee.json`, figée ici par AIC95 : la carte du matin rend une rangée par visite, date prévue et « Ouvrir la fiche » de la visite `id`). Un rôle sans CRM ne reçoit que `visites`.",
   "exemple": {
     "visites": {
       "total": 1,
@@ -9,8 +9,17 @@
       "lignes": [
         {
           "id": 88,
-          "lead_id": 412,
-          "date_prevue": "2026-11-14T10:00:00+00:00"
+          "lead_nom": "Aziz Benali",
+          "ville": "Bouskoura",
+          "adresse": "Lotissement Démo",
+          "gps_lat": 33.4589,
+          "gps_lng": -7.6528,
+          "date_prevue": "2026-11-14",
+          "statut": "brouillon",
+          "en_route_le": null,
+          "arrivee_le": null,
+          "complet": false,
+          "manquants_count": 3
         }
       ]
     },

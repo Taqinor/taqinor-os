@@ -678,6 +678,15 @@ class CrmAgentDigestMatinTest(TestCase):
         self.assertEqual(
             ligne['devis_id'],
             Devis.objects.get(reference='DEV-35-ANCIEN').pk)
+        # AIC95 — les lignes de visite sont figées : exactement les clés de
+        # ``visites.selectors.ligne_ma_journee``, écrites dans l'échantillon.
+        from apps.visites.selectors import ligne_ma_journee
+        from apps.visites.models import VisiteTerrain
+        visite = resp.data['visites']['lignes'][0]
+        self.assertEqual(set(visite),
+                         set(exemple['visites']['lignes'][0]))
+        self.assertEqual(set(visite), set(ligne_ma_journee(
+            VisiteTerrain.objects.get(pk=visite['id']))))
 
 
 # ── COP — copilote commercial : les lectures et actions CRM de l'assistant ──
@@ -905,6 +914,25 @@ class CrmAssistantToucheTest(_CopiloteBase):
         self.assertIsNone(resp.data['appel'])
         self.assertIsNone(resp.data['refus'])
         self.assertEqual(resp.data['lead']['etape'], stages.NEW)
+
+    def test_hors_fenetre_a_22h(self):
+        """AIC95 — préparée à 22 h (lundi, fenêtres par défaut) : drapeau
+        ``hors_fenetre`` en clair, message TOUJOURS rendu ; à 10 h : null."""
+        import datetime
+        from zoneinfo import ZoneInfo
+        from freezegun import freeze_time
+        etape = self._touche(self._lead(whatsapp='0661000111'))
+        casa = ZoneInfo('Africa/Casablanca')
+        with freeze_time(datetime.datetime(2026, 11, 16, 22, 0, tzinfo=casa)):
+            soir = self._lire(self.alice, etape)
+        self.assertEqual(soir.status_code, 200, soir.data)
+        self.assertEqual(soir.data['hors_fenetre'], {
+            'raison': "Hors des heures d'envoi (messages de 8 h 30 à 20 h)"})
+        self.assertIsNotNone(soir.data['message'])
+        with freeze_time(datetime.datetime(2026, 11, 16, 10, 0, tzinfo=casa)):
+            matin = self._lire(self.alice, etape)
+        self.assertIsNone(matin.data['hors_fenetre'])
+        self.assertIsNotNone(matin.data['message'])
 
     def test_message_rendu_par_le_meme_code_que_l_ecran(self):
         etape = self._touche(self._lead())
