@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
@@ -304,8 +304,14 @@ describe("TicketDetail — ADRG22 gestes d'écriture selon les droits de la rout
      lecture des chantiers : aucun 403 à l'ouverture pour le Commercial. */
   const LECTURES = () => [savApi.getTicketPieces, savApi.getTicketPiecesUnifiees, savApi.getPiecesCompatibles,
     savApi.getTicketChecklist, savApi.getPretsEquipement, installationsApi.getInterventions]
-  it("Commercial : aucune lecture réservée à sav_gerer ni aux chantiers à l'ouverture", async () => {
+  // Le mock partagé n'a pas `getPiecesCompatibles` : on le pose par test et on le retire après.
+  let compatiblesAvant
+  beforeEach(() => {
+    compatiblesAvant = savApi.getPiecesCompatibles
     savApi.getPiecesCompatibles = vi.fn(() => Promise.resolve({ data: { results: [] } }))
+  })
+  afterEach(() => { savApi.getPiecesCompatibles = compatiblesAvant })
+  it("Commercial : aucune lecture réservée à sav_gerer ni aux chantiers à l'ouverture", async () => {
     vi.clearAllMocks()
     renderFiche(COMMERCIAL)
     await screen.findByText('SAV-1', { exact: false })
@@ -314,7 +320,6 @@ describe("TicketDetail — ADRG22 gestes d'écriture selon les droits de la rout
   }, 60000)
 
   it('Technicien : pièces, checklist, prêts et interventions lus', async () => {
-    savApi.getPiecesCompatibles = vi.fn(() => Promise.resolve({ data: { results: [] } }))
     vi.clearAllMocks()
     renderFiche(TECHNICIEN)
     await screen.findByText('SAV-1', { exact: false })
