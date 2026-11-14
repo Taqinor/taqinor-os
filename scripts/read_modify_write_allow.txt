@@ -23,7 +23,7 @@ backend/django_core/apps/ged/services.py::classer_signature_completee  # tâche 
 backend/django_core/apps/ged/services.py::marquer_signe  # tâche ACNC à trier, propriétaire ged
 backend/django_core/apps/ged/services.py::relancer_demande_document  # tâche ACNC à trier, propriétaire ged
 backend/django_core/apps/installations/services.py::appliquer_statut_document  # tâche ACNC du plan chantiers
-backend/django_core/apps/installations/services.py::contre_transferer_stock_livraison  # tâche ACNC57 (la garde lit le service ; la vue annuler relit sous verrou)
+backend/django_core/apps/installations/services.py::contre_transferer_stock_livraison  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/services.py::ensure_checklist_items  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/services.py::snapshot_revision_kit  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/services.py::ventiler_stock_livraison  # tâche ACNC du plan chantiers
