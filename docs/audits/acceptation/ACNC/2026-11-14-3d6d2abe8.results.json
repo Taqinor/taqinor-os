@@ -1,0 +1,58 @@
+{
+  "sha": "3d6d2abe8a1d887da905cd0c81eb46f91616fd34",
+  "date": "2026-11-14",
+  "groupe": "ACNC",
+  "verdict": "PASS",
+  "couvre": [
+    "ACNC15",
+    "ACNC65"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF9.65",
+      "taches": [
+        "ACNC65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.65.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.15",
+      "taches": [
+        "ACNC15",
+        "ACNC65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.15.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

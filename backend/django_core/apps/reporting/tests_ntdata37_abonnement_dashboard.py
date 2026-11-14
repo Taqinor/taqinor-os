@@ -250,12 +250,12 @@ class AbonnementDashboardTests(TestCase):
                 'name': 'Stock', 'target_kind': 'query', 'cible_id': requete.pk,
                 'schedule': 'weekly', 'recipients': 'x@exemple.ma'},
                 format='json')
-            resultats[nom_role] = (resp, avant, user, requete)
-        resp, avant, commercial, requete_c = resultats['Commercial responsable']
+            resultats[nom_role] = (resp, avant, SavedReport.objects.count(), user, requete)
+        resp, avant, apres, commercial, requete_c = resultats['Commercial responsable']
         self.assertEqual(resp.status_code, 403, resp.content)
         self.assertEqual(str(resp.data['detail']),
                          'Accès au jeu de données refusé.')
-        self.assertEqual(SavedReport.objects.count(), avant)
+        self.assertEqual(apres, avant)  # compté juste après SON post (le Directeur crée le sien ensuite)
         resp = resultats['Directeur'][0]
         self.assertEqual(resp.status_code, 201, resp.content)
 

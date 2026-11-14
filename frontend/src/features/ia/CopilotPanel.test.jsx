@@ -109,7 +109,7 @@ describe('CopilotPanel — entrée contextuelle (AIC9)', () => {
     expect(store.getState().ia.copilotOpen).toBe(true)
     expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
       CONTRAT.exemple.question,
-      { ...CONTEXTE_VIDE, ecran: CONTRAT.exemple.ecran, lead_id: CONTRAT.exemple.lead_id })
+      { ...CONTEXTE_VIDE, ecran: CONTRAT.exemple.ecran, lead_id: CONTRAT.exemple.lead_id }, expect.any(String))
   })
 
   it('sans événement, le contexte est la route courante (lead null)', async () => {
@@ -117,7 +117,7 @@ describe('CopilotPanel — entrée contextuelle (AIC9)', () => {
     monter()
     await poserUneQuestion(user)
     expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
-      CONTRAT.exemple.question, { ...CONTEXTE_VIDE, ecran: window.location.pathname })
+      CONTRAT.exemple.question, { ...CONTEXTE_VIDE, ecran: window.location.pathname }, expect.any(String))
   })
 
   it('affiche les trois questions du manifeste pour l\'écran', async () => {
@@ -138,12 +138,12 @@ describe('CopilotPanel — contexte lu à l\'envoi (COP-F5)', () => {
     }))
     await screen.findByText(CONTRAT.exemple.resume_reponse)
     expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
-      'Résume ce lead', { ...CONTEXTE_VIDE, ecran: '/crm/leads/12', lead_id: 12 })
+      'Résume ce lead', { ...CONTEXTE_VIDE, ecran: '/crm/leads/12', lead_id: 12 }, expect.any(String))
     await user.type(screen.getByPlaceholderText(/Posez votre question/), 'Et le stock ?')
     await user.click(screen.getByRole('button', { name: 'Envoyer' }))
     await waitFor(() => expect(iaApi.queryAgent).toHaveBeenCalledTimes(2))
     expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
-      'Et le stock ?', { ...CONTEXTE_VIDE, ecran: window.location.pathname })
+      'Et le stock ?', { ...CONTEXTE_VIDE, ecran: window.location.pathname }, expect.any(String))
   })
 
   it('PREMIER clic : une demande émise AVANT le montage du panneau ouvre le tiroir et envoie', async () => {
@@ -159,7 +159,7 @@ describe('CopilotPanel — contexte lu à l\'envoi (COP-F5)', () => {
     await screen.findByText(CONTRAT.exemple.resume_reponse)
     expect(iaApi.queryAgent).toHaveBeenCalledTimes(1)
     expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
-      'Résume ce lead', { ...CONTEXTE_VIDE, ecran: '/crm/leads/7', lead_id: 7 })
+      'Résume ce lead', { ...CONTEXTE_VIDE, ecran: '/crm/leads/7', lead_id: 7 }, expect.any(String))
   })
 })
 
