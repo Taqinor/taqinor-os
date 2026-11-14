@@ -97,6 +97,12 @@ etape('PF4.4-ADRG125', ['ADRG125'], async ({ page, suivi, testInfo }) => {
       const lus = appels(s.reseau, RAPPORT).map((l) => `${RAPPORT.exec(l.split(' ')[1])[1]} ${l.split('→ ')[1]}`).sort()
       expect(lus, `${passe}${nomRole} : appels reporting/reports/* ${J(s.reseau.filter((l) => /reports/.test(l)))}`)
         .toEqual(permis.map((k) => `${k} 200`))
+      // Refus réseau de la page : AUCUN pour le Directeur ; pour les deux autres, seulement les lectures hors ADRG125
+      // (attribution CRM et insights, écart déclaré) — jamais une carte ventes/stock/service.
+      const refus = [...new Set(s.reseau.filter((l) => / → [45]\d\d$/.test(l)).map((l) => l.split(' ')[1]))].sort()
+      if (nomRole === 'Directeur') expect(refus, `${passe}Directeur : aucun refus réseau`).toEqual([])
+      else expect(refus.filter((u) => !/^\/(crm\/rapports\/attribution|reporting\/insights\/(analytics|recurring-revenue))\/$/.test(u)),
+        `${passe}${nomRole} : refus hors écart ${J(refus)}`).toEqual([])
       for (const [onglet, cle, titre] of CARTES) {
         await s.p.getByRole('tab', { name: onglet, exact: true }).click()
         const panneau = s.p.getByRole('tabpanel')
@@ -111,7 +117,12 @@ etape('PF4.4-ADRG125', ['ADRG125'], async ({ page, suivi, testInfo }) => {
       }
     }
   }
-})
+}, { ecart: { base: 'FAIL', raison: "frontend/src/pages/Rapports.jsx::Component charge pour tout rôle, sans garde, "
+  + "GET crm/rapports/attribution/ (carte « Attribution des leads » de l'onglet Ventes) et reporting/insights/analytics/ + "
+  + "reporting/insights/recurring-revenue/ (onglet Insights) : le Technicien responsable et l'Admin RH livrés y prennent 403 + "
+  + "console.error (oracles 2-3, observé au run 43640330000). Défaut antérieur, hors ADRG125 (qui ne garde que les trois cartes "
+  + "ventes/stock/service, toutes vérifiées ici : aucun appel refusé, aucune carte « Rapport indisponible ») ; avant ADRG125 la "
+  + "même page échouait déjà (sales/ en 403 pour ces deux rôles)." } })
 
 // ── ADRG129 — export Excel SERVEUR du catalogue et des consignations sous `stock_export` ───────────────────────
 etape('PF4.4-ADRG129', ['ADRG129'], async ({ page, suivi, testInfo }) => {
@@ -146,7 +157,7 @@ etape('PF4.4-ADRG129', ['ADRG129'], async ({ page, suivi, testInfo }) => {
     // Consignations : « Exporter (Excel) » (route `stock/consignations/export-xlsx/` : `stock_export`).
     for (const passe of ['', 'relu après rechargement : ']) {
       if (passe) await s.p.reload(); else await s.p.goto('/stock/negoce/consignations')
-      await expect(s.p.getByText('Dépôts chez les clients'), `${passe}${nomRole} : carte des dépôts`).toBeVisible(V)
+      await expect(s.p.getByText('Dépôts chez les clients').first(), `${passe}${nomRole} : carte des dépôts`).toBeVisible(V)
       await calme(s.p)
       await expect(bouton(s.p, 'Exporter (Excel)'), `${passe}${nomRole} : « Exporter (Excel) »`).toHaveCount(exporte ? 1 : 0)
     }
@@ -175,7 +186,7 @@ sortie(Quai.objects.create(company_id=${SOC}, nom=${J(nomQuai)}, emplacement=e, 
         const charge = reponse(s.p, /^\/api\/django\/stock\/quais\/$/)
         if (passe) await s.p.reload(); else await s.p.goto('/stock/entrepot/quais')
         expect((await charge).status(), `${passe}${nomRole} : quais lus`).toBe(200)
-        await expect(s.p.getByText(nomQuai), `${passe}${nomRole} : quai listé`).toBeVisible(V)
+        await expect(s.p.getByText(nomQuai).first(), `${passe}${nomRole} : quai listé`).toBeVisible(V)
         await calme(s.p)
         await expect(s.p.getByText('Fichier ASN', { exact: true }), `${passe}${nomRole} : « Fichier ASN »`).toHaveCount(asn ? 1 : 0)
         await expect(bouton(s.p, 'Ajouter le quai'), `${passe}${nomRole} : « Ajouter le quai »`).toHaveCount(admin ? 1 : 0)
@@ -283,7 +294,7 @@ etape('PF4.4-ADRG132', ['ADRG132'], async ({ page, suivi, testInfo }) => {
   const ticket = await lireJson(await r.post(`${API}/sav/tickets/`, { ...T, data: { client: cl.id, type: 'correctif', description: `ADRG132 ${m}` } }), 'ticket')
   // Société à feuilles de maintenance ACTIVES ; le ticket porte une feuille (le Technicien responsable la lit en 200).
   const x = await py(`from apps.sav.models import SavSlaSettings, WorksheetMaintenanceModele, TicketWorksheet, Ticket, CategorieEquipement
-from apps.authentication.models import Company
+from authentication.models import Company
 co = Company.objects.get(pk=${SOC})
 sla = SavSlaSettings.get(co)
 avant = sla.worksheets_maintenance_actifs
@@ -342,7 +353,7 @@ sortie([CategorieEquipement.objects.get(pk=${x.cat}).nom, TicketWorksheet.object
     'relu : catégorie et feuille inchangées').toEqual([nomCat, false])
   } finally {
     await py(`from apps.sav.models import SavSlaSettings, WorksheetMaintenanceModele, TicketWorksheet, CategorieEquipement
-from apps.authentication.models import Company
+from authentication.models import Company
 co = Company.objects.get(pk=${SOC})
 TicketWorksheet.objects.filter(ticket_id=${ticket.id}).delete()
 WorksheetMaintenanceModele.objects.filter(pk=${x.modele}).delete()
@@ -353,76 +364,124 @@ sortie(1)`).catch(() => null)
 })
 
 // ── ADRG133 — « Rejeter » / « Approuver l'étape » d'un plan d'approbation sous `approuver_demande_achat` ───────
-etape('PF4.4-ADRG133', ['ADRG133'], async ({ page, suivi, testInfo }) => {
-  const m = marque()
-  const r = page.request
+/** Demande d'achat soumise par demo_admin, plan d'approbation à une étape EN ATTENTE (créée si aucune règle de la
+ *  société n'en a instancié). Renvoie {da, objet}. */
+async function demandeEnPlan(r, m) {
   const objet = `Demande ADRG133 ${m}`
   const da = await lireJson(await r.post(`${API}/installations/demandes-achat/`, { ...T, data: { objet } }), 'demande d\'achat')
-  try {
-    const soumise = await lireJson(await r.post(`${API}/installations/demandes-achat/${da.id}/soumettre/`, { ...T, data: {} }), 'soumettre')
-    expect(soumise.statut, 'demande soumise').toBe('soumise')
-    // Plan d'approbation : une étape EN ATTENTE (créée si aucune règle de la société n'en a instancié).
-    await py(`from apps.installations.models_approbation_achat import EtapeApprobationAchat
+  const soumise = await lireJson(await r.post(`${API}/installations/demandes-achat/${da.id}/soumettre/`, { ...T, data: {} }), 'soumettre')
+  expect(soumise.statut, 'demande soumise').toBe('soumise')
+  await py(`from apps.installations.models_approbation_achat import EtapeApprobationAchat
 if not EtapeApprobationAchat.objects.filter(demande_id=${da.id}, statut='en_attente').exists():
     EtapeApprobationAchat.objects.create(company_id=${SOC}, demande_id=${da.id}, niveau=1, statut='en_attente')
 sortie(1)`)
-    for (const [nomRole, prefixe, present] of [['Technicien responsable', 'adrg133tr', false], ['Directeur', 'adrg133di', true]]) {
-      const c = await compteDe(nomRole, prefixe)
-      const s = await ecranDe(page, suivi, testInfo, c)
-      for (const passe of ['', 'relu après rechargement : ']) {
-        const plan = reponse(s.p, new RegExp(`/installations/demandes-achat/${da.id}/etapes-approbation/$`))
-        await s.p.goto(`/chantiers/demandes-achat?da=${da.id}`)
-        await expect(s.p.getByText(objet).first(), `${passe}${nomRole} : détail ouvert`).toBeVisible(V)
-        expect((await plan).status(), `${passe}${nomRole} : plan d'approbation lu`).toBe(200)
-        const zone = s.p.locator('[aria-label="Plan d\'approbation"]')
-        await expect(zone.getByText(/Niveau 1/), `${passe}${nomRole} : étape en attente affichée`).toBeVisible(V)
-        await calme(s.p)
-        await expect(bouton(zone, 'Rejeter'), `${passe}${nomRole} : « Rejeter »`).toHaveCount(present ? 1 : 0)
-        await expect(bouton(zone, "Approuver l'étape"), `${passe}${nomRole} : « Approuver l'étape »`).toHaveCount(present ? 1 : 0)
-      }
-    }
-    expect(await py(`from apps.installations.models_approbation_achat import EtapeApprobationAchat
+  return { da, objet }
+}
+const etatDemande = (id) => py(`from apps.installations.models_approbation_achat import EtapeApprobationAchat
 from apps.installations.models_demande_achat import DemandeAchat
-sortie([DemandeAchat.objects.get(pk=${da.id}).statut, EtapeApprobationAchat.objects.filter(demande_id=${da.id}, statut='en_attente').count() > 0])`),
-    'relu : demande soumise, étape toujours en attente').toEqual(['soumise', true])
-  } finally {
-    await py(`from apps.installations.models_demande_achat import DemandeAchat
-DemandeAchat.objects.filter(pk=${da.id}).delete()
+sortie([DemandeAchat.objects.get(pk=${id}).statut, EtapeApprobationAchat.objects.filter(demande_id=${id}, statut='en_attente').count() > 0])`)
+const supprimerDemande = (id) => py(`from apps.installations.models_demande_achat import DemandeAchat
+DemandeAchat.objects.filter(pk=${id}).delete()
 sortie(1)`).catch(() => null)
-  }
-})
 
-// ── ADRG134 — /interventions ne lit `crm/assignable-users/` que si `useCanListAssignableUsers` le permet ───────
-etape('PF4.4-ADRG134', ['ADRG134'], async ({ page, suivi, testInfo }) => {
-  const ASSIGNABLES = /^\/crm\/assignable-users\/$/
-  for (const [nomRole, prefixe, lit] of [['Technicien', 'adrg134te', false], ['Commercial responsable', 'adrg134cr', true]]) {
-    const c = await compteDe(nomRole, prefixe)
+// Technicien responsable (sans `approuver_demande_achat`) : demande ouverte, aucun geste d'approbation, ni de la
+// demande (ADRG86) ni d'étape (ADRG133) — et l'écran ne lit même pas le plan.
+etape('PF4.4-ADRG133', ['ADRG133'], async ({ page, suivi, testInfo }) => {
+  const { da, objet } = await demandeEnPlan(page.request, marque())
+  const PLAN = new RegExp(`^/installations/demandes-achat/${da.id}/etapes-approbation/$`)
+  try {
+    const c = await compteDe('Technicien responsable', 'adrg133tr')
     const s = await ecranDe(page, suivi, testInfo, c)
-    if (nomRole === 'Technicien') {
-      // Accord de suivi GPS d'un compte terrain neuf (sinon l'écran d'accord remplace l'app) — même geste qu'adrg4.
-      await lireJson(await s.api.get(`${API}/installations/gps-consentements/mon-consentement/`, T), 'accord GPS à donner')
-      const accord = await s.api.post(`${API}/installations/gps-consentements/mon-consentement/accepter/`, T)
-      expect(accord.ok(), `accord GPS donné (${accord.status()})`).toBeTruthy()
-    }
     for (const passe of ['', 'relu après rechargement : ']) {
       s.reseau.length = 0
-      const liste = reponse(s.p, /^\/api\/django\/installations\/interventions\/$/)
-      const users = lit ? reponse(s.p, /^\/api\/django\/crm\/assignable-users\/$/) : null
-      if (passe) await s.p.reload(); else await s.p.goto('/interventions')
-      expect((await liste).status(), `${passe}${nomRole} : interventions lues`).toBe(200)
-      if (lit) expect((await users).status(), `${passe}${nomRole} : utilisateurs assignables servis`).toBe(200)
+      await s.p.goto(`/chantiers/demandes-achat?da=${da.id}`)
+      await expect(s.p.getByText(objet).first(), `${passe}Technicien responsable : détail ouvert`).toBeVisible(V)
+      await expect(s.p.getByRole('button', { name: 'Fermer', exact: true }).first(), `${passe}détail rendu`).toBeVisible(V)
       await calme(s.p)
-      await expect(s.p.getByText('Impossible de charger les interventions'), `${passe}${nomRole} : écran rendu`).toHaveCount(0)
-      const vus = appels(s.reseau, ASSIGNABLES)
-      if (lit) {
-        expect(vus.length, `${passe}${nomRole} : lecture des utilisateurs assignables ${J(vus)}`).toBeGreaterThanOrEqual(1)
-        expect(vus.every((l) => l.endsWith('→ 200')), `${passe}${nomRole} : ${J(vus)}`).toBe(true)
-      } else {
-        expect(vus, `${passe}${nomRole} : aucune lecture crm/assignable-users/`).toEqual([])
+      for (const n of ['Approuver', 'Refuser', 'Rejeter', "Approuver l'étape"]) {
+        await expect(s.p.getByRole('button', { name: n, exact: true }), `${passe}Technicien responsable : pas de « ${n} »`).toHaveCount(0)
       }
+      expect(appels(s.reseau, PLAN), `${passe}Technicien responsable : aucune lecture du plan`).toEqual([])
+    }
+    expect(await etatDemande(da.id), 'relu : demande soumise, étape toujours en attente').toEqual(['soumise', true])
+  } finally { await supprimerDemande(da.id) }
+})
+
+// Témoin Directeur : « Approuver » répond 409 (plan en cours) et l'écran affiche alors le plan avec ses deux boutons
+// d'étape (jamais cliqués). Le 409 est la voie de l'écran pour découvrir le plan : écart déclaré ci-dessous.
+etape('PF4.4-ADRG133-directeur', ['ADRG133'], async ({ page, suivi, testInfo }) => {
+  const { da, objet } = await demandeEnPlan(page.request, marque())
+  try {
+    const c = await compteDe('Directeur', 'adrg133di')
+    const s = await ecranDe(page, suivi, testInfo, c)
+    for (const passe of ['', 'relu après rechargement : ']) {
+      await s.p.goto(`/chantiers/demandes-achat?da=${da.id}`)
+      await expect(s.p.getByText(objet).first(), `${passe}Directeur : détail ouvert`).toBeVisible(V)
+      const approuver = s.p.getByRole('button', { name: 'Approuver', exact: true })
+      await expect(approuver, `${passe}Directeur : « Approuver » (ADRG86)`).toBeVisible(V)
+      const [refus, plan] = await Promise.all([
+        s.p.waitForResponse((x) => new RegExp(`/installations/demandes-achat/${da.id}/approuver/$`).test(new URL(x.url()).pathname), T),
+        reponse(s.p, new RegExp(`/installations/demandes-achat/${da.id}/etapes-approbation/$`)),
+        approuver.click(),
+      ])
+      expect(refus.status(), `${passe}Directeur : approbation globale refusée tant que le plan court`).toBe(409)
+      expect(plan.status(), `${passe}Directeur : plan d'approbation lu`).toBe(200)
+      const zone = s.p.locator('[aria-label="Plan d\'approbation"]')
+      await expect(zone.getByText(/Niveau 1/), `${passe}Directeur : étape en attente affichée`).toBeVisible(V)
+      await expect(bouton(zone, 'Rejeter'), `${passe}Directeur : « Rejeter »`).toBeVisible()
+      await expect(bouton(zone, "Approuver l'étape"), `${passe}Directeur : « Approuver l'étape »`).toBeVisible()
+    }
+    expect(await etatDemande(da.id), 'relu : demande soumise, étape toujours en attente').toEqual(['soumise', true])
+  } finally { await supprimerDemande(da.id) }
+}, { ecart: { base: 'FAIL', raison: "frontend/src/pages/installations/DemandesAchatList.jsx::approuver ne charge le plan d'approbation "
+  + "qu'après un POST demandes-achat/<id>/approuver/ refusé en 409 (« Un plan d'approbation est en cours », "
+  + "backend apps/installations/views/demande_achat.py::approuver) : 409 + console.error (oracles 2-3) à chaque affichage du plan. "
+  + "Défaut antérieur à ADRG133 (même parcours avant la tâche), hors de son périmètre (la garde des deux boutons d'étape)." } })
+
+// ── ADRG134 — /interventions ne lit `crm/assignable-users/` que si `useCanListAssignableUsers` le permet ───────
+const ASSIGNABLES = /^\/crm\/assignable-users\/$/
+/** Ouvre /interventions (puis recharge) ; vérifie la liste (statut attendu) et les lectures d'utilisateurs assignables. */
+async function interventions(s, nomRole, { liste: statutListe, lit }) {
+  for (const passe of ['', 'relu après rechargement : ']) {
+    s.reseau.length = 0
+    const liste = reponse(s.p, /^\/api\/django\/installations\/interventions\/$/)
+    const users = lit ? reponse(s.p, /^\/api\/django\/crm\/assignable-users\/$/) : null
+    if (passe) await s.p.reload(); else await s.p.goto('/interventions')
+    expect((await liste).status(), `${passe}${nomRole} : interventions`).toBe(statutListe)
+    if (lit) expect((await users).status(), `${passe}${nomRole} : utilisateurs assignables servis`).toBe(200)
+    await calme(s.p)
+    const vus = appels(s.reseau, ASSIGNABLES)
+    if (lit) {
+      expect(vus.length, `${passe}${nomRole} : lecture des utilisateurs assignables ${J(vus)}`).toBeGreaterThanOrEqual(1)
+      expect(vus.every((l) => l.endsWith('→ 200')), `${passe}${nomRole} : ${J(vus)}`).toBe(true)
+    } else {
+      expect(vus, `${passe}${nomRole} : aucune lecture crm/assignable-users/`).toEqual([])
     }
   }
+}
+etape('PF4.4-ADRG134', ['ADRG134'], async ({ page, suivi, testInfo }) => {
+  const te = await compteDe('Technicien', 'adrg134te')
+  const s = await ecranDe(page, suivi, testInfo, te)
+  // Accord de suivi GPS d'un compte terrain neuf (sinon l'écran d'accord remplace l'app) — même geste qu'adrg4.
+  await lireJson(await s.api.get(`${API}/installations/gps-consentements/mon-consentement/`, T), 'accord GPS à donner')
+  const accord = await s.api.post(`${API}/installations/gps-consentements/mon-consentement/accepter/`, T)
+  expect(accord.ok(), `accord GPS donné (${accord.status()})`).toBeTruthy()
+  await interventions(s, 'Technicien', { liste: 200, lit: false })
+  await expect(s.p.getByText('Impossible de charger les interventions'), 'Technicien : écran rendu').toHaveCount(0)
+  // Témoin sans écart : le Directeur (crm + chantiers) garde la lecture, liste servie.
+  const di = await ecranDe(page, suivi, testInfo, await compteDe('Directeur', 'adrg134di'))
+  await interventions(di, 'Directeur', { liste: 200, lit: true })
 })
+
+// Commercial responsable (responsable + module crm, aucun code chantiers) : garde la lecture des assignables
+// (règle de useCanListAssignableUsers) ; la LISTE des interventions lui est refusée par la route — écart ci-dessous.
+etape('PF4.4-ADRG134-cr', ['ADRG134'], async ({ page, suivi, testInfo }) => {
+  const s = await ecranDe(page, suivi, testInfo, await compteDe('Commercial responsable', 'adrg134cr'))
+  await interventions(s, 'Commercial responsable', { liste: 403, lit: true })
+}, { ecart: { base: 'FAIL', raison: "frontend/src/pages/interventions/InterventionsPage.jsx::InterventionsPage (route /interventions "
+  + "sans garde, features/installations/module.config.jsx) lit GET installations/interventions/ pour tout rôle : le Commercial "
+  + "responsable livré (aucun code chantiers) y prend 403 + console.error et l'écran « Impossible de charger les interventions » "
+  + "(observé au run 43640330000). Défaut antérieur à ADRG134, hors de son périmètre (la seule lecture crm/assignable-users/)." } })
 
 // ── ADRG135 — « Restaurer » une version sous `ged_gerer` ; politiques et dispositions sous `ged_gouvernance` ───
 const PDF = (n) => Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n% version ${n}\ntrailer<</Root 1 0 R>>\nstartxref\n0\n%%EOF\n`)
