@@ -535,8 +535,12 @@ sortie(dict(politique=p.pk, d1=d1.pk, d2=d2.pk))`)
         await expect(versions.getByText(/\(actuelle\)/), `${passe}${nomRole} : liste des versions`).toBeVisible(V)
         await expect(versions.getByText(/^v1/), `${passe}${nomRole} : version antérieure listée`).toBeVisible()
         await expect(bouton(versions, /Restaurer/), `${passe}${nomRole} : « Restaurer »`).toHaveCount(gere ? 1 : 0)
-        await s.p.keyboard.press('Escape')
-        await s.p.keyboard.press('Escape')
+        // Fermetures une à une, chaque fenêtre attendue fermée (deux Échap rapprochés ferment l'aperçu avant la liste
+        // des versions : défaut antérieur signalé à part, GedNavigator.jsx::DocumentPreviewDialog `doc.id` sur null).
+        await bouton(versions, 'Fermer').first().click()
+        await expect(versions, `${passe}${nomRole} : versions refermées`).toBeHidden()
+        await bouton(apercu, 'Fermer').first().click()
+        await expect(apercu, `${passe}${nomRole} : aperçu refermé`).toBeHidden()
       }
     }
     // 2) /ged/retention : Commercial responsable (ged_gerer sans ged_gouvernance) sans geste ; Directeur avec tous.
