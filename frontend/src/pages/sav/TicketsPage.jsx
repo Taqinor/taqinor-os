@@ -1106,7 +1106,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
 
         {/* ── WIR119/ZMFG6 — feuille de maintenance (worksheet) à remplir ── */}
         <CollapsibleSection icon={FileText} title="Feuille de maintenance">
-          <TicketWorksheetPanel ticketId={id} />
+          {peutGerer && <TicketWorksheetPanel ticketId={id} />} {/* ADRG132 — route sav_gerer */}
         </CollapsibleSection>
 
         {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,

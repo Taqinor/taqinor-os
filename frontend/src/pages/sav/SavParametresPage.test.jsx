@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* ZSAV2/ZMFG1/ZMFG2/XSAV14/XSAV23 — Paramètres SAV : référentiels édités
    par responsable/admin. savApi mocké. */
@@ -109,6 +111,20 @@ describe('SavParametresPage', () => {
       await waitFor(() => expect(savApi.saveCompatibilitePiece).toHaveBeenCalledWith(
         null, expect.objectContaining({ produit_equipement: '1', piece: '2' })))
     })
+  })
+
+  it("ADRG132 — Commercial responsable : catégories d'équipement en lecture seule", async () => {
+    savApi.getCategoriesEquipement.mockResolvedValue({ data: [{ id: 1, nom: 'Batteries' }] })
+    const store = configureStore({ reducer: { auth: (s = {
+      role: 'responsable', role_nom: 'Commercial responsable', permissions: ['sav_voir', 'sav_gerer'],
+    }) => s } })
+    const user = userEvent.setup()
+    render(<Provider store={store}><SavParametresPage /></Provider>)
+    await user.click(screen.getByRole('tab', { name: "Catégories d'équipement" }))
+    await screen.findByText('Batteries')
+    expect(screen.queryByPlaceholderText('Nouvelle catégorie…')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Ajouter/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
   })
 
   describe('WIR30 — onglet SLA / Automatisation', () => {
