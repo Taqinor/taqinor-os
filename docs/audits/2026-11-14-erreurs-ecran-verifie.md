@@ -1,189 +1,216 @@
-# Vérifie AERR — contre-visite du parcours PF12 « erreurs, pertes de saisie et gestes dangereux à l'écran », 14/11/2026
+<!-- verifie | groupe: AERR | pct: 97 | ecarts_s1_s2: 6 -->
+# Vérifie AERR — contre-visite de clôture du parcours PF12 « erreurs, pertes de saisie et gestes dangereux à l'écran », 14/11/2026 (2e passe)
 
-Commande `loop audit` (14/11). L'audit de parcours PF12 (11/11, PR #1374) avait déposé AERR1-131. C'est la première
-contre-visite du groupe, due à mi-parcours : 49 tâches cochées sur 52 constructibles (94 %). Les 49 ont été relues. Rien n'a
-été construit ni déployé.
+Commande `loop audit` (14/11). Le groupe AERR a passé 95 % de tâches cochées (126 sur 129 constructibles,
+`audit_registre.py --du`) : c'est la contre-visite de CLÔTURE. Elle remplace le compte rendu de mi-parcours du matin
+(résumé en §6). Rien n'a été construit ni déployé.
 
-- **Bilan.** 36 ok, 10 partielles, 2 régressions, 1 fausse. Aucun S1 nouveau.
-- **Quatre S2.** Deux régressions introduites par une tâche (AERR21, AERR87), une tâche partielle (AERR72) et un défaut
-  antérieur trouvé en relisant AERR71 (réassignation d'un lead refusée annoncée comme réussie).
-- **Le S1 du dossier PF12 n'est pas couvert ici.** Il est porté par AERR25, qui n'est pas cochée : son code est livré et
-  attend sa preuve en direct (§6).
+- **Bilan.** 77 tâches contrôlées, soit toutes celles cochées depuis le matin : 63 ok, 12 partielles, 2 régressions,
+  aucune fausse.
+- **Le S1 du dossier PF12 est fermé.** AERR25 et AERR26 sont livrées. Aucun chemin ne fait plus écrire le ticket A sur
+  le ticket B.
+- **Cinq S2 nouveaux.**
+  - Un appel journalisé avalé, avec un succès affiché (AERR103).
+  - Une note de débit rejouée sur la mauvaise facture (résidu d'AERR133).
+  - Deux sections des Paramètres qui perdent encore leur saisie (AERR134).
+  - Des brouillons de la fiche ticket perdus au changement de ticket (AERR25).
+  - Des boutons « Fermer » qui passent outre la garde de saisie (AERR38).
+- **Un S2 du matin reste ouvert.** Son correctif, AERR132, est livré mais n'est pas coché.
 
 ## 0. Préconditions
 
-- **SHA.** `origin/main` = `47f925be1`. Les 57 commits relus sont tous ancêtres de ce SHA (`git merge-base --is-ancestor`).
-- **Registre.** PF12 `erreurs-ecran`, groupe AERR, 49 tâches cochées sur 52 constructibles (94 %), première passe.
-  62 autres tâches sont marquées « code livré, preuve en direct due » ; AERR69, AERR112 et AERR131 restent à faire.
-- **Échantillon.** Toutes les tâches cochées, soit 49. Le dossier ne classe aucune d'elles P0 ni S1.
-- **Méthode.** Texte de chaque tâche, commit(s), code sur `origin/main`, test nommé lu avec un mutant raisonné, jumeaux.
-  Quatre sondes hôtes écrites et jouées sur les écarts S2 (§3). Aucune pile, aucun test lancé, aucune production consultée.
+- **SHA.** HEAD de la branche = `d986bb9bc`, qui contient `origin/main` = `e569da5ce` (`git merge-base --is-ancestor`).
+- **Registre.** PF12 `erreurs-ecran`, groupe AERR : 126 tâches cochées sur 129 (97 %), clôture due. Les 3 tâches non
+  cochées sont AERR112, AERR131 et AERR155. Neuf tâches attendent leur preuve en direct : AERR1, AERR4, AERR69, AERR100,
+  AERR102, AERR114, AERR117, AERR120 et AERR132.
+- **Échantillon.** Les 77 tâches cochées depuis le matin (`git show 47f925be1:<plan>` comparé à HEAD). Cela inclut 100 %
+  des tâches où une erreur serveur peut perdre une saisie, afficher un succès faux, laisser un état à moitié écrit
+  (argent, devis, facture, stock) ou cacher un refus. On y trouve les 62 tâches « code livré, preuve en direct due »
+  cochées après les rejeux du 14/11, et les 15 tâches d'écart du matin (AERR133-154).
+- **Méthode.** Pour chaque tâche : le texte, les commits, le code de HEAD, le test nommé (lu, avec un mutant raisonné)
+  et les jumeaux du même geste. Les 50 sondes hôtes AERR ont été rejouées. Cinq sondes neuves ont été écrites puis
+  jouées. Pas de pile, pas de Docker, pas de production, aucun test vitest lancé.
 
-## 1. Vérificateurs (5 lots, opus, effort élevé, frais)
+## 1. Vérificateurs (3 lots, opus, frais)
 
 | Verdict | Nombre | Tâches |
 |---|---|---|
-| ok | **36** | AERR8, 10, 14, 15, 16, 19, 20, 22, 30, 31, 54, 55, 60, 63, 66, 67, 68, 73, 74, 75, 76, 79 (effet de bord), 81, 82, 83, 84, 85, 86, 88, 89, 90, 91, 92, 115, 123, 126 |
-| partiel | **10** | AERR13, 17, 18, 51, 53, 62, 70, 72, 80, 93 |
-| régression | **2** | AERR21, AERR87 |
-| faux | **1** | AERR71 |
-| non-fait / déjà-présent | **0** | — |
+| ok | **63** | AERR2, 6, 7, 9, 11, 12, 23, 24, 26, 28, 29, 32, 33, 34, 35, 36, 37, 50, 52, 56, 57, 58, 59, 61, 64, 65, 77, 78, 104, 105, 106, 107, 110, 111, 113, 118, 119, 121, 122, 124, 125, 127, 128, 129, 130, 133, 134, 135, 137, 138, 139, 140, 141, 142, 144, 146, 147, 148, 150, 151, 152, 153, 154 |
+| partiel | **12** | AERR3, 5, 25, 27, 38, 101, 103, 108, 109, 116, 143, 145 |
+| régression | **2** | AERR136, AERR149 |
+| faux / non-fait / déjà-présent | **0** | — |
 
-Commits relus :
-- **Factures.** AERR8 `5ef6d56c8e`, AERR10 `bfbe09f8cd`, AERR13 `77ac4009d6`, AERR15 `854cc04ba3`, AERR17 `1a5e7803ae`,
-  AERR18 `ed24d1ab0d`, AERR19 `76bab19e8e`, AERR20 `f10b45f52e`, AERR21 `7e5cfaf29d`, plus `aeaa5e9274` (tests réalignés).
-- **Devis, chantiers et achats.** AERR14 `b522b0f386`, AERR16 `298e952a0c`, AERR22 `f9c393fe09`, AERR30 `caf7109d2f`, AERR81
-  `ef0d187e4b` et `4ef1a04b81`, AERR83 `cc6e57dd4b`, AERR85 `8758532009`, AERR86 `91abf4ff25` et `467d734ce5`, AERR91
-  `607b560da5` et `73a9625129`, AERR93 `4716a0f4a0`.
-- **Stock et SAV.** AERR67 `674843aaaa`, AERR76 `86f1ebba4e`, AERR80 `151e614ac2`, AERR84 `fea0e956cc`, AERR87 `c3aeaaf6a7`,
-  AERR88 `fc23409bac`, AERR89 `608adf310c`, AERR90 `3e0b50a0bf`, AERR31 `02183ad3bd` et `1d5b9f6235`, AERR79 `52c2a33b9a`,
-  AERR82 `1e609d65bc` et `37541d1583`, AERR92 `64566e7412`.
-- **Briques partagées et Paramètres.** AERR51 `f91857fc9b`, AERR53 `532c16666d`, AERR63 `788c6cb35a`, AERR66 `827b862748`,
-  AERR68 `a9ea6d7cbe`, AERR70 `1fcf91037f`, AERR71 `dc3ea98ea2`, AERR72 `c3bc1a4d6a` et `1c76a4c5c2`, AERR74 `922f3fd7b4`,
-  AERR75 `173ca15928`, AERR123 `60b79680d5`.
-- **Administration, GED, visites, générateur.** AERR54 `ca41aba6d0`, AERR55 `3617e634bb`, AERR60 `c41277cf61`, AERR62
-  `882ffbac1a`, AERR73 `9997cc7880`, AERR115 `004068ab09` et `ae607e1c69`, AERR126 `714b847bcb`.
+- **Lot argent.** 25 tâches : devis, factures, générateur, stock, achats, réglages.
+- **Lot terrain.** 22 tâches : SAV, chantiers, interventions, GED, sécurité.
+- **Lot CRM.** 30 tâches : CRM, briques partagées, notifications, portail, reporting, Paramètres.
 
-Les verdicts « ok » portent sur le texte de chaque tâche. Un « ok » peut laisser un écart hors de ce texte : AERR79, AERR85 et
-AERR91 en portent un (§4).
+Un « ok » porte sur le texte de la tâche. AERR29, AERR61 et AERR65 sont conformes mais laissent un jumeau (§4).
+AERR134 est conforme à ses huit sections, mais le constat du matin n'est fermé qu'en partie (§4).
 
 ## 2. Tests nommés
 
-- **Les tests nommés des 49 tâches existent** et sont comportementaux : écran rendu, geste joué, état affiché ou appel relu.
+- **Présence.** Les tests nommés des 77 tâches existent. Ils sont comportementaux : écran rendu, geste joué, appel ou
+  état relu. AERR26 et AERR153 ont leur test côté serveur.
 - **Trois tests ne voient pas le cas qui casse.**
-  - AERR21 rend la boîte « Notes de débit » une seule fois, sur une seule facture.
-  - AERR71 bouchonne `apply` avec une erreur axios à `response` ; aucun des appelants réels ne rejette sous cette forme.
-  - AERR70 bouchonne le même type d'erreur ; le seul écran réel (catalogue du stock) rejette avec le corps du refus.
-- **Clauses du « fini quand » sans test.** Le retrait d'un prix fournisseur (AERR80). La clause outillage d'AERR85. La
-  seconde moitié d'AERR18 (encaissement groupé le lendemain). Deux clauses sur trois d'AERR22. Deux gestes sur trois d'AERR83.
-  Le code de ces clauses a été relu et il est juste, sauf AERR18 (§4).
-- **Exécution.** Aucun test n'a été lancé ici. Pour AERR54, 55, 60, 62, 73, 115 et 126, un vérificateur a lu la CI des PR de
-  merge (#1391, #1389) : tranches vitest et lint verts. Pour les autres, la seule preuve d'un vert est la CI de `main`.
+  - Le test d'AERR27 reste vert sans `dialogueParDessus(`. Radix fait `preventDefault` sur Échap en phase de capture ;
+    c'est lu dans `node_modules`, pas exécuté.
+  - Le test d'AERR135 bouchonne `onReassign`. La relance dans `LeadsPage` n'est gardée que par une regex. Le code relu
+    est juste.
+  - Le test d'AERR103 rejoue la reprise dans la même saisie, jamais après une fermeture.
+- **Clauses sans test.**
+  - AERR3 : l'avis « Indicateurs pas à jour ».
+  - AERR109 : la relecture ratée après un glisser.
+  - AERR108 : « Ouvrir le doublon » en création.
+  - AERR116 : les 11 champs autres que la surface.
+- **Exécution.** Aucun test n'a été lancé ici. La seule preuve d'un vert reste la CI de `main`.
 
-## 3. Sondes rejouées et S2 relus
+## 3. Sondes rejouées
 
-Les quatre sondes ont été rejouées par le rédacteur sur `47f925be1` (`PYTHONIOENCODING=utf-8 python <sonde>`). Aucune n'affirme
-sur son propre bouchon : trois lisent le vrai source de l'écran, une exécute la vraie fonction JS sous node.
+**Les 50 sondes AERR** ont été rejouées sur l'hôte (`PYTHONIOENCODING=utf-8 python <sonde>`). Huit sortent encore
+`repro: true`. Pour six d'entre elles, les vérificateurs ont conclu que la sonde est périmée : son détecteur cherche
+l'ancien motif, et le code relu ne montre pas le défaut.
+- `C-AERR-002` : la liste est relue sous garde, `loading && devis.length === 0`.
+- `C-AERR-005` : la fermeture au clic est voulue (décision du 08/10) ; le reste du défaut est C-AERR-VER2-211.
+- `C-AERR-047` : l'étape fautive est maintenant nommée ; le vrai reste est C-AERR-VER2-200.
+- `C-AERR-050` : `confirmDelete({` n'est pas reconnu par le détecteur.
+- `C-AERR-053` : `setEvents([])` n'est appelé que si le mois change.
+- `C-AERR-095` : Achats est désactivé sur un échec de lecture.
 
-| Sonde | Sortie rejouée | Ce qu'elle prouve |
-|---|---|---|
-| `docs/audits/sondes/AERR/C-AERR-VER1-100.py` | `repro: true` | lecture ratée sans vidage de `notes` ; alerte masquée dès que `notes` n'est pas vide ; boîte montée en permanence, sans `key` ni remise à zéro à l'ouverture |
-| `docs/audits/sondes/AERR/C-AERR-VER1-140.py` | `repro: true` | la vraie `erreursEntiersProduit` rend « Saisissez un nombre entier. » pour un stock de -3 ; `validate` l'applique en édition, où le champ est grisé |
-| `docs/audits/sondes/AERR/C-AERR-VER1-160.py` | `repro: true` | 4 sections gardées ; 8 sections autonomes à brouillon encore démontées au changement d'onglet |
-| `docs/audits/sondes/AERR/C-AERR-VER1-161.py` | `repro: true` | le `catch` de `reassign` ne relance pas ; le kanban la passe comme `apply` à `mutateWithUndo` |
+Les deux autres (`C-AERR-001` pour AERR1, `C-AERR-044` pour AERR100) visent des tâches non cochées. Elles n'ont pas été
+tranchées.
 
-Les quatre défauts ont aussi été relus dans le code par le rédacteur :
-- **AERR21.** `NoteDebitDialog.jsx::NoteDebitDialog` remet à zéro `loadedFactureId` à l'ouverture, jamais `notes` ni
-  `lectureKo`. `FactureList.jsx` monte la boîte sans `key` et ne change que la prop `facture`. Ouvrir A puis B avec une
-  lecture en échec affiche donc les notes de A sous le titre de B, avec leurs boutons « PDF » et « Annuler ».
-- **AERR87.** `validationEntiers.js::erreursEntiersProduit` contrôle `quantite_stock` par `^\d+$`. `ProduitForm.jsx::validate`
-  l'applique sans exception d'édition. Or le champ est `disabled={isEdit}` et n'est pas envoyé en édition. Une fiche à stock
-  négatif ne s'enregistre plus, quel que soit le champ modifié. `Produit.quantite_stock` accepte le négatif.
-- **AERR72.** `ParametresEntreprise.jsx::ParametresEntreprise` n'enveloppe que documents, tarification, données et statuts
-  dans `SectionGardee`. Les huit autres sections à brouillon sont encore rendues par `{tab === '…' && …}`, dont les modèles
-  brandés (corps de modèle en édition) et les traductions.
-- **Réassignation.** `LeadsPage.jsx::reassign` attrape le refus et ne fait qu'un `console.warn`. `KanbanView.jsx::reassignAvecUndo`
-  la passe comme `apply` à `mutateWithUndo`, qui ne voit donc jamais l'échec. Le toast d'erreur global sort, puis « Responsable
-  modifié. » avec « Annuler ». La carte garde l'ancien responsable. Le défaut est antérieur à AERR117 et hors des tâches.
-- **AERR71 faux, confirmé.** `mutateWithUndo` ne tait le toast local que si l'erreur porte `response`. Les thunks
-  `updateLead`, `archiveLead` et `restoreLead` rejettent avec `err.response?.data ?? err.message` ; `.unwrap()` rend ce corps.
-  Le doublon de toast du constat 040 du dossier PF12 reste donc sur la liste des leads.
+Sondes de la contre-visite du matin, rejouées :
+- `C-AERR-VER1-100` : `repro: false` (vrai vert).
+- `C-AERR-VER1-140` : `repro: false` (code d'AERR132 livré).
+- `C-AERR-VER1-161` : `repro: false`. C'est un vrai vert : les autres chemins de `reassign` n'affichent aucun succès.
+- `C-AERR-VER1-160` : `repro: false`, mais c'est un **faux vert**. Sa liste de noms de brouillon ignore `templates` et
+  `settings` (voir C-AERR-VER2-202).
+
+**Les cinq sondes neuves** ont été jouées par le rédacteur sur `d986bb9bc`. Elles lisent le vrai source, front et serveur.
+Toutes sortent `repro: true` :
+
+| Sonde | Ce qu'elle prouve |
+|---|---|
+| `docs/audits/sondes/AERR/C-AERR-VER2-200.py` | `appelJournalise` est remis à faux dans `reset` seulement, et `reset` est appelé au succès seulement. Aucun effet sur `leadId`. `reprise` saute `logInteraction` et affiche « Relance planifiée. » |
+| `docs/audits/sondes/AERR/C-AERR-VER2-201.py` | Le bloc de remise à zéro ne touche ni la clé, ni le motif, ni le montant, ni l'erreur. La clé serveur est rangée par vue, sans l'id de la facture. `PaiementDialog`, le survivant, remet sa clé. |
+| `docs/audits/sondes/AERR/C-AERR-VER2-202.py` | `email` et `monitoring` sont rendues par `tab === … &&`, hors `SectionGardee`. Leur brouillon local attend une sauvegarde explicite. |
+| `docs/audits/sondes/AERR/C-AERR-VER2-203.py` | 5 brouillons déclarés dans `TicketDetailCorps`, aucun dans `dirty`, un seul `useDirtyGuard`. `selectionner` est gardé par `isAnyFormDirty`. |
+| `docs/audits/sondes/AERR/C-AERR-VER2-204.py` | Échap et le clic extérieur sont gardés, mais « Fermer » appelle `onClose` nu. Vrai dans la recette de pompage et dans la fiche ticket. |
+
+Le rédacteur a aussi relu lui-même chaque S2 dans le code :
+- **VER2-200.** Popover sans `key` dans `TimelineTab.jsx`. Fermeture par `setOpen`, qui ne fait que `onOpenChange`.
+- **VER2-201.** `_idempotency_endpoint` = module + classe ; empreinte = corps seul. `FactureList.jsx` monte la boîte
+  sans `key`.
+- **VER2-202.** `setTab` n'est pas gardé. `EmailSection` n'a aucun `useDirtyGuard`.
+- **VER2-203.** `isAnyFormDirty` ne compte que les gardes enregistrées. La note est un `Textarea` libre.
+- **VER2-204.** `closeDetail` = `setSelected(null)`, sans garde.
 
 ## 4. Écarts retenus
 
-| C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâches |
+| C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâche |
 |---|---|---|---|---|---|
-| C-AERR-VER1-100 | AERR21 | S2 | La boîte « Notes de débit » d'une facture B affiche les notes de la facture A quand la lecture de B échoue (`frontend/src/pages/ventes/NoteDebitDialog.jsx::NoteDebitDialog`) | `docs/audits/sondes/AERR/C-AERR-VER1-100.py` (`repro: true`) | AERR133 |
-| C-AERR-VER1-101 | AERR17 | S3 | « Émettre » d'une facture de vente (onglet Devis de la fiche lead, liste des devis) attribue un numéro légal sans confirmation (`frontend/src/features/ventes/vente/LigneFactureVente.jsx::LigneFactureVente`) | STATIQUE | AERR137 |
-| C-AERR-VER1-102 | AERR18 | S3 | `today` figé au chargement encore lu par le Kanban des factures et le compteur « à échoir » (`frontend/src/pages/ventes/FactureList.jsx::FactureList`) | STATIQUE | AERR138 |
-| C-AERR-VER1-103 | AERR13 | S3 | Refus serveur sur `repartition` de l'encaissement groupé en texte fixe, jamais sous la part de la facture (`frontend/src/pages/ventes/factureList/useFactureGestes.js::useFactureGestes`) | STATIQUE | AERR139 |
-| C-AERR-VER1-120 | AERR93 | S3 | Aucun appelant de `ListeEtat` ne passe `onRetry` : « Réessayer » n'apparaît nulle part (`frontend/src/features/installations/ParametrageKits.jsx::NomenclatureTab`) | STATIQUE | AERR140 |
-| C-AERR-VER1-121 | AERR91 | S3 | Une note tapée sur la fiche du chantier A part sur le chantier B quand la fiche suit B (`frontend/src/pages/installations/InstallationDetail.jsx::InstallationDetail`) | STATIQUE | AERR145 |
-| C-AERR-VER1-122 | AERR85 | S3 | Le refus d'un outil reste affiché à l'ouverture d'un autre outil ; la clause outillage n'a pas de test (`frontend/src/pages/outillage/OutillagePage.jsx::OutillagePage`) | STATIQUE | AERR146 |
-| C-AERR-VER1-140 | AERR87 | S2 | Une fiche produit à stock négatif ne peut plus être enregistrée : erreur sous un champ grisé (`frontend/src/pages/stock/validationEntiers.js::erreursEntiersProduit`) | `docs/audits/sondes/AERR/C-AERR-VER1-140.py` (`repro: true`) | AERR132 |
-| C-AERR-VER1-141 | AERR80 | S3 | Le retrait d'un prix fournisseur, objet du « fini quand », n'a aucun test (`frontend/src/pages/stock/useRetraitPrixFournisseur.jsx::useRetraitPrixFournisseur`) | STATIQUE | AERR142 |
-| C-AERR-VER1-142 | AERR79 | S3 | « Note non enregistrée. » effacé aussitôt par la relecture (`frontend/src/pages/sav/TicketChecklistPanel.jsx::TicketChecklistPanel`) | STATIQUE | AERR144 |
-| C-AERR-VER1-160 | AERR72 | S2 | Huit sections des Paramètres perdent encore leur saisie au changement d'onglet (`frontend/src/pages/parametres/ParametresEntreprise.jsx::ParametresEntreprise`) | `docs/audits/sondes/AERR/C-AERR-VER1-160.py` (`repro: true`) | AERR134 |
-| C-AERR-VER1-161 | hors tâche (lu avec AERR71) | S2 | Réassignation refusée sur le kanban des leads : toast d'erreur puis « Responsable modifié. » + « Annuler » (`frontend/src/pages/crm/leads/LeadsPage.jsx::LeadsPage`) | `docs/audits/sondes/AERR/C-AERR-VER1-161.py` (`repro: true`) | AERR135 |
-| C-AERR-VER1-162 | AERR71, AERR70 | S3 | Un refus rejeté par `.unwrap()` n'est pas reconnu : toast doublé sur la liste des leads, message générique dans la cellule du catalogue (`frontend/src/lib/mutateWithUndo.js::mutateWithUndo`) | STATIQUE | AERR136 |
-| C-AERR-VER1-163 | AERR53 | S3 | Toasts locaux encore doublés (champs personnalisés, webhooks, notifications) ; refus 404 devenu muet (`frontend/src/pages/parametres/NotificationsAdminSection.jsx::RoutingRulesPanel`) | STATIQUE | AERR143 |
-| C-AERR-VER1-164 | AERR66 (jumeau) | S3 | Règles de routage, jours fériés, annonces et gabarits WhatsApp supprimés d'un clic (`frontend/src/pages/parametres/NotificationsAdminSection.jsx::RoutingRulesPanel`) | STATIQUE | AERR147 |
-| C-AERR-VER1-165 | AERR74 (jumeau) | S3 | La boîte « Variante » arrondit le pourcentage de la société (17,5 devient 18) (`frontend/src/pages/ventes/DevisList.jsx::DevisList`) | STATIQUE | AERR148 |
-| C-AERR-VER1-180 | AERR62 | S3 | Cinq onglets de Sécurité & identité et l'onglet Campagnes disent « Aucun… » quand la lecture échoue (`frontend/src/pages/admin/SecuriteIdentitePage.jsx::ReseauTab`) | STATIQUE | AERR141 |
+| C-AERR-VER2-200 | AERR103 | S2 | Après une relance ratée, l'appel suivant (fenêtre rouverte ou autre lead) n'est jamais journalisé et « Relance planifiée. » s'affiche (`frontend/src/features/crm/CallLogPopover.jsx::CallLogPopover`) | `docs/audits/sondes/AERR/C-AERR-VER2-200.py` (`repro: true`) | AERR156 |
+| C-AERR-VER2-201 | AERR133 (résidu) | S2 | Clé d'envoi, motif et montant de la facture A gardés en ouvrant B. Après un échec sans réponse sur A, « Créer » sur B fait rejouer par le serveur la note de A (`frontend/src/pages/ventes/NoteDebitDialog.jsx::NoteDebitDialog`) | `docs/audits/sondes/AERR/C-AERR-VER2-201.py` (`repro: true`) | ACNC71 (même défaut, déjà déposée par la contre-visite ACNC du 14/11) |
+| C-AERR-VER2-202 | AERR134, constat VER1-160 | S2 | « E-mail » (modèles en 3 langues), « Monitoring » et « Clients » encore démontées au changement d'onglet (`frontend/src/pages/parametres/ParametresEntreprise.jsx::ParametresEntreprise`) | `docs/audits/sondes/AERR/C-AERR-VER2-202.py` (`repro: true`) | AERR158 |
+| C-AERR-VER2-203 | AERR25 | S2 | Note, compte rendu, pièce, retrait et motif perdus sans demande au changement de ticket (`frontend/src/pages/sav/TicketsPage.jsx::TicketDetailCorps`) | `docs/audits/sondes/AERR/C-AERR-VER2-203.py` (`repro: true`) | AERR159 |
+| C-AERR-VER2-204 | AERR38 + jumeau | S2 | « Fermer » perd les mesures de recette et la fiche ticket modifiée sans demande (`frontend/src/pages/installations/RecettePompageDialog.jsx::RecettePompageDialog`) | `docs/audits/sondes/AERR/C-AERR-VER2-204.py` (`repro: true`) | AERR160 |
+| C-AERR-VER2-210 | AERR3 | S3 | Tuiles d'argent non relues après une note de débit ou une échéance ; l'avis « pas à jour » n'a pas de test (`frontend/src/pages/ventes/FactureList.jsx::FactureList`) | STATIQUE | AERR161 |
+| C-AERR-VER2-211 | AERR5 | S3 | Modale d'acceptation non rouverte sur le 409 « date future », un 5xx ou une coupure (`frontend/src/pages/ventes/DevisList.jsx::DevisList`) | STATIQUE | AERR162 |
+| C-AERR-VER2-212 | AERR116 | S3 | Une seule erreur de champ rendue sur 12 (`frontend/src/pages/crm/SiteProfilePage.jsx::SiteProfilePage`) | STATIQUE | AERR163 |
+| C-AERR-VER2-213 | AERR149 (régression) | S3 | Deux Entrée créent deux lots (`frontend/src/features/ventes/LotsMultiSites.jsx::LotsMultiSites`) | STATIQUE | AERR164 |
+| C-AERR-VER2-214 | AERR101 | S3 | Verdict d'un autre commercial gardé sous le nouveau filtre après une panne (`frontend/src/pages/crm/ControleSuiviPanel.jsx::ControleSuiviPanel`) | STATIQUE | AERR165 |
+| C-AERR-VER2-215 | AERR108 | S3 | « Abandonner » ignoré au démontage ; refus de A posé sous B ; clause du doublon non testée (`frontend/src/features/crm/workspace/useLeadDraft.js::useLeadDraft`) | STATIQUE | AERR166 |
+| C-AERR-VER2-216 | AERR136 (régression) | S3 | Le corps d'un 404 rendu par `.unwrap()` n'est plus signalé (`frontend/src/lib/mutateWithUndo.js::mutateWithUndo`) | STATIQUE | AERR167 |
+| C-AERR-VER2-217 | AERR109 | S3 | La relecture ratée après un glisser n'a pas de test (`frontend/src/pages/CalendarPage.jsx::CalendarPage`) | STATIQUE | AERR168 |
+| C-AERR-VER2-218 | AERR143 | S3 | Quatre lectures encore doublées par un toast local (`frontend/src/pages/parametres/NotificationsAdminSection.jsx::RoutingRulesPanel`) | STATIQUE | AERR169 |
+| C-AERR-VER2-219 | AERR69 (non cochée) | S3 | « Annuler » de la palette ⌘K envoyé sans `undo: true`, donc refusé en 409 (`frontend/src/providers/CommandPalette.jsx::CommandPalette`) | STATIQUE | AERR69 (à corriger avant de la cocher) |
+| C-AERR-VER2-220 | AERR27 | S3 | Entrée volée à un bouton focalisé ; J/K sous une boîte non testés (`frontend/src/pages/sav/TicketsPage.jsx::TicketsPage`) | STATIQUE | AERR170 |
+| C-AERR-VER2-221 | AERR145 | S3 | `mes`, `newTicket`, `equip` et deux motifs suivent encore le chantier A ; latent (`frontend/src/pages/installations/InstallationDetail.jsx::InstallationDetail`) | STATIQUE | AERR171 |
+| C-AERR-VER2-222 | AERR29 (jumeau) | S3 | La fiche intervention passe à Terminée ou Validée sans confirmation (`frontend/src/pages/interventions/InterventionsPage.jsx::DetailSheet`) | STATIQUE | AERR172 |
+| C-AERR-VER2-224 | AERR65 (jumeaux) | S3 | « Lever le hold » et la suppression d'un champ de signature partent d'un clic (`frontend/src/features/ged/advanced/RetentionPage.jsx::RetentionPage`) | STATIQUE | AERR173 |
 
 **Pourquoi ces gravités.**
-- **C-AERR-VER1-100 (S2).** La donnée d'un objet est montrée sous un autre : les notes de débit de A sous le titre de B, avec
-  « Annuler » sur un document d'argent. Pas S1 : l'annulation passe par une boîte de confirmation.
-- **C-AERR-VER1-140 (S2).** Un écran de travail est bloqué. Toute modification d'une fiche à stock négatif est refusée, sous
-  un champ que l'utilisateur ne peut pas corriger. Il ne peut que fermer et perdre sa saisie.
-- **C-AERR-VER1-160 (S2, le constat 041 du dossier PF12 était S3).** Le S2 est maintenu. C'est une perte de saisie réelle,
-  sans avertissement, sur un clic d'onglet ordinaire. Le dossier PF12 classe S2 le même mécanisme ailleurs : un formulaire long
-  fermé sans garde (constats 074 et 075), la fiche lead quittée sans question (constat 052). Les sections restantes portent les
-  plus longs textes libres des Paramètres : corps des modèles brandés, traductions. Le S3 d'origine tenait à l'écran, peu
-  fréquenté ; la fréquence n'est pas un critère de la grille.
-- **C-AERR-VER1-161 (S2).** Une erreur avalée laisse croire à un succès : « Responsable modifié. » s'affiche après le refus. Le
-  toast d'erreur global sort aussi, mais l'écran dit les deux. Défaut antérieur à AERR117, hors du texte des tâches.
-- **Les S3.** Messages doublés, effacés ou génériques, confirmations manquantes sur des gestes réversibles ou sans argent,
-  états latents (la fiche chantier ne change de chantier qu'en cas rare), tests manquants sur une clause du « fini quand ».
-  « Émettre » (C-AERR-VER1-101) reste S3, comme le constat 015 du dossier PF12 qu'il double.
-  La variante (C-AERR-VER1-165) arrondit une valeur LUE dans la configuration, pas un nombre tapé : la règle du générateur
-  n'est pas violée, mais les variantes partent à 18 % au lieu de 17,5 %.
+- **VER2-200 (S2).** Le toast « Relance planifiée. » affiche un succès faux, et l'appel réel manque au journal du lead.
+  Il suffit d'une relance ratée puis d'une fermeture.
+- **VER2-201 (S2, chemin en chaîne).** Un succès faux sur un document d'argent : « ND-… créée » sous la facture B, alors
+  que B ne reçoit rien. Le chemin demande un échec sans réponse sur A, puis l'ouverture de B avec le même corps. Ce corps
+  est précisément celui que la boîte a gardé de A.
+- **VER2-202, 203, 204 (S2).** Une perte de saisie réelle sans avertissement, sur un geste ordinaire : clic d'onglet,
+  clic de ticket, « Fermer ». Même grille que les constats 074 et 075 du dossier PF12 et que VER1-160.
+- **Pas de S1.** VER2-221 serait de type S1 (mesures de A envoyées à B) s'il devenait atteignable. Aujourd'hui, aucun
+  écran ne change de chantier sans remonter la fiche.
 
-**Routage.** Chaque tâche a un seul propriétaire (`check_ownership.py --owner-of`) :
-- AERR132, AERR142 → stock ;
-- AERR133, AERR137, AERR138, AERR139 → facturation ;
-- AERR134, AERR143, AERR147 → paramètres ;
-- AERR135 → lead ;
-- AERR136 → deploy (`lib/` et `ui/`) ;
-- AERR140, AERR145, AERR146 → chantiers ;
-- AERR141 → sécurité ;
-- AERR144 → SAV ;
-- AERR148 → devis.
+**Routage.** Les propriétaires viennent de `check_ownership.py --owner-of` :
+- lead : AERR156, 163, 165, 166, 168 ;
+- facturation : ACNC71 (même défaut, déjà déposée par la contre-visite ACNC du 14/11), 161 ;
+- paramètres : AERR158, 169 ;
+- SAV : AERR159, 170 ;
+- devis : AERR162, 164 ;
+- deploy : AERR167 ;
+- chantiers : AERR171, 172 ;
+- documents : AERR173 ;
+- transverse, atomique chantiers + SAV : AERR160.
 
-AERR70 et AERR71 sont regroupés en une tâche : même brique propriétaire, même cause (la forme du rejet de `.unwrap()`).
-
-**Réfuté ou déjà porté.** Aucun écart proposé n'est réfuté. Aucun n'est porté par une tâche ouverte : greps sur
-`docs/plans/*.md` (`LigneFactureVente`, `openVarianteModal`, `NotificationsAdminSection`, `SecuriteIdentitePage`,
-`reassignAvecUndo`, `SectionGardee`, `erreursEntiersProduit`, `noteBody`, `useRetraitPrixFournisseur`, `EditableCell`). Les
-tâches ouvertes qui citent les mêmes fichiers (ACNC1-10, ADRG115, AERR69) portent d'autres gestes. Deux écarts S3 vont en §5
-au lieu d'une tâche : ils ne se produisent que sur un chemin concurrent ou en chaîne.
+**Réfuté ou déjà porté.**
+- AERR69 porte déjà C-AERR-VER2-219. Aucun autre écart n'est porté par une tâche ouverte : AERR112, AERR117, AERR120 et
+  AERR155 visent d'autres gestes.
+- Deux propositions des vérificateurs sont rétrogradées en §5 : l'en-tête « 0 pièce(s) jointe(s) » affiché sous l'avis
+  d'échec (`components/AttachmentsPanel.jsx`, S4), et le doublon de toast à l'annulation.
 
 ## 5. Optionnel (non déposé)
 
-- AERR81 : un 404 sur la suppression d'une ligne d'assemblage (ligne déjà supprimée ailleurs) ne dit rien.
-  `lib/toast.js::toastErreurNonAffichee` le traiterait.
-- AERR51 : la branche « panne du refresh » de `api/axios.js` passe `expirer: emitSessionExpired` sans
-  `noterEcritureRefusee`. Une écriture dont le refresh tombe en panne puis est refusée au réessai ne reçoit pas l'avis.
-- AERR85 : `clearField` absent dans `DemandesAchatList.jsx::setLigne` ; un second champ de ligne refusé (`prix_estime`)
-  n'est rendu nulle part.
-- Tests manquants sans défaut : AERR22 (motifs illisibles, toast unique de suppression), AERR83 (`GammeTab`, équipements),
-  AERR82 (compatibilité), AERR15 (moitié positive), AERR16 et AERR66 (tests hors `ConfirmProvider`), AERR84 (position du
-  message), AERR21 (PDF 404 et consolidation).
-- `clearField` non appelé à la frappe : AERR13, AERR54, AERR84.
-- AERR31 : l'annulation avale son propre échec. AERR20 : `ConfirmDialog` sans `loading`.
-- AERR76 : après un 409, réenregistrer renvoie la version périmée. AERR87 : « -1 » au rebut dit « quantité entière ».
-- AERR18 : l'année du journal suit le fuseau du navigateur. AERR126 : jetons de tarif jamais nettoyés.
-- AERR72 : les sections masquées restent montées (sondages éventuels en arrière-plan, non vérifié).
+- **Pièces jointes.** L'en-tête `AttachmentsPanel` compte 0 sur une lecture ratée, alors que l'avis d'échec est affiché.
+- **Annulation.** « Annulation impossible — vérifiez votre connexion » s'affiche en plus du toast global sur un refus
+  serveur (`useLeadDraft.js`, `mutateWithUndo.js`).
+- **AERR5.** Message doublé : toast plus texte sous le champ.
+- **AERR9.** Lien montré dans un toast de 20 s seulement.
+- **AERR142.** « La suppression du prix a échoué. » s'affiche si seule la relecture échoue.
+- **AERR78 et AERR64.** Une relecture ratée remplace tout le panneau (séries, SoD).
+- **AERR28.** `onChangeStatus` avale la raison serveur ; antérieur à la tâche.
+- **Annulation d'un ticket.** La boîte se ferme avant le 2xx ; le motif est gardé.
+- **AERR108.** L'envoi au démontage contourne la garde de fraîcheur (VX243c).
+- **CalendarPage.** Une réponse en retard d'un autre mois n'est pas gardée.
+- **Spec d'acceptation.** `frontend/e2e/acceptation/aerr.spec.js` garde une étape AERR25 périmée sous `etapeRouge` ;
+  les étapes vivantes sont dans `aerr5.spec.js`.
 
-## 6. Couverture et sortie de cycle
+## 6. Rappel de la passe du matin
 
-- **Couvert.** Les 49 tâches cochées : texte, commits, code sur `origin/main`, tests nommés, jumeaux. Quatre sondes hôtes
-  sur les S2, rejouées par le rédacteur, et les S2 relus dans le code.
+La passe de mi-parcours (49 tâches, SHA `47f925be1`) avait retenu 4 S2 et 13 S3. Leur état à `d986bb9bc` :
+
+| Constat du matin | Tâche | État ce soir |
+|---|---|---|
+| VER1-100 (S2) : notes de A sous B | AERR133 cochée | **fermé** : sonde à `repro: false`, test « A puis B en échec ». Résidu de clé et de saisie : VER2-201 |
+| VER1-140 (S2) : fiche produit à stock négatif bloquée | AERR132 non cochée (code livré, preuve en direct due) | code livré, sonde à `repro: false`, **toujours compté** tant que la tâche n'est pas cochée |
+| VER1-160 (S2) : sections des Paramètres démontées | AERR134 cochée | **partiellement fermé** : 8 sections gardées, E-mail, Monitoring et Clients restent (VER2-202) |
+| VER1-161 (S2) : réassignation refusée annoncée réussie | AERR135 cochée | **fermé** : relance avec `relancer`, aucun autre chemin n'affiche de succès |
+| VER1-101, 102, 103 (S3, factures) | AERR137, 138, 139 cochées | fermés |
+| VER1-120, 122 (S3, chantiers, outillage) | AERR140, 146 cochées | fermés |
+| VER1-121 (S3, brouillons de la fiche chantier) | AERR145 cochée | partiel, VER2-221 |
+| VER1-141, 142 (S3, stock, SAV) | AERR142, 144 cochées | fermés |
+| VER1-162 (S3, `.unwrap()`) | AERR136 cochée | fermé, avec une régression (VER2-216) |
+| VER1-163 (S3, toasts doublés) | AERR143 cochée | écritures fermées, lectures restantes (VER2-218) |
+| VER1-164, 165, 180 (S3) | AERR147, 148, 141 cochées | fermés |
+
+Le S1 du dossier PF12 (fiche SAV qui écrivait A sur B) est fermé par AERR25 et AERR26. Il est rejoué en direct dans
+`docs/audits/acceptation/AERR/2026-11-14-3d6d2abe8.md`.
+
+## 7. Couverture et sortie de cycle
+
+- **Couvert.**
+  - Les 77 tâches cochées depuis le matin : texte, commits, code de HEAD, tests nommés, jumeaux.
+  - Les 50 sondes anciennes rejouées.
+  - Cinq sondes neuves sur les S2, relues dans le code par le rédacteur.
 - **Non couvert.**
-  - Aucun test vitest ni Django lancé ; aucun rejeu à l'écran ; les écarts S3 sont statiques.
-  - Les 62 tâches « code livré, preuve en direct due » n'ont pas été relues. Parmi elles AERR25 et AERR26, qui portent le seul
-    S1 du dossier PF12 (fiche SAV qui écrit les champs du ticket A sur le ticket B), et les S2 les plus lourds (AERR7, 27, 28,
-    29, 56, 77, 124). Leurs rejeux sur runner sont en cours le 14/11 ; aucun enregistrement d'acceptation AERR n'est encore
-    sur `main`.
-  - AERR69, AERR112 et AERR131 sont encore à faire.
-- **Statut.** Le groupe reste « construit », pas « vérifié » : quatre S2 nouveaux, et le S1 d'origine derrière une tâche non
-  cochée.
-- **Suite.** La contre-visite de clôture sera due à 95 %. Une contre-visite des correctifs sera due quand AERR132-135 seront
-  cochées.
+  - Aucun test vitest ni Django lancé, aucun rejeu à l'écran ; les S3 sont statiques.
+  - Les 6 enregistrements d'acceptation AERR du 14/11 n'ont pas été rejoués.
+  - Les 9 tâches « preuve en direct due » n'ont pas été relues, AERR132 comprise.
+  - Les sondes `C-AERR-001` et `C-AERR-044` encore à `repro: true` n'ont pas été tranchées.
+- **Statut.** Le groupe reste « construit », pas « vérifié ». Il compte 5 S2 nouveaux, plus le S2 du matin dont la
+  tâche (AERR132) n'est pas cochée.
+- **Suite.** Une contre-visite des correctifs sera due quand AERR156 à AERR160 et AERR132 seront cochées. AERR69 ne se
+  coche pas avant d'envoyer `undo: true`.
 
-## 7. Coût
+## 8. Coût
 
-- 5 vérificateurs (opus, effort élevé) et 1 rédacteur (opus). Leurs jetons ne sont pas mesurés ici.
+- 3 vérificateurs (opus, frais), environ 0,88 M jetons de sous-agents. 1 rédacteur (opus).
 - Aucun appel Fable.
-
-<!-- verifie | groupe: AERR | pct: 94 | ecarts_s1_s2: 4 -->
