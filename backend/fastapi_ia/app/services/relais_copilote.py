@@ -439,7 +439,9 @@ def _preparer(service, question: str, company_id: int, ctx,
     outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
     outils += _outils_fixes(lecture, schema, collecteur)
     appeles: list = []
-    contenu, present = svc._contenu_systeme("claude", droits[0], copilote=True)
+    contenu, present = svc._contenu_systeme(
+        "claude", droits[0], copilote=True,
+        role=(getattr(ctx, "identite", None) or {}).get("role"))
     blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
     return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
             "manuel_present": present,

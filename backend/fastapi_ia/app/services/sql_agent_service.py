@@ -474,8 +474,37 @@ def _manifeste_allege(manifeste: dict | None) -> str:
             + "".join(f"- {i}\n" for i in items if isinstance(i, str)))
 
 
+# AIC93 — role de l'appelant (`role_nom` de /auth/me/) -> SA sous-section du
+# manuel (« ## 4. Comment on fait X — par rôle »).
+_SECTION_DU_ROLE = {
+    "Commercial": "4.1", "Commercial terrain": "4.2",
+    "Commercial responsable": "4.3", "Technicien": "4.4",
+    "Technicien responsable": "4.4", "Admin Ventes": "4.5",
+    "Directeur": "4.6", "Administrateur": "4.6",
+}
+
+
+def _manuel_du_role(docs: dict, role: str | None) -> str:
+    """AIC93 — texte du manuel sans les sous-sections `### 4.x` d'un AUTRE
+    role ; le reste a l'identique. Role inconnu ou absent -> texte entier.
+    Une decoupe par role, gardee dans le cache du dossier : un bloc stable par
+    role (un point de cache par role), aucune seconde lecture du fichier."""
+    garde = _SECTION_DU_ROLE.get(role or "")
+    if not garde or not docs["texte"]:
+        return docs["texte"]
+    par_role = docs.setdefault("par_role", {})
+    if garde not in par_role:
+        morceaux = re.split(r"(?m)^(?=#{2,3} )", docs["texte"])
+        par_role[garde] = "".join(
+            m for m in morceaux
+            if not (re.match(r"### 4\.\d+\b", m)
+                    and not m.startswith(f"### {garde} ")))
+    return par_role[garde]
+
+
 def _contenu_systeme(provider: str, allow_price: bool,
-                     copilote: bool = False) -> tuple[Any, bool]:
+                     copilote: bool = False,
+                     role: str | None = None) -> tuple[Any, bool]:
     """AIC5 — bloc SYSTEME = _AGENT_PREFIX (+ marge) + politique + manifeste +
     manuel ; sous `claude`, marque `cache_control` ephemere 1 h (>= 512
     tokens). Renvoie (contenu du SystemMessage, manuel_present). Hors claude
@@ -489,7 +518,7 @@ def _contenu_systeme(provider: str, allow_price: bool,
         base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.CONSIGNES_COPILOTE + "\n"
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
-    texte = base + docs["texte"]
+    texte = base + _manuel_du_role(docs, role)
     if _estimer_tokens(texte) < CACHE_MIN_TOKENS:
         return texte, docs["present"]
     return [{"type": "text", "text": texte,
@@ -1618,7 +1647,8 @@ class SQLAgentService:
         # contenir des accolades) ; manifeste + manuel en cache 1 h (claude).
         from langchain_core.messages import SystemMessage
         systeme, manuel_present = _contenu_systeme(
-            (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote)
+            (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote,
+            role=(getattr(action_ctx, "identite", None) or {}).get("role"))
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=systeme),
             MessagesPlaceholder(variable_name="chat_history"),
