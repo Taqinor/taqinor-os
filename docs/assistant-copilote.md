@@ -179,5 +179,50 @@ avec une vraie clé, `ASSISTANT_MOTEUR=natif` ; (3) `ASSISTANT_COPILOTE=tous` po
 ## 10. État de la construction
 
 <!-- ETAT-CONSTRUCTION:debut -->
-(complété à la fin de la session de construction)
+État au 14/11/2026 (branche `claude/relaxed-pascal-h6ywdc`, PR #1397). « Actif au merge » = vaut pour tout le monde dès
+le déploiement ; « derrière interrupteur » = seulement quand `ASSISTANT_COPILOTE` l'allume pour le compte (au merge :
+les administrateurs), ou quand `ASSISTANT_MOTEUR=natif` ; « ouvert » = pas encore construit.
+
+| Tâche | Ce qu'elle apporte | État |
+|---|---|---|
+| AIC60 | Les formes partagées entre l'assistant et l'écran (cartes, document, noms d'objets, diagnostic) | actif au merge |
+| AIC61 | L'interrupteur du copilote : qui voit les outils neufs | actif au merge (réglé sur « administrateurs ») |
+| AIC62 | Un catalogue d'actions sans doublon, avec les bons droits | actif au merge |
+| AIC63 | L'ERP sait nommer un devis, un lead ou une touche pour l'assistant | actif au merge |
+| AIC64 | Le journal de l'assistant compte le vrai coût et garde le relevé technique d'un signalement | actif au merge |
+| AIC65 | Le diagnostic de l'administrateur (« qu'est-ce qui a cassé hier ? ») | la page marche au merge ; l'assistant ne la propose que derrière interrupteur |
+| AIC66 | Chaque action rend sa carte ; un refus normal n'est plus compté comme un bug ; l'aperçu nomme l'objet | actif au merge |
+| AIC67 | Une valeur mal tapée par le modèle est refusée proprement au lieu de casser la réponse | actif au merge |
+| AIC68 | Une confirmation ne s'exécute qu'une fois, et seulement par la personne qui l'a reçue | actif au merge |
+| AIC69 | Toutes les cartes d'une réponse s'affichent et restent dans l'historique ; la date et l'heure données au modèle | cartes actives au merge ; date et identité derrière interrupteur |
+| AIC70 | Les consignes de travail du copilote (une touche à la fois, jamais de texte client inventé…) | derrière interrupteur |
+| AIC71 | Messages d'erreur en français, coût juste, moins d'appels inutiles au modèle | actif au merge |
+| AIC72 | Le moteur natif qui se souvient des identifiants et reprend après une confirmation | derrière interrupteur (éteint, jamais essayé avec une vraie clé) |
+| AIC73 | Le jeu d'essai de l'assistant réparé, avec les quinze phrases du jour | actif (l'essai réel demande une clé : AIC88) |
+| AIC74 | L'écran n'affiche que les vraies cartes, chacune avec son état | actif au merge |
+| AIC75 | Les cartes de travail : file du jour, matin, fiche, recherche, WhatsApp, envoi de devis, document, diagnostic | file, matin, fiche, envoi de devis et document actifs ; recherche, visite et diagnostic derrière interrupteur |
+| AIC76 | La carte d'une touche : texte validé, ouvrir WhatsApp, enregistrer la réponse d'un doigt, touche suivante | active par le bouton « Préparer » de la file ; proposée par le modèle derrière interrupteur |
+| AIC77 | Le bon contexte envoyé à chaque question, le premier clic qui marche, le bouton « Signaler un bug » | actif au merge |
+| AIC78 | La voix ne confirme plus rien ; la dictée se relit avant d'être envoyée | actif au merge |
+| AIC79 | Le manuel de l'assistant mis à jour (suivi v4, quatre marchés, outils du copilote) et plus court | actif au merge |
+| AIC80 | Les formes des lectures du suivi pour l'assistant | actif au merge |
+| AIC81 | Retrouver un lead ; la file, le matin et la fiche donnent les numéros de touche et de devis | identifiants actifs ; recherche derrière interrupteur |
+| AIC82 | Une touche prête et la carte qui propose d'enregistrer sa réponse | page active (bouton) ; outils du modèle derrière interrupteur |
+| AIC83 | Qualifier, changer d'étape, noter un appel : toujours à confirmer, jamais « Signé » ni « Froid » | confirmations actives ; qualifier et noter un appel derrière interrupteur |
+| AIC84 | Visite, message de visite, brouillon sans phrase interdite, envoi de devis qui s'enregistre | brouillon et envoi de devis actifs ; visite derrière interrupteur |
+| AIC85 | Remise et lignes de devis à confirmer, devis automatique décrit juste, PDF en lien | actif au merge |
+| AIC86 | Le relevé technique du navigateur joint aux signalements, sans aucune donnée de client | actif au merge |
+| AIC87 | Les tests de l'assistant tournent sur chaque PR | actif au merge |
+| AIC88 | Essai complet avec une vraie clé (quinze phrases, deux moteurs) | ouvert |
+| AIC89 | Allumer le copilote et le moteur natif pour toute l'équipe | ouvert (décision D-COP-4, après AIC88) |
+| AIC90 | Plafond de dépense par jour et par commerciale | ouvert (décision D-COP-1) |
+| AIC91 | Voir où en est l'assistant pendant qu'il travaille | ouvert |
+| AIC92 | Un jeton de service pour le tri nocturne des questions | ouvert |
+| AIC93 | Un manuel coupé au rôle de la personne (moins cher à chaque question) | ouvert |
+| AIC94 | Prévenir quand on prépare un message hors des heures d'envoi ; les visites du matin en liste | ouvert (après AIC95) |
+| AIC95 | Côté serveur : l'avertissement d'heures d'envoi et les lignes de visite du matin | ouvert |
+| AIC96 | Les textes manuels validés (parrainage, avis Google, débrief de visite…) préparés pour un lead | ouvert |
+| AIC97 | Un devis automatique jamais créé deux fois quand l'assistant réessaie | ouvert |
+| AIC98 | Une baisse de prix de ligne comptée comme une remise | ouvert (décision D-COP-2) |
+| AIC99 | Expliquer un chiffre du devis ; envoyer le devis par e-mail après confirmation | ouvert |
 <!-- ETAT-CONSTRUCTION:fin -->
