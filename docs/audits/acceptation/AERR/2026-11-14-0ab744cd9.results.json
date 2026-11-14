@@ -1,5 +1,5 @@
 {
-  "sha": "20c1a3d606e155110d0032739988e7eaee26c7ff",
+  "sha": "0ab744cd98b97eb198c6451a80f26b8e37dc3ebc",
   "date": "2026-11-14",
   "groupe": "AERR",
   "verdict": "PASS",
@@ -14,26 +14,23 @@
     "AERR57",
     "AERR64",
     "AERR65",
-    "AERR128"
+    "AERR128",
+    "AERR121"
   ],
-  "couvre_avec_ecart": [
-    "AERR50",
-    "AERR61",
-    "AERR127"
-  ],
+  "couvre_avec_ecart": [],
   "etapes": [
     {
       "id": "PF12.4-AERR50",
       "taches": [
         "AERR50"
       ],
-      "verdict": "FAIL",
-      "base_verdict": "FAIL",
+      "verdict": "PASS",
+      "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-AERR-PF12.4-AERR50.jpg",
       "oracles": {
         "1": "PASS",
-        "2": "FAIL",
-        "3": "FAIL",
+        "2": "PASS",
+        "3": "PASS",
         "4": "PASS",
         "5": "NA",
         "6": "NA",
@@ -42,7 +39,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "écart accepté (base FAIL) : frontend/src/features/offlinesync/PrechargementTournee.jsx (NTMOB28, monté par Layout sur tout écran) lit installations/interventions/ma-tournee/ avant midi pour TOUT rôle ; le Commercial n'a aucun code du module installations (LectureDuModule) ⇒ 403 d'arrière-plan à chaque écran, sans rapport avec l'écran rejoué. Borné : le corps de l'étape échoue si un autre incident que ces 403 ma-tournee est observé. ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+      "notes": ""
     },
     {
       "id": "PF12.1-AERR52",
@@ -93,13 +90,13 @@
       "taches": [
         "AERR61"
       ],
-      "verdict": "FAIL",
-      "base_verdict": "FAIL",
+      "verdict": "PASS",
+      "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-AERR-PF12.3-AERR61.jpg",
       "oracles": {
         "1": "PASS",
-        "2": "FAIL",
-        "3": "FAIL",
+        "2": "PASS",
+        "3": "PASS",
         "4": "PASS",
         "5": "NA",
         "6": "NA",
@@ -108,20 +105,20 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "écart accepté (base FAIL) : frontend/src/features/offlinesync/PrechargementTournee.jsx (NTMOB28, monté par Layout sur tout écran) lit installations/interventions/ma-tournee/ avant midi pour TOUT rôle ; le Commercial n'a aucun code du module installations (LectureDuModule) ⇒ 403 d'arrière-plan à chaque écran, sans rapport avec l'écran rejoué. Borné : le corps de l'étape échoue si un autre incident que ces 403 ma-tournee est observé. ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+      "notes": ""
     },
     {
       "id": "PF12.3-AERR127",
       "taches": [
         "AERR127"
       ],
-      "verdict": "FAIL",
-      "base_verdict": "FAIL",
+      "verdict": "PASS",
+      "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-AERR-PF12.3-AERR127.jpg",
       "oracles": {
         "1": "PASS",
-        "2": "FAIL",
-        "3": "FAIL",
+        "2": "PASS",
+        "3": "PASS",
         "4": "PASS",
         "5": "NA",
         "6": "NA",
@@ -130,7 +127,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "écart accepté (base FAIL) : frontend/src/features/offlinesync/PrechargementTournee.jsx (NTMOB28, monté par Layout sur tout écran) lit installations/interventions/ma-tournee/ avant midi pour TOUT rôle ; le Commercial n'a aucun code du module installations (LectureDuModule) ⇒ 403 d'arrière-plan à chaque écran, sans rapport avec l'écran rejoué. Borné : le corps de l'étape échoue si un autre incident que ces 403 ma-tournee est observé. ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+      "notes": ""
     },
     {
       "id": "PF12.2-AERR56",
@@ -228,6 +225,28 @@
       "verdict": "PASS",
       "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-AERR-PF12.3-AERR128.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.3-AERR121",
+      "taches": [
+        "AERR121"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-AERR-PF12.3-AERR121.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
