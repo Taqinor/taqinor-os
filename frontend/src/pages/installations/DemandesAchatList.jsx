@@ -714,7 +714,7 @@ export default function DemandesAchatList() {
                           Niveau {e.niveau} — {e.statut_display || e.statut}
                           {e.approbateur_nom ? ` (${e.approbateur_nom})` : ''}
                         </span>
-                        {e.statut === 'en_attente' && isManager && (
+                        {e.statut === 'en_attente' && peutApprouver && ( // ADRG133 — approuver_etape/rejeter_etape : PeutApprouverDemandeAchat
                           <span className="flex gap-1">
                             <Button size="sm" variant="outline" disabled={acting}
                                     onClick={() => decideEtape(e, false)}>Rejeter</Button>
