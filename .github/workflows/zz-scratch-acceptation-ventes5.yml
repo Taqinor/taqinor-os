@@ -2,7 +2,7 @@ name: zz scratch - acceptation ventes5 (AERR6 ADRG6 AANA6 ALEC3, runner, TEMPORA
 
 # ESSAI (14/11/2026) : preuves en direct AERR133/149/150, ADRG127/128, AANA91, ALEC47 (specs aerr6, adrg6, aana6,
 # alec3 ; METHODE §C.4 point 7) ; service FastAPI demarre sur le runner pour AANA91 (Parametres > IA)
-# sur un runner GitHub au lieu de la pile Docker locale. Squelette = `ci-image-check` + `e2e-full` de
+# Sur un runner GitHub au lieu de la pile Docker locale. Squelette = `ci-image-check` + `e2e-full` de
 # release-verify.yml. Declenche seulement par un push sur la branche d'essai ; supprime au dernier commit.
 on:
   push:
@@ -157,8 +157,7 @@ jobs:
             echo "Attente FastAPI ($i)"; sleep 2
             if [ "$i" = "60" ]; then echo "FastAPI indisponible"; tail -n 80 /tmp/fastapi.log; exit 1; fi
           done
-          curl -s -o /dev/null -w "schema sans jeton -> %{http_code}
-" http://127.0.0.1:8001/api/fastapi/sql-agent/schema || true
+          curl -s -o /dev/null -w "schema sans jeton -> %{http_code} " http://127.0.0.1:8001/api/fastapi/sql-agent/schema || true
       - name: Django + specs d'acceptation ventes5
         working-directory: backend/django_core
         env:
