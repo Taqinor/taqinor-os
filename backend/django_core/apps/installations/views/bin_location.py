@@ -9,6 +9,7 @@ validés tenant. Cross-app : ``stock`` en string-FK uniquement.
 """
 from rest_framework.exceptions import ValidationError
 
+from apps.roles.permissions import DroitDeLaGrille  # ADRG41
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -36,7 +37,7 @@ class BinLocationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -86,7 +87,7 @@ class CategorieStockageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
 
 @oa.listing(p0=oa.qs('actif'), p1=oa.qi('produit'))
@@ -101,7 +102,7 @@ class RegleRangementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -150,7 +151,7 @@ class BinAffectationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG41
 
     def get_queryset(self):
         qs = super().get_queryset()

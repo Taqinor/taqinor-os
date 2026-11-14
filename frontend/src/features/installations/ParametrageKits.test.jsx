@@ -27,6 +27,11 @@ const inst = vi.hoisted(() => ({
   updateControleQualiteModele: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: inst }))
+// ADRG41 — les gestes d'écriture suivent `stock_modifier` (Technicien : aucun).
+const droits = vi.hoisted(() => ({ stockModifier: true }))
+vi.mock('../stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: (code) => (code === 'stock_modifier' ? droits.stockModifier : true),
+}))
 vi.mock('../../api/stockApi', () => ({ default: {
   getProduits: () => Promise.resolve({ data: { count: 1, results: [{ id: 55, nom: 'Variateur VEICHI 5.5kW' }] } }),
 } }))
@@ -34,7 +39,7 @@ vi.mock('../../api/stockApi', () => ({ default: {
 import ParametrageKits from './ParametrageKits'
 import { mockMatchMedia } from '../../test/matchMedia'
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); droits.stockModifier = true })
 
 describe('ParametrageKits (PACT61)', () => {
   it('affiche les kits et leur fiche à onglets', async () => {
@@ -85,6 +90,24 @@ describe('ParametrageKits (PACT61)', () => {
     await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createEtapeAssemblageKit).toHaveBeenCalledWith(
       expect.objectContaining({ kit: 12, libelle: 'Câblage variateur', ordre: 1 })))
+  })
+
+  it('ADRG41 — sans stock_modifier (Technicien) : aucun bouton d\'écriture', async () => {
+    droits.stockModifier = false
+    inst.getKitComposants.mockResolvedValueOnce({ data: { count: 1, results: [
+      { id: 81, kit: 12, produit_nom: 'Onduleur 5 kW', quantite: '1' },
+    ] } })
+    const user = userEvent.setup()
+    render(<ParametrageKits />)
+    expect(await screen.findByTestId('composant-81')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nouveau kit' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Nouveau composant/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retirer' })).toBeNull()
+    await user.click(screen.getByRole('tab', { name: "Gamme d'étapes" }))
+    expect(screen.queryByRole('button', { name: /Nouvelle étape/ })).toBeNull()
+    await user.click(screen.getByRole('tab', { name: 'Contrôle qualité' }))
+    await screen.findAllByText('Aucun modèle de contrôle qualité configuré')
+    expect(screen.queryByRole('button', { name: /Configurer un modèle de contrôle/ })).toBeNull()
   })
 
   it('configure le modèle de contrôle qualité du kit', async () => {
