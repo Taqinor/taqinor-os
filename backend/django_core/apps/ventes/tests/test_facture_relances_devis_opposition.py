@@ -149,6 +149,19 @@ class NudgeOppositionTests(TestCase):
             link=f'/ventes/devis?devis={devis.id}').exists())
         self.assertFalse(ShareLink.objects.get(devis=devis).engagement_triggers_fired)
         Lead.all_objects.get(pk=lead.pk).restore()
+        # ASOC86 — la restauration rejoue la prochaine étape du lead : le suivi
+        # (RelanceEtape ouverte) reprend la relance, et MRY7 / QX13 diffèrent
+        # alors QJ4 pour ne pas doubler le message au client.
+        from apps.crm.models import RelanceEtape
+        from apps.ventes.domain.recouvrement import _lead_ecarte
+        ouvertes = RelanceEtape.objects.filter(
+            lead_id=lead.pk, statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertTrue(ouvertes.exists())
+        self.assertFalse(_lead_ecarte(devis))
+        # Sans suivi ouvert ni rappel planifié, le palier QJ4 repart au passage
+        # suivant : la corbeille n'écarte plus le devis une fois restauré.
+        ouvertes.update(statut=RelanceEtape.Statut.ANNULEE)
+        Lead.objects.filter(pk=lead.pk).update(relance_date=None)
         self.assertEqual(send_devis_followup_nudges(), 1)
         self.assertEqual(DevisNudgeLog.objects.filter(devis=devis).count(), 1)
 
