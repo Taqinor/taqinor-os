@@ -252,12 +252,14 @@ export function styleSansImagerie(maptilerKey = ''): object {
 /** ACAL377 — MapLibre ne lève jamais `load` quand le STYLE est refusé : une erreur
  *  SANS `sourceId` avant tout style chargé bascule UNE fois sur `styleSansImagerie`
  *  (le `load` suivant hydrate la scène) ; une erreur de tuile reste non bloquante. */
-export function brancherRepliImagerie(
+export function brancherRepliImagerie<S>(
   map: {
     on(ev: 'error', h: (e: unknown) => void): unknown;
     once(ev: 'load', h: () => void): unknown;
     isStyleLoaded(): boolean | void;
-    setStyle(style: object): unknown;
+    // Générique : `maplibregl.Map#setStyle` attend un StyleSpecification (module pur,
+    // aucun import maplibre-gl) — un paramètre `object` le rendait non assignable.
+    setStyle(style: S): unknown;
   },
   setStatus: (msg: string) => void,
   maptilerKey = '',
@@ -269,7 +271,7 @@ export function brancherRepliImagerie(
     if (bascule || err?.sourceId || map.isStyleLoaded()) return;
     bascule = true;
     setStatus(STATUT_IMAGERIE_INDISPONIBLE);
-    map.setStyle(styleSansImagerie(maptilerKey));
+    map.setStyle(styleSansImagerie(maptilerKey) as S);
     map.once('load', () => setStatus(STATUT_IMAGERIE_INDISPONIBLE));
   });
 }
