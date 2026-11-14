@@ -3648,7 +3648,7 @@ def produits_a_reapprovisionner(company):
     (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
     plutôt qu'un bon de commande fournisseur ; sinon 'acheter'.
     """
-    from .models import Produit, PrixFournisseur
+    from .models import Produit
     from .selectors import quantite_en_commande_produit
     from apps.installations.selectors import kit_map_for_produits_composes
 
@@ -3706,12 +3706,8 @@ def produits_a_reapprovisionner(company):
         # produit une fois le pipeline prix en compte.
         if disponible > (seuil_effectif or 0):
             continue
-        # Fournisseur le moins cher parmi les prix enregistrés.
-        best = (PrixFournisseur.objects
-                .filter(company=company, produit=p)
-                .select_related('fournisseur')
-                .order_by('prix_achat')
-                .first())
+        # ASUP61 — le moins cher COMMANDABLE (actif, prix > 0, en vigueur).
+        best = cheapest_prix_fournisseur(p)
         # ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — la quantité SUGGÉRÉE est ce
         # qu'il MANQUE pour atteindre la cible : cible − disponible (stock −
         # réservations) − pipeline déjà en commande (YPROC9). Avant, elle
