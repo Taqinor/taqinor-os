@@ -118,6 +118,9 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L("Note de débit à charge de") }}</div>
+      {# ASUP57 — l'acheteur figé de la facture d'origine (``generate_note_debit_pdf``) ;
+         rendu direct du gabarit sans ce contexte : le client de la pièce. #}
+      {% set acheteur = acheteur or note_debit.client %}
       {% if acheteur.type_client == 'entreprise' %}
       <div class="partie-nom">{{ acheteur.nom }}</div>
       {% else %}

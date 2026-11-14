@@ -121,6 +121,9 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L("Avoir au profit de") }}</div>
+      {# ASUP57 — l'acheteur figé de la facture d'origine (``generate_avoir_pdf``) ;
+         rendu direct du gabarit sans ce contexte : le client de la pièce. #}
+      {% set acheteur = acheteur or avoir.client %}
       {% if acheteur.type_client == 'entreprise' %}
       <div class="partie-nom">{{ acheteur.nom }}</div>
       {% else %}
