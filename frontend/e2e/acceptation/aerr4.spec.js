@@ -17,27 +17,16 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { assurerSessionPage, connexionApi, lireJson, listeDe, telephoneMobileUnique } from '../helpers.js'
 
-// DÉFAUTS PRODUIT (rejeu runner du 14/11/2026) : les étapes d'AERR121, AERR125 et AERR130 échouent sur un défaut
-// de l'écran (voir chaque étape). Elles ne sont jouées que sous `AERR4_DEFAUTS=1` (trace, jamais `couvre`) :
-// l'enregistrement de clôture ne couvre que les tâches dont l'étape passe.
+// DÉFAUTS PRODUIT (rejeux runner du 14/11/2026) : les étapes d'AERR125 (« Déléguer » envoie un corps sans
+// `delegant`, refusé 400 par le serveur) et d'AERR130 (« Supprimer » d'un classeur ouvre le classeur : clic
+// propagé à la ligne) échouent sur un défaut de l'écran. Elles ne sont jouées que sous `AERR4_DEFAUTS=1` (trace,
+// jamais `couvre`) : l'enregistrement de clôture ne couvre que les tâches dont l'étape passe.
 const DEFAUTS = !!process.env.AERR4_DEFAUTS
 const etape = groupe('AERR', ['AERR50', 'AERR52', 'AERR58', 'AERR61', 'AERR127', 'AERR56', 'AERR59',
-  'AERR57', 'AERR64', 'AERR65', 'AERR128', ...(DEFAUTS ? ['AERR125', 'AERR121', 'AERR130'] : [])])
+  'AERR57', 'AERR64', 'AERR65', 'AERR128', 'AERR121', ...(DEFAUTS ? ['AERR125', 'AERR130'] : [])])
 const etapeDefaut = DEFAUTS ? etape : () => undefined
 fermerDjangoApresTout()
 
-// ÉCART ACCEPTÉ, BORNÉ (AERR50, AERR61, AERR127) : défaut ANTÉRIEUR aux tâches et HORS de leurs `Files:`.
-const ECART_TOURNEE = {
-  base: 'FAIL',
-  raison: 'frontend/src/features/offlinesync/PrechargementTournee.jsx (NTMOB28, monté par Layout sur tout écran) lit '
-    + 'installations/interventions/ma-tournee/ avant midi pour TOUT rôle ; le Commercial n\'a aucun code du module '
-    + 'installations (LectureDuModule) ⇒ 403 d\'arrière-plan à chaque écran, sans rapport avec l\'écran rejoué. Borné : '
-    + 'le corps de l\'étape échoue si un autre incident que ces 403 ma-tournee est observé.',
-}
-function seulsLes403Tournee(suivi) {
-  const autres = suivi.incidents.filter((i) => !/\/installations\/interventions\/ma-tournee\//.test(i.texte))
-  expect(autres, 'écart borné : aucun autre incident que les 403 de ma-tournee').toEqual([])
-}
 const API = '/api/django'
 const T = { timeout: 120_000 }
 const J = JSON.stringify
@@ -214,8 +203,7 @@ etape('PF12.4-AERR50', ['AERR50'], async ({ page, context, suivi, testInfo }) =>
   await frapper('après rechargement')
   const relu = await lireJson(await r.get(`${API}/ventes/devis/${v.id}/`, T), 'devis relu')
   expect(relu.statut, 'en base : le devis reste envoyé (rien n\'est parti)').toBe('envoye')
-  seulsLes403Tournee(suivi)
-}, { ecart: ECART_TOURNEE })
+})
 
 // ═══ PF12.1 — AERR52 : Tiers → nouveau tiers, ICE refusé ⇒ le toast global NOMME le champ ═══
 etape('PF12.1-AERR52', ['AERR52'], async ({ page, suivi, testInfo }) => {
@@ -368,8 +356,7 @@ except Exception as exc: print('nettoyage', exc)`))
   await p.getByRole('tab', { name: /^Pièces/ }).click({ timeout: 60_000 })
   await expect(avis, 'après rechargement : avis, pas « Aucune pièce jointe. »').toBeVisible({ timeout: 30_000 })
   await expect(p.getByText('Aucune pièce jointe.')).toHaveCount(0)
-  seulsLes403Tournee(suivi)
-}, { ecart: ECART_TOURNEE })
+})
 
 // ═══ PF12.3 — AERR127 : cloche, sondage du fil rejeté ⇒ les 3 notifications restent ; 1er chargement rejeté ⇒ « Notifications indisponibles » ═══
 etape('PF12.3-AERR127', ['AERR127'], async ({ page, suivi, testInfo }) => {
@@ -425,8 +412,7 @@ sortie(Notification.objects.filter(recipient_id=${co.id}, title__startswith='AER
   await expect(panneau.getByText('Notifications indisponibles'), 'premier chargement rejeté : avis').toBeVisible({ timeout: 30_000 })
   await expect(panneau.getByText('Rien à signaler 🎉')).toHaveCount(0)
   await cliche(p, 'PF12.3-AERR127', 'premier-chargement-rejete')
-  seulsLes403Tournee(suivi)
-}, { ecart: ECART_TOURNEE })
+})
 
 // ═══ PF12.2 — AERR56 : lecture d'un réglage rejetée ⇒ « Réglages non chargés » + Réessayer, rien d'enregistrable, aucun PATCH ═══
 etape('PF12.2-AERR56', ['AERR56'], async ({ page, context, suivi, testInfo }) => {
@@ -839,7 +825,7 @@ DemandeTicketPortail.objects.filter(sujet__contains=${J(m)}).delete()`))
 })
 
 // ═══ PF12.3 — AERR121 : accueil mobile commercial (375 px), relances et agenda coupés ⇒ avis + Réessayer, jamais « Rien d'urgent » ═══
-etapeDefaut('PF12.3-AERR121', ['AERR121'], async ({ page, suivi, testInfo }) => {
+etape('PF12.3-AERR121', ['AERR121'], async ({ page, suivi, testInfo }) => {
   sondeFausse('C-AERR-092')
   const m = marque()
   const co = await compteRole('aerr121co', 'Commercial')

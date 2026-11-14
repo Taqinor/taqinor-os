@@ -1,4 +1,4 @@
-﻿name: zz scratch - acceptation AERR lot 4 (essai runner, TEMPORAIRE)
+name: zz scratch - acceptation AERR lot 4 (essai runner, TEMPORAIRE)
 
 # ESSAI (14/11/2026) : preuves en direct du groupe AERR, lot 4 (spec aerr4.spec.js, METHODE Â§C.4 point 7)
 # sur un runner GitHub au lieu de la pile Docker locale. Squelette = `ci-image-check` + `e2e-full` de
@@ -149,7 +149,6 @@ jobs:
         env:
           E2E_ACCEPTATION: '1'
           E2E_SONDE_LOCALE: '1'
-          AERR4_DEFAUTS: '1'
           ACCEPTATION_SHA: ${{ github.sha }}
         run: |
           gunicorn erp_agentique.wsgi:application \
