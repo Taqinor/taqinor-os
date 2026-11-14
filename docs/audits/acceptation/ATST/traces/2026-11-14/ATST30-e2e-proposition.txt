@@ -1,0 +1,44 @@
+# ATST30 — e2e /proposition FR/AR avec WEB_URL servi (apps/web en dev, http://127.0.0.1:4321)
+# Preuve : les 3 specs (AGR318, CIQ334, CIQ346) ouvrent ${WEB_URL}/proposition/<jeton> en FR puis en AR,
+# ouvrent le pli <details> de ChainePrix, puis comparer({page: lireFiguresPage, data: figuresDepuisProposition(/data/)})
+# == [] et identitesComparees(...) contient total_ttc (assertions aux lignes 151-152 / 222-223 / 217-218 des specs).
+
+== 1) Job CI requis e2e-shard (2) de la PR #1411 (ci.yml, étape « Start Django + run E2E specs »)
+run https://github.com/Taqinor/taqinor-os/actions/runs/43642891367 , job 132594443618
+tête 346dc2d372ce6b00c68341affe84855f9a4feb09 (contient eba819f31 : ouverture du pli <details> de ChainePrix)
+2026-11-14T21:30:25.2173290Z apps/web prêt (HTTP 200)
+2026-11-14T21:30:55.1620852Z   ✓   5 [chromium] › e2e/devis-agricole-document.spec.js:135:1 › AGR318 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis) (6.7s)
+2026-11-14T21:31:25.4871722Z   ✓   9 [chromium] › e2e/devis-ci-commercial.spec.js:208:1 › CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis) (5.9s)
+2026-11-14T21:32:00.8420461Z   ✓  14 [chromium] › e2e/devis-ci-industriel.spec.js:203:1 › CIQ346 — page /proposition : ni « heures les plus chères » ni « CBAM », FR et AR (WEB_URL requis) (6.9s)
+2026-11-14T21:32:36.1499549Z   16 passed (2.2m)
+(les 15 tests des 3 specs : tous ✓, aucun sauté ; la seconde invocation playwright du même job — health/mobile/
+figures-parite — passe aussi (17 passed) mais RÉÉCRIT frontend/playwright-report : l'artefact playwright-report-2
+de ce run ne contient que auth.setup, figures-parite, health, adsengine-mobile, mobile — rapport décodé —, donc
+aucune capture FR/AR. D'où le rejeu 2) pour joindre les captures.)
+
+== 2) Rejeu identique sur runner pour les captures (workflow temporaire zz-scratch-acceptation-infra5-e2e.yml)
+run https://github.com/Taqinor/taqinor-os/actions/runs/43647860879
+sha ef294bce37fe08dfa6f919510ac993092947d8df (= dev-all-94854b 5854f7721 + workflows temporaires ; specs identiques à 346dc2d37)
+image ci-e2e, même commande que e2e-shard (2) : apps/web `npm run dev` sur 4321, WEB_URL=http://127.0.0.1:4321
+2026-11-14T22:26:24.2147363Z apps/web pret (HTTP 200)
+2026-11-14T22:26:56.8755874Z   ✓   5 [chromium] › e2e/devis-agricole-document.spec.js:135:1 › AGR318 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis) (7.2s)
+2026-11-14T22:27:29.2821142Z   ✓   9 [chromium] › e2e/devis-ci-commercial.spec.js:208:1 › CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis) (5.6s)
+2026-11-14T22:28:04.0034308Z   ✓  14 [chromium] › e2e/devis-ci-industriel.spec.js:203:1 › CIQ346 — page /proposition : ni « heures les plus chères » ni « CBAM », FR et AR (WEB_URL requis) (6.9s)
+2026-11-14T22:28:09.7926438Z   15 passed (1.7m)
+
+== Captures FR/AR (pièces jointes test.info().attach du rejeu 2), artefact acceptation-infra5-proposition-rapport,
+   PNG pleine page 1280 px réduits en JPEG 640 px de large :
+docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-AGR318-proposition-fr.jpg
+docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-AGR318-proposition-ar.jpg
+docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-CIQ334-proposition-fr.jpg
+docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-CIQ334-proposition-ar.jpg
+docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-CIQ346-proposition-fr.jpg
+docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-CIQ346-proposition-ar.jpg
+
+== Run antérieur à eba819f31 (pour mémoire) : run 43639836368 (tête 6fbb128b9), les 3 tests /proposition ÉCHOUAIENT :
+   « expect(locator('[data-figure="total_ttc"]:visible').first()).toBeVisible() failed … element(s) not found »
+   — la chaîne ChainePrix vit dans un <details> « Voir le détail du prix » fermé (pli de 3cde8fa8d, sur main) ;
+   les specs ont été corrigées (eba819f31) pour ouvrir ce pli avant de lire les figures.
+
+VERDICT ATST30 : PASS — specs exécutées (non sautées), WEB_URL servi, FR et AR comparés à /data/ sans écart
+(total_ttc compris), captures FR/AR jointes.
