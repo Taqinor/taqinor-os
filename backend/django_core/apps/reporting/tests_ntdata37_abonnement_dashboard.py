@@ -218,3 +218,49 @@ class AbonnementDashboardTests(TestCase):
             'name': 'X', 'target_kind': 'dashboard'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('cible_id', resp.data)
+
+    def _api_role(self, nom_role):
+        """Compte au rôle LIVRÉ ``nom_role`` (``init_roles``) + son client API."""
+        from django.core.management import call_command
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        role = Role.objects.get(company=self.company, nom=nom_role)
+        user = User.objects.create_user(
+            username=f'ntdata37_{nom_role.replace(" ", "_").lower()}',
+            password='x', company=self.company, role=role)
+        api = APIClient()
+        api.force_authenticate(user)
+        return user, api
+
+    def test_requete_stock_exige_stock_export(self):
+        """ADRG123 — programmer l'envoi d'une requête du jeu ``stock_produits``
+        exige ``stock_export`` ; le rendu d'un rapport existant aussi (au nom
+        de son propriétaire)."""
+        url = '/api/django/reporting/saved-reports/'
+        resultats = {}
+        for nom_role in ('Commercial responsable', 'Directeur'):
+            user, api = self._api_role(nom_role)
+            requete = SavedQuery.objects.create(
+                company=self.company, owner=user, titre='Stock',
+                dataset='stock_produits', spec={'select': ['nom']})
+            avant = SavedReport.objects.count()
+            resp = api.post(url, {
+                'name': 'Stock', 'target_kind': 'query', 'cible_id': requete.pk,
+                'schedule': 'weekly', 'recipients': 'x@exemple.ma'},
+                format='json')
+            resultats[nom_role] = (resp, avant, user, requete)
+        resp, avant, commercial, requete_c = resultats['Commercial responsable']
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(str(resp.data['detail']),
+                         'Accès au jeu de données refusé.')
+        self.assertEqual(SavedReport.objects.count(), avant)
+        resp = resultats['Directeur'][0]
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+        rapport = self._rapport(
+            owner=commercial, name='Stock hebdo',
+            target_kind=SavedReport.TargetKind.QUERY, cible_id=requete_c.pk)
+        self.assertEqual(scheduled_reports._rendre_saved_query(rapport),
+                         (None, None, None, None))

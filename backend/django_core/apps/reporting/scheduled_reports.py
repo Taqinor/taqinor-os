@@ -239,6 +239,10 @@ def _rendre_saved_query(report):
     requete = report.resoudre_cible()
     if requete is None:
         return None, None, None, None
+    try:  # ADRG123 — propriétaire sans le code d'export du jeu : aucun fichier
+        data_explorer.exiger_export_dataset(requete.dataset, report.owner)
+    except (data_explorer.DatasetNonAutorise, data_explorer.DatasetInconnu):
+        return None, None, None, None
     try:
         # AANA25 — e-mail planifié ET lien public : jamais de champ sous
         # permission, même si le propriétaire (admin) pouvait le voir.
