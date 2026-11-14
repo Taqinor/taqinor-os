@@ -467,6 +467,34 @@ class GestesArgentTests(TestCase):
                 else:
                     self.assertTrue(gestes['facturer_complete'], gestes)
 
+    def test_drapeau_pdf_suit_ventes_pdf(self):
+        """ADRG126 (C-ADRG-VER2-203) — ``peut.pdf`` suit ``ventes_pdf``
+        (``generer-pdf`` / ``telecharger-pdf``) : rôle personnalisé aux codes
+        du Commercial responsable moins ``ventes_pdf`` ⇒ faux ; Commercial
+        responsable ⇒ vrai. Mutant : remettre ``'pdf': ecrit`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_RESP_PERMISSIONS)
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import etat_vente
+        sans_pdf = Role.objects.create(
+            company=self.company, nom='Commercial responsable sans PDF',
+            permissions=[c for c in COMMERCIAL_RESP_PERMISSIONS
+                         if c != 'ventes_pdf'])
+        comptes = {nom: User.objects.create_user(
+            username=f'asec29-{_nxt()}', password='x', role_legacy='normal',
+            role=role, company=self.company) for nom, role in (
+                ('sans', sans_pdf), ('resp', Role.objects.get(
+                    company=self.company, nom='Commercial responsable')))}
+        directeur = self.users['Directeur']
+        devis, facture = self._devis(directeur), self._facture(directeur)
+        Facture.objects.filter(pk=facture.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+        for nom, attendu in (('sans', False), ('resp', True)):
+            with self.subTest(compte=nom):
+                peut = etat_vente(devis, comptes[nom])['factures'][0]['peut']
+                self.assertEqual(peut['pdf'], attendu, peut)
+
     def test_emettre_unitaire_et_lot_exigent_encaisser(self):
         """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
         ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon

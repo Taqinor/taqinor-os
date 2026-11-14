@@ -543,6 +543,16 @@ def peut_ecrire_la_vente(user) -> bool:
         SimpleNamespace(permission_module='ventes'))
 
 
+def peut_pdf_vente(user) -> bool:
+    """ADRG126 — le PDF d'une facture : écriture ventes ET ``ventes_pdf``
+    (``DroitDeLaGrille``), comme ``generer-pdf`` / ``telecharger-pdf``."""
+    from types import SimpleNamespace
+
+    from apps.roles.permissions import DroitDeLaGrille
+    return peut_ecrire_la_vente(user) and DroitDeLaGrille('ventes_pdf')(
+    ).has_permission(SimpleNamespace(user=user, method='POST'), None)
+
+
 def _nature(facture, ids) -> str:
     if facture.bon_commande_id:
         return 'bc'
@@ -552,7 +562,7 @@ def _nature(facture, ids) -> str:
 
 
 def _facture_etat(facture, ids, palier, actionnable, encaisse=False,
-                  ecrit=False) -> dict:
+                  ecrit=False, pdf=False) -> dict:
     from core.numbering import est_reference_provisoire
     statut = facture.statut
     emise = statut in STATUTS_EMIS
@@ -576,7 +586,7 @@ def _facture_etat(facture, ids, palier, actionnable, encaisse=False,
         'paiements': paiements,
         'peut': {
             'emettre': brouillon and actionnable,
-            'pdf': ecrit,  # ADRG17
+            'pdf': pdf,  # ADRG17, ADRG126 (ventes_pdf)
             'envoyer': emise and ecrit,
             'encaisser': encaisse and statut in ('emise', 'en_retard')
             and _d(facture.montant_du) > 0,  # ERR-ACC-ENCAISSER-OFFERT-REFUSE
@@ -700,10 +710,11 @@ def etat_vente(devis, user=None) -> dict:
     ``user`` (palier :func:`peut_gerer_la_vente`) ; une version remplacée ou
     une révision en cours ferme tous les gestes de facturation."""
     return _etat_vente(devis, peut_gerer_la_vente(user), peut_encaisser(user),
-                       peut_ecrire_la_vente(user))
+                       peut_ecrire_la_vente(user), peut_pdf_vente(user))
 
 
-def _etat_vente(devis, palier, encaisse=False, ecrit=False) -> dict:
+def _etat_vente(devis, palier, encaisse=False, ecrit=False,
+                pdf=False) -> dict:
     """:func:`etat_vente` pour un palier déjà résolu (une fois par liste)."""
     chaine = chaine_vente(devis)
     tete, revision = _tete_de_vente(chaine)
@@ -725,7 +736,7 @@ def _etat_vente(devis, palier, encaisse=False, ecrit=False) -> dict:
     return {
         **_montants_vente(plan),
         'factures': [_facture_etat(f, ids, palier, actionnable and encaisse,
-                                   encaisse, ecrit)
+                                   encaisse, ecrit, pdf)
                      for f, _r in plan['factures_parts']],
         'versions': [{'id': d.pk, 'reference': d.reference,
                       'version': d.version, 'statut': d.statut,
@@ -758,12 +769,13 @@ def etat_vente_map(rows, user=None, soldes=None) -> dict:
     from apps.ventes.utils.echeancier import solde_devis
     rows = list(rows)
     palier, encaisse = peut_gerer_la_vente(user), peut_encaisser(user)
-    ecrit = peut_ecrire_la_vente(user)
+    ecrit, pdf = peut_ecrire_la_vente(user), peut_pdf_vente(user)
     with ventes_prechargees(rows):
         if soldes is not None:
             soldes.update({d.pk: {k: str(v) for k, v in solde_devis(d).items()}
                            for d in rows})
-        return {d.pk: _etat_vente(d, palier, encaisse, ecrit) for d in rows}
+        return {d.pk: _etat_vente(d, palier, encaisse, ecrit, pdf)
+                for d in rows}
 
 
 # ── Le lot d'une liste de devis (VNT68) ──────────────────────────────────────
