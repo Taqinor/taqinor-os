@@ -1,0 +1,447 @@
+{
+  "sha": "c5c831e372165bb1bea9c8e97f0147ab347ee833",
+  "date": "2026-11-14",
+  "groupe": "ACNC",
+  "verdict": "PASS",
+  "couvre": [
+    "ACNC1",
+    "ACNC2",
+    "ACNC3",
+    "ACNC5",
+    "ACNC6",
+    "ACNC8",
+    "ACNC9",
+    "ACNC10",
+    "ACNC11",
+    "ACNC12",
+    "ACNC13"
+  ],
+  "couvre_avec_ecart": [
+    "ACNC1",
+    "ACNC3",
+    "ACNC9",
+    "ACNC10",
+    "ACNC11",
+    "ACNC13"
+  ],
+  "etapes": [
+    {
+      "id": "PF9.1-reseau",
+      "taches": [
+        "ACNC1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.1-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.1-ecran",
+      "taches": [
+        "ACNC1"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.1-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    },
+    {
+      "id": "PF9.2-reseau",
+      "taches": [
+        "ACNC2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.2-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.2-ecran",
+      "taches": [
+        "ACNC2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.2-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.3-reseau",
+      "taches": [
+        "ACNC3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.3-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.3-ecran",
+      "taches": [
+        "ACNC3"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.3-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    },
+    {
+      "id": "PF9.5-reseau",
+      "taches": [
+        "ACNC5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.5-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.5-ecran",
+      "taches": [
+        "ACNC5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.5-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.6-reseau",
+      "taches": [
+        "ACNC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.6-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.6-ecran",
+      "taches": [
+        "ACNC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.6-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.8-reseau",
+      "taches": [
+        "ACNC8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.8-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.9-reseau",
+      "taches": [
+        "ACNC9"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.9-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.9-ecran",
+      "taches": [
+        "ACNC9"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.9-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    },
+    {
+      "id": "PF9.10",
+      "taches": [
+        "ACNC10"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.10.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    },
+    {
+      "id": "PF9.11-reseau",
+      "taches": [
+        "ACNC11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.11-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.11-ecran",
+      "taches": [
+        "ACNC11"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.11-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    },
+    {
+      "id": "PF9.12",
+      "taches": [
+        "ACNC12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.12.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.13-reseau",
+      "taches": [
+        "ACNC13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.13-reseau.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF9.13-ecran",
+      "taches": [
+        "ACNC13"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACNC-PF9.13-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : GET installations/interventions/ma-tournee/ → 403 pour le rôle Commercial : le pré-chargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, NTMOB28 du 13/08/2026, monté par Layout sur TOUT écran authentifié avant 12 h) interroge une route que le rôle Commercial ne lit pas — 403 + console.error à chaque écran ; présent avant les commits ACNC (13/11/2026), hors de leurs Files (facturation / ventes) ; à ouvrir chez le propriétaire installations/offlinesync ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    }
+  ]
+}
