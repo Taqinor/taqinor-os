@@ -1092,10 +1092,10 @@ export default function ParametresEntreprise() {
           {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
           {tab === 'shotlist'   && <ShotListSection />}
           {/* N72 / N73 — moteur d'automatisations + approbations. */}
-          {tab === 'automatisations' && <AutomatisationsSection />}
+          <SectionGardee actif={tab === 'automatisations'} vue={vues.automatisations}><AutomatisationsSection /></SectionGardee>
           {/* WIR154 — administration Notifications (routage, calendrier ouvré,
               annonces, gabarits WhatsApp). */}
-          {tab === 'notifications' && <NotificationsAdminSection />}
+          <SectionGardee actif={tab === 'notifications'} vue={vues.notifications}><NotificationsAdminSection /></SectionGardee>
           {/* F18/F12/F14/F20 — consignes de sécurité + seuil dépassement + services swappables. */}
           {tab === 'securite'   && <SecuriteTerrainSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
@@ -1113,21 +1113,21 @@ export default function ParametresEntreprise() {
           {/* N96 — double authentification (2FA, opt-in). Section autonome. */}
           {tab === 'securite_compte' && <SecuriteCompteSection />}
           {/* N94 — traductions d'interface éditables par langue (autonome). */}
-          {tab === 'traductions' && <TraductionsSection />}
+          <SectionGardee actif={tab === 'traductions'} vue={vues.traductions}><TraductionsSection /></SectionGardee>
           {/* NTI18N28 — rapport de couverture i18n (lecture seule, autonome). */}
           {tab === 'i18n_couverture' && <I18nCoverageSection />}
           {/* XPLT23 — registre CNDP + demandes de personnes concernées (autonome). */}
-          {tab === 'confidentialite' && <ConfidentialiteSection />}
+          <SectionGardee actif={tab === 'confidentialite'} vue={vues.confidentialite}><ConfidentialiteSection /></SectionGardee>
           {/* ODX5 — catalogue de modules (admin-gated, autonome). */}
           {tab === 'applications' && <ApplicationsSection />}
           {/* WIR66 — référentiels société : TVA / conditions / unités. */}
-          {tab === 'referentiels' && <ReferentielsSection />}
+          <SectionGardee actif={tab === 'referentiels'} vue={vues.referentiels}><ReferentielsSection /></SectionGardee>
           {/* Catalogue des installations réelles (preuve de la touche J4). */}
-          {tab === 'realisations' && <RealisationsSection />}
+          <SectionGardee actif={tab === 'realisations'} vue={vues.realisations}><RealisationsSection /></SectionGardee>
           {/* PACT117 — modèles brandés PDF/email/WhatsApp + aperçu serveur. */}
-          {tab === 'modeles_brandes' && <ModelesBrandesSection />}
+          <SectionGardee actif={tab === 'modeles_brandes'} vue={vues.modeles_brandes}><ModelesBrandesSection /></SectionGardee>
           {/* PACT123 — exports planifiés vers SFTP/S3 (statut explicite). */}
-          {tab === 'exports_planifies' && <ExportsPlanifiesSection />}
+          <SectionGardee actif={tab === 'exports_planifies'} vue={vues.exports_planifies}><ExportsPlanifiesSection /></SectionGardee>
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
