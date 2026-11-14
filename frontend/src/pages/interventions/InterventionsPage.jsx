@@ -9,6 +9,7 @@ import { MapPin, CalendarDays, Users, Wrench } from 'lucide-react'
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useSensor, useSensors } from '@dnd-kit/core'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
+import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { hapticTap } from '../../lib/haptics'
 // VX132 — anti-scintillement propagé : un Spinner nu clignotait sur tout
@@ -506,6 +507,7 @@ export default function InterventionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [users, setUsers] = useState([])
+  const peutAssignables = useCanListAssignableUsers()  // ADRG113/ADRG134 — sinon 403 (Technicien)
   const [selected, setSelected] = useState(null)
   const [fStatut, setFStatut] = useState('')
   const [fType, setFType] = useState('')
@@ -563,9 +565,10 @@ export default function InterventionsPage() {
   const reload = () => { setLoading(true); return fetchData() }
   useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65, D-ENF22)
   useEffect(() => {
+    if (!peutAssignables) return
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
-  }, [])
+  }, [peutAssignables])
 
   const filtered = useMemo(() => (items ?? []).filter((it) =>
     (!fStatut || it.statut === fStatut)
