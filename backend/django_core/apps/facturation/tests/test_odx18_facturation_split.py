@@ -208,7 +208,11 @@ class TestODX18DemenagementSuite(SimpleTestCase):
                 v_old = resolve('/api/django/ventes/' + suffixe).func
                 v_new = resolve('/api/django/facturation/' + suffixe).func
                 self.assertIs(v_old.cls, v_new.cls)
-                self.assertEqual(v_old.actions, v_new.actions)
+                # DRF ajoute `head` au dict `actions` PARTAGÉ de la vue à la première
+                # requête HEAD (ViewSetMixin.as_view) : sa présence dépend de l'ordre des
+                # tests du shard. On compare le mapping déclaré, alias `head` exclu.
+                sans_head = lambda a: {k: v for k, v in a.items() if k != 'head'}  # noqa: E731
+                self.assertEqual(sans_head(v_old.actions), sans_head(v_new.actions))
 
     def test_facade_services_memes_objets_que_ventes(self):
         from apps.facturation import services as facade
