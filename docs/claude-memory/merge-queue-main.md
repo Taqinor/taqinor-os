@@ -21,6 +21,13 @@ reconstruite sur `main` + les PR devant elle, ses checks requis tournent sur ce 
 - Entrée en file : `gh pr merge <n> --auto --merge` (ou le bouton « Merge when ready »). `--delete-branch`
   ne marche pas depuis un worktree (« 'main' is already used by worktree ») : supprimer la branche après.
 
+- Branche `claude/*` (session cloud) : la CI de la PR est « allégée » (`allege=true` du détecteur `changes`) — les
+  suites lourdes (tests backend, vitest, e2e) ne tournent QUE sur le groupe de la file. Ne pas les attendre sur la
+  PR : lancer `--auto --merge` dès les contrôles rapides verts ; le groupe a pris 15 min le 14/11/2026 (PR #1397).
+- Une PR en CONFLIT avec `main` ne déclenche AUCUNE CI (seul `dependabot-automerge` apparaît) : si rien ne démarre
+  après une poussée, fusionner `main` d'abord. Les plans d'audit sont le point de friction quand une autre session
+  y écrit : garder ses ajouts hors de la queue du fichier et quelques lignes sous `## DONE LOG`.
+
 **Why:** une PR verte ne doit plus repartir en CI parce qu'une autre a mergé entre-temps.
 
 **How to apply:** plus jamais de boucle `gh pr update-branch` → CI → merge ; une PR retirée de la file

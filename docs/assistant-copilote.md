@@ -226,3 +226,38 @@ les administrateurs), ou quand `ASSISTANT_MOTEUR=natif` ; « ouvert » = pas enc
 | AIC98 | Une baisse de prix de ligne comptée comme une remise | ouvert (décision D-COP-2) |
 | AIC99 | Expliquer un chiffre du devis ; envoyer le devis par e-mail après confirmation | ouvert |
 <!-- ETAT-CONSTRUCTION:fin -->
+
+## 11. Rejouer l'acceptation à l'écran (recette du 14/11/2026)
+
+Les enregistrements `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md` et `2026-11-14-a29e79931.md` ont été joués
+par un script jetable (hors dépôt). Chaque trace (`docs/audits/acceptation/AIC/traces/2026-11-14-a29e79931/*.json`)
+liste, dans `constats`, les contrôles de son étape, dans l'ordre. Ce qu'il faut pour le refaire :
+
+- **Trois passes de 23 étapes**, écran de téléphone, comptes `demo_com` (rôle Commercial) et `demo_admin` :
+  `E` = réglage du merge (`ASSISTANT_COPILOTE=admins`), `P` = `tous` + moteur `langchain`, `N` = `tous` + `natif`.
+- **Données** : `seed_demo`, un compte Commercial, trois leads créés par l'API avec téléphone et WhatsApp (leurs
+  touches du jour sont des messages WhatsApp), un devis automatique par lead (`ventes/devis/auto/` avec `target_kwc`),
+  dont un daté « envoyé » depuis plus de 7 jours (bloc « devis sans réponse » du matin).
+- **Modèle scripté** (aucune clé) : branché à la place de `SQLAgentService._build_llm` ; une phrase connue rend un
+  ou plusieurs appels d'outils du vrai catalogue (« A puis B puis C » = plusieurs outils dans un tour), puis une
+  phrase de fin. Phrases : « ma file » → `crm.leads.a_relancer` ; « mon matin » → `crm.digest_matin` ; « cherche X »
+  → `crm.lead.chercher` ; « pas répondu » (touche en cours) → `crm.suivi.proposer_reponse` (`geste: fait`,
+  `outcome: non_joint`) ; « ce lead » (lead ouvert) → `crm.lead.resume` ; « envoie-lui le devis D » →
+  `crm.lead.whatsapp_prepare` ; « passe le lead N en contact » → `crm.lead.changer_etape` ; « accepte le devis D »
+  → `ventes.devis.accepter` ; « remise de 2 % sur le devis D » → `ventes.devis.remise` ; « cassé » →
+  `reporting.assistant.diagnostic` ; « signaler un bug » → `report_gap`. Le lead ouvert se lit dans l'en-tête de tour
+  (copilote allumé) ou dans le suffixe « lead courant : #N » de la question (copilote éteint). Moteur natif : un faux
+  service de messages local (`ANTHROPIC_BASE_URL`) qui rend les mêmes appels en blocs `tool_use`.
+- **Simulés** : micro (`--use-fake-device-for-media-stream`, fichier audio d'une seconde de son puis de silence),
+  synthèse vocale (objet `speechSynthesis` remplacé : note ce qui est lu, appelle `onend`), transcription
+  (`sql-agent/transcribe` intercepté), stockage de fichiers (faux S3 local sur le port 9000 : sans lui `/proposal`
+  répond 500), `wa.me` intercepté (on contrôle l'adresse ouverte).
+- **Repères d'écran** : `copilot-toggle`, `copilot-panel`, `carte-<nom de carte>`, `touche-texte`, `touche-traitee`,
+  `proposal-card` (`data-etat`), `result-card`, `wa-devis-envoye`, `rappel-message-ouvert`, `mic-button`,
+  `voice-status`, `conversation-toggle` ; sur la fiche lead, « Plus d'actions » → « Demander à l'assistant ».
+- **Pièges rencontrés** : un chargement complet de page vide le relevé technique (naviguer DANS l'application avant
+  « Signaler un bug ») ; « Touche suivante » vit sur la touche faite (la jouer avant « Annuler ») ; attendre la fin de
+  la fermeture du tiroir avant de le rouvrir.
+
+La forme durable est une spec maison `frontend/e2e/acceptation/aic.spec.js` (une fonction par étape) : à écrire avec
+la tâche AIC88, qui demande de toute façon un rejeu avec une vraie clé.
