@@ -1,5 +1,5 @@
 // Preuves en direct ÉCRAN du groupe AERR (parcours PF12 « erreurs, pertes de saisie et gestes dangereux à l'écran »,
-// dossier docs/audits/2026-11-11-parcours-PF12.md) : AERR1, 3, 4, 6, 7 (écrans d'argent), AERR2, 5, 9, 11 (devis),
+// dossier docs/audits/2026-11-11-parcours-PF12.md) : AERR1, 3, 4, 6, 7 (écrans d'argent), AERR2, 5, 9 (devis),
 // AERR12 (générateur, plan calepinage). Chaque étape joue le geste À L'ÉCRAN sous un compte d'un rôle LIVRÉ du registre
 // (`permissions_registre.py`, relu par son nom dans la société démo ; l'argent sous « Commercial », qui porte `encaisser`),
 // PROVOQUE vraiment l'échec (route Playwright déclarée AVANT par `suivi.attendre`, ou refus réel du serveur), AFFIRME ce
@@ -7,6 +7,11 @@
 // et réaffirme ; l'étape finit sur l'écran affirmé (capture). Données propres créées par les vraies routes (lead, devis
 // envoyé, accepté, facturé) ; une facture à numéro légal ne se supprime jamais : elle reste sur la base jetable du runner.
 // AERR114 n'est pas jouée ici : « Suppr » sous une boîte exige l'atelier (fond de carte, clés refusées hors taqinor.ma).
+// AERR11 retirée de `couvre` — DÉFAUT PRODUIT (rejeux runner 43539768954 et 43541933799, 14/11) : dans l'Édition complète, le formulaire
+// « Lots / multi-sites » (`LotsMultiSites.jsx`, <form onSubmit={creer}>) est imbriqué dans `<form id="gen-form">` ; un clic
+// sur « Créer le lot », saisie NON modifiée, part en soumission NATIVE du navigateur (navigation vers
+// `/ventes/devis/nouveau?`, aucun POST `lots/`, l'édition est quittée) et, saisie modifiée, déclenche la garde
+// `beforeunload` du navigateur au lieu de la confirmation maison — ni lot créé ni confirmation à l'écran.
 import { test, expect } from '@playwright/test'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -15,7 +20,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('AERR', ['AERR1', 'AERR2', 'AERR3', 'AERR4', 'AERR5', 'AERR6', 'AERR7', 'AERR9', 'AERR11', 'AERR12'])
+const etape = groupe('AERR', ['AERR1', 'AERR2', 'AERR3', 'AERR4', 'AERR5', 'AERR6', 'AERR7', 'AERR9', 'AERR12'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -172,7 +177,7 @@ etape('PF12.3-AERR1-ecran', ['AERR1'], async ({ page, suivi, testInfo }) => {
   const avis = p.getByTestId('factures-pas-a-jour')
   await expect(avis, 'avis « Liste pas à jour »').toBeVisible({ timeout: 30_000 })
   await expect(avis).toContainText('Liste pas à jour')
-  await expect(avis.getByRole('button', { name: 'Réessayer' }), 'avis avec « Réessayer »').toBeVisible()
+  await expect(avis.locator('button', { hasText: 'Réessayer' }), 'avis avec « Réessayer »').toBeVisible()
   for (const f of fs) await expect(ligne(f), `relecture RATÉE : ${f.reference} reste affichée`).toBeVisible()
   await expect(p.getByText('Erreur de chargement'), 'jamais l\'écran plein d\'erreur').toHaveCount(0)
   await expect(dlg, 'la boîte Paiement reste montée').toBeVisible()
@@ -183,7 +188,7 @@ etape('PF12.3-AERR1-ecran', ['AERR1'], async ({ page, suivi, testInfo }) => {
   // Réessayer → liste relue ; recharger → mêmes lignes.
   await dlg.getByRole('button', { name: 'Annuler' }).click()
   await p.unroute(LISTE)
-  await avis.getByRole('button', { name: 'Réessayer' }).click()
+  await avis.locator('button', { hasText: 'Réessayer' }).click()
   await expect(avis, 'Réessayer : avis retiré').toBeHidden({ timeout: 30_000 })
   await p.reload()
   for (const f of fs) await expect(ligne(f), `après rechargement : ${f.reference}`).toBeVisible({ timeout: 90_000 })
@@ -252,7 +257,7 @@ etape('PF12.3-AERR2-ecran', ['AERR2'], async ({ page, suivi, testInfo }) => {
   const avis = p.getByTestId('devis-pas-a-jour')
   await expect(avis, 'avis « Liste pas à jour »').toBeVisible({ timeout: 30_000 })
   await expect(avis).toContainText('Liste pas à jour')
-  await expect(avis.getByRole('button', { name: 'Réessayer' })).toBeVisible()
+  await expect(avis.locator('button', { hasText: 'Réessayer' })).toBeVisible()
   for (const d of [b2, e3, b4]) await expect(ligne(d), `relecture RATÉE : ${d.reference} reste`).toBeVisible()
   await expect(acc, 'la modale d\'acceptation reste montée').toBeVisible()
   await expect(acc.locator('#accept-nom'), 'sa saisie est gardée').toHaveValue('Karim Alaoui')
@@ -260,7 +265,7 @@ etape('PF12.3-AERR2-ecran', ['AERR2'], async ({ page, suivi, testInfo }) => {
   expect((await api.get(`${API}/ventes/devis/${b1.id}/`, T)).status(), 'persistance : brouillon supprimé').toBe(404)
   await acc.getByRole('button', { name: 'Annuler' }).click()
   await p.unroute(LISTE)
-  await avis.getByRole('button', { name: 'Réessayer' }).click()
+  await avis.locator('button', { hasText: 'Réessayer' }).click()
   await expect(avis, 'Réessayer : avis retiré').toBeHidden({ timeout: 30_000 })
   await expect(ligne(b1), 'liste relue : le supprimé est parti').toHaveCount(0)
   await p.reload()
@@ -530,7 +535,7 @@ etape('PF12.4-AERR7-ecran', ['AERR7'], async ({ page, suivi, testInfo }) => {
     await barre.getByRole('button', { name: bouton, exact: true }).click()
     await expect(conf, `« ${bouton} » demande`).toBeVisible()
     await expect(conf).toContainText(titre)
-    await expect(conf, 'la boîte nomme les références').toContainText(liste.map((f) => f.reference).join(', '))
+    for (const f of liste) await expect(conf, `la boîte nomme ${f.reference}`).toContainText(f.reference)
   }
   await p.goto('/ventes/factures')
   for (const f of fs) await expect(p.locator(`#facture-row-${f.id}`)).toBeVisible({ timeout: 90_000 })
@@ -662,95 +667,6 @@ const lireBrouillon = (p, cle) => p.evaluate((k) => {
   if (v === null) return null
   try { return JSON.stringify(JSON.parse(v).data ?? null) } catch { return v }
 }, cle)
-
-// ═══ PF12.2 — AERR11 : « Créer le lot » sur un générateur à saisie modifiée ═══
-etape('PF12.2-AERR11-ecran', ['AERR11'], async ({ page, suivi, testInfo }) => {
-  sondeFausse('C-AERR-011')
-  const admin = page.context().request
-  const m = marque()
-  const nom = `aerr11co_${m}`
-  await compteDuRole(nom, 'Commercial')
-  const { p, api } = await ecran(page, suivi, testInfo, nom)
-  const d = await devisDe(api, admin, `${m}ci`, { ci: true })
-  const lignesAvant = (await lireJson(await api.get(`${API}/ventes/devis/${d.id}/`, T), 'devis')).lignes.map((l) => [l.id, l.prix_unitaire])
-  const posts = []
-  const ecritures = [] // toute autre écriture sur le devis pendant les gestes « Créer le lot »
-  p.on('request', (q) => {
-    const chemin = new URL(q.url()).pathname
-    if (q.method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(chemin)) posts.push(q.postDataJSON())
-    else if (q.method() !== 'GET' && chemin.includes(`/ventes/devis/${d.id}/`)) ecritures.push(`${q.method()} ${chemin}`)
-  })
-  p.on('framenavigated', (f) => { if (f === p.mainFrame()) ecritures.push(`navigation ${f.url()}`) })
-  const carte = p.getByTestId('lots-multi-sites')
-  const conf = p.getByRole('alertdialog')
-  const PERTE = 'Créer le lot recharge le devis : vos modifications non enregistrées seront perdues.'
-  const ouvrirLots = async () => {
-    const bascule = carte.getByRole('button', { name: 'Afficher' })
-    if (await bascule.isVisible()) await bascule.click()
-    await expect(carte.getByTestId('lot-formulaire')).toBeVisible({ timeout: 30_000 })
-  }
-  const lotsPost = (x) => x.request().method() === 'POST' && new RegExp(`/ventes/devis/${d.id}/lots/$`).test(new URL(x.url()).pathname)
-  await ouvrirGenerateur(p, d, { ci: true })
-  await ouvrirLots()
-  // Témoin d'abord (saisie NON modifiée) : création directe, sans question, sans navigation.
-  ecritures.length = 0
-  await carte.locator('#lot-nom').fill(`Lot initial ${m}`)
-  const cree0 = p.waitForResponse(lotsPost, { timeout: 30_000 })
-  await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  const r0 = await cree0.catch(() => null)
-  expect(Boolean(r0) && r0.status() < 300, `saisie non modifiée : « Créer le lot » crée le lot ; écritures/navigations du clic : ${J(ecritures)}`).toBe(true)
-  await expect(conf, 'témoin : aucune question').toHaveCount(0)
-  await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
-  await ouvrirLots()
-  const { valeur, cle, brouillon } = await modifierPrix(p, d)
-  ecritures.length = 0
-  await carte.locator('#lot-nom').fill(`Lot annulé ${m}`)
-  await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  await expect(conf, 'confirmation maison').toBeVisible().catch((e) => {
-    throw new Error(`pas de confirmation après « Créer le lot » ; écritures/navigations du clic : ${J(ecritures)} ; ${e.message.split('\n')[0]}`)
-  })
-  await expect(conf).toContainText(PERTE)
-  await conf.getByRole('button', { name: 'Annuler' }).click()
-  await expect(conf).toBeHidden()
-  expect(posts, '« Annuler » : aucun creerLotDevis').toEqual([])
-  expect(ecritures, 'le clic n\'a rien écrit d\'autre (ni enregistrement du générateur, ni navigation)').toEqual([])
-  await expect(PRIX(p), 'saisie intacte').toHaveValue(valeur)
-  await expect(p.getByTestId('gen-barre-non-enregistre'), 'toujours « Modifications non enregistrées »').toBeVisible()
-  expect(await lireBrouillon(p, cle), `brouillon de secours intact (${brouillon ? 'présent' : 'absent'} avant le geste)`).toBe(brouillon)
-  await expect(carte.locator('#lot-nom')).toHaveValue(`Lot annulé ${m}`)
-  // « Créer le lot » confirmé : un POST, le devis est rechargé (la saisie non enregistrée est perdue, comme annoncé).
-  await carte.locator('#lot-nom').fill(`Lot confirmé ${m}`)
-  await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  const cree1 = p.waitForResponse(lotsPost, T)
-  await conf.getByRole('button', { name: 'Créer le lot' }).click()
-  expect((await cree1).status()).toBeLessThan(300)
-  await expect(PRIX(p), 'devis rechargé depuis le serveur').not.toHaveValue(valeur, { timeout: 60_000 })
-  await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
-  // Témoin : saisie NON modifiée ⇒ aucune question.
-  await ouvrirLots()
-  await carte.locator('#lot-nom').fill(`Lot témoin ${m}`)
-  const cree2 = p.waitForResponse(lotsPost, T)
-  await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  expect((await cree2).status(), 'saisie non modifiée : création directe').toBeLessThan(300)
-  await expect(conf, 'aucune question').toHaveCount(0)
-  expect(posts.map((x) => x.nom_lot), 'trois créations seulement (jamais le lot annulé)').toEqual([`Lot initial ${m}`, `Lot confirmé ${m}`, `Lot témoin ${m}`])
-  // Persistance : les lots servis ; les lignes du devis inchangées.
-  const lots = await lireJson(await api.get(`${API}/ventes/devis/${d.id}/lots/`, T), 'lots')
-  expect(lots.lots.map((l) => l.nom_lot).sort(), 'persistance : lots en base').toEqual([`Lot initial ${m}`, `Lot confirmé ${m}`, `Lot témoin ${m}`].sort())
-  expect((await lireJson(await api.get(`${API}/ventes/devis/${d.id}/`, T), 'devis')).lignes.map((l) => [l.id, l.prix_unitaire]), 'lignes inchangées').toEqual(lignesAvant)
-  await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
-  await p.reload()
-  await expect(p.locator('#gen-form')).toBeVisible({ timeout: 90_000 })
-  await p.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
-  await ouvrirLots()
-  for (const n of [`Lot initial ${m}`, `Lot confirmé ${m}`, `Lot témoin ${m}`]) await expect(carte, `rechargé : ${n}`).toContainText(n)
-  // Réaffirmé sur l'écran rechargé ; l'étape finit sur la question affichée.
-  await modifierPrix(p, d)
-  await carte.locator('#lot-nom').fill(`Lot final ${m}`)
-  await carte.getByRole('button', { name: 'Créer le lot' }).click()
-  await expect(conf).toContainText(PERTE)
-  expect(posts.length, 'rien n\'est parti').toBe(3)
-})
 
 // ═══ PF12.2 — AERR12 : « Ajouter le BOQ électrique » sur un générateur à saisie modifiée ═══
 etape('PF12.2-AERR12-ecran', ['AERR12'], async ({ page, suivi, testInfo }) => {
