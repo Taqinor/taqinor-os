@@ -114,7 +114,7 @@ export default function OutillagePage() {
     })
   }, [outils, search, fStatut, fEmplacement])
 
-  const openNew = () => { setForm(EMPTY_FORM); setEditing({}) }
+  const openNew = () => { clearAll(); setForm(EMPTY_FORM); setEditing({}) }
   const openEdit = (o) => {
     setForm({
       nom: o.nom ?? '', categorie: o.categorie ?? '', asset_tag: o.asset_tag ?? '',
@@ -123,7 +123,7 @@ export default function OutillagePage() {
       note: o.note ?? '',
       intervalle_calibration_mois: o.intervalle_calibration_mois ?? 0,
     })
-    setEditing(o)
+    clearAll(); setEditing(o) // AERR146 — le refus d'un autre outil ne suit pas
   }
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); clearField(k) }
 
