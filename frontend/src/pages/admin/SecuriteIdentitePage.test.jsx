@@ -67,6 +67,15 @@ describe('WIR134 SecuriteIdentitePage', () => {
       expect.objectContaining({ cidr: '10.0.0.0/8', policy: 7 })))
   })
 
+  it('AERR141 — plages IP illisibles : avis + Réessayer, jamais Aucune règle IP', async () => {
+    H.ipList.mockImplementationOnce(() => Promise.reject(new Error('panne')))
+    renderPage()
+    expect(await screen.findByText(/illisible/)).toBeInTheDocument()
+    expect(screen.queryByText('Aucune règle IP')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText('Aucune règle IP')).toBeInTheDocument()
+  })
+
   it('lit TOUTES les pages des règles IP (51 objets ⇒ 51 lignes)', async () => {
     const tout = Array.from({ length: 51 }, (_, i) => ({ id: i + 1, cidr: `10.0.${i}.0/24`, label: '' }))
     H.ipList.mockImplementation(({ page = 1 } = {}) => Promise.resolve({ data: {
