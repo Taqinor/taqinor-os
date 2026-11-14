@@ -98,6 +98,29 @@ class CinquiemePorteTests(TestCase):
             'taux_tva': '20.00'}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
 
+    def test_bc_annule_refuse_409(self):
+        """ACNC63 (C-ACNC-VER2-101) — un BC sans devis ANNULÉ ne porte plus
+        de facture : 409 ``bon_commande_annule``, rien n'est créé ; un BC
+        sans devis en attente reste accepté. Mutant : retirer la garde ⇒ 201."""
+        from apps.ventes.models import BonCommande, Facture
+        BonCommande.objects.filter(pk=self.bc_libre.pk).update(
+            statut=BonCommande.Statut.ANNULE)
+        r = self.api.post(FACTURES, {
+            'client': self.client_obj.id, 'bon_commande': self.bc_libre.id,
+            'taux_tva': '20.00'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'bon_commande_annule')
+        self.assertIn('annulé', str(r.data['bon_commande']))
+        self.assertFalse(
+            Facture.objects.filter(bon_commande=self.bc_libre).exists())
+        en_attente = BonCommande.objects.create(
+            company=self.company, reference='BC-ACNC63-3',
+            client=self.client_obj, statut=BonCommande.Statut.EN_ATTENTE)
+        r = self.api.post(FACTURES, {
+            'client': self.client_obj.id, 'bon_commande': en_attente.id,
+            'taux_tva': '20.00'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_bc_deja_facture_409(self):
         """CI #997 api-fuzz (cas U8zXbo) : un BC déjà facturé (unicité de
         ``bon_commande``) répondait 400 à un corps conforme — refus d'ÉTAT,

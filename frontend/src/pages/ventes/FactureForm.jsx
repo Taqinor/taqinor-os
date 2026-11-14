@@ -545,9 +545,9 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
                   <SelectValue placeholder="— Aucun BC —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* AFAC67 — un BC déjà facturé (facture vivante) n'est plus proposé. */}
+                  {/* AFAC67 — un BC déjà facturé (facture vivante) n'est plus proposé ; ACNC63 — ni un BC annulé. */}
                   {bonsCommande
-                    .filter(bc => !bc.facture_active || String(bc.id) === String(fields.bon_commande))
+                    .filter(bc => (!bc.facture_active && bc.statut !== 'annule') || String(bc.id) === String(fields.bon_commande))
                     .map(bc => (
                     <SelectItem key={bc.id} value={String(bc.id)}>
                       {bc.reference} — {bc.client_nom}
