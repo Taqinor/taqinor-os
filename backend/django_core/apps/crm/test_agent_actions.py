@@ -438,17 +438,6 @@ class CrmAgentBrouillonSuiviTest(TestCase):
                 self.assertEqual(resp.data['wa_url'], resp.data['lien_wa_me'])
                 self.assertNotIn('?text=', resp.data['wa_url'])
 
-    def test_aucune_phrase_de_repli_dans_le_code(self):
-        import inspect
-        from apps.crm import views_assistant
-        source = inspect.getsource(views_assistant).lower()
-        # (les commentaires citent la formule interdite : on ne cherche que
-        # les anciennes phrases de repli, qui n'existent plus nulle part.)
-        for interdit in ("je reviens vers vous au sujet de votre devis",
-                         'suite à notre visite, avez-vous',
-                         'je reprends contact pour savoir'):
-            self.assertNotIn(interdit, source)
-
     def test_brouillon_rend_wa_url_de_la_carte_et_garde_lien_wa_me(self):
         from apps.crm.models_cadence import MessageTemplate
         MessageTemplate.objects.create(

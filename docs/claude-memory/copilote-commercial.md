@@ -27,14 +27,24 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
 - Voix : dictée avec relecture, plus de confirmation orale (« non je ne confirme pas » confirmait).
 - Conversation du moteur natif gardée 48 h au plus (Redis).
 
-## Encore ouvert
-- Essai du copilote et du moteur natif avec une vraie clé (aucune dans la session de construction), puis
-  bascule des deux interrupteurs — gestes de Reda.
+## Encore ouvert (tâches AIC88 à AIC99, décisions D-COP-1, D-COP-2, D-COP-4 dans `docs/audits/decisions.yml`)
+- Essai du copilote et du moteur natif avec une vraie clé (AIC88 : aucune clé dans la session de construction),
+  puis bascule des deux interrupteurs (AIC89) — gestes de Reda.
 - Décisions du fondateur listées au §6 du dossier (plafond de dépense, seuil de remise en production, texte
   client par le modèle, avis du juriste, leads froids, destination des signalements, canal WhatsApp officiel).
-- Défaut de tarification relevé : une baisse de prix de LIGNE échappe au seuil d'approbation des remises.
+- Défaut de tarification relevé : une baisse de prix de LIGNE échappe au seuil d'approbation des remises (AIC98).
+
+## Acceptation en direct (14/11/2026)
+- 23 étapes d'écran rejouées sur téléphone, sur les deux moteurs, avec un modèle scripté :
+  `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md` (recette du banc au paragraphe « Environnement local »).
+  Elle prouve l'écran et la plomberie, PAS un vrai modèle. Le script du rejeu n'est pas versé au dépôt : les
+  traces listent chaque contrôle, de quoi le réécrire en spec `frontend/e2e/acceptation/`.
 
 ## Leçons de run
+- Le rejeu sur un écran de TÉLÉPHONE a trouvé trois défauts que 143 tests de composants verts ne voyaient pas :
+  une fonction testée mais jamais appelée (accusé vocal), une navigation cachée derrière le tiroir modal, un
+  libellé de bouton qui débordait. Toujours rejouer en viewport téléphone, avec un contrôle de débordement.
+- Sans MinIO, le PDF `/proposal` répond 500 : un faux S3 local (`moto_server` sur 9000) suffit au banc.
 - Les worktrees des lanes ne partaient PAS de `main` local malgré le hook : chaque lane a dû avancer sur le
   commit des contrats (`git merge --ff-only <sha>`) — toujours donner ce repli dans la consigne.
 - Sans Docker : Postgres 16 + pgvector et Redis natifs suffisent ; la base de test (≈ 2 350 migrations) se

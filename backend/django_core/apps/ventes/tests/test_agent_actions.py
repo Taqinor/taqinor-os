@@ -153,20 +153,40 @@ class VentesAgentCatalogueTest(TestCase):
             self.assertIn(marche, CREER_AUTO.description)
         self.assertNotIn('uniquement', CREER_AUTO.description.lower())
 
-    def test_pdf_action_ne_lit_que_le_pdf_proposal(self):
-        """COP-G3 — carte « document » (le relais rend le lien /proposal) ; les
-        options déclarées sont celles que la route LIT (``payment_mode`` et
-        ``custom_acompte`` ne l'étaient jamais)."""
-        import inspect
-
-        from apps.ventes.views import devis_pdf
+    def test_pdf_action_ses_options_arrivent_au_moteur(self):
+        """COP-G3 — carte « document » (le relais rend le lien /proposal) ; CHAQUE
+        option déclarée par l'action est lue par la route et arrive au moteur
+        (route réelle, moteur de rendu simulé). ``payment_mode`` et
+        ``custom_acompte`` ne l'étaient jamais : ils ne sont plus déclarés."""
+        from unittest import mock
         self.assertEqual(GENERER_PDF_DEVIS.carte, 'document')
         self.assertEqual(GENERER_PDF_DEVIS.method, 'GET')
-        source = inspect.getsource(devis_pdf.DevisPdfActionsMixin.proposal)
-        for option in GENERER_PDF_DEVIS.inputs['properties']:
-            if option != 'id':
-                self.assertIn(f"'{option}'", source, option)
-        self.assertNotIn('payment_mode', GENERER_PDF_DEVIS.inputs['properties'])
+        envoyees = {'pdf_mode': 'onepage', 'include_etude': 'true',
+                    'include_calepinage': 'true', 'langue': 'en',
+                    'show_monthly': 'false', 'devis_final': 'true'}
+        self.assertEqual(
+            set(GENERER_PDF_DEVIS.inputs['properties']) - {'id'}, set(envoyees))
+        client = Client.objects.create(
+            company=self.company, nom='PDF', email='pdf@example.com',
+            telephone='+212600000012', adresse='Rabat')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{self.company.id}009',
+            client=client, taux_tva=Decimal('20.00'))
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                        return_value='cle') as moteur, \
+                mock.patch('apps.ventes.utils.pdf.download_pdf',
+                           return_value=b'%PDF-1.4 essai'):
+            resp = auth(self.resp).get(
+                GENERER_PDF_DEVIS.endpoint.format(id=devis.pk), envoyees)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(moteur.call_args.args[0], devis.pk)
+        options = moteur.call_args.args[1]
+        lues = ('pdf_mode', 'include_etude', 'include_calepinage',
+                'show_monthly', 'devis_final', 'langue_sortie')
+        self.assertEqual({cle: options.get(cle) for cle in lues}, {
+            'pdf_mode': 'onepage', 'include_etude': True,
+            'include_calepinage': True, 'show_monthly': False,
+            'devis_final': True, 'langue_sortie': 'en'})
         # Aucune autre action du flux ne rend un PDF : seule la lecture de
         # /proposal porte la carte « document ».
         self.assertEqual(
