@@ -84,9 +84,11 @@ sortie({'note': f.note or '', 'version': f.lock_version})`)
   expect(bandeau, 'jamais « code : » au bandeau').not.toMatch(/code\s*:/i)
   expect(await dlgA.innerText(), 'jamais « conflit_version » à l\'écran').not.toContain('conflit_version')
   expect(await etat(), 'aucune écriture de l\'onglet A (note, version)').toEqual(apresB)
-  // Persistance : A rechargé relit la note de B.
-  await pA.reload()
-  const dlgA2 = await editer(pA, fr, f.id)
+  // Persistance : l'onglet A (saisie non enregistrée : sa garde beforeunload est légitime) est refermé sans
+  // décharger, un onglet neuf relit le brouillon ⇒ la note de B.
+  await pA.close()
+  const pA2 = suivi.surveiller(await ctx.newPage())
+  const dlgA2 = await editer(pA2, fr, f.id)
   await expect(dlgA2.locator('#fc-note'), 'après rechargement : la note de B').toHaveValue(`note de l'onglet B ${m}`)
 })
 

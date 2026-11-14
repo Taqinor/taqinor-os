@@ -218,7 +218,7 @@ Lead.all_objects.filter(pk=${lead}).delete()`))
   await expect(menu).toBeVisible({ timeout: 15_000 })
   const [req] = await Promise.all([
     p.waitForRequest((q) => q.method() === 'PATCH' && PATCH.test(q.url()), T),
-    menu.getByRole('button', { name: new RegExp(`^${nadia.nom}`) }).click(),
+    menu.getByRole('button', { name: nadia.nom }).click(),
   ])
   expect(req.postDataJSON(), 'PATCH envoyé : owner = Nadia').toMatchObject({ owner: nadia.id })
   await expect(toast(p, 'Utilisateur inactif').first(), 'un toast d\'erreur nomme le refus').toBeVisible({ timeout: 30_000 })
@@ -447,7 +447,7 @@ Client.objects.filter(pk=${ids.client}).delete()`))
   const { p: pR } = await ecran(page, suivi, testInfo, re.nom)
   pR.on('request', (q) => { if (['PATCH', 'PUT', 'POST'].includes(q.method()) && /\/sav\/equipements\//.test(q.url())) ecritures.push(q.url()) })
   const ficheR = await ouvrirFiche(pR)
-  await expect(ficheR.getByRole('button', { name: 'Fermer' }), '« Fermer » reste').toBeVisible()
+  await expect(ficheR.locator('button:text-is("Fermer")'), '« Fermer » reste').toBeVisible()
   await expect(ficheR.getByRole('button', { name: 'Mettre à jour' }), 'sans equipement_gerer : pas de « Mettre à jour »').toHaveCount(0)
   await expect(ficheR.getByRole('button', { name: 'Corriger' }), 'sans equipement_gerer : pas de « Corriger »').toHaveCount(0)
   await auRepos(pR)
