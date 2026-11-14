@@ -10,6 +10,9 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   `admins` défaut | `tous`) sert ou non les actions du lot `copilote` (`AgentAction.lot`) ;
   `ASSISTANT_MOTEUR` (FastAPI : `langchain` défaut | `natif`). Un outil NEUF vu par le modèle naît dans le lot
   `copilote`, jamais hors lot (leçon du 29/10 : tests simulés verts, fournisseur réel cassé).
+  Copilote éteint, la question, l'historique et les outils de lecture de données remis au modèle sont ceux
+  d'avant ; restent neufs pour TOUS au merge, par choix : le manuel régénéré (passages du copilote étiquetés) et
+  les schémas d'arguments des actions. Une description d'action servie à tous ne cite jamais un outil du lot.
 - **Le modèle n'écrit ni un texte client ni la réponse d'une touche.** Textes = textes validés du suivi rendus
   par le serveur. Réponse d'une touche = « carte-écho » : `crm.suivi.proposer_reponse` (lecture) → le serveur
   valide et rend `proposition` → le doigt de la commerciale poste au geste existant.
@@ -35,8 +38,10 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
 - Défaut de tarification relevé : une baisse de prix de LIGNE échappe au seuil d'approbation des remises (AIC98).
 
 ## Acceptation en direct (14/11/2026)
-- 23 étapes d'écran rejouées sur téléphone, sur les deux moteurs, avec un modèle scripté :
-  `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md` (recette du banc au paragraphe « Environnement local »).
+- 23 étapes d'écran rejouées sur téléphone avec un modèle scripté : dans le réglage du merge (copilote éteint
+  pour la commerciale) puis copilote allumé sur les deux moteurs. Enregistrements dans
+  `docs/audits/acceptation/AIC/` (premier du 14/11 : `2026-11-14-4242a9d9d.md`, recette du banc au paragraphe
+  « Environnement local » ; le second du jour porte le rejeu final).
   Elle prouve l'écran et la plomberie, PAS un vrai modèle. Le script du rejeu n'est pas versé au dépôt : les
   traces listent chaque contrôle, de quoi le réécrire en spec `frontend/e2e/acceptation/`.
 
@@ -45,6 +50,10 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   une fonction testée mais jamais appelée (accusé vocal), une navigation cachée derrière le tiroir modal, un
   libellé de bouton qui débordait. Toujours rejouer en viewport téléphone, avec un contrôle de débordement.
 - Sans MinIO, le PDF `/proposal` répond 500 : un faux S3 local (`moto_server` sur 9000) suffit au banc.
+- La critique finale a montré qu'un test nommé « copilote éteint = identique » ne regardait ni l'historique après
+  une confirmation, ni la liste d'outils : un test d'invariant doit couvrir CHAQUE canal par lequel le modèle
+  reçoit du texte (bloc système, outils et leurs descriptions, historique, question). Rejouer aussi l'écran dans le
+  réglage EXACT du merge (interrupteurs à leur défaut), pas seulement « tout allumé ».
 - Les worktrees des lanes ne partaient PAS de `main` local malgré le hook : chaque lane a dû avancer sur le
   commit des contrats (`git merge --ff-only <sha>`) — toujours donner ce repli dans la consigne.
 - Sans Docker : Postgres 16 + pgvector et Redis natifs suffisent ; la base de test (≈ 2 350 migrations) se
