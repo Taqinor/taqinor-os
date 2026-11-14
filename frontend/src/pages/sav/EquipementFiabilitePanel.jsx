@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { AlarmClock, Gauge, ShieldAlert, Timer, Plus } from 'lucide-react'
 import savApi from '../../api/savApi'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import { formatMAD, formatPercent, formatDateTime } from '../../lib/format'
 import {
   Badge, Button, Input, Select, SelectTrigger, SelectValue, SelectContent,
@@ -36,6 +36,7 @@ const datePrecedente = (releves, index) => {
  */
 export default function EquipementFiabilitePanel({ equipementId }) {
   const canSeeCouts = useHasPermission('prix_achat_voir')
+  const estAdmin = useIsAdmin() // ADRG116 — downtime/ et releves-compteur/ sont IsAdminRole (XSAV16/17)
 
   const [fiabilite, setFiabilite] = useState(null)
   const [dispo, setDispo] = useState(null)
@@ -54,8 +55,8 @@ export default function EquipementFiabilitePanel({ equipementId }) {
   const load = () => Promise.all([
     savApi.getEquipementFiabilite(equipementId).then((r) => r.data).catch(() => null),
     savApi.getEquipementDisponibilite(equipementId).then((r) => r.data).catch(() => null),
-    savApi.getEquipementDowntime(equipementId).then((r) => r.data).catch(() => []),
-    savApi.getEquipementReleves(equipementId).then((r) => r.data).catch(() => []),
+    estAdmin ? savApi.getEquipementDowntime(equipementId).then((r) => r.data).catch(() => []) : [],
+    estAdmin ? savApi.getEquipementReleves(equipementId).then((r) => r.data).catch(() => []) : [],
     // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
     savApi.getEquipementEstimations(equipementId).then((r) => r.data).catch(() => null),
   ]).then(([f, d, dt, rv, est]) => {
@@ -164,7 +165,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
       </div>
 
       {/* XSAV16 — Immobilisation en cours / historique */}
-      <div className="flex flex-col gap-2">
+      {estAdmin && <div className="flex flex-col gap-2">
         <span className="flex items-center gap-2 text-sm font-medium">
           <ShieldAlert className="size-4 text-muted-foreground" aria-hidden="true" />
           Immobilisation
@@ -191,10 +192,10 @@ export default function EquipementFiabilitePanel({ equipementId }) {
             ))}
           </ul>
         )}
-      </div>
+      </div>}
 
       {/* XSAV17 — Relevés compteur */}
-      <div className="flex flex-col gap-2">
+      {estAdmin && <div className="flex flex-col gap-2">
         <span className="flex items-center gap-2 text-sm font-medium">
           <AlarmClock className="size-4 text-muted-foreground" aria-hidden="true" />
           Relevés compteur
@@ -236,7 +237,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
             ))}
           </ul>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
