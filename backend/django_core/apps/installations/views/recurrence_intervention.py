@@ -37,6 +37,7 @@ class RecurrenceInterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
     queryset = RecurrenceIntervention.objects.select_related('installation').order_by(
         'prochaine_echeance', 'id')
     serializer_class = RecurrenceInterventionSerializer
+    ordering_fields = ['prochaine_echeance', 'id']
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_permissions(self):

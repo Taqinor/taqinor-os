@@ -209,6 +209,13 @@ class BcfUpdateUpsertTests(TestCase):
             rep = self.api.patch(f'{URL}{self.bcf.pk}/', {'note': 'X'},
                                  format='json')
             self.assertEqual(rep.status_code, 409, rep.content)
+            # La suppression d'un BCF est réservée à l'admin (IsAdminRole) :
+            # le refus attendu ici est le 409 du statut relu, pas le 403 du rôle.
+            admin = User.objects.create_user(
+                username='astk67-admin', password='x', company=self.company,
+                role_legacy='admin')
+            self.api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
             rep = self.api.delete(f'{URL}{self.bcf.pk}/')
             self.assertEqual(rep.status_code, 409, rep.content)
         self.bcf.refresh_from_db()
