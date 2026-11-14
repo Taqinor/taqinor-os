@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { assurerSessionPage, connexionApi, uiLoginJusquAuxApps, boutonNouveauLead } from '../helpers.js'
+import { assurerSessionPage, connexionApi, lireJson, uiLoginJusquAuxApps, boutonNouveauLead } from '../helpers.js'
 
 const etape = groupe('ADRG', ['ADRG122'])
 fermerDjangoApresTout()
@@ -25,6 +25,7 @@ const MAINTENANT = new Date()
 // Jour du rejeu (calendrier UTC) et son matin : l'onglet tourne en UTC, 8 h 30 y est « avant midi ».
 const JOUR = `${MAINTENANT.getUTCFullYear()}-${deux(MAINTENANT.getUTCMonth() + 1)}-${deux(MAINTENANT.getUTCDate())}`
 const MATIN = new Date(`${JOUR}T08:30:00Z`)
+const API = '/api/django'
 const TOURNEE = /\/installations\/interventions\/ma-tournee\//
 const MOBILE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
 
@@ -141,8 +142,14 @@ sortie(dict(itv=iv.id, inst=inst.id))`)
     await p.goto('/apps')
     await accueilRendu(p, 'Technicien, retour')
     expect(appels.length, 'pas de second pré-chargement le même jour').toBe(avant)
+    // Accord de suivi GPS du compte terrain : un compte neuf voit sinon l'écran d'accord à la place de
+    // sa journée (fondateur 27/10/2026) — même geste que acsv.spec.js et chantiers.spec.js.
+    await lireJson(await p.request.get(`${API}/installations/gps-consentements/mon-consentement/`), 'accord GPS à donner')
+    const accord = await p.request.post(`${API}/installations/gps-consentements/mon-consentement/accepter/`)
+    expect(accord.ok(), `accord GPS donné (${accord.status()})`).toBeTruthy()
     // « Ma journée » affiche sa tournée.
     await p.goto('/ma-journee')
+    await expect(p.getByRole('heading', { name: 'Ma journée' }), 'écran Ma journée').toBeVisible({ timeout: 60_000 })
     await expect(p.getByRole('button', { name: new RegExp(ref) }).first(), 'Ma journée : l’intervention du jour est listée').toBeVisible({ timeout: 60_000 })
   } finally {
     await py(`from apps.installations.models import Installation, Intervention
