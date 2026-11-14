@@ -493,7 +493,8 @@ def _creer_brouillon_complet(devis, user, libelle):
     from apps.ventes.utils.company_settings import create_provisoire
     from .facturation_ops import (
         copier_devis_sur_facture, entete_facture_depuis_devis)
-    bc = BonCommande.objects.filter(
+    # ACNC70 — BC LU SOUS VERROU (ordre vente → BC) : « Annuler » croisé attend, puis 409.
+    bc = BonCommande.objects.select_for_update().filter(
         devis=devis, company_id=devis.company_id).first()
     if bc is not None and (
             bc.statut == BonCommande.Statut.ANNULE

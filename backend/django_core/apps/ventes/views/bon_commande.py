@@ -773,6 +773,10 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         with transaction.atomic():
             # ACNC7 — BC RELU SOUS VERROU, porte rejouée : annulé ou facturé
             # entre la lecture et l'écriture ⇒ 409, aucune facture créée.
+            # ACNC70 — vente PUIS BC (l'ordre de « Facturer la vente ») : jamais d'interblocage.
+            if bc.devis_id:
+                from ..domain.facturation_vente import verrouiller_vente
+                verrouiller_vente(bc.devis)
             bc = BonCommande.objects.select_for_update().get(pk=bc.pk)
             porte = porte_facture_bc(bc)
             if not porte['ok']:

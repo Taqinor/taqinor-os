@@ -137,7 +137,7 @@ class AnnulerBcConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='ACNC62', prenom='Client',
             telephone='+212600000162')
-        devis = Devis.objects.create(
+        self.devis = devis = Devis.objects.create(
             company=self.company, created_by=self.user,
             client=self.client_obj, reference=f'DEV-ACNC62-{_nxt()}',
             statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
@@ -146,7 +146,7 @@ class AnnulerBcConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
             devis=devis, client=self.client_obj,
             statut=BonCommande.Statut.CONFIRME)
 
-    def _croiser(self, ecrire_sous_verrou):
+    def _croiser(self, ecrire_sous_verrou, verrou_bc=True):
         res, b_fini = {}, threading.Event()
 
         def annuler():
@@ -160,7 +160,8 @@ class AnnulerBcConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
 
         fil = threading.Thread(target=annuler)
         with transaction.atomic():
-            BonCommande.objects.select_for_update().get(pk=self.bc.pk)
+            if verrou_bc:
+                BonCommande.objects.select_for_update().get(pk=self.bc.pk)
             ecrire_sous_verrou()
             fil.start()
             self.assertTrue(attendre_un_ecrivain_bloque(ou_bien=b_fini))
@@ -176,6 +177,29 @@ class AnnulerBcConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
             statut=Facture.Statut.BROUILLON, taux_tva=Decimal('20')))
         self.assertTrue(Facture.objects.filter(bon_commande=self.bc).exclude(
             statut=Facture.Statut.ANNULEE).exists())
+
+    def test_annuler_croise_facturer_vente_complete(self):
+        """ACNC70 (C-ACNC-VER2-200) — A appelle le VRAI ``facturer_vente``
+        (complète) sans verrou de BC posé par le test : c'est la lecture du BC
+        sous verrou de ``_creer_brouillon_complet`` qui fait attendre B.
+        Mutant : retirer ce ``select_for_update`` ⇒ B 200, BC annulé portant
+        la facture."""
+        from apps.ventes.domain.facturation_vente import facturer_vente
+        for i in (1, 2):
+            produit = Produit.objects.create(
+                company=self.company, nom=f'Kit {i}', sku=f'ACNC70-{_nxt()}',
+                prix_vente=Decimal('5000'), quantite_stock=500)
+            LigneDevis.objects.create(
+                devis=self.devis, produit=produit, designation=f'Kit {i}',
+                quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
+                taux_tva=Decimal('20'))
+        res = {}
+        self._croiser(lambda: res.setdefault('f', facturer_vente(
+            self.devis, nature='complete', user=self.user)[0]),
+            verrou_bc=False)
+        self.assertEqual(res['f'].bon_commande_id, self.bc.pk)
+        self.assertEqual(list(Facture.objects.filter(bon_commande=self.bc)
+                              .values_list('pk', flat=True)), [res['f'].pk])
 
     def test_annuler_croise_livrer_partiel(self):
         self._croiser(lambda: LivraisonBC.objects.create(

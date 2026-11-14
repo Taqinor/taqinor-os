@@ -156,10 +156,65 @@ class IntegrityCheckTests(XGed6Base):
             self.assertIn('Contrat archivé', titres)
             self.assertIn('Bail introuvable', titres)
             self.assertFalse(Notification.objects.filter(recipient=self.employe_a).exists())
-            consigne.assert_called_once()
+            # ACEL91 : une alerte par archive, dans la boucle — une consignation
+            # par archive (le résumé les regroupe par tâche et exception).
+            self.assertEqual(consigne.call_count, 2)
             services.verifier_integrite_archives(self.co_a)
         self.assertEqual(notes.count(), 2)
-        consigne.assert_called_once()
+        self.assertEqual(consigne.call_count, 2)
+
+    def test_limite_douce_n_efface_pas_l_alerte_deja_due(self):
+        """ACEL91 (C-ACEL-VER2-201) — A altérée puis B dont la lecture atteint
+        la limite douce : l'exception remonte, l'alerte de A est DÉJÀ partie,
+        aucun faux « introuvable » pour B ; le passage suivant contrôle B
+        sans renotifier A. Mutant : alerte après la boucle ⇒ 0 notification."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        from apps.notifications.models import Notification
+        doc_b = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Bail B')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(self.contenu_original, None)):
+            DocumentVersion.objects.create(
+                company=self.co_a, document=doc_b, version=1,
+                file_key='ged/xged6/doc-b.pdf', filename='doc-b.pdf',
+                mime='application/pdf',
+                checksum=services.compute_checksum(self.contenu_original))
+            archivage_b = services.archiver_legalement(
+                doc_b, user=self.admin_a, motif='ACEL91')
+        notes = Notification.objects.filter(
+            recipient=self.admin_a, event_type='security_alert')
+
+        def lecture_limite(cle):
+            if cle == 'ged/xged6/doc-b.pdf':
+                raise SoftTimeLimitExceeded()
+            return b'contenu MODIFIE', None
+
+        with mock.patch('apps.reporting.journal_problemes.consigner_echec_tache'):
+            with mock.patch('apps.records.storage.fetch_attachment',
+                            side_effect=lecture_limite), \
+                    self.assertRaises(SoftTimeLimitExceeded):
+                services.verifier_integrite_archives(self.co_a)
+            self.assertEqual(notes.count(), 1)
+            self.assertIn('Contrat archivé', notes.get().title)
+            self.assertFalse(ControleIntegrite.objects.filter(
+                archivage=archivage_b).exists())
+
+            def lecture_normale(cle):
+                if cle == 'ged/xged6/doc-b.pdf':
+                    return self.contenu_original, None
+                return b'contenu MODIFIE', None
+
+            with mock.patch('apps.records.storage.fetch_attachment',
+                            side_effect=lecture_normale):
+                services.verifier_integrite_archives(self.co_a)
+            self.assertEqual(notes.count(), 1)
+        self.assertEqual(list(ControleIntegrite.objects.filter(
+            archivage=self.archivage).values_list('resultat', flat=True)),
+            [CONTROLE_RESULTAT_ALTERE, CONTROLE_RESULTAT_ALTERE])
+        self.assertEqual(list(ControleIntegrite.objects.filter(
+            archivage=archivage_b).values_list('resultat', flat=True)),
+            [CONTROLE_RESULTAT_OK])
 
 
 class DossierPreuveTests(XGed6Base):

@@ -214,8 +214,58 @@ class DocumentProduitFactureTests(TestCase):
         generate_facture_pdf(facture.id)
         self.assertEqual(versions.count(), 2)
         facture.refresh_from_db()
-        self.assertEqual(facture.pdf_render_meta,
-                         {'empreinte': empreinte_donnees_facture_pdf(facture)})
+        self.assertEqual(facture.pdf_render_meta['empreinte'],
+                         empreinte_donnees_facture_pdf(facture))
+
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    @patch('apps.ventes.utils.pdf._download', return_value=None)
+    def test_routage_en_echec_repris_au_rendu_suivant(
+            self, mock_dl, mock_upload):
+        """ACEL92 (C-ACEL-VER2-202) — le routage GED lève au 1er rendu
+        seulement : le 2e rendu (données inchangées) le reprend ⇒ 1 document,
+        1 version ; un 3e rendu identique ne crée rien. ``ged`` n'est posée
+        qu'après un routage réussi. Mutant : poser ``ged`` avant l'émission ⇒
+        0 document après le 2e rendu."""
+        from datetime import datetime, timezone as dt_tz
+        from freezegun import freeze_time
+
+        from apps.ged import services as ged_services
+        from apps.ged.models import DocumentVersion
+        from apps.ventes.utils.pdf import generate_facture_pdf
+
+        cabinet = Cabinet.objects.create(company=self.company, nom='Ventes')
+        RoutageDocumentaire.objects.update_or_create(
+            company=self.company, source='ventes_facture',
+            defaults={'cabinet_cible': cabinet, 'dossier_cible': 'Factures'})
+        facture = make_facture(self.user, self.client_obj, self.produit)
+        documents = Document.objects.filter(company=self.company)
+        versions = DocumentVersion.objects.filter(
+            document__company=self.company)
+        reel, appels = ged_services.router_document_module, []
+
+        def _panne_au_premier_appel(*args, **kwargs):
+            appels.append(1)
+            if len(appels) == 1:
+                raise RuntimeError('stockage GED indisponible')
+            return reel(*args, **kwargs)
+
+        with patch('apps.ged.services.router_document_module',
+                   side_effect=_panne_au_premier_appel), freeze_time(
+                datetime.now(dt_tz.utc).replace(second=0, microsecond=0)) as t:
+            generate_facture_pdf(facture.id)
+            self.assertEqual(documents.count(), 0)
+            facture.refresh_from_db()
+            self.assertNotIn('ged', facture.pdf_render_meta)
+            t.tick(60)
+            generate_facture_pdf(facture.id)
+            self.assertEqual((documents.count(), versions.count()), (1, 1))
+            facture.refresh_from_db()
+            self.assertEqual(facture.pdf_render_meta['ged'],
+                             facture.pdf_render_meta['empreinte'])
+            t.tick(60)
+            generate_facture_pdf(facture.id)
+            self.assertEqual((documents.count(), versions.count()), (1, 1))
+        self.assertEqual(len(appels), 2)
 
     @patch('apps.ventes.utils.pdf._upload_pdf')
     @patch('apps.ventes.utils.pdf._download', return_value=None)
