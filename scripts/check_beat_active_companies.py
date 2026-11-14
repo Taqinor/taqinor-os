@@ -113,7 +113,7 @@ def _decore_shared_task(path: Path) -> bool:
 
 
 def _iter_source_files():
-    racines = [r for r in (SCAN_ROOT, DJANGO_CORE / "core") if r.is_dir()]
+    racines = [r for r in (SCAN_ROOT, DJANGO_CORE / "core", DJANGO_CORE / "authentication") if r.is_dir()]
     for path in sorted(p for r in racines for p in r.rglob("*.py")):
         if _is_test_path(path):
             continue
