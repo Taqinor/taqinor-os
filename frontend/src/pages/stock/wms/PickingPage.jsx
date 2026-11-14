@@ -5,6 +5,7 @@ import pickingApi from '../../../features/stock/api/pickingApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 import TableauDefilant from '../../../ui/TableauDefilant'
 import usePeutEcrireStock from '../usePeutEcrireStock'
+import { useIsAdmin } from '../../../hooks/useHasPermission'
 
 /* ASTK217 — Picking : créer une vague, la lancer, configurer sa libération,
    prélever ligne par ligne, tâche-retour ; onglets Comptages tournants
@@ -143,6 +144,7 @@ function CarteVague({ vague, geste, occupe }) {
 
 export default function PickingPage() {
   const peutMouvement = usePeutEcrireStock('stock_mouvement')  // ADRG35
+  const estAdmin = useIsAdmin()  // ADRG130 — plans-comptage-tournant/generer : IsAdminRole
   const [onglet, setOnglet] = useState('vagues')
   const [vagues, setVagues] = useState([])
   const [produits, setProduits] = useState([])
@@ -311,7 +313,7 @@ export default function PickingPage() {
 
       {onglet === 'comptages' && (
         <Carte titre="Comptages tournants">
-          <Button onClick={genererComptages} disabled={occupe}>Générer les comptages</Button>
+          {estAdmin && <Button onClick={genererComptages} disabled={occupe}>Générer les comptages</Button>}
           {sessions && (
             <p className="mt-2 text-sm">
               {sessions.plans_dus} plan(s) dû(s) — sessions :{' '}

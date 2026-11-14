@@ -124,6 +124,29 @@ class TestFactureDoublonRefFournisseur(Xpur11Base):
         except Exception:  # pragma: no cover - audit app optionnelle
             pass
 
+    def test_rejeu_meme_cle_ne_se_cite_pas(self):
+        # ACNC68 — le rejeu sous la même clé rend la même facture sans se
+        # citer ; une facture antérieure au même ref_fournisseur reste citée.
+        url = '/api/django/stock/factures-fournisseur/'
+        corps = {
+            'fournisseur': self.fournisseur.id, 'ref_fournisseur': 'FA-778',
+            'montant_ht': '10000', 'montant_tva': '2000',
+            'montant_ttc': '12000', 'date_facture': '2026-06-15',
+        }
+        r1 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k1')
+        r2 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k1')
+        self.assertEqual((r1.status_code, r2.status_code), (201, 201))
+        self.assertEqual(r2.data['id'], r1.data['id'])
+        self.assertNotIn('doublon_warning', r2.data)
+        self.assertEqual(FactureFournisseur.objects.count(), 1)
+        # Clé neuve : la facture précédente (r1) existe désormais avant.
+        r3 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k2')
+        r4 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='k2')
+        self.assertEqual(r4.data['id'], r3.data['id'])
+        self.assertEqual(
+            [d['id'] for d in r4.data['doublon_warning']], [r1.data['id']])
+        self.assertEqual(FactureFournisseur.objects.count(), 2)
+
 
 class TestFactureDoublonMontantDate(Xpur11Base):
     def test_meme_montant_ttc_dans_la_fenetre_7j_leve_doublon(self):

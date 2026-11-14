@@ -270,6 +270,9 @@ class FactureFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet
                 date_facture=date_facture,
             )
         response = super().create(request, *args, **kwargs)
+        # ACNC68 — rejeu sous la même clé : la facture servie ne se cite pas.
+        servie = response.data if isinstance(response.data, dict) else {}
+        doublons = [d for d in doublons if d['id'] != servie.get('id')]
         if response.status_code == status.HTTP_201_CREATED and doublons:
             response.data['doublon_warning'] = doublons
             if request.data.get('confirmer_malgre_doublon'):

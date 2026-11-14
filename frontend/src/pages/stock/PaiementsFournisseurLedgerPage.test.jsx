@@ -111,11 +111,46 @@ describe('PaiementsFournisseurLedgerPage (PACT51)', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith(
       '/stock/paiements-fournisseur/',
       { facture: 9, montant: 3000, date_paiement: null, mode: 'virement' },
+      { headers: { 'Idempotency-Key': expect.any(String) } },
     ))
     const banniere = await screen.findByTestId('escompte-banner')
     expect(banniere).toHaveTextContent('2.50 %')
     // `company` n'est jamais envoyée : imposée côté serveur.
     expect(Object.keys(post.mock.calls[0][1])).not.toContain('company')
+  })
+
+  it('réponse coupée puis reclic : même Idempotency-Key, registre relu ; clé neuve après succès', async () => {
+    const user = userEvent.setup()
+    mockGets()
+    post.mockRejectedValueOnce(Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))
+      .mockResolvedValue({ data: { id: 7 } })
+    afficher()
+    await screen.findByTestId('table-paiements')
+    const lecturesRegistre = () => get.mock.calls.filter(([u]) => u === '/stock/paiements-fournisseur/').length
+    const avant = lecturesRegistre()
+
+    await user.click(screen.getByRole('combobox', { name: 'Facture fournisseur' }))
+    await user.click(await screen.findByRole('option', { name: /FF-2026-08-0001/ }))
+    await user.type(screen.getByLabelText('Montant du règlement'), '3000')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    // Réponse perdue : le registre est relu (le règlement est peut-être passé).
+    await waitFor(() => expect(lecturesRegistre()).toBeGreaterThan(avant))
+
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+    const cle1 = post.mock.calls[0][2]?.headers?.['Idempotency-Key']
+    const cle2 = post.mock.calls[1][2]?.headers?.['Idempotency-Key']
+    expect(cle1).toEqual(expect.any(String))
+    expect(cle2).toBe(cle1)
+
+    // Après le succès, le règlement suivant part avec une clé neuve.
+    await user.click(screen.getByRole('combobox', { name: 'Facture fournisseur' }))
+    await user.click(await screen.findByRole('option', { name: /FF-2026-08-0001/ }))
+    await user.type(screen.getByLabelText('Montant du règlement'), '500')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(3))
+    expect(post.mock.calls[2][2]?.headers?.['Idempotency-Key']).not.toBe(cle1)
   })
 
   it('montant 0 : message sous le champ, aucun appel (AERR90)', async () => {

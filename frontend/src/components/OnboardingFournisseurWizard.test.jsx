@@ -11,7 +11,11 @@ import { ThemeProvider } from '../design/ThemeProvider.jsx'
    ========================================================================== */
 
 // ADRG36 — le wizard lit `stock_modifier` : ce compte le porte.
-vi.mock('../pages/stock/usePeutEcrireStock', () => ({ default: () => true }))
+// ADRG131 — « Soumettre » suit `valider_dossier_fournisseur` ; `droits.codes` = null ⇒ tout accordé.
+const droits = vi.hoisted(() => ({ codes: null }))
+vi.mock('../pages/stock/usePeutEcrireStock', () => ({
+  default: (code = 'stock_modifier') => (droits.codes ? droits.codes.includes(code) : true),
+}))
 vi.mock('../api/stockApi', () => ({
   default: {
     getOnboardingFournisseur: vi.fn(),
@@ -64,6 +68,7 @@ function renderWizard() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  droits.codes = null
 })
 
 describe('OnboardingFournisseurWizard (NTP2P29)', () => {
@@ -131,6 +136,18 @@ describe('OnboardingFournisseurWizard (NTP2P29)', () => {
     await waitFor(() =>
       expect(stockApi.validerDossierOnboarding).toHaveBeenCalledWith(
         3, { valider: true }))
+  })
+
+  it('sans valider_dossier_fournisseur : pas de Soumettre', async () => {
+    droits.codes = ['stock_voir', 'stock_modifier']  // Technicien responsable
+    stockApi.getOnboardingFournisseur.mockResolvedValue(reponse({ recus: REQUIS }))
+    renderWizard()
+    await screen.findByTestId('onboarding-progression')
+    fireEvent.click(screen.getByTestId('onboarding-suivant'))
+    await waitFor(() => expect(screen.getByTestId('onboarding-piece-rc')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('onboarding-suivant'))
+    expect(await screen.findByText(/pièce·s/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Soumettre pour validation/i })).toBeNull()
   })
 
   it('propose d’ouvrir un dossier quand il n’en existe aucun', async () => {
