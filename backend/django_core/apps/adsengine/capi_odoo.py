@@ -101,6 +101,12 @@ def _e164_digits(phone_norm):
     return f'{_DEFAULT_COUNTRY_CODE}{digits}'
 
 
+def _est_oppose(company, phone_norm):
+    """AMSG100 (D-AMSG-3) — ce téléphone porte-t-il une opposition de la société ?"""
+    from apps.crm.selectors import porte_une_opposition
+    return porte_une_opposition(company.pk, telephone=phone_norm)
+
+
 def _deal_value(deal):
     """Montant du deal (``amount_mad``) en float pour ``custom_data.value``
     (0.0 si illisible — jamais d'exception)."""
@@ -148,6 +154,9 @@ def build_signed_event(company, deal, *, now=None):
     inéligible s'il n'y a AUCUNE clé de match (jamais de PII en clair)."""
     now = int(now if now is not None else time.time())
     phone_norm = deal.get('phone_norm') or ''
+    if _est_oppose(company, phone_norm):  # AMSG100 — rien vers Meta
+        return {'eligible': False, 'reason': 'opposed',
+                'event': None, 'event_key': None}
     lead_id = _lead_id_for_phone(company, phone_norm)
 
     user_data = {}
@@ -323,6 +332,10 @@ def build_received_event(company, mirror, *, now=None):
     leadgen_id = (getattr(mirror, 'leadgen_id', '') or '').strip()
     if not leadgen_id:
         return {'eligible': False, 'reason': 'no_leadgen_id',
+                'event': None, 'event_key': None}
+
+    if _est_oppose(company, getattr(mirror, 'phone_key', '')):  # AMSG100
+        return {'eligible': False, 'reason': 'opposed',
                 'event': None, 'event_key': None}
 
     user_data = {'lead_id': leadgen_id}

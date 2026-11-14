@@ -71,8 +71,6 @@ backend/django_core/apps/notifications/services.py::livrer_notifications_differe
 # à trier, propriétaire parametres (hors constat ACEL5)
 backend/django_core/apps/parametres/traductions_manquantes.py::marquer_notifiees
 # à trier, propriétaire publicapi (hors constat ACEL5)
-backend/django_core/apps/publicapi/retry.py::run_due_retries
-# à trier, propriétaire publicapi (hors constat ACEL5)
 backend/django_core/apps/publicapi/retry.py::schedule_first_retry
 # à trier, propriétaire ventes (hors constat ACEL5)
 backend/django_core/apps/ventes/domain/pdf_signe.py::rendre_pdf_signe

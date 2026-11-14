@@ -54,6 +54,33 @@ class Ntapi8RetryScheduleTests(TestCase):
         expected = now + timedelta(seconds=RETRY_DELAYS_SECONDS[0])
         self.assertLess(abs((attempt.prochain_essai_at - expected).total_seconds()), 1)
 
+    def test_societe_suspendue_jamais_relancee(self):
+        """ACEL88 — la tentative due d'une société suspendue n'est ni
+        envoyée ni modifiée."""
+        b = _company('ntapi8-b', 'NTAPI8B')
+        hook_b = Webhook.objects.create(
+            company=b, target_url='https://example.test/hook-b',
+            secret='s3cr3t', events=[EVENT_LEAD_CREATED], enabled=True)
+        dl_b = WebhookDelivery.objects.create(
+            company=b, webhook=hook_b, event=EVENT_LEAD_CREATED,
+            event_id='b-id', payload={'id': 2, 'event_id': 'b-id'},
+            status=WebhookDelivery.Statut.FAILED, response_status=500,
+            error='HTTP 500')
+        now = timezone.now()
+        att_a = schedule_first_retry(self._failed_delivery('a-id'), now=now)
+        att_b = schedule_first_retry(dl_b, now=now)
+        Company.objects.filter(pk=b.pk).update(actif=False)
+        with mock.patch(
+                'apps.publicapi.retry._send',
+                return_value=('failed', 500, 'HTTP 500')) as post:
+            run_due_retries(now=now + timedelta(days=1))
+        self.assertEqual(post.call_count, 1)
+        att_a.refresh_from_db()
+        att_b.refresh_from_db()
+        self.assertNotEqual(att_a.statut, WebhookDeliveryAttempt.Statut.EN_ATTENTE)
+        self.assertEqual(att_b.statut, WebhookDeliveryAttempt.Statut.EN_ATTENTE)
+        self.assertEqual(att_b.prochain_essai_at, now + timedelta(seconds=RETRY_DELAYS_SECONDS[0]))
+
     def test_schedule_first_retry_is_idempotent(self):
         wh_delivery = self._failed_delivery()
         schedule_first_retry(wh_delivery)

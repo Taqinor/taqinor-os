@@ -49,6 +49,9 @@ def signature_relances_expiration():
     """XGED2 — Balayage quotidien : relances de signataires dus + expiration
     des demandes échues (une société à la fois, jamais destructif : n'annule
     QUE des demandes déjà `en_attente` avec `expires_at` dépassée)."""
+    from django.conf import settings
+    from django.utils import timezone
+
     from authentication.selectors import active_companies
     from apps.notifications.selectors import fenetre_notifications
 
@@ -63,7 +66,10 @@ def signature_relances_expiration():
             fenetre = fenetre_notifications(company)
             if fenetre.ouverte:
                 total_relances += len(services.relancer_signataires_dus(company))
-            else:
+            elif (fenetre.prochaine_ouverture - timezone.now()).total_seconds() < (
+                    settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout']):
+                # AMSG98 — jamais d'`eta` au-delà du délai de re-livraison du
+                # broker : sinon le balayage du jour ouvré suivant s'en charge.
                 relancer_signataires_societe.apply_async(
                     args=[company.pk], eta=fenetre.prochaine_ouverture)
             total_expirees += services.expirer_demandes_echues(company)
