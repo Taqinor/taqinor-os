@@ -103,10 +103,12 @@ def _remettre_brouillon_whatsapp(interv, url):
     d'être compté puis jeté. Rend True si la tâche est créée."""
     from apps.automation.actions import RESUME_TACHE_WHATSAPP, _creer_tache
 
+    from .livraison_client_notify import assigne_tache_chantier
     _client, corps = _corps_rappel_client(interv)
     try:
-        _creer_tache(interv, interv.company, None, RESUME_TACHE_WHATSAPP,
-                     f'{corps}\n\n{url}' if corps else url)
+        assigne_tache_chantier(_creer_tache(  # AMSG96 — visible dans « Mes activités »
+            interv, interv.company, None, RESUME_TACHE_WHATSAPP,
+            f'{corps}\n\n{url}' if corps else url), interv.installation)
         return True
     except Exception:  # noqa: BLE001 — le balayage continue (journalisé)
         logger.warning('AMSG56 : tâche WhatsApp non créée (intervention %s)',

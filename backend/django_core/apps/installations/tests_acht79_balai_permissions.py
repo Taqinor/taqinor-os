@@ -35,8 +35,8 @@ from apps.installations.urls import router as router_installations
 from apps.outillage.urls import router as router_outillage
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
-    ADMIN_RH_PERMISSIONS, CANONICAL_SYSTEM_ROLES, TECHNICIEN_PERMISSIONS,
-    VIEWER_PERMISSIONS,
+    ADMIN_RH_PERMISSIONS, CANONICAL_SYSTEM_ROLES, RESPONSABLE_PERMISSIONS,
+    TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS, VIEWER_PERMISSIONS,
 )
 
 User = get_user_model()
@@ -201,6 +201,41 @@ class FuiteListesTechnicienTests(TestCase):
         r = api.get('/api/django/installations/chantiers/gantt/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertNotIn(self.chantier.id, [row['id'] for row in r.data])
+
+    def test_referentiels_entrepot_exigent_stock_modifier(self):
+        """ADRG41 (D-ADRG-10) — les 11 référentiels d'entrepôt logés au
+        module chantiers exigent `stock_modifier` à l'écriture : Technicien du
+        registre refusé, Technicien responsable / Responsable / compte hérité
+        responsable acceptés ; lectures inchangées ; aucun Fournisseur créé."""
+        from django.apps import apps as django_apps
+        heritage = User(username='legacy-adrg41', company_id=1,
+                        role_legacy=User.ROLE_RESPONSABLE)
+        acceptes = (_utilisateur('Technicien responsable', TECHNICIEN_RESP_PERMISSIONS),
+                    _utilisateur('Responsable', RESPONSABLE_PERMISSIONS), heritage)
+        technicien = _utilisateur('Technicien', TECHNICIEN_PERMISSIONS)
+        classes = {v.__name__: v for _p, v, _b in router_installations.registry}
+        for nom in ('BinLocationViewSet', 'BinAffectationViewSet', 'CategorieStockageViewSet',
+                    'RegleRangementViewSet', 'KitViewSet', 'KitComposantViewSet',
+                    'ControleQualiteModeleViewSet', 'EtapeAssemblageViewSet',
+                    'RegleReapproViewSet', 'TransporteurViewSet', 'SousTraitantViewSet'):
+            with self.subTest(viewset=nom):
+                vs = classes[nom]
+                ecritures = _actions_ecriture(vs)
+                self.assertTrue(ecritures)
+                for action, methode in ecritures:
+                    self.assertFalse(_autorise(vs, action, methode, technicien), (action, methode))
+                    for user in acceptes:
+                        self.assertTrue(_autorise(vs, action, methode, user), (action, user))
+                self.assertTrue(_autorise(vs, 'list', 'GET', technicien))
+        Fournisseur = django_apps.get_model('stock', 'Fournisseur')
+        avant = Fournisseur.objects.filter(company=self.company).count()
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.t1)}')
+        r = api.post('/api/django/installations/sous-traitants/',
+                     {'nom': 'ST ADRG41', 'metier': 'electricite'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn('stock_modifier', str(r.data))
+        self.assertEqual(Fournisseur.objects.filter(company=self.company).count(), avant)
 
     def test_commercial_ne_lit_que_les_chantiers_de_ses_devis(self):
         """APFS105 — Commercial C1 (octroi `ventes_voir`) : `chantiers/` = le

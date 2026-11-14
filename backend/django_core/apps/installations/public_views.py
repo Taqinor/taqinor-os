@@ -1,4 +1,7 @@
 """Vues publiques tokenisées de l'app Installations (SANS LOGIN)."""
+import datetime
+
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -110,10 +113,21 @@ class InterventionLienClientPublicView(_EntetesPublicsMixin, APIView):
         return Response(intervention_public_payload(interv))
 
 
+#: APUB7 (D-APUB-4) — durée de vie du lien public après la clôture.
+DUREE_LIEN_RAPPORT_JOURS = 90
+
+
 def _rapport_publiable(interv):
-    """ACHT36 — le compte-rendu public n'est servi qu'en terminée/validée."""
-    return interv.statut in (
-        Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+    """ACHT36 — le compte-rendu public n'est servi qu'en terminée/validée ;
+    APUB7 — et au plus 90 jours après la clôture (``cloturee_notifiee_le``,
+    repli ``date_realisee`` puis ``date_creation``), relu à chaque GET."""
+    if interv.statut not in (
+            Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE):
+        return False
+    ref = interv.cloturee_notifiee_le or interv.date_realisee or interv.date_creation
+    if isinstance(ref, datetime.datetime):
+        ref = timezone.localdate(ref)
+    return (timezone.localdate() - ref).days <= DUREE_LIEN_RAPPORT_JOURS
 
 
 class InterventionRapportPublicView(_EntetesPublicsMixin, APIView):
