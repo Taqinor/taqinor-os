@@ -137,6 +137,11 @@ ON_DEMAND_ALLOWLIST = {
     # replanifier sans nouvel accord du fondateur.
     'crm.sync_odoo_leads',
     'adsengine.emit_capi_signatures',
+    # AMSG73 (D-AMSG-1) — relances de signataires d'UNE société, reprises à
+    # l'ouverture de sa fenêtre des messages : posée par le balayage planifié
+    # ``ged.signature_relances_expiration`` (``apply_async(eta=…)``), jamais
+    # périodique en elle-même.
+    'ged.relancer_signataires_societe',
 }
 
 
