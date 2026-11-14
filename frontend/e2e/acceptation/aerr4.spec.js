@@ -993,14 +993,8 @@ ApprovalDelegation.objects.filter(delegant_id=${ad.id}).delete()`))
   ])
   const corpsRefus = reqRefus.postDataJSON()
   expect([corpsRefus.date_debut, corpsRefus.date_fin], 'un seul jour : début 00:00 et fin 23:59:59.999 locales').toEqual(attendu)
-  // `exact` : le toast global dit aussi « Date fin : <motif> » (AERR52) ; ici seul le message SOUS le champ.
-  await expect(p.getByText(motif, { exact: true }), 'le refus est rendu sous la période').toBeVisible({ timeout: 30_000 })
-  const sousPeriode = await periode.evaluate((el, texte) => {
-    let n = el.parentElement
-    for (let i = 0; i < 4 && n; i += 1, n = n.parentElement) if (n.textContent.includes(texte)) return n.textContent.includes('Période')
-    return false
-  }, motif)
-  expect(sousPeriode, 'le message est dans le champ « Période »').toBe(true)
+  // Erreur du FormField « Période » (`<id>-error`) ; le toast global dit aussi « Date fin : <motif> » (AERR52).
+  await expect(p.locator('#delegation-periode-error'), 'le refus est rendu sous la période').toContainText(motif, { timeout: 30_000 })
   await expect(periode, 'saisie de la période conservée').toContainText('→')
   expect(refus.hits.n).toBe(1)
   await cliche(p, 'PF12.5-AERR125', 'refus-date-fin')
