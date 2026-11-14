@@ -20,7 +20,29 @@ import {
 // l'événement « Demander à l'assistant » (cette question seulement).
 const questionDe = (arg) => (typeof arg === 'string' ? arg : arg?.question ?? '')
 
-export const queryAgent = createAsyncThunk('ia/queryAgent', async (arg, { rejectWithValue, getState }) => {
+// AIC91 — progression du tour : un identifiant aléatoire part avec la question,
+// l'écran sonde ses étapes toutes les 1,5 s jusqu'à la réponse (aucun flux SSE :
+// nginx tamponne /sql-agent/). Best-effort : un sondage raté ne casse rien.
+export const PROGRESSION_MS = 1500
+const nouvelIdProgression = () => (globalThis.crypto?.randomUUID?.()
+  ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`)
+
+function sonderProgression(id, dispatch) {
+  return setInterval(async () => {
+    try {
+      const res = await iaApi.getProgression(id)
+      const etapes = res?.data?.etapes
+      const derniere = Array.isArray(etapes) ? etapes[etapes.length - 1]?.libelle : null
+      if (derniere) dispatch({ type: 'ia/etapeRecue', payload: String(derniere) })
+    } catch {
+      // sondage best-effort : la réponse arrive de toute façon
+    }
+  }, PROGRESSION_MS)
+}
+
+export const queryAgent = createAsyncThunk('ia/queryAgent', async (arg, { rejectWithValue, getState, dispatch }) => {
+  const progressionId = nouvelIdProgression()
+  const sonde = sonderProgression(progressionId, dispatch)
   try {
     const contexte = construireContexte({
       chemin: typeof window !== 'undefined' ? window.location.pathname : '/',
@@ -31,10 +53,12 @@ export const queryAgent = createAsyncThunk('ia/queryAgent', async (arg, { reject
       diagnostic: (typeof arg === 'string' ? null : arg?.diagnostic)
         ?? (ditUnePanne(questionDe(arg)) ? instantaneDiagnostic() : null),
     })
-    const res = await iaApi.queryAgent(questionDe(arg), contexte)
+    const res = await iaApi.queryAgent(questionDe(arg), contexte, progressionId)
     return { ...res.data, recu_le: Date.now() }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
+  } finally {
+    clearInterval(sonde)
   }
 })
 
@@ -161,6 +185,8 @@ const iaSlice = createSlice({
     messages: [],
     agentLoading: false,
     agentError: null,
+    // AIC91 — dernière étape du tour en cours (libellé du registre), ou null.
+    etapeEnCours: null,
     // OCR
     ocrResult: null,
     ocrLoading: false,
@@ -185,6 +211,8 @@ const iaSlice = createSlice({
     closeCopilot(state) { state.copilotOpen = false },
     toggleCopilot(state) { state.copilotOpen = !state.copilotOpen },
     clearMessages(state) { state.messages = [] },
+    // AIC91 — une étape lue par le sondage ; ignorée hors attente (réponse arrivée).
+    etapeRecue(state, action) { if (state.agentLoading) state.etapeEnCours = action.payload },
     historyLoaded(state, action) { state.messages = messagesDeLHistorique(action.payload) },
     // AG3/COP-F1 — « Annuler » sur UNE carte proposition : sans appel API (le
     // jeton expire seul côté Redis, usage unique). La carte reste, « annulée ».
@@ -240,10 +268,12 @@ const iaSlice = createSlice({
       .addCase(queryAgent.pending, (state, action) => {
         state.agentLoading = true
         state.agentError = null
+        state.etapeEnCours = null
         state.messages.push({ role: 'user', content: questionDe(action.meta.arg) })
       })
       .addCase(queryAgent.fulfilled, (state, action) => {
         state.agentLoading = false
+        state.etapeEnCours = null
         // AG3 — buildAgentMessage rend une carte proposition / résultat quand le
         // payload structuré AG2 est présent ; sinon un message texte (N86).
         // L'événement journalisé (AIC6, note AIC8) et le moteur sont conservés.
@@ -257,6 +287,7 @@ const iaSlice = createSlice({
       })
       .addCase(queryAgent.rejected, (state, action) => {
         state.agentLoading = false
+        state.etapeEnCours = null
         state.agentError = action.payload
       })
 
@@ -372,5 +403,5 @@ const iaSlice = createSlice({
   },
 })
 
-export const { openCopilot, closeCopilot, toggleCopilot, clearMessages, historyLoaded, dismissProposal, ajouterMessageLocal, majCarte, majCartesTouche, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
+export const { openCopilot, closeCopilot, toggleCopilot, clearMessages, etapeRecue, historyLoaded, dismissProposal, ajouterMessageLocal, majCarte, majCartesTouche, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
 export default iaSlice.reducer

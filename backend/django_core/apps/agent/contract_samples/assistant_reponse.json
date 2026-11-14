@@ -212,6 +212,17 @@
   "contexte": {
     "regles": "`contexte` est posé par l'ÉCRAN, jamais par le modèle : `ecran` (route courante), `lead_id` / `devis_id` (fiche ouverte), `touche_id` (touche de la dernière carte « touche » affichée — le FOYER de la conversation), `diagnostic` (tampon technique, voir plus bas). Le relais ajoute lui-même, côté serveur, la date et l'heure de Casablanca, le prénom et le rôle de l'utilisateur dans l'en-tête de chaque question : le modèle ne devine jamais « jeudi »."
   },
+  "progression": {
+    "endpoint": "GET /api/fastapi/sql-agent/progression/<progression_id>",
+    "regles": "AIC91 — l'écran envoie `progression_id` (identifiant aléatoire, 8 à 64 caractères [A-Za-z0-9_-]) dans le corps de la question, puis sonde cette route toutes les 1,5 s jusqu'à la réponse. Une étape est publiée au DÉPART de chaque outil du registre : `libelle` = label du registre (jamais un argument d'outil, jamais une donnée personnelle), `t` = horodatage Unix en secondes. `fini` passe à vrai quand la question a rendu sa réponse (ou son erreur). Identifiant inconnu, mal formé ou d'un autre utilisateur ⇒ `{etapes: [], fini: false}`. Clé Redis `assistant:progression:<utilisateur>:<id>`, effacée après 10 minutes.",
+    "exemple": {
+      "etapes": [
+        {"libelle": "Lister les leads", "t": 1763114400},
+        {"libelle": "Générer le PDF", "t": 1763114403}
+      ],
+      "fini": false
+    }
+  },
   "deploiement": {
     "regles": "Deux interrupteurs, tous deux ÉTEINTS pour les commerciaux au merge. (1) Django `ASSISTANT_COPILOTE` = `aucun` | `admins` (défaut) | `tous` : sert ou non les actions du lot `copilote` (et retire alors celles du lot `herite`) dans `GET /api/django/agent/actions/` ; chaque action du catalogue porte `lot`. Le relais n'a aucun réglage à lui pour cela : il applique les consignes du copilote dès que le catalogue reçu contient une action du lot `copilote`. (2) FastAPI `ASSISTANT_MOTEUR` = `langchain` (défaut) | `natif` : moteur du fournisseur claude ; le moteur natif n'est pris que pour un compte dont le copilote est allumé. Les réparations déterministes (cartes, confirmation à usage unique, validations, écran) ne dépendent d'aucun interrupteur."
   }
