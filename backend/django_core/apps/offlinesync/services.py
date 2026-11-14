@@ -95,25 +95,27 @@ def _journaliser(company, user, op_id, module, op_type, payload, queued_at):
         return obj
     if obj.statut == OfflineOperation.Statut.APPLIQUEE:
         return obj
-    obj.user = user
-    obj.module = module
-    obj.op_type = op_type
-    obj.payload = payload
-    obj.erreur = ''
-    obj.statut = OfflineOperation.Statut.EN_ATTENTE
     # NTMOB2 — une op REPRISE repart d'une page blanche : le conflit et
     # l'arbitrage d'une tentative précédente ne doivent pas rester collés à un
     # corps qui a changé (l'audit de l'ancienne décision vit dans l'historique
     # de la ligne, pas dans un champ devenu faux).
-    obj.conflit = {}
-    obj.resolution = ''
-    obj.date_resolution = None
+    reprise = dict(user=user, module=module, op_type=op_type, payload=payload,
+                   erreur='', statut=OfflineOperation.Statut.EN_ATTENTE,
+                   conflit={}, resolution='', date_resolution=None,
+                   updated_at=timezone.now())
     if queued_at is not None:
-        obj.date_creation = queued_at
-    obj.save(update_fields=['user', 'module', 'op_type', 'payload', 'erreur',
-                            'statut', 'conflit', 'resolution',
-                            'date_resolution', 'date_creation', 'updated_at'])
-    return obj
+        reprise['date_creation'] = queued_at
+    # ACNC64 — reprise CONDITIONNELLE : un vidage concurrent qui vient de
+    # l'appliquer (verrou de `_executer`) n'est jamais remis « en attente » ;
+    # 0 ligne touchée => la ligne relue est « appliquée » (rejeu).
+    _sauf_appliquee(obj).update(**reprise)
+    return OfflineOperation.objects.get(pk=obj.pk)
+
+
+def _sauf_appliquee(obj):
+    """ACNC64 — la ligne de journal ``obj``, tant qu'elle n'est pas appliquée."""
+    return OfflineOperation.objects.filter(pk=obj.pk).exclude(
+        statut=OfflineOperation.Statut.APPLIQUEE)
 
 
 def _apply_one(company, user, op):
@@ -153,12 +155,14 @@ def _apply_one(company, user, op):
     # change (comportement NTMOB1 au bit près).
     divergence = _detecter_conflit(company, op_type, payload)
     if divergence is not None:
-        obj.statut = OfflineOperation.Statut.CONFLIT
-        obj.conflit = divergence
+        maintenant = timezone.now()
+        if not _sauf_appliquee(obj).update(
+                statut=OfflineOperation.Statut.CONFLIT, conflit=divergence,
+                erreur=conflicts.MESSAGE, date_traitement=maintenant,
+                updated_at=maintenant):
+            # ACNC64 — appliquée entre-temps par un vidage concurrent : rejeu.
+            return _executer(company, user, obj)
         obj.erreur = conflicts.MESSAGE
-        obj.date_traitement = timezone.now()
-        obj.save(update_fields=['statut', 'conflit', 'erreur',
-                                'date_traitement', 'updated_at'])
         # `error` est renseignée EN PLUS de `status` : un terminal antérieur à
         # NTMOB2 ne connaît que applied/replayed, garde donc l'op dans sa file
         # avec ce message — jamais une disparition silencieuse.
