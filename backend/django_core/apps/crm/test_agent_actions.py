@@ -503,6 +503,48 @@ class CrmAgentBrouillonSuiviTest(TestCase):
         resp = self._appel(self._lead('Salma'), objectif='vendre')
         self.assertEqual(resp.status_code, 400)
 
+    def test_message_manuel_rendu_et_refus(self):
+        """AIC96 — un texte MANUEL validé (parrainage, avis Google…) rendu
+        pour le lead par la machinerie des touches : texte validé + wa.me,
+        placeholder sans valeur omis et listé ; opposé ⇒ 409 nommé ; clé
+        hors liste ⇒ 400 qui nomme les clés permises ; rien d'écrit."""
+        from apps.crm.agent_actions import MESSAGE_MANUEL
+        from apps.crm.models import RelanceEtape
+        self.assertEqual(
+            (MESSAGE_MANUEL.lot, MESSAGE_MANUEL.carte, MESSAGE_MANUEL.risk,
+             MESSAGE_MANUEL.endpoint),
+            (LOT_COPILOTE, 'wa_message', 'internal', BROUILLON_SUIVI.endpoint))
+        lead = self._lead('Salma')
+        avant = (LeadActivity.objects.count(), RelanceEtape.objects.count())
+        resp = self._appel(lead, objectif='parrainage')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(_echantillon(
+            'assistant_brouillon_suivi.json', 'exemple_manuel')))
+        self.assertIn('lien de parrainage', resp.data['texte'])
+        self.assertTrue(resp.data['wa_url'].startswith(
+            'https://wa.me/212600112233?text='))
+        self.assertEqual(resp.data['wa_url'], resp.data['lien_wa_me'])
+        self.assertEqual(resp.data['modele_source'], 'parrainage')
+        self.assertEqual(resp.data['placeholders_manquants'], [])
+        # Avis Google sans lien de fiche réglé : phrase omise, clé listée.
+        avis = self._appel(lead, objectif='avis_google')
+        self.assertEqual(avis.status_code, 200, avis.data)
+        self.assertIn('lien_google', avis.data['placeholders_manquants'])
+        self.assertNotIn('{', avis.data['texte'])
+        oppose = self._lead('Oppose', ne_plus_contacter=True,
+                            telephone='0600112277')
+        refus = self._appel(oppose, objectif='parrainage')
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual(str(refus.data['detail']),
+                         'Message refusé : ne plus contacter.')
+        hors = self._appel(lead, objectif='offre_reda')
+        self.assertEqual(hors.status_code, 400, hors.data)
+        self.assertIn('parrainage', str(hors.data['objectif']))
+        self.assertIn('relance_devis', str(hors.data['objectif']))
+        self.assertEqual(
+            (LeadActivity.objects.count(), RelanceEtape.objects.count()),
+            avant)
+
     def test_brouillon_ne_rend_jamais_un_envoi(self):
         from unittest import mock
         lead = self._lead('Salma')
@@ -678,6 +720,15 @@ class CrmAgentDigestMatinTest(TestCase):
         self.assertEqual(
             ligne['devis_id'],
             Devis.objects.get(reference='DEV-35-ANCIEN').pk)
+        # AIC95 — les lignes de visite sont figées : exactement les clés de
+        # ``visites.selectors.ligne_ma_journee``, écrites dans l'échantillon.
+        from apps.visites.selectors import ligne_ma_journee
+        from apps.visites.models import VisiteTerrain
+        visite = resp.data['visites']['lignes'][0]
+        self.assertEqual(set(visite),
+                         set(exemple['visites']['lignes'][0]))
+        self.assertEqual(set(visite), set(ligne_ma_journee(
+            VisiteTerrain.objects.get(pk=visite['id']))))
 
 
 # ── COP — copilote commercial : les lectures et actions CRM de l'assistant ──
@@ -905,6 +956,25 @@ class CrmAssistantToucheTest(_CopiloteBase):
         self.assertIsNone(resp.data['appel'])
         self.assertIsNone(resp.data['refus'])
         self.assertEqual(resp.data['lead']['etape'], stages.NEW)
+
+    def test_hors_fenetre_a_22h(self):
+        """AIC95 — préparée à 22 h (lundi, fenêtres par défaut) : drapeau
+        ``hors_fenetre`` en clair, message TOUJOURS rendu ; à 10 h : null."""
+        import datetime
+        from zoneinfo import ZoneInfo
+        from freezegun import freeze_time
+        etape = self._touche(self._lead(whatsapp='0661000111'))
+        casa = ZoneInfo('Africa/Casablanca')
+        with freeze_time(datetime.datetime(2026, 11, 16, 22, 0, tzinfo=casa)):
+            soir = self._lire(self.alice, etape)
+        self.assertEqual(soir.status_code, 200, soir.data)
+        self.assertEqual(soir.data['hors_fenetre'], {
+            'raison': "Hors des heures d'envoi (messages de 8 h 30 à 20 h)"})
+        self.assertIsNotNone(soir.data['message'])
+        with freeze_time(datetime.datetime(2026, 11, 16, 10, 0, tzinfo=casa)):
+            matin = self._lire(self.alice, etape)
+        self.assertIsNone(matin.data['hors_fenetre'])
+        self.assertIsNotNone(matin.data['message'])
 
     def test_message_rendu_par_le_meme_code_que_l_ecran(self):
         etape = self._touche(self._lead())

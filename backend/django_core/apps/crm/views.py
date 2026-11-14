@@ -31,7 +31,7 @@ from .serializers import (
 )
 from .actions_crud import READ_ACTIONS, WRITE_ACTIONS, _PorteeEnfantsMixin
 from .leads_views import LeadIntakeActionsMixin
-from .clients_views import LeadClientsActionsMixin
+from .clients_views import LeadClientsActionsMixin, _RechercheSansPii
 from .visites_views import LeadVisitesActionsMixin
 from .devis_views import LeadDevisActionsMixin
 from .cadence_views import (
@@ -179,7 +179,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # exclu. Les rôles legacy (sans Role fin) gardent leur accès historique
     # (comportement OrLegacy de la garde).
     read_permission = 'crm_voir'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [_RechercheSansPii, filters.OrderingFilter]  # ALEC47
     # WREF (fondateur 21/08) — client_ref = la référence remise au client :
     # stockée mais introuvable (3 recherches, 0 index). Depuis WREF2 c'est la
     # référence « NOM-N » attribuée par le serveur (les fiches d'avant portent

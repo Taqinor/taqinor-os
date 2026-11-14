@@ -250,16 +250,49 @@ _OBJECTIFS_BROUILLON = {
     'apres_visite': 'visite',
     'reveil_froid': 'réveil',
 }
+#: AIC96 — les textes MANUELS validés (Paramètres → Messages) sans rendu par
+#: lead : rendus par la machinerie du suivi (``message_pour_etape``), jamais
+#: par un second moteur. Hors liste : l'offre du fondateur et les réveils
+#: (montants et conditions à décider), signature et mise en service.
+CLES_MESSAGE_MANUEL = (
+    'annonce_appel_reda', 'debrief_visite', 'avis_google', 'parrainage')
 _CANAUX_BROUILLON = ('whatsapp', 'sms', 'email')
 #: Longueur maximale d'un brouillon WhatsApp.
 LONGUEUR_WHATSAPP = 500
+_OBJECTIFS_PERMIS = sorted(_OBJECTIFS_BROUILLON) + list(CLES_MESSAGE_MANUEL)
 
 _CORPS_BROUILLON = sd.corps(
     'CrmAssistantBrouillonSuiviRequest',
     canal=ChoixDocumente(_CANAUX_BROUILLON),
     langue=ChoixDocumente(['fr', 'ar'], required=False),
-    objectif=ChoixDocumente(sorted(_OBJECTIFS_BROUILLON)),
+    objectif=ChoixDocumente(_OBJECTIFS_PERMIS, error_messages={
+        'invalid_choice': 'Objectif inconnu « {input} ». Objectifs permis : '
+                          + ', '.join(_OBJECTIFS_PERMIS) + '.'}),
 )
+
+
+def _message_manuel(request, lead, cle, canal, langue):
+    """AIC96 — le texte manuel ``cle`` rendu pour ``lead`` par le MÊME code
+    que les touches (``message_pour_etape`` sur une touche NON enregistrée) :
+    placeholders sans valeur omis et listés, crochets listés (jamais
+    remplis), numéro masqué sans ``client_pii_voir``. Rien n'est écrit."""
+    from . import cadence_messages as cm
+    from .models import RelanceEtape
+
+    touche = RelanceEtape(company=lead.company, lead=lead, template_cle=cle,
+                          canal=RelanceEtape.Canal.WHATSAPP)
+    rendu = cm.message_pour_etape(
+        touche, request=request, user=request.user,
+        langue={'ar': 'darija', 'fr': 'fr'}.get(langue))
+    lien = rendu['wa_url'] if canal == 'whatsapp' else None
+    servie = 'fr' if rendu['repli_langue'] else rendu['langue']
+    return Response({
+        'texte': rendu['message'], 'wa_url': lien, 'lien_wa_me': lien,
+        'modele_source': cle,
+        'langue_servie': 'ar' if servie == 'darija' else servie,
+        'placeholders_manquants': rendu['placeholders_manquants'],
+        'crochets': rendu['crochets'],
+    })
 
 
 def _modele_societe(company, objectif, langue):
@@ -299,7 +332,9 @@ def lead_brouillon_suivi(request, lead_id):
     « { » ni « je suis  de »). COP-C7 — sans modèle société AUCUNE phrase de
     repli n'est écrite (le Guide interdit « avez-vous pu le consulter ? ») :
     ``texte`` vaut ``""`` et le lien ouvre la conversation nue. ``wa_url`` est
-    la clé lue par la carte ; ``lien_wa_me`` (même valeur) reste servi."""
+    la clé lue par la carte ; ``lien_wa_me`` (même valeur) reste servi.
+    AIC96 — ``objectif`` peut aussi être une clé de ``CLES_MESSAGE_MANUEL``
+    (texte validé rendu par ``_message_manuel``)."""
     from apps.ventes import selectors as ventes
     from apps.ventes.utils.whatsapp import build_wa_url
 
@@ -310,6 +345,9 @@ def lead_brouillon_suivi(request, lead_id):
     lead = _lead_en_portee_ou_404(request.user, lead_id)
     cm.garde_contact_du_lead(lead)  # ACVI103 (D-ACVI-7) — opposé/perdu/archivé : 409
     objectif, canal = donnees['objectif'], donnees['canal']
+    if objectif in CLES_MESSAGE_MANUEL:  # AIC96 — texte manuel validé
+        return _message_manuel(
+            request, lead, objectif, canal, donnees.get('langue'))
     modele, langue_servie = _modele_societe(
         lead.company, objectif, donnees.get('langue') or 'fr')
     civilite, prenom = cm._civilite_et_prenom(lead, 'fr')

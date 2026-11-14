@@ -257,7 +257,11 @@ def _gardes_de_la_route(action):
     from authentication.permissions import (
         IsAdminRole, IsResponsableOrAdmin, LectureDuModule, module_de_la_vue)
 
-    chemin = re.sub(r'\{[a-z_]+\}', '1', action.endpoint)
+    # AIC99 — un paramètre de chemin à valeurs fermées (``enum``) prend sa
+    # PREMIÈRE valeur (la route la plus stricte, déclarée en tête) ; un id, 1.
+    entrees = (action.inputs or {}).get('properties', {})
+    chemin = re.sub(r'\{([a-z_]+)\}', lambda m: str(
+        (entrees.get(m.group(1), {}).get('enum') or ['1'])[0]), action.endpoint)
     trouve = resolve(chemin)
     cls = getattr(trouve.func, 'cls', None)
     vue = cls(**getattr(trouve.func, 'initkwargs', {}))

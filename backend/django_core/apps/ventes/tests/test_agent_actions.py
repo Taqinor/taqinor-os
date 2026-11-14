@@ -43,7 +43,10 @@ from apps.ventes.agent_actions import (
     CONVERTIR_EN_BON_COMMANDE,
     GENERER_FACTURE,
     ENREGISTRER_PAIEMENT,
+    ENVOYER_EMAIL_DEVIS,
+    EXPLIQUER_DEVIS,
     VENTES_ACTIONS,
+    VENTES_ACTIONS_COPILOTE,
     register_ventes_actions,
 )
 from apps.agent.registry import (
@@ -110,6 +113,9 @@ class VentesAgentCatalogueTest(TestCase):
         # COP-G2 — aligné sur les gardes des routes (test de parité de l'agent).
         self.assertEqual(ENREGISTRER_PAIEMENT.required_permission, 'encaisser')
         self.assertEqual(REMISE_DEVIS.required_permission, 'ventes_modifier')
+        # AIC99 — lecture des études / envoi de l'écran (gardes des routes).
+        self.assertEqual(EXPLIQUER_DEVIS.required_permission, 'ventes_voir')
+        self.assertEqual(ENVOYER_EMAIL_DEVIS.required_permission, 'ventes_modifier')
 
     def test_risk_levels_exact(self):
         # AG4
@@ -126,6 +132,45 @@ class VentesAgentCatalogueTest(TestCase):
         self.assertEqual(CONVERTIR_EN_BON_COMMANDE.risk, RISK_OUTWARD)
         self.assertEqual(GENERER_FACTURE.risk, RISK_OUTWARD)
         self.assertEqual(ENREGISTRER_PAIEMENT.risk, RISK_IRREVERSIBLE)
+        # AIC99 — expliquer LIT ; l'e-mail part chez le client : à confirmer.
+        self.assertEqual(EXPLIQUER_DEVIS.risk, RISK_INTERNAL)
+        self.assertEqual(ENVOYER_EMAIL_DEVIS.risk, RISK_OUTWARD)
+        self.assertTrue(ENVOYER_EMAIL_DEVIS.confirm_summary)
+
+    def test_expliquer_et_envoi_email_declares(self):
+        """AIC99 — deux actions du lot copilote sur les routes EXISTANTES :
+        ``expliquer`` lit l'étude du marché (economie, economie-ci,
+        economie-pompage, etude-params ; jamais un prix d'achat) ;
+        ``envoyer_email`` est la route de l'écran en proposition à confirmer
+        (``objets`` nomme le devis). Copilote éteint : absentes du catalogue."""
+        from django.urls import resolve
+        from apps.agent.registry import LOT_COPILOTE
+        cles = {a.key for a in all_actions()}
+        for action in VENTES_ACTIONS_COPILOTE:
+            self.assertIn(action.key, cles)
+            self.assertEqual((action.lot, action.objets),
+                             (LOT_COPILOTE, {'id': 'devis'}), action.key)
+            self.assertNotIn('company', action.inputs['properties'], action.key)
+            for interdit in ('prix_achat', 'marge'):
+                self.assertNotIn(interdit, (action.description + str(action.inputs)).lower())
+        blocs = EXPLIQUER_DEVIS.inputs['properties']['bloc']['enum']
+        self.assertEqual(set(blocs), {'economie', 'economie-ci', 'economie-pompage', 'etude-params'})
+        for bloc in blocs:  # chaque bloc est une route existante (aucune route neuve)
+            chemin = EXPLIQUER_DEVIS.endpoint.format(id=1, bloc=bloc)
+            self.assertEqual(resolve(chemin).func.actions.get('get'),
+                             bloc.replace('-', '_'), chemin)
+        self.assertEqual(EXPLIQUER_DEVIS.method, 'GET')
+        self.assertEqual(
+            (ENVOYER_EMAIL_DEVIS.endpoint, ENVOYER_EMAIL_DEVIS.method),
+            ('/api/django/ventes/devis/{id}/envoyer-email/', 'POST'))
+        self.assertNotIn('corps', ENVOYER_EMAIL_DEVIS.inputs['properties'])
+        self.assertNotIn('sujet', ENVOYER_EMAIL_DEVIS.inputs['properties'])
+        with self.settings(ASSISTANT_COPILOTE='aucun'):
+            vus = {a.key for a in for_user(self.resp)}
+        self.assertFalse(vus & {a.key for a in VENTES_ACTIONS_COPILOTE})
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            vus = {a.key for a in for_user(self.resp)}
+        self.assertLessEqual({a.key for a in VENTES_ACTIONS_COPILOTE}, vus)
 
     def test_inputs_never_include_company(self):
         for action in VENTES_ACTIONS:

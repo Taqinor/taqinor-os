@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/assistant/touches/<id>/",
-  "pourquoi": "COP2 (PACT10, 13/11/2026) — « prépare cette touche » : TOUT ce qu'il faut à l'assistant et à sa carte pour traiter UNE touche du suivi, en lecture. `touche` est la ligne de `RelanceEtapeSerializer` (forme `relance_etape_v2.json`, une entrée de `results`) : la carte de l'assistant en tire le type d'étape et rejoue EXACTEMENT les réponses et les gestes de l'écran Relances (table `parcours_suivi.json`), sans seconde traduction. `message` a la forme de `relance_etape_message.json` (texte VALIDÉ rendu par `message_pour_etape`, jamais un texte écrit par le modèle) et vaut null sur une touche d'appel ; `appel` porte alors le script et les questions à poser (extrait de `panneau_appel.json`) et vaut null sur une touche message. `refus` n'est pas null quand le message ne peut pas être rendu (opposition, lead perdu ou archivé, touche annulée, preuve manquante) : la carte affiche `detail` et n'offre aucun bouton d'ouverture. Rien n'est écrit ici, hormis ce que le rendu du message crée déjà à l'écran Relances (lien de proposition, lien de rendez-vous). Ouvrir WhatsApp reste le geste de la commerciale : la carte ouvre `message.wa_url` PUIS appelle `POST crm/relance-etapes/<id>/whatsapp/` (journal « WhatsApp ouvert », la touche reste à faire — règle RELANCE-WA). PROPOSITION (COP2) : l'assistant n'ÉCRIT jamais la réponse d'une touche lui-même. Quand la commerciale dicte « il n'a pas répondu » ou « rappelle-le jeudi à 11 h », l'assistant relit cette même route avec la réponse comprise (`?geste=&outcome=&reponse=&motif_refus=&rappel_le=&rappel_heure=&note=&langue=`) ; le serveur la VALIDE contre les réponses permises de CETTE touche et rend `proposition` : le libellé à afficher (nom du lead et de la touche lus en base, date écrite en clair) et `corps`, le corps EXACT que la carte postera au geste existant (`fait`, `reporter` ou `sauter` de `relance-etapes/<id>/`) quand elle appuie. Une réponse invalide rend `proposition: null` et `proposition_refus` (raison lisible). `proposition` vaut null quand rien n'est proposé.",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — « prépare cette touche » : TOUT ce qu'il faut à l'assistant et à sa carte pour traiter UNE touche du suivi, en lecture. `touche` est la ligne de `RelanceEtapeSerializer` (forme `relance_etape_v2.json`, une entrée de `results`) : la carte de l'assistant en tire le type d'étape et rejoue EXACTEMENT les réponses et les gestes de l'écran Relances (table `parcours_suivi.json`), sans seconde traduction. `message` a la forme de `relance_etape_message.json` (texte VALIDÉ rendu par `message_pour_etape`, jamais un texte écrit par le modèle) et vaut null sur une touche d'appel ; `appel` porte alors le script et les questions à poser (extrait de `panneau_appel.json`) et vaut null sur une touche message. `refus` n'est pas null quand le message ne peut pas être rendu (opposition, lead perdu ou archivé, touche annulée, preuve manquante) : la carte affiche `detail` et n'offre aucun bouton d'ouverture. Rien n'est écrit ici, hormis ce que le rendu du message crée déjà à l'écran Relances (lien de proposition, lien de rendez-vous). Ouvrir WhatsApp reste le geste de la commerciale : la carte ouvre `message.wa_url` PUIS appelle `POST crm/relance-etapes/<id>/whatsapp/` (journal « WhatsApp ouvert », la touche reste à faire — règle RELANCE-WA). PROPOSITION (COP2) : l'assistant n'ÉCRIT jamais la réponse d'une touche lui-même. Quand la commerciale dicte « il n'a pas répondu » ou « rappelle-le jeudi à 11 h », l'assistant relit cette même route avec la réponse comprise (`?geste=&outcome=&reponse=&motif_refus=&rappel_le=&rappel_heure=&note=&langue=`) ; le serveur la VALIDE contre les réponses permises de CETTE touche et rend `proposition` : le libellé à afficher (nom du lead et de la touche lus en base, date écrite en clair) et `corps`, le corps EXACT que la carte postera au geste existant (`fait`, `reporter` ou `sauter` de `relance-etapes/<id>/`) quand elle appuie. Une réponse invalide rend `proposition: null` et `proposition_refus` (raison lisible). `proposition` vaut null quand rien n'est proposé. HORS FENÊTRE (AIC95) : `hors_fenetre` vaut null quand l'instant présent est dans la fenêtre d'envoi de la société pour le canal de la touche (`horaires.est_dans_fenetre`, règle unique), sinon `{raison}` en clair (ex. touche préparée à 22 h : « Hors des heures d'envoi (messages de 8 h 30 à 20 h) ») ; le message reste rendu et le bouton d'ouverture reste actif : la commerciale décide, rien n'est bloqué.",
   "exemple": {
     "touche": {
       "id": 412,
@@ -38,6 +38,9 @@
     },
     "appel": null,
     "refus": null,
+    "hors_fenetre": {
+      "raison": "Hors des heures d'envoi (messages de 8 h 30 à 20 h)"
+    },
     "proposition": null,
     "proposition_refus": null
   },
@@ -91,6 +94,7 @@
       ]
     },
     "refus": null,
+    "hors_fenetre": null,
     "proposition": null,
     "proposition_refus": null
   },
@@ -122,6 +126,7 @@
       "code": "opposition",
       "detail": "Ce contact a demandé à ne plus être contacté : aucun message ne peut être préparé."
     },
+    "hors_fenetre": null,
     "proposition": null,
     "proposition_refus": null
   },
@@ -176,6 +181,7 @@
       ]
     },
     "refus": null,
+    "hors_fenetre": null,
     "proposition": {
       "geste": "fait",
       "libelle": "Salma Idrissi — Appel d'ouverture : rappel jeudi 19 novembre à 11:00",
@@ -226,6 +232,7 @@
     },
     "appel": null,
     "refus": null,
+    "hors_fenetre": null,
     "proposition": null,
     "proposition_refus": "Date de rappel passée : le 2026-11-10 est avant aujourd'hui."
   }
