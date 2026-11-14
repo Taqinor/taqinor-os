@@ -83,6 +83,12 @@ class TestFieldServiceReport(FieldReportBase):
             user = User.objects.create_user(
                 username=f'adrg71-{nom}', password='x',
                 company=self.company, role=role)
+            # ALEC22 — l'archive chantier est bornée à la portée du rôle
+            # (chantier hors portée → 404) : le chantier est confié à
+            # l'utilisateur, pour que seul le droit de lecture du module source
+            # (ADRG71) décide ici.
+            Installation.objects.filter(pk=self.installation.pk).update(
+                technicien_responsable=user)
             api = APIClient()
             api.credentials(
                 HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
