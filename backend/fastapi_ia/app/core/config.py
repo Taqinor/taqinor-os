@@ -25,6 +25,14 @@ SQL_AGENT_EFFORT = os.environ.get("SQL_AGENT_EFFORT", "low")
 # AIC4 — fournisseur de REPLI quand Claude refuse (credits nuls, 429, 5xx, cle
 # invalide) : une tentative Claude, puis celui-ci. Vide = pas de repli.
 SQL_AGENT_FALLBACK_PROVIDER = os.environ.get("SQL_AGENT_FALLBACK_PROVIDER", "groq")
+# COP-B6 — moteur de l'assistant pour un compte dont le COPILOTE est allume
+# (interrupteur Django ASSISTANT_COPILOTE) et sous le fournisseur claude :
+# `langchain` (defaut) ou `natif` (app/services/moteur_natif.py). Toute autre
+# valeur vaut `langchain`. Eteint au merge ; une panne du moteur natif sert le
+# tour par LangChain (jamais une erreur pour l'utilisateur).
+ASSISTANT_MOTEUR = os.environ.get("ASSISTANT_MOTEUR", "langchain").strip().lower()
+if ASSISTANT_MOTEUR not in ("langchain", "natif"):
+    ASSISTANT_MOTEUR = "langchain"
 
 # Agent — outils d'ACTION (N86). URL interne du backend Django pour relayer les
 # ecritures (ouverture de ticket SAV, brouillon de bon de commande, planif. de

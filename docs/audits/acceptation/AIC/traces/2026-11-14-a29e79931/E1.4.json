@@ -1,0 +1,34 @@
+{
+ "id": "E1.4",
+ "tache": "AIC74",
+ "titre": "L'en-tête lit le moteur servi (plus de « Groq · llama-3.3 »)",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "aucune mention « Groq » ni « llama » à l'écran",
+  "l'en-tête affiche le moteur de la dernière réponse (« Agent IA Conversationnel ·  · Moteur langchain · Données en temps réel »)",
+  "en-tête avant la première réponse de la session : « Agent IA Conversationnel ·  · Données en temps réel »"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P1.4-entete.png"
+ ]
+}

@@ -8,15 +8,17 @@
 // texte). Toutes les API navigateur sont INJECTABLES (`deps`) pour des tests
 // headless (node:test / vitest).
 //
-// SÉCURITÉ (rule founder #4 / AG3) : la voix NE confirme JAMAIS automatiquement
-// une action sortante/irréversible. Quand l'agent renvoie une proposition (carte
-// AG3), la machine attend un « confirmer » explicite — voir conversationLoop.js.
+// SÉCURITÉ (rule founder #4 / AG3 ; COP-F6) : la voix NE confirme JAMAIS une
+// action — aucun chemin « dire confirmer ». Une proposition se confirme d'un
+// doigt sur sa carte ; la boucle lit l'aperçu et le dit (voir conversationLoop.js).
+// La dictée REMPLIT la zone de saisie (`onTexte`) pour relecture avant envoi.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import iaApi from '../../../api/iaApi'
-import { queryAgent, confirmAgentAction } from '../store/iaSlice'
+import { queryAgent } from '../store/iaSlice'
 import { createConversationLoop, LOOP_STATES } from './conversationLoop'
+import { ETATS } from '../cartes/cartes'
 
 // ── Détection de support (PUR — testable) ─────────────────────────────────────
 
@@ -98,6 +100,23 @@ export function computeRms(samples) {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 // `deps` permet d'injecter les API navigateur en test (toutes optionnelles).
+// COP-F6 — propositions confirmées de la conversation : leur nombre et le libellé
+// de la dernière (pour lire l'accusé d'une confirmation faite au doigt). PUR.
+export function propositionsConfirmees(messages) {
+  let nombre = 0
+  let libelle = ''
+  for (const m of Array.isArray(messages) ? messages : []) {
+    for (const c of Array.isArray(m?.cartes) ? m.cartes : []) {
+      if (c?.type !== 'proposition' || c.etat !== ETATS.CONFIRMEE) continue
+      nombre += 1
+      libelle = c.resultat?.libelle || c.libelle || ''
+    }
+  }
+  return { nombre, libelle }
+}
+
+export const accuseDeConfirmation = (libelle) => (libelle ? `C’est fait : ${libelle}.` : 'Action effectuée.')
+
 export function useVoiceChat(deps = {}) {
   const dispatch = useDispatch()
   const { messages, agentLoading } = useSelector((s) => s.ia)
@@ -143,6 +162,12 @@ export function useVoiceChat(deps = {}) {
   const setupSilenceDetectionRef = useRef(() => {})
 
   const transcribeFn = deps.transcribe || iaApi.transcribeVoice
+  // COP-F6 — où va la dictée : la zone de saisie de l'écran (relecture), jamais
+  // directement le modèle. Ref : l'identité du rappel peut changer à chaque rendu.
+  const onTexteRef = useRef(deps.onTexte)
+  // Nombre de propositions déjà confirmées quand la boucle a regardé la dernière fois.
+  const confirmeesRef = useRef(0)
+  useEffect(() => { onTexteRef.current = deps.onTexte })
 
   // ── Synthèse vocale ────────────────────────────────────────────────────────
   const speak = useCallback((text, onDone) => {
@@ -156,7 +181,12 @@ export function useVoiceChat(deps = {}) {
       if (voice) utter.voice = voice
       utter.lang = (voice && voice.lang) || 'fr-FR'
       utter.onend = () => { setSpeaking(false); onDone?.() }
-      utter.onerror = () => { setSpeaking(false); onDone?.() }
+      // Une lecture COUPÉE par la suivante (`cancel()`) n'est pas une fin de lecture.
+      utter.onerror = (e) => {
+        setSpeaking(false)
+        if (e?.error === 'canceled' || e?.error === 'interrupted') return
+        onDone?.()
+      }
       setSpeaking(true)
       synth.speak(utter)
     } catch {
@@ -214,14 +244,16 @@ export function useVoiceChat(deps = {}) {
       if (viaLoop) {
         loopRef.current?.onTranscript(text)
       } else if (text) {
-        dispatch(queryAgent(text))
+        // COP-F6 — la dictée remplit la zone de saisie pour relecture ; sans
+        // zone de saisie branchée (hook seul), elle ne part pas toute seule.
+        onTexteRef.current?.(text)
       }
     } catch {
       setTranscribing(false)
       setVoiceError('La transcription a échoué. Réessayez.')
       if (viaLoop) loopRef.current?.onTranscript('')
     }
-  }, [dispatch, transcribeFn])
+  }, [transcribeFn])
 
   // ── Capture micro (un tour) ────────────────────────────────────────────────
   // `opts.detectSilence` active la détection de fin de parole (mode conversation).
@@ -348,11 +380,11 @@ export function useVoiceChat(deps = {}) {
       startListening: () => startCapture({ detectSilence: true }),
       stopListening: () => stopCapture(),
       ask: (text) => dispatch(queryAgent(text)),
-      speak: (text) => speak(text),
+      // COP-F6 — la fin de lecture (ou une lecture impossible : pas de synthèse,
+      // texte vide) ré-ouvre TOUJOURS le micro : il ne reste jamais bloqué.
+      speak: (text) => speak(text, () => loopRef.current?.onSpeechSpoken()),
       stopSpeaking: () => stopSpeaking(),
-      confirm: (token) => dispatch(confirmAgentAction({ token, index: messages.length - 1 })),
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- confirm lit messages.length au moment de la construction de la boucle; le reconstruire à chaque message relancerait la conversation (D-ENF22)
   }, [dispatch, startCapture, stopCapture, speak, stopSpeaking])
 
   const startConversation = useCallback(() => {
@@ -362,10 +394,11 @@ export function useVoiceChat(deps = {}) {
     }
     setConversationMode(true)
     lastHandledIndexRef.current = messages.length - 1
+    confirmeesRef.current = propositionsConfirmees(messages).nombre
     const loop = buildLoop()
     loopRef.current = loop
     loop.start()
-  }, [conversationSupported, buildLoop, messages.length])
+  }, [conversationSupported, buildLoop, messages])
 
   const stopConversation = useCallback(() => {
     loopRef.current?.stop()
@@ -375,37 +408,47 @@ export function useVoiceChat(deps = {}) {
     stopSpeaking()
   }, [teardownAudio, stopSpeaking])
 
-  // Tap explicite « Confirmer » pendant le mode conversation (jamais auto).
-  const confirmByVoiceTap = useCallback(() => {
-    loopRef.current?.confirmByTap()
-  }, [])
-
   // Quand une nouvelle réponse agent arrive (et qu'on est en mode conversation),
   // on la passe à la boucle pour qu'elle la lise / déclenche AWAITING_CONFIRM.
   useEffect(() => {
     if (!conversationMode || !loopRef.current) return
     if (agentLoading) return
+    // COP-F6 — une proposition confirmée AU DOIGT : l'accusé est lu puis le
+    // micro se rouvre. Sans reprise du moteur (LangChain), aucun message neuf
+    // n'arrive : c'est l'état de la carte qui l'annonce.
+    const { nombre, libelle } = propositionsConfirmees(messages)
+    const confirmee = nombre > confirmeesRef.current
+    confirmeesRef.current = nombre
     const idx = messages.length - 1
-    if (idx <= lastHandledIndexRef.current) return
+    if (idx <= lastHandledIndexRef.current) {
+      if (confirmee) loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })
+      return
+    }
     const last = messages[idx]
     if (!last || last.role !== 'agent') return
     lastHandledIndexRef.current = idx
-    if (last.kind === 'result') {
-      loopRef.current.onActionDone(last)
+    // Carte posée par un BOUTON de l'écran (« Préparer », « Touche suivante ») :
+    // rien à lire, la boucle garde son tour (sinon une seconde capture s'ouvrait
+    // sur le micro déjà ouvert, ou la question en cours de transcription se perdait).
+    if (last.local) {
+      if (confirmee) loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })
+      return
+    }
+    // Reprise du moteur natif sans texte (des cartes seulement) : l'accusé vaut annonce.
+    if (confirmee && !last.content) {
+      loopRef.current.onActionDone({ content: accuseDeConfirmation(libelle) })
+      return
+    }
+    // Une réponse portant une proposition à confirmer : lue puis « appuyez sur
+    // Confirmer » — la boucle ne confirme rien. Un résultat d'action confirmée
+    // au doigt (aucun texte, des cartes) est annoncé comme tel.
+    const proposition = last.cartes?.find((c) => c.type === 'proposition' && c.etat === ETATS.A_CONFIRMER)
+    if (proposition) {
+      loopRef.current.onAnswer({ content: last.content, proposition: true, apercu: proposition.apercu })
     } else {
       loopRef.current.onAnswer(last)
     }
   }, [messages, agentLoading, conversationMode])
-
-  // Quand la synthèse vocale d'un tour normal se termine, on prévient la boucle
-  // (elle ré-ouvre le micro). On observe `speaking` repassant à false.
-  const prevSpeakingRef = useRef(false)
-  useEffect(() => {
-    if (prevSpeakingRef.current && !speaking && conversationMode && loopRef.current) {
-      loopRef.current.onSpeechSpoken()
-    }
-    prevSpeakingRef.current = speaking
-  }, [speaking, conversationMode])
 
   // Nettoyage au démontage.
   useEffect(() => () => {
@@ -433,7 +476,6 @@ export function useVoiceChat(deps = {}) {
     // Actions AG12.
     startConversation,
     stopConversation,
-    confirmByVoiceTap,
   }
 }
 

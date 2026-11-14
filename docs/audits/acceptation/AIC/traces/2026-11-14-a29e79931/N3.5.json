@@ -1,0 +1,35 @@
+{
+ "id": "N3.5",
+ "tache": "AIC76",
+ "titre": "« Touche suivante » prépare la ligne suivante de la file sans nouvelle question",
+ "moteur": "natif",
+ "verdict": "PASS",
+ "constats": [
+  "une autre touche est préparée (2, lead Salma Idrissi)",
+  "aucune nouvelle question au modèle",
+  "la touche suivante est un lead de la commerciale"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "PASS",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 GET /api/django/crm/assistant/a-relancer/",
+  "200 GET /api/django/crm/assistant/touches/2/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P3.5-suivante.png"
+ ]
+}

@@ -1,0 +1,83 @@
+{
+  "endpoint": "GET /api/django/reporting/assistant/diagnostic/",
+  "pourquoi": "COP3 (PACT10, 13/11/2026) — carte « diagnostic » : « qu'est-ce qui a cassé hier ? », « l'assistant marche-t-il ? ». Le résumé du journal des problèmes (`problemes_resume.json`, BPQ4) n'est lisible que par jeton de service, toutes sociétés : un administrateur ne pouvait pas le demander à l'assistant. Cette lecture est réservée aux administrateurs (403 sinon), bornée à LA SOCIÉTÉ de l'utilisateur pour `problemes` et `assistant`. `problemes[]` a EXACTEMENT les clés d'une ligne de `problemes_resume.json` (même calcul, `resume_json`, jamais une copie de la règle). `plateforme` (santé, envois en échec, sauvegardes, tâches, déploiements — mêmes clés que le résumé) n'est servi qu'à un super-utilisateur et vaut null sinon. `assistant` résume le journal de l'assistant sur la même période ; `signalements[]` sont les événements d'intention `bug` ou `manque` de la société, question ANONYMISÉE par l'anonymisation de `assistant_export.json`, avec le tampon technique joint au signalement quand il existe (`diagnostic`, forme de `assistant_reponse.json` → `diagnostic`). `?jours=` 1 par défaut, 7 au plus. Aucune donnée client, aucun corps de requête.",
+  "exemple": {
+    "jours": 1,
+    "genere_le": "2026-11-13T08:00:00.123456+01:00",
+    "problemes": [
+      {
+        "genre": "serveur",
+        "methode": "POST",
+        "route": "/api/django/ventes/devis/<id>/replace-lines/",
+        "statut_reponse": 502,
+        "code": "",
+        "ecran": "/ventes/devis/<id>",
+        "occurrences": 3,
+        "personnes": 2,
+        "premier": "2026-11-12T10:56:25.000000+01:00",
+        "dernier": "2026-11-12T12:43:02.000000+01:00",
+        "classe": "deploiement",
+        "tendance": {
+          "semaine_precedente": false,
+          "occurrences": 0
+        },
+        "exemple_request_id": null
+      }
+    ],
+    "plateforme": null,
+    "assistant": {
+      "questions": 37,
+      "erreurs": 2,
+      "part_repli": 0.05,
+      "cout_estime_usd": 0.92,
+      "signalements": [
+        {
+          "evenement_id": 9001,
+          "intention": "bug",
+          "question_anonymisee": "Le bouton Fait ne répond pas sur la relance de [client]",
+          "ecran": "/crm/relances",
+          "cree_le": "2026-11-12T16:20:00+01:00",
+          "diagnostic": {
+            "version": "a1b2c3d",
+            "ecran": "/crm/relances",
+            "navigateur": "Chrome",
+            "en_ligne": true,
+            "requetes": [
+              {
+                "methode": "POST",
+                "route": "/api/django/crm/relance-etapes/<id>/fait/",
+                "statut": 409,
+                "duree_ms": 212,
+                "request_id": "0123456789abcdef0123456789abcdef",
+                "code": "",
+                "il_y_a_s": 12
+              }
+            ],
+            "erreurs": []
+          }
+        }
+      ]
+    }
+  },
+  "exemple_super_utilisateur_plateforme": {
+    "outbox_en_echec": [],
+    "outbox_alimentee": true,
+    "sauvegardes_en_echec": [],
+    "taches_en_echec": [],
+    "deploys_en_echec": [],
+    "sante": {
+      "database": {
+        "statut": "ok",
+        "detail": ""
+      },
+      "cache": {
+        "statut": "ok",
+        "detail": ""
+      },
+      "beat": {
+        "statut": "ok",
+        "detail": "Heartbeat il y a 12s."
+      }
+    }
+  }
+}

@@ -21,9 +21,10 @@ from apps.records.champs_stricts import RegexStricte
 
 from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
+from .selectors import agregats_par_modele, cout_des_agregats, noms_des_leads
 from .services import (
-    ActionNotUndoableError, agent_hmac_secret, annuler_action,
-    anonymiser_texte, cout_estime_usd, hacher_identifiant,
+    CHAMPS_TOKENS, ActionNotUndoableError, agent_hmac_secret, annuler_action,
+    anonymiser_texte, borner_erreur, hacher_identifiant,
     log_confirmed_action, preuve_confirmation_valide,
 )
 from rest_framework.parsers import JSONParser
@@ -287,7 +288,6 @@ class AgentActionConfirmerView(APIView):
 # (`preuve_confirmation_valide`, meme secret que logs/confirmer/) couvre le
 # corps de l'evenement pour CET utilisateur et CETTE societe.
 ACTION_PREUVE_EVENEMENT = 'assistant.evenement'
-_CHAMPS_TOKENS = ('cache_read', 'input', 'output')
 
 _EvenementAssistant = inline_serializer('AssistantEvenement', {
     'id': drf_serializers.IntegerField(),
@@ -356,6 +356,22 @@ def _serialiser_evenement(ev: AssistantEvent) -> dict:
     }
 
 
+def _erreur_evenement_valide(erreur) -> bool:
+    """COP-G5 — types de ``erreur`` : ``status`` entier ; ``outil``,
+    ``message``, ``request_id`` texte ; ``diagnostic`` objet ou null."""
+    if not isinstance(erreur, dict):
+        return False
+    status = erreur.get('status')
+    if status is not None and (isinstance(status, bool)
+                               or not isinstance(status, int)):
+        return False
+    if any(erreur.get(cle) is not None and not isinstance(erreur[cle], str)
+           for cle in ('outil', 'message', 'request_id')):
+        return False
+    diagnostic = erreur.get('diagnostic')
+    return diagnostic is None or isinstance(diagnostic, dict)
+
+
 def _types_evenement_valides(data: dict) -> bool:
     """Types JSON publies, verifies AVANT tout usage (jamais de coercition :
     `0` n'est pas une chaine, `"1"` n'est pas un booleen)."""
@@ -372,7 +388,8 @@ def _types_evenement_valides(data: dict) -> bool:
     outils = data.get('outils_appeles', [])
     if not isinstance(outils, list) or not all(isinstance(o, str) for o in outils):
         return False
-    if data.get('erreur') is not None and not isinstance(data['erreur'], dict):
+    if data.get('erreur') is not None and not _erreur_evenement_valide(
+            data['erreur']):
         return False
     tokens = data.get('tokens', {})
     return isinstance(tokens, dict) and all(
@@ -435,7 +452,7 @@ class AssistantEventView(APIView):
         if lead_id is not None:
             from apps.crm.selectors import get_company_lead
             lead_id = lead_id if get_company_lead(company, lead_id) else None
-        erreur = v.get('erreur')
+        erreur = borner_erreur(v.get('erreur'))
         ev = AssistantEvent.objects.create(
             company=company, user=request.user,
             intention=v['intention'], question=v['question'],
@@ -447,23 +464,10 @@ class AssistantEventView(APIView):
             repli=v.get('repli', False),
             manuel_present=v.get('manuel_present', False),
             tokens={k: int((v.get('tokens') or {}).get(k, 0))
-                    for k in _CHAMPS_TOKENS},
+                    for k in CHAMPS_TOKENS},
         )
         return Response(_serialiser_evenement(ev),
                         status=status.HTTP_201_CREATED)
-
-
-def _noms_des_leads(company, lead_ids) -> dict:
-    """{lead_id: [nom, prénom du lead et de son client]} — lus via
-    ``apps.crm.selectors`` (jamais le modèle crm), bornés à la société."""
-    from apps.crm.selectors import get_company_leads_by_ids
-
-    noms = {}
-    for pk, lead in get_company_leads_by_ids(company, set(lead_ids)).items():
-        client = getattr(lead, 'client', None)
-        noms[pk] = [v for v in (lead.nom, lead.prenom, getattr(client, 'nom', None),
-                                getattr(client, 'prenom', None)) if v]
-    return noms
 
 
 def _periode_export(request):
@@ -510,12 +514,13 @@ class AssistantEventExportView(APIView):
         depuis, jusqu_a = _periode_export(request)
         evenements = list(_evenements_de_la_societe(request.user).filter(
             created_at__gte=depuis, created_at__lt=jusqu_a).order_by('created_at'))
-        noms = _noms_des_leads(request.user.company,
-                               [ev.lead_id for ev in evenements if ev.lead_id])
+        noms = noms_des_leads(request.user.company,
+                              [ev.lead_id for ev in evenements if ev.lead_id])
         lignes = []
         for ev in evenements:
             n = noms.get(ev.lead_id, ())
-            erreur = dict(ev.erreur) if isinstance(ev.erreur, dict) else None
+            erreur = ({k: ev.erreur.get(k) for k in ('status', 'outil', 'message')}
+                      if isinstance(ev.erreur, dict) else None)
             if erreur is not None:
                 erreur['message'] = anonymiser_texte(erreur.get('message'), n)
             lignes.append({
@@ -572,9 +577,6 @@ class AssistantEventStatsView(APIView):
         from collections import Counter
         from datetime import timedelta
 
-        from django.db.models import Count, IntegerField, Q, Sum
-        from django.db.models.fields.json import KT
-        from django.db.models.functions import Cast
         from django.utils import timezone
 
         brut = request.query_params.get('semaines', '4')
@@ -584,21 +586,15 @@ class AssistantEventStatsView(APIView):
         qs = _evenements_de_la_societe(request.user).filter(
             created_at__gte=timezone.now() - timedelta(weeks=semaines))
         intentions = AssistantEvent.Intention.values
-        jeton = {cle: Sum(Cast(KT(f'tokens__{cle}'), IntegerField()))
-                 for cle in ('input', 'output', 'cache_read')}
-        par_modele = list(qs.values('modele').annotate(
-            n=Count('id'), repli_n=Count('id', filter=Q(repli=True)),
-            **{f'i_{i}': Count('id', filter=Q(intention=i)) for i in intentions},
-            **{f't_{cle}': agregat for cle, agregat in jeton.items()}))
+        par_modele = agregats_par_modele(qs)
         questions = sum(g['n'] for g in par_modele)
         par_intention = {i: sum(g[f'i_{i}'] for g in par_modele) for i in intentions}
         commerciaux = qs.exclude(user=None).values('user').distinct().count()
-        cout = sum(cout_estime_usd(g['modele'], {
-            cle: g[f't_{cle}'] or 0 for cle in jeton}) for g in par_modele)
+        cout = cout_des_agregats(par_modele)
         # Manques récents : même anonymisation que l'export (AIC11).
         recents = list(qs.filter(intention=AssistantEvent.Intention.MANQUE)
                        .order_by('-created_at').values_list('question', 'lead_id')[:200])
-        noms = _noms_des_leads(request.user.company, [lead for _, lead in recents if lead])
+        noms = noms_des_leads(request.user.company, [lead for _, lead in recents if lead])
         manques = Counter(anonymiser_texte(q, noms.get(lead, ())) for q, lead in recents)
         return Response({
             'questions': questions,
@@ -654,6 +650,61 @@ class AssistantEventNoteView(APIView):
         ev.save(update_fields=['note', 'commentaire'])
         return Response({'id': ev.pk, 'note': ev.note,
                          'commentaire': ev.commentaire})
+
+
+# ── COP-G4 — libellés des objets nommés par une proposition de l'assistant ────
+# Contrat ``contract_samples/assistant_libelles.json`` : le relais demande, au
+# moment de préparer une proposition, le libellé des objets que ses entrées
+# désignent (``AgentAction.objets``). Un type -> le sélecteur de l'app qui le
+# possède (jamais un import de ses modèles).
+TYPES_LIBELLES = ('lead', 'devis', 'touche', 'facture', 'client')
+
+
+def _identifiants_libelles(request) -> dict:
+    """Entiers positifs des paramètres ``lead``, ``devis``, ``touche``,
+    ``facture`` et ``client`` (absents ignorés) ; un paramètre répété ou non
+    entier est un 400 nommé."""
+    ids = {}
+    for type_objet in TYPES_LIBELLES:
+        valeurs = request.query_params.getlist(type_objet)
+        if not valeurs:
+            continue
+        brut = valeurs[0].strip()
+        if len(valeurs) > 1 or not brut.isascii() or not brut.isdigit() \
+                or int(brut) >= 2 ** 31:
+            raise ParseError(f'{type_objet} : un entier positif est attendu.')
+        if int(brut):
+            ids[type_objet] = int(brut)
+    return ids
+
+
+class LibellesObjetsView(APIView):
+    """COP-G4 — ``GET /api/django/agent/libelles/`` : libellé en clair de chaque
+    objet demandé (``?lead=``, ``?devis=``, ``?touche=``, ``?facture=``,
+    ``?client=``), dans la société ET la portée de l'utilisateur. Un objet
+    inconnu, d'une autre société ou hors portée est ABSENT de la réponse (jamais
+    une erreur, jamais un indice de son existence). Lecture seule ; aucun prix
+    d'achat, aucune marge."""
+
+    # ASEC43 — vue INTERNE : un compte portail reçoit 403.
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(parameters=[
+        OpenApiParameter(t, int, required=False) for t in TYPES_LIBELLES
+    ], responses=inline_serializer('AssistantLibelles', {
+        t: drf_serializers.CharField(required=False) for t in TYPES_LIBELLES}))
+    def get(self, request):
+        from apps.crm.selectors_libelles import libelles_crm
+        from apps.ventes.selectors_libelles import libelles_ventes
+
+        ids = _identifiants_libelles(request)
+        libelles = libelles_crm(
+            request.user, **{k: ids[k] for k in ('lead', 'touche', 'client')
+                             if k in ids})
+        libelles.update(libelles_ventes(
+            request.user, **{k: ids[k] for k in ('devis', 'facture')
+                             if k in ids}))
+        return Response(libelles)
 
 
 class AutomationDraftView(APIView):

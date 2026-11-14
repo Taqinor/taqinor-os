@@ -1,0 +1,12 @@
+{
+  "endpoint": "GET /api/django/agent/libelles/",
+  "pourquoi": "COP3 (PACT10, 13/11/2026) — une proposition à confirmer disait « Accepter un devis (id=45) » : la commerciale confirmait un NUMÉRO, pas un client. Le relais FastAPI demande ici, au moment de préparer une proposition, le libellé des objets désignés par les entrées de l'action (champ `objets` du registre : `{nom d'entrée: type}`) et l'écrit dans l'aperçu. Paramètres : un entier par type (`?lead=&devis=&touche=&facture=&client=`). Seuls les objets de la SOCIÉTÉ et de la PORTÉE de l'utilisateur sont rendus : un objet inconnu, d'une autre société ou hors portée est simplement ABSENT de la réponse (jamais une erreur, jamais un indice de son existence). Aucun prix d'achat, aucune marge ; le montant d'un devis est son total TTC, celui d'une facture son total TTC et son reste dû.",
+  "exemple": {
+    "lead": "Aziz Benali — Casablanca",
+    "devis": "DEV-202611-0045 — Benali — 84 500,00 MAD TTC (envoyé)",
+    "touche": "Aziz Benali — Relance J+1 (WhatsApp, prévue le 14/11/2026)",
+    "facture": "FAC-202611-0012 — Benali — 25 350,00 MAD TTC, reste dû 25 350,00",
+    "client": "Benali Aziz"
+  },
+  "exemple_hors_portee": {}
+}

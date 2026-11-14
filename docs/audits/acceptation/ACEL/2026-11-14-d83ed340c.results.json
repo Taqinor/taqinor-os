@@ -1,0 +1,359 @@
+{
+  "sha": "d83ed340cee95bb0a28f8b88b4667a701d670564",
+  "date": "2026-11-14",
+  "groupe": "ACEL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACEL11",
+    "ACEL14",
+    "ACEL32",
+    "ACEL39",
+    "ACEL45",
+    "ACEL48",
+    "ACEL61",
+    "ACEL62",
+    "ACEL65",
+    "ACEL70",
+    "ACEL73",
+    "ACEL76",
+    "ACEL77",
+    "ACEL78",
+    "ACEL79"
+  ],
+  "couvre_avec_ecart": [
+    "ACEL76",
+    "ACEL79"
+  ],
+  "etapes": [
+    {
+      "id": "PF11.4-ACEL11",
+      "taches": [
+        "ACEL11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.4-ACEL11.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.3-ACEL14",
+      "taches": [
+        "ACEL14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.3-ACEL14.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.4-ACEL32",
+      "taches": [
+        "ACEL32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.4-ACEL32.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.3-ACEL39",
+      "taches": [
+        "ACEL39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.3-ACEL39.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.3-ACEL45",
+      "taches": [
+        "ACEL45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.3-ACEL45.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.3-ACEL48",
+      "taches": [
+        "ACEL48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.3-ACEL48.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.2-ACEL61",
+      "taches": [
+        "ACEL61"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.2-ACEL61.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.3-ACEL62",
+      "taches": [
+        "ACEL62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.3-ACEL62.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.3-ACEL65",
+      "taches": [
+        "ACEL65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.3-ACEL65.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.2-ACEL70",
+      "taches": [
+        "ACEL70"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.2-ACEL70.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.4-ACEL73",
+      "taches": [
+        "ACEL73"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.4-ACEL73.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.5-ACEL76",
+      "taches": [
+        "ACEL76"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.5-ACEL76.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : le préchargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, monté par components/layout/Layout.jsx depuis NTMOB28 du 13/08/2026) appelle GET installations/interventions/ma-tournee/ avant midi pour TOUT compte connecté : un rôle commercial sans droit installations reçoit 403 + console.error (oracles 2 et 3). Antérieur aux commits ACEL du 13/11 et hors de leurs Files (notifications/sweeps.py, crm/dispatch.py) ; à classer chez le propriétaire du hors-ligne / installations. ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    },
+    {
+      "id": "PF11.4-ACEL77",
+      "taches": [
+        "ACEL77"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.4-ACEL77.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.5-ACEL78",
+      "taches": [
+        "ACEL78"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.5-ACEL78.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF11.4-ACEL79",
+      "taches": [
+        "ACEL79"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-14/ACCEPTATION-ACEL-PF11.4-ACEL79.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : le préchargement matinal de la tournée (frontend/src/features/offlinesync/PrechargementTournee.jsx, monté par components/layout/Layout.jsx depuis NTMOB28 du 13/08/2026) appelle GET installations/interventions/ma-tournee/ avant midi pour TOUT compte connecté : un rôle commercial sans droit installations reçoit 403 + console.error (oracles 2 et 3). Antérieur aux commits ACEL du 13/11 et hors de leurs Files (notifications/sweeps.py, crm/dispatch.py) ; à classer chez le propriétaire du hors-ligne / installations. ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14) ; oracle 2 — GET http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/interventions/ma-tournee/?date=2026-11-14)"
+    }
+  ]
+}

@@ -1458,7 +1458,12 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run FastAPI security suites (margin guard / SQL / permissions / JWT)
+      # COP (13/11/2026) — le RELAIS de l'assistant entre dans la porte : jusqu'ici
+      # ni `test_action_tools` (confirmation a usage unique, validation des
+      # entrees) ni `test_sql_agent_endpoint` ne tournaient en CI — un relais
+      # casse mergeait vert. Avec eux : limites, harnais d'evaluation (sans cle),
+      # moteur natif et consignes du copilote (faux client, aucun reseau).
+      - name: Run FastAPI security + assistant relay suites (margin guard / SQL / permissions / JWT / relais / moteur)
         working-directory: backend/fastapi_ia
         run: |
           set -o pipefail
@@ -1468,8 +1473,14 @@ jobs:
             tests.test_permissions_agent \
             tests.test_jwt_security \
             tests.test_asec42_agent_sql_formes \
-            tests.test_config_agent_sql 2>&1 \
-            | python ../../scripts/verifier_sortie_unittest.py --plancher 90
+            tests.test_config_agent_sql \
+            tests.test_action_tools \
+            tests.test_sql_agent_endpoint \
+            tests.test_sql_agent_limites \
+            tests.test_eval_harness \
+            tests.test_moteur_natif \
+            tests.test_prompt_copilote 2>&1 \
+            | python ../../scripts/verifier_sortie_unittest.py --plancher 300
 
   # ---------------------------------------------------------------------------
   # ENF11 (11/10/2026) — SOUS-ENSEMBLE PR DU FUZZ API (Schemathesis), BLOQUANT.

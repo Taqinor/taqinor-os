@@ -1,0 +1,48 @@
+{
+ "id": "E3.4",
+ "tache": "AIC76",
+ "titre": "« Annuler » remet la touche à faire",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "POST relance-etapes/1/annuler/ → 200",
+  "la touche est de nouveau à faire en base : a_faire",
+  "plus aucune carte de cette touche ne la montre « faite »",
+  "écran Relances : la touche est revenue dans la file",
+  "écran Relances : le panneau de la touche rappelle « Message ouvert à 03:19 depuis l’ERP. »"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/django/crm/relance-etapes/1/annuler/",
+  "201 POST /api/django/adminops/tracker-usage/ ×2",
+  "200 GET /api/django/crm/assignable-users/",
+  "200 GET /api/django/crm/message-templates/",
+  "200 GET /api/django/crm/vues-enregistrees/",
+  "200 GET /api/django/crm/canaux/ ×2",
+  "200 GET /api/django/crm/leads/doublons/",
+  "200 GET /api/django/crm/leads/sla-breach/",
+  "200 GET /api/django/crm/leads/",
+  "200 GET /api/django/reporting/probabilites-etape/",
+  "200 GET /api/django/crm/relance-etapes/suivi/",
+  "200 GET /api/django/crm/leads/mesure-cadence/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P3.4-annulee.png",
+  "P3.4-ecran-relances.png"
+ ]
+}

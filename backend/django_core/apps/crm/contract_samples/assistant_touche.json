@@ -1,0 +1,232 @@
+{
+  "endpoint": "GET /api/django/crm/assistant/touches/<id>/",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — « prépare cette touche » : TOUT ce qu'il faut à l'assistant et à sa carte pour traiter UNE touche du suivi, en lecture. `touche` est la ligne de `RelanceEtapeSerializer` (forme `relance_etape_v2.json`, une entrée de `results`) : la carte de l'assistant en tire le type d'étape et rejoue EXACTEMENT les réponses et les gestes de l'écran Relances (table `parcours_suivi.json`), sans seconde traduction. `message` a la forme de `relance_etape_message.json` (texte VALIDÉ rendu par `message_pour_etape`, jamais un texte écrit par le modèle) et vaut null sur une touche d'appel ; `appel` porte alors le script et les questions à poser (extrait de `panneau_appel.json`) et vaut null sur une touche message. `refus` n'est pas null quand le message ne peut pas être rendu (opposition, lead perdu ou archivé, touche annulée, preuve manquante) : la carte affiche `detail` et n'offre aucun bouton d'ouverture. Rien n'est écrit ici, hormis ce que le rendu du message crée déjà à l'écran Relances (lien de proposition, lien de rendez-vous). Ouvrir WhatsApp reste le geste de la commerciale : la carte ouvre `message.wa_url` PUIS appelle `POST crm/relance-etapes/<id>/whatsapp/` (journal « WhatsApp ouvert », la touche reste à faire — règle RELANCE-WA). PROPOSITION (COP2) : l'assistant n'ÉCRIT jamais la réponse d'une touche lui-même. Quand la commerciale dicte « il n'a pas répondu » ou « rappelle-le jeudi à 11 h », l'assistant relit cette même route avec la réponse comprise (`?geste=&outcome=&reponse=&motif_refus=&rappel_le=&rappel_heure=&note=&langue=`) ; le serveur la VALIDE contre les réponses permises de CETTE touche et rend `proposition` : le libellé à afficher (nom du lead et de la touche lus en base, date écrite en clair) et `corps`, le corps EXACT que la carte postera au geste existant (`fait`, `reporter` ou `sauter` de `relance-etapes/<id>/`) quand elle appuie. Une réponse invalide rend `proposition: null` et `proposition_refus` (raison lisible). `proposition` vaut null quand rien n'est proposé.",
+  "exemple": {
+    "touche": {
+      "id": 412,
+      "lead": 1489,
+      "lead_nom": "Aziz Benali",
+      "cadence": "apres_devis",
+      "canal": "whatsapp",
+      "libelle": "Relance J+1",
+      "template_cle": "j1_pdf",
+      "statut": "a_faire",
+      "due_date": "2026-11-14",
+      "type_etape": "suivi_message",
+      "est_tache": false,
+      "message_ouvert_le": null
+    },
+    "lead": {
+      "lead_id": 1489,
+      "nom": "Aziz Benali",
+      "ville": "Casablanca",
+      "etape": "QUOTE_SENT",
+      "langue": "fr"
+    },
+    "message": {
+      "message": "Bonjour Aziz, votre proposition est prête : https://taqinor.ma/proposition/aziz/tok_a1b2c3",
+      "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz",
+      "langue": "fr",
+      "phone": "+212651971400",
+      "placeholders_manquants": [],
+      "repli_langue": false,
+      "crochets": [],
+      "preuve_manquante": false,
+      "vocal": false,
+      "objet": "",
+      "mailto_url": null
+    },
+    "appel": null,
+    "refus": null,
+    "proposition": null,
+    "proposition_refus": null
+  },
+  "exemple_appel": {
+    "touche": {
+      "id": 1287,
+      "lead": 412,
+      "lead_nom": "Salma Idrissi",
+      "cadence": "contact",
+      "canal": "appel",
+      "libelle": "Appel d'ouverture",
+      "template_cle": "appel_ouverture",
+      "statut": "a_faire",
+      "due_date": "2026-11-13",
+      "type_etape": "contact_appel",
+      "est_tache": false,
+      "message_ouvert_le": null
+    },
+    "lead": {
+      "lead_id": 412,
+      "nom": "Salma Idrissi",
+      "ville": "Rabat",
+      "etape": "NEW",
+      "langue": "fr"
+    },
+    "message": null,
+    "appel": {
+      "telephone": "+212661112233",
+      "script": {
+        "message": "Bonjour, je vous appelle au sujet de votre projet solaire.",
+        "langue": "fr",
+        "placeholders_manquants": []
+      },
+      "champs_a_poser": [
+        {
+          "champ": "occupation_jour",
+          "libelle": "Présence en journée",
+          "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? »",
+          "nature": "choix",
+          "choix": [
+            {
+              "valeur": "present",
+              "libelle": "Présent en journée"
+            },
+            {
+              "valeur": "absent",
+              "libelle": "Absent en journée"
+            }
+          ]
+        }
+      ]
+    },
+    "refus": null,
+    "proposition": null,
+    "proposition_refus": null
+  },
+  "exemple_refus": {
+    "touche": {
+      "id": 990,
+      "lead": 77,
+      "lead_nom": "Client Opposé",
+      "cadence": "apres_devis",
+      "canal": "whatsapp",
+      "libelle": "Relance J+7",
+      "template_cle": "j7",
+      "statut": "a_faire",
+      "due_date": "2026-11-13",
+      "type_etape": "suivi_message",
+      "est_tache": false,
+      "message_ouvert_le": null
+    },
+    "lead": {
+      "lead_id": 77,
+      "nom": "Client Opposé",
+      "ville": "",
+      "etape": "QUOTE_SENT",
+      "langue": "fr"
+    },
+    "message": null,
+    "appel": null,
+    "refus": {
+      "code": "opposition",
+      "detail": "Ce contact a demandé à ne plus être contacté : aucun message ne peut être préparé."
+    },
+    "proposition": null,
+    "proposition_refus": null
+  },
+  "notes": "Les clés de `touche` montrées ici sont un EXTRAIT : la vue sert la ligne complète de `RelanceEtapeSerializer`. `lead.etape` est l'étape du funnel (clé de STAGES.py), `touche.id` est l'identifiant de la TOUCHE — ne jamais les confondre (`etape` des lignes de `assistant_a_relancer.json` est aussi l'étape du funnel). `appel.telephone` est vide pour un rôle sans `client_pii_voir`.",
+  "exemple_proposition": {
+    "touche": {
+      "id": 1287,
+      "lead": 412,
+      "lead_nom": "Salma Idrissi",
+      "cadence": "contact",
+      "canal": "appel",
+      "libelle": "Appel d'ouverture",
+      "template_cle": "appel_ouverture",
+      "statut": "a_faire",
+      "due_date": "2026-11-13",
+      "type_etape": "contact_appel",
+      "est_tache": false,
+      "message_ouvert_le": null
+    },
+    "lead": {
+      "lead_id": 412,
+      "nom": "Salma Idrissi",
+      "ville": "Rabat",
+      "etape": "NEW",
+      "langue": "fr"
+    },
+    "message": null,
+    "appel": {
+      "telephone": "+212661112233",
+      "script": {
+        "message": "Bonjour, je vous appelle au sujet de votre projet solaire.",
+        "langue": "fr",
+        "placeholders_manquants": []
+      },
+      "champs_a_poser": [
+        {
+          "champ": "occupation_jour",
+          "libelle": "Présence en journée",
+          "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? »",
+          "nature": "choix",
+          "choix": [
+            {
+              "valeur": "present",
+              "libelle": "Présent en journée"
+            },
+            {
+              "valeur": "absent",
+              "libelle": "Absent en journée"
+            }
+          ]
+        }
+      ]
+    },
+    "refus": null,
+    "proposition": {
+      "geste": "fait",
+      "libelle": "Salma Idrissi — Appel d'ouverture : rappel jeudi 19 novembre à 11:00",
+      "effet": "La touche est faite ; un rappel est créé pour le jeudi 19 novembre à 11:00.",
+      "corps": {
+        "outcome": "rappel",
+        "rappel_le": "2026-11-19",
+        "rappel_heure": "11:00",
+        "note": "Demande à être rappelée jeudi matin."
+      }
+    },
+    "proposition_refus": null
+  },
+  "exemple_proposition_refusee": {
+    "touche": {
+      "id": 412,
+      "lead": 1489,
+      "lead_nom": "Aziz Benali",
+      "cadence": "apres_devis",
+      "canal": "whatsapp",
+      "libelle": "Relance J+1",
+      "template_cle": "j1_pdf",
+      "statut": "a_faire",
+      "due_date": "2026-11-14",
+      "type_etape": "suivi_message",
+      "est_tache": false,
+      "message_ouvert_le": null
+    },
+    "lead": {
+      "lead_id": 1489,
+      "nom": "Aziz Benali",
+      "ville": "Casablanca",
+      "etape": "QUOTE_SENT",
+      "langue": "fr"
+    },
+    "message": {
+      "message": "Bonjour Aziz, votre proposition est prête : https://taqinor.ma/proposition/aziz/tok_a1b2c3",
+      "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz",
+      "langue": "fr",
+      "phone": "+212651971400",
+      "placeholders_manquants": [],
+      "repli_langue": false,
+      "crochets": [],
+      "preuve_manquante": false,
+      "vocal": false,
+      "objet": "",
+      "mailto_url": null
+    },
+    "appel": null,
+    "refus": null,
+    "proposition": null,
+    "proposition_refus": "Date de rappel passée : le 2026-11-10 est avant aujourd'hui."
+  }
+}

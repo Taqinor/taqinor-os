@@ -230,10 +230,17 @@ def hacher_identifiant(valeur, secret: str) -> str:
 # jamais lues du corps. `cache_read` a son propre prix (0,1 × l'entrée).
 # Un modèle absent (repli Groq gratuit) coûte 0.
 PRIX_MTOK_RELEVE_LE = '2026-10-27'
+# COP-G5 — ``cache_write`` = ÉCRITURE de cache d'une heure (2 × l'entrée, la
+# durée que prend le relais : le manuel est mis en cache 1 h) ; elle était
+# comptée comme du simple « input » et sous-estimait le coût.
 PRIX_MTOK_USD = {
-    'claude-sonnet-5-5': {'input': 2.0, 'output': 10.0, 'cache_read': 0.10},
-    'claude-haiku-5-5': {'input': 0.10, 'output': 0.50, 'cache_read': 0.01},
+    'claude-sonnet-5-5': {'input': 2.0, 'output': 10.0, 'cache_read': 0.10,
+                          'cache_write': 4.0},
+    'claude-haiku-5-5': {'input': 0.10, 'output': 0.50, 'cache_read': 0.01,
+                         'cache_write': 0.20},
 }
+#: Clés de ``AssistantEvent.tokens`` (les seules écrites, les autres sont écartées).
+CHAMPS_TOKENS = ('cache_read', 'cache_write', 'input', 'output')
 
 
 def cout_estime_usd(modele: str, tokens: dict) -> float:
@@ -242,4 +249,99 @@ def cout_estime_usd(modele: str, tokens: dict) -> float:
     if not prix or not isinstance(tokens, dict):
         return 0.0
     return sum(int(tokens.get(cle) or 0) * prix[cle]
-               for cle in ('input', 'output', 'cache_read')) / 1_000_000
+               for cle in CHAMPS_TOKENS) / 1_000_000
+
+
+# ── COP-G5 — erreur d'un événement et tampon technique du navigateur ─────────
+# L'événement porte ``erreur = {status, outil, message, request_id?,
+# diagnostic?}`` ; ``diagnostic`` est le tampon joint par l'écran sur
+# « Signaler un problème » (forme du contrat ``assistant_reponse.json`` ->
+# ``diagnostic``). Il vient du NAVIGATEUR via le relais : tout est BORNÉ ici
+# (nombre d'entrées, longueur des chaînes) et tout champ inconnu est écarté —
+# jamais de corps de requête ni de chaîne de requête.
+DIAGNOSTIC_MAX_REQUETES = 15
+DIAGNOSTIC_MAX_ERREURS = 10
+
+
+def _texte_borne(valeur, longueur: int, *, sans_requete: bool = False) -> str:
+    """Chaîne nettoyée (sans NUL, sans blancs de bord), tronquée à
+    ``longueur`` ; ``sans_requete`` coupe à ``?`` / ``#`` (jamais de chaîne de
+    requête dans une route). Autre type que ``str`` : chaîne vide."""
+    if not isinstance(valeur, str):
+        return ''
+    texte = valeur.replace(chr(0), '')
+    if sans_requete:
+        texte = re.split(r'[?#]', texte, maxsplit=1)[0]
+    return texte.strip()[:longueur]
+
+
+def _entier_ou_none(valeur):
+    return valeur if isinstance(valeur, int) and not isinstance(valeur, bool) else None
+
+
+def _requete_diagnostic(brut):
+    return {
+        'methode': _texte_borne(brut.get('methode'), 10).upper(),
+        'route': _texte_borne(brut.get('route'), 255, sans_requete=True),
+        'statut': _entier_ou_none(brut.get('statut')),
+        'duree_ms': _entier_ou_none(brut.get('duree_ms')),
+        'request_id': _texte_borne(brut.get('request_id'), 64),
+        'code': _texte_borne(brut.get('code'), 64),
+        'il_y_a_s': _entier_ou_none(brut.get('il_y_a_s')),
+    }
+
+
+def _erreur_diagnostic(brut):
+    return {
+        'genre': _texte_borne(brut.get('genre'), 40),
+        # Un message de script peut citer une saisie : mêmes règles que l'export.
+        'message': anonymiser_texte(_texte_borne(brut.get('message'), 255)) or '',
+        'il_y_a_s': _entier_ou_none(brut.get('il_y_a_s')),
+    }
+
+
+def _liste_bornee(valeur, maximum: int, fabrique):
+    if not isinstance(valeur, list):
+        return []
+    return [fabrique(x) for x in valeur[:maximum] if isinstance(x, dict)]
+
+
+def borner_diagnostic(diagnostic):
+    """Tampon technique BORNÉ (``None`` si ``diagnostic`` n'est pas un objet) :
+    15 requêtes et 10 erreurs au plus, chaînes tronquées, routes sans chaîne de
+    requête, tout champ inconnu écarté."""
+    if not isinstance(diagnostic, dict):
+        return None
+    en_ligne = diagnostic.get('en_ligne')
+    return {
+        'version': _texte_borne(diagnostic.get('version'), 40),
+        'ecran': _texte_borne(diagnostic.get('ecran'), 255, sans_requete=True),
+        'navigateur': _texte_borne(diagnostic.get('navigateur'), 40),
+        'en_ligne': en_ligne if isinstance(en_ligne, bool) else None,
+        'requetes': _liste_bornee(
+            diagnostic.get('requetes'), DIAGNOSTIC_MAX_REQUETES,
+            _requete_diagnostic),
+        'erreurs': _liste_bornee(
+            diagnostic.get('erreurs'), DIAGNOSTIC_MAX_ERREURS,
+            _erreur_diagnostic),
+    }
+
+
+def borner_erreur(erreur):
+    """``erreur`` d'un événement réduite à ``{status, outil, message,
+    request_id?, diagnostic?}`` (``None`` si ce n'est pas un objet) : champs
+    inconnus écartés, chaînes tronquées, ``diagnostic`` borné."""
+    if not isinstance(erreur, dict):
+        return None
+    sortie = {
+        'status': _entier_ou_none(erreur.get('status')) or 0,
+        'outil': _texte_borne(erreur.get('outil'), 100),
+        'message': _texte_borne(erreur.get('message'), 300),
+    }
+    request_id = _texte_borne(erreur.get('request_id'), 64)
+    if request_id:
+        sortie['request_id'] = request_id
+    diagnostic = borner_diagnostic(erreur.get('diagnostic'))
+    if diagnostic is not None:
+        sortie['diagnostic'] = diagnostic
+    return sortie

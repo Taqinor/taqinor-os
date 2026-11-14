@@ -1,8 +1,9 @@
 """XPLT18 — Tests de la proposition de règle d'automatisation par l'agent.
 
 Couvre :
-- l'action est déclarée dans le registre, risk=outward, no `required_permission`
-  (ouverte à tout authentifié — la validation métier fait le reste) ;
+- l'action est déclarée dans le registre, risk=outward, permission du catalogue
+  `roles_gerer` = la garde réelle de la route (COP-G2 : plus offerte à qui
+  répond 403) ;
 - l'endpoint crée une AutomationRule TOUJOURS désactivée quand le brouillon
   est valide (trigger/action du catalogue fermé) ;
 - un trigger_type/action_type hors catalogue est rejeté (jamais de code libre) ;
@@ -30,11 +31,12 @@ def _auth(user):
 
 
 class RegistryEntryTest(TestCase):
-    def test_action_registered_outward_open(self):
+    def test_action_registered_outward_admin_gate(self):
         catalogue = {a.key: a for a in all_actions()}
         action = catalogue['automation.rule.propose_draft']
         self.assertEqual(action.risk, RISK_OUTWARD)
         self.assertEqual(action.method.upper(), 'POST')
+        self.assertEqual(action.required_permission, 'roles_gerer')
         self.assertIn('nom', action.inputs.get('required', []))
         self.assertIn('trigger_type', action.inputs.get('required', []))
         self.assertIn('action_type', action.inputs.get('required', []))

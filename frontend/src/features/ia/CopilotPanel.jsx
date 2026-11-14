@@ -1,16 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Bot, MessageSquare, Send, CheckCircle2,
+  Bot, MessageSquare, Send, CheckCircle2, Bug,
 } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-  Button, IconButton, EmptyState,
+  Button, IconButton, EmptyState, Textarea,
 } from '../../ui'
 import { cn } from '../../lib/cn'
-import StateBlock from '../../components/StateBlock'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm,
+  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm, ErreurAgent,
 } from './ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
@@ -18,9 +17,11 @@ import {
 } from './store/iaSlice'
 import iaApi from '../../api/iaApi'
 import {
-  displayMessageText, formatAgentError, canSendQuestion, enterSubmits,
-  EVENEMENT_OUVRIR, contexteEcran,
+  displayMessageText, canSendQuestion, enterSubmits,
+  EVENEMENT_OUVRIR, routeNormalisee, PHRASE_SIGNALEMENT,
 } from './copilotMessages'
+import { instantaneDiagnostic } from '../../lib/tamponDiagnostic'
+import { signalerPanneauMonte, prendreEnAttente } from './ecouteurOuverture'
 
 // FG350 — Copilote in-app : tiroir conversationnel GLOBAL câblé sur l'agent
 // FastAPI (SQL + actions) déjà exposé par `iaApi`/`iaSlice` (POST
@@ -41,18 +42,15 @@ const SUGGESTIONS = [
 export default function CopilotPanel() {
   const dispatch = useDispatch()
   const open = useSelector((s) => s.ia.copilotOpen)
-  const { messages, agentLoading, agentError, confirmingIndex, confirmError } =
-    useSelector((s) => s.ia)
+  const { messages, agentLoading, agentError } = useSelector((s) => s.ia)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   // L'historique n'est chargé qu'une fois, à la première ouverture du tiroir.
   const historyLoadedRef = useRef(false)
-  // AIC9 — contexte posé par l'événement `EVENEMENT_OUVRIR` (sinon la route).
-  const [contexte, setContexte] = useState(null)
   const [suggestions, setSuggestions] = useState(SUGGESTIONS)
-  const ecranCourant = () => contexte?.ecran
-    || (typeof window !== 'undefined' ? window.location.pathname : '/')
+  // COP-F7 — « Signaler un bug » : une phrase libre, puis le tampon technique.
+  const [signalement, setSignalement] = useState(null)
 
   useEffect(() => {
     if (open && !historyLoadedRef.current) {
@@ -65,42 +63,55 @@ export default function CopilotPanel() {
     if (open) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, agentLoading, open])
 
-  const send = (q, ctx = contexte) => {
+  // COP-F5 — le contexte (route, fiche ouverte, foyer) est lu par `queryAgent`
+  // AU MOMENT de l'envoi : jamais l'état d'une ouverture précédente.
+  const send = (q) => {
     if (!canSendQuestion(q, agentLoading)) return
-    const ecran = contexteEcran(ctx, window.location.pathname)
-    dispatch(queryAgent({ question: q.trim(), contexte: ecran }))
+    dispatch(queryAgent(q.trim()))
   }
 
-  // AIC9 — un module ouvre le panneau avec le contexte de SON écran.
+  // AIC9 — un module ouvre le panneau avec le contexte de SON écran ; ce
+  // contexte ne vaut que pour la question qu'il envoie (jamais mémorisé).
   useEffect(() => {
-    const ouvrir = (e) => {
-      const detail = e?.detail || {}
-      setContexte(detail)
+    const ouvrir = (detail = {}) => {
       dispatch(openCopilot())
       const question = typeof detail.question === 'string' ? detail.question.trim() : ''
-      if (question && detail.envoyer) {
-        dispatch(queryAgent({ question, contexte: contexteEcran(detail, window.location.pathname) }))
-      } else if (question) {
-        setInput(question)
-      }
+      if (question && detail.envoyer) dispatch(queryAgent({ question, detail }))
+      else if (question) setInput(question)
     }
-    window.addEventListener(EVENEMENT_OUVRIR, ouvrir)
-    return () => window.removeEventListener(EVENEMENT_OUVRIR, ouvrir)
+    const surEvenement = (e) => ouvrir(e?.detail || {})
+    window.addEventListener(EVENEMENT_OUVRIR, surEvenement)
+    // COP-F5 — une demande émise AVANT le montage du panneau (premier clic).
+    signalerPanneauMonte(true)
+    const enAttente = prendreEnAttente()
+    if (enAttente) ouvrir(enAttente)
+    return () => {
+      signalerPanneauMonte(false)
+      window.removeEventListener(EVENEMENT_OUVRIR, surEvenement)
+    }
   }, [dispatch])
 
   // AIC9 — trois questions du manifeste pour l'écran, conversation vide.
   useEffect(() => {
     if (!open || messages.length > 0) return undefined
     let actif = true
-    Promise.resolve(iaApi.getSuggestions?.(ecranCourant()))
+    Promise.resolve(iaApi.getSuggestions?.(routeNormalisee(window.location.pathname)))
       .then((res) => {
         const liste = Array.isArray(res?.data) ? res.data.filter((q) => typeof q === 'string') : []
         if (actif && liste.length) setSuggestions(liste.slice(0, 3))
       })
       .catch(() => {})
     return () => { actif = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, contexte, messages.length])
+  }, [open, messages.length])
+
+  const envoyerSignalement = () => {
+    const phrase = (signalement || '').trim()
+    if (!phrase || agentLoading) return
+    dispatch(queryAgent({
+      question: `${PHRASE_SIGNALEMENT} ${phrase}`, diagnostic: instantaneDiagnostic(),
+    }))
+    setSignalement(null)
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -132,7 +143,27 @@ export default function CopilotPanel() {
           <SheetDescription>
             Posez une question sur vos données — réponses en temps réel.
           </SheetDescription>
+          <Button
+            variant="outline" size="sm" className="min-h-10 self-start"
+            onClick={() => setSignalement((v) => (v == null ? '' : null))}
+          >
+            <Bug className="size-4" aria-hidden="true" />
+            Signaler un bug
+          </Button>
         </SheetHeader>
+
+        {signalement != null && (
+          <div className="space-y-2 border-b border-border px-4 py-3" data-testid="signalement-bug">
+            <Textarea
+              rows={2} value={signalement} onChange={(e) => setSignalement(e.target.value)}
+              placeholder="Que faisiez-vous quand ça s’est mal passé ?"
+              aria-label="Que faisiez-vous ?"
+            />
+            <Button size="sm" className="min-h-10" disabled={!signalement.trim() || agentLoading} onClick={envoyerSignalement}>
+              Envoyer le signalement
+            </Button>
+          </div>
+        )}
 
         {/* ── Zone messages ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
@@ -173,9 +204,11 @@ export default function CopilotPanel() {
                       : 'bg-muted text-foreground',
                   )}
                 >
-                  <p className="whitespace-pre-wrap break-words">
-                    {displayMessageText(msg)}
-                  </p>
+                  {displayMessageText(msg) && (
+                    <p className="whitespace-pre-wrap break-words">
+                      {displayMessageText(msg)}
+                    </p>
+                  )}
                   {msg.action_performed && (
                     <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="size-3.5" aria-hidden="true" />
@@ -186,8 +219,7 @@ export default function CopilotPanel() {
                   {/* AG3 — carte CONFIRMATION pour une action proposée. La voie
                       /confirm reste la SEULE manière d'exécuter une action
                       sensible : jamais de confirmation automatique. */}
-                  <MessageActions msg={msg} index={i} variant="copilot"
- confirmingIndex={confirmingIndex} confirmError={confirmError} />
+                  <MessageActions msg={msg} index={i} variant="copilot" />
                   {/* AIC8 — 👍 / 👎 / « ça n'a pas répondu » sous chaque réponse. */}
                   <NoteReponse msg={msg} index={i} />
                 </div>
@@ -205,11 +237,7 @@ export default function CopilotPanel() {
               </div>
             )}
 
-            {agentError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10">
-                <StateBlock error={formatAgentError(agentError)} />
-              </div>
-            )}
+            {agentError && <ErreurAgent error={agentError} />}
           </div>
           <div ref={messagesEndRef} />
         </div>

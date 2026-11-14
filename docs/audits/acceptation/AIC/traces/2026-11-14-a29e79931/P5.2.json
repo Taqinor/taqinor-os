@@ -1,0 +1,39 @@
+{
+ "id": "P5.2",
+ "tache": "AIC78",
+ "titre": "Envoyer : la proposition s'affiche ; dire « non je ne confirme pas » : rien n'est confirmé",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "proposition de remise affichée, l'aperçu nomme le devis : « Appliquer une remise au devis — DEV-202611-0003 — Alami — 59 300,00 MAD TTC (brouillon) (remise_globale=2) »",
+  "la proposition attend le doigt (« à confirmer »)",
+  "en mode conversation la phrase dite part comme une question (« Non je ne confirme pas »)",
+  "la réponse à cette phrase ne porte aucune carte",
+  "aucun appel de confirmation n'est parti",
+  "la proposition est toujours « à confirmer »",
+  "la remise du devis n'a pas bougé (0.00)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query ×2",
+  "200 POST /api/fastapi/sql-agent/transcribe"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P5.2-rien-confirme.png"
+ ]
+}

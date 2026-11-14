@@ -1,0 +1,53 @@
+{
+ "id": "P4.2",
+ "tache": "AIC77",
+ "titre": "Changer de fiche sans recharger, poser une question : le contexte suit la nouvelle route",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "contexte envoyé : {\"ecran\":\"/crm/leads/5\",\"lead_id\":5}",
+  "la réponse parle du nouveau lead, plus de l'ancien"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query ×2",
+  "201 POST /api/django/adminops/tracker-usage/",
+  "200 GET /api/django/crm/leads/5/ ×2",
+  "200 GET /api/django/crm/relance-etapes/ ×2",
+  "200 GET /api/django/crm/relance-etapes/journal/",
+  "200 GET /api/django/crm/leads/5/duplicates/",
+  "200 GET /api/django/crm/leads/5/client-match/",
+  "200 GET /api/django/crm/leads/5/visites/ ×2",
+  "200 GET /api/django/custom-fields/definitions/",
+  "200 GET /api/django/crm/leads/5/photo-toit/",
+  "200 GET /api/django/crm/assignable-users/",
+  "200 GET /api/django/uxviews/favoris/",
+  "200 GET /api/django/crm/canaux/",
+  "200 GET /api/django/crm/leads/5/jalons-devis/",
+  "200 GET /api/django/crm/leads/5/points-contact/",
+  "200 GET /api/django/crm/appointments/",
+  "200 GET /api/django/records/activities/",
+  "200 GET /api/django/crm/leads/check-duplicates/",
+  "200 GET /api/django/records/attachments/",
+  "200 GET /api/django/crm/tags/",
+  "200 GET /api/django/crm/motifs-perte/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P4.2-contexte.png"
+ ]
+}

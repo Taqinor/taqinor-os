@@ -1,0 +1,1029 @@
+{
+ "sha": "4242a9d9d1a5ff9f5b77b2e5cdd16b806bc477b7",
+ "date": "2026-11-14",
+ "groupe": "AIC",
+ "verdict": "PASS",
+ "couvre": [
+  "AIC74",
+  "AIC75",
+  "AIC76",
+  "AIC77",
+  "AIC78",
+  "AIC86"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "P1.1",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P1.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Sur /ia/agent (administrateur) : une question qui rend deux propositions et un résultat — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P1.2",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P1.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Confirmer la première : elle passe « confirmée » avec sa carte de résultat ; la seconde reste à confirmer — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P1.3",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P1.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Recharger la page : les cartes reviennent, les propositions sont « expirées » — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P1.4",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P1.4.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "L'en-tête lit le moteur servi (plus de « Groq · llama-3.3 ») — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P2.1",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P2.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "PASS",
+    "10": "NA"
+   },
+   "notes": "« Ma file du jour » : carte file ; « Préparer » ajoute la carte touche sans nouvelle question — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P2.2",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P2.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "PASS"
+   },
+   "notes": "« Mon matin » : relances, visites, devis sans réponse ; « Télécharger » passe par /proposal — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P2.3",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P2.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "PASS",
+    "10": "NA"
+   },
+   "notes": "Recherche d'un lead par son nom : carte liste ; « Ouvrir la fiche » mène à la fiche — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P2.4",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P2.4.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Envoie-lui le devis » : la carte ouvre WhatsApp et le devis passe « envoyé » (une seule fois) — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P2.5",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P2.5.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Administrateur : « qu'est-ce qui a cassé hier ? » → carte diagnostic ; « Copier pour Claude Code » copie un texte sans nom de client — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P3.1",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P3.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Carte touche d'un message WhatsApp : texte validé et canal affichés — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P3.2",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P3.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Ouvrir WhatsApp » ouvre wa.me avec le texte validé ; la touche reste à faire, l'ouverture est journalisée — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P3.3",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P3.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Il n'a pas répondu » : carte-écho « Enregistrer : … » avec son effet ; l'appui clôt la touche et annonce la suivante — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P3.4",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P3.4.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Annuler » remet la touche à faire — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P3.5",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P3.5.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "PASS",
+    "10": "NA"
+   },
+   "notes": "« Touche suivante » prépare la ligne suivante de la file sans nouvelle question — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P4.1",
+   "taches": [
+    "AIC77"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P4.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Depuis une fiche lead, panneau jamais ouvert : « Demander à l'assistant » ouvre le tiroir et la réponse parle de ce lead — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P4.2",
+   "taches": [
+    "AIC77"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P4.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Changer de fiche sans recharger, poser une question : le contexte suit la nouvelle route — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P4.3",
+   "taches": [
+    "AIC77"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P4.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Signaler un bug » + une phrase : le signalement arrive dans le diagnostic de l'administrateur avec ses routes et statuts — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P5.1",
+   "taches": [
+    "AIC78"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P5.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Dicter « fais une remise de 2 % … » : le texte remplit la zone de saisie, rien ne part — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P5.2",
+   "taches": [
+    "AIC78"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P5.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Envoyer : la proposition s'affiche ; dire « non je ne confirme pas » : rien n'est confirmé — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P5.3",
+   "taches": [
+    "AIC78"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P5.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Confirmer au doigt : l'accusé est lu, le micro se rouvre — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P6.1",
+   "taches": [
+    "AIC86"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P6.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Navigation sur trois écrans dont une fiche lead inexistante (404) — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P6.2",
+   "taches": [
+    "AIC86"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P6.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Signaler un bug » + « la fiche ne s'ouvre pas » : le relevé porte la requête en 404 — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "P6.3",
+   "taches": [
+    "AIC86"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/P6.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "La carte diagnostic de l'administrateur montre le signalement : route <id> normalisée, statut 404, aucune donnée de client — moteur par défaut (LangChain), modèle scripté"
+  },
+  {
+   "id": "N1.1",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N1.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Sur /ia/agent (administrateur) : une question qui rend deux propositions et un résultat — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N1.2",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N1.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Confirmer la première : elle passe « confirmée » avec sa carte de résultat ; la seconde reste à confirmer — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N1.3",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N1.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Recharger la page : les cartes reviennent, les propositions sont « expirées » — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N1.4",
+   "taches": [
+    "AIC74"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N1.4.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "L'en-tête lit le moteur servi (plus de « Groq · llama-3.3 ») — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N2.1",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N2.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "PASS",
+    "10": "NA"
+   },
+   "notes": "« Ma file du jour » : carte file ; « Préparer » ajoute la carte touche sans nouvelle question — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N2.2",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N2.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "PASS"
+   },
+   "notes": "« Mon matin » : relances, visites, devis sans réponse ; « Télécharger » passe par /proposal — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N2.3",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N2.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "PASS",
+    "10": "NA"
+   },
+   "notes": "Recherche d'un lead par son nom : carte liste ; « Ouvrir la fiche » mène à la fiche — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N2.4",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N2.4.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Envoie-lui le devis » : la carte ouvre WhatsApp et le devis passe « envoyé » (une seule fois) — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N2.5",
+   "taches": [
+    "AIC75"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N2.5.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Administrateur : « qu'est-ce qui a cassé hier ? » → carte diagnostic ; « Copier pour Claude Code » copie un texte sans nom de client — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N3.1",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N3.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Carte touche d'un message WhatsApp : texte validé et canal affichés — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N3.2",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N3.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Ouvrir WhatsApp » ouvre wa.me avec le texte validé ; la touche reste à faire, l'ouverture est journalisée — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N3.3",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N3.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Il n'a pas répondu » : carte-écho « Enregistrer : … » avec son effet ; l'appui clôt la touche et annonce la suivante — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N3.4",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N3.4.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Annuler » remet la touche à faire — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N3.5",
+   "taches": [
+    "AIC76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N3.5.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "PASS",
+    "10": "NA"
+   },
+   "notes": "« Touche suivante » prépare la ligne suivante de la file sans nouvelle question — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N4.1",
+   "taches": [
+    "AIC77"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N4.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Depuis une fiche lead, panneau jamais ouvert : « Demander à l'assistant » ouvre le tiroir et la réponse parle de ce lead — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N4.2",
+   "taches": [
+    "AIC77"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N4.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Changer de fiche sans recharger, poser une question : le contexte suit la nouvelle route — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N4.3",
+   "taches": [
+    "AIC77"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N4.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Signaler un bug » + une phrase : le signalement arrive dans le diagnostic de l'administrateur avec ses routes et statuts — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N5.1",
+   "taches": [
+    "AIC78"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N5.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Dicter « fais une remise de 2 % … » : le texte remplit la zone de saisie, rien ne part — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N5.2",
+   "taches": [
+    "AIC78"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N5.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Envoyer : la proposition s'affiche ; dire « non je ne confirme pas » : rien n'est confirmé — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N5.3",
+   "taches": [
+    "AIC78"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N5.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Confirmer au doigt : l'accusé est lu, le micro se rouvre — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N6.1",
+   "taches": [
+    "AIC86"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N6.1.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Navigation sur trois écrans dont une fiche lead inexistante (404) — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N6.2",
+   "taches": [
+    "AIC86"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N6.2.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "« Signaler un bug » + « la fiche ne s'ouvre pas » : le relevé porte la requête en 404 — moteur natif, faux fournisseur"
+  },
+  {
+   "id": "N6.3",
+   "taches": [
+    "AIC86"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AIC/traces/2026-11-14/N6.3.json",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "La carte diagnostic de l'administrateur montre le signalement : route <id> normalisée, statut 404, aucune donnée de client — moteur natif, faux fournisseur"
+  }
+ ]
+}

@@ -1,0 +1,59 @@
+{
+  "endpoint": "GET /api/django/crm/assistant/digest-matin/",
+  "forme_serveur": "partielle",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « matin » de l'assistant (AIC35) : la réponse n'avait aucun échantillon. `relances.lignes` a EXACTEMENT la forme d'une ligne de `assistant_a_relancer.json` (donc `touche_id`) : la carte du matin rend la même rangée et le même bouton « Préparer » que la file. `devis_sans_reponse.lignes` gagne `devis_id` (l'assistant enchaîne sur le devis sans seconde lecture). `visites.lignes` sont les lignes de `visites.selectors.ma_journee_du_commercial` (clés du sélecteur des visites, non figées ici : `forme_serveur` partielle). Un rôle sans CRM ne reçoit que `visites`.",
+  "exemple": {
+    "visites": {
+      "total": 1,
+      "en_retard": 0,
+      "lignes": [
+        {
+          "id": 88,
+          "lead_id": 412,
+          "date_prevue": "2026-11-14T10:00:00+00:00"
+        }
+      ]
+    },
+    "relances": {
+      "total": 12,
+      "lignes": [
+        {
+          "lead_id": 1489,
+          "nom": "Aziz Benali",
+          "etape": "QUOTE_SENT",
+          "touche": "Relance J+1",
+          "touche_prevue": "2026-11-14",
+          "retard_jours_ouvres": 0,
+          "canal": "whatsapp",
+          "dernier_contact": "2026-11-12T10:05:00+00:00",
+          "touche_id": 412,
+          "touche_cle": "j1_pdf",
+          "cadence": "apres_devis"
+        }
+      ]
+    },
+    "devis_sans_reponse": {
+      "total": 1,
+      "lignes": [
+        {
+          "devis_id": 45,
+          "reference": "DEV-202611-0045",
+          "lead_id": 1489,
+          "nom": "Benali",
+          "envoye_le": "2026-11-03T09:12:00+00:00",
+          "jours_sans_reponse": 10
+        }
+      ]
+    },
+    "manques_signales_hier": {
+      "total": 0
+    }
+  },
+  "exemple_sans_crm": {
+    "visites": {
+      "total": 0,
+      "en_retard": 0,
+      "lignes": []
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "endpoint": "GET /api/django/crm/assistant/leads/",
+  "pourquoi": "COP2 (PACT10, 13/11/2026) — « le lead de Bouskoura », « retrouve Alami » : l'assistant n'avait AUCUN moyen de retrouver un lead par son nom, son téléphone ou sa ville (`crm.lead.list` ne déclarait aucune entrée et rendait 50 fiches complètes). Recherche COMPACTE dans la portée de l'utilisateur (société + visibilité de son rôle, comme la liste des leads) : `?q=` (nom, prénom, société, e-mail, téléphone, ville, référence client — la recherche de `LeadViewSet`), `?etape=` (clé de STAGES.py), `?limite=` (10 par défaut, 25 au plus). Chaque ligne porte ce qu'il faut pour enchaîner sans seconde lecture : `lead_id` et, quand une touche est ouverte, `prochaine_touche.touche_id`. `telephone` est vide pour un rôle sans `client_pii_voir`. Aucun prix d'achat, aucune marge, aucun champ de la fiche complète.",
+  "exemple": {
+    "q": "bouskoura",
+    "etape": "",
+    "total": 2,
+    "limite": 10,
+    "lignes": [
+      {
+        "lead_id": 1637,
+        "nom": "Karim Alami",
+        "societe": "",
+        "ville": "Bouskoura",
+        "telephone": "+212661000111",
+        "etape": "NEW",
+        "etape_libelle": "Nouveau",
+        "responsable": "meryem",
+        "cree_le": "2026-11-13T08:02:00+00:00",
+        "prochaine_touche": {
+          "touche_id": 1301,
+          "libelle": "Message d'identité",
+          "canal": "whatsapp",
+          "prevue_le": "2026-11-13"
+        }
+      },
+      {
+        "lead_id": 1502,
+        "nom": "Boulangerie du Centre",
+        "societe": "Boulangerie du Centre SARL",
+        "ville": "Bouskoura",
+        "telephone": "",
+        "etape": "QUOTE_SENT",
+        "etape_libelle": "Devis envoyé",
+        "responsable": "meryem",
+        "cree_le": "2026-10-26T14:30:00+00:00",
+        "prochaine_touche": null
+      }
+    ]
+  },
+  "exemple_aucun": {
+    "q": "zzz",
+    "etape": "",
+    "total": 0,
+    "limite": 10,
+    "lignes": []
+  }
+}

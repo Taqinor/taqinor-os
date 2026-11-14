@@ -105,16 +105,24 @@ class EvalHarnessTests(unittest.TestCase):
         ctx = None
         jeton = os.environ.get("ASSISTANT_EVAL_TOKEN", "").strip()
         if jeton:
-            from app.services.action_tools import ActionContext, resolve_caller_permissions
+            from app.services.action_tools import ActionContext
+            from app.services.relais_copilote import lire_appelant
             ctx = ActionContext(
                 company_id=int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
                 role="normal", permissions=[], token=jeton, is_superuser=False)
-            resolve_caller_permissions(ctx)
-        rapport = runner.run_eval_commerciaux(
-            runner.repondeur_reel(int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
-                                  int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1")), ctx),
-            runner.juge_reel(juge), modele, juge)
+            lire_appelant(ctx)  # COP-B2 : permissions + prenom/role (en-tete)
+        repondre = runner.repondeur_reel(
+            int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
+            int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1")), ctx)
+        rapport = runner.run_eval_commerciaux(repondre, runner.juge_reel(juge), modele, juge)
         self.assertTrue(os.path.exists(runner.ecrire_rapport(rapport)))
+        # COP-B7 — scenarios du copilote (exigent le jeton : outils d'action).
+        if ctx is not None:
+            from tests.eval.cases_commerciaux import CASES_COPILOTE
+            copilote = runner.run_eval_commerciaux(
+                repondre, runner.juge_reel(juge), modele, juge, cases=CASES_COPILOTE)
+            self.assertTrue(os.path.exists(runner.ecrire_rapport(
+                copilote, nom=f"copilote_{modele}.json")))
 
 
 class EvalCommerciauxTests(unittest.TestCase):
@@ -123,8 +131,12 @@ class EvalCommerciauxTests(unittest.TestCase):
 
     @staticmethod
     def _repondre(case):
-        return {"answer": "ok", "outils_appeles": [case["outil"]] if case["outil"] else [],
-                "sql_query": "SELECT 1" if case["outil"] == "sql_db_query" else "",
+        """Reponse ideale A LA FORME DU SERVICE : `sql_query` toujours vide
+        (ERR84), outils lus dans `outils_appeles`, ecritures en propositions."""
+        appeles = runner.outils_requis(case) + list(case.get("un_parmi") or ())[:1]
+        return {"answer": "ok", "outils_appeles": appeles, "sql_query": "",
+                "cartes": [{"type": "proposition", "action_key": cle}
+                           for cle in case.get("a_confirmer") or () if cle in appeles],
                 "tokens": {"cache_read": 1000, "input": 200, "output": 100}}
 
     @staticmethod
@@ -184,8 +196,66 @@ class EvalCommerciauxTests(unittest.TestCase):
             sans_outil, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5")
         echecs = {q["id"] for q in rapport["questions"] if not q["passed"]}
         from tests.eval.cases_commerciaux import CASES_COMMERCIAUX
-        attendus = {c["id"] for c in CASES_COMMERCIAUX if c["outil"]}
+        attendus = {c["id"] for c in CASES_COMMERCIAUX
+                    if runner.outils_requis(c) or c.get("un_parmi")}
         self.assertEqual(echecs, attendus)
+
+    def test_attentes_reparees_sql_et_signalement(self):
+        """COP-B7 — un cas `sql_db_query` ou `report_gap` passe quand l'outil
+        est dans `outils_appeles` (forme reelle : `sql_query` vide). Avant,
+        12 cas sur 50 etaient impossibles."""
+        from tests.eval.cases_commerciaux import CASES_COMMERCIAUX
+        cas = [c for c in CASES_COMMERCIAUX if c["outil"] in ("sql_db_query", "report_gap")]
+        self.assertEqual(len(cas), 12)
+        rapport = runner.run_eval_commerciaux(
+            self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=cas)
+        self.assertEqual(rapport["reussis"], 12)
+
+    def test_scenarios_du_copilote(self):
+        """COP-B7 — 15 phrases du jour + 2 injections + 2 darija ; chaque cle
+        attendue ou interdite est connue ; chaque scenario attend un outil ou
+        interdit une ecriture ; la reponse ideale passe a 100 %."""
+        from tests.eval.cases_commerciaux import CASES_COPILOTE, CLES_COPILOTE
+        sources = [c["source"] for c in CASES_COPILOTE]
+        self.assertEqual((sources.count("voix"), sources.count("injection"),
+                          sources.count("darija"), len(CASES_COPILOTE)), (15, 2, 2, 19))
+        self.assertEqual(len({c["id"] for c in CASES_COPILOTE}), 19)
+        for c in CASES_COPILOTE:
+            cles = set(runner.outils_requis(c)) | set(c.get("un_parmi") or ()) \
+                | set(c.get("interdits") or ()) | set(c.get("a_confirmer") or ())
+            self.assertTrue(cles, c["id"])
+            self.assertLessEqual(cles, CLES_COPILOTE, c["id"])
+            self.assertFalse(set(c.get("interdits") or ()) & set(runner.outils_requis(c)))
+        self.assertTrue(all(c.get("interdits") for c in CASES_COPILOTE
+                            if c["source"] == "injection"))
+        rapport = runner.run_eval_commerciaux(
+            self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5",
+            cases=CASES_COPILOTE)
+        self.assertEqual(rapport["taux"], 1.0, [q for q in rapport["questions"] if q["echecs"]])
+
+    def test_ecriture_sans_carte_ou_interdite_fait_echouer(self):
+        from tests.eval.cases_commerciaux import CASES_COPILOTE
+        signe = next(c for c in CASES_COPILOTE if c["id"] == "voi_signe_batterie")
+        piege = next(c for c in CASES_COPILOTE if c["id"] == "inj_note_remise")
+
+        def execute_sans_carte(case):
+            rep = self._repondre(case)
+            rep["cartes"] = [{"type": "resultat", "action_key": "ventes.devis.accepter"}]
+            return rep
+
+        def obeit_a_la_note(case):
+            rep = self._repondre(case)
+            rep["outils_appeles"] = rep["outils_appeles"] + ["ventes.devis.remise"]
+            return rep
+        for repondre, cas in ((execute_sans_carte, signe), (obeit_a_la_note, piege)):
+            rapport = runner.run_eval_commerciaux(
+                repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=[cas])
+            self.assertEqual(rapport["questions"][0]["echecs"], ["ecriture_sans_carte"])
+
+    def test_cout_compte_les_ecritures_de_cache(self):
+        """COP-B4/B7 — une ecriture de cache 1 h coute 2x l'entree."""
+        self.assertAlmostEqual(runner.cout_usd({"cache_write": 1_000_000},
+                                               "claude-sonnet-5-5"), 4.0)
 
 
 if __name__ == "__main__":

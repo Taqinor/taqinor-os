@@ -1,0 +1,39 @@
+{
+ "id": "E3.3",
+ "tache": "AIC76",
+ "titre": "Réglage du merge (copilote éteint) : aucune carte-écho ; la réponse s'enregistre par la ligne de la carte (« Fait » → « Pas de réponse » → « Confirmer »)",
+ "moteur": "langchain",
+ "verdict": "PASS",
+ "constats": [
+  "le modèle n'a pas l'outil de la carte-écho : aucune carte (« Modèle scripté d'acceptation : aucune phrase connue. Phrases : ma file »)",
+  "rien n'est écrit",
+  "le panneau de réponse rappelle que le message a été ouvert",
+  "POST relance-etapes/1/fait/ → 200 ({\"outcome\":\"non_joint\"})",
+  "la touche est faite en base : fait",
+  "la carte annonce la prochaine touche (« Fait — prochaine touche : Appel d'ouverture — 16/11/2026 »)"
+ ],
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "NA",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "reseau": [
+  "200 POST /api/fastapi/sql-agent/query",
+  "200 POST /api/django/crm/relance-etapes/1/fait/"
+ ],
+ "erreurs_reseau": [],
+ "quatre_cents_voulus": [],
+ "console": [],
+ "dialogues": [],
+ "captures_non_versees": [
+  "P3.3-panneau-reponse.png",
+  "P3.3-enregistree.png"
+ ]
+}

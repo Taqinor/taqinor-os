@@ -8,3 +8,6 @@ Même doctrine que `apps/ventes/contract_samples/README.md` : chaque fichier por
 | `assistant_evenement.json` (AIC1) | POST agent/evenements/ (relais serveur) + PATCH agent/evenements/<pk>/note/ (note et commentaire du commercial) ; vue produite par AIC6 |
 | `assistant_export.json` (AIC2) | GET agent/evenements/export/ : export ANONYMISÉ pour le tri nocturne, règles dans la clé `anonymisation` ; vue produite par AIC11 |
 | `assistant_stats.json` (AIC2) | GET agent/evenements/stats/ : statistiques de l'assistant, prix par million de tokens dans `prix_mtok` ; vue produite par AIC12 |
+| `assistant_reponse.json` (COP1) | POST /api/fastapi/sql-agent/query (relais FastAPI, aucune vue Django) : `cartes` = toutes les sorties structurées du tour, typées par `AgentAction.carte` ; + la réponse de `/sql-agent/confirm` (`carte`, `suite`), l'historique rejoué et la forme de `contexte.diagnostic`. Lu par les tests des DEUX moitiés |
+| `assistant_document.json` (COP1) | carte « document » : le relais rend le LIEN `/proposal` d'un devis au lieu de télécharger le PDF (règle #4) |
+| `assistant_libelles.json` (COP3) | GET agent/libelles/ : libellé des objets désignés par une action (lead, devis, touche, facture, client), dans la portée de l'utilisateur — pour l'aperçu des propositions |
