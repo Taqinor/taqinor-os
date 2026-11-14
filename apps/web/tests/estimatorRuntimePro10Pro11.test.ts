@@ -76,7 +76,11 @@ class FakeMap {
   project() { return { x: 0, y: 0 }; }
   unproject() { return { lng: 0, lat: 0 }; }
   remove() {}
-  setStyle() {}
+  // ACAL377 — style refusé : le script bascule sur un fond de repli local.
+  styleLoaded = false;
+  isStyleLoaded() { return this.styleLoaded; }
+  setStyleCalls: unknown[] = [];
+  setStyle(style: unknown) { this.setStyleCalls.push(style); }
 }
 
 // W113 — marqueurs MapLibre instanciés (le repère client de l'hydratation). On capture
@@ -347,6 +351,30 @@ describe('runtime pro-10/pro-11 — montage du script sans crash', () => {
     const init = await loadTool();
     expect(() => init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) })).not.toThrow();
     expect(fakeMaps.length).toBe(1); // la carte a bien été instanciée
+  });
+
+  it('style d\'imagerie refusé : fond de repli puis hydratation', async () => {
+    const init = await loadTool();
+    const onHydrationTerminee = vi.fn();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 7, geometrie: { roof_point: { lat: 33.59, lng: -7.62 } } } },
+      onHydrationTerminee,
+    } as Parameters<typeof init>[0]);
+    const map = fakeMaps[0];
+    map.fire('error', { error: { message: '403 style' } }); // style refusé, avant tout `load`
+    expect(map.setStyleCalls).toHaveLength(1);
+    const repli = map.setStyleCalls[0] as { sources: Record<string, unknown> };
+    expect(Object.keys(repli.sources)).toEqual([]); // aucune source distante
+    expect(onHydrationTerminee).not.toHaveBeenCalled();
+    map.styleLoaded = true;
+    map.fire('load', {});
+    expect(onHydrationTerminee).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('rp9-status')?.textContent).toMatch(/Imagerie satellite indisponible/);
+    map.fire('error', { error: { message: '404 tuile' }, sourceId: 'x' }); // tuile : aucun changement
+    map.fire('error', { error: { message: 'encore' } });
+    expect(map.setStyleCalls).toHaveLength(1);
   });
 });
 

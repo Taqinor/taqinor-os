@@ -2,8 +2,12 @@
 // Monté par `Layout` (donc sur tout écran authentifié), il ne rend RIEN et ne
 // fait rien du tout hors du créneau matinal, hors-ligne, ou si le
 // pré-chargement du jour a déjà eu lieu sur cet appareil.
+// ADRG122 — ni pour un compte auquel le serveur refuse la tournée (Commercial…) :
+// l'appel partait sur tout écran, chaque matin, et revenait en 403.
 import { useEffect } from 'react'
+import { useSelector } from 'react-redux'
 import installationsApi from '../../api/installationsApi'
+import { useCanLireInterventions } from '../../hooks/useHasPermission'
 // NOTE : le module de logique s'appelle `prechargeMatinale.js` et non
 // `prechargementTournee.js` — sur un FS insensible à la casse (Windows),
 // `./PrechargementTournee` résoudrait vers le `.js` avant le `.jsx`.
@@ -14,7 +18,13 @@ import {
 import { todayLocalIso } from '../../lib/dateLocale'
 
 export default function PrechargementTournee() {
+  // Session ouverte ET droit lu sur le profil servi par `/auth/me/` (le crochet
+  // dit non tant que ce profil n'est pas là).
+  const sessionOuverte = useSelector((s) => s.auth.isAuthenticated)
+  const peutLireTournee = useCanLireInterventions()
+
   useEffect(() => {
+    if (!sessionOuverte || !peutLireTournee) return
     const maintenant = new Date()
     const jour = todayLocalIso(maintenant)
     const decision = doitPrecharger({
@@ -31,7 +41,7 @@ export default function PrechargementTournee() {
       cache: readCache,
       jour,
     })
-  }, [])
+  }, [sessionOuverte, peutLireTournee])
 
   return null
 }

@@ -426,7 +426,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     loadContrats()
     chargerAppro()
     if (produits.length === 0) dispatch(fetchProduits())
-    lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
+    if (peutInterv) lireToutesLesPages((p) => installationsApi.getTypesIntervention(p)) // ADRG117 — sinon 403
       .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
     if (peutListerUsers) crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})

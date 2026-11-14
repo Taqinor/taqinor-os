@@ -23,6 +23,7 @@ import ListShell from './ListeEtat'
 import MaitreDetail from './MaitreDetail'
 import PiedCreation from './PiedCreation'
 import { useConfirm } from '../../providers/confirm-context'
+import { usePermissionAchats } from '../stock/useVoitPrixAchat'
 
 // ── Créer un kit ─────────────────────────────────────────────────────────────
 function CreateKitDialog({ produits, onClose, onCreated }) {
@@ -118,6 +119,7 @@ function NomenclatureTab({ kitId, kitNom, produits }) {
   const { rows, loading, error, reload } = useFilteredList(
     installationsApi.getKitComposants, { kit: kitId })
   const [showCreate, setShowCreate] = useState(false)
+  const peutEcrire = usePermissionAchats('stock_modifier') // ADRG41 — sinon 403
   const confirm = useConfirm() // AERR83 — boîte maison nommée
   const del = async (c) => {
     if (!(await confirm({ title: `Retirer « ${c.produit_nom || c.designation} » de la nomenclature du kit « ${kitNom} » ?`, confirmLabel: 'Retirer' }))) return
@@ -126,11 +128,11 @@ function NomenclatureTab({ kitId, kitNom, produits }) {
   }
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      {peutEcrire && <div className="flex justify-end">
         <Button size="sm" onClick={() => setShowCreate(true)}>
           <PlusCircle className="size-4" aria-hidden="true" /> Nouveau composant
         </Button>
-      </div>
+      </div>}
       <ListShell loading={loading} error={error} empty="Nomenclature vide">
         {rows.length > 0 && rows.map((c) => (
           <div key={c.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" data-testid={`composant-${c.id}`}>
@@ -139,10 +141,10 @@ function NomenclatureTab({ kitId, kitNom, produits }) {
             {c.taux_perte_pct != null && c.taux_perte_pct !== '' && (
               <span className="text-xs text-muted-foreground">Perte {c.taux_perte_pct}%</span>
             )}
-            <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive"
+            {peutEcrire && <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive"
               onClick={() => del(c)}>
               Retirer
-            </Button>
+            </Button>}
           </div>
         ))}
       </ListShell>
@@ -200,6 +202,7 @@ function GammeTab({ kitId, kitNom }) {
   const { rows, loading, error, reload } = useFilteredList(
     installationsApi.getEtapesAssemblageKit, { kit: kitId })
   const [showCreate, setShowCreate] = useState(false)
+  const peutEcrire = usePermissionAchats('stock_modifier')
   const confirm = useConfirm()
   const del = async (e) => {
     if (!(await confirm({ title: `Retirer l’étape « ${e.libelle} » de la gamme du kit « ${kitNom} » ?`, confirmLabel: 'Retirer' }))) return
@@ -211,11 +214,11 @@ function GammeTab({ kitId, kitNom }) {
     ? Math.max(...sorted.map((e) => e.ordre ?? 0)) + 1 : 1
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      {peutEcrire && <div className="flex justify-end">
         <Button size="sm" onClick={() => setShowCreate(true)}>
           <PlusCircle className="size-4" aria-hidden="true" /> Nouvelle étape
         </Button>
-      </div>
+      </div>}
       <ListShell loading={loading} error={error} empty="Aucune étape définie">
         {sorted.length > 0 && sorted.map((e) => (
           <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" data-testid={`etape-${e.id}`}>
@@ -224,10 +227,10 @@ function GammeTab({ kitId, kitNom }) {
             {e.duree_attendue_min != null && (
               <span className="text-xs text-muted-foreground">{e.duree_attendue_min} min</span>
             )}
-            <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive"
+            {peutEcrire && <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive"
               onClick={() => del(e)}>
               Retirer
-            </Button>
+            </Button>}
           </div>
         ))}
       </ListShell>
@@ -245,6 +248,7 @@ function ControleQualiteTab({ kitId }) {
   const { rows, loading, error, reload } = useFilteredList(
     installationsApi.getControleQualiteModeles, { kit: kitId })
   const [busy, setBusy] = useState(false)
+  const peutEcrire = usePermissionAchats('stock_modifier')
   const modele = rows[0] || null
 
   const activer = async () => {
@@ -280,7 +284,7 @@ function ControleQualiteTab({ kitId }) {
           </div>
         )}
       </ListShell>
-      <div className="flex justify-end gap-2">
+      {peutEcrire && <div className="flex justify-end gap-2">
         {modele == null ? (
           <Button size="sm" disabled={busy} onClick={activer}>
             <PlusCircle className="size-4" aria-hidden="true" /> Configurer un modèle de contrôle
@@ -290,7 +294,7 @@ function ControleQualiteTab({ kitId }) {
         ) : (
           <Button size="sm" variant="outline" disabled={busy} onClick={activer}>Réactiver</Button>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -329,6 +333,7 @@ export default function ParametrageKits() {
   const [selected, setSelected] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [produits, setProduits] = useState([])
+  const peutEcrire = usePermissionAchats('stock_modifier')
 
   const fetchKits = useCallback(() => installationsApi.getKitsAssemblage({ page_size: 200 })
     .then((res) => {
@@ -364,11 +369,11 @@ export default function ParametrageKits() {
       />
       <MaitreDetail
         titre="Kits"
-        action={(
+        action={peutEcrire ? (
           <Button size="sm" variant="outline" aria-label="Nouveau kit" onClick={() => setShowCreate(true)}>
             <PlusCircle className="size-4" aria-hidden="true" />
           </Button>
-        )}
+        ) : null}
         loading={loadingKits}
         vide={{ title: 'Aucun kit', description: "Créez le premier kit d'assemblage." }}
         testId="liste-kits"

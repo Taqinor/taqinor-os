@@ -199,6 +199,23 @@ class TestRappelRdvJ1(TestCase):
         self.assertIn('wa.me/', taches.get().note)
         self.assertIn(self.inst.reference, taches.get().note)
 
+    def test_brouillon_remis_assigne_au_responsable(self):
+        """AMSG96 — la tâche « Envoyer ce WhatsApp » du rappel J-1 (créée sans
+        auteur) va au technicien responsable du chantier : visible dans
+        « Mes activités »."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity
+        interv = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user,
+            date_prevue=self.demain, rdv_confirme=False)
+        rappel_rdv_j1()
+        tache = Activity.objects.get(
+            content_type=ContentType.objects.get_for_model(Intervention),
+            object_id=interv.pk, summary='Envoyer ce WhatsApp')
+        self.assertEqual(tache.assigned_to_id, self.user.id)
+        self.assertIsNone(tache.created_by_id)
+
     def test_no_op_propre_sans_email_client(self):
         inst_sans_email = make_chantier(
             self.company, self.user, client_email='')
