@@ -68,6 +68,9 @@ CORS_ALLOWED_ORIGINS = _liste_env('CORS_ALLOWED_ORIGINS') or [
     'https://taqinor.ma',
     'https://www.taqinor.ma',
 ]
+# D-APUB-5 (APUB73) — le site public lit l'ERP SANS identifiants : jamais
+# `Access-Control-Allow-Credentials` (cookies JWT SameSite=Lax même-site).
+CORS_ALLOW_CREDENTIALS = False
 # ASEC48 — la liste CSRF_TRUSTED_ORIGINS de l'environnement (lue par base.py :
 # les deux hôtes de l'ERP sur le serveur) est CONSERVÉE puis complétée des
 # origines CORS ; avant, cette ligne l'écrasait et la variable était morte.

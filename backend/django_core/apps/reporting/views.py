@@ -13,6 +13,7 @@ from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ADRG73
 from core.analytics_db import analytics_queryset
 from .metriques_ca import _part_ht  # ASOC73 — déplacé (1 définition)
+from .services import borner_portee  # ALEC22 — portée du rôle
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -119,7 +120,7 @@ def dashboard(request):
         return Response({'detail': 'Acces refuse.'}, status=403)
 
     # ── KPIs ──────────────────────────────────────────────────────────────────
-    factures_qs = Facture.objects.filter(**co)
+    factures_qs = borner_portee(Facture.objects.filter(**co), request.user, 'factures')  # ALEC22
 
     # AANA20 / D-AANA-6 / AANA55 — encaissé = part HT des paiements reçus, attente = part HT de
     # ``montant_du`` (avoirs déduits), sur émises, en retard et payées.
@@ -178,11 +179,11 @@ def dashboard(request):
     }
 
     # ── Taux conversion Devis → Facture ───────────────────────────────────────
-    devis_qs = Devis.objects.filter(**co)
+    devis_qs = borner_portee(Devis.objects.filter(**co), request.user, 'devis')
     nb_devis_total = devis_qs.count()
     # AANA19 — signés = acceptés ACTIFS (helper unique du reporting).
     from apps.reporting.pipeline import _devis_signes
-    nb_devis_acceptes = _devis_signes(co).count()
+    nb_devis_acceptes = borner_portee(_devis_signes(co), request.user, 'devis').count()
     nb_factures_emises = factures_qs.exclude(
         statut__in=[Facture.Statut.BROUILLON, Facture.Statut.ANNULEE]
     ).count()
@@ -280,9 +281,9 @@ def dashboard(request):
         prev_leads = 0
         try:
             from apps.crm.models import Lead
-            prev_leads = Lead.objects.filter(
+            prev_leads = borner_portee(Lead.objects.filter(
                 **co, is_archived=False, date_creation__date__gte=p_start,
-                date_creation__date__lte=p_end).count()
+                date_creation__date__lte=p_end), request.user, 'leads').count()
         except Exception:
             logger.warning("dashboard : échec ignoré, comportement dégradé", exc_info=True)
         from apps.crm.models import Lead
@@ -294,7 +295,7 @@ def dashboard(request):
         if curr_to:
             curr_fqs_f = curr_fqs_f.filter(date_emission__lte=curr_to)
         curr_ca = _ca_encaisse_ht(curr_fqs_f.filter(statut__in=_STATUTS_CA))
-        curr_leads = Lead.objects.filter(**co, is_archived=False)  # ASUP50 — comme les rapports
+        curr_leads = borner_portee(Lead.objects.filter(**co, is_archived=False), request.user, 'leads')  # ASUP50
         if curr_from:
             curr_leads = curr_leads.filter(date_creation__date__gte=curr_from)
         if curr_to:

@@ -124,6 +124,37 @@ class FenetreHoraireTests(TestCase):
         # Lundi 8 h : dû.
         self.assertEqual(self._lancer(_a(2026, 6, 15, 8)), 1)
 
+    def test_passages_horaires_une_ligne_par_jour_a_l_heure_atteinte(self):
+        """ACEL31 (D-ACEL-1 = heure_respectee) — passages horaires : un rapport
+        réglé à 8 h part au passage de 8 h (ou au suivant s'il manque), un
+        rapport sans heure au premier passage ; UNE ligne d'historique par
+        rapport et par jour, rejouer une passe n'en ajoute aucune."""
+        from .models import EnvoiRapport
+        a = SavedReport.objects.create(
+            company=self.company, name='A 8h', target_kind='sales',
+            schedule='daily', recipients='boss@example.com', heure_envoi=8)
+        b = SavedReport.objects.create(
+            company=self.company, name='B sans heure', target_kind='sales',
+            schedule='daily', recipients='boss@example.com')
+
+        def passer(jour, heures):
+            for h in heures:
+                quand = _a(2026, 6, jour, h)
+                with mock.patch('django.utils.timezone.now', return_value=quand):
+                    self._lancer(quand)
+
+        def heures(rapport, jour):
+            locales = [e.envoye_le.astimezone(TZ) for e in EnvoiRapport.objects.filter(saved_report=rapport)]
+            return [t.hour for t in locales if t.day == jour]
+
+        passer(15, (6, 7, 8, 9, 10))  # lundi
+        self.assertEqual((heures(a, 15), heures(b, 15)), ([8], [6]))
+        passer(16, (6, 7, 9))  # mardi, passage de 8 h manquant
+        self.assertEqual((heures(a, 16), heures(b, 16)), ([9], [6]))
+        self.assertEqual(len(mail.outbox), 4)
+        passer(16, (9,))  # passe rejouée : aucune ligne de plus
+        self.assertEqual(EnvoiRapport.objects.filter(saved_report__in=(a, b)).count(), 4)
+
     def test_defauts_du_modele(self):
         rapport = SavedReport.objects.create(
             company=self.company, name='Défauts', target_kind='sales')

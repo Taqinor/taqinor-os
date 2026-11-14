@@ -2,7 +2,7 @@
 // pompage, numérotation, commission, TVA/Taxes). Restylé sur le système de
 // design (@/ui) ; champs, libellés et comportement identiques.
 import { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import {
   Button, Card, CardContent, Input, Label, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -24,10 +24,9 @@ import {
    ici, via `get/setVarianteConfig` — un endpoint DISTINCT du profil société,
    d'où son état local et son bouton d'enregistrement propres.
 
-   Le serveur réserve l'ÉCRITURE au Directeur et au Commercial responsable
-   (403 sinon) ; l'écran reflète la MÊME règle plutôt que de laisser partir une
-   requête vouée au refus. La LECTURE reste ouverte à tous. */
-const ROLES_VARIANTE_PCT = ['Directeur', 'Commercial responsable']
+   ADRG12 — l'ÉCRITURE suit le droit `parametres_modifier` (D-ADRG-5), jamais
+   un nom de rôle : l'écran reflète la garde serveur plutôt que de laisser
+   partir une requête vouée au refus. La LECTURE reste ouverte à tous. */
 
 const MONTANTS_BANDE_CI = [['min_ht', 'Minimum HT / kWc'], ['max_ht', 'Maximum HT / kWc']]
 
@@ -46,9 +45,7 @@ export default function DevisSection({
   form, set, setForm, setPrefix, setNumbering, numberingPreview,
   canManageSensitive = false, profileError = null,
 }) {
-  const roleNom = useSelector(s => s.auth?.role_nom) || ''
-  const peutReglerVariante = canManageSensitive
-    || ROLES_VARIANTE_PCT.includes(roleNom)
+  const peutReglerVariante = useCanModifierParametres()
 
   // AGR209 — repères énergie {cle: {valeur, source, releve_le}} (vide = '').
   const reperes = form.reperes_energie_agricole || {}
@@ -234,7 +231,7 @@ export default function DevisSection({
                 Les trois variantes générées sont réduite (−p %), standard et
                 augmentée (+p %). La modale de création part de cette valeur.
                 {!peutReglerVariante
-                  && ' Réservé au Directeur et au Commercial responsable.'}
+                  && ' Réservé au droit « Modifier les paramètres ».'}
               </p>
             </Field>
           </div>

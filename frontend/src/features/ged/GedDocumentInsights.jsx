@@ -11,6 +11,7 @@ import {
 } from '../../ui'
 import { formatDate } from '../../lib/format'
 import { toutesLesPages } from './advanced/shared.js'
+import useDroitMetier from '../sav/useDroitMetier'
 
 /* ============================================================================
    WIR70 — Panneau « Détails » d'un document GED : timeline + rapport ACL.
@@ -52,6 +53,7 @@ const NIVEAU_OPTIONS = [
 ]
 
 export default function GedDocumentInsights({ document, onClose }) {
+  const peutGouverner = useDroitMetier('ged_gouvernance') // ADRG80 — écrire une ACL (D-ADRG-8)
   const [timeline, setTimeline] = useState(null)
   const [acl, setAcl] = useState(null)
   const [entries, setEntries] = useState(null)
@@ -219,7 +221,7 @@ export default function GedDocumentInsights({ document, onClose }) {
                 responsable/admin côté backend (403 → toast). */}
             <div className="mt-4 border-t pt-3">
               <p className="mb-2 text-sm font-medium">Gérer les droits d’accès</p>
-              <div className="flex flex-wrap items-end gap-2">
+              {peutGouverner && <div className="flex flex-wrap items-end gap-2">
                 <Select value={draft.principalType}
                   onValueChange={(v) => setDraft((d) => (
                     { ...d, principalType: v, principalId: '' }))}>
@@ -268,7 +270,7 @@ export default function GedDocumentInsights({ document, onClose }) {
                 <Button type="button" variant="outline" size="sm" onClick={addAcl}>
                   <Plus size={14} /> Ajouter
                 </Button>
-              </div>
+              </div>}
               {entries === null ? <Spinner /> : entries.length === 0 ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   Aucun droit posé directement sur ce document.
@@ -283,13 +285,13 @@ export default function GedDocumentInsights({ document, onClose }) {
                         </Badge>
                         <Badge tone="info">{e.niveau}</Badge>
                       </span>
-                      <Button
+                      {peutGouverner && <Button
                         type="button" variant="ghost" size="sm"
                         onClick={() => removeAcl(e.id)}
                         aria-label="Retirer ce droit"
                       >
                         <Trash2 size={14} />
-                      </Button>
+                      </Button>}
                     </li>
                   ))}
                 </ul>

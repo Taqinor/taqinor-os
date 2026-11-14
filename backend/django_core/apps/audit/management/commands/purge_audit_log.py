@@ -12,7 +12,7 @@ from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 
-from apps.audit.selectors import effective_retention_days
+from apps.audit.selectors import effective_retention_days, journaux_purgeables
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ class Command(BaseCommand):
         parser.add_argument('--company', type=int, default=None)
 
     def handle(self, *args, **options):
-        from apps.audit.models import AuditLog
         try:
             from apps.parametres.models import CompanyProfile, SettingsAuditLog
             from apps.parametres.retention import PURGE_FIELD, PURGE_SECTION
@@ -46,8 +45,7 @@ class Command(BaseCommand):
             if days <= 0:
                 continue  # rétention non armée → conservation illimitée.
             cutoff = timezone.now() - timedelta(days=days)
-            qs = AuditLog.objects.filter(
-                company=profile.company, timestamp__lt=cutoff)
+            qs = journaux_purgeables(profile.company, cutoff)  # ASUP17 : plancher comptable 10 ans
             count = qs.count()
             if not count:
                 continue

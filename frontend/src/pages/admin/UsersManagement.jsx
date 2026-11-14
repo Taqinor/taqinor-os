@@ -61,6 +61,7 @@ export default function UsersManagement() {
   const [postes, setPostes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [refusTraces, setRefusTraces] = useState(null) // ASUP6 — 409 « désactivez-le »
   // NTADM8 — statut des sièges (bannière NON bloquante, jamais d'empêchement
   // de création). null tant que non chargé / indisponible (silencieux).
   const [licenceStatut, setLicenceStatut] = useState(null)
@@ -272,7 +273,8 @@ export default function UsersManagement() {
   const askDelete = async (u) => {
     const ok = await askConfirm({
       title: 'Supprimer cet utilisateur ?',
-      description: `Le compte « ${u.username} » sera définitivement supprimé.`,
+      // ASUP6 — un compte à traces n'est jamais supprimé (409) : il se désactive.
+      description: `Le compte « ${u.username} » sera supprimé s'il n'a laissé aucune trace ; sinon, il vous sera proposé de le désactiver.`,
       confirmLabel: 'Supprimer',
       cancelLabel: 'Annuler',
       destructive: true,
@@ -282,8 +284,15 @@ export default function UsersManagement() {
       await handleDelete(u.id)
       toast.success('Utilisateur supprimé.')
     } catch (err) {
-      signaler404(err, 'Suppression impossible.')
+      if (err?.response?.status === 409) {
+        setRefusTraces({ id: u.id, username: u.username, detail: err.response.data?.detail || 'Ce compte a laissé des traces.' })
+      } else signaler404(err, 'Suppression impossible.')
     }
+  }
+
+  const desactiverRefuse = async () => {
+    await setActive({ id: refusTraces.id }, false)
+    setRefusTraces(null)
   }
 
   // ── Activation / désactivation rapide (et en masse) ──
@@ -572,6 +581,15 @@ export default function UsersManagement() {
               </FormActions>
             </Form>
           </Card>
+        )}
+
+        {/* ASUP6 — suppression refusée pour traces : motif serveur + désactivation. */}
+        {refusTraces && (
+          <div role="alert" className="flex flex-wrap items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1">« {refusTraces.username} » : {refusTraces.detail}</span>
+            <Button size="sm" variant="outline" onClick={desactiverRefuse}>Désactiver le compte</Button>
+          </div>
         )}
 
         {/* ── Liste (DataTable unifié : recherche, tri, cellule avatar,

@@ -402,10 +402,21 @@ def _heure_ok(report, now):
     """Fenêtre horaire du rapport (NTDATA38).
 
     `heure_envoi` NULL = comportement HISTORIQUE : aucune contrainte d'heure,
-    le rapport part au passage du planificateur. Renseignée, l'envoi n'a lieu
-    que lorsque l'heure locale correspond."""
+    le rapport part au passage du planificateur. Renseignée, ACEL31 (D-ACEL-1 =
+    heure_respectee) : dû dès que l'heure locale est ATTEINTE (passage manqué
+    ⇒ passage suivant) ; une seule ligne par jour (`_deja_journalise_ce_jour`)."""
     heure = getattr(report, 'heure_envoi', None)
-    return heure is None or now.hour == int(heure)
+    return heure is None or now.hour >= int(heure)
+
+
+def _deja_journalise_ce_jour(report, now):
+    """ACEL31 — le rapport a déjà une ligne d'historique ce jour local."""
+    from datetime import timedelta
+    from .models import EnvoiRapport
+    minuit = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return EnvoiRapport.objects.filter(
+        company_id=report.company_id, saved_report=report,
+        envoye_le__gte=minuit, envoye_le__lt=minuit + timedelta(days=1)).exists()
 
 
 def _deja_envoye_ce_mois(report, now):
@@ -441,7 +452,7 @@ def _rapport_est_du(report, now):
             return False
         if _deja_envoye_ce_mois(report, now):
             return False
-    return _heure_ok(report, now)
+    return _heure_ok(report, now) and not _deja_journalise_ce_jour(report, now)
 
 
 @shared_task(name='reporting.email_saved_reports')

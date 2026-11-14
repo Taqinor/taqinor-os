@@ -87,7 +87,9 @@ function jeuDeDevis() {
 function renderList(devis = jeuDeDevis()) {
   return renderListeVentes(DevisList, {
     devis,
-    auth: { role: 'admin', role_nom: 'Directeur', permissions: ['ventes_valider'] },
+    // ADRG11 — le Directeur livré porte `parametres_modifier` : le % de variante
+    // reste modifiable dans la modale, comme avant le gating par code.
+    auth: { role: 'admin', role_nom: 'Directeur', permissions: ['ventes_valider', 'parametres_modifier'] },
   })
 }
 

@@ -33,9 +33,9 @@ const REPERES_CONTRAT = documentContrat('ventes', 'economie_pompage')
 
 afterEach(() => cleanup())
 
-function withStore(ui, { role_nom = null } = {}) {
+function withStore(ui, { role_nom = null, role = 'admin', permissions = [] } = {}) {
   const store = configureStore({
-    reducer: { auth: (s = { role: 'admin', role_nom }) => s },
+    reducer: { auth: (s = { role, role_nom, permissions }) => s },
   })
   return <Provider store={store}>{ui}</Provider>
 }
@@ -101,12 +101,12 @@ describe('WIR225 — DevisSection (% de variation des variantes)', () => {
     expect(await screen.findByDisplayValue('20')).toBeInTheDocument()
   })
 
-  it('un Commercial responsable peut l’enregistrer', async () => {
+  it('ADRG12 — un compte qui porte parametres_modifier peut l’enregistrer', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
     render(withStore(
       <DevisSection {...devisProps} canManageSensitive={false} />,
-      { role_nom: 'Commercial responsable' },
+      { role_nom: 'Commercial responsable', role: 'responsable', permissions: ['parametres_modifier'] },
     ))
     await screen.findByDisplayValue('20')
     await user.clear(champ())
@@ -123,7 +123,7 @@ describe('WIR225 — DevisSection (% de variation des variantes)', () => {
     await screen.findByDisplayValue('20')
     expect(champ()).toHaveAttribute('readonly')
     expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
-    expect(screen.getByText(/Réservé au Directeur et au Commercial responsable/))
+    expect(screen.getByText(/Réservé au droit « Modifier les paramètres »/))
       .toBeInTheDocument()
   })
 })

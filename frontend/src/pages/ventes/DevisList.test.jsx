@@ -519,7 +519,7 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
 
   it('ouvre une modale pré-remplie depuis la config société (variante_pct)', async () => {
     const user = userEvent.setup()
-    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur', permissions: ['parametres_modifier'] })
     const row = screen.getByText('DEV-VAR').closest('tr')
     // VX20 — « Variante » vit désormais dans le menu « Plus d'actions ».
     await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
@@ -530,7 +530,7 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     })
     const input = await screen.findByLabelText(/Pourcentage de variation/)
     await waitFor(() => { expect(input.value).toBe('25') })
-    // Le champ est éditable pour le Directeur (pas readOnly).
+    // ADRG11 — le champ est éditable avec `parametres_modifier` (pas readOnly).
     expect(input).not.toHaveAttribute('readonly')
   })
 

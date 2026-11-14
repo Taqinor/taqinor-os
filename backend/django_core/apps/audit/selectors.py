@@ -159,6 +159,12 @@ def rechercher_journal(company, terme, debut=None, fin=None, limite=200):
 # Plancher légal de rétention du journal d'audit (jours) : la purge n'efface
 # JAMAIS en-deçà, même si une société configure un délai plus court.
 AUDIT_RETENTION_FLOOR_DAYS = 365
+#: ASUP17 (D-ASUP-5 = dix_ans) — plancher des lignes d'audit des PIÈCES
+#: COMPTABLES ``(app_label, modèle)`` : jamais purgées avant 10 ans.
+AUDIT_RETENTION_FLOOR_COMPTABLE_DAYS = 3650
+MODELES_COMPTABLES = (('facturation', 'facture'), ('facturation', 'avoir'),
+                      ('facturation', 'paiement'), ('stock', 'mouvementstock'),
+                      ('ventes', 'boncommande'), ('ventes', 'notedebit'))
 
 
 def verify_audit_chain(company_id):
@@ -211,3 +217,19 @@ def effective_retention_days(configured_days):
     if days <= 0:
         return 0
     return max(days, AUDIT_RETENTION_FLOOR_DAYS)
+
+
+def journaux_purgeables(company, cutoff):
+    """ASUP17 — lignes d'audit purgeables d'une société : antérieures à
+    ``cutoff``, SAUF celles des pièces comptables de moins de 10 ans. Unique
+    filtre de purge (``purge_audit_log`` ; ASUP18 pour le beat société)."""
+    from datetime import timedelta
+
+    from django.db.models import Q
+    from django.utils import timezone
+    comptable = Q(pk__in=[])
+    for app_label, modele in MODELES_COMPTABLES:
+        comptable |= Q(content_type__app_label=app_label, content_type__model=modele)
+    plancher = timezone.now() - timedelta(days=AUDIT_RETENTION_FLOOR_COMPTABLE_DAYS)
+    return AuditLog.objects.filter(company=company, timestamp__lt=cutoff).exclude(
+        comptable & Q(timestamp__gte=plancher))

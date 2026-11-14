@@ -1626,7 +1626,10 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': "Impossible de créer l'invitation."},
                 status=status.HTTP_400_BAD_REQUEST)
-        return Response(self._ligne(invitation),
+        # AMSG92 — dire au client si l'e-mail est réellement parti.
+        return Response({**self._ligne(invitation),
+                         'email_envoye': bool(getattr(
+                             invitation, 'email_envoye', False))},
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[_ID_INVITATION])

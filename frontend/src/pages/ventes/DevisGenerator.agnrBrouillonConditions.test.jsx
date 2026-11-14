@@ -98,13 +98,30 @@ describe('ATST27 — création', () => {
     renderGenerateurPage('/ventes/devis/nouveau')
     const ajouter = await screen.findByRole('button', { name: /Ajouter ligne/ })
     await new Promise(r => setTimeout(r, 1700))
-    // NB : pas de contrôle « vierge = non armé » ici — les lignes de composition
-    // par défaut portent déjà une désignation (signalé à l'orchestrateur, ATST27).
     fireEvent.click(ajouter)
     const derniere = [...document.querySelectorAll('tr[data-line-key]')].at(-1)
     fireEvent.change(derniere.querySelector('input'), { target: { value: 'Câble solaire 6 mm²' } })
     await waitFor(() => expect(quitterBloque()).toBe(true))
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem(NOUVEAU) || 'null')?.data.lines
       .map(l => l.designation)).toContain('Câble solaire 6 mm²'), { timeout: 4000 })
+  }, 15000)
+
+  // ATST56 — la composition par défaut n'est pas une saisie. Mutant : remettre
+  // le test « non vide » seul dans `lignesSaisies` ⇒ rouge.
+  it("création vierge : la composition par défaut n'arme ni la garde ni le brouillon", async () => {
+    const NOUVEAU = 'taqinor:draft:devis:new'
+    window.localStorage.removeItem(NOUVEAU)
+    renderGenerateurPage('/ventes/devis/nouveau')
+    await screen.findByRole('button', { name: /Ajouter ligne/ })
+    await waitFor(() => expect(document.querySelectorAll('tr[data-line-key]').length).toBeGreaterThan(0))
+    await new Promise(r => setTimeout(r, 1700))
+    expect(quitterBloque()).toBe(false)
+    expect(window.localStorage.getItem(NOUVEAU)).toBeNull()
+    // Contrôle : modifier une ligne PAR DÉFAUT arme la garde et écrit la clé.
+    const premiere = document.querySelector('tr[data-line-key]')
+    fireEvent.change(premiere.querySelector('input'), { target: { value: 'Onduleur réseau retouché' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(NOUVEAU) || 'null')?.data.lines
+      .map(l => l.designation)).toContain('Onduleur réseau retouché'), { timeout: 4000 })
   }, 15000)
 })

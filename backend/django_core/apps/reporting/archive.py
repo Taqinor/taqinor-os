@@ -18,6 +18,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from .gardes_lecture import lecture_source  # ADRG70
+from .services import borner_portee  # ALEC22 — portée du rôle
+from core.scoping import scope_client_queryset
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.crm.models import Client
 from apps.ventes.models import Devis, Facture, Avoir, BonCommande
@@ -168,17 +170,17 @@ def archive_client(request, pk):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     try:
-        client = Client.objects.get(pk=pk, **co)
+        client = scope_client_queryset(Client.objects.all(), request.user).get(pk=pk, **co)  # ALEC22
     except Client.DoesNotExist:
         return Response({'detail': 'Client introuvable.'}, status=404)
 
     docs = []
-    docs += _devis_docs(Devis.objects.filter(**co, client_id=client.id))
-    docs += _facture_docs(Facture.objects.filter(**co, client_id=client.id))
+    docs += _devis_docs(borner_portee(Devis.objects.filter(**co, client_id=client.id), request.user, 'devis'))
+    docs += _facture_docs(borner_portee(Facture.objects.filter(**co, client_id=client.id), request.user, 'factures'))
     docs += _avoir_docs(Avoir.objects.filter(**co, client_id=client.id))
     docs += _bon_commande_docs(
         BonCommande.objects.filter(**co, client_id=client.id))
-    for inst in Installation.objects.filter(**co, client_id=client.id):
+    for inst in borner_portee(Installation.objects.filter(**co, client_id=client.id), request.user, 'chantiers'):
         docs += _chantier_post_sale_docs(inst)
 
     docs = _apply_filters(docs, request)
@@ -214,7 +216,7 @@ def archive_chantier(request, pk):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     try:
-        inst = Installation.objects.select_related('client').get(pk=pk, **co)
+        inst = borner_portee(Installation.objects.select_related('client'), request.user, 'chantiers').get(pk=pk, **co)
     except Installation.DoesNotExist:
         return Response({'detail': 'Chantier introuvable.'}, status=404)
 

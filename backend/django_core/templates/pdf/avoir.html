@@ -121,24 +121,27 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L("Avoir au profit de") }}</div>
-      {% if avoir.client.type_client == 'entreprise' %}
-      <div class="partie-nom">{{ avoir.client.nom }}</div>
+      {# ASUP57 — l'acheteur figé de la facture d'origine (``generate_avoir_pdf``) ;
+         rendu direct du gabarit sans ce contexte : le client de la pièce. #}
+      {% set acheteur = acheteur or avoir.client %}
+      {% if acheteur.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ acheteur.nom }}</div>
       {% else %}
-      <div class="partie-nom">{{ avoir.client.nom }} {{ avoir.client.prenom or '' }}</div>
+      <div class="partie-nom">{{ acheteur.nom }} {{ acheteur.prenom or '' }}</div>
       {% endif %}
       {# APDF27 (C-APDF-009) — même bloc client entreprise que la facture
          (CIQ217 / AFAC56) : ICE, IF, RC chacun omis s'il est vide. #}
-      {% if avoir.client.type_client == 'entreprise' or avoir.client.ice or avoir.client.if_fiscal or avoir.client.rc %}
+      {% if acheteur.type_client == 'entreprise' or acheteur.ice or acheteur.if_fiscal or acheteur.rc %}
       <div class="partie-detail">
-        {% if avoir.client.ice %}ICE : {{ _iso(avoir.client.ice) }}<br />{% endif %}
-        {% if avoir.client.if_fiscal %}IF : {{ _iso(avoir.client.if_fiscal) }}<br />{% endif %}
-        {% if avoir.client.rc %}RC : {{ _iso(avoir.client.rc) }}<br />{% endif %}
+        {% if acheteur.ice %}ICE : {{ _iso(acheteur.ice) }}<br />{% endif %}
+        {% if acheteur.if_fiscal %}IF : {{ _iso(acheteur.if_fiscal) }}<br />{% endif %}
+        {% if acheteur.rc %}RC : {{ _iso(acheteur.rc) }}<br />{% endif %}
       </div>
       {% endif %}
       <div class="partie-detail">
-        {% if avoir.client.email %}{{ _iso(avoir.client.email) }}<br />{% endif %}
-        {% if avoir.client.telephone %}{{ _iso(avoir.client.telephone) }}<br />{% endif %}
-        {% if avoir.client.adresse %}{{ _iso(avoir.client.adresse) }}{% endif %}
+        {% if acheteur.email %}{{ _iso(acheteur.email) }}<br />{% endif %}
+        {% if acheteur.telephone %}{{ _iso(acheteur.telephone) }}<br />{% endif %}
+        {% if acheteur.adresse %}{{ _iso(acheteur.adresse) }}{% endif %}
       </div>
     </div>
   </div>

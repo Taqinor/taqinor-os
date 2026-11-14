@@ -675,6 +675,15 @@ def voit_le_secret(context, created_by_id):
     return created_by_id is not None and created_by_id == user.id
 
 
+def voit_les_coordonnees(context):
+    """ALEC43 — e-mail, téléphone, IP et navigateur d'un signataire : au seul
+    porteur de ``client_pii_voir`` ; sans requête (rendu interne), inchangé."""
+    if context.get('request') is None:
+        return True
+    user = getattr(context['request'], 'user', None)
+    return bool(user and user.is_authenticated and user.can_view_client_pii)
+
+
 class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                            serializers.ModelSerializer):
     """GED20 — Partage public d'un document par lien tokenisé.
@@ -1028,6 +1037,8 @@ class DemandeSignatureDocumentSerializer(ChampsStrictsSansDecimalMixin,
         if not voit_le_secret(self.context, instance.created_by_id):
             data.pop('token', None)
             data.pop('lien_signature', None)
+        if not voit_les_coordonnees(self.context):  # ALEC43 — clés gardées
+            data.update(dict.fromkeys(('signataire_email', 'adresse_ip', 'user_agent')))
         return data
 
 
@@ -1318,6 +1329,8 @@ class SignataireDemandeSerializer(ChampsStrictsSansDecimalMixin,
         # la demande et administrateur seulement.
         if not voit_le_secret(self.context, instance.demande.created_by_id):
             data.pop('lien_signature', None)
+        if not voit_les_coordonnees(self.context):  # ALEC43 — clés gardées
+            data.update(dict.fromkeys(('email', 'telephone', 'adresse_ip', 'user_agent')))
         return data
 
 

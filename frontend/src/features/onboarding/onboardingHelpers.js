@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux'
 import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
 import { useHasRole } from '../../hooks/useHasPermission'
+import useDroitMetier from '../sav/useDroitMetier'
 
 // Version du guide : incrémenter pour re-déclencher le guide chez tout le monde
 // après une refonte des étapes.
@@ -148,10 +149,13 @@ export function dismissOnboarding(companyId) {
 // Les deux lectures de comptes (produits, utilisateurs) de l'onboarding — UN
 // seul exemplaire, partagé par le hook ci-dessous et l'onglet « Prise en main ».
 // Une lecture en échec (ou /users/ non lisible) donne `null` : l'étape reste
-// « à faire », jamais d'erreur.
-export function lireComptesOnboarding(peutLireUsers) {
+// « à faire », jamais d'erreur. ADRG110 — la lecture stock exige `stock_voir`
+// (sans lui : 403 + erreur console à chaque page), rejetée comme /users/.
+export function lireComptesOnboarding(peutLireUsers, peutLireStock) {
   return Promise.allSettled([
-    stockApi.getProduits({ page_size: 1 }),
+    peutLireStock
+      ? stockApi.getProduits({ page_size: 1 })
+      : Promise.reject(new Error('stock non lisible')),
     peutLireUsers
       ? api.get('/users/')
       : Promise.reject(new Error('users non lisibles')),
@@ -172,19 +176,20 @@ export function useOnboardingSteps() {
   // /users/ est réservé aux paliers responsable/admin (ASEC10) : un compte
   // « normal » (Commercial…) ne l'appelle pas — sinon 403 sur chaque page.
   const peutLireUsers = useHasRole(['responsable', 'admin'])
+  const peutLireStock = useDroitMetier('stock_voir')
   const [produitCount, setProduitCount] = useState(null)
   const [userCount, setUserCount] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let alive = true
-    lireComptesOnboarding(peutLireUsers).then((comptes) => {
+    lireComptesOnboarding(peutLireUsers, peutLireStock).then((comptes) => {
       if (!alive) return
       setProduitCount(comptes.produitCount)
       setUserCount(comptes.userCount)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [peutLireUsers])
+  }, [peutLireUsers, peutLireStock])
 
   const steps = buildOnboardingSteps({ profile, produitCount, userCount })
   const doneCount = steps.filter((s) => s.done).length

@@ -54,6 +54,11 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     if _est_un_avenant(devis):  # VNT52
         return
 
+    from apps.crm.selectors import peut_contacter  # AMSG36 (D-AMSG-3)
+    if not peut_contacter(devis):
+        logger.info('AMSG36: devis %s — lead opposé : conversion non émise.', getattr(devis, 'reference', '?'))
+        return
+
     if _conversion_deja_emise(devis):  # ADVS34
         logger.info('ADVS34: CAPI SignedQuote déjà émis pour devis %s.', getattr(devis, 'reference', '?'))
         return

@@ -121,10 +121,10 @@ export default function DevisList() {
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
-  // QG10 — seul le Directeur / Commercial responsable peut MODIFIER le
-  // pourcentage des variantes (le backend variante-config renvoie 403 sinon).
+  // QG10 / ADRG11 (D-ADRG-5) — MODIFIER le pourcentage des variantes exige
+  // `parametres_modifier` (le backend variante-config renvoie 403 sinon).
   // Les autres rôles voient la valeur par défaut en lecture seule.
-  const canEditVariantePct = useHasPermission(null, ['Directeur', 'Commercial responsable'])
+  const canEditVariantePct = useHasPermission('parametres_modifier')
   // VX199 — accepter/refuser un devis exige la permission ERP fine
   // `ventes_valider` (garde backend HasPermissionOrLegacy) : on cache
   // l'affordance pour les rôles « lecture + une écriture » (ex. Commercial)
@@ -432,8 +432,8 @@ export default function DevisList() {
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
   // config société (CompanyProfile.variante_pct via GET variante-config), avec
-  // repli à 20 % si la lecture échoue. La saisie n'est autorisée que pour le
-  // Directeur / Commercial responsable (sinon champ en lecture seule).
+  // repli à 20 % si la lecture échoue. La saisie exige `parametres_modifier`
+  // (sinon champ en lecture seule).
   // ACNC13 — une clé d'idempotence par ouverture de dialogue (variante, gamme),
   // gardée entre deux clics (renvoi après coupure réseau), remise à zéro au succès.
   const cleVarianteRef = useRef(null)
@@ -1135,7 +1135,7 @@ export default function DevisList() {
 
       {/* QG10 — Modale « Variantes » : confirmer / éditer le pourcentage puis
           créer les 3 variantes et router vers la comparaison. Le champ % n'est
-          éditable que pour le Directeur / Commercial responsable. */}
+          éditable qu'avec le droit « Modifier les paramètres ». */}
       <ResponsiveDialog
         open={!!varianteTarget}
         onOpenChange={(o) => { if (!o) closeVarianteModal() }}
@@ -1171,7 +1171,7 @@ export default function DevisList() {
             <p className="text-xs text-muted-foreground">
               {canEditVariantePct
                 ? 'Par défaut, la valeur de la société. Modifiez-la pour cette génération uniquement.'
-                : 'Valeur par défaut de la société (modification réservée au Directeur et au Commercial responsable).'}
+                : 'Valeur par défaut de la société (modification réservée au droit « Modifier les paramètres »).'}
             </p>
             {/* Aperçu des 3 échelles dérivées du pourcentage. */}
             {(() => {

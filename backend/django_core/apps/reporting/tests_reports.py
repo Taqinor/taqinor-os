@@ -91,6 +91,12 @@ class TestSalesReport(ReportsBase):
             user = User.objects.create_user(
                 username=f'adrg70-{nom}', password='x',
                 company=self.company, role=role)
+            # ALEC22 — l'archive client est bornée à la portée du rôle (client
+            # hors portée → 404) : le client C70 est rattaché à un lead dont
+            # l'utilisateur est responsable, pour que seul le droit de lecture
+            # du module source (ADRG70) décide ici.
+            Lead.objects.create(company=self.company, nom=f'L70-{nom}',
+                                stage='NEW', client=client, owner=user)
             api = APIClient()
             api.credentials(
                 HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')

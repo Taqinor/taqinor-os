@@ -113,3 +113,51 @@ class CaviardageSecretsTests(TestCase):
         change = self._changement('first_name')
         self.assertIsNotNone(change)
         self.assertEqual((change['old'], change['new']), ('Avant', 'Apres'))
+
+    def test_effacement_caviarde_les_valeurs_personnelles_du_journal(self):
+        """ASUP13 (D-ASUP-1) — après l'effacement d'un client, aucune ligne
+        ``changes`` de ce client ni de ses leads ne garde son nom, téléphone,
+        e-mail, CIN ou ICE ; l'autre client intact ; la chaîne reste ``ok``."""
+        import json
+
+        from apps.audit.selectors import verify_audit_chain
+        from core import dsr
+        from core.models import DataSubjectRequest
+        Client = django_apps.get_model('crm', 'Client')
+        Lead = django_apps.get_model('crm', 'Lead')
+        pii = {'nom': 'Zerhouni', 'prenom': 'Yasmine', 'email': 'y.zerhouni@asup13.test',
+               'telephone': '0661234513', 'cin': 'AB123456', 'ice': '001122334455667'}
+        client = Client.objects.create(company=self.company, **pii)
+        lead = Lead.objects.create(company=self.company, nom='Zerhouni', prenom='Yasmine',
+                                   email=pii['email'], telephone=pii['telephone'])
+        autre = Client.objects.create(company=self.company, nom='Témoin', email='temoin@asup13.test',
+                                      telephone='0661111113')
+
+        def modifier():
+            client.telephone, client.cin, client.ice = '0661234599', 'AB654321', '009988776655443'
+            client.save()
+            lead.telephone = '0661234599'
+            lead.save()
+            autre.telephone = '0661111199'
+            autre.save()
+        self._en_requete(modifier)
+        demande = DataSubjectRequest.objects.create(
+            company=self.company, subject_identifier=pii['email'],
+            kind=DataSubjectRequest.KIND_ERASURE)
+        self._en_requete(lambda: dsr.traiter_demande(demande))
+
+        def lignes(modele, pk):
+            return AuditLog.objects.filter(
+                company=self.company, content_type=ContentType.objects.get_for_model(modele),
+                object_id=str(pk), changes__isnull=False)
+        du_sujet = list(lignes(Client, client.pk)) + list(lignes(Lead, lead.pk))
+        self.assertGreaterEqual(len(du_sujet), 2)
+        valeurs = list(pii.values()) + ['0661234599', 'AB654321', '009988776655443']
+        for ligne in du_sujet:
+            texte = json.dumps(ligne.changes, ensure_ascii=False)
+            for valeur in valeurs:
+                self.assertNotIn(valeur, texte)
+        self.assertIn('[effacé]', json.dumps([x.changes for x in du_sujet], ensure_ascii=False))
+        temoin = {c['field']: (c['old'], c['new']) for x in lignes(Client, autre.pk) for c in x.changes}
+        self.assertEqual(temoin['telephone'], ('0661111113', '0661111199'))
+        self.assertTrue(verify_audit_chain(self.company.pk)['ok'])

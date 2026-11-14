@@ -1,5 +1,6 @@
 """NTOBS1 — page de statut publique : composants + incidents, jamais de fuite
 société."""
+from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
@@ -26,12 +27,31 @@ class PublicStatusEndpointTest(TestCase):
         ComponentStatus.objects.create(
             nom='API', region='EU-West/Hetzner',
             statut=ComponentStatus.Statut.DEGRADED, company=None,
+            derniere_verification=timezone.now(),
         )
         resp = self.client.get('/api/django/statuspage/public/')
         self.assertEqual(resp.status_code, 200)
         noms = {c['nom']: c['statut'] for c in resp.data['composants']}
         self.assertEqual(noms['API'], 'degraded')
         self.assertEqual(resp.data['overall_status'], 'degraded')
+
+    def test_statut_inconnu_quand_verification_perimee(self):
+        # ACEL36 (D-ACEL-3) : worker arrêté => la page ne ment pas « opérationnel ».
+        vieux = timezone.now() - timedelta(minutes=20)
+        for nom in ('API', 'PDF-devis'):
+            ComponentStatus.objects.create(
+                nom=nom, region='EU', company=None, derniere_verification=vieux,
+                statut=ComponentStatus.Statut.OPERATIONAL)
+        resp = self.client.get('/api/django/statuspage/public/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['overall_status'], 'inconnu')
+        self.assertTrue(resp.data['donnees_perimees'])
+        self.assertEqual(len(resp.data['composants']), 2)
+        cache.clear()
+        ComponentStatus.objects.update(derniere_verification=timezone.now())
+        resp = self.client.get('/api/django/statuspage/public/')
+        self.assertEqual(resp.data['overall_status'], 'operational')
+        self.assertFalse(resp.data['donnees_perimees'])
 
     def test_incident_with_updates_visible_publicly(self):
         incident = IncidentPublic.objects.create(

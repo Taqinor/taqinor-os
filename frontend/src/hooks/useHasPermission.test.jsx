@@ -23,6 +23,8 @@ import {
   useCanListFactures,
   useCanLireParcMonitoring,
   useCanLireEquipesCrm,
+  useCanListAssignableUsers,
+  useCanLireTableauDeBord,
   PRODUIT_CREATE_ROLES,
   VENTES_VALIDER_PERMISSION,
 } from './useHasPermission'
@@ -228,6 +230,14 @@ describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-L
   const parc = (auth) => renderHook(() => useCanLireParcMonitoring(), { wrapper: renderWithAuth(auth) }).result.current
   const equipes = (auth) => renderHook(() => useCanLireEquipesCrm(), { wrapper: renderWithAuth(auth) }).result.current
 
+  it('useCanListAssignableUsers : Lecteur et Technicien non, Commercial et légacy responsable oui', () => {
+    const assignables = (auth) => renderHook(() => useCanListAssignableUsers(),
+      { wrapper: renderWithAuth(auth) }).result.current
+    expect(assignables(VIEWER)).toBe(false)
+    expect(assignables({ role: 'normal', role_nom: 'Technicien', permissions: ['installation_voir', 'sav_gerer'] })).toBe(false)
+    expect(assignables({ role: 'normal', role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer', 'crm_modifier'] })).toBe(true)
+    expect(assignables({ role: 'responsable', permissions: [] })).toBe(true)
+  })
   it('Lecteur (que des *_voir) : ni parc ni équipes (le serveur répond 403)', () => {
     expect(parc(VIEWER)).toBe(false)
     expect(equipes(VIEWER)).toBe(false)
@@ -254,5 +264,23 @@ describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-L
     const av = { role: 'responsable', role_nom: 'Admin Ventes', permissions: ['crm_creer', 'ventes_creer', 'stock_voir'] }
     expect(parc(av)).toBe(false)
     expect(parc({ ...av, permissions: [...av.permissions, 'equipement_voir'] })).toBe(true)
+  })
+})
+
+// ADRG120 — `reporting/dashboard/` (ADRG70) : responsable + `reporting_*` + lecture des ventes.
+describe('useCanLireTableauDeBord (ADRG120)', () => {
+  const lire = (auth) => renderHook(() => useCanLireTableauDeBord(), { wrapper: renderWithAuth(auth) }).result.current
+  it('useCanLireTableauDeBord : Technicien et Lecteur non, Commercial oui', () => {
+    expect(lire({ role: 'normal', role_nom: 'Technicien',
+      permissions: ['installation_voir', 'installation_modifier', 'sav_voir', 'sav_creer', 'reporting_voir'] })).toBe(false)
+    expect(lire({ role: 'normal', role_nom: 'Viewer',
+      permissions: ['crm_voir', 'ventes_voir', 'reporting_voir'] })).toBe(false)
+    expect(lire({ role: 'normal', role_nom: 'Commercial',
+      permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'ventes_creer', 'reporting_voir'] })).toBe(true)
+  })
+  it('palier admin et compte hérité responsable : oui ; hérité normal : non', () => {
+    expect(lire({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
+    expect(lire({ role: 'responsable' })).toBe(true)
+    expect(lire({ role: 'normal' })).toBe(false)
   })
 })

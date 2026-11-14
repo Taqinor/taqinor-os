@@ -27,6 +27,7 @@ from authentication.permissions import (
 
 from .models import SettingsAuditLog
 from .models_email import (
+    CLES_EMAIL_SUJET_SEUL,
     EMAIL_TEMPLATE_DEFAULTS,
     EMAIL_TEMPLATE_PLACEHOLDERS,
     EmailTemplate,
@@ -51,6 +52,7 @@ _EMAILS_EFFECTIFS = inline_serializer('EmailTemplatesEffectifs', {
         'sujet_en': serializers.CharField(), 'sujet_ar': serializers.CharField(),
         'corps_en': serializers.CharField(), 'corps_ar': serializers.CharField(),
         'personnalise': serializers.BooleanField(),
+        'corps_modifiable': serializers.BooleanField(),  # AMSG89
         'placeholders': serializers.ListField(child=serializers.CharField()),
     }, many=True),
 })
@@ -82,6 +84,8 @@ def effective_email_templates(company):
             **{champ: (getattr(row, champ, '') or '') if row else ''
                for champ in CHAMPS_TRADUITS},  # ASOC99
             'personnalise': row is not None,
+            # AMSG89 — l'envoi d'une clé « sujet seul » ignore le corps.
+            'corps_modifiable': cle not in CLES_EMAIL_SUJET_SEUL,
             'placeholders': EMAIL_TEMPLATE_PLACEHOLDERS.get(cle, []),
         })
     return out

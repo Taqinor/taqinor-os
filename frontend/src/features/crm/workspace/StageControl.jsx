@@ -29,7 +29,7 @@ import { rottingLevel, thresholdsForIndex } from './rotting.js'
 //
 // Clés/labels d'étape : features/crm/stages.js UNIQUEMENT (miroir STAGES.py,
 // règle #2) — aucun littéral de clé ici.
-export default function StageControl({ state, onChangeStage, onSigne }) {
+export default function StageControl({ state, onChangeStage, onSigne, disabled = false }) {
   const server = state.server || {}
   const currentStage = server.stage
   const sinceDays = server.stage_since_days
@@ -48,7 +48,7 @@ export default function StageControl({ state, onChangeStage, onSigne }) {
   // panneau (devis…) est ouvert par-dessus la fiche ; une frappe là-dedans ne
   // change jamais l'étape du lead (garde dans useFocusedRecordShortcuts).
   const rootRef = useRef(null)
-  useFocusedRecordShortcuts('leadForm', shortcutHandlers, isEdit, { scopeRef: rootRef })
+  useFocusedRecordShortcuts('leadForm', shortcutHandlers, isEdit && !disabled, { scopeRef: rootRef })
 
   const currentIndex = PIPELINE_STAGES.indexOf(currentStage)
   const level = rottingLevel(sinceDays, thresholdsForIndex(currentIndex))
@@ -74,7 +74,8 @@ export default function StageControl({ state, onChangeStage, onSigne }) {
           <button
             type="button"
             className="lw-stagepill"
-            title="Changer l'étape du lead"
+            disabled={disabled} // ADRG121 — sans `crm_modifier` : étape lisible, jamais modifiable
+            title={disabled ? "Vous n'avez pas le droit de modifier l'étape" : "Changer l'étape du lead"}
           >
             <StatusPill status={currentStage} label={STAGE_LABELS[currentStage] ?? currentStage} />
             {currentStage && sinceDays != null && (

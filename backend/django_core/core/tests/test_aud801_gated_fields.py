@@ -21,6 +21,7 @@ devient une clé de ligne), un ``order_by`` (l'ordre relatif) et un agrégat
 DÉFAUT : une spec SANS ``select`` projetait tous les champs.
 """
 from decimal import Decimal
+from importlib import import_module
 
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
@@ -49,13 +50,17 @@ class Aud801GatedFieldsTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='AUD801 SARL')
-        # Rôle SANS ``prix_achat_voir`` → ``can_view_buy_prices`` faux.
+        # ATST13 — rôles LIVRÉS : Technicien SANS ``prix_achat_voir`` →
+        # ``can_view_buy_prices`` faux ; Directeur avec (jamais un code inventé).
+        # Registre par ``import_module`` : core n'importe jamais apps.roles (ENF20).
+        registre = import_module('apps.roles.permissions_registre')
+        assert 'prix_achat_voir' not in registre.TECHNICIEN_PERMISSIONS
         cls.role_sans = Role.objects.create(
-            company=cls.company, nom='AUD801 sans prix',
-            permissions=['tickets_gerer'])
+            company=cls.company, nom='AUD801 Technicien livré',
+            permissions=list(registre.TECHNICIEN_PERMISSIONS))
         cls.role_avec = Role.objects.create(
-            company=cls.company, nom='AUD801 avec prix',
-            permissions=['tickets_gerer', 'prix_achat_voir'])
+            company=cls.company, nom='AUD801 Directeur livré',
+            permissions=list(registre.DIRECTEUR_PERMISSIONS))
         cls.sans_droit = User.objects.create_user(
             username='aud801_sans', password='x', company=cls.company,
             role=cls.role_sans)

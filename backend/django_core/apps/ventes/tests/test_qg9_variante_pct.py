@@ -5,8 +5,8 @@ Couvre :
     / 1.2 (± 20 %) ;
   * valeur changée : la config société pilote les échelles ;
   * override par requête (``variante_pct`` ou ``scales``) ;
-  * endpoint ``variante-config`` : GET ouvert, PUT réservé Directeur /
-    Commercial responsable (403 sinon) ;
+  * endpoint ``variante-config`` : GET ouvert, PUT réservé au droit
+    ``parametres_modifier`` (ADRG11, 403 sinon) ;
   * scoping société de la config.
 """
 from decimal import Decimal
@@ -136,9 +136,13 @@ class VarianteConfigEndpointTests(TestCase):
             CompanyProfile.get(company=self.company).variante_pct,
             Decimal('25'))
 
-    def test_commercial_responsable_can_change(self):
+    def test_commercial_responsable_refuse_sans_parametres_modifier(self):
+        # ADRG11 (D-ADRG-5) — le Commercial responsable livré ne porte pas
+        # ``parametres_modifier`` : 403, rien d'écrit.
         resp = self._put(self.commercial, 15)
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(
+            CompanyProfile.get(company=self.company).variante_pct, Decimal('20'))
 
     def test_commercial_et_viewer_livres_refuses(self):
         for user in (self.commercial_livre, self.viewer):

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /* XPLT18 — "Générer une règle (IA)" : propose→confirme. La proposition
@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 const {
   proposeDraft, getRules, getRuns, getApprovals, getTemplates,
   getWebhooks, createWebhook, rotateWebhook, updateWebhook, deleteWebhook,
+  saveRule, toastError,
 } = vi.hoisted(() => ({
   proposeDraft: vi.fn(() => Promise.resolve({
     data: { id: 99, nom: 'Relance J+2', enabled: false, trigger_type: 'devis_accepted', action_type: 'create_activity' },
@@ -24,14 +25,23 @@ const {
   rotateWebhook: vi.fn(() => Promise.resolve({ data: {} })),
   updateWebhook: vi.fn(() => Promise.resolve({ data: {} })),
   deleteWebhook: vi.fn(() => Promise.resolve({ data: {} })),
+  // AMSG94 — ajout d'une règle (refus 400 par champ simulé dans le test).
+  saveRule: vi.fn(() => Promise.resolve({ data: {} })),
+  toastError: vi.fn(),
 }))
 
 vi.mock('../../api/automationApi', () => ({
   default: {
     proposeDraft, getRules, getRuns, getApprovals, getTemplates,
     getWebhooks, createWebhook, rotateWebhook, updateWebhook, deleteWebhook,
+    saveRule,
   },
 }))
+
+vi.mock('../../ui/confirm', async (importOriginal) => {
+  const reel = await importOriginal()
+  return { ...reel, toast: { ...reel.toast, error: toastError } }
+})
 
 import AutomatisationsSection from './AutomatisationsSection'
 
@@ -106,5 +116,27 @@ describe('AutomatisationsSection — WIR61 (12 déclencheurs + webhooks)', () =>
     render(<AutomatisationsSection />)
     await screen.findByText('Webhooks entrants')
     await waitFor(() => expect(getWebhooks).toHaveBeenCalled())
+  })
+})
+
+describe('AutomatisationsSection — AMSG94 refus du serveur sous « Config action »', () => {
+  it("le 400 action_config s'affiche sous Config action, pas « Ajout impossible. »", async () => {
+    saveRule.mockRejectedValueOnce({
+      response: { status: 400, data: { action_config: ["« Envoyer un email » : corps obligatoire (clé « body »)."] } },
+    })
+    render(<AutomatisationsSection />)
+    await screen.findByText('Automatisations')
+    fireEvent.change(screen.getByPlaceholderText('Nom de la règle'), { target: { value: 'Relance' } })
+    const config = screen.getByPlaceholderText(/^Config action \(JSON, ex\./)
+    fireEvent.change(config, { target: { value: '{"subject": "Relance"}' } })
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter la règle/ }))
+
+    await waitFor(() => expect(saveRule).toHaveBeenCalled())
+    expect(await screen.findByText(/corps obligatoire/)).toBeInTheDocument()
+    expect(config).toHaveAttribute('aria-invalid', 'true')
+    expect(toastError).not.toHaveBeenCalledWith('Ajout impossible.')
+    // L'erreur s'efface à la frappe dans ce champ.
+    fireEvent.change(config, { target: { value: '{"subject": "Relance", "body": "x"}' } })
+    expect(screen.queryByText(/corps obligatoire/)).toBeNull()
   })
 })

@@ -54,8 +54,11 @@ vi.mock('../../api/recordsApi', () => ({
 import GedDocumentInsights from './GedDocumentInsights'
 
 const doc = { id: 42, nom: 'Contrat.pdf', favori: false }
-const renderPanel = () => {
-  const store = configureStore({ reducer: { auth: () => ({ user: { username: 'reda', role: 'admin' } }) } })
+// ADRG80 — écrire une ACL suit `ged_gouvernance` : compte hérité au palier
+// admin par défaut (repli `HasPermissionOrLegacy`), Commercial à la demande.
+const AUTH_ADMIN = { user: { username: 'reda', role: 'admin' }, role: 'admin' }
+const renderPanel = (auth = AUTH_ADMIN) => {
+  const store = configureStore({ reducer: { auth: () => auth } })
   return render(
     <Provider store={store}>
       <ThemeProvider>
@@ -128,6 +131,15 @@ describe('WIR70 GedDocumentInsights', () => {
     await waitFor(() => expect(H.createAcl).toHaveBeenCalledWith({
       document: 42, utilisateur: 6, niveau: 'lecture', herite: true,
     }))
+  })
+
+  it('ADRG80 — sans ged_gouvernance : ni « Ajouter » ni « Retirer ce droit »', async () => {
+    const user = userEvent.setup()
+    renderPanel({ role: 'responsable', role_nom: 'Commercial', permissions: ['ged_voir', 'ged_gerer'] })
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    expect(await screen.findByText('sami')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ajouter' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Retirer ce droit/ })).toBeNull()
   })
 
   it('ERR-QAH-GED-DETAILS-CRASH-PERMISSIONS — {"lignes":[…]} ne fait jamais planter le panneau', async () => {

@@ -14,6 +14,7 @@ import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
 import { toastSiMuet } from '../listesGed'
 import { useConfirmDialog } from '../../../ui/confirm'
+import useDroitMetier from '../../sav/useDroitMetier'
 
 /* ============================================================================
    PACT133 — Règles d'accès par métadonnée (XGED21, couche dynamique).
@@ -48,6 +49,8 @@ function niveauLabel(niveau) {
 
 export default function ReglesAclPage() {
   const { confirmDelete } = useConfirmDialog()
+  // ADRG80 — écrire une règle d'ACL exige `ged_gouvernance` (D-ADRG-8).
+  const peutGouverner = useDroitMetier('ged_gouvernance')
   const [regles, setRegles] = useState([])
   const [roles, setRoles] = useState([])
   const [showCreate, setShowCreate] = useState(false)
@@ -92,9 +95,9 @@ export default function ReglesAclPage() {
       <ListShell
         title="Règles d'accès par métadonnée"
         subtitle="Accès automatique par rôle selon une condition sur les tags/type/données du document (recalculé à chaque lecture)."
-        actions={<Button onClick={() => setShowCreate(true)}><Plus /> Nouvelle règle</Button>}
+        actions={peutGouverner && <Button onClick={() => setShowCreate(true)}><Plus /> Nouvelle règle</Button>}
         columns={columns} rows={regles} loading={loading} error={error}
-        rowActions={rowActions} searchable exportName="regles-acl-metadonnee"
+        rowActions={peutGouverner ? rowActions : undefined} searchable exportName="regles-acl-metadonnee"
         emptyTitle="Aucune règle ACL par métadonnée" emptyDescription="Créez une règle pour accorder un accès automatique par rôle."
       />
 

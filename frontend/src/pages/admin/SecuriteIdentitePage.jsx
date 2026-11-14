@@ -282,6 +282,7 @@ function ServiceAccountsTab() {
 function BanniereTab() {
   const [banner, setBanner] = useState('')
   const [lockout, setLockout] = useState('')
+  const [dormant, setDormant] = useState('') // ACEL13 (D-ACEL-2) — 0 = jamais
   const [loading, setLoading] = useState(true)
   // AERR57 — lecture échouée : champs vides ⇒ enregistrer poserait un seuil 0
   // (verrouillage DÉSACTIVÉ) et effacerait la bannière. Rien ne part.
@@ -290,6 +291,7 @@ function BanniereTab() {
     .then((r) => {
       setBanner(r.data?.login_banner_text ?? '')
       setLockout(String(r.data?.lockout_max_attempts ?? ''))
+      setDormant(String(r.data?.dormant_days ?? ''))
     })
     .catch(() => setLectureEchouee(true)).finally(() => setLoading(false))
   const charger = () => {
@@ -304,6 +306,7 @@ function BanniereTab() {
       await parametresApi.updateProfile({
         login_banner_text: banner,
         lockout_max_attempts: Number(lockout) || 0,
+        dormant_days: Number(dormant) || 0,
       })
       toast.success('Enregistré.')
     } catch (e) { signaler404(e, 'Enregistrement impossible.') }
@@ -326,6 +329,14 @@ function BanniereTab() {
           <Label htmlFor="lockout">Seuil de verrouillage (tentatives)</Label>
           <Input id="lockout" value={lockout} type="number"
             onChange={(e) => setLockout(e.target.value)} placeholder="0 = désactivé" />
+        </div>
+        <div className="max-w-[320px]">
+          <Label htmlFor="dormant">Désactivation des comptes dormants (jours)</Label>
+          <Input id="dormant" value={dormant} type="number" min="0"
+            onChange={(e) => setDormant(e.target.value)} placeholder="0 = jamais" />
+          <p className="mt-1 text-xs text-muted-foreground">
+            0 = jamais : un compte sans connexion depuis ce nombre de jours est désactivé chaque matin.
+          </p>
         </div>
         {lectureEchouee && (
           <div role="alert" className="flex items-center gap-3 text-sm text-destructive">

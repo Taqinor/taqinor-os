@@ -33,7 +33,7 @@ describe('LW41 — pas de double requête historique quand chatter_recent est d�
     }
     renderEdit(lead)
     // Laisse les effets/microtasks s'écouler.
-    await waitFor(() => expect(crmApi.getAssignableUsers).toHaveBeenCalled())
+    await waitFor(() => expect(crmApi.getTags).toHaveBeenCalled())
     expect(api.get).not.toHaveBeenCalledWith('/crm/leads/1/historique/')
   })
 

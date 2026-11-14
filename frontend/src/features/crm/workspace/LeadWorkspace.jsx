@@ -17,6 +17,7 @@ import {
   SkeletonAvatar, SkeletonLine, SkeletonText, SkeletonCard, FadeSwap,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
+import { useCanListAssignableUsers } from '../../../hooks/useHasPermission'
 import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
@@ -210,9 +211,10 @@ export default function LeadWorkspace({
   const [tagOptions, setTagOptions] = useState([])
   const [motifOptions, setMotifOptions] = useState([])
   const [historique, setHistorique] = useState([])
+  const peutAssignables = useCanListAssignableUsers() // ADRG113 — sinon 403 (Viewer)
 
   useEffect(() => {
-    crmApi.getAssignableUsers().then((r) => setUsers(r.data.results ?? r.data)).catch(() => {})
+    if (peutAssignables) crmApi.getAssignableUsers().then((r) => setUsers(r.data.results ?? r.data)).catch(() => {})
     // ENF15 : référentiels paginés (PAGE_SIZE 50) — lecture COMPLÈTE, pas la seule page 1.
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       crmApi.getTags({ page, page_size: pageSize }).then((r) => r.data))
@@ -220,7 +222,7 @@ export default function LeadWorkspace({
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       crmApi.getMotifsPerte({ page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => setMotifOptions((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived))).catch(() => {})
-  }, [])
+  }, [peutAssignables])
 
   // LW43 — garde d'identité : `leadId` capturé À L'ENVOI (`requestedId`),
   // comparé au VRAI courant (`leadIdRef`, tenu à jour à chaque rendu — jamais

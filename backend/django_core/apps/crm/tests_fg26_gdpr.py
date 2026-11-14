@@ -95,6 +95,23 @@ class FG26GdprTest(TestCase):
         self.assertEqual(ailleurs.nom, 'Ailleurs')
         self.assertTrue(ailleurs.telephone)
 
+    def test_anonymize_efface_aussi_les_leads_en_corbeille_du_client(self):
+        """ASUP62 — un lead du client en corbeille, à e-mail/téléphone
+        différents de ceux du client, est anonymisé et reste en corbeille."""
+        from apps.crm.models import Lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Corbeille', client=self.client_obj,
+            email='autre.corbeille@example.com', telephone='0699887766')
+        lead.soft_delete()
+        r = self.api.post(
+            f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
+        self.assertEqual(r.status_code, 200, r.content)
+        lead = Lead.all_objects.get(pk=lead.pk)
+        self.assertEqual(lead.nom, 'Anonymisé')
+        self.assertFalse(lead.email)
+        self.assertFalse(lead.telephone)
+        self.assertTrue(lead.is_deleted)
+
     def test_anonymize_idempotent_guard(self):
         self.api.post(
             f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
