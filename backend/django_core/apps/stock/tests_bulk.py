@@ -46,6 +46,39 @@ class TestBulkPrice(ProductBulkBase):
         self.assertEqual(p.prix_vente, Decimal('1100.00'))
         self.assertEqual(p.prix_achat, Decimal('600'))  # JAMAIS modifié
 
+    def test_pourcentage_rejoue_meme_cle_sans_cumul(self):
+        """ACNC24 (C-ACNC-006) — « +10 % » renvoyé sous la même
+        ``Idempotency-Key`` (réponse perdue) : 1 100 et 2 200, jamais 1 210."""
+        p1 = self.mk(prix_vente=Decimal('1000'))
+        p2 = self.mk(prix_vente=Decimal('2000'))
+        corps = {'action': 'set_price', 'ids': [p1.id, p2.id],
+                 'mode': 'percent', 'valeur': '10'}
+        for _ in range(2):
+            resp = self.api.post('/api/django/stock/produits/bulk/', corps,
+                                 format='json', HTTP_IDEMPOTENCY_KEY='k1')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            self.assertEqual(resp.json()['updated'], 2)
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual((p1.prix_vente, p2.prix_vente),
+                         (Decimal('1100.00'), Decimal('2200.00')))
+
+    def test_panne_a_mi_boucle_ne_change_aucun_prix(self):
+        """ACNC24 — la sauvegarde du 2ᵉ produit échoue : tout-ou-rien, aucun
+        prix changé. Mutant : retirer ``transaction.atomic`` ⇒ prix mêlés."""
+        from unittest import mock
+        p1 = self.mk(prix_vente=Decimal('1000'))
+        p2 = self.mk(prix_vente=Decimal('2000'))
+        with mock.patch('apps.stock.views.produit.emettre_produit_modifie',
+                        side_effect=[None, RuntimeError('panne')]):
+            resp = self.bulk(action='set_price', ids=[p1.id, p2.id],
+                             mode='percent', valeur='10')
+        self.assertEqual(resp.status_code, 500, resp.content)  # handler global : 500 journalisé
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual((p1.prix_vente, p2.prix_vente),
+                         (Decimal('1000'), Decimal('2000')))
+
     def test_fixed_price(self):
         p = self.mk(prix_vente=Decimal('1000'))
         self.bulk(action='set_price', ids=[p.id], mode='fixed', valeur='750')

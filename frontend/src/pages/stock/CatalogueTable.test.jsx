@@ -410,7 +410,7 @@ describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
     expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
   })
 
-  it('sans canWrite : aucune action « Mettre au rebut » même avec onRebut fourni', async () => {
+  it('ADRG107 — sans canWrite (`stock_modifier`) mais avec onRebut (`stock_mouvement`) : l\'action suit onRebut', async () => {
     renderTable({ canWrite: false, onRebut: vi.fn() })
     const grid = screen.getByRole('grid')
     const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
@@ -418,8 +418,7 @@ describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
     // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
     await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
 
-    await screen.findByRole('menu')
-    expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
+    expect(await screen.findByRole('menuitem', { name: /Mettre au rebut/ })).toBeInTheDocument()
   })
 })
 

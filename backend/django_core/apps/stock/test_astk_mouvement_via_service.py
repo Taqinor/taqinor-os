@@ -52,6 +52,26 @@ class MouvementViaServiceTests(TestCase):
         self.produit.refresh_from_db()
         return self.produit.quantite_stock
 
+    def test_meme_cle_un_seul_mouvement(self):
+        """ACNC22 (C-ACNC-005) — même ``Idempotency-Key`` + même corps
+        (réponse du premier perdue) ⇒ un seul mouvement, réponse rejouée
+        (même id) ; corps différent sous la même clé ⇒ 409. Mutant : retirer
+        ``IdempotentCreateMixin`` ⇒ deux mouvements."""
+        corps = {'produit': self.produit.pk, 'type_mouvement': 'entree',
+                 'quantite': 5}
+        r1 = self.api.post(URL, corps, format='json', HTTP_IDEMPOTENCY_KEY='k1')
+        r2 = self.api.post(URL, corps, format='json', HTTP_IDEMPOTENCY_KEY='k1')
+        self.assertEqual(r1.status_code, 201, r1.content)
+        self.assertEqual(r2.status_code, 201, r2.content)
+        self.assertEqual(r2.json()['id'], r1.json()['id'])
+        self.assertEqual(MouvementStock.objects.filter(
+            produit=self.produit).count(), 1)
+        self.assertEqual(self._stock(), 105)
+        r3 = self.api.post(URL, dict(corps, quantite=6), format='json',
+                           HTTP_IDEMPOTENCY_KEY='k1')
+        self.assertEqual(r3.status_code, 409, r3.content)
+        self.assertEqual(self._stock(), 105)
+
     def test_transfert_et_rebut_refuses(self):
         for type_mv, q in (('transfert', 5), ('rebut', 3)):
             r = self._post(type_mv, q)

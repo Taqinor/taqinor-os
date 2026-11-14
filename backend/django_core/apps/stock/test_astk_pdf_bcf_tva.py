@@ -89,6 +89,8 @@ class PdfBcfTvaTests(TestCase):
 
     def test_avoir_retour_au_taux_du_produit(self):
         Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=5)
+        # ACNC28 — un retour lié au BCF ne rend pas plus que le reçu : 1 unité reçue.
+        type(self.ligne).objects.filter(pk=self.ligne.pk).update(quantite_recue=1)
         retour = RetourFournisseur.objects.create(
             company=self.company, reference=f'RET-ASTK65-{next(_seq)}',
             fournisseur=self.fournisseur, bon_commande=self.bc)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ReceiptText, Plus, FileText, AlertTriangle, ShieldCheck,
   Wallet, CalendarClock,
 } from 'lucide-react'
@@ -79,6 +79,7 @@ export function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [cle] = useState(() => globalThis.crypto?.randomUUID?.() ?? `facture-${Date.now()}`)  // ACNC23 — par ouverture
 
   // Aide : TTC = HT + TVA quand l'utilisateur n'a pas saisi de TTC à la main.
   const onHt = (v) => {
@@ -98,7 +99,7 @@ export function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
     if (!(Number(montantTtc) > 0)) { setError('Saisissez un montant TTC positif.'); return }
     setBusy(true)
     try {
-      await stockApi.createFactureFournisseur({
+      const r = await stockApi.createFactureFournisseur({
         fournisseur: Number(fournisseur),
         bon_commande: bonCommande ? Number(bonCommande) : null,
         type_achat: typeAchat,
@@ -109,8 +110,11 @@ export function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
         montant_tva: Number(montantTva) || 0,
         montant_ttc: Number(montantTtc) || 0,
         note: note || null,
-      })
-      onSaved?.('Facture fournisseur enregistrée.')
+      }, { idempotencyKey: cle })
+      // ACNC23 — XPUR11 : l'avertissement de doublon servi par le serveur est dit.
+      const doublons = (r?.data?.doublon_warning ?? []).map((d) => d.reference).filter(Boolean)
+      onSaved?.(doublons.length ? `Facture enregistrée. Facture déjà saisie : ${doublons.join(', ')}.`
+        : 'Facture fournisseur enregistrée.')
       onClose()
     } catch (err) {
       setError(frError(err, "L'enregistrement de la facture a échoué."))
@@ -235,6 +239,7 @@ export function FactureDetail({
   // Admin peut résoudre (débloque le paiement), commentaire optionnel.
   const [resolving, setResolving] = useState(false)
   const [commentaire, setCommentaire] = useState('')
+  const cleReglement = useRef(null)  // ACNC23 — gardée entre deux clics, neuve après un succès
 
   const paiements = facture?.paiements ?? []
   const solde = Number(facture?.solde_du) || 0
@@ -260,16 +265,19 @@ export function FactureDetail({
     if (!(Number(montant) > 0)) { setError('Saisissez un montant positif.'); return }
     setBusy(true)
     try {
+      cleReglement.current ??= globalThis.crypto?.randomUUID?.() ?? `reglement-${Date.now()}`
       const r = await stockApi.ajouterPaiementFournisseur(facture.id, {
         montant: Number(montant),
         date_paiement: datePaiement || null,
         mode,
-      })
+      }, { idempotencyKey: cleReglement.current })
+      cleReglement.current = null
       setFacture(r.data)
       setMontant('')
       onSaved?.()
     } catch (err) {
       setError(frError(err, "L'enregistrement du paiement a échoué."))
+      if (!err?.response) onSaved?.()  // ACNC23 — réponse perdue : relire la facture, même clé au prochain clic
     } finally { setBusy(false) }
   }
 

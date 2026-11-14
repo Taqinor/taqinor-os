@@ -26,10 +26,10 @@ import CategoriesStock from './CategoriesStock.jsx'
 
 const DETAIL = 'Catégorie utilisée par 3 produits : réaffectez-les avant de la supprimer.'
 
-function renderPage() {
+function renderPage(auth = { role: 'admin', role_nom: 'Directeur', permissions: [] }) {
   const store = configureStore({
     reducer: {
-      auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
+      auth: (s = auth) => s,
       stock: (s = { produits: [] }) => s,
     },
   })
@@ -63,5 +63,17 @@ describe('CategoriesStock — suppression d\'une catégorie utilisée (ASTK83)',
     expect(http.get).toHaveBeenCalledWith('/stock/categories/', { params: { ordering: 'ordre', page: 1 } })
     expect(await screen.findByText(DETAIL)).toBeInTheDocument()
     expect(screen.queryByText(/peut être protégée/)).toBeNull()
+  })
+})
+
+describe('ADRG106 — « Supprimer » suit `stock_supprimer`', () => {
+  it('Supprimer suit `stock_supprimer` : Admin Ventes oui, Responsable non', async () => {
+    const vue = renderPage({ role: 'normal', role_nom: 'Admin Ventes',
+      permissions: ['stock_voir', 'stock_modifier', 'stock_supprimer'] })
+    expect(await screen.findByLabelText('Supprimer la catégorie')).toBeInTheDocument()
+    vue.unmount()
+    renderPage({ role: 'responsable', role_nom: 'Responsable', permissions: ['stock_voir', 'stock_modifier'] })
+    expect(await screen.findByDisplayValue('Onduleurs')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Supprimer la catégorie')).toBeNull()
   })
 })

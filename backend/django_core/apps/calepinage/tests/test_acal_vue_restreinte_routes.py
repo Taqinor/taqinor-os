@@ -141,3 +141,26 @@ class VueRestreinteRoutesTest(BaseApiCalepinage):
                                 {'lead': self.lead_2.pk}, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['calepinage'], self.m.pk)
+
+    def test_portee_du_role_reglage_eteint(self):
+        # ALEC29 (D-ALEC-4) — réglage éteint, la portée du rôle Commercial suit la lecture.
+        from apps.crm.models import Lead
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        enregistrer_parametres(self.company, {'presets': {'vue_restreinte_au_responsable': False}})
+        role = Role.objects.create(company=self.company, nom='Commercial ALEC29',
+                                   permissions=list(COMMERCIAL_PERMISSIONS))
+        a, b = (User.objects.create_user(username=f'alec29_{n}', password='x',
+                                         company=self.company, role=role) for n in 'ab')
+        lead_b = Lead.objects.create(company=self.company, nom='Lead de B', owner=b)
+        cal_b = Calepinage.objects.create(company=self.company, lead_id=lead_b.pk,
+                                          titre='Toit de B', cree_par=b)
+
+        def ids(api):
+            data = api.get(URL).data
+            return [c['id'] for c in (data['results'] if isinstance(data, dict) else data)]
+        api_a = self._client(a)
+        self.assertNotIn(cal_b.pk, ids(api_a))
+        self.assertEqual(api_a.get(url_detail(cal_b.pk)).status_code, 404)
+        self.assertIn(cal_b.pk, ids(self._client(b)))
+        self.assertIn(cal_b.pk, ids(self.api))
+        self.assertEqual(self.api.get(url_detail(cal_b.pk)).status_code, 200)

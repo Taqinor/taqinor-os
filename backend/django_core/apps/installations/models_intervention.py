@@ -502,6 +502,14 @@ class RecurrenceIntervention(models.Model):
     nb_generees = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
+    # ACEL46 — jour du mois de la 1re échéance : une récurrence du 31 revient
+    # au 31 après un mois court (31/01 → 28/02 → 31/03), au lieu de glisser.
+    jour_ancrage = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if self.jour_ancrage is None and self.prochaine_echeance:
+            self.jour_ancrage = self.prochaine_echeance.day
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Récurrence d'intervention"

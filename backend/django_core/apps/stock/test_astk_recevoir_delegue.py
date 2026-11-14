@@ -68,6 +68,25 @@ class RecevoirDelegueTests(TestCase):
             'receptions': [{'ligne': ligne.pk, 'quantite': quantite}]},
             format='json')
 
+    def test_reception_partielle_meme_cle_une_seule_reception(self):
+        """ACNC23 (C-ACNC-005) — une réception partielle (5 sur 10) renvoyée
+        sous la même ``Idempotency-Key`` (réponse perdue) ⇒ une seule
+        réception, reste dû 5, stock + 5. Mutant : retirer le mixin ⇒ 2."""
+        bc, ligne = self._bcf(10)
+        corps = {'receptions': [{'ligne': ligne.pk, 'quantite': 5}]}
+        for _ in range(2):
+            rep = self.api.post(f'{URL}{bc.pk}/recevoir/', corps,
+                                format='json', HTTP_IDEMPOTENCY_KEY='rec-k1')
+            self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(
+            ReceptionFournisseur.objects.filter(bon_commande=bc).count(), 1)
+        ligne.refresh_from_db()
+        self.produit.refresh_from_db()
+        self.assertEqual(ligne.quantite_recue, 5)
+        self.assertEqual(self.produit.quantite_stock, 5)
+        bc.refresh_from_db()
+        self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ENVOYE)
+
     def test_recevoir_cree_reception(self):
         bc, ligne = self._bcf(15)
         rep = self._recevoir(bc, ligne, 15)
