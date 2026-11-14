@@ -1,0 +1,117 @@
+name: zz scratch - acceptation infra5 (ADCG116, essai runner, TEMPORAIRE)
+
+# ESSAI (14/11/2026) : preuve en direct d'ADCG116 sur un runner GitHub (jamais le poste) :
+# .env copie de .env.example (DB_PORT=5432), SANS relais socat, pile db/redis/minio en marche,
+# `bash scripts/e2e-local.sh up` => « Postgres pret » puis migrate OK, puis `stop`.
+# Declenche seulement par un push sur la branche d'essai ; supprime au dernier commit.
+on:
+  push:
+    branches: [acceptation-infra5-94854b]
+
+concurrency:
+  group: zz-scratch-acceptation-infra5
+  cancel-in-progress: true
+
+jobs:
+  e2e-local-port-publie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Liberer de la place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Bibliotheques WeasyPrint (Django sur l'hote pour e2e-local) - PAS de socat
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi8 libharfbuzz0b shared-mime-info fonts-liberation fonts-noto-core libxmlsec1-openssl
+          command -v socat && echo "socat present (non utilise)" || echo "socat absent"
+      - name: .env de la pile = copie de .env.example (aucune retouche)
+        run: |
+          cp .env.example .env
+          grep -n '^DB_HOST\|^DB_PORT' .env
+          D="docs/audits/acceptation/ADCG/traces/$(date -u +%F)"; mkdir -p "$D"; echo "TRACES=$D" >> "$GITHUB_ENV"
+      - name: Base deja migree (comme une pile locale) - dump pre-migre du cache WOW8
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+            /tmp/testdb.manifest
+          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          restore-keys: |
+            testdb-v1-
+      - name: Pile locale en marche (db, redis, minio) + dump restaure (accelerateur, hors preuve)
+        run: |
+          set -euo pipefail
+          docker compose up -d db redis minio > /tmp/compose-up.log 2>&1 || { tail -n 80 /tmp/compose-up.log; exit 1; }
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U erp_user && break; sleep 2; done
+          if [ -f /tmp/testdb.dump ]; then
+            id=$(docker compose ps -q db)
+            docker cp /tmp/testdb.dump "$id":/tmp/testdb.dump
+            docker compose exec -T db pg_restore -U erp_user -d erp_db --no-owner -j 4 /tmp/testdb.dump || echo "pg_restore : avertissements (non bloquant)"
+            docker compose exec -T db rm -f /tmp/testdb.dump
+            echo "dump restaure"
+          else
+            echo "aucun dump en cache : base vide, migrate a froid par e2e-local"
+          fi
+      - name: ADCG116 - e2e-local.sh up sans relais (port publie lu par docker compose port) puis stop
+        run: |
+          set -uo pipefail
+          T="$TRACES/ADCG116-e2e-local-port-publie.txt"; v=PASS; motif=""
+          enmarche() { docker compose ps --services --status running | sort | tr '\n' ' '; }
+          { echo "# ADCG116 rejoue sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}"
+            echo "# .env = copie de .env.example : $(grep '^DB_PORT' .env) ; AUCUN relais socat lance"
+            echo; echo "== ecoute TCP sur 5432 avant up (attendu : rien) :"; ss -ltnp 2>/dev/null | awk 'NR==1 || /:5432 /'
+            echo; echo "== processus socat : $(pgrep -a socat || echo aucun)"
+            echo; echo "== docker compose port db 5432 => $(docker compose port db 5432)"
+            echo "== bash scripts/e2e-local.sh port-db => $(bash scripts/e2e-local.sh port-db)"
+            echo; echo "== avant up : services en marche = $(enmarche)"; docker compose ps; } > "$T"
+          if ss -ltn | grep -q ':5432 '; then v=FAIL; motif="$motif un service ecoute deja 5432 ;"; fi
+          bash scripts/e2e-local.sh up > /tmp/e2e-up.log 2>&1; rc_up=$?
+          { echo; echo "== bash scripts/e2e-local.sh up => code $rc_up"
+            echo "-- lignes cles (attente Postgres, migrate, seed, Django, preview) :"
+            grep -n -E 'Attente de Postgres|Postgres prêt|Postgres indisponible|Backend : install|Operations to perform|Running migrations|No migrations to apply|Applying |Démarrage de Django|Preview prêt|Pile e2e prête|✗' /tmp/e2e-up.log | head -n 60
+            echo; echo "-- 25 dernieres lignes :"; tail -n 25 /tmp/e2e-up.log
+            echo; echo "== ecoute TCP sur 5432 apres up (attendu : rien) :"; ss -ltnp 2>/dev/null | awk 'NR==1 || /:5432 /'; } >> "$T"
+          [ "$rc_up" = 0 ] || { v=FAIL; motif="$motif up en echec (code $rc_up) ;"; }
+          grep -q 'Postgres prêt' /tmp/e2e-up.log || { v=FAIL; motif="$motif « Postgres prêt » absent ;"; }
+          grep -q 'Postgres indisponible' /tmp/e2e-up.log && { v=FAIL; motif="$motif « Postgres indisponible » ;"; }
+          grep -q -E 'Running migrations|No migrations to apply' /tmp/e2e-up.log || { v=FAIL; motif="$motif sortie de migrate absente ;"; }
+          grep -q 'Démarrage de Django' /tmp/e2e-up.log || { v=FAIL; motif="$motif up arrete avant Django (migrate/seed en echec) ;"; }
+          bash scripts/e2e-local.sh stop > /tmp/e2e-stop.log 2>&1; rc_stop=$?
+          { echo; echo "== bash scripts/e2e-local.sh stop => code $rc_stop"; cat /tmp/e2e-stop.log
+            echo; echo "== apres stop : services en marche = $(enmarche)"; docker compose ps; } >> "$T"
+          [ "$rc_stop" = 0 ] || { v=FAIL; motif="$motif stop en echec ;"; }
+          echo "VERDICT ADCG116 : $v $motif" >> "$T"
+          cat "$T"
+          [ "$v" = PASS ]
+      - name: Journaux (diagnostic)
+        if: ${{ failure() }}
+        run: |
+          tail -n 120 /tmp/e2e-up.log || true
+          docker compose logs --tail 60 db || true
+      - name: Upload trace
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-infra5-adcg116
+          path: |
+            docs/audits/acceptation/ADCG/traces/
+            /tmp/e2e-up.log
+          retention-days: 7
+          if-no-files-found: warn
