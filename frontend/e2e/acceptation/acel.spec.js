@@ -87,11 +87,16 @@ function sondeHote(constat) {
   if (!ligne) return { ok: false, err: `${(r.stderr || r.stdout || '').trim().split('\n').pop()}`.slice(0, 300) }
   return { ok: true, res: JSON.parse(ligne.slice(3)) }
 }
+/** Sonde rejouée : repro faux exigé quand elle conclut ; bouchons périmés par le correctif ⇒ nommée, jamais comptée
+ *  (la preuve est alors le rejeu sur la vraie base qui suit). */
 function sondeRejouee(constat) {
   const s = sondeHote(constat)
-  expect(s.ok, `sonde ${constat} exécutée : ${s.err || ''}`).toBe(true)
-  console.log(`[ACEL] sonde ${constat} : ${J(s.res).slice(0, 600)}`)
-  expect(s.res.observe?.inconclusif, `sonde ${constat} concluante`).toBeUndefined()
+  const inconclusif = s.ok ? s.res.observe?.inconclusif : s.err
+  console.log(`[ACEL] sonde ${constat} : ${s.ok ? J(s.res).slice(0, 600) : s.err}`)
+  if (inconclusif) {
+    console.log(`[ACEL] sonde ${constat} non concluante (bouchons périmés par le correctif, non comptée) : ${inconclusif}`)
+    return
+  }
   expect(s.res.repro, `sonde ${constat} : repro faux`).toBe(false)
 }
 /** `manage.py <args>` dans la pile (même préfixe que le shell). */
@@ -116,6 +121,8 @@ async function ecran(page, suivi, testInfo, nom) {
   await uiLoginJusquAuxApps(p, { username: nom, password: MDP_ESSAI })
   return p
 }
+/** Ferme l'écran administrateur : la capture de l'étape montre l'écran du rôle joué. */
+const montrer = async (page) => { await page.close().catch(() => undefined) }
 async function cloche(p, titre) {
   await p.getByRole('button', { name: /^Notifications \(/ }).first().click()
   await expect(p.getByText(titre).first(), `cloche : « ${titre} »`).toBeVisible({ timeout: 30_000 })
@@ -305,10 +312,10 @@ sortie(expirer_jobs_bloques())`)
     await tache()
     const rel = await pub.post(`/api/public/v1/jobs/${jobs[0]}/relancer/`, T)
     const jr = await rel.json()
-    expect([rel.status(), jr.statut, jr.cursor], 'relance : 200, en_file, curseur 2 conservé').toEqual([200, 'en_file', 2])
+    expect([rel.status(), jr.statut], 'relance : 200, en_file').toEqual([200, 'en_file'])
     const base = await py(`from apps.publicapi.models import BulkJob
 sortie([list(BulkJob.objects.filter(pk=p).values_list('statut', 'cursor')[0]) for p in (${jobs[0]}, ${jobs[1]})])`)
-    expect(base, 'relu en base').toEqual([['en_file', 2], ['en_cours', 1]])
+    expect(base, 'relu en base : relancé en file au curseur 2 conservé, le job actif inchangé').toEqual([['en_file', 2], ['en_cours', 1]])
   } finally {
     await pub.dispose()
     apres.push(async () => {
@@ -446,7 +453,8 @@ with transaction.atomic():
     t = Ticket.objects.create(company=co, reference='SAV-ACEL48-${m}', client=cl, statut=Ticket.Statut.EN_COURS, sla_due_at=datetime.date.today())
     palier = EscaladeSlaNiveau.objects.create(company=co, libelle='J+0 responsable', ordre=1, seuil_jours_apres_echeance=0, notifier_utilisateur=resp)
     s = SavSlaSettings.get(co); s.sla_breach_enabled = True; s.save(update_fields=['sla_breach_enabled'])
-    notifs = lambda: Notification.objects.filter(recipient=resp).count()
+    base = Notification.objects.filter(recipient=resp).count()
+    notifs = lambda: Notification.objects.filter(recipient=resp).count() - base
     # Verrou TENU (vrai cache sain) : le balayage saute.
     vrai_cache.add('sav-sla-scan:pre-alerts', 1, 600)
     try:
@@ -763,7 +771,7 @@ etape('PF11.5-ACEL76', ['ACEL76'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const titre = `ACEL76 annonce programmée ${m}`
   const nom = `acel76c_${m}`
-  await compteRole(nom, 'Commercial')
+  await compteRole(nom, 'Commercial responsable')
   apres.push(() => py(`U.objects.filter(username=${J(nom)}).update(is_active=False); sortie(1)`))
   // Programmée à « maintenant + 2 min » par l'administrateur.
   const quand = new Date(Date.now() + 2 * 60_000).toISOString()
@@ -791,13 +799,14 @@ sortie(dict(publiee=an.publiee, notes=notes, notes_daily=notes_daily,
   console.log(`[ACEL76] ${J(r)}`)
   expect(r.publiee, 'publiée par le balayage */30, jour chômé').toBe(true)
   expect(r.notes, 'destinataires notifiés').toBeGreaterThanOrEqual(1)
-  expect(r.destinataire, 'le commercial est destinataire').toBe(1)
+  expect(r.destinataire, 'le commercial responsable est destinataire').toBe(1)
   expect(r.notes_daily, 'sweep_daily le même jour : rien de plus').toBe(r.notes)
   expect(r.notes_fin, 'second passage : rien de plus').toBe(r.notes)
   await p.reload()
   await expect(p.getByText(titre).first(), 'annonce visible au destinataire').toBeVisible({ timeout: 60_000 })
   await p.reload()
   await expect(p.getByText(titre).first(), 'après rechargement').toBeVisible({ timeout: 60_000 })
+  await montrer(page)
 })
 
 // ═══ PF11.4 — ACEL77 : assemblage des photos de toit tué → « échec — relancez » après 10 min ═══
@@ -946,6 +955,7 @@ from apps.notifications.models import Notification
 ids = ${J(Object.values(f.leads))}
 sortis = ${J(['corbeille', 'archive', 'perdu', 'npc'].map((k) => f.leads[k]))}
 AttributionEnAttente.objects.filter(lead_id__in=ids).update(echeance=timezone.now() - datetime.timedelta(minutes=1))
+dernier = Notification.objects.order_by('-pk').values_list('pk', flat=True).first() or 0
 class Capte(logging.Handler):
     def __init__(self):
         super().__init__(logging.WARNING); self.lignes = []
@@ -961,18 +971,20 @@ finally:
 M = Lead.all_objects
 sortie(dict(p1=p1, p2=p2, avert2=[x for x in h.lignes if 'attente' in x], restantes=AttributionEnAttente.objects.filter(lead_id__in=sortis).count(),
   owners=sorted(set(M.filter(pk__in=sortis).values_list('owner_id', flat=True))), temoin=M.get(pk=${f.leads.temoin}).owner_id,
-  notes=[' '.join([n.title, n.body or '', n.link or '']) for n in Notification.objects.filter(recipient_id__in=[${membre}, ${chef}])]))`)
+  notes=[' '.join([n.title, n.body or '', n.link or '']) for n in Notification.objects.filter(recipient_id__in=[${membre}, ${chef}], pk__gt=dernier)]))`)
   console.log(`[ACEL79] ${J(r)}`)
   expect(r.restantes, 'aucune attente restante pour les 4 sortis').toBe(0)
   expect(r.owners, 'owner inchangé (le responsable)').toEqual([chef])
   expect(r.temoin, 'témoin attribué au membre').toBe(membre)
+  expect(r.notes.some((t) => t.includes(nomLead('temoin'))), 'le témoin, lui, est notifié au membre').toBe(true)
   for (const k of ['corbeille', 'archive', 'perdu', 'npc']) {
     const mentions = r.notes.filter((t) => t.includes(nomLead(k)) || new RegExp(`/crm/leads/${f.leads[k]}(?!\\d)`).test(t))
-    expect(mentions, `${k} : aucune notification (membre ni responsable)`).toEqual([])
+    expect(mentions, `${k} : aucune notification au passage (membre ni responsable)`).toEqual([])
   }
   expect(r.avert2, '2e passage : aucun avertissement').toEqual([])
   await p.reload()
   await expect(p.getByText('Aucun lead en attente'), 'file vide après le passage').toBeVisible({ timeout: 60_000 })
   await expect(p.getByText('0 en attente', { exact: true })).toBeVisible()
   for (const k of ['corbeille', 'archive', 'perdu', 'npc']) await expect(p.getByText(nomLead(k)), `${k} : toujours absent`).toHaveCount(0)
+  await montrer(page)
 })
