@@ -26,6 +26,7 @@ import json
 import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
+from django.db import transaction
 
 from apps.records.xlsx import neutralize_csv_cell  # APUB47 — ENF12, définition unique
 from .models import BulkJob
@@ -387,10 +388,11 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 'ligne': ligne, 'erreur': row['__parse_error__'], 'donnees': {}})
         else:
             try:
-                if job.entite == 'leads':
-                    _process_lead_row(job.company, mode, dedup_key, row)
-                else:
-                    _process_activite_row(job.company, row)
+                with transaction.atomic():  # ACEL83 — une ligne = tout ou rien
+                    if job.entite == 'leads':
+                        _process_lead_row(job.company, mode, dedup_key, row)
+                    else:
+                        _process_activite_row(job.company, row)
                 succes += 1
             except SoftTimeLimitExceeded:
                 # ACEL33 — limite douce : la ligne en cours n'est PAS une erreur ;
@@ -443,7 +445,6 @@ def relancer_job(job):
     `en_cours` qui a progressé depuis moins de `DELAI_JOB_BLOQUE_MIN` : il
     tourne encore, un second traitement repartirait du même curseur."""
     from datetime import timedelta
-    from django.db import transaction
     from django.utils import timezone
     with transaction.atomic():
         job = BulkJob.objects.select_for_update().get(pk=job.pk)

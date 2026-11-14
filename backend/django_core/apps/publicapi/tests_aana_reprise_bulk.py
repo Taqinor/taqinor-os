@@ -143,6 +143,42 @@ class RepriseBulkTest(TestCase):
         bulk.run_import_job(job.id)  # job terminé : ne fait rien
         self.assertEqual(Lead.objects.filter(company=self.co).count(), 4)
 
+    def test_limite_douce_apres_creation_ne_double_pas_le_lead(self):
+        """ACEL83 — limite douce tombée APRÈS la création du lead de la
+        ligne 2 : la ligne est annulée en bloc, la reprise donne un lead
+        par ligne (pas de doublon)."""
+        import json
+        from celery.exceptions import SoftTimeLimitExceeded
+        from apps.crm import leads_intake
+        lignes = [{'nom': 'M1'}, {'nom': 'M2'}, {'nom': 'M3'}]
+        job = self._job_import('\n'.join(
+            json.dumps(x) for x in lignes).encode('utf-8'))
+        original = leads_intake.finaliser_lead_importe
+        appels = []
+
+        def limite_une_fois(lead, **kwargs):
+            appels.append(lead.nom)
+            if len(appels) == 2:
+                raise SoftTimeLimitExceeded()
+            return original(lead, **kwargs)
+
+        with mock.patch.object(leads_intake, 'finaliser_lead_importe',
+                               side_effect=limite_une_fois):
+            bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertEqual(job.cursor, 1)
+
+        with mock.patch.object(bulk, '_dispatch_import'):
+            bulk.relancer_job(job)
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
+        self.assertEqual(job.cursor, 3)
+        self.assertEqual(sorted(Lead.objects.filter(
+            company=self.co).values_list('nom', flat=True)),
+            ['M1', 'M2', 'M3'])
+
     def test_export_reprise_complet(self):
         for nom in ('E1', 'E2', 'E3', 'E4'):
             Lead.objects.create(company=self.co, nom=nom)
