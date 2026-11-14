@@ -1,5 +1,5 @@
 import {
-  forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment,
+  forwardRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment,
 } from 'react'
 import {
   ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal, MoreVertical,
@@ -52,6 +52,22 @@ import {
 // ⌘K) ; réutilisée ici (jamais dupliquée) via la prop opt-in `trackRecent`.
 import { pushRecentEntity } from '../../providers/commandActions.js'
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion'
+import { ReactReduxContext, useSelector } from 'react-redux'
+import { useHasPermission } from '../../hooks/useHasPermission'
+
+// ADRG77 (D-ADRG-4 = suit_la_case) — `codeExport` : le bouton « Exporter » suit la
+// case « Exporter » du module ; compte hérité (aucun code ERP) : repli, bouton gardé.
+// Lu seulement si la prop est passée ET qu'un store existe (table hors store inchangée).
+function ExportParCode({ code, children }) {
+  const aDesCodes = useSelector((s) => (s.auth?.permissions || []).length > 0)
+  const aLeCode = useHasPermission(code)
+  return !aDesCodes || aLeCode ? children : null
+}
+function ExportSiStore({ code, children }) {
+  const store = useContext(ReactReduxContext)
+  return store ? <ExportParCode code={code}>{children}</ExportParCode> : children
+}
+const ExportGate = ({ code, children }) => (code ? <ExportSiStore code={code}>{children}</ExportSiStore> : children)
 
 // VX135 — AUCUNE liste de l'app n'animait tri/filtre/ajout (téléportation des
 // lignes) : FLIP minimal (First-Last-Invert-Play), zéro dépendance. Mesure
@@ -383,6 +399,7 @@ export const DataTable = forwardRef(function DataTable(
     // export (H33)
     onExport, // (selectedRows|allRows, columns) => void  (si fourni, prioritaire)
     exportName = 'export',
+    codeExport, // ADRG77 — code ERP (`stock_export`…) exigé pour voir « Exporter »
     // seams serveur
     manualSorting = false,
     manualFiltering = false,
@@ -943,7 +960,7 @@ export const DataTable = forwardRef(function DataTable(
             {/* NTUX15 — quand une sélection existe, un menu propose le choix
                 explicite « tout » vs « la sélection uniquement » ; sinon,
                 bouton simple inchangé (exporte tout, comportement historique). */}
-            {canChooseExportScope ? (
+            <ExportGate code={codeExport}>{canChooseExportScope ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -965,7 +982,7 @@ export const DataTable = forwardRef(function DataTable(
                 <Download />
                 <span className="hidden sm:inline">Exporter</span>
               </Button>
-            )}
+            )}</ExportGate>
           </div>
         </div>
       )}

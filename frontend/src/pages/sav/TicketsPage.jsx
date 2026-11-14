@@ -2104,7 +2104,7 @@ export default function TicketsPage() {
               // glisser-déposer pour replanifier, création rapide depuis un créneau.
               <TicketCalendarView tickets={rows} onSelect={selectionner} onReload={reload} />
             ) : (
-              <DataTable
+              <DataTable codeExport="sav_export"
                 data={rows}
                 columns={columns}
                 getRowId={(row) => row.id}

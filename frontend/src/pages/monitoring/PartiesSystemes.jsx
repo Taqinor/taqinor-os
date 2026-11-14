@@ -30,7 +30,7 @@ export function TableauDeBordSystemes({
 export function TableSystemes({ systems, columns, label }) {
   return (
     <div className="mt-6">
-      <DataTable
+      <DataTable codeExport="sav_export"
         data={systems}
         columns={columns}
         getRowId={(row) => row.installation}

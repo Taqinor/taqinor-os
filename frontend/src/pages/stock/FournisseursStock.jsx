@@ -836,7 +836,7 @@ export default function FournisseursStock() {
         </div>
       )}
 
-      <DataTable
+      <DataTable codeExport="stock_export"
         data={rows}
         columns={columns}
         loading={loading}
@@ -865,7 +865,7 @@ export default function FournisseursStock() {
                         description="Les fournisseurs archivés (données réelles rattachées) apparaissent ici." />
           ) : (
             <div className="opacity-80">
-              <DataTable
+              <DataTable codeExport="stock_export"
                 data={itemsArchived}
                 columns={archivedColumns}
                 loading={loadingArchived}

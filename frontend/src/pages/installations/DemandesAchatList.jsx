@@ -447,7 +447,7 @@ export default function DemandesAchatList() {
         </Button>
       </div>
 
-      <DataTable
+      <DataTable codeExport="installation_export"
         data={items}
         columns={columns}
         loading={loading}

@@ -44,10 +44,10 @@ import { createMouvement } from '../../features/stock/store/stockSlice'
 import MouvementsPage from './MouvementsPage.jsx'
 import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
-function store({ role = 'admin', mouvements = [], produits = [] } = {}) {
+function store({ role = 'admin', role_nom, permissions = [], mouvements = [], produits = [] } = {}) {
   return configureStore({
     reducer: {
-      auth: (s = { role, permissions: [] }) => s,
+      auth: (s = { role, role_nom, permissions }) => s,
       stock: (s = { mouvements, produits, loading: false, error: null }) => s,
     },
   })
@@ -212,6 +212,35 @@ describe('ACNC22 — mouvement rejouable sans doublon (Idempotency-Key)', () => 
     await userEvent.click(screen.getByRole('button', { name: /Enregistrer le mouvement/ }))
     await waitFor(() => expect(createMouvement).toHaveBeenCalledTimes(3))
     expect(createMouvement.mock.calls[2][0].idempotencyKey).not.toBe(premier)
+  })
+})
+
+describe('ADRG77 — le CSV des tableaux suit la case « Exporter » du stock (D-ADRG-4)', () => {
+  const csv = () => screen.queryByRole('button', { name: /^exporter$/i })
+  // Liste → vue groupée → retour liste → onglet Transferts : les trois tableaux de la page.
+  async function exporterSurLesTroisTableaux(droits) {
+    stockApi.mouvementsAgregation.mockResolvedValue({ data: [] })
+    stockApi.getTransferts.mockResolvedValue({ data: { results: [], next: null } })
+    renderPage(droits)
+    const vus = [csv()]
+    fireEvent.click(screen.getByRole('button', { name: /Vue groupée/ }))
+    await waitFor(() => expect(stockApi.mouvementsAgregation).toHaveBeenCalled())
+    vus.push(csv())
+    fireEvent.click(screen.getByRole('button', { name: /Vue liste/ }))
+    fireEvent.click(screen.getByRole('radio', { name: /Transferts/ }))
+    await waitFor(() => expect(stockApi.getTransferts).toHaveBeenCalled())
+    vus.push(csv())
+    return vus
+  }
+
+  it('Commercial responsable sans Exporter : aucun bouton Exporter sur les trois tableaux', async () => {
+    const vus = await exporterSurLesTroisTableaux({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['stock_voir', 'stock_mouvement'] })
+    expect(vus).toEqual([null, null, null])
+  })
+
+  it('Directeur (stock_export) : bouton Exporter présent sur les trois tableaux', async () => {
+    const vus = await exporterSurLesTroisTableaux({ role: 'admin', role_nom: 'Directeur', permissions: ['stock_voir', 'stock_mouvement', 'stock_export'] })
+    expect(vus.every(Boolean)).toBe(true)
   })
 })
 

@@ -1653,7 +1653,7 @@ export default function BonsCommandeFournisseur() {
         </div>
       )}
 
-      <DataTable
+      <DataTable codeExport="stock_export"
         data={rows}
         columns={columns}
         loading={loading}

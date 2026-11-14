@@ -749,7 +749,7 @@ export default function EquipementsPage() {
               : undefined}
           />
         ) : (
-          <DataTable
+          <DataTable codeExport="sav_export"
             data={rows}
             columns={columns}
             getRowId={(row) => row.id}
