@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 PUBLIC_STATUS_CACHE_KEY = 'statuspage:public:status'
 PUBLIC_STATUS_CACHE_SECONDS = 60
 UPTIME_HISTORY_DAYS = 90
+# ACEL36 — 3 passages de `rafraichir_composants` (5 min) manqués = données périmées.
+STATUT_PERIME_APRES = timedelta(minutes=15)
 
 
 class StatuspagePublicThrottle(SimpleRateThrottle):
@@ -70,6 +72,7 @@ def _statut_global(composants):
 @extend_schema(responses=inline_serializer('PublicStatusReponse', {
     'overall_status': drf_serializers.CharField(),
     'composants': ComponentStatusPublicSerializer(many=True),
+    'donnees_perimees': drf_serializers.BooleanField(),
     'generated_at': drf_serializers.DateTimeField(),
 }))
 @api_view(['GET'])
@@ -88,9 +91,12 @@ def public_status(request):
 
     composants_qs = ComponentStatus.objects.filter(company__isnull=True)
     composants = ComponentStatusPublicSerializer(composants_qs, many=True).data
+    derniere = composants_qs.aggregate(m=models.Max('derniere_verification'))['m']
+    perimees = derniere is None or timezone.now() - derniere > STATUT_PERIME_APRES
     payload = {
-        'overall_status': _statut_global(composants),
+        'overall_status': 'inconnu' if perimees else _statut_global(composants),
         'composants': composants,
+        'donnees_perimees': perimees,
         'generated_at': timezone.now().isoformat(),
     }
     cache.set(PUBLIC_STATUS_CACHE_KEY, payload, PUBLIC_STATUS_CACHE_SECONDS)
