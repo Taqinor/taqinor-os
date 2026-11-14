@@ -96,11 +96,12 @@ function sondeHote(constat) {
   if (!ligne) return { ok: false, err: `${(r.stderr || r.stdout || '').trim().split('\n').pop()}`.slice(0, 300) }
   return { ok: true, res: JSON.parse(ligne.slice(3)) }
 }
-/** Sonde aux bouchons périmés (le code corrigé a changé les symboles qu'elle extrait) : NOMMÉE, jamais comptée. */
-function sondeNotee(constat) {
+/** Sonde aux bouchons PÉRIMÉS (le code corrigé a changé les symboles qu'elle extrait : C-ACNC-007 lève NameError
+ *  `_ecriture_bornee`, C-ACNC-011 ne peut plus importer `verrouiller_produit` et ses fils ne jouent aucun geste —
+ *  « statuts: [] ») : NOMMÉE et relevée, jamais comptée ; la course réelle de l'étape la remplace. */
+function sondePerimee(constat) {
   const s = sondeHote(constat)
-  if (!s.ok) console.log(`[sonde ${constat}] non exécutable sur le code corrigé (bouchons périmés, non comptée) : ${s.err}`)
-  else expect(s.res.repro, `sonde ${constat} : ${J(s.res.observe)}`).toBe(false)
+  console.log(`[sonde ${constat}] périmée, non comptée : ${s.ok ? J(s.res).slice(0, 400) : s.err}`)
 }
 
 /** Compte d'essai du rôle LIVRÉ `nomRole` (société démo) ; renvoie son id. */
@@ -180,7 +181,7 @@ const ouvrirTicket = async (p, id) => {
 
 // ═══ PF9.2 — ACNC26 (API) : deux « Retirer » croisés = une ENTRÉE (le 2ᵉ 404) ; pose renvoyée avec la même clé = une pièce ═══
 etape('PF9.2-ACNC26-api', ['ACNC26'], async ({ page }) => {
-  sondeNotee('C-ACNC-011')
+  sondePerimee('C-ACNC-011')
   const r = page.request
   const m = marque()
   const x = await ticketSav(m, 'ACNC26')
@@ -376,6 +377,7 @@ etape('PF9.4-ACNC33-ecran', ['ACNC33'], async ({ page, context, suivi }) => {
     verrou: `from apps.sav.models import Ticket\nTicket.objects.select_for_update().get(pk=${x.ticket})`,
     gestes: [() => b1.click(), () => b2.click()],
   })
+  for (const p of [page, p2]) await expect(p.getByText('Devis créé').first(), 'les deux réponses sont revenues').toBeVisible({ timeout: 60_000 })
   const devis = await devisDuClient(x.client)
   expect(devis.length, 'un seul devis en base').toBe(1)
   const ref = devis[0][1]
@@ -510,7 +512,8 @@ sortie(WarrantyClaim.objects.filter(equipement_id=${eq.eq}).count())`), 'une seu
   // Persistance : recharger les contrats — le contrat créé est listé une fois.
   await page.unrouteAll({ behavior: 'ignoreErrors' })
   await page.goto('/sav/contrats')
-  await expect(page.getByText(`ACNC35E ${m}`).first(), 'après rechargement : contrats du client listés').toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('row').filter({ hasText: `ACNC35E ${m}` }).first(),
+    'après rechargement : les contrats du client sont listés').toBeVisible({ timeout: 60_000 })
 })
 
 // ═══ PF9.5 — ACNC41 (API) : un PATCH {note} d'un BC dont un collègue commite « confirmé » pendant l'écriture ═══
@@ -527,7 +530,7 @@ from apps.crm.models import Client
 BonCommande.objects.filter(client_id=${x.client}).delete(); Client.objects.filter(pk=${x.client}).delete()
 sortie(True)`)
 etape('PF9.5-ACNC41-api', ['ACNC41'], async ({ page }) => {
-  sondeNotee('C-ACNC-007')
+  sondePerimee('C-ACNC-007')
   const r = page.request
   const x = await bcEnAttente(r, marque(), 'ACNC41')
   apres.push(() => nettoyerBc(x))
@@ -897,7 +900,8 @@ sortie([MouvementStock.objects.filter(produit_id=${x.id}, reference='ACNC52-${m}
   await page.unrouteAll({ behavior: 'ignoreErrors' })
   // Persistance : rechargé sans entrave, le mouvement est listé une fois.
   await page.reload()
-  await expect(page.getByText(`ACNC52-${m}`), 'après rechargement : le mouvement, une fois').toHaveCount(1, { timeout: 60_000 })
+  await expect(page.locator('[aria-label="Mouvements de stock"]').getByRole('row').filter({ hasText: `ACNC52-${m}` }),
+    'après rechargement : le mouvement, une ligne').toHaveCount(1, { timeout: 60_000 })
 })
 
 // ═══ PF9.4 — ACNC53 (Leads, kanban) : sortie de « Signé » appliquée, réponse perdue ⇒ la carte prend l'étape SERVIE ═══
@@ -965,7 +969,7 @@ for k in rc.keys('*'):
             h = json.loads(brut).get('headers') or {}
         except Exception:
             continue
-        if str(h.get('task', '')).endswith('task_devis_automatique_depuis_lead') and str(h.get('argsrepr', '')).startswith('[%d,' % ${lead}):
+        if h.get('task') == 'ventes.devis_automatique_depuis_lead' and str(h.get('argsrepr', '')).startswith('[%d,' % ${lead}):
             n += 1
 sortie(n)`)
 const nettoyerPayload = (id, m, tag) => py(`from apps.crm.models import Lead, WebsiteLeadPayload
@@ -1008,6 +1012,7 @@ etape('PF9.4-ACNC55-ecran', ['ACNC55'], async ({ page, suivi, testInfo }) => {
     verrou: `from apps.crm.models import WebsiteLeadPayload\nWebsiteLeadPayload.objects.select_for_update().get(pk=${id})`,
     gestes: [() => ligne(page).getByRole('button', { name: 'Rejouer' }).click(), () => ligne(p2).getByRole('button', { name: 'Rejouer' }).click()],
   })
+  for (const p of [page, p2]) await expect(p.locator('.alert-info').first(), 'les deux réponses sont revenues').toBeVisible({ timeout: 60_000 })
   const e = await etatPayload(id, m, 'ACNC55E')
   expect(e.leads.length, 'un seul lead').toBe(1)
   const msg = async (p) => (await p.locator('.alert-info').first().innerText({ timeout: 60_000 })).trim()

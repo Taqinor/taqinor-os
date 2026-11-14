@@ -146,9 +146,9 @@ jobs:
       - name: Service IA (FastAPI) - environnement isole pour ACNC42
         working-directory: backend/fastapi_ia
         run: |
-          # Sous-ensemble des dependances : ni torch (sentence-transformers), ni whisper, ni langchain,
-          # tous importes paresseusement ; la route /sql-agent/confirm n'en a pas besoin.
-          grep -vE '^(langchain|openai|sentence-transformers|pypdf|Pillow|pymupdf|faster-whisper)' requirements.txt > /tmp/req-ia.txt
+          # Toutes les dependances SAUF torch (sentence-transformers) et whisper, importes paresseusement
+          # (fil d'embeddings au demarrage, transcription) ; la route /sql-agent/confirm n'en a pas besoin.
+          grep -vE '^(sentence-transformers|faster-whisper)' requirements.txt > /tmp/req-ia.txt
           python -m venv /tmp/ia
           /tmp/ia/bin/pip install -q --disable-pip-version-check -r /tmp/req-ia.txt
           /tmp/ia/bin/python -c "import fastapi, uvicorn, jwt, redis, httpx, sqlalchemy; print('IA ok')"
@@ -171,7 +171,7 @@ jobs:
             echo "Attente Django ($i)"; sleep 2
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
-          echo "Workers gunicorn : $(pgrep -f 'gunicorn erp_agentique' | wc -l) processus (1 maitre + workers)"
+          echo "Workers gunicorn : $(grep -l 'gunicorn' /proc/[0-9]*/cmdline 2>/dev/null | wc -l) processus (1 maitre + workers)"
           ( cd ../fastapi_ia && /tmp/ia/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 1               > /tmp/uvicorn.log 2>&1 & )
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8100/health || true)
