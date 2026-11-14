@@ -219,7 +219,7 @@ class AbonnementDashboardTests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('cible_id', resp.data)
 
-    def _api_role(self, nom_role):
+    def _api_role(self, nom_role, suffixe=''):
         """Compte au rôle LIVRÉ ``nom_role`` (``init_roles``) + son client API."""
         from django.core.management import call_command
         from rest_framework.test import APIClient
@@ -228,7 +228,7 @@ class AbonnementDashboardTests(TestCase):
         call_command('init_roles', verbosity=0)
         role = Role.objects.get(company=self.company, nom=nom_role)
         user = User.objects.create_user(
-            username=f'ntdata37_{nom_role.replace(" ", "_").lower()}',
+            username=f'ntdata37_{nom_role.replace(" ", "_").lower()}{suffixe}',
             password='x', company=self.company, role=role)
         api = APIClient()
         api.force_authenticate(user)
@@ -264,3 +264,24 @@ class AbonnementDashboardTests(TestCase):
             target_kind=SavedReport.TargetKind.QUERY, cible_id=requete_c.pk)
         self.assertEqual(scheduled_reports._rendre_saved_query(rapport),
                          (None, None, None, None))
+
+    def test_cible_personnelle_d_un_collegue_refusee(self):
+        """ADRG124 — le tableau PERSONNEL d'un collègue n'est pas une cible :
+        404 au champ, aucun rapport ; ses propres tableaux et les partagés, si."""
+        url = '/api/django/reporting/saved-reports/'
+        user_a, api_a = self._api_role('Commercial responsable', '_a')
+        _user_b, api_b = self._api_role('Commercial responsable', '_b')
+        perso_a = self._dashboard(owner=user_a, partage=False)
+        partage_a = self._dashboard(owner=user_a, partage=True, titre='Équipe')
+
+        def poster(api, dashboard):
+            return api.post(url, {'name': 'x', 'target_kind': 'dashboard',
+                                  'cible_id': dashboard.pk}, format='json')
+
+        avant = SavedReport.objects.count()
+        resp = poster(api_b, perso_a)
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('cible_id', resp.data)
+        self.assertEqual(SavedReport.objects.count(), avant)
+        self.assertEqual(poster(api_b, partage_a).status_code, 201)
+        self.assertEqual(poster(api_a, perso_a).status_code, 201)

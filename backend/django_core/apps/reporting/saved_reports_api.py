@@ -79,6 +79,13 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                 sonde = SavedReport(company=company, target_kind=kind,
                                     cible_id=cible)
                 cible_obj = sonde.resoudre_cible()
+                if cible_obj is not None:
+                    # ADRG124 — cible que l'acteur VOIT (la sienne, partagée, sans
+                    # propriétaire : même règle que les listes Dashboard/SavedQuery).
+                    from core.dashboard_partage import dashboards_visibles_q
+                    if not type(cible_obj).objects.filter(
+                            dashboards_visibles_q(requete.user), pk=cible_obj.pk).exists():
+                        cible_obj = None
                 if cible_obj is None:
                     # ERR-ENF11-FUZZ-REPORTING : id bien formé sans ligne de
                     # la société = ressource introuvable, 404 (même corps).
