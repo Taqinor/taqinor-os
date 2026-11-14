@@ -75,6 +75,10 @@ def _delete_cascading(obj, company=None, max_depth=60):
             return
         except ProtectedError as exc:
             for blocker in list(exc.protected_objects):
+                # Déjà supprimé par une branche sœur de la cascade : ses champs différés
+                # relus lèveraient DoesNotExist — rien à juger ni à supprimer.
+                if not type(blocker)._base_manager.filter(pk=blocker.pk).exists():
+                    continue
                 if company is not None and _societes_du_bloqueur(blocker, company.pk) != {company.pk}:
                     raise BloqueurAutreSociete(
                         f'{blocker._meta.label} #{blocker.pk} appartient à une autre société.') from exc
