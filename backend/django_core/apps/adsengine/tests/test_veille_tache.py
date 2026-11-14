@@ -9,6 +9,7 @@ import json
 from unittest import mock
 
 import httpx
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -133,6 +134,47 @@ class QuotaEtRepriseTests(BaseTache):
             self.assertLess(res['countdown'], 3600)
             maintenant = maintenant + datetime.timedelta(seconds=attendu + 1)
         self.assertEqual(len(t.requetes), 5)
+
+    def test_job_en_pause_de_quota_jamais_solde_par_le_balayage(self):
+        """ACEL93 — trois pauses de quota consécutives laissent le job de fond
+        hors du balayage des travaux orphelins ; une étape réussie le remet
+        ``running``."""
+        from core.models import BackgroundJob
+        from core.tasks import balayer_travaux_orphelins_task
+
+        dec = self.creer()
+        with mock.patch('core.jobs.current_app.send_task'):
+            vd.lancer(dec, self.user)
+        t = Transport([page(['a1'], apres='C2'), quota(613), quota(613),
+                       quota(613), page(['a2'], apres='C3')])
+        maintenant = self.now
+        self.assertEqual(self.etape(dec, t, now=maintenant)['action'],
+                         'continuer')
+        dec.refresh_from_db()
+        job = dec.background_job
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BackgroundJob.STATUT_RUNNING)
+        for attendu in (300, 600, 1200):
+            maintenant += datetime.timedelta(seconds=attendu + 1)
+            res = self.etape(dec, t, now=maintenant)
+            self.assertEqual(res['action'], 'attendre')
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BackgroundJob.STATUT_QUEUED)
+        BackgroundJob.objects.filter(pk=job.pk).update(
+            updated_at=timezone.now() - datetime.timedelta(minutes=35))
+
+        balayer_travaux_orphelins_task()
+
+        job.refresh_from_db()
+        self.assertNotEqual(job.statut, BackgroundJob.STATUT_FAILED)
+        Notification = django_apps.get_model('notifications', 'Notification')
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.user, event_type='travail_de_fond_echoue').exists())
+        # Reprise : une étape réussie remet le job en cours.
+        maintenant += datetime.timedelta(seconds=1801)
+        self.etape(dec, t, now=maintenant)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BackgroundJob.STATUT_RUNNING)
 
     def test_usage_au_dessus_du_seuil_pause_preventive(self):
         dec = self.creer()
