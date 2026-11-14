@@ -34,6 +34,7 @@ import { SectionTitle } from './peComponents'
 import {
   ChargementTexte, ErreurChargementListe, BoutonSupprimerLigne, ZoneCreation, LigneChamps,
 } from './EtatsSection'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Canaux du modèle (miroir de BrandedTemplate.KIND_CHOICES).
 // source-choix: core.BrandedTemplate.kind
@@ -145,7 +146,7 @@ export default function ModelesBrandesSection() {
         previsualiser(cree.id)
       }
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     } finally { setBusy(false) }
   }
 
@@ -159,7 +160,7 @@ export default function ModelesBrandesSection() {
       setDirty(false)
       charger()
     } catch (e) {
-      console.warn('Enregistrement impossible.', e)
+      toastErreurNonAffichee(e, 'Enregistrement impossible.')
     } finally { setBusy(false) }
   }
 
@@ -170,7 +171,7 @@ export default function ModelesBrandesSection() {
       if (selectedId === row.id) { setSelectedId(null); setEdit(null); setApercu(null) }
       charger()
     } catch (e) {
-      console.warn('Suppression impossible.', e)
+      toastErreurNonAffichee(e, 'Suppression impossible.')
     }
   }
 

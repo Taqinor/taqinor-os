@@ -25,7 +25,7 @@ import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
-import { toast, useConfirmDialog } from '../../ui/confirm'
+import { useConfirmDialog } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
@@ -70,7 +70,8 @@ import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
-import { slugifyCode, erreurServeurLisible } from '../../lib/champsPerso'
+import { slugifyCode } from '../../lib/champsPerso'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
@@ -307,7 +308,7 @@ export default function ParametresEntreprise() {
         visible_liste: false,
       })
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(erreurServeurLisible(e, 'Ajout impossible.')) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   // L809/L811/L812 — ouvre/ferme l'éditeur inline d'un champ existant.
   const openCfEdit = (d) => {
@@ -332,14 +333,14 @@ export default function ParametresEntreprise() {
       })
       cancelCfEdit()
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(erreurServeurLisible(e, 'Modification impossible.')) }
+    } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   // L810 — bascule actif/inactif sans perdre custom_data.
   const toggleCfActif = async (d) => {
     try {
       await customFieldsApi.saveDef(d.id, { actif: !d.actif })
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(erreurServeurLisible(e, 'Modification impossible.')) }
+    } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   // L813 — réordonne le champ d'un cran (haut/bas) et persiste l'ordre.
   const moveCf = async (d, dir) => {
@@ -352,12 +353,12 @@ export default function ParametresEntreprise() {
     try {
       await customFieldsApi.reorder(ordered.map(x => x.id))
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(erreurServeurLisible(e, 'Réordonnancement impossible.')) }
+    } catch (e) { toastErreurNonAffichee(e, 'Réordonnancement impossible.') }
   }
   const delCf = async (d) => {
     if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return
     try { await customFieldsApi.deleteDef(d.id); loadCfDefs(cfModule) }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
   const slugify = (s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 
@@ -404,22 +405,22 @@ export default function ParametresEntreprise() {
       await installationsApi.saveChecklistEtape(null, {
         cle: slugify(libelle), libelle, ordre: checklistEtapes.length })
       setNewEtape(''); loadChecklistEtapes()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const renameEtape = async (et, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
-    try { await installationsApi.saveChecklistEtape(et.id, { libelle }); loadChecklistEtapes() } catch (e) { console.warn('Renommage impossible.', e) }
+    try { await installationsApi.saveChecklistEtape(et.id, { libelle }); loadChecklistEtapes() } catch (e) { toastErreurNonAffichee(e, 'Renommage impossible.') }
   }
   const toggleEtapeActif = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); loadChecklistEtapes() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   // L785 — bascule capture_serie (saisie de n° de série) sur une étape.
   const toggleEtapeCapture = async (et) => {
     try {
       await installationsApi.saveChecklistEtape(et.id, { capture_serie: !et.capture_serie })
       loadChecklistEtapes()
-    } catch (e) { console.warn('Modification impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   // L784 — réordonne une étape d'un cran (haut/bas) en échangeant les ordres.
   const moveEtape = async (et, dir) => {
@@ -433,12 +434,12 @@ export default function ParametresEntreprise() {
         installationsApi.saveChecklistEtape(b.id, { ordre: a.ordre }),
       ])
       loadChecklistEtapes()
-    } catch (e) { console.warn('Réordonnancement impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Réordonnancement impossible.') }
   }
   const delEtape = async (et) => {
     if (!(await confirmerSuppression({ title: `Supprimer l'étape « ${et.libelle} » ?` }))) return
     try { await installationsApi.deleteChecklistEtape(et.id); loadChecklistEtapes() }
-    catch (e) { console.warn('Suppression impossible (étape protégée ?).', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible (étape protégée ?).') }
   }
 
   const addCanal = async () => {
@@ -447,21 +448,21 @@ export default function ParametresEntreprise() {
     try {
       await crmApi.saveCanal(null, { cle: slugify(libelle), libelle })
       setNewCanal(''); loadCanaux()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const renameCanal = async (c, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
-    try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch (e) { console.warn('Renommage impossible.', e) }
+    try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch (e) { toastErreurNonAffichee(e, 'Renommage impossible.') }
   }
   const delCanal = async (c) => {
     if (!(await confirmerSuppression({ title: `Supprimer le canal « ${c.libelle} » ?` }))) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver un canal (préserve l'historique des leads).
   const archiveCanal = async (c) => {
     try { await crmApi.saveCanal(c.id, { archived: !c.archived }); loadCanaux() }
-    catch (e) { console.warn('Action impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Action impossible.') }
   }
   const addType = async () => {
     const libelle = newType.trim()
@@ -469,27 +470,27 @@ export default function ParametresEntreprise() {
     try {
       await installationsApi.saveTypeIntervention(null, { cle: slugify(libelle), libelle })
       setNewType(''); loadTypesItv()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const renameType = async (t, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
-    try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch (e) { console.warn('Renommage impossible.', e) }
+    try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch (e) { toastErreurNonAffichee(e, 'Renommage impossible.') }
   }
   const delType = async (t) => {
     if (!(await confirmerSuppression({ title: `Supprimer le type « ${t.libelle} » ?` }))) return
     try { await installationsApi.deleteTypeIntervention(t.id); loadTypesItv() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
   const addMarque = async () => {
     const nom = newMarque.trim()
     if (!nom) return
     try { await stockApi.saveMarque(null, { nom }); setNewMarque(''); loadMarques() }
-    catch (e) { console.warn('Ajout impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const delMarque = async (m) => {
     if (!(await confirmerSuppression({ title: `Supprimer la marque « ${m.nom} » ?` }))) return
     try { await stockApi.deleteMarque(m.id); loadMarques() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   const setMsgField = (cle, key, val) =>
@@ -502,7 +503,7 @@ export default function ParametresEntreprise() {
       setMsgSavedCle(m.cle)
       setTimeout(() => setMsgSavedCle(null), 2500)
     } catch (e) {
-      console.warn('Enregistrement impossible.', e)
+      toastErreurNonAffichee(e, 'Enregistrement impossible.')
     }
   }
   // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
@@ -515,57 +516,57 @@ export default function ParametresEntreprise() {
       setMsgSavedCle(m.cle)
       setTimeout(() => setMsgSavedCle(null), 2500)
     } catch (e) {
-      console.warn('Réinitialisation impossible.', e)
+      toastErreurNonAffichee(e, 'Réinitialisation impossible.')
     }
   }
 
   const addTag = async () => {
     const nom = newTag.trim()
     if (!nom) return
-    try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch (e) { console.warn('Ajout impossible.', e) }
+    try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const renameTag = async (t, nom) => {
     // ERR102 — recharger pour refléter une normalisation serveur du nom.
-    try { await crmApi.saveTag(t.id, { nom }); loadTags() } catch (e) { console.warn('Renommage impossible.', e) }
+    try { await crmApi.saveTag(t.id, { nom }); loadTags() } catch (e) { toastErreurNonAffichee(e, 'Renommage impossible.') }
   }
   // L781 — couleur d'une étiquette (color-picker), persistée immédiatement.
   const setTagColor = async (t, couleur) => {
     setTags(ts => ts.map(x => (x.id === t.id ? { ...x, couleur } : x)))
-    try { await crmApi.saveTag(t.id, { couleur }) } catch (e) { console.warn('Changement de couleur impossible.', e) }
+    try { await crmApi.saveTag(t.id, { couleur }) } catch (e) { toastErreurNonAffichee(e, 'Changement de couleur impossible.') }
   }
   const delTag = async (t) => {
     if (!(await confirmerSuppression({ title: `Supprimer l'étiquette « ${t.nom} » ?` }))) return
     // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
     // on remonte le message serveur (qui propose l'archivage).
     try { await crmApi.deleteTag(t.id); loadTags() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver une étiquette.
   const archiveTag = async (t) => {
     try { await crmApi.saveTag(t.id, { archived: !t.archived }); loadTags() }
-    catch (e) { console.warn('Action impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Action impossible.') }
   }
   const addMotif = async () => {
     const nom = newMotif.trim()
     if (!nom) return
-    try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch (e) { console.warn('Ajout impossible.', e) }
+    try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const renameMotif = async (m, nom) => {
     // ERR102 — recharger pour refléter une normalisation serveur du nom.
-    try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch (e) { console.warn('Renommage impossible.', e) }
+    try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch (e) { toastErreurNonAffichee(e, 'Renommage impossible.') }
   }
   const delMotif = async (m) => {
     if (!(await confirmerSuppression({ title: `Supprimer le motif « ${m.nom} » ?` }))) return
     // L779 — bloqué (409) si le motif est utilisé : on remonte le message
     // serveur (qui propose l'archivage).
     try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver un motif de perte.
   const archiveMotif = async (m) => {
     try {
       await crmApi.saveMotifPerte(m.id, { archived: !m.archived }); loadMotifs()
-    } catch (e) { console.warn('Action impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Action impossible.') }
   }
 
   const setNiveau = (id, key, val) =>
@@ -602,17 +603,17 @@ export default function ParametresEntreprise() {
         nom: `Niveau ${ordre + 1}`, delai_jours: 7, ordre, message: '',
       })
       loadNiveaux()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const delNiveau = async (n) => {
     if (!(await confirmerSuppression({ title: `Supprimer le niveau « ${n.nom} » ?` }))) return
     try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
   // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) quand il n'y en a pas.
   const seedNiveaux = async () => {
     try { await ventesApi.seedNiveauxRelance(); loadNiveaux() }
-    catch (e) { console.warn('Création impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Création impossible.') }
   }
 
   // VX169 — garde de navigation IN-APP : snapshot pris à chaque resynchro

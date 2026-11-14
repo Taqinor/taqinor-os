@@ -22,6 +22,7 @@ import {
 import { SectionTitle, CarteSection } from './peComponents'
 import { BoutonSupprimerLigne } from './EtatsSection'
 import toutesLesPages from './toutesLesPages'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Déclencheurs (événements internes) — libellés FR, clés EN alignées sur le
 // backend (apps.automation.models.TriggerType).
@@ -103,7 +104,7 @@ function IncomingWebhookPanel({ rules }) {
       setUrlNeuve(r?.data?.url_path || null)
       setRuleId(''); setSecret(''); load()
       toast.success('Webhook créé.')
-    } catch (e) { console.warn('Création impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Création impossible.') }
     finally { setBusy(false) }
   }
   const rotate = async (h) => {
@@ -111,16 +112,16 @@ function IncomingWebhookPanel({ rules }) {
       const r = await automationApi.rotateWebhook(h.id)
       setUrlNeuve(r?.data?.url_path || null); load(); toast.success('Token régénéré.')
     }
-    catch (e) { console.warn('Rotation impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Rotation impossible.') }
   }
   const toggle = async (h) => {
     try { await automationApi.updateWebhook(h.id, { enabled: !h.enabled }); load() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   const remove = async (h) => {
     if (!(await confirmerSuppression({ title: 'Supprimer ce webhook ? Son URL cessera de fonctionner.' }))) return
     try { await automationApi.deleteWebhook(h.id); load() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   return (
@@ -317,17 +318,17 @@ export default function AutomatisationsSection() {
     } catch (e) {
       const data = e?.response?.data
       if (data?.action_config) setFromResponse(data)
-      else console.warn('Ajout impossible.', e)
+      else toastErreurNonAffichee(e, 'Ajout impossible.')
     }
   }
 
   const toggle = async (r) => {
-    try { await automationApi.toggleRule(r.id); loadRules() } catch (e) { console.warn('Modification impossible.', e) }
+    try { await automationApi.toggleRule(r.id); loadRules() } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   const delRule = async (r) => {
     if (!(await confirmerSuppression({ title: `Supprimer la règle « ${r.nom} » ?` }))) return
     try { await automationApi.deleteRule(r.id); loadRules() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   const decide = async (a, ok) => {
@@ -335,7 +336,7 @@ export default function AutomatisationsSection() {
       if (ok) await automationApi.approve(a.id)
       else await automationApi.reject(a.id)
       loadApprovals(); loadRuns()
-    } catch (e) { console.warn('Décision impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Décision impossible.') }
   }
 
   if (loading) return (

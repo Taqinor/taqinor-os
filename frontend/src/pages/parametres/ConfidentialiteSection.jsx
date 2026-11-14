@@ -34,6 +34,7 @@ import { SectionTitle } from './peComponents'
 import { majVerrouProfil } from '../../features/parametres/store/parametresSlice'
 import toutesLesPages from './toutesLesPages'
 import { ChargementTexte, ErreurChargementListe } from './EtatsSection'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 const KIND_LABELS = {
   acces: 'Accès (export)',
@@ -80,7 +81,7 @@ function RegistreTraitements() {
       })
       setDraft({ code: '', finalite: '', base_legale: '' })
       load()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
     finally { setBusy(false) }
   }
 
@@ -88,20 +89,20 @@ function RegistreTraitements() {
     try {
       await coreApi.confidentialite.registreTraitements.update(row.id, { actif: !row.actif })
       load()
-    } catch (e) { console.warn('Modification impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
 
   const delRow = async (row) => {
     if (!(await confirmerSuppression({ title: `Supprimer le traitement « ${row.code} » ?` }))) return
     try { await coreApi.confidentialite.registreTraitements.remove(row.id); load() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   const exportCsv = async () => {
     try {
       const res = await coreApi.confidentialite.registreTraitements.exportCsv()
       downloadBlob(res.data, filenameFromResponse(res, 'registre-traitements-cndp.csv'))
-    } catch (e) { console.warn('Export impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Export impossible.') }
   }
 
   if (loading) return <ChargementTexte />
@@ -206,7 +207,7 @@ function DsrRequests() {
       })
       setDraft({ subject_identifier: '', kind: 'acces' })
       load()
-    } catch (e) { console.warn('Soumission impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Soumission impossible.') }
     finally { setBusy(false) }
   }
 
@@ -222,7 +223,7 @@ function DsrRequests() {
     }
     setTraitingId(row.id)
     try { await coreApi.confidentialite.dsrRequests.traiter(row.id); load() }
-    catch (e) { console.warn('Traitement impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Traitement impossible.') }
     finally { setTraitingId(null) }
   }
 
@@ -368,7 +369,7 @@ function ConsentRecords() {
       })
       setDraft({ subject_identifier: '', purpose: '', version_texte: '' })
       load()
-    } catch (e) { console.warn('Ajout impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
     finally { setBusy(false) }
   }
 
@@ -378,7 +379,7 @@ function ConsentRecords() {
     try {
       await api.patch(`/core/consent-records/${row.id}/`, { granted: !row.granted })
       load()
-    } catch (e) { console.warn('Modification impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
 
   if (loading) return <ChargementTexte />
@@ -489,7 +490,7 @@ function BenchmarkingConsent() {
       // APAR73 — le verrou du profil avance (le « Enregistrer » suivant porte
       // ce nouvel horodatage) sans resynchroniser le formulaire.
       dispatch(majVerrouProfil(r?.data?.updated_at))
-    } catch (e) { console.warn('Modification impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
     finally { setBusy(false) }
   }
 

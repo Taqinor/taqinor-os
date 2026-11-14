@@ -8,6 +8,7 @@ import {
 import { estFerieFixeMa } from '../../lib/feriesMaroc'
 import { SectionTitle } from './peComponents'
 import toutesLesPages from './toutesLesPages'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 /* ============================================================================
    WIR154 — Administration Notifications (Paramètres > Notifications). Quatre
@@ -74,11 +75,11 @@ function RoutingRulesPanel() {
       toast.success('Règle ajoutée.')
       setForm({ event_type: '', target_role: 'responsable' })
       load()
-    } catch { toast.error('Création impossible (événement invalide ?).') }
+    } catch (e) { toastErreurNonAffichee(e, 'Création impossible (événement invalide ?).') }
   }
   const supprimer = async (id) => {
     try { await notificationsApi.deleteRoutingRule(id); load() }
-    catch { toast.error('Suppression impossible.') }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   return (
@@ -169,7 +170,7 @@ function CalendrierPanel() {
       })
       setWh(versEcran(r.data))
       toast.success('Calendrier ouvré enregistré.')
-    } catch { toast.error('Enregistrement impossible (réservé admin ?).') }
+    } catch (e) { toastErreurNonAffichee(e, 'Enregistrement impossible (réservé admin ?).') }
     finally { setSaving(false) }
   }
   const ajouterFerie = async () => {
@@ -179,11 +180,11 @@ function CalendrierPanel() {
       toast.success('Jour férié ajouté.')
       setHolForm({ date: '', nom: '', recurrent_annuel: false })
       load()
-    } catch { toast.error('Ajout impossible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Ajout impossible.') }
   }
   const supprimerFerie = async (id) => {
     try { await notificationsApi.deleteHoliday(id); load() }
-    catch { toast.error('Suppression impossible.') }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   if (loading || !wh) return <Card className="mb-4"><CardContent className="pt-4"><Spinner /></CardContent></Card>
@@ -287,15 +288,15 @@ function AnnoncesPanel() {
       toast.success('Annonce créée (brouillon).')
       setForm({ titre: '', corps: '', lecture_obligatoire: false })
       load()
-    } catch { toast.error('Création impossible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Création impossible.') }
   }
   const publier = async (id) => {
     try { await notificationsApi.publierAnnonce(id); toast.success('Annonce publiée.'); load() }
-    catch { toast.error('Publication impossible.') }
+    catch (e) { toastErreurNonAffichee(e, 'Publication impossible.') }
   }
   const supprimer = async (id) => {
     try { await notificationsApi.deleteAnnonce(id); load() }
-    catch { toast.error('Suppression impossible.') }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   return (
@@ -374,11 +375,11 @@ function WhatsAppTemplatesPanel() {
       toast.success('Gabarit créé (brouillon).')
       setForm({ name: '', body_fr: '', language: 'fr' })
       load()
-    } catch { toast.error('Création impossible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Création impossible.') }
   }
   const soumettre = async (id) => {
     try { await notificationsApi.submitWhatsAppTemplate(id); toast.success('Gabarit soumis.'); load() }
-    catch { toast.error('Soumission impossible.') }
+    catch (e) { toastErreurNonAffichee(e, 'Soumission impossible.') }
   }
   const decider = async (id, statut) => {
     try {
@@ -386,11 +387,11 @@ function WhatsAppTemplatesPanel() {
         id, statut, statut === 'rejete' ? 'Rejeté' : '')
       toast.success('Décision enregistrée.')
       load()
-    } catch { toast.error('Décision impossible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Décision impossible.') }
   }
   const supprimer = async (id) => {
     try { await notificationsApi.deleteWhatsAppTemplate(id); load() }
-    catch { toast.error('Suppression impossible.') }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   return (

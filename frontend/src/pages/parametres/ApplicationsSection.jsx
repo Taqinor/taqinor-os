@@ -46,6 +46,7 @@ import { iconNodeForApp, accentForApp } from '../../lib/apps/appIcon'
 import { normalise } from '../../lib/apps/appSearch'
 import { SectionTitle } from './peComponents'
 import { ChargementTexte, ErreurChargementListe } from './EtatsSection'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Résolution icône par manifest (`module_manifest.icone`, kebab-case côté
 // backend) — mapping VOLONTAIREMENT restreint aux icônes déjà utilisées et
@@ -242,7 +243,7 @@ export default function ApplicationsSection() {
       await load()
     } catch (e) {
       if (depuisApercu) setCascadeConfirm(null)
-      console.warn('Activation impossible.', e)
+      toastErreurNonAffichee(e, 'Activation impossible.')
     } finally {
       setBusyKey(null)
     }
@@ -266,7 +267,7 @@ export default function ApplicationsSection() {
           cascade: data.dependants, detail: data.detail,
         })
       } else {
-        console.warn('Désactivation impossible.', e)
+        toastErreurNonAffichee(e, 'Désactivation impossible.')
         setCascadeConfirm(null)
       }
     } finally {
