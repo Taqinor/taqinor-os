@@ -53,6 +53,7 @@ import CalepinageRetenuCard from '../../features/installations/CalepinageRetenuC
 // `ChantierGateTimeline` (une seule timeline dans la fiche).
 import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
+import RecurrencesInterventionSection from './RecurrencesInterventionSection' // ACEL46
 // NTMOB16 — signature client tracée sur le bon de livraison chantier.
 import SignatureLivraisonDialog from './SignatureLivraisonDialog'
 import AnnulerInterventionDialog from '../../features/installations/AnnulerInterventionDialog'
@@ -1759,6 +1760,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </Button>}
               </div>
             </Section>
+            <Section icon={Wrench} title="Interventions récurrentes"><RecurrencesInterventionSection installationId={id} peutGerer={peutInterv} /></Section>
             {/* ── Tickets SAV ── */}
             <Section icon={Wrench} title="Tickets SAV">
               {tickets.length === 0 ? (

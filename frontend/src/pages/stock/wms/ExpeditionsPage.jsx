@@ -439,7 +439,7 @@ export default function ExpeditionsPage() {
           <ul className="mt-2 text-sm">
             {tarifs.offres.map((o) => (
               <li key={`${o.source}-${o.code}`}>
-                {o.libelle} — {o.cout} {o.devise}{o.delai_jours != null ? ` · ${o.delai_jours} j` : ''}
+                {o.libelle} — {o.cout == null ? '—' : `${o.cout} ${o.devise}`}{o.delai_jours != null ? ` · ${o.delai_jours} j` : ''}
               </li>
             ))}
           </ul>

@@ -21,6 +21,7 @@ from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from apps.crm.models import Client
 from apps.installations.models import (
@@ -182,3 +183,39 @@ class TestGenererInterventionsRecurrentes(TestCase):
         self.assertEqual(consigner.call_args.args[0],
                          'installations.generer_interventions_recurrentes')
         self.assertEqual(Intervention.objects.filter(installation=inst_b).count(), 1)
+
+    def test_recurrence_creee_par_api_garde_le_31(self):
+        # ACEL46 — créée depuis la fiche chantier, la récurrence du 31 revient
+        # au 31 après février (avant : route 404 ; 31/01, 28/02, 28/03).
+        import json
+        from pathlib import Path
+
+        def lignes(rep):
+            return rep.data['results'] if isinstance(rep.data, dict) else rep.data
+
+        api = APIClient()
+        api.force_authenticate(self.user)
+        url = '/api/django/installations/recurrences-intervention/'
+        corps = {'installation': self.inst.id, 'regle': 'mensuelle', 'intervalle': 1,
+                 'prochaine_echeance': '2026-01-31', 'type_intervention': 'nettoyage'}
+        rep = api.post(url, corps, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertEqual(rep.data['jour_ancrage'], 31)
+        generer_interventions_recurrentes(self.company, aujourd_hui=date(2026, 3, 31))
+        dates = sorted(Intervention.objects.filter(
+            installation=self.inst).values_list('date_prevue', flat=True))
+        self.assertEqual(dates, [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31)])
+        recs = lignes(api.get(url, {'installation': self.inst.id}))
+        self.assertEqual([r['prochaine_echeance'] for r in recs], ['2026-04-30'])
+        # Contrat partagé (PACT10) : la réponse porte exactement les clés de l'exemple.
+        contrat = json.loads((Path(__file__).parent / 'contract_samples'
+                              / 'recurrences_intervention.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(contrat['exemple']), set(recs[0]))
+        # Autre chantier / autre société : rien ne fuit (404).
+        autre_inst = make_installation(self.company)
+        self.assertEqual(lignes(api.get(url, {'installation': autre_inst.id})), [])
+        api_b = APIClient()
+        api_b.force_authenticate(make_user(make_company()))
+        self.assertEqual(api_b.get(f"{url}{recs[0]['id']}/").status_code, 404)
+        # Chantier d'une autre société en écriture : « objet inexistant », comme un id absent (ACAL298).
+        self.assertEqual(api_b.post(url, corps, format='json').status_code, 400)

@@ -36,6 +36,7 @@ const emptyForm = {
   // une note de frais escaladée (NTP2P11). N'affecte jamais le calcul
   // d'escalade lui-même.
   plafond_notes_frais_actif: false,
+  relance_bcf_actif: false,  // ACEL42 — relance proposée des BCF en retard (tâche de nuit)
 }
 
 export default function AchatsParametresPage() {
@@ -63,6 +64,7 @@ export default function AchatsParametresPage() {
           onboarding_fournisseur_obligatoire: !!data.onboarding_fournisseur_obligatoire,
           sod_stricte: !!data.sod_stricte,
           plafond_notes_frais_actif: !!data.plafond_notes_frais_actif,
+          relance_bcf_actif: !!data.relance_bcf_actif,
         })
         setEchecLecture(false)
       })
@@ -208,6 +210,16 @@ export default function AchatsParametresPage() {
               Désactivé par défaut (comportement historique — paiement
               intégral, aucune retenue).
             </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch id="ap-relance-bcf" aria-label="Proposer la relance des BCF en retard"
+                checked={form.relance_bcf_actif} onCheckedChange={(v) => setField('relance_bcf_actif', v)} />
+              Chaque nuit, proposer aux acheteurs la relance des bons de commande fournisseur en retard
+            </label>
           </CardContent>
         </Card>
 

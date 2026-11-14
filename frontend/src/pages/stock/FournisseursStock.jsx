@@ -515,6 +515,7 @@ export default function FournisseursStock() {
   const [categories, setCategories] = useState([]) // XPUR5/WIR108 — référentiel catégories
   const [showCategories, setShowCategories] = useState(false)
   const isAdmin = canDelete
+  const peutSupprimer = useHasPermission('stock_supprimer') || isAdmin  // ADRG106 — suppression d'une catégorie
 
   // WIR190 — fournisseurs archivés (repli PROTECT, même patron que StockList).
   const [showArchived, setShowArchived] = useState(false)
@@ -889,7 +890,7 @@ export default function FournisseursStock() {
         <ScorecardModal fournisseur={scorecard} onClose={() => setScorecard(null)} />
       )}
       {showCategories && (
-        <CategorieFournisseurManager categories={categories} isAdmin={isAdmin}
+        <CategorieFournisseurManager categories={categories} isAdmin={peutSupprimer /* ADRG106 */}
                                      onClose={() => setShowCategories(false)}
                                      onChanged={reloadCategories} />
       )}

@@ -492,8 +492,6 @@
     suivi:booleen
 - frontend/src/api/statuspageApi.js :: prefillIncident -> /api/django/statuspage/historique-statut/<>/prefill-incident
     composants:liste, debute_le:inconnu, region:inconnu, severite:inconnu, titre:texte
-- frontend/src/api/stockApi.js :: bulkProduits -> /api/django/stock/produits/bulk
-    detail:texte, ok:booleen, skipped:inconnu, total:nombre, updated:inconnu
 - frontend/src/api/stockApi.js :: comparerTcoFournisseurs -> /api/django/stock/produits/<>/comparer-tco
     cout_rupture_jour:texte, fournisseurs:inconnu, produit:inconnu
 - frontend/src/api/stockApi.js :: deciderCandidatureFournisseur -> /api/django/stock/fournisseurs/<>/decider-candidature
@@ -1619,9 +1617,6 @@
 - frontend/src/api/savApi.js :: saveContratOm -> /api/django/sav/contrats-maintenance/<>  [ContratMaintenanceSerializer]
     champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
-- frontend/src/api/stockApi.js :: createAcompteFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
-    mode ∈ {autre, carte, cheque, effet, especes, virement}
 - frontend/src/api/stockApi.js :: createCategorieFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
     champs: archived, id, nom
 - frontend/src/api/stockApi.js :: createConditionnementProduit -> /api/django/stock/conditionnements  [ConditionnementProduitSerializer]
@@ -1652,17 +1647,9 @@
     type_nomenclature ∈ {default, gs1}
 - frontend/src/api/stockApi.js :: createPrixFournisseur -> /api/django/stock/prix-fournisseurs  [PrixFournisseurSerializer]
     champs: date_debut, date_dernier_achat, date_fin, delai_livraison_jours, fournisseur, fournisseur_nom, id, paliers, prix_achat, produit, produit_nom, ref_produit_fournisseur
-- frontend/src/api/stockApi.js :: createProduit -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/api/stockApi.js :: createRegleCodeBarres -> /api/django/stock/regles-code-barres  [RegleCodeBarresSerializer]
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
-- frontend/src/api/stockApi.js :: deleteAcompteFournisseur -> /api/django/stock/acomptes-fournisseur/<>  [AcompteFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
-    mode ∈ {autre, carte, cheque, effet, especes, virement}
 - frontend/src/api/stockApi.js :: deleteCategorieFournisseur -> /api/django/stock/categories-fournisseur/<>  [CategorieFournisseurSerializer]
     champs: archived, id, nom
 - frontend/src/api/stockApi.js :: deleteConditionnementProduit -> /api/django/stock/conditionnements/<>  [ConditionnementProduitSerializer]
@@ -1683,17 +1670,9 @@
     type_nomenclature ∈ {default, gs1}
 - frontend/src/api/stockApi.js :: deletePrixFournisseur -> /api/django/stock/prix-fournisseurs/<>  [PrixFournisseurSerializer]
     champs: date_debut, date_dernier_achat, date_fin, delai_livraison_jours, fournisseur, fournisseur_nom, id, paliers, prix_achat, produit, produit_nom, ref_produit_fournisseur
-- frontend/src/api/stockApi.js :: deleteProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/api/stockApi.js :: deleteRegleCodeBarres -> /api/django/stock/regles-code-barres/<>  [RegleCodeBarresSerializer]
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
-- frontend/src/api/stockApi.js :: getAcomptesFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
-    mode ∈ {autre, carte, cheque, effet, especes, virement}
 - frontend/src/api/stockApi.js :: getCatalogueAchat -> /api/django/stock/catalogue-achat  [CatalogueAchatSerializer]
     champs: categorie, categorie_nom, fournisseur_prefere, fournisseur_prefere_nom, id, nom, prix_achat_dernier, sku
 - frontend/src/api/stockApi.js :: getCategoriesFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
@@ -1726,29 +1705,6 @@
 - frontend/src/api/stockApi.js :: getNomenclaturesCodeBarres -> /api/django/stock/nomenclatures-code-barres  [NomenclatureCodeBarresSerializer]
     champs: actif, date_creation, date_mise_a_jour, id, nom, regles, type_nomenclature
     type_nomenclature ∈ {default, gs1}
-- frontend/src/api/stockApi.js :: getProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/api/stockApi.js :: getProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/api/stockApi.js :: getProduitsArchived -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/api/stockApi.js :: patchProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/api/stockApi.js :: updateAcompteFournisseur -> /api/django/stock/acomptes-fournisseur/<>  [AcompteFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
-    mode ∈ {autre, carte, cheque, effet, especes, virement}
 - frontend/src/api/stockApi.js :: updateCategorieFournisseur -> /api/django/stock/categories-fournisseur/<>  [CategorieFournisseurSerializer]
     champs: archived, id, nom
 - frontend/src/api/stockApi.js :: updateConditionnementProduit -> /api/django/stock/conditionnements/<>  [ConditionnementProduitSerializer]
@@ -1776,11 +1732,6 @@
     type_nomenclature ∈ {default, gs1}
 - frontend/src/api/stockApi.js :: updatePrixFournisseur -> /api/django/stock/prix-fournisseurs/<>  [PrixFournisseurSerializer]
     champs: date_debut, date_dernier_achat, date_fin, delai_livraison_jours, fournisseur, fournisseur_nom, id, paliers, prix_achat, produit, produit_nom, ref_produit_fournisseur
-- frontend/src/api/stockApi.js :: updateProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/api/stockApi.js :: updateRegleCodeBarres -> /api/django/stock/regles-code-barres/<>  [RegleCodeBarresSerializer]
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
@@ -1858,11 +1809,6 @@
     champs: actif, bin, bin_code, created_at, id, produit, quantite_cible, seuil
 - frontend/src/features/stock/api/entrepotCasiersApi.js :: listCasiers -> /api/django/installations/bin-locations  [BinLocationSerializer]
     champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
-- frontend/src/features/stock/api/entrepotCasiersApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/entrepotCasiersApi.js :: listSeuils -> /api/django/stock/seuils-reappro-casier  [SeuilReapproCasierSerializer]
     champs: actif, bin, bin_code, created_at, id, produit, quantite_cible, seuil
 - frontend/src/features/stock/api/entrepotCasiersApi.js :: listTaches -> /api/django/stock/taches-reappro-interne  [TacheReapproInterneSerializer]
@@ -1872,36 +1818,16 @@
     champs: actif, bin, bin_code, created_at, id, produit, quantite_cible, seuil
 - frontend/src/features/stock/api/expeditionsApi.js :: listCasiers -> /api/django/installations/bin-locations  [BinLocationSerializer]
     champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
-- frontend/src/features/stock/api/expeditionsApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/kitsApi.js :: creerKit -> /api/django/stock/kits  [KitProduitSerializer]
     champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
 - frontend/src/features/stock/api/kitsApi.js :: getKit -> /api/django/stock/kits/<>  [KitProduitSerializer]
     champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
 - frontend/src/features/stock/api/kitsApi.js :: listKits -> /api/django/stock/kits  [KitProduitSerializer]
     champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
-- frontend/src/features/stock/api/kitsApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/kitsApi.js :: modifierKit -> /api/django/stock/kits/<>  [KitProduitSerializer]
     champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
 - frontend/src/features/stock/api/kitsApi.js :: supprimerKit -> /api/django/stock/kits/<>  [KitProduitSerializer]
     champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
-- frontend/src/features/stock/api/negoceApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/features/stock/api/pickingApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/portailsTiersApi.js :: generer -> /api/django/stock/portails-tiers  [PortailTiersTokenSerializer]
     champs: created_at, est_valide, expires_at, id, last_used_at, lien_public, revoked, tiers_nom, token
 - frontend/src/features/stock/api/portailsTiersApi.js :: list -> /api/django/stock/portails-tiers  [PortailTiersTokenSerializer]
@@ -1933,11 +1859,6 @@
     champs: bin, bin_code, classe_danger, created_at, id
 - frontend/src/features/stock/api/qualiteApi.js :: listPlans -> /api/django/stock/plans-echantillonnage  [PlanEchantillonnageSerializer]
     champs: actif, categorie, categorie_nom, created_at, id, note, taux_echantillon_pct, updated_at
-- frontend/src/features/stock/api/qualiteApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
-    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, classe_danger, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, est_recurrent, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, lock_version, louable, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, periodicite_defaut, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reappro_cible, quantite_reservee, quantite_stock, quantite_suggeree, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tarif_location_jour, tarif_location_mois, tarif_location_semaine, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
-    classe_danger ∈ {AUCUNE, BATTERIE_LITHIUM, CORROSIF, INFLAMMABLE}
-    periodicite_defaut ∈ {annuel, mensuel, semestriel, trimestriel}
-    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/qualiteApi.js :: listRappels -> /api/django/stock/alertes-rappel  [AlerteRappelSerializer]
     champs: blocages, created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
     statut ∈ {clos, en_cours}

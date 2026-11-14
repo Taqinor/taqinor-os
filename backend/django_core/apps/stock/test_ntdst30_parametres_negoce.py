@@ -100,6 +100,44 @@ class Ntdst30ParametresTests(Ntdst30Base):
         self.assertEqual(auth(self.normal).get(URL).status_code, 403)
         self.assertEqual(APIClient().get(URL).status_code, 401)
 
+    def test_patch_exige_parametres_modifier_roles_livres(self):
+        """ADRG38 (C-ADRG-012, D-ADRG-5) — PATCH du réglage négoce : sans
+        ``parametres_modifier`` ⇒ 403, réglage inchangé ; GET inchangé.
+        Mutant : retirer le contrôle ⇒ 200 et consignation coupée."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms[nom]),
+                est_systeme=True)
+            return User.objects.create_user(
+                username=f'adrg38-{nom.lower().replace(" ", "-")}',
+                password='x', company=self.company, role=role)
+        resp = User.objects.create_user(
+            username='adrg38_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        corps = {'consignation_activee': False}
+        for nom in ('Commercial responsable', 'Technicien responsable',
+                    'Technicien', 'Responsable', 'Admin Ventes'):
+            with self.subTest(role=nom):
+                rep = auth(compte(nom)).patch(URL, corps, format='json')
+                self.assertEqual(rep.status_code, 403, rep.content)
+                self.assertEqual(
+                    rep.json()['detail'],
+                    "Vous n'avez pas la permission de modifier ces paramètres.")
+                self.assertTrue(
+                    ParametresNegoce.get(self.company).consignation_activee)
+        for user in (compte('Directeur'), compte('Administrateur'), resp):
+            with self.subTest(user=user.username):
+                self.assertEqual(auth(user).get(URL).status_code, 200)
+                rep = auth(user).patch(URL, corps, format='json')
+                self.assertEqual(rep.status_code, 200, rep.content)
+                self.assertFalse(rep.json()['consignation_activee'])
+                ParametresNegoce.objects.filter(company=self.company).update(
+                    consignation_activee=True)
+
     def test_chaque_societe_a_son_propre_singleton(self):
         autre_admin = User.objects.create_user(
             username='ntdst30_autre_admin', password='x',

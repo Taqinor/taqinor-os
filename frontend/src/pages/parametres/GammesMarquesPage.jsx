@@ -8,6 +8,9 @@ import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import useCanModifierParametres from '../../features/parametres/useCanModifierParametres'
+// ADRG13 — sans `parametres_modifier` : lecture seule, aucun bouton « Enregistrer ».
+const LectureSeule = ({ children }) => <div className="flex flex-col gap-4">{children}</div>
 
 /* ============================================================================
    PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
@@ -61,6 +64,8 @@ export default function GammesMarquesPage() {
   const [echecLecture, setEchecLecture] = useState(false)
   const [essai, setEssai] = useState(0)
   const reessayer = () => { setLoading(true); setEssai((n) => n + 1) }
+  const peutModifier = useCanModifierParametres()
+  const Formulaire = peutModifier ? FormulaireReglages : LectureSeule
 
   useEffect(() => {
     let active = true
@@ -127,7 +132,8 @@ export default function GammesMarquesPage() {
           Réglages illisibles — la lecture a échoué, l’enregistrement est bloqué.
           <Button type="button" size="sm" variant="outline" onClick={reessayer}>Réessayer</Button>
         </p>)}
-      <FormulaireReglages onSubmit={submit} saving={saving} disabled={echecLecture}>
+      <Formulaire onSubmit={submit} saving={saving} disabled={echecLecture}>
+        <fieldset disabled={!peutModifier} className="contents">
         <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
             <Layers className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -221,8 +227,8 @@ export default function GammesMarquesPage() {
             ))}
           </TableauLignes>
         </CarteContenu>
-
-      </FormulaireReglages>
+        </fieldset>
+      </Formulaire>
     </PageReglages>
   )
 }

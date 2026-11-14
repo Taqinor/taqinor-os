@@ -359,6 +359,29 @@ describe('WIR108 — acomptes, avoirs, contacts', () => {
     })
   })
 
+  it('ADRG106 — contacts et pièces : « Supprimer » suit `stock_supprimer` (Admin Ventes oui, Responsable non)', async () => {
+    stubCommon()
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getContactsFournisseurDe.mockResolvedValue({ data: [{ id: 3, nom: 'Jean Dupont' }] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({
+      data: [{ id: 4, type_document: 'RC', date_expiration: null }] })
+    const voir = async (onglet, testId) => {
+      await userEvent.click(await screen.findByRole('tab', { name: onglet }))
+      return screen.findByTestId(testId)
+    }
+    const vue = renderPage({ authState: { role: 'normal', permissions: ['stock_voir', 'stock_modifier', 'stock_supprimer'] } })
+    let panel = await voir(/Contacts/, 'f360-tab-contacts')
+    await within(panel).findByText(/Jean Dupont/)
+    expect(within(panel).getByRole('button', { name: 'Supprimer' })).toBeInTheDocument()
+    panel = await voir(/Conformité/, 'f360-tab-documents')
+    expect(await within(panel).findByRole('button', { name: 'Supprimer la pièce' })).toBeInTheDocument()
+    vue.unmount()
+    renderPage({ authState: { role: 'responsable', permissions: ['stock_voir', 'stock_modifier'] } })
+    panel = await voir(/Contacts/, 'f360-tab-contacts')
+    await within(panel).findByText(/Jean Dupont/)
+    expect(within(panel).queryByRole('button', { name: 'Supprimer' })).toBeNull()
+  })
+
   it('Contacts : ajoute un contact secondaire', async () => {
     stubCommon()
     stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
