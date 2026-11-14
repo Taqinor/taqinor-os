@@ -597,6 +597,11 @@ etapeCR('PF12.9-AERR108', ['AERR108'], async ({ page, suivi, testInfo }) => {
     { nom: `AERR108 B ${m}`, prenom: 'Essai', telephone: tel, stage: 'NEW' },
   ])
   apres.push(() => supprimerLeads([a, b]))
+  // Une section complète (ville renseignée) se replie à l'ouverture : on la déplie par sa puce de navigation.
+  const deplierContact = async (pg) => {
+    await pg.getByRole('navigation', { name: 'Sections du lead' }).getByRole('button', { name: 'Contact', exact: true }).click({ timeout: 60_000 })
+    await expect(pg.locator('#lf-ville')).toBeVisible({ timeout: 30_000 })
+  }
   const villeDe = (pk) => py(`from apps.crm.models import Lead
 sortie(Lead.objects.get(pk=${pk}).ville)`)
   const p = await ecran(page, suivi, testInfo, nom)
@@ -616,6 +621,7 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
   // Rouvrir le lead dans un autre onglet : la ville est servie par le serveur.
   const onglet = await ecran(page, suivi, testInfo, nom)
   await onglet.goto(`/crm/leads/${a}`)
+  await deplierContact(onglet)
   await expect(onglet.locator('#lf-ville'), 'autre onglet : ville servie').toHaveValue(v1, { timeout: 60_000 })
   await onglet.close()
   // 2) Liste : frappe puis lien du doublon ⇒ le PATCH part AVANT la lecture du doublon.
@@ -638,6 +644,7 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
   expect(ordre.indexOf('patch-a')).toBeLessThan(ordre.indexOf('get-b'))
   await expect.poll(() => villeDe(a), { timeout: 30_000, message: 'en base : 2e frappe enregistrée' }).toBe(v2)
   await p.goto(`/crm/leads/${a}`)
+  await deplierContact(p)
   await expect(p.locator('#lf-ville'), 'après rechargement : ville servie').toHaveValue(v2, { timeout: 60_000 })
   await auRepos(suivi)
   await montrer(page)
