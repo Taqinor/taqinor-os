@@ -27,12 +27,12 @@ import {
   VENTES_VALIDER_PERMISSION,
 } from './useHasPermission'
 
-function renderWithAuth({ role = 'normal', role_nom = null, permissions = [] } = {}) {
+function renderWithAuth({ role = 'normal', role_nom = null, permissions = [], user = { id: 1, portee: 'interne' } } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 },
+        user,
         role,
         role_nom,
         permissions,
@@ -205,10 +205,19 @@ describe('useCanLireInterventions (ADRG122)', () => {
     expect(peut({ role_nom: 'Rôle vide', permissions: [] })).toBe(false)
   })
 
-  it('la règle pure lit un état d’auth partiel sans lever', () => {
-    expect(peutLireInterventions(null)).toBe(true)
-    expect(peutLireInterventions({ user: { id: 7 } })).toBe(true)
-    expect(peutLireInterventions({ role_nom: 'Commercial', permissions: ['ventes_voir'] })).toBe(false)
+  it('profil pas encore servi par /auth/me/ (état posé par la connexion) : non, même pour un futur Technicien', () => {
+    // `setCredentials` après `/token/` : `{ username }`, palier normal, ni rôle fin ni code, pas de `portee`.
+    expect(peut({ user: { username: 'tech' } })).toBe(false)
+    expect(peut({ user: null })).toBe(false)
+    expect(peutLireInterventions(null)).toBe(false)
+    expect(peutLireInterventions({ user: { id: 7 } })).toBe(false)
+    // Le même compte une fois son profil servi : compte hérité → oui.
+    expect(peutLireInterventions({ user: { id: 7, portee: 'interne' } })).toBe(true)
+  })
+
+  it('compte portail : non (route interne, `IsAnyRole`)', () => {
+    expect(peut({ user: { id: 5, portee: 'portail_client' }, role_nom: null, permissions: [] })).toBe(false)
+    expect(peut({ user: { id: 5, portee: 'portail_client' }, role_nom: 'Technicien', permissions: ['installation_voir'] })).toBe(false)
   })
 })
 

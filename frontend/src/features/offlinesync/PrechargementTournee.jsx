@@ -18,13 +18,13 @@ import {
 import { todayLocalIso } from '../../lib/dateLocale'
 
 export default function PrechargementTournee() {
-  // Session connue d'abord : avant `/auth/me/`, l'état vide ressemble à un
-  // compte hérité sans rôle fin, que la règle laisse passer.
-  const sessionConnue = useSelector((s) => s.auth.isAuthenticated)
+  // Session ouverte ET droit lu sur le profil servi par `/auth/me/` (le crochet
+  // dit non tant que ce profil n'est pas là).
+  const sessionOuverte = useSelector((s) => s.auth.isAuthenticated)
   const peutLireTournee = useCanLireInterventions()
 
   useEffect(() => {
-    if (!sessionConnue || !peutLireTournee) return
+    if (!sessionOuverte || !peutLireTournee) return
     const maintenant = new Date()
     const jour = todayLocalIso(maintenant)
     const decision = doitPrecharger({
@@ -41,7 +41,7 @@ export default function PrechargementTournee() {
       cache: readCache,
       jour,
     })
-  }, [sessionConnue, peutLireTournee])
+  }, [sessionOuverte, peutLireTournee])
 
   return null
 }

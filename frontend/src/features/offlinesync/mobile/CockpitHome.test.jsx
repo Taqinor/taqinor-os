@@ -98,14 +98,15 @@ describe('CockpitHome (NTMOB5)', () => {
 // un compte auquel le serveur la sert (lecture du module chantiers).
 describe("CockpitHome — « À faire aujourd'hui » : la tournée selon le droit (ADRG122)", () => {
   beforeEach(() => {
-    reportingApiMock.getNotifications.mockResolvedValue({ data: { factures: [] } })
+    reportingApiMock.getNotifications.mockResolvedValue({ data: { factures_impayees: [] } })
+    // Un arrêt tel que le serveur le sert (une intervention n'a ni titre ni référence propre).
     installationsApiMock.getMaTournee.mockResolvedValue({
-      data: { stops: [{ id: 9, titre: 'Pose onduleur — Villa Atlas' }] },
+      data: { stops: [{ id: 9, type_intervention: 'controle', installation_reference: 'CH-2026-0009', client_nom: 'Villa Atlas' }] },
     })
   })
 
   it('sans lecture des interventions (Commercial responsable) : `ma-tournee` jamais demandé', async () => {
-    renderPage({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['ventes_voir', 'ventes_creer', 'users_voir'] })
+    renderPage({ user: { id: 3, portee: 'interne' }, role: 'responsable', role_nom: 'Commercial responsable', permissions: ['ventes_voir', 'ventes_creer', 'users_voir'] })
     // Le widget a rendu ses autres sources : sa décision sur la tournée est prise.
     expect(await screen.findByText('Approbation en attente')).toBeInTheDocument()
     expect(installationsApiMock.getMaTournee).not.toHaveBeenCalled()
@@ -113,8 +114,8 @@ describe("CockpitHome — « À faire aujourd'hui » : la tournée selon le droi
   })
 
   it('avec le droit (Technicien responsable) : l’intervention du jour reste listée', async () => {
-    renderPage({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'intervention_gerer', 'users_voir'] })
-    expect(await screen.findByText('Pose onduleur — Villa Atlas')).toBeInTheDocument()
+    renderPage({ user: { id: 4, portee: 'interne' }, role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'intervention_gerer', 'users_voir'] })
+    expect(await screen.findByText('Intervention #9')).toBeInTheDocument()
     expect(screen.getByText('Intervention du jour')).toBeInTheDocument()
     expect(installationsApiMock.getMaTournee).toHaveBeenCalledTimes(1)
   })

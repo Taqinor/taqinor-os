@@ -112,12 +112,13 @@ describe('Layout — coquille unique (ODY33)', () => {
    auquel le serveur sert `ma-tournee` (lecture du module chantiers). */
 describe('Layout — pré-chargement de la tournée selon le droit (ADRG122)', () => {
   const MATIN = new Date(2026, 10, 14, 8, 30)
+  // Profils tels que `/auth/me/` les sert (`portee` comprise).
   const COMMERCIAL = {
-    role: 'normal', role_nom: 'Commercial',
+    user: { username: 'co', portee: 'interne' }, role: 'normal', role_nom: 'Commercial',
     permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'ventes_creer', 'sav_voir'],
   }
   const TECHNICIEN = {
-    role: 'normal', role_nom: 'Technicien',
+    user: { username: 'te', portee: 'interne' }, role: 'normal', role_nom: 'Technicien',
     permissions: ['installation_voir', 'installation_gerer', 'intervention_gerer', 'sav_voir'],
   }
 
@@ -143,7 +144,15 @@ describe('Layout — pré-chargement de la tournée selon le droit (ADRG122)', (
     expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
   })
 
-  it('session pas encore connue : rien ne part avant `/auth/me/`', async () => {
+  it('état posé par la connexion, profil pas encore servi par `/auth/me/` : rien ne part', async () => {
+    // `setCredentials` après `/token/` (Login, fenêtre de session expirée) : même pour un Technicien.
+    const { findByText } = renderLayout(<p>accueil</p>,
+      { user: { username: 'te' }, role: 'normal', role_nom: null, permissions: [] })
+    expect(await findByText('accueil')).toBeInTheDocument()
+    expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
+  })
+
+  it('session fermée : rien ne part, même avec un profil resté en mémoire', async () => {
     const { findByText } = renderLayout(<p>accueil</p>, { ...TECHNICIEN, isAuthenticated: false })
     expect(await findByText('accueil')).toBeInTheDocument()
     expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
