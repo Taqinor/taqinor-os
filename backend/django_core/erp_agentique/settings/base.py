@@ -1531,6 +1531,8 @@ LIVECHAT_PUBLIC_ENABLED = os.environ.get('LIVECHAT_PUBLIC_ENABLED', '0') == '1'
 
 # COP-G1 — interrupteur du copilote commercial : `aucun` | `admins` (défaut) | `tous` ; toute autre valeur = `aucun`.
 ASSISTANT_COPILOTE = os.environ.get('ASSISTANT_COPILOTE', 'admins')
+ASSISTANT_EXPORT_TOKEN = os.environ.get('ASSISTANT_EXPORT_TOKEN', '').strip()  # AIC92 — tri nocturne ; vide = fermé
+ASSISTANT_EXPORT_SOCIETE = os.environ.get('ASSISTANT_EXPORT_SOCIETE', '').strip()  # AIC92 — id de SA société
 
 # VAO22/VAO4 — veille appels d'offres : interrupteur d'ARMEMENT de la collecte
 # automatique, DÉSARMÉ par défaut (règle #5 volet (b) — l'accord explicite et

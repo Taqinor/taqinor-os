@@ -422,6 +422,34 @@ class AssistantExportTests(TestCase):
         with override_settings(AGENT_HMAC_SECRET=''):
             self.assertEqual(_auth(self.admin).get(self.URL).status_code, 403)
 
+    def test_jeton_de_service_lit_l_export_de_sa_societe(self):
+        """AIC92 — `Authorization: Bearer <ASSISTANT_EXPORT_TOKEN>` sans session :
+        200 et l'export anonymisé de la société `ASSISTANT_EXPORT_SOCIETE`
+        seulement ; jeton faux ou réglage vide => 401 ; l'admin connecté garde
+        son accès ; `AGENT_HMAC_SECRET` absent => refusé."""
+        jeton = 'jeton-service-tri-aic92-0123456789abcdef'
+
+        def service(valeur=jeton):
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {valeur}')
+            return api.get(self.URL)
+
+        with override_settings(ASSISTANT_EXPORT_TOKEN=jeton,
+                               ASSISTANT_EXPORT_SOCIETE=str(self.co.pk)):
+            resp = service()
+            self.assertEqual(resp.status_code, 200, resp.content)
+            self.assertEqual(set(resp.data), set(CONTRAT_EXPORT['exemple']))
+            self.assertEqual(len(resp.data['evenements']), 3)  # pas l'autre société
+            self.assertNotIn('0699999999', json.dumps(resp.data, default=str))
+            self.assertEqual(service('faux-jeton').status_code, 401)
+            self.assertEqual(_auth(self.admin).get(self.URL).status_code, 200)
+            with override_settings(AGENT_HMAC_SECRET=''):
+                self.assertEqual(service().status_code, 403)
+        for reglages in ({'ASSISTANT_EXPORT_TOKEN': '', 'ASSISTANT_EXPORT_SOCIETE': str(self.co.pk)},
+                         {'ASSISTANT_EXPORT_TOKEN': jeton, 'ASSISTANT_EXPORT_SOCIETE': ''}):
+            with override_settings(**reglages):
+                self.assertEqual(service().status_code, 401)
+
 
 # ── AIC12 — mesure : coût, taux de non-supporté, repli (contrat AIC2) ────────
 CONTRAT_STATS = json.loads(
