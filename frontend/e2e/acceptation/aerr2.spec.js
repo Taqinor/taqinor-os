@@ -42,34 +42,23 @@ async function auRepos(suivi) {
   for (const p of suivi.pages.filter((x) => !x.isClosed())) await p.waitForLoadState('networkidle').catch(() => undefined)
 }
 
-// ÉCARTS ACCEPTÉS, BORNÉS (décision de l'orchestrateur du lot, METHODE §C.4 point 7 (b)) — observés au run runner
-// 43539844228 (8f51a8364, 14/11 à 01 h UTC) : (1) avant 12 h, le pré-chargement matinal de la tournée
-// (`frontend/src/features/offlinesync/prechargeMatinale.js`, NTMOB28, 2ad951e296 du 13/08/2026) appelle
-// `GET installations/interventions/ma-tournee/` au démarrage de l'app pour TOUT compte, d'où un 403 (oracles 2 et 3)
-// pour le Commercial responsable sans droit installations — même famille que les 403 d'arrière-plan d'ADRG110-121,
-// antérieur aux tâches AERR, hors de tous leurs Files ; (2) la question avant de quitter une fiche lead en création est
-// la boîte NATIVE `window.confirm` de `frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty` (oracle 4), appelée
-// telle quelle par `useLeadDraft.leaveGuard` avant AERR108, fichier hors des Files d'AERR108. Bornés : le corps de
-// l'étape échoue sur TOUT autre incident d'oracle.
-const MATIN = new Date().getHours() < 12
-const RE_PRECHARGE = /\/api\/django\/installations\/interventions\/ma-tournee\//
-const RAISON_PRECHARGE = 'pré-chargement matinal de la tournée (frontend/src/features/offlinesync/prechargeMatinale.js, '
-  + 'NTMOB28 2ad951e296 du 13/08/2026, avant 12 h) : GET installations/interventions/ma-tournee/ → 403 au démarrage '
-  + 'de l\'app pour un Commercial responsable sans droit installations (oracles 2 et 3) ; antérieur aux tâches AERR, '
-  + 'hors de tous leurs Files ; borné : tout autre incident d\'oracle fait échouer l\'étape'
+// ÉCART ACCEPTÉ, BORNÉ (décision de l'orchestrateur du lot, METHODE §C.4 point 7 (b)) — la question avant de quitter une
+// fiche lead en création est la boîte NATIVE `window.confirm` de `frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty`
+// (oracle 4), appelée telle quelle par `useLeadDraft.leaveGuard` avant AERR108, fichier hors des Files d'AERR108. Borné :
+// le corps de l'étape échoue sur TOUT autre incident d'oracle. (Le 403 du pré-chargement matinal de la tournée vu aux
+// runs du 14/11 avant 12 h est corrigé sur main par ADRG122 — branche fusionnée, plus aucun écart pour lui.)
 const RAISON_NATIF = 'la question avant de quitter une fiche en création est la boîte NATIVE window.confirm « Modifications '
   + 'non enregistrées — quitter cette page ? » de frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty (oracle 4), '
   + 'appelée telle quelle par useLeadDraft.leaveGuard avant AERR108, fichier hors des Files d\'AERR108 (deploy) ; '
   + 'borné : seul cet oracle 4 est excusé, le corps (question posée, fiche gardée, doublon non lu) doit passer'
 /** Étape jouée sous le Commercial responsable : écarts bornés ci-dessus seulement. */
 function etapeCR(id, taches, corps, { natif = false } = {}) {
-  const raisons = [natif ? RAISON_NATIF : '', MATIN ? RAISON_PRECHARGE : ''].filter(Boolean)
+  if (!natif) { etape(id, taches, corps); return }
   etape(id, taches, async (args) => {
     await corps(args)
-    const autres = args.suivi.incidents.filter((i) => !RE_PRECHARGE.test(i.texte)
-      && !(natif && i.oracle === '4' && /quitter cette page/.test(i.texte)))
+    const autres = args.suivi.incidents.filter((i) => !(i.oracle === '4' && /quitter cette page/.test(i.texte)))
     expect(autres, 'écart borné : aucun autre incident d\'oracle').toEqual([])
-  }, raisons.length ? { ecart: { base: 'FAIL', raison: raisons.join(' ; ') } } : {})
+  }, { ecart: { base: 'FAIL', raison: RAISON_NATIF } })
 }
 
 // Détecteurs dont le motif lit l'ANCIENNE forme et rend `repro` True sur le code corrigé (vérifié à la lecture le
@@ -1095,7 +1084,7 @@ sortie(ObjectifCommercial.objects.filter(pk=${ids.obj}).exists())`)
   await dlg.getByRole('button', { name: /Effacer l.objectif/ }).click()
   await boite.getByRole('button', { name: 'Effacer', exact: true }).click()
   await expect(dlg, 'confirmé : la boîte se ferme').toHaveCount(0, { timeout: 30_000 })
-  expect(suppressions.n, 'un seul deleteObjectif').toBe(1)
+  await expect.poll(() => suppressions.n, { timeout: 15_000, message: 'un seul deleteObjectif' }).toBe(1)
   await expect.poll(existe, { timeout: 15_000, message: 'en base : objectif effacé' }).toBe(false)
   await p.reload()
   await expect(ligne.getByRole('button').nth(4), 'après rechargement : plus d\'objectif').toContainText('Fixer un objectif', { timeout: 60_000 })
