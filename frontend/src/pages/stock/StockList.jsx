@@ -1631,7 +1631,7 @@ export default function StockList() {
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}
-              onExport={exportCatalogueTable}
+              onExport={canExport ? exportCatalogueTable : null /* ADRG129 — route : stock_export */}
             />
           )}
           {filtered.length === 0 && !loading && (

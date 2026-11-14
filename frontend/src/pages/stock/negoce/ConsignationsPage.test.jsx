@@ -154,4 +154,13 @@ describe('ASTK221 — ConsignationsPage', () => {
     expect(within(panneau).getByLabelText('Horizon ATP (jours)')).toBeDisabled()
     expect(within(panneau).queryByRole('button', { name: /Enregistrer/i })).toBeNull()
   })
+
+  it('ADRG129 — « Exporter (Excel) » suit `stock_export` : Commercial responsable absent, Technicien responsable présent', async () => {
+    monter(['stock_voir', 'ventes_creer'])
+    expect((await screen.findAllByRole('button', { name: /Relevé PDF/ })).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: /Exporter \(Excel\)/ })).toBeNull()
+    cleanup()
+    monter(['stock_voir', 'stock_mouvement', 'stock_export'])
+    expect(await screen.findByRole('button', { name: /Exporter \(Excel\)/ })).toBeInTheDocument()
+  })
 })
