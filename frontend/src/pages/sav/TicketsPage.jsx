@@ -1485,7 +1485,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
             <AlertDialogHeader>
               <AlertDialogTitle>Annuler ce ticket ?</AlertDialogTitle>
               <AlertDialogDescription>
-                Le ticket sera marqué annulé (avec motif). Vous pourrez le réactiver ensuite.
+                Le ticket {current.reference} sera marqué annulé (avec motif). Vous pourrez le réactiver ensuite.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="grid gap-1.5">

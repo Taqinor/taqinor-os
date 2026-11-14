@@ -118,4 +118,22 @@ describe('TicketDetail — AERR25 la fiche suit le ticket sélectionné', () => 
     expect(data.priorite).toBe('normale')
     expect(data.description).toBe('Panneau fissuré')
   })
+
+  it('rerender A → B puis Annuler le ticket : la boîte nomme SAV-2', async () => {
+    mockMatchMedia(true)
+    const store = makeTicketStore()
+    const fiche = (t) => (
+      <Provider store={store}>
+        <TicketDetail ticket={t} onClose={() => {}} onSaved={() => {}} />
+      </Provider>
+    )
+    const { rerender } = render(fiche({ ...baseTicket, id: 1, reference: 'SAV-1' }))
+    await screen.findByText('SAV-1', { exact: false })
+    rerender(fiche({ ...baseTicket, id: 2, reference: 'SAV-2' }))
+    await screen.findByText('SAV-2', { exact: false })
+    fireEvent.click(screen.getByRole('button', { name: /Annuler le ticket/ }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite.textContent).toContain('Annuler ce ticket ?')
+    expect(boite.textContent).toContain('SAV-2')
+  })
 })
