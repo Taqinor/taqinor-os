@@ -17,7 +17,7 @@
 // tranche, « marquer payée » et le formulaire de facture. Données propres créées par l'API à chaque étape ;
 // les factures, avoirs et notes à numéro LÉGAL ne se suppriment pas (règle des numéros) : ils restent dans la
 // base jetable du runner.
-import { test, expect } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { lireJson, telephoneMobileUnique } from '../helpers.js'
 import {

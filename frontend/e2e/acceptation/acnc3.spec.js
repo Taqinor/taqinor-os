@@ -5,7 +5,7 @@
 //   portant une facture vivante (`BonCommandeViewSet.annuler` lit l'état sans verrou) ;
 // - ACNC15 (run 43540956204) : l'onglet périmé reçoit bien 409 `conflit_version` sans écriture, mais l'écran affiche
 //   « code : conflit_version » au lieu de la phrase serveur (FactureForm.jsx).
-import { test, expect } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py } from './_django.js'
 import { lireJson } from '../helpers.js'
