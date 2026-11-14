@@ -42,6 +42,36 @@ async function auRepos(suivi) {
   for (const p of suivi.pages.filter((x) => !x.isClosed())) await p.waitForLoadState('networkidle').catch(() => undefined)
 }
 
+// ÉCARTS ACCEPTÉS, BORNÉS (décision de l'orchestrateur du lot, METHODE §C.4 point 7 (b)) — observés au run runner
+// 43539844228 (8f51a8364, 14/11 à 01 h UTC) : (1) avant 12 h, le pré-chargement matinal de la tournée
+// (`frontend/src/features/offlinesync/prechargeMatinale.js`, NTMOB28, 2ad951e296 du 13/08/2026) appelle
+// `GET installations/interventions/ma-tournee/` au démarrage de l'app pour TOUT compte, d'où un 403 (oracles 2 et 3)
+// pour le Commercial responsable sans droit installations — même famille que les 403 d'arrière-plan d'ADRG110-121,
+// antérieur aux tâches AERR, hors de tous leurs Files ; (2) la question avant de quitter une fiche lead en création est
+// la boîte NATIVE `window.confirm` de `frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty` (oracle 4), appelée
+// telle quelle par `useLeadDraft.leaveGuard` avant AERR108, fichier hors des Files d'AERR108. Bornés : le corps de
+// l'étape échoue sur TOUT autre incident d'oracle.
+const MATIN = new Date().getHours() < 12
+const RE_PRECHARGE = /\/api\/django\/installations\/interventions\/ma-tournee\//
+const RAISON_PRECHARGE = 'pré-chargement matinal de la tournée (frontend/src/features/offlinesync/prechargeMatinale.js, '
+  + 'NTMOB28 2ad951e296 du 13/08/2026, avant 12 h) : GET installations/interventions/ma-tournee/ → 403 au démarrage '
+  + 'de l\'app pour un Commercial responsable sans droit installations (oracles 2 et 3) ; antérieur aux tâches AERR, '
+  + 'hors de tous leurs Files ; borné : tout autre incident d\'oracle fait échouer l\'étape'
+const RAISON_NATIF = 'la question avant de quitter une fiche en création est la boîte NATIVE window.confirm « Modifications '
+  + 'non enregistrées — quitter cette page ? » de frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty (oracle 4), '
+  + 'appelée telle quelle par useLeadDraft.leaveGuard avant AERR108, fichier hors des Files d\'AERR108 (deploy) ; '
+  + 'borné : seul cet oracle 4 est excusé, le corps (question posée, fiche gardée, doublon non lu) doit passer'
+/** Étape jouée sous le Commercial responsable : écarts bornés ci-dessus seulement. */
+function etapeCR(id, taches, corps, { natif = false } = {}) {
+  const raisons = [natif ? RAISON_NATIF : '', MATIN ? RAISON_PRECHARGE : ''].filter(Boolean)
+  etape(id, taches, async (args) => {
+    await corps(args)
+    const autres = args.suivi.incidents.filter((i) => !RE_PRECHARGE.test(i.texte)
+      && !(natif && i.oracle === '4' && /quitter cette page/.test(i.texte)))
+    expect(autres, 'écart borné : aucun autre incident d\'oracle').toEqual([])
+  }, raisons.length ? { ecart: { base: 'FAIL', raison: raisons.join(' ; ') } } : {})
+}
+
 // Détecteurs dont le motif lit l'ANCIENNE forme et rend `repro` True sur le code corrigé (vérifié à la lecture le
 // 14/11 sur 47f925be14) : 044 (`erreur_remplace_liste…` ne voit pas la garde `leads.length`), 047 (journal et report
 // restent dans un même `try`, le correctif est un drapeau `appelJournalise`), 050 (`confirmDelete(` non reconnu comme
@@ -134,7 +164,7 @@ sortie(out)`)
 
 // ═══ PF12 — AERR100 : /crm/leads, fiche ouverte, relecture de la liste coupée ⇒ liste + fiche gardées, avis + Réessayer ;
 // une autosauvegarde réussie change sa seule ligne sans relire la liste ═══
-etape('PF12.1-AERR100', ['AERR100'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.1-AERR100', ['AERR100'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-044')
   const m = marque()
   const nom = `aerr100_${m}`
@@ -160,12 +190,15 @@ etape('PF12.1-AERR100', ['AERR100'], async ({ page, suivi, testInfo }) => {
   const avis = p.getByTestId('leads-pas-a-jour')
   await expect(avis, 'avis « Liste pas à jour »').toBeVisible({ timeout: 30_000 })
   await expect(avis).toContainText('Liste pas à jour')
-  await expect(avis.getByRole('button', { name: 'Réessayer' })).toBeVisible()
+  // La fiche est modale (Radix) : la liste derrière est `aria-hidden`, d'où un repérage CSS du bouton.
+  const reessayer = avis.locator('button', { hasText: 'Réessayer' })
+  await expect(reessayer, 'bouton « Réessayer » de l\'avis').toBeVisible()
   await expect(fiche, 'la fiche reste montée').toBeVisible()
   await expect(lignes, 'les 3 lignes restent').toHaveCount(3)
   // Autosauvegarde réussie : sa seule ligne change, AUCUNE relecture de la liste.
   const relectures = compteur(p, 'GET', (ch) => ch === `${API}/crm/leads/`)
-  const ville = `Rabat ${m}`
+  // Ville canonique (le serveur normalise la ville saisie : « Fes x » est servie « Fès ») : on tape un nom déjà canonique.
+  const ville = 'Rabat'
   const patchVille = p.waitForResponse((r) => r.url().endsWith(`/crm/leads/${ids[1]}/`) && r.request().method() === 'PATCH'
     && (r.request().postData() || '').includes(ville), T)
   const historique = p.waitForResponse((r) => r.url().includes(`/crm/leads/${ids[1]}/historique/`), T)
@@ -175,9 +208,11 @@ etape('PF12.1-AERR100', ['AERR100'], async ({ page, suivi, testInfo }) => {
   await expect(ligneB, 'la ligne du lead porte la ville enregistrée').toContainText(ville, { timeout: 15_000 })
   expect(relectures.n, 'aucune relecture de toute la liste après l\'autosauvegarde').toBe(0)
   await expect(avis, 'l\'avis reste tant que la relecture n\'a pas réussi').toBeVisible()
-  // Réessayer après rétablissement : l'avis s'efface.
+  // Réessayer après rétablissement (fiche fermée : la liste redevient cliquable) : l'avis s'efface.
+  await fiche.getByRole('button', { name: 'Fermer' }).first().click()
+  await expect(fiche).toHaveCount(0)
   await retablir()
-  await avis.getByRole('button', { name: 'Réessayer' }).click()
+  await reessayer.click()
   await expect(avis, 'relecture réussie : avis effacé').toHaveCount(0, { timeout: 30_000 })
   const lu = await py(`from apps.crm.models import Lead
 l = Lead.objects.get(pk=${ids[1]}); sortie([l.stage, l.ville])`)
@@ -191,7 +226,7 @@ l = Lead.objects.get(pk=${ids[1]}); sortie([l.stage, l.ville])`)
 })
 
 // ═══ PF12 — AERR101 : /crm/cockpit, « Fait » puis relecture coupée ⇒ file et verdict gardés, avis + Réessayer ═══
-etape('PF12.2-AERR101', ['AERR101'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.2-AERR101', ['AERR101'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-045')
   const m = marque()
   const nom = `aerr101_${m}`
@@ -241,7 +276,7 @@ sortie(RelanceEtape.objects.get(lead_id=${lead}, libelle=${J(libelles[0])}).stat
 })
 
 // ═══ PF12 — AERR102 : fiche lead → « Appeler », lecture des étapes coupée ⇒ « Étapes de suivi illisibles » + Réessayer ═══
-etape('PF12.3-AERR102', ['AERR102'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.3-AERR102', ['AERR102'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-046')
   const m = marque()
   const nom = `aerr102_${m}`
@@ -283,7 +318,7 @@ etape('PF12.3-AERR102', ['AERR102'], async ({ page, suivi, testInfo }) => {
 
 // ═══ PF12 — AERR103 : journal d'appel, report de relance en 500 ⇒ « Appel journalisé ; la relance n'a pas pu être
 // planifiée », 2e essai sans 2e journal ═══
-etape('PF12.4-AERR103', ['AERR103'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.4-AERR103', ['AERR103'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-047')
   const m = marque()
   const nom = `aerr103_${m}`
@@ -335,7 +370,7 @@ sortie([LeadActivity.objects.filter(lead_id=${lead}, kind='appel').count(), str(
 })
 
 // ═══ PF12 — AERR104 : « Lead express » avec « abc@ » ⇒ refus du serveur sous « E-mail », boîte ouverte, saisie gardée ═══
-etape('PF12.5-AERR104', ['AERR104'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.5-AERR104', ['AERR104'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-048')
   const m = marque()
   const nom = `aerr104_${m}`
@@ -378,7 +413,7 @@ sortie(Lead.all_objects.filter(nom=${J(nomLead)}).count())`), 'rien n\'est écri
 })
 
 // ═══ PF12 — AERR105 : fiche → Visite → RDV « Annuler » ⇒ boîte nommée (date, heure), rien sans confirmation ═══
-etape('PF12.6-AERR105', ['AERR105'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.6-AERR105', ['AERR105'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-049')
   const m = marque()
   const nom = `aerr105_${m}`
@@ -452,7 +487,7 @@ const nbMedias = (v) => py(`from apps.visites.models import VisiteMedia
 sortie(VisiteMedia.objects.filter(visite_id=${v}).count())`)
 
 // ═══ PF12 — AERR106 : /visites/<id>, croix d'une photo ⇒ boîte qui nomme le fichier et l'emplacement, rien sans « Supprimer » ═══
-etape('PF12.7-AERR106', ['AERR106'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.7-AERR106', ['AERR106'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-050')
   const m = marque()
   const nom = `aerr106_${m}`
@@ -481,10 +516,15 @@ etape('PF12.7-AERR106', ['AERR106'], async ({ page, suivi, testInfo }) => {
   await ouvrir()
   await expect(croix, 'après rechargement : photo présente tant que non confirmé').toBeVisible({ timeout: 30_000 })
   await croix.click()
+  const reponseSuppr = p.waitForResponse((r) => r.request().method() === 'DELETE' && r.url().includes(`/visites/visites/${visite}/photos/`), T)
   await boite.getByRole('button', { name: 'Supprimer', exact: true }).click()
+  const rs = await reponseSuppr
+  expect(rs.status(), `suppression servie : ${(await rs.text()).slice(0, 300)}`).toBe(200)
   await expect(croix, 'confirmé : la vignette disparaît').toHaveCount(0, { timeout: 30_000 })
   expect(suppressions.n, 'un seul deleteVisitePhoto').toBe(1)
-  expect(await nbMedias(visite), 'en base : photo supprimée').toBe(0)
+  const restants = () => py(`from apps.visites.models import VisiteMedia
+sortie([[x.pk, x.slot_code, x.attachment_id] for x in VisiteMedia.objects.filter(visite_id=${visite})])`)
+  await expect.poll(restants, { timeout: 15_000, message: `en base : photo ${media.id} supprimée` }).toEqual([])
   await ouvrir()
   await expect(p.getByTestId('visite-slot-tableau_ouvert')).toBeVisible({ timeout: 30_000 })
   await expect(croix, 'après rechargement : photo absente').toHaveCount(0)
@@ -494,7 +534,7 @@ etape('PF12.7-AERR106', ['AERR106'], async ({ page, suivi, testInfo }) => {
 
 // ═══ PF12 — AERR107 : /visites/<id>, mesure tapée, relecture coupée puis photo envoyée ⇒ saisie et onglets gardés,
 // avis + Réessayer ; premier chargement raté ⇒ « Visite introuvable ou inaccessible. » ═══
-etape('PF12.8-AERR107', ['AERR107'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.8-AERR107', ['AERR107'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-051')
   const m = marque()
   const nom = `aerr107_${m}`
@@ -542,7 +582,7 @@ etape('PF12.8-AERR107', ['AERR107'], async ({ page, suivi, testInfo }) => {
 })
 
 // ═══ PF12 — AERR108 : frappe < 1,5 s puis démontage (menu latéral) ⇒ PATCH ; « doublon » ⇒ PATCH avant getLead(doublon) ═══
-etape('PF12.9-AERR108', ['AERR108'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.9-AERR108', ['AERR108'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-052')
   const m = marque()
   const nom = `aerr108_${m}`
@@ -560,7 +600,8 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
   await p.goto(`/crm/leads/${a}`)
   const ville = p.locator('#lf-ville')
   await expect(ville).toBeVisible({ timeout: 60_000 })
-  const v1 = `Fes ${m}`
+  // Villes déjà canoniques (le serveur normalise la ville saisie : « Fes x » est servie « Fès »).
+  const v1 = 'Agadir'
   const patch1 = p.waitForRequest((r) => r.url().endsWith(`/crm/leads/${a}/`) && r.method() === 'PATCH' && (r.postData() || '').includes(v1), T)
   const menu = p.locator('aside.sidebar a[href^="/"]:not([href^="/crm/leads"])').filter({ visible: true }).first()
   await ville.fill(v1)
@@ -584,7 +625,7 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
   const fiche = p.getByRole('dialog').filter({ has: p.getByRole('heading', { name: new RegExp(`AERR108 A ${m}`) }) })
   const lien = fiche.locator('.lw-dup-warning .lw-dup-link').filter({ hasText: `AERR108 B ${m}` })
   await expect(lien, 'doublon signalé').toBeVisible({ timeout: 60_000 })
-  const v2 = `Oujda ${m}`
+  const v2 = 'Tanger'
   await fiche.locator('#lf-ville').fill(v2)
   await lien.click()
   await expect(p.getByRole('heading', { name: new RegExp(`AERR108 B ${m}`) }), 'la fiche bascule sur le doublon').toBeVisible({ timeout: 30_000 })
@@ -599,7 +640,7 @@ sortie(Lead.objects.get(pk=${pk}).ville)`)
 })
 
 // ═══ PF12 — AERR108 (création) : fiche en création remplie, lien du doublon ⇒ question avant de quitter ═══
-etape('PF12.9b-AERR108-creation', ['AERR108'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.9b-AERR108-creation', ['AERR108'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr108c_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
@@ -628,15 +669,7 @@ etape('PF12.9b-AERR108-creation', ['AERR108'], async ({ page, suivi, testInfo })
 sortie(Lead.all_objects.filter(nom=${J(`AERR108C nouveau ${m}`)}).count())`), 'rien n\'est créé').toBe(0)
   await auRepos(suivi)
   await montrer(page)
-}, {
-  ecart: {
-    base: 'FAIL',
-    raison: 'la question avant de quitter une fiche en création est la boîte NATIVE window.confirm « Modifications non '
-      + 'enregistrées — quitter cette page ? » de frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty (oracle 4) : '
-      + 'appelée telle quelle par useLeadDraft.leaveGuard avant AERR108, fichier hors des Files d\'AERR108 (deploy) ; '
-      + 'seul l\'oracle 4 est excusé, le corps (question posée, fiche gardée, doublon non lu) doit passer',
-  },
-})
+}, { natif: true })
 
 // Évènement d'agenda modifiable (activité du compte, rattachée à son lead) daté du `jour` du mois courant.
 const MOIS = new Date()
@@ -658,7 +691,7 @@ sortie(str(Activity.objects.get(pk=${pk}).due_date))`)
 const cellule = (p, j) => p.locator('.cal-cell:not(.cal-cell-out)').filter({ has: p.locator('.cal-day-number', { hasText: new RegExp(`^${j}$`) }) })
 
 // ═══ PF12 — AERR110 : /calendrier, glisser une activité du 10 au 12 ⇒ boîte « Déplacer « titre » du 10/MM au 12/MM ? » ═══
-etape('PF12.11-AERR110', ['AERR110'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.11-AERR110', ['AERR110'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr110_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
@@ -698,7 +731,7 @@ Activity.objects.filter(pk=${act}).delete()`))
 
 // ═══ PF12 — AERR109 : /calendrier, lecture coupée ⇒ « Calendrier pas à jour » (évènements gardés) / « Calendrier
 // indisponible », jamais « Aucun évènement ce mois-ci » ═══
-etape('PF12.10-AERR109', ['AERR109'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.10-AERR109', ['AERR109'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-053')
   const m = marque()
   const nom = `aerr109_${m}`
@@ -809,14 +842,16 @@ l = Lead.all_objects.get(pk=${pk}); sortie([l.is_archived, bool(getattr(l, 'is_d
   const archivages = compteur(p, 'POST', (ch) => ch === `${API}/crm/leads/${a}/archiver/`)
   const boite = p.getByRole('alertdialog')
   // 1er tour : « Annuler » ⇒ aucun archiveLead.
-  await ligne(`Benali ${m}`).getByRole('button', { name: 'Archiver', exact: true }).click()
+  // Boutons de ligne hors de la fenêtre visible (cellule d'actions défilante) : focus + Entrée (geste clavier réel).
+  const presser = async (bouton) => { await bouton.focus(); await p.keyboard.press('Enter') }
+  await presser(ligne(`Benali ${m}`).getByRole('button', { name: 'Archiver', exact: true }))
   await expect(boite, 'la boîte nomme le lead').toContainText(`Archiver « ${nA} » ?`)
   await boite.getByRole('button', { name: 'Annuler' }).click()
   await expect(boite).toHaveCount(0)
   expect(archivages.n, '« Annuler » : aucun archivage').toBe(0)
   expect(await etat(a), 'en base : non archivé').toEqual([false, false])
   // 2e tour : « Archiver » ⇒ un archivage, toast « Lead archivé. » nommant le lead, avec « Annuler ».
-  await ligne(`Benali ${m}`).getByRole('button', { name: 'Archiver', exact: true }).click()
+  await presser(ligne(`Benali ${m}`).getByRole('button', { name: 'Archiver', exact: true }))
   await boite.getByRole('button', { name: 'Archiver', exact: true }).click()
   const t = toast(p, 'Lead archivé.')
   await expect(t, 'toast « Lead archivé. »').toBeVisible({ timeout: 30_000 })
@@ -825,7 +860,7 @@ l = Lead.all_objects.get(pk=${pk}); sortie([l.is_archived, bool(getattr(l, 'is_d
   expect(archivages.n, 'un archivage').toBe(1)
   expect(await etat(a), 'en base : archivé après confirmation').toEqual([true, false])
   // « Supprimer » : la boîte nomme le lead ; « Annuler » ⇒ rien.
-  await ligne(`Tazi ${m}`).getByRole('button', { name: 'Supprimer', exact: true }).click()
+  await presser(ligne(`Tazi ${m}`).getByRole('button', { name: 'Supprimer', exact: true }))
   await expect(boite, 'la boîte de suppression nomme le lead').toContainText(`Supprimer ce lead « Salma Tazi ${m} » ?`)
   await boite.getByRole('button', { name: 'Annuler' }).click()
   expect(await etat(b), 'en base : non supprimé').toEqual([false, false])
@@ -838,17 +873,21 @@ l = Lead.all_objects.get(pk=${pk}); sortie([l.is_archived, bool(getattr(l, 'is_d
 
 // ═══ PF12 — AERR116 : /crm/profils-site, lecture rejetée ⇒ « Profil illisible » + Réessayer, enregistrement désactivé ;
 // refus du serveur sur la surface ⇒ message sous le champ ═══
-etape('PF12.14-AERR116', ['AERR116'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.14-AERR116', ['AERR116'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr116_${m}`
-  await compteRole(nom, 'Commercial responsable')
+  const cr = await compteRole(nom, 'Commercial responsable')
   const nomClient = `AERR116 ${m}`
   const cl = await py(`from decimal import Decimal
 from apps.crm.models import Client, SiteProfile
+from apps.crm.models import Lead
 c = Client.objects.create(company_id=${SOC}, nom=${J(nomClient)}, prenom='Essai')
 SiteProfile.objects.create(company_id=${SOC}, client=c, surface_toiture_m2=Decimal('120.00'), type_toiture='tole')
+# Le client n'a pas de propriétaire : il est visible du commercial par un lead dont il est responsable (core/scoping.py).
+Lead.objects.create(company_id=${SOC}, owner_id=${cr}, client=c, nom=${J(nomClient)}, prenom='Lead', telephone=${J(telephoneMobileUnique())}, stage='NEW')
 sortie(c.pk)`)
-  apres.push(() => py(`from apps.crm.models import Client, SiteProfile
+  apres.push(() => py(`from apps.crm.models import Client, Lead, SiteProfile
+Lead.all_objects.filter(client_id=${cl}).delete()
 SiteProfile.objects.filter(client_id=${cl}).delete(); Client.objects.filter(pk=${cl}).delete()`))
   const profils = () => py(`from apps.crm.models import SiteProfile
 sortie([str(x.surface_toiture_m2) for x in SiteProfile.objects.filter(client_id=${cl})])`)
@@ -893,7 +932,7 @@ sortie([str(x.surface_toiture_m2) for x in SiteProfile.objects.filter(client_id=
 })
 
 // ═══ PF12 — AERR117 : fiche lead → « Arrêter la cadence » ⇒ boîte maison (champ Motif), aucun window.prompt ═══
-etape('PF12.15-AERR117', ['AERR117'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.15-AERR117', ['AERR117'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr117_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
@@ -930,12 +969,19 @@ sortie(RelanceEtape.objects.filter(lead_id=${lead}, statut='a_faire').count())`)
 
 // ═══ PF12 — AERR117 (liste) : « Marquer perdu » refusé 400 {motif_perte} ⇒ message sous le motif, une seule notification ;
 // « Enregistrer la vue » des leads et des clients ⇒ boîte maison, aucun window.prompt ═══
-etape('PF12.15b-AERR117-liste', ['AERR117'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.15b-AERR117-liste', ['AERR117'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr117l_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
   const [lead] = await creerLeads(cr, [{ nom: `AERR117L ${m}`, prenom: 'Essai', telephone: telephoneMobileUnique(), stage: 'CONTACTED' }])
   apres.push(() => supprimerLeads([lead]))
+  // Un client rattaché au lead du commercial : la liste des clients (portée par leads visibles) n'est pas vide.
+  const cl = await py(`from apps.crm.models import Client, Lead
+c = Client.objects.create(company_id=${SOC}, nom='AERR117L client ${m}', prenom='Essai')
+Lead.objects.filter(pk=${lead}).update(client=c)
+sortie(c.pk)`)
+  apres.push(() => py(`from apps.crm.models import Client
+Client.objects.filter(pk=${cl}).delete()`))
   const p = await ecran(page, suivi, testInfo, nom)
   const natifs = []
   p.on('dialog', (d) => natifs.push(d.type()))
@@ -992,7 +1038,7 @@ for M in _a.get_models():
 })
 
 // ═══ PF12 — AERR118 : /crm/cockpit-equipe, « Effacer l'objectif » ⇒ boîte nommée (indicateur, membre, période) ═══
-etape('PF12.16-AERR118', ['AERR118'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.16-AERR118', ['AERR118'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr118_${m}`
   const cr = await compteRole(nom, 'Commercial responsable', 'Resp', `R${m}`)
@@ -1041,7 +1087,7 @@ sortie(ObjectifCommercial.objects.filter(pk=${ids.obj}).exists())`)
 })
 
 // ═══ PF12 — AERR119 : fiche lead en « Contacté », touche « 3 » ⇒ toast nommé avec « Annuler » ⇒ retour en « Contacté » (undo) ═══
-etape('PF12.17-AERR119', ['AERR119'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.17-AERR119', ['AERR119'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr119_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
@@ -1074,7 +1120,7 @@ sortie(Lead.objects.get(pk=${lead}).stage)`)
 
 // ═══ PF12 — AERR120 : /crm/leads/<id> → « Signé », acceptation refusée 400 {date} ⇒ dialogue rouvert pré-rempli,
 // erreur sous la date, page gardée ═══
-etape('PF12.18-AERR120', ['AERR120'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.18-AERR120', ['AERR120'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-091')
   const m = marque()
   const nom = `aerr120_${m}`
@@ -1128,7 +1174,7 @@ sortie([Devis.objects.get(pk=${devis.id}).statut, Lead.objects.get(pk=${lead}).s
 
 // ═══ PF12 — AERR122 : /crm/relances → « Décider la suite » → Perdu, lecture des motifs rejetée ⇒ « Motifs illisibles »
 // + Réessayer, jamais « Aucun motif » ═══
-etape('PF12.19-AERR122', ['AERR122'], async ({ page, suivi, testInfo }) => {
+etapeCR('PF12.19-AERR122', ['AERR122'], async ({ page, suivi, testInfo }) => {
   sonde('C-AERR-093')
   const m = marque()
   const nom = `aerr122_${m}`
