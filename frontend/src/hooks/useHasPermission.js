@@ -132,6 +132,34 @@ export function useCanLireVentes() {
     && (c.startsWith('ventes_') || c === 'encaisser'))
 }
 
+// ADRG122 — lire les interventions (`ma-tournee`, liste, calendrier, plan de
+// charge) : `LectureDuModule` sur `InterventionViewSet.get_permissions`
+// (apps/installations/views/intervention.py). Pour un rôle fin non
+// administrateur, AU MOINS UN code du module `installations` (PERMISSION_MODULE
+// de apps/roles/permissions_registre.py) ; l'octroi `ventes_voir` du Commercial
+// ne vaut que pour `InstallationViewSet`. Palier admin et compte hérité sans
+// rôle fin passent, comme côté serveur. Commercial, Commercial responsable,
+// Commercial terrain, Admin Ventes et Admin RH n'en portent aucun : 403.
+const CODES_MODULE_INSTALLATIONS = [
+  'installation_voir', 'installation_gerer', 'installation_export',
+  'intervention_gerer', 'technicien_assign', 'approuver_demande_achat',
+]
+
+/** Règle PURE, sur l'état d'auth servi (`state.auth`) — lue aussi hors Provider. */
+export function peutLireInterventions(auth) {
+  const permissions = auth?.permissions || []
+  if (auth?.role === 'admin') return true
+  if (!auth?.role_nom && permissions.length === 0) return true
+  return permissions.some((c) => CODES_MODULE_INSTALLATIONS.includes(c))
+}
+
+export function useCanLireInterventions() {
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const permissions = useSelector((s) => s.auth.permissions)
+  return peutLireInterventions({ role, role_nom: roleNom, permissions })
+}
+
 // ERR-ACC-ACCUEIL-403-LECTEUR — règle serveur : `CustomUser.is_responsable`
 // (authentication/models.py, ERR4) : un rôle fin n'est « responsable » que s'il
 // porte AU MOINS UN code d'écriture/gestion (ni `*_voir`/`*_view`, ni marqueur

@@ -3,14 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { isMobileMock } from '../../../test/mobileMocks'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 const { reportingApiMock, installationsApiMock } = vi.hoisted(() => ({
   reportingApiMock: {
     getDashboard: vi.fn(),
     getPipeline: vi.fn(),
     approbationsEnAttente: vi.fn(),
+    getNotifications: vi.fn(),
   },
-  installationsApiMock: { getInstallations: vi.fn() },
+  installationsApiMock: { getInstallations: vi.fn(), getMaTournee: vi.fn() },
 }))
 vi.mock('../../../api/reportingApi', () => ({ default: reportingApiMock }))
 vi.mock('../../../api/installationsApi', () => ({ default: installationsApiMock }))
@@ -39,15 +42,19 @@ beforeEach(() => {
   })
 })
 
-function renderPage() {
-  return render(
+function renderPage(auth) {
+  const page = (
     <MemoryRouter initialEntries={['/mobile/cockpit']}>
       <Routes>
         <Route path="/mobile/cockpit" element={<CockpitHome />} />
         <Route path="/dashboard" element={<div>Dashboard desktop</div>} />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   )
+  if (!auth) return render(page)
+  // Compte connecté : l'état d'auth servi, lu par « À faire aujourd'hui ».
+  const store = configureStore({ reducer: { auth: (s = auth) => s } })
+  return render(<Provider store={store}>{page}</Provider>)
 }
 
 describe('CockpitHome (NTMOB5)', () => {
@@ -84,5 +91,31 @@ describe('CockpitHome (NTMOB5)', () => {
   it('liste chaque approbation en attente, ouvrable', async () => {
     renderPage()
     expect(await screen.findByRole('button', { name: /Contrat X — étape 1/ })).toBeInTheDocument()
+  })
+})
+
+// ADRG122 — « À faire aujourd'hui » ne lit la tournée (`ma-tournee`) que pour
+// un compte auquel le serveur la sert (lecture du module chantiers).
+describe("CockpitHome — « À faire aujourd'hui » : la tournée selon le droit (ADRG122)", () => {
+  beforeEach(() => {
+    reportingApiMock.getNotifications.mockResolvedValue({ data: { factures: [] } })
+    installationsApiMock.getMaTournee.mockResolvedValue({
+      data: { stops: [{ id: 9, titre: 'Pose onduleur — Villa Atlas' }] },
+    })
+  })
+
+  it('sans lecture des interventions (Commercial responsable) : `ma-tournee` jamais demandé', async () => {
+    renderPage({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['ventes_voir', 'ventes_creer', 'users_voir'] })
+    // Le widget a rendu ses autres sources : sa décision sur la tournée est prise.
+    expect(await screen.findByText('Approbation en attente')).toBeInTheDocument()
+    expect(installationsApiMock.getMaTournee).not.toHaveBeenCalled()
+    expect(screen.queryByText('Intervention du jour')).toBeNull()
+  })
+
+  it('avec le droit (Technicien responsable) : l’intervention du jour reste listée', async () => {
+    renderPage({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'intervention_gerer', 'users_voir'] })
+    expect(await screen.findByText('Pose onduleur — Villa Atlas')).toBeInTheDocument()
+    expect(screen.getByText('Intervention du jour')).toBeInTheDocument()
+    expect(installationsApiMock.getMaTournee).toHaveBeenCalledTimes(1)
   })
 })

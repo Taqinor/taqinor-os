@@ -18,6 +18,8 @@ import {
   useIsAdminOrResponsable,
   useCanCreateProduit,
   useCanValiderVente,
+  useCanLireInterventions,
+  peutLireInterventions,
   useCanListFactures,
   useCanLireParcMonitoring,
   useCanLireEquipesCrm,
@@ -170,6 +172,43 @@ describe('useCanListFactures (ERR-ASEC11-LECTURE-FACTURES)', () => {
     expect(peut({ role_nom: 'Rédacteur', permissions: ['ventes_creer'] })).toBe(true)
     expect(peut({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
     expect(peut({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
+  })
+})
+
+// ADRG122 — `LectureDuModule` sur les interventions (`ma-tournee`) : un code du
+// module `installations`, sinon 403. Codes des rôles livrés : registre
+// (apps/roles/permissions_registre.py).
+describe('useCanLireInterventions (ADRG122)', () => {
+  const peut = (auth) => renderHook(() => useCanLireInterventions(), { wrapper: renderWithAuth(auth) }).result.current
+
+  it('refuse les rôles sans code du module : Commercial (malgré ventes_voir), Commercial responsable, terrain, Admin Ventes, Admin RH', () => {
+    expect(peut({ role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'sav_voir', 'equipement_voir'] })).toBe(false)
+    expect(peut({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'ventes_voir', 'users_voir'] })).toBe(false)
+    expect(peut({ role_nom: 'Commercial terrain', permissions: ['visites_voir', 'visites_creer'] })).toBe(false)
+    expect(peut({ role: 'responsable', role_nom: 'Admin Ventes', permissions: ['ventes_creer', 'stock_voir', 'users_voir'] })).toBe(false)
+    expect(peut({ role: 'responsable', role_nom: 'Admin RH', permissions: ['rh_voir', 'paie_gerer', 'users_voir'] })).toBe(false)
+  })
+
+  it('autorise tout code du module, pas seulement installation_voir', () => {
+    expect(peut({ role_nom: 'Technicien', permissions: ['installation_voir', 'installation_gerer', 'intervention_gerer', 'sav_voir'] })).toBe(true)
+    expect(peut({ role_nom: 'Viewer', permissions: ['crm_voir', 'installation_voir'] })).toBe(true)
+    for (const code of ['installation_gerer', 'installation_export', 'intervention_gerer', 'technicien_assign', 'approuver_demande_achat']) {
+      expect(peut({ role_nom: 'Rôle sur mesure', permissions: [code] })).toBe(true)
+    }
+  })
+
+  it('palier admin et compte hérité sans rôle fin passent, comme côté serveur', () => {
+    expect(peut({ role: 'admin', role_nom: 'Directeur', permissions: ['roles_gerer'] })).toBe(true)
+    expect(peut({ role: 'normal', role_nom: null, permissions: [] })).toBe(true)
+    expect(peut({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
+    // Rôle fin vide de tout code : ni hérité, ni lecteur du module.
+    expect(peut({ role_nom: 'Rôle vide', permissions: [] })).toBe(false)
+  })
+
+  it('la règle pure lit un état d’auth partiel sans lever', () => {
+    expect(peutLireInterventions(null)).toBe(true)
+    expect(peutLireInterventions({ user: { id: 7 } })).toBe(true)
+    expect(peutLireInterventions({ role_nom: 'Commercial', permissions: ['ventes_voir'] })).toBe(false)
   })
 })
 
