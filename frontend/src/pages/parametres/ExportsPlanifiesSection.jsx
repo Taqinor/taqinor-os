@@ -32,6 +32,7 @@ import {
   ChargementTexte, ErreurChargementListe, BoutonSupprimerLigne, ZoneCreation, LigneChamps,
 } from './EtatsSection'
 import { formatDateTime } from '../../lib/format'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Miroir de ScheduledExport.FORMAT_CHOICES / DEST_CHOICES.
 // source-choix: core.ScheduledExport.format
@@ -102,7 +103,7 @@ export default function ExportsPlanifiesSection() {
       setDraft(VIDE)
       charger()
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     } finally { setBusy(false) }
   }
 
@@ -120,7 +121,7 @@ export default function ExportsPlanifiesSection() {
         charger()
       }
     } catch (e) {
-      console.warn('Exécution impossible.', e)
+      toastErreurNonAffichee(e, 'Exécution impossible.')
     } finally { setRunningId(null) }
   }
 
@@ -129,7 +130,7 @@ export default function ExportsPlanifiesSection() {
       await api.patch(`/core/scheduled-exports/${row.id}/`, { actif: !row.actif })
       charger()
     } catch (e) {
-      console.warn('Modification impossible.', e)
+      toastErreurNonAffichee(e, 'Modification impossible.')
     }
   }
 
@@ -139,7 +140,7 @@ export default function ExportsPlanifiesSection() {
       await api.delete(`/core/scheduled-exports/${row.id}/`)
       charger()
     } catch (e) {
-      console.warn('Suppression impossible.', e)
+      toastErreurNonAffichee(e, 'Suppression impossible.')
     }
   }
 

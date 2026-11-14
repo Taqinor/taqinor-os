@@ -4,6 +4,7 @@ import identityApi from '../../api/identityApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import parametresApi from '../../api/parametresApi'
 import { useConfirmDialog } from '../../ui/confirm'
+import { LectureEchouee } from './GouvernanceAccesPage'
 import {
   Card, CardContent, CardHeader, CardTitle, Button, Input, Textarea, Label,
   Badge, Spinner, EmptyState, toast,
@@ -33,6 +34,7 @@ function ReseauTab() {
   const [cidr, setCidr] = useState('')
   const [label, setLabel] = useState('')
   const [loading, setLoading] = useState(true)
+  const [echec, setEchec] = useState(false) // AERR141 — illisible ≠ aucun
   const { confirmDelete } = useConfirmDialog()
 
   // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
@@ -41,8 +43,8 @@ function ReseauTab() {
     fetchAllPages((page, o) => identityApi.ipRules.list({ page, ...o }).then((r) => r?.data)),
   ]).then(([p, r]) => {
     setPolicy(asList(p)[0] ?? null)
-    setRules(asList(r))
-  }).catch(() => {}).finally(() => setLoading(false))
+    setRules(asList(r)); setEchec(false)
+  }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const ensurePolicy = async () => {
@@ -70,6 +72,7 @@ function ReseauTab() {
   }
 
   if (loading) return <Spinner />
+  if (echec && !policy && rules.length === 0) return <LectureEchouee quoi="Plages IP" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Politique réseau (allowlist IP/CIDR)</CardTitle></CardHeader>
@@ -107,9 +110,10 @@ function ReseauTab() {
 function AppareilsTab() {
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
+  const [echec, setEchec] = useState(false)
   const load = () => fetchAllPages((page, o) => identityApi.trustedDevices.list({ page, ...o })
     .then((r) => r?.data))
-    .then((data) => setDevices(asList(data))).catch(() => {}).finally(() => setLoading(false))
+    .then((data) => { setDevices(asList(data)); setEchec(false) }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const forget = async (d) => {
@@ -117,6 +121,7 @@ function AppareilsTab() {
     catch (e) { signaler404(e, 'Action impossible.') }
   }
   if (loading) return <Spinner />
+  if (echec && devices.length === 0) return <LectureEchouee quoi="Appareils de confiance" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Appareils de confiance</CardTitle></CardHeader>
@@ -140,11 +145,12 @@ function AppareilsTab() {
 function PostureTab() {
   const [posture, setPosture] = useState(null)
   const [loading, setLoading] = useState(true)
-  useEffect(() => {
-    identityApi.posture().then((r) => setPosture(r.data)).catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+  const [echec, setEchec] = useState(false)
+  const load = () => identityApi.posture().then((r) => { setPosture(r.data); setEchec(false) })
+    .catch(() => setEchec(true)).finally(() => setLoading(false))
+  useEffect(() => { load() }, [])
   if (loading) return <Spinner />
+  if (echec && !posture) return <LectureEchouee quoi="Posture de sécurité" onRetry={() => { setLoading(true); load() }} />
   if (!posture) return <EmptyState title="Posture indisponible" />
   const faibles = posture.items_faibles ?? []
   return (
@@ -181,9 +187,10 @@ function BreakGlassTab() {
   const [motif, setMotif] = useState('')
   const [duree, setDuree] = useState('60')
   const [loading, setLoading] = useState(true)
+  const [echec, setEchec] = useState(false)
   // Liste NON paginée côté serveur (BreakGlassView : 100 derniers octrois, sans `next`).
   const load = () => identityApi.breakGlass.list()
-    .then((r) => setGrants(asList(r.data))).catch(() => {}).finally(() => setLoading(false))
+    .then((r) => { setGrants(asList(r.data)); setEchec(false) }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const grant = async () => {
@@ -195,6 +202,7 @@ function BreakGlassTab() {
     } catch (e) { signaler404(e, 'Octroi impossible.') }
   }
   if (loading) return <Spinner />
+  if (echec && grants.length === 0) return <LectureEchouee quoi="Octrois d'urgence" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Accès break-glass</CardTitle></CardHeader>
@@ -234,10 +242,11 @@ function ServiceAccountsTab() {
   const [accounts, setAccounts] = useState([])
   const [nom, setNom] = useState('')
   const [loading, setLoading] = useState(true)
+  const [echec, setEchec] = useState(false)
   const { confirmDelete } = useConfirmDialog()
   const load = () => fetchAllPages((page, o) => identityApi.serviceAccounts.list({ page, ...o })
     .then((r) => r?.data))
-    .then((data) => setAccounts(asList(data))).catch(() => {}).finally(() => setLoading(false))
+    .then((data) => { setAccounts(asList(data)); setEchec(false) }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
   const create = async () => {
     if (!nom.trim()) { toast.error('Nom requis.'); return }
@@ -253,6 +262,7 @@ function ServiceAccountsTab() {
     catch (e) { signaler404(e, 'Suppression impossible.') }
   }
   if (loading) return <Spinner />
+  if (echec && accounts.length === 0) return <LectureEchouee quoi="Comptes de service" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Comptes de service</CardTitle></CardHeader>

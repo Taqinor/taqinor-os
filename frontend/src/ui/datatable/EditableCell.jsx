@@ -111,7 +111,9 @@ export function EditableCell({
       // Rejet serveur : la cellule RESTE ouverte (rouverte), message affiché
       // au lieu de se refermer en silence sur un échec.
       // AERR70 — message servi (champ nommé), jamais le texte technique d'axios.
-      setError(getApiError(e, 'Échec de l’enregistrement — réessayez.').message)
+      // AERR136 — un rejet `.unwrap()` porte le corps servi nu (sans `response`).
+      const brut = e && typeof e === 'object' && !(e instanceof Error) && !e.response ? { response: { data: e } } : e
+      setError(getApiError(brut, 'Échec de l’enregistrement — réessayez.').message)
       return false
     } finally {
       setSaving(false)

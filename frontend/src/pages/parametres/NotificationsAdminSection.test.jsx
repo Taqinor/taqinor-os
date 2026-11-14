@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { toast } from '../../ui/confirm'
 import userEvent from '@testing-library/user-event'
 
 /* CAD42 — cocher « Récurrent chaque année » sur un Aïd fige cette date
@@ -119,5 +120,44 @@ describe('ERR-QAH-PARAMETRES-NOTIFICATIONS-WORKING-DAYS — masque de bits', () 
     await waitFor(() => expect(apiMock.saveWorkingHours).toHaveBeenCalled())
     expect(apiMock.saveWorkingHours.mock.calls[0][0].working_days).toBe(63)
     await waitFor(() => expect(screen.getByLabelText('Samedi')).toBeChecked())
+  })
+})
+
+describe('AERR143 — un refus dit une fois', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks() })
+
+  it('suppression de règle refusée 400 : aucun toast local', async () => {
+    const user = userEvent.setup()
+    apiMock.getRoutingRules.mockResolvedValue({
+      data: [{ id: 5, event_type: 'devis_accepte', event_label: 'Devis accepté', target_role: 'responsable', enabled: true }] })
+    apiMock.deleteRoutingRule.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'Règle utilisée.' } } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    render(<NotificationsAdminSection />)
+    await screen.findByText('Devis accepté')
+    await user.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
+    await waitFor(() => expect(apiMock.deleteRoutingRule).toHaveBeenCalledTimes(1))
+    expect(erreur).not.toHaveBeenCalled()
+    apiMock.getRoutingRules.mockImplementation(() => Promise.resolve({ data: [] }))
+  })
+})
+
+describe('AERR147 — suppressions confirmées', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks() })
+
+  it('règle de routage : Annuler ⇒ aucun appel, boîte nommée', async () => {
+    const user = userEvent.setup()
+    apiMock.getRoutingRules.mockResolvedValue({
+      data: [{ id: 5, event_type: 'devis_accepte', event_label: 'Devis accepté', target_role: 'responsable', target_role_label: 'Responsable', enabled: true }] })
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<NotificationsAdminSection />)
+    await screen.findByText('Devis accepté')
+    await user.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
+    await waitFor(() => expect(confirmer).toHaveBeenCalled())
+    expect(confirmer.mock.calls[0][0]).toContain('Devis accepté')
+    expect(confirmer.mock.calls[0][0]).toContain('Responsable')
+    expect(apiMock.deleteRoutingRule).not.toHaveBeenCalled()
+    apiMock.getRoutingRules.mockImplementation(() => Promise.resolve({ data: [] }))
   })
 })

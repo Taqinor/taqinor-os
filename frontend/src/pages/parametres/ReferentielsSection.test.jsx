@@ -88,7 +88,6 @@ describe('WIR66 ReferentielsSection', () => {
     parametresApi.createUniteMesure.mockRejectedValueOnce({
       response: { status: 400, data: { nom: ['Ce champ est obligatoire.'] } } })
     const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
-    const alerte = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await renderSection()
     await screen.findByText('Mètre')
     const scope = screen.getByTestId('ref-unites')
@@ -96,12 +95,23 @@ describe('WIR66 ReferentielsSection', () => {
     fireEvent.change(codeInput, { target: { value: 'kg' } })
     fireEvent.change(libelleInput, { target: { value: 'Kilogramme' } })
     fireEvent.click(within(scope).getByRole('button', { name: /Ajouter/ }))
-    await waitFor(() => expect(alerte).toHaveBeenCalled())
+    await waitFor(() => expect(parametresApi.createUniteMesure).toHaveBeenCalled())
     // Le toast global de l'intercepteur parle : aucun second toast local.
     expect(erreur).not.toHaveBeenCalled()
     expect(codeInput.value).toBe('kg') // la saisie reste
     erreur.mockRestore()
-    alerte.mockRestore()
+  })
+
+  it('suppression d’unité refusée 404 : un toast local (AERR143)', async () => {
+    parametresApi.deleteUniteMesure.mockRejectedValueOnce({ response: { status: 404, data: {} } })
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await renderSection()
+    await screen.findByText('Mètre')
+    fireEvent.click(within(screen.getByTestId('ref-unites')).getByTitle('Supprimer'))
+    await waitFor(() => expect(erreur).toHaveBeenCalledTimes(1))
+    erreur.mockRestore()
+    confirmer.mockRestore()
   })
 
   it('Supprimer puis Annuler : aucune suppression ; confirmer : un appel (AERR66)', async () => {

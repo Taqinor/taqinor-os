@@ -12,6 +12,7 @@ import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } 
 import { SectionTitle } from './peComponents'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
 import { useConfirmDialog } from '../../ui/confirm'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Icône (chemins bruts) partagée par les trois cartes de référentiel.
 const REF_ICON = <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>
@@ -41,18 +42,18 @@ function TauxTvaList() {
       setDraft({ code: '', libelle: '', taux: '' })
       load()
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     }
   }
   const toggle = async (row) => {
     try { await parametresApi.updateTauxTva(row.id, { actif: !row.actif }); load() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   const remove = async (row) => {
     // AERR66 — la boîte nomme le réglage avant toute suppression.
     if (!await confirmDelete({ title: `Supprimer le taux de TVA « ${row.libelle || row.code} » ?`, description: `« ${row.libelle || row.code} » sera définitivement supprimé.` })) return
     try { await parametresApi.deleteTauxTva(row.id); load() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   if (rows === null) return <Spinner />
@@ -109,18 +110,18 @@ function ConditionsList() {
       setDraft({ libelle: '', delai_jours: '', escompte_pct: '' })
       load()
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     }
   }
   const toggle = async (row) => {
     try { await parametresApi.updateConditionPaiement(row.id, { actif: !row.actif }); load() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   const remove = async (row) => {
     // AERR66 — la boîte nomme le réglage avant toute suppression.
     if (!await confirmDelete({ title: `Supprimer la condition de paiement « ${row.libelle} » ?`, description: `« ${row.libelle} » sera définitivement supprimé.` })) return
     try { await parametresApi.deleteConditionPaiement(row.id); load() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   if (rows === null) return <Spinner />
@@ -175,18 +176,18 @@ function UnitesList() {
       setDraft({ code: '', libelle: '' })
       load()
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     }
   }
   const toggle = async (row) => {
     try { await parametresApi.updateUniteMesure(row.id, { actif: !row.actif }); load() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   const remove = async (row) => {
     // AERR66 — la boîte nomme le réglage avant toute suppression.
     if (!await confirmDelete({ title: `Supprimer l’unité de mesure « ${row.libelle || row.code} » ?`, description: `« ${row.libelle || row.code} » sera définitivement supprimé.` })) return
     try { await parametresApi.deleteUniteMesure(row.id); load() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   if (rows === null) return <Spinner />
