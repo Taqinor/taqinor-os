@@ -297,6 +297,9 @@ téléphone ; ligne de coût `H<n> S<n> O<n> F<n> · jetons sous-agents ≈ x M`
    démo, sha de la branche d'essai, aucune clé secrète (une preuve à fournisseur réel se joue sur la pile locale ; les clés
    de fond de carte, publiques, se lisent à l'exécution). Les fichiers de spec neufs se déclarent par « Nouveau dossier
    car : » sur la tâche qui porte le rejeu.
+   Depuis une session cloud (essai du 14/11/2026, ADRG122) : l'hôte des artefacts n'y est pas joignable — le job commite
+   lui-même l'enregistrement PASS sur la branche d'essai (`contents: write`), la session le tire ; ne pas y monter de pile
+   locale (`migrate` à froid mesuré : 966 migrations sur 2 386 en 36 min, en ralentissant ; 4 min de job sur le runner).
 
 ---
 
