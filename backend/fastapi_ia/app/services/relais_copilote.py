@@ -196,11 +196,16 @@ def borner_diagnostic(brut) -> Optional[dict]:
 
 
 def question_du_tour(question: str, contexte: Optional[dict] = None,
-                     identite: Optional[dict] = None, maintenant=None) -> str:
+                     identite: Optional[dict] = None, maintenant=None,
+                     copilote: bool = True) -> str:
     """La question remise au modèle (LES DEUX moteurs) : en-tête posé par le
     serveur (date et heure de Casablanca, prénom, rôle, écran, foyer) puis le
     texte de l'utilisateur. Le contexte entre dans le message UTILISATEUR,
-    jamais dans le bloc système (son cache reste intact)."""
+    jamais dans le bloc système (son cache reste intact). Copilote ÉTEINT :
+    le modèle ne voit rien de neuf — l'ancien format, octet pour octet."""
+    if not copilote:
+        from app.services.sql_agent_service import _question_avec_contexte
+        return _question_avec_contexte(question, contexte)
     contexte, identite = contexte or {}, identite or {}
     entete = prompt_copilote.entete_tour(
         maintenant=maintenant, prenom=identite.get("prenom") or "",
@@ -264,12 +269,12 @@ def references_des_cartes(cartes: Optional[list]) -> str:
     return ligne if vus else ""
 
 
-def historique_langchain(brut: Optional[list]) -> list:
+def historique_langchain(brut: Optional[list], copilote: bool = True) -> list:
     """Historique Redis -> messages LangChain (2 derniers échanges seulement :
     d'anciens résultats ne doivent pas contaminer une nouvelle question ; tout
     l'historique reste dans Redis pour l'écran). Un message ancien sans
-    `cartes` se relit tel quel ; le DERNIER message d'agent reçoit la ligne
-    « Références : … » de ses cartes."""
+    `cartes` se relit tel quel ; copilote allumé, le DERNIER message d'agent
+    reçoit la ligne « Références : … » de ses cartes (éteint : rien de neuf)."""
     from langchain_core.messages import AIMessage, HumanMessage
 
     recents = [m for m in (brut or []) if isinstance(m, dict)][-HISTORIQUE_MODELE:]
@@ -281,7 +286,7 @@ def historique_langchain(brut: Optional[list]) -> list:
         if msg.get("role") == "user":
             messages.append(HumanMessage(content=texte))
         elif msg.get("role") == "agent":
-            refs = references_des_cartes(msg.get("cartes")) if i == dernier else ""
+            refs = references_des_cartes(msg.get("cartes")) if copilote and i == dernier else ""
             messages.append(AIMessage(content=f"{texte}\n\n{refs}" if refs else texte))
     return messages
 
@@ -388,10 +393,21 @@ def _outils_fixes(lecture, schema, collecteur: list) -> list:
     ]
 
 
+def _tracer(outil, appeles: list):
+    """L'outil, dont chaque appel est NOTÉ dans `appeles` (SQL et signalement
+    compris) : un tour qui a appelé un outil n'est jamais rejoué ailleurs."""
+    import dataclasses
+
+    def executer(args, _f=outil.executer, _nom=outil.nom):
+        appeles.append(_nom)
+        return _f(args)
+    return dataclasses.replace(outil, executer=executer)
+
+
 def _preparer(service, question: str, company_id: int, ctx,
               catalogue: list, collecteur: list) -> dict[str, Any]:
-    """Outils, blocs système (ordre stable, sans point de cache : le moteur
-    les pose) et réglages du modèle pour un tour natif."""
+    """Outils (tracés), blocs système (ordre stable, sans point de cache : le
+    moteur les pose) et réglages du modèle pour un tour natif."""
     from app.services import sql_agent_service as svc
 
     droits = service._droits_sql(ctx)
@@ -399,36 +415,35 @@ def _preparer(service, question: str, company_id: int, ctx,
         service._base_sql(question, company_id), company_id, droits)
     outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
     outils += _outils_fixes(lecture, schema, collecteur)
+    appeles: list = []
     contenu, present = svc._contenu_systeme("claude", droits[0], copilote=True)
     blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
-    return {"outils": outils, "manuel_present": present,
+    return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
+            "manuel_present": present,
             "cles": {o.nom: a["key"] for o, a in zip(outils, catalogue)},
             "reglages": {"systeme": [{"type": "text", "text": b["text"]} for b in blocs],
                          "modele": svc._modele_effectif("claude"),
                          "effort": (svc.SQL_AGENT_EFFORT or "low").lower()}}
 
 
-def _sortie_native(service, question: Optional[str], user_id: int,
-                   rendu: dict, collecteur: list, prep: dict) -> dict[str, Any]:
-    """Retour du moteur natif mis à la forme de `_run_agent` ; l'historique
-    texte de l'écran est écrit comme sous LangChain (repli instantané)."""
-    from app.services import moteur_natif
+def _reponse_native(service, question: Optional[str], user_id: int, texte: str,
+                    collecteur: list, prep: dict, rendu: dict,
+                    panne: Optional[dict] = None) -> dict[str, Any]:
+    """LA fabrique du retour natif, à la forme de `_run_agent` : fin normale,
+    fin honnête après une erreur du fournisseur, ou panne après un outil
+    (`panne` = erreur de l'événement). L'historique de l'écran est écrit."""
     from app.services import sql_agent_service as svc
 
-    arret, texte = rendu.get("arret"), rendu.get("answer") or ""
-    if arret == moteur_natif.ARRET_ERREUR:
-        raise moteur_natif.MoteurIndisponible("erreur du fournisseur")
-    if arret == moteur_natif.ARRET_REFUS:
-        texte = MESSAGE_REFUS
-    elif arret == moteur_natif.ARRET_LIMITE:
-        texte = f"{texte}\n\n{MESSAGE_LIMITE}" if texte.strip() else MESSAGE_LIMITE
     answer, intention = svc._extraire_intention(texte)
     intention, erreur = svc._intention_et_erreur(collecteur, intention)
+    if panne is not None and erreur is None:
+        intention, erreur = "bug", panne
     cartes = _cartes.construire_cartes(collecteur)
     agent = {"role": "agent", "content": answer, "cartes": cartes}
     service._ajouter_historique(user_id, ([{"role": "user", "content": question}]
                                           if question is not None else []) + [agent])
     jetons = rendu.get("tokens") or {}
+    appeles = rendu.get("outils_appeles") or prep.get("appeles") or []
     return {
         "answer": answer, "sql_query": "", "data": None,
         "action_performed": any(s.get("type") in ("proposal", "result")
@@ -436,51 +451,89 @@ def _sortie_native(service, question: Optional[str], user_id: int,
         "proposal": svc.SQLAgentService._build_proposal_payload(collecteur),
         "result": svc.SQLAgentService._build_result_payload(collecteur),
         "cartes": cartes, "moteur": MOTEUR_NATIF,
-        "manuel_present": prep["manuel_present"],
+        "manuel_present": prep.get("manuel_present", False),
         "intention": intention, "erreur": erreur,
-        "outils_appeles": [prep["cles"].get(n, n) for n in rendu.get("outils_appeles") or []],
+        "outils_appeles": [prep.get("cles", {}).get(n, n) for n in appeles],
         "tokens": {k: int(jetons.get(k) or 0)
                    for k in ("cache_read", "cache_write", "input", "output")},
+        "repli": False, "modele": svc._modele_effectif("claude"),
     }
+
+
+def _sortie_native(service, question: Optional[str], user_id: int,
+                   rendu: dict, collecteur: list, prep: dict) -> dict[str, Any]:
+    """Retour du moteur natif : son texte est gardé TEL QUEL (limite, réponse
+    coupée, fenêtre dépassée, erreur du fournisseur après des outils : il les
+    explique déjà) ; seul un refus devient `MESSAGE_REFUS`."""
+    from app.services import moteur_natif
+
+    arret, texte = rendu.get("arret"), rendu.get("answer") or ""
+    panne = None
+    if arret == moteur_natif.ARRET_REFUS:
+        texte = MESSAGE_REFUS
+    elif arret == moteur_natif.ARRET_ERREUR:
+        # Fin honnête : le moteur ne rend ARRET_ERREUR qu'APRÈS des outils.
+        panne = {"status": 503, "outil": "moteur_natif",
+                 "message": "Fournisseur indisponible après des outils."}
+    return _reponse_native(service, question, user_id, texte, collecteur,
+                           prep, rendu, panne)
+
+
+def _outil_deja_appele(prep: Optional[dict], collecteur: list) -> bool:
+    """Un outil a-t-il tourné ce tour ? (alors le tour n'est JAMAIS rejoué :
+    une écriture d'issue incertaine serait refaite)."""
+    return bool((prep or {}).get("appeles")) or any(
+        s.get("type") in ("result", "erreur", "proposal", "signalement")
+        for s in collecteur)
 
 
 def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
                contexte: Optional[dict], catalogue: list) -> Optional[dict]:
     """Un tour servi par le moteur natif quand il est actif pour ce compte ;
     None = le tour est servi par LangChain (moteur éteint, indisponible, ou
-    panne AVANT toute action exécutée — journalisée). Une panne APRÈS une
-    action exécutée n'est jamais rejouée (doublon) : réponse d'erreur."""
+    panne AVANT tout appel d'outil — journalisée). Une panne APRÈS un appel
+    d'outil n'est jamais rejouée (doublon) : réponse honnête + cartes."""
     from app.services import moteur_natif
     from app.services import sql_agent_service as svc
 
     if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER):
         return None
     collecteur: list = []
+    prep = None
     try:
         prep = _preparer(service, question, company_id, ctx, catalogue, collecteur)
         rendu = moteur_natif.executer(
             question=question_du_tour(question, contexte, getattr(ctx, "identite", None)),
             outils=prep["outils"], conversation=conversation_de(company_id, user_id),
             **prep["reglages"])
-        sortie = _sortie_native(service, question, user_id, rendu, collecteur, prep)
+        return _sortie_native(service, question, user_id, rendu, collecteur, prep)
     except Exception as exc:
-        if not any(s.get("type") == "result" for s in collecteur):
+        if prep is None or not _outil_deja_appele(prep, collecteur):
             logger.warning("Moteur natif indisponible (%s) : tour servi par LangChain.", exc)
             return None
-        logger.error("Moteur natif en panne après une action exécutée : %s", exc)
-        return {"answer": MESSAGE_ACTION_INTERROMPUE, "sql_query": "", "data": None,
-                "cartes": _cartes.construire_cartes(collecteur), "moteur": MOTEUR_NATIF,
-                "intention": "bug", "repli": False, "modele": svc._modele_effectif("claude"),
-                "erreur": {"status": 500, "outil": "moteur_natif", "message": str(exc)[:200]}}
-    return {**sortie, "repli": False, "modele": svc._modele_effectif("claude")}
+        logger.error("Moteur natif en panne après un appel d'outil : %s", exc)
+        return _reponse_native(
+            service, question, user_id, MESSAGE_ACTION_INTERROMPUE, collecteur,
+            prep, {}, {"status": 500, "outil": "moteur_natif", "message": str(exc)[:200]})
+
+
+def message_de_reprise(libelle: str, resultat: dict) -> str:
+    """Message remis au modèle après une confirmation : l'action (libellé du
+    registre), puis — sous l'enveloppe NON FIABLE, car il porte des noms lus
+    chez Django — l'aperçu confirmé (objet nommé, entrées) et le résultat."""
+    from app.services import sql_agent_service as svc
+    return (f"L'utilisateur a confirmé l'action « {libelle} ».\n"
+            + svc._etiqueter_non_fiable({"apercu": resultat.get("apercu") or "",
+                                         "resultat": resultat.get("data")}))
 
 
 def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
                    resultat: dict) -> Optional[dict]:
     """Après une confirmation, si le moteur natif sert ce compte : il reprend
-    la tâche avec le résultat de l'ERP (sous enveloppe non fiable). Rend
-    `{answer, cartes, evenement_id}`, ou None (autre moteur, rien à reprendre,
-    panne — journalisée)."""
+    la tâche avec l'aperçu confirmé et le résultat de l'ERP (sous enveloppe
+    non fiable). Rend `{answer, cartes, evenement_id}`, ou None (autre moteur,
+    rien à reprendre, panne — journalisée). L'événement porte une question
+    SYNTHÉTIQUE, jamais le JSON de l'ERP."""
     from app.services import moteur_natif
     from app.services import sql_agent_service as svc
 
@@ -490,23 +543,21 @@ def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
     catalogue = catalogue_du_tour(ctx)
     if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER):
         return None
-    message = (f"L'utilisateur a confirmé : {libelle}.\n"
-               + svc._etiqueter_non_fiable(resultat.get("data")))
     collecteur: list = []
     try:
         prep = _preparer(service, libelle, company_id, ctx, catalogue, collecteur)
         rendu = moteur_natif.reprendre(conversation=conversation_de(company_id, user_id),
-                                       message=message, outils=prep["outils"],
-                                       **prep["reglages"])
+                                       message=message_de_reprise(libelle, resultat),
+                                       outils=prep["outils"], **prep["reglages"])
         if rendu is None:
             return None
         sortie = _sortie_native(service, None, user_id, rendu, collecteur, prep)
     except Exception as exc:
         logger.warning("Reprise du moteur natif impossible : %s", exc)
         return None
-    sortie["modele"] = svc._modele_effectif("claude")
+    question = f"(reprise après confirmation : {libelle})"
     return {"answer": sortie["answer"], "cartes": sortie["cartes"],
-            "evenement_id": svc.SQLAgentService._journaliser(message, sortie, ctx)}
+            "evenement_id": svc.SQLAgentService._journaliser(question, sortie, ctx)}
 
 
 def _moteur_regle() -> str:

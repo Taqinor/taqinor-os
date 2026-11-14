@@ -512,6 +512,19 @@ def suggestions_pour_ecran(ecran: str) -> list[str]:
         if isinstance(questions, list) else []
 
 
+def _question_avec_contexte(question: str, contexte: dict | None) -> str:
+    """AIC9 — le contexte de l'ecran va dans le message UTILISATEUR (jamais
+    dans le bloc systeme : le cache du prompt systeme reste intact)."""
+    if not contexte:
+        return question
+    parties = []
+    if contexte.get("ecran"):
+        parties.append(f"Écran courant : {contexte['ecran']}")
+    if contexte.get("lead_id"):
+        parties.append(f"lead courant : #{contexte['lead_id']}")
+    return f"{question}\n\n({' ; '.join(parties)})" if parties else question
+
+
 def _etiqueter_non_fiable(contenu: Any) -> str:
     """AIC5 — tout resultat d'outil (lecture ou action) est une DONNEE."""
     return json.dumps({"source": "erp", "fiabilite": "non_fiable",
@@ -1538,7 +1551,7 @@ class SQLAgentService:
         from app.services import relais_copilote as relais
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
-        lc_history = relais.historique_langchain(self._load_history(user_id))
+        lc_history = relais.historique_langchain(self._load_history(user_id), copilote)
 
         # 2. Base filtree (allowlist, moteur lecture seule, GUC RLS) ; 3. LLM ;
         # 4. outils SQL gardes (COP-B5 : lecture + schema seulement).
@@ -1612,9 +1625,9 @@ class SQLAgentService:
 
         try:
             result = executor.invoke(
-                # COP-B2 — en-tete de tour (date, identite, ecran, foyer).
+                # COP-B2 — en-tete de tour, copilote allume seulement (F7).
                 {"input": relais.question_du_tour(
-                    question, contexte, getattr(action_ctx, "identite", None)),
+                    question, contexte, getattr(action_ctx, "identite", None), copilote=copilote),
                  "chat_history": lc_history},
                 config={"callbacks": [capture]},
             )

@@ -158,6 +158,19 @@ def calendrier(jour: datetime.date) -> str:
     return "Sept prochains jours : " + " ; ".join(jours)
 
 
+def _ecran_nettoye(ecran) -> str:
+    """L'écran vient du NAVIGATEUR : une seule ligne (caractères de contrôle et
+    sauts de ligne retirés), sans aucun des deux marqueurs d'en-tête (un faux
+    « [Fin du contexte… » ne doit pas pouvoir clore l'en-tête), 120 signes."""
+    texte = "".join(c if c.isprintable() else " " for c in str(ecran or ""))
+    for marqueur in (MARQUEUR_ENTETE, FIN_ENTETE):
+        texte = texte.replace(marqueur, " ")
+    # Crochets retirés : aucun marqueur, même tronqué, ne peut s'y recomposer
+    # (une route n'en porte jamais).
+    texte = texte.replace("[", " ").replace("]", " ")
+    return " ".join(texte.split())[:120]
+
+
 def entete_tour(*, maintenant: Optional[datetime.datetime] = None,
                 prenom: str = "", role: str = "",
                 contexte: Optional[dict] = None) -> str:
@@ -180,8 +193,9 @@ def entete_tour(*, maintenant: Optional[datetime.datetime] = None,
         lignes.append("Utilisateur : %s%s" % (
             qui, " (rôle %s)" % role if role else ""))
     contexte = contexte or {}
-    if contexte.get("ecran"):
-        lignes.append("Écran ouvert : %s" % str(contexte["ecran"])[:120])
+    ecran = _ecran_nettoye(contexte.get("ecran"))
+    if ecran:
+        lignes.append("Écran ouvert : %s" % ecran)
     for cle, libelle in (("lead_id", "Lead ouvert"), ("devis_id", "Devis ouvert"),
                          ("touche_id", "Touche en cours")):
         valeur = contexte.get(cle)

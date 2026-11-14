@@ -1293,6 +1293,27 @@ class SortiesCollecteurCop1Tests(_AvecPropositions):
                 self.assertEqual(collector[0]["carte"], "document")
                 self.assertEqual(collector[0]["data"], attendu)
 
+    def test_document_booleens_lus_juste_par_la_route_proposal(self):
+        """Aller-retour : l'URL du lien relue avec la regle de
+        `apps/ventes/views/devis_pdf.py` (`include_etude`/`devis_final` vrais
+        sur '1'/'true' ; `show_monthly` faux sur '0'/'false')."""
+        from urllib.parse import parse_qs, urlparse
+        action = dict(_CAT_DOCUMENT, inputs={"type": "object", "properties": {
+            "id": {"type": "integer"}, "include_etude": {"type": "boolean"},
+            "devis_final": {"type": "boolean"}, "show_monthly": {"type": "boolean"}},
+            "required": ["id"]})
+        for valeur in (True, False):
+            with self.subTest(valeur=valeur):
+                collector: list = []
+                at.run_catalogue_action(_ctx(role="admin"), action, {
+                    "id": 45, "include_etude": valeur, "devis_final": valeur,
+                    "show_monthly": valeur}, collector)
+                q = {k: v[0] for k, v in parse_qs(
+                    urlparse(collector[0]["data"]["url"]).query).items()}
+                self.assertEqual(q["include_etude"] in ("1", "true"), valeur)
+                self.assertEqual(q["devis_final"] in ("1", "true"), valeur)
+                self.assertEqual(q["show_monthly"] not in ("0", "false"), valeur)
+
 
 # ── COP-A2 — validation fail-closed complète + tolérance de type ──────────────
 
@@ -1474,10 +1495,20 @@ class ConfirmationUniqueCop3Tests(_AvecPropositions):
         self.assertEqual(appels[0]["payload"]["idempotency_key"], cle)
         self.assertIsNone(appels[0]["cle"])
         self.assertNotIn(jeton, json.dumps(appels))
-        # Une cle deja fournie par l'entree n'est jamais remplacee.
+        # ACNC42 — une cle fournie par l'entree (donc par le modele) est
+        # ECRASEE par l'empreinte du jeton : jamais une cle rejouable choisie.
         jeton = self._proposer(ctx, {"id": 8, "montant": 100, "idempotency_key": "k-1"})
         _res, appels = self._confirmer(ctx, jeton)
-        self.assertEqual(appels[0]["payload"]["idempotency_key"], "k-1")
+        self.assertEqual(appels[0]["payload"]["idempotency_key"],
+                         hashlib.sha256(jeton.encode()).hexdigest())
+
+    def test_confirmation_rend_l_apercu_signe(self):
+        ctx = _ctx(role="admin", token=_jwt(5))
+        jeton = self._proposer(ctx)
+        apercu = json.loads(self.fake_redis.get(at._proposal_key(jeton)))["human_preview"]
+        res, _appels = self._confirmer(ctx, jeton)
+        self.assertIn("Enregistrer un paiement", apercu)
+        self.assertEqual(res["apercu"], apercu)
 
     def test_en_tetes_relayes_sans_remplacer_le_jeton(self):
         envois = []

@@ -12,6 +12,7 @@ unittest (stdlib). A lancer depuis backend/fastapi_ia :
 L'endpoint importe fastapi ; si absent (env leger), les tests se sautent.
 """
 import contextlib
+import json
 import os
 import sys
 import unittest
@@ -515,7 +516,8 @@ class TourReelCartesTests(unittest.TestCase):
             {"role": "user", "content": "q2"},
             {"role": "agent", "content": "r2", "cartes": [touche, fiche]}]
         _, _, llm = _tour([AIMessage(content="Noté.")], historique=historique,
-                          contexte={"ecran": "/crm/relances", "touche_id": 412})
+                          contexte={"ecran": "/crm/relances", "touche_id": 412},
+                          catalogue=[dict(_CAT_LEAD_LIST, lot="copilote")], ctx=_ctx())
         messages = next(m for genre, m in llm.recus if genre == "messages")
         textes = [m.content for m in messages]
         self.assertEqual(textes[2], "r1")
@@ -525,6 +527,32 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertIn("Touche en cours : 412", textes[5])
         self.assertTrue(textes[5].endswith("\n\nPrépare ma relance"))
         self.assertEqual(historique[3]["content"], "r2")
+
+    def test_copilote_eteint_texte_identique_a_main(self):
+        """F7 — copilote ÉTEINT : le modèle ne voit RIEN de neuf. La question
+        et l'historique remis au modèle sont, octet pour octet, ceux
+        d'`origin/main` (`_question_avec_contexte` : suffixe d'écran et de
+        lead ; aucun en-tête, aucune ligne « Références »)."""
+        from langchain_core.messages import AIMessage
+        touche = {"type": "resultat", "carte": "touche", "donnees": {
+            "touche": {"id": 412, "lead": 1489}}}
+        historique = [{"role": "user", "content": "q1"},
+                      {"role": "agent", "content": "r1", "cartes": [touche]}]
+        attendus = (
+            ({"ecran": "/crm/leads/12", "lead_id": 12, "devis_id": 45, "touche_id": 412},
+             "Prépare ma relance\n\n(Écran courant : /crm/leads/12 ; lead courant : #12)"),
+            ({"ecran": "/crm/relances", "touche_id": 412},
+             "Prépare ma relance\n\n(Écran courant : /crm/relances)"),
+            ({"touche_id": 412}, "Prépare ma relance"),
+            (None, "Prépare ma relance"))
+        for contexte, attendu in attendus:
+            with self.subTest(contexte=contexte):
+                _, _, llm = _tour([AIMessage(content="Noté.")], historique=historique,
+                                  contexte=contexte, ctx=_ctx(),
+                                  catalogue=[dict(_CAT_LEAD_LIST, lot="herite")])
+                textes = [m.content for m in
+                          next(m for genre, m in llm.recus if genre == "messages")]
+                self.assertEqual(textes[1:], ["q1", "r1", attendu])
 
     def test_consignes_du_copilote_dans_le_bloc_en_cache(self):
         """COP-B3 — catalogue avec une action du lot `copilote` : les consignes
@@ -741,6 +769,79 @@ class MoteurNatifCop6Tests(unittest.TestCase):
         self.assertEqual([c["type"] for c in sortie["cartes"]], ["resultat"])
         self.assertFalse([g for g, _ in llm.recus if g == "messages"])
 
+    def test_jamais_rejoue_apres_un_appel_d_outil(self):
+        """F2/F5 — dès qu'un outil a tourné (lecture SQL, écriture d'issue
+        incertaine…), le tour n'est JAMAIS rejoué par LangChain : fin honnête
+        ARRET_ERREUR comme panne, retour complet et historique écrit."""
+        from app.services import moteur_natif
+
+        def lire(kw):
+            next(o for o in kw["outils"] if o.nom == "sql_db_query").executer(
+                {"query": "SELECT nom FROM crm_client"})
+
+        def fin_erreur(**kw):
+            lire(kw)
+            return _rendu_natif(answer="Le service d'IA ne répond plus. Déjà fait : "
+                                       "sql_db_query.", outils=["sql_db_query"], arret="erreur")
+
+        def panne(**kw):
+            lire(kw)
+            raise RuntimeError("coupure")
+        for executer, debut in ((fin_erreur, "Le service d'IA ne répond plus."),
+                                (panne, "Je n'ai pas pu terminer")):
+            with self.subTest(executer=executer.__name__), \
+                    self.assertLogs("app.services.relais_copilote", "ERROR") \
+                    if executer is panne else contextlib.nullcontext():
+                sortie, ecrit, llm = self._servir("natif", _CAT_COPILOTE, executer)
+                self.assertEqual(sortie["moteur"], "natif")
+                self.assertTrue(sortie["answer"].startswith(debut), sortie["answer"])
+                self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+                self.assertEqual(sortie["outils_appeles"], ["sql_db_query"])
+                self.assertEqual(sortie["intention"], "bug")
+                for cle in ("action_performed", "proposal", "result", "tokens",
+                            "manuel_present", "cartes"):
+                    self.assertIn(cle, sortie)
+                self.assertEqual([m["role"] for m in ecrit], ["user", "agent"])
+        self.assertEqual(moteur_natif.ARRET_ERREUR, "erreur")
+
+    def test_ecriture_incertaine_jamais_rejouee(self):
+        """F2 — écriture interne sans réponse (statut 0 : peut-être faite),
+        puis le moteur tombe : AUCUN rejeu, une seule tentative d'écriture."""
+        from langchain_core.messages import AIMessage
+        from app.core import config
+        from app.services import moteur_natif
+        ecritures = []
+
+        def django(ctx, path, method="POST", payload=None, **k):
+            ecritures.append(path)
+            return {"ok": False, "status": 0, "error": "Service indisponible."}
+
+        def executer(**kw):
+            next(o for o in kw["outils"] if o.nom == "crm_lead_list").executer({})
+            raise RuntimeError("fournisseur tombé")
+        with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                mock.patch.object(moteur_natif, "executer", executer), \
+                self.assertLogs("app.services.relais_copilote", "ERROR"):
+            sortie, _, llm = _tour([_appel_outil("crm_lead_list", {}),
+                                    AIMessage(content="LangChain.")],
+                                   catalogue=_CAT_COPILOTE, ctx=_ctx(),
+                                   fournisseur="claude", django=django)
+        self.assertEqual(sortie["moteur"], "natif")
+        self.assertEqual(len(ecritures), 1)
+        self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+
+    def test_texte_du_moteur_garde_tel_quel_a_la_limite(self):
+        """F4 — ARRET_LIMITE : le texte du moteur (limite, réponse coupée,
+        fenêtre dépassée) est servi TEL QUEL, sans `MESSAGE_LIMITE` en plus."""
+        from app.services import relais_copilote as relais
+        for texte in ("La conversation est devenue trop longue : je repars de zéro.",
+                      "Voici le résumé.\n\n(Réponse coupée : trop longue.)"):
+            with self.subTest(texte=texte):
+                sortie, _, _ = self._servir("natif", _CAT_COPILOTE, lambda **kw: _rendu_natif(
+                    answer=texte, arret="limite"))
+                self.assertEqual(sortie["answer"], texte)
+                self.assertNotIn(relais.MESSAGE_LIMITE, sortie["answer"])
+
     def _confirmer(self, moteur, reprendre):
         """/confirm d'une proposition, moteur natif simule."""
         from app.core import config, security
@@ -785,8 +886,17 @@ class MoteurNatifCop6Tests(unittest.TestCase):
         self.assertEqual(corps["suite"], {"answer": "Et maintenant la facture ?",
                                           "cartes": [], "evenement_id": 77})
         self.assertEqual(recus[0]["conversation"], "7:1")
-        self.assertTrue(recus[0]["message"].startswith("L'utilisateur a confirmé : "))
-        self.assertIn('"fiabilite": "non_fiable"', recus[0]["message"])
+        message = recus[0]["message"]
+        self.assertTrue(message.startswith("L'utilisateur a confirmé l'action « "))
+        self.assertIn('"fiabilite": "non_fiable"', message)
+        # Facultatif 13 — l'aperçu CONFIRMÉ (objet nommé, entrées) est redit
+        # au modèle, sous l'enveloppe non fiable.
+        enveloppe = json.loads(message.split("\n", 1)[1])
+        self.assertIn("id=9", enveloppe["contenu"]["apercu"])
+        self.assertEqual(enveloppe["contenu"]["resultat"], {"id": 9})
+        # F6 — l'événement de la reprise porte une question SYNTHÉTIQUE.
+        self.assertTrue(journal[0]["question"].startswith("(reprise après confirmation : "))
+        self.assertNotIn("non_fiable", journal[0]["question"])
         self.assertEqual(self._confirmer("natif", lambda **kw: None)[0]["suite"], None)
         recus.clear()
         self.assertIsNone(self._confirmer("langchain", reprendre)[0]["suite"])

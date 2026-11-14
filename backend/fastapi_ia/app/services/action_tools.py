@@ -675,7 +675,11 @@ def _lien_document(action: dict[str, Any], inputs: dict[str, Any]) -> dict[str, 
     registre (`endpoint`), jamais du modele ; `devis_id` des entrees validees."""
     from urllib.parse import urlencode
     path, options = _build_path(action.get("endpoint", ""), inputs)
-    url = path + ("?" + urlencode(options) if options else "")
+    # Booleens en minuscules : la route `/proposal` ne lit que `true`/`1`
+    # (`apps/ventes/views/devis_pdf.py`) ; « True » y valait faux.
+    requete = {k: (("true" if v else "false") if isinstance(v, bool) else v)
+               for k, v in options.items()}
+    url = path + ("?" + urlencode(requete) if requete else "")
     return {"ok": True, "status": 200,
             "data": {"devis_id": inputs.get("id"), "url": url,
                      "options": options}}
@@ -699,7 +703,8 @@ def _execute_catalogue_action(
     valides. Renvoie le dict normalise de `_django_call`. Une action de carte
     « document » n'appelle pas Django (COP1) : son lien suffit. ACNC42 — la cle
     d'idempotence voyage dans le corps (paiement, ou action dont le schema la
-    declare ; une cle deja fournie n'est pas remplacee) ou l'en-tete (le reste)."""
+    declare) ou l'en-tete (le reste) ; c'est TOUJOURS l'empreinte du jeton,
+    jamais une valeur choisie par le modele (elle l'ecrase)."""
     if action.get("carte") == "document":
         return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
@@ -707,9 +712,7 @@ def _execute_catalogue_action(
     if not idempotency_key:
         return _django_call(ctx, path, method=methode, payload=body)
     if _cle_dans_le_corps(action):
-        corps = dict(body or {})
-        if not corps.get("idempotency_key"):
-            corps["idempotency_key"] = idempotency_key
+        corps = {**(body or {}), "idempotency_key": idempotency_key}
         return _django_call(ctx, path, method=methode, payload=corps)
     return _django_call(ctx, path, method=methode, payload=body,
                         idempotency_key=idempotency_key)
@@ -919,8 +922,11 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     # ne doit pas faire echouer une action deja executee avec succes.
     _log_confirmed_action(ctx, action_key, action, inputs, token, res.get("data"))
 
+    # `apercu` : l'aperçu SIGNÉ que l'utilisateur a confirmé (libellé + nom de
+    # l'objet + entrées) — la reprise native le redit au modèle.
     return {"ok": True, "action_key": action_key, "data": res.get("data"),
-            "libelle": _libelle_action(action), "carte": action.get("carte")}
+            "libelle": _libelle_action(action), "carte": action.get("carte"),
+            "apercu": str(record.get("human_preview") or "")}
 
 
 # ── AANA18 — preuve de confirmation (contrat partage avec Django) ─────────────
