@@ -11,16 +11,19 @@ Fichier à part car ``apps/crm/views.py`` appartient au propriétaire crm
 import datetime
 import re
 
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes)
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import HasPermissionOrLegacy
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsResponsableOrAdmin)
 from core.parseurs import PARSEURS_JSON, ChoixDocumente, corps_valide
 
 from . import schema_docs as sd
+from . import stages
 
 #: Plafond de lignes servies à l'assistant (le total, lui, est complet).
 LIMITE_LIGNES = 20
@@ -74,6 +77,11 @@ def lignes_a_relancer(user, scope, limite=LIMITE_LIGNES):
             'retard_jours_ouvres': retards.get(etape.pk, 0),
             'canal': etape.canal,
             'dernier_contact': dernier.isoformat() if dernier else None,
+            # COP-C2 — de quoi enchaîner : la touche elle-même (jamais
+            # `etape`, qui est l'étape du FUNNEL du lead).
+            'touche_id': etape.pk,
+            'touche_cle': etape.template_cle or '',
+            'cadence': etape.cadence,
         })
     return total, lignes
 
@@ -135,7 +143,7 @@ def _bloc_devis(lead):
     envoye = ventes.dernier_devis_envoye_par_lead(
         lead.company, [lead.pk]).get(lead.pk)
     return [{
-        'reference': d['numero'], 'statut': d['statut'],
+        'id': d['id'], 'reference': d['numero'], 'statut': d['statut'],
         'total_ttc': d['total_ttc'],
         'envoye_le': (envoye.date_envoi.isoformat()
                       if envoye and envoye.reference == d['numero']
@@ -152,17 +160,36 @@ def _bloc_visites(lead, n=3):
     } for v in visites.visites_pour_lead(lead)[:n]]
 
 
-def _bloc_prochaine_touche(lead):
-    from .selectors import prochaine_touche_par_lead
+def prochaines_touches(company, lead_ids):
+    """``{lead_id: RelanceEtape}`` — la prochaine touche À FAIRE de chaque
+    lead demandé, en UNE requête (``DISTINCT ON`` du premier rang du tri de
+    ``cadence_selectors.prochaine_touche_par_lead``, qui ne rend pas
+    l'identifiant). Un lead sans touche ouverte est ABSENT."""
+    from django.db.models import F
 
-    touche = prochaine_touche_par_lead(lead.company, [lead.pk]).get(lead.pk)
-    if touche is None:
+    from .models import RelanceEtape
+
+    if not lead_ids:
+        return {}
+    lignes = (RelanceEtape.objects
+              .filter(company=company, lead_id__in=list(lead_ids),
+                      statut=RelanceEtape.Statut.A_FAIRE)
+              .order_by('lead_id', F('due_at').asc(nulls_last=True),
+                        'due_date', 'ordre')
+              .distinct('lead_id'))
+    return {etape.lead_id: etape for etape in lignes}
+
+
+def _bloc_prochaine_touche(lead):
+    etape = prochaines_touches(lead.company, [lead.pk]).get(lead.pk)
+    if etape is None:
         return None
-    due_at, due_date, cadence, canal = touche
     return {
-        'due_at': due_at.isoformat() if due_at else None,
-        'due_date': due_date.isoformat() if due_date else None,
-        'cadence': cadence, 'canal': canal,
+        'touche_id': etape.pk,
+        'libelle': etape.libelle or '',
+        'due_at': etape.due_at.isoformat() if etape.due_at else None,
+        'due_date': etape.due_date.isoformat() if etape.due_date else None,
+        'cadence': etape.cadence, 'canal': etape.canal,
     }
 
 
@@ -214,17 +241,14 @@ def lead_resume(request, lead_id):
 
 
 #: Objectifs du brouillon de suivi -> mot-clé du modèle société à reprendre
-#: (recherché dans le NOM du modèle) et phrase libre de repli.
+#: (recherché dans le NOM du modèle). COP-C7 : AUCUNE phrase de repli — sans
+#: modèle société, le texte reste vide (le Guide interdit « avez-vous pu le
+#: consulter ? » : la commerciale écrit elle-même, le lien ouvre la
+#: conversation nue).
 _OBJECTIFS_BROUILLON = {
-    'relance_devis': (
-        'devis', "je reviens vers vous au sujet de votre devis : avez-vous "
-        "pu le consulter ? Je reste disponible pour toute question."),
-    'apres_visite': (
-        'visite', "suite à notre visite, avez-vous des questions sur la "
-        "suite de votre projet solaire ? Je reste disponible."),
-    'reveil_froid': (
-        'réveil', "je reprends contact pour savoir où en est votre projet "
-        "solaire. Il est toujours d'actualité ?"),
+    'relance_devis': 'devis',
+    'apres_visite': 'visite',
+    'reveil_froid': 'réveil',
 }
 _CANAUX_BROUILLON = ('whatsapp', 'sms', 'email')
 #: Longueur maximale d'un brouillon WhatsApp.
@@ -244,7 +268,7 @@ def _modele_societe(company, objectif, langue):
     langue, repli français ; sans modèle du tout, ``(None, 'fr')``."""
     from .models_cadence import MessageTemplate
 
-    mot = _OBJECTIFS_BROUILLON[objectif][0]
+    mot = _OBJECTIFS_BROUILLON[objectif]
     base = MessageTemplate.objects.filter(
         company=company, archived=False, nom__icontains=mot)
     if langue == 'ar':
@@ -272,7 +296,10 @@ def lead_brouillon_suivi(request, lead_id):
     responsable du lead (aucun prénom codé en dur) ; rien n'est écrit.
     ACVI110 — règle MRY13 des touches : seules les valeurs non vides sont
     remplacées, toute phrase qui garde un placeholder est omise (jamais un
-    « { » ni « je suis  de »), repli sans modèle compris."""
+    « { » ni « je suis  de »). COP-C7 — sans modèle société AUCUNE phrase de
+    repli n'est écrite (le Guide interdit « avez-vous pu le consulter ? ») :
+    ``texte`` vaut ``""`` et le lien ouvre la conversation nue. ``wa_url`` est
+    la clé lue par la carte ; ``lien_wa_me`` (même valeur) reste servi."""
     from apps.ventes import selectors as ventes
     from apps.ventes.utils.whatsapp import build_wa_url
 
@@ -296,9 +323,7 @@ def lead_brouillon_suivi(request, lead_id):
                'marque': marque, 'civilite': civilite, 'societe': cm._societe_du_lead(lead),
                'reference': devis.reference if devis else '',
                'date_validite': validite.strftime('%d/%m/%Y') if validite else ''}
-    repli = _OBJECTIFS_BROUILLON[objectif][1]
-    texte = (modele.corps or '') if modele is not None else (
-        f"Bonjour {{prenom}}. C'est {{conseiller}} de {{marque}}. {repli[:1].upper()}{repli[1:]}")
+    texte = (modele.corps or '') if modele is not None else ''
     for cle, valeur in valeurs.items():
         texte = texte.replace('{' + cle + '}', valeur) if valeur.strip() else texte
     texte = cm._omettre_phrases_incompletes(texte, sorted(set(re.findall(r'\{(\w+)\}', texte))))
@@ -307,8 +332,12 @@ def lead_brouillon_suivi(request, lead_id):
     telephone = '' if pii_masquee_pour(request.user) else cm.numero_joignable(lead)  # ACVI50
     lien = (build_wa_url(telephone, texte)
             if canal == 'whatsapp' and telephone else None)
+    if lien and not texte:
+        lien = lien.split('?text=')[0]  # conversation nue, sans texte pré-rempli
     return Response({
-        'texte': texte, 'lien_wa_me': lien,
+        # COP-C7 — `wa_url` est la clé lue par la carte ; `lien_wa_me` (même
+        # valeur) reste servi pour un écran resté en cache.
+        'texte': texte, 'wa_url': lien, 'lien_wa_me': lien,
         'modele_source': modele.nom if modele else None,
         'langue_servie': langue_servie,
     })
@@ -339,7 +368,7 @@ def _bloc_devis_sans_reponse(user, maintenant):
     return {
         'total': len(devis),
         'lignes': [{
-            'reference': d.reference, 'lead_id': d.lead_id,
+            'devis_id': d.pk, 'reference': d.reference, 'lead_id': d.lead_id,
             'nom': noms.get(d.lead_id, ''),
             'envoye_le': d.date_envoi.isoformat(),
             'jours_sans_reponse': (maintenant - d.date_envoi).days,
@@ -387,3 +416,182 @@ def digest_matin(request):
             'total': agent.manques_signales_hier(
                 user.company, user, aujourdhui)}
     return Response(reponse)
+
+
+# ── COP-C1 — retrouver un lead (« le lead de Bouskoura », « retrouve Alami ») ──
+
+#: ``?limite=`` : 10 lignes par défaut, 25 au plus.
+LIMITE_RECHERCHE = 10
+LIMITE_RECHERCHE_MAX = 25
+
+
+def _leads_trouves(request, terme, etape):
+    """Les leads de la PORTÉE de l'appelant (société + visibilité de son rôle,
+    comme la liste) filtrés par la recherche de ``LeadViewSet`` (mêmes
+    ``search_fields``, jamais une troisième recherche) et par étape. Sans
+    ``client_pii_voir``, ni le téléphone ni l'e-mail ne servent de critère
+    (la recherche ne devient pas un oracle du numéro masqué)."""
+    from rest_framework.filters import SearchFilter
+
+    from .portee_selectors import leads_visibles
+    from .serializers import pii_masquee_pour
+    from .views import LeadViewSet
+
+    leads = leads_visibles(request.user, request.user.company)
+    if etape:
+        leads = leads.filter(stage=etape)
+    if terme:
+        masque = pii_masquee_pour(request.user)
+        champs = [c for c in LeadViewSet.search_fields
+                  if not (masque and c in ('telephone', 'email'))]
+        filtre = SearchFilter()
+        filtre.search_param = 'q'
+        leads = filtre.filter_queryset(
+            request, leads, type('VueRecherche', (), {'search_fields': champs}))
+    return leads.select_related('owner').order_by('-date_creation', 'id')
+
+
+def _ligne_lead(lead, touche, masque):
+    from .serializers import nom_affichable_responsable
+
+    return {
+        'lead_id': lead.pk,
+        'nom': (f'{lead.prenom or ""} {lead.nom}').strip(),
+        'societe': lead.societe or '', 'ville': lead.ville or '',
+        'telephone': '' if masque else (lead.telephone or ''),
+        'etape': lead.stage,
+        'etape_libelle': stages.STAGE_LABELS.get(lead.stage, lead.stage),
+        'responsable': nom_affichable_responsable(lead.owner) or '',
+        'cree_le': lead.date_creation.isoformat() if lead.date_creation else None,
+        'prochaine_touche': None if touche is None else {
+            'touche_id': touche.pk, 'libelle': touche.libelle or '',
+            'canal': touche.canal,
+            'prevue_le': (touche.due_date.isoformat()
+                          if touche.due_date else None)},
+    }
+
+
+@extend_schema(
+    parameters=[
+        sd.param('q', description=(
+            'Nom, prénom, société, e-mail, téléphone, ville ou référence '
+            'client (comme la liste des leads).')),
+        sd.param('etape', enum=list(stages.STAGES),
+                 description='Étape du funnel (clé de STAGES.py).'),
+        sd.param('limite', OpenApiTypes.INT,
+                 description='10 par défaut, 25 au plus.')],
+    responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('crm_voir')])
+def leads_recherche(request):
+    """COP-C1 — ``GET /api/django/crm/assistant/leads/?q=&etape=&limite=`` :
+    recherche COMPACTE de leads dans la portée de l'utilisateur (contrat
+    ``assistant_leads_recherche.json``) — chaque ligne porte ``lead_id`` et,
+    quand une touche est ouverte, ``prochaine_touche.touche_id`` (UNE requête
+    pour toutes les lignes). Aucune fiche complète, aucun prix d'achat."""
+    from .params_requete import entier_param
+    from .serializers import pii_masquee_pour
+
+    terme = (request.query_params.get('q') or '').strip()
+    etape = (request.query_params.get('etape') or '').strip()
+    if etape and etape not in stages.STAGES:
+        raise ValidationError({'etape': (
+            'Valeur inconnue : « %s ». Valeurs : %s.'
+            % (etape, ', '.join(stages.STAGES)))})
+    limite = entier_param(request, 'limite', LIMITE_RECHERCHE, mini=1,
+                          maxi=LIMITE_RECHERCHE_MAX, tolerant=True)
+    leads = _leads_trouves(request, terme, etape)
+    total = leads.count()
+    page = list(leads[:limite])
+    touches = prochaines_touches(request.user.company, [x.pk for x in page])
+    masque = pii_masquee_pour(request.user)
+    return Response({
+        'q': terme, 'etape': etape, 'total': total, 'limite': limite,
+        'lignes': [_ligne_lead(x, touches.get(x.pk), masque) for x in page],
+    })
+
+
+# ── COP-C7 — l'aperçu WhatsApp d'un devis, avec de quoi appeler le commit ──
+
+@extend_schema(request=sd.corps(
+    'CrmAssistantWhatsappApercuRequest',
+    devis_ids=sd.ids_requis(),
+    langue=ChoixDocumente(['fr', 'darija', 'ar'], required=False)),
+    responses=sd.OBJ)
+@api_view(['POST'])
+@parser_classes(PARSEURS_JSON)
+@permission_classes([IsResponsableOrAdmin, HasPermissionOrLegacy('crm_modifier')])
+def lead_whatsapp_devis_apercu(request, lead_id):
+    """COP-C7 — ``POST /api/django/crm/assistant/leads/<id>/whatsapp-devis-
+    apercu/`` : l'APERÇU de l'écran (``whatsapp-devis-apercu``, mêmes gardes,
+    même message, SANS EFFET) plus ``lead_id`` et ``devis_ids`` — la carte
+    « wa_devis » s'en sert pour appeler le COMMIT ``whatsapp-devis`` au moment
+    où elle ouvre WhatsApp (sans lui, le devis reste brouillon et le suivi ne
+    démarre jamais). Ne change pas la route de l'écran."""
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    from .devis_views import (
+        LeadDevisActionsMixin, _refus_pii_whatsapp, _refuser_si_oppose)
+
+    refus = _refus_pii_whatsapp(request)
+    if refus is not None:
+        return refus
+    lead = _lead_en_portee_ou_404(request.user, lead_id)
+    _refuser_si_oppose(lead)
+    erreur, construit = LeadDevisActionsMixin()._whatsapp_devis_message(
+        request, lead, enregistrer=False)
+    if erreur is not None:
+        return erreur
+    devis, phone, message, links = construit
+    return Response({
+        'wa_url': build_wa_url(phone, message), 'phone': phone,
+        'message': message, 'links': links,
+        'lead_id': lead.pk, 'devis_ids': [d.pk for d in devis],
+    })
+
+
+# ── COP-C6 — le message de visite, forme de la carte « wa_message » ─────────
+
+@extend_schema(
+    parameters=[
+        sd.param('cle', required=True,
+                 enum=['visite_proposition', 'visite_confirmation',
+                       'visite_releve_point_eau'],
+                 description='Clé du message de visite.'),
+        sd.param('langue', enum=['fr', 'darija'],
+                 description='Langue du texte (défaut : celle du lead).')],
+    responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('crm_voir')])
+def lead_message_visite(request, lead_id):
+    """COP-C6 — ``GET /api/django/crm/assistant/leads/<id>/message-visite/
+    ?cle=&langue=`` : le message de visite VALIDÉ (même rendu que
+    ``leads/<id>/message-visite/``) mis à la forme de la carte « wa_message »
+    — ``texte`` et ``wa_url`` — pour UNE langue. Rien n'est écrit ni envoyé
+    (la route de l'écran, elle, rend les deux langues à la fois)."""
+    from .cadence_messages import (
+        cles_message_visite_du_lead, garde_contact_du_lead,
+        langue_relance_du_lead, message_visite_pour_lead,
+        refus_langue_relance)
+    from .serializers import pii_masquee_pour
+
+    lead = _lead_en_portee_ou_404(request.user, lead_id)
+    cle = (request.query_params.get('cle') or '').strip()
+    langue = (request.query_params.get('langue') or '').strip()
+    langue = langue or langue_relance_du_lead(lead)
+    if refus_langue_relance(langue):
+        raise ValidationError({'langue': refus_langue_relance(langue)})
+    garde_contact_du_lead(lead)
+    rendu = message_visite_pour_lead(
+        lead, cle, user=request.user,
+        masquer_numero=pii_masquee_pour(request.user))
+    if rendu is None:
+        raise ValidationError({'cle': (
+            'Message de visite inconnu « %s ». Clés : %s.'
+            % (cle, ', '.join(cles_message_visite_du_lead(lead))))})
+    suffixe = 'darija' if langue == 'darija' else 'fr'
+    return Response({
+        'texte': rendu['corps_' + suffixe], 'wa_url': rendu['wa_url_' + suffixe],
+        'lien_wa_me': rendu['wa_url_' + suffixe],
+        'modele_source': cle, 'langue_servie': suffixe,
+    })
