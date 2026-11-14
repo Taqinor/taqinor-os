@@ -36,8 +36,9 @@ function wrapper({ children }) {
 
 const PRODUIT = { id: EXEMPLE.produit, nom: EXEMPLE.produit_nom }
 
+// ADRG131 — « Supprimer » suit `canDelete` (PeutSupprimerStock) : porté par défaut ici.
 function renderSection(props = {}) {
-  return render(<ProfilsSaisonniersSection produit={PRODUIT} canWrite {...props} />, { wrapper })
+  return render(<ProfilsSaisonniersSection produit={PRODUIT} canWrite canDelete {...props} />, { wrapper })
 }
 
 beforeEach(() => {
@@ -187,5 +188,12 @@ describe('AGR623 — liste, modification, suppression', () => {
     const ligne = await screen.findByTestId(`profil-saisonnier-${EXEMPLE.id}`)
     expect(within(ligne).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('button', { name: /Ajouter un profil/ })).toBeNull()
+  })
+
+  it('ADRG131 — sans droit de suppression (Technicien responsable) : « Modifier » sans « Supprimer »', async () => {
+    renderSection({ canDelete: false })
+    const ligne = await screen.findByTestId(`profil-saisonnier-${EXEMPLE.id}`)
+    expect(within(ligne).getByRole('button', { name: `Modifier le profil ${EXEMPLE.nom}` })).toBeInTheDocument()
+    expect(within(ligne).queryByRole('button', { name: /Supprimer le profil/ })).toBeNull()
   })
 })

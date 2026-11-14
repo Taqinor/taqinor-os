@@ -55,7 +55,7 @@ function erreursDepuisReponse(data) {
   return { parChamp, detail }
 }
 
-export default function ProfilsSaisonniersSection({ produit, canWrite = false }) {
+export default function ProfilsSaisonniersSection({ produit, canWrite = false, canDelete = false }) {
   const [profils, setProfils] = useState([])
   const [charge, setCharge] = useState(false)
   // `null` = formulaire fermé ; `{ id: null }` = création ; `{ id }` = édition.
@@ -166,11 +166,11 @@ export default function ProfilsSaisonniersSection({ produit, canWrite = false })
                           onClick={() => ouvrirEdition(p)}>
                     <Pencil className="size-4" aria-hidden="true" />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon"
+                  {canDelete && <Button type="button" variant="ghost" size="icon"
                           aria-label={`Supprimer le profil ${p.nom || p.id}`}
                           onClick={() => supprimer(p)}>
                     <Trash2 className="size-4" aria-hidden="true" />
-                  </Button>
+                  </Button>}{/* ADRG131 — DELETE : PeutSupprimerStock */}
                 </span>
               )}
             </li>

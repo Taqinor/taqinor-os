@@ -1009,6 +1009,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
         <VersionsDialog
           documentId={doc.id}
           versions={allVersions}
+          peutGerer={peutGerer}
           onClose={() => setVersionsOpen(false)}
           onDone={() => { setVersionsOpen(false); onClose(); onCaviarde?.() }}
         />
@@ -1288,7 +1289,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
 // l'historique reste entièrement préservé (jamais de suppression/écrasement).
 // Utilise le champ RÉEL `version` renvoyé par `DocumentVersionSerializer`
 // (jamais `numero`, absent du serializer).
-function VersionsDialog({ documentId, versions, onClose, onDone }) {
+function VersionsDialog({ documentId, versions, peutGerer, onClose, onDone }) {
   const sorted = [...versions].sort((a, b) => (b.version || 0) - (a.version || 0))
   const [busyId, setBusyId] = useState(null)
 
@@ -1317,7 +1318,7 @@ function VersionsDialog({ documentId, versions, onClose, onDone }) {
                   ? ` · restaurée depuis v${v.restored_from_version}` : ''}
                 {v.created_at ? ` · ${formatDate(v.created_at)}` : ''}
               </span>
-              {i !== 0 && (
+              {i !== 0 && peutGerer && (
                 <Button size="sm" variant="outline"
                   onClick={() => restaurer(v)} disabled={busyId === v.id}>
                   {busyId === v.id

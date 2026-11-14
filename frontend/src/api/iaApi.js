@@ -62,7 +62,9 @@ iaApi_instance.interceptors.request.use((config) => {
 function noterAppelAssistant(config, reponse, erreur) {
   try {
     const url = String(config?.url || '').split('?')[0]
-    if (!APPEL_ASSISTANT.test(url)) return
+    // AIC91 — le sondage de progression (toutes les 1,5 s) ne chasse pas du
+    // tampon (15 requêtes) les appels qui expliquent une panne.
+    if (!APPEL_ASSISTANT.test(url) || url.includes('/sql-agent/progression/')) return
     const debut = config?.metadata?.debut ?? Date.now()
     noterRequete({
       methode: String(config?.method || 'get').toUpperCase(),
@@ -152,8 +154,16 @@ iaApi_instance.interceptors.response.use(
 
 const iaApi = {
   // AIC9 — `contexte` {ecran, lead_id} facultatif (écran d'où part la question).
-  queryAgent: (question, contexte = null) =>
-    iaApi_instance.post('/sql-agent/query', contexte ? { question, contexte } : { question }, { timeout: DELAI_AGENT_SQL_MS }),
+  // AIC91 — `progressionId` facultatif : identifiant aléatoire sondé par `getProgression`.
+  queryAgent: (question, contexte = null, progressionId = null) =>
+    iaApi_instance.post('/sql-agent/query', {
+      question, ...(contexte ? { contexte } : {}), ...(progressionId ? { progression_id: progressionId } : {}),
+    }, { timeout: DELAI_AGENT_SQL_MS }),
+
+  // AIC91 — étapes du tour en cours `{etapes: [{libelle, t}], fini}`
+  // (contrat assistant_reponse.json → `progression`), sondées toutes les 1,5 s.
+  getProgression: (progressionId) =>
+    iaApi_instance.get(`/sql-agent/progression/${progressionId}`, { suppressErrorToast: true }),
 
   // COP-F2/F3 — lectures Django de l'assistant (zéro appel au modèle) : une
   // touche prête (`assistant_touche.json`) et la file de suivi

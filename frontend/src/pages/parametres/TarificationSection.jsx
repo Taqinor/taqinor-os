@@ -28,6 +28,7 @@ import { toast } from '../../ui/confirm'
 // VX233 — feed d'audit extrait, verrouillé sur la section « tarification ».
 import SettingsAuditFeed from './SettingsAuditFeed'
 import { useHasPermission } from '../../hooks/useHasPermission'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Champ numérique étiqueté + indice. step="any" : la frappe reste souveraine.
 function NumField({ label, value, onChange, hint, suffix }) {
@@ -252,7 +253,7 @@ export default function TarificationSection() {
         setErreurs(parChamp)
         toast.error(`Non enregistré : ${Object.keys(parChamp).length} champ(s) à corriger.`)
       } else {
-        console.warn('Enregistrement impossible.', e) // le toast global parle
+        toastErreurNonAffichee(e, 'Enregistrement impossible.') // le toast global parle
       }
     } finally {
       setSaving(false)

@@ -157,6 +157,7 @@ function Reglages({ onErreur }) {
 export default function ConsignationsPage() {
   // ADRG35 — poser un dépôt sort du stock : `stock_mouvement`, comme le serveur.
   const peutMouvement = usePeutEcrireStock('stock_mouvement')
+  const peutExporter = usePeutEcrireStock('stock_export')  // ADRG129 — garde de la route d'export
   const [onglet, setOnglet] = useState('depots')
   const [depots, setDepots] = useState([])
   const [clients, setClients] = useState([])
@@ -260,9 +261,11 @@ export default function ConsignationsPage() {
           )}
 
           <Carte titre="Dépôts chez les clients">
-            <div className="mb-3">
-              <Button variant="outline" size="sm" onClick={exporter}>Exporter (Excel)</Button>
-            </div>
+            {peutExporter && (
+              <div className="mb-3">
+                <Button variant="outline" size="sm" onClick={exporter}>Exporter (Excel)</Button>
+              </div>
+            )}
             {depots.length === 0 ? <Vide>Aucun dépôt de consignation.</Vide> : (
               <div className="space-y-3">
                 {depots.map((d) => (

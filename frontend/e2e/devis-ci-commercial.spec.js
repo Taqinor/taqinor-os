@@ -15,8 +15,8 @@
 //   3. lien public → `GET /api/django/ventes/proposal/<token>/` : `synthese_ci`
 //      présent et égal à la synthèse imprimée, `quote.eco_s_ann` nul,
 //      `expires_at` du lien ≥ fin de la validité du devis (CIQ511) ;
-//   4. (optionnel, `WEB_URL` = apps/web en dev) /proposition capturée en FR et
-//      en AR, jointe au rapport ;
+//   4. (`WEB_URL` = apps/web, servi par le job e2e — ATST30) /proposition en FR
+//      et en AR : montants `data-figure` = `/data/`, captures jointes ;
 //   5. signature en ligne (`POST …/proposal/<token>/accept/`, contrat
 //      `acceptation_entreprise.json`) SANS ICE → refus 400 qui NOMME le champ ;
 //      AVEC l'ICE → devis accepté, PDF signé portant raison sociale, qualité
@@ -27,6 +27,7 @@ import {
   API_DJANGO as API, KWH_COMMERCIAL, choisirMarche, declarerProfilCi, executerDansDjango,
   lireJson, nombrePagesPdf, uniq, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner,
 } from './helpers'
+import { cleDe, comparer, figuresDepuisProposition, identitesComparees, lireFiguresPage } from './figures'
 
 const ANNEE = new Date().getFullYear()
 const ENTREPRISE = {
@@ -204,13 +205,22 @@ test('CIQ334 — lien public : synthese_ci = synthèse imprimée, eco_s_ann nul,
   expect(expire >= validite, `lien (${expire}) ≥ validité (${validite})`).toBeTruthy()
 })
 
-test('CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis)', async ({ page }) => {
-  test.skip(!process.env.WEB_URL, 'WEB_URL (apps/web en dev) non fourni : captures non prises')
+test('CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requis)', async ({ page, request }) => {
+  expect(process.env.WEB_URL, 'WEB_URL (apps/web) non servi').toBeTruthy()
   expect(etat.token, 'le test du lien doit précéder').toBeTruthy()
+  // ATST30 — les montants de la page = ceux de `/data/` de la même proposition.
+  const data = figuresDepuisProposition(await lireJson(await request.get(
+    `${API}/public/proposal/${etat.token}/data/`), 'données publiques'))
   for (const langue of ['fr', 'ar']) {
     await page.goto(`${process.env.WEB_URL}/proposition/${etat.token}`)
     await page.locator(`#prop-lang-${langue}`).click()
-    await expect(page.locator('body')).toContainText(/\S/, { timeout: 30_000 })
+    // La chaîne de prix (ChainePrix) vit dans un pli <details> fermé : l'ouvrir comme le lecteur.
+    await page.locator('[data-figure="total_ttc"]').first().waitFor({ state: 'attached', timeout: 30_000 })
+    await page.locator('details:has([data-figure="total_ttc"])').evaluateAll((els) => els.forEach((d) => { d.open = true }))
+    await expect(page.locator('[data-figure="total_ttc"]:visible').first()).toBeVisible({ timeout: 30_000 })
+    const surfaces = { page: await lireFiguresPage(page), data }
+    expect(comparer(surfaces), `/proposition (${langue}) ≠ /data/`).toEqual([])
+    expect([...identitesComparees(surfaces)].some((id) => cleDe(id) === 'total_ttc'), 'total_ttc comparé').toBe(true)
     await test.info().attach(`ciq334-proposition-${langue}`, {
       body: await page.screenshot({ fullPage: true }), contentType: 'image/png',
     })

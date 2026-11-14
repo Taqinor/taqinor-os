@@ -38,7 +38,8 @@ test('LB7 : reassign ne refetch plus et toaste en échec (bugs #5/#11)', () => {
   assert.doesNotMatch(body, /refetch\(\)/)
   // AERR117 — plus de second toast : l'intercepteur axios signale déjà le refus.
   assert.doesNotMatch(body, /toastError\(/)
-  assert.match(body, /catch \{/)
+  // AERR135 — le catch reçoit l'erreur pour la relancer au kanban (`relancer`) ; sinon il se tait.
+  assert.match(body, /catch \(err\) \{\s*if \(relancer\) throw err/)
 })
 
 test('LB7 : exportFiltered/exportSelection toastent en échec (bug #11, catch silencieux tué)', () => {

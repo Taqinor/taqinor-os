@@ -402,7 +402,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             {allDups.length} doublon{allDups.length > 1 ? 's' : ''} probable{allDups.length > 1 ? 's' : ''}
             {hasMatchFort ? ' — très probablement le même client' : ''}
           </span>
-          <Button type="button" size="sm" variant="outline" onClick={() => setDupOpen(true)}>
+          <Button type="button" size="sm" variant="outline" disabled={!peutModifier} onClick={() => setDupOpen(true)}>
             Examiner
           </Button>
         </div>
@@ -440,7 +440,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           {clientEcart.length > 0 && (
             <Button
               type="button" size="sm" variant="outline"
-              disabled={syncBusy}
+              disabled={syncBusy || !peutModifier}
               onClick={synchroniserClient}
             >
               Mettre à jour la fiche client
@@ -460,7 +460,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             <Button
               key={valeur}
               type="button" size="sm" variant="outline"
-              disabled={segmentBusy}
+              disabled={segmentBusy || !peutModifier}
               onClick={() => changerSegment(valeur)}
             >
               Passer en {SEGMENT_LABELS[valeur] || valeur}
@@ -481,7 +481,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           {!choixIncoherence.includes(suggestion.valeur) && (
             <Button
               type="button" size="sm" variant="outline"
-              disabled={segmentBusy}
+              disabled={segmentBusy || !peutModifier}
               onClick={() => changerSegment(suggestion.valeur)}
             >
               Passer en {SEGMENT_LABELS[suggestion.valeur] || suggestion.valeur}
@@ -629,6 +629,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             <DatePicker
               value={relance ? new Date(`${relance}T00:00:00`) : null}
               onChange={onRelanceChange}
+              disabled={!peutModifier}
               clearable
             />
           </FieldSavedPulse>

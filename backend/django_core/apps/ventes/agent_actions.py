@@ -54,6 +54,7 @@ from __future__ import annotations
 
 from apps.agent.registry import (
     AgentAction,
+    LOT_COPILOTE,
     RISK_INTERNAL,
     RISK_OUTWARD,
     RISK_IRREVERSIBLE,
@@ -520,6 +521,75 @@ ENREGISTRER_PAIEMENT = AgentAction(
 )
 
 
+# AIC99 — d'où vient un chiffre du devis : LECTURE des routes d'étude
+# existantes, choisie par ``bloc`` selon le marché (jamais un chiffre
+# recalculé). ``etude-params`` (garde la plus stricte : module ventes) est la
+# PREMIÈRE valeur — c'est elle que relit la parité catalogue ↔ route.
+EXPLIQUER_DEVIS = AgentAction(
+    key='ventes.devis.expliquer',
+    label="Expliquer un chiffre du devis",
+    description=(
+        "Sert à : dire d'où vient un chiffre du devis (production, économie, "
+        "retour) en lisant l'étude du serveur : bloc economie (résidentiel), "
+        "economie-ci (commercial/industriel), economie-pompage (agricole), "
+        "etude-params (paramètres saisis). Ne pas utiliser pour : recalculer "
+        "un chiffre ni citer un prix d'achat. Exemple : « Pourquoi 9 ans de "
+        "retour sur le devis 12 ? » → id=12, bloc=economie. Résultat : les "
+        "chiffres et hypothèses servis par la route, rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/{bloc}/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'description': 'Identifiant du devis.'},
+            'bloc': {'type': 'string', 'enum': [
+                'etude-params', 'economie', 'economie-ci', 'economie-pompage']},
+        },
+        'required': ['id', 'bloc'],
+    },
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# AIC99 — l'envoi par e-mail de l'écran (même route), en proposition À
+# CONFIRMER ; aucun texte d'e-mail écrit par le modèle (gabarit société).
+ENVOYER_EMAIL_DEVIS = AgentAction(
+    key='ventes.devis.envoyer_email',
+    label='Envoyer le devis par e-mail',
+    description=(
+        "Sert à : envoyer au client, par e-mail, la proposition d'un devis "
+        "(PDF /proposal et lien, texte du modèle de la société). Envoi réel : "
+        "proposition puis confirmation obligatoire. Ne pas utiliser pour : "
+        "rédiger un e-mail ni l'envoyer par WhatsApp. Exemple : « Envoie-le "
+        "par e-mail » → id du devis. Résultat : journal d'envoi et statut du "
+        "devis ; un refus (e-mail absent, envoi non configuré) est expliqué."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/envoyer-email/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'description': 'Identifiant du devis.'},
+            'pdf_mode': {'type': 'string', 'enum': ['full', 'onepage']},
+        },
+        'required': ['id'],
+    },
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Envoyer la proposition de ce devis au client par e-mail.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
+VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS)
+
+
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.
 VENTES_ACTIONS = (
     # AG4 — création (TOUJOURS automatique) + édition par chat
@@ -543,7 +613,7 @@ def register_ventes_actions() -> None:
     Appelée depuis ``VentesConfig.ready()``. Ignore silencieusement un
     ré-enregistrement pour rester sûr si ``ready()`` est appelé plusieurs fois.
     """
-    for action in VENTES_ACTIONS:
+    for action in VENTES_ACTIONS + VENTES_ACTIONS_COPILOTE:
         try:
             register(action)
         except ValueError:

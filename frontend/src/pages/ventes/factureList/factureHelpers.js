@@ -1,6 +1,6 @@
 // SPL211 — aides partagées entre FactureList.jsx et factureList/FactureRow.jsx
-// (déplacées VERBATIM). AERR18 — `today` n'est plus figé au chargement : la date du
-// jour se lit au moment du geste (`todayLocalIso()`).
+// (déplacées VERBATIM). AERR18/AERR138 — aucune date figée au chargement : la date du
+// jour se lit au rendu ou au moment du geste (`todayLocalIso()`).
 import { toNumber } from '../../../lib/format.js'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
 
@@ -9,7 +9,6 @@ export const isPartiallyPaid = f =>
   toNumber(f?.montant_paye) > 0 && toNumber(f?.montant_du) > 0 &&
   f?.statut !== 'annulee'
 
-export const today = todayLocalIso()
 // ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture au STATUT « en_retard »
 // (même sans échéance) est affichée « En retard » : elle doit aussi tomber dans
 // l'onglet « En retard » (sinon 4 lignes « En retard » et un onglet vide).

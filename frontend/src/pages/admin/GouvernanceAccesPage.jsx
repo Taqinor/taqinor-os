@@ -42,12 +42,13 @@ function CampagnesTab() {
   const [perimetre, setPerimetre] = useState('all')
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
+  const [echec, setEchec] = useState(false) // AERR141
   const { confirm } = useConfirmDialog()
 
   // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
   const load = () => fetchAllPages((page, o) => accessReviewApi.campaigns.list({ page, ...o })
     .then((r) => r?.data))
-    .then((data) => setCampaigns(asList(data))).catch(() => {}).finally(() => setLoading(false))
+    .then((data) => { setCampaigns(asList(data)); setEchec(false) }).catch(() => setEchec(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const create = async () => {
@@ -72,6 +73,7 @@ function CampagnesTab() {
   }
 
   if (loading) return <Spinner />
+  if (echec && campaigns.length === 0) return <LectureEchouee quoi="Campagnes de revue d'accès" onRetry={() => { setLoading(true); load() }} />
   return (
     <Card>
       <CardHeader><CardTitle>Campagnes de revue d'accès</CardTitle></CardHeader>
@@ -129,7 +131,7 @@ function CampagnesTab() {
 
 // AERR62 — lecture rejetée : jamais « aucune règle / aucune violation » (faux
 // rassurant en sécurité), un avis d'échec + « Réessayer ».
-const LectureEchouee = ({ quoi, onRetry }) => (
+export const LectureEchouee = ({ quoi, onRetry }) => (
   <EmptyState title={`${quoi} illisible(s) : la lecture a échoué.`} className="py-4"
     action={<Button size="sm" variant="outline" onClick={onRetry}>Réessayer</Button>} />
 )

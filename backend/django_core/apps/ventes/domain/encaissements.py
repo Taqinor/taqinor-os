@@ -278,9 +278,10 @@ def proposer_arrondi_caisse(facture, mode, reste=None):
 class EncaissementRefuse(Exception):
     """Refus d'un encaissement manuel (message FR, prêt pour un 400)."""
 
-    def __init__(self, motif):
+    def __init__(self, motif, code=None):
         super().__init__(motif)
         self.motif = motif
+        self.code = code
 
 
 # ── AFAC9 (C-AFAC-003/011/014) — LA porte unique d'encaissement ─────────────
@@ -372,7 +373,7 @@ def _avoir_d_escompte(facture, escompte, user):
                          'ventilation': vent})
 
 
-def encaisser_sur_facture(*, facture, donnees, user):
+def encaisser_sur_facture(*, facture, donnees, user, confirmer_doublon=False):
     """LE chemin de l'encaissement MANUEL d'une facture (montant + date + mode).
 
     Corps extrait À L'IDENTIQUE de ``FactureViewSet.enregistrer_paiement``
@@ -446,6 +447,22 @@ def encaisser_sur_facture(*, facture, donnees, user):
         if montant - reste > TOLERANCE_CENTIME:
             raise EncaissementRefuse(
                 f'Le paiement dépasse le reste à payer ({reste:.2f} MAD).')
+        # ACNC4 (C-ACNC-001, D-ACNC-1) — un paiement compté de même montant et
+        # même date existe déjà sur la facture : rien n'est écrit sans une
+        # confirmation explicite (deux chèques identiques le même jour existent).
+        if not confirmer_doublon and locked.paiements.filter(
+                montant=montant, date_paiement=date_paiement).exclude(
+                statut__in=Paiement.STATUTS_NON_COMPTES).exists():
+            from django.utils import timezone
+
+            from core.formats_fr import formater_date, formater_montant
+            quand = ("aujourd'hui" if date_paiement == timezone.localdate()
+                     else f'le {formater_date(date_paiement)}')
+            somme = formater_montant(montant, devise='MAD', decimales=(
+                0 if montant == montant.to_integral_value() else 2))
+            raise EncaissementRefuse(
+                f'Un paiement de {somme} a déjà été enregistré {quand} sur '
+                'cette facture : confirmer ?', code='paiement_similaire')
         # AARG34 — chatter (acteur côté serveur, jamais lu du corps de la
         # requête) et événement dans la primitive.
         paiement = enregistrer_paiement(facture=locked, user=user, **donnees)

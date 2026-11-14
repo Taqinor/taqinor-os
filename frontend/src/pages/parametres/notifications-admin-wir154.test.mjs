@@ -40,5 +40,6 @@ test('la section couvre les 4 panneaux', () => {
 test('un onglet Notifications est enregistré et rendu dans Paramètres', () => {
   assert.match(CONST, /key: 'notifications', label: 'Notifications'/)
   assert.match(PARAMS, /import NotificationsAdminSection from '\.\/NotificationsAdminSection'/)
-  assert.match(PARAMS, /tab === 'notifications' && <NotificationsAdminSection \/>/)
+  // AERR134 — la section est montée sous SectionGardee (gardée montée après la 1re visite).
+  assert.match(PARAMS, /<SectionGardee actif=\{tab === 'notifications'\}[^>]*><NotificationsAdminSection \/><\/SectionGardee>/)
 })

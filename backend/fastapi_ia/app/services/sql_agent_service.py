@@ -150,12 +150,12 @@ _TABLE_DESCRIPTIONS: dict[str, str] = {
     ),
     "crm_client": "Clients de l'entreprise : nom, prenom, email, telephone, adresse",
     "ventes_devis": (
-        "Devis commerciaux : numero, date, client, montant total, "
-        "statut (brouillon / accepte / refuse / expire)"
+        "Devis commerciaux : reference, date_creation, client, "
+        "statut (brouillon / envoye / accepte / refuse / expire)"
     ),
     "ventes_lignedevis": (
-        "Lignes de produits dans les devis : produit, quantite, "
-        "prix unitaire, remise, montant"
+        "Lignes de produits dans les devis : designation, produit, quantite, "
+        "prix_unitaire, remise, taux_tva"
     ),
     "ventes_boncommande": "Bons de commande clients confirmes depuis un devis accepte",
     "ventes_facture": (
@@ -474,8 +474,37 @@ def _manifeste_allege(manifeste: dict | None) -> str:
             + "".join(f"- {i}\n" for i in items if isinstance(i, str)))
 
 
+# AIC93 — role de l'appelant (`role_nom` de /auth/me/) -> SA sous-section du
+# manuel (« ## 4. Comment on fait X — par rôle »).
+_SECTION_DU_ROLE = {
+    "Commercial": "4.1", "Commercial terrain": "4.2",
+    "Commercial responsable": "4.3", "Technicien": "4.4",
+    "Technicien responsable": "4.4", "Admin Ventes": "4.5",
+    "Directeur": "4.6", "Administrateur": "4.6",
+}
+
+
+def _manuel_du_role(docs: dict, role: str | None) -> str:
+    """AIC93 — texte du manuel sans les sous-sections `### 4.x` d'un AUTRE
+    role ; le reste a l'identique. Role inconnu ou absent -> texte entier.
+    Une decoupe par role, gardee dans le cache du dossier : un bloc stable par
+    role (un point de cache par role), aucune seconde lecture du fichier."""
+    garde = _SECTION_DU_ROLE.get(role or "")
+    if not garde or not docs["texte"]:
+        return docs["texte"]
+    par_role = docs.setdefault("par_role", {})
+    if garde not in par_role:
+        morceaux = re.split(r"(?m)^(?=#{2,3} )", docs["texte"])
+        par_role[garde] = "".join(
+            m for m in morceaux
+            if not (re.match(r"### 4\.\d+\b", m)
+                    and not m.startswith(f"### {garde} ")))
+    return par_role[garde]
+
+
 def _contenu_systeme(provider: str, allow_price: bool,
-                     copilote: bool = False) -> tuple[Any, bool]:
+                     copilote: bool = False,
+                     role: str | None = None) -> tuple[Any, bool]:
     """AIC5 — bloc SYSTEME = _AGENT_PREFIX (+ marge) + politique + manifeste +
     manuel ; sous `claude`, marque `cache_control` ephemere 1 h (>= 512
     tokens). Renvoie (contenu du SystemMessage, manuel_present). Hors claude
@@ -489,7 +518,7 @@ def _contenu_systeme(provider: str, allow_price: bool,
         base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.CONSIGNES_COPILOTE + "\n"
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
-    texte = base + docs["texte"]
+    texte = base + _manuel_du_role(docs, role)
     if _estimer_tokens(texte) < CACHE_MIN_TOKENS:
         return texte, docs["present"]
     return [{"type": "text", "text": texte,
@@ -895,10 +924,13 @@ _SECRET_COLUMNS = (
     "is_staff",
     "totp_secret",         # graine 2FA (chiffree au repos, dechiffree par l'ORM)
     "totp_recovery_codes",
+    "phone_key",           # ALEC45 : numero du lead Meta en clair (adsengine_metaleadmirror)
 )
 
 # Tables dont une projection LIGNE ENTIERE exposerait un secret de compte.
 _SECRET_TABLES = ("authentication_customuser",)
+# ALEC45 — ligne entiere refusee aussi (porte `phone_key`), table restant GRANTee (COUNT).
+_TABLES_LIGNE_SECRETE = ("adsengine_metaleadmirror",)
 
 _FORBIDDEN_COLUMNS = (
     "prix_achat",
@@ -967,7 +999,7 @@ def _references_forbidden_column(sql: str, allow_price: bool = False,
     except SQLSecurityError:
         return True
     colonnes = set(_SECRET_COLUMNS)
-    tables = set(_SECRET_TABLES)
+    tables = set(_SECRET_TABLES) | set(_TABLES_LIGNE_SECRETE)
     if not allow_price:
         colonnes |= set(_FORBIDDEN_COLUMNS)
         tables |= set(_PRICE_TABLES)
@@ -1033,6 +1065,7 @@ _MODULE_DES_TABLES = (
     ("ventes_", ("ventes_", "encaisser")), ("crm_", ("crm_",)),
     ("installations_", ("installation_", "intervention_")),
     ("sav_", ("sav_",)), ("stock_", ("stock_",)),
+    ("adsengine_", ("adsengine_",)),  # ALEC46 : miroirs publicitaires
 )
 _TABLES_A_PROPRIETAIRE = frozenset({
     "ventes_devis", "ventes_facture", "ventes_boncommande", "crm_client",
@@ -1614,7 +1647,8 @@ class SQLAgentService:
         # contenir des accolades) ; manifeste + manuel en cache 1 h (claude).
         from langchain_core.messages import SystemMessage
         systeme, manuel_present = _contenu_systeme(
-            (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote)
+            (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote,
+            role=(getattr(action_ctx, "identite", None) or {}).get("role"))
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=systeme),
             MessagesPlaceholder(variable_name="chat_history"),

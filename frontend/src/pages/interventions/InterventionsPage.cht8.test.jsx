@@ -5,6 +5,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import authReducer from '../../features/auth/store/authSlice'
 import InterventionsPage from './InterventionsPage'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
@@ -23,6 +26,13 @@ vi.mock('../../api/installationsApi', () => ({
     noterIntervention: vi.fn(),
   },
 }))
+// ADRG134 — les rendus sans store gardent la lecture (droit accordé) ; `droits.reel`
+// branche le vrai crochet, lu dans le store `auth` du test.
+const droits = vi.hoisted(() => ({ reel: false }))
+vi.mock('../../hooks/useHasPermission', async (importOriginal) => {
+  const orig = await importOriginal()
+  return { ...orig, useCanListAssignableUsers: () => (droits.reel ? orig.useCanListAssignableUsers() : true) }
+})
 vi.mock('../../api/crmApi', () => ({
   default: {
     getAssignableUsers: vi.fn(),
@@ -51,6 +61,7 @@ const ITEMS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  droits.reel = false
   // Vue liste (déterministe) plutôt que le kanban @dnd-kit par défaut — sans
   // incidence sur le comportement du lien profond testé ici.
   try { localStorage.setItem('taqinor.interventions.view', 'liste') } catch { /* indisponible */ }
@@ -243,5 +254,31 @@ describe('InterventionsPage — AERR34 relecture rejetée', () => {
     expect(screen.getAllByText('Client Trois').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Client Cent Un').length).toBeGreaterThan(0)
     expect(screen.queryByText('Impossible de charger les interventions')).toBeNull()
+  })
+})
+
+// ADRG134 — `crm/assignable-users/` : responsable ET module crm (useCanListAssignableUsers, ADRG113).
+describe('InterventionsPage — ADRG134 utilisateurs assignables', () => {
+  const rendreAvec = (auth) => {
+    droits.reel = true
+    const store = configureStore({
+      reducer: { auth: authReducer },
+      preloadedState: { auth: { user: { id: 1 }, isAuthenticated: true, loading: false, ...auth } },
+    })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/interventions']}><InterventionsPage /></MemoryRouter>
+      </Provider>,
+    )
+  }
+  it('Technicien : aucune lecture des utilisateurs assignables', async () => {
+    rendreAvec({ role: 'normal', role_nom: 'Technicien', permissions: ['installation_voir', 'sav_gerer'] })
+    expect((await screen.findAllByText('Client Cent Un')).length).toBeGreaterThan(0)
+    expect(crmApi.getAssignableUsers).not.toHaveBeenCalled()
+  })
+  it('Commercial responsable : une lecture', async () => {
+    rendreAvec({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_modifier'] })
+    expect((await screen.findAllByText('Client Cent Un')).length).toBeGreaterThan(0)
+    expect(crmApi.getAssignableUsers).toHaveBeenCalledTimes(1)
   })
 })

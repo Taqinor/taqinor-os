@@ -136,6 +136,18 @@ describe('cartes — tout échantillon du contrat rend sans erreur', () => {
     expect(screen.getByRole('button', { name: 'Télécharger' })).toBeInTheDocument()
   })
 
+  it('matin : une rangée par visite', async () => {
+    // AIC94 — lignes de visite figées au contrat (AIC95) : le lead, le jour
+    // prévu, « Ouvrir la fiche » de la visite — plus un simple compte.
+    const matin = touche('assistant_digest_matin')
+    const visite = matin.visites.lignes[0]
+    monter([resultat('matin', { visites: matin.visites })])
+    const rangee = screen.getByText(visite.lead_nom).closest('li')
+    expect(within(rangee).getByText(/prévue le/)).toBeInTheDocument()
+    await userEvent.click(within(rangee).getByRole('button', { name: 'Ouvrir la fiche' }))
+    expect(screen.getByTestId('route')).toHaveTextContent(`/visites/${visite.id}`)
+  })
+
   it('matin sans CRM', () => {
     monter([resultat('matin', touche('assistant_digest_matin', 'exemple_sans_crm'))])
     expect(screen.getByText('Votre matin')).toBeInTheDocument()

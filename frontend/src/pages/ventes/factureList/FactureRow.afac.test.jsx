@@ -104,6 +104,19 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(screen.queryByRole('menuitem', { name: /Note de débit/ })).toBeNull()
   })
 
+  it("sans ventes_pdf : pas d'aperçu du PDF", async () => {
+    // ADRG128 (C-ADRG-VER2-205) — mutant : retirer `peutPdf` ⇒ échec.
+    const avecPdf = { ...CONTRAT.exemple, fichier_pdf: '/media/factures/FAC-1.pdf' }
+    rendre(avecPdf, { peutPdf: false })
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: /Aperçu du PDF/ })).toBeNull()
+    cleanup()
+    rendre(avecPdf)
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Aperçu du PDF/ })).toBeInTheDocument()
+  })
+
   it('AMSG27 — relance WhatsApp désactivée sur une contestée', async () => {
     const enRetard = { ...CONTRAT.exemple, statut: 'en_retard', client_telephone: '+212600000000' }
     rendre({ ...enRetard, contestee_le: '2026-11-02' })

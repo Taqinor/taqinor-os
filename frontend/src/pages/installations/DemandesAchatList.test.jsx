@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import authReducer from '../../features/auth/store/authSlice'
+import authReducer, { setCredentials } from '../../features/auth/store/authSlice'
 
 /* ============================================================================
    FG310 — écran « Demandes d'achat » (réquisitions chantier → approbation).
@@ -58,7 +58,7 @@ function makeWrapper({ role = 'responsable', permissions = [], roleNom = 'Direct
       },
     },
   })
-  return function wrapper({ children }) {
+  function wrapper({ children }) {
     return (
       <Provider store={store}>
         <MemoryRouter initialEntries={initialEntries}>
@@ -67,6 +67,8 @@ function makeWrapper({ role = 'responsable', permissions = [], roleNom = 'Direct
       </Provider>
     )
   }
+  wrapper.store = store  // ADRG133 — un test relit la session (setCredentials) en cours d'écran
+  return wrapper
 }
 
 beforeEach(() => {
@@ -380,6 +382,32 @@ describe('DemandesAchatList — générer le BCF / étapes', () => {
     await waitFor(() => expect(installationsApi.getEtapesApprobationDA).toHaveBeenCalledWith(7))
     expect(await screen.findByRole('button', { name: /Rejeter/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Approuver l.étape/ })).toBeInTheDocument()
+  })
+
+  it("sans approuver_demande_achat : pas de bouton d'étape", async () => {
+    installationsApi.approuverDemandeAchat.mockRejectedValue({
+      response: { status: 409, data: { detail: 'validez les étapes via « approuver-etape ».' } },
+    })
+    installationsApi.getEtapesApprobationDA.mockResolvedValue({
+      data: [{ id: 3, niveau: 1, statut: 'en_attente', statut_display: 'En attente', approbateur_nom: null }],
+    })
+    const wrapper = makeWrapper({ role: 'admin', permissions: ['approuver_demande_achat', 'installation_voir'] })
+    render(<DemandesAchatList />, { wrapper })
+    fireEvent.click((await screen.findAllByText('DA-202607-0007'))[0])
+    fireEvent.click(await screen.findByRole('button', { name: /^Approuver$/ }))
+    // Directeur : les deux boutons d'étape.
+    expect(await screen.findByRole('button', { name: /Approuver l.étape/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Rejeter/ })).toBeInTheDocument()
+    // Session relue en Technicien responsable (palier responsable, sans le code) : plus aucun bouton d'étape.
+    act(() => {
+      wrapper.store.dispatch(setCredentials({
+        user: { id: 1 }, menu_tier: 'responsable', role_nom: 'Technicien responsable',
+        permissions: ['installation_voir', 'stock_voir'],
+      }))
+    })
+    expect(await screen.findByText(/Niveau 1/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Approuver l.étape/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Rejeter/ })).toBeNull()
   })
 })
 

@@ -99,6 +99,11 @@ class ActionContext:
         # catalogue déjà lu ce tour (une seule lecture Django par question).
         self.identite: dict[str, str] = {}
         self.catalogue_tour: Optional[list[dict[str, Any]]] = None
+        # AIC91 — clé Redis de la progression du tour (posée par la route).
+        self.progression_cle: Optional[str] = None
+        # AIC97 — identifiant du tour (un contexte par requête = un tour) :
+        # fonde la clé d'idempotence d'une écriture interne.
+        self.tour_id = secrets.token_hex(16)
 
     # ── Gating cote FastAPI (defense en profondeur) ───────────────────────
 
@@ -507,6 +512,48 @@ def _proposal_redis():
         return None
 
 
+# ── AIC91 — progression d'un tour (sondée par l'écran, aucun flux SSE) ───────
+
+PROGRESSION_TTL = 600  # s : la clé s'efface seule après 10 minutes
+
+
+def cle_progression(user_id: int, progression_id: str) -> str:
+    return f"assistant:progression:{int(user_id)}:{progression_id}"
+
+
+def _progression_redis():
+    """Client Redis de la progression (même base que les propositions)."""
+    return _proposal_redis()
+
+
+def lire_progression(cle: str) -> dict[str, Any]:
+    """{etapes: [{libelle, t}], fini} ; clé inconnue ou Redis absent -> vide."""
+    vide = {"etapes": [], "fini": False}
+    try:
+        brut = (_progression_redis() or {}).get(cle) if cle else None
+        lu = json.loads(brut) if brut else vide
+    except Exception:  # Redis ou JSON illisible : rien à montrer
+        return vide
+    return {"etapes": list(lu.get("etapes") or []), "fini": bool(lu.get("fini"))}
+
+
+def noter_etape(ctx, libelle: Optional[str] = None, fini: bool = False) -> None:
+    """AIC91 — publie une étape du tour (libellé du REGISTRE, jamais un argument
+    d'outil) ou sa fin. No-op sans `progression_cle` ; jamais bloquant."""
+    cle = getattr(ctx, "progression_cle", None)
+    r = _progression_redis() if cle else None
+    if r is None:
+        return
+    etat = lire_progression(cle)
+    if libelle:
+        etat["etapes"].append({"libelle": str(libelle)[:120], "t": int(time.time())})
+    etat["fini"] = etat["fini"] or fini
+    try:
+        r.set(cle, json.dumps(etat, ensure_ascii=False), ex=PROGRESSION_TTL)
+    except Exception as exc:  # pragma: no cover - réseau
+        logger.warning("Progression du tour non publiée: %s", exc)
+
+
 def _proposal_key(token: str) -> str:
     return f"agent_proposal:{token}"
 
@@ -610,6 +657,20 @@ def _cle_idempotence(token: str) -> str:
     """`Idempotency-Key` relayee a Django pour UNE confirmation : empreinte
     SHA-256 du jeton, jamais le jeton en clair (COP-A3)."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _cle_ecriture_interne(ctx: ActionContext, action: dict[str, Any],
+                          inputs: dict[str, Any]) -> Optional[str]:
+    """AIC97 — `Idempotency-Key` d'une action INTERNE qui écrit (POST) :
+    empreinte SHA-256 de l'utilisateur, de la clé d'action, des entrées
+    canoniques et du tour — un nouvel essai du modèle dans le MÊME tour rejoue
+    la première écriture (AGQ23). Lecture -> None."""
+    if str(action.get("method", "POST")).upper() != "POST":
+        return None
+    brut = json.dumps([_caller_user_id(ctx), action["key"], inputs,
+                       getattr(ctx, "tour_id", "")], sort_keys=True,
+                      ensure_ascii=False, default=str)
+    return hashlib.sha256(brut.encode("utf-8")).hexdigest()
 
 
 # ── Execution d'une action du catalogue ───────────────────────────────────────
@@ -766,8 +827,9 @@ def run_catalogue_action(
             collector.append(proposal)
         return json.dumps(proposal, ensure_ascii=False)
 
-    # Action interne -> execution immediate.
-    res = _execute_catalogue_action(ctx, action, inputs)
+    # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
+    res = _execute_catalogue_action(
+        ctx, action, inputs, idempotency_key=_cle_ecriture_interne(ctx, action, inputs))
     if not res.get("ok"):
         # AIC7 — capteur : un echec inattendu devient un evenement `bug`.
         if collector is not None and intention_pour_statut(res.get("status")):
@@ -1164,7 +1226,10 @@ def build_action_tools(
             )
 
         def _make_func(act):
-            return lambda **kw: run_catalogue_action(ctx, act, kw, collector)
+            def _func(**kw):
+                noter_etape(ctx, act.get("label") or act["key"])  # AIC91
+                return run_catalogue_action(ctx, act, kw, collector)
+            return _func
 
         tools.append(StructuredTool.from_function(
             name=_tool_name_for(action),

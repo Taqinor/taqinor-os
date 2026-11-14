@@ -374,6 +374,40 @@ class RunCatalogueActionTests(unittest.TestCase):
         self.assertEqual(parsed["type"], "result")
         self.assertTrue(parsed["ok"])
 
+    def test_ecriture_interne_rejouee_sans_doublon(self):
+        """AIC97 — une action INTERNE qui ecrit (POST) part avec une cle
+        d'idempotence derivee du tour : le nouvel essai du modele apres « delai
+        depasse » porte la MEME cle (Django rejoue le premier devis, AGQ23) ;
+        un tour suivant aux memes entrees, une autre ; une lecture, aucune ;
+        jamais une valeur fournie par le modele."""
+        creer_auto = {
+            "key": "ventes.devis.creer_auto", "label": "Créer le devis",
+            "endpoint": "/api/django/ventes/devis/auto/", "method": "POST",
+            "inputs": {"type": "object", "properties": {"lead_id": {"type": "integer"}},
+                       "required": ["lead_id"]},
+            "risk": "internal",
+        }
+        cles = []
+
+        def django_lent_puis_ok(ctx, path, method="POST", payload=None,
+                                idempotency_key=None):
+            cles.append(idempotency_key)
+            if len(cles) == 1:  # premier appel : le relais coupe a 20 s
+                return {"ok": False, "status": 0, "error": "delai depasse"}
+            return {"ok": True, "status": 201, "data": {"id": 45}}
+
+        tour, suivant = _ctx(role="admin"), _ctx(role="admin")
+        with mock.patch.object(at, "_django_call", django_lent_puis_ok):
+            at.run_catalogue_action(tour, creer_auto, {"lead_id": 1489})
+            at.run_catalogue_action(tour, creer_auto, {"lead_id": 1489})
+            at.run_catalogue_action(suivant, creer_auto, {"lead_id": 1489})
+            at.run_catalogue_action(tour, _CAT_LEAD_LIST, {})
+        self.assertTrue(cles[0])
+        self.assertEqual(cles[0], cles[1])
+        self.assertNotEqual(cles[2], cles[0])
+        self.assertIsNone(cles[3])
+        self.assertRegex(cles[0], r"^[0-9a-f]{64}$")
+
     def test_internal_action_uses_path_template(self):
         ctx = _ctx(role="admin")
         captured = {}

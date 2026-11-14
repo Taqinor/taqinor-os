@@ -90,6 +90,23 @@ describe('mutateWithUndo — anti-commit-différé (le cœur d’EZ14)', () => {
     expect(errorSpy).not.toHaveBeenCalled()
   })
 
+  it('AERR136 — refus rendu par .unwrap() : aucun toast local', async () => {
+    const ok = await mutateWithUndo({
+      kind: 'lead_stage',
+      message: 'Étape modifiée.',
+      apply: vi.fn().mockRejectedValue({ detail: 'Étape non modifiable.' }),
+      revert: vi.fn(),
+    })
+    expect(ok).toBe(false)
+    expect(undoSpy).not.toHaveBeenCalled()
+    expect(errorSpy).not.toHaveBeenCalled()
+    await mutateWithUndo({
+      kind: 'lead_stage', message: 'x', apply: vi.fn().mockRejectedValue(new Error('x')), revert: vi.fn(),
+      errorMessage: 'Échec perso.',
+    })
+    expect(errorSpy).toHaveBeenCalledWith('Échec perso.')
+  })
+
   it('un échec de l’INVERSE est dit à l’utilisateur, jamais avalé', async () => {
     await mutateWithUndo({
       kind: 'lead_archive',

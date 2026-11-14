@@ -63,6 +63,20 @@ export function TypingDots() {
   )
 }
 
+// AIC91 — bulle d'attente partagée (panneau et page) : points + dernière étape du tour.
+export function BulleAttente({ etape, bulleClassName }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className={`flex items-center gap-1 rounded-xl bg-muted ${bulleClassName}`}>
+        <TypingDots />
+      </div>
+      {etape && (
+        <p className="text-xs text-muted-foreground" data-testid="etape-en-cours" aria-live="polite">{etape}</p>
+      )}
+    </div>
+  )
+}
+
 // Cartes d'action (COP-F1 : `msg.cartes`, jamais le texte du modèle) + requête
 // SQL d'un message agent. Les cartes vivent dans `features/ia/cartes/`.
 export function MessageActions({ msg, index, variant }) {

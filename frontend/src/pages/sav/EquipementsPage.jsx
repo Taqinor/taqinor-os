@@ -306,6 +306,7 @@ function EquipementDetailCorps({ equipement, onClose, onSaved }) {
                 </FormField>
               </>
             )}
+            {codeRebut && (
             <FormField label="Correction" fullWidth
                        hint="Corriger un produit ou un chantier saisi par erreur (recalcule la garantie).">
               <Button type="button" size="sm" variant={correcting ? 'default' : 'outline'}
@@ -313,6 +314,7 @@ function EquipementDetailCorps({ equipement, onClose, onSaved }) {
                 <Pencil /> {correcting ? 'Annuler la correction' : 'Corriger'}
               </Button>
             </FormField>
+            )}
           </FormSection>
 
           {/* L624 — tickets SAV ouverts liés + L626 — créer un ticket pré-rempli. */}
@@ -395,7 +397,7 @@ function EquipementDetailCorps({ equipement, onClose, onSaved }) {
               </Button>
             )}
             <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
-            <Button type="submit" loading={saving}><Save /> Mettre à jour</Button>
+            {codeRebut && <Button type="submit" loading={saving}><Save /> Mettre à jour</Button>}
           </FormActions>
         </Form>
 

@@ -54,6 +54,8 @@ export function useServerFieldErrors() {
       // précis (403, contrainte globale du serializer…) — jamais un vrai nom
       // de champ du formulaire, replié sur `fallbackField` plus bas.
       if (key === 'detail' || key === 'non_field_errors') continue
+      // ACNC65 — `code` CHAÎNE = code machine d'un 409 (conflit_version), pas un champ (une erreur de champ DRF est une liste).
+      if (key === 'code' && typeof val === 'string') continue
       if (Array.isArray(val)) {
         const first = val.find((v) => typeof v === 'string')
         if (first) next[key] = first

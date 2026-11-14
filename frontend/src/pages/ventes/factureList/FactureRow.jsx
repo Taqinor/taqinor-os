@@ -409,8 +409,8 @@ export default function FactureRow({ f, ctx }) {
                     <Check /> Marquer payée (sans détail)
                   </DropdownMenuItem>
                 )}
-                {/* APX14 — aperçu du PDF SANS quitter l'écran. */}
-                {f.fichier_pdf && (
+                {/* APX14 — aperçu du PDF SANS quitter l'écran. ADRG128 — route `ventes_pdf`. */}
+                {peutPdf && f.fichier_pdf && (
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPreview(f) }}>
                     <Eye /> Aperçu du PDF
                   </DropdownMenuItem>

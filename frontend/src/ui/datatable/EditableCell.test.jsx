@@ -69,6 +69,18 @@ describe('EditableCell (VX127)', () => {
     expect(screen.queryByText(/Request failed/)).toBeNull()
     expect(document.querySelector('input')).toHaveValue('-5')
   })
+
+  it('AERR136 — refus rendu par .unwrap() : message servi', async () => {
+    const onSave = vi.fn().mockRejectedValue({ prix_vente: ['Assurez-vous que cette valeur est supérieure ou égale à 0.'] })
+    render(<EditableCell value="12" onSave={onSave} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    const input = document.querySelector('input')
+    fireEvent.change(input, { target: { value: '-5' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(await screen.findByText(/supérieure ou égale à 0\./)).toBeTruthy()
+    expect(screen.queryByText(/Échec de l’enregistrement/)).toBeNull()
+  })
 })
 
 /* NTUX8 — navigation clavier type tableur, 100 % opt-in (`autoEdit`/

@@ -37,6 +37,24 @@ class BloqueurAutreSociete(Exception):
     """ACEL16 — un bloqueur PROTECT appartient à une AUTRE société : refus."""
 
 
+def _societes_du_bloqueur(obj, purgee=None):
+    """ACEL87 — sociétés d'un bloqueur : sa ``company_id`` directe, sinon celles
+    de TOUS ses parents directs par clé étrangère non nulle (une ``LigneDevis``
+    atteint son devis ET son produit). Ensemble vide = société inconnue. Lu en
+    base, jamais par le cache de relation : un parent déjà supprimé par CETTE
+    purge (qui ne supprime que les lignes de ``purgee``) compte pour ``purgee``."""
+    if hasattr(obj, 'company_id'):
+        return {obj.company_id} - {None}
+    societes = set()
+    for f in obj._meta.concrete_fields:
+        pk = getattr(obj, f.attname) if (f.many_to_one or f.one_to_one) else None
+        if pk is None or not any(c.attname == 'company_id' for c in f.related_model._meta.concrete_fields):
+            continue
+        lues = list(f.related_model._base_manager.filter(pk=pk).values_list('company_id', flat=True))
+        societes.update(lues or [purgee])
+    return societes - {None}
+
+
 def _delete_cascading(obj, company=None, max_depth=60):
     """Delete ``obj``, recursively clearing any PROTECT-blocking rows first.
 
@@ -57,8 +75,11 @@ def _delete_cascading(obj, company=None, max_depth=60):
             return
         except ProtectedError as exc:
             for blocker in list(exc.protected_objects):
-                if company is not None and hasattr(blocker, 'company_id') \
-                        and blocker.company_id != company.pk:
+                # Déjà supprimé par une branche sœur de la cascade : ses champs différés
+                # relus lèveraient DoesNotExist — rien à juger ni à supprimer.
+                if not type(blocker)._base_manager.filter(pk=blocker.pk).exists():
+                    continue
+                if company is not None and _societes_du_bloqueur(blocker, company.pk) != {company.pk}:
                     raise BloqueurAutreSociete(
                         f'{blocker._meta.label} #{blocker.pk} appartient à une autre société.') from exc
                 _delete_cascading(blocker, company, max_depth=max_depth - 1)

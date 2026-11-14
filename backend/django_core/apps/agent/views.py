@@ -7,6 +7,9 @@ et donc société-aware via son rôle). Métadonnées uniquement : aucune exécu
 YHARD2 — journal des actions IA confirmées (lecture admin/Directeur) + endpoint
 d'annulation pour une action réversible.
 """
+import hmac
+
+from django.conf import settings
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ParseError, PermissionDenied
@@ -490,13 +493,40 @@ def _periode_export(request):
     return bornes
 
 
+def _societe_du_jeton_export(request):
+    """AIC92 — id de la société servie au jeton de service du tri nocturne
+    (`Authorization: Bearer <ASSISTANT_EXPORT_TOKEN>`, comparé à temps
+    constant comme `JetonServiceResumeProblemes`), ou None. Jeton ou société
+    non réglés = fermé."""
+    attendu = getattr(settings, 'ASSISTANT_EXPORT_TOKEN', '')
+    societe = str(getattr(settings, 'ASSISTANT_EXPORT_SOCIETE', '') or '')
+    entete = getattr(request, 'META', {}).get('HTTP_AUTHORIZATION', '')
+    if not attendu or not societe.isdigit() or not entete.startswith('Bearer '):
+        return None
+    if not hmac.compare_digest(entete[len('Bearer '):].strip().encode(), attendu.encode()):
+        return None
+    return int(societe)
+
+
 class AssistantEventExportView(APIView):
     """AIC11 — ``GET /api/django/agent/evenements/export/`` : export ANONYMISÉ
     (contrat ``assistant_export.json``) des événements de la société de
     l'admin, pour le tri nocturne. Non-admin => 404 ; ``AGENT_HMAC_SECRET``
-    absent => refus (jamais d'identifiant brut). ``company`` n'apparaît pas."""
+    absent => refus (jamais d'identifiant brut). ``company`` n'apparaît pas.
+    AIC92 — ou, sans session, le jeton de service (`_societe_du_jeton_export`) :
+    il n'est pas un JWT, aucun authentificateur ni rôle ne le lit."""
 
     permission_classes = [IsAnyRole]
+
+    def get_authenticators(self):
+        if _societe_du_jeton_export(getattr(self, 'request', None)):
+            return []
+        return super().get_authenticators()
+
+    def get_permissions(self):
+        if _societe_du_jeton_export(getattr(self, 'request', None)):
+            return []
+        return super().get_permissions()
 
     @extend_schema(parameters=[
         OpenApiParameter('depuis', str, required=False),
@@ -506,15 +536,19 @@ class AssistantEventExportView(APIView):
         'evenements': drf_serializers.ListField(child=drf_serializers.DictField()),
         'totaux': drf_serializers.DictField()}))
     def get(self, request):
-        if not request.user.is_admin_role or request.user.company_id is None:
-            raise NotFound()
+        company_id = _societe_du_jeton_export(request)
+        if company_id is None:
+            if not request.user.is_admin_role or request.user.company_id is None:
+                raise NotFound()
+            company_id = request.user.company_id
         secret = agent_hmac_secret()
         if not secret:
             raise PermissionDenied('AGENT_HMAC_SECRET absent : export refusé.')
         depuis, jusqu_a = _periode_export(request)
-        evenements = list(_evenements_de_la_societe(request.user).filter(
-            created_at__gte=depuis, created_at__lt=jusqu_a).order_by('created_at'))
-        noms = noms_des_leads(request.user.company,
+        evenements = list(AssistantEvent.objects.filter(
+            company_id=company_id, created_at__gte=depuis,
+            created_at__lt=jusqu_a).order_by('created_at'))
+        noms = noms_des_leads(company_id,
                               [ev.lead_id for ev in evenements if ev.lead_id])
         lignes = []
         for ev in evenements:

@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 54dd40c2fafe87825bc56d77267c1954b1a2ee8b91ba5c0f0bf0b42fc553a5fe
+Structure fingerprint: 50868155f14974fe59b315a32c17cda4e191a71f3c640c3b12141c9dfd5e7f4a
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -391,6 +391,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **fastapi_ia** (`app/services/`) : `action_tools.py` (catalogue → outils, propositions signées à usage unique, clé d'idempotence = empreinte du jeton, cartes), `cartes.py`, `relais_copilote.py` (en-tête de tour, moteur du tour, reprise après confirmation), `prompt_copilote.py` (consignes + date et heure de Casablanca), `moteur_natif.py` (boucle Messages native, conversation en Redis 48 h), `sql_agent_service.py` (moteur LangChain) ; manuel et manifeste générés dans `assistant/`.
 - **frontend** : `features/ia/cartes/` (`CartesDuMessage.jsx` aiguille par `carte` ; `CarteTouche.jsx` embarque `RelanceEtapeRow` ; `useCarte.js`), `features/ia/voice/` (aucune confirmation à la voix), `CopilotPanel.jsx` (« Signaler un bug »), `lib/tamponDiagnostic.js` (relevé technique en mémoire, alimenté par `api/axios.js` et `lib/globalErrors.js`).
 - **Acceptation en direct** : `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md` (23 étapes d'écran, deux moteurs).
+- **Vague dev-all-94854b (14/11)** : FastAPI `GET sql-agent/progression/<id>` (étapes d'un tour en cours, `action_tools.noter_etape`, AIC91) ; crm `manage.py opposer_fiches_soeurs` (dry-run par défaut, `--appliquer` : coche les fiches sœurs d'une opposition antérieure, AMSG97) ; ventes `ventes.devis.expliquer` / `ventes.devis.envoyer_email` (lot copilote, AIC99).
 
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 

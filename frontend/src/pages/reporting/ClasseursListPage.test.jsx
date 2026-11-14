@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 beforeAll(polyfillResizeObserver)
@@ -53,5 +53,23 @@ describe('ClasseursListPage (XPLT22)', () => {
     expect(screen.queryAllByText('Suivi CA')).toHaveLength(0)
     expect(screen.getAllByText('Marge').length).toBeGreaterThan(0)
     expect(screen.queryByText('Aucun classeur')).toBeNull()
+  })
+
+  // AERR154 — « Supprimer » ne doit pas ouvrir la ligne (clic du <tr>).
+  it("Supprimer n'ouvre pas la fiche du classeur", async () => {
+    render(
+      <MemoryRouter initialEntries={['/reporting/classeurs']}>
+        <ThemeProvider>
+          <Routes>
+            <Route path="/reporting/classeurs" element={<ClasseursListPage />} />
+            <Route path="/reporting/classeurs/:id" element={<div>FICHE CLASSEUR</div>} />
+          </Routes>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    await screen.findAllByText('Suivi CA')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
+    await waitFor(() => expect(reportingApi.deleteClasseur).toHaveBeenCalled())
+    expect(screen.queryByText('FICHE CLASSEUR')).toBeNull()
   })
 })

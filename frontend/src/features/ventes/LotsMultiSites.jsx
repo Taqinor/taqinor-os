@@ -70,8 +70,7 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
     lignes: coche ? [...f.lignes, id] : f.lignes.filter(x => x !== id),
   }))
 
-  const creer = async (e) => {
-    e.preventDefault()
+  const creer = async () => {
     const corps = corpsCreationLot(form)
     if (!corps.nom_lot) { setErreur('Nom de lot requis.'); return }
     // AERR11 — la création recharge le devis (QJR548) : une saisie modifiée serait perdue.
@@ -129,7 +128,10 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
             )}
 
             {modifiable && (
-              <form className="space-y-2" noValidate onSubmit={creer} data-testid="lot-formulaire">
+              // AERR149 — jamais un <form> : rendu DANS le formulaire du générateur (gen-form).
+              <div className="space-y-2" data-testid="lot-formulaire" onKeyDown={e => {
+                if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); creer() }
+              }}>
                 <p className="text-xs text-muted-foreground">
                   Enregistrez d’abord vos modifications en cours : l’écran est
                   rechargé après la création du lot.
@@ -168,10 +170,10 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
                     ))}
                   </fieldset>
                 )}
-                <Button type="submit" size="sm" disabled={enCours}>
+                <Button type="button" size="sm" disabled={enCours} onClick={creer}>
                   Créer le lot
                 </Button>
-              </form>
+              </div>
             )}
             {erreur && <p className="text-xs text-destructive" role="alert">{erreur}</p>}
           </>

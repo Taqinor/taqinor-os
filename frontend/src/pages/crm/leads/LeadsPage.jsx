@@ -674,11 +674,15 @@ export default function LeadsPage() {
   // LB7 — bugs recon2-03 #5/#11 : plus de refetch intégral après ce PATCH
   // mono-lead (updateLead.fulfilled remplace déjà le lead au complet dans le
   // store) ; le catch silencieux toaste désormais (I8).
-  const reassign = useCallback(async (lead, ownerId) => {
+  const reassign = useCallback(async (lead, ownerId, { relancer = false } = {}) => {
     // AERR117 — l'intercepteur axios toaste DÉJÀ le refus : aucun second toast.
+    // AERR135 — `relancer` : le kanban (undo) doit savoir que l'écriture a échoué.
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-    } catch { console.warn('LeadsPage (reassign) : refus déjà signalé par le toast global') }
+    } catch (err) {
+      if (relancer) throw err
+      console.warn('LeadsPage (reassign) : refus déjà signalé par le toast global')
+    }
   }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.

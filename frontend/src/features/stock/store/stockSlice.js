@@ -3,6 +3,7 @@ import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
 import { pending, settleLoading, rejected } from '../../../lib/reducersChargement'
+import { getApiError } from '../../../lib/apiError'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
 // deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
@@ -179,7 +180,7 @@ export const createMouvement = createAsyncThunk('stock/createMouvement', async (
     const res = await stockApi.createMouvement(data, { idempotencyKey })
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
+    return rejectWithValue(err.response?.data ?? getApiError(err).message)  // ACNC66 — délai ⇒ message ACNC52
   }
 })
 

@@ -647,49 +647,53 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         # CI #997 fuzz (24/10) : sans corps, tout refus ci-dessous vient de l'ÉTAT
         # du BC (livré, livraison partielle, facture vivante) : 409, plus 400.
         bc = self.get_object()
-        if bc.statut == BonCommande.Statut.LIVRE:
-            return Response(
-                {'detail': 'Un BC livré ne peut pas être annulé.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        # AFAC15 (C-AFAC-006) — un BC PARTIELLEMENT livré a déjà sorti du
-        # stock : l'annuler laissait des sorties orphelines (aucune extourne).
-        if bc.livraisons.exists():
-            return Response(
-                {'detail': (
-                    'Ce BC a déjà été livré partiellement : il ne peut plus '
-                    'être annulé (le matériel livré est sorti du stock).'
-                )},
-                status=status.HTTP_409_CONFLICT,
-            )
-        # AUD118 — UN BC DÉJÀ FACTURÉ NE S'ANNULE PAS EN SILENCE. Le bouton
-        # « Facture » est proposé dès `confirme` et le bouton Annuler restait
-        # visible tant que le statut n'était ni `livre` ni `annule` : un BC
-        # annulé « par erreur de saisie » laissait en vie une facture ÉMISE que
-        # plus aucun écran ne rattachait à son origine (le stepper rendait même
-        # un état contradictoire). On dirige vers la voie correcte : annuler
-        # d'abord la FACTURE (action `annuler`, qui émet `facture_annulee` et
-        # déclenche l'extourne), puis le bon de commande.
-        facture = (Facture.objects
-                   .filter(bon_commande=bc)
-                   .exclude(statut=Facture.Statut.ANNULEE)
-                   .first())
-        if facture is not None:
-            return Response(
-                {'detail': (
-                    f'La facture {facture.reference} est encore vivante sur '
-                    'ce bon de commande : annulez-la d\'abord, puis annulez '
-                    'le bon de commande.'
-                )},
-                status=status.HTTP_409_CONFLICT,
-            )
-        bc.statut = BonCommande.Statut.ANNULE
-        bc.save()
-        # YDOCF7 — toggle ON : libère la réservation posée à `confirmer`
-        # (no-op si le BC n'avait pas encore été confirmé/réservé).
-        if _reserver_stock_bc_actif(bc.company):
-            from apps.installations.services import liberer_reservation_bc
-            liberer_reservation_bc(bc)
+        with transaction.atomic():
+            # ACNC62 (C-ACNC-VER2-100) — BC RELU SOUS VERROU, gardes rejouées :
+            # « Créer la facture » / « Livrer partiellement » croisé ⇒ 409.
+            bc = BonCommande.objects.select_for_update().get(pk=bc.pk)
+            if bc.statut == BonCommande.Statut.LIVRE:
+                return Response(
+                    {'detail': 'Un BC livré ne peut pas être annulé.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # AFAC15 (C-AFAC-006) — un BC PARTIELLEMENT livré a déjà sorti du
+            # stock : l'annuler laissait des sorties orphelines (aucune extourne).
+            if bc.livraisons.exists():
+                return Response(
+                    {'detail': (
+                        'Ce BC a déjà été livré partiellement : il ne peut plus '
+                        'être annulé (le matériel livré est sorti du stock).'
+                    )},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # AUD118 — UN BC DÉJÀ FACTURÉ NE S'ANNULE PAS EN SILENCE. Le bouton
+            # « Facture » est proposé dès `confirme` et le bouton Annuler restait
+            # visible tant que le statut n'était ni `livre` ni `annule` : un BC
+            # annulé « par erreur de saisie » laissait en vie une facture ÉMISE que
+            # plus aucun écran ne rattachait à son origine (le stepper rendait même
+            # un état contradictoire). On dirige vers la voie correcte : annuler
+            # d'abord la FACTURE (action `annuler`, qui émet `facture_annulee` et
+            # déclenche l'extourne), puis le bon de commande.
+            facture = (Facture.objects
+                       .filter(bon_commande=bc)
+                       .exclude(statut=Facture.Statut.ANNULEE)
+                       .first())
+            if facture is not None:
+                return Response(
+                    {'detail': (
+                        f'La facture {facture.reference} est encore vivante sur '
+                        'ce bon de commande : annulez-la d\'abord, puis annulez '
+                        'le bon de commande.'
+                    )},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            bc.statut = BonCommande.Statut.ANNULE
+            bc.save()
+            # YDOCF7 — toggle ON : libère la réservation posée à `confirmer`
+            # (no-op si le BC n'avait pas encore été confirmé/réservé).
+            if _reserver_stock_bc_actif(bc.company):
+                from apps.installations.services import liberer_reservation_bc
+                liberer_reservation_bc(bc)
         return Response(BonCommandeSerializer(bc).data)
 
     @extend_schema(request=None,

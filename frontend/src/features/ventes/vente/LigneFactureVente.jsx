@@ -18,6 +18,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
+import { useConfirmDialog } from '../../../ui/confirm'
 import { formatMAD, formatDate } from '../../../lib/format'
 import PaiementDialog from '../../../pages/ventes/PaiementDialog'
 import {
@@ -50,6 +51,7 @@ export default function LigneFactureVente({
 }) {
   const actions = useActionsVente({ onSucces: onRafraichir })
   const mobile = useIsMobile()
+  const { confirm } = useConfirmDialog()
   const [encaisser, setEncaisser] = useState(false)
   const [lienWa, setLienWa] = useState('')
   const [info, setInfo] = useState('')
@@ -95,7 +97,10 @@ export default function LigneFactureVente({
   // VNT81 — les gestes ouverts par le serveur, dans l'ordre d'importance ; au
   // téléphone, 2 boutons visibles au plus, le reste dans « Autres actions ».
   const gestes = [
-    peut.emettre === true && { cle: 'emettre', label: 'Émettre', loading: occupe('emettre'), onClick: () => actions.emettre(f) },
+    // AERR137 — émettre attribue un numéro légal : même confirmation nommée que FactureRow (AERR17).
+    peut.emettre === true && { cle: 'emettre', label: 'Émettre', loading: occupe('emettre'), onClick: async () => {
+      if (await confirm(`Émettre la facture ${f.reference} (${formatMAD(f.total_ttc)}) ? Un numéro légal lui sera attribué.`)) actions.emettre(f)
+    } },
     peut.encaisser === true && { cle: 'encaisser', label: 'Encaisser', onClick: () => setEncaisser(true) },
     peut.pdf === true && { cle: 'pdf', label: 'PDF', loading: occupe('pdf'), onClick: () => actions.pdf(f) },
     peut.envoyer === true && { cle: 'whatsapp', label: 'WhatsApp', loading: occupe('envoyer'), onClick: whatsapp },

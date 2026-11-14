@@ -103,10 +103,15 @@ class FactureEncaissementActionsMixin:
         try:
             facture, paiement = encaisser_sur_facture(
                 facture=facture, donnees=dict(serializer.validated_data),
-                user=request.user)
+                user=request.user,
+                # ACNC4 — confirmation explicite d'un paiement identique.
+                confirmer_doublon=request.data.get('confirmer_doublon') in (
+                    True, 'true', '1'))
         except EncaissementRefuse as exc:
-            return Response({'detail': exc.motif},
-                            status=status.HTTP_409_CONFLICT)
+            corps = {'detail': exc.motif}
+            if exc.code:
+                corps['code'] = exc.code
+            return Response(corps, status=status.HTTP_409_CONFLICT)
         # ACNC1 — un rejeu par clé rend le paiement déjà enregistré : 200.
         rejoue = getattr(paiement, 'rejoue', False)
         return Response(

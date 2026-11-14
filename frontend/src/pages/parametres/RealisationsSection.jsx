@@ -19,6 +19,7 @@ import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
 import { useConfirmDialog } from '../../ui/confirm'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Icône (chemins bruts) de la section — un toit et un rayon.
 const REAL_ICON = <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></>
@@ -86,13 +87,13 @@ export default function RealisationsSection() {
       setDraft(BROUILLON_VIDE)
       load()
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     }
   }
 
   const toggle = async (row) => {
     try { await parametresApi.updateRealisation(row.id, { actif: !row.actif }); load() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   // AGR515 — PATCH du seul segment ; vide = null (non renseigné).
   const changeSegment = async (row, valeur) => {
@@ -100,14 +101,14 @@ export default function RealisationsSection() {
       await parametresApi.updateRealisation(row.id, { segment: valeur || null })
       load()
     } catch (e) {
-      console.warn('Modification impossible.', e)
+      toastErreurNonAffichee(e, 'Modification impossible.')
     }
   }
   const remove = async (row) => {
     // AERR66 — la boîte nomme la réalisation avant toute suppression.
     if (!await confirmDelete({ title: `Supprimer la réalisation « ${row.titre} » ?`, description: `« ${row.titre} » sera définitivement supprimé.` })) return
     try { await parametresApi.deleteRealisation(row.id); load() }
-    catch (e) { console.warn('Suppression impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') }
   }
 
   return (

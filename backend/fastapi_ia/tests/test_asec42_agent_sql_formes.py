@@ -226,6 +226,33 @@ class PromptSystemeAic5Tests(unittest.TestCase):
         self.assertFalse(present)
         self.assertNotIn("MANUEL TAQINOR", contenu)
 
+    def test_manuel_coupe_au_role(self):
+        """AIC93 — sous-sections `### 4.x` d'un AUTRE role retirees, le reste
+        identique ; role inconnu ou absent -> manuel entier ; bloc stable."""
+        manuel = ("# Manuel\n## 3. Commun\nVentes > Devis.\n"
+                  "## 4. Comment on fait X — par rôle\n"
+                  "### 4.1 Commercial\nGESTE-COMMERCIAL\n"
+                  "### 4.2 Commercial terrain\nGESTE-TERRAIN\n"
+                  "### 4.6 Directeur / Administrateur\nGESTE-DIRECTION\n"
+                  "## 5. Cadence\nGESTE-CADENCE\n")
+        self._dossier(manuel=manuel)
+        entier = svc._contenu_systeme("claude", False)[0]
+        self.assertEqual(svc._contenu_systeme("claude", False, role="Inconnu")[0], entier)
+        texte = svc._contenu_systeme("claude", False, role="Commercial")[0][0]["text"]
+        for garde in ("Ventes > Devis.", "## 4. Comment on fait X", "GESTE-COMMERCIAL",
+                      "GESTE-CADENCE", "Envoyer un e-mail"):
+            self.assertIn(garde, texte)
+        self.assertNotIn("GESTE-TERRAIN", texte)
+        self.assertNotIn("GESTE-DIRECTION", texte)
+        self.assertEqual(texte, entier[0]["text"].replace(
+            "### 4.2 Commercial terrain\nGESTE-TERRAIN\n", "").replace(
+            "### 4.6 Directeur / Administrateur\nGESTE-DIRECTION\n", ""))
+        self.assertEqual(
+            svc._contenu_systeme("claude", False, role="Commercial")[0][0]["text"], texte)
+        direction = svc._contenu_systeme("claude", True, role="Administrateur")[0][0]["text"]
+        self.assertIn("GESTE-DIRECTION", direction)
+        self.assertNotIn("GESTE-COMMERCIAL", direction)
+
     def test_manuel_trop_gros_refuse(self):
         self._dossier(manuel="x" * (4 * svc.ASSISTANT_DOCS_MAX_TOKENS + 40))
         with self.assertLogs(svc.logger, level="ERROR"):

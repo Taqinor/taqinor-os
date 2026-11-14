@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -16,6 +16,8 @@ const { STATS } = await vi.hoisted(async () => ({
 vi.mock('../../api/iaApi', () => ({
   default: {
     queryAgent: vi.fn(() => Promise.resolve({ data: { answer: '' } })),
+    // AIC91 — sondage de progression du tour (contrat assistant_reponse.json).
+    getProgression: vi.fn(() => Promise.resolve({ data: { etapes: [], fini: false } })),
     getChatHistory: vi.fn(() => Promise.resolve({ data: [] })),
     clearChatHistory: vi.fn(() => Promise.resolve({})),
     getSuggestions: vi.fn(() => Promise.resolve({ data: [] })),
@@ -40,7 +42,8 @@ vi.mock('../../api/iaApi', () => ({
 }))
 
 import iaApi from '../../api/iaApi'
-import iaReducer, { dismissProposal } from '../../features/ia/store/iaSlice'
+import iaReducer, { dismissProposal, queryAgent } from '../../features/ia/store/iaSlice'
+import REPONSE from '../../../../backend/django_core/apps/agent/contract_samples/assistant_reponse.json'
 import { messageDeReponse, preparerCartes, MESSAGE_INCERTAIN } from '../../features/ia/cartes/cartes'
 import AgentChat from './AgentChat'
 
@@ -341,6 +344,26 @@ describe('AgentChat — questions suggérées et en-tête (COP-F8)', () => {
     render(<Provider store={store}><AgentChat /></Provider>)
     expect(screen.queryByText(/nested/)).not.toBeInTheDocument()
   })
+})
+
+describe('AgentChat — progression du tour (AIC91)', () => {
+  it("la dernière étape s'affiche pendant l'attente", async () => {
+    let repondre
+    iaApi.queryAgent.mockImplementationOnce(() => new Promise((r) => { repondre = r }))
+    iaApi.getProgression.mockResolvedValue({ data: REPONSE.progression.exemple })
+    const store = makeStore([])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    store.dispatch(queryAgent('Prépare ma relance'))
+    // Premier sondage à PROGRESSION_MS (1,5 s) : marge large sous charge CI.
+    const etape = await screen.findByTestId('etape-en-cours', {}, { timeout: 6000 })
+    const derniere = REPONSE.progression.exemple.etapes.at(-1).libelle
+    expect(etape).toHaveTextContent(derniere)
+    const progressionId = iaApi.queryAgent.mock.calls.at(-1)[2]
+    expect(progressionId).toMatch(/^[A-Za-z0-9_-]{8,64}$/)
+    expect(iaApi.getProgression).toHaveBeenCalledWith(progressionId)
+    repondre({ data: { answer: 'Voici.' } })
+    await waitFor(() => expect(screen.queryByTestId('etape-en-cours')).not.toBeInTheDocument())
+  }, 10000)
 })
 
 describe('AgentChat — hygiène du source (COP-F8)', () => {

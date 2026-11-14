@@ -24,9 +24,10 @@
 //
 // Multi-tenant : `company` n'est JAMAIS envoyée — imposée côté serveur.
 // Lecture tout rôle ; création réservée responsable/admin (re-vérifié serveur).
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Banknote, Download, Plus, PiggyBank } from 'lucide-react'
 import api from '../../api/axios'
+import stockApi from '../../api/stockApi'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob, filenameFromResponse } from '../../api/importApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -92,6 +93,7 @@ export default function PaiementsFournisseurLedgerPage() {
   // XPUR6 — pourcentage d'escompte disponible sur le dernier paiement saisi.
   const [escompte, setEscompte] = useState(null)
   const [erreursDraft, setErreursDraft] = useState({})  // AERR90 — dit pourquoi rien ne part
+  const cleReglement = useRef(null)  // ACNC67 — gardée entre deux clics, neuve après un succès
 
   // ENF15 — toutes les pages (jamais la seule page 1) : le registre et ses totaux
   // portent sur l'ensemble des paiements.
@@ -156,12 +158,14 @@ export default function PaiementsFournisseurLedgerPage() {
     setBusy(true)
     setEscompte(null)
     try {
-      const res = await api.post('/stock/paiements-fournisseur/', {
+      cleReglement.current ??= globalThis.crypto?.randomUUID?.() ?? `reglement-${Date.now()}`
+      const res = await stockApi.createPaiementFournisseur({
         facture: Number(draft.facture),
         montant: Number(draft.montant),
         date_paiement: draft.date_paiement || null,
         mode: draft.mode,
-      })
+      }, { idempotencyKey: cleReglement.current })
+      cleReglement.current = null
       // XPUR6 — le pourcentage n'existe QUE sur cette réponse : on l'affiche.
       const pct = res.data?.escompte_disponible_pct
       if (pct !== undefined && pct !== null) setEscompte(String(pct))
@@ -169,6 +173,7 @@ export default function PaiementsFournisseurLedgerPage() {
       charger()
     } catch (e) {
       toast.error(frenchError(e, "L'enregistrement du paiement a échoué."))
+      if (!e?.response) charger()  // ACNC67 — réponse perdue : relire, même clé au prochain clic
     } finally { setBusy(false) }
   }
 

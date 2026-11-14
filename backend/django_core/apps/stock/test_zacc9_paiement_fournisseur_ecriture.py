@@ -112,6 +112,19 @@ class TestGardeSurPaiement(Zacc9Base):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.solde_du, Decimal('70'))
 
+    def test_meme_cle_un_seul_reglement_grand_livre(self):
+        # ACNC67 — le grand livre rejoue sous la même clé : un seul règlement.
+        corps = {'facture': self.facture.id, 'montant': '50', 'mode': 'virement'}
+        url = '/api/django/stock/paiements-fournisseur/'
+        r1 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='acnc67-k')
+        r2 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY='acnc67-k')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        self.assertEqual(r2.status_code, 201, r2.data)
+        self.assertEqual(r2.data['id'], r1.data['id'])
+        self.assertEqual(self.facture.paiements.count(), 1)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.solde_du, Decimal('70'))
+
 
 class TestMultiTenant(Zacc9Base):
     def test_facture_autre_societe_404(self):

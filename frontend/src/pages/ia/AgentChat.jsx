@@ -15,7 +15,7 @@ import {
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm, ErreurAgent,
+  MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent,
 } from '../../features/ia/ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
@@ -178,7 +178,7 @@ function AssistantStatsCard() {
 
 export default function AgentChat() {
   const dispatch = useDispatch()
-  const { messages, agentLoading, agentError } = useSelector((s) => s.ia)
+  const { messages, agentLoading, agentError, etapeEnCours } = useSelector((s) => s.ia)
   const [input, setInput] = useState('')
   // COP-F8 — les questions suggérées viennent du manifeste de l'écran (comme le
   // tiroir), la liste codée en dur (orientée stock) ne sert que de repli.
@@ -406,9 +406,7 @@ export default function AgentChat() {
                 <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                   <Bot className="size-4" aria-hidden="true" />
                 </span>
-                <div className="flex items-center gap-1 rounded-xl bg-muted px-3.5 py-3">
-                  <TypingDots />
-                </div>
+                <BulleAttente etape={etapeEnCours} bulleClassName="px-3.5 py-3" />
               </div>
             )}
 

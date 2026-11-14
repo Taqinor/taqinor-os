@@ -1,13 +1,19 @@
 import {
   definirProfil, rendreParametresEntreprise, updateProfile,
 } from '../../test/parametresEntrepriseHarness'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 /* APAR39 — le profil société envoie les valeurs TAPÉES telles quelles : vider
    « SLA lead » n'envoie plus 0 (SLA désactivé) en silence, taper 0 dans le
    tarif ONEE n'est plus remplacé par 1.75. Le serveur juge (400 sous le
    champ). */
+
+// AERR134 — l'onglet « Modèles brandés » lit `api/axios` directement.
+const { axiosGet } = vi.hoisted(() => ({ axiosGet: vi.fn() }))
+vi.mock('../../api/axios', () => ({
+  default: { get: axiosGet, post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+}))
 
 const PROFIL = {
   id: 1, nom: 'Démo', rib: 'RIB', tva_standard: 20, tva_panneaux: 10,
@@ -74,5 +80,21 @@ describe('AERR72 — la saisie d’une section autonome survit au changement d�
     await waitFor(() => expect(container.querySelector('input[name="lead_sla_hours"]')).not.toBeNull())
     fireEvent.click(screen.getAllByRole('button', { name: 'Modèles de documents' })[0])
     expect(await screen.findByDisplayValue('Validité : 45 jours')).toBeVisible()
+  })
+
+  it('corps de modèle brandé gardé après aller-retour d’onglet', async () => {
+    axiosGet.mockImplementation((url) => Promise.resolve({ data: url === '/core/branded-templates/'
+      ? [{ id: 7, kind: 'email', code: 'relance', nom: 'Relance', sujet: '', corps: 'Bonjour', actif: true }]
+      : [] }))
+    const { container } = rendreParametresEntreprise()
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    fireEvent.click(screen.getAllByRole('button', { name: 'Modèles brandés' })[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'Relance' }))
+    const corps = await screen.findByPlaceholderText('Corps')
+    fireEvent.change(corps, { target: { value: 'Bonjour {client} — offre' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Traductions' })[0])
+    await waitFor(() => expect(screen.queryByPlaceholderText('Corps')).not.toBeVisible())
+    fireEvent.click(screen.getAllByRole('button', { name: 'Modèles brandés' })[0])
+    expect(await screen.findByDisplayValue('Bonjour {client} — offre')).toBeVisible()
   })
 })

@@ -17,6 +17,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../lib/format'
 import { SectionTitle, CarteSection, ChargementCarte } from './peComponents'
 import toutesLesPages from './toutesLesPages'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Bloc « copier une fois » : affiche un secret généré avec un bouton copier.
 function RevealOnce({ label, value, onDismiss }) {
@@ -265,7 +266,7 @@ function InteractiveConsole() {
       const r = await publicapiApi.sandboxTry('leads')
       setTryResult(r.data)
     } catch (e) {
-      console.warn('Essai impossible.', e)
+      toastErreurNonAffichee(e, 'Essai impossible.')
     } finally {
       setTrying(false)
     }
@@ -527,7 +528,7 @@ export default function ApiWebhooksSection() {
       setRevealedKey(r.data.key)
       setNewKeyLabel(''); setNewKeyScopes([]); setNewKeyEnv('live')
       loadAll()
-    } catch (e) { console.warn('Création impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Création impossible.') }
   }
   // NTAPI23 — rotation sans coupure : nouvelle clé + grace period sur l'ancienne.
   const rotateKey = (k) => setPendingAction({
@@ -542,7 +543,7 @@ export default function ApiWebhooksSection() {
         const r = await publicapiApi.rotateKey(k.id)
         setRevealedKey(r.data.key)
         loadAll()
-      } catch (e) { console.warn('Rotation impossible.', e) }
+      } catch (e) { toastErreurNonAffichee(e, 'Rotation impossible.') }
     },
   })
   const toggleDeliveries = async (webhookId) => {
@@ -553,7 +554,7 @@ export default function ApiWebhooksSection() {
     try {
       const r = await publicapiApi.getWebhookDeliveries(webhookId)
       setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data }))
-    } catch { toast.error('Historique indisponible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Historique indisponible.') }
   }
   const replay = async (webhookId, deliveryId) => {
     try {
@@ -561,7 +562,7 @@ export default function ApiWebhooksSection() {
       toast.success('Livraison rejouée.')
       const r = await publicapiApi.getWebhookDeliveries(webhookId)
       setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data }))
-    } catch { toast.error('Rejeu impossible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Rejeu impossible.') }
   }
   const sendTestPing = async (webhookId) => {
     try {
@@ -569,14 +570,14 @@ export default function ApiWebhooksSection() {
       toast.success('Ping de test envoyé.')
       const r = await publicapiApi.getWebhookDeliveries(webhookId)
       setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data }))
-    } catch { toast.error('Envoi du ping impossible.') }
+    } catch (e) { toastErreurNonAffichee(e, 'Envoi du ping impossible.') }
   }
   const revokeKey = (k) => setPendingAction({
     severity: 'medium',
     title: `Désactiver la clé « ${k.label} » ?`,
     description: 'La clé cessera immédiatement de fonctionner pour tout système externe qui l’utilise. Réversible (réactivable ensuite).',
     confirmLabel: 'Désactiver',
-    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch (e) { console.warn('Révocation impossible.', e) } },
+    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch (e) { toastErreurNonAffichee(e, 'Révocation impossible.') } },
   })
   const deleteKey = (k) => setPendingAction({
     severity: 'high',
@@ -584,7 +585,7 @@ export default function ApiWebhooksSection() {
     description: `La clé « ${k.label} » sera supprimée définitivement. Tout système externe qui l’utilise cessera de fonctionner.`,
     confirmText: k.label,
     confirmLabel: 'Supprimer définitivement',
-    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch (e) { console.warn('Suppression impossible.', e) } },
+    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') } },
   })
 
   const createWebhook = async () => {
@@ -596,11 +597,11 @@ export default function ApiWebhooksSection() {
       setRevealedSecret(r.data.secret)
       setNewHookUrl(''); setNewHookLabel(''); setNewHookEvents([])
       loadAll()
-    } catch (e) { console.warn('Création impossible.', e) }
+    } catch (e) { toastErreurNonAffichee(e, 'Création impossible.') }
   }
   const toggleWebhook = async (h) => {
     try { await publicapiApi.updateWebhook(h.id, { enabled: !h.enabled }); loadAll() }
-    catch (e) { console.warn('Modification impossible.', e) }
+    catch (e) { toastErreurNonAffichee(e, 'Modification impossible.') }
   }
   const rotateSecret = (h) => setPendingAction({
     severity: 'high',
@@ -610,7 +611,7 @@ export default function ApiWebhooksSection() {
     confirmLabel: 'Régénérer le secret',
     run: async () => {
       try { const r = await publicapiApi.rotateWebhookSecret(h.id); setRevealedSecret(r.data.secret) }
-      catch (e) { console.warn('Rotation du secret impossible.', e) }
+      catch (e) { toastErreurNonAffichee(e, 'Rotation du secret impossible.') }
     },
   })
   const deleteWebhook = (h) => setPendingAction({
@@ -619,7 +620,7 @@ export default function ApiWebhooksSection() {
     description: `« ${h.label || h.target_url} » sera définitivement supprimé — les notifications sortantes vers cette URL cesseront.`,
     confirmText: 'SUPPRIMER',
     confirmLabel: 'Supprimer',
-    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch (e) { console.warn('Suppression impossible.', e) } },
+    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch (e) { toastErreurNonAffichee(e, 'Suppression impossible.') } },
   })
 
   if (loading) {

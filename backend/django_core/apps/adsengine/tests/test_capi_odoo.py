@@ -183,6 +183,37 @@ class LeadReceivedTests(TestCase):
         self.assertEqual(ev['user_data']['ph'], [expected])
         self.assertEqual(ev['event_id'], 'lead_received:L1')
 
+    def test_contact_oppose_aucun_evenement(self):
+        """AMSG100 (D-AMSG-3) — un téléphone opposé : ni « lead reçu » ni
+        « contrat signé », aucun transport, aucun marqueur."""
+        from apps.crm.models import Lead
+        Lead.objects.create(
+            company=self.company, nom='Oppose', telephone='+212612340051',
+            ne_plus_contacter=True)
+        mirror = MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='LO', phone_key='612340051')
+        temoin = MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='LT', phone_key='698765432')
+        recu = capi_odoo.build_received_event(self.company, mirror, now=1000)
+        self.assertEqual((recu['eligible'], recu['reason'], recu['event']),
+                         (False, 'opposed', None))
+        signe = capi_odoo.build_signed_event(
+            self.company, _deal(phone_norm='612340051'), now=1000)
+        self.assertEqual((signe['eligible'], signe['reason'], signe['event']),
+                         (False, 'opposed', None))
+        self.assertTrue(capi_odoo.build_received_event(
+            self.company, temoin, now=1000)['eligible'])
+        self.assertTrue(capi_odoo.build_signed_event(
+            self.company, _deal(phone_norm='698765432'), now=1000)['eligible'])
+        calls = []
+        with mock.patch.dict(os.environ, _ENV_ON):
+            capi_odoo.emit_lead_received(
+                self.company,
+                transport=lambda u, p: calls.append(p) or (200, 'ok'))
+        self.assertEqual(len(calls), 1)  # le témoin seul
+        self.assertFalse(CapiOdooEvent.objects.filter(
+            company=self.company, event_key='lead_received:LO').exists())
+
     def test_emit_idempotent(self):
         MetaLeadMirror.objects.create(
             company=self.company, leadgen_id='L2', phone_key='')

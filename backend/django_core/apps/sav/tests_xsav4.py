@@ -144,6 +144,44 @@ class XSAV4NotificationsClientTest(TestCase):
         self.assertIn('wa.me', taches.get().note)
         self.assertIn('/suivi/', taches.get().note)
 
+    def test_brouillon_remis_assigne_au_technicien_du_ticket(self):
+        """AMSG99 — la tâche « Envoyer ce WhatsApp » va au technicien
+        responsable actif, à défaut au créateur actif, sinon non assignée."""
+        from apps.records.models import Activity
+        from apps.sav.services import appliquer_transition_ticket
+        sla = SavSlaSettings.get(self.company)
+        sla.notifications_client_sav = True
+        sla.save(update_fields=['notifications_client_sav'])
+        tech = User.objects.create_user(
+            username='xsav4_tech', password='x', company=self.company)
+        self.ticket.technicien_responsable = tech
+        self.ticket.save(update_fields=['technicien_responsable'])
+        appliquer_transition_ticket(self.ticket, Ticket.Statut.PLANIFIE, self.user)
+        t1 = Activity.objects.get(object_id=self.ticket.pk, summary='Envoyer ce WhatsApp')
+        self.assertEqual((t1.assigned_to_id, t1.created_by_id), (tech.pk, self.user.pk))
+
+        ticket2 = Ticket.objects.create(
+            company=self.company, reference='SAV-XSAV4-2',
+            client=self.client_obj, installation=self.inst,
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+            created_by=self.user)
+        appliquer_transition_ticket(ticket2, Ticket.Statut.PLANIFIE, None)
+        t2 = Activity.objects.get(object_id=ticket2.pk, summary='Envoyer ce WhatsApp')
+        self.assertEqual((t2.assigned_to_id, t2.created_by_id), (self.user.pk, None))
+
+        tech.is_active = False
+        tech.save(update_fields=['is_active'])
+        self.user.is_active = False
+        self.user.save(update_fields=['is_active'])
+        ticket3 = Ticket.objects.create(
+            company=self.company, reference='SAV-XSAV4-3',
+            client=self.client_obj, installation=self.inst,
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+            created_by=self.user, technicien_responsable=tech)
+        appliquer_transition_ticket(ticket3, Ticket.Statut.PLANIFIE, None)
+        t3 = Activity.objects.get(object_id=ticket3.pk, summary='Envoyer ce WhatsApp')
+        self.assertIsNone(t3.assigned_to_id)
+
     @override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
                        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_transition_notifie_le_compte_portail(self):

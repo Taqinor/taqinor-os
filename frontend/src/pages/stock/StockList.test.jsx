@@ -478,3 +478,23 @@ describe('StockList — mise au rebut suit `stock_mouvement`', () => {
   })
 })
 
+describe('ADRG129 — export xlsx serveur de la table catalogue suit `stock_export`', () => {
+  // Sans `stock_export`, la table ne reçoit plus l'export serveur ; le repli CSV
+  // navigateur du moteur DataTable (bouton générique) relève d'ADRG77 (D-ADRG-4).
+  const exportsServeur = () => http.post.mock.calls.filter(([url]) => url === '/stock/produits/export-xlsx/')
+  beforeEach(() => {
+    if (!URL.createObjectURL) URL.createObjectURL = () => 'blob:test'
+    if (!URL.revokeObjectURL) URL.revokeObjectURL = () => {}
+  })
+  it('sans stock_export : table catalogue sans Exporter', async () => {
+    const vue = renderPage({ role: 'responsable', permissions: ['stock_voir', 'crm_voir'] })  // Commercial responsable
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await new Promise((r) => { setTimeout(r, 0) })
+    expect(exportsServeur()).toHaveLength(0)
+    vue.unmount()
+    renderPage({ role: 'responsable', permissions: ['stock_voir', 'stock_export'] })  // Technicien responsable
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await waitFor(() => expect(exportsServeur()).toHaveLength(1))
+  })
+})
+

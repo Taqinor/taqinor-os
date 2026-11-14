@@ -140,6 +140,54 @@ class XFAC7PreEcheanceTests(TestCase):
                 facture=facture, statut=EmailLog.Statut.ENVOYE,
                 reference__endswith='::pre_echeance').count(), 1)
 
+    def test_jour_ferie_aucun_rappel_et_borne_allongee(self):
+        """AMSG101 (C-AMSG-VER3-104, D-AMSG-1) — délai 1 j, mercredi 18/11
+        férié de la société : le mardi 17 rappelle l'échéance du jeudi 19
+        (borne allongée par le férié), le 18 rien pour elle (le témoin sans
+        férié reçoit le sien), le jeudi 19 rappelle celle du vendredi 20.
+        Mutants : retirer le saut du férié ⇒ 2 envois le 18 ; borne sans les
+        fériés ⇒ rien le 17."""
+        from apps.notifications.models import Holiday
+        Facture.objects.filter(pk=self.facture.pk).update(
+            statut=Facture.Statut.PAYEE)
+        temoin = make_company(slug='xfac7-temoin', nom='XFAC7 Témoin')
+        Holiday.objects.create(company=self.company, date=date(2026, 11, 18),
+                               nom="Fête de l'Indépendance")
+
+        def emise(company, client, jour, n):
+            profile = CompanyProfile.get(company=company)
+            profile.rappel_pre_echeance_jours = 1
+            profile.save(update_fields=['rappel_pre_echeance_jours'])
+            return Facture.objects.create(
+                company=company, reference=f'FAC-{MONTH}-07{n}',
+                client=client, statut=Facture.Statut.EMISE,
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'), date_echeance=date(2026, 11, jour))
+        jeudi = emise(self.company, self.client_obj, 19, 1)
+        vendredi = emise(self.company, self.client_obj, 20, 2)
+        f_temoin = emise(temoin, make_client(temoin, email='t@example.com'), 19, 3)
+
+        def rappeles():
+            return set(EmailLog.objects.filter(
+                statut=EmailLog.Statut.ENVOYE,
+                reference__endswith='::pre_echeance').values_list(
+                    'facture_id', flat=True))
+        tardive = None
+        for jour, attendus in ((17, {jeudi.pk}),
+                               (18, {jeudi.pk, f_temoin.pk}),
+                               (19, {jeudi.pk, f_temoin.pk, vendredi.pk})):
+            if jour == 18:  # émise le 17 au soir, due le 19 : rien le férié
+                tardive = emise(self.company, self.client_obj, 19, 4)
+            with self.subTest(jour=jour), patch(
+                    'apps.ventes.scheduled.casablanca_today',
+                    return_value=date(2026, 11, jour)):
+                self.assertEqual(pre_echeance_reminders(), 1)
+                self.assertEqual(rappeles(), attendus)
+        self.assertNotIn(tardive.pk, rappeles())
+        for facture in (jeudi, vendredi, f_temoin):
+            self.assertEqual(EmailLog.objects.filter(
+                facture=facture, reference__endswith='::pre_echeance').count(), 1)
+
     def test_echeance_dans_la_fenetre_rappelee_une_fois(self):
         """ASOC85 (C-ASOC-145) — N=5, échéance J+3 (beat raté, délai < N) :
         rappelée une fois puis jamais ; J+10 et J (échue) : jamais."""

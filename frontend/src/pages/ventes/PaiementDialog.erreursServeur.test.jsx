@@ -75,4 +75,23 @@ describe('PaiementDialog — AFAC61 : erreurs serveur sous le champ', () => {
     expect(c1).toBeTruthy()
     expect(c2).toBe(c1)
   })
+
+  it('paiement identique : la phrase serveur et « Confirmer » renvoie avec confirmer_doublon', async () => {
+    // ACNC4 (C-ACNC-001, D-ACNC-1) — mutant : ne pas renvoyer confirmer_doublon ⇒ échec.
+    const PHRASE = 'Un paiement de 5 000 MAD a déjà été enregistré aujourd\'hui sur cette facture : confirmer ?'
+    ventesApi.enregistrerPaiement
+      .mockRejectedValueOnce({ response: { status: 409, data: { code: 'paiement_similaire', detail: PHRASE } } })
+      .mockResolvedValueOnce({ data: { statut: 'emise' } })
+    const user = userEvent.setup()
+    render(<PaiementDialog facture={FACTURE} onOpenChange={() => {}} onSaved={() => {}} />)
+    await screen.findByLabelText(/Montant/)
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    expect(await screen.findByText(PHRASE)).toBeInTheDocument()
+    expect(ventesApi.enregistrerPaiement.mock.calls[0][1].confirmer_doublon).toBeUndefined()
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(ventesApi.enregistrerPaiement).toHaveBeenCalledTimes(2))
+    const [c1, c2] = ventesApi.enregistrerPaiement.mock.calls.map(([, corps]) => corps)
+    expect(c2.confirmer_doublon).toBe(true)
+    expect(c2.idempotency_key).toBe(c1.idempotency_key)
+  })
 })

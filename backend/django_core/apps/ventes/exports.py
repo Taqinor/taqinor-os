@@ -11,6 +11,8 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.http import HttpResponse
 
+from .domain.instantanes_facture import acheteur_de_la_facture
+
 # Statuts « émis » (comptablement sortis) — jamais brouillon ni annulée.
 ISSUED_STATUTS = ('emise', 'payee', 'en_retard')
 
@@ -153,8 +155,9 @@ def lignes_rectificatives(company, debut, fin):
     ``(ligne, taux, ht, tva, ttc)``, une par taux."""
     for p, type_libelle, signe, paniers in pieces_rectificatives(company, debut, fin):
         date_p = p.date_emission.isoformat() if p.date_emission else ''
-        nom = getattr(p.client, 'nom', '') or ''
-        ice = getattr(p.client, 'ice', '') or ''
+        acheteur = acheteur_de_la_facture(p.facture or p)  # ASUP63 — acheteur figé
+        nom = getattr(acheteur, 'nom', '') or ''
+        ice = getattr(acheteur, 'ice', '') or ''
         desig = f'{type_libelle} sur {p.facture.reference}' if p.facture_id else type_libelle
         for taux, ht, tva in paniers:
             ht, tva = signe * ht, signe * tva
@@ -247,8 +250,9 @@ def export_journal_ventes(company, debut, fin):
     for f in factures:
         type_libelle = f.get_type_facture_display()
         date_f = f.date_emission.isoformat() if f.date_emission else ''
-        nom = getattr(f.client, 'nom', '') or ''
-        ice = getattr(f.client, 'ice', '') or ''
+        acheteur = acheteur_de_la_facture(f)  # ASUP63 — acheteur figé
+        nom = getattr(acheteur, 'nom', '') or ''
+        ice = getattr(acheteur, 'ice', '') or ''
         # AUD110 — montants NETS de remise globale (jamais ``ligne.total_ht``,
         # qui n'applique que la remise de LIGNE).
         ventilees = lignes_ventilees(f)
@@ -360,8 +364,9 @@ def _compta_rows(company, debut, fin):
     tot_ht = tot_tva = tot_ttc = Decimal('0')
     for f in factures:
         type_libelle = f.get_type_facture_display()
-        nom = getattr(f.client, 'nom', '') or ''
-        ice = getattr(f.client, 'ice', '') or ''
+        acheteur = acheteur_de_la_facture(f)  # ASUP63 — acheteur figé
+        nom = getattr(acheteur, 'nom', '') or ''
+        ice = getattr(acheteur, 'ice', '') or ''
         date_f = f.date_emission.isoformat() if f.date_emission else ''
         # AUD110 — montants NETS de remise globale (jamais ``ligne.total_ht``).
         ventilees = lignes_ventilees(f)
@@ -588,8 +593,9 @@ def _grand_livre_rows_reconstitues(company, debut, fin):
                 .order_by('date_emission', 'reference'))
     for f in factures:
         date_s = f.date_emission.isoformat() if f.date_emission else ''
-        nom = getattr(f.client, 'nom', '') or ''
-        ice = getattr(f.client, 'ice', '') or ''
+        acheteur = acheteur_de_la_facture(f)  # ASUP63 — acheteur figé
+        nom = getattr(acheteur, 'nom', '') or ''
+        ice = getattr(acheteur, 'ice', '') or ''
         piece = f.reference
         # AUD110 — ventilation HT/TVA par taux lue sur le DOCUMENT : elle est
         # NETTE de remise globale et couvre d'un coup les trois cas (lignes,
@@ -621,8 +627,9 @@ def _grand_livre_rows_reconstitues(company, debut, fin):
 
     for p, libelle, signe, paniers in pieces_rectificatives(company, debut, fin):
         date_s = p.date_emission.isoformat() if p.date_emission else ''
-        nom = getattr(p.client, 'nom', '') or ''
-        ice = getattr(p.client, 'ice', '') or ''
+        acheteur = acheteur_de_la_facture(p.facture or p)  # ASUP63 — acheteur figé
+        nom = getattr(acheteur, 'nom', '') or ''
+        ice = getattr(acheteur, 'ice', '') or ''
         piece = p.reference
         zero = Decimal('0')
         ttc = sum((ht + tva for _t, ht, tva in paniers), zero)

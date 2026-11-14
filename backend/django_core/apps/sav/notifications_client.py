@@ -62,10 +62,14 @@ def remettre_brouillon_whatsapp(ticket, result, user=None):
     from django.utils import timezone
     from apps.automation.actions import RESUME_TACHE_WHATSAPP
     from apps.records.models import Activity
+    # AMSG99 — assignée au technicien responsable actif, à défaut au créateur actif
+    assigne = next((u for u in (ticket.technicien_responsable, ticket.created_by)
+                    if u is not None and u.is_active), None)
     return Activity.objects.create(
         company=ticket.company, content_type=ContentType.objects.get_for_model(type(ticket)),
         object_id=ticket.pk, summary=RESUME_TACHE_WHATSAPP, due_date=timezone.localdate(),
-        note=f"{result.get('wa_corps') or ''}\n\n{result['wa_draft_url']}".strip(), created_by=user)
+        note=f"{result.get('wa_corps') or ''}\n\n{result['wa_draft_url']}".strip(),
+        created_by=user, assigned_to=assigne)
 
 
 def notify_ticket_transition(ticket, statut, *, request=None):

@@ -127,6 +127,15 @@ describe('WIR135 GouvernanceAccesPage', () => {
     expect(await screen.findByText(/Achat ⊗ Paiement/)).toBeInTheDocument()
   })
 
+  it('AERR141 — campagnes illisibles : avis + Réessayer, jamais Aucune campagne', async () => {
+    H.campList.mockImplementationOnce(() => Promise.reject(new Error('panne')))
+    renderPage()
+    expect(await screen.findByText(/illisible/)).toBeInTheDocument()
+    expect(screen.queryByText('Aucune campagne')).toBeNull()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByTestId('campaigns')).toBeInTheDocument()
+  })
+
   it('AERR62 — rapport rejeté : avis d’échec, jamais « Aucune ligne »', async () => {
     H.revueAcces.mockImplementationOnce(() => Promise.reject(new Error('panne')))
     const user = userEvent.setup()

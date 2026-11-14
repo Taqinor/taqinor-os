@@ -38,6 +38,11 @@ def refuser_portes_fermees(donnees, facture=None):
             facture is None or bc.pk != facture.bon_commande_id):
         raise ConflitEtat({'bon_commande': BC_DE_DEVIS_REFUSE,
                            'code': 'bon_commande_de_devis'})
+    if bc is not None and bc.statut == bc.Statut.ANNULE and (  # ACNC63
+            facture is None or bc.pk != facture.bon_commande_id):
+        raise ConflitEtat({'bon_commande': 'Ce bon de commande est annulé : il '
+                           'ne peut plus porter de facture.',
+                           'code': 'bon_commande_annule'})
     devis = donnees.get('devis')
     if devis is not None and (facture is None or devis.pk != facture.devis_id):
         corps = {'devis': FACTURE_DE_DEVIS_REFUSE, 'code': 'facture_de_devis'}

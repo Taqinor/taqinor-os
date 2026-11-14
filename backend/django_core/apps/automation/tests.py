@@ -1209,6 +1209,30 @@ class ApprovalDelegationTests(TestCase):
         # Le délégant est forcé côté serveur = l'employé lui-même.
         self.assertEqual(deleg.delegant, self.employe)
 
+    def test_creation_sans_delegant_pose_l_appelant(self):
+        """AERR153 — « Déléguer » n'envoie pas `delegant` : 201, délégant =
+        l'appelant (employé comme responsable) ; un responsable qui en envoie
+        un garde ce délégant, un employé reste ramené à lui-même."""
+        now = timezone.now()
+        corps = {
+            'suppleant': self.suppleant.pk,
+            'date_debut': (now - timedelta(days=1)).isoformat(),
+            'date_fin': (now + timedelta(days=1)).isoformat(),
+        }
+        url = '/api/django/automation/approval-delegations/'
+        for appelant in (self.employe, self.delegant):
+            resp = auth(appelant).post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 201, resp.data)
+            self.assertEqual(
+                ApprovalDelegation.objects.get(pk=resp.data['id']).delegant,
+                appelant)
+        resp = auth(self.delegant).post(
+            url, dict(corps, delegant=self.employe.pk), format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            ApprovalDelegation.objects.get(pk=resp.data['id']).delegant,
+            self.employe)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # XPLT3 — Déclencheur temporel générique (champ date ± N jours).

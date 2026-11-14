@@ -80,6 +80,22 @@ class ScenarioTests(unittest.TestCase):
         user.creation_devis()
         self.assertEqual(user.client.appels, [])
 
+    def test_proposal_rend_le_devis_rendable_du_scenario(self):
+        # ADCG117 — le devis VIDE de `creation_devis` vaut 409 nommé sur /proposal (voulu) :
+        # le scénario rend le devis chiffré (onduleur + panneaux) qu'il a lui-même créé.
+        user = self._utilisateur(0)
+        user.on_start()
+        lignes = [c[2] for c in user.client.appels if c[1] == "/api/django/ventes/devis-lignes/"]
+        self.assertEqual([ligne["designation"] for ligne in lignes], ["Onduleur réseau 5 kW", "Panneau 550 Wc"])
+        self.assertTrue(all(ligne["devis"] == 7 and ligne["quantite"] and ligne["prix_unitaire"] for ligne in lignes))
+        user.rendu_proposal()
+        self.assertEqual(user.client.appels[-1][:2], ("GET", "/api/django/ventes/devis/7/proposal/"))
+        refuse = self._utilisateur(0)
+        refuse.client.post = lambda url, json=None, name=None: _Reponse(400, {})
+        refuse.on_start()
+        refuse.rendu_proposal()
+        self.assertFalse([c for c in refuse.client.appels if c[1].endswith("/proposal/")])
+
 
 def _commande_seed_scale(workflow: Path) -> str:
     """La commande `seed_scale` du workflow, lignes continuées (barre oblique inverse) recollées."""

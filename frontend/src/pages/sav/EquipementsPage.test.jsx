@@ -4,7 +4,7 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import EquipementsPage, { GarantiePill } from './EquipementsPage.jsx'
+import EquipementsPage, { GarantiePill, EquipementDetail } from './EquipementsPage.jsx'
 import { resolveScanTarget } from '../../features/sav/equipement'
 import { GARANTIE_ETATS, garantieLabel } from '../../features/sav/equipement'
 
@@ -119,5 +119,29 @@ describe('EquipementsPage — ADRG66 bouton « Importer »', () => {
     unmount()
     monter({ role: 'responsable', permissions: [] })
     expect(screen.getByRole('button', { name: /Importer/ })).toBeInTheDocument()
+  })
+})
+
+describe("EquipementDetail — gestes d'écriture sous equipement_gerer", () => {
+  const equipement = { id: 9, numero_serie: 'SN-4471', statut: 'en_service', nb_tickets_ouverts: 0 }
+  const monter = (auth) => render(
+    <Provider store={configureStore({ reducer: { auth: (s = auth) => s } })}>
+      <MemoryRouter><ThemeProvider>
+        <EquipementDetail equipement={equipement} onClose={() => {}} onSaved={() => {}} />
+      </ThemeProvider></MemoryRouter>
+    </Provider>)
+
+  it('sans equipement_gerer : ni Mettre à jour ni Corriger', () => {
+    monter({ role: 'responsable', role_nom: 'Responsable', permissions: ['equipement_voir', 'sav_voir'] })
+    expect(screen.getAllByRole('button', { name: 'Fermer' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: /Mettre à jour/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Corriger/ })).toBeNull()
+  })
+
+  it('avec equipement_gerer : les deux boutons sont présents', () => {
+    monter({ role: 'responsable', role_nom: 'Technicien responsable',
+      permissions: ['equipement_voir', 'equipement_gerer', 'sav_voir'] })
+    expect(screen.getByRole('button', { name: /Mettre à jour/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Corriger/ })).toBeInTheDocument()
   })
 })

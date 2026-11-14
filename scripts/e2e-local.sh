@@ -44,6 +44,14 @@ stop() {
   echo "✓ Stoppé."
 }
 
+# ADCG116 — port PUBLIÉ de db sur l'hôte (compose : 5433:5432) ; DB_PORT du .env est
+# le port INTERNE au réseau compose, jamais celui que Django sur l'hôte doit viser.
+port_db() {
+  local p; p="$(docker compose port db 5432 2>/dev/null | tail -n1 || true)"; p="${p##*:}"
+  [ -n "$p" ] || { echo "✗ port publié de db introuvable (docker compose port db 5432)" >&2; return 1; }
+  echo "$p"
+}
+
 up() {
   [ -f .env ] || { echo "→ .env absent : copie depuis .env.example"; cp .env.example .env; }
 
@@ -56,7 +64,8 @@ up() {
   # Crédentiels depuis .env, mais hôtes forcés en localhost (Django tourne sur
   # l'hôte, pas dans le réseau compose).
   set -a; . ./.env; set +a
-  export DB_HOST=localhost DB_PORT="${DB_PORT:-5432}"
+  DB_PORT="$(port_db)"
+  export DB_HOST=localhost DB_PORT
   export REDIS_HOST=localhost REDIS_PORT="${REDIS_PORT:-6379}"
   export MINIO_ENDPOINT=localhost:9000
   export DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev
@@ -69,7 +78,7 @@ up() {
 
   echo "→ Attente de Postgres…"
   for i in $(seq 1 30); do
-    if python3 -c "import socket;s=socket.socket();s.settimeout(1);s.connect(('localhost',int('${DB_PORT:-5432}')))" 2>/dev/null; then
+    if python3 -c "import socket;s=socket.socket();s.settimeout(1);s.connect(('localhost',int('${DB_PORT}')))" 2>/dev/null; then
       echo "  Postgres prêt"; break
     fi
     sleep 2; [ "$i" = "30" ] && { echo "✗ Postgres indisponible (les services exposent-ils leurs ports ?)"; exit 1; }
@@ -112,5 +121,6 @@ MSG
 case "${1:-up}" in
   up) up ;;
   stop) stop ;;
-  *) echo "usage: bash scripts/e2e-local.sh [up|stop]"; exit 2 ;;
+  port-db) port_db ;;
+  *) echo "usage: bash scripts/e2e-local.sh [up|stop|port-db]"; exit 2 ;;
 esac

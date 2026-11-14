@@ -531,6 +531,26 @@ class E2eLocalTests(unittest.TestCase):
         self.assertLess(releve, texte.index("docker compose up -d db redis minio"))
         self.assertNotIn("docker compose stop db redis minio", texte)
 
+    def _port_db(self, faux):
+        (self.tmp / "bin" / "docker").write_text(faux, encoding="utf-8", newline="\n")
+        env = dict(os.environ, FAUX_DOCKER_JOURNAL=self.journal.as_posix(), DB_PORT="5432")
+        env["PATH"] = str(self.tmp / "bin") + os.pathsep + env.get("PATH", "")
+        return subprocess.run([_bash(), SCRIPT.as_posix(), "port-db"], capture_output=True, text=True,
+                              encoding="utf-8", env=env, timeout=60)
+
+    def test_up_lit_le_port_publie_de_la_base(self):
+        # ADCG116 — compose publie 5433:5432 ; DB_PORT=5432 du .env d'exemple est le port INTERNE.
+        res = self._port_db(FAUX_DOCKER.replace(
+            "exit 0", '[ "$*" = "compose port db 5432" ] && echo "0.0.0.0:5433"\nexit 0'))
+        self.assertEqual((res.returncode, res.stdout.strip()), (0, "5433"), res.stderr)
+        muet = self._port_db(FAUX_DOCKER)
+        self.assertEqual(muet.returncode, 1)
+        self.assertIn("port publié de db introuvable", muet.stderr)
+        self.assertNotIn("5432", muet.stdout)
+        texte = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("${DB_PORT:-5432}", texte)
+        self.assertLess(texte.index("docker compose up -d db redis minio"), texte.index('DB_PORT="$(port_db)"'))
+
 
 # --- Tests fusionnes depuis test_gc_workspace.py ---
 # ADCG21 — scripts/gc-workspace.ps1 exécuté sur un dépôt git temporaire (en -WhatIf).

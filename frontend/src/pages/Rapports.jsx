@@ -26,7 +26,7 @@ import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { Table as SharedTable } from './reporting/Table'
 import { StateBlock } from '../components/StateBlock'
-import { useHasPermission, useIsAdmin } from '../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable, useCanLireVentes } from '../hooks/useHasPermission'
 import useDroitMetier from '../features/sav/useDroitMetier'
 
 // L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
@@ -459,7 +459,10 @@ export function Component() {
   // ADRG118 — coût de revient, commissions, rentabilité : routes IsAdminRole.
   const estAdmin = useIsAdmin()
   // ADRG119 — la carte Service lit les chantiers (route : lecture installations, ADRG71).
-  const peutLireChantiers = useDroitMetier('installation_voir')
+  const palierResp = useIsAdminOrResponsable()
+  // ADRG125 — chaque carte suit la règle de sa route (IsResponsableOrAdmin + lecture du module).
+  const peutVentes = useCanLireVentes(), peutStock = useDroitMetier('stock_voir')
+  const peutLireChantiers = useDroitMetier('installation_voir') && palierResp
 
   const setCardStatus = useCallback((key, value) => {
     setStatus((s) => ({ ...s, [key]: value }))
@@ -495,15 +498,15 @@ export function Component() {
     const params = {}
     if (from) params.from = from
     if (to) params.to = to
-    load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
-    load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
+    if (peutVentes) load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
+    if (peutStock) load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
     if (peutLireChantiers) load('service', api.get('/reporting/reports/service/', { params }), setService)
     // ZSAL6 — même période (?debut=&fin=, noms distincts côté CRM).
     const attrParams = {}
     if (from) attrParams.debut = from
     if (to) attrParams.fin = to
     load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
-  }, [from, to, load, peutLireChantiers])
+  }, [from, to, load, peutLireChantiers, peutVentes, peutStock])
 
   // Les insights (all-time) ne sont chargés qu'une fois.
   useEffect(() => {
@@ -645,7 +648,7 @@ export function Component() {
 
         {/* ── Ventes & pipeline ── */}
         <TabsContent value="ventes">
-          {renderReportCard('sales', 'Ventes & pipeline', () => (
+          {peutVentes && renderReportCard('sales', 'Ventes & pipeline', () => (
             <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
               {/* VX148 — entonnoir en graphe AU-DESSUS de la table (qui garde
                   le détail chiffré + les liens de drill-down). */}
@@ -743,7 +746,7 @@ export function Component() {
 
         {/* ── Stock ── */}
         <TabsContent value="stock">
-          {renderReportCard('stock', 'Stock', () => (
+          {peutStock && renderReportCard('stock', 'Stock', () => (
             <ReportCard title="Stock" kind="stock" params={periodParams}>
               <p className="text-sm">
                 Valorisation (vente) : <strong className="tabular-nums">{fmt(stock.valorisation_vente)} DH</strong>

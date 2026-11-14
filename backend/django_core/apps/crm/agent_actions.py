@@ -662,6 +662,49 @@ MESSAGE_VISITE = AgentAction(
 )
 
 
+def _entrees_message_manuel():
+    from apps.crm.views_assistant import CLES_MESSAGE_MANUEL
+
+    return {
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'canal': {'type': 'string', 'enum': ['whatsapp']},
+            'objectif': {'type': 'string',
+                         'enum': list(CLES_MESSAGE_MANUEL)},
+            'langue': {'type': 'string', 'enum': ['fr', 'ar'],
+                       'description': 'Défaut : la langue du lead.'},
+        },
+        'required': ['id', 'canal', 'objectif'],
+    }
+
+
+# AIC96 — les textes MANUELS validés (annonce de l'appel du fondateur,
+# débrief de visite, avis Google, parrainage) rendus pour UN lead par la
+# route du brouillon de suivi : un texte et un lien wa.me, jamais un envoi.
+MESSAGE_MANUEL = AgentAction(
+    key='crm.lead.message_manuel',
+    label='Message manuel validé',
+    description=(
+        "Sert à : préparer pour un lead un texte VALIDÉ à envoi manuel "
+        "(annonce de l'appel du fondateur, débrief de visite, avis Google, "
+        "parrainage), rendu par le serveur. Rien n'est envoyé. "
+        "Ne pas utiliser pour : une touche du suivi "
+        "(crm.suivi.preparer_touche) ni la visite (crm.visite.message). "
+        "Exemple : « Envoie-lui le message de parrainage ». "
+        "Résultat : {texte, wa_url, langue_servie, placeholders_manquants, "
+        "crochets} ; crochets à compléter à la main."
+    ),
+    endpoint='/api/django/crm/leads/{id}/brouillon-suivi/',
+    method='POST',
+    inputs=_entrees_message_manuel(),
+    required_permission='crm_modifier',
+    risk=RISK_INTERNAL,
+    carte='wa_message',
+    lot=LOT_COPILOTE,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     METTRE_A_JOUR_LEAD,
@@ -679,6 +722,7 @@ _ACTIONS = (
     JOURNALISER_LEAD,
     PLANIFIER_VISITE,
     MESSAGE_VISITE,
+    MESSAGE_MANUEL,
 )
 
 

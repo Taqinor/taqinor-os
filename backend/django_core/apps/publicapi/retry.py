@@ -61,9 +61,11 @@ def run_due_retries(now=None):
     """Traite TOUTE tentative programmée échue (idempotent — un run répété
     sans nouvelles tentatives dues ne fait rien). Renvoie la liste des
     `WebhookDeliveryAttempt` traitées (pour logging/tests)."""
+    from authentication.selectors import active_company_ids
     now = now or timezone.now()
     dues = WebhookDeliveryAttempt.objects.filter(
-        statut=WebhookDeliveryAttempt.Statut.EN_ATTENTE, prochain_essai_at__lte=now)
+        statut=WebhookDeliveryAttempt.Statut.EN_ATTENTE, prochain_essai_at__lte=now,
+        company_id__in=active_company_ids())  # ACEL88 — jamais une société suspendue
     ids = list(dues.order_by('prochain_essai_at', 'pk').values_list('pk', flat=True)[:LOT_REPRISES])
     traitees = []
     for pk in ids:

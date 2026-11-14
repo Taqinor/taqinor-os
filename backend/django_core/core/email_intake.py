@@ -127,8 +127,12 @@ def _parse_email_message(raw_bytes) -> InboundMessage:
         if payload:
             body = payload.decode(msg.get_content_charset() or 'utf-8',
                                   'replace')
+    import hashlib
+    # ACEL86 — sans en-tête, un identifiant STABLE tiré des octets (dédoublonnage).
+    message_id = (msg.get('Message-ID', '').strip('<> ')
+                  or 'sans-id-' + hashlib.sha256(raw_bytes).hexdigest()[:32])
     return InboundMessage(
-        message_id=msg.get('Message-ID', '').strip('<> '),
+        message_id=message_id,
         in_reply_to=msg.get('In-Reply-To', '').strip('<> '),
         references=msg.get('References', ''),
         subject=msg.get('Subject', ''),
@@ -173,13 +177,13 @@ def fetch_messages(config_obj):
         conn = _imap(config_obj)
         if conn is None:
             return []  # non configuré → no-op propre.
-        typ, data = conn.search(None, 'UNSEEN')
+        typ, data = conn.uid('SEARCH', None, 'UNSEEN')  # ACEL85 — UID, stable à l'EXPUNGE
         if typ == 'OK':
-            for num in data[0].split():
-                t, msg_data = conn.fetch(num, '(BODY.PEEK[])')
+            for uid in data[0].split():
+                t, msg_data = conn.uid('FETCH', uid, '(BODY.PEEK[])')
                 if t == 'OK' and msg_data and msg_data[0]:
                     msg = _parse_email_message(msg_data[0][1])
-                    msg.imap_num = num
+                    msg.imap_uid = uid
                     out.append(msg)
         conn.logout()
     except Exception:  # noqa: BLE001 — réseau/auth : dégrade en vide (D-ENF22-BLE001)
@@ -201,12 +205,12 @@ def poll_mailbox(company):
     messages = fetch_messages(cfg)
     traites = []
     handled = _dispatch(messages, company, traites)
-    nums = [m.imap_num for m in traites if getattr(m, 'imap_num', None)]
-    if nums:  # ACEL17 — `\\Seen` posé APRÈS le traitement, sur ceux-là seuls
+    uids = [m.imap_uid for m in traites if getattr(m, 'imap_uid', None)]
+    if uids:  # ACEL17 — `\\Seen` posé APRÈS le traitement, sur ceux-là seuls (ACEL85 : par UID)
         try:
             conn = _imap(cfg)
-            for num in nums:
-                conn.store(num, '+FLAGS', '\\Seen')
+            for uid in uids:
+                conn.uid('STORE', uid, '+FLAGS', '(\\Seen)')
             conn.logout()
         except Exception:  # noqa: BLE001 — non marqué = re-relevé, jamais perdu (D-ENF22-BLE001)
             logger.warning('poll_mailbox : marquage lu en échec', exc_info=True)

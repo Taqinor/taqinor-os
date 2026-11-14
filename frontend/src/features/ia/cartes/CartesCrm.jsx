@@ -13,11 +13,13 @@ import { useOuvrirEcran, usePreparerTouche } from './useCarte'
 const etapeLibelle = (cle) => STAGE_LABELS[cle] ?? cle ?? ''
 const dateCourte = (iso) => (iso ? formatDate(iso) : '')
 
-function OuvrirFiche({ leadId }) {
+// `chemin` (AIC94) : une autre fiche que celle du lead (la visite du matin).
+function OuvrirFiche({ leadId, chemin }) {
   const navigate = useOuvrirEcran()
-  if (!leadId) return null
+  const cible = chemin || (leadId ? `/crm/leads/${leadId}` : null)
+  if (!cible) return null
   return (
-    <Button variant="outline" size="sm" className="min-h-10" onClick={() => navigate(`/crm/leads/${leadId}`)}>
+    <Button variant="outline" size="sm" className="min-h-10" onClick={() => navigate(cible)}>
       Ouvrir la fiche
     </Button>
   )
@@ -108,13 +110,25 @@ function BlocDevisSansReponse({ bloc }) {
   )
 }
 
+// AIC95/AIC94 — une rangée par visite (ligne `visites.selectors.ligne_ma_journee`,
+// figée au contrat) : le lead, la date prévue, « Ouvrir la fiche » de la visite.
+// `date_prevue` est un JOUR (aucune heure n'existe côté serveur : rien d'inventé).
 function BlocVisites({ bloc }) {
   if (!bloc?.total) return null
   return (
-    <p className="mt-3 text-sm">
-      Visites : <span className="font-medium">{bloc.total}</span>
-      {bloc.en_retard ? ` (dont ${bloc.en_retard} en retard)` : ''}
-    </p>
+    <div className="mt-3">
+      <p className="mb-1.5 text-sm font-semibold">
+        Visites ({bloc.total}){bloc.en_retard ? ` — dont ${bloc.en_retard} en retard` : ''}
+      </p>
+      <ul className="space-y-2">
+        {(bloc.lignes ?? []).map((v) => (
+          <Rangee key={v.id} titre={v.lead_nom || 'Visite'}
+            detail={[`prévue le ${dateCourte(v.date_prevue)}`, v.ville].filter(Boolean).join(' · ')}>
+            <OuvrirFiche chemin={`/visites/${v.id}`} />
+          </Rangee>
+        ))}
+      </ul>
+    </div>
   )
 }
 

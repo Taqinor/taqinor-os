@@ -348,8 +348,8 @@ export default function KanbanView({
     await mutateWithUndo({
       kind: 'lead_owner',
       message: 'Responsable modifié.',
-      apply: () => onReassign(lead, nouvelId),
-      revert: () => onReassign(lead, precedent),
+      apply: () => onReassign(lead, nouvelId, { relancer: true }),
+      revert: () => onReassign(lead, precedent, { relancer: true }),
     })
   }, [onReassign])
 

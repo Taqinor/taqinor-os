@@ -34,6 +34,7 @@ import { SectionTitle } from './peComponents'
 import {
   ChargementTexte, ErreurChargementListe, BoutonSupprimerLigne, ZoneCreation, LigneChamps,
 } from './EtatsSection'
+import { toastErreurNonAffichee } from '../../lib/toast'
 
 // Canaux du modèle (miroir de BrandedTemplate.KIND_CHOICES).
 // source-choix: core.BrandedTemplate.kind
@@ -145,7 +146,7 @@ export default function ModelesBrandesSection() {
         previsualiser(cree.id)
       }
     } catch (e) {
-      console.warn('Création impossible.', e)
+      toastErreurNonAffichee(e, 'Création impossible.')
     } finally { setBusy(false) }
   }
 
@@ -159,7 +160,7 @@ export default function ModelesBrandesSection() {
       setDirty(false)
       charger()
     } catch (e) {
-      console.warn('Enregistrement impossible.', e)
+      toastErreurNonAffichee(e, 'Enregistrement impossible.')
     } finally { setBusy(false) }
   }
 
@@ -170,7 +171,7 @@ export default function ModelesBrandesSection() {
       if (selectedId === row.id) { setSelectedId(null); setEdit(null); setApercu(null) }
       charger()
     } catch (e) {
-      console.warn('Suppression impossible.', e)
+      toastErreurNonAffichee(e, 'Suppression impossible.')
     }
   }
 
@@ -224,10 +225,12 @@ export default function ModelesBrandesSection() {
                         {row.actif === false ? 'Inactif' : 'Actif'}
                       </Badge>
                       <div className="ml-auto flex items-center gap-1">
+                        {canManage && (
                         <Button type="button" size="sm" variant="outline"
                           onClick={() => { choisir(row); previsualiser(row.id) }}>
                           <Eye className="size-4" aria-hidden="true" /> Aperçu
                         </Button>
+                        )}
                         {canManage && (
                           <BoutonSupprimerLigne label="Supprimer le modèle"
                             onClick={() => supprimer(row)} />
@@ -327,10 +330,12 @@ export default function ModelesBrandesSection() {
               <Textarea rows={5} value={contexteTexte} aria-label="Contexte d'exemple"
                 onChange={(e) => setContexteTexte(e.target.value)} />
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {canManage && (
                 <Button type="button" variant="outline"
                   onClick={() => previsualiser(selection.id)}>
                   <Eye className="size-4" aria-hidden="true" /> Aperçu du rendu
                 </Button>
+                )}
                 {dirty && (
                   <span className="text-[11.5px] text-muted-foreground">
                     L'aperçu porte sur la version enregistrée — enregistrez pour

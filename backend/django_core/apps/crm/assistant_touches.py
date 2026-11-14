@@ -138,10 +138,42 @@ def _refus_du_lead(etape):
     return {'code': code, 'detail': detail}
 
 
+def _heure_en_clair(t):
+    """``08:30`` -> « 8 h 30 », ``20:00`` -> « 20 h »."""
+    return f'{t.hour} h {t.minute:02d}' if t.minute else f'{t.hour} h'
+
+
+def hors_fenetre(etape, instant=None):
+    """AIC95 — ``None`` quand ``instant`` (maintenant par défaut) tombe dans
+    la fenêtre d'envoi de la société pour le canal de la touche, sinon
+    ``{raison}`` en clair. La règle est la SEULE ``horaires.est_dans_fenetre``
+    ; le message reste rendu : la commerciale décide."""
+    from django.utils import timezone
+
+    from . import horaires
+
+    instant = instant or timezone.now()
+    company, canal = etape.company, etape.canal
+    if horaires.est_dans_fenetre(instant, company, canal=canal):
+        return None
+    fenetre = horaires.fenetre_du_jour(
+        horaires._local(instant, company).date(), company, canal=canal)
+    if fenetre is None:
+        return {'raison': "Hors des jours d'envoi (jour non ouvré ou férié)"}
+    debut, fin, pause = fenetre
+    nature = 'messages' if horaires.est_un_message(canal) else 'appels'
+    plage = f'{nature} de {_heure_en_clair(debut)} à {_heure_en_clair(fin)}'
+    if pause is not None:
+        plage += (f', pause du vendredi de {_heure_en_clair(pause[0])} '
+                  f'à {_heure_en_clair(pause[1])}')
+    return {'raison': f"Hors des heures d'envoi ({plage})"}
+
+
 def touche_prete(request, etape):
     """Le corps de la carte « touche » : ``{touche, lead, message, appel,
-    refus}`` — exactement un de ``message``/``appel``/``refus`` quand la
-    touche est préparable (aucun pour une TÂCHE, qui se traite sans texte)."""
+    refus, hors_fenetre}`` — exactement un de ``message``/``appel``/``refus``
+    quand la touche est préparable (aucun pour une TÂCHE, qui se traite sans
+    texte) ; ``hors_fenetre`` (AIC95) avertit sans rien bloquer."""
     from .models import RelanceEtape
     from .serializers_cadence import RelanceEtapeSerializer
     from .suite_touche import est_tache
@@ -151,6 +183,7 @@ def touche_prete(request, etape):
             etape, context={'request': request}).data,
         'lead': _bloc_lead(etape.lead),
         'message': None, 'appel': None, 'refus': _refus_du_lead(etape),
+        'hors_fenetre': hors_fenetre(etape),
     }
     if corps['refus'] is not None or est_tache(etape):
         return corps

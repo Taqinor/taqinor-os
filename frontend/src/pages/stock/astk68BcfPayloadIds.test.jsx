@@ -106,4 +106,22 @@ describe('ASTK68 — ids des lignes dans le payload du BCF', () => {
     await waitFor(() => expect(stockApi.updateBonCommandeFournisseur).toHaveBeenCalledTimes(2))
     expect(stockApi.updateBonCommandeFournisseur.mock.calls[1][1].lock_version).toBe(4)
   })
+
+  it('ACNC21 — envoi refusé puis nouvel essai : le 2e PATCH porte la lock_version servie', async () => {
+    const SEUIL = 'Approbation requise au-delà du seuil de 50 000 DH.'
+    stockApi.updateBonCommandeFournisseur.mockResolvedValueOnce({ data: { ...BCF, lock_version: 4 } })
+      .mockResolvedValueOnce({ data: { ...BCF, lock_version: 5 } })
+    const refus = { response: { status: 409, data: { detail: SEUIL } } }
+    stockApi.envoyerBcf.mockRejectedValueOnce(refus).mockRejectedValueOnce(refus)
+    renderDetail({ ...BCF, lock_version: 3 })
+    fireEvent.click(await screen.findByRole('button', { name: /Envoyer au fournisseur/ }))
+    await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(SEUIL)).toBeInTheDocument()
+    expect(stockApi.updateBonCommandeFournisseur.mock.calls[0][1].lock_version).toBe(3)
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledTimes(2))
+    expect(stockApi.updateBonCommandeFournisseur.mock.calls[1][1].lock_version).toBe(4)
+    expect(await screen.findByText(SEUIL)).toBeInTheDocument()
+    expect(screen.queryByText(/modifié entre-temps/)).toBeNull()
+  })
 })

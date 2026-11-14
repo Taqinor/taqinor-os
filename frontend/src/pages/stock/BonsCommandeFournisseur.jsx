@@ -561,6 +561,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         : await stockApi.createBonCommandeFournisseur(buildPayload())
       const id = idExistant ?? r.data.id
       bcfCreeRef.current = id
+      if (r?.data?.lock_version != null) setLockVersion(r.data.lock_version)  // ACNC69 — version servie
       const avertissement = texteAvertissementsPrix(r?.data)
       if (avertissement && !(await confirmer({
         title: 'Envoyer malgré l\'avertissement prix ?', description: avertissement,

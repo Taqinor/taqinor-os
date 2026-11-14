@@ -241,6 +241,72 @@ class TestJournalExport(TestCase):
             self.assertEqual([float(total[8]), float(total[10]), float(total[11])],
                              [900.0, 140.0, 1040.0])
 
+    def test_exports_gardent_l_acheteur_fige_apres_anonymisation(self):
+        """ASUP63 (C-ASUP-VER3-100) — après « Anonymiser (RGPD) », le journal
+        des ventes, l'export comptable csv et le grand livre csv portent sur
+        la facture, l'avoir et la note de débit le nom et l'ICE FIGÉS de la
+        facture, jamais « anonymisé ». Mutant : relire ``p.client`` dans
+        ``lignes_rectificatives`` ⇒ échec."""
+        import csv
+        import io
+        from datetime import timedelta
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from apps.ventes.domain.instantanes_facture import (
+            identite_acheteur_courante)
+        from apps.ventes.exports import (
+            export_comptable_csv, export_grand_livre_csv, export_journal_ventes)
+        from apps.ventes.models import Avoir, LigneAvoir, NoteDebit
+        co = Company.objects.create(nom='JR ASUP63', slug='jr-asup63')
+        admin = User.objects.create_user(
+            username='jr_asup63', password='x', role_legacy='admin', company=co)
+        c = Client.objects.create(company=co, nom='Société Atlas',
+                                  ice='001234567000089')
+        p = Produit.objects.create(company=co, nom='Kit', sku='JR-A63',
+                                   prix_vente=Decimal('100'), quantite_stock=5)
+        fac = Facture.objects.create(company=co, reference='FAC-JR-A63', client=c,
+                                     statut='emise', taux_tva=Decimal('20'))
+        LigneFacture.objects.create(
+            facture=fac, produit=p, designation='L', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'), taux_tva=Decimal('20'))
+        Facture.objects.filter(pk=fac.pk).update(
+            identite_acheteur=identite_acheteur_courante(fac))
+        av = Avoir.objects.create(company=co, reference='AVO-JR-A63', facture=fac,
+                                  client=c, statut='emise', taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=av, designation='Retour', quantite=Decimal('1'),
+            prix_unitaire=Decimal('200'), remise=Decimal('0'), taux_tva=Decimal('20'))
+        NoteDebit.objects.create(
+            company=co, reference='ND-JR-A63', facture=fac, client=c, statut='emise',
+            taux_tva=Decimal('20'), montant_ht=Decimal('100'),
+            montant_tva=Decimal('20'), montant_ttc=Decimal('120'))
+        api = APIClient()
+        api.force_authenticate(admin)
+        r = api.post(f'/api/django/crm/clients/{c.id}/anonymize/')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        c.refresh_from_db()
+        self.assertTrue(c.is_anonymized)
+        debut = date.today().replace(day=1)
+        fin = date.today() + timedelta(days=1)
+        corps = export_journal_ventes(co, debut, fin)
+        body = b''.join(corps.streaming_content) if corps.streaming else corps.content
+        journal = [[str(x) for x in r if x is not None] for r in load_workbook(
+            BytesIO(body))['Journal des ventes'].iter_rows(values_only=True)]
+        exports = {'journal': journal}
+        for nom_export, fn in (('comptable', export_comptable_csv),
+                               ('grand-livre', export_grand_livre_csv)):
+            texte = fn(co, debut, fin).content.decode('utf-8-sig')
+            exports[nom_export] = list(csv.reader(io.StringIO(texte), delimiter=';'))
+        for nom_export, rows in exports.items():
+            for ref in ('FAC-JR-A63', 'AVO-JR-A63', 'ND-JR-A63'):
+                with self.subTest(export=nom_export, piece=ref):
+                    lignes = [r for r in rows if ref in r]
+                    self.assertTrue(lignes, (nom_export, ref))
+                    for ligne in lignes:
+                        self.assertIn('Société Atlas', ligne)
+                        self.assertIn('001234567000089', ligne)
+            self.assertNotIn('anonymis', repr(rows).lower(), nom_export)
+
 
 class TestGrandLivreExport(TestCase):
     """FG49 — grand-livre codé par compte CGNC (3421 / 7111 / 4455)."""

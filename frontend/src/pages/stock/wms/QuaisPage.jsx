@@ -5,6 +5,7 @@ import quaisApi from '../../../features/stock/api/quaisApi'
 import { messageServeur, telechargerTexte } from '../../../features/stock/api/erreurs'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
 import usePeutEcrireStock from '../usePeutEcrireStock'
+import { useIsAdmin } from '../../../hooks/useHasPermission'
 
 /* ASTK218 — Quais & rendez-vous : quais (création / activation), planning
    d'une journée avec, pour chaque rendez-vous, le fournisseur et le BCF
@@ -44,6 +45,8 @@ const lireFichier = (fichier) => new Promise((resolve, reject) => {
 export default function QuaisPage() {
   // ADRG36 — rendez-vous transporteur = référentiel : `stock_modifier`, comme le serveur.
   const peutReferentiel = usePeutEcrireStock()
+  const peutImporterAsn = usePeutEcrireStock('stock_mouvement')  // ADRG130 — route import_asn
+  const estAdmin = useIsAdmin()  // ADRG130 — QuaiViewSet : IsAdminRole
   const [quais, setQuais] = useState([])
   const [emplacements, setEmplacements] = useState([])
   const [planning, setPlanning] = useState(null)
@@ -237,7 +240,7 @@ export default function QuaisPage() {
       )}
 
       <Section id="liste-quais" titre="Quais">
-        <form onSubmit={ajouterQuai} noValidate className="mb-3 flex flex-wrap items-end gap-2">
+        {estAdmin && (<form onSubmit={ajouterQuai} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Nom du quai</span>
             <Input value={quaiForm.nom} onChange={champQuai('nom')} className="w-40" />
@@ -256,7 +259,7 @@ export default function QuaisPage() {
             </select>
           </label>
           <Button type="submit" disabled={occupe}>Ajouter le quai</Button>
-        </form>
+        </form>)}
         {quais.length === 0 ? <Vide>Aucun quai.</Vide> : (
           <ul className="space-y-1 text-sm">
             {quais.map((q) => (
@@ -265,11 +268,11 @@ export default function QuaisPage() {
                 <span>{TYPES_QUAI[q.type_quai] ?? q.type_quai}</span>
                 <span className="text-[var(--muted-foreground)]">{q.emplacement_nom ?? '—'}</span>
                 <span>{q.actif ? 'Actif' : 'Inactif'}</span>
-                <Button
+                {estAdmin && <Button
                   size="sm" variant="outline" disabled={occupe}
                   aria-label={`${q.actif ? 'Désactiver' : 'Activer'} le quai ${q.nom}`}
                   onClick={() => geste(() => quaisApi.saveQuai(q.id, { actif: !q.actif }), 'Modification impossible.')}
-                >{q.actif ? 'Désactiver' : 'Activer'}</Button>
+                >{q.actif ? 'Désactiver' : 'Activer'}</Button>}
               </li>
             ))}
           </ul>
@@ -286,10 +289,10 @@ export default function QuaisPage() {
             </select>
           </label>
           <Button variant="outline" onClick={exporterAsn}>Exporter l'ASN</Button>
-          <label className="flex flex-col gap-1 text-xs">
+          {peutImporterAsn && <label className="flex flex-col gap-1 text-xs">
             <span>Fichier ASN</span>
             <input type="file" accept="application/json,.json" onChange={importerAsn} className="text-sm" />
-          </label>
+          </label>}
         </div>
         {resultatAsn && (
           <div className="mt-3 text-sm">
