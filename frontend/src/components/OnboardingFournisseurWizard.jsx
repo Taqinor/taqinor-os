@@ -44,6 +44,7 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
   const fournisseurId = fournisseur?.id
   // ADRG36 — ouvrir, téléverser, soumettre : `stock_modifier`, comme le serveur.
   const peutEcrire = usePeutEcrireStock()
+  const peutSoumettre = usePeutEcrireStock('valider_dossier_fournisseur')  // ADRG131 — PeutValiderDossierFournisseur
   const [etape, setEtape] = useState(0)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -246,7 +247,7 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
             Dossier <strong>{dossier.statut_display}</strong> — {recus.length} pièce·s
             reçue·s sur {requis.length}.
           </p>
-          {peutEcrire && (
+          {peutSoumettre && (
             <Button type="button" onClick={soumettre} disabled={busy || !complet}>
               Soumettre pour validation
             </Button>

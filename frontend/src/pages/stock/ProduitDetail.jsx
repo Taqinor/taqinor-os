@@ -16,7 +16,7 @@ import {
   libelleTypePose, libellePrixCi,
 } from '../../features/stock/catalogue'
 import { champCibleMotif } from '../../features/stock/libellesProduitCi.js'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import {
   Spinner, Badge, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -875,6 +875,8 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
   // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
   // les modèles ; le backend re-vérifie la permission).
   const canViewJournal = useHasPermission('journal_activite_voir')
+  const estAdmin = useIsAdmin()
+  const canDeleteStock = useHasPermission('stock_supprimer') || estAdmin  // ADRG131 — PeutSupprimerStock
   // WIR221/XSTK10 — mise au rebut : modale gérée LOCALEMENT (la fiche reste
   // ouverte pendant/après l'action, contrairement à « Modifier » qui ferme
   // cette fiche pour ouvrir le formulaire).
@@ -954,7 +956,7 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
           {/* AGR623 — monté à l'ouverture seulement ; écriture réservée aux
               rôles qui reçoivent `onEdit` (même règle que « Modifier »). */}
           <TabsContent value="saison">
-            <ProfilsSaisonniersSection produit={produit} canWrite={Boolean(onEdit)} />
+            <ProfilsSaisonniersSection produit={produit} canWrite={Boolean(onEdit)} canDelete={canDeleteStock} />
           </TabsContent>
         </Tabs>
 
