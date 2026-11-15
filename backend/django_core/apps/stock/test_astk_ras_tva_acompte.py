@@ -82,10 +82,10 @@ class RasTests(TestCase):
         self.assertEqual(facture.total_acomptes_imputes, acompte)
         return facture
 
-    def _payer(self, facture, montant):
+    def _payer(self, facture, montant, **extra):
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': facture.id, 'montant': montant,
-            'date_paiement': '2026-10-05',
+            'date_paiement': '2026-10-05', **extra,
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         return PaiementFournisseur.objects.get(pk=resp.data['id'])
@@ -213,7 +213,9 @@ class RasTests(TestCase):
 
     def test_trois_reglements_somme_exacte_au_centime(self):
         facture = self._facture_avec_acompte(Decimal('100'))
-        paiements = [self._payer(facture, m) for m in ('333', '333', '434')]
+        # ACNC74 — le 2e règlement identique du même jour est CONFIRMÉ (sinon 409 paiement_similaire).
+        paiements = [self._payer(facture, '333'), self._payer(facture, '333', confirmer_doublon=True),
+                     self._payer(facture, '434')]
         self.assertEqual(
             sum((p.montant_ras_tva for p in paiements), Decimal('0')),
             Decimal('200.00'))
