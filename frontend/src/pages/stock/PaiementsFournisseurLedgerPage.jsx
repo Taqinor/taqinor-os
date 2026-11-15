@@ -94,6 +94,8 @@ export default function PaiementsFournisseurLedgerPage() {
   const [escompte, setEscompte] = useState(null)
   const [erreursDraft, setErreursDraft] = useState({})  // AERR90 — dit pourquoi rien ne part
   const cleReglement = useRef(null)  // ACNC67 — gardée entre deux clics, neuve après un succès
+  // ACNC72 — clé neuve dès que la saisie change (sinon 409 « clé déjà utilisée »).
+  useEffect(() => { cleReglement.current = null }, [draft])
 
   // ENF15 — toutes les pages (jamais la seule page 1) : le registre et ses totaux
   // portent sur l'ensemble des paiements.

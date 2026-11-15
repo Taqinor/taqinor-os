@@ -21,7 +21,7 @@ fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
 const J = JSON.stringify
-const DEMANDE = 'Modifications non enregistrées — quitter cette page ?'
+const DEMANDE = 'Quitter sans enregistrer ?' // AERR155 — titre de la boîte maison de `confirmLeaveIfDirty`
 const SOC = `U.objects.get(username='demo_admin').company_id`
 test.describe.configure({ timeout: 420_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
@@ -52,7 +52,7 @@ sortie({'id': u.id, 'tier': u.menu_tier, 'perms': sorted(r.permissions or [])})`
 
 /** Écran du compte `nom` : contexte neuf (accueil et visites guidées vus, SW bloqué), session par la vraie route
  *  /token/, observé par les oracles. La page demo_admin de l'étape est refermée : la capture montre CET écran.
- *  Seule la demande de saisie non enregistrée (`confirmLeaveIfDirty`) est un dialogue natif attendu. */
+ *  La demande de saisie non enregistrée (`confirmLeaveIfDirty`) est la boîte maison lue par `dem` (AERR155). */
 async function ecran(page, suivi, testInfo, nom, viewport = { width: 1600, height: 1000 }) {
   if (!page.isClosed()) await page.close()
   const ctx = await page.context().browser().newContext({
@@ -70,16 +70,20 @@ async function ecran(page, suivi, testInfo, nom, viewport = { width: 1600, heigh
     }
   }
   const p = suivi.surveiller(await ctx.newPage())
-  const dem = { vues: 0, prochaine: null }
-  p.removeAllListeners('dialog')
-  p.on('dialog', async (d) => {
-    if (d.type() === 'confirm' && d.message() === DEMANDE && dem.prochaine) {
-      const reponse = dem.prochaine
+  // AERR155 — la demande est la boîte de l'application « Quitter sans enregistrer ? » ; `dem.repondre()` (lu
+  // par les polls) y donne la réponse choisie. Plus aucun dialogue natif n'est attendu (oracle 4 sur tous).
+  const boite = p.getByRole('alertdialog').filter({ hasText: DEMANDE })
+  const dem = { vues: 0, prochaine: null, boite }
+  dem.repondre = async () => {
+    if (dem.prochaine && await boite.isVisible()) {
+      await boite.getByRole('button', { name: dem.prochaine === 'quitter' ? 'Quitter' : 'Rester', exact: true }).click()
       dem.prochaine = null
       dem.vues += 1
-      await (reponse === 'quitter' ? d.accept() : d.dismiss()).catch(() => undefined)
-      return
     }
+    return dem.vues
+  }
+  p.removeAllListeners('dialog')
+  p.on('dialog', async (d) => {
     suivi.incidents.push({ oracle: '4', texte: `dialogue natif inattendu ${d.type()} : ${d.message()}` })
     await d.dismiss().catch(() => undefined)
   })
@@ -331,19 +335,19 @@ etape('PF12.1-AERR25', ['AERR25'], async ({ page, suivi, testInfo }) => {
   await champ.description.fill(retouche)
   dem.prochaine = 'rester'
   await ligne(A).getByText(A).click()
-  await expect.poll(() => dem.vues, { message: 'clic sur A : la demande est posée' }).toBe(1)
+  await expect.poll(() => dem.repondre(), { message: 'clic sur A : la demande est posée' }).toBe(1)
   await expect(fiche, 'rester (clic) : toujours B').toHaveAttribute('aria-label', `Détail du ticket ${B}`)
   await expect(champ.description, 'rester (clic) : saisie gardée').toHaveValue(retouche)
   await sortirDuChamp()
   dem.prochaine = 'rester'
   await p.keyboard.press(bApresA ? 'k' : 'j')
-  await expect.poll(() => dem.vues, { message: 'touche vers A : la demande est posée' }).toBe(2)
+  await expect.poll(() => dem.repondre(), { message: 'touche vers A : la demande est posée' }).toBe(2)
   await expect(fiche, 'rester (clavier) : toujours B').toHaveAttribute('aria-label', `Détail du ticket ${B}`)
   await expect(champ.description, 'rester (clavier) : saisie gardée').toHaveValue(retouche)
   await cliche(p, 'PF12.1-AERR25', 2)
   dem.prochaine = 'quitter'
   await ligne(A).getByText(A).click()
-  await expect.poll(() => dem.vues).toBe(3)
+  await expect.poll(() => dem.repondre()).toBe(3)
   await montre(A, `Onduleur HS ${m}`, 'Urgente', `Couper le disjoncteur ${m}`, 'quitter vers A')
   expect(patchs.length, 'un seul PATCH en tout (celui de B)').toBe(1)
   expect(await champsTicket([idA, idB]), 'base relue : champs d\'origine').toEqual([

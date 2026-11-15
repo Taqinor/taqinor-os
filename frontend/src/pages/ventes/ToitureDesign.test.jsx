@@ -19,7 +19,7 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
 vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
 import '../../test/toitureDesignHarnessCalepinage'
-import { navigateMock } from '../../test/toitureDesignHarnessNavigation'
+import { navigateMock, confirmMock } from '../../test/toitureDesignHarnessNavigation'
 import {
   initRoofToolPro8, serializeLayout, snapshot, setReferenceContourVisible,
   recommencerDepuisTraceClient, LAYOUT, LEAD_88, rendreDevis, rendreLead as rendreEcranLead,
@@ -139,7 +139,9 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       servirConceptionDevis(
         reponseContrat('calepinage', 'calepinage_design_context'))
       bootHydrate()
-      const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      // AERR155 — la demande est la boîte de l'application (`confirmMock` du harnais), jamais window.confirm.
+      const natif = vi.spyOn(window, 'confirm')
+      confirmMock.mockClear()
       try {
         rendreDevis(DEVIS_ID)
         const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
@@ -151,15 +153,17 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
         await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
 
+        confirmMock.mockResolvedValueOnce(false)
         await userEvent.click(fermer)
-        expect(confirmer).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(confirmMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Quitter sans enregistrer ?' })))
         expect(navigateMock).not.toHaveBeenCalledWith(-1)
 
-        confirmer.mockReturnValue(true)
         await userEvent.click(fermer)
-        expect(navigateMock).toHaveBeenCalledWith(-1)
+        await waitFor(() => expect(navigateMock).toHaveBeenCalledWith(-1))
+        expect(natif).not.toHaveBeenCalled()
       } finally {
-        confirmer.mockRestore()
+        natif.mockRestore()
       }
     })
 

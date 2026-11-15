@@ -54,7 +54,7 @@ export function BoutonsModifierSupprimer({ onModifier, onSupprimer }) {
 
 /** DataTable de liste Stock : lignes `items`, identifiées par `id`. */
 export function TableauStock({ items, ...props }) {
-  return <DataTable data={items} getRowId={(r) => r.id} {...props} />
+  return <DataTable codeExport="stock_export" data={items} getRowId={(r) => r.id} {...props} />
 }
 
 /** Cellule « Retirer la ligne » d'un formulaire de lignes (bon de commande,

@@ -68,7 +68,7 @@ export default function ValorisationADate() {
             Valeur au {new Date(releve.date).toLocaleDateString('fr-FR')} :{' '}
             <strong className="tabular-nums">{formatMAD(releve.total)}</strong>
           </p>
-          <DataTable
+          <DataTable codeExport="stock_export"
             data={releve.lignes ?? []}
             columns={COLONNES}
             getRowId={(l) => l.produit_id}

@@ -912,7 +912,7 @@ export function Component() {
                 : 'Ajoutez un contrat de maintenance ci-dessus pour planifier les visites préventives.'}
           />
         ) : (
-          <DataTable
+          <DataTable codeExport="sav_export"
             data={visibleRows}
             columns={columns}
             getRowId={(row) => row.id}

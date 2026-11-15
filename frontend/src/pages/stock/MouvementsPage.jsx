@@ -411,7 +411,7 @@ export default function MouvementsPage() {
       <AlerteErreurStock error={pivotError} />
 
       {vuePivot ? (
-        <DataTable
+        <DataTable codeExport="stock_export"
           data={pivotRows}
           columns={pivotColumns}
           loading={pivotLoading}
@@ -423,7 +423,7 @@ export default function MouvementsPage() {
           aria-label="Mouvements de stock — vue groupée (pivot)"
         />
       ) : isTransferts ? (
-        <DataTable
+        <DataTable codeExport="stock_export"
           data={produitParam
             ? transferts.filter(t => String(t.produit) === String(produitParam))
             : transferts}
@@ -437,7 +437,7 @@ export default function MouvementsPage() {
           aria-label="Transferts entre emplacements"
         />
       ) : (
-        <DataTable
+        <DataTable codeExport="stock_export"
           data={filtered}
           columns={columns}
           loading={loading}

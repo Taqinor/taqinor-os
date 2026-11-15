@@ -1,0 +1,62 @@
+# ADCG116 rejoue sur runner GitHub (2026-11-14T22:27:53Z), sha ef294bce37fe08dfa6f919510ac993092947d8df
+# .env = copie de .env.example : DB_PORT=5432 ; AUCUN relais socat lance
+
+== ecoute TCP sur 5432 avant up (attendu : rien) :
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+
+== processus socat : aucun
+
+== docker compose port db 5432 => 0.0.0.0:5433
+== bash scripts/e2e-local.sh port-db => 5433
+
+== avant up : services en marche = db minio redis 
+NAME                    IMAGE                    COMMAND                  SERVICE   CREATED         STATUS                            PORTS
+erp-agentique-db-1      pgvector/pgvector:pg16   "docker-entrypoint.s…"   db        4 seconds ago   Up 3 seconds (health: starting)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-minio-1   erp-agentique-minio      "/usr/bin/docker-ent…"   minio     4 seconds ago   Up 3 seconds                      0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-redis-1   redis:7.4-alpine         "docker-entrypoint.s…"   redis     4 seconds ago   Up 3 seconds (health: starting)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+
+== bash scripts/e2e-local.sh up => code 0
+-- lignes cles (attente Postgres, migrate, seed, Django, preview) :
+9:→ Attente de Postgres…
+10:  Postgres prêt
+11:→ Backend : install + migrate + seed (idempotent)…
+22:Operations to perform:
+24:Running migrations:
+2657:→ Démarrage de Django (:8000)…
+3316:  Preview prêt
+3318:✓ Pile e2e prête.  App : http://localhost:4173   (demo_admin / Demo@2026!)
+-- migrate : 2385 migrations « Applying … OK », derniere :   Applying voip.0002_solmvp_coquille... OK
+
+-- 12 dernieres lignes :
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 3.03s[39m
+→ Attente du preview (http://localhost:4173)…
+  Preview prêt
+
+✓ Pile e2e prête.  App : http://localhost:4173   (demo_admin / Demo@2026!)
+  • Enregistrer un parcours :  npx playwright codegen http://localhost:4173/stock
+  • Lancer les specs        :  (cd frontend && npx playwright test)
+  • Arrêter                 :  bash scripts/e2e-local.sh stop
+  Logs : /tmp/taqinor-e2e-django.log  |  /tmp/taqinor-e2e-preview.log
+
+== ecoute TCP sur 5432 apres up (attendu : rien) :
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                           
+
+== connexions TCP etablies vers 5432/5433 (Django sur l'hote => 5433 attendu) :
+State Recv-Q Send-Q         Local Address:Port            Peer Address:PortProcess
+
+== bash scripts/e2e-local.sh stop => code 0
+→ Arrêt preview/Django…
+→ db/redis/minio : services laissés en marche (non démarrés par up)
+✓ Stoppé.
+
+== apres stop : services en marche = db minio redis 
+NAME                    IMAGE                    COMMAND                  SERVICE   CREATED             STATUS                       PORTS
+erp-agentique-db-1      pgvector/pgvector:pg16   "docker-entrypoint.s…"   db        About an hour ago   Up About an hour (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-minio-1   erp-agentique-minio      "/usr/bin/docker-ent…"   minio     About an hour ago   Up About an hour             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-redis-1   redis:7.4-alpine         "docker-entrypoint.s…"   redis     About an hour ago   Up About an hour (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+VERDICT ADCG116 : PASS 
+
+# run https://github.com/Taqinor/taqinor-os/actions/runs/43647860842 (job e2e-local-port-publie, ubuntu-24.04, zz-scratch-acceptation-infra5.yml) ; base compose vide au depart (aucun dump restaure) : migrate a froid complet.

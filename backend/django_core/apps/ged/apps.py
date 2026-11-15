@@ -22,6 +22,10 @@ class GedConfig(AppConfig):
         # les fichiers d'autres apps (paie/rh/sav/ventes…) selon les réglages
         # RoutageDocumentaire, sans jamais importer ces apps directement.
         import_module(f'{self.name}.receivers')
+        # ACEL94 — import email→GED par la SEULE relève du cœur (core.email_intake).
+        from core.email_intake import register_handler
+        from .services import handler_mail_intake
+        register_handler(handler_mail_intake)
         # ADOC193 — une version GED tient la clé de la pièce jointe importée
         # (migrate_attachments_to_ged) : registre des détenteurs de records.
         from django.conf import settings

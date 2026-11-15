@@ -155,6 +155,37 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
     expect(k2).toBe(k1)
   })
 
+  it('réponse perdue sur A puis ouverture sur B : saisie vide, clé neuve', async () => {
+    // ACNC71 (C-ACNC-VER2-201) — mutant : retirer `cleEnvoi.current = null` du bloc d'ouverture ⇒ échec.
+    ventesApi.creerNoteDebit.mockClear()
+    ventesApi.creerNoteDebit
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+      .mockResolvedValueOnce({ data: CONTRAT.exemple })
+    const user = userEvent.setup()
+    const A = { ...FACTURE, id: 31, reference: 'FAC-A' }
+    const B = { ...FACTURE, id: 32, reference: 'FAC-B' }
+    const { rerender } = render(<NoteDebitDialog facture={A} open onOpenChange={() => {}} />)
+    await screen.findByText('ND-202607-0001')
+    await user.type(screen.getByLabelText('Motif'), 'pénalité')
+    await user.type(screen.getByLabelText(/Montant HT/), '500')
+    await user.click(bouton())
+    await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenCalledTimes(1))
+    rerender(<NoteDebitDialog facture={A} open={false} onOpenChange={() => {}} />)
+    rerender(<NoteDebitDialog facture={B} open onOpenChange={() => {}} />)
+    await screen.findByText('ND-202607-0001')
+    expect(screen.getByLabelText('Motif')).toHaveValue('')
+    expect(screen.getByLabelText(/Montant HT/)).toHaveValue(null)
+    await user.type(screen.getByLabelText(/Montant HT/), '500')
+    await user.click(bouton())
+    await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenCalledTimes(2))
+    const [appelA, appelB] = ventesApi.creerNoteDebit.mock.calls
+    const kA = appelA[1].idempotency_key
+    const corpsB = appelB[1]
+    expect([appelA[0], appelB[0]]).toEqual([31, 32])
+    expect(corpsB.idempotency_key).toBeTruthy()
+    expect(corpsB.idempotency_key).not.toBe(kA)
+  })
+
   it('affiche le message serveur sous le champ', async () => {
     ventesApi.creerNoteDebit.mockRejectedValue({
       response: { data: { detail: 'Saisissez les lignes ou le montant de la note de débit' } },

@@ -975,7 +975,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   ].filter(Boolean)
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
+    <Sheet open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose?.()) }}>
       <SheetContent side="right" className="w-[min(64rem,calc(100%-1.5rem))] sm:max-w-none">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">

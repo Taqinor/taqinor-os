@@ -1378,7 +1378,6 @@ CELERY_TASK_ROUTES = {
     # QX — moteur de relance d'engagement + relève des boîtes entrantes.
     'ventes.engagement_followup_engine': {'queue': 'scheduled'},
     'ventes.poll_inbound_mailboxes': {'queue': 'scheduled'},
-    'ged.poll_mail_intake': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
     # ENG6 — synchro quotidienne des insights publicitaires.

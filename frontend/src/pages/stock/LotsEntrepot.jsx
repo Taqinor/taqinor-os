@@ -233,7 +233,7 @@ export default function LotsEntrepot() {
         Uniquement les lots avec du stock restant
       </label>
 
-      <DataTable
+      <DataTable codeExport="stock_export"
         data={items}
         columns={columns}
         loading={loading}

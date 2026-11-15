@@ -3,6 +3,8 @@ import { render, screen, within, fireEvent, waitFor } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { setStoredDensity } from '../../design/theme.js'
 
@@ -1045,5 +1047,34 @@ describe('NTUX22 — rowPeek (aperçu au survol, HoverCard sur la 1re colonne de
     const cell = within(table).getByText('Kasri').closest('td')
     await user.hover(cell)
     expect(await screen.findByText('Peek Kasri', {}, { timeout: 1000 })).toBeInTheDocument()
+  })
+})
+
+/* ============================== ADRG77 — EXPORT CSV SUIVANT LA CASE « EXPORTER » ============================== */
+
+describe('ADRG77 — codeExport : le repli CSV suit la case « Exporter » du module (D-ADRG-4)', () => {
+  function renderAvecDroits(permissions, props = {}) {
+    const store = configureStore({ reducer: { auth: () => ({ permissions, role_nom: 'Commercial' }) } })
+    return render(<Provider store={store}><DataTable data={DATA} columns={COLUMNS} {...props} /></Provider>, { wrapper })
+  }
+
+  it('codeExport absent du store : pas de bouton Exporter', () => {
+    renderAvecDroits(['stock_voir'], { codeExport: 'stock_export' })
+    expect(screen.queryByRole('button', { name: /^exporter$/i })).toBeNull()
+  })
+
+  it('code présent dans le store : bouton Exporter visible', () => {
+    renderAvecDroits(['stock_voir', 'stock_export'], { codeExport: 'stock_export' })
+    expect(screen.getByRole('button', { name: /^exporter$/i })).toBeInTheDocument()
+  })
+
+  it('compte hérité (aucun code ERP) : repli, bouton gardé', () => {
+    renderAvecDroits([], { codeExport: 'stock_export' })
+    expect(screen.getByRole('button', { name: /^exporter$/i })).toBeInTheDocument()
+  })
+
+  it('sans prop codeExport : comportement d\'aujourd\'hui (bouton présent, aucun store requis)', () => {
+    renderTable()
+    expect(screen.getByRole('button', { name: /^exporter$/i })).toBeInTheDocument()
   })
 })

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { safeSet } from '../lib/safeStorage'
+import { useConfirmDialog } from './confirm'
 
 /* G27 — Garde « modifications non enregistrées ». Quand `dirty` est vrai,
    intercepte la fermeture/rafraîchissement de l'onglet (beforeunload natif).
@@ -29,6 +30,7 @@ export function useDirtyGuard(
   message = 'Modifications non enregistrées — quitter cette page ?',
   persist,
 ) {
+  useConfirmationSortie()
   useEffect(() => {
     if (!dirty) return undefined
     _dirtyForms += 1
@@ -65,14 +67,32 @@ export function useDirtyGuard(
   }, [dirty, persist])
 }
 
-/** Confirmation impérative à utiliser sur une sortie volontaire (bouton Annuler,
-    lien). Renvoie true si l'utilisateur accepte de partir (ou si non modifié). */
+/* AERR155 — la sortie volontaire ouvre la boîte de `ui/confirm` (ConfirmProvider),
+   jamais un dialogue natif : chaque garde montée (et SessionProvider, à la racine)
+   enregistre sa fonction `confirm` ; la dernière enregistrée répond. */
+const _confirmeurs = []
+export function useConfirmationSortie() {
+  const { confirm } = useConfirmDialog()
+  useEffect(() => {
+    _confirmeurs.push(confirm)
+    return () => { _confirmeurs.splice(_confirmeurs.lastIndexOf(confirm), 1) }
+  }, [confirm])
+}
+
+/** Confirmation à utiliser sur une sortie volontaire (bouton Annuler, Échap,
+    lien) : `confirmLeaveIfDirty(dirty).then((ok) => ok && fermer())`. Non modifié :
+    répond true SUR-LE-CHAMP (fermeture inchangée, sans attente) ; sans boîte
+    enregistrée (hors application) : on reste, la saisie n'est jamais perdue. */
 export function confirmLeaveIfDirty(
   dirty,
   message = 'Modifications non enregistrées — quitter cette page ?',
 ) {
-  if (!dirty) return true
-  return window.confirm(message)
+  const confirmer = _confirmeurs.at(-1)
+  if (!dirty || !confirmer) return { then: (suite) => suite(!dirty) }
+  return confirmer({
+    title: 'Quitter sans enregistrer ?', description: message,
+    confirmLabel: 'Quitter', cancelLabel: 'Rester', destructive: true,
+  }).then((ok) => ok === true)
 }
 
 export default useDirtyGuard

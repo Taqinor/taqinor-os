@@ -233,7 +233,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     const st = stateRef.current
     if (st.mode === 'create') {
       // On ne crée pas un lead à moitié saisi en douce.
-      if (confirmLeaveIfDirty(isDirty(st))) { action?.(); return true }
+      if (await confirmLeaveIfDirty(isDirty(st))) { action?.(); return true }
       return false
     }
     if (!isDirty(st)) { action?.(); return true }

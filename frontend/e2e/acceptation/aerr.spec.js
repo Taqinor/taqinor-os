@@ -8,8 +8,9 @@
 // par le shell Django et retirées après la capture.
 //
 // La « demande » des gardes de saisie (AERR25, 27, 37, 38) est, par conception de la tâche, la confirmation
-// native de `confirmLeaveIfDirty` (`frontend/src/ui/useDirtyGuard.js`) : l'étape l'ATTEND (message exact,
-// réponse choisie « rester » / « quitter ») ; tout AUTRE dialogue natif reste un incident de l'oracle 4.
+// de `confirmLeaveIfDirty` (`frontend/src/ui/useDirtyGuard.js`) — depuis AERR155 la boîte de l'application
+// « Quitter sans enregistrer ? » : l'étape l'ATTEND (réponse choisie « Rester » / « Quitter ») ; tout dialogue
+// natif est un incident de l'oracle 4.
 import { test, expect } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -35,7 +36,7 @@ fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
 const J = JSON.stringify
-const DEMANDE = 'Modifications non enregistrées — quitter cette page ?'
+const DEMANDE = 'Quitter sans enregistrer ?' // AERR155 — titre de la boîte maison de `confirmLeaveIfDirty`
 const SOC = `U.objects.get(username='demo_admin').company_id`
 test.describe.configure({ timeout: 420_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
@@ -68,7 +69,7 @@ async function accordGps(p) {
 
 /** Écran du compte `nom` : contexte neuf (accueil et visites guidées vus, SW bloqué), session par la vraie route
  *  /token/, observé par les oracles. La page demo_admin de l'étape est refermée : la capture montre CET écran.
- *  Les dialogues natifs passent par `demandes` (seule la demande de saisie non enregistrée est attendue). */
+ *  La demande de saisie non enregistrée passe par `dem` (boîte maison) ; tout dialogue natif est un incident. */
 async function ecran(page, suivi, testInfo, nom, viewport = { width: 1600, height: 1000 }) {
   if (!page.isClosed()) await page.close()
   const ctx = await page.context().browser().newContext({
@@ -86,16 +87,20 @@ async function ecran(page, suivi, testInfo, nom, viewport = { width: 1600, heigh
     }
   }
   const p = suivi.surveiller(await ctx.newPage())
-  const dem = { vues: 0, prochaine: null }
-  p.removeAllListeners('dialog')
-  p.on('dialog', async (d) => {
-    if (d.type() === 'confirm' && d.message() === DEMANDE && dem.prochaine) {
-      const reponse = dem.prochaine
+  // AERR155 — la demande est la boîte de l'application « Quitter sans enregistrer ? » ; `dem.repondre()` (lu
+  // par les polls) y donne la réponse choisie. Plus aucun dialogue natif n'est attendu (oracle 4 sur tous).
+  const boite = p.getByRole('alertdialog').filter({ hasText: DEMANDE })
+  const dem = { vues: 0, prochaine: null, boite }
+  dem.repondre = async () => {
+    if (dem.prochaine && await boite.isVisible()) {
+      await boite.getByRole('button', { name: dem.prochaine === 'quitter' ? 'Quitter' : 'Rester', exact: true }).click()
       dem.prochaine = null
       dem.vues += 1
-      await (reponse === 'quitter' ? d.accept() : d.dismiss()).catch(() => undefined)
-      return
     }
+    return dem.vues
+  }
+  p.removeAllListeners('dialog')
+  p.on('dialog', async (d) => {
     suivi.incidents.push({ oracle: '4', texte: `dialogue natif inattendu ${d.type()} : ${d.message()}` })
     await d.dismiss().catch(() => undefined)
   })
@@ -239,20 +244,20 @@ etapeRouge('PF12.1-AERR25', ['AERR25'], async ({ page, suivi, testInfo }) => {
   await champ.description.fill(retouche)
   dem.prochaine = 'rester'
   await ligne(A).getByText(A).click()
-  await expect.poll(() => dem.vues, { message: 'clic sur A : la demande est posée' }).toBe(1)
+  await expect.poll(() => dem.repondre(), { message: 'clic sur A : la demande est posée' }).toBe(1)
   await expect(fiche, 'rester (clic) : toujours B').toHaveAttribute('aria-label', `Détail du ticket ${B}`)
   await expect(champ.description, 'rester (clic) : saisie gardée').toHaveValue(retouche)
   await sortirDuChamp()
   dem.prochaine = 'rester'
   await p.keyboard.press(bApresA ? 'k' : 'j')
-  await expect.poll(() => dem.vues, { message: 'touche vers A : la demande est posée' }).toBe(2)
+  await expect.poll(() => dem.repondre(), { message: 'touche vers A : la demande est posée' }).toBe(2)
   await expect(fiche, 'rester (clavier) : toujours B').toHaveAttribute('aria-label', `Détail du ticket ${B}`)
   await expect(champ.description, 'rester (clavier) : saisie gardée').toHaveValue(retouche)
   await capturer(p, 'PF12.1-AERR25', 2)
   // « Quitter » : la fiche passe à A avec SES champs ; la retouche de B n'est écrite nulle part.
   dem.prochaine = 'quitter'
   await ligne(A).getByText(A).click()
-  await expect.poll(() => dem.vues).toBe(3)
+  await expect.poll(() => dem.repondre()).toBe(3)
   await montre(A, `Onduleur HS ${m}`, 'Urgente', `Couper le disjoncteur ${m}`, 'quitter vers A')
   expect(patchs.length, 'un seul PATCH en tout (celui de B)').toBe(1)
   // Persistance : relire B en base puis à l'écran rechargé.
@@ -364,7 +369,7 @@ etape('PF12.1-AERR27', ['AERR27'], async ({ page, suivi, testInfo }) => {
   await expect(boite, 'Échap ferme la boîte').toBeHidden()
   await expect(fiche, 'la fiche reste ouverte').toHaveAttribute('aria-label', `Détail du ticket ${S1}`)
   await expect(champ.description, 'saisie intacte').toHaveValue(retouche)
-  expect(dem.vues, 'aucune demande : la fiche n\'a pas été visée').toBe(0)
+  await expect(dem.boite, 'aucune demande : la fiche n\'a pas été visée').toHaveCount(0)
   // 2) Liste Technicien ouverte, « k » puis « j » : la sélection ne change pas.
   await champ.technicien.click()
   const liste = p.getByRole('listbox')
@@ -377,12 +382,12 @@ etape('PF12.1-AERR27', ['AERR27'], async ({ page, suivi, testInfo }) => {
   await expect(liste, 'Échap ferme la liste').toBeHidden()
   await expect(fiche, 'Échap dans la liste : fiche ouverte').toHaveAttribute('aria-label', `Détail du ticket ${S1}`)
   await expect(champ.description).toHaveValue(retouche)
-  expect(dem.vues, 'aucune demande pendant la liste').toBe(0)
+  await expect(dem.boite, 'aucune demande pendant la liste').toHaveCount(0)
   // 3) Aucune boîte, focus sur un bouton, Échap : la demande d'abord ; « rester » garde fiche et saisie.
   await fiche.getByRole('button', { name: "Rapport d'intervention (PDF)" }).focus()
   dem.prochaine = 'rester'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues, { message: 'Échap sur la fiche modifiée : demande posée' }).toBe(1)
+  await expect.poll(() => dem.repondre(), { message: 'Échap sur la fiche modifiée : demande posée' }).toBe(1)
   await expect(fiche, 'rester : fiche ouverte').toHaveAttribute('aria-label', `Détail du ticket ${S1}`)
   await expect(champ.description, 'rester : saisie gardée').toHaveValue(retouche)
   await capturer(p, 'PF12.1-AERR27', 2)
@@ -390,7 +395,7 @@ etape('PF12.1-AERR27', ['AERR27'], async ({ page, suivi, testInfo }) => {
   await fiche.getByRole('button', { name: "Rapport d'intervention (PDF)" }).focus()
   dem.prochaine = 'quitter'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues).toBe(2)
+  await expect.poll(() => dem.repondre()).toBe(2)
   await expect(fiche, 'quitter : fiche fermée').toHaveCount(0)
   expect(await champsTicket([ids.tickets[0]]), 'base : description non écrite').toEqual([['normale', `Onduleur ${m}`, '']])
   await p.reload()
@@ -1014,27 +1019,27 @@ etape('PF12.2-AERR38', ['AERR38'], async ({ page, suivi, testInfo }) => {
   await ouvrir()
   await p.keyboard.press('Escape')
   await expect(recette, 'sans saisie : fermeture directe').toBeHidden()
-  expect(dem.vues, 'sans saisie : aucune demande').toBe(0)
+  await expect(dem.boite, 'sans saisie : aucune demande').toHaveCount(0)
   console.log(`[AERR38] après Échap sans saisie, fiche chantier encore ouverte : ${await p.getByTestId('ch6-recette').isVisible()}`)
   // Débit mesuré saisi : Échap ⇒ demande ; rester ⇒ mesure intacte.
   await ouvrir()
   await debit.fill('12.5')
   dem.prochaine = 'rester'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues, { message: 'Échap : demande posée' }).toBe(1)
+  await expect.poll(() => dem.repondre(), { message: 'Échap : demande posée' }).toBe(1)
   await expect(recette, 'rester : fiche ouverte').toBeVisible()
   await expect(debit, 'rester : mesure intacte').toHaveValue('12.5')
   // Clic hors de la boîte ⇒ demande ; rester ⇒ mesure intacte.
   dem.prochaine = 'rester'
   await p.mouse.click(8, 8)
-  await expect.poll(() => dem.vues, { message: 'clic extérieur : demande posée' }).toBe(2)
+  await expect.poll(() => dem.repondre(), { message: 'clic extérieur : demande posée' }).toBe(2)
   await expect(recette, 'rester (clic extérieur) : fiche ouverte').toBeVisible()
   await expect(debit).toHaveValue('12.5')
   await capturer(p, 'PF12.2-AERR38', 1)
   // Quitter : la fiche se ferme, rien n'est écrit.
   dem.prochaine = 'quitter'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues).toBe(3)
+  await expect.poll(() => dem.repondre()).toBe(3)
   await expect(recette).toBeHidden()
   const lue = await lire(r, `/installations/chantiers/${ids.inst}/recette-pompage/`, 'recette relue')
   expect(lue.record?.debit_mesure_m3h ?? null, 'base : aucune mesure enregistrée').toBeNull()
@@ -1229,7 +1234,7 @@ etape('PF12.3-AERR37-reception', ['AERR37'], async ({ page, suivi, testInfo }) =
   await expect(dlg).toBeVisible()
   await p.mouse.click(8, 8)
   await expect(dlg, 'non modifié : fermeture directe').toBeHidden()
-  expect(dem.vues, 'non modifié : aucune demande').toBe(0)
+  await expect(dem.boite, 'non modifié : aucune demande').toHaveCount(0)
   // Saisie : BCF choisi, 2 lignes, 3 n° de série, note.
   await p.getByRole('button', { name: 'Nouvelle réception' }).first().click()
   await dlg.locator('#rec-bon').click()
@@ -1254,16 +1259,16 @@ etape('PF12.3-AERR37-reception', ['AERR37'], async ({ page, suivi, testInfo }) =
   }
   dem.prochaine = 'rester'
   await p.mouse.click(8, 8)
-  await expect.poll(() => dem.vues, { message: 'clic sur le fond : demande posée' }).toBe(1)
+  await expect.poll(() => dem.repondre(), { message: 'clic sur le fond : demande posée' }).toBe(1)
   await saisie('rester (clic extérieur)')
   await capturer(p, 'PF12.3-AERR37-reception', 1)
   dem.prochaine = 'rester'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues, { message: 'Échap : demande posée' }).toBe(2)
+  await expect.poll(() => dem.repondre(), { message: 'Échap : demande posée' }).toBe(2)
   await saisie('rester (Échap)')
   dem.prochaine = 'quitter'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues).toBe(3)
+  await expect.poll(() => dem.repondre()).toBe(3)
   await expect(dlg, 'quitter : boîte fermée').toBeHidden()
   expect(await py(`from apps.achats.models import BonCommandeFournisseur
 b = BonCommandeFournisseur.objects.get(pk=${ids.bcfs[0]})
@@ -1294,22 +1299,22 @@ etape('PF12.3-AERR37-bcf', ['AERR37'], async ({ page, suivi, testInfo }) => {
   await ouvrir()
   await p.keyboard.press('Escape')
   await expect(dlg, 'non modifié : fermeture directe').toBeHidden()
-  expect(dem.vues).toBe(0)
+  await expect(dem.boite).toHaveCount(0)
   await ouvrir()
   await dlg.locator('#bcf-note').fill(`Livraison quai 2 ${m}`)
   dem.prochaine = 'rester'
   await p.mouse.click(8, 8)
-  await expect.poll(() => dem.vues, { message: 'clic extérieur : demande posée' }).toBe(1)
+  await expect.poll(() => dem.repondre(), { message: 'clic extérieur : demande posée' }).toBe(1)
   await expect(dlg, 'rester : boîte ouverte').toBeVisible()
   await expect(dlg.locator('#bcf-note'), 'rester : saisie gardée').toHaveValue(`Livraison quai 2 ${m}`)
   dem.prochaine = 'rester'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues, { message: 'Échap : demande posée' }).toBe(2)
+  await expect.poll(() => dem.repondre(), { message: 'Échap : demande posée' }).toBe(2)
   await expect(dlg.locator('#bcf-note')).toHaveValue(`Livraison quai 2 ${m}`)
   await capturer(p, 'PF12.3-AERR37-bcf', 1)
   dem.prochaine = 'quitter'
   await p.keyboard.press('Escape')
-  await expect.poll(() => dem.vues).toBe(3)
+  await expect.poll(() => dem.repondre()).toBe(3)
   await expect(dlg).toBeHidden()
   expect(await py(`from apps.achats.models import BonCommandeFournisseur
 sortie(BonCommandeFournisseur.objects.get(pk=${ids.bcfs[0]}).note)`), 'base : note non écrite').toBeNull()

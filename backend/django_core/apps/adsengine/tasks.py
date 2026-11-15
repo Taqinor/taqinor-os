@@ -295,8 +295,8 @@ def check_prepaid_balance(company, conn, client):
         return None
     try:
         info = reader() or {}
-    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks.check_prepaid_balance : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks.check_prepaid_balance : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
         return None
 
     # Dépense quotidienne courante : médiane des spends campagne des 7 derniers
@@ -372,8 +372,8 @@ def check_account_health(company, conn, client):
         return None
     try:
         health = reader() or {}
-    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro (D-ENF22-BLE001)
-        logger.warning("tasks.check_account_health : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — la santé n'empêche jamais la synchro (D-ENF22-BLE001)
+        logger.warning("tasks.check_account_health : erreur ignorée (mode dégradé)", exc_info=degrader(exc))
         return None
 
     entity_key = 'account_status'
@@ -1155,32 +1155,32 @@ def backfill_complet(company_id):
     # 1) Historique des insights niveau ad (réutilise le cœur ADSDEEP3).
     try:
         summary['insights'] = backfill_insights_for_connection(conn)
-    except Exception:  # noqa: BLE001 — une étape en échec n'arrête pas les autres (D-ENF22-BLE001)
+    except Exception as exc:  # noqa: BLE001 — une étape en échec n'arrête pas les autres (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: insights KO (société %s)',
-                       company.pk, exc_info=True)
+                       company.pk, exc_info=degrader(exc))
 
     # 2) Breakdowns de chaque campagne miroir (réutilise le cœur ADSDEEP8).
     try:
         summary['breakdowns'] = sync_breakdowns_for_company(company, client)
-    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: breakdowns KO (société %s)',
-                       company.pk, exc_info=True)
+                       company.pk, exc_info=degrader(exc))
 
     # 3) Miroir du créatif LIVE de chaque ad (ADSDEEP11).
     try:
         summary['creatives'] = sync_ad_creatives(company, client)
-    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: créatifs KO (société %s)',
-                       company.pk, exc_info=True)
+                       company.pk, exc_info=degrader(exc))
 
     # 4) Pull-sync des leads lead-form (ADSDEEP18) — token résolu FIXPUB1.
     try:
         access_token, _src = _lead_ads_access_token(conn)
         summary['leads'] = pull_ad_leads_for_company(
             company, conn, client, access_token=access_token)
-    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: leads KO (société %s)',
-                       company.pk, exc_info=True)
+                       company.pk, exc_info=degrader(exc))
 
     logger.info('adsengine.backfill_complet: société %s — %s',
                 company.pk, summary)

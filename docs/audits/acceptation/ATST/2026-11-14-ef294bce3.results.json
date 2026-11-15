@@ -1,0 +1,34 @@
+{
+  "sha": "ef294bce37fe08dfa6f919510ac993092947d8df",
+  "date": "2026-11-14",
+  "groupe": "ATST",
+  "verdict": "PASS",
+  "couvre": [
+    "ATST30"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF7.e2e-proposition-ATST30",
+      "taches": [
+        "ATST30"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATST/traces/2026-11-14/ATST30-e2e-proposition.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "job CI requis e2e-shard (2) de la PR #1411 (run 43642891367, tête 346dc2d37) : apps/web servi en dev (WEB_URL=http://127.0.0.1:4321), AGR318/CIQ334/CIQ346 /proposition FR puis AR exécutés (non sautés) et verts, 16 passed ; rejeu identique sur runner (run 43647860879, sha ef294bce3) : 15 passed, captures FR/AR des 3 specs jointes (traces/2026-11-14/ATST30-*-proposition-{fr,ar}.jpg) ; comparer(page, /data/) == [] et total_ttc compare dans chaque langue ; oracle 6 = tests /proposal des memes specs verts (3 p. agricole et commercial, 4 p. industriel) ; oracles 1-4 et 8 non observes par ces specs (NA)"
+    }
+  ]
+}

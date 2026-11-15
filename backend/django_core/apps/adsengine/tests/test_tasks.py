@@ -156,6 +156,46 @@ class SyncInsightsRunTests(TestCase):
             sync_ad_creatives(self.company, Client())
         self.assertEqual(len(lus), 2)
 
+    def test_limite_douce_dans_la_lecture_du_solde_fait_echouer_la_synchro(self):
+        """ACEL90 — la limite douce levée par ``get_account_balance`` n'est pas
+        avalée par l'``except`` interne de ``check_prepaid_balance`` ; une autre
+        exception reste avalée."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        class Client(FakeMetaClient):
+            erreur = SoftTimeLimitExceeded()
+
+            def get_account_balance(self):
+                raise self.erreur
+
+        with patch('apps.adsengine.meta_client.MetaClient') as mock_cls:
+            mock_cls.from_connection.return_value = Client()
+            with self.assertRaises(SoftTimeLimitExceeded):
+                sync_insights_daily()
+            Client.erreur = RuntimeError('boom')
+            self.assertEqual(sync_insights_daily(), {'companies_synced': 1})
+
+    def test_limite_douce_au_releve_des_leads_fait_echouer_backfill_complet(self):
+        """ACEL90 — la limite douce levée au relevé des leads n'est pas avalée
+        par l'``except`` de l'étape 4 de ``backfill_complet``."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        from apps.adsengine.tasks import backfill_complet
+
+        cmd = ('apps.adsengine.management.commands.insights_backfill.'
+               'backfill_insights_for_connection')
+        with patch('apps.adsengine.meta_client.MetaClient.from_connection',
+                   return_value=object()), \
+                patch(cmd, return_value=0), \
+                patch('apps.adsengine.tasks.sync_breakdowns_for_company',
+                      return_value=0), \
+                patch('apps.adsengine.tasks.sync_ad_creatives',
+                      return_value=0), \
+                patch('apps.adsengine.tasks.pull_ad_leads_for_company',
+                      side_effect=SoftTimeLimitExceeded()):
+            with self.assertRaises(SoftTimeLimitExceeded):
+                backfill_complet(self.company.id)
+
     @patch('apps.adsengine.meta_client.MetaClient')
     def test_autre_exception_garde_l_isolation(self, mock_cls):
         mock_cls.from_connection.return_value = FakeMetaClient()

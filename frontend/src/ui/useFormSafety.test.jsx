@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { useFormSafety } from './useFormSafety'
 
 /* VX170 — useFormSafety : la primitive commune qui compose diff générique +
@@ -49,15 +49,16 @@ describe('useFormSafety — diff générique + fermeture gardée', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('guardedClose demande confirmation quand modifié — accord = onClose appelé', () => {
+  it('guardedClose demande confirmation quand modifié — accord = onClose appelé', async () => {
     const onClose = vi.fn()
+    // Hors ConfirmProvider, `useConfirm` retombe sur la demande native ; la réponse est asynchrone (AERR155).
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const initial = { nom: 'Ali' }
     const { result } = renderHook(() => useFormSafety(initial, { nom: 'Autre' }, onClose))
 
     result.current.guardedClose()
 
-    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 
   it('snapshot renvoie l’état courant tel quel', () => {
