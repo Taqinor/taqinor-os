@@ -354,7 +354,10 @@ etape('PF9.4-ACNC72-fiche-facture', ['ACNC72'], async ({ page, suivi, testInfo }
   await dlg.locator('#pay-montant').fill('3000')
   await dlg.getByRole('button', { name: 'Ajouter le paiement' }).click()
   await expect.poll(() => envois.length, { timeout: 30_000 }).toBe(1)
-  await expect(dlg.getByRole('alert').first(), 'échec sans réponse affiché').toBeVisible({ timeout: 60_000 })
+  // ACNC75 (15/11) : la fiche relue après la réponse perdue dit le règlement enregistré à la place du bandeau d'échec.
+  await expect(dlg.getByText(/Paiement de 3\s?000\s?MAD enregistré \(réponse perdue, fiche relue\)\./),
+    'réponse perdue : fiche relue, règlement dit enregistré').toBeVisible({ timeout: 60_000 })
+  await expect(dlg.getByText("L'enregistrement du paiement a échoué."), 'plus de bandeau d\'échec').toHaveCount(0)
   expect((await reglements(x))[0], 'le 1er POST est passé au serveur').toEqual({ reglements: ['3000.00'], solde: '7000.00' })
   // Montant changé (1 000) ⇒ clé NEUVE, 201.
   await dlg.locator('#pay-montant').fill('1000')
