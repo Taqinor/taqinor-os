@@ -164,12 +164,13 @@ export function useCanLireInterventions() {
 // `records_scope*`, ni `portail_*`) ; un compte hérité sans rôle fin suit son
 // palier (`state.auth.role`). Un Lecteur (Viewer, que des `*_voir`) est donc
 // refusé (403) par toute garde `IsResponsableOrAdmin` : l'écran n'appelle pas.
-function estResponsable(role, roleNom, permissions) {
+export function estResponsable(role, roleNom, permissions) {
   if (role === 'admin') return true
   if (!roleNom && permissions.length === 0) return role === 'responsable'
   return permissions.some((c) => typeof c === 'string'
     && !c.endsWith('_voir') && !c.endsWith('_view')
-    && !c.startsWith('records_scope') && !c.startsWith('portail_'))
+    && !c.startsWith('records_scope') && !c.startsWith('portail_')
+    && !c.startsWith('custom_object.'))  // ATST59 — hors registre : aucun palier (ATST13)
 }
 
 // `GET /monitoring/configs/co2-fleet/` (ImpactPastille) : `IsResponsableOrAdmin`

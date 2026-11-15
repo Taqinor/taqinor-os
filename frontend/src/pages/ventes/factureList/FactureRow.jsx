@@ -405,13 +405,13 @@ export default function FactureRow({ f, ctx }) {
                 {isAdmin && (f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
                   <DropdownMenuItem
                     data-testid="marquer-payee"
-                    onSelect={(e) => { e.preventDefault(); openMarquerPayee(f) }}>
+                    onSelect={() => openMarquerPayee(f)}>
                     <Check /> Marquer payée (sans détail)
                   </DropdownMenuItem>
                 )}
                 {/* APX14 — aperçu du PDF SANS quitter l'écran. ADRG128 — route `ventes_pdf`. */}
                 {peutPdf && f.fichier_pdf && (
-                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPreview(f) }}>
+                  <DropdownMenuItem onSelect={() => openPreview(f)}>
                     <Eye /> Aperçu du PDF
                   </DropdownMenuItem>
                 )}
@@ -444,7 +444,7 @@ export default function FactureRow({ f, ctx }) {
                 {/* WIR103/ZFAC4 — note de débit (pendant de l'avoir) :
                     création + PDF, jusqu'ici serveur-only sans aucune UI. */}
                 {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openNoteDebit(f) }}>
+                  <DropdownMenuItem onSelect={() => openNoteDebit(f)}>
                     <ReceiptText /> Note de débit
                   </DropdownMenuItem>
                 )}
@@ -479,14 +479,14 @@ export default function FactureRow({ f, ctx }) {
                   && parseFloat(f.montant_du ?? 0) > 0 && (
                   <DropdownMenuItem
                     data-testid="abandonner-solde"
-                    onSelect={(e) => { e.preventDefault(); openAbandonSolde(f) }}>
+                    onSelect={() => openAbandonSolde(f)}>
                     Abandonner le solde…
                   </DropdownMenuItem>
                 )}
                 {peutEncaisser && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
                     data-testid="retour-client"
-                    onSelect={(e) => { e.preventDefault(); openRetourClient(f) }}>
+                    onSelect={() => openRetourClient(f)}>
                     Retour client…
                   </DropdownMenuItem>
                 )}

@@ -216,6 +216,46 @@ class IntegrityCheckTests(XGed6Base):
             archivage=archivage_b).values_list('resultat', flat=True)),
             [CONTROLE_RESULTAT_OK])
 
+    def test_limite_douce_au_stockage_n_accuse_pas_l_archive(self):
+        """ACEL96 (C-ACEL-VER3-301) — la limite douce levée par le client MinIO
+        (la vraie ``fetch_attachment`` exécutée) remonte : ni « indisponible » ni
+        alerte « introuvable » pour B ; une autre erreur reste « Fichier introuvable. »."""
+        import io
+
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        from apps.notifications.models import Notification
+        from apps.records.storage import fetch_attachment
+        doc_b = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Bail B')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(self.contenu_original, None)):
+            DocumentVersion.objects.create(
+                company=self.co_a, document=doc_b, version=1,
+                file_key='ged/xged6/doc-b.pdf', filename='doc-b.pdf',
+                mime='application/pdf',
+                checksum=services.compute_checksum(self.contenu_original))
+            archivage_b = services.archiver_legalement(
+                doc_b, user=self.admin_a, motif='ACEL96')
+
+        def get_object(Bucket, Key):
+            if Key == 'ged/xged6/doc-b.pdf':
+                raise SoftTimeLimitExceeded()
+            return {'Body': io.BytesIO(b'contenu MODIFIE')}
+
+        client = mock.Mock(get_object=mock.Mock(side_effect=get_object))
+        with mock.patch('apps.reporting.journal_problemes.consigner_echec_tache'), \
+                mock.patch('apps.records.storage.get_minio_client', return_value=client), \
+                self.assertRaises(SoftTimeLimitExceeded):
+            services.verifier_integrite_archives(self.co_a)
+        notes = Notification.objects.filter(recipient=self.admin_a, event_type='security_alert')
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('Contrat archivé', notes.get().title)
+        self.assertFalse(ControleIntegrite.objects.filter(archivage=archivage_b).exists())
+        client.get_object.side_effect = RuntimeError('minio KO')
+        with mock.patch('apps.records.storage.get_minio_client', return_value=client):
+            self.assertEqual(fetch_attachment('ged/xged6/doc-b.pdf'), (None, 'Fichier introuvable.'))
+
 
 class DossierPreuveTests(XGed6Base):
     def test_dossier_preuve_contains_hash_and_controles(self):

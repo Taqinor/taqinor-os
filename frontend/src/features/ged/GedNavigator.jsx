@@ -982,7 +982,8 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           </DialogClose>
         </DialogFooter>
       </DialogContent>
-      {redactOpen && (
+      {/* AERR174 — aperçu fermé (doc nul) : aucune fenêtre fille ne lit `doc.id`. */}
+      {doc && redactOpen && (
         <RedactZonesDialog
           documentId={doc.id}
           versionId={version?.id}
@@ -990,7 +991,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           onDone={() => { setRedactOpen(false); onClose(); onCaviarde?.() }}
         />
       )}
-      {splitOpen && (
+      {doc && splitOpen && (
         <SplitDocumentDialog
           documentId={doc.id}
           versionId={version?.id}
@@ -998,14 +999,14 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           onDone={() => { setSplitOpen(false); onClose(); onCaviarde?.() }}
         />
       )}
-      {compareOpen && (
+      {doc && compareOpen && (
         <CompareVersionsDialog
           documentId={doc.id}
           versions={allVersions}
           onClose={() => setCompareOpen(false)}
         />
       )}
-      {versionsOpen && (
+      {doc && versionsOpen && (
         <VersionsDialog
           documentId={doc.id}
           versions={allVersions}

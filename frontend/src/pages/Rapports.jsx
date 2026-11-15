@@ -463,6 +463,11 @@ export function Component() {
   // ADRG125 — chaque carte suit la règle de sa route (IsResponsableOrAdmin + lecture du module).
   const peutVentes = useCanLireVentes(), peutStock = useDroitMetier('stock_voir')
   const peutLireChantiers = useDroitMetier('installation_voir') && palierResp
+  // ADRG138 — attribution (crm), revenu récurrent (sav), analytics (ventes) : IsResponsableOrAdmin + lecture du module.
+  const droitCrm = useDroitMetier('crm_voir'), droitSav = useDroitMetier('sav_voir')
+  const peutAttribution = estAdmin || (palierResp && droitCrm)
+  const peutRecurrent = estAdmin || (palierResp && droitSav)
+  const peutAnalytics = estAdmin || (palierResp && peutVentes)
 
   const setCardStatus = useCallback((key, value) => {
     setStatus((s) => ({ ...s, [key]: value }))
@@ -505,22 +510,22 @@ export function Component() {
     const attrParams = {}
     if (from) attrParams.debut = from
     if (to) attrParams.fin = to
-    load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
-  }, [from, to, load, peutLireChantiers, peutVentes, peutStock])
+    if (peutAttribution) load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
+  }, [from, to, load, peutLireChantiers, peutVentes, peutStock, peutAttribution])
 
   // Les insights (all-time) ne sont chargés qu'une fois.
   useEffect(() => {
-    load('recurring', reportingApi.recurringRevenue(), setRecurring)
+    if (peutRecurrent) load('recurring', reportingApi.recurringRevenue(), setRecurring)
     // Réservé owner/responsable — un refus (403) est traité comme « erreur ».
     if (estAdmin) load('jobCosting', reportingApi.jobCosting(), setJobCosting)
-    load('analytics', reportingApi.analytics(), setAnalytics)
+    if (peutAnalytics) load('analytics', reportingApi.analytics(), setAnalytics)
     // N99 — réservé admin.
     if (estAdmin) load('commissions', reportingApi.commissions(), setCommissions)
     // WIR22 — réservé responsable/admin (backend IsResponsableOrAdmin).
     load('integrite', reportingApi.integriteInsight(), setIntegrite)
     // WIR100(c) — réservé admin (un 403 est traité comme « erreur »).
     if (estAdmin) load('profitability', reportingApi.profitability(), setProfitability)
-  }, [load, estAdmin])
+  }, [load, estAdmin, peutRecurrent, peutAnalytics])
 
   // Paramètres de filtre du Journal (envoyés à l'endpoint et à l'export).
   const auditParams = {}
@@ -708,7 +713,7 @@ export function Component() {
           ))}
 
           {/* ZSAL6 — Attribution des leads (par commercial + par source). */}
-          {renderReportCard('attribution', 'Attribution des leads', () => (
+          {peutAttribution && renderReportCard('attribution', 'Attribution des leads', () => (
             <InsightCard title="Attribution des leads"
                          note="Répartition des leads par commercial et par canal, croisée avec la conversion et le CA signé.">
               <Subhead>Par commercial</Subhead>
@@ -830,7 +835,7 @@ export function Component() {
         {/* ── Insights ── */}
         <TabsContent value="insights">
           <div className="space-y-6">
-            <InsightCard title="Revenu récurrent (contrats de maintenance)"
+            {peutRecurrent && <InsightCard title="Revenu récurrent (contrats de maintenance)"
                          onExport={exportInsight('recurring-revenue')}
                          busy={insightExportBusy['recurring-revenue']}>
               {status.recurring === 'error' ? (
@@ -849,7 +854,7 @@ export function Component() {
                          footer={[`Total (${recurring.upcoming.length})`, '', '', fmt(sumBy(recurring.upcoming, 'monthly_equivalent'))]} />
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
-            </InsightCard>
+            </InsightCard>}
 
             {peutJournal && <InsightCard title="Journal d'activité (qui a fait quoi)"
                          onExport={exportInsight('audit-log', auditParams)}
@@ -912,7 +917,7 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>}
 
-            <InsightCard title="Analytics (délais & kWc installés)"
+            {peutAnalytics && <InsightCard title="Analytics (délais & kWc installés)"
                          onExport={exportInsight('analytics')}
                          busy={insightExportBusy['analytics']}>
               {status.analytics === 'error' ? (
@@ -939,7 +944,7 @@ export function Component() {
                   )}
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
-            </InsightCard>
+            </InsightCard>}
 
             {estAdmin && <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"

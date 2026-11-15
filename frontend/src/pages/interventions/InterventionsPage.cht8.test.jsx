@@ -303,8 +303,34 @@ describe('InterventionsPage — ADRG134 utilisateurs assignables', () => {
     expect(crmApi.getAssignableUsers).not.toHaveBeenCalled()
   })
   it('Commercial responsable : une lecture', async () => {
-    rendreAvec({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_modifier'] })
+    rendreAvec({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_modifier', 'installation_voir'] })
     expect((await screen.findAllByText('Client Cent Un')).length).toBeGreaterThan(0)
     expect(crmApi.getAssignableUsers).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ADRG139 — `installations/interventions/` exige la lecture du module : un Commercial responsable ne l'appelle pas.
+describe('InterventionsPage — ADRG139 lecture du module', () => {
+  const rendreAvec = (auth) => {
+    const store = configureStore({
+      reducer: { auth: authReducer },
+      preloadedState: { auth: { user: { id: 1 }, isAuthenticated: true, loading: false, ...auth } },
+    })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/interventions']}><InterventionsPage /></MemoryRouter>
+      </Provider>,
+    )
+  }
+  it('Commercial responsable : aucun GET interventions', async () => {
+    rendreAvec({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_modifier'] })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(installationsApi.getInterventions).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Impossible de charger les interventions/)).toBeNull()
+  })
+  it('Technicien responsable : la liste est lue', async () => {
+    rendreAvec({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'installation_gerer'] })
+    expect((await screen.findAllByText('Client Cent Un')).length).toBeGreaterThan(0)
+    expect(installationsApi.getInterventions).toHaveBeenCalled()
   })
 })

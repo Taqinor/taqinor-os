@@ -702,6 +702,37 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.restaurerVersionDocument).toHaveBeenCalledWith(8, 22))
   })
 
+  it("Échap sur Versions puis sur l'aperçu : aucune erreur", async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf', created_at: '2026-05-01T09:00:00Z' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf', created_at: '2026-06-01T09:00:00Z' },
+    ]))
+    const erreurs = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderGed(AUTH_DIRECTEUR)
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Versions…$/i }))
+    await screen.findByText('Versions du document')
+
+    // Deux Échap enchaînés sans attendre le rendu (geste clavier réel).
+    await userEvent.keyboard('{Escape}{Escape}')
+    await waitFor(() => expect(screen.queryByText('Versions du document')).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Versions…$/i })).toBeNull())
+
+    expect(screen.getAllByText('Docs').length).toBeGreaterThan(0)
+    const typeErrors = erreurs.mock.calls.flat().filter((m) => /TypeError|Cannot read properties/.test(String(m)))
+    expect(typeErrors).toEqual([])
+    erreurs.mockRestore()
+  })
+
   it('XGED14 — étiquette la sélection par lot et affiche le rapport d’erreurs', async () => {
     gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
     gedApi.getDossiers.mockResolvedValue(ok([

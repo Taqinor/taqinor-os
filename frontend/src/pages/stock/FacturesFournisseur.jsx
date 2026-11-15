@@ -279,7 +279,11 @@ export function FactureDetail({
       onSaved?.()
     } catch (err) {
       setError(frError(err, "L'enregistrement du paiement a échoué."))
-      if (!err?.response) onSaved?.()  // ACNC23 — réponse perdue : relire la facture, même clé au prochain clic
+      if (!err?.response) {  // ACNC23 — réponse perdue : relire la facture, même clé au prochain clic
+        onSaved?.()  // ACNC73 — la fiche relit aussi SA copie (règlement passé + solde relu)
+        stockApi.getFactureFournisseur(facture.id).then((r) => setFacture(r.data))
+          .catch((e) => setError(frError(e, "Le paiement n'a pas pu être confirmé — rouvrez la facture.")))
+      }
     } finally { setBusy(false) }
   }
 
