@@ -1,206 +1,159 @@
 <!-- verifie | groupe: ACNC | pct: 98 | ecarts_s1_s2: 1 -->
-# Vérifie ACNC — contre-visite des correctifs du 14/11 (2e passe), parcours PF9 « gestes rejoués et courses », 15/11/2026
+# Vérifie ACNC — contre-visite d'ACNC73 (3e passe ACNC, 2e du 15/11), parcours PF9 « gestes rejoués et courses », 15/11/2026
 
-Commande `loop audit` (15/11). Le registre annonce « ACNC : 98 % cochées (54/55) — vérifie dû, contre-visite des correctifs
-(écarts S1-S2 du 2026-11-14 tous cochés) ». Contre-visite étroite (METHODE §C.4.6) : les trois tâches d'écart déposées hier
-(ACNC70, 71, 72), ce qu'elles ont pu casser, ACNC23 et les deux sondes VER2. Rien n'a été construit, déployé ni coché.
+Le registre annonce « ACNC (PF9 rejeu-concurrence) : 98 % cochées (55/56) — vérifie dû, contre-visite des correctifs (écarts
+S1-S2 du 2026-11-15 tous cochés) » (`audit_registre.py --du`, garde d'acceptation neutralisée, relu dans cette passe).
+Contre-visite étroite (METHODE §C.4.6) : la seule tâche d'écart déposée ce matin, ACNC73 (C-ACNC-VER3-300, S1), ce qu'elle a
+pu casser (ACNC67, ACNC72), la sonde VER3-300, ACNC23 et le S3 VER2-203. Rien n'a été construit, déployé ni coché. Ce compte
+rendu remplace celui du matin (§C.4.5 f) ; la passe du matin est résumée en §8.
 
 ## 0. Préconditions
 
-- **SHA.** `origin/main` = `8fc408bf61` (merge de la PR #1415). Branche : `verifie-1511`.
-- **Registre.** `audit_registre.py --du` (garde d'acceptation neutralisée) : ACNC 98 % (54/55). Reste ouverte ACNC56
-  (acceptation du groupe). Neuf tâches restent `[BLOCKED: code livré dev-all (13/11/2026), preuve en direct due]` : ACNC7,
-  21-24, 28, 29, 42, 44.
-- **Échantillon.** Les trois tâches d'écart d'hier, toutes : ACNC70 (S1), ACNC71 (S2), ACNC72 (S3).
-- **Commits lus.** `a3ff194619` (ACNC70), `706e63f391` (ACNC71), `b4f94e3386` (ACNC72) ; tests nommés ; enregistrement
-  d'acceptation `docs/audits/acceptation/ACNC/2026-11-14-8cd81386e.md` (PASS, `couvre: [ACNC70, ACNC71, ACNC72]`) et sa spec
-  `frontend/e2e/acceptation/acnc6.spec.js`.
-- **Méthode.** Lecture du code de `8fc408bf61`, greps des chemins de verrou et des créateurs de facture, trois sondes hôte
-  jouées (§3, §4). Aucune pile, aucun test Django ni vitest lancé, aucun Docker, aucune production.
+- **SHA.** `origin/main` = `d9164c12e2` (merge de la PR #1419). Branche : `verifie-1511b`, à jour.
+- **Commits lus.** `a7bc1291ec` (ACNC73, code + vitest), `0d6d14351d` / `c3820441e6` (spec `frontend/e2e/acceptation/acnc7.spec.js`),
+  `4452ed31d6` (enregistrement `docs/audits/acceptation/ACNC/2026-11-15-c3820441e.md`, PASS, `couvre: [ACNC73]`).
+- **Méthode.** Lecture du code de `d9164c12e2` (écran ET serveur des deux portes de règlement fournisseur), greps des créateurs
+  de `PaiementFournisseur`, des tests et des specs qui règlent une facture fournisseur, deux sondes hôte jouées (§4). Aucune
+  pile, aucun test Django ni vitest lancé, aucun Docker, aucune base, aucune production.
 
 ## 1. Vérificateur
 
-1 orchestrateur-vérificateur frais (opus/high), lecture seule, en un seul passage (périmètre de trois tâches).
+1 orchestrateur-vérificateur frais (opus/high), lecture seule, en un seul passage (périmètre d'une tâche).
 
 | Verdict | Nombre | Tâches |
 |---|---|---|
-| ok | **2** | ACNC70, ACNC71 |
-| régression | **1** | ACNC72 : correct sur le registre ; sur son jumeau « traité ici à l'identique », la fiche facture fournisseur, il ouvre un double règlement (§3) |
-| partiel / non-fait / faux | **0** | — |
+| ok | 0 | — |
+| partiel | **1** | ACNC73 : tenu sur le chemin spécifié ; la clause « une saisie retouchée ne crée plus un second règlement à l'insu de l'utilisateur » ne tient pas sur trois chemins voisins, faute de garde serveur (§3.1) |
+| non-fait / faux / régression | **0** | — |
 
-## 2. Les écarts d'hier, sur pièces
+## 2. ACNC73 sur pièces
 
-| Écart | Tâche | État | Fermé ? |
-|---|---|---|---|
-| C-ACNC-VER2-200 (S1) | ACNC70 | cochée (rejeu PASS `8cd81386e`) | **Fermé.** Détail ci-dessous. |
-| C-ACNC-VER2-201 (S2) | ACNC71 | cochée (rejeu PASS `8cd81386e`) | **Fermé à l'écran.** Détail ci-dessous. |
-| C-ACNC-VER2-202 (S3) | ACNC72 | cochée (rejeu PASS `8cd81386e`) | **Fermé sur le registre** ; régression S1 sur le jumeau (§3). |
-| C-ACNC-VER2-203 (S3) | — | sans tâche | **Ouvert, inchangé** (`FactureViewSet.perform_create` intouché depuis `295d52fcc8`). |
+### 2.1 Ce qui est livré
 
-### 2.1 ACNC70 — « Facturer la vente » complète ∥ « Annuler » le BC
+- `frontend/src/pages/stock/FacturesFournisseur.jsx::FactureDetail`, branche `!err?.response` d'`ajouter` : `onSaved?.()`
+  (liste) puis `stockApi.getFactureFournisseur(facture.id).then((r) => setFacture(r.data))`, avec en cas d'échec de la
+  relecture « Le paiement n'a pas pu être confirmé — rouvrez la facture. ». La remise de clé ACNC72
+  (`useEffect` sur `[montant, datePaiement, mode]`) est inchangée. +4 lignes nettes, conforme au « Code net ».
+- **Serveur : rien.** Les deux portes, `apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet._ajouter_paiement`
+  (suffixe d'idempotence `paiements.<pk>`) et `apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_create`
+  (registre, autre espace de clés), ne refusent sous verrou que l'excédent du solde
+  (`apps/stock/services.py::verrouiller_facture_fournisseur_et_verifier_solde`). Aucun contrôle du paiement identique
+  (grep `confirmer_doublon|paiement_similaire` dans `apps/stock` : 0). La protection d'ACNC73 est **à l'écran seulement**.
 
-- **Verrou dans la transaction.** `backend/django_core/apps/ventes/domain/facturation_vente.py::_creer_brouillon_complet` lit
-  désormais le BC par `BonCommande.objects.select_for_update().filter(devis=…, company_id=…).first()`. La fonction n'est appelée
-  que par `_facturer_complete` ← `facturer_vente`, sous `with transaction.atomic()` après `verrouiller_vente`.
-  `facturation_ops.py::facturer_devis_complet` passe par `facturer_vente` : même chemin.
-- **Gardes rejouées sur la ligne relue.** Après la prise du verrou, `bc.statut == ANNULE` et
-  `Facture.objects.filter(bon_commande=bc).exists()` sont lus sur la ligne relue (nouvelle instruction, READ COMMITTED) :
-  - si « Annuler » valide d'abord, la facture naît sans `bon_commande` ;
-  - si la facturation valide d'abord, `annuler` relit la facture vivante et répond 409.
-- **Ordre des verrous**, relevé sur tous les `select_for_update` du BC et tous les appels à `verrouiller_vente` :
-  - `facturer_vente` et `creer_facture` : vente puis BC. `creer_facture` appelle désormais `verrouiller_vente(bc.devis)` avant
-    de relire le BC.
-  - `annuler`, `confirmer`, `marquer_livre`, `livrer_partiel` : BC seul, puis produits et réservations.
-    `_sortir_reliquat_bc`, `lignes_reliquat_vente` et `solder_reservations_chantier_vente` ne verrouillent jamais la vente.
-  - `perform_update` (BC) : nouveau devis, puis l'UPDATE du BC.
-  - `annuler_facture`, `verrouiller_emission`, `echeancier`, `encaissements`, `devis_cycle` : vente, puis facture, sans BC.
-  - `revision.py` (avenant accepté) et `annulation_facture.py::detacher_bc_annules` : écriture du BC sous le verrou de la racine
-    déjà pris.
-  - `BonCommande.save` ne touche pas au devis, et aucun receveur `post_save` n'est branché sur le BC.
-  - **Aucune inversion vente/BC trouvée.** `verrouiller_vente` prend toujours la racine en premier (tri par pk), ce qui
-    sérialise aussi le cas d'un BC re-pointé d'une version à l'autre.
-- **Autres créateurs.** Seuls trois chemins créent une facture rattachée à un BC : `_creer_brouillon_complet`, `creer_facture`
-  et la création CRUD (VER2-203, §6). Ni `_facturer_acompte` ni les tranches ne posent `bon_commande`.
-- **Test.** `backend/django_core/apps/ventes/tests/test_aud118_annuler_bc_facture.py::AnnulerBcConcurrenceTests::test_annuler_croise_facturer_vente_complete`.
-  - Il oppose **deux vraies connexions** (`TransactionTestCase`, fil avec `connection.close()`) au vrai `facturer_vente`, sans
-    verrou posé par le test, et attend `attendre_un_ecrivain_bloque`.
-  - Il ne couvre qu'un ordre (facturation d'abord). Aucun test ne croise `creer_facture` avec `facturer_vente` : l'absence
-    d'interblocage n'est établie que par lecture.
-- **Sonde VER2-200 rejouée** sur `8fc408bf61` : `repro: false` (§4).
+### 2.2 Chemin par chemin
 
-### 2.2 ACNC71 — clé et saisie de « Note de débit »
+| Chemin | Résultat sur `d9164c12e2` |
+|---|---|
+| Réponse perdue APRÈS commit, puis retouche de date / mode / montant | Sûr si la relecture revient : la fiche montre le règlement et le solde relu (vitest + rejeu PASS). La retouche crée encore un second règlement, mais visible. Le bandeau « L'enregistrement du paiement a échoué. » reste affiché à côté (§3.2). |
+| Délai de 20 s dépassé (`frontend/src/api/axios.js`, toast « … réessayez ») pendant que le POST est encore en vol | **Non sûr.** La relecture part aussitôt, non attendue, et lit la facture AVANT le commit : « Aucun paiement », solde 10 000, sans erreur. Une retouche part sous une clé neuve ; le serveur attend le verrou, puis accepte (3 000 ≤ 7 000). |
+| Relecture elle-même en échec (réseau toujours coupé) | Copie périmée gardée, avec le message « … n'a pas pu être confirmé — rouvrez la facture. ». Une retouche crée un second règlement. |
+| Double clic | Sûr : bouton `loading`, et clé posée avant l'`await` (même clé, rejeu ou 409 en vol). |
+| Deux onglets, ou fiche + registre, sur la même facture | **Non sûr** : deux clés, deux espaces de clés ; aucun contrôle serveur ; second règlement silencieux (jumeau exact de D-ACNC-1). |
+| Registre (`PaiementsFournisseurLedgerPage.jsx`) | Inchangé depuis ACNC72 (`git log` : dernier commit `b4f94e3386`) : `charger()` relit la ligne ; ACNC67 n'est pas cassée. |
+| Règlement groupé (campagne de paiement) | `apps/stock/services.py::enregistrer_paiement_fournisseur_depuis_run` ni verrou ni plafond, mais **aucun appelant** (grep `depuis_run` : 1 définition ; `apps/compta` en coquille). Idem `add_paiement_sous_traitant` (seul appelant : `backend/parked/compta`). Optionnel. |
+| Reprise après rechargement | Sûr : `openFacture` relit la facture ; un nouveau règlement est alors un geste voulu, sur une fiche juste. |
 
-- `frontend/src/pages/ventes/NoteDebitDialog.jsx::NoteDebitDialog` vide `motif` et `montant` dans le bloc d'ouverture ou de
-  changement de facture.
-- La clé est remise à `null` par `useEffect(() => { if (open) cleEnvoi.current = null }, [open, factureId])`. L'effet s'exécute
-  avant tout clic possible, et le commit explique pourquoi la remise est hors du rendu (`react-hooks/refs`).
-- Le test vitest « réponse perdue sur A puis ouverture sur B : saisie vide, clé neuve » vérifie les champs vides et deux clés
-  différentes. Il n'a pas été lancé ici.
-- **Côté serveur, la clé n'est PAS liée à la facture.** Le suffixe `note_debit` est constant
-  (`facture_rectificatifs.py::rejeu_par_cle`) et l'empreinte ne porte que le corps (`core/idempotency.py::_fingerprint`). La
-  tâche le déclarait hors périmètre. Aucun autre client n'envoie de clé à cette route : rien n'est exploitable aujourd'hui
-  (§5).
-- **Jumeaux.** Avoir, retour et encaissement groupé (`useFactureGestes.js`, `nouvelleCle()` à l'ouverture) et `PaiementDialog`
-  (clé remise quand `facture.id` change) sont conformes. Le paiement fournisseur porte le suffixe `paiements.<pk>`, donc la clé
-  y est liée à la facture.
+### 2.3 Test et régressions
 
-### 2.3 ACNC72 — clé du règlement fournisseur
+- **Test livré.** `FacturesFournisseur.test.jsx` › « réponse perdue : la fiche relit la facture et montre le règlement » : le POST
+  rejette `Network Error`, il attend `getFactureFournisseur(7)`, la disparition de « Aucun paiement. », « Déjà payé » 3 000 et
+  « Solde dû » 7 000. Retirer la relecture le fait échouer (lu, non lancé ici). Il ne joue ni la retouche, ni la relecture en
+  échec, ni la relecture lente.
+- **Spec d'acceptation** `acnc7.spec.js` : relecture GET 200 affirmée, règlement et solde 7 000 affirmés avant le second clic,
+  réessai sous la MÊME clé ⇒ un règlement, persistance à la réouverture et au rechargement. Elle ne joue pas la retouche (le
+  cœur de VER3-300) et note le bandeau sans l'affirmer.
+- **ACNC72 non rouverte.** La remise de clé sur saisie changée reste : aucun 409 de clé répété. **ACNC67 non cassée** : fichier
+  du registre intouché.
 
-- **Registre** (`PaiementsFournisseurLedgerPage.jsx`) : `useEffect(() => { cleReglement.current = null }, [draft])`. Saisie
-  inchangée : même clé. Saisie changée : clé neuve. Sans réponse, `charger()` relit le registre affiché, comme le suppose le
-  Given de la tâche. Conforme, test vitest ajouté.
-- **Fiche facture fournisseur** (`FacturesFournisseur.jsx::FactureDetail`, jumeau « traité ici à l'identique ») : même remise,
-  sur `[montant, datePaiement, mode]`.
-  - Sans réponse, la fiche n'est pas relue : seule la liste derrière l'est. Une retouche crée donc un second règlement : §3.
-  - Aucun test vitest pour ce jumeau. L'étape d'acceptation `PF9.4-ACNC72-fiche-facture` joue « 3 000 coupé puis 1 000 », deux
-    règlements voulus. Elle n'affirme pas ce que montre la fiche entre les deux clics.
+## 3. Écarts nouveaux
 
-## 3. Écart nouveau
+### 3.1 C-ACNC-VER4-400 (S2) — règlement fournisseur identique : aucune garde serveur, la seule barrière est l'écran
 
-### 3.1 C-ACNC-VER3-300 (S1) — fiche facture fournisseur : réponse perdue, puis saisie retouchée, donne un second règlement
+**Mécanisme.** Côté client, D-ACNC-1 (réponse `accepter_apres_confirmation`) est appliquée par
+`apps/ventes/domain/encaissements.py::encaisser_sur_facture` : même montant + même date ⇒ 409 `paiement_similaire` sans
+`confirmer_doublon`. ACNC4 ne visait que le client (« Jumeaux : corps identiques 1 → traité ici »). Les deux portes
+fournisseur n'ont pas ce contrôle. Dès que l'écran n'a pas montré le premier règlement — POST en vol au-delà de 20 s,
+relecture en échec, deux onglets, fiche + registre — un second règlement identique passe en silence.
 
-**Mécanisme.**
-- `frontend/src/pages/stock/FacturesFournisseur.jsx::FactureDetail` garde sa propre copie, `useState(factureProp)`. Elle n'est
-  jamais resynchronisée : `factureProp` n'apparaît que deux fois.
-- Sans réponse, `ajouter` appelle seulement `onSaved?.()`. Le parent répond par `reload(); if (msg) setInfo(msg)` : il relit la
-  liste, jamais `selected`.
-- La fiche montre donc encore « Aucun paiement » et l'ancien solde, alors que le commentaire d'ACNC23 annonce « relire la
-  facture ».
-- Depuis ACNC72, toute retouche de `montant`, `datePaiement` ou `mode` (date remplie, mode changé, montant retapé) remet la clé
-  à zéro. Le clic suivant crée un second règlement.
-- Le serveur ne plafonne qu'au solde dû
-  (`backend/django_core/apps/stock/services.py::verrouiller_facture_fournisseur_et_verifier_solde`). Il n'existe pas
-  d'avertissement de paiement similaire côté fournisseur (grep `paiement_similaire|confirmer_doublon` dans `apps/stock` : 0).
-- Avant ACNC72, la même retouche recevait un 409 `IdempotencyConflict` et rien n'était écrit.
+**Sonde.** `docs/audits/sondes/ACNC/C-ACNC-VER4-400.py`, jouée sur `d9164c12e2` : `repro: true`.
+- Rejeu serveur par le harnais de VER3-300 (vrais `IdempotentCreateMixin`, `_reserver`, `_fingerprint`, `_liberer`,
+  `verrouiller_facture_fournisseur_et_verifier_solde`, extraits par ast) : deux corps identiques de 3 000 sous deux clés ⇒
+  201, 201, deux règlements, solde 4 000 ; date nulle puis date remplie (relecture lue avant le commit) ⇒ idem.
+- Lecture statique : les trois méthodes des portes fournisseur sans garde ; la porte client avec garde.
+- Écran : relecture présente mais non attendue (`await` absent), bouton rendu dans `finally`.
+- Contrôle : même clé, même corps ⇒ rejeu, un règlement.
 
-**Sonde.** `docs/audits/sondes/ACNC/C-ACNC-VER3-300.py`, jouée sur `8fc408bf61` : `repro: true`.
-- Elle exécute par ast les vrais `IdempotentCreateMixin`, `_reserver`, `_fingerprint`, `_liberer` et
-  `verrouiller_facture_fournisseur_et_verifier_solde`, avec le suffixe réel `paiements.<pk>`.
-- Elle lit le vrai composant : remise sur `montant, datePaiement, mode`, aucune relecture de la fiche sans réponse, `onSaved`
-  du parent.
-- Résultat : 201 puis 201, deux règlements de 3 000, solde 4 000 au lieu de 7 000.
-- Contrôles :
-  - clé gardée (l'écran d'avant ACNC72) : 201 puis 409 `IdempotencyConflict`, un règlement, solde 7 000 ;
-  - saisie inchangée : rejeu, un règlement.
+**Gravité S2** : même mécanisme et même gravité que C-ACNC-001 (S2), le jumeau client. Le chemin S1 du matin (réponse perdue
+après commit) est fermé ; restent des chemins à déclencheur plus rare ou humain. Argent faux si atteint (solde dû sous-évalué).
 
-**Gravité S1** (§B.2 : argent faux). Un règlement est compté deux fois, sans rien à l'écran pour l'en avertir, et le solde dû
-est sous-évalué. C'est le même dommage que C-ACNC-VER3-100, classé S1 hier. La probabilité est plus faible : il faut une réponse
-perdue PUIS une retouche. Le défaut est latent en production (0 facture fournisseur au 11/11 selon ACNC23, chiffre non relu
-ici). Il n'y a pas de dépassement : un règlement complet doublé est refusé par le plafond.
+**Correctif.** Jumeau fournisseur de D-ACNC-1 sous le verrou de la facture, après le plafond, sur les deux portes ; « Confirmer »
+à l'écran. La relecture d'ACNC73 reste. **Tâche :** ACNC74, à déposer (`docs/plans/PLAN_AUDIT_STOCK.md`, propriétaire `stock`).
 
-**Correctif.** Relire la facture dans la fiche après une réponse perdue (`stockApi.getFactureFournisseur` puis `setFacture`).
-La remise de clé d'ACNC72 reste en place. Ce n'est pas un retour en arrière d'ACNC72 : la règle « saisie changée = clé neuve »
-devient sûre dès que l'écran montre ce qui est passé.
+### 3.2 C-ACNC-VER4-401 (S3) — la fiche dit « échoué » d'un règlement passé, et rend le bouton avant la relecture
 
-**Tâche :** à déposer, ACNC73 (`docs/plans/PLAN_AUDIT_STOCK.md`, propriétaire `stock`).
+`FactureDetail::ajouter` : `setError("L'enregistrement du paiement a échoué.")` n'est jamais remplacé quand la relecture montre
+le règlement ; `setBusy(false)` en `finally` précède le retour de la relecture. Effet consigné par l'enregistrement
+`2026-11-15-c3820441e.md` (« le bandeau … reste affiché à côté du règlement relu »). Contournement : le règlement et le solde
+sont visibles. STATIQUE. **Tâche :** ACNC75, à déposer (`@after: ACNC74`, même fichier). Le champ Montant est gardé à dessein :
+le vider remettrait la clé à zéro (ACNC72) et un reclic créerait un second règlement.
 
-## 4. Sondes rejouées sur l'hôte (`8fc408bf61`)
+## 4. Sondes rejouées sur l'hôte (`d9164c12e2`)
 
 | Sonde | Sortie | Encore valable ? |
 |---|---|---|
-| `C-ACNC-VER2-200.py` | le `__main__` plante (`AssertionError: lecture du BC introuvable dans _creer_brouillon_complet`) | **Partie réelle valable, contrôle périmé.** Le contrôle réécrit `BonCommande.objects.filter(` en `select_for_update().filter(`, une forme que le correctif a fait disparaître. La partie « code réel », jouée seule (`_jouer` sur les vrais `annuler`, `_creer_brouillon_complet` et `_inserer_facture`), donne `repro: false` : facturation 201, annulation **409**, BC `confirme`, `BROUILLON-9` rattachée. Trace : « facturer : verrou BC pris » puis « annuler : verrou BC pris ». |
-| `C-ACNC-VER2-201.py` | `repro: true` | **Faux positif, périmée.** Son détecteur d'écran cherche la remise de clé DANS le bloc d'ouverture ; ACNC71 l'a posée dans un `useEffect`. Le rejeu serveur reste vrai par construction (même clé pour B ⇒ note de A rejouée) : il prouve seulement que la clé serveur n'est pas liée à la facture (§2.2), pas que l'écran la réutilise. |
-| `C-ACNC-VER3-300.py` (neuve) | `repro: true` | §3. |
+| `C-ACNC-VER3-300.py` | `repro: false` ; `sans_reponse_relit_la_fiche: true` ; partie serveur toujours 201, 201, solde 4 000 | **Valable, avec une limite.** Le détecteur d'écran voit la relecture (motif `getFactureFournisseur` dans la branche) et bascule à `false` comme attendu ; il ne vérifie ni l'`await`, ni l'échec de la relecture. Sa partie serveur, inchangée, montre que le serveur ne protège rien (§3.1). Libellé `copie_locale_jamais_resynchronisee: true` devenu trompeur (seul `factureProp` est compté). |
+| `C-ACNC-VER4-400.py` (neuve) | `repro: true` | §3.1. Doit passer à `false` quand la garde serveur existe sur les deux portes. |
 
-ACNC56 exige une sortie « avant `repro` True, après `repro` False » par sonde S2. VER2-200 et VER2-201 doivent être réécrites
-pour la donner : contrôle sur la forme corrigée pour l'une, détecteur d'écran sur l'effet pour l'autre (§5).
+## 5. ACNC23 et VER2-203
 
-## 5. Optionnel (non déposé)
+- **ACNC23** : toujours `[BLOCKED: code livré dev-all (13/11/2026), preuve en direct due]` ; aucun enregistrement ACNC ne la
+  couvre (grep `ACNC23` dans `docs/audits/acceptation/ACNC/` : 0) ; non cochable tant que VER4-400 touche son geste (§C.4.7 c).
+- **VER2-203 (S3, n° 203 d'hier)** : ouvert, inchangé ; `apps/facturation/views/facture.py::FactureViewSet.perform_create`
+  sans `transaction.atomic` ni BC relu `select_for_update` (aucun commit sur ce fichier depuis `8fc408bf61`) ; toujours sans tâche.
 
-- **ACNC23, point 4 de la commande.**
-  - Toujours `[BLOCKED: code livré dev-all (13/11/2026), preuve en direct due]` (`docs/plans/PLAN_AUDIT_STOCK.md`).
-  - Aucun des cinq enregistrements ACNC ne la couvre (grep `ACNC23` dans `docs/audits/acceptation/ACNC/` : 0).
-  - Le texte d'ACNC67 (« se coche avec cette tâche ») est contredit par celui d'ACNC72 (« reste `[BLOCKED…]` ») : c'est le second
-    qui décrit l'état réel.
-  - Elle ne peut pas se cocher par ricochet : l'enregistrement d'ACNC67 ne rejoue que le registre, pas la réception, l'acompte ni
-    le règlement de la fiche.
-  - Et METHODE §C.4.7 (c) interdit de la cocher tant que C-ACNC-VER3-300 touche son propre code (`FactureDetail`, commentaire
-    ACNC23).
-- **Note de débit, même facture.** Après une réponse perdue, une saisie retouchée sur la MÊME facture reçoit le 409 de clé
-  jusqu'à la fermeture du dialogue. C'est la classe de VER2-202, avec un contournement (fermer, rouvrir). De plus, `erreur`
-  n'est pas vidé à l'ouverture : le message de A s'affiche sous B (S4).
-- **Clé serveur non liée au document.** `note_debit`, `avoir` et `retour` utilisent un suffixe constant ; le paiement
-  fournisseur utilise `paiements.<pk>`. Lier le suffixe à la facture serait une défense en profondeur. Aucun appelant actuel
-  n'est fautif.
-- **Acompte, avoir fournisseur, réception BCF.** `FournisseurFiche360.jsx::AcompteForm`, l'avoir et `BcfDetail` gardent une clé
-  par ouverture : une saisie changée après une réponse perdue reçoit un 409 répété, que l'on contourne en fermant puis
-  rouvrant. Non déposé à dessein : c'est l'état SÛR. Renouveler la clé sans relire l'écran reproduirait §3.
-- **VER2-203 sans tâche : la raison donnée hier ne tient pas.** `backend/django_core/apps/facturation/views/facture.py` fait
-  349 lignes et `FactureViewSet.perform_create` 60 lignes (`check_forme_code.py --inspecter`) : ni FICHIER_MUR (≥ 2 000) ni
-  FONCTION_MUR (> 100). Le S3 peut recevoir sa tâche (`transaction.atomic` + BC relu `select_for_update` + `refuser_portes_fermees`
-  rejoué).
-- **Test d'ordre des verrous.** Aucun test ne croise `creer_facture` avec `facturer_vente` sur deux connexions : l'absence
-  d'interblocage n'est prouvée que par lecture.
+## 6. Optionnel (non déposé)
 
-## 6. Tableau des écarts
+- **Sonde VER3-300** : renforcer son détecteur d'écran (exiger l'`await`, jouer la relecture en échec).
+- **Campagne de paiement** : `enregistrer_paiement_fournisseur_depuis_run` sans verrou ni plafond, à reprendre si `compta`
+  sort de la coquille.
+- **Registre** : même patron que §3.2 (toast « a échoué », `charger()` non attendu), atténué : le toast s'efface et la ligne
+  relue est visible.
+- **D-ACNC-1** : sa question vise « une facture » sans préciser client ou fournisseur ; ACNC74 l'applique au fournisseur par
+  lecture. Si le fondateur la veut client seule, ACNC74 devient une décision.
+
+## 7. Tableau des écarts
 
 | C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâche |
 |---|---|---|---|---|---|
-| C-ACNC-VER3-300 | ACNC72 (jumeau), ACNC23 | S1 | Réponse perdue sur « Ajouter le paiement » : la fiche n'est pas relue, une saisie retouchée part sous une clé neuve, second règlement (`frontend/src/pages/stock/FacturesFournisseur.jsx::FactureDetail`) | `docs/audits/sondes/ACNC/C-ACNC-VER3-300.py` (`repro: true`) | ACNC73 (à déposer) |
-| C-ACNC-VER2-203 | ACNC63 | S3 | Création CRUD d'une facture sur un BC sans devis, sans verrou, croisée avec « Annuler » (`backend/django_core/apps/facturation/views/facture.py::FactureViewSet.perform_create`) | STATIQUE | sans tâche (raison d'hier infirmée, §5) |
+| C-ACNC-VER4-400 | ACNC73, ACNC4 (jumeau) | S2 | Second règlement fournisseur identique accepté sans confirmation sur les deux portes (`backend/django_core/apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet._ajouter_paiement`, `backend/django_core/apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_create`) | `docs/audits/sondes/ACNC/C-ACNC-VER4-400.py` (`repro: true`) | ACNC74 (à déposer) |
+| C-ACNC-VER4-401 | ACNC73 | S3 | Bandeau « a échoué » sous le règlement relu ; bouton rendu avant la relecture (`frontend/src/pages/stock/FacturesFournisseur.jsx::FactureDetail`) | STATIQUE | ACNC75 (à déposer) |
+| C-ACNC-VER3-300 | ACNC72, ACNC23 | S1 | Réponse perdue, fiche non relue, retouche ⇒ second règlement | `docs/audits/sondes/ACNC/C-ACNC-VER3-300.py` (`repro: false`) | ACNC73, cochée : **fermé sur son chemin** |
+| C-ACNC-VER2-203 | ACNC63 | S3 | Création CRUD d'une facture sur un BC sans devis, sans verrou (`backend/django_core/apps/facturation/views/facture.py::FactureViewSet.perform_create`) | STATIQUE | sans tâche |
 
-**Marqueur.** 1 écart S1-S2 nouveau (VER3-300). Les écarts S1-S2 d'hier (VER2-200, VER2-201) ont leur tâche cochée et sont
-fermés. Hors de ce compte : ACNC7 et ACNC21 à 24, S2 d'origine, livrées et toujours en attente de preuve en direct.
+**Marqueur.** 1 écart S1-S2 nouveau (VER4-400). VER3-300 a sa tâche cochée : hors compte. Hors compte aussi, comme ce matin :
+ACNC7 et ACNC21 à 24, S2 d'origine, livrées et en attente de preuve en direct.
 
-## 7. Couverture et sortie de cycle
+## 8. Rappel de la passe du matin (sur `8fc408bf61`, PR #1415)
 
-- **Couvert.**
-  - Les 3 tâches d'écart d'hier.
-  - Tous les `select_for_update` du BC et tous les appels à `verrouiller_vente` hors tests.
-  - Tous les créateurs de facture rattachée à un BC.
-  - Les dialogues jumeaux de clé (vente et achat).
-  - Trois sondes hôte.
-- **Non couvert.**
-  - Aucun test Django, vitest ni e2e lancé.
-  - Les tests à deux connexions et les vitest neufs sont supposés verts par la CI de #1415 ; le rejeu en direct par son
-    enregistrement PASS (`8cd81386e`).
-  - Aucun interblocage rejoué sur une vraie base.
-  - La sonde VER3-300 simule le comportement de l'écran à partir de sa lecture : la fiche n'a pas été affichée dans un
-    navigateur.
-- **Statut.** Un écart S1 nouveau : le groupe reste « construit », pas « vérifié ». Le compteur de sortie (deux `vérifie`
-  consécutifs à zéro S1-S2) est à 0. Une contre-visite des correctifs sera due quand ACNC73 sera cochée. ACNC56 attend aussi
-  les sondes S2 réécrites (§4) et les preuves en direct d'ACNC7, 21-24, 28, 29, 42 et 44.
+- Contre-visite d'ACNC70, 71, 72 : ACNC70 (S1) et ACNC71 (S2) ok ; ACNC72 régression sur son jumeau, la fiche facture
+  fournisseur.
+- Écart S1 C-ACNC-VER3-300 (réponse perdue puis retouche ⇒ second règlement), sonde `repro: true` ⇒ tâche ACNC73, livrée et
+  cochée l'après-midi (PR #1419, rejeu PASS `c3820441e`).
+- Sondes VER2-200 (partie réelle `repro: false`, contrôle périmé) et VER2-201 (faux positif) à réécrire pour ACNC56.
+- VER2-203 laissé sans tâche ; la raison « fichier mur » avait été infirmée (349 l.).
+- Marqueur du matin : `pct: 98 | ecarts_s1_s2: 1`.
 
-## 8. Coût
+## 9. Couverture et sortie de cycle
+
+- **Couvert.** ACNC73 (code, test, spec, enregistrement) ; les deux portes serveur de règlement fournisseur ; tous les
+  créateurs de `PaiementFournisseur` hors tests ; les specs et tests qui règlent une facture fournisseur deux fois ; deux sondes.
+- **Non couvert sans pile.** Aucun test Django, vitest ni e2e lancé ; la course « POST en vol au-delà de 20 s » n'est établie que
+  par lecture (relecture non attendue, READ COMMITTED, verrou de facture) et par le rejeu en mémoire, pas sur une vraie base ;
+  la fiche n'a pas été affichée dans un navigateur.
+- **Sortie de cycle.** Un écart S2 nouveau : le groupe reste « construit ». Le compteur (deux `vérifie` consécutifs à zéro
+  S1-S2) reste à **0**. Une contre-visite sera due quand ACNC74 sera
+  cochée ; ACNC56 attend aussi les sondes S2 réécrites et les preuves en direct d'ACNC7, 21-24, 28, 29, 42 et 44.
+
+## 10. Coût
 
 H0 S0 O1 F0 : 1 orchestrateur-vérificateur opus/high, sans sous-agent. Jetons des sous-agents ≈ 0 M. Aucun appel Fable.
