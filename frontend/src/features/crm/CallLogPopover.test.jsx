@@ -312,3 +312,39 @@ describe('EZ1 — planification pure : ni issue demandée ni exigée', () => {
     expect(crmApi.logInteraction).not.toHaveBeenCalled()
   })
 })
+
+describe('AERR156 — reprise bornée à la même saisie', () => {
+  // Relance en échec : l'appel est journalisé, la reprise est armée.
+  async function relanceRatee() {
+    crmApi.updateLead.mockRejectedValueOnce({ response: { status: 500 } })
+    fireEvent.click(screen.getByText('À rappeler'))
+    fireEvent.click(screen.getByText('Dans 3 j'))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(crmApi.logInteraction).toHaveBeenCalledTimes(1)
+  }
+  async function journaliser() {
+    fireEvent.click(screen.getByText('Intéressé'))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.logInteraction).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Appel journalisé.'))
+  }
+
+  it('relance en échec, fenêtre fermée puis rouverte : le nouvel appel est journalisé', async () => {
+    render(<CallLogPopover leadId={42} />)
+    fireEvent.click(screen.getByRole('button', { name: /Journaliser/ }))
+    await relanceRatee()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: /Journaliser/ }))
+    await journaliser()
+  })
+
+  it('relance en échec puis autre lead : le nouvel appel est journalisé', async () => {
+    const { rerender } = render(<CallLogPopover leadId={42} open onOpenChange={() => {}} />)
+    await relanceRatee()
+    rerender(<CallLogPopover leadId={43} open onOpenChange={() => {}} />)
+    await journaliser()
+    expect(crmApi.logInteraction).toHaveBeenLastCalledWith(43, expect.objectContaining({ outcome: 'interesse' }))
+  })
+})
