@@ -111,6 +111,30 @@ describe('AERR109 — CalendarPage : lecture rejetée ≠ mois vide', () => {
     await waitFor(() => expect(screen.queryByTestId('calendrier-lecture-echec')).not.toBeInTheDocument())
     expect(await screen.findByText('Aucun évènement ce mois-ci')).toBeInTheDocument()
   })
+
+  it('AERR168 — glisser réussi puis relecture rejetée : évènements gardés', async () => {
+    const jour = new Date()
+    const mois = String(jour.getMonth() + 1).padStart(2, '0')
+    const le = (j) => `${jour.getFullYear()}-${mois}-${j}`
+    reportingApi.getCalendar.mockResolvedValue({ data: { events: [
+      { id: 'v1', type: 'intervention', type_label: 'Intervention', title: 'Visite Ali', date: le('12'), editable: true, obj_id: 3 },
+      { id: 'v2', type: 'intervention', type_label: 'Intervention', title: 'Pose Sara', date: le('20'), editable: true, obj_id: 4 },
+    ] } })
+    reportingApi.rescheduleCalendar.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { container } = rendre()
+    const puce = await screen.findByText('Visite Ali')
+    const caseCible = [...container.querySelectorAll('.cal-cell')].find((c) =>
+      c.querySelector('.cal-day-number')?.textContent === '14' && !c.className.includes('cal-cell-out'))
+    reportingApi.getCalendar.mockRejectedValueOnce(new Error('500'))
+    fireEvent.dragStart(puce)
+    fireEvent.drop(caseCible)
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Déplacer' }))
+    await waitFor(() => expect(reportingApi.rescheduleCalendar).toHaveBeenCalledTimes(1))
+    expect(await screen.findByTestId('calendrier-lecture-echec')).toHaveTextContent('Calendrier pas à jour')
+    expect(screen.getByText('Visite Ali')).toBeInTheDocument()
+    expect(screen.getByText('Pose Sara')).toBeInTheDocument()
+  })
 })
 
 describe('AERR110 — CalendarPage : glisser demande une confirmation nommée', () => {
