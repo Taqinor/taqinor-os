@@ -8,6 +8,7 @@ import os
 import typing
 import uuid
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 
 from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
@@ -117,6 +118,8 @@ def fetch_attachment(key):
         client = get_minio_client()
         obj = client.get_object(Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
         return obj['Body'].read(), None
+    except SoftTimeLimitExceeded:  # ACEL96 — la limite douce remonte au worker
+        raise
     except Exception:
         logger.warning("storage.fetch_attachment : erreur ignorée (mode dégradé)", exc_info=True)
         return None, 'Fichier introuvable.'
