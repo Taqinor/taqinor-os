@@ -1,13 +1,16 @@
 // ODY10 — Tests du chargeur de badges : UN appel agrégé, cache court, échec
 // silencieux, jamais de ré-agrégation côté client.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, cleanup } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 const { kpiBadgesMock } = vi.hoisted(() => ({
   kpiBadgesMock: vi.fn(() => Promise.resolve({ data: { badges: [] } })),
 }))
 vi.mock('../../api/reportingApi', () => ({ default: { kpiBadges: kpiBadgesMock } }))
 
-import { chargerBadges, indexerBadges, _resetBadgeCache } from './useAppBadges'
+import { chargerBadges, indexerBadges, _resetBadgeCache, useAppBadges } from './useAppBadges'
 
 describe('ODY10 — useAppBadges', () => {
   beforeEach(() => {
@@ -55,5 +58,27 @@ describe('ODY10 — useAppBadges', () => {
     await chargerBadges()
     expect(kpiBadgesMock).toHaveBeenCalledTimes(1)
     expect(kpiBadgesMock).toHaveBeenCalledWith()
+  })
+})
+
+// ADRG141 — kpi-federes est IsResponsableOrAdmin : un Viewer ne l'appelle pas.
+describe('ADRG141 — badges selon le palier', () => {
+  function Sonde() { useAppBadges(); return null }
+  const monter = (auth) => {
+    const store = configureStore({ reducer: { auth: (state = auth) => state } })
+    return render(<Provider store={store}><Sonde /></Provider>)
+  }
+  beforeEach(() => { cleanup(); kpiBadgesMock.mockClear(); _resetBadgeCache() })
+
+  it('Viewer : aucun GET badges', async () => {
+    monter({ role: 'normal', role_nom: 'Viewer', permissions: ['ventes_voir', 'crm_voir'] })
+    await Promise.resolve()
+    expect(kpiBadgesMock).not.toHaveBeenCalled()
+  })
+
+  it('Directeur : badges lus', async () => {
+    monter({ role: 'admin', role_nom: 'Directeur', permissions: ['ventes_voir'] })
+    await Promise.resolve()
+    expect(kpiBadgesMock).toHaveBeenCalledTimes(1)
   })
 })
