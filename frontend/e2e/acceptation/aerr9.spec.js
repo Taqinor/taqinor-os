@@ -155,6 +155,7 @@ etape('PF12.3-AERR175', ['AERR175'], async ({ page, suivi, testInfo }) => {
       dialogues: document.querySelectorAll('[role="dialog"]').length, menus: document.querySelectorAll('[role="menu"]').length,
     }
   })
+  const defauts = []
   for (const [passe, X, Y] of [['', A, B], ['relu après rechargement : ', B, A]]) {
     if (passe) await p.reload(); else await p.goto('/ventes/factures')
     for (const f of [A, B]) await expect(ligne(f), `${passe}${f.reference} affichée`).toBeVisible({ timeout: 90_000 })
@@ -172,13 +173,14 @@ etape('PF12.3-AERR175', ['AERR175'], async ({ page, suivi, testInfo }) => {
     await expect.poll(async () => (await etat(Y)).cachee, { timeout: 10_000 }).toBe(false).catch(() => undefined)
     const e = await etat(Y)
     console.log(`[AERR175] ${passe}ligne ${Y.reference} après « Fermer » : ${J(e)}`)
-    expect.soft([e.cachee, e.inerte], `${passe}la ligne ${Y.reference} n'est ni aria-hidden ni inerte ${J(e)}`).toEqual([false, false])
+    if (e.cachee || e.inerte) defauts.push(`${passe}ligne ${Y.reference} aria-hidden/inerte après « Fermer » : ${J(e)}`)
     // CLIC SOURIS (pas le clavier) sur l'autre ligne : son menu s'ouvre.
     await actions(Y).click({ timeout: 15_000 })
     await expect(p.getByRole('menuitem', { name: 'Note de débit' }), `${passe}clic souris sur ${Y.reference} : son menu s'ouvre`).toBeVisible({ timeout: 15_000 })
     await p.keyboard.press('Escape')
     await expect(p.getByRole('menu'), `${passe}menu de ${Y.reference} refermé (Échap)`).toHaveCount(0)
     console.log(`[AERR175] ${passe}ligne ${Y.reference} après son menu refermé : ${J(await etat(Y))}`)
-    await expect(p.getByRole('menu'), `${passe}menu de ${Y.reference} refermé`).toHaveCount(0)
   }
+  // Clause : « les autres lignes sans aria-hidden » — affirmé après les deux passes (le clic souris est joué quand même).
+  expect(defauts, 'les autres lignes sans aria-hidden après « Fermer »').toEqual([])
 })
