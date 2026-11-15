@@ -247,7 +247,17 @@ function ListView({ items, onOpen }) {
   )
 }
 
+// AERR29/172 — Terminée / Validée résolvent le ticket SAV lié : confirmation nommée (kanban + fiche).
+function confirmerStatutFinal(confirm, it, statut) {
+  if (statut !== 'terminee' && statut !== 'validee') return true
+  const nom = it.reference ?? it.installation_reference ?? `#${it.id}`
+  const label = interventionStatusLabel(statut)
+  return confirm({ title: `Passer ${nom} à « ${label} » ?`, confirmLabel: 'Confirmer', cancelLabel: 'Annuler',
+    description: `${nom} passera à « ${label} » : le ticket SAV lié sera résolu.`, destructive: false })
+}
+
 function DetailSheet({ intervention, users, onClose, onChanged }) {
+  const { confirm } = useConfirmDialog()
   const [hist, setHist] = useState([])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -274,6 +284,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
       .then((r) => setHist(r.data ?? [])).catch(() => {})
 
   const setStatut = async (statut) => {
+    if (!(await confirmerStatutFinal(confirm, intervention, statut))) return
     setBusy(true)
     setStatutBlockReason(null)
     try {
@@ -582,11 +593,7 @@ export default function InterventionsPage() {
     const nom = it.reference ?? it.installation_reference ?? `#${it.id}`
     const label = interventionStatusLabel(statut)
     const final = statut === 'terminee' || statut === 'validee'
-    if (final && !(await confirm({
-      title: `Passer ${nom} à « ${label} » ?`,
-      description: `${nom} passera à « ${label} » : le ticket SAV lié sera résolu.`,
-      confirmLabel: 'Confirmer', cancelLabel: 'Annuler', destructive: false,
-    }))) return
+    if (!(await confirmerStatutFinal(confirm, it, statut))) return
     const avant = it.statut
     // Optimiste : reflète immédiatement, recharge en arrière-plan.
     setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, statut } : x)))
