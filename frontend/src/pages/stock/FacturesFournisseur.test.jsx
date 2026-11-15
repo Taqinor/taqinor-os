@@ -51,6 +51,7 @@ vi.mock('../../api/stockApi', () => ({
     // optionnel affiché uniquement si des lignes existent).
     acomptesFournisseurOuverts: vi.fn(() => Promise.resolve({ data: [] })),
     createFactureFournisseur: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
+    ajouterPaiementFournisseur: vi.fn(() => Promise.reject(new Error('Network Error'))),
   },
 }))
 
@@ -162,6 +163,28 @@ describe('FactureDetail — chaîne du solde (ASTK105)', () => {
     expect(valeur('Acomptes imputés')).toMatch(/3\s?600,00/)
     expect(valeur('Avoirs imputés')).toMatch(/0,00/)
     expect(valeur('Solde dû')).toMatch(/7\s?400,00/)
+  })
+})
+
+/* ACNC73 (C-ACNC-VER3-300) — réponse perdue sur « Ajouter le paiement » : la
+   fiche relit la facture (règlement passé + solde relu) avant tout second clic. */
+describe('FactureDetail — réponse perdue sur un règlement (ACNC73)', () => {
+  it('réponse perdue : la fiche relit la facture et montre le règlement', async () => {
+    const user = userEvent.setup()
+    const base = { id: 7, reference: 'FF-7', statut: 'a_payer', statut_controle: 'normale',
+      fournisseur_nom: 'JA Solar', montant_ttc: '10000.00', total_paye: '0.00', solde_du: '10000.00' }
+    stockApi.getFactureFournisseur.mockResolvedValueOnce({ data: { ...base, statut: 'partiellement_payee',
+      total_paye: '3000.00', solde_du: '7000.00',
+      paiements: [{ id: 1, montant: '3000.00', date_paiement: '2026-11-15', mode: 'virement' }] } })
+    render(<ThemeProvider>
+      <FactureDetail facture={{ ...base, paiements: [] }} onClose={() => {}} onSaved={() => {}} />
+    </ThemeProvider>)
+    await user.type(screen.getByLabelText('Montant'), '3000')
+    await user.click(screen.getByRole('button', { name: 'Ajouter le paiement' }))
+    await waitFor(() => expect(stockApi.getFactureFournisseur).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(screen.queryByText('Aucun paiement.')).toBeNull())
+    expect(screen.getByText('Déjà payé').parentElement.textContent).toMatch(/3\s?000,00/)
+    expect(screen.getByText('Solde dû').parentElement.textContent).toMatch(/7\s?000,00/)
   })
 })
 

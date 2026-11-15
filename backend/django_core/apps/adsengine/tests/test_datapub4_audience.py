@@ -79,6 +79,19 @@ class BreakdownDiagnosticsTests(TestCase):
             self.company, PartialBreakdownClient(), self.camp)
         self.assertEqual(total, 1)
 
+    def test_limite_douce_d_une_dimension_remonte(self):
+        """ACEL95 — la limite douce levée par ``get_insights`` n'est pas rangée
+        dans ``error`` de la dimension : elle remonte (étape 2 de backfill_complet)."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        class ClientLimite:
+            def get_insights(self, meta_id, *, fields=None, params=None):
+                raise SoftTimeLimitExceeded()
+
+        with self.assertRaises(SoftTimeLimitExceeded):
+            sync_breakdowns_for_campaign_detailed(
+                self.company, ClientLimite(), self.camp)
+
 
 class AudienceBreakdownTests(TestCase):
     def setUp(self):

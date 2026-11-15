@@ -265,6 +265,12 @@ describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-L
     expect(parc(av)).toBe(false)
     expect(parc({ ...av, permissions: [...av.permissions, 'equipement_voir'] })).toBe(true)
   })
+  // ATST59 — `custom_object.<code>.gerer` est hors registre : aucun palier côté serveur (ATST13).
+  it('rôle custom_object seul : ni parc ni équipes (le serveur répond 403)', () => {
+    const o = { role: 'normal', role_nom: 'Rôle objet', permissions: ['custom_object.chantier_x.gerer', 'crm_voir', 'sav_voir'] }
+    expect(parc(o)).toBe(false)
+    expect(equipes(o)).toBe(false)
+  })
 })
 
 // ADRG120 — `reporting/dashboard/` (ADRG70) : responsable + `reporting_*` + lecture des ventes.
