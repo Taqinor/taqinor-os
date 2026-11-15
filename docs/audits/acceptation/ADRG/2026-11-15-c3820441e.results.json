@@ -1,0 +1,80 @@
+{
+  "sha": "c3820441e6d99fe13387482683c7b0964c074850",
+  "date": "2026-11-15",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG138",
+    "ADRG139",
+    "ADRG141"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF4.4-ADRG138",
+      "taches": [
+        "ADRG138"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-15/ACCEPTATION-ADRG-PF4.4-ADRG138.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG139",
+      "taches": [
+        "ADRG139"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-15/ACCEPTATION-ADRG-PF4.4-ADRG139.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG141",
+      "taches": [
+        "ADRG141"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-15/ACCEPTATION-ADRG-PF4.1-ADRG141.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
