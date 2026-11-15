@@ -15,7 +15,9 @@
 //   • ÉCHEC SILENCIEUX — un badge est un agrément, pas une information dont
 //     l'absence doit alarmer : une erreur réseau laisse simplement la grille
 //     sans compteurs.
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
+import { ReactReduxContext } from 'react-redux'
+import { estResponsable } from '../../hooks/useHasPermission'
 import reportingApi from '../../api/reportingApi'
 
 const TTL_MS = 60_000
@@ -64,12 +66,17 @@ export function chargerBadges() {
  */
 export function useAppBadges() {
   const [badges, setBadges] = useState(() => cache?.badges ?? {})
+  // ADRG141 — `kpi-federes` est IsResponsableOrAdmin : un Viewer prendrait 403 à
+  // chaque arrivée sur l'accueil. Store lu par son contexte (rendu sans store : on appelle).
+  const auth = useContext(ReactReduxContext)?.store?.getState().auth
+  const autorise = !auth || estResponsable(auth.role, auth.role_nom, auth.permissions || [])
 
   useEffect(() => {
+    if (!autorise) return undefined
     let vivant = true
     chargerBadges().then((valeurs) => { if (vivant) setBadges(valeurs) })
     return () => { vivant = false }
-  }, [])
+  }, [autorise])
 
   return badges
 }
