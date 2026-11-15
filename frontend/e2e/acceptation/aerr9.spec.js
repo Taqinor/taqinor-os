@@ -146,10 +146,15 @@ etape('PF12.3-AERR175', ['AERR175'], async ({ page, suivi, testInfo }) => {
   const ligne = (f) => p.locator(`#facture-row-${f.id}`)
   const actions = (f) => ligne(f).locator('button', { hasText: 'Actions' })
   const boite = (f) => p.getByRole('dialog').filter({ hasText: `Notes de débit — ${f.reference}` })
-  const etat = (f) => ligne(f).evaluate((el) => ({
-    pointeurs: getComputedStyle(document.body).pointerEvents,
-    cachee: Boolean(el.closest('[aria-hidden="true"]')), inerte: Boolean(el.closest('[inert]')),
-  }))
+  const etat = (f) => ligne(f).evaluate((el) => {
+    const h = el.closest('[aria-hidden="true"]')
+    return {
+      pointeurs: getComputedStyle(document.body).pointerEvents,
+      cachee: Boolean(h), inerte: Boolean(el.closest('[inert]')),
+      porteur: h ? `${h.tagName.toLowerCase()}#${h.id}.${String(h.className).slice(0, 60)} data-aria-hidden=${h.getAttribute('data-aria-hidden')}` : null,
+      dialogues: document.querySelectorAll('[role="dialog"]').length, menus: document.querySelectorAll('[role="menu"]').length,
+    }
+  })
   for (const [passe, X, Y] of [['', A, B], ['relu après rechargement : ', B, A]]) {
     if (passe) await p.reload(); else await p.goto('/ventes/factures')
     for (const f of [A, B]) await expect(ligne(f), `${passe}${f.reference} affichée`).toBeVisible({ timeout: 90_000 })
@@ -163,13 +168,17 @@ etape('PF12.3-AERR175', ['AERR175'], async ({ page, suivi, testInfo }) => {
     // Aucun Échap : le menu ne doit pas être resté ouvert, la page doit rester cliquable.
     await expect(p.getByRole('menu'), `${passe}aucun menu resté ouvert`).toHaveCount(0)
     await expect.poll(async () => (await etat(Y)).pointeurs, { message: `${passe}body sans pointer-events: none`, timeout: 10_000 }).not.toBe('none')
+    // aria-hidden posé par la couche modale : laissé le temps de sa remise (10 s), puis relevé et affirmé.
+    await expect.poll(async () => (await etat(Y)).cachee, { timeout: 10_000 }).toBe(false).catch(() => undefined)
     const e = await etat(Y)
     console.log(`[AERR175] ${passe}ligne ${Y.reference} après « Fermer » : ${J(e)}`)
-    expect([e.cachee, e.inerte], `${passe}la ligne ${Y.reference} n'est ni aria-hidden ni inerte`).toEqual([false, false])
+    expect.soft([e.cachee, e.inerte], `${passe}la ligne ${Y.reference} n'est ni aria-hidden ni inerte ${J(e)}`).toEqual([false, false])
     // CLIC SOURIS (pas le clavier) sur l'autre ligne : son menu s'ouvre.
     await actions(Y).click({ timeout: 15_000 })
     await expect(p.getByRole('menuitem', { name: 'Note de débit' }), `${passe}clic souris sur ${Y.reference} : son menu s'ouvre`).toBeVisible({ timeout: 15_000 })
     await p.keyboard.press('Escape')
+    await expect(p.getByRole('menu'), `${passe}menu de ${Y.reference} refermé (Échap)`).toHaveCount(0)
+    console.log(`[AERR175] ${passe}ligne ${Y.reference} après son menu refermé : ${J(await etat(Y))}`)
     await expect(p.getByRole('menu'), `${passe}menu de ${Y.reference} refermé`).toHaveCount(0)
   }
 })

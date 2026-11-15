@@ -70,7 +70,7 @@ etape('PF9.4-ACNC73-fiche-facture', ['ACNC73'], async ({ page, suivi, testInfo }
   const m = marque()
   const x = await factureFournisseur(m)
   apres.push(() => retirer(x))
-  expect(x.solde, 'Given : facture fournisseur de 10 000 TTC à payer').toBe('10000.00')
+  expect(Number(x.solde), 'Given : facture fournisseur de 10 000 TTC à payer').toBe(10000)
   const rx = new RegExp(`/api/django/stock/factures-fournisseur/${x.ff}/paiements/$`)
   const relecture = new RegExp(`/api/django/stock/factures-fournisseur/${x.ff}/$`)
   const envois = []
