@@ -313,7 +313,6 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     () => Object.keys(initialFields).some((k) => String(fields[k] ?? '') !== String(initialFields[k] ?? '')),
     [fields, initialFields],
   )
-  useDirtyGuard(dirty)
 
   const [equipements, setEquipements] = useState([])
   // NTMOB15 — scan QR/code-barres natif de l'équipement concerné.
@@ -357,6 +356,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
     numero_serie: '', serie_neuve: '',
   })
+  useDirtyGuard(dirty || !!(noteBody.trim() || interv.compte_rendu || pieceForm.produit || retirerForm.produit || motif)) // AERR159
   const [serieNeuveError, setSerieNeuveError] = useState(null)
   const [equipementNeuf, setEquipementNeuf] = useState(null)
   const [retirerBusy, setRetirerBusy] = useState(false)
@@ -1449,7 +1449,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)
           </Button>
-          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(isAnyFormDirty()).then((ok) => ok && onClose())}>Fermer</Button>
           {peutGerer && <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>}
         </FormActions>
 
@@ -1712,7 +1712,7 @@ export default function TicketsPage() {
       if (e.target?.closest?.('[role="listbox"], [role="menu"]')) return
       if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
       else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
-      else if (e.key === 'Enter' && !detailTicket && rows.length) {
+      else if (e.key === 'Enter' && !detailTicket && rows.length && !e.target?.closest?.('button, a, [role="button"]')) {
         // Entrée ouvre le premier ticket quand rien n'est encore sélectionné ;
         // avec une sélection, le panneau est DÉJÀ ouvert — on ne vole donc pas
         // Entrée à un bouton ou un lien qui a le focus.
