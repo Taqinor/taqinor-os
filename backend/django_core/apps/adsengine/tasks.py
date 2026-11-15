@@ -616,7 +616,7 @@ def sync_breakdowns_for_campaign_detailed(company, client, campaign_mirror):
         except Exception as exc:  # noqa: BLE001 — isolé par dimension, JAMAIS muet (D-ENF22-BLE001)
             logger.warning(
                 'adsengine breakdown %s KO (campagne %s) : %s',
-                dimension, campaign_mirror.meta_id, exc)
+                dimension, campaign_mirror.meta_id, degrader(exc))
             detail[dimension] = {
                 'rows': 0, 'error': f'{type(exc).__name__}: {exc}'[:200]}
             continue
