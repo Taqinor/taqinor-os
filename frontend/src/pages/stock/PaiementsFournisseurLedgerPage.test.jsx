@@ -179,6 +179,28 @@ describe('PaiementsFournisseurLedgerPage (PACT51)', () => {
     expect(cle2).not.toBe(cle1)
   })
 
+  it('règlement identique : phrase serveur, « Confirmer » renvoie avec confirmer_doublon (ACNC74)', async () => {
+    // ACNC74 (C-ACNC-VER4-400, D-ACNC-1) — mutant : ignorer confirmer_doublon ⇒ échec.
+    const user = userEvent.setup()
+    const PHRASE = "Un règlement de 3 000 MAD a déjà été enregistré aujourd'hui sur cette facture : confirmer ?"
+    mockGets()
+    post.mockRejectedValueOnce({ response: { status: 409, data: { code: 'paiement_similaire', detail: PHRASE } } })
+      .mockResolvedValue({ data: { id: 8 } })
+    afficher()
+    await screen.findByTestId('table-paiements')
+    await user.click(screen.getByRole('combobox', { name: 'Facture fournisseur' }))
+    await user.click(await screen.findByRole('option', { name: /FF-2026-08-0001/ }))
+    await user.type(screen.getByLabelText('Montant du règlement'), '3000')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le règlement/ }))
+    expect(await screen.findByText(PHRASE)).toBeInTheDocument()
+    expect(post.mock.calls[0][1].confirmer_doublon).toBeUndefined()
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+    expect(post.mock.calls[1][1]).toMatchObject({ facture: 9, montant: 3000, confirmer_doublon: true })
+    expect(post.mock.calls[1][2].headers['Idempotency-Key']).toBe(post.mock.calls[0][2].headers['Idempotency-Key'])
+    await waitFor(() => expect(screen.queryByText(PHRASE)).toBeNull())
+  })
+
   it('montant 0 : message sous le champ, aucun appel (AERR90)', async () => {
     const user = userEvent.setup()
     mockGets()

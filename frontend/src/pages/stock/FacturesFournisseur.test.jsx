@@ -188,6 +188,35 @@ describe('FactureDetail — réponse perdue sur un règlement (ACNC73)', () => {
   })
 })
 
+/* ACNC74 (C-ACNC-VER4-400, D-ACNC-1) — règlement identique du jour : la phrase serveur
+   s'affiche et « Confirmer » renvoie avec `confirmer_doublon` (mutant : l'ignorer ⇒ échec). */
+describe('FactureDetail — règlement identique (ACNC74)', () => {
+  it('409 paiement_similaire : phrase serveur puis « Confirmer » renvoie avec confirmer_doublon', async () => {
+    const user = userEvent.setup()
+    const PHRASE = "Un règlement de 3 000 MAD a déjà été enregistré aujourd'hui sur cette facture : confirmer ?"
+    const base = { id: 8, reference: 'FF-8', statut: 'partiellement_payee', statut_controle: 'normale',
+      fournisseur_nom: 'JA Solar', montant_ttc: '10000.00', total_paye: '3000.00', solde_du: '7000.00', paiements: [] }
+    stockApi.ajouterPaiementFournisseur
+      .mockRejectedValueOnce({ response: { status: 409, data: { code: 'paiement_similaire', detail: PHRASE } } })
+      .mockResolvedValueOnce({ data: { ...base, total_paye: '6000.00', solde_du: '4000.00' } })
+    render(<ThemeProvider>
+      <FactureDetail facture={base} onClose={() => {}} onSaved={() => {}} />
+    </ThemeProvider>)
+    await user.type(screen.getByLabelText('Montant'), '3000')
+    await user.click(screen.getByRole('button', { name: 'Ajouter le paiement' }))
+    expect(await screen.findByText(PHRASE)).toBeInTheDocument()
+    expect(screen.queryByText("L'enregistrement du paiement a échoué.")).toBeNull()
+    const [, c1, o1] = stockApi.ajouterPaiementFournisseur.mock.calls.at(-1)
+    expect(c1.confirmer_doublon).toBeUndefined()
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(screen.queryByText(PHRASE)).toBeNull())
+    const [, c2, o2] = stockApi.ajouterPaiementFournisseur.mock.calls.at(-1)
+    expect(c2).toMatchObject({ montant: 3000, confirmer_doublon: true })
+    expect(o2.idempotencyKey).toBe(o1.idempotencyKey)
+    expect(screen.getByText('Solde dû').parentElement.textContent).toMatch(/4\s?000,00/)
+  })
+})
+
 describe('FacturesFournisseur — acomptes ouverts réservés à prix_achat_voir (ASTK255, rejeu)', () => {
   it('un compte à rôle fin SANS prix_achat_voir ne demande pas les acomptes ouverts (403 évité)', async () => {
     stockApi.acomptesFournisseurOuverts.mockClear()

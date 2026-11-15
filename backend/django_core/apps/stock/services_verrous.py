@@ -9,6 +9,7 @@ statut. L'instance de l'appelant est rafraîchie avant retour.
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -52,6 +53,25 @@ def imputer_avoir_sous_verrou(avoir, facture, montant):
     avoir.montant_impute = verrou.montant_impute
     avoir.statut = verrou.statut
     return imputation
+
+
+def refuser_reglement_identique(facture, montant, date_paiement, confirmer):
+    """ACNC74 (D-ACNC-1, jumeau fournisseur d'ACNC4) — même montant, même jour (date ou création),
+    facture verrouillée, après la garde de solde ⇒ 409 ``paiement_similaire`` sauf confirmation."""
+    if confirmer in (True, 'true', '1'):
+        return
+    from core.formats_fr import formater_date, formater_montant
+    from .erreurs_achats import ConflitEtat
+    aujourdhui = timezone.localdate()
+    jour = date_paiement or aujourdhui  # ACNC74 — sans date : le jour même
+    if not facture.paiements.filter(montant=montant).filter(
+            Q(date_paiement=jour) | Q(date_paiement__isnull=True, date_creation__date=jour)).exists():
+        return
+    quand = "aujourd'hui" if jour == aujourdhui else f'le {formater_date(jour)}'
+    somme = formater_montant(montant, devise='MAD', decimales=(
+        0 if montant == montant.to_integral_value() else 2))
+    raise ConflitEtat({'detail': f'Un règlement de {somme} a déjà été enregistré {quand} '
+                                 'sur cette facture : confirmer ?', 'code': 'paiement_similaire'})
 
 
 def resoudre_exception_sous_verrou(facture, user, commentaire=''):

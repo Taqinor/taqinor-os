@@ -539,6 +539,9 @@ class FactureFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet
             except ValueError as exc:
                 return Response(
                     {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+            from ..services_verrous import refuser_reglement_identique  # ACNC74
+            refuser_reglement_identique(facture, montant, serializer.validated_data.get('date_paiement'),
+                                        donnees.get('confirmer_doublon'))
             taux, montant_ras = compute_ras_tva(
                 request.user.company, facture, montant)
             paiement = serializer.save(
