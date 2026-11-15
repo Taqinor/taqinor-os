@@ -62,7 +62,7 @@ function RoutingRulesPanel() {
     setLoading(true)
     toutesLesPages((params) => notificationsApi.getRoutingRules(params))
       .then((rows) => setRules(rows))
-      .catch(() => toast.error('Chargement des règles impossible.'))
+      .catch((err) => toastErreurNonAffichee(err, 'Chargement des règles impossible.'))
       .finally(() => setLoading(false))
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper (D-ENF22)
@@ -156,7 +156,7 @@ function CalendrierPanel() {
         setWh(versEcran(w.data))
         setHolidays(jours)
       })
-      .catch(() => toast.error('Chargement du calendrier impossible.'))
+      .catch((err) => toastErreurNonAffichee(err, 'Chargement du calendrier impossible.'))
       .finally(() => setLoading(false))
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper (D-ENF22)
@@ -279,7 +279,7 @@ function AnnoncesPanel() {
     setLoading(true)
     toutesLesPages((params) => notificationsApi.getAnnonces(params))
       .then((rows) => setAnnonces(rows))
-      .catch(() => toast.error('Chargement des annonces impossible.'))
+      .catch((err) => toastErreurNonAffichee(err, 'Chargement des annonces impossible.'))
       .finally(() => setLoading(false))
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper (D-ENF22)
@@ -369,7 +369,7 @@ function WhatsAppTemplatesPanel() {
     setLoading(true)
     toutesLesPages((params) => notificationsApi.getWhatsAppTemplates(params))
       .then((rows) => setTemplates(rows))
-      .catch(() => toast.error('Chargement des gabarits impossible.'))
+      .catch((err) => toastErreurNonAffichee(err, 'Chargement des gabarits impossible.'))
       .finally(() => setLoading(false))
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper (D-ENF22)
