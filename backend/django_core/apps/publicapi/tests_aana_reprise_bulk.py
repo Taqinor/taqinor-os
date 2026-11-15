@@ -143,6 +143,62 @@ class RepriseBulkTest(TestCase):
         bulk.run_import_job(job.id)  # job terminé : ne fait rien
         self.assertEqual(Lead.objects.filter(company=self.co).count(), 4)
 
+    def _limite_sur(self, cle_fautive):
+        """Le client MinIO lève la limite douce pour UNE clé (ACEL97)."""
+        from celery.exceptions import SoftTimeLimitExceeded
+        from apps.records import storage
+        lire = storage.get_minio_client.return_value.get_object.side_effect
+
+        def get_object(Bucket, Key):
+            if Key == cle_fautive:
+                raise SoftTimeLimitExceeded()
+            return lire(Bucket, Key)
+
+        storage.get_minio_client.return_value.get_object.side_effect = (
+            get_object)
+
+    def test_limite_douce_a_la_lecture_du_stockage_solde_le_job(self):
+        """ACEL97 — la limite douce levée à la lecture de la source, puis du
+        journal d'erreurs, solde le job `echec` relançable (curseur et
+        journal inchangés) au lieu de le laisser `en_file`."""
+        import json
+        lignes = [{'nom': 'L1'}, {'nom': 'L2'}, {'nom': 'L3'}]
+        job = self._job_import('\n'.join(
+            json.dumps(x) for x in lignes).encode('utf-8'))
+        self._limite_sur(job.params['source_file_key'])
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertIn('Limite de temps atteinte', job.message_erreur)
+        with mock.patch.object(bulk, '_dispatch_import'):
+            bulk.relancer_job(job)  # accepté : le job est relançable
+        self.magasin_lire_normal = None
+
+        from apps.records import storage
+        client = storage.get_minio_client.return_value
+        client.get_object.side_effect = (
+            lambda Bucket, Key: {'Body': io.BytesIO(self.magasin[Key])})
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
+        self.assertEqual(job.succes, 3)
+
+        # Journal d'erreurs (ligne 2) : la limite à sa lecture ne le vide pas.
+        job2 = self._job_import(b'{"nom": "M1"}\n{"nom": "M2"}\n')
+        journal = bulk._store_import_source(
+            b'{"ligne": 2, "erreur": "x", "donnees": {}}',
+            company_id=self.co.id, job_id=f'{job2.id}-erreurs', ext='jsonl')
+        job2.statut = BulkJob.STATUT_ECHEC
+        job2.cursor, job2.erreurs, job2.erreurs_file_key = 1, 1, journal
+        job2.save(update_fields=[
+            'statut', 'cursor', 'erreurs', 'erreurs_file_key'])
+        self._limite_sur(journal)
+        bulk.run_import_job(job2.id)
+        job2.refresh_from_db()
+        self.assertEqual(job2.statut, BulkJob.STATUT_ECHEC)
+        self.assertEqual((job2.cursor, job2.erreurs_file_key), (1, journal))
+        self.assertIn('Limite de temps atteinte', job2.message_erreur)
+
     def test_limite_douce_apres_creation_ne_double_pas_le_lead(self):
         """ACEL83 — limite douce tombée APRÈS la création du lead de la
         ligne 2 : la ligne est annulée en bloc, la reprise donne un lead
