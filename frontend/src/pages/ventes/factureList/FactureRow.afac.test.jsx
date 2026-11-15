@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -43,6 +43,17 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(await screen.findByRole('menuitem', { name: /Note de débit/ })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /Demander un paiement carte/ })).toBeNull()
     expect(screen.getByRole('button', { name: /Payer en ligne/, hidden: true })).toBeInTheDocument()
+  })
+
+  it('Note de débit ferme le menu', async () => {
+    // AERR175 — le menu Radix ne reste pas ouvert derrière la boîte (page inerte).
+    const openNoteDebit = vi.fn()
+    rendre(CONTRAT.exemple, { openNoteDebit })
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Note de débit/ }))
+    expect(openNoteDebit).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
   it('ASEC64 — sans `encaisser` : aucun geste d’argent (Encaisser, Payer en ligne, Avoir)', () => {
