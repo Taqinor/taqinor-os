@@ -274,9 +274,11 @@ def _parse_rows(raw_bytes, fmt):
             if not line:
                 continue
             try:
-                rows.append((i, json.loads(line)))
+                valeur = json.loads(line)
             except (ValueError, TypeError) as exc:
-                rows.append((i, {'__parse_error__': str(exc)}))
+                valeur = {'__parse_error__': str(exc)}
+            # ACEL100 — JSON valide mais pas un objet (liste, nombre, null, chaîne) : ligne en erreur.
+            rows.append((i, valeur if isinstance(valeur, dict) else {'__parse_error__': 'objet JSON attendu'}))
     else:
         reader = csv.DictReader(io.StringIO(text))
         for i, row in enumerate(reader, start=1):

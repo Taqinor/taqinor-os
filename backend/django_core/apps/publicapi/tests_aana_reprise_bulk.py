@@ -69,6 +69,21 @@ class RepriseBulkTest(TestCase):
         job.save(update_fields=['params'])
         return job
 
+    def test_ligne_jsonl_non_objet_n_arrete_pas_les_suivantes(self):
+        """ACEL100 — une ligne JSON valide qui n'est pas un objet (`[1, 2]`) est une
+        ligne en erreur au journal : le job finit `termine`, A et C importés."""
+        import json
+        job = self._job_import(b'{"nom": "A"}\n[1, 2]\n{"nom": "C"}\n')
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
+        self.assertEqual(sorted(Lead.objects.filter(
+            company=self.co).values_list('nom', flat=True)), ['A', 'C'])
+        self.assertEqual((job.cursor, job.erreurs), (3, 1))
+        journal = [json.loads(x) for x in self.magasin[job.erreurs_file_key].decode('utf-8').splitlines()]
+        self.assertEqual([x['ligne'] for x in journal], [2])
+        self.assertIn('objet JSON attendu', json.dumps(journal, ensure_ascii=False))
+
     def test_import_reprise_ligne_vide(self):
         contenu = ('{"nom": "A"}\n\n{"nom": "B"}\n{"nom": "C"}\n'
                    '{"nom": "D"}\n').encode('utf-8')
