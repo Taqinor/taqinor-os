@@ -19,6 +19,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   undoSpy = vi.spyOn(toastModule, 'toastWithUndo').mockImplementation(() => 'toast-id')
   errorSpy = vi.spyOn(toastModule, 'toastError').mockImplementation(() => {})
+  vi.spyOn(toastModule, 'nombreErreursEmises').mockReturnValue(0)
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -91,10 +92,11 @@ describe('mutateWithUndo — anti-commit-différé (le cœur d’EZ14)', () => {
   })
 
   it('AERR136 — refus rendu par .unwrap() : aucun toast local', async () => {
+    // AERR167 — vrai seulement si un toast global est réellement parti.
     const ok = await mutateWithUndo({
       kind: 'lead_stage',
       message: 'Étape modifiée.',
-      apply: vi.fn().mockRejectedValue({ detail: 'Étape non modifiable.' }),
+      apply: vi.fn(async () => { toastModule.nombreErreursEmises.mockReturnValue(1); throw { detail: 'Étape non modifiable.' } }),
       revert: vi.fn(),
     })
     expect(ok).toBe(false)
@@ -105,6 +107,17 @@ describe('mutateWithUndo — anti-commit-différé (le cœur d’EZ14)', () => {
       errorMessage: 'Échec perso.',
     })
     expect(errorSpy).toHaveBeenCalledWith('Échec perso.')
+  })
+
+  it("AERR167 — corps d'un 404 rendu par .unwrap() : toast local", async () => {
+    // Mutant : remettre `err != null && !(err instanceof Error)` ⇒ aucun toast.
+    const ok = await mutateWithUndo({
+      kind: 'lead_archive', message: 'Lead archivé.',
+      apply: vi.fn().mockRejectedValue({ detail: 'Pas trouvé.' }), revert: vi.fn(),
+    })
+    expect(ok).toBe(false)
+    expect(undoSpy).not.toHaveBeenCalled()
+    expect(errorSpy).toHaveBeenCalledWith("L'enregistrement a échoué — réessayez.")
   })
 
   it('un échec de l’INVERSE est dit à l’utilisateur, jamais avalé', async () => {

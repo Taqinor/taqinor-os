@@ -33,7 +33,7 @@
 // @coord NTUX27 — `duration` est un paramètre : quand le réglage tenant
 // `duree_undo_toast` existera, il alimentera cet argument, sans toucher aucun
 // site d'appel.
-import { toastWithUndo, toastError } from './toast'
+import { toastWithUndo, toastError, nombreErreursEmises } from './toast'
 
 /** Durée par défaut de la fenêtre « Annuler » (ms). */
 export const UNDO_DURATION_MS = 6000
@@ -113,6 +113,7 @@ export async function mutateWithUndo({
 
   try { optimistic?.() } catch { /* une MAJ d'écran ne doit jamais casser l'écriture */ }
 
+  const erreursAvant = nombreErreursEmises()
   try {
     // APPLIQUÉ TOUT DE SUITE. Pas de setTimeout, pas de commit différé : quand
     // cette ligne est franchie, le serveur a répondu.
@@ -121,10 +122,11 @@ export async function mutateWithUndo({
     try { rollbackOptimistic?.() } catch { /* idem */ }
     // AERR71 — un refus serveur est déjà dit par le toast global de l'intercepteur
     // (hors 401/404 et suppressErrorToast) : pas de second toast local.
-    // AERR136 — un rejet `.unwrap()` (corps servi, pas une Error) est un refus déjà dit.
+    // AERR136/AERR167 — un rejet `.unwrap()` (corps servi, pas une Error) n'est « déjà dit »
+    // que si un toast d'erreur est réellement parti (pas le cas d'un 404).
     const ditParLeGlobal = err?.response
       ? ![401, 404].includes(err.response.status) && !err.config?.suppressErrorToast
-      : err != null && !(err instanceof Error)
+      : err != null && !(err instanceof Error) && nombreErreursEmises() > erreursAvant
     if (!ditParLeGlobal) toastError(errorMessage)
     return false
   }
