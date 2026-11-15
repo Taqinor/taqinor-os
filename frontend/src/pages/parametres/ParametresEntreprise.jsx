@@ -1072,7 +1072,7 @@ export default function ParametresEntreprise() {
           {tab === 'demo_onboarding' && <DemoOnboardingSection />}
           {tab === 'societe'  && <SocieteSection {...ctx} />}
           {tab === 'leads'    && <LeadsSection {...ctx} />}
-          {tab === 'clients'  && <ClientsSection {...ctx} />}
+          <SectionGardee actif={tab === 'clients'} vue={vues.clients}><ClientsSection {...ctx} /></SectionGardee>
           {tab === 'devis'    && <DevisSection {...ctx} />}
           {/* D2/N60/N67/N26/N59 — section autonome (textes éditables du devis). */}
           <SectionGardee actif={tab === 'documents'} vue={vues.documents}><DocumentsSection /></SectionGardee>
@@ -1084,7 +1084,7 @@ export default function ParametresEntreprise() {
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
           <SectionGardee actif={tab === 'statuts'} vue={vues.statuts}><StatutsSection /></SectionGardee>
           {/* N52 — section autonome (seuil de sous-performance + auto-ticket SAV). */}
-          {tab === 'monitoring' && <MonitoringSection />}
+          <SectionGardee actif={tab === 'monitoring'} vue={vues.monitoring}><MonitoringSection /></SectionGardee>
           {/* N74 — éditeur de modèles de checklist par type d'installation. */}
           {tab === 'checklists' && <ChecklistSection />}
           {tab === 'etapes_chantier' && <EtapesChantierSection />}
@@ -1102,7 +1102,7 @@ export default function ParametresEntreprise() {
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}
-          {tab === 'email'    && <EmailSection />}
+          <SectionGardee actif={tab === 'email'} vue={vues.email}><EmailSection /></SectionGardee>
           {/* N89 — clés d'API publiques & webhooks signés (section autonome). */}
           {tab === 'api'      && <ApiWebhooksSection />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
