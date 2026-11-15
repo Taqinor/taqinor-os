@@ -1,0 +1,34 @@
+{
+  "sha": "fefb6bb8646c23d2b282d3d23a640d81227d5f03",
+  "date": "2026-11-15",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG117"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF3.charge.ADCG117",
+      "taches": [
+        "ADCG117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-15/ADCG117-load-smoke-pass.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "load-smoke run 43688037152 (tete fefb6bb86) success : ventes:proposal 302/0 echec, ventes:devis-lignes:create 40/0, total 0/4878, p95 agrege 590 ms (limite 1000 ms)"
+    }
+  ]
+}

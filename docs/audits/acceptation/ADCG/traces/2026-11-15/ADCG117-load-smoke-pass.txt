@@ -1,0 +1,32 @@
+ADCG117 — rejeu load-smoke PASS (15/11/2026)
+
+Run    : https://github.com/Taqinor/taqinor-os/actions/runs/43688037152 (workflow_dispatch load-smoke.yml, ref dev-all-94854b-w7)
+Tête   : fefb6bb8646c23d2b282d3d23a640d81227d5f03 (sur main via #1423)
+Runner : ubuntu-24.04 ; seed_scale --tag CHARGE --companies 1 --users 20 --leads 5000 --devis 500 --lignes 5000 --mouvements 5000
+Conclusion du run : success (Locust code 0, porte p95 verte)
+
+locust_stats.csv (artefact locust-report), colonnes Type,Name,Request Count,Failure Count,Median :
+POST,auth:login,20,0,420
+POST,crm:clients:create,20,0,120
+GET,crm:leads:list,1686,0,24
+GET,reporting:dashboard,919,0,30
+GET,reporting:search,882,0,49
+GET,stock:produits:list,20,0,84
+POST,ventes:devis-lignes:create,40,0,260
+POST,ventes:devis:create,687,0,35
+GET,ventes:devis:list,302,0,250
+GET,ventes:proposal,302,0,170
+,Aggregated,4878,0,40
+
+Lecture de la clause « Preuve en direct » :
+- ventes:proposal : 302 requêtes, 0 échec (le devis rendable chiffré onduleur + panneaux est rendu) ;
+- création des lignes : ventes:devis-lignes:create 40 requêtes, 0 échec ;
+- total : 0 / 4878 échec (< 1 %) ;
+- porte p95 du job : « p95 agrégé = 590.0 ms (limite 1000.0 ms) ».
+
+Correctifs qu'il a fallu pour atteindre ce rejeu (runs rouges successifs) :
+- 43639637237 / 43655580088 : lignes sans `produit` puis quantités en nombre JSON → 400 (locustfile corrigé) ;
+- 43664234819 : `/proposal` 190/190 en 500, sans server.log → bibliothèques WeasyPrint + server.log au rapport ;
+- 43670968244 : `/proposal` 156/156 en 500, server.log : MinIO `minio:9000` introuvable, Redis `redis` introuvable → MinIO + REDIS_HOST/MINIO_* ;
+- 43679719669 : image Docker Hub `minio/minio` disparue → binaires de l'archive bitnamilegacy (comme l'image CI) ;
+- 43679878813 : `/proposal` 72/72 OK, mais 16/20 connexions en 429 (Redis enfin joignable) → LOGIN_RATE_LIMIT / TENANT_RATE_LIMIT relâchés.
