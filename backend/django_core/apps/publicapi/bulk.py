@@ -350,13 +350,13 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
 
     try:
         raw = _fetch_bytes(source_key)
+        rows = _parse_rows(raw, fmt)  # ACEL98 — la limite douce peut tomber ici aussi
     except BulkJobError as exc:
         job.marquer_echec(str(exc))
         return
     except SoftTimeLimitExceeded:  # ACEL97 — limite douce pendant la lecture du stockage
         return _echec_limite_lecture(job)
 
-    rows = _parse_rows(raw, fmt)
     total = len(rows)
     start = job.cursor  # NTAPI43 — reprise : jamais retraiter une ligne déjà appliquée
     succes = job.succes

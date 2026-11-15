@@ -253,3 +253,22 @@ class RepriseBulkTest(TestCase):
         self.assertEqual(sorted(ligne['nom'] for ligne in lignes),
                          ['E1', 'E2', 'E3', 'E4'])
         self.assertEqual(job.succes, 4)
+
+    def test_limite_douce_au_decoupage_de_la_source_solde_le_job(self):
+        """ACEL98 — la limite douce levée dans `_parse_rows` solde le job
+        `echec` relançable (curseur inchangé) au lieu de le laisser `en_file`."""
+        from celery.exceptions import SoftTimeLimitExceeded
+        job = self._job_import(b'{"nom": "P1"}\n{"nom": "P2"}\n')
+        with mock.patch.object(bulk, '_parse_rows',
+                               side_effect=SoftTimeLimitExceeded()):
+            bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertIn('Limite de temps atteinte', job.message_erreur)
+        self.assertEqual(job.cursor, 0)
+        with mock.patch.object(bulk, '_dispatch_import'):
+            bulk.relancer_job(job)  # accepté : le job est relançable
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
+        self.assertEqual(job.succes, 2)
