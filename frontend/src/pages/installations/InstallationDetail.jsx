@@ -264,7 +264,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // CIQ637 — réception définitive : refus serveur (liste des réserves).
   const [receptionBusy, setReceptionBusy] = useState(false)
   const [receptionRefus, setReceptionRefus] = useState(null)
-  const [motifDefinitive, setMotifDefinitive] = useState('') // ACSV35 — dérogation Directeur
+  const [motifDefinitive, setMotifDefinitive] = useEtatSuivi(id, '') // ACSV35 — dérogation Directeur
   // Retour FR explicite pour les actions secondaires (équipement / intervention
   // / ticket / besoin) dont les échecs étaient avalés (catch vides).
   const [actionError, setActionError] = useState(null)
@@ -344,7 +344,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     mes_production_test: F('mes_production_test'),
     mes_tension: F('mes_tension'),
   }
-  const [mes, setMes] = useState(initialMes)
+  const [mes, setMes] = useEtatSuivi(id, initialMes)
   // ACHT102 — même resynchronisation que `fields` (une seule implémentation).
   useResyncForm(initialMes, setMes)
   const [mesBusy, setMesBusy] = useState(false)
@@ -355,7 +355,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // N3 — la date de pose de l'équipement est pré-remplie depuis la date de pose
   // réelle du chantier (miroir du fallback serveur de cocher_checklist).
   const equipBlank = () => ({ produit: '', numero_serie: '', date_pose: F('date_pose_reelle') })
-  const [equip, setEquip] = useState(equipBlank)
+  const [equip, setEquip] = useEtatSuivi(id, equipBlank())
   const [equipBusy, setEquipBusy] = useState(false)
   // L578 — slot d'équipement sélectionné (type de catégorie) qui filtre le
   // picker par TYPE ; '' = tous les produits du BOM (comportement historique).
@@ -367,14 +367,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const latestTicket = tickets.length > 0
     ? [...tickets].sort((a, b) => (b.date_ouverture || '').localeCompare(a.date_ouverture || ''))[0]
     : null
-  const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
+  const [newTicket, setNewTicket] = useEtatSuivi(id, { type: 'correctif', description: '', equipement: '' })
   const [ticketBusy, setTicketBusy] = useState(false)
   const [contrats, setContrats] = useState([])
 
   // Confirmations
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [annulerInterv, setAnnulerInterv] = useState(null) // ACSV4
-  const [annulerMotif, setAnnulerMotif] = useState('')
+  const [annulerMotif, setAnnulerMotif] = useEtatSuivi(id, '')
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
 
