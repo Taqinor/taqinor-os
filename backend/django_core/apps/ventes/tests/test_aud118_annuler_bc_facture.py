@@ -201,6 +201,39 @@ class AnnulerBcConcurrenceTests(WideTeardownTimeoutMixin, TransactionTestCase):
         self.assertEqual(list(Facture.objects.filter(bon_commande=self.bc)
                               .values_list('pk', flat=True)), [res['f'].pk])
 
+    def test_creer_facture_crud_croise_annuler(self):
+        """ACNC76 (C-ACNC-VER2-203) — le geste inverse : A tient le verrou d'un
+        BC SANS devis et le passe « annulé » ; B « Enregistrer » une facture
+        sur ce BC (formulaire) et attend ; après le commit de A ⇒ 409
+        ``bon_commande_annule``, aucune facture. Mutant : retirer le
+        ``select_for_update`` de ``refuser_portes_sous_verrou`` ⇒ 201."""
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ACNC76-{_nxt()}',
+            client=self.client_obj, statut=BonCommande.Statut.CONFIRME)
+        res, b_fini = {}, threading.Event()
+
+        def creer():
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=(
+                f'Bearer {AccessToken.for_user(self.user)}'))
+            res['b'] = api.post('/api/django/ventes/factures/', {
+                'client': self.client_obj.id, 'bon_commande': bc.id,
+                'taux_tva': '20.00'}, format='json')
+            b_fini.set()
+            connection.close()
+
+        fil = threading.Thread(target=creer)
+        with transaction.atomic():
+            BonCommande.objects.select_for_update().get(pk=bc.pk)
+            BonCommande.objects.filter(pk=bc.pk).update(
+                statut=BonCommande.Statut.ANNULE)
+            fil.start()
+            self.assertTrue(attendre_un_ecrivain_bloque(ou_bien=b_fini))
+        fil.join(20)
+        self.assertEqual(res['b'].status_code, 409, res['b'].data)
+        self.assertEqual(res['b'].data['code'], 'bon_commande_annule')
+        self.assertFalse(Facture.objects.filter(bon_commande=bc).exists())
+
     def test_annuler_croise_livrer_partiel(self):
         self._croiser(lambda: LivraisonBC.objects.create(
             company=self.company, bon_commande=self.bc,

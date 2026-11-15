@@ -12,7 +12,9 @@ from .facture_encaissement import FactureEncaissementActionsMixin
 from .facture_lot import FactureLotActionsMixin
 from .facture_recouvrement import FactureRecouvrementActionsMixin
 from .facture_rectificatifs import FactureRectificatifsActionsMixin
-from .facture_portes import refuser_portes_fermees  # AFAC66 / VNT89
+from django.db import transaction
+from .facture_portes import (  # AFAC66 / VNT89 / ACNC76
+    refuser_portes_fermees, refuser_portes_sous_verrou)
 from .facture_gardes import PeutEncaisser  # ADRG3
 from rest_framework.exceptions import PermissionDenied
 from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
@@ -232,9 +234,11 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
             save_kwargs['revue_statut'] = Facture.RevueStatut.A_VALIDER
 
         # ATOT27 (D-ATOT-5) — brouillon hors série : « BROUILLON-<id> ».
-        create_provisoire(
-            lambda ref: serializer.save(reference=ref, **save_kwargs),
-        )
+        with transaction.atomic():  # ACNC76 — BC relu sous verrou avant l'INSERT
+            refuser_portes_sous_verrou(serializer.validated_data)
+            create_provisoire(
+                lambda ref: serializer.save(reference=ref, **save_kwargs),
+            )
 
     def perform_destroy(self, instance):
         """AUD103 (FICHE-DEL) — la suppression d'une facture cesse d'emporter
