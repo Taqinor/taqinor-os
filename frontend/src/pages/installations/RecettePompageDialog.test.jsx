@@ -193,6 +193,20 @@ describe('RecettePompageDialog — AERR38 garde de saisie', () => {
     natif.mockRestore()
   })
 
+  it('AERR160 — mesure saisie puis Fermer : demande, rester ⇒ mesure gardée', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<ConfirmProvider><RecettePompageDialog installationId={214} record={VIDE.record} onClose={onClose} /></ConfirmProvider>)
+    const debit = screen.getByLabelText('Débit mesuré (m³/h)')
+    await user.clear(debit)
+    await user.type(debit, '12')
+    await user.click(screen.getAllByRole('button', { name: 'Fermer' }).find((b) => b.textContent === 'Fermer'))
+    const boite = await screen.findByRole('alertdialog')
+    await user.click(within(boite).getByRole('button', { name: 'Rester' }))
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Débit mesuré (m³/h)')).toHaveValue(12)
+  })
+
   it('aucune saisie : Échap ferme directement, sans demande', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()

@@ -1449,7 +1449,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)
           </Button>
-          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(isAnyFormDirty()).then((ok) => ok && onClose())}>Fermer</Button>
           {peutGerer && <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>}
         </FormActions>
 
