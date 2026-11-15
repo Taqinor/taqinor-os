@@ -692,12 +692,13 @@ export default function DevisList() {
             detail: data.detail || 'Acceptation bloquée.',
           })
           setAcceptTarget(d)
-        } else if (err?.response?.status === 400) {
+        } else if (err?.response?.status === 400 || (err?.response?.status === 409 && data?.date_acceptation)) {
           if (data?.champ) acceptErreurs.setErrors({ [data.champ]: data.detail || 'Valeur refusée.' })
           else acceptErreurs.setFromResponse(data, { fallbackField: /^Date/.test(data?.detail || '') ? 'date' : 'submit' })
           setAcceptTarget(d)
           toast.error(frenchError(err, 'Acceptation impossible.'))
         } else if (!signalerConflit(d, err)) {
+          setAcceptTarget(d) // AERR162 — panne : la modale rouvre, saisie gardée
           toast.error(frenchError(err, 'Acceptation impossible.'))
         }
       }
