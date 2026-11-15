@@ -272,3 +272,20 @@ class RepriseBulkTest(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
         self.assertEqual(job.succes, 2)
+
+    def test_source_indecoupable_solde_le_job(self):
+        """ACEL99 — une cellule CSV > 131 072 caractères (`csv.Error`) solde
+        le job `echec` « Fichier illisible », aucune ligne importée."""
+        job = BulkJob.objects.create(
+            company=self.co, api_key=self.cle, type=BulkJob.TYPE_IMPORT,
+            entite='leads', params={'mode': 'create', 'format': 'csv'})
+        contenu = ('nom\n' + 'x' * 200000 + '\n').encode('utf-8')
+        job.params['source_file_key'] = bulk._store_import_source(
+            contenu, company_id=self.co.id, job_id=job.id, ext='csv')
+        job.save(update_fields=['params'])
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertIn('Fichier illisible', job.message_erreur)
+        self.assertEqual(job.cursor, 0)
+        self.assertEqual(Lead.objects.filter(company=self.co).count(), 0)

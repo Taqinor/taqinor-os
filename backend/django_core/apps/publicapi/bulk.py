@@ -356,6 +356,8 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
         return
     except SoftTimeLimitExceeded:  # ACEL97 — limite douce pendant la lecture du stockage
         return _echec_limite_lecture(job)
+    except (csv.Error, RecursionError) as exc:  # ACEL99 — source indécoupable
+        return job.marquer_echec(f"Fichier illisible : {exc}")
 
     total = len(rows)
     start = job.cursor  # NTAPI43 — reprise : jamais retraiter une ligne déjà appliquée
