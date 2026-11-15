@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderLeadWorkspace, echecReseauAutosaveVille } from '../../../test/leadWorkspaceHarness'
 import { LEAD_A, dupMatches, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import crmApi from '../../../api/crmApi'
 import LeadWorkspace from './LeadWorkspace'
 import SectionContact from './sections/SectionContact'
@@ -149,6 +150,66 @@ describe('AERR108 — quitter la fiche ne perd plus la frappe', () => {
       expect(crmApi.updateLead.mock.invocationCallOrder[0])
         .toBeLessThan(onOpenDuplicate.mock.invocationCallOrder[0])
     } finally { dupMatches.current = [] }
+  })
+})
+
+describe('AERR166 — Abandonner respecté, refus de A jamais posé sur B', () => {
+  it('AERR166 — Abandonner : aucun PATCH au démontage', async () => {
+    const confirmNatif = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    try {
+      crmApi.updateLead.mockRejectedValueOnce({ response: { status: 500 } })
+      const onClose = vi.fn()
+      const { unmount } = renderEdit({ onClose })
+      await settled()
+      fireEvent.change(document.querySelector('#lf-ville'), { target: { value: 'Rabat' } })
+      fireEvent.keyDown(document, { key: 'Escape' })
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      expect(confirmNatif).toHaveBeenCalled()
+      unmount()
+      await new Promise((r) => { setTimeout(r, 30) })
+      expect(crmApi.updateLead).toHaveBeenCalledTimes(1)
+      expect(sessionStorage.getItem('taqinor.lead.draft.1')).toBeNull()
+    } finally { confirmNatif.mockRestore() }
+  })
+
+  it('AERR166 — refus de A après passage à B : rien sous B', async () => {
+    let rejeter
+    crmApi.updateLead.mockImplementationOnce(() => new Promise((_, r) => { rejeter = r }))
+    crmApi.getLead.mockImplementation((id) => Promise.resolve({ data: { ...LEAD_A, id } }))
+    try {
+      const store = makeStore()
+      const fiche = (lead) => (
+        <Provider store={store}><MemoryRouter>
+          <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />
+        </MemoryRouter></Provider>
+      )
+      const { rerender } = render(fiche(LEAD_A))
+      await settled()
+      fireEvent.change(document.querySelector('#lf-email'), { target: { value: 'ali@' } })
+      rerender(fiche({ ...LEAD_A, id: 2, nom: 'Sara' }))
+      await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, expect.objectContaining({ email: 'ali@' })))
+      await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(2))
+      await act(async () => { rejeter({ response: { status: 400, data: { email: ['Saisissez une adresse e-mail valide.'] } } }) })
+      expect(screen.queryByText('Saisissez une adresse e-mail valide.')).toBeNull()
+      expect(screen.queryByRole('button', { name: /Réessayer/ })).toBeNull()
+    } finally {
+      crmApi.getLead.mockImplementation(() => Promise.resolve({ data: { ...LEAD_A } }))
+      sessionStorage.clear()  // le miroir de A (refusé) garde sa saisie : ne pas la prêter aux suites
+    }
+  })
+
+  it('AERR166 — fiche en création : Ouvrir le doublon demande', async () => {
+    dupMatches.current = [{ id: 77, nom: 'Doublon' }]
+    const confirmNatif = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    try {
+      const onOpenDuplicate = vi.fn()
+      renderCreate({ onOpenDuplicate })
+      fireEvent.change(document.querySelector('#lf-nom'), { target: { value: 'Karim' } })
+      fireEvent.click(await screen.findByRole('button', { name: /Doublon/ }))
+      await waitFor(() => expect(confirmNatif).toHaveBeenCalled())
+      expect(onOpenDuplicate).not.toHaveBeenCalled()
+      expect(crmApi.createLead).not.toHaveBeenCalled()
+    } finally { dupMatches.current = []; confirmNatif.mockRestore() }
   })
 })
 

@@ -75,6 +75,9 @@ const toPayload = (form, clientId) => {
   return out
 }
 
+// AERR163 — le refus du serveur sous SON champ (même balise pour les 12 champs d'EMPTY).
+const ErreurChamp = ({ msg }) => (msg ? <p role="alert" className="text-xs text-destructive">{msg}</p> : null)
+
 export default function SiteProfilePage() {
   const [clients, setClients] = useState([])
   const [clientId, setClientId] = useState('')
@@ -200,6 +203,7 @@ export default function SiteProfilePage() {
 
       {clientId && (
         <form onSubmit={submit} noValidate className="mt-4 space-y-4">
+          <ErreurChamp msg={errors.submit} />
           {lectureEchec && (
             <div role="alert" className="flex flex-wrap items-center gap-2" data-testid="profil-illisible">
               <span className="text-sm text-destructive">Profil illisible — impossible de l’enregistrer sans l’avoir lu.</span>
@@ -214,22 +218,26 @@ export default function SiteProfilePage() {
                 <Label htmlFor="sp-hiver">Facture hiver (MAD)</Label>
                 <Input id="sp-hiver" type="number" step="any"
                   value={form.facture_hiver} onChange={setInput('facture_hiver')} />
+                <ErreurChamp msg={errors.facture_hiver} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-ete">Facture été (MAD)</Label>
                 <Input id="sp-ete" type="number" step="any"
                   value={form.facture_ete} onChange={setInput('facture_ete')} />
+                <ErreurChamp msg={errors.facture_ete} />
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox id="sp-ete-diff" checked={form.ete_differente}
                   onCheckedChange={(v) => set('ete_differente')(Boolean(v))} />
                 <Label htmlFor="sp-ete-diff">Facture d&apos;été différente</Label>
+                <ErreurChamp msg={errors.ete_differente} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-conso">Consommation mensuelle (kWh)</Label>
                 <Input id="sp-conso" type="number" step="any"
                   value={form.conso_mensuelle_kwh}
                   onChange={setInput('conso_mensuelle_kwh')} />
+                <ErreurChamp msg={errors.conso_mensuelle_kwh} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-racc">Raccordement</Label>
@@ -242,6 +250,7 @@ export default function SiteProfilePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <ErreurChamp msg={errors.raccordement} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-type">Type d&apos;installation</Label>
@@ -254,6 +263,7 @@ export default function SiteProfilePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <ErreurChamp msg={errors.type_installation} />
               </div>
             </CardContent>
           </Card>
@@ -264,16 +274,19 @@ export default function SiteProfilePage() {
                 <Label htmlFor="sp-cv">Pompe actuelle (CV, information)</Label>
                 <Input id="sp-cv" type="number" step="any"
                   value={form.pompe_actuelle_cv} onChange={setInput('pompe_actuelle_cv')} />
+                <ErreurChamp msg={errors.pompe_actuelle_cv} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-hmt">HMT (m)</Label>
                 <Input id="sp-hmt" type="number" step="any"
                   value={form.pompe_hmt_m} onChange={setInput('pompe_hmt_m')} />
+                <ErreurChamp msg={errors.pompe_hmt_m} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-debit">Débit (m³/h)</Label>
                 <Input id="sp-debit" type="number" step="any"
                   value={form.pompe_debit_m3h} onChange={setInput('pompe_debit_m3h')} />
+                <ErreurChamp msg={errors.pompe_debit_m3h} />
               </div>
             </CardContent>
           </Card>
@@ -291,6 +304,7 @@ export default function SiteProfilePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <ErreurChamp msg={errors.type_toiture} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-surface">Surface toiture (m²)</Label>
@@ -298,14 +312,13 @@ export default function SiteProfilePage() {
                   value={form.surface_toiture_m2}
                   aria-invalid={errors.surface_toiture_m2 ? true : undefined}
                   onChange={setInput('surface_toiture_m2')} />
-                {errors.surface_toiture_m2 && (
-                  <p role="alert" className="text-xs text-destructive">{errors.surface_toiture_m2}</p>
-                )}
+                <ErreurChamp msg={errors.surface_toiture_m2} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-incl">Inclinaison (°)</Label>
                 <Input id="sp-incl" type="number" step="any"
                   value={form.inclinaison_deg} onChange={setInput('inclinaison_deg')} />
+                <ErreurChamp msg={errors.inclinaison_deg} />
               </div>
             </CardContent>
           </Card>

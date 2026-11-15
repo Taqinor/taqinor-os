@@ -114,10 +114,10 @@ export default function CallLogPopover({
   // AERR103 — « l'appel est DÉJÀ journalisé » : un second essai (après l'échec
   // de la relance) ne rejoue jamais `logInteraction` (aucune clé d'idempotence
   // serveur → un 2e appel au chatter). Remis à zéro par `reset()`.
-  const appelJournalise = useRef(false)
+  const [appelJournalise, setAppelJournalise] = useState(false)
 
   const reset = () => {
-    appelJournalise.current = false
+    setAppelJournalise(false)
     setOutcome('')
     setNote('')
     setDateRelance('')
@@ -126,6 +126,9 @@ export default function CallLogPopover({
     setObjet('')
     setConflit('garder')
   }
+  // AERR156 — la reprise ne vaut que pour la MÊME saisie : fenêtre fermée/rouverte ou autre lead ⇒ reset().
+  const [saisieVue, setSaisieVue] = useState(`${leadId}|${isOpen}`)
+  if (saisieVue !== `${leadId}|${isOpen}`) { setSaisieVue(`${leadId}|${isOpen}`); reset() }
 
   // EZ1 — y a-t-il un conflit à trancher ? Seulement si une relance existe
   // DÉJÀ, qu'une nouvelle date est choisie, et qu'elle est différente.
@@ -139,14 +142,14 @@ export default function CallLogPopover({
     if (!planificationSeule && !outcome) return
     if (planificationSeule && !dateRelance) return
     setBusy(true)
-    const reprise = appelJournalise.current
+    const reprise = appelJournalise
     let etape = 'journal'
     try {
       if (!planificationSeule && !reprise) {
         await crmApi.logInteraction(leadId, {
           kind, outcome, body: note.trim() || undefined,
         })
-        appelJournalise.current = true
+        setAppelJournalise(true)
       }
       etape = 'relance'
       if (ecrasera) {
