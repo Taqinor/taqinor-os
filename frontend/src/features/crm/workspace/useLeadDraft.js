@@ -197,7 +197,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       }
       return true
     } catch (err) {
-      // AERR166 — refus de A arrivé sur la fiche de B : rien sous B (le miroir de A garde sa saisie).
+      // AERR166 — refus de A arrivé sur la fiche de B : rien sous B (le brouillon local de A garde sa saisie).
       if (stateRef.current.leadId !== st.leadId) return false
       // RÈGLE FONDATEUR 08/09/2026 — le message NOMME le champ fautif quand la
       // réponse 400 en porte un exploitable (messageChampErreur ci-dessus) ;

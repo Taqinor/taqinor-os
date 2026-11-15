@@ -194,7 +194,7 @@ describe('AERR166 — Abandonner respecté, refus de A jamais posé sur B', () =
       expect(screen.queryByRole('button', { name: /Réessayer/ })).toBeNull()
     } finally {
       crmApi.getLead.mockImplementation(() => Promise.resolve({ data: { ...LEAD_A } }))
-      sessionStorage.clear()  // le miroir de A (refusé) garde sa saisie : ne pas la prêter aux suites
+      sessionStorage.clear()  // le brouillon local de A (refusé) garde sa saisie : ne pas la prêter aux suites
     }
   })
 
