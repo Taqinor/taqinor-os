@@ -47,6 +47,8 @@ vi.mock('../../../api/crmApi', () => ({
     createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     archiverLead: vi.fn(() => Promise.resolve({ data: { id: 1, is_archived: true } })),
     restaurerLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    // Minuterie ville de SectionContact (700 ms) : sans ce mock, un test lent levait une erreur non gérée.
+    villeStatut: vi.fn(() => Promise.resolve({ data: { statut: 'connue' } })),
   },
 }))
 
