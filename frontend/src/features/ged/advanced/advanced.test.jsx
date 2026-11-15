@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import gedApi from '../../../api/gedApi'
 import { renderAvecAuth } from '../../../test/renderAvecAuth.jsx'
 import { toast } from '../../../ui'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 import ApprobationPage from './ApprobationPage.jsx'
 import RetentionPage from './RetentionPage.jsx'
 import TagsPage from './TagsPage.jsx'
@@ -141,7 +142,7 @@ describe('UX46 RetentionPage', () => {
       response: { status: 403, data: { detail: 'Levée refusée : document sous archivage légal.' } },
     })
 
-    renderPage(<RetentionPage />)
+    renderPage(<ConfirmProvider><RetentionPage /></ConfirmProvider>)
 
     // Onglet Legal holds.
     await userEvent.click(await screen.findByRole('tab', { name: 'Legal holds' }))
@@ -149,6 +150,8 @@ describe('UX46 RetentionPage', () => {
     // (label = accessible name), présent même masqué visuellement.
     const levers = await screen.findAllByRole('button', { name: 'Lever le hold' })
     await userEvent.click(levers[0])
+    // AERR173 — la levée du gel demande d'abord confirmation.
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Lever le gel' }))
 
     await waitFor(() => {
       expect(gedApi.leverLegalHold).toHaveBeenCalledWith(7)
