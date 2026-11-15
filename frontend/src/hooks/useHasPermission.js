@@ -169,7 +169,8 @@ function estResponsable(role, roleNom, permissions) {
   if (!roleNom && permissions.length === 0) return role === 'responsable'
   return permissions.some((c) => typeof c === 'string'
     && !c.endsWith('_voir') && !c.endsWith('_view')
-    && !c.startsWith('records_scope') && !c.startsWith('portail_'))
+    && !c.startsWith('records_scope') && !c.startsWith('portail_')
+    && !c.startsWith('custom_object.'))  // ATST59 — hors registre : aucun palier (ATST13)
 }
 
 // `GET /monitoring/configs/co2-fleet/` (ImpactPastille) : `IsResponsableOrAdmin`
