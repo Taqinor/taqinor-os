@@ -10,6 +10,7 @@ import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useS
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { hapticTap } from '../../lib/haptics'
 // VX132 — anti-scintillement propagé : un Spinner nu clignotait sur tout
@@ -514,8 +515,10 @@ const VIEW_KEY = 'taqinor.interventions.view'
 const VALID_VIEWS = ['liste', 'kanban']
 
 export default function InterventionsPage() {
+  // ADRG139 — `installations/interventions/` : lecture du module (LectureDuModule) ; sinon 403.
+  const peutLire = useDroitMetier('installation_voir')
   const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(peutLire)
   const [error, setError] = useState(null)
   const [users, setUsers] = useState([])
   const peutAssignables = useCanListAssignableUsers()  // ADRG113/ADRG134 — sinon 403 (Technicien)
@@ -574,7 +577,7 @@ export default function InterventionsPage() {
     .catch(() => setError('Impossible de charger les interventions. Réessayez.'))
     .finally(() => setLoading(false))
   const reload = () => { setLoading(true); return fetchData() }
-  useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65, D-ENF22)
+  useEffect(() => { if (peutLire) fetchData() }, [installationFiltre, peutLire]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65, D-ENF22)
   useEffect(() => {
     if (!peutAssignables) return
     crmApi.getAssignableUsers()
