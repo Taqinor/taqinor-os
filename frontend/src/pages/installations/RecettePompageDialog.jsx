@@ -347,7 +347,7 @@ export default function RecettePompageDialog({
         </form>
 
         <DialogFooter className="flex-wrap">
-          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose())}>Fermer</Button>
           {boutonEnregistrer}
         </DialogFooter>
       </DialogContent>

@@ -39,6 +39,11 @@ vi.mock('../../api/crmApi', () => ({
   },
 }))
 
+// AERR172 — Radix Select ne s'ouvre pas sous jsdom : <select> natif pour la fiche.
+vi.mock('../../ui', async (importActual) => (
+  (await import('../../test/selectNatif')).avecSelectNatif(await importActual())
+))
+
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 
@@ -233,6 +238,27 @@ describe('InterventionsPage — AERR29 statut depuis le kanban', () => {
     expect(opts.onCommit).toBeUndefined()
     await opts.onUndo()
     expect(installationsApi.updateIntervention).toHaveBeenLastCalledWith(42, { statut: 'prete' })
+  })
+})
+
+// AERR172 — jumeau d'AERR29 : le sélecteur de statut de la FICHE demande aussi.
+describe('InterventionsPage — AERR172 statut depuis la fiche', () => {
+  it("AERR172 — fiche : Terminée demande, Annuler n'envoie rien", async () => {
+    const INT = { id: 7, reference: 'INT-0007', installation_reference: 'CH-007', client_nom: 'Client Sept',
+      titre: 'Dépannage onduleur', type_intervention: 'depannage', statut: 'sur_site' }
+    installationsApi.getInterventions.mockResolvedValue({ data: [INT] })
+    installationsApi.updateIntervention.mockResolvedValue({ data: { ...INT, statut: 'terminee' } })
+    render(<MemoryRouter initialEntries={['/interventions?id=7']}>
+      <ConfirmProvider><InterventionsPage /></ConfirmProvider>
+    </MemoryRouter>)
+    const fiche = await screen.findByRole('dialog')
+    fireEvent.change(within(fiche).getByLabelText('Statut'), { target: { value: 'terminee' } })
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite).toHaveTextContent('Passer INT-0007 à « Terminée » ?')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(installationsApi.updateIntervention).not.toHaveBeenCalled()
+    expect(within(fiche).getByLabelText('Statut')).toHaveValue('sur_site')
   })
 })
 

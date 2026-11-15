@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { Provider } from 'react-redux'
 
 /* VX31 — boîte de réception SAV : sur grand viewport (≥1280px), `TicketDetail`
@@ -22,6 +23,7 @@ import savApi from '../../api/savApi'
 import { TicketDetail } from './TicketsPage'
 import { makeTicketStore } from './__tests__/ticketDetailTestKit'
 import { mockMatchMedia } from '../../test/matchMedia'
+import { isAnyFormDirty } from '../../ui/useDirtyGuard'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -117,6 +119,38 @@ describe('TicketDetail — AERR25 la fiche suit le ticket sélectionné', () => 
     expect(id).toBe(2)
     expect(data.priorite).toBe('normale')
     expect(data.description).toBe('Panneau fissuré')
+  })
+
+  it('AERR159 — note tapée puis autre ticket : demande d\'abord', async () => {
+    mockMatchMedia(true)
+    renderDetail()
+    const note = await screen.findByPlaceholderText(/Écrire une note/)
+    expect(isAnyFormDirty()).toBe(false)
+    fireEvent.change(note, { target: { value: 'Pièce remplacée sur site' } })
+    // `selectionner` demande par isAnyFormDirty() : la note seule doit le rendre vrai.
+    await waitFor(() => expect(isAnyFormDirty()).toBe(true))
+    fireEvent.change(note, { target: { value: '' } })
+    await waitFor(() => expect(isAnyFormDirty()).toBe(false))
+  })
+
+  it('AERR160 — champ modifié puis Fermer : demande', async () => {
+    mockMatchMedia(true)
+    const onClose = vi.fn()
+    render(
+      <Provider store={makeTicketStore()}><ConfirmProvider>
+        <TicketDetail ticket={{ ...baseTicket, description: 'Onduleur HS' }} onClose={onClose} onSaved={() => {}} />
+      </ConfirmProvider></Provider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1)) // rien saisi : fermeture directe
+    fireEvent.change(await screen.findByDisplayValue('Onduleur HS'), { target: { value: 'Onduleur HS + fusible' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(boite.textContent).toContain('Quitter sans enregistrer ?')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.getByDisplayValue('Onduleur HS + fusible')).toBeInTheDocument()
   })
 
   it('rerender A → B puis Annuler le ticket : la boîte nomme SAV-2', async () => {

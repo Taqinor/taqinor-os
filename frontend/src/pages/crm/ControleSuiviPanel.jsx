@@ -851,9 +851,11 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
         const nomme = erreurs && Object.keys(erreurs).length > 0
         // AERR101 — une panne (non nommée) garde le verdict DÉJÀ lu : seul le
         // refus qui nomme un champ vide l'écran (le message va sous le champ).
+        // AERR165 — et seulement pour le MÊME filtre (période|commercial|segment) : une relecture.
+        const filtre = (c) => String(c ?? '').split('|').slice(0, 3).join('|')
         setResultat((prec) => ({
           cle,
-          donnees: nomme ? null : (prec.donnees ?? null),
+          donnees: nomme || filtre(prec.cle) !== filtre(cle) ? null : (prec.donnees ?? null),
           erreurs: nomme ? erreurs : null,
           panne: !nomme,
         }))

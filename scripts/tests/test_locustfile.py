@@ -92,6 +92,8 @@ class ScenarioTests(unittest.TestCase):
         self.assertTrue(all(ligne["devis"] == 7 and ligne["quantite"] and ligne["prix_unitaire"] for ligne in lignes))
         # Une ligne produit sans `produit` vaut 400 (LigneDevisSerializer.validate) : chaque ligne en porte un.
         self.assertEqual([ligne["produit"] for ligne in lignes], [11, 12])
+        # Les décimaux partent en chaîne (DecimalStricte refuse un nombre JSON en 400).
+        self.assertTrue(all(isinstance(ligne[c], str) for ligne in lignes for c in ("quantite", "prix_unitaire")))
         user.rendu_proposal()
         self.assertEqual(user.client.appels[-1][:2], ("GET", "/api/django/ventes/devis/7/proposal/"))
         refuse = self._utilisateur(0)

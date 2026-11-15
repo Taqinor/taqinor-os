@@ -130,7 +130,9 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // Filet navigateur (beforeunload) — même contrat que les 7 adoptants VX166.
   useDirtyGuard(isDirty(state))
 
+  const abandonneRef = useRef(false)  // AERR166 — « Abandonner » : rien ne repart au démontage
   const setField = useCallback((key, value) => {
+    abandonneRef.current = false  // AERR166 — une nouvelle frappe re-part au démontage
     dispatch({ type: 'SET_FIELD', key, value })
   }, [])
 
@@ -195,6 +197,8 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       }
       return true
     } catch (err) {
+      // AERR166 — refus de A arrivé sur la fiche de B : rien sous B (le brouillon local de A garde sa saisie).
+      if (stateRef.current.leadId !== st.leadId) return false
       // RÈGLE FONDATEUR 08/09/2026 — le message NOMME le champ fautif quand la
       // réponse 400 en porte un exploitable (messageChampErreur ci-dessus) ;
       // sinon on retombe sur le générique historique (detail, ou le message
@@ -255,6 +259,8 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       destructive: true,
     })
     if (abandonner) {
+      abandonneRef.current = true
+      clearMirror(stateRef.current.leadId)
       action?.()
       return true
     }
@@ -404,6 +410,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   useEffect(() => { flushRef.current = flush })
   useEffect(() => () => {
     const st = stateRef.current
+    if (abandonneRef.current) { abandonneRef.current = false; return }
     if (st.mode !== 'edit' || !isDirty(st)) return
     if (st.refused && st.refused === signatureCharge(st)) return  // ALEA18
     flushRef.current({})
@@ -412,7 +419,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // ── Miroir sessionStorage (défense anti-perte) ───────────────────────────
   useEffect(() => {
     if (state.mode !== 'edit' || state.leadId == null) return
-    if (draftDirty || state.composer.note) {
+    if ((draftDirty && !abandonneRef.current) || state.composer.note) {
       writeMirror(state.leadId, { draft: state.draft, note: state.composer.note })
     } else {
       clearMirror(state.leadId)

@@ -175,6 +175,18 @@ describe('InstallationDetail — AERR91 changement de chantier', () => {
     expect(mocks.updateInstallation).toHaveBeenCalledWith(2, { site_ville: 'Salé' })
   })
 
+  it('AERR171 — date de mise en service de CH-001 absente sur CH-002', async () => {
+    const A = { ...CHANTIER, id: 1, reference: 'CH-001' }
+    const B = { ...CHANTIER, id: 2, reference: 'CH-002' }
+    const store = nouveauStore()
+    const { rerender } = render(arbre(A, store))
+    await userEvent.setup().click(await screen.findByRole('tab', { name: /Jalons & gates/ }))
+    fireEvent.change(await screen.findByLabelText('Date de mise en service'), { target: { value: '2026-11-01' } })
+    expect(document.getElementById('mes-date')).toHaveValue('2026-11-01')
+    rerender(arbre(B, store))
+    await waitFor(() => expect(document.getElementById('mes-date')).toHaveValue(''))
+  })
+
   it('note tapée sur A : champ vide sur B, aucun noter', async () => {
     const A = { ...CHANTIER, id: 1, reference: 'CH-001' }
     const B = { ...CHANTIER, id: 2, reference: 'CH-002' }

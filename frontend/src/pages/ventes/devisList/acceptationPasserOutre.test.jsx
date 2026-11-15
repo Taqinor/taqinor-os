@@ -167,6 +167,33 @@ describe('AERR5 — refus 400 : modale rouverte, erreur sous le champ', () => {
   })
 })
 
+// AERR162 — un 409 `date_acceptation` (date future) et une panne rouvrent la modale.
+describe('AERR162 — 409 date future / panne : modale rouverte, saisie gardée', () => {
+  const refus409 = (corps) => Object.assign(new Error('409'), { response: { status: 409, data: corps } })
+  const ouvrirEtConfirmer = async (user) => {
+    ouvrir('admin')
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'M. Alami')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+  }
+
+  it('AERR162 — 409 date future : modale rouverte, message sous la date', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockRejectedValueOnce(refus409({ date_acceptation: ['La date ne peut pas être future.'] }))
+    await ouvrirEtConfirmer(user)
+    const date = await screen.findByLabelText("Date d'acceptation")
+    expect(within(date.parentElement).getByText(/ne peut pas être future/)).toBeTruthy()
+    expect(screen.getByLabelText('Nom de la personne qui accepte').value).toBe('M. Alami')
+  })
+
+  it('AERR162 — 500 : modale rouverte, saisie gardée', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockRejectedValueOnce(Object.assign(new Error('500'), { response: { status: 500, data: {} } }))
+    await ouvrirEtConfirmer(user)
+    await waitFor(() => expect(effacerAffaireSignee).toHaveBeenCalledTimes(1))
+    expect((await screen.findByLabelText('Nom de la personne qui accepte')).value).toBe('M. Alami')
+  })
+})
+
 // VNT80 — un 409 qui NOMME un autre devis (`vente_active_existante.vente_active`,
 // exemple committé devis_prix_negocie.json) : la fête est retirée, le message
 // s'affiche SOUS la ligne et « Ouvrir <réf> » surligne ce devis (?devis=<id>).

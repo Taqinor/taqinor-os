@@ -99,7 +99,8 @@ class ErpUser(HttpUser):
         if not produits:
             return
         for (designation, quantite, prix), produit in zip(
-                (("Onduleur réseau 5 kW", 1, "9000"), ("Panneau 550 Wc", 10, "1200")), produits * 2):
+                # Décimaux en CHAÎNE (core/champs_stricts.py::DecimalStricte : un nombre JSON vaut 400).
+                (("Onduleur réseau 5 kW", "1", "9000"), ("Panneau 550 Wc", "10", "1200")), produits * 2):
             ligne = self.client.post("/api/django/ventes/devis-lignes/", json={
                 "devis": devis_id, "produit": produit, "designation": designation,
                 "quantite": quantite, "prix_unitaire": prix,

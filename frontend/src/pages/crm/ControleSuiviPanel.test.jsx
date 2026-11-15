@@ -1422,6 +1422,19 @@ describe('ControleSuiviPanel — détail repliable (replié par défaut, mémori
     await waitFor(() => expect(screen.queryByTestId('controle-pas-a-jour')).not.toBeInTheDocument())
   })
 
+  it('AERR165 — autre commercial puis panne : aucun verdict de l\'ancien', async () => {
+    const user = userEvent.setup()
+    monter()
+    await attendreVerdict()
+    crmApi.getControleSuivi.mockRejectedValueOnce(new Error('boom'))
+    await user.click(screen.getByRole('combobox', { name: 'Commercial' }))
+    await user.click(await screen.findByRole('option', { name: CONTROLE.commerciaux[1].nom }))
+    const panne = await screen.findByTestId('controle-panne')
+    expect(within(panne).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.queryByTestId('controle-verdict')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('controle-pas-a-jour')).not.toBeInTheDocument()
+  })
+
   it('un refus 400 qui nomme un champ déplie le détail pour montrer le message sous ce champ', async () => {
     const message = '« jours » doit valoir 7, 14 ou 30.'
     crmApi.getControleSuivi.mockRejectedValueOnce({

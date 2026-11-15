@@ -859,6 +859,7 @@ function ChampsSignatureEditor({ demande }) {
   const [role, setRole] = useState('')
   const [requis, setRequis] = useState(true)
   const [saving, setSaving] = useState(false)
+  const { confirmDelete } = useConfirmDialog()
 
   useEffect(() => {
     if (!demande?.id) return
@@ -880,10 +881,11 @@ function ChampsSignatureEditor({ demande }) {
     } catch (err) { toastSiMuet(err) } finally { setSaving(false) }
   }
 
-  const supprimer = async (id) => {
+  const supprimer = async (c) => {
+    if (!await confirmDelete({ title: `Supprimer le champ ${c.role || c.type_champ} ?` })) return
     try {
-      await gedApi.deleteChampSignature(id)
-      setChamps((list) => list.filter((c) => c.id !== id))
+      await gedApi.deleteChampSignature(c.id)
+      setChamps((list) => list.filter((x) => x.id !== c.id))
     } catch (err) { toastSiMuet(err) }
   }
 
@@ -931,7 +933,7 @@ function ChampsSignatureEditor({ demande }) {
                 {' '}· page {c.page}{c.role ? ` · ${c.role}` : ''}{c.requis ? ' · requis' : ''}
               </span>
               <Button variant="ghost" size="icon" type="button"
-                aria-label="Supprimer le champ" onClick={() => supprimer(c.id)}>
+                aria-label="Supprimer le champ" onClick={() => supprimer(c)}>
                 <Trash2 />
               </Button>
             </li>

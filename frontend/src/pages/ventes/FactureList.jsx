@@ -254,7 +254,7 @@ export default function FactureList() {
     try {
       await ventesApi.patchFacture(f.id, { date_echeance: echeanceValue || null })
       setEcheanceEditId(null)
-      dispatch(fetchFactures())
+      relire()
     } catch (err) {
       toast.error(frenchError(err, 'Mise à jour de l’échéance impossible.'))
     } finally {
@@ -669,7 +669,7 @@ export default function FactureList() {
         facture={noteDebitTarget
           ? (factures.find(x => x.id === noteDebitTarget.id) ?? noteDebitTarget)
           : null}
-        onChanged={() => dispatch(fetchFactures())}
+        onChanged={relire}
         open={!!noteDebitTarget}
         onOpenChange={(o) => { if (!o) setNoteDebitTarget(null) }}
       />

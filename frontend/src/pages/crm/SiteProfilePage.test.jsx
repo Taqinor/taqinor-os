@@ -75,4 +75,29 @@ describe('SiteProfilePage — AERR116', () => {
     expect(await screen.findByText('Surface invalide.')).toBeInTheDocument()
     expect(screen.getByLabelText('Surface toiture (m²)')).toHaveAttribute('aria-invalid', 'true')
   })
+
+  it('AERR163 — 400 sur facture_hiver : message sous le champ', async () => {
+    const message = 'Assurez-vous que ce nombre ne dépasse pas 2 décimales.'
+    crmApi.updateSiteProfile.mockRejectedValueOnce({ response: { status: 400, data: { facture_hiver: [message] } } })
+    const user = userEvent.setup()
+    render(<SiteProfilePage />)
+    await choisirClient(user)
+    const hiver = await screen.findByLabelText('Facture hiver (MAD)')
+    await user.clear(hiver)
+    await user.type(hiver, '120.555')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le profil' }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(hiver.parentElement).toHaveTextContent(message)
+    expect(hiver).toHaveValue(120.555)
+  })
+
+  it('AERR163 — refus sans champ : message en tête du formulaire', async () => {
+    crmApi.updateSiteProfile.mockRejectedValueOnce({ response: { status: 400, data: { detail: 'Profil verrouillé.' } } })
+    const user = userEvent.setup()
+    render(<SiteProfilePage />)
+    await choisirClient(user)
+    await user.click(await screen.findByRole('button', { name: 'Enregistrer le profil' }))
+    const refus = await screen.findByText('Profil verrouillé.')
+    expect(refus.parentElement.tagName).toBe('FORM')
+  })
 })

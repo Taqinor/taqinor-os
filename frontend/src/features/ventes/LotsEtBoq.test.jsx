@@ -116,6 +116,19 @@ describe('LotsMultiSites', () => {
     expect(espion).not.toHaveBeenCalled()
   })
 
+  it("AERR164 — deux Entrée pendant l'envoi : un seul creerLotDevis", async () => {
+    // Mutant : retirer la garde `enCoursRef` ⇒ 2 appels.
+    let fin
+    ventesApi.creerLotDevis.mockReturnValue(new Promise(r => { fin = r }))
+    render(<LotsMultiSites devisId={7} modifiable />)
+    await userEvent.click(screen.getByRole('button', { name: 'Afficher' }))
+    await screen.findByLabelText('Nom du lot')
+    await userEvent.type(screen.getByLabelText('Nom du lot'), 'Lot A{Enter}{Enter}')
+    expect(ventesApi.creerLotDevis).toHaveBeenCalledTimes(1)
+    fin(reponseContrat('ventes', 'devis_lots'))
+    await waitFor(() => expect(screen.getByLabelText('Nom du lot').value).toBe(''))
+  })
+
   it('refus serveur : le message est affiché, rien n’est relu', async () => {
     ventesApi.creerLotDevis.mockRejectedValue(
       { response: { data: { nom_lot: ['Ce lot existe déjà sur ce devis.'] } } })

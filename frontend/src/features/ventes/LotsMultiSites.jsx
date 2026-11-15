@@ -9,7 +9,7 @@
 // enregistrées), puis crée un lot en y rattachant des lignes (POST). Après
 // une création, `onChange` demande au parent de relire le devis.
 // Jamais prix d'achat ni marge à l'écran.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Building2 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { Button, Card, CardContent, Checkbox, Input, Label } from '../../ui'
@@ -43,6 +43,7 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
   const [form, setForm] = useState(FORM_VIDE)
   const [erreur, setErreur] = useState('')
   const [enCours, setEnCours] = useState(false)
+  const enCoursRef = useRef(false)
   const { confirm } = useConfirmDialog()
 
   const charger = async () => {
@@ -71,13 +72,15 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
   }))
 
   const creer = async () => {
+    if (enCoursRef.current) return // AERR164 — un seul envoi à la fois (Entrée doublée)
     const corps = corpsCreationLot(form)
     if (!corps.nom_lot) { setErreur('Nom de lot requis.'); return }
+    enCoursRef.current = true
     // AERR11 — la création recharge le devis (QJR548) : une saisie modifiée serait perdue.
     if (isAnyFormDirty() && !(await confirm({
       title: 'Créer le lot ?', confirmLabel: 'Créer le lot',
       description: 'Créer le lot recharge le devis : vos modifications non enregistrées seront perdues.',
-    }))) return
+    }))) { enCoursRef.current = false; return }
     setEnCours(true)
     setErreur('')
     try {
@@ -88,6 +91,7 @@ export default function LotsMultiSites({ devisId, modifiable, onChange }) {
     } catch (err) {
       setErreur(messageErreurLots(err))
     } finally {
+      enCoursRef.current = false
       setEnCours(false)
     }
   }

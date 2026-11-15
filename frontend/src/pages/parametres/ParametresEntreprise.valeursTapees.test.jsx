@@ -3,6 +3,7 @@ import {
 } from '../../test/parametresEntrepriseHarness'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import parametresApi from '../../api/parametresApi'
 
 /* APAR39 — le profil société envoie les valeurs TAPÉES telles quelles : vider
    « SLA lead » n'envoie plus 0 (SLA désactivé) en silence, taper 0 dans le
@@ -80,6 +81,21 @@ describe('AERR72 — la saisie d’une section autonome survit au changement d�
     await waitFor(() => expect(container.querySelector('input[name="lead_sla_hours"]')).not.toBeNull())
     fireEvent.click(screen.getAllByRole('button', { name: 'Modèles de documents' })[0])
     expect(await screen.findByDisplayValue('Validité : 45 jours')).toBeVisible()
+  })
+
+  it('AERR158 — corps de modèle d’e-mail gardé après aller-retour d’onglet', async () => {
+    parametresApi.getEmailTemplates.mockImplementation(() => Promise.resolve({ data: [
+      { cle: 'envoi_devis', label: 'Envoi devis', sujet: 'Votre devis', corps: 'Bonjour' },
+    ] }))
+    const { container } = rendreParametresEntreprise()
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    fireEvent.click(screen.getAllByRole('button', { name: 'Email' })[0])
+    const corps = await screen.findByDisplayValue('Bonjour')
+    fireEvent.change(corps, { target: { value: 'Bonjour {client} — modifié' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Leads' })[0])
+    await waitFor(() => expect(container.querySelector('input[name="lead_sla_hours"]')).not.toBeNull())
+    fireEvent.click(screen.getAllByRole('button', { name: 'Email' })[0])
+    expect(await screen.findByDisplayValue('Bonjour {client} — modifié')).toBeVisible()
   })
 
   it('corps de modèle brandé gardé après aller-retour d’onglet', async () => {

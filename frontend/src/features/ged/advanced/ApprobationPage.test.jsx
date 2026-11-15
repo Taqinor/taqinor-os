@@ -49,6 +49,7 @@ vi.mock('../../../api/gedApi', () => ({
     createDemandeSignature: vi.fn(),
     creerDemandeMultiSignataires: vi.fn(),
     getChampsSignature: vi.fn(() => Promise.resolve({ data: [] })),
+    deleteChampSignature: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -319,6 +320,33 @@ describe('ADOC76 ApprobationPage — circuit multi-signataires', () => {
       expect.objectContaining({
         destinataires: [expect.objectContaining({ nom: 'Sofia', role: 'approbateur', ordre: 1 })],
       })))
+  })
+})
+
+describe('AERR173 ApprobationPage — supprimer un champ de signature', () => {
+  it('AERR173 — supprimer un champ demande, Annuler n’envoie rien', async () => {
+    gedApi.getChampsSignature.mockImplementation(() => Promise.resolve({ data: [
+      { id: 1, type_champ: 'signature', page: 1, role: 'Client', requis: true },
+    ] }))
+    gedApi.creerDemandeMultiSignataires.mockResolvedValue({
+      data: { id: 30, document: 4, statut: 'en_attente', lien_signature: null, signataires: [] },
+    })
+    gedApi.getDocumentsList.mockResolvedValue({ data: [{ id: 4, nom: 'Bail.pdf' }] })
+    gedApi.getModelesDocument.mockResolvedValue({ data: [] })
+    render(<MemoryRouter><ThemeProvider><ConfirmProvider><ApprobationPage /></ConfirmProvider></ThemeProvider></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: /Circuit multi-signataires/i }))[0])
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByText('Choisir un document…').closest('button'))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Bail.pdf'))
+    await userEvent.type(within(dialog).getByPlaceholderText('Nom'), 'Sofia')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer le circuit' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le champ' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText(/Supprimer le champ Client \?/)).toBeInTheDocument()
+    await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    expect(gedApi.deleteChampSignature).not.toHaveBeenCalled()
+    gedApi.getChampsSignature.mockImplementation(() => Promise.resolve({ data: [] }))
   })
 })
 
