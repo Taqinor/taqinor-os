@@ -29,6 +29,18 @@ FACTURE_DE_DEVIS_REFUSE = (
     "facture.")
 
 
+def refuser_portes_sous_verrou(donnees):
+    """ACNC76 — à la CRÉATION, relit le BC choisi SOUS VERROU (dans la
+    transaction de l'appelant) et rejoue les portes sur la copie fraîche : un
+    « Annuler » croisé a fini ⇒ 409 ``bon_commande_annule``. Même ordre que
+    ``annuler`` : verrou du BC avant l'INSERT."""
+    bc = donnees.get('bon_commande')
+    if bc is None:
+        return
+    frais = type(bc).objects.select_for_update().get(pk=bc.pk)
+    refuser_portes_fermees({**donnees, 'bon_commande': frais})
+
+
 def refuser_portes_fermees(donnees, facture=None):
     """Lève ``ValidationError`` si ``donnees`` (``validated_data``) pose le BC
     d'un devis ou un devis — ``facture`` (modification) : la valeur déjà
