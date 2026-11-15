@@ -186,6 +186,28 @@ describe('FactureDetail — réponse perdue sur un règlement (ACNC73)', () => {
     expect(screen.getByText('Déjà payé').parentElement.textContent).toMatch(/3\s?000,00/)
     expect(screen.getByText('Solde dû').parentElement.textContent).toMatch(/7\s?000,00/)
   })
+
+  it("réponse perdue : bouton occupé jusqu'à la relecture, plus de bandeau d'échec", async () => {
+    // ACNC75 (C-ACNC-VER4-401) — mutant : retirer l'`await` de la relecture ⇒ échec.
+    const user = userEvent.setup()
+    const base = { id: 9, reference: 'FF-9', statut: 'a_payer', statut_controle: 'normale',
+      fournisseur_nom: 'JA Solar', montant_ttc: '10000.00', total_paye: '0.00', solde_du: '10000.00' }
+    let rendre
+    stockApi.getFactureFournisseur.mockReturnValueOnce(new Promise((ok) => { rendre = ok }))
+    render(<ThemeProvider>
+      <FactureDetail facture={{ ...base, paiements: [] }} onClose={() => {}} onSaved={() => {}} />
+    </ThemeProvider>)
+    await user.type(screen.getByLabelText('Montant'), '3000')
+    await user.click(screen.getByRole('button', { name: 'Ajouter le paiement' }))
+    await waitFor(() => expect(stockApi.getFactureFournisseur).toHaveBeenCalledWith(9))
+    expect(screen.queryByRole('button', { name: 'Ajouter le paiement' })).toBeNull()  // occupé : « … »
+    rendre({ data: { ...base, statut: 'partiellement_payee', total_paye: '3000.00', solde_du: '7000.00',
+      paiements: [{ id: 2, montant: '3000.00', date_paiement: '2026-11-15', mode: 'virement' }] } })
+    expect(await screen.findByRole('button', { name: 'Ajouter le paiement' })).toBeInTheDocument()
+    expect(screen.getByText(/Paiement de 3\s?000 MAD enregistré \(réponse perdue, fiche relue\)\./)).toBeInTheDocument()
+    expect(screen.queryByText("L'enregistrement du paiement a échoué.")).toBeNull()
+    expect(screen.getByText('Solde dû').parentElement.textContent).toMatch(/7\s?000,00/)
+  })
 })
 
 /* ACNC74 (C-ACNC-VER4-400, D-ACNC-1) — règlement identique du jour : la phrase serveur

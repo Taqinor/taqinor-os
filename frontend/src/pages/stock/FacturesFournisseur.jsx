@@ -245,6 +245,7 @@ export function FactureDetail({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [doublon, setDoublon] = useState(null)  // ACNC74 — phrase du 409 `paiement_similaire`
+  const [info, setInfo] = useState(null)  // ACNC75 — règlement relu après une réponse perdue
   // WIR192/XPUR10 — file d'exceptions du rapprochement 3 voies : Responsable/
   // Admin peut résoudre (débloque le paiement), commentaire optionnel.
   const [resolving, setResolving] = useState(false)
@@ -273,7 +274,7 @@ export function FactureDetail({
   }
 
   const ajouter = async (confirmerDoublon = false) => {
-    setError(null); setDoublon(null)
+    setError(null); setDoublon(null); setInfo(null)
     if (!(Number(montant) > 0)) { setError('Saisissez un montant positif.'); return }
     setBusy(true)
     try {
@@ -293,8 +294,14 @@ export function FactureDetail({
       else setError(frError(err, "L'enregistrement du paiement a échoué."))
       if (!err?.response) {  // ACNC23 — réponse perdue : relire la facture, même clé au prochain clic
         onSaved?.()  // ACNC73 — la fiche relit aussi SA copie (règlement passé + solde relu)
-        stockApi.getFactureFournisseur(facture.id).then((r) => setFacture(r.data))
-          .catch((e) => setError(frError(e, "Le paiement n'a pas pu être confirmé — rouvrez la facture.")))
+        // ACNC75 — bouton occupé jusqu'à la relecture ; règlement relu ⇒ succès à la place de l'échec.
+        const relue = await stockApi.getFactureFournisseur(facture.id).then((r) => r.data)
+          .catch((e) => { setError(frError(e, "Le paiement n'a pas pu être confirmé — rouvrez la facture.")); return null })
+        if (relue) setFacture(relue)
+        if (Number(relue?.total_paye) > Number(facture.total_paye)) {
+          setError(null)
+          setInfo(`Paiement de ${formatMAD(montant, { decimals: Number(montant) % 1 ? 2 : 0 })} enregistré (réponse perdue, fiche relue).`)
+        }
       }
     } finally { setBusy(false) }
   }
@@ -479,6 +486,7 @@ export function FactureDetail({
         )}
 
         <AlerteErreur error={error} />
+        <InfoSucces info={info} />
 
         <DialogFooter className="flex-wrap">
           {voitPrix && (
