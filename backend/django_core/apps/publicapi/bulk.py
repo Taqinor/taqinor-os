@@ -321,6 +321,13 @@ def _process_activite_row(company, row):
         company=company, lead_id=lead_id, body=row.get('body'))
 
 
+def _echec_limite_lecture(job):
+    """ACEL97 — limite douce à la lecture du stockage : job relançable."""
+    job.marquer_echec(
+        "Limite de temps atteinte — relancez le job, "
+        f"il reprend à la ligne {job.cursor + 1}")
+
+
 def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
     """Traite un job d'import du début à la fin — IDEMPOTENT (reprend depuis
     `job.cursor`, NTAPI43). Une ligne en erreur n'arrête JAMAIS les
@@ -346,6 +353,8 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
     except BulkJobError as exc:
         job.marquer_echec(str(exc))
         return
+    except SoftTimeLimitExceeded:  # ACEL97 — limite douce pendant la lecture du stockage
+        return _echec_limite_lecture(job)
 
     rows = _parse_rows(raw, fmt)
     total = len(rows)
@@ -360,6 +369,8 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 json.loads(line) for line in previous.decode('utf-8').splitlines()
                 if line.strip()
             ]
+        except SoftTimeLimitExceeded:  # ACEL97 — jamais repartir d'un journal vide
+            return _echec_limite_lecture(job)
         except Exception:  # noqa: BLE001 — repli : repart d'un journal vide (D-ENF22-BLE001)
             logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
             error_rows = []
