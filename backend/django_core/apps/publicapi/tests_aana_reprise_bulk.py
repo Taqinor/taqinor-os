@@ -253,3 +253,39 @@ class RepriseBulkTest(TestCase):
         self.assertEqual(sorted(ligne['nom'] for ligne in lignes),
                          ['E1', 'E2', 'E3', 'E4'])
         self.assertEqual(job.succes, 4)
+
+    def test_limite_douce_au_decoupage_de_la_source_solde_le_job(self):
+        """ACEL98 — la limite douce levée dans `_parse_rows` solde le job
+        `echec` relançable (curseur inchangé) au lieu de le laisser `en_file`."""
+        from celery.exceptions import SoftTimeLimitExceeded
+        job = self._job_import(b'{"nom": "P1"}\n{"nom": "P2"}\n')
+        with mock.patch.object(bulk, '_parse_rows',
+                               side_effect=SoftTimeLimitExceeded()):
+            bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertIn('Limite de temps atteinte', job.message_erreur)
+        self.assertEqual(job.cursor, 0)
+        with mock.patch.object(bulk, '_dispatch_import'):
+            bulk.relancer_job(job)  # accepté : le job est relançable
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
+        self.assertEqual(job.succes, 2)
+
+    def test_source_indecoupable_solde_le_job(self):
+        """ACEL99 — une cellule CSV > 131 072 caractères (`csv.Error`) solde
+        le job `echec` « Fichier illisible », aucune ligne importée."""
+        job = BulkJob.objects.create(
+            company=self.co, api_key=self.cle, type=BulkJob.TYPE_IMPORT,
+            entite='leads', params={'mode': 'create', 'format': 'csv'})
+        contenu = ('nom\n' + 'x' * 200000 + '\n').encode('utf-8')
+        job.params['source_file_key'] = bulk._store_import_source(
+            contenu, company_id=self.co.id, job_id=job.id, ext='csv')
+        job.save(update_fields=['params'])
+        bulk.run_import_job(job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BulkJob.STATUT_ECHEC)
+        self.assertIn('Fichier illisible', job.message_erreur)
+        self.assertEqual(job.cursor, 0)
+        self.assertEqual(Lead.objects.filter(company=self.co).count(), 0)
