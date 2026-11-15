@@ -38,6 +38,9 @@ const api = vi.hoisted(() => ({
   encaissementGroupeFactures: vi.fn(() => Promise.resolve({ data: [{ id: 1 }, { id: 2 }] })),
   // AERR3 — tuiles d'argent relues après un geste d'argent.
   getFacturesKpis: vi.fn(() => Promise.resolve({ data: { encaisse_mois: '0' } })),
+  getNotesDebit: vi.fn(() => Promise.resolve({ data: [] })),
+  creerNoteDebit: vi.fn(() => Promise.resolve({ data: { id: 5, reference: 'ND-1' } })),
+  patchFacture: vi.fn(() => Promise.resolve({ data: {} })),
   getFacture: vi.fn(() => Promise.resolve({
     data: {
       id: 1, reference: 'FAC-2026-07-0001', montant_du: 5000,
@@ -96,6 +99,22 @@ const enRetard = {
 const ouvrirMenu = async (user, reference) => {
   const row = screen.getByText(reference).closest('tr')
   await user.click(within(row).getByRole('button', { name: /Actions/ }))
+}
+
+// Store ventes RÉEL (kpis relus par `fetchFacturesKpis`) + une facture émise de 12 000 MAD.
+async function monterAvecKpis() {
+  const { configureStore } = await import('@reduxjs/toolkit')
+  const { Provider } = await import('react-redux')
+  const { MemoryRouter } = await import('react-router-dom')
+  const { render } = await import('@testing-library/react')
+  const ventes = (await import('../../features/ventes/store/ventesSlice')).default
+  const factures = [{ ...emise, total_ttc: 12000, montant_du: 12000 }]
+  const store = configureStore({
+    reducer: { ventes, auth: (s = { role: 'admin' }) => s },
+    preloadedState: { ventes: { ...ventes(undefined, { type: 'init' }), factures } },
+  })
+  const page = <ThemeProvider><FactureList /></ThemeProvider>
+  return render(<Provider store={store}><MemoryRouter initialEntries={['/ventes/factures']}>{page}</MemoryRouter></Provider>)
 }
 
 let confirmSpy
@@ -262,6 +281,55 @@ describe('WIR183 — XFAC11 : consolider des devis', () => {
   })
 })
 
+// AERR161 — note de débit créée et échéance changée : les tuiles d'argent sont relues.
+describe('AERR161 — tuiles d’argent relues après note de débit / échéance', () => {
+  const tuileDu = () => screen.getByText('Total dû').parentElement.parentElement
+  const creerNote = async (user) => {
+    await ouvrirMenu(user, 'FAC-2026-07-0001')
+    await user.click(await screen.findByRole('menuitem', { name: /Note de débit/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Motif'), 'Frais')
+    await user.type(within(dialog).getByLabelText(/Montant HT/), '200')
+    await user.click(within(dialog).getByRole('button', { name: /Créer la note de débit/ }))
+  }
+
+  it('AERR161 — note de débit créée : tuiles relues', async () => {
+    // Mutant : remettre `dispatch(fetchFactures())` ⇒ `getFacturesKpis` non rappelé.
+    api.getFacturesKpis
+      .mockResolvedValueOnce({ data: { total_du: '12000' } })
+      .mockResolvedValueOnce({ data: { total_du: '12200' } })
+    await monterAvecKpis()
+    await waitFor(() => expect(tuileDu()).toHaveTextContent(/12\s?000/))
+    await creerNote(userEvent.setup())
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(tuileDu()).toHaveTextContent(/12\s?200/))
+  })
+
+  it('AERR161 — relecture des tuiles rejetée : Indicateurs pas à jour', async () => {
+    api.getFacturesKpis
+      .mockResolvedValueOnce({ data: { total_du: '12000' } })
+      .mockRejectedValueOnce(new Error('réseau'))
+    await monterAvecKpis()
+    await waitFor(() => expect(tuileDu()).toHaveTextContent(/12\s?000/))
+    await creerNote(userEvent.setup())
+    expect(await screen.findByText(/Indicateurs pas à jour/)).toBeInTheDocument()
+    expect(tuileDu()).toHaveTextContent(/12\s?000/)
+  })
+
+  it('AERR161 — échéance changée : tuiles relues', async () => {
+    api.getFacturesKpis
+      .mockResolvedValueOnce({ data: { total_du: '12000' } })
+      .mockResolvedValueOnce({ data: { total_du: '12000' } })
+    await monterAvecKpis()
+    const user = userEvent.setup()
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(1))
+    await user.click(await screen.findByRole('button', { name: /Modifier l’échéance de la facture FAC-2026-07-0001/ }))
+    await user.click(screen.getByRole('button', { name: 'OK' }))
+    await waitFor(() => expect(api.patchFacture).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
+  })
+})
+
 describe('WIR183 — ZFAC6 : encaissement groupé', () => {
   const deux = [emise, { ...emise, id: 3, reference: 'FAC-B', montant_du: 2000 }]
 
@@ -302,20 +370,10 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
 
   it('après l’encaissement groupé, la tuile Encaissé ce mois relit le serveur', async () => {
     // AERR3 (C-AERR-003) — mutant : retirer fetchFacturesKpis() du point de relecture ⇒ échec.
-    const { configureStore } = await import('@reduxjs/toolkit')
-    const { Provider } = await import('react-redux')
-    const { MemoryRouter } = await import('react-router-dom')
-    const { render } = await import('@testing-library/react')
-    const ventes = (await import('../../features/ventes/store/ventesSlice')).default
     api.getFacturesKpis
       .mockResolvedValueOnce({ data: { encaisse_mois: '0' } })
       .mockResolvedValueOnce({ data: { encaisse_mois: '12000' } })
-    const store = configureStore({
-      reducer: { ventes, auth: (s = { role: 'admin' }) => s },
-      preloadedState: { ventes: { ...ventes(undefined, { type: 'init' }), factures: [{ ...emise, total_ttc: 12000, montant_du: 12000 }] } },
-    })
-    const page = <ThemeProvider><FactureList /></ThemeProvider>
-    render(<Provider store={store}><MemoryRouter initialEntries={['/ventes/factures']}>{page}</MemoryRouter></Provider>)
+    await monterAvecKpis()
     const tuile = () => screen.getByText('Encaissé ce mois').parentElement.parentElement
     await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(1))
     const user = userEvent.setup()

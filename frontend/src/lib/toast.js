@@ -38,7 +38,12 @@ export function toastSuccess(message, options = {}) {
 
 /** Toast d'erreur — annoncé en `assertive` (interrompt), contrairement aux
  * toasts succès/info qui restent `polite`. */
+let erreursEmises = 0
+/** AERR167 — nombre de toasts d'erreur émis : `mutateWithUndo` sait si le global a parlé. */
+export const nombreErreursEmises = () => erreursEmises
+
 export function toastError(message, options = {}) {
+  erreursEmises += 1
   announceAssertive(message)
   return toast.error(message, options)
 }
