@@ -22,6 +22,7 @@ import savApi from '../../api/savApi'
 import { TicketDetail } from './TicketsPage'
 import { makeTicketStore } from './__tests__/ticketDetailTestKit'
 import { mockMatchMedia } from '../../test/matchMedia'
+import { isAnyFormDirty } from '../../ui/useDirtyGuard'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -117,6 +118,18 @@ describe('TicketDetail — AERR25 la fiche suit le ticket sélectionné', () => 
     expect(id).toBe(2)
     expect(data.priorite).toBe('normale')
     expect(data.description).toBe('Panneau fissuré')
+  })
+
+  it('AERR159 — note tapée puis autre ticket : demande d\'abord', async () => {
+    mockMatchMedia(true)
+    renderDetail()
+    const note = await screen.findByPlaceholderText(/Écrire une note/)
+    expect(isAnyFormDirty()).toBe(false)
+    fireEvent.change(note, { target: { value: 'Pièce remplacée sur site' } })
+    // `selectionner` demande par isAnyFormDirty() : la note seule doit le rendre vrai.
+    await waitFor(() => expect(isAnyFormDirty()).toBe(true))
+    fireEvent.change(note, { target: { value: '' } })
+    await waitFor(() => expect(isAnyFormDirty()).toBe(false))
   })
 
   it('rerender A → B puis Annuler le ticket : la boîte nomme SAV-2', async () => {

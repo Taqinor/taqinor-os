@@ -313,7 +313,6 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     () => Object.keys(initialFields).some((k) => String(fields[k] ?? '') !== String(initialFields[k] ?? '')),
     [fields, initialFields],
   )
-  useDirtyGuard(dirty)
 
   const [equipements, setEquipements] = useState([])
   // NTMOB15 — scan QR/code-barres natif de l'équipement concerné.
@@ -357,6 +356,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
     numero_serie: '', serie_neuve: '',
   })
+  useDirtyGuard(dirty || !!(noteBody.trim() || interv.compte_rendu || pieceForm.produit || retirerForm.produit || motif)) // AERR159
   const [serieNeuveError, setSerieNeuveError] = useState(null)
   const [equipementNeuf, setEquipementNeuf] = useState(null)
   const [retirerBusy, setRetirerBusy] = useState(false)
