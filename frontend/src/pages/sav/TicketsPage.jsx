@@ -1712,7 +1712,7 @@ export default function TicketsPage() {
       if (e.target?.closest?.('[role="listbox"], [role="menu"]')) return
       if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
       else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
-      else if (e.key === 'Enter' && !detailTicket && rows.length) {
+      else if (e.key === 'Enter' && !detailTicket && rows.length && !e.target?.closest?.('button, a, [role="button"]')) {
         // Entrée ouvre le premier ticket quand rien n'est encore sélectionné ;
         // avec une sélection, le panneau est DÉJÀ ouvert — on ne vole donc pas
         // Entrée à un bouton ou un lien qui a le focus.

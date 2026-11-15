@@ -374,6 +374,26 @@ describe('TicketsPage — AERR27 raccourcis clavier gardés', () => {
     expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-1/)
   }, 60000)
 
+  it('AERR170 — Entrée sur un bouton focalisé : aucun ticket ouvert', async () => {
+    mockMatchMedia(true)
+    render(<ThemeProvider><Provider store={storeAdrg22([], 'admin')}><MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter></Provider></ThemeProvider>)
+    await screen.findAllByText('SAV-1', { exact: false })
+    const bouton = screen.getAllByRole('button')[0]
+    bouton.focus()
+    fireEvent.keyDown(bouton, { key: 'Enter' })
+    expect(document.querySelector('aside')).toBeNull()
+  }, 60000)
+
+  it('AERR170 — J sous Annuler ce ticket ? : même ticket', async () => {
+    await ouvrirFiche()
+    fireEvent.click(screen.getByRole('button', { name: /Annuler le ticket/ }))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.keyDown(boite, { key: 'j' })
+    expect(document.querySelector('aside')?.getAttribute('aria-label')).toMatch(/SAV-1/)
+  }, 60000)
+
   it('k dans une listbox ouverte : sélection inchangée', async () => {
     await ouvrirFiche()
     fireEvent.keyDown(document.body, { key: 'j' })
