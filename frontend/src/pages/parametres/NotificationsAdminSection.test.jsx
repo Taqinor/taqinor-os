@@ -141,6 +141,19 @@ describe('AERR143 — un refus dit une fois', () => {
     expect(erreur).not.toHaveBeenCalled()
     apiMock.getRoutingRules.mockImplementation(() => Promise.resolve({ data: [] }))
   })
+
+  it('AERR169 — lecture des règles en 500 : un seul toast (le global), 404 : un toast local', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    apiMock.getRoutingRules.mockRejectedValueOnce({ response: { status: 500, data: {} }, isAxiosError: true })
+    render(<NotificationsAdminSection />)
+    await waitFor(() => expect(apiMock.getRoutingRules).toHaveBeenCalledTimes(1))
+    await screen.findByText('Jours fériés')
+    expect(erreur).not.toHaveBeenCalled()
+    cleanup()
+    apiMock.getRoutingRules.mockRejectedValueOnce({ response: { status: 404, data: {} }, isAxiosError: true })
+    render(<NotificationsAdminSection />)
+    await waitFor(() => expect(erreur).toHaveBeenCalledTimes(1))
+  })
 })
 
 describe('AERR147 — suppressions confirmées', () => {

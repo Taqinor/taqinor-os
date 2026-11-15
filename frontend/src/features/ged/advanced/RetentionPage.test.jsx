@@ -5,6 +5,7 @@ import gedApi from '../../../api/gedApi'
 import { renderAvecAuth } from '../../../test/renderAvecAuth.jsx'
 import { AUTH_COMMERCIAL_RESP, AUTH_DIRECTEUR } from './gedPage.testHelpers.jsx'
 import { toast } from '../../../ui'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 import RetentionPage from './RetentionPage.jsx'
 
 /* PACT134 — onglet « Dispositions » : revue humaine avant destruction/
@@ -182,5 +183,19 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Legal holds' }))
     expect((await screen.findAllByRole('button', { name: 'Lever le hold' })).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /Poser un hold/ })).toBeInTheDocument()
+  })
+
+  it('AERR173 — Lever le hold demande, Annuler n’envoie rien', async () => {
+    gedApi.getLegalHolds.mockResolvedValue({ data: [{
+      id: 7, document: 3, document_nom: 'Contrat.pdf', motif: 'Litige client X',
+      actif: true, date_pose: '2026-06-01T10:00:00Z', place_par_nom: 'Reda',
+    }] })
+    renderAvecAuth(<ConfirmProvider><RetentionPage /></ConfirmProvider>, AUTH_DIRECTEUR, { theme: true })
+    await userEvent.click(await screen.findByRole('tab', { name: 'Legal holds' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Lever le hold' }))[0])
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText(/Lever le gel « Litige client X » \?/)).toBeInTheDocument()
+    await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    expect(gedApi.leverLegalHold).not.toHaveBeenCalled()
   })
 })

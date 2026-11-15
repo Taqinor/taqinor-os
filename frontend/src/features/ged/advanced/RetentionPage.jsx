@@ -190,6 +190,8 @@ export default function RetentionPage() {
     {
       id: 'lever', label: 'Lever le hold', icon: Unlock,
       onClick: async () => {
+        const nom = r.motif || r.document_nom || `#${r.document}`
+        if (!await confirmDelete({ title: `Lever le gel « ${nom} » ?`, description: 'Le document redevient supprimable.', confirmLabel: 'Lever le gel' })) return
         try {
           const res = await gedApi.leverLegalHold(r.id)
           toast.success(`${res.data?.leves ?? 0} rétention(s) levée(s).`)
