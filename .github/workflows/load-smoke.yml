@@ -60,6 +60,16 @@ jobs:
       DB_HOST: localhost
       DB_PORT: '5432'
       REDIS_URL: redis://localhost:6379/0
+      # ADCG117 (15/11) — les réglages lisent REDIS_HOST/REDIS_PORT (défaut `redis`, introuvable ici :
+      # 6 201 ConnectionError au run 43670968244) et `/proposal` range l'aperçu PDF dans MinIO
+      # (`minio:9000` par défaut : 156/156 en 500). Mêmes valeurs que les jobs backend de ci.yml.
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
       PYTHONPATH: ${{ github.workspace }}   # STAGES.py (racine du dépôt) importable
       LOCUST_USER: charge
       LOCUST_PASSWORD: charge-password-not-secret
@@ -70,6 +80,30 @@ jobs:
       - uses: actions/checkout@v4
       # ADCG117 — `/proposal` rend le PDF par WeasyPrint : sans pango/harfbuzz le rendu tombe en 500
       # (190/190 au run 43664234819). Mêmes bibliothèques que l'image CI (.github/ci-image/Dockerfile).
+      # ADCG117 — MinIO : Docker Hub `minio/minio` n'existe plus (« pull access denied », run 43679719669) ;
+      # mêmes binaires que l'image CI (.github/ci-image/Dockerfile : archive gelée bitnamilegacy), lancés en natif
+      # comme le chemin pré-construit de .github/actions/backend-env (sonde `ready`, buckets).
+      - name: MinIO (aperçus PDF de /proposal)
+        run: |
+          docker create --name minio-src bitnamilegacy/minio:2025.1.20-debian-12-r0 >/dev/null
+          sudo docker cp minio-src:/opt/bitnami/minio/bin/minio /usr/local/bin/minio
+          sudo docker cp minio-src:/opt/bitnami/minio-client/bin/mc /usr/local/bin/mc
+          docker rm minio-src >/dev/null
+          sudo chmod +x /usr/local/bin/minio /usr/local/bin/mc
+          mkdir -p /tmp/minio-data
+          MINIO_ROOT_USER=erp_admin MINIO_ROOT_PASSWORD=erp_minio_password \
+            nohup minio server /tmp/minio-data --address ':9000' > /tmp/minio.log 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:9000/minio/health/ready; then echo "MinIO prêt"; break; fi
+            sleep 0.25
+            if [ "$i" = "120" ]; then echo "MinIO indisponible"; tail -50 /tmp/minio.log; exit 1; fi
+          done
+          for i in $(seq 1 20); do
+            if mc alias set local http://localhost:9000 erp_admin erp_minio_password; then break; fi
+            sleep 0.5
+            if [ "$i" = "20" ]; then echo "MinIO n'accepte pas l'alias mc"; exit 1; fi
+          done
+          mc mb -p local/erp-pdf local/erp-uploads
       - name: Bibliothèques système de WeasyPrint
         run: |
           sudo apt-get update -q

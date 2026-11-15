@@ -133,9 +133,11 @@ class PermAchatsPayerTests(TestCase):
                  self.legacy]
         for i, user in enumerate(users, start=1):
             with self.subTest(user=user.username):
+                # ACNC74 — montants distincts : trois règlements identiques du
+                # même jour demanderaient une confirmation (409 paiement_similaire).
                 rep = _api(user).post(
                     f'{ACHATS}paiements-fournisseur/',
-                    self._corps_paiement(), format='json')
+                    {**self._corps_paiement(), 'montant': str(100 * i)}, format='json')
                 self.assertEqual(rep.status_code, 201, rep.data)
                 self.assertEqual(PaiementFournisseur.objects.count(), i)
 

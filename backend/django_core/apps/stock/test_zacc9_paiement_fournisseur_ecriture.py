@@ -125,6 +125,36 @@ class TestGardeSurPaiement(Zacc9Base):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.solde_du, Decimal('70'))
 
+    def test_reglement_identique_demande_confirmation(self):
+        # ACNC74 (C-ACNC-VER4-400, D-ACNC-1) — deux portes : un second 3 000 du jour
+        # sous une autre clé ⇒ 409 `paiement_similaire`, rien d'écrit ; confirmé ⇒ 201.
+        for porte in ('fiche', 'registre'):
+            with self.subTest(porte=porte):
+                facture = FactureFournisseur.objects.create(
+                    company=self.company, reference=f'FF-ACNC74-{porte}',
+                    fournisseur=self.fournisseur, montant_ht=Decimal('10000'),
+                    montant_tva=Decimal('0'), montant_ttc=Decimal('10000'),
+                    statut=FactureFournisseur.Statut.A_PAYER)
+                url, corps = (
+                    (f'/api/django/stock/factures-fournisseur/{facture.id}/paiements/', {})
+                    if porte == 'fiche' else
+                    ('/api/django/stock/paiements-fournisseur/', {'facture': facture.id}))
+                corps = {**corps, 'montant': '3000', 'mode': 'virement'}
+                r1 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY=f'{porte}-1')
+                self.assertEqual(r1.status_code, 201, r1.data)
+                r2 = self.api.post(url, corps, format='json', HTTP_IDEMPOTENCY_KEY=f'{porte}-2')
+                self.assertEqual(r2.status_code, 409, r2.data)
+                self.assertEqual(r2.data['code'], 'paiement_similaire')
+                self.assertIn("a déjà été enregistré aujourd'hui sur cette facture : confirmer ?",
+                              r2.data['detail'])
+                self.assertEqual(facture.paiements.count(), 1)
+                r3 = self.api.post(url, {**corps, 'confirmer_doublon': True}, format='json',
+                                   HTTP_IDEMPOTENCY_KEY=f'{porte}-2')
+                self.assertEqual(r3.status_code, 201, r3.data)
+                self.assertEqual(facture.paiements.count(), 2)
+                facture.refresh_from_db()
+                self.assertEqual(facture.solde_du, Decimal('4000'))
+
 
 class TestMultiTenant(Zacc9Base):
     def test_facture_autre_societe_404(self):

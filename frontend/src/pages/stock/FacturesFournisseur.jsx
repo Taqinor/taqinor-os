@@ -216,6 +216,15 @@ export function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
   )
 }
 
+export function ConfirmerDoublon({ phrase, busy, onConfirmer }) {  // ACNC74 (D-ACNC-1) — fiche et registre
+  return phrase ? (
+    <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+      <span>{phrase}</span>
+      <Button type="button" size="sm" loading={busy} onClick={onConfirmer}>Confirmer</Button>
+    </div>
+  ) : null
+}
+
 // ── Modal : détail d'une facture + saisie de paiements ──────────────────────
 // Export nommé : testé directement (WR4 — PDF facture fournisseur). `canResoudre`
 // est un PROP (jamais un hook Redux ici) : les tests existants (wr4ReceptionFacture)
@@ -235,6 +244,8 @@ export function FactureDetail({
   const [mode, setMode] = useState('virement')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [doublon, setDoublon] = useState(null)  // ACNC74 — phrase du 409 `paiement_similaire`
+  const [info, setInfo] = useState(null)  // ACNC75 — règlement relu après une réponse perdue
   // WIR192/XPUR10 — file d'exceptions du rapprochement 3 voies : Responsable/
   // Admin peut résoudre (débloque le paiement), commentaire optionnel.
   const [resolving, setResolving] = useState(false)
@@ -262,8 +273,8 @@ export function FactureDetail({
     } finally { setBusy(false) }
   }
 
-  const ajouter = async () => {
-    setError(null)
+  const ajouter = async (confirmerDoublon = false) => {
+    setError(null); setDoublon(null); setInfo(null)
     if (!(Number(montant) > 0)) { setError('Saisissez un montant positif.'); return }
     setBusy(true)
     try {
@@ -272,17 +283,25 @@ export function FactureDetail({
         montant: Number(montant),
         date_paiement: datePaiement || null,
         mode,
+        ...(confirmerDoublon ? { confirmer_doublon: true } : {}),
       }, { idempotencyKey: cleReglement.current })
       cleReglement.current = null
       setFacture(r.data)
       setMontant('')
       onSaved?.()
     } catch (err) {
-      setError(frError(err, "L'enregistrement du paiement a échoué."))
+      if (err?.response?.data?.code === 'paiement_similaire') setDoublon(err.response.data.detail)  // ACNC74
+      else setError(frError(err, "L'enregistrement du paiement a échoué."))
       if (!err?.response) {  // ACNC23 — réponse perdue : relire la facture, même clé au prochain clic
         onSaved?.()  // ACNC73 — la fiche relit aussi SA copie (règlement passé + solde relu)
-        stockApi.getFactureFournisseur(facture.id).then((r) => setFacture(r.data))
-          .catch((e) => setError(frError(e, "Le paiement n'a pas pu être confirmé — rouvrez la facture.")))
+        // ACNC75 — bouton occupé jusqu'à la relecture ; règlement relu ⇒ succès à la place de l'échec.
+        const relue = await stockApi.getFactureFournisseur(facture.id).then((r) => r.data)
+          .catch((e) => { setError(frError(e, "Le paiement n'a pas pu être confirmé — rouvrez la facture.")); return null })
+        if (relue) setFacture(relue)
+        if (Number(relue?.total_paye) > Number(facture.total_paye)) {
+          setError(null)
+          setInfo(`Paiement de ${formatMAD(montant, { decimals: Number(montant) % 1 ? 2 : 0 })} enregistré (réponse perdue, fiche relue).`)
+        }
       }
     } finally { setBusy(false) }
   }
@@ -458,14 +477,16 @@ export function FactureDetail({
               <Button type="button" variant="outline" size="sm" onClick={reglerSolde}>
                 Régler le solde ({fmtMad(solde)})
               </Button>
-              <Button type="button" size="sm" loading={busy} onClick={ajouter}>
+              <Button type="button" size="sm" loading={busy} onClick={() => ajouter()}>
                 {busy ? '…' : 'Ajouter le paiement'}
               </Button>
             </div>
+            <ConfirmerDoublon phrase={doublon} busy={busy} onConfirmer={() => ajouter(true)} />
           </div>
         )}
 
         <AlerteErreur error={error} />
+        <InfoSucces info={info} />
 
         <DialogFooter className="flex-wrap">
           {voitPrix && (

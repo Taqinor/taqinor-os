@@ -167,6 +167,9 @@ class PaiementFournisseurViewSet(IdempotentCreateMixin, CompanyScopedModelViewSe
                     facture, montant)
             except ValueError as exc:
                 raise ConflitEtat(str(exc))
+            from ..services_verrous import refuser_reglement_identique  # ACNC74
+            refuser_reglement_identique(facture, montant, serializer.validated_data.get('date_paiement'),
+                                        corps_objet(self.request).get('confirmer_doublon'))
             # XPUR2 — RAS-TVA calculée côté serveur, jamais depuis le corps.
             taux, montant_ras = compute_ras_tva(
                 self.request.user.company, facture, montant)

@@ -41,6 +41,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { ChargementPageCentree } from '../../ui/ChargementPage'
+import { ConfirmerDoublon } from './FacturesFournisseur'
 
 // Le modele a migre vers `achats` (ODX19) : `stock/models.py` n'en garde
 // qu'un re-export.
@@ -93,6 +94,7 @@ export default function PaiementsFournisseurLedgerPage() {
   // XPUR6 — pourcentage d'escompte disponible sur le dernier paiement saisi.
   const [escompte, setEscompte] = useState(null)
   const [erreursDraft, setErreursDraft] = useState({})  // AERR90 — dit pourquoi rien ne part
+  const [doublon, setDoublon] = useState(null)  // ACNC74 — phrase du 409 `paiement_similaire`
   const cleReglement = useRef(null)  // ACNC67 — gardée entre deux clics, neuve après un succès
   // ACNC72 — clé neuve dès que la saisie change (sinon 409 « clé déjà utilisée »).
   useEffect(() => { cleReglement.current = null }, [draft])
@@ -150,7 +152,8 @@ export default function PaiementsFournisseurLedgerPage() {
     }
   }
 
-  const enregistrer = async () => {
+  const enregistrer = async (confirmerDoublon = false) => {
+    setDoublon(null)
     const erreurs = {
       ...(draft.facture ? {} : { facture: 'Choisissez la facture à régler.' }),
       ...(Number(draft.montant) > 0 ? {} : { montant: 'Saisissez un montant supérieur à 0.' }),
@@ -166,6 +169,7 @@ export default function PaiementsFournisseurLedgerPage() {
         montant: Number(draft.montant),
         date_paiement: draft.date_paiement || null,
         mode: draft.mode,
+        ...(confirmerDoublon ? { confirmer_doublon: true } : {}),
       }, { idempotencyKey: cleReglement.current })
       cleReglement.current = null
       // XPUR6 — le pourcentage n'existe QUE sur cette réponse : on l'affiche.
@@ -174,7 +178,8 @@ export default function PaiementsFournisseurLedgerPage() {
       setDraft({ facture: '', montant: '', date_paiement: '', mode: 'virement' })
       charger()
     } catch (e) {
-      toast.error(frenchError(e, "L'enregistrement du paiement a échoué."))
+      if (e?.response?.data?.code === 'paiement_similaire') setDoublon(e.response.data.detail)  // ACNC74
+      else toast.error(frenchError(e, "L'enregistrement du paiement a échoué."))
       if (!e?.response) charger()  // ACNC67 — réponse perdue : relire, même clé au prochain clic
     } finally { setBusy(false) }
   }
@@ -329,10 +334,11 @@ export default function PaiementsFournisseurLedgerPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button type="button" onClick={enregistrer} disabled={busy}>
+            <Button type="button" onClick={() => enregistrer()} disabled={busy}>
               <Plus className="size-4" aria-hidden="true" /> Enregistrer le règlement
             </Button>
           </div>
+          <ConfirmerDoublon phrase={doublon} busy={busy} onConfirmer={() => enregistrer(true)} />
         </CarteContenu>
       )}
     </div>
