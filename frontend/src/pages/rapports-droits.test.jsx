@@ -26,6 +26,7 @@ vi.mock('../api/crmApi', () => ({
 }))
 vi.mock('../utils/fetchAllPages', () => ({ default: vi.fn(() => Promise.resolve([])) }))
 
+import crmApi from '../api/crmApi'
 import { Component as Rapports } from './Rapports'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -50,8 +51,8 @@ async function ouvrir(onglet) {
 describe('Rapports — cartes selon le droit de leur route', () => {
   it('hors palier admin : ni coût de revient, ni commissions, ni rentabilité', async () => {
     for (const auth of [
-      { role: 'normal', permissions: ['ventes_voir', 'crm_voir'] },
       { role: 'responsable', permissions: ['ventes_voir', 'crm_voir'] },
+      { role: 'responsable', role_nom: 'Admin Ventes', permissions: ['ventes_voir', 'ventes_creer'] },
     ]) {
       monter(auth)
       await waitFor(() => expect(reporting.analytics).toHaveBeenCalled())
@@ -92,10 +93,30 @@ describe('Rapports — cartes selon le droit de leur route', () => {
     expect(demandes()).not.toContain('/reporting/reports/sales/')
     cleanup(); vi.clearAllMocks()
     monter({ role: 'responsable', role_nom: 'Admin RH', permissions: ['rh_voir'] })
-    await waitFor(() => expect(reporting.analytics).toHaveBeenCalled())
+    await waitFor(() => expect(reporting.integriteInsight).toHaveBeenCalled())
     expect(demandes()).not.toContain('/reporting/reports/sales/')
     expect(demandes()).not.toContain('/reporting/reports/stock/')
     expect(screen.queryByText('Ventes & pipeline', { selector: 'h3,h2,h4' })).toBeNull()
+  })
+
+  it('Admin RH : ni attribution ni insights ; Technicien responsable : ni attribution ni analytics', async () => {
+    monter({ role: 'responsable', role_nom: 'Admin RH', permissions: ['rh_voir'] })
+    await waitFor(() => expect(reporting.integriteInsight).toHaveBeenCalled())
+    expect(crmApi.getAttributionLeads).not.toHaveBeenCalled()
+    expect(reporting.recurringRevenue).not.toHaveBeenCalled()
+    expect(reporting.analytics).not.toHaveBeenCalled()
+    cleanup(); vi.clearAllMocks()
+    monter({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'sav_voir'] })
+    await waitFor(() => expect(reporting.recurringRevenue).toHaveBeenCalled())
+    expect(crmApi.getAttributionLeads).not.toHaveBeenCalled()
+    expect(reporting.analytics).not.toHaveBeenCalled()
+  })
+
+  it('Directeur : attribution, revenu récurrent et analytics demandés', async () => {
+    monter({ role: 'admin', role_nom: 'Directeur', permissions: ['ventes_voir'] })
+    await waitFor(() => expect(reporting.analytics).toHaveBeenCalled())
+    expect(crmApi.getAttributionLeads).toHaveBeenCalled()
+    expect(reporting.recurringRevenue).toHaveBeenCalled()
   })
 
   it('Directeur : ventes, stock et service demandés', async () => {
