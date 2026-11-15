@@ -1,0 +1,34 @@
+{
+  "sha": "e042ec25e989f91ebe8f4bed328afc3cae7cffb0",
+  "date": "2026-11-15",
+  "groupe": "ADCG",
+  "verdict": "FAIL",
+  "couvre": [
+    "ADCG117"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF3.charge.ADCG117",
+      "taches": [
+        "ADCG117"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-15/ADCG117-load-smoke.txt",
+      "oracles": {
+        "1": "FAIL",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "load-smoke dispatche sur dev-all-94854b-w3 (run 43655580088, tete e042ec25e) : ventes:devis-lignes:create 19/19 en 400, stock:produits:list 1/20 en 500, ventes:proposal jamais appele ; total 20/4703 = 0,43 %, Locust code 1 ; cause probable lue dans le code : quantite envoyee en nombre JSON, refusee par DecimalStricte (decimal en chaine seulement)"
+    }
+  ]
+}
