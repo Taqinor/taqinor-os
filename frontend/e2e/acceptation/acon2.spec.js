@@ -1,20 +1,23 @@
-// Acceptation en direct — groupe ACON, second lot (vague 6, runner GitHub) : preuves dues d'ACON85 et ACON92.
-// ACON85 : (a) « Générer le devis » (route POST calepinage/calepinages/<id>/generer-devis/ — le bouton écran enregistre
-//   d'abord la conception du constructeur 3D, qui ne boote pas sans clé de fond de carte : même route que lui) sur un
-//   calepinage simulé OMBRÉ → le bloc horaire RANGÉ porte `ombrage {perte_pct}` ; puis envoi, PDF `/proposition`…
-//   `/proposal` et PAGE PUBLIQUE `/proposition/<jeton>` (apps/web servie par le runner) affichent le MÊME kWh/an ;
-//   (b) verrou : `simuler {forcer:true}` sur le calepinage d'un devis ACCEPTÉ = 409 nommé, aucun job, recalcul de masse
-//   qui ne le soumet pas ; calepinage d'un devis ENVOYÉ inchangé.
-// ACON92 : contenance d'un toit de 1 200 modules non bornée à 600 (fonction réelle, données persistées) puis la page
-//   publique du devis qui porte ce toit.
+// Acceptation en direct — groupe ACON, second lot (vague 6, tour 2, runner GitHub) : preuves dues d'ACON85 et ACON92.
+// ACON85 : (a) ÉCRAN — l'atelier `/calepinage/<id>` (clé carte factice + style MapTiler refusé, montage d'acal4/ACAL377)
+//   sur un calepinage OMBRÉ simulé : clic sur le VRAI bouton « Générer le devis » (BoutonDevis.jsx), bloc horaire rangé
+//   AVEC `ombrage`, envoi par la VRAIE route (`share-link {envoi:true}` = mark_devis_sent), PDF `/proposal`, charge
+//   publique et page `/proposition/<jeton>` au même kWh/an ; `simuler {forcer:true}` sur le calepinage du devis ENVOYÉ =
+//   202 strict. (a bis) la sonde commitée C-ACON-020-L2 (section F) rejouée, repro=false. (b) verrou « devis accepté » 409.
+// ACON92 : contenance d'un toit de 1 200 modules non bornée à 600 (fonction réelle) puis la page publique du devis qui
+//   porte ce toit : le NOMBRE lu sur la carte « Max » à l'écran est ≥ 1 200.
 import { test, expect } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { groupe } from './_oracles.js'
+import { RACINE } from './_enregistrement.js'
 import { py, fermerDjangoApresTout } from './_django.js'
 import { assurerSessionPage, lireJson, textePdf, telephoneMobileUnique, API_DJANGO as API } from '../helpers.js'
 
 const etape = groupe('ACON', ['ACON85', 'ACON92'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
+test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
@@ -32,32 +35,28 @@ const webBase = () => {
   expect(w, 'jamais la prod').toMatch(/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?/)
   return w.replace(/\/$/, '')
 }
+const STATUT_IMAGERIE = 'Imagerie satellite indisponible'
 
-// ── ACON85 (a) — « Générer le devis » sur un calepinage simulé ombré ──────────────────────────────────────────
-etape('PA2.ACON85-generer_devis_ombre_pdf_page', ['ACON85'], async ({ page }) => {
+// ── ACON85 (a) — ÉCRAN « Générer le devis » sur un calepinage ombré + envoi RÉEL ──────────────────────────────
+etape('PA2.ACON85-ecran-generer-devis-envoi-reel', ['ACON85'], async ({ page, context, suivi }) => {
   const m = marque()
-  // Montage = celui de la sonde commitée C-ACON-020-L2 (section F), PERSISTÉ dans la société de demo_admin ; le geste
-  // « Générer le devis » est l'appel HTTP réel (client DRF connecté en demo_admin), matériel de simulation injecté.
-  const x = await py(`import copy, json
+  // Calepinage ombré (solarAccess 0,9) posé au shell ; réglages de simulation de la société posés par l'API.
+  const c = await py(`import copy
 from decimal import Decimal
-from unittest import mock
 from rest_framework.test import APIClient
 from apps.crm.models import Lead
 from apps.calepinage.models import Calepinage
-from apps.calepinage.services.simulation import simuler_calepinage
-from apps.calepinage.tests.test_acal_multi_pans import _ClientParOrientation, _layout, _zone
-from apps.calepinage.tests.test_calx5_simulation import MATERIEL, REGLAGES
+from apps.calepinage.tests.test_acal_multi_pans import _layout, _zone
+from apps.calepinage.tests.test_calx5_simulation import REGLAGES
 from apps.parametres.models import CompanyProfile
 from apps.ventes.domain.geometrie import layout_hash
-from apps.ventes.models import Devis, ShareLink
 adm = U.objects.get(username='demo_admin'); co = adm.company
 CompanyProfile.get(company=co)
-H = {'HTTP_HOST': 'localhost'}
 api = APIClient(); api.force_authenticate(adm)
 sim0 = copy.deepcopy(REGLAGES['simulation'])
 for v in sim0.values():
     v['source'] = 'societe'
-r = api.put('/api/django/calepinage/parametres/', {'simulation': sim0}, format='json', **H)
+r = api.put('/api/django/calepinage/parametres/', {'simulation': sim0}, format='json', HTTP_HOST='localhost')
 lead = Lead.objects.create(company=co, nom='ACC ACON85 ${m}', facture_hiver=Decimal('900'), ville='Casablanca', type_installation='residentiel')
 lay = _layout(_zone(1, 16, 90.0), _zone(2, 8, 270.0))
 for zone in lay['zones']:
@@ -65,52 +64,145 @@ for zone in lay['zones']:
         'method': {'horizon': False, 'rangees': False, 'resolution': 'annuelle', 'description': 'Accès solaire annuel'},
         'assumptions': {'periode': 'annee'}, 'computedAt': '2026-10-01T10:00:00Z'}
 lay.update({'scenario': 'reseau', 'panelWatt': 710, 'result': {'panels': 24, 'kwc': 17.04}})
-c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC ACON85 ${m}', roof_layout=lay, layout_hash=layout_hash(lay))
-with mock.patch('apps.calepinage.services.electrique.resoudre_materiel', return_value=MATERIEL):
-    simuler_calepinage(c, client=_ClientParOrientation(), materiel=MATERIEL, enregistrer=True)
-    rg = api.post('/api/django/calepinage/calepinages/%s/generer-devis/' % c.pk, {}, format='json', **H)
-dg = getattr(rg, 'data', None) or {}
-did = dg.get('id') if isinstance(dg, dict) else None
-if did is None and isinstance(dg, dict) and isinstance(dg.get('devis'), (int, str)):
-    did = dg.get('devis')
-if did is None and isinstance(dg, dict) and isinstance(dg.get('devis'), dict):
-    did = dg['devis'].get('id')
-out = {'put': r.status_code, 'generer_http': rg.status_code, 'corps': str(dg)[:300] if not did else '', 'calepinage': c.pk, 'lead': lead.pk}
-if did:
-    d = Devis.objects.get(pk=did)
-    bloc = (d.etude_params or {}).get('etude_horaire') or {}
-    Devis.objects.filter(pk=d.pk).update(statut='envoye')
-    lien = ShareLink.objects.create(company=co, devis=Devis.objects.get(pk=d.pk))
-    out.update(devis=d.pk, lie=str(Calepinage.objects.get(pk=c.pk).devis_id) == str(d.pk), ombrage=bloc.get('ombrage'),
-               prod_range=(bloc.get('annuel') or {}).get('production_kwh'), jeton=str(lien.token))
-sortie(out)`)
-  expect(x.put, 'réglages de simulation de la société posés').toBeLessThan(300)
-  expect(x.generer_http, `« Générer le devis » : 201 (${x.corps})`).toBe(201)
+cal = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC ACON85 ${m}', roof_layout=lay, layout_hash=layout_hash(lay))
+sortie({'put': r.status_code, 'id': cal.pk, 'lead': lead.pk})`)
+  expect(c.put, 'réglages de simulation de la société posés').toBeLessThan(300)
+  // Atelier : clé carte factice + style MapTiler refusé (même montage qu'acal4, ACAL377).
+  await context.route(new RegExp(`/calepinage/calepinages/${c.id}/design-context/`), async (route) => {
+    const reelle = await route.fetch()
+    const corps = await reelle.json()
+    corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-acon85', mapboxToken: null }
+    await route.fulfill({ response: reelle, json: corps })
+  })
+  suivi.attendre(/api\.maptiler\.com/, 403)
+  await context.route(/https:\/\/api\.maptiler\.com\//, (route) => route.fulfill({ status: 403, contentType: 'application/json', body: '{"message":"Invalid key"}' }))
+  const ouvrir = async () => {
+    await page.goto(`/calepinage/${c.id}`)
+    await expect(page.getByText(STATUT_IMAGERIE).first()).toBeVisible({ timeout: 120_000 })
+    await expect(page.getByRole('button', { name: 'Enregistrer le calepinage' })).toBeEnabled({ timeout: 120_000 })
+  }
+  await ouvrir()
+  // 1. la conception est ENREGISTRÉE par l'écran (le bouton réécrit le document).
+  const sauve = page.waitForResponse((x) => x.request().method() === 'POST'
+    && new RegExp(`/calepinage/calepinages/${c.id}/layout/(?:$|\\?)`).test(x.url()), { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Enregistrer le calepinage' }).click()
+  expect((await sauve).status(), 'enregistrement du calepinage : 200').toBe(200)
+  // 2. simulation ombrée posée SUR le document enregistré (météo rejouée, matériel du catalogue réel).
+  const sim = await py(`from apps.calepinage.models import Calepinage
+from apps.calepinage.services.simulation import simuler_calepinage
+from apps.calepinage.tests.test_acal_multi_pans import _ClientParOrientation
+cal = Calepinage.objects.get(pk=${Number(c.id)})
+try:
+    simuler_calepinage(cal, client=_ClientParOrientation(), enregistrer=True)
+    cal.refresh_from_db()
+    sortie({'ok': True, 'sim': bool((cal.resultat or {}).get('simulation'))})
+except Exception:
+    import traceback
+    sortie({'ok': False, 'err': traceback.format_exc()[-1500:]})`)
+  expect(sim.ok, `simulation ombrée posée (${sim.err || ''})`).toBe(true)
+  await ouvrir()
+  // 3. LE BOUTON « Générer le devis » de l'écran.
+  const bouton = page.getByTestId('cal-generer-devis')
+  await expect(bouton, 'bouton « Générer le devis » présent').toBeVisible({ timeout: 60_000 })
+  await expect(bouton).toHaveText('Générer le devis')
+  const gen = page.waitForResponse((x) => x.request().method() === 'POST' && new RegExp(`/calepinages/${c.id}/generer-devis/`).test(x.url()), { timeout: 120_000 })
+  await bouton.click()
+  const rg = await gen
+  const dg = await rg.json().catch(() => ({}))
+  expect(rg.status(), `« Générer le devis » (bouton) : 201 (${J(dg).slice(0, 300)})`).toBe(201)
+  const devisId = dg.devis?.id ?? dg.devis ?? dg.id
+  expect(devisId, 'devis né').toBeTruthy()
+  // L'écran quitte l'atelier vers le devis ou affiche « Ouvrir le devis ».
+  await expect.poll(async () => page.url().includes(`/ventes/devis/${devisId}`) || (await page.getByText(/Ouvrir le devis/).count()) > 0, { timeout: 60_000 }).toBe(true)
+  // 4. le bloc horaire RANGÉ porte l'ombrage.
+  const x = await py(`from apps.ventes.models import Devis
+from apps.calepinage.models import Calepinage
+d = Devis.objects.get(pk=${Number(devisId)})
+bloc = (d.etude_params or {}).get('etude_horaire') or {}
+sortie({'lie': str(Calepinage.objects.get(pk=${Number(c.id)}).devis_id) == str(d.pk), 'ombrage': bloc.get('ombrage'),
+        'prod_range': (bloc.get('annuel') or {}).get('production_kwh'), 'statut': d.statut})`)
   expect(x.lie, 'le devis né est lié au calepinage').toBe(true)
-  // Le bloc horaire RANGÉ porte l'ombrage du calepinage (perte non nulle).
   expect(x.ombrage && typeof x.ombrage === 'object', `bloc rangé AVEC \`ombrage\` (${J(x.ombrage)})`).toBeTruthy()
   expect(Number(x.ombrage.perte_pct), 'perte d’ombrage rangée > 0').toBeGreaterThan(0)
   const prod = Number(x.prod_range)
   expect(prod, 'production annuelle rangée').toBeGreaterThan(0)
-  // PDF /proposal.
-  const rp = await page.request.get(`${API}/ventes/devis/${x.devis}/proposal/`, T)
+  // 5. ENVOI par la VRAIE route (celle du bouton « Envoyer » / mark_devis_sent), jamais un .update().
+  const envoi = await lireJson(await page.request.post(`${API}/ventes/devis/${devisId}/share-link/`, { ...T, data: { envoi: true } }), 'envoi réel')
+  expect(envoi.token, 'lien client émis par l’envoi').toBeTruthy()
+  const apres = await lireJson(await page.request.get(`${API}/ventes/devis/${devisId}/`, T), 'devis envoyé')
+  expect(apres.statut, 'statut « envoyé » posé par la vraie route').toBe('envoye')
+  expect(apres.date_envoi, 'date_envoi posée par mark_devis_sent').toBeTruthy()
+  // 6. PDF, charge publique et PAGE PUBLIQUE au même kWh/an.
+  const rp = await page.request.get(`${API}/ventes/devis/${devisId}/proposal/`, T)
   expect(rp.status(), 'GET /proposal 200').toBe(200)
-  const textePDF = chiffres(await textePdf(await rp.body()))
-  expect(textePDF, `le PDF affiche la production annuelle ${Math.round(prod)} kWh/an`).toContain(String(Math.round(prod)))
-  // Charge publique : la production de l'option « sans » = le bloc rangé, au kWh près.
-  const pub = await lireJson(await page.request.get(`${API}/public/proposal/${x.jeton}/data/`, T), 'charge publique')
+  expect(chiffres(await textePdf(await rp.body())), `le PDF affiche ${Math.round(prod)} kWh/an`).toContain(String(Math.round(prod)))
+  const pub = await lireJson(await page.request.get(`${API}/public/proposal/${envoi.token}/data/`, T), 'charge publique')
   const prodPage = Number(pub?.dimensionnement_options?.sans?.production_annuelle_kwh)
   expect(Math.abs(prodPage - prod), `page publique ${prodPage} = bloc rangé ${prod}`).toBeLessThan(1)
-  // ÉCRAN — la page publique (apps/web) AFFICHE le même kWh/an que le PDF ; persistance : rechargement.
+  const lecteur = await context.newPage()
   for (const passage of ['ouverture', 'rechargement']) {
-    if (passage === 'ouverture') await page.goto(`${webBase()}/proposition/${x.jeton}`)
-    else await page.reload()
-    await expect(page.locator('body'), `(${passage}) page publique : le kWh/an rangé est affiché`)
+    if (passage === 'ouverture') await lecteur.goto(`${webBase()}/proposition/${envoi.token}`)
+    else await lecteur.reload()
+    await expect(lecteur.locator('body'), `(${passage}) page publique : le kWh/an rangé est affiché`)
       .toContainText(new RegExp(String(Math.round(prod)).replace(/(\d)(?=(\d{3})+$)/g, '$1[\\s\\u00a0\\u202f]?')), { timeout: 120_000 })
   }
-  const corpsPage = chiffres(await page.locator('body').innerText())
-  expect(corpsPage, 'page = PDF = bloc rangé').toContain(String(Math.round(prod)))
-  console.log(`[ACON85] prod rangée ${prod} ; page publique ${prodPage} ; PDF contient ${Math.round(prod)}`)
+  console.log(`[ACON85] prod rangée ${prod} ; page publique ${prodPage} ; PDF et page contiennent ${Math.round(prod)}`)
+  // 7. cas « envoyé » : `simuler {forcer:true}` reste ACCEPTÉ — 202 STRICT, jamais le motif du verrou.
+  const ok = await page.request.post(`${API}/calepinage/calepinages/${c.id}/simuler/`, { ...T, data: { forcer: true } })
+  const corpsOk = await ok.text()
+  expect(ok.status(), `calepinage d'un devis ENVOYÉ : simuler {forcer:true} = 202 (${corpsOk.slice(0, 300)})`).toBe(202)
+  expect(corpsOk).not.toContain('Devis accepté')
+})
+
+// ── ACON85 (a bis) — la sonde commitée C-ACON-020-L2 rejouée (section F) ────────────────────────────────────
+function sondeEnLigne(groupeSonde, constat) {
+  const src = readFileSync(join(RACINE, 'docs', 'audits', 'sondes', groupeSonde, `${constat}.py`), 'utf8')
+  return py(`import io, contextlib
+import json as _json
+from django.conf import settings
+from django.db import transaction
+settings.ALLOWED_HOSTS = list(settings.ALLOWED_HOSTS) + ['testserver', 'localhost']
+class _Entier(str):
+    def __getitem__(self, k):
+        return str(self) if isinstance(k, slice) else str.__getitem__(self, k)
+_vrai_dumps = _json.dumps
+def _dumps(*a, **k):
+    return _Entier(_vrai_dumps(*a, **k))
+def _noop(self, *a, **k):
+    return type('R', (), {'id': 'noop'})()
+ns = {'__name__': '__sonde__'}
+exec(compile(${J(src)}, 'sonde', 'exec'), ns)
+tampon = io.StringIO()
+ret, err = None, None
+with mock.patch('celery.app.task.Task.apply_async', new=_noop), mock.patch('celery.app.task.Task.delay', new=_noop), \\
+        mock.patch.object(_json, 'dumps', new=_dumps):
+    try:
+        with transaction.atomic():
+            try:
+                with contextlib.redirect_stdout(tampon):
+                    ret = ns['sonde']({'celery': [], 'racine': '.', 'args': None})
+            finally:
+                transaction.set_rollback(True)
+    except BaseException:
+        import traceback
+        err = traceback.format_exc()[-2500:]
+sortie({'ret': ret, 'stdout': str(tampon.getvalue())[-200000:], 'err': err})`)
+}
+etape('PA2.ACON85-sonde-C-ACON-020-L2-section-F', ['ACON85'], async () => {
+  const s = await sondeEnLigne('ACON', 'C-ACON-020-L2')
+  expect(s.err, `sonde rejouée sans erreur : ${s.err}`).toBeNull()
+  const ligne = s.stdout.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{')).pop()
+  expect(ligne, 'observation imprimée par la sonde').toBeTruthy()
+  const obs = JSON.parse(ligne)
+  console.log(`[ACON85] sonde : ret=${J(s.ret)} F_generer_http=${obs.F_generer_http}`)
+  expect(obs.F_generer_http, 'sonde F : generer-devis 201').toBe(201)
+  expect(obs.F_lien, 'sonde F : devis lié').toBe(true)
+  expect(obs.F1_ne_bloc_ombrage && typeof obs.F1_ne_bloc_ombrage === 'object', `sonde F : bloc rangé AVEC ombrage (${J(obs.F1_ne_bloc_ombrage)})`).toBeTruthy()
+  expect(Number(obs.F1_ne_bloc_ombrage.perte_pct)).toBeGreaterThan(0)
+  expect(obs.F2_pdf?.http, 'sonde F : /proposal 200').toBe(200)
+  expect(Math.abs(Number(obs.F2_pdf.prod_kwh) - Number(obs.F1_ne_bloc_production_kwh)), 'sonde F : PDF = bloc rangé').toBeLessThan(1)
+  expect(Math.abs(Number(obs.F2_public_production_options?.sans) - Number(obs.F1_ne_bloc_production_kwh)), 'sonde F : page = bloc rangé').toBeLessThan(1)
+  expect(s.ret?.repro, 'sonde : repro=false (aucun rafraîchisseur ne périme plus la simulation)').toBe(false)
 })
 
 // ── ACON85 (b) — le verrou « devis accepté » ──────────────────────────────────────────────────────────────────
@@ -125,14 +217,11 @@ from apps.calepinage.models import Calepinage
 SIMULE = {'simulation': {'hash_entree': 'a' * 64, 'calcule_le': '2026-10-01T10:00:00Z'}}
 cl = Client.objects.create(company=co, nom='ACC ACON85', prenom='${m}', email='acc-acon85b-${m.toLowerCase()}@example.invalid')
 lead = Lead.objects.create(company=co, nom='ACC ACON85 verrou ${m}')
-out = {}
-for cle, statut in (('accepte', Devis.Statut.ACCEPTE), ('envoye', Devis.Statut.ENVOYE)):
-    d = Devis.objects.create(company=co, reference='DEV-ACC-ACON85B-%s-${m}' % cle.upper(), client=cl, lead=lead, taux_tva=D('20'))
-    Devis.objects.filter(pk=d.pk).update(statut=statut)
-    c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC ACON85 verrou %s ${m}' % cle, resultat=SIMULE)
-    Calepinage.objects.filter(pk=c.pk).update(devis=d)
-    out[cle] = c.id
-sortie(out)`)
+d = Devis.objects.create(company=co, reference='DEV-ACC-ACON85B-ACCEPTE-${m}', client=cl, lead=lead, taux_tva=D('20'))
+Devis.objects.filter(pk=d.pk).update(statut=Devis.Statut.ACCEPTE)
+c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC ACON85 verrou ${m}', resultat=SIMULE)
+Calepinage.objects.filter(pk=c.pk).update(devis=d)
+sortie({'accepte': c.id})`)
   const jobs = () => py(`from core.models import BackgroundJob
 sortie(BackgroundJob.objects.filter(company=U.objects.get(username='demo_admin').company).count())`)
   const avant = await jobs()
@@ -141,10 +230,6 @@ sortie(BackgroundJob.objects.filter(company=U.objects.get(username='demo_admin')
   expect(refus.status(), `simuler {forcer:true} sur un calepinage de devis accepté : 409 (${J(corps)})`).toBe(409)
   expect(J(corps.simulation), 'motif de ventes nommé sous `simulation`').toContain('Devis accepté : révisez-le')
   expect(await jobs(), 'aucun job créé par le refus').toBe(avant)
-  const ok = await r.post(`${API}/calepinage/calepinages/${x.envoye}/simuler/`, { ...T, data: { forcer: true } })
-  const corpsOk = await ok.text()
-  expect([202, 409], `devis envoyé : simuler (${corpsOk.slice(0, 300)})`).toContain(ok.status())
-  expect(corpsOk, 'devis envoyé : jamais le motif du verrou').not.toContain('Devis accepté')
   const rec = await lireJson(await r.post(`${API}/calepinage/parametres/recalculer-simulations/`, { ...T, data: {} }), 'recalcul de masse')
   const soumis = (rec.jobs || []).map((j) => j.calepinage)
   expect(soumis, `recalcul : le calepinage du devis accepté n'est pas soumis (${J(rec).slice(0, 300)})`).not.toContain(x.accepte)
@@ -197,7 +282,6 @@ Devis.objects.filter(pk=${Number(d.id)}).update(roof_layout=layout, statut='envo
 lien = ShareLink.objects.create(company=Devis.objects.get(pk=${Number(d.id)}).company, devis=Devis.objects.get(pk=${Number(d.id)}))
 sortie({'jeton': str(lien.token)})`)
   const pub = await lireJson(await r.get(`${API}/public/proposal/${x.jeton}/data/`, T), 'charge publique')
-  // Toute valeur `nb_panneaux*` portée par un objet « max » du bloc des tailles / du calepinage publié.
   const trouves = []
   const parcourir = (v, chemin) => {
     if (Array.isArray(v)) v.forEach((e, i) => parcourir(e, `${chemin}[${i}]`))
@@ -205,16 +289,21 @@ sortie({'jeton': str(lien.token)})`)
       for (const [k, e] of Object.entries(v)) {
         if (typeof e === 'number' && /^nb_panneaux/.test(k) && /max/i.test(chemin)) trouves.push([`${chemin}.${k}`, e])
         else if (e && typeof e === 'object') parcourir(e, `${chemin}.${k}`)
-        else if (k === 'cle' && e === 'max') trouves.push([`${chemin}.cle`, 'max'])
       }
     }
   }
   parcourir(pub, 'pub')
   console.log(`[ACON92] valeurs « max » dans la charge publique : ${J(trouves).slice(0, 600)}`)
-  const nb = trouves.filter(([, v]) => typeof v === 'number').map(([, v]) => v)
-  expect(nb.length, `la charge publique porte une taille « Max » (${J(Object.keys(pub)).slice(0, 400)})`).toBeGreaterThan(0)
-  expect(Math.max(...nb), 'carte « Max » ≥ 1 200 modules (plus bornée à 600)').toBeGreaterThanOrEqual(1200)
-  // ÉCRAN : la page publique est ouverte et affiche l'installation.
+  const nb = trouves.map(([, v]) => v)
+  expect(nb.length, 'la charge publique porte une taille « Max »').toBeGreaterThan(0)
+  expect(Math.max(...nb), 'charge publique : Max ≥ 1 200 modules (plus bornée à 600)').toBeGreaterThanOrEqual(1200)
+  // ÉCRAN : le NOMBRE lu sur la carte « Max » de la page publique.
   await page.goto(`${webBase()}/proposition/${x.jeton}`)
-  await expect(page.locator('body')).toContainText(/Max/, { timeout: 120_000 })
+  const carteMax = page.locator('[data-taille-carte][data-taille-cle="max"]')
+  await expect(carteMax, 'carte « Max » présente à l’écran').toHaveCount(1, { timeout: 120_000 })
+  const nbEcran = carteMax.locator('[data-taille-bloc]:not([hidden]) [data-taille-panneaux-value]').first()
+  await expect(nbEcran, 'nombre de panneaux de la carte « Max » lisible').toBeVisible({ timeout: 60_000 })
+  const lu = Number(chiffres(await nbEcran.innerText()).replace(/\D/g, ''))
+  console.log(`[ACON92] carte « Max » à l’écran : ${lu} panneaux`)
+  expect(lu, 'carte « Max » AFFICHE ≥ 1 200 panneaux (plus bornée à 600)').toBeGreaterThanOrEqual(1200)
 })
