@@ -494,7 +494,7 @@ etape('PF9.4-ACNC24-ecran', ['ACNC24'], async ({ page, suivi, testInfo }) => {
   await p.getByRole('checkbox', { name: `Sélectionner ${x.n2}`, exact: true }).click()
   const barre = p.getByRole('region', { name: 'Actions produits en masse' })
   await expect(barre, 'barre d\'actions en masse').toBeVisible({ timeout: 30_000 })
-  await barre.getByRole('button', { name: 'Prix', exact: true }).click()
+  await barre.getByText('Prix', { exact: true }).first().click()
   await barre.getByPlaceholder('ex. 10 ou -5').fill('10')
   await barre.getByRole('button', { name: 'Appliquer', exact: true }).click()
   // « Appliquer » ouvre une confirmation : nombre de produits + exemple avant → après ; RIEN n'est encore envoyé.
@@ -514,7 +514,7 @@ etape('PF9.4-ACNC24-ecran', ['ACNC24'], async ({ page, suivi, testInfo }) => {
   expect(envois[0].cle, 'clé d\'idempotence envoyée').toBeTruthy()
   expect(await prixDe(x), 'après « Confirmer » : 1 100 et 2 200').toEqual(['1100.00', '2200.00'])
   // La valeur est vidée au succès : rouvrir « Prix » montre un champ vide.
-  await barre.getByRole('button', { name: 'Prix', exact: true }).click()
+  await barre.getByText('Prix', { exact: true }).first().click()
   await expect(barre.getByPlaceholder('ex. 10 ou -5'), 'valeur vidée au succès').toHaveValue('')
 })
 
