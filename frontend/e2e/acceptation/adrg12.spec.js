@@ -235,6 +235,7 @@ sortie([AclGed.objects.filter(document_id=${g.doc.id}).count(), RegleAclMetadonn
       s.reseau.length = 0
       await ouvrirDossierGed(s.p, g)
       await bouton(s.p, `Détails de ${g.doc.nom}`).click()
+      await s.p.getByRole('tab', { name: /Accès/ }).first().click()
       await expect(s.p.getByText(/Gérer les droits d.accès/).first(), `${c.nomRole} : fiche document (droits d'accès)`).toBeVisible(V)
       await calme(s.p)
       await expect(s.p.getByRole('combobox', { name: 'Type de principal' }), `${c.nomRole} : saisie d'un droit d'accès`).toHaveCount(gouv ? 1 : 0)
@@ -304,7 +305,7 @@ sortie([i.technicien_responsable_id, i.acces_instructions, Notification.objects.
         const ligne = s.p.getByRole('row').filter({ hasText: ids.ref }).first()
         await expect(ligne, `${passe}${c.nomRole} liste : ligne du chantier`).toBeVisible(V)
         await ligne.getByRole('checkbox').first().check()
-        const barre = s.p.getByRole('region', { name: 'Actions en masse' }).first()
+        const barre = s.p.getByRole('region', { name: /ligne\(s\) sélectionnée\(s\)/ }).first()
         await expect(bouton(barre, 'Changer le statut'), `${passe}${c.nomRole} liste : barre d'actions groupées`).toBeVisible(V)
         await expect(bouton(barre, "Réassigner l'installateur"), `${passe}${c.nomRole} liste : « Réassigner l'installateur »`).toHaveCount(assigne ? 1 : 0)
         expect(refus(s.reseau), `${passe}${c.nomRole} liste : aucune réponse refusée`).toEqual([])
@@ -565,8 +566,10 @@ except Exception:
 Facture.objects.filter(pk=${facture.id}).update(created_by_id=${av.id})
 sortie(1)`)
   const URL_F = new RegExp(`^/ventes/factures/${facture.id}/$`)
+  // Ouverture par l'URL (`?id=`) : après un enregistrement la fenêtre se ferme et l'URL perd `?id=`, la relecture
+  // rouvre donc la facture par une navigation fraîche (équivalent d'un rechargement de la page de la facture).
   const ouvrirForm = async (s, passe) => {
-    await charger(s, `/ventes/factures?id=${facture.id}`, passe)
+    await charger(s, `/ventes/factures?id=${facture.id}`, '')
     const form = s.p.getByRole('dialog').filter({ hasText: `Éditer — ${facture.reference}` })
     await expect(form, `${passe}${s.c.nomRole} : formulaire de la facture émise`).toBeVisible(V)
     return form
