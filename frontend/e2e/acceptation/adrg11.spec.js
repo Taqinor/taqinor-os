@@ -107,15 +107,16 @@ async function refusNomme(res, code, quoi) {
 const SERVICE = /^\/reporting\/reports\/service\/$/
 etape('PF4.3-ADRG71', ['ADRG71'], async ({ page, suivi, testInfo }) => {
   const m = marque()
+  const co = await compteDe('Commercial', 'adrg71co')
+  const rh = await compteDe('Admin RH', 'adrg71rh')
+  const tr = await compteDe('Technicien responsable', 'adrg71tr')
+  // Chantier dont le Technicien responsable est titulaire (sa portée) : l'archive chantier lui est servie.
   const chantier = await py(`from apps.installations.models import Installation
-sortie(Installation.objects.create(company_id=${SOC}, reference='CHT-ADRG71-${m}').pk)`)
+sortie(Installation.objects.create(company_id=${SOC}, reference='CHT-ADRG71-${m}', technicien_responsable_id=${tr.id}).pk)`)
   const CHANTIERS = ['reporting/reports/service/', 'reporting/reports/field/', 'reporting/insights/technicien-scorecard/',
     'reporting/reports/chantier/', `reporting/archive/chantier/${chantier}/`]
   const AUTRES = ['reporting/insights/sav-sla/', 'reporting/insights/recurring-revenue/', 'reporting/reports/stock/']
   try {
-    const co = await compteDe('Commercial', 'adrg71co')
-    const rh = await compteDe('Admin RH', 'adrg71rh')
-    const tr = await compteDe('Technicien responsable', 'adrg71tr')
     const [aco, arh, atr] = [await apiDe(testInfo, co), await apiDe(testInfo, rh), await apiDe(testInfo, tr)]
     // La fiche technicien exige `?technicien=` (400 sans) : chacun lit le Technicien responsable.
     const q = (route) => (route.includes('technicien-scorecard') ? `?technicien=${tr.id}` : '')
@@ -137,10 +138,11 @@ sortie(Installation.objects.create(company_id=${SOC}, reference='CHT-ADRG71-${m}
       s.reseau.length = 0
       if (passe) await s.p.reload(); else await s.p.goto('/rapports')
       expect((await ventes).status(), `${passe}Commercial : rapport ventes servi`).toBe(200)
-      await s.p.getByRole('tab', { name: 'Service', exact: true }).click()
+      const ongletService = s.p.getByRole('tab', { name: 'Service', exact: true })
+      await ongletService.click()
       await calme(s.p)
+      await expect(ongletService, `${passe}Commercial : onglet Service sélectionné`).toHaveAttribute('aria-selected', 'true')
       const onglet = s.p.getByRole('tabpanel')
-      await expect(onglet, `${passe}Commercial : onglet Service ouvert`).toBeVisible(V)
       console.log(`[ADRG71] ${passe}Commercial /rapports : ${J(s.reseau)}`)
       await expect(onglet.getByText('Service (chantiers + SAV)'), `${passe}Commercial : carte chantiers absente`).toHaveCount(0)
       await expect(s.p.getByText('Rapport indisponible'), `${passe}Commercial : aucune carte en erreur`).toHaveCount(0)
@@ -168,18 +170,19 @@ etape('PF4.3-ADRG73', ['ADRG73'], async ({ page, suivi, testInfo }) => {
   expect(x.status(), 'Commercial responsable : export 200').toBe(200)
   expect((await x.body()).subarray(0, 2).toString(), 'classeur PK…').toBe('PK')
   const bouton = (p) => p.getByRole('button', { name: /Exporter Excel/ })
-  // Commercial : tableau de bord rendu (KPI), « Actualiser » présent, aucun « Exporter Excel », aucune requête refusée.
+  // Commercial : /reporting est une route du palier responsable/admin (module.config `RESPONSABLE_ADMIN`) — le
+  // Commercial (palier normal) atterrit sur l'écran « Accès refusé (403) » de l'application : aucun bouton
+  // « Exporter Excel », aucune requête vers le tableau de bord, aucune réponse refusée par l'API.
   const s = await ecranDe(page, suivi, testInfo, co)
   for (const passe of PASSES) {
-    const tableau = reponse(s.p, /^\/reporting\/dashboard\/$/)
     s.reseau.length = 0
-    if (passe) await s.p.reload(); else await s.p.goto('/reporting')
-    expect((await tableau).status(), `${passe}Commercial : tableau de bord servi`).toBe(200)
-    await expect(s.p.getByText('CA encaissé').first(), `${passe}Commercial : KPI du tableau de bord rendus`).toBeVisible(V)
-    await expect(s.p.getByRole('button', { name: /Actualiser/ }).first(), `${passe}Commercial : barre d'actions rendue`).toBeVisible(V)
+    if (passe) { await s.p.goto('/reporting'); s.reseau.length = 0; await s.p.reload() } else await s.p.goto('/reporting')
+    await expect(s.p.getByText('Accès refusé (403)').first(), `${passe}Commercial /reporting : écran de refus de l'application`).toBeVisible(V)
     await calme(s.p)
+    console.log(`[ADRG73] ${passe}Commercial /reporting → ${s.p.url()} : ${J(s.reseau)}`)
     await expect(bouton(s.p), `${passe}Commercial : aucun bouton « Exporter Excel »`).toHaveCount(0)
-    expect(refus(s.reseau), `${passe}Commercial : aucune réponse refusée sur /reporting`).toEqual([])
+    expect(appels(s.reseau, /^\/reporting\/dashboard\/$/), `${passe}Commercial : aucune lecture du tableau de bord`).toEqual([])
+    expect(refus(s.reseau), `${passe}Commercial : aucune réponse refusée (aucune 403 de l'API)`).toEqual([])
   }
   // Commercial responsable : bouton présent, et il télécharge le classeur (GET ?export=xlsx → 200).
   const r = await ecranDe(page, suivi, testInfo, cr)
@@ -250,9 +253,10 @@ etape('PF4.4-ADRG119', ['ADRG119'], async ({ page, suivi, testInfo }) => {
     if (passe) await s.p.reload(); else await s.p.goto('/rapports')
     expect((await ventes).status(), `${passe}Commercial : rapport ventes servi`).toBe(200)
     await calme(s.p)
-    await s.p.getByRole('tab', { name: 'Service', exact: true }).click()
+    const ongletService = s.p.getByRole('tab', { name: 'Service', exact: true })
+    await ongletService.click()
+    await expect(ongletService, `${passe}Commercial : onglet Service sélectionné`).toHaveAttribute('aria-selected', 'true')
     const onglet = s.p.getByRole('tabpanel')
-    await expect(onglet, `${passe}Commercial : onglet Service ouvert`).toBeVisible(V)
     await expect(onglet.getByText('Service (chantiers + SAV)'), `${passe}Commercial : aucune carte Service`).toHaveCount(0)
     await expect(s.p.getByText('Rapport indisponible'), `${passe}Commercial : aucune carte « Rapport indisponible »`).toHaveCount(0)
     expect(appels(s.reseau, SERVICE), `${passe}Commercial : /reporting/reports/service/ jamais demandé`).toEqual([])
@@ -323,6 +327,7 @@ etape('PF4.4-ADRG120', ['ADRG120'], async ({ page, suivi, testInfo }) => {
 
 // ── PF4.4 — ADRG110 : compte produits de l'onboarding lu seulement avec `stock_voir` ──────────────────────────────
 const PRODUITS = /^\/stock\/produits\/$/
+const BADGES = /^GET \/reporting\/reports\/kpi-federes\/\?vue=badges → 403$/
 etape('PF4.4-ADRG110', ['ADRG110'], async ({ page, suivi, testInfo }) => {
   const ct = await compteDe('Commercial terrain', 'adrg110ct')
   expect(ct.codes.some((x) => x.startsWith('stock_')), `Given : Commercial terrain sans code stock ${J(ct.codes)}`).toBe(false)
@@ -336,7 +341,9 @@ etape('PF4.4-ADRG110', ['ADRG110'], async ({ page, suivi, testInfo }) => {
     await calme(s.p)
     console.log(`[ADRG110] ${passe}Commercial terrain ${url} (${s.p.url()}) : ${J(s.reseau)}`)
     expect(appels(s.reseau, PRODUITS), `${passe}Commercial terrain ${url} : aucun GET stock/produits/`).toEqual([])
-    expect(refus(s.reseau), `${passe}Commercial terrain ${url} : aucune réponse refusée`).toEqual([])
+    // Seul refus toléré : les badges de l'accueil /apps (écart déclaré ci-dessous, hors ADRG110).
+    const hors = refus(s.reseau).filter((l) => !(url === '/apps' && BADGES.test(l)))
+    expect(hors, `${passe}Commercial terrain ${url} : aucune réponse refusée hors de l'écart déclaré`).toEqual([])
   }
   // Témoin Directeur : la lecture `stock/produits/?page_size=1` est faite (200) et l'étape « produit » comptée.
   const di = await compteDe('Directeur', 'adrg110di')
@@ -356,7 +363,16 @@ etape('PF4.4-ADRG110', ['ADRG110'], async ({ page, suivi, testInfo }) => {
     await expect(etapeProduit, `${passe}Directeur : étape « produit » de la prise en main`).toBeVisible(V)
     await expect(etapeProduit, `${passe}Directeur : étape « produit » comptée (faite)`).toHaveClass(/border-success/)
   }
-})
+  // L'écart ne couvre QUE les badges de /apps : tout autre incident fait tomber l'étape.
+  const horsEcart = suivi.incidents.filter((i) => !/\/reporting\/reports\/kpi-federes\/\?vue=badges/.test(i.texte))
+  expect(horsEcart, "aucun incident hors de l'écart déclaré").toEqual([])
+}, { ecart: {
+  base: 'FAIL',
+  raison: "frontend/src/lib/apps/useAppBadges.js (ADRG141, 25249c17a du 15/11) demande GET reporting/reports/kpi-federes/?vue=badges "
+    + "dès que estResponsable() est vrai (tout code d'écriture, ici visites_creer du Commercial terrain), mais la route répond 403 "
+    + "à ce rôle (relevé du run 43975878757 sur l'accueil /apps) : 403 + console.error ; appel antérieur à ADRG110 (b77a96bd5, 13/11 : "
+    + "tout rôle l'appelait alors), hors des Files d'ADRG110 (onboarding), aucun rapport avec stock/produits",
+} })
 
 // ── PF4.4 — ADRG111 : types d'intervention et étapes de checklist de /parametres sous `installation_voir` ──────────
 const TYPES_ITV = /^\/installations\/types-intervention\/$/
@@ -448,11 +464,15 @@ sortie(1)`)
     await expect(v.p.getByText(lv.nom).first(), `${passe}Viewer : son lead listé`).toBeVisible(V)
     await calme(v.p)
     verifier(v, `${passe}Viewer liste des leads`)
+  }
+  for (const passe of PASSES) {
     await charger(v, `/crm/leads/${lv.id}`, passe)
     await expect(v.p.locator('.lw-rail-triade').first(), `${passe}Viewer : fiche du lead rendue`).toBeVisible(V)
     await expect(v.p.getByText(lv.nom).first(), `${passe}Viewer : fiche de SON lead`).toBeVisible(V)
     await calme(v.p)
     verifier(v, `${passe}Viewer fiche lead`)
+  }
+  for (const passe of PASSES) {
     await charger(v, '/calendrier', passe)
     await expect(v.p.getByRole('heading', { name: 'Calendrier' }), `${passe}Viewer : agenda rendu`).toBeVisible(V)
     await calme(v.p)
