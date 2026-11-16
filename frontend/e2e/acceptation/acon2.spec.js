@@ -64,7 +64,15 @@ for zone in lay['zones']:
         'method': {'horizon': False, 'rangees': False, 'resolution': 'annuelle', 'description': 'Accès solaire annuel'},
         'assumptions': {'periode': 'annee'}, 'computedAt': '2026-10-01T10:00:00Z'}
 lay.update({'scenario': 'reseau', 'panelWatt': 710, 'result': {'panels': 24, 'kwc': 17.04}})
-cal = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC ACON85 ${m}', roof_layout=lay, layout_hash=layout_hash(lay))
+from apps.stock.models import FicheTechnique, Produit
+mod = Produit.objects.create(company=co, nom='Module ACC ACON85 710 ${m}', sku='ACC85M-${m}', prix_achat=Decimal('999'), prix_vente=Decimal('1500'), quantite_stock=1)
+FicheTechnique.objects.create(company=co, produit=mod, type_fiche='module', vmp_v=41.5, voc_v=49.6, isc_a=18.4, imp_a=17.1, pmax_wc=710.0,
+    temp_coeff_voc_pct_c=-0.27, temp_coeff_pmax_pct_c=-0.35)
+ond = Produit.objects.create(company=co, nom='Onduleur ACC ACON85 10kW ${m}', sku='ACC85O-${m}', prix_achat=Decimal('999'), prix_vente=Decimal('1500'), quantite_stock=1)
+FicheTechnique.objects.create(company=co, produit=ond, type_fiche='onduleur', ond_n_mppt=2, ond_mppt_v_min=150.0, ond_mppt_v_max=800.0,
+    ond_v_max_abs=1000.0, ond_i_max_mppt_a=26.0, ond_ac_kw=10.0, ond_phases=3)
+cal = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC ACON85 ${m}', roof_layout=lay, layout_hash=layout_hash(lay),
+    resultat={'entree_electrique': {'module_produit': mod.pk, 'onduleur_produit': ond.pk, 'temperature_min_c': -5.0, 'temperature_max_c': 70.0, 'phases': 3}})
 sortie({'put': r.status_code, 'id': cal.pk, 'lead': lead.pk})`)
   expect(c.put, 'réglages de simulation de la société posés').toBeLessThan(300)
   // Atelier : clé carte factice + style MapTiler refusé (même montage qu'acal4, ACAL377).
