@@ -1,4 +1,4 @@
-<!-- verifie | groupe: ACEL | pct: 97 | ecarts_s1_s2: 1 -->
+<!-- verifie | groupe: ACEL | pct: 97 | ecarts_s1_s2: 1 | faits: 66 -->
 
 # Vérifie ACEL — 5e contre-visite des correctifs du parcours PF11 « tâches planifiées », 16/11/2026
 
@@ -73,8 +73,9 @@ atteint l'heure réglée ; ajoute les cas 3 h et vide, et les sorties « plus_d_
 |---|---|---|---|---|---|
 | C-ACEL-VER7-700 | ACEL1 | S3 | la plage 0-23 h demandée par ACEL1 enverrait les rapports sans heure à minuit, contre l'écran | sonde 001 (hôte) | ACEL1 amendée |
 | C-ACEL-VER7-701 | ACEL1 ↔ ACEL31 | S3 | cycle `@after` / preuve : ACEL1 refusée par `plan_lanes`, ACEL31 bloquée sur elle | `plan_lanes` | ACEL1 amendée |
+| C-ACEL-VER7-702 | — (outil d'audit) | S3 | `audit_registre.py::cmd_du` annonce ACEL dû à chaque itération : l'écart S1-S2 restant (ACEL1) est hors de tout bloc d'écarts, rien de nouveau à visiter | `--du` rejoué | ACEL101 |
 
-Aucune tâche nouvelle. Les S4 du 15/11 (VER5-504, VER6-601, 602, 603) restent optionnels.
+Une tâche nouvelle : ACEL101 (`docs/plans/PLAN_AUDIT_DEPLOY.md`, propriétaire de `scripts/audit_registre.py` : deploy). Ce compte rendu porte `faits: 66` dans son marqueur. Les S4 du 15/11 (VER5-504, VER6-601, 602, 603) restent optionnels.
 
 ## 6. Couverture et sortie de cycle
 
