@@ -474,6 +474,99 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
             company=company, cadence=Cadence.REVEIL, ordre=1).canal,
             'whatsapp')
 
+    def _module_rattrapage(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0139_gabarits_v4_seed_0609')
+
+    def _contact_seed_0609(self, company):
+        """La prod du 16/11 : seed du 06/09 (avant CAD67) sur les ordres 4 et
+        6, puis 0133 — qui ne reconnaît pas l'ordre 6."""
+        _v3_contact(company)
+        contact = CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.CONTACT)
+        contact.filter(ordre=4).update(
+            libelle='Appel 3 (répondeur)', template_cle='repondeur')
+        contact.filter(ordre=6).update(libelle='Appel 4', template_cle='')
+        self._module_v4().vers_v4(self._RegistreSimule, None)
+        return contact
+
+    def test_le_seed_du_0609_retrouve_le_protocole_v4(self):
+        company = _company('rattrapage-prod')
+        contact = self._contact_seed_0609(company)
+        # L'écart constaté : 0133 a laissé l'ordre 6 en appel (6 appels).
+        actifs = CadenceRelanceEtape.cadence_pour(company, Cadence.CONTACT)
+        self.assertEqual(
+            sorted(a.canal for a in actifs), ['appel'] * 6 + ['whatsapp'] * 2)
+        module = self._module_rattrapage()
+        module.rattraper(self._RegistreSimule, None)
+        o6 = contact.get(ordre=6)
+        self.assertEqual(
+            (o6.canal, o6.delai_jours, o6.heure_cible, o6.libelle,
+             o6.template_cle),
+            ('whatsapp', 2, datetime.time(17, 45), 'WhatsApp de valeur',
+             'valeur_j1'))
+        o4 = contact.get(ordre=4)
+        self.assertEqual((o4.canal, o4.delai_jours, o4.heure_cible,
+                          o4.libelle, o4.template_cle),
+                         ('appel', 1, datetime.time(10, 30), 'Appel 3',
+                          'appel_relance'))
+        actifs = CadenceRelanceEtape.cadence_pour(company, Cadence.CONTACT)
+        self.assertEqual(
+            sorted(a.canal for a in actifs), ['appel'] * 5 + ['whatsapp'] * 3)
+        # Idempotence.
+        etat = _etat(company)
+        module.rattraper(self._RegistreSimule, None)
+        self.assertEqual(_etat(company), etat)
+
+    def test_le_rattrapage_laisse_un_barreau_modifie_par_la_societe(self):
+        renomme = _company('rattrapage-renomme')
+        contact = self._contact_seed_0609(renomme)
+        contact.filter(ordre=6).update(libelle='Appel du soir')
+        contact.filter(ordre=4).update(delai_jours=3)
+        # Société dont l'ordre 5 est resté le « WhatsApp de valeur » (délai
+        # modifié, donc ignoré par 0133) : jamais un second `valeur_j1`.
+        double = _company('rattrapage-double')
+        _v3_contact(double)
+        autre = CadenceRelanceEtape.objects.filter(
+            company=double, cadence=Cadence.CONTACT)
+        autre.filter(ordre=5).update(delai_jours=3)
+        autre.filter(ordre=6).update(libelle='Appel 4', template_cle='')
+        self._module_rattrapage().rattraper(self._RegistreSimule, None)
+        o6 = contact.get(ordre=6)
+        self.assertEqual((o6.canal, o6.libelle), ('appel', 'Appel du soir'))
+        o4 = contact.get(ordre=4)
+        self.assertEqual((o4.libelle, o4.template_cle),
+                         ('Appel 3 (répondeur)', 'repondeur'))
+        self.assertEqual(autre.get(ordre=6).canal, 'appel')
+        self.assertEqual(
+            autre.filter(actif=True, template_cle='valeur_j1').count(), 1)
+
+    def test_le_rattrapage_rend_leur_script_aux_appels_de_suivi(self):
+        company = _company('rattrapage-suivi')
+        _v3_apres_devis(company)
+        suivi = CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS)
+        suivi.filter(ordre=2).update(
+            libelle='Appel de suivi J+2', template_cle='', heure_cible=None)
+        suivi.filter(ordre=6).update(
+            libelle='Appel de suivi J+7', template_cle='', heure_cible=None)
+        # Un appel J2 déplacé par la société garde sa clé vide.
+        perso = _company('rattrapage-suivi-perso')
+        _v3_apres_devis(perso)
+        CadenceRelanceEtape.objects.filter(
+            company=perso, cadence=Cadence.APRES_DEVIS, ordre=2).update(
+            delai_jours=4, template_cle='')
+        self._module_rattrapage().rattraper(self._RegistreSimule, None)
+        self.assertEqual(
+            list(suivi.filter(ordre__in=(2, 6)).order_by('ordre').values_list(
+                'libelle', 'template_cle', 'heure_cible')),
+            [('Appel de suivi J+2', 'appel_suivi_j2', None),
+             ('Appel de suivi J+7', 'appel_suivi_j7', None)])
+        self.assertEqual(CadenceRelanceEtape.objects.get(
+            company=perso, cadence=Cadence.APRES_DEVIS,
+            ordre=2).template_cle, '')
+
 
 class CadenceApiTests(TestCase):
     def setUp(self):

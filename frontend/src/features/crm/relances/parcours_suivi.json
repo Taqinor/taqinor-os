@@ -1,7 +1,7 @@
 {
   "_doc": "SUIVI-PARCOURS (30/09/2026) — LA TABLE UNIQUE du suivi commercial : pour chaque ÉTAPE, sa question, ses réponses, ce que chaque réponse ENVOIE au serveur, ce qui SE PASSE ENSUITE et ce qui est seulement STOCKÉ. Trois lecteurs, une seule source : (1) l'écran (`RelanceEtapeRow.jsx` y lit question et réponses — plus aucune liste écrite à la main par cadence) ; (2) la garde de parcours (`backend/django_core/apps/crm/tests_parcours_suivi.py` rejoue chaque réponse par l'API réelle et vérifie `suite`) ; (3) le guide PDF publié dans la GED (`docs/meryem/`, généré par `scripts/generer_guide_suivi.py`). Modifier une réponse ici sans que le moteur suive casse la garde ; modifier le moteur sans cette table aussi. Les PHRASES affichées sous une réponse choisie restent celles du serveur (`etape.suites` → `suite_phrases.json`, garde CAD17) : `effet` est le texte du GUIDE.",
-  "version": "1.3",
-  "maj": "2026-11-03",
+  "version": "1.4",
+  "maj": "2026-11-16",
   "legende_suite": {
     "etape": "Une étape de clé `cle` est ouverte ensuite (`jour` : aujourdhui | demain | date_choisie).",
     "barreau_suivant": "La touche suivante du même protocole est ouverte (à son délai prévu, ou `jour: date_choisie`).",
@@ -158,7 +158,7 @@
       "id": "contact_appel",
       "famille": "Prise de contact",
       "nom": "Appel de prise de contact",
-      "exemples": ["Appel d’ouverture", "Appel 2 (répondeur)", "Appel 3", "Appel 4 (répondeur)", "Appel 5 (dimanche)", "Appel 6 (dernier)"],
+      "exemples": ["Appel d’ouverture", "Appel 2 (répondeur)", "Appel 3", "Appel 4 (répondeur)", "Appel 5 (dernier)"],
       "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["appel"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
@@ -225,7 +225,7 @@
       "id": "contact_message",
       "famille": "Prise de contact",
       "nom": "Message de prise de contact",
-      "exemples": ["Message d’identité", "WhatsApp de valeur", "Vocal", "« Je classe ? »", "Clôture"],
+      "exemples": ["Message d’identité", "WhatsApp de valeur", "« Je classe ? »"],
       "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "reponses": [
@@ -247,7 +247,7 @@
         },
         {
           "modele": "pas_de_reponse",
-          "effet": "La touche suivante du protocole est programmée. Après la dernière (« Clôture ») : le dossier part au Froid ; ses réveils ne sont programmés que s’il a déjà été joint ou chiffré (facture déclarée d’au moins 2 000 MAD : un seul appel J30). S’il manque des appels tracés : pas de Froid, l’écran dit le compte et la suite est un autre appel.",
+          "effet": "La touche suivante du protocole est programmée. Après la dernière (« Je classe ? ») : le dossier part au Froid ; ses réveils ne sont programmés que s’il a déjà été joint ou chiffré (facture déclarée d’au moins 2 000 MAD : un seul appel J30). S’il manque des appels tracés : pas de Froid, l’écran dit le compte et la suite est un autre appel.",
           "suite": { "type": "barreau_suivant" },
           "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
         },
@@ -367,7 +367,7 @@
       "id": "suivi_appel",
       "famille": "Suivi de proposition (après devis)",
       "nom": "Appel de suivi de la proposition",
-      "exemples": ["Appel de suivi (J+2, J+7, J+11)"],
+      "exemples": ["Appel de suivi (J+2, J+7)", "Appel de décision (J+14)", "Appel de validité (J+28)", "Dernier appel (J+90)"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["appel"] },
       "question": "Réponse du client sur la proposition ?",
       "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7). Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
@@ -409,7 +409,7 @@
       "id": "suivi_message",
       "famille": "Suivi de proposition (après devis)",
       "nom": "Message de suivi de la proposition",
-      "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Preuve — chantier comparable", "Garanties fabricants", "Validité de la proposition", "Dernier message", "Mise en pause"],
+      "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Garanties fabricants", "Dernier message"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7). Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
