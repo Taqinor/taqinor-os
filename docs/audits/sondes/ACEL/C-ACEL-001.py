@@ -8,7 +8,7 @@ DJ = RACINE / "backend/django_core"
 TACHE = "reporting.email_saved_reports"
 
 
-def heures_de(valeur):  # heures couvertes par le champ ``hour`` d'un crontab (entier, liste, "*", "*/n", "a,b")
+def heures_de(valeur):  # heures couvertes par le champ ``hour`` d'un crontab (entier, liste, "*", "*/n", "a,b", "a-b")
     if valeur is None: return set(range(24))
     try: v = ast.literal_eval(valeur)
     except ValueError: return set()
@@ -17,13 +17,17 @@ def heures_de(valeur):  # heures couvertes par le champ ``hour`` d'un crontab (e
     if isinstance(v, str):
         if v.strip() == "*": return set(range(24))
         if v.startswith("*/"): return set(range(0, 24, int(v[2:])))
-        return {int(x) for x in v.split(",") if x.strip().isdigit()}
+        heures = set()
+        for x in v.split(","):  # « 6-23 » (plage) ou « 8 » (heure seule)
+            a, _, b = x.strip().partition("-")
+            if a.isdigit() and (not b or b.isdigit()): heures |= set(range(int(a), int(b or a) + 1))
+        return heures
     return set()
 
 
-def passages_beat():  # {nom d'entrée: heures} de toutes les entrées du beat_schedule qui lancent la tâche (lues dans le vrai celery.py)
+def passages_beat(src=None):  # {nom d'entrée: heures} de toutes les entrées du beat_schedule qui lancent la tâche (lues dans le vrai celery.py)
     sortie = {}
-    for d in ast.walk(ast.parse((DJ / "erp_agentique/celery.py").read_text(encoding="utf-8"))):
+    for d in ast.walk(ast.parse(src or (DJ / "erp_agentique/celery.py").read_text(encoding="utf-8"))):
         if not isinstance(d, ast.Dict): continue
         for cle, val in zip(d.keys, d.values):
             if not (isinstance(val, ast.Dict) and isinstance(cle, ast.Constant)): continue
@@ -43,17 +47,24 @@ def sonde(ctx=None):
         if isinstance(n, ast.FunctionDef) and n.name in ("_due_schedules", "_heure_ok", "_deja_envoye_ce_mois", "_rapport_est_du"):
             n.decorator_list = []
             exec(compile(ast.Module([n], []), "scheduled_reports.py", "exec"), ns)  # corps réels
-    entrees = passages_beat()
+    # ACEL31 — « une ligne par jour » lit la base : remplacée par un journal en mémoire (un envoi dû = une ligne ce jour)
+    journal = set()
+    ns["_deja_journalise_ce_jour"] = lambda r, now: (r.heure_envoi, now.date()) in journal
+    entrees = passages_beat((ctx or {}).get("celery_src"))
     heures = sorted({h for hs in entrees.values() for h in hs})
     tz = datetime.timezone(datetime.timedelta(hours=1))
     lundi = datetime.date(2026, 11, 9)  # un lundi : daily ET weekly sont des cadences dues
     dus = {}
-    for reglee in (7, 8, 9):
+    for reglee in (7, 8, 9, 3, None):  # 3 et vide : l'écran promet « Vide : 6 h ; de 0 à 5 h, part à 6 h »
         r = types.SimpleNamespace(schedule="daily", heure_envoi=reglee, jour_du_mois=1, last_sent_at=None)
-        dus[reglee] = [h for h in heures
-                       if "daily" in ns["_due_schedules"](datetime.datetime.combine(lundi, datetime.time(h), tz))
-                       and ns["_rapport_est_du"](r, datetime.datetime.combine(lundi, datetime.time(h), tz))]
-    jamais = [h for h, p in dus.items() if not p]
+        dus[reglee] = []
+        for h in heures:
+            now = datetime.datetime.combine(lundi, datetime.time(h), tz)
+            if "daily" in ns["_due_schedules"](now) and ns["_rapport_est_du"](r, now):
+                dus[reglee].append(h)
+                journal.add((reglee, lundi))
+    jamais = [h for h in (7, 8, 9) if not dus[h]]
+    ecran = {str(k): (dus[k] == [6]) for k in (3, None)}
     # la boucle fait ``continue`` sur « pas dû » AVANT toute ligne d'historique (journaliser_envoi)
     boucle = next(n for n in arbre.body if isinstance(n, ast.FunctionDef) and n.name == "email_saved_reports")
     lignes_continue = [x.lineno for x in ast.walk(boucle) if isinstance(x, ast.Continue)]
@@ -63,7 +74,9 @@ def sonde(ctx=None):
         "fonction": "apps/reporting/scheduled_reports.py::_heure_ok / ::_rapport_est_du ; planning erp_agentique/celery.py",
         "entrees_beat_de_la_tache": entrees, "heures_de_passage": heures,
         "scenario": "rapport quotidien, heure_envoi = 7 / 8 / 9, jour = un lundi, évalué à chaque heure de passage",
-        "passages_ou_le_rapport_est_du": dus, "heures_reglees_jamais_dues": jamais,
+        "passages_ou_le_rapport_est_du": {str(k): v for k, v in dus.items()}, "heures_reglees_jamais_dues": jamais,
+        "plus_d_un_envoi_par_jour": [str(k) for k, v in dus.items() if len(v) > 1],
+        "conforme_a_l_ecran_3h_et_vide_a_6h": ecran,
         "premier_continue_de_la_boucle": min(lignes_continue or [0]), "premiere_ligne_historique": min(lignes_journal or [0])}}
 
 
