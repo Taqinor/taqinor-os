@@ -59,24 +59,26 @@ for etiq, champs, attendu in (
     assert d, err
     ph = Attachment.objects.create(company=co, content_type=ContentType.objects.get_for_model(Intervention), object_id=it.id,
                                    file_key=d['file_key'], mime=d['mime'], filename=field_services.encode_slot_filename(slot.cle, 'p.png'))
-    out.append(dict(etiq=etiq, interv=it.pk, jeton=it.ensure_lien_rapport_token(), photo=ph.pk, attendu=attendu))
+    jeton = it.ensure_lien_rapport_token()
+    it.refresh_from_db()
+    out.append(dict(etiq=etiq, interv=it.pk, jeton=jeton, photo=ph.pk, attendu=attendu,
+                    lu=dict(statut=it.statut, notifiee=str(it.cloturee_notifiee_le), realisee=str(it.date_realisee), creation=str(it.date_creation), jour=str(timezone.localdate()))))
 sortie(out)`)
   expect(cas, 'Given : trois interventions VALIDÉE').toHaveLength(3)
   const anonyme = await visiteur(testInfo)
   const PUB = `${API}/public/installations/intervention-rapport`
   const relevé = []
+  const echecs = []
   for (const c of cas) {
+    console.log(`[APUB7] ${c.etiq} : état relu en base ${J(c.lu)}`)
     for (const [vue, chemin] of [['page', ''], ['PDF', 'pdf/'], ['photo', `photos/${c.photo}/`]]) {
       const r = await anonyme.get(`${PUB}/${c.jeton}/${chemin}`, T)
       relevé.push(`${c.etiq} · ${vue} → ${r.status()}`)
-      if (c.attendu === 404) {
-        expect(r.status(), `${c.etiq} : ${vue} publique rend 404`).toBe(404)
-      } else {
-        expect(r.status(), `${c.etiq} : ${vue} publique rend 200`).toBe(200)
-      }
+      if (r.status() !== c.attendu) echecs.push(`${c.etiq} : ${vue} publique rend ${r.status()} (attendu ${c.attendu})`)
     }
   }
   console.log(`[APUB7] ${relevé.join(' ; ')}`)
+  expect(echecs, 'page, PDF et photo publics : 404 sur les liens expirés, 200 sur le lien valide').toEqual([])
   // `lien-rapport/` sur la 1re (expirée) rend le MÊME jeton : pas de rotation silencieuse.
   const lien = await lireJson(await page.request.get(`${API}/installations/interventions/${cas[0].interv}/lien-rapport/`, T), 'lien-rapport')
   expect(lien.token, 'lien-rapport sur l\'intervention expirée : même jeton').toBe(cas[0].jeton)

@@ -113,7 +113,7 @@ sortie(Lead.objects.get(pk=${lead}).stage)`)
 // ═══ AERR69 — palette ⌘K : « Changer le stage » ⇒ toast nommé + « Annuler » ; vers « Signé » une boîte nommée d'abord ═══
 async function lancerChangerStage(p) {
   await p.keyboard.press('Control+k')
-  const champ = p.getByLabel('Recherche rapide')
+  const champ = p.getByRole('textbox', { name: 'Recherche rapide' })
   await expect(champ, 'palette ouverte').toBeVisible({ timeout: 30_000 })
   await champ.fill('Changer le stage')
   await p.getByText('Changer le stage du lead sélectionné').first().click()
