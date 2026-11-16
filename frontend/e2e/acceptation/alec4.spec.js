@@ -126,11 +126,8 @@ async function ecranSous(context, suivi, testInfo, s) {
 }
 
 // ══ ALEC5 — comparatif des tarifs de transport (stock) : `cout` à null sans prix_achat_voir ═══════════════════════════
-etape('PF6.1-ALEC5-tarifs-expedition', ['ALEC5'], async ({ context, suivi, testInfo }) => {
-  sondeApres(testInfo, 'C-ALEC-004')
-  const m = marque()
-  const com = await session(testInfo, 'alec5c', 'Commercial')
-  const dir = await session(testInfo, 'alec5d', 'Directeur')
+/** 2 transporteurs internes (350, 500), une unité logistique et son expédition. */
+async function fixtureAlec5(m) {
   const RAPIDE = `ALEC5 Rapide ${m}`
   const LENT = `ALEC5 Lent ${m}`
   const fx = await py(`from decimal import Decimal
@@ -143,8 +140,41 @@ t2 = Transporteur.objects.create(company=co, nom=${J(LENT)}, tarif_base=Decimal(
 ul = UniteLogistique.objects.create(company=co, type_unite='colis', sscc=_prochain_sscc(co), poids_kg=Decimal('12'))
 ex = ExpeditionTransporteur.objects.create(company=co, unite_logistique=ul, destination=${J(`Rabat ALEC5 ${m}`)})
 sortie(dict(t1=t1.pk, t2=t2.pk, ul=ul.pk, ex=ex.pk))`)
+  return { ...fx, RAPIDE, LENT, url: `${API}/stock/expeditions/tarifs/?unite_logistique=${fx.ul}` }
+}
+const nettoyerAlec5 = (fx) => py(`from apps.installations.models import Transporteur
+from apps.stock.models_wms import UniteLogistique, ExpeditionTransporteur
+ExpeditionTransporteur.objects.filter(pk=${fx.ex}).delete(); UniteLogistique.objects.filter(pk=${fx.ul}).delete()
+Transporteur.objects.filter(pk__in=[${fx.t1}, ${fx.t2}]).delete()
+sortie(1)`).catch(() => null)
+/** Écran Expéditions sous `s` : bouton « Tarifs » de l'expédition → « libellé — — », sans devise (puis rechargé). */
+async function ecranTarifsSansCout(context, suivi, testInfo, s, fx) {
+  const p = await ecranSous(context, suivi, testInfo, s)
+  for (const passe of ['', 'rechargé : ']) {
+    if (passe) await p.reload(); else await p.goto('/stock/entrepot/expeditions')
+    const bouton = p.getByRole('button', { name: `Tarifs de l'expédition ${fx.ex}` })
+    await expect(bouton, `${s.role} ${passe}écran Expéditions : l'expédition est listée`).toBeVisible({ timeout: 60_000 })
+    await bouton.click()
+    for (const lib of [fx.RAPIDE, fx.LENT]) {
+      const li = p.getByRole('listitem').filter({ hasText: lib })
+      await expect(li, `${s.role} ${passe}écran : ${lib} — —`).toHaveText(new RegExp(`^\\s*${lib} — —\\s*$`), { timeout: 30_000 })
+      await expect(li, `${s.role} ${passe}écran : ${lib} sans devise`).not.toContainText('MAD')
+    }
+  }
+}
+const ECART_ALEC5 = 'défaut ANTÉRIEUR hors du geste de la tâche : l\'écran Expéditions (ASTK220, 3df4e7389 du 07/10/2026, '
+  + 'frontend/src/pages/stock/wms/ExpeditionsPage.jsx::useEffect → expeditionsApi.listCasiers) lit '
+  + '`installations/bin-locations/` au montage ; un Commercial (sans code installation_*) reçoit 403 (oracles 2 et 3). '
+  + 'ALEC5 (5c6e2f15f) ne touche que l\'affichage du coût (« — ») ; témoin sans 403 : étape PF6.1-ALEC5-ecran-technicien. '
+  + 'Le fichier figure dans les Files d\'ALEC5 : légitimité de l\'écart à trancher en relecture.'
+etape('PF6.1-ALEC5-tarifs-expedition', ['ALEC5'], async ({ context, suivi, testInfo }) => {
+  sondeApres(testInfo, 'C-ALEC-004')
+  const com = await session(testInfo, 'alec5c', 'Commercial')
+  const dir = await session(testInfo, 'alec5d', 'Directeur')
+  const fx = await fixtureAlec5(marque())
+  const { RAPIDE, LENT } = fx
   try {
-    const url = `${API}/stock/expeditions/tarifs/?unite_logistique=${fx.ul}`
+    const url = fx.url
     const nos = (offres) => offres.filter((o) => o.source === 'interne' && [String(fx.t1), String(fx.t2)].includes(String(o.code)))
     const c = await json200(com.ctx, url, 'Commercial')
     const d = await json200(dir.ctx, url, 'Directeur')
@@ -163,25 +193,23 @@ sortie(dict(t1=t1.pk, t2=t2.pk, ul=ul.pk, ex=ex.pk))`)
     expect(Number(pd[String(fx.t1)].cout), 'Directeur : 350').toBe(350)
     expect(Number(pd[String(fx.t2)].cout), 'Directeur : 500').toBe(500)
 
-    // Écran Expéditions en Commercial : bouton « Tarifs » de l'expédition → « libellé — — », sans devise.
-    const p = await ecranSous(context, suivi, testInfo, com)
-    for (const passe of ['', 'rechargé : ']) {
-      if (passe) await p.reload(); else await p.goto('/stock/entrepot/expeditions')
-      const bouton = p.getByRole('button', { name: `Tarifs de l'expédition ${fx.ex}` })
-      await expect(bouton, `${passe}écran Expéditions : l'expédition est listée`).toBeVisible({ timeout: 60_000 })
-      await bouton.click()
-      for (const lib of [RAPIDE, LENT]) {
-        const li = p.getByRole('listitem').filter({ hasText: lib })
-        await expect(li, `${passe}écran : ${lib} — —`).toHaveText(new RegExp(`^\\s*${lib} — —\\s*$`), { timeout: 30_000 })
-        await expect(li, `${passe}écran : ${lib} sans devise`).not.toContainText('MAD')
-      }
-    }
+    // Écran Expéditions en Commercial (rôle de la clause) : « libellé — — », sans devise.
+    await ecranTarifsSansCout(context, suivi, testInfo, com, fx)
   } finally {
-    await py(`from apps.installations.models import Transporteur
-from apps.stock.models_wms import UniteLogistique, ExpeditionTransporteur
-ExpeditionTransporteur.objects.filter(pk=${fx.ex}).delete(); UniteLogistique.objects.filter(pk=${fx.ul}).delete()
-Transporteur.objects.filter(pk__in=[${fx.t1}, ${fx.t2}]).delete()
-sortie(1)`).catch(() => null)
+    await nettoyerAlec5(fx)
+  }
+}, { ecart: { base: 'FAIL', raison: ECART_ALEC5 } })
+
+// Témoin : même écran sous un rôle livré sans prix_achat_voir qui lit aussi les casiers (Technicien) — aucun 403.
+etape('PF6.1-ALEC5-ecran-technicien', ['ALEC5'], async ({ context, suivi, testInfo }) => {
+  const tech = await session(testInfo, 'alec5t', 'Technicien')
+  const fx = await fixtureAlec5(marque())
+  try {
+    const t = await json200(tech.ctx, fx.url, 'Technicien')
+    expect(t.offres.every((o) => o.cout === null), 'Technicien (sans prix_achat_voir) : toutes les offres à cout null').toBe(true)
+    await ecranTarifsSansCout(context, suivi, testInfo, tech, fx)
+  } finally {
+    await nettoyerAlec5(fx)
   }
 })
 
@@ -478,7 +506,7 @@ sortie([d.signataire_email, d.adresse_ip, s.email, s.telephone, s.adresse_ip, s.
     const rowRh = await ligneEcran(rh)
     await expect(rowRh, 'écran Admin RH : signataire nommé').toContainText(`Nadia ALEC42 ${m}`)
     await expect(rowRh, 'écran Admin RH : e-mail absent').not.toContainText(`nadia-${m}@example.invalid`)
-    await expect(rowRh.getByRole('cell', { name: '—', exact: true }).first(), 'écran Admin RH : colonne Email à « — »').toBeVisible()
+    await expect(rowRh.getByRole('gridcell', { name: '—', exact: true }).first(), 'écran Admin RH : colonne Email à « — »').toBeVisible()
     const rowDir = await ligneEcran(dir)
     await expect(rowDir, 'écran Directeur : e-mail visible').toContainText(`nadia-${m}@example.invalid`)
   } finally {
@@ -722,6 +750,30 @@ sortie(SettingsAuditLog.objects.create(company_id=${SOC}, user_id=${dir.id}, sec
     await py(`from apps.parametres.models_audit import SettingsAuditLog
 SettingsAuditLog.objects.filter(pk=${lid}).delete()
 sortie(1)`).catch(() => null)
+  }
+}, {
+  ecart: {
+    base: 'FAIL',
+    raison: 'défaut ANTÉRIEUR hors du geste de la tâche : l\'onglet Paramètres › Avancé monte les sections '
+      + '« Équipe terrain » (WIR112, 5a664f3e8 du 19/07/2026, EquipeTerrainSection.jsx) et « Modèles de fiche '
+      + 'd\'intervention » (WIR114) qui lisent `installations/equipes/` et `installations/fiche-intervention-templates/` ; '
+      + 'le Commercial responsable (sans code installation_*) reçoit 403 (oracles 2 et 3). ALEC28 (343b58dc3) ne fait que '
+      + 'masquer la carte « Journal des modifications » ; témoin sans 403 : étape PF6.4-ALEC28-ecran-administrateur. '
+      + 'AvanceSection.jsx figure dans les Files d\'ALEC28 : légitimité de l\'écart à trancher en relecture.',
+  },
+})
+
+// Témoin : l'Administrateur livré (sans journal_activite_voir, lit les chantiers) : 403 sur le journal, carte absente, aucun 403 d'écran.
+etape('PF6.4-ALEC28-ecran-administrateur', ['ALEC28'], async ({ context, suivi, testInfo }) => {
+  const adm = await session(testInfo, 'alec28adm2', 'Administrateur')
+  for (const r of [`${API}/parametres/audit/?section=roles`, `${API}/parametres/audit/sections/`]) {
+    expect(await statut(adm.ctx, r), `Administrateur : ${r} 403`).toBe(403)
+  }
+  const p = await ecranSous(context, suivi, testInfo, adm)
+  for (const passe of ['', 'rechargé : ']) {
+    if (passe) await p.reload(); else await p.goto('/parametres?onglet=avance')
+    await expect(p.getByText('Hypothèses ROI').first(), `${passe}Administrateur : onglet Avancé rendu`).toBeVisible({ timeout: 60_000 })
+    await expect(p.getByText('Journal des modifications'), `${passe}écran Administrateur : carte absente`).toHaveCount(0)
   }
 })
 
