@@ -626,7 +626,7 @@ jobs:
       # ouverte reçoit le lien du run puis est fermée (patron api-fuzz-full.yml::alerte).
       - name: Fermer l'issue d'alerte (run nocturne vert)
         if: ${{ steps.decision.outputs.decision == 'fermer' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = '[release-verify] Le nocturne échoue depuis 2 nuits ou plus';
@@ -648,7 +648,7 @@ jobs:
             }
       - name: Ouvrir/mettre à jour l'issue d'alerte (2 nuits rouges de suite)
         if: ${{ steps.decision.outputs.alerte == 'true' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ROUGES: ${{ steps.decision.outputs.rouges }}
         with:
