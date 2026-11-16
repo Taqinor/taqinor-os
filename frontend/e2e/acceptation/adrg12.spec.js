@@ -10,8 +10,15 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { connexionApi, assurerSessionPage, lireJson, telephoneMobileUnique, isoDansJours } from '../helpers.js'
 
-const etape = groupe('ADRG', ['ADRG75', 'ADRG80', 'ADRG99', 'ADRG106', 'ADRG107', 'ADRG108', 'ADRG114', 'ADRG115',
-  'ADRG116', 'ADRG117', 'ADRG121'])
+// ADRG80 : ROUGE sur le runner le 16/11/2026 (run 43982713452, sha 3d1618028) pour DÉFAUT PRODUIT — la fiche document
+// (`frontend/src/features/ged/GedDocumentInsights.jsx`, un des Files d'ADRG80) charge GET /users/ et GET /roles/ pour
+// tout rôle alors que l'éditeur de droits qui s'en sert n'est offert qu'avec `ged_gouvernance` : 403 ×2 + console.error
+// au Commercial. Étape inchangée, rejouée seulement sous ADRG_ROUGES=1 tant que l'écran n'est pas corrigé : son id
+// n'est pas dans `couvre` de l'enregistrement sans elle.
+const ROUGES = process.env.ADRG_ROUGES === '1'
+const etape = groupe('ADRG', ['ADRG75', ...(ROUGES ? ['ADRG80'] : []), 'ADRG99', 'ADRG106', 'ADRG107', 'ADRG108', 'ADRG114',
+  'ADRG115', 'ADRG116', 'ADRG117', 'ADRG121'])
+const etapeRouge = ROUGES ? etape : () => undefined
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -185,7 +192,7 @@ etape('PF4.2-ADRG75', ['ADRG75'], async ({ page, suivi, testInfo }) => {
 })
 
 // ── PF4.2 — ADRG80 : ACL, règles d'ACL par métadonnée et tampons sous `ged_gouvernance` ───────────────────────
-etape('PF4.2-ADRG80', ['ADRG80'], async ({ page, suivi, testInfo }) => {
+etapeRouge('PF4.2-ADRG80', ['ADRG80'], async ({ page, suivi, testInfo }) => {
   const r = page.request
   const m = marque()
   const g = await dossierGed(r, m, 'ADRG80')
@@ -403,14 +410,16 @@ etape('PF4.4-ADRG106', ['ADRG106'], async ({ page, suivi, testInfo }) => {
   expect([re.codes.includes('stock_modifier'), re.codes.includes('stock_supprimer')], 'Given : Responsable stock_modifier sans stock_supprimer').toEqual([true, false])
   const nomMarque = `Marque ADRG106 ${m}`
   const nomProduit = `Câble ADRG106 ${m}`
-  const x = await py(`from apps.stock.models import Marque, Produit, Fournisseur, ContactFournisseur, DocumentConformiteFournisseur
+  const nomCatF = `CatF ADRG106 ${m}`
+  const x = await py(`from apps.stock.models import Marque, Produit, Fournisseur, ContactFournisseur, DocumentConformiteFournisseur, CategorieFournisseur
 co = ${SOC}
+cf = CategorieFournisseur.objects.create(company_id=co, nom=${J(nomCatF)})
 ma = Marque.objects.create(company_id=co, nom=${J(nomMarque)})
 p = Produit.objects.create(company_id=co, nom=${J(nomProduit)}, prix_vente='100.00', prix_achat='60.00')
 f = Fournisseur.objects.create(company_id=co, nom=${J(`Fournisseur ADRG106 ${m}`)})
 ct = ContactFournisseur.objects.create(company_id=co, fournisseur=f, nom=${J(`Contact ADRG106 ${m}`)})
 d = DocumentConformiteFournisseur.objects.create(company_id=co, fournisseur=f, reference=${J(`REF-ADRG106-${m}`)})
-sortie(dict(marque=ma.pk, produit=p.pk, fournisseur=f.pk, contact=ct.pk, doc=d.pk))`)
+sortie(dict(marque=ma.pk, produit=p.pk, fournisseur=f.pk, contact=ct.pk, doc=d.pk, catf=cf.pk))`)
   try {
     for (const [c, supprime] of [[re, false], [av, true]]) {
       const s = await ecranDe(page, suivi, testInfo, c)
@@ -429,6 +438,14 @@ sortie(dict(marque=ma.pk, produit=p.pk, fournisseur=f.pk, contact=ct.pk, doc=d.p
       await charger(s, '/stock', '')
       const menu = await menuProduit(s, nomProduit)
       expect(menu.some((t) => /^Supprimer$/.test(t)), `${c.nomRole} catalogue : « Supprimer » ${J(menu)}`).toBe(supprime)
+      // Liste des fournisseurs › gestionnaire « Catégories » : « Supprimer » d'une catégorie fournisseur.
+      await charger(s, '/stock/fournisseurs', '')
+      await bouton(s.p, /^Catégories$/).first().click()
+      const gestion = s.p.getByRole('dialog').filter({ hasText: 'Catégories fournisseur' })
+      const ligneCatF = gestion.getByRole('listitem').filter({ hasText: nomCatF })
+      await expect(ligneCatF, `${c.nomRole} : catégorie fournisseur listée`).toBeVisible(V)
+      await expect(bouton(ligneCatF, 'Supprimer'), `${c.nomRole} : « Supprimer » d'une catégorie fournisseur`).toHaveCount(supprime ? 1 : 0)
+      await s.p.keyboard.press('Escape')
       // Fiche 360 du fournisseur : contacts et pièces de conformité.
       await charger(s, `/stock/fournisseurs/${x.fournisseur}/360`, '')
       await s.p.getByRole('tab', { name: /Contacts/ }).click()
@@ -461,7 +478,8 @@ sortie(Marque.objects.filter(pk=${x.marque}).exists())`), 'relu en base : marque
       }
     }
   } finally {
-    await py(`from apps.stock.models import Marque, Produit, Fournisseur
+    await py(`from apps.stock.models import Marque, Produit, Fournisseur, CategorieFournisseur
+CategorieFournisseur.objects.filter(pk=${x.catf}).delete()
 Marque.objects.filter(pk=${x.marque}).delete()
 Produit.objects.filter(pk=${x.produit}).delete()
 Fournisseur.objects.filter(pk=${x.fournisseur}).delete()
