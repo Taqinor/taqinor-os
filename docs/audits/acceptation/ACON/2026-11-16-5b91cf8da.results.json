@@ -1,0 +1,101 @@
+{
+  "sha": "5b91cf8da23055093a67175dc7e39c5468881b30",
+  "date": "2026-11-16",
+  "groupe": "ACON",
+  "verdict": "PASS",
+  "couvre": [
+    "ACON85",
+    "ACON92"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.ACON85-generer_devis_ombre_pdf_page",
+      "taches": [
+        "ACON85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-16/ACCEPTATION-ACON-PA2.ACON85-generer_devis_ombre_pdf_page.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.ACON85-simuler_calepinage_fige_409",
+      "taches": [
+        "ACON85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-16/ACCEPTATION-ACON-PA2.ACON85-simuler_calepinage_fige_409.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.ACON92-contenance-1200",
+      "taches": [
+        "ACON92"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-16/ACCEPTATION-ACON-PA2.ACON92-contenance-1200.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.ACON92-page-publique-max",
+      "taches": [
+        "ACON92"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-16/ACCEPTATION-ACON-PA2.ACON92-page-publique-max.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
