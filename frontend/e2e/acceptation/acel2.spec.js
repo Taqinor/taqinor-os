@@ -395,3 +395,27 @@ sortie(True)`))
   const refus = await ctx.get(`${API}/installations/recurrences-intervention/${rec.id}/`, T)
   expect(refus.status(), `autre société : ${(await refus.text()).slice(0, 200)}`).toBe(404)
 })
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// ACEL4 (preuve en direct) — vrais beat + worker Celery, lancés par le workflow AVANT les specs (Redis du job) :
+// beat seul ~190 s (3 minutes de passages publiés sans worker), puis arrêt du beat, puis worker ~40 s.
+// ════════════════════════════════════════════════════════════════════════════════════════════
+etape('PF11-ACEL4-reel', ['ACEL4'], async ({ page, testInfo }) => {
+  const lireTmp = (f) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
+  const beat = lireTmp('/tmp/acel4-beat.log')
+  const worker = lireTmp('/tmp/acel4-worker.log')
+  expect(beat.length, 'journal du beat présent (le workflow a lancé un vrai beat)').toBeGreaterThan(0)
+  expect(worker.length, 'journal du worker présent (le workflow a lancé un vrai worker)').toBeGreaterThan(0)
+  const NOM = 'publicapi\\.retry_webhook_deliveries'
+  const publies = (beat.match(/Sending due task publicapi-retry-webhook-deliveries/g) || []).length
+  const recus = (worker.match(new RegExp(`Task ${NOM}\\[[0-9a-f-]+\\] received`, 'g')) || []).length
+  const reussis = (worker.match(new RegExp(`Task ${NOM}\\[[0-9a-f-]+\\] succeeded`, 'g')) || []).length
+  const expires = worker.split('\n').filter((l) => /expire/i.test(l) && l.includes('publicapi.retry_webhook_deliveries'))
+  console.log(`[ACEL4] publiés ${publies}, reçus ${recus}, réussis ${reussis}, expirés ${expires.length}`)
+  testInfo.annotations.push({ type: 'comptes', description: `publiés ${publies}, reçus ${recus}, réussis ${reussis}, expirés ${expires.length} ; ${expires[0] || ''}` })
+  expect(publies, 'le beat a publié ≥ 2 passages pendant que le worker était arrêté').toBeGreaterThanOrEqual(2)
+  expect(reussis, 'au retour du worker : exécutée AU PLUS UNE FOIS').toBeLessThanOrEqual(1)
+  expect(expires.length, 'les autres messages sont révoqués : journal « expired »').toBeGreaterThanOrEqual(1)
+  expect(reussis + expires.length, 'chaque passage publié est soit exécuté une fois, soit expiré').toBeGreaterThanOrEqual(publies)
+  await page.goto('/')
+})

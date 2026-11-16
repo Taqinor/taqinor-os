@@ -456,8 +456,12 @@ sortie(True)`)
   expect(r2.status(), `2e envoi sous la même clé : ${(await r2.text()).slice(0, 200)}`).toBe(200)
   expect(await prixDe(x), 'après le rejeu : TOUJOURS 1 100 et 2 200 (aucun cumul à 1 210)').toEqual(['1100.00', '2200.00'])
   // Troisième envoi (AUTRE clé) dont la sauvegarde du 2e produit échoue : aucun prix ne change.
-  const ordre = await py(`from apps.stock.models import Produit
-sortie(list(Produit.objects.filter(id__in=[${x.p1}, ${x.p2}]).values_list('id', flat=True)))`)
+  // Même requête que `apply_product_bulk` (select_for_update, filtre société + ids) : l'ordre de traitement réel du service.
+  const ordre = await py(`from django.db import transaction
+from apps.stock.models import Produit
+with transaction.atomic():
+    ids = [p.pk for p in Produit.objects.select_for_update().filter(company_id=${SOC}, id__in=[${x.p1}, ${x.p2}])]
+sortie(ids)`)
   const dernier = ordre[ordre.length - 1]
   // Échec injecté : le DERNIER produit de la boucle refuse tout changement de prix (contrainte CHECK posée puis retirée).
   await py(`from django.db import connection
@@ -624,4 +628,172 @@ sortie(True)`)
   expect(await py(`from apps.achats.models import BonCommandeFournisseur
 sortie([[b.statut, b.lignes.count()] for b in BonCommandeFournisseur.objects.filter(lignes__produit_id=${x.p}).distinct()])`),
   'persistance : UN seul BCF, brouillon, 1 ligne').toEqual([['brouillon', 1]])
+})
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// Round 2 — preuves À L'ÉCRAN avec réponse COUPÉE après passage au serveur (ACNC23, ACNC24, ACNC28)
+// ════════════════════════════════════════════════════════════════════════════════════════════
+const ouvrirBcf = async (p, ref) => {
+  await p.goto('/stock/bons-commande-fournisseur')
+  await p.getByPlaceholder('Rechercher (référence, fournisseur)…').fill(ref, { timeout: 60_000 })
+  await p.getByRole('row').filter({ hasText: ref }).getByText(ref).first().click({ timeout: 60_000 })
+  const dlg = p.getByRole('dialog').filter({ has: p.locator('#bcf-ref-fou') })
+  await expect(dlg, 'fiche du BCF ouverte').toBeVisible({ timeout: 30_000 })
+  return dlg
+}
+/** Coupe la réponse du 1er POST qui matche `rx` APRÈS passage au serveur ; les suivants passent. */
+const coupePremier = async (p, rx) => {
+  let coupe = true
+  await p.route((u) => rx.test(u.pathname), async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    if (coupe) { coupe = false; await route.fetch(); return route.abort('failed') }
+    return route.fallback()
+  })
+}
+
+etape('PF9.4-ACNC23-ecran-reception', ['ACNC23'], async ({ page, suivi, testInfo }) => {
+  const { nom } = await acteur(testInfo, 'acnc23r', 'Directeur')
+  const m = marque()
+  const x = await preparer(m, { stock: 0, qte: 10, pu: '1000' })
+  apres.push(() => nettoyer(m))
+  const rx = new RegExp(`/api/django/stock/bons-commande-fournisseur/${x.b}/recevoir/$`)
+  suivi.attendre(rx, 'reseau')
+  const ctx = await navigateur(page, testInfo, nom)
+  const p = await onglet(page, suivi, ctx)
+  const envois = []
+  p.on('request', (q) => { if (q.method() === 'POST' && rx.test(chemin(q.url()))) envois.push({ cle: q.headers()['idempotency-key'] ?? null }) })
+  const dlg = await ouvrirBcf(p, x.ref)
+  const saisie = dlg.locator('input[placeholder^="/"]').first()
+  await expect(saisie, 'champ « À recevoir »').toBeVisible({ timeout: 30_000 })
+  await saisie.fill('5')
+  await coupePremier(p, rx)
+  await dlg.getByRole('button', { name: 'Recevoir les quantités' }).click()
+  await expect.poll(() => envois.length, { message: 'premier envoi parti', timeout: 30_000 }).toBe(1)
+  await expect.poll(() => py(`from apps.achats.models import ReceptionFournisseur
+sortie(ReceptionFournisseur.objects.filter(bon_commande_id=${x.b}).count())`), { message: 'le serveur a appliqué la réception', timeout: 30_000 }).toBe(1)
+  await expect(dlg, 'le dialogue reste ouvert avec l\'échec dit').toContainText(/réception a échoué|réponse|abouti/i, { timeout: 30_000 })
+  await expect(saisie, 'la saisie est gardée (5)').toHaveValue('5')
+  const [r2] = await Promise.all([
+    p.waitForResponse((q) => q.request().method() === 'POST' && rx.test(chemin(q.url())), T),
+    dlg.getByRole('button', { name: 'Recevoir les quantités' }).click(),
+  ])
+  expect(r2.status(), `second clic : ${(await r2.text()).slice(0, 200)}`).toBe(200)
+  expect(envois.length, 'deux envois').toBe(2)
+  expect(envois[0].cle, 'une clé envoyée').toBeTruthy()
+  expect(envois[1].cle, 'MÊME clé au second clic').toBe(envois[0].cle)
+  const e = await py(`from apps.achats.models import ReceptionFournisseur, LigneBonCommandeFournisseur
+from apps.stock.models import Produit
+sortie(dict(rec=ReceptionFournisseur.objects.filter(bon_commande_id=${x.b}).count(), recue=LigneBonCommandeFournisseur.objects.get(pk=${x.l}).quantite_recue, stock=Produit.objects.get(pk=${x.p}).quantite_stock))`)
+  expect(e, 'UNE réception (REC), 5 reçus, stock 5 (jamais 10)').toEqual({ rec: 1, recue: 5, stock: 5 })
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
+etape('PF9.4-ACNC24-ecran-coupure', ['ACNC24'], async ({ page, suivi, testInfo }) => {
+  const { nom } = await acteur(testInfo, 'acnc24c', 'Directeur')
+  const m = marque()
+  const x = await deuxProduits(m)
+  apres.push(() => nettoyerProduits(m))
+  const rx = /\/api\/django\/stock\/produits\/bulk\/$/
+  suivi.attendre(rx, 'reseau')
+  const ctx = await navigateur(page, testInfo, nom)
+  const p = await onglet(page, suivi, ctx)
+  const envois = []
+  p.on('request', (q) => { if (q.method() === 'POST' && rx.test(chemin(q.url()))) envois.push({ cle: q.headers()['idempotency-key'] ?? null }) })
+  await p.goto('/stock')
+  await p.locator('input[type="search"]').first().fill(m, { timeout: 60_000 })
+  await p.getByRole('checkbox', { name: `Sélectionner ${x.n1}`, exact: true }).click({ timeout: 60_000 })
+  await p.getByRole('checkbox', { name: `Sélectionner ${x.n2}`, exact: true }).click()
+  const barre = p.getByRole('region', { name: 'Actions produits en masse' })
+  await expect(barre).toBeVisible({ timeout: 30_000 })
+  await barre.getByText('Prix', { exact: true }).first().click()
+  await barre.getByPlaceholder('ex. 10 ou -5').fill('10')
+  await barre.getByRole('button', { name: 'Appliquer', exact: true }).click()
+  await coupePremier(p, rx)
+  const relue = p.waitForResponse((q) => q.request().method() === 'GET' && /\/api\/django\/stock\/produits\/(\?|$)/.test(q.url().replace(/^https?:\/\/[^/]+/, '')), T)
+  await barre.getByRole('alert').getByRole('button', { name: 'Confirmer' }).click()
+  await expect.poll(() => envois.length, { message: 'premier envoi parti', timeout: 30_000 }).toBe(1)
+  await relue // la liste est relue après l'échec sans réponse
+  expect(await prixDe(x), 'le serveur a appliqué le 1er envoi : 1 100 et 2 200').toEqual(['1100.00', '2200.00'])
+  // « Prix + 10 % » rouvert : la valeur est GARDÉE (l'échec ne l'a pas vidée) ; nouvel essai, même clé.
+  await barre.getByText('Prix', { exact: true }).first().click()
+  await expect(barre.getByPlaceholder('ex. 10 ou -5'), 'valeur gardée après l\'échec').toHaveValue('10')
+  await barre.getByRole('button', { name: 'Appliquer', exact: true }).click()
+  const [r2] = await Promise.all([
+    p.waitForResponse((q) => q.request().method() === 'POST' && rx.test(chemin(q.url())), T),
+    barre.getByRole('alert').getByRole('button', { name: 'Confirmer' }).click(),
+  ])
+  expect(r2.status(), `nouvel essai : ${(await r2.text()).slice(0, 200)}`).toBe(200)
+  expect(envois.length, 'deux envois').toBe(2)
+  expect(envois[0].cle, 'une clé').toBeTruthy()
+  expect(envois[1].cle, 'MÊME clé au nouvel essai').toBe(envois[0].cle)
+  expect(await prixDe(x), 'UN SEUL +10 % : 1 100 et 2 200 (jamais 1 210 et 2 420)').toEqual(['1100.00', '2200.00'])
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
+etape('PF9.4-ACNC28-ecran', ['ACNC28'], async ({ page, suivi, testInfo }) => {
+  const { nom, ctx: api } = await acteur(testInfo, 'acnc28e', 'Directeur')
+  const m = marque()
+  const a = await preparer(`${m}a`, { stock: 0, qte: 10, pu: '100' })
+  const b = await preparer(`${m}b`, { stock: 0, qte: 10, pu: '100' })
+  apres.push(() => nettoyer(`${m}a`))
+  apres.push(() => nettoyer(`${m}b`))
+  for (const [i, x] of [[0, a], [1, b]]) {
+    const rec = await api.post(`${STOCK}/bons-commande-fournisseur/${x.b}/recevoir/`, { ...T, data: { receptions: [{ ligne: x.l, quantite: 5 }] }, headers: avecCle(`r28e-${m}-${i}`) })
+    expect(rec.status(), `Given : 5 reçus (${i})`).toBe(200)
+  }
+  const ctx = await navigateur(page, testInfo, nom)
+  const p = await onglet(page, suivi, ctx)
+  const relecture = (x) => p.waitForResponse((q) => q.request().method() === 'GET' && new RegExp(`/api/django/stock/bons-commande-fournisseur/${x.b}/$`).test(chemin(q.url())), T)
+  const ouvrirRetour = async (x) => {
+    const dlg = await ouvrirBcf(p, x.ref)
+    await dlg.getByRole('button', { name: /Retour fournisseur/ }).click()
+    const rdlg = p.getByRole('dialog').filter({ hasText: 'Retour fournisseur —' })
+    await expect(rdlg, 'fenêtre de retour').toBeVisible({ timeout: 30_000 })
+    return rdlg
+  }
+  const cellRecu = (rdlg, x) => rdlg.getByRole('row').filter({ hasText: x.nom }).getByRole('cell').nth(1)
+  // Phase 1 — réponse de la validation COUPÉE : la fenêtre relit le BCF et rebase ses plafonds ; aucun second retour ne part.
+  const rxValider = /\/api\/django\/stock\/retours-fournisseur\/\d+\/valider\/$/
+  const rxCreer = /\/api\/django\/stock\/retours-fournisseur\/$/
+  suivi.attendre(rxValider, 'reseau')
+  suivi.attendre(rxValider, 409)
+  const creations = []
+  p.on('request', (q) => { if (q.method() === 'POST' && rxCreer.test(chemin(q.url()))) creations.push(1) })
+  let rd = await ouvrirRetour(a)
+  await expect(cellRecu(rd, a), 'Reçu : 5').toHaveText('5')
+  await rd.getByRole('spinbutton').first().fill('5')
+  await rd.getByPlaceholder('ex. cassé à la livraison').fill('Défectueux')
+  await coupePremier(p, rxValider)
+  const relu = relecture(a)
+  await rd.getByRole('button', { name: 'Valider le retour' }).click()
+  await relu // le BCF est relu après l'échec
+  expect(await py(`from apps.stock.models import Produit
+sortie(Produit.objects.get(pk=${a.p}).quantite_stock)`), 'le serveur a validé le retour (stock 5 → 0)').toBe(0)
+  await expect(cellRecu(rd, a), 'plafond rebasé : Reçu relu = 0').toHaveText('0', { timeout: 30_000 })
+  await rd.getByRole('spinbutton').first().fill('5')
+  await expect(rd.getByText(/Max 0/), 'saisie de 5 : « Max 0 »').toBeVisible()
+  await rd.getByRole('button', { name: 'Valider le retour' }).click()
+  await expect(rd, 'rien à retourner : refus à l\'écran').toContainText('Saisissez au moins une quantité à retourner', { timeout: 15_000 })
+  expect(creations.length, 'aucun second retour créé').toBe(1)
+  // Phase 2 — fenêtre périmée : un collègue retourne les 5 pendant que la fenêtre est ouverte ⇒ 409 à la validation.
+  rd = await ouvrirRetour(b)
+  await expect(cellRecu(rd, b), 'Reçu : 5').toHaveText('5')
+  await rd.getByRole('spinbutton').first().fill('5')
+  await rd.getByPlaceholder('ex. cassé à la livraison').fill('Défectueux')
+  const r1 = await lireJson(await api.post(`${STOCK}/retours-fournisseur/`, { ...T, data: { fournisseur: b.f, bon_commande: b.b, lignes: [{ produit: b.p, quantite: 5, motif: 'Collègue' }] } }), 'retour du collègue')
+  const v1 = await api.post(`${STOCK}/retours-fournisseur/${r1.id}/valider/`, T)
+  expect(v1.status(), 'le collègue valide son retour').toBe(200)
+  const relu2 = relecture(b)
+  const [rv] = await Promise.all([
+    p.waitForResponse((q) => q.request().method() === 'POST' && rxValider.test(chemin(q.url())), T),
+    rd.getByRole('button', { name: 'Valider le retour' }).click(),
+  ])
+  expect(rv.status(), `validation périmée : ${(await rv.text()).slice(0, 200)}`).toBe(409)
+  await expect(rd, 'message du 409 affiché').toContainText(/quantité reçue restante/i, { timeout: 30_000 })
+  await relu2 // la fenêtre relit le BCF après l'échec
+  await expect(cellRecu(rd, b), 'Reçu relu = 0').toHaveText('0', { timeout: 30_000 })
+  const e = await py(`from apps.stock.models import Produit, MouvementStock
+sortie(dict(stock=Produit.objects.get(pk=${b.p}).quantite_stock, sorties=MouvementStock.objects.filter(produit_id=${b.p}, type_mouvement='sortie').count()))`)
+  expect(e, 'stock 0, UNE seule sortie (le retour du collègue)').toEqual({ stock: 0, sorties: 1 })
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
 })
