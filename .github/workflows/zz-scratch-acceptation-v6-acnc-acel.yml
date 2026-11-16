@@ -148,7 +148,7 @@ jobs:
         run: |
           # Sous-ensemble des dependances : ni torch (sentence-transformers), ni whisper, ni langchain,
           # tous importes paresseusement ; la route /sql-agent/confirm n'en a pas besoin.
-          grep -vE '^(langchain|openai|sentence-transformers|pypdf|Pillow|pymupdf|faster-whisper)' requirements.txt > /tmp/req-ia.txt
+          grep -vE '^(sentence-transformers|pypdf|Pillow|pymupdf|faster-whisper)' requirements.txt > /tmp/req-ia.txt
           python -m venv /tmp/ia
           /tmp/ia/bin/pip install -q --disable-pip-version-check -r /tmp/req-ia.txt
           /tmp/ia/bin/python -c "import fastapi, uvicorn, jwt, redis, httpx, sqlalchemy; print('IA ok')"
@@ -162,12 +162,12 @@ jobs:
           kill "$(cat /tmp/acel4-beat.pid)" || true
           sleep 2
           (celery -A erp_agentique worker -l info -Q scheduled,default --concurrency 2 > /tmp/acel4-worker.log 2>&1 & echo $! > /tmp/acel4-worker.pid)
-          sleep 40
+          sleep 75
           kill -TERM "$(cat /tmp/acel4-worker.pid)" || true
           sleep 8
           pkill -f "celery -A erp_agentique" || true
           echo '--- beat ---'; tail -n 15 /tmp/acel4-beat.log || true
-          echo '--- worker ---'; grep -iE "retry_webhook|expire" /tmp/acel4-worker.log | tail -n 20 || true
+          echo '--- worker ---'; grep -E "retry_webhook" /tmp/acel4-worker.log | tail -n 20 || true; tail -n 5 /tmp/acel4-worker.log || true
       - name: Django + service IA + spec d'acceptation v6 acnc-acel
         working-directory: backend/django_core
         env:
