@@ -30,7 +30,14 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
 - Voix : dictée avec relecture, plus de confirmation orale (« non je ne confirme pas » confirmait).
 - Conversation du moteur natif gardée 48 h au plus (Redis).
 
-## Encore ouvert (tâches AIC88 à AIC99, décisions D-COP-1, D-COP-2, D-COP-4 dans `docs/audits/decisions.yml`)
+## Décisions de Reda (16/11/2026, question interactive) — ne jamais re-demander
+- **D-COP-1 = repli_groq_seul** : au plafond du jour, le tour passe au modèle de repli (Groq), sans arrêt (AIC90 réécrite).
+  Ce n'était PAS l'option recommandée (plafond + message d'arrêt) : ne pas la réintroduire.
+- **D-COP-2 = guide_strict** : seuil d'approbation = marge de la commerciale, baisse de prix de ligne comptée comme
+  remise (AIC98) ; régler le seuil en production reste un geste de Reda.
+- **D-COP-4 = redis_48h_avant_avis** : conversations 48 h au plus en Redis, allumage équipe après l'essai réel (AIC89).
+
+## Encore ouvert (tâches AIC88 à AIC99 dans `docs/plans/`)
 - Essai du copilote et du moteur natif avec une vraie clé (AIC88 : aucune clé dans la session de construction),
   puis bascule des deux interrupteurs (AIC89) — gestes de Reda.
 - Décisions du fondateur listées au §6 du dossier (plafond de dépense, seuil de remise en production, texte

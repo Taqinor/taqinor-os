@@ -4626,9 +4626,9 @@ decisions:
         texte: "Ajouter un crédit prépayé sur la Console (revient sur le choix « aucune carte sur la Console »)"
       - cle: repli_groq_seul
         texte: "Au plafond, tout passe au modèle gratuit de repli (Groq), sans arrêt"
-    reponse: ouverte
-    date: "2026-11-14"
-    source: "copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 1, critique de complétude G2) : non posée, fondateur absent pendant la construction (défaut recommandé : plafond_jour_message_arret)"
+    reponse: repli_groq_seul
+    date: "2026-11-16"
+    source: "Reda, question interactive, 16/11/2026 (session loop audit) ; avant : copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 1, critique de complétude G2) : non posée, fondateur absent pendant la construction (défaut recommandé : plafond_jour_message_arret)"
     taches: [AIC90]
 
   - id: D-COP-2
@@ -4638,9 +4638,9 @@ decisions:
         texte: "Oui : régler en production le seuil d'approbation à la marge de la commerciale, et compter une baisse de prix de ligne comme une remise pour ce seuil (à l'écran comme par l'assistant)"
       - cle: memes_libertes_que_l_ecran
         texte: "Non : l'assistant a les mêmes libertés que les écrans ; seule la confirmation (déjà livrée) s'ajoute"
-    reponse: ouverte
-    date: "2026-11-14"
-    source: "copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 2 ; vérification de l'enquête : profondeur_remise_effective prend le prix courant de la ligne) : non posée (défaut recommandé : guide_strict)"
+    reponse: guide_strict
+    date: "2026-11-16"
+    source: "Reda, question interactive, 16/11/2026 (session loop audit) ; avant : copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 2 ; vérification de l'enquête : profondeur_remise_effective prend le prix courant de la ligne) : non posée (défaut recommandé : guide_strict)"
     taches: [AIC98]
 
   - id: D-COP-4
@@ -4652,7 +4652,19 @@ decisions:
         texte: "Ne rien allumer pour l'équipe avant l'avis du juriste ; administrateurs seulement"
       - cle: garde_30_jours_base
         texte: "Garder les conversations 30 jours en base"
-    reponse: ouverte
-    date: "2026-11-14"
-    source: "copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 4, critique de complétude G13) : non posée (défaut recommandé : redis_48h_avant_avis)"
+    reponse: redis_48h_avant_avis
+    date: "2026-11-16"
+    source: "Reda, question interactive, 16/11/2026 (session loop audit) ; avant : copilote commercial, enquête L3 du 13/11/2026 (dossier docs/assistant-copilote.md §6 point 4, critique de complétude G13) : non posée (défaut recommandé : redis_48h_avant_avis)"
     taches: [AIC89]
+
+  - id: D-ASTK-VER-1
+    question: "La règle « une facture n'est jamais bloquée par le compteur de stock » (05/10) vaut-elle pour du matériel rappelé ou en quarantaine (stock 15 dont 10 en quarantaine, devis accepté de 12) ?"
+    options:
+      - cle: a
+        texte: "La sortie est posée et une note au devis nomme les unités en quarantaine sorties ; la facture n'est jamais bloquée"
+      - cle: b
+        texte: "La facture est refusée (400 nommé) tant que la quarantaine couvre le besoin"
+    reponse: a
+    date: "2026-11-16"
+    source: "Reda, question interactive, 16/11/2026 (session loop audit) ; avant : vérifie stock du 10/10/2026 (C-ASTK-VER-004), jamais posée (option recommandée en premier)"
+    taches: [ASTK250]

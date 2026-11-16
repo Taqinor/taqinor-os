@@ -214,8 +214,8 @@ les administrateurs), ou quand `ASSISTANT_MOTEUR=natif` ; « ouvert » = pas enc
 | AIC86 | Le relevé technique du navigateur joint aux signalements, sans aucune donnée de client | actif au merge |
 | AIC87 | Les tests de l'assistant tournent sur chaque PR | actif au merge |
 | AIC88 | Essai complet avec une vraie clé (quinze phrases, deux moteurs) | ouvert |
-| AIC89 | Allumer le copilote et le moteur natif pour toute l'équipe | ouvert (décision D-COP-4, après AIC88) |
-| AIC90 | Plafond de dépense par jour et par commerciale | ouvert (décision D-COP-1) |
+| AIC89 | Allumer le copilote et le moteur natif pour toute l'équipe | ouvert (D-COP-4 = 48 h en Redis, équipe après l'essai réel ; après AIC88) |
+| AIC90 | Plafond de dépense par jour et par commerciale | ouvert (D-COP-1 = au plafond, repli Groq sans arrêt) |
 | AIC91 | Voir où en est l'assistant pendant qu'il travaille | ouvert |
 | AIC92 | Un jeton de service pour le tri nocturne des questions | ouvert |
 | AIC93 | Un manuel coupé au rôle de la personne (moins cher à chaque question) | ouvert |
@@ -223,7 +223,7 @@ les administrateurs), ou quand `ASSISTANT_MOTEUR=natif` ; « ouvert » = pas enc
 | AIC95 | Côté serveur : l'avertissement d'heures d'envoi et les lignes de visite du matin | ouvert |
 | AIC96 | Les textes manuels validés (parrainage, avis Google, débrief de visite…) préparés pour un lead | ouvert |
 | AIC97 | Un devis automatique jamais créé deux fois quand l'assistant réessaie | ouvert |
-| AIC98 | Une baisse de prix de ligne comptée comme une remise | ouvert (décision D-COP-2) |
+| AIC98 | Une baisse de prix de ligne comptée comme une remise | ouvert (D-COP-2 = Guide appliqué strictement) |
 | AIC99 | Expliquer un chiffre du devis ; envoyer le devis par e-mail après confirmation | ouvert |
 <!-- ETAT-CONSTRUCTION:fin -->
 

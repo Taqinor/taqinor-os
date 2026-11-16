@@ -22,4 +22,8 @@ Posées par AskUserQuestion pendant `work on the plan audit stock` (docs/plans/P
   (ajouts, ajustements, libération des SKU disparus), comme l'argent est réaligné par QJR560 ; remplace la
   « nomenclature V1 gelée » de QJR559. Construit par ASTK177.
 
+- **D-ASTK-VER-1 — facture et quarantaine (16/11/2026).** Réponse : (a). « Une facture n'est jamais bloquée par
+  le stock » vaut aussi pour du matériel rappelé : la sortie est posée et une note au devis nomme les unités en
+  quarantaine sorties (ASTK250).
+
 Ne jamais re-demander ces questions.
