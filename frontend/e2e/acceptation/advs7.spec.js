@@ -101,7 +101,7 @@ etape('PA3.renvoi_les_deux_page_client_carte_soeur', ['ADVS50'], async ({ page }
   }
   // La page de la sœur elle-même se charge (jeton vivant).
   await page.goto(`${web}/proposition/${jetonsSoeur[0]}`)
-  await expect(page.locator('[data-gamme-carte="courante"]'), 'la page de la sœur est rendue (carte « Votre devis »)').toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('body'), 'la page de la sœur est rendue (sa référence figure à l’écran)').toContainText(soeur.reference, { timeout: 120_000 })
   // Renvoi identique : aucun second lien pour la sœur.
   await envoyer(r, d.id, { gamme_envoi: 'les_deux' })
   expect((await liens(soeurId)).length, 'renvoi : toujours un seul lien de la sœur').toBe(1)

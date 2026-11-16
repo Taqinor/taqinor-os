@@ -9,7 +9,7 @@
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
-import { assurerSessionPage, lireJson, API_DJANGO as API } from '../helpers.js'
+import { assurerSessionPage } from '../helpers.js'
 
 const etape = groupe('ACAL', ['ACAL377'])
 fermerDjangoApresTout()
@@ -54,8 +54,9 @@ async function cleCartePublique() {
 etape('PA6.atelier_style_imagerie_refuse', ['ACAL377'], async ({ page, context, suivi }) => {
   const cal = await calepinageDeDemo()
   const r = page.request
-  const avant = await lireJson(await r.get(`${API}/calepinage/calepinages/${cal.id}/`, { timeout: 60_000 }), 'calepinage avant')
-  const layoutAvant = JSON.stringify(avant.roof_layout)
+  const lireLayout = (id) => py(`from apps.calepinage.models import Calepinage
+sortie({'layout': Calepinage.objects.get(pk=${Number(id)}).roof_layout})`)
+  const avant = await lireLayout(cal.id)
 
   const cleReelle = await cleCartePublique()
   console.log(`[ACAL377] clé carte publique lisible à l'exécution : ${cleReelle ? 'oui' : 'non'}`)
@@ -94,12 +95,13 @@ etape('PA6.atelier_style_imagerie_refuse', ['ACAL377'], async ({ page, context, 
   await expect(page.getByTestId('cal-erreur-enregistrement')).toHaveCount(0, { timeout: 15_000 })
 
   // ── 3. persistance : le fond de repli n'est JAMAIS écrit dans le document ; rouvrir ⇒ conception identique ──
-  const enregistre = await lireJson(await r.get(`${API}/calepinage/calepinages/${cal.id}/`, { timeout: 60_000 }), 'calepinage relu')
-  const layoutEnregistre = JSON.stringify(enregistre.roof_layout)
+  const enregistre = await lireLayout(cal.id)
+  expect(enregistre.layout, 'le document enregistré existe').toBeTruthy()
+  const layoutEnregistre = JSON.stringify(enregistre.layout)
   expect(layoutEnregistre, 'aucune trace du fond de repli dans le document').not.toContain('fond-sans-imagerie')
   expect(layoutEnregistre, 'aucune trace de l’URL du fournisseur dans le document').not.toContain('api.maptiler.com')
-  expect((enregistre.roof_layout?.zones || []).length, 'les deux pans de la conception sont toujours là').toBe((avant.roof_layout?.zones || []).length)
-  void layoutAvant
+  expect((enregistre.layout?.zones || []).length, 'les deux pans de la conception sont toujours là').toBe((avant.layout?.zones || []).length)
+  expect((avant.layout?.zones || []).length, 'la conception de départ a bien deux pans').toBe(2)
 
   // ── 4. imagerie « remise » : la clé publique lue à l'exécution (sinon rechargement sans blocage) ; document identique ──
   if (cleReelle) cleServie = cleReelle
@@ -107,8 +109,8 @@ etape('PA6.atelier_style_imagerie_refuse', ['ACAL377'], async ({ page, context, 
   await page.reload()
   const enregistrer2 = page.getByRole('button', { name: 'Enregistrer le calepinage' })
   await expect(enregistrer2, 'rouvert : l’atelier boote et « Enregistrer » est actif').toBeEnabled({ timeout: 120_000 })
-  const relu = await lireJson(await r.get(`${API}/calepinage/calepinages/${cal.id}/`, { timeout: 60_000 }), 'calepinage rouvert')
-  expect(JSON.stringify(relu.roof_layout), 'rechargement avec imagerie : conception identique au document enregistré').toBe(layoutEnregistre)
+  const relu = await lireLayout(cal.id)
+  expect(JSON.stringify(relu.layout), 'rechargement avec imagerie : conception identique au document enregistré').toBe(layoutEnregistre)
   console.log(`[ACAL377] rechargement avec ${cleReelle ? 'la clé publique lue à l’exécution' : 'clé factice non bloquée'} ; statut : ${(await page.locator('#rp9-status').innerText()).slice(0, 160)}`)
 
   // Nettoyage.
