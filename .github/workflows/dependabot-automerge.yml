@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Metadonnees Dependabot
         id: meta
-        uses: dependabot/fetch-metadata@v2.4.0
+        uses: dependabot/fetch-metadata@v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Mettre en file (non groupee, mono-paquet, patch/minor = securite)
