@@ -410,7 +410,8 @@ etape('PF11-ACEL4-reel', ['ACEL4'], async ({ page, testInfo }) => {
   const publies = (beat.match(/Sending due task publicapi-retry-webhook-deliveries/g) || []).length
   const recus = (worker.match(new RegExp(`Task ${NOM}\\[[0-9a-f-]+\\] received`, 'g')) || []).length
   const reussis = (worker.match(new RegExp(`Task ${NOM}\\[[0-9a-f-]+\\] succeeded`, 'g')) || []).length
-  const expires = worker.split('\n').filter((l) => /expire/i.test(l) && l.includes('publicapi.retry_webhook_deliveries'))
+  // Celery journalise l'expiration d'un message à la réception : « Discarding revoked task: <nom>[<id>] » (expires dépassé).
+  const expires = worker.split('\n').filter((l) => /Discarding revoked task: publicapi\.retry_webhook_deliveries\[/.test(l))
   console.log(`[ACEL4] publiés ${publies}, reçus ${recus}, réussis ${reussis}, expirés ${expires.length}`)
   testInfo.annotations.push({ type: 'comptes', description: `publiés ${publies}, reçus ${recus}, réussis ${reussis}, expirés ${expires.length} ; ${expires[0] || ''}` })
   expect(publies, 'le beat a publié ≥ 2 passages pendant que le worker était arrêté').toBeGreaterThanOrEqual(2)
