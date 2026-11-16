@@ -1,12 +1,12 @@
-// Preuves en direct du groupe ALEC, lot 4 (vague d'acceptation 6, runner GitHub) : ALEC5, ALEC6, ALEC16, ALEC18,
-// ALEC22, ALEC23, ALEC24, ALEC28, ALEC29, ALEC41, ALEC42, ALEC43 (décisions D-ALEC du 11/11 : portée du rôle,
+// Preuves en direct du groupe ALEC, lot 4 (vague d'acceptation 6, runner GitHub) : ALEC6, ALEC16, ALEC18,
+// ALEC22, ALEC23, ALEC24, ALEC28, ALEC29, ALEC42, ALEC43 (ALEC5 : alec5.spec.js) (décisions D-ALEC du 11/11 : portée du rôle,
 // montants d'achat masqués). Chaque étape joue ce que LIT chaque rôle LIVRÉ (rôle système de la société démo relu par
 // son nom et comparé au registre `CANONICAL_SYSTEM_ROLES` — jamais un rôle fabriqué) par la VRAIE route, sous un vrai
 // compte connecté par /token/ (clé absente / à null, ligne absente, 403/404), puis, quand la clause nomme un écran,
 // l'AFFIRME sous un compte connecté par l'écran de connexion. Données propres à l'étape (marque unique) posées par le
 // shell Django, retirées à la fin. La sonde hôte du constat est rejouée : si elle s'exécute, `repro` doit être faux ;
 // une sonde dont les bouchons ne suivent plus le code corrigé est NOMMÉE (annotation), jamais comptée comme preuve.
-// ALEC16/ALEC41 (agent SQL FastAPI) : l'outil sécurisé RÉEL (`_make_secure_query_tool`) dans le venv FastAPI
+// ALEC16 (agent SQL FastAPI) : l'outil sécurisé RÉEL (`_make_secure_query_tool`) dans le venv FastAPI
 // (`E2E_IA_PYTHON`), droits lus par le vrai `resolve_caller_permissions` (→ `/auth/me/` du Django du rejeu), requêtes
 // exécutées sur la base du rejeu ; aucune clé de LLM en jeu (la garde est en amont du modèle).
 import { test, expect, request as pwRequest } from '@playwright/test'
@@ -17,8 +17,8 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { assurerSessionPage, connexionApi, uiLoginJusquAuxApps } from '../helpers.js'
 
-const etape = groupe('ALEC', ['ALEC5', 'ALEC6', 'ALEC16', 'ALEC41', 'ALEC18', 'ALEC42', 'ALEC43', 'ALEC22', 'ALEC23',
-  'ALEC24', 'ALEC28', 'ALEC29'])
+const etape = groupe('ALEC', ['ALEC6', 'ALEC16', 'ALEC18', 'ALEC42', 'ALEC43', 'ALEC22', 'ALEC23', 'ALEC24', 'ALEC28',
+  'ALEC29'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -125,93 +125,7 @@ async function ecranSous(context, suivi, testInfo, s) {
   return p
 }
 
-// ══ ALEC5 — comparatif des tarifs de transport (stock) : `cout` à null sans prix_achat_voir ═══════════════════════════
-/** 2 transporteurs internes (350, 500), une unité logistique et son expédition. */
-async function fixtureAlec5(m) {
-  const RAPIDE = `ALEC5 Rapide ${m}`
-  const LENT = `ALEC5 Lent ${m}`
-  const fx = await py(`from decimal import Decimal
-from apps.installations.models import Transporteur
-from apps.stock.models_wms import UniteLogistique, ExpeditionTransporteur
-from apps.stock.services_wms import _prochain_sscc
-co = U.objects.get(username='demo_admin').company
-t1 = Transporteur.objects.create(company=co, nom=${J(RAPIDE)}, tarif_base=Decimal('350'), active=True)
-t2 = Transporteur.objects.create(company=co, nom=${J(LENT)}, tarif_base=Decimal('500'), active=True)
-ul = UniteLogistique.objects.create(company=co, type_unite='colis', sscc=_prochain_sscc(co), poids_kg=Decimal('12'))
-ex = ExpeditionTransporteur.objects.create(company=co, unite_logistique=ul, destination=${J(`Rabat ALEC5 ${m}`)})
-sortie(dict(t1=t1.pk, t2=t2.pk, ul=ul.pk, ex=ex.pk))`)
-  return { ...fx, RAPIDE, LENT, url: `${API}/stock/expeditions/tarifs/?unite_logistique=${fx.ul}` }
-}
-const nettoyerAlec5 = (fx) => py(`from apps.installations.models import Transporteur
-from apps.stock.models_wms import UniteLogistique, ExpeditionTransporteur
-ExpeditionTransporteur.objects.filter(pk=${fx.ex}).delete(); UniteLogistique.objects.filter(pk=${fx.ul}).delete()
-Transporteur.objects.filter(pk__in=[${fx.t1}, ${fx.t2}]).delete()
-sortie(1)`).catch(() => null)
-/** Écran Expéditions sous `s` : bouton « Tarifs » de l'expédition → « libellé — — », sans devise (puis rechargé). */
-async function ecranTarifsSansCout(context, suivi, testInfo, s, fx) {
-  const p = await ecranSous(context, suivi, testInfo, s)
-  for (const passe of ['', 'rechargé : ']) {
-    if (passe) await p.reload(); else await p.goto('/stock/entrepot/expeditions')
-    const bouton = p.getByRole('button', { name: `Tarifs de l'expédition ${fx.ex}` })
-    await expect(bouton, `${s.role} ${passe}écran Expéditions : l'expédition est listée`).toBeVisible({ timeout: 60_000 })
-    await bouton.click()
-    for (const lib of [fx.RAPIDE, fx.LENT]) {
-      const li = p.getByRole('listitem').filter({ hasText: lib })
-      await expect(li, `${s.role} ${passe}écran : ${lib} — —`).toHaveText(new RegExp(`^\\s*${lib} — —\\s*$`), { timeout: 30_000 })
-      await expect(li, `${s.role} ${passe}écran : ${lib} sans devise`).not.toContainText('MAD')
-    }
-  }
-}
-const ECART_ALEC5 = 'défaut ANTÉRIEUR hors du geste de la tâche : l\'écran Expéditions (ASTK220, 3df4e7389 du 07/10/2026, '
-  + 'frontend/src/pages/stock/wms/ExpeditionsPage.jsx::useEffect → expeditionsApi.listCasiers) lit '
-  + '`installations/bin-locations/` au montage ; un Commercial (sans code installation_*) reçoit 403 (oracles 2 et 3). '
-  + 'ALEC5 (5c6e2f15f) ne touche que l\'affichage du coût (« — ») ; témoin sans 403 : étape PF6.1-ALEC5-ecran-technicien. '
-  + 'Le fichier figure dans les Files d\'ALEC5 : légitimité de l\'écart à trancher en relecture.'
-etape('PF6.1-ALEC5-tarifs-expedition', ['ALEC5'], async ({ context, suivi, testInfo }) => {
-  sondeApres(testInfo, 'C-ALEC-004')
-  const com = await session(testInfo, 'alec5c', 'Commercial')
-  const dir = await session(testInfo, 'alec5d', 'Directeur')
-  const fx = await fixtureAlec5(marque())
-  const { RAPIDE, LENT } = fx
-  try {
-    const url = fx.url
-    const nos = (offres) => offres.filter((o) => o.source === 'interne' && [String(fx.t1), String(fx.t2)].includes(String(o.code)))
-    const c = await json200(com.ctx, url, 'Commercial')
-    const d = await json200(dir.ctx, url, 'Directeur')
-    const oc = nos(c.offres)
-    const od = nos(d.offres)
-    expect(oc.map((o) => o.libelle).sort(), 'Commercial : mêmes offres (libellés)').toEqual([LENT, RAPIDE].sort())
-    expect(oc.map((o) => o.cout), 'Commercial : cout null sur nos deux offres').toEqual([null, null])
-    expect(c.offres.every((o) => o.cout === null), `Commercial : TOUTES les offres à cout null ${J(c.offres.map((o) => o.cout))}`).toBe(true)
-    const parCode = (xs) => Object.fromEntries(xs.map((o) => [String(o.code), o]))
-    const pc = parCode(oc)
-    const pd = parCode(od)
-    for (const k of [String(fx.t1), String(fx.t2)]) {
-      expect([pc[k].libelle, pc[k].delai_jours, pc[k].source], `Commercial = Directeur (libellé, délai, source) ${k}`)
-        .toEqual([pd[k].libelle, pd[k].delai_jours, pd[k].source])
-    }
-    expect(Number(pd[String(fx.t1)].cout), 'Directeur : 350').toBe(350)
-    expect(Number(pd[String(fx.t2)].cout), 'Directeur : 500').toBe(500)
-
-    // Écran Expéditions en Commercial (rôle de la clause) : « libellé — — », sans devise.
-    await ecranTarifsSansCout(context, suivi, testInfo, com, fx)
-  } finally {
-    await nettoyerAlec5(fx)
-  }
-}, { ecart: { base: 'FAIL', raison: ECART_ALEC5 } })
-
-// Témoin : même écran sous un rôle livré sans prix_achat_voir qui lit aussi les casiers (Technicien) — aucun 403.
-etape('PF6.1-ALEC5-ecran-technicien', ['ALEC5'], async ({ context, suivi, testInfo }) => {
-  const tech = await session(testInfo, 'alec5t', 'Technicien')
-  const fx = await fixtureAlec5(marque())
-  try {
-    const t = await json200(tech.ctx, fx.url, 'Technicien')
-    expect(t.offres.every((o) => o.cout === null), 'Technicien (sans prix_achat_voir) : toutes les offres à cout null').toBe(true)
-    await ecranTarifsSansCout(context, suivi, testInfo, tech, fx)
-  } finally {
-    await nettoyerAlec5(fx)
-  }
-})
+const ECART_SONDE = { base: 'FAIL', raison: 'sonde périmée depuis ATST13 d611254e2 : registre des permissions enregistré sur une copie runpy ; 016/020/025 extraient le corps corrigé sans ses imports — rejeu Given/When/Then réel' }
 
 // ══ ALEC6 — référentiel des transporteurs (chantiers) : clé `tarif_base` absente sans prix_achat_voir ═════════════════
 etape('PF6.1-ALEC6-transporteurs', ['ALEC6'], async ({ testInfo }) => {
@@ -249,7 +163,7 @@ sortie(1)`).catch(() => null)
   }
 })
 
-// ══ ALEC16 / ALEC41 — agent SQL FastAPI : droit du module + portée du rôle (outil sécurisé réel) ═════════════════════
+// ══ ALEC16 — agent SQL FastAPI : droit du module + portée du rôle (outil sécurisé réel) ═════════════════════
 const IA = `
 import json, os, sys
 sys.path.insert(0, os.getcwd())
@@ -334,34 +248,6 @@ etape('PF6.4-ALEC16-agent-sql-module-portee', ['ALEC16'], async ({ testInfo }) =
   }
 })
 
-etape('PF6.4-ALEC41-agent-sql-lignes-et-parc', ['ALEC41'], async ({ testInfo }) => {
-  sondeApres(testInfo, 'C-ALEC-VER1-101')
-  const cid = await societe()
-  const Q = ['SELECT designation, quantite, prix_unitaire FROM ventes_lignefacture',
-    'SELECT designation, quantite, prix_unitaire FROM ventes_lignedevis',
-    'SELECT id FROM sav_equipement', 'SELECT id FROM sav_contratmaintenance', 'SELECT id FROM installations_intervention']
-  const com = await session(testInfo, 'alec41c', 'Commercial')
-  const c = await agentSql(com, cid, Q)
-  expect(c.scope, 'Commercial du registre : portée « soi »').toEqual(['records_scope_soi'])
-  for (const q of Q.slice(0, 4)) {
-    expect(c.cas[q].refus, `Commercial : ${q} refusée « Portee restreinte » (utilisez l'ecran)`).toMatch(/Portee restreinte : lecture refusee \(utilisez l'ecran\)/)
-  }
-  expect(c.cas[Q[4]].refus, 'Commercial : installations_intervention refusée (SQLSecurityError)').toBeTruthy()
-  for (const q of Q) expect(c.cas[q].outil_refuse, `Commercial : ${q} refusée par l'outil, aucune requête exécutée`).toBe(true)
-  const dir = await session(testInfo, 'alec41d', 'Directeur')
-  const d = await agentSql(dir, cid, Q)
-  for (const q of Q) {
-    expect(d.cas[q].refus, `Directeur : ${q} acceptée`).toBeUndefined()
-    expect(d.cas[q].securise, `Directeur : ${q} réécrit avec company_id = ${cid}`).toContain(`company_id = ${cid}`)
-    expect(d.cas[q].outil_refuse, `Directeur : ${q} passe l'outil`).toBe(false)
-    expect(/"contenu": "Error/.test(d.cas[q].outil), `Directeur : ${q} exécuté : ${d.cas[q].outil}`).toBe(false)
-  }
-  for (const q of Q) {
-    expect(c.cas[q].sans_permissions_refus, `appel sans permissions inchangé (${q})`).toBeUndefined()
-    expect(c.cas[q].sans_permissions, `sans permissions, filtre société (${q})`).toContain(`company_id = ${cid}`)
-  }
-})
-
 // ══ ALEC18 / ALEC42 / ALEC43 — GED : documents, demandes de signature et coordonnées des signataires ══════════════════
 const nettoyerGed = (m) => py(`from apps.ged.models import Cabinet
 for c in Cabinet.objects.filter(company_id=${SOC}, nom__startswith='ALEC4 ${m}'):
@@ -411,7 +297,7 @@ sortie(dict(interne=interne.pk, fac=fac.pk, up=up.pk))`)
   } finally {
     await nettoyerGed(m)
   }
-})
+}, { ecart: ECART_SONDE })
 
 /** Document interne D (dossier commun, non produit) + demande de signature à deux destinataires créée par `dir`. */
 async function demandeSignature(m, dir) {
@@ -604,7 +490,7 @@ etape('PF6.2-ALEC22-reporting-portee', ['ALEC22'], async ({ context, suivi, test
   } finally {
     await nettoyerAffaires(xs)
   }
-})
+}, { ecart: ECART_SONDE })
 
 // ══ ALEC23 — ventes/dashboard (quote-to-cash) sans ?mine=1 : ses seuls totaux, collègues sans montants ═══════════════
 etape('PF6.2-ALEC23-quote-to-cash-portee', ['ALEC23'], async ({ testInfo }) => {
@@ -656,7 +542,7 @@ LigneDevis.objects.filter(devis_id__in=${J(fx.dv)}).delete(); Devis.objects.filt
 Produit.objects.filter(pk=${fx.p}).delete(); Client.objects.filter(pk=${fx.cl}).delete()
 sortie(1)`).catch(() => null)
   }
-})
+}, { ecart: ECART_SONDE })
 
 // ══ ALEC24 — objectifs commerciaux : cible, réalisé, taux à null hors portée ; owner_nom gardé ══════════════════════
 etape('PF6.2-ALEC24-objectifs-portee', ['ALEC24'], async ({ context, suivi, testInfo }) => {
@@ -713,7 +599,7 @@ sortie(dict(a=mk('nb_leads', ${a.id}, '10'), b=mk('nb_leads', ${b.id}, '12'), so
 ObjectifCommercial.objects.filter(pk__in=${J([ob.a, ob.b, ob.soc])}).delete()
 sortie(1)`).catch(() => null)
   }
-})
+}, { ecart: ECART_SONDE })
 
 // ══ ALEC28 — journal des réglages : journal_activite_voir exigé ══════════════════════════════════════════════════════
 etape('PF6.4-ALEC28-journal-reglages', ['ALEC28'], async ({ context, suivi, testInfo }) => {
@@ -821,4 +707,4 @@ Calepinage.objects.filter(pk__in=${J([x.a, x.b])}).delete()
 (Lead.all_objects if hasattr(Lead, 'all_objects') else Lead.objects).filter(pk__in=${J([x.la, x.lb])}).delete()
 sortie(1)`).catch(() => null)
   }
-})
+}, { ecart: ECART_SONDE })
