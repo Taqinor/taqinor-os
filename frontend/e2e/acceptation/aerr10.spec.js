@@ -717,3 +717,65 @@ sortie(Appointment.objects.filter(lead_id=${lead}).count())`)
   await expect(p.locator('#appt-notes'), 'la saisie des notes est gardée').toHaveValue('Visite AERR117')
   expect(await nbRdv(), 'base : aucun RDV créé sur refus').toBe(0)
 })
+
+// ═══ AERR114 (suite) — « Suppr » tapé sous une boîte posée par-dessus l'atelier n'appelle aucune action ═══
+// Montage de l'atelier sans clé carte secrète : comme acal4.spec.js (vague 6), la réponse réelle de `design-context` est
+// relue et sa `carte` surchargée par une clé factice ; MapTiler répond 403 (fond de repli local). Un obstacle est dessiné
+// à la souris (il est alors SÉLECTIONNÉ : `#rp9-obs-delete` visible) ; la palette ⌘K (boîte Radix) est ouverte par-dessus,
+// le focus quitte son champ, « Suppr » est tapé : l'obstacle doit rester sélectionné. Témoin : boîte fermée, « Suppr » ⇒ supprimé.
+etape('PF12.114-AERR114-suppr', ['AERR114'], async ({ page, context, suivi }) => {
+  const m = marque()
+  const cal = await py(`from decimal import Decimal as D
+from apps.crm.models import Lead
+from apps.calepinage.models import Calepinage
+from apps.calepinage.tests.test_acal_multi_pans import _layout, _zone
+from apps.ventes.domain.geometrie import layout_hash
+co = U.objects.get(username='demo_admin').company
+lead = Lead.objects.create(company=co, nom='ACC AERR114 ${m}', ville='Casablanca', type_installation='residentiel', facture_hiver=D('900'))
+lay = _layout(_zone(1, 16, 90.0), _zone(2, 8, 270.0))
+lay.update({'scenario': 'reseau', 'panelWatt': 710, 'result': {'panels': 24, 'kwc': 17.04}})
+c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC AERR114 ${m}', roof_layout=lay, layout_hash=layout_hash(lay))
+sortie({'id': c.pk})`)
+  apres.push(() => py(`from apps.calepinage.models import Calepinage
+Calepinage.objects.filter(pk=${cal.id}).delete()`))
+  await context.route(new RegExp(`/calepinage/calepinages/${cal.id}/design-context/`), async (route) => {
+    const reelle = await route.fetch()
+    const corps = await reelle.json()
+    corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-aerr114', mapboxToken: null }
+    await route.fulfill({ response: reelle, json: corps })
+  })
+  suivi.attendre(/api\.maptiler\.com/, 403)
+  await context.route(/https:\/\/api\.maptiler\.com\//, (route) => route.fulfill({ status: 403, contentType: 'application/json', body: '{"message":"Invalid key"}' }))
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto(`/calepinage/${cal.id}`)
+  await expect(page.getByRole('button', { name: 'Enregistrer le calepinage' }), 'atelier booté (scène hydratée)').toBeEnabled({ timeout: 180_000 })
+  // Dessin d'un obstacle : mode obstacle puis glisser sur la carte ⇒ l'obstacle est sélectionné.
+  await page.locator('#rp9-obstacle').click()
+  const cv = page.locator('canvas.maplibregl-canvas').first()
+  const bb = await cv.boundingBox()
+  const x = bb.x + bb.width * 0.5
+  const y = bb.y + bb.height * 0.5
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 60, y + 40, { steps: 8 })
+  await page.mouse.move(x + 120, y + 80, { steps: 8 })
+  await page.mouse.up()
+  const supprimerObs = page.locator('#rp9-obs-delete')
+  await expect(supprimerObs, 'un obstacle est sélectionné (bouton « Supprimer » de l\'obstacle visible)').toBeVisible({ timeout: 20_000 })
+  // Boîte Radix par-dessus : la palette ⌘K ; le focus quitte son champ de saisie.
+  await page.locator('#rp9-obstacle').click() // quitte le mode dessin sans toucher à l'obstacle
+  await page.keyboard.press('Control+k')
+  const palette = page.getByRole('dialog', { name: 'Palette de commandes' })
+  await expect(palette, 'boîte posée par-dessus l\'atelier').toBeVisible({ timeout: 30_000 })
+  await page.evaluate(() => { document.activeElement?.blur?.(); document.querySelector('[role="dialog"][aria-label="Palette de commandes"]')?.focus() })
+  await page.keyboard.press('Delete')
+  await page.keyboard.press('Backspace')
+  await page.waitForTimeout(1000)
+  await expect(supprimerObs, '« Suppr » sous la boîte : l\'obstacle reste sélectionné (aucune action appelée)').toBeVisible()
+  // Témoin : boîte fermée, « Suppr » agit.
+  await page.keyboard.press('Escape')
+  await expect(palette).toHaveCount(0)
+  await page.evaluate(() => document.activeElement?.blur?.())
+  await page.keyboard.press('Delete')
+  await expect(supprimerObs, 'témoin : boîte fermée, « Suppr » supprime l\'obstacle').toBeHidden({ timeout: 15_000 })
+})
