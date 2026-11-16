@@ -157,10 +157,17 @@ etape('PF12.69-AERR69', ['AERR69'], async ({ page, suivi, testInfo }) => {
   }
   const rep = await retour
   expect(JSON.parse(rep.request().postData()), '« Annuler » PATCHe l\'étape d\'origine').toMatchObject({ stage: 'CONTACTED' })
-  expect(rep.status(), `« Annuler » accepté par le serveur (reçu ${rep.status()} ${(await rep.text()).slice(0, 200)})`).toBeLessThan(300)
-  await expect.poll(() => etapeLead(A), { timeout: 30_000, message: 'base : retour en CONTACTED' }).toBe('CONTACTED')
-  const relu = await lireJson(await api.get(`${API}/crm/leads/${A}/`, T), 'lead relu')
-  expect(relu.stage, 'persistance : le lead relu est en CONTACTED').toBe('CONTACTED')
+  // DÉFAUT connu (C-AERR-VER2-219) : l'appel inverse part SANS `undo: true` — le serveur refuse un recul sans lui (409).
+  // Relevé sans interrompre l'étape, pour juger aussi (2) et (3) ; l'étape reste FAIL (verdict en fin d'étape).
+  const defauts = []
+  if (rep.status() >= 300) {
+    defauts.push(`« Annuler » refusé par le serveur : ${rep.status()} ${(await rep.text()).slice(0, 200)} — corps envoyé ${rep.request().postData()}`)
+  } else {
+    await expect.poll(() => etapeLead(A), { timeout: 30_000, message: 'base : retour en CONTACTED' }).toBe('CONTACTED')
+    const relu = await lireJson(await api.get(`${API}/crm/leads/${A}/`, T), 'lead relu')
+    expect(relu.stage, 'persistance : le lead relu est en CONTACTED').toBe('CONTACTED')
+  }
+  if (clicBloque) defauts.push('« Annuler » du toast non cliquable à la souris sur la fiche ouverte (`?lead=<id>`) : la couche modale intercepte le clic')
 
   // (2) Lead en Relance : une boîte nommée AVANT tout passage en « Signé » ; « Annuler » ⇒ aucun PATCH.
   const pb = patchsDe(B)
@@ -189,7 +196,7 @@ etape('PF12.69-AERR69', ['AERR69'], async ({ page, suivi, testInfo }) => {
   await p.waitForTimeout(2500)
   expect(await p.locator('[data-sonner-toast]').count(), 'un seul message pour un échec (aucun toast qui double celui de l\'intercepteur)').toBe(1)
   expect(await etapeLead(C), 'base : rien d\'écrit sur échec').toBe('CONTACTED')
-  expect(clicBloque, '« Annuler » du toast est cliquable à la souris sur la fiche ouverte (`?lead=<id>`)').toBe(false)
+  expect(defauts, '« Annuler » du toast remet le lead en CONTACTED (clic souris, appel accepté par le serveur)').toEqual([])
 })
 
 // ═══ AERR132 — fiche produit à stock négatif : changer le prix s'enregistre, rien sous « Quantité en stock » ═══
@@ -638,7 +645,7 @@ sortie(Client.objects.get(pk=${client}).type_client)`)
   const avant = await typeEnBase()
   const { p } = await ecran(page, suivi, testInfo, nom)
   suivi.attendre(new RegExp(`/api/django/crm/clients/${client}/$`), 400)
-  await p.route((u) => u.pathname === `${API}/crm/clients/${client}/`, (route) => (route.request().method() === 'PATCH'
+  await p.route((u) => u.pathname === `${API}/crm/clients/${client}/`, (route) => (route.request().method() === 'PUT'
     ? route.fulfill({ status: 400, contentType: 'application/json', body: J({ type_client: ['Type refusé (AERR117).'] }) })
     : route.fallback()))
   await p.goto('/crm')
@@ -648,7 +655,7 @@ sortie(Client.objects.get(pk=${client}).type_client)`)
   const actuel = (await ligne.locator('.ct-type-btn').innerText()).trim()
   const autreType = /entreprise/i.test(actuel) ? 'Particulier' : 'Entreprise'
   await ligne.getByTitle('Changer le type de client').click()
-  const demande = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/clients/${client}/`), T)
+  const demande = p.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith(`/crm/clients/${client}/`), T)
   await ligne.locator('.ct-type-opt').filter({ hasText: autreType }).click()
   expect((await demande).status(), 'changement de type refusé (400 injecté)').toBe(400)
   await unSeulMessage(p, 'type de client refusé')
