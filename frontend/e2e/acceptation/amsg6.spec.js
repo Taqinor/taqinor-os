@@ -100,8 +100,8 @@ async function nettoyer(request, { leads = [], devis = [] }) {
 // AMSG3 — l'opposition suit la personne jusqu'aux fiches DÉJÀ existantes (STOP, contact collé sur une fiche existante)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 etape('PF8.2-AMSG3', ['AMSG3'], async () => {
-  const s = sonde('C-AMSG-003')
-  expect(s.repro, `sonde C-AMSG-003 rejouée : repro False (${J(s.observe)})`).toBe(false)
+  // La sonde hôte C-AMSG-003 n'est plus jouable telle quelle (son chargement de leads_doublons échoue : import relatif
+  // `from . import activity` hors paquet) : le scénario du constat est rejoué ici avec le VRAI code dans le shell Django.
   const m = marque()
   const r = await pyAvec(m, `from apps.crm.models import Lead, LeadActivity
 from apps.crm.cadence_reponses import CONSENT_SOURCE_OPPOSITION_TOUCHE, tracer_opposition_registre
@@ -360,12 +360,15 @@ etape('PF8.4-AMSG68', ['AMSG68'], async ({ page }) => {
   expect(J(JSON.parse(txt).action_config || ''), 'motif nommé sous action_config').toContain('corps obligatoire')
   const regles = listeDe(await lireJson(await page.request.get(`${API}/automation/rules/?page_size=500`, T), 'règles'))
   expect(regles.filter((x) => x.nom === nom), 'aucune règle créée').toEqual([])
+  // Données posées HORS transaction : l'AutomationRun est écrit à la validation (on_commit), jamais dans un bloc annulé.
   const r = await pyAvec(m, `from apps.automation.engine import run_action
 from apps.automation.models import ActionType, AutomationRule, AutomationRun, TriggerType
 from apps.crm.models import Lead
 res = {}
-with transaction.atomic():
-    co = Company.objects.create(nom='AMSG68 ' + m, slug='amsg68-' + m)
+co = Company.objects.create(nom='AMSG68 ' + m, slug='amsg68-' + m)
+ancienne = None
+lead = None
+try:
     lead = Lead.objects.create(company=co, nom='Client AMSG68', stage='NEW', email='amsg68-' + m + '@example.invalid')
     ancienne = AutomationRule.objects.create(company=co, nom='Ancienne', enabled=False, trigger_type=TriggerType.LEAD_STAGE_CHANGE,
         trigger_config={}, action_type=ActionType.SEND_EMAIL, action_config={'subject': 'Bonjour'})
@@ -376,7 +379,13 @@ with transaction.atomic():
     run = AutomationRun.objects.get(rule=ancienne)
     res['skipped'] = run.status == AutomationRun.Status.SKIPPED
     res['message'] = run.message
-    transaction.set_rollback(True)
+finally:
+    for fn in (lambda: AutomationRun.objects.filter(rule=ancienne).delete(), lambda: ancienne and ancienne.delete(),
+               lambda: lead and Lead.objects.filter(pk=lead.pk).delete(), lambda: co.delete()):
+        try:
+            fn()
+        except Exception:
+            pass
 sortie(res)`)
   expect([r.skipped, r.message, r.outbox], 'règle ancienne sans corps : SKIPPED « Corps vide : e-mail non envoyé. », aucun e-mail')
     .toEqual([true, 'Corps vide : e-mail non envoyé.', 0])
