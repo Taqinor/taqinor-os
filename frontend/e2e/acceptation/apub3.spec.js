@@ -47,11 +47,11 @@ inst, _ = create_installation_from_devis(devis, u, co)
 field_services.seed_shotlist_slots(co)
 slot = next(s for s in field_services.active_shotlist(co) if s.phase == 'avant')
 png = base64.b64decode(${J(PNG_B64)})
-now = timezone.now()
+def midi(n): return timezone.make_aware(datetime.datetime.combine(timezone.localdate() - datetime.timedelta(days=n), datetime.time(12, 0)))  # jour LOCAL exact : le fuseau (Africa/Casablanca) ne décale plus la date de référence
 out = []
 for etiq, champs, attendu in (
-        ('cloturee_notifiee_le J-91', dict(cloturee_notifiee_le=now - datetime.timedelta(days=91)), 404),
-        ('cloturee_notifiee_le J-89', dict(cloturee_notifiee_le=now - datetime.timedelta(days=89)), 200),
+        ('cloturee_notifiee_le J-91', dict(cloturee_notifiee_le=midi(91)), 404),
+        ('cloturee_notifiee_le J-89', dict(cloturee_notifiee_le=midi(89)), 200),
         ('sans notification, date_realisee J-120', dict(date_realisee=timezone.localdate() - datetime.timedelta(days=120)), 404)):
     it = Intervention.objects.create(company=co, installation=inst, type_intervention='pose', created_by=u, technicien=u,
                                      statut=Intervention.Statut.VALIDEE, signataire_nom='Client', **champs)
