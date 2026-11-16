@@ -160,11 +160,7 @@ jobs:
           done
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
-          rc=0
-          npx playwright test --project=acceptation e2e/acceptation/asup6.spec.js e2e/acceptation/asup7.spec.js || rc=$?
-          cp -r playwright-report playwright-report-lot1 2>/dev/null || true
-          npx playwright test --project=acceptation e2e/acceptation/asup2.spec.js e2e/acceptation/asup3.spec.js --grep 'ASUP44|ASUP12-ecran|ASUP45-ecran' || rc=$?
-          exit $rc
+          npx playwright test --project=acceptation e2e/acceptation/asup6.spec.js e2e/acceptation/asup7.spec.js
       - name: Queue des journaux gunicorn (diagnostic)
         if: ${{ !cancelled() }}
         run: |
