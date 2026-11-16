@@ -576,3 +576,124 @@ etape('PF12.1-AERR1-encaissements', ['AERR1'], async ({ page, suivi, testInfo })
   await p.reload()
   for (const f of [A, B]) await expect(ligne(f), `après rechargement : ${f.reference}`).toBeVisible({ timeout: 90_000 })
 })
+
+// ═══ AERR117 (suite) — un refus ne produit qu'UN message (réassignation, type de client, mois de clôture) ; 400 {notes} du RDV ═══
+const unSeulMessage = async (p, quoi) => {
+  await expect(p.locator('[data-sonner-toast]').first(), `${quoi} : le refus est dit`).toBeVisible({ timeout: 20_000 })
+  await p.waitForTimeout(2500)
+  expect(await p.locator('[data-sonner-toast]').count(), `${quoi} : un seul message (aucun toast générique en plus de celui de l'intercepteur)`).toBe(1)
+}
+
+etape('PF12.117b-reassignation', ['AERR117'], async ({ page, suivi, testInfo }) => {
+  const m = marque()
+  const nom = `aerr117a_${m}`
+  const cr = await compteRole(nom, 'Commercial responsable')
+  const cible = `aerr117c_${m}`
+  const idCible = await compteRole(cible, 'Commercial')
+  const [lead] = await creerLeads(cr, [{ nom: `AERR117R ${m}`, prenom: 'Essai', telephone: telephoneMobileUnique(), stage: 'NEW' }])
+  apres.push(() => supprimerLeads([lead]))
+  const proprietaire = () => py(`from apps.crm.models import Lead
+sortie(Lead.objects.get(pk=${lead}).owner_id)`)
+  const { p } = await ecran(page, suivi, testInfo, nom)
+  suivi.attendre(new RegExp(`/api/django/crm/leads/${lead}/$`), 400)
+  await p.route((u) => u.pathname === `${API}/crm/leads/${lead}/`, (route) => (route.request().method() === 'PATCH'
+    ? route.fulfill({ status: 400, contentType: 'application/json', body: J({ owner: ['Réassignation refusée (AERR117).'] }) })
+    : route.fallback()))
+  await p.goto(`/crm/leads?view=liste&q=${m}`)
+  const ligne = p.locator('tr.lv-row').filter({ hasText: `AERR117R ${m}` })
+  await expect(ligne).toBeVisible({ timeout: 60_000 })
+  await ligne.locator('.ap-trigger').click()
+  const demande = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/leads/${lead}/`), T)
+  await p.locator('.ap-item').filter({ hasText: cible }).click()
+  const rep = await demande
+  expect(rep.status(), 'réassignation refusée (400 injecté)').toBe(400)
+  expect(JSON.parse(rep.request().postData()), 'PATCH {owner: <cible>}').toEqual({ owner: idCible })
+  await unSeulMessage(p, 'réassignation refusée')
+  expect(await proprietaire(), 'base : le responsable n\'a pas changé').toBe(cr)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  await p.reload()
+  await expect(p.locator('tr.lv-row').filter({ hasText: `AERR117R ${m}` }), 'après rechargement : lead listé').toBeVisible({ timeout: 60_000 })
+})
+
+etape('PF12.117c-type-client', ['AERR117'], async ({ page, suivi, testInfo }) => {
+  const m = marque()
+  const nom = `aerr117t_${m}`
+  await compteRole(nom, 'Directeur')
+  const client = await py(`from apps.crm.models import Client
+c = Client.objects.create(company_id=${SOC}, nom='AERR117T ${m}', prenom='Essai')
+sortie(c.pk)`)
+  apres.push(() => py(`from apps.crm.models import Client
+Client.objects.filter(pk=${client}).delete()`))
+  const typeEnBase = () => py(`from apps.crm.models import Client
+sortie(Client.objects.get(pk=${client}).type_client)`)
+  const avant = await typeEnBase()
+  const { p } = await ecran(page, suivi, testInfo, nom)
+  suivi.attendre(new RegExp(`/api/django/crm/clients/${client}/$`), 400)
+  await p.route((u) => u.pathname === `${API}/crm/clients/${client}/`, (route) => (route.request().method() === 'PATCH'
+    ? route.fulfill({ status: 400, contentType: 'application/json', body: J({ type_client: ['Type refusé (AERR117).'] }) })
+    : route.fallback()))
+  await p.goto('/crm')
+  await p.getByPlaceholder(/Rechercher nom, email/).fill(`AERR117T ${m}`, { timeout: 60_000 })
+  const ligne = p.getByRole('row').filter({ hasText: `AERR117T ${m}` })
+  await expect(ligne).toBeVisible({ timeout: 60_000 })
+  await ligne.getByTitle('Changer le type de client').click()
+  const demande = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/clients/${client}/`), T)
+  await ligne.locator('.ct-type-opt').filter({ hasText: 'Entreprise' }).click()
+  expect((await demande).status(), 'changement de type refusé (400 injecté)').toBe(400)
+  await unSeulMessage(p, 'type de client refusé')
+  expect(await typeEnBase(), 'base : le type n\'a pas changé').toBe(avant)
+})
+
+etape('PF12.117d-mois-cloture', ['AERR117'], async ({ page, suivi, testInfo }) => {
+  const m = marque()
+  const nom = `aerr117m_${m}`
+  const cr = await compteRole(nom, 'Commercial responsable')
+  const d = new Date(); d.setMonth(d.getMonth() + 1, 15)
+  const [lead] = await creerLeads(cr, [{ nom: `AERR117M ${m}`, prenom: 'Essai', telephone: telephoneMobileUnique(), stage: 'QUOTE_SENT', date_cloture_prevue: isoJour(d) }])
+  apres.push(() => supprimerLeads([lead]))
+  const dateEnBase = () => py(`from apps.crm.models import Lead
+sortie(str(Lead.objects.get(pk=${lead}).date_cloture_prevue))`)
+  const { p } = await ecran(page, suivi, testInfo, nom)
+  suivi.attendre(new RegExp(`/api/django/crm/leads/${lead}/$`), 400)
+  await p.route((u) => u.pathname === `${API}/crm/leads/${lead}/`, (route) => (route.request().method() === 'PATCH'
+    ? route.fulfill({ status: 400, contentType: 'application/json', body: J({ date_cloture_prevue: ['Mois refusé (AERR117).'] }) })
+    : route.fallback()))
+  await p.goto(`/crm/leads?view=prevision&q=${m}`)
+  const selecteur = p.locator(`#fv-month-${lead}`)
+  await expect(selecteur, 'le lead est sur le tableau de prévision').toBeVisible({ timeout: 60_000 })
+  const origine = await selecteur.inputValue()
+  const autre = await selecteur.locator('option').evaluateAll((os, o) => os.map((x) => x.value).find((v) => v !== o), origine)
+  expect(autre, 'un autre mois est proposé').toBeTruthy()
+  const demande = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/leads/${lead}/`), T)
+  await selecteur.selectOption(autre)
+  expect((await demande).status(), 'changement de mois refusé (400 injecté)').toBe(400)
+  await unSeulMessage(p, 'mois de clôture refusé')
+  await expect(selecteur, 'le sélecteur revient au mois d\'origine').toHaveValue(origine, { timeout: 15_000 })
+  expect(await dateEnBase(), 'base : date de clôture inchangée').toBe(isoJour(d))
+})
+
+etape('PF12.117e-rdv-notes', ['AERR117'], async ({ page, suivi, testInfo }) => {
+  const m = marque()
+  const nom = `aerr117v_${m}`
+  const cr = await compteRole(nom, 'Commercial responsable')
+  const [lead] = await creerLeads(cr, [{ nom: `AERR117V ${m}`, prenom: 'Essai', telephone: telephoneMobileUnique(), stage: 'NEW' }])
+  apres.push(() => supprimerLeads([lead]))
+  const nbRdv = () => py(`from apps.crm.models import Appointment
+sortie(Appointment.objects.filter(lead_id=${lead}).count())`)
+  const { p } = await ecran(page, suivi, testInfo, nom)
+  const APPT = /\/api\/django\/crm\/appointments\/$/
+  suivi.attendre(APPT, 400)
+  await p.route(APPT, (route) => (route.request().method() === 'POST'
+    ? route.fulfill({ status: 400, contentType: 'application/json', body: J({ notes: ['Notes trop longues (AERR117).'] }) })
+    : route.fallback()))
+  await p.goto(`/crm/leads/${lead}`)
+  await p.getByRole('button', { name: '+ Planifier une visite' }).first().click({ timeout: 60_000 })
+  const futur = new Date(); futur.setDate(futur.getDate() + 10)
+  await p.locator('#appt-scheduled-at').fill(`${isoJour(futur)}T10:00`)
+  await p.locator('#appt-notes').fill('Visite AERR117')
+  await p.getByRole('button', { name: 'Confirmer', exact: true }).click()
+  const erreur = p.locator('#appt-error')
+  await expect(erreur, '400 {notes} nommé dans le formulaire du RDV').toHaveText('Notes : Notes trop longues (AERR117).', { timeout: 20_000 })
+  await expect(p.locator('#appt-notes'), 'la saisie des notes est gardée').toHaveValue('Visite AERR117')
+  expect(await nbRdv(), 'base : aucun RDV créé sur refus').toBe(0)
+})
