@@ -49,7 +49,7 @@ from apps.crm.models import LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.parcours_suivi_outils import (
     CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_DERNIERE_TOUCHE,
     CONTEXTES_VARIANTE,
-    ETATS_FIN, FAMILLES, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
+    ETATS_FIN, FAMILLES, GESTES_PIECE, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
     REPONSES_SPEC, TYPES_SUIVI, ParcoursBase, cas_de_la_famille, etapes_de_la_table,
     reponse_de, reponses, reponses_appel, table, type_de)
 from apps.parametres import models_relance
@@ -62,8 +62,10 @@ A_FAIRE = RelanceEtape.Statut.A_FAIRE
 
 def _cles_du_moteur():
     """Les clés ``CLE_*`` du gabarit de Paramètres (``models_relance``)."""
-    return {valeur for nom, valeur in vars(models_relance).items()
+    cles = {valeur for nom, valeur in vars(models_relance).items()
             if nom.startswith('CLE_') and isinstance(valeur, str)}
+    # Les étapes que le MOTEUR pose hors gabarit (``pieces_recues``, ``rappel_fda``…).
+    return cles | set(cadence_reperes.CLES_ETAPES_MOTEUR)
 
 
 # ── 1. La table est saine ──────────────────────────────────────────────────────────────────
@@ -160,7 +162,7 @@ class TableParcoursTests(SimpleTestCase):
                     if 'outcome' in reponse:
                         self.assertIn(reponse['outcome'], issues)
                     if 'geste' in reponse:
-                        self.assertIn(reponse['geste'], GESTES_PLANIFICATION)
+                        self.assertIn(reponse['geste'], GESTES_PLANIFICATION | GESTES_PIECE)
                     self.assertTrue({'reponse', 'outcome', 'geste'} & set(reponse),
                                     'la réponse n’envoie rien')
             for entree in etape.get('reponses_appel', ()):

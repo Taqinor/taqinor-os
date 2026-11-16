@@ -331,6 +331,11 @@ FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je viens d'essayer 
 ### reactivation_k6_p2 — K6 palier 2, depuis la demande d'origine (interrupteur `REACTIVATION_K6_PALIER2`)
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous suite à votre demande de [mois du dossier] sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour votre maison à {ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. Répondez STOP et je n'insiste plus.
 
+### relance_pieces — étape « Relancer le client pour ses pièces » (lead professionnel joint, aucune facture reçue)
+16/11/2026 (décision fondateur) — l'étape du moteur `pieces_recues` (CADV29, D-CADV-10) porte désormais son message : composé de phrases déjà validées de `valeur_j1` (B2B) ; darija non relue par un locuteur natif. Retirées de `valeur_j1` : « je n'ai pas réussi à vous joindre » (le client est joint) et la question d'appel de cinq minutes. Texte pro seulement (l'étape n'existe que pour un lead commercial/industriel).
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je prépare l'étude solaire de [société]. Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنوجد الدراسة ديال الطاقة الشمسية ديال [société]. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر. جاوبو STOP وما نلحوش عليكم.
+
 ## Dossiers institutionnels, par segment (CAD125, 21/09/2026)
 
 Ces deux textes ne sont PAS des barreaux de cadence : ils sont posés comme TÂCHE d'un playbook conditionné sur

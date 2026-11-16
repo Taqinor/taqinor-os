@@ -251,3 +251,34 @@ class LAncienDossierTests(_Base):
         self.assertEqual(
             _cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
             'identite_ancien_dossier')
+
+
+class PiecesRecuesRendUnMessageTests(_Base):
+    """16/11/2026 — l'étape « Relancer le client pour ses pièces » (clé moteur
+    `pieces_recues`) a un message prêt : celle posée avec `relance_pieces`, et
+    celle déjà ouverte en prod (`template_cle` vide) que le rendu retrouve par
+    sa clé."""
+    slug = 'cad127-pieces'
+
+    def _etape(self, lead, template_cle):
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='generique', ordre=0,
+            cle='pieces_recues', due_at=MAINTENANT, due_date=AUJOURDHUI,
+            canal='whatsapp', libelle='Pièces reçues ?',
+            template_cle=template_cle)
+
+    def test_le_message_est_rendu_avec_ou_sans_template_cle(self):
+        lead = self._lead('site_web', nom='Pro')
+        lead.type_installation = Lead.TypeInstallation.INDUSTRIEL
+        lead.societe = 'Boulangerie Atlas'
+        lead.save(update_fields=['type_installation', 'societe'])
+        for template_cle in ('relance_pieces', ''):
+            with self.subTest(template_cle=template_cle):
+                rendu = message_pour_etape(
+                    self._etape(lead, template_cle), user=self.acteur)
+                texte = rendu['message']
+                self.assertTrue(texte.strip())
+                self.assertIn('Boulangerie Atlas', texte)
+                self.assertIn('factures', texte)
+                self.assertIn('STOP', texte)
+                self.assertNotIn('{', texte)

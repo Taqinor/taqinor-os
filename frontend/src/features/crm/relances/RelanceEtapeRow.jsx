@@ -646,7 +646,9 @@ export default function RelanceEtapeRow({
   // SUIVI-PARCOURS — la question « avez-vous ouvert le message ? » ne vaut
   // que pour une réponse qui parle du MESSAGE : « Client joint au téléphone »
   // dit justement qu'on a appelé à la place.
+  // « Oui — pièce reçue » (geste `piece`) n'envoie rien : le client a écrit de lui-même.
   const reponseParTelephone = reponseChoisie?.id === 'joint_telephone'
+    || reponseChoisie?.geste === 'piece'
   const confirmationOuvertureRequise = (
     toucheMessage && !messageOuvertLe && !sansOuverture && !reponseParTelephone)
   // SUIVI-BLOCAGE (30/09/2026) — le verrou « à venir » (CAD44 : on ne coche
@@ -769,6 +771,12 @@ export default function RelanceEtapeRow({
     //   · planification_seule (« la date est calée ») : seule la date clôt
     //     l'étape planifier ;
     //   · replanification : la visite existante est déplacée, la touche reste.
+    //   · piece (« Oui — pièce reçue », étape « Relancer le client pour ses
+    //     pièces ») : le panneau « Pièce reçue » s'ouvre, rien ne part d'ici.
+    if (reponseChoisie.geste === 'piece') {
+      setPanel('piece')
+      return
+    }
     if (reponseChoisie.geste) {
       setGestePlanification(reponseChoisie.geste)
       setPlanifierOuvert(true)

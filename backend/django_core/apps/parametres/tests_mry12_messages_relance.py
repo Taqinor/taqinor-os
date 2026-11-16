@@ -23,7 +23,9 @@ from authentication.models import Company
 
 from apps.parametres.models_messages import (
     CLES_REACTIVATION, CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
-    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, PLACEHOLDERS_RELANCE, MessageTemplate,
+    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, MESSAGE_TEMPLATE_VARIANTES_SEGMENT,
+    MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA, PLACEHOLDERS_RELANCE,
+    MessageTemplate,
 )
 
 User = get_user_model()
@@ -190,6 +192,34 @@ class TextesFidelesALaSourceTests(TestCase):
             "toujours à la recherche d'une solution solaire pour votre "
             "maison à {ville} ?",
             MessageTemplate.get_corps(company, 'reactivation_k6_p2', 'fr'))
+
+
+class RelancePiecesComposeeDeValeurJ1Tests(SimpleTestCase):
+    """16/11/2026 — `relance_pieces` n'invente aucun mot : c'est la variante
+    B2B de `valeur_j1`, moins exactement deux phrases (FR et darija), plus la
+    ligne STOP posée par le mécanisme commun."""
+
+    def test_fr_est_valeur_j1_b2b_moins_deux_phrases(self):
+        b2b = MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel']['valeur_j1']
+        reste = b2b.replace("{prenom}, je n'ai pas réussi à vous joindre. ",
+                            '{prenom}, {conseiller} de {marque}. ')
+        self.assertNotEqual(reste, b2b)
+        reste = reste.replace(
+            ' Quel moment vous arrange pour un appel de cinq minutes ?', '')
+        self.assertEqual(MESSAGE_TEMPLATE_DEFAULTS['relance_pieces'], reste)
+        self.assertNotIn('joindre', reste)
+        self.assertNotIn('appel', reste)
+
+    def test_darija_est_valeur_j1_b2b_moins_deux_phrases(self):
+        b2b = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA[
+            'industriel']['valeur_j1']
+        reste = b2b.replace('حاولت نعيط ليكم ولكن ما لقيتكمش. ',
+                            '{conseiller} من {marque}. ')
+        self.assertNotEqual(reste, b2b)
+        reste = reste.replace(
+            ' شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟', '')
+        self.assertEqual(
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA['relance_pieces'], reste)
 
 
 class LAncreDuRepliDarijaTests(SimpleTestCase):

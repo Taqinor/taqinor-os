@@ -239,6 +239,9 @@ TYPE_DEVIS_MODIFIE = 'devis_modifie'
 TYPE_REVEIL_APPEL = 'reveil_appel'
 TYPE_REVEIL_MESSAGE = 'reveil_message'
 TYPE_GENERIQUE = 'generique'
+#: 16/11/2026 — « Relancer le client pour ses pièces » : l'étape du moteur de
+#: clé ``pieces_recues`` (CADV29), née du type générique. Même nom que sa clé.
+TYPE_PIECES_RECUES = 'pieces_recues'
 
 #: COCKPIT-CONTRÔLE (30/09/2026) — les types de la table, DANS L'ORDRE DE LA
 #: TABLE (miroir de ``parcours_suivi.json`` ``etapes[].id`` : le serveur ne
@@ -248,7 +251,8 @@ TYPE_GENERIQUE = 'generique'
 TYPES_ORDONNES = (
     TYPE_CONTACT_APPEL, TYPE_CONTACT_MESSAGE, TYPE_DEVIS,
     TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU, TYPE_DERNIER_APPEL,
-    TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE, TYPE_SUIVI_APPEL,
+    TYPE_RAPPEL_CONVENU, TYPE_PIECES_RECUES, TYPE_DECIDER_SUITE,
+    TYPE_SUIVI_APPEL,
     TYPE_SUIVI_MESSAGE, TYPE_QUESTION_PRIX, TYPE_PLANIFIER, TYPE_CONFIRMATION,
     TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE, TYPE_REVEIL_APPEL, TYPE_REVEIL_MESSAGE,
     TYPE_GENERIQUE,
@@ -259,6 +263,7 @@ _TYPES_PAR_CLE = frozenset({
     TYPE_DEVIS, TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU,
     TYPE_DERNIER_APPEL, TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE,
     TYPE_PLANIFIER, TYPE_CONFIRMATION, TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE,
+    TYPE_PIECES_RECUES,
 })
 
 #: Cadence de protocole → (type de l'APPEL, type du MESSAGE). La deuxième
@@ -322,6 +327,11 @@ REPONSES_PAR_TYPE = {
         'ne_plus_contacter'),
     TYPE_RAPPEL_CONVENU: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+    # 16/11/2026 — la 1re réponse de la table (« Oui — pièce reçue ») est un
+    # geste SANS envoi propre : aucune clé servie pour elle.
+    TYPE_PIECES_RECUES: (
+        'sans_issue', 'rappel', 'visite_acceptee', 'refuse',
         'ne_plus_contacter'),
     TYPE_DECIDER_SUITE: (
         'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),

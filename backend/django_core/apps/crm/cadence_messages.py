@@ -660,6 +660,11 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     langue = langue or langue_relance_du_lead(lead)
     # CAD-A — le texte de réponse demandé remplace le gabarit de la touche.
     template_cle = cle or etape.template_cle
+    # 16/11/2026 — l'étape « Relancer le client pour ses pièces » porte son
+    # message ; celles déjà ouvertes en prod (template_cle vide) le retrouvent
+    # par leur clé de moteur.
+    if not template_cle and etape.cle == 'pieces_recues':
+        template_cle = 'relance_pieces'
     # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
     # de remplir notre formulaire » est faux pour un lead venu par téléphone,
     # en boutique, par recommandation ou d'un message entrant. La clé est

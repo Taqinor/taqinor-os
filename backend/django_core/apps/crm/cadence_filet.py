@@ -573,9 +573,12 @@ def poser_rappel_subvention(lead, user=None):
 
 
 #: CADV29 (D-CADV-10) — un devis commercial/industriel exige des factures :
-#: avant l'étape devis, UNE étape WhatsApp « Pièces reçues ? » à J+3, puis une
-#: seconde à J+7 (après le premier « joint »). Retrouvée par sa CLÉ.
-LIBELLE_PIECES_RECUES = 'Pièces reçues ?'
+#: avant l'étape devis, UNE étape WhatsApp « Relancer le client pour ses pièces »
+#: à J+3, puis une seconde à J+7 (après le premier « joint »). Retrouvée par sa
+#: CLÉ (jamais par son libellé : les étapes déjà ouvertes gardent l'ancien
+#: « Pièces reçues ? »). Son message est ``relance_pieces``.
+LIBELLE_PIECES_RECUES = 'Relancer le client pour ses pièces (factures, schéma)'
+TEMPLATE_PIECES_RECUES = 'relance_pieces'
 _PIECES_CI_JOURS = (3, 4)
 
 
@@ -629,9 +632,10 @@ def _poser_pieces_ci(lead, user=None, *, cle_close=''):
         vise=vise,
         note='Posée automatiquement : lead professionnel sans pièce reçue — '
              'le devis attend la pièce ou la 2e relance.')
-    if etape.cle != CLE_PIECES_RECUES:
+    if etape.cle != CLE_PIECES_RECUES or etape.template_cle != TEMPLATE_PIECES_RECUES:
         etape.cle = CLE_PIECES_RECUES
-        etape.save(update_fields=['cle'])
+        etape.template_cle = TEMPLATE_PIECES_RECUES
+        etape.save(update_fields=['cle', 'template_cle'])
     _recaler_file(lead, user)
     return etape
 

@@ -351,7 +351,7 @@ etape('PA1.generique.pieces_recues', ['CADV29'], async ({ page, suivi }) => {
   expect(r.ok(), `joint (${r.status()})`).toBeTruthy()
   const ouvertes = async () => (await touches(page.request, lead.id)).filter((e) => e.cle === 'pieces_recues' && e.statut === 'a_faire')
   let p = await ouvertes()
-  expect(p, 'une seule étape « Pièces reçues ? »').toHaveLength(1)
+  expect(p, 'une seule étape « Relancer le client pour ses pièces »').toHaveLength(1)
   expect(p[0].canal).toBe('whatsapp')
   expect(joursDepuisAujourdhui(p[0]), 'à J+3').toBeGreaterThanOrEqual(3)
   expect(joursDepuisAujourdhui(p[0])).toBeLessThanOrEqual(5)

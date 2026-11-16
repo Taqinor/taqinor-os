@@ -1,6 +1,6 @@
 {
   "_doc": "SUIVI-PARCOURS (30/09/2026) — LA TABLE UNIQUE du suivi commercial : pour chaque ÉTAPE, sa question, ses réponses, ce que chaque réponse ENVOIE au serveur, ce qui SE PASSE ENSUITE et ce qui est seulement STOCKÉ. Trois lecteurs, une seule source : (1) l'écran (`RelanceEtapeRow.jsx` y lit question et réponses — plus aucune liste écrite à la main par cadence) ; (2) la garde de parcours (`backend/django_core/apps/crm/tests_parcours_suivi.py` rejoue chaque réponse par l'API réelle et vérifie `suite`) ; (3) le guide PDF publié dans la GED (`docs/meryem/`, généré par `scripts/generer_guide_suivi.py`). Modifier une réponse ici sans que le moteur suive casse la garde ; modifier le moteur sans cette table aussi. Les PHRASES affichées sous une réponse choisie restent celles du serveur (`etape.suites` → `suite_phrases.json`, garde CAD17) : `effet` est le texte du GUIDE.",
-  "version": "1.4",
+  "version": "1.5",
   "maj": "2026-11-16",
   "legende_suite": {
     "etape": "Une étape de clé `cle` est ouverte ensuite (`jour` : aujourdhui | demain | date_choisie).",
@@ -99,6 +99,10 @@
       }
     },
     "fait": { "label": "Fait — passer à la suite", "outcome": "" },
+    "piece": {
+      "label": "Oui — pièce reçue", "geste": "piece",
+      "precision": "Le panneau « Pièce reçue » s’ouvre : choisissez ce que le client a envoyé. Rien n’est enregistré avant votre confirmation."
+    },
     "perdu": {
       "label": "Perdu — clore le dossier", "reponse": "perdu", "motif_perte": true,
       "precision": "Choisissez le motif : le lead passe Perdu et toutes ses relances s’arrêtent."
@@ -350,6 +354,28 @@
       ]
     },
     {
+      "id": "pieces_recues",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Relancer le client pour ses pièces",
+      "reconnaissance": { "cles": ["pieces_recues"] },
+      "question": "Le client a-t-il envoyé ses pièces ?",
+      "aide": "Client professionnel joint, mais aucune facture reçue : son devis ne peut pas être chiffré. Relancez-le par WhatsApp — le message est prêt.",
+      "reponses": [
+        { "modele": "piece", "effet": "Le panneau « Pièce reçue » s’ouvre ; à la confirmation, la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        {
+          "modele": "fait",
+          "label": "Relance envoyée — pas encore de pièce",
+          "effet": "Première relance : une seconde « Relancer le client pour ses pièces » est programmée quatre jours plus tard (au plus tôt demain). Seconde relance : « Préparer et envoyer le devis » est posée pour demain, même sans pièce. Si le suivi d’un devis envoyé n’était pas allé au bout, c’est lui qui reprend.",
+          "suite": { "type": "reprise_ou", "cle": "pieces_recues" },
+          "variantes": [{ "contexte": "seconde_relance_pieces", "suite": { "type": "reprise" } }]
+        },
+        { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
       "id": "decider_suite",
       "famille": "Après l’appel (avant devis)",
       "nom": "Décider la suite",
@@ -555,7 +581,7 @@
       "id": "generique",
       "famille": "Autres étapes",
       "nom": "Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal, après acceptation)",
-      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp", "Pièces reçues ? (lead pro sans facture)", "Confirmer la signature et la suite", "Acompte : relancer le client"],
+      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp", "Confirmer la signature et la suite", "Acompte : relancer le client"],
       "reconnaissance": { "cadences": ["generique"] },
       "question": "Où en est ce dossier ?",
       "reponses": [

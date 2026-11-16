@@ -419,7 +419,7 @@ def _etape_devis_demain_sauf_suivi(c):
 def _etape_pieces_recues(c):
     # CADV29 — la prochaine touche du pro sans pièce, et aucune étape devis.
     c.vrai(c.ouvertes(cle=CLE_PIECES_RECUES).exists(),
-           'aucune étape « Pièces reçues ? »')
+           'aucune étape « Relancer le client pour ses pièces »')
     c.vrai(not c.ouvertes(libelle=FILET_JOINT_LIBELLE).exists(),
            'une étape « préparer le devis » est posée avant les pièces')
 
@@ -428,7 +428,7 @@ def _etape_pieces_recues_sauf_suivi(c):
     if c.variante == 'devis_ouvert':
         _suivi_repris(c)
         c.vrai(not c.ouvertes(cle=CLE_PIECES_RECUES).exists(),
-               'une étape « Pièces reçues ? » est posée malgré le suivi')
+               'une étape « Relancer le client pour ses pièces » est posée malgré le suivi')
     else:
         _etape_pieces_recues(c)
 

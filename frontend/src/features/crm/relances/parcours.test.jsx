@@ -230,3 +230,48 @@ describe('CIQ509 — libellés pros de la table du parcours', () => {
     expect(r.suite).toEqual({ type: 'meme_etape', jour: 'date_choisie' })
   })
 })
+
+
+/* 16/11/2026 — l'étape « Relancer le client pour ses pièces » (clé moteur
+   `pieces_recues`, lead pro joint sans facture) a SON type : la question dit ce
+   qu'on attend, et « Oui — pièce reçue » ouvre le panneau « Pièce reçue » au
+   lieu de répondre « Fait ». */
+describe('« Relancer le client pour ses pièces » — type propre de la table', () => {
+  const type = PARCOURS.etapes.find((t) => t.id === 'pieces_recues')
+  const touche = {
+    ...TOUCHE, statut: 'a_faire', overdue: false, suites: {}, cle: 'pieces_recues',
+    libelle: 'Pièces reçues ?', cadence: 'generique', canal: 'whatsapp', message_ouvert_le: null,
+  }
+
+  it('reconnu par sa clé — même sous l’ancien libellé encore ouvert en base', () => {
+    expect(type.famille).toBe('Après l’appel (avant devis)')
+    expect(type.nom).toBe('Relancer le client pour ses pièces')
+    expect(typeEtape(touche).id).toBe('pieces_recues')
+    expect(typeEtape({ ...touche, libelle: 'Relancer le client pour ses pièces (factures, schéma)' }).id)
+      .toBe('pieces_recues')
+    expect(estTache(type)).toBe(false)
+    // Le type générique ne le cite plus parmi ses exemples.
+    const generique = PARCOURS.etapes.find((t) => t.id === 'generique')
+    expect(generique.exemples.join(' ')).not.toMatch(/Pièces reçues/)
+  })
+
+  it('la question et les six réponses, dans l’ordre', () => {
+    expect(type.question).toBe('Le client a-t-il envoyé ses pièces ?')
+    expect(reponsesDeLEtape(type, touche).map((r) => r.label)).toEqual([
+      'Oui — pièce reçue', 'Relance envoyée — pas encore de pièce', 'À rappeler le…',
+      'Visite acceptée', 'Client refuse', 'Ne plus me contacter',
+    ])
+  })
+
+  it('« Oui — pièce reçue » ouvre le panneau « Pièce reçue » et n’envoie rien', () => {
+    const onFait = vi.fn()
+    render(
+      <RelanceEtapeRow etape={touche} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Oui — pièce reçue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    expect(screen.getByTestId('panneau-piece-recue')).toBeInTheDocument()
+    expect(onFait).not.toHaveBeenCalled()
+  })
+})

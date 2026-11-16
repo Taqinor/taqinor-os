@@ -138,6 +138,14 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "{mois_dossier} sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour votre maison à "
         "{ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. Répondez STOP et je "
         "n'insiste plus.",
+    # 16/11/2026 (founder) — « Relancer le client pour ses pièces » (étape du moteur `pieces_recues`,
+    # CADV29/D-CADV-10) : lead PRO joint, aucune facture reçue. Texte COMPOSÉ de phrases déjà validées de
+    # `valeur_j1` (variante B2B), moins la phrase « je n'ai pas réussi à vous joindre » (le client est joint)
+    # et la question d'appel ; la ligne STOP vient de `_poser_porte_de_sortie`.
+    'relance_pieces':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je prépare l'étude solaire de {societe}. Pour que "
+        "l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés "
+        "de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée.",
     'rappel_plus_tard':
         "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo "
         "m'aide à préparer l'estimation.",
@@ -340,6 +348,12 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة "
         "ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف "
         "الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+    # 16/11/2026 — darija de `relance_pieces`, phrase par phrase de la variante B2B DARIJA de `valeur_j1`
+    # (sans la phrase « حاولت نعيط… » ni la question d'appel). Relecture native à faire.
+    'relance_pieces':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنوجد الدراسة ديال الطاقة الشمسية ديال "
+        "{societe}. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال "
+        "الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر.",
     'vocal_j3':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير "
         "قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
@@ -625,6 +639,8 @@ CLES_RELANCE = [
     'reactivation_k3',
     'reactivation_k6_p1',
     'reactivation_k6_p2',
+    # 16/11/2026 — « Relancer le client pour ses pièces » (étape `pieces_recues`, lead pro).
+    'relance_pieces',
 ]
 
 #: CADV107 — les clés de réactivation : seule exception à la doctrine CAD62
@@ -784,6 +800,9 @@ class MessageTemplate(models.Model):
             'reactivation_k6_p1', "Réactivation — K6 palier 1, après appel")
         REACTIVATION_K6_P2 = (
             'reactivation_k6_p2', "Réactivation — K6 palier 2, demande d'origine")
+        # 16/11/2026 — étape « Relancer le client pour ses pièces » (lead pro).
+        RELANCE_PIECES = (
+            'relance_pieces', "Relance — pièces du client (lead professionnel)")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1450,7 +1469,7 @@ CLES_PORTE_DE_SORTIE_CADV34 = (
     'identite_whatsapp_entrant', 'identite_ancien_dossier',
     'valeur_j1', 'vocal_j3', 'j1_pdf', 'j4_preuve', 'j6_garanties',
     'j9_validite', 'dimanche_famille', 'deuxieme_affaire',
-    'visite_confirmation',
+    'visite_confirmation', 'relance_pieces',
 )
 
 
