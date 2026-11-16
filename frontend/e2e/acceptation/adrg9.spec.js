@@ -560,7 +560,7 @@ etape('PF4.3-ADRG63-apercu-import', ['ADRG63'], async ({ page, suivi, testInfo }
 from apps.stock.models import Produit
 p = Produit.objects.create(company_id=${SOC}, nom='Panneau ADRG63 ${m}', sku=${J(sku)}, prix_achat=Decimal('9017.31'), prix_vente=Decimal('12000'))
 sortie(p.pk)`)
-  // Le fichier renomme aussi la fiche : l'aperçu montre alors un écrasement (le nom) — témoin que la table est rendue.
+  // Nom distinctif dans le fichier : témoin que la ligne du fichier est rendue dans l'aperçu.
   const fichier = { name: 'produits.csv', mimeType: 'text/csv', buffer: Buffer.from(`Nom,SKU,prix_achat\nPanneau renommé ADRG63 ${m},${sku},9502.77\n`) }
   const champsDe = (d) => (d.conflits || []).flatMap((c) => [...(c.ecrasements || []).map((e) => e.champ), ...(c.remplissages || [])])
   try {
@@ -589,6 +589,9 @@ sortie(p.pk)`)
       expect(await pc.locator('body').innerText(), `${passeRe}Commercial responsable : aucun prix d'achat actuel affiché`).not.toContain('9017')
     }
     // Écran Stock → Importer (aperçu) au Responsable (stock_modifier, sans prix_achat_voir) puis au Directeur (témoin).
+    // Pour la cible « products », l'écran n'offre que « Créer seulement » : la fiche existante est un doublon, la table
+    // des écrasements n'est pas dessinée — l'aperçu = la réponse dry-run que l'écran reçoit + le tableau des lignes du
+    // fichier. Les deux sont relus.
     async function apercu(p, c) {
       await ouvrir(p, '/stock', /\/stock\/produits\/?$/)
       await p.getByRole('button', { name: 'Importer', exact: true }).first().click()
@@ -596,23 +599,23 @@ sortie(p.pk)`)
         p.waitForResponse((x) => /\/imports\/dry-run\/$/.test(new URL(x.url()).pathname), V),
         p.locator('input[type="file"][accept=".csv,.xlsx"]').setInputFiles(fichier),
       ])
-      expect(rep.status(), `${c.nomRole} : aperçu servi`).toBe(200)
+      expect(rep.status(), `${c.nomRole} : aperçu servi à l'écran`).toBe(200)
       await expect(p.getByText(/colonnes reconnues/), `${c.nomRole} : aperçu affiché`).toBeVisible(V)
-      const table = p.locator('table').filter({ has: p.getByRole('columnheader', { name: 'Valeur actuelle' }) })
-      await expect(table, `${c.nomRole} : table des écrasements rendue`).toBeVisible(V)
-      return table
+      await expect(p.getByRole('cell', { name: `Panneau renommé ADRG63 ${m}`, exact: true }).first(), `${c.nomRole} : la ligne du fichier est affichée`).toBeVisible()
+      return rep.text()
     }
     const pr = await ecranDe(page, suivi, testInfo, re)
     for (const passeRe of ['', 'relu après rechargement : ']) {
       if (passeRe) await pr.reload()
-      const table = await apercu(pr, re)
-      await expect(table.getByRole('row').filter({ hasText: 'nom' }), `${passeRe}Responsable : l'écrasement du nom est listé`).toHaveCount(1)
-      await expect(table.getByRole('row').filter({ hasText: 'prix_achat' }), `${passeRe}Responsable : aucune ligne prix_achat`).toHaveCount(0)
+      const corps = await apercu(pr, re)
+      expect(champsDe(JSON.parse(corps)), `${passeRe}Responsable : l'aperçu reçu ne contient aucun champ prix_achat`).not.toContain('prix_achat')
+      expect(corps, `${passeRe}Responsable : l'aperçu reçu ne contient pas la valeur actuelle`).not.toContain('9017')
       expect(await pr.locator('body').innerText(), `${passeRe}Responsable : aucun prix d'achat actuel affiché`).not.toContain('9017')
     }
     const pd = await ecranDe(page, suivi, testInfo, di)
-    const tableD = await apercu(pd, di)
-    await expect(tableD.getByRole('row').filter({ hasText: 'prix_achat' }).filter({ hasText: '9017' }), 'Directeur : ligne prix_achat avec la valeur actuelle').toHaveCount(1)
+    const corpsD = await apercu(pd, di)
+    expect(champsDe(JSON.parse(corpsD)), 'Directeur (témoin) : l\'aperçu reçu porte prix_achat').toContain('prix_achat')
+    expect(corpsD, 'Directeur (témoin) : l\'aperçu reçu porte la valeur actuelle').toContain('9017.31')
   } finally {
     await py(`from apps.stock.models import Produit
 try:

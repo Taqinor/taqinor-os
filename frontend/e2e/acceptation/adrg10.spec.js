@@ -506,6 +506,12 @@ sortie(c.pk)`)
     const te = await compteDe('Technicien', 'adrg70te')
     const co = await compteDe('Commercial', 'adrg70co')
     const cr = await compteDe('Commercial responsable', 'adrg70cr')
+    // Le Client n'a pas de propriétaire : il entre dans la portée d'un compte par un lead dont il est le responsable
+    // (`core/scoping.py::scope_client_queryset`) — un lead par compte lecteur.
+    await py(`from apps.crm.models import Lead
+for o in (${co.id}, ${cr.id}, ${te.id}):
+    Lead.objects.create(company_id=${SOC}, nom='Lead ADRG70 ${m} ' + str(o), client_id=${cl}, owner_id=o)
+sortie(1)`)
     const [xte, xco, xcr] = [await apiDe(testInfo, te), await apiDe(testInfo, co), await apiDe(testInfo, cr)]
     const bilan = []
     for (const route of ROUTES_70(cl)) {
