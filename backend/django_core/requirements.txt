@@ -103,7 +103,7 @@ pywebpush==2.5.0
 # rend EXPLICITE puisque core en dépend directement désormais. Plage permissive
 # pour ne pas sur-contraindre le résolveur vs la version tirée par pywebpush.
 # Key-gated : sans FIELD_ENCRYPTION_KEY, le module est chargé mais inerte.
-cryptography>=50,<51
+cryptography>=50.0.2,<51
 # TOTP two-factor auth (2FA opt-in, N96)
 pyotp==2.10.0
 # Architectural import contracts (M3) — enforces the import rules in
