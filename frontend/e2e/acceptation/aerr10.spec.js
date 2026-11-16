@@ -146,7 +146,15 @@ etape('PF12.69-AERR69', ['AERR69'], async ({ page, suivi, testInfo }) => {
   expect(JSON.parse(pa.corps[0]), 'PATCH de l\'avancée').toEqual({ stage: 'QUOTE_SENT' })
   expect(await etapeLead(A), 'base : avancé en QUOTE_SENT').toBe('QUOTE_SENT')
   const retour = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/leads/${A}/`) && r.request().postData() !== pa.corps[0], T)
-  await t.getByRole('button', { name: 'Annuler' }).click()
+  // « Annuler » cliqué À LA SOURIS (fiche ouverte en fenêtre modale : sa couche modale pose `pointer-events:none` sur le
+  // toast, le clic tombe sur la couche). Constaté au run 43978374413 : s'il est bloqué, l'étape le DIT (défaut) puis
+  // déclenche le bouton par son gestionnaire pour juger le reste de la clause (appel inverse, base).
+  let clicBloque = false
+  await t.getByRole('button', { name: 'Annuler' }).click({ timeout: 2500 }).catch(() => { clicBloque = true })
+  if (clicBloque) {
+    testInfo.annotations.push({ type: 'défaut AERR69', description: '« Annuler » du toast non cliquable à la souris : la couche de la fiche ouverte (modale) intercepte le clic' })
+    await t.getByRole('button', { name: 'Annuler' }).dispatchEvent('click')
+  }
   const rep = await retour
   expect(JSON.parse(rep.request().postData()), '« Annuler » PATCHe l\'étape d\'origine').toMatchObject({ stage: 'CONTACTED' })
   expect(rep.status(), `« Annuler » accepté par le serveur (reçu ${rep.status()} ${(await rep.text()).slice(0, 200)})`).toBeLessThan(300)
@@ -181,6 +189,7 @@ etape('PF12.69-AERR69', ['AERR69'], async ({ page, suivi, testInfo }) => {
   await p.waitForTimeout(2500)
   expect(await p.locator('[data-sonner-toast]').count(), 'un seul message pour un échec (aucun toast qui double celui de l\'intercepteur)').toBe(1)
   expect(await etapeLead(C), 'base : rien d\'écrit sur échec').toBe('CONTACTED')
+  expect(clicBloque, '« Annuler » du toast est cliquable à la souris sur la fiche ouverte (`?lead=<id>`)').toBe(false)
 })
 
 // ═══ AERR132 — fiche produit à stock négatif : changer le prix s'enregistre, rien sous « Quantité en stock » ═══
@@ -636,9 +645,11 @@ sortie(Client.objects.get(pk=${client}).type_client)`)
   await p.getByPlaceholder(/Rechercher nom, email/).fill(`AERR117T ${m}`, { timeout: 60_000 })
   const ligne = p.getByRole('row').filter({ hasText: `AERR117T ${m}` })
   await expect(ligne).toBeVisible({ timeout: 60_000 })
+  const actuel = (await ligne.locator('.ct-type-btn').innerText()).trim()
+  const autreType = /entreprise/i.test(actuel) ? 'Particulier' : 'Entreprise'
   await ligne.getByTitle('Changer le type de client').click()
   const demande = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/clients/${client}/`), T)
-  await ligne.locator('.ct-type-opt').filter({ hasText: 'Entreprise' }).click()
+  await ligne.locator('.ct-type-opt').filter({ hasText: autreType }).click()
   expect((await demande).status(), 'changement de type refusé (400 injecté)').toBe(400)
   await unSeulMessage(p, 'type de client refusé')
   expect(await typeEnBase(), 'base : le type n\'a pas changé').toBe(avant)
@@ -687,6 +698,8 @@ sortie(Appointment.objects.filter(lead_id=${lead}).count())`)
     ? route.fulfill({ status: 400, contentType: 'application/json', body: J({ notes: ['Notes trop longues (AERR117).'] }) })
     : route.fallback()))
   await p.goto(`/crm/leads/${lead}`)
+  await p.getByRole('navigation', { name: 'Sections du lead' }).getByRole('button', { name: /Visite technique/ }).click({ timeout: 60_000 })
+  await p.locator('summary').filter({ hasText: 'Autre rendez-vous' }).click()
   await p.getByRole('button', { name: '+ Planifier une visite' }).first().click({ timeout: 60_000 })
   const futur = new Date(); futur.setDate(futur.getDate() + 10)
   await p.locator('#appt-scheduled-at').fill(`${isoJour(futur)}T10:00`)
