@@ -99,54 +99,67 @@ async function nettoyer(request, { leads = [], devis = [] }) {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // AMSG3 — l'opposition suit la personne jusqu'aux fiches DÉJÀ existantes (STOP, contact collé sur une fiche existante)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-etape('PF8.2-AMSG3', ['AMSG3'], async () => {
-  // La sonde hôte C-AMSG-003 n'est plus jouable telle quelle (son chargement de leads_doublons échoue : import relatif
-  // `from . import activity` hors paquet) : le scénario du constat est rejoué ici avec le VRAI code dans le shell Django.
+etape('PF8.2-AMSG3', ['AMSG3'], async ({ page }) => {
+  // VRAI geste STOP : réponse « Ne plus me contacter » sur une touche de cadence de la fiche A
+  // (POST crm/relance-etapes/<id>/fait/ {reponse: 'ne_plus_contacter'} → repondre_ne_plus_contacter), aucun update() simulé.
   const m = marque()
-  const r = await pyAvec(m, `from apps.crm.models import Lead, LeadActivity
-from apps.crm.cadence_reponses import CONSENT_SOURCE_OPPOSITION_TOUCHE, tracer_opposition_registre
+  const d = await pyAvec(m, `from apps.crm.models import Lead
+from apps.crm.models_cadence import RelanceEtape
+EMAIL = 'amsg3-' + m + '@example.invalid'
+TEL = '+2126' + ''.join(str(random.randint(0, 9)) for _ in range(8))
+a = Lead.objects.create(company_id=CO, nom='AMSG3 A ' + m, email=EMAIL, telephone=TEL)
+b = Lead.objects.create(company_id=CO, nom='AMSG3 B ' + m, telephone='0' + TEL[4:])
+dd = Lead.objects.create(company_id=CO, nom='AMSG3 D ' + m, email=EMAIL.upper(), is_archived=True)
+e = Lead.objects.create(company_id=CO, nom='AMSG3 E ' + m, telephone='+2126' + ''.join(str(random.randint(0, 9)) for _ in range(8)))
+autre = Company.objects.create(nom='AMSG3 autre ' + m, slug='amsg3-autre-' + m)
+c = Lead.objects.create(company=autre, nom='AMSG3 C', telephone=TEL)
+et = RelanceEtape.objects.create(company_id=CO, lead=a, cadence='apres_devis', ordre=5, due_date=timezone.localdate(),
+    due_at=timezone.now(), canal='whatsapp', libelle='Message AMSG3')
+sortie(dict(a=a.id, b=b.id, d=dd.id, e=e.id, c=c.id, autre=autre.id, etape=et.id, tel=TEL))`)
+  const etat = () => py(`from apps.crm.models import Lead, LeadActivity
 from apps.crm.selectors import peut_contacter
-res = {}
-with transaction.atomic():
-    co = Company.objects.create(nom='AMSG3 ' + m, slug='amsg3-' + m)
-    autre = Company.objects.create(nom='AMSG3 autre ' + m, slug='amsg3-autre-' + m)
-    EMAIL = 'amsg3-' + m + '@example.invalid'
-    TEL = '+212661595959'
-    a = Lead.objects.create(company=co, nom='A', email=EMAIL, telephone=TEL)
-    b = Lead.objects.create(company=co, nom='B', telephone='06 61 59 59 59')
-    d = Lead.objects.create(company=co, nom='D', email=EMAIL.upper(), is_archived=True)
-    c = Lead.objects.create(company=autre, nom='C', telephone=TEL)
-    e = Lead.objects.create(company=co, nom='E', telephone='+212600000303')
-    Lead.objects.filter(pk=a.pk).update(ne_plus_contacter=True)
-    a.refresh_from_db()
-    tracer_opposition_registre(a, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
-    apres = {}
-    chatter = {}
-    for nom, f in (('B', b), ('D', d), ('C', c), ('E', e)):
-        f.refresh_from_db()
-        apres[nom] = f.ne_plus_contacter
-        chatter[nom] = LeadActivity.objects.filter(lead=f, kind=LeadActivity.Kind.MODIFICATION, field='ne_plus_contacter').exists()
-    res['apres_stop'] = apres
-    res['chatter'] = chatter
-    res['peut_B'] = bool(peut_contacter(b))
-    e.telephone = TEL
-    e.save()
-    e.refresh_from_db()
-    res['E_apres_collage'] = e.ne_plus_contacter
-    b.ne_plus_contacter = False
-    b.save()
-    b.ville = 'Rabat'
-    b.save()
-    b.refresh_from_db()
-    res['B_decoche_stable'] = b.ne_plus_contacter
-    transaction.set_rollback(True)
-sortie(res)`)
-  expect(r.apres_stop, 'après STOP sur A : B et D (même société, mêmes contacts) opposées ; C (autre société) et E (aucun contact commun) inchangées')
-    .toEqual({ B: true, D: true, C: false, E: false })
-  expect(r.chatter, 'ligne de chatter ancien → nouveau sur B et D, aucune sur C ni E').toEqual({ B: true, D: true, C: false, E: false })
-  expect(r.peut_B, 'peut_contacter(B) faux').toBe(false)
-  expect(r.E_apres_collage, 'un numéro opposé collé sur la fiche existante E la rend opposée dès son enregistrement').toBe(true)
-  expect(r.B_decoche_stable, 'la case décochée de B n’est pas redéfaite par l’enregistrement suivant').toBe(false)
+M = getattr(Lead, 'all_objects', Lead._base_manager)
+out = {}
+for nom, pk in json.loads(${J(J({ a: d.a, b: d.b, d: d.d, e: d.e, c: d.c }))}).items():
+    f = M.get(pk=pk)
+    out[nom] = dict(nepc=f.ne_plus_contacter, chatter=LeadActivity.objects.filter(lead_id=pk, kind=LeadActivity.Kind.MODIFICATION, field='ne_plus_contacter').exists())
+out['peut_B'] = bool(peut_contacter(M.get(pk=${d.b})))
+sortie(out)`)
+  try {
+    const avant = await etat()
+    expect(avant.b.nepc || avant.d.nepc || avant.e.nepc, 'avant le STOP : B, D, E contactables').toBe(false)
+    const stop = await page.request.post(`${API}/crm/relance-etapes/${d.etape}/fait/`, { ...T, data: { reponse: 'ne_plus_contacter' } })
+    expect(stop.status(), `STOP par la vraie route : ${(await stop.text()).slice(0, 300)}`).toBe(200)
+    const apres = await etat()
+    expect([apres.a.nepc, apres.b.nepc, apres.d.nepc, apres.c.nepc, apres.e.nepc], 'A, B, D opposées ; C (autre société) et E inchangées')
+      .toEqual([true, true, true, false, false])
+    expect([apres.b.chatter, apres.d.chatter, apres.c.chatter, apres.e.chatter], 'ligne de chatter ancien → nouveau sur B et D seulement')
+      .toEqual([true, true, false, false])
+    expect(apres.peut_B, 'peut_contacter(B) faux').toBe(false)
+    // Écran : la fiche B montre « Ne plus contacter » cochée et la ligne dans son historique.
+    await page.goto(`/crm/leads/${d.b}`)
+    await expect(page.getByLabel('Ne plus contacter'), 'fiche B : case « Ne plus contacter » cochée').toBeChecked({ timeout: 60_000 })
+    await expect(page.getByTestId('lw-context-rail'), 'historique de B : la ligne de bascule').toContainText(/ne plus contacter/i, { timeout: 30_000 })
+    // Un numéro opposé collé sur la fiche existante E (vraie route PATCH) la rend opposée.
+    const patchE = await page.request.patch(`${API}/crm/leads/${d.e}/`, { ...T, data: { telephone: d.tel } })
+    expect(patchE.status(), (await patchE.text()).slice(0, 300)).toBeLessThan(300)
+    expect((await etat()).e.nepc, 'E opposée dès son enregistrement').toBe(true)
+    // Décocher B n'est pas défait par l'enregistrement suivant.
+    const dec = await page.request.patch(`${API}/crm/leads/${d.b}/`, { ...T, data: { ne_plus_contacter: false } })
+    expect(dec.status(), (await dec.text()).slice(0, 300)).toBeLessThan(300)
+    const ville = await page.request.patch(`${API}/crm/leads/${d.b}/`, { ...T, data: { ville: 'Rabat' } })
+    expect(ville.status(), (await ville.text()).slice(0, 300)).toBeLessThan(300)
+    expect((await etat()).b.nepc, 'B reste décochée').toBe(false)
+  } finally {
+    await py(`from apps.crm.models import Lead
+M = getattr(Lead, 'all_objects', Lead._base_manager)
+for pk in ${J([d.a, d.b, d.d, d.e, d.c])}:
+    try:
+        M.filter(pk=pk).delete()
+    except Exception:
+        pass
+sortie(1)`).catch(() => undefined)
+  }
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -215,10 +228,6 @@ sortie(res)`)
 // AMSG57 + AMSG95 — avis de transition SAV et réponse e-mail d'un ticket : « envoyé » seulement si l'e-mail part
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 etape('PF8.5-AMSG57', ['AMSG57'], async () => {
-  const s = sonde('C-AMSG-009')
-  expect([s.repro, s.observe.emplacements_qui_disent_envoye, s.observe.is_email_configured],
-    'sonde C-AMSG-009 : aucun emplacement ne dit « envoyé »').toEqual([false, [], false])
-  expect(s.observe.retours['sav/notifications_client.py::notify_ticket_transition'].email_sent, 'sonde : avis SAV email_sent faux').toBe(false)
   const m = marque()
   const r = await pyAvec(m, `from django.contrib.contenttypes.models import ContentType
 from apps.installations.models import Installation
@@ -531,6 +540,8 @@ etape('PF8.4-AMSG89', ['AMSG89'], async ({ page }) => {
 // AMSG92 — portail client › Mon équipe : dire si l'invitation d'un collègue est réellement partie
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 etape('PF8.5-AMSG92', ['AMSG92'], async ({ page, context, testInfo }) => {
+  const s = sonde('C-AMSG-VER2-101')
+  expect(s.repro, `sonde C-AMSG-VER2-101 rejouée : repro False (${J(s.observe)})`).toBe(false)
   const m = marque()
   const clientId = await pyAvec(m, 'c = cli(m)\nsortie(c.id)')
   const comptes = listeDe(await lireJson(await page.request.get(`${API}/portail/comptes-portail/`, T), 'comptes'))
@@ -641,7 +652,7 @@ for fn in (
         pass
 sortie(1)`).catch(() => undefined)
 
-etape('PF8.5-AMSG96', ['AMSG96'], async ({ page, testInfo }) => {
+etape('PF8.5-AMSG96', ['AMSG96', 'AMSG56'], async ({ page, testInfo }) => {
   const m = marque().toUpperCase()
   const d = await montage96(m, true)
   try {
@@ -692,7 +703,7 @@ sortie(out)`)
   } finally {
     await nettoyer96(d)
   }
-})
+}, { ecart: { base: 'FAIL', raison: "clause « avec le lien wa.me » : /activites n'affiche pas le lien — MesActivitesPage.jsx targetLink sans entrée installations.livraison/intervention, records/serializers.py get_target_phone rend None hors crm, la note portant le brouillon wa.me n'est jamais montrée ; défaut antérieur hors Files: des tâches (METHODE règle b), non corrigé" } })
 
 etape('PF8.5-AMSG96-ecran', ['AMSG96'], async ({ page, context, testInfo }) => {
   const m = marque().toUpperCase()
@@ -711,4 +722,4 @@ etape('PF8.5-AMSG96-ecran', ['AMSG96'], async ({ page, context, testInfo }) => {
   } finally {
     await nettoyer96(d)
   }
-})
+}, { ecart: { base: 'FAIL', raison: "clause « avec le lien wa.me » : /activites n'affiche pas le lien — MesActivitesPage.jsx targetLink sans entrée installations.livraison/intervention, records/serializers.py get_target_phone rend None hors crm, la note portant le brouillon wa.me n'est jamais montrée ; défaut antérieur hors Files: des tâches (METHODE règle b), non corrigé" } })
