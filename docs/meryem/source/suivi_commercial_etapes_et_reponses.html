@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <title>Guide — Le suivi commercial&nbsp;: étapes, réponses et suites</title>
 <meta name="generator" content="scripts/generer_guide_suivi.py">
-<meta name="table-version" content="1.4">
-<meta name="table-sha256" content="98298b6982cc61a923daf7ee487af90698b044b5b9eca968318b9ad4fdcf5da3">
+<meta name="table-version" content="1.5">
+<meta name="table-sha256" content="af0e8af91a4ccf4bd61ac4e8d825b58e3351a19dd7923df3f98dd7ae3b2e309d">
 <!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer `python scripts/generer_guide_suivi.py` après tout changement de la table du parcours. -->
 <style>
 @page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
@@ -63,7 +63,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <header>
 <h1>Le suivi commercial : étapes, réponses et suites</h1>
 <p class="sous-titre">Guide interne équipe commerciale · TAQINOR</p>
-<p class="version">Version 1.4 · 16/11/2026</p>
+<p class="version">Version 1.5 · 16/11/2026</p>
 <p class="lede">Pour chaque étape du suivi : la question qui t’est posée, les réponses possibles, et ce que chaque réponse déclenche ensuite.</p>
 </header>
 <h2>1. Le parcours en un regard</h2>
@@ -376,6 +376,22 @@ table.touches td:nth-child(3) { width: 17%; }
 </div>
 <div class="fiche">
 <div class="fiche-tete">
+<h4>Relancer le client pour ses pièces</h4>
+<p class="question"><span class="q">Question posée</span> — Le client a-t-il envoyé ses pièces&nbsp;?</p>
+<p class="aide">Client professionnel joint, mais aucune facture reçue&nbsp;: son devis ne peut pas être chiffré. Relancez-le par WhatsApp — le message est prêt.</p>
+</div>
+<table>
+<tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
+<tr><td><strong>Oui — pièce reçue</strong><span class="pastille">ouvre « Pièce reçue »</span></td><td>Le panneau <span class="ecran">«&nbsp;Pièce reçue&nbsp;»</span> s’ouvre&nbsp;; à la confirmation, la touche est close <span class="ecran">«&nbsp;client joint&nbsp;»</span>, le document est joint à la fiche et l’étape <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
+<tr><td><strong>Relance envoyée — pas encore de pièce</strong></td><td>Première relance&nbsp;: une seconde <span class="ecran">«&nbsp;Relancer le client pour ses pièces&nbsp;»</span> est programmée quatre jours plus tard (au plus tôt demain). Seconde relance&nbsp;: <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain, même sans pièce. Si le suivi d’un devis envoyé n’était pas allé au bout, c’est lui qui reprend.</td></tr>
+<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
+<tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification, ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span> si la date n’est pas fixée.</td></tr>
+<tr><td><strong>Client refuse</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
+</table>
+</div>
+<div class="fiche">
+<div class="fiche-tete">
 <h4><span class="badge">Tâche : possible dès maintenant</span>Décider la suite</h4>
 <p class="question"><span class="q">Question posée</span> — Que décidez-vous pour ce dossier&nbsp;?</p>
 </div>
@@ -570,7 +586,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <div class="fiche">
 <div class="fiche-tete">
 <h4>Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal, après acceptation)</h4>
-<p class="exemples">Exemples : Passation — prévenir le client du changement de conseiller · Rappeler le client (il l’a demandé) · Premier rappel · Relance WhatsApp · Pièces reçues&nbsp;? (lead pro sans facture) · Confirmer la signature et la suite · Acompte&nbsp;: relancer le client</p>
+<p class="exemples">Exemples : Passation — prévenir le client du changement de conseiller · Rappeler le client (il l’a demandé) · Premier rappel · Relance WhatsApp · Confirmer la signature et la suite · Acompte&nbsp;: relancer le client</p>
 <p class="question"><span class="q">Question posée</span> — Où en est ce dossier&nbsp;?</p>
 </div>
 <table>
@@ -630,6 +646,6 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td>Dossier FDA (agricole, pompe au butane)</td><td>Fiche du lead → <span class="ecran">«&nbsp;Tâches du playbook&nbsp;»</span>&nbsp;: la tâche du dossier FDA, et son bouton <span class="ecran">«&nbsp;Proposer le texte&nbsp;»</span></td></tr>
 </table>
 </section>
-<p class="pied">Version 1.4 — 16/11/2026 — généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à chaque mise à jour de l’ERP.</p>
+<p class="pied">Version 1.5 — 16/11/2026 — généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à chaque mise à jour de l’ERP.</p>
 </body>
 </html>

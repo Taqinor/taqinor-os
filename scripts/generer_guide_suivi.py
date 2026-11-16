@@ -901,7 +901,9 @@ def html_fiche(table: dict, etape: dict) -> str:
             pastilles += '<span class="pastille">motif à choisir</span>'
         if r.get('motif_refus'):
             pastilles += '<span class="pastille">motif de refus, facultatif</span>'
-        if r.get('geste'):
+        if r.get('geste') == 'piece':
+            pastilles += '<span class="pastille">ouvre « Pièce reçue »</span>'
+        elif r.get('geste'):
             pastilles += '<span class="pastille">ouvre la planification</span>'
         lignes.append(f'<tr><td><strong>{esc(r["label"])}</strong>{pastilles}</td>'
                       f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}</td></tr>')
