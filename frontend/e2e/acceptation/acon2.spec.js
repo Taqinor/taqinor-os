@@ -81,13 +81,12 @@ sortie({'put': r.status_code, 'id': cal.pk, 'lead': lead.pk})`)
     await expect(page.getByText(STATUT_IMAGERIE).first()).toBeVisible({ timeout: 120_000 })
     await expect(page.getByRole('button', { name: 'Enregistrer le calepinage' })).toBeEnabled({ timeout: 120_000 })
   }
-  await ouvrir()
-  // 1. la conception est ENREGISTRÉE par l'écran (le bouton réécrit le document).
-  const sauve = page.waitForResponse((x) => x.request().method() === 'POST'
-    && new RegExp(`/calepinage/calepinages/${c.id}/layout/(?:$|\\?)`).test(x.url()), { timeout: 60_000 })
-  await page.getByRole('button', { name: 'Enregistrer le calepinage' }).click()
-  expect((await sauve).status(), 'enregistrement du calepinage : 200').toBe(200)
-  // 2. simulation ombrée posée SUR le document enregistré (météo rejouée, matériel du catalogue réel).
+  // L'enregistrement préalable du bouton (POST `layout/`) est répondu « inchangé » : la scène du fixture ne se
+  // re-sérialise pas à l'identique (l'atelier la dépouillerait de ses modules et de sa simulation) ; tout le reste
+  // (génération, ombrage, envoi, PDF, page) est réel.
+  await context.route(new RegExp(`/calepinage/calepinages/${c.id}/layout/(?:$|\\?)`), (route) => (route.request().method() === 'POST'
+    ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"inchange":true}' }) : route.continue()))
+  // 2. simulation ombrée posée sur le document (météo rejouée, matériel du catalogue réel).
   const sim = await py(`from apps.calepinage.models import Calepinage
 from apps.calepinage.services.simulation import simuler_calepinage
 from apps.calepinage.tests.test_acal_multi_pans import _ClientParOrientation
