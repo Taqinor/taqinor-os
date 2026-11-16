@@ -260,9 +260,10 @@ class PiecesRecuesRendUnMessageTests(_Base):
     sa clé."""
     slug = 'cad127-pieces'
 
-    def _etape(self, lead, template_cle):
+    def _etape(self, lead, template_cle, ordre):
+        # Un `ordre` par touche : une seule touche OUVERTE par (lead, cadence, ordre).
         return RelanceEtape.objects.create(
-            company=self.company, lead=lead, cadence='generique', ordre=0,
+            company=self.company, lead=lead, cadence='generique', ordre=ordre,
             cle='pieces_recues', due_at=MAINTENANT, due_date=AUJOURDHUI,
             canal='whatsapp', libelle='Pièces reçues ?',
             template_cle=template_cle)
@@ -272,10 +273,10 @@ class PiecesRecuesRendUnMessageTests(_Base):
         lead.type_installation = Lead.TypeInstallation.INDUSTRIEL
         lead.societe = 'Boulangerie Atlas'
         lead.save(update_fields=['type_installation', 'societe'])
-        for template_cle in ('relance_pieces', ''):
+        for ordre, template_cle in enumerate(('relance_pieces', ''), start=1):
             with self.subTest(template_cle=template_cle):
                 rendu = message_pour_etape(
-                    self._etape(lead, template_cle), user=self.acteur)
+                    self._etape(lead, template_cle, ordre), user=self.acteur)
                 texte = rendu['message']
                 self.assertTrue(texte.strip())
                 self.assertIn('Boulangerie Atlas', texte)
