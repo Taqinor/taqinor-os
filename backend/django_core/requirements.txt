@@ -145,7 +145,7 @@ ezdxf==1.4.5
 # installer en plus dans l'image serveur. Importée PARESSEUSEMENT dans
 # apps/crm/tasks.py — son absence dégrade l'assemblage en échec ANNONCÉ, elle
 # ne casse jamais le démarrage de Django. numpy est déjà épinglé plus haut.
-opencv-python-headless==4.10.0.84
+opencv-python-headless==5.0.0.93
 
 # NTPLT46 — Sentry (supervision d'erreurs). INSTALLÉ depuis le 28/09/2026 (décision
 # fondateur, armement du pilote — palier 4 de docs/TESTING.md, QAH8) ; l'ancienne
