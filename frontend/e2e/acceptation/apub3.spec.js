@@ -78,6 +78,14 @@ sortie(out)`)
     }
   }
   console.log(`[APUB7] ${relevé.join(' ; ')}`)
+  console.log(`[APUB7] diagnostic fonction du shell : ${J(await py(`from apps.installations import public_views as V
+from apps.installations.models import Intervention
+import inspect
+out = []
+for pk in ${J(cas.map((c) => c.interv))}:
+    it = Intervention.objects.get(pk=pk)
+    out.append(dict(pk=pk, publiable=V._rapport_publiable(it), notifiee=str(it.cloturee_notifiee_le), realisee=str(it.date_realisee), creation=str(it.date_creation)))
+sortie(dict(etats=out, jour=str(timezone.localdate()), source=inspect.getsource(V._rapport_publiable)[:600], fichier=V.__file__))`))}`)
   expect(echecs, 'page, PDF et photo publics : 404 sur les liens expirés, 200 sur le lien valide').toEqual([])
   // `lien-rapport/` sur la 1re (expirée) rend le MÊME jeton : pas de rotation silencieuse.
   const lien = await lireJson(await page.request.get(`${API}/installations/interventions/${cas[0].interv}/lien-rapport/`, T), 'lien-rapport')
