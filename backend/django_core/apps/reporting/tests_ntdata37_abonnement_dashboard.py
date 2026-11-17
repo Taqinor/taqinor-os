@@ -307,6 +307,27 @@ class AbonnementDashboardTests(TestCase):
                       'refusé.</p>', html)
         self.assertIn('NTDATA37 SA', html)  # l'autre widget reste rendu
 
+    def test_patch_destinataires_d_une_requete_stock_exige_stock_export(self):
+        """ADRG147 — l'export du jeu est exigé à CHAQUE écriture d'un rapport
+        ``query``, PATCH partiel compris : réorienter l'envoi stock d'un
+        Directeur vers une adresse libre est refusé sans ``stock_export``."""
+        directeur, api_d = self._api_role('Directeur')
+        _commercial, api_c = self._api_role('Commercial responsable')
+        requete = SavedQuery.objects.create(
+            company=self.company, owner=directeur, titre='Stock', partage=True,
+            dataset='stock_produits', spec={'select': ['nom']})
+        rapport = self._rapport(
+            owner=directeur, name='Stock hebdo', target_kind=SavedReport.TargetKind.QUERY,
+            cible_id=requete.pk, recipients='direction@exemple.ma')
+        url = f'/api/django/reporting/saved-reports/{rapport.pk}/'
+        resp = api_c.patch(url, {'recipients': 'x@libre.ma'}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(str(resp.data['detail']), 'Accès au jeu de données refusé.')
+        self.assertEqual(api_d.get(url).json()['recipients'], 'direction@exemple.ma')
+        resp = api_d.patch(url, {'recipients': 'x@libre.ma'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(api_d.get(url).json()['recipients'], 'x@libre.ma')
+
     def test_cible_personnelle_d_un_collegue_refusee(self):
         """ADRG124 — le tableau PERSONNEL d'un collègue n'est pas une cible :
         404 au champ, aucun rapport ; ses propres tableaux et les partagés, si."""
