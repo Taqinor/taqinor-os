@@ -42,6 +42,7 @@ export default function CalageToitPage() {
   const navigate = useNavigate()
   const [visite, setVisite] = useState(null)
   const [erreur, setErreur] = useState(null)
+  const [lectureEchec, setLectureEchec] = useState(false)
   const [photoChoisieId, setPhotoChoisieId] = useState(null)
   const [enregistrement, setEnregistrement] = useState(false)
   const [assemblage, setAssemblage] = useState(false)
@@ -54,7 +55,13 @@ export default function CalageToitPage() {
   const pollRef = useRef(null)
 
   const recharger = useCallback(() => {
-    visitesApi.getVisite(id).then((res) => setVisite(res.data)).catch(() => setErreur('Visite introuvable.'))
+    // AERR112 — « introuvable » seulement sur un 404 ; sinon Lecture impossible + Réessayer.
+    visitesApi.getVisite(id)
+      .then((res) => { setLectureEchec(false); setVisite(res.data) })
+      .catch((err) => {
+        if (err?.response?.status === 404) setErreur('Visite introuvable.')
+        else setLectureEchec(true)
+      })
   }, [id])
 
   useEffect(() => { recharger() }, [recharger])
@@ -150,6 +157,14 @@ export default function CalageToitPage() {
     }
   }
 
+  if (lectureEchec && !visite) {
+    return (
+      <div className="page">
+        <p role="alert" className="text-sm text-destructive">Lecture impossible.</p>
+        <button type="button" className="btn" onClick={recharger}>Réessayer</button>
+      </div>
+    )
+  }
   if (erreur) return <div className="page"><p role="alert" className="text-sm text-destructive">{erreur}</p></div>
   if (!visite) return <div className="page"><Spinner /></div>
 

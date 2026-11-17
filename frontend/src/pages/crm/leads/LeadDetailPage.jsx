@@ -26,19 +26,27 @@ export default function LeadDetailPage() {
   const [lead, setLead] = useState(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  // AERR112 — « introuvable » seulement sur un 404 ; toute autre panne = Lecture impossible + Réessayer.
+  const [lectureEchec, setLectureEchec] = useState(false)
+  const [essai, setEssai] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- init loading au changement d'id (D-ENF22)
     setLoading(true)
     setNotFound(false)
+    setLectureEchec(false)
     setLead(null)
     crmApi.getLead(id)
       .then((r) => { if (!cancelled) setLead(r.data) })
-      .catch(() => { if (!cancelled) setNotFound(true) })
+      .catch((err) => {
+        if (cancelled) return
+        if (err?.response?.status === 404) setNotFound(true)
+        else setLectureEchec(true)
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [id])
+  }, [id, essai])
 
   const backToList = () => navigate('/crm/leads')
   // Recharge la fiche depuis le serveur pour refléter la modification (ex. devis
@@ -60,6 +68,16 @@ export default function LeadDetailPage() {
   if (loading) {
     return (
       <p className="page-loading"><Spinner /> Chargement du lead…</p>
+    )
+  }
+
+  if (lectureEchec) {
+    return (
+      <EmptyState
+        title="Lecture impossible"
+        description="Le lead n'a pas pu être lu. Vérifiez votre connexion puis réessayez."
+        action={<Button size="sm" onClick={() => setEssai((n) => n + 1)}>Réessayer</Button>}
+      />
     )
   }
 
