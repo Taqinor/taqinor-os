@@ -377,3 +377,31 @@ describe('cartes — états d\'une proposition et liens sûrs (logique pure)', (
     expect(foyerTouche([{ cartes: [carte(1)] }, { cartes: [carte(2), { type: 'resultat', carte: 'matin', donnees: {} }] }])).toBe(2)
   })
 })
+
+describe('cartes — Tâches (TCH118) : branchement dans CartesDuMessage', () => {
+  const tache = (nom) => exempleContrat('taches', nom)
+
+  it.each([
+    ['plan_propose', 'journee_proposition'],
+    ['priorites', 'priorites'],
+    ['point', 'point'],
+    ['capture_apercu', 'saisie_apercu'],
+    ['rythme', 'rythme'],
+    ['ma_journee', 'aujourdhui'],
+    ['liste_taches', 'recherche'],
+    ['tache', 'tache_changement'],
+    ['plan_projet', 'planification_apercu'],
+    ['projet', 'projet_vue'],
+    ['revue_semaine', 'revue_projets'],
+  ])('%s : rendue par CartesTaches avec l\'échantillon de %s, sans carte générique', (carte, nom) => {
+    monter([resultat(carte, tache(nom))])
+    expect(screen.getByTestId(`carte-taches-${carte}`)).toBeInTheDocument()
+    expect(screen.queryByText('Action effectuée')).not.toBeInTheDocument()
+  })
+
+  it('les cartes CRM restent intactes à côté d\'une carte Tâches', () => {
+    monter([resultat('point', tache('point')), resultat('visite', touche('lead_visite_planifier'))])
+    expect(screen.getByTestId('carte-taches-point')).toBeInTheDocument()
+    expect(screen.getByText(/Visite \(brouillon\)/)).toBeInTheDocument()
+  })
+})

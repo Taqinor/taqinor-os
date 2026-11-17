@@ -140,3 +140,51 @@ export function ditUnePanne(texte) {
   const t = sansAccent(texte)
   return MOTS_PANNE.some((m) => t.includes(sansAccent(m)))
 }
+
+// TCH118 — les QUATRE demandes prêtes de l'app Tâches (api.md §8, textes.md §5.2). Depuis un écran
+// `/taches`, un toucher appelle DIRECTEMENT la route déterministe et rend la carte : aucun modèle de
+// langage, donc aucune clé d'IA nécessaire. Ce module reste pur (sans import) : le client d'API est
+// injecté (`client` = `api/tachesApi`), pour rester testable en `node --test`.
+export const DEMANDES_PRETES_TACHES = Object.freeze([
+  { question: 'Planifie ma journée', cle: 'taches.plan.proposer', carte: 'plan_propose', lire: 'proposerJournee' },
+  { question: 'Aide-moi à prioriser', cle: 'taches.journee.prioriser', carte: 'priorites', lire: 'lirePriorites' },
+  { question: 'Range ma liste', cle: 'taches.liste.ranger', carte: 'capture_apercu', lire: 'saisieRapide' },
+  { question: 'Où j\'en suis ?', cle: 'taches.journee.point', carte: 'point', lire: 'lirePoint' },
+])
+
+// Seule phrase de la réponse de « Planifie ma journée » qui ne dépend d'aucun chiffre du serveur
+// (textes.md §5.2) : les nombres, eux, sont sur la carte.
+export const PHRASE_PLAN_PROPOSE = 'Rien ne change tant que tu ne gardes pas.'
+
+export const estEcranTaches = (ecran) => typeof ecran === 'string' && /^\/taches(\/|$)/.test(ecran)
+
+/** La demande prête dite par `question` (texte exact du bouton), ou `null`. */
+export function demandePreteTaches(question) {
+  const t = typeof question === 'string' ? question.trim() : ''
+  return DEMANDES_PRETES_TACHES.find((d) => d.question === t) ?? null
+}
+
+/**
+ * Exécute une demande prête et rend le message de l'assistant (une carte « résultat »), ou `null`
+ * si `question` n'en est pas une, ou si « Range ma liste » n'a aucune tâche À trier à lui donner.
+ * `ids` = identifiants À trier, fournis par l'appelant (jamais devinés ici).
+ */
+export async function lancerDemandePrete(question, { client, ids = [] } = {}) {
+  const demande = demandePreteTaches(question)
+  if (!demande || !client) return null
+  let reponse
+  if (demande.lire === 'saisieRapide') {
+    if (!Array.isArray(ids) || ids.length === 0) return null
+    reponse = await client.saisieRapide({ ids, apercu: true })
+  } else {
+    reponse = await client[demande.lire]()
+  }
+  return {
+    role: 'agent',
+    content: demande.carte === 'plan_propose' ? PHRASE_PLAN_PROPOSE : '',
+    cartes: [{
+      type: 'resultat', action_key: demande.cle, libelle: demande.question,
+      carte: demande.carte, donnees: reponse.data,
+    }],
+  }
+}

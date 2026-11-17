@@ -31,6 +31,9 @@ export const MESSAGE_INCERTAIN = 'Résultat incertain : vérifie si l’action a
 export const CARTES_CONNUES = Object.freeze([
   'liste_leads', 'file_touches', 'matin', 'fiche_lead', 'touche', 'suite_touche',
   'wa_message', 'wa_devis', 'document', 'visite', 'diagnostic',
+  // Tâches (TCH118) : rendues DIRECTEMENT par `features/taches/cartes/CartesTaches`.
+  'ma_journee', 'plan_propose', 'liste_taches', 'tache', 'capture_apercu', 'rythme',
+  'plan_projet', 'projet', 'revue_semaine', 'priorites', 'point',
 ])
 
 /** Au-delà, une carte (touche, aperçu de devis) est RELUE avant d'ouvrir WhatsApp. */
