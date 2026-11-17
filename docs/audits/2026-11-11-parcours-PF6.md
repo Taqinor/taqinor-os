@@ -1,5 +1,5 @@
 # Audit PF6 « lecture des données sensibles » — 2026-11-11 — L2
-<!-- dossier-v3 | groupe: ALEC | base: ae5a7ae | fraicheur: 1ea772d | constats: 35 | taches: 40 | decisions: 5 -->
+<!-- dossier-v3 | groupe: ALEC | base: ae5a7ae | fraicheur: 1ea772d | constats: 35 | taches: 41 | decisions: 5 -->
 
 ## 1. Charte
 | Champ | Valeur |

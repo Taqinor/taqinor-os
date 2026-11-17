@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-03"
+date_maj: "2026-11-17"
 
 decisions:
 
@@ -4668,3 +4668,27 @@ decisions:
     date: "2026-11-16"
     source: "Reda, question interactive, 16/11/2026 (session loop audit) ; avant : vérifie stock du 10/10/2026 (C-ASTK-VER-004), jamais posée (option recommandée en premier)"
     taches: [ASTK250]
+
+  - id: D-ASUP-7
+    question: "Le résumé d'attention (GET notifications/attention-summary/) sert « en retard », « aujourd'hui » et « actions dues » que AUCUN écran ne lit (seul le nombre d'approbations est lu, par le badge et la cloche) ; la tuile du tableau de bord qu'ASUP60 corrigeait n'existe pas. Que faire de ces compteurs ?"
+    options:
+      - cle: retirer
+        texte: "Les retirer de la réponse (aucun lecteur ; « Ma file » compte déjà les mêmes paniers à l'écran) ; ASUP60 devient caduque et se clôt avec"
+      - cle: brancher
+        texte: "Les afficher : une tuile « à faire » (en retard / aujourd'hui) sur l'accueil, lue de cette route ; ASUP60 garde son sens"
+    reponse: ouverte
+    date: "2026-11-17"
+    source: "vague d'acceptation 6 (16-17/11/2026, relecture adverse du rejeu d'ASUP60) : grep des lecteurs front des clés servies : 0 hors `approbations` ; non posée (option recommandée en premier)"
+    taches: [ASUP64]
+
+  - id: D-ADCG-4
+    question: "La preuve d'ADCG14 attend « (unhealthy) » dans `docker compose ps` après `docker compose pause redis`, mais Docker affiche « (Paused) » (la santé y passe bien à unhealthy, visible par `docker inspect`) ; un gel par SIGSTOP donne « (unhealthy) » en ~76 s. Que change-t-on ?"
+    options:
+      - cle: lire_state_health
+        texte: "Garder le geste `docker compose pause redis` et lire la santé par `docker inspect --format {{.State.Health.Status}}` (unhealthy)"
+      - cle: sigstop
+        texte: "Garder la lecture `docker compose ps` et changer le geste : geler redis-server par SIGSTOP (`kill -STOP 1` dans le conteneur), attendre ~80 s"
+    reponse: ouverte
+    date: "2026-11-17"
+    source: "enregistrement docs/audits/acceptation/ADCG/2026-11-13-8c4a0a109.md (ADCG14 FAIL hors couvre, l. 51) ; vague d'acceptation 6 (16-17/11/2026) : non posée (option recommandée en premier)"
+    taches: [ADCG119]
