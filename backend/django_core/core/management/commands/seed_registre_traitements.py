@@ -56,6 +56,23 @@ TRAITEMENTS = [
         'destinataires': 'Service marketing, prestataires d\'emailing/SMS.',
         'duree_conservation': 'Jusqu\'au retrait du consentement.',
     },
+    # TCH19 — le profil de rythme de l'app Tâches (docs/taches/conception/socle.md §8 ;
+    # rétention : docs/taches/reference/donnees.md §8 ; destinataires : textes.md §6).
+    {
+        'code': 'taches_rythme',
+        'finalite': 'Profil de rythme de l\'app Tâches : objectif du jour et habitudes de chaque '
+                    'utilisateur, calculés à partir de ses tâches (« Comprendre mon rythme »).',
+        'base_legale': 'Opposition à tout moment : interrupteur « Comprendre mon rythme » par '
+                       'utilisateur, allumé par défaut ; coupé, plus rien n\'est calculé ni gardé.',
+        'categories_donnees': 'Tâches faites par jour, statut des jours, objectif et palier du rythme, '
+                              'habitudes calculées (créneaux, taille des tâches), préférences dites, '
+                              'réponses aux cartes du coach.',
+        'categories_personnes': 'Utilisateurs de l\'app Tâches.',
+        'destinataires': 'L\'utilisateur lui-même ; le service d\'intelligence artificielle du '
+                         'Copilote (Anthropic ou Groq) à chaque échange.',
+        'duree_conservation': 'Jours du rythme 400 jours ; lignes de plan et cartes du coach 90 jours ; '
+                              'effacé dès que l\'interrupteur est coupé ou par « Tout effacer ».',
+    },
 ]
 
 
