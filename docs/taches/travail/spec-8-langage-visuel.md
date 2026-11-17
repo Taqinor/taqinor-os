@@ -43,8 +43,7 @@ le jeton `#projet` de la saisie — jamais sur une ligne entière.
 ## 4. Usage de la couleur
 - **Rouge** (`--destructive`) : « échéance aujourd'hui » ou dépassée, et les actions destructives. Rien d'autre
   (« échéance lun. 23 » proche = `--foreground` 500, sans teinte).
-- **Azur** (`--info`, accent de l'app) : heure courante, jour courant, sélection, onglet actif, estampille « → lun. 23 »,
-  Reporter, jetons reconnus, liens d'action, pastille d'À trier.
+- **Azur** (`--info`, accent de l'app) : maintenant, sélection, onglet actif, « → lun. 23 », Reporter, jetons lus.
 - **Vert** (`--success`) : la case faite et l'anneau. **Or** : le bouton plein (laiton) et l'étoile Essentielle
   (remplissage `--primary`, contour `--primary-text` ≥ 3:1 sur blanc).
 - Priorité haute = drapeau lucide en `--foreground`, jamais une teinte. En attente = case en pointillé + texte.
@@ -65,10 +64,9 @@ le jeton `#projet` de la saisie — jamais sur une ligne entière.
 Rien au-delà de 260 ms ; aucun mouvement ne retient la main.
 
 ## 6. États vides et icônes
-Pastille ronde 72 px teintée (`--tch-accent-doux`, ou le fond du projet pour un projet vide) + pictogramme lucide
-34 px trait 1,5 ; une phrase 17 px 500 (26 caractères de large) ; un bouton (plein seulement pour « Coller mes
-listes »). Icônes lucide (tracés réels de `lucide-react`) : 20 px trait 1,75 en ligne, 14 px trait 2 en méta,
-24 px trait 2 dans la barre d'onglets. Squelette statique, sans reflet animé.
+Pastille 72 px teintée (accent, ou fond du projet) + pictogramme lucide 34 px trait 1,5 ; une phrase 17 px 500 ;
+un bouton (plein seulement pour « Coller mes listes »). Icônes lucide (tracés réels de `lucide-react`) : 20 px
+trait 1,75 en ligne, 14 px trait 2 en méta, 24 px trait 2 dans les onglets. Squelette statique.
 
 ## 7. Refusé, et pourquoi
 - Carte ou bordure par tâche, barre de couleur à gauche de chaque ligne : faute 1, bruit.
@@ -76,23 +74,18 @@ listes »). Icônes lucide (tracés réels de `lucide-react`) : 20 px trait 1,75
 - Archivo pour les heures (chiffres proportionnels, faute 12) ; Sora (3ᵉ police sans rôle).
 - Une icône devant chaque option du sélecteur Quand : remplacée par trois tuiles texte (faute 4).
 - Titre de section « Aujourd'hui » sous le titre de page « Aujourd'hui » : redite.
-- Reflet animé du squelette, confettis, son : bruit, faute 9.
-- Mélanges vers `transparent` en OKLCH : tirent vers le rose (vu au tour 1) → toujours en sRGB.
-- Feuille de saisie à 50 % sous clavier : 86 px utiles ; la feuille prend la hauteur de son contenu, posée sur le
-  clavier ; les crans 50/85 % valent clavier fermé (planche 6).
+- Reflet animé du squelette, confettis, son (faute 9).
+- Mélanges vers `transparent` en OKLCH : tirent vers le rose (tour 1) → en sRGB.
+- Saisie en cran 50 % clavier ouvert (86 px utiles) : la feuille épouse son contenu sur le clavier ; les crans
+  50/85 % valent clavier fermé (planche 6).
 
 ## 8. Nouveaux jetons à verser dans `tokens.css` (clair ET sombre)
-`--tch-font-titre`, `--tch-font-texte` ; `--tch-titre-page`, `--tch-section`, `--tch-tache`, `--tch-tache-lh`,
-`--tch-meta`, `--tch-meta-lh`, `--tch-chiffre` (valeurs bureau sous 768 px) ; `--tch-ligne-h`, `--tch-cible`,
-`--tch-case`, `--tch-gouttiere`, `--tch-rayon-bloc/-champ/-carte/-feuille/-puce`, `--tch-heure-h`, `--tch-onglets-h` ;
-`--tch-ease-entree`, `--tch-ease-sortie` ; `--tch-point-l/-c`, `--tch-fond-l/-c`, `--tch-texte-l/-c`,
-`--tch-teinte-{terre…rose}` ; alias `--tch-surface`, `--tch-surface-haute`, `--tch-panneau`, `--tch-texte`,
-`--tch-texte-doux`, `--tch-accent`, `--tch-accent-texte`, `--tch-fait`, `--tch-fait-texte`, `--tch-etoile`,
-`--tch-etoile-fond`, `--tch-alerte`, `--tch-surveiller`, `--tch-trait`, `--tch-trait-grille`, `--tch-piste` ;
-mélanges `--tch-survol`, `--tch-selection`, `--tch-accent-doux`, `--tch-jeton`, `--tch-barre-fond`,
-`--tch-segment-actif`, `--tch-bloc-erp` ; littéraux `--tch-inverse-accent`, `--tch-voile`.
-NE PAS verser : la réplique des primitives `@theme` (maquette seulement), `--tch-zone-sure-bas`, `--tch-clavier-h`.
-La nouvelle feuille de l'app entre dans `GUARDED_SELECTORS` de `check_hex.mjs`.
+Tout le bloc `--tch-*` de tête de `taches.css` : polices, tailles (valeurs bureau ≥ 768 px), gabarits et rayons,
+les deux courbes, la palette paramétrée (`--tch-point/fond/texte-l/-c`, `--tch-teinte-*`), les alias de rôle et
+les mélanges (`--tch-survol`, `--tch-selection`, `--tch-jeton`, `--tch-bloc-erp`, `--tch-segment-actif`…), les deux
+seuls littéraux `--tch-inverse-accent` et `--tch-voile`. NE PAS verser : la réplique des primitives `@theme`
+(maquette seulement), `--tch-zone-sure-bas`, `--tch-clavier-h`. La feuille de l'app entre dans `GUARDED_SELECTORS`
+de `check_hex.mjs`.
 
 ## 9. Ce qui déplaît encore
 - Le balayage gauche coupe le titre au bord (« …monos ») : fidèle au geste, pas joli en planche.
