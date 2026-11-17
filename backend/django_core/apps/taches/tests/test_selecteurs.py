@@ -5,6 +5,7 @@ chacune ; une ligne posée dans la société B au nom d'un compte de A prouve qu
 ne dépend pas du seul propriétaire.
 """
 import datetime
+from unittest import mock
 
 from django.test import TestCase
 
@@ -123,10 +124,10 @@ class RechercheTests(TestCase):
         secret = fabriques.projet(cls.u1, nom='Canari-7Q9', confidentiel=True)
         cls.canari = fabriques.tache(cls.u1, projet=secret, titre='Canari-X3K')
         cls.notaire = fabriques.tache(cls.u1, titre='Appeler le notaire', notes='dossier succession')
-        cls.client = fabriques.tache(cls.u1, titre='Appeler le client')
+        cls.tache_client = fabriques.tache(cls.u1, titre='Appeler le client')
         cls.reunion = fabriques.tache(cls.u1, titre='Réunion équipe')
         etiquette = Etiquette.objects.create(company=cls.a, proprietaire=cls.u1, nom='Urgent')
-        EtiquetteTache.objects.create(company=cls.a, tache=cls.client, etiquette=etiquette)
+        EtiquetteTache.objects.create(company=cls.a, tache=cls.tache_client, etiquette=etiquette)
 
     def _trouve(self, q, assistant=False):
         return set(filtrer_q(taches_de(self.u1), q, assistant=assistant))
@@ -137,7 +138,7 @@ class RechercheTests(TestCase):
         self.assertEqual(self._trouve('x3k', assistant=True), set())
 
     def test_mots_en_et(self):
-        self.assertEqual(self._trouve('appeler'), {self.notaire, self.client})
+        self.assertEqual(self._trouve('appeler'), {self.notaire, self.tache_client})
         self.assertEqual(self._trouve('appeler notaire'), {self.notaire})
 
     def test_notes_jamais_lues_sous_l_assistant(self):
@@ -145,17 +146,25 @@ class RechercheTests(TestCase):
         self.assertEqual(self._trouve('succession', assistant=True), set())
 
     def test_etiquettes_et_nom_de_projet(self):
-        self.assertEqual(self._trouve('urgent'), {self.client})
+        self.assertEqual(self._trouve('urgent'), {self.tache_client})
         self.assertEqual(self._trouve('7q9'), {self.canari})
 
     def test_q_vide_ne_filtre_rien(self):
-        self.assertEqual(self._trouve('  '), {self.canari, self.notaire, self.client, self.reunion})
+        self.assertEqual(self._trouve('  '), {self.canari, self.notaire, self.tache_client, self.reunion})
 
-    def test_sans_accents_si_la_base_le_permet(self):
-        from apps.stock.selectors import recherche_sans_accents_disponible
-        if not recherche_sans_accents_disponible():
-            self.skipTest('public.f_unaccent absente de cette base : repli sensible aux accents')
-        self.assertEqual(self._trouve('reunion EQUIPE'), {self.reunion})
+    def test_avec_f_unaccent_la_requete_normalise_les_accents(self):
+        # La disponibilité est simulée au point d'entrée interrogé par `filtrer_q` ; on lit le SQL
+        # produit (jamais exécuté) : le test ne dépend pas de la présence de `public.f_unaccent`.
+        with mock.patch('apps.stock.selectors.recherche_sans_accents_disponible', return_value=True):
+            sql = str(filtrer_q(taches_de(self.u1), 'reunion').query)
+        self.assertIn('f_unaccent', sql)
+
+    def test_sans_f_unaccent_repli_sensible_aux_accents(self):
+        with mock.patch('apps.stock.selectors.recherche_sans_accents_disponible', return_value=False):
+            sql = str(filtrer_q(taches_de(self.u1), 'reunion').query)
+            self.assertNotIn('f_unaccent', sql)
+            self.assertEqual(self._trouve('RÉUNION équipe'), {self.reunion})
+            self.assertEqual(self._trouve('reunion'), set())
 
 
 class ConfidentialiteEnBaseTests(TestCase):
