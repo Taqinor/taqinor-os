@@ -95,6 +95,7 @@ export default function LigneProjet({ projet, aujourdhui = aujourdhuiIso(), onOu
                 <DropdownMenuItem onSelect={() => onAction?.('pause', projet)}>Mettre en pause</DropdownMenuItem>
               </>
             )}
+            <DropdownMenuItem destructive onSelect={() => onAction?.('supprimer', projet)}>Supprimer</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

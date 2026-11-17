@@ -12,6 +12,8 @@ vi.mock('../../api/tachesApi', async (original) => ({
   creerProjet: vi.fn(),
   modifierProjet: vi.fn(),
   reordonnerProjet: vi.fn(),
+  supprimerProjet: vi.fn(),
+  restaurerProjet: vi.fn(),
   trierProjetsParPriorite: vi.fn(),
 }))
 
@@ -140,6 +142,21 @@ describe('TCH88 — Projets : gestes sur place', () => {
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     await user.click(await screen.findByRole('menuitem', { name: 'Trier par priorité' }))
     expect(api.trierProjetsParPriorite).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('TCH92 — Projets : Supprimer depuis la ligne', () => {
+  it('⋯ → Supprimer ouvre le dialogue ; confirmer retire la ligne avec Annuler', async () => {
+    api.supprimerProjet.mockResolvedValue({ data: {} })
+    monter()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Actions pour « Ventes »' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    const dialogue = await screen.findByRole('dialog', { name: 'Supprimer le projet' })
+    await user.click(within(dialogue).getByRole('button', { name: 'Supprimer' }))
+    expect(api.supprimerProjet).toHaveBeenCalledWith(3)
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ventes' })).toBeNull())
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » supprimé')
   })
 })
 

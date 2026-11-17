@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, Diamond, TriangleAlert } from 'lucide-react'
 import {
-  classerErreur, creerTache, lireVueProjet, modifierProjet, nouvelleCle, rouvrirTache, supprimerTache,
-  restaurerTache, terminerTache,
+  annulerGeste, classerErreur, creerTache, lireVueProjet, modifierProjet, nouvelleCle, restaurerProjet, rouvrirProjet,
+  rouvrirTache, supprimerTache, restaurerTache, terminerTache,
 } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
+import { DialogueDecaler, DialogueSupprimer, DialogueTerminer } from '../../features/taches/projets/Dialogues'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH89 — Écran « Un projet », vue Liste (`/taches/projets/:id`). Maquette : docs/taches/maquettes/projet-liste.html.
@@ -83,6 +84,7 @@ export default function Projet() {
   const [vue, setVue] = useState(null)
   const [erreur, setErreur] = useState('')
   const [introuvable, setIntrouvable] = useState(false)
+  const [dialogue, setDialogue] = useState(null)
 
   const charger = useCallback(async () => {
     try {
@@ -191,11 +193,54 @@ export default function Projet() {
     await charger() // une fois, après le rituel : il a créé des étapes et des tâches
   }
 
+  const noms = useMemo(() => {
+    const taches = {}
+    const sections = {}
+    for (const s of vue?.sections ?? []) {
+      sections[s.id] = s.nom
+      for (const t of s.taches ?? []) taches[t.id] = t.titre
+    }
+    for (const t of vue?.sans_section ?? []) taches[t.id] = t.titre
+    return { taches, sections }
+  }, [vue])
+
+  const decale = async (reponse) => {
+    setDialogue(null)
+    const n = reponse.changements.length
+    proposerAnnuler({
+      message: `${accord(n, 'date changée', 'dates changées')}`,
+      onAnnuler: async () => { if (reponse.geste_id) await annulerGeste(reponse.geste_id); await charger() },
+    })
+    await charger() // le décalage touche des dates partout : une relecture, une fois
+  }
+
+  const termine = () => {
+    setDialogue(null)
+    proposerAnnuler({
+      message: `« ${vue.projet.nom} » terminé`,
+      onAnnuler: async () => { await rouvrirProjet(vue.projet.id); await charger() },
+    })
+    navigate('/taches/projets')
+  }
+
+  const supprime = () => {
+    const { id: projetId, nom } = vue.projet
+    setDialogue(null)
+    proposerAnnuler({
+      message: `« ${nom} » supprimé`,
+      onAnnuler: async () => { await restaurerProjet(projetId); navigate(`/taches/projets/${projetId}`) },
+    })
+    navigate('/taches/projets')
+  }
+
   const projet = vue?.projet
   const actionsEcran = projet ? [
     { libelle: 'Planifier le projet', onSelect: () => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s }) },
     { libelle: "Voir dans l'agenda", onSelect: () => navigate(`/taches/agenda?projet=${projet.id}`) },
+    { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
     ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
+    { libelle: 'Terminer le projet…', onSelect: () => setDialogue('terminer') },
+    { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []
 
   return (
@@ -225,6 +270,11 @@ export default function Projet() {
           />
         </>
       ) : null}
+      {vue && dialogue === 'decaler' ? (
+        <DialogueDecaler projet={vue.projet} noms={noms} aujourdhui={aujourdhui} onFait={decale} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'terminer' ? <DialogueTerminer projet={vue.projet} onFait={termine} onFermer={() => setDialogue(null)} /> : null}
+      {vue && dialogue === 'supprimer' ? <DialogueSupprimer projet={vue.projet} onFait={supprime} onFermer={() => setDialogue(null)} /> : null}
     </CoquilleTaches>
   )
 }

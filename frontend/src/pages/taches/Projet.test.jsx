@@ -186,3 +186,17 @@ describe('TCH91 — Un projet : ?planifier=1 ouvre Planifier le projet', () => {
     expect(api.modifierProjet).not.toHaveBeenCalled()
   })
 })
+
+describe('TCH92 — Un projet : ⋯ ouvre Décaler, Terminer, Supprimer', () => {
+  it('le menu porte les trois entrées et « Supprimer le projet… » ouvre le dialogue', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20 · échéance 15/12')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    const menu = await screen.findByRole('menu')
+    const libelles = within(menu).getAllByRole('menuitem').map((m) => m.textContent)
+    expect(libelles).toEqual(expect.arrayContaining(['Décaler les dates…', 'Terminer le projet…', 'Supprimer le projet…', 'Planifier le projet', "Voir dans l'agenda"]))
+    await user.click(within(menu).getByRole('menuitem', { name: 'Supprimer le projet…' }))
+    expect(await screen.findByRole('dialog', { name: 'Supprimer le projet' })).toHaveTextContent('Supprimer « Ventes » et ses 20 tâches ?')
+  })
+})

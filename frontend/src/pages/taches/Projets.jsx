@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, FolderPlus } from 'lucide-react'
 import {
-  creerProjet, listerProjets, modifierProjet, reordonnerProjet, trierProjetsParPriorite,
+  creerProjet, listerProjets, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite,
 } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
+import { DialogueSupprimer } from '../../features/taches/projets/Dialogues'
 import LigneProjet from '../../features/taches/projets/LigneProjet'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { accord, aujourdhuiIso, jourLong } from '../../features/taches/lib/textes'
@@ -61,7 +62,7 @@ function FormulaireNouveau({ onCreer, onModeles }) {
       />
       {erreur ? <p id="ep-nouveau-erreur" className="ep-erreur" role="alert">{erreur}</p> : null}
       <div className="carte-actions">
-        <button type="submit" className="bouton plein-accent" disabled={envoi || !nom.trim()}>Créer</button>
+        <button type="submit" className="bouton plein" disabled={envoi || !nom.trim()}>Créer</button>
         <button type="button" className="bouton second ep-modeles-lien" onClick={onModeles}>Depuis un modèle</button>
       </div>
     </form>
@@ -78,6 +79,7 @@ export default function Projets() {
   const [erreur, setErreur] = useState('')
   const [pauseOuverte, setPauseOuverte] = useState(false)
   const [nouveau, setNouveau] = useState(false)
+  const [asupprimer, setAsupprimer] = useState(null)
 
   const lire = useCallback(async () => {
     try {
@@ -180,6 +182,21 @@ export default function Projets() {
     if (code === 'en_haut') mettreEnHaut(projet)
     else if (code === 'pause') mettreEnPause(projet)
     else if (code === 'reprendre') reprendre(projet)
+    else if (code === 'supprimer') setAsupprimer(projet)
+  }
+
+  const supprime = (projet) => {
+    setAsupprimer(null)
+    setActifs((l) => l.filter((p) => p.id !== projet.id))
+    setEnPause((l) => l.filter((p) => p.id !== projet.id))
+    proposerAnnuler({
+      message: `« ${projet.nom} » supprimé`,
+      onAnnuler: async () => {
+        const { data } = await restaurerProjet(projet.id)
+        const rendu = { ...projet, ...(data?.projet ?? {}) }
+        setActifs((l) => [...l, rendu].sort(parPriorite))
+      },
+    })
   }
 
   const creer = async (nom) => {
@@ -215,7 +232,7 @@ export default function Projets() {
       {vide ? (
         <div className="ep-vide">
           <p>Aucun projet</p>
-          <button type="button" className="bouton plein-accent" onClick={() => window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR))}>
+          <button type="button" className="bouton plein" onClick={() => window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR))}>
             Coller mes listes
           </button>
         </div>
@@ -250,6 +267,7 @@ export default function Projets() {
           ) : null}
         </section>
       ) : null}
+      {asupprimer ? <DialogueSupprimer projet={asupprimer} onFermer={() => setAsupprimer(null)} onFait={() => supprime(asupprimer)} /> : null}
     </CoquilleTaches>
   )
 }

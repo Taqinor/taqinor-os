@@ -283,8 +283,8 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
       <div className="carte-actions ep-planifier-pied">
         {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => maj({ pas: 1 })}>Précédent</button> : null}
         {etat.pas === 1
-          ? <button type="button" className="bouton plein-accent" onClick={() => maj({ pas: 2 })}>Suivant</button>
-          : <button type="button" className="bouton plein-accent" disabled={occupe} onClick={terminer}>Terminer</button>}
+          ? <button type="button" className="bouton plein" onClick={() => maj({ pas: 2 })}>Suivant</button>
+          : <button type="button" className="bouton plein" disabled={occupe} onClick={terminer}>Terminer</button>}
       </div>
     </section>
   )
