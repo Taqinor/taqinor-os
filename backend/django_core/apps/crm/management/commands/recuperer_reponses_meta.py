@@ -17,9 +17,12 @@ comptée « déjà présente ». ``--dry-run`` n'appelle PAS Meta : il compte ce
 serait demandé. À lancer en production SUR DÉCISION DU FONDATEUR seulement.
 """
 import datetime
+import logging
 import urllib.error
 
 from django.core.management.base import BaseCommand, CommandError
+
+logger = logging.getLogger(__name__)
 
 _STATUTS = ('récupérées', 'déjà présentes', 'expirées chez Meta', 'erreurs',
             'ignorées (lead effacé)', 'à récupérer')
@@ -125,6 +128,8 @@ def _traiter(company, leadgen_id, raw, lead, jeton, dry_run):
     except urllib.error.HTTPError as exc:
         return 'expirées chez Meta' if exc.code in (400, 404) else 'erreurs'
     except Exception:  # noqa: BLE001 — une soumission en échec n'arrête pas les autres (D-ENF22-BLE001)
+        logger.warning('recuperer_reponses_meta : récupération en échec (leadgen %s)', leadgen_id,
+                       exc_info=True)
         return 'erreurs'
     if raw is not None:
         if not reponses_meta.poser_reponses(raw, reponse, lead):
