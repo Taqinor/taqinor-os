@@ -1,10 +1,8 @@
 # Vérification contradictoire de la référence (`reference/donnees.md`, `reference/api.md`)
 
-Lu en entier : consignes, socle, arbitrages A1-A15, les deux cibles ; sections Données/API des specs 2-6b ;
-`verif-coherence.md` ; constats B/M des cinq autres rapports. Scripts jetables (lancés ici) dans
-`docs/taches/travail/verifref/` : `routes.py` (tables de routes), `champs.py` (champs ↔ JSON), `noms.py` (noms
-≤ 30), `enums.py` (longueurs), `gardes.py` + `faux_models.py` (vraies fonctions `check_file` du dépôt). Rien d'autre
-modifié. Aucun test Django, aucune base.
+Lu : consignes, socle, A1-A15, les deux cibles en entier ; Données/API des specs 2-6b ; `verif-coherence.md` ;
+B/M des autres rapports. Scripts lancés (`verifref/`) : `routes.py`, `champs.py`, `noms.py`, `enums.py`,
+`gardes.py` + `faux_models.py` (vraies fonctions `check_file` du dépôt). Aucun test Django, aucune base.
 
 **Bilan : 0 BLOQUANT, 10 MAJEUR, 22 MINEUR.**
 
@@ -19,8 +17,7 @@ modifié. Aucun test Django, aucune base.
 6. `rang` dans ITEM (spec-3:152) et la règle d'ordre d'affichage d'une section (verif-specs-2-3 M13).
 7. Manifeste `apps/taches/platform.py`, `permissions_registre.py`, `appSkus.js` (trou T11). Rien dans la référence.
 
-Renommages faits mais non annoncés (MINEUR) : lot `corbeille`→`supprimer`, geste `corbeille`→`suppression`
-(spec-2:159, :186), `convertir-activite {"activite_id"}` singulier retiré (spec-6a:86).
+Non annoncés : `corbeille`→`supprimer`/`suppression` (spec-2:159, :186), `{"activite_id"}` singulier (spec-6a:86).
 
 ### Couverture (✓ appliqué · ~ partiel · ✗ non)
 | Lot | Statut |
@@ -50,13 +47,11 @@ Renommages faits mais non annoncés (MINEUR) : lot `corbeille`→`supprimer`, ge
 - Énumérations dans les exemples : toutes valides vis-à-vis de §1, sauf la palette (MAJ-1) et deux listes non fermées :
   `sante.code` `tout_fait` (api.md:80) n'a aucune fonction dans `moteur/sante.py` (donnees.md:494) ;
   `obligations[].famille` n'est pas une énumération.
-- Invariants recalculés sur l'exemple `aujourdhui/` : pastille 4 + 1 = 5 ✓ ; `plan_lignes` 4 / `plan_tenues` 1 ✓ ;
-  `minutes_prevues` 75 et `sans_estimation` 1 ✓ ; `a_decider` reportée 3 fois ✓ ; `lock_version:0` possible
-  (`core/champs_plateforme.py:31-34`, 0 à la création) ✓. `progression.prevues` n'est défini nulle part (5 = nombre
-  d'éléments du jour ici, ou l'objectif ?) : min-21.
-- Doublons : `GET convertir-activite/` ≡ `aujourdhui.a_trier.a_convertir` ; `GET recurrences/{id}/` ≡ `TACHE.recurrence` ;
-  `GET preferences/` ≡ `RYTHME.preferences` ; `mode` écrit par `POST rythme/` ET `PATCH reglages/` (MAJ-6) ;
-  `PUT revue/projets/{id}` `terminer` ≈ `POST projets/{id}/terminer/` (`boite`) — un seul service exigé.
+- Exemple `aujourdhui/` recalculé : pastille 4 + 1 = 5, `plan_lignes` 4 / `plan_tenues` 1, `minutes_prevues` 75,
+  `sans_estimation` 1, motif `reportee_3_fois`, `lock_version:0` (0 à la création, `core/champs_plateforme.py:31-34`) :
+  tout ✓. `progression.prevues` n'est défini nulle part (min-21).
+- Doublons : `mode` écrit par `POST rythme/` ET `PATCH reglages/` (MAJ-6) ; revue `terminer` ≈ `projets/{id}/terminer/`
+  `boite` (un seul service) ; trois GET redondants (§4).
 
 ## 3. Faisabilité Django
 
@@ -67,27 +62,21 @@ Renommages faits mais non annoncés (MINEUR) : lot `corbeille`→`supprimer`, ge
   `tenir_fixee_le` passent : le motif ne lit pas `_le`).
 - `noms.py` : 40 noms, le plus long 25 caractères, tous préfixés `taches_`. `enums.py` : toutes les valeurs tiennent
   dans leur `max_length` (`inaccessible` et `sans_donnees` à 12/12, `jours_ouvres` à 12/12).
-- Baselines `apps/records/platform_baselines/` : aucun modèle en `*Activity`, aucune FK `company` à la main, viewsets
-  sur `CompanyScopedModelViewSet`, pas de `statut`+`Ligne<X>`+`montant_ttc` : rien ne s'y ajoute.
-- Migration 0001 : aucune dépendance circulaire entre modèles distincts (FK auto-référentes seulement) ; aucun nom de
-  modèle déjà pris avec un accesseur inverse par défaut (seuls `installations.Projet`/`ModeleProjet` existent, avec
-  `related_name` explicites, `apps/installations/models_program.py:34-79`). Dernière migration `records` = 0014 ✓,
-  `notifications` = 0078 ✓.
-- `SoftDeleteModel.restore()` émet TOUJOURS `record_soft_restored` (`core/models.py:227-239`, sans drapeau `record`) :
-  deux UPDATE inoffensifs dans `trash`/`DeletionRecord`. Restaurer un projet dont le nom est repris lèvera
-  `IntegrityError` sur `taches_projet_nom_uniq` : la 409 `{"nom":…}` d'api.md:404 suppose un `atomic()` + `except` —
-  à écrire dans le service.
+- Baselines `platform_baselines/` : aucun `*Activity`, aucune FK `company` à la main, viewsets scopés : rien ne s'y ajoute.
+- Migration 0001 : pas de cycle entre modèles distincts ; aucun accesseur inverse en conflit (`installations.Projet`
+  et `ModeleProjet` ont des `related_name` explicites, `apps/installations/models_program.py:34-79`). Dernières
+  migrations : `records` 0014, `notifications` 0078 ✓.
+- `restore()` émet toujours `record_soft_restored` (`core/models.py:227-239`) : deux UPDATE inoffensifs. Restaurer un
+  projet au nom repris lève `IntegrityError` (`taches_projet_nom_uniq`) : la 409 d'api.md:404 exige `atomic()` + `except`.
 - Django **5.2.19** (`requirements.txt`) : `CheckConstraint` prend `condition=` (mot-clé), pas `Q(…)` positionnel
   (donnees.md:164-165) ; les `JSONField` à défaut liste exigent un appelable (`default=list`, donnees.md:239, 242).
-- `nom_cle` (`editable=False`) : où est-il calculé ? Un `bulk_create` de sections (planification) ou un
-  `QuerySet.update(nom=…)` laisse `''` → collision de `taches_section_nom_uniq` dès la 2e section.
+- `nom_cle` : un `bulk_create` de sections ou un `update(nom=…)` laisse `''` → collision dès la 2e section (min-15).
 
 ## 4. Faisabilité API
 
-- OpenAPI, paramètres : bien posés (api.md:30-32). Ajouter les types non JSON (`text/calendar`, `text/plain` de capture).
-- **Pagination absente** (MAJ-8). **Classe de jeton** : pas de liste fermée d'authentifications dans les gardes ; la
-  garde de locataire n'impose rien à un `APIView` nu (`check_tenant_isolation.py:64-66`) ; l'inventaire ne lit que
-  `permission_classes` → `IsAuthenticatedInterne` suffit. Le vrai trou est la société (MAJ-4).
+- OpenAPI : bien posé (api.md:30-32) ; ajouter les types `text/calendar` et `text/plain`.
+- **Classe de jeton** : aucune liste fermée d'authentifications ; la garde de locataire n'impose rien à un `APIView`
+  nu (`check_tenant_isolation.py:64-66`) ; l'inventaire ne lit que `permission_classes`. Le trou est la société (MAJ-4).
 - Verrou : `VerrouOptimisteSerializerMixin` est opt-in et ne marche qu'en mise à jour de sérialiseur
   (`core/mixins.py:263-290`). « Obligatoire » (400) et les routes d'action (`planifier/`, `planification/`) demandent un
   code propre : `version_envoyee()` + comparaison sous `select_for_update`, `ConflitVersion` avec `actuel` = TACHE.
@@ -95,37 +84,31 @@ Renommages faits mais non annoncés (MINEUR) : lot `corbeille`→`supprimer`, ge
 - Idempotence : `IdempotencyRecord` est unique par `(company, endpoint, key)`, pas par utilisateur
   (`core/idempotency.py:156-160`, `:250-253`) : deux collègues avec la même clé et le même corps rejouent la réponse
   de l'autre (titres, notes). Purge à 24 h (`core/tasks.py:183`).
-- **`GET aujourdhui/` — requêtes** (estimation non mesurée) : auth + permission + module ≈ 3-4 ; réglages 1 ;
-  préférences 1 ; fériés 1-2 ; PlanJour + lignes 2 ; jeu de tâches du jour avec annotations 1-2 ; réserve de Proposé 1 ;
-  focus de semaine 1 ; capacité (9 jours) 1 ; cartes 1 ; compteurs À trier 2-3 ; activités ERP + `peut_cloturer` +
-  closes du jour 2-3 → **≈ 18-23 sans familles** ; visites, interventions, touches + 3-6 → **≈ 22-29**. ≤ 18 ne tient
-  qu'avec un seul jeu de tâches partitionné en Python et des agrégats conditionnels. `badge/` ≤ 6 (api.md:535) est
-  **intenable** : R16 lui fait calculer Proposé, donc la moitié des requêtes ci-dessus (≈ 12-15).
-- 107 routes : ≈ 45 sont du CRUD de viewset (checklist, étiquettes, vues, sections, modèles, projets, tâches) — coût
-  marginal ; ≈ 60 sont des actions, chacune avec sérialiseur, schéma, test. Fusions sans perte : retirer
-  `GET convertir-activite/`, `GET recurrences/{id}/`, `GET preferences/`, `GET checklist/[{id}/]`,
-  `GET sections/{id}/` (déjà dans la fiche, la vue projet ou RYTHME) ; `mode` seulement par `POST rythme/`.
+- **`GET aujourdhui/`** (estimation, non mesurée) : auth/droit/module 3-4 ; réglages 1 ; préférences 1 ; fériés 1-2 ;
+  plan + lignes 2 ; tâches du jour annotées 1-2 ; réserve de Proposé 1 ; focus 1 ; capacité 1 ; cartes 1 ; À trier 2-3 ;
+  activités ERP 2-3 → **≈ 18-23 sans familles**, **≈ 22-29 avec** : ≤ 18 exige un seul jeu de tâches partitionné en
+  Python. `badge/` ≤ 6 (api.md:535) est **intenable** : R16 lui fait calculer Proposé (≈ 12-15).
+- 107 routes : ≈ 45 CRUD de viewset (coût marginal), ≈ 60 actions (sérialiseur, schéma, test chacune). Fusions sans
+  perte : retirer `GET convertir-activite/`, `GET recurrences/{id}/`, `GET preferences/`, `GET checklist/[{id}/]`,
+  `GET sections/{id}/` (déjà servis ailleurs) ; `mode` seulement par `POST rythme/`.
 
 ## 5. Vie privée
 
-- Ids reçus : invariant 9 couvre presque tout. Manquent `journee/proposition` `inclure`/`exclure` (un id étranger doit
-  être ignoré, jamais chargé), `agenda/?projet=`, `checklist/` POST (`tache`), `sections/` POST (`projet`).
-- Routes à jeton : bonnes règles de vérification, mais la société n'est pas transmise (MAJ-4) et les débits flux/tuile
-  manquent (orphelin 1).
-- Tâche confidentielle : écran = titre ; assistant/flux/tuile = « Tâche confidentielle » ; push = sans titre ✓. Fuite
-  par recherche : `filtrer_q` cherche dans les **notes** (donnees.md:468) ; sous `X-Taqinor-Assistant`, `recherche/`
-  révèle qu'une note contient un mot, et que une tâche confidentielle correspond à « Karim ».
+- Ids reçus : l'invariant 9 couvre presque tout ; manquent `inclure`/`exclure` de `journee/proposition` (ignorer un
+  id étranger), `agenda/?projet=`, `tache` de `POST checklist/`, `projet` de `POST sections/`.
+- Routes à jeton : vérifications bonnes, société non transmise (MAJ-4), débits flux/tuile absents (orphelin 1).
+- Confidentielle : écran = titre ; assistant/flux/tuile = « Tâche confidentielle » ; push sans titre ✓. Fuite par
+  recherche : `filtrer_q` lit les **notes** (donnees.md:468) ; sous `X-Taqinor-Assistant`, `recherche/` révèle qu'une
+  note contient un mot, ou qu'une tâche confidentielle correspond à « Karim ».
 - `Tache.lien_libelle` est une copie du nom du lead : aucun mécanisme ne l'efface (MAJ-7) et `aujourdhui/` le sert
   sans revérifier la visibilité (seule la fiche revérifie, api.md:228).
 
 ## 6. Découpage en lanes
 
-Goulots que la référence laisse ouverts : `services.py` (creer_taches, planifier, gestes : tous les domaines),
-`serializers.py` (ITEM/TACHE/PROJET partagés), `selectors.py`, `models.py` (champs 0003+), le client d'API front, le
-composant de ligne ITEM, `module.config.jsx`, et quatre fichiers régénérés (`docs/openapi-schema.yml`,
-`docs/rbac-endpoint-inventory.md`, `frontend/src/test/fixtures/contractSamples.js`, `docs/CODEMAP.md`).
-Découpage proposé (paquets, gardes compatibles : `models/*.py`, `services/*.py`, `views/*.py`, `serializers/*.py`
-sont tous lus, `check_unique_scoping.py:79-84`, `check_read_modify_write.py:64`, `check_tenant_isolation.py:10-13`) :
+Goulots laissés ouverts : `services.py`, `serializers.py`, `selectors.py`, `models.py` (0003+), le client d'API, la
+ligne ITEM, `module.config.jsx`, et quatre fichiers régénérés (`openapi-schema.yml`, `rbac-endpoint-inventory.md`,
+`contractSamples.js`, `CODEMAP.md`). Paquets proposés (les gardes lisent `models/`, `services/`, `views/`,
+`serializers/` : `check_unique_scoping.py:79-84`, `check_tenant_isolation.py:10-13`) :
 - **L0 socle (seul, d'abord)** : `models/{projets,taches,journee,rythme,presence,erp,gestes}.py` + 0001, `choix.py`,
   `confidentialite.py`, `selectors/base.py` (taches_de…, jours travaillés), `services/{planification,gestes}.py`,
   `serializers/formes.py` (ITEM, TACHE, TACHE_ECRITE, PROJET, PROPOSITION, LIEN), `urls.py` complet, `views/*.py`
@@ -183,10 +166,9 @@ sont tous lus, `check_unique_scoping.py:79-84`, `check_read_modify_write.py:64`,
 - **MAJ-9 Hors ligne multi-comptes.** Orphelin 4. → `saisie-rapide/` accepte `proprietaire_attendu` (id) et répond 409
   `{"code":"autre_compte"}` s'il diffère ; clé de cache `taches:aujourdhui:<user>:<jour>` ; vidage sur
   `taqinor:auth-logout`.
-- **MAJ-10 Le socle seul sur `main`.** donnees.md:474-481 fait atterrir seul un socle de ~100 vues en 501 ;
-  l'auto-déploiement le met en prod, et `taches_voir` est accordé à tous les rôles internes (socle §8). → Le socle
-  déclare le code de droit sans l'accorder ; l'octroi aux rôles, l'`appSku` et l'entrée de nav partent dans la dernière
-  vague ; ajouter `serializers/`, `services/`, `selectors/` découpés (§6).
+- **MAJ-10 Le socle seul sur `main`.** donnees.md:474-481 y pose ~100 vues en 501 ; l'auto-déploiement les met en
+  prod, ouvertes à tous les rôles internes (socle §8). → Déclarer le droit sans l'accorder ; octroi, `appSku` et nav
+  dans la dernière vague ; découper `serializers/`, `services/`, `selectors/` (§6).
 
 ### MINEUR
 min-1 107 routes, pas 102. min-2 Notification de 15 h → `?ouvrir=alleger` (api.md:490) contre A15 (« ouvre
@@ -209,7 +191,6 @@ dans le même geste. min-21 Définir `progression.prevues` ; supprimer `tout_fai
 l'édition `base.py` comptée.
 
 ## Facultatif
-Contrat import-linter `taches-models-decoupled` ; `related_name='+'` sur les deux `content_type` ; noms `_le` réservés
-aux `DateTimeField` (`echec_le`, `expire_le`, `tenir_fixee_le` sont des dates).
+Contrat import-linter `taches-models-decoupled` ; `related_name='+'` sur les `content_type` ; `_le` réservé aux horodatages.
 
 Before reporting progress, audit each claim against a tool result from this session. Only report work you can point to evidence for; if something is not yet verified, say so explicitly. If tests fail, say so with the output.
