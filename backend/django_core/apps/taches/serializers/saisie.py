@@ -379,6 +379,56 @@ class AttendreEntreeSerializer(serializers.Serializer):
     en_attente_de = serializers.CharField(required=False, allow_blank=True, default='')
 
 
+class ReordonnerEntreeSerializer(serializers.Serializer):
+    """Corps de `reordonner/` : la place entre deux voisins (`avant_id` précède, `apres_id` suit)."""
+
+    liste = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
+    avant_id = serializers.IntegerField(required=False, allow_null=True)
+    apres_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class ChangementEntreeSerializer(serializers.Serializer):
+    geste = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
+    titre = serializers.CharField(required=False, allow_blank=True)
+
+
+class RappelEntreeSerializer(serializers.Serializer):
+    """Corps de `rappels/` : `{jour, heure}` ou `{ancre, decalage_jours, heure}`."""
+
+    jour = serializers.DateField(required=False)
+    heure = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
+    ancre = serializers.CharField(required=False, allow_blank=True)
+    decalage_jours = serializers.IntegerField(required=False)
+
+
+class RepeterEntreeSerializer(serializers.Serializer):
+    """Corps de `repeter/` : `{dans_minutes}` ou `{jour, heure}`."""
+
+    dans_minutes = serializers.IntegerField(required=False, min_value=1)
+    jour = serializers.DateField(required=False)
+    heure = serializers.CharField(required=False)
+
+    def validate(self, donnees):
+        if 'dans_minutes' not in donnees and not ('jour' in donnees and 'heure' in donnees):
+            raise serializers.ValidationError({'dans_minutes': [MESSAGE_REQUIS]})
+        return donnees
+
+
+class RecurrenceEntreeSerializer(serializers.Serializer):
+    """Corps de `PATCH recurrences/{id}/` : tout est facultatif ; `actif: false` arrête la série."""
+
+    frequence = serializers.CharField(required=False)
+    intervalle = serializers.IntegerField(required=False)
+    jours_semaine = serializers.CharField(required=False)
+    jour_du_mois = serializers.IntegerField(required=False, allow_null=True)
+    rang_dans_mois = serializers.IntegerField(required=False, allow_null=True)
+    mode = serializers.CharField(required=False)
+    date_debut = serializers.DateField(required=False)
+    date_fin = serializers.DateField(required=False, allow_null=True)
+    actif = serializers.BooleanField(required=False)
+    appliquer_a_l_ouverte = serializers.BooleanField(required=False)
+
+
 def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, projet_cree=None,
                    rappel=None, question_titres=False, avertissements=()):
     """La TACHE_ECRITE d'une écriture : `tache` relue et chargée (aucune requête par ligne), + `suivante`

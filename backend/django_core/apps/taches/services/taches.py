@@ -20,11 +20,13 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.taches.choix import CibleLiable, LienEtat, Priorite, Source, StatutRappel, StatutTache
+from apps.taches.choix import (
+    CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
+)
 from apps.taches.confidentialite import ECRAN, nom_pour
 from apps.taches.models.rythme import ReglagesRythme
-from apps.taches.models.taches import ElementChecklist, EtiquetteTache, Tache
-from apps.taches.moteur.gabarits import format_jour
+from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
+from apps.taches.moteur.gabarits import format_heure, format_jour
 from apps.taches.moteur.recurrence import prochaine_occurrence
 from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, filtrer_q, jours_travailles_de, projets_de, rappels_de, sections_de,
@@ -428,6 +430,8 @@ def modifier_tache(user, pk, donnees, *, version, aujourdhui=None, usage=ECRAN):
             _lien(edition, donnees['lien'])
         if 'etiquettes' in donnees:
             _etiquettes(edition, donnees['etiquettes'])
+        if 'recurrence' in donnees:
+            _regle_de_la_tache(edition, donnees['recurrence'], aujourdhui)
         geste = None
         if edition.ecrire:
             tache.save(update_fields=_colonnes(edition.ecrire))
@@ -435,6 +439,15 @@ def modifier_tache(user, pk, donnees, *, version, aujourdhui=None, usage=ECRAN):
         if ops:
             geste = enregistrer_geste(user, 'modification', 'Modifiée', ops)
     return ResultatEcriture(tache, geste, tuple(avertissements_du_jour(user, tache, aujourdhui)))
+
+
+def avertissement_hors_fenetre(resultat):
+    """L'avertissement `hors_fenetre` d'un rappel posé hors des heures de travail de la société : il
+    sonnera quand même (textes.md §2.5). `resultat` = `ResultatRappel`."""
+    if not resultat.hors_fenetre:
+        return ()
+    heure = format_heure(resultat.rappel.heure)
+    return ({'code': 'hors_fenetre', 'message': f'Hors des heures de travail : il sonnera quand même à {heure}.'},)
 
 
 def rappel_a_la_creation(user, tache):
@@ -718,3 +731,224 @@ def restaurer_tache(user, pk):
         message = 'Restaurée dans À trier' if sans_projet else 'Restaurée'
         geste = enregistrer_geste(user, 'restauration', message, ops)
     return ResultatEcriture(tache_du_compte(user, pk), geste)
+
+
+# --- Réordonner, écho de changement ----------------------------------------------------------------
+
+LISTES = ('jour', 'projet')
+GESTES_ECHO = ('renommer', 'abandonner', 'supprimer')
+MESSAGE_REQUIS = 'Requis.'
+
+
+def _liste_a_ordonner(user, t, liste):
+    """`(queryset, colonne de rang, clé d'ordre de départ)` de la liste où `t` se range : « jour » = les
+    tâches ouvertes du même jour prévu (`rang_jour`), « projet » = ses voisines du même projet, de la même
+    étape et du même parent (`rang_projet`, puis `id` : invariant 32)."""
+    ouvertes = taches_de(user).filter(statut__in=OUVERTES)
+    if liste == 'jour':
+        if t.jour_prevu is None:
+            raise serializers.ValidationError({'liste': [MESSAGE_VALEUR_INCONNUE]})
+        qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
+        return qs, 'rang_jour', lambda x: (x.rang_jour is None, x.rang_jour or 0,
+                                           x.heure_debut or datetime.time.max, -x.priorite, x.pk)
+    qs = ouvertes.filter(projet_id=t.projet_id, section_id=t.section_id, parent_id=t.parent_id)
+    return qs, 'rang_projet', lambda x: (x.rang_projet is None, x.rang_projet or 0, x.pk)
+
+
+def _voisin(user, pk, ids, nom):
+    """Le voisin `pk` (du compte, sinon 404) qui doit figurer dans la liste ordonnée (sinon 400)."""
+    if pk is None:
+        return None
+    voisin = tache_du_compte(user, pk)
+    if voisin.pk not in ids:
+        raise serializers.ValidationError({nom: [MESSAGE_VALEUR_INCONNUE]})
+    return voisin
+
+
+def reordonner_tache(user, pk, liste, avant_id=None, apres_id=None):
+    """Place `pk` entre ses deux voisins (`avant_id` le précède, `apres_id` le suit) et NUMÉROTE toute la
+    liste par pas de 1 024 (invariant 32). Aucun geste ; `lock_version` ne bouge pas."""
+    if liste not in LISTES:
+        raise serializers.ValidationError({'liste': [MESSAGE_VALEUR_INCONNUE]})
+    if avant_id is None and apres_id is None:
+        raise serializers.ValidationError({'avant_id': [MESSAGE_REQUIS]})
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        qs, colonne, cle = _liste_a_ordonner(user, t, liste)
+        par_id = {x.pk: x for x in qs.select_for_update()}
+        par_id.setdefault(t.pk, t)
+        ids = [x.pk for x in sorted(par_id.values(), key=cle) if x.pk != t.pk]
+        avant, apres = _voisin(user, avant_id, ids, 'avant_id'), _voisin(user, apres_id, ids, 'apres_id')
+        ids.insert(ids.index(avant.pk) + 1 if avant is not None else ids.index(apres.pk), t.pk)
+        for rang, identifiant in enumerate(ids, start=1):
+            setattr(par_id[identifiant], colonne, rang * PAS_RANG)
+        Tache.objects.bulk_update(list(par_id.values()), [colonne])  # aucune écriture de `lock_version`
+
+
+def apercu_changement(user, pk, geste, titre=None, *, usage=ECRAN):
+    """L'écho d'un renommage, d'un abandon ou d'une suppression demandés (rien n'est écrit) :
+    `{"geste", "avant", "apres"}`. `avant` passe par `nom_pour` : jamais un titre confidentiel à l'assistant."""
+    if geste not in GESTES_ECHO:
+        raise serializers.ValidationError({'geste': [MESSAGE_VALEUR_INCONNUE]})
+    t = tache_du_compte(user, pk)
+    apres = _titre(titre) if geste == 'renommer' else None
+    return t, {'geste': geste, 'avant': nom_pour(t, usage), 'apres': apres}
+
+
+# --- Règle de récurrence ----------------------------------------------------------------------------
+
+MESSAGE_FIN_AVANT_DEBUT = 'La date de fin précède la date de début.'
+MESSAGE_DATE = 'Date attendue (AAAA-MM-JJ).'
+CHAMPS_REGLE = ('frequence', 'intervalle', 'jours_semaine', 'jour_du_mois', 'rang_dans_mois', 'mode',
+                'date_debut', 'date_fin')
+RANGS_DU_MOIS = (1, 2, 3, 4, -1)
+
+
+def _date_de_regle(valeur):
+    if valeur is None or isinstance(valeur, datetime.date):
+        return valeur
+    try:
+        return datetime.date.fromisoformat(str(valeur))
+    except ValueError:
+        raise ValueError(MESSAGE_DATE)
+
+
+def _entier_entre(valeur, bas, haut):
+    return isinstance(valeur, int) and not isinstance(valeur, bool) and bas <= valeur <= haut
+
+
+#: champ → la valeur est-elle permise ? (les dates sont lues à part)
+CONTROLES_REGLE = {
+    'frequence': lambda v: v in Frequence.values,
+    'mode': lambda v: v in ModeRecurrence.values,
+    'intervalle': lambda v: _entier_entre(v, 1, 99),
+    'jours_semaine': lambda v: isinstance(v, str) and len(v) == 7 and set(v) <= {'0', '1'},
+    'jour_du_mois': lambda v: v is None or v == -1 or _entier_entre(v, 1, 31),
+    'rang_dans_mois': lambda v: v is None or v in RANGS_DU_MOIS,
+}
+
+
+def _controle_regle(champ, valeur):
+    """La valeur de `champ` de la règle, ou `ValueError(message)`."""
+    if champ in ('date_debut', 'date_fin'):
+        return _date_de_regle(valeur)
+    if not CONTROLES_REGLE[champ](valeur):
+        raise ValueError(MESSAGE_VALEUR_INCONNUE)
+    return valeur
+
+
+def valeurs_regle(spec, enveloppe=None):
+    """Les valeurs REVÉRIFIÉES de `spec` (dict) pour une règle ; 400 sous le champ fautif
+    (`{"<champ>": […]}`, ou `{"<enveloppe>": {"<champ>": […]}}`)."""
+    if not isinstance(spec, dict):
+        raise serializers.ValidationError({enveloppe or 'recurrence': [MESSAGE_VALEUR_INCONNUE]})
+    valeurs, erreurs = {}, {}
+    for champ in CHAMPS_REGLE:
+        if champ not in spec:
+            continue
+        try:
+            valeurs[champ] = _controle_regle(champ, spec[champ])
+        except ValueError as exc:
+            erreurs[champ] = [str(exc)]
+    debut, fin = valeurs.get('date_debut'), valeurs.get('date_fin')
+    if not erreurs and debut and fin and fin < debut:
+        erreurs['date_fin'] = [MESSAGE_FIN_AVANT_DEBUT]
+    if erreurs:
+        raise serializers.ValidationError({enveloppe: erreurs} if enveloppe else erreurs)
+    return valeurs
+
+
+def _regle_du_compte(user, pk, *, verrou=False):
+    qs = RegleRecurrence.objects.filter(company_id=user.company_id, proprietaire=user)
+    regle = (qs.select_for_update() if verrou else qs).filter(pk=pk).first()
+    if regle is None:
+        raise Http404('Introuvable.')
+    return regle
+
+
+def _appliquer_regle(regle, valeurs, enveloppe=None):
+    """Pose `valeurs` sur `regle` ; la fin ne précède jamais le début de la règle obtenue."""
+    for champ, valeur in valeurs.items():
+        setattr(regle, champ, valeur)
+    if regle.date_fin is not None and regle.date_fin < regle.date_debut:
+        erreur = {'date_fin': [MESSAGE_FIN_AVANT_DEBUT]}
+        raise serializers.ValidationError({enveloppe: erreur} if enveloppe else erreur)
+
+
+def _premiere_date_de(user, regle, aujourdhui):
+    """La première date de la série ≥ aujourd'hui (« Appliquer à l'ouverte »), ou `None` : série arrêtée,
+    ou close avant."""
+    if not regle.actif:
+        return None
+    if regle.mode == ModeRecurrence.APRES_FAIT:
+        jour = max(regle.date_debut, aujourdhui)
+        return None if regle.date_fin is not None and jour > regle.date_fin else jour
+    veille = aujourdhui - datetime.timedelta(days=1)
+    return prochaine_occurrence(regle, veille, veille, est_ouvre=est_ouvre_de(user, aujourdhui))
+
+
+def _recaler_l_ouverte(user, ouverte, regle, aujourdhui, ops):
+    """L'occurrence ouverte se recale sur la première date de la nouvelle règle ≥ aujourd'hui, sans report
+    (`planifier(compter_report=False)`) ; une date déjà prise par une autre occurrence est laissée."""
+    jour = _premiere_date_de(user, regle, aujourdhui)
+    if jour is None or taches_de(user).filter(recurrence=regle, occurrence_du=jour).exclude(pk=ouverte.pk).exists():
+        return
+    planifier(ouverte, acteur=user, jour_prevu=jour, moment=ouverte.moment, heure_debut=ouverte.heure_debut,
+              compter_report=False, collecte=ops)
+    Tache.objects.filter(pk=ouverte.pk).update(occurrence_du=jour)
+
+
+def _occurrence_de_la_serie(user, regle):
+    """L'occurrence OUVERTE de la série (la plus récente), sinon la dernière occurrence ; 404 sans tâche."""
+    serie = taches_de(user).filter(recurrence=regle).order_by('-occurrence_du', '-pk')
+    ouverte = serie.filter(statut__in=OUVERTES).first()
+    tache = ouverte or serie.first()
+    if tache is None:
+        raise Http404('Introuvable.')
+    return tache, ouverte
+
+
+def modifier_regle(user, regle_id, donnees, *, aujourdhui=None):
+    """`PATCH recurrences/{id}/` : modifie la règle (elle vaut pour la SUIVANTE), l'arrête (`actif: false`)
+    ou, avec `appliquer_a_l_ouverte`, recale l'occurrence ouverte → `ResultatEcriture` de la série."""
+    aujourdhui = aujourdhui or timezone.localdate()
+    with transaction.atomic():
+        regle = _regle_du_compte(user, regle_id, verrou=True)
+        _appliquer_regle(regle, valeurs_regle(donnees))
+        if 'actif' in donnees:
+            regle.actif = donnees['actif']
+        regle.save()
+        tache, ouverte = _occurrence_de_la_serie(user, regle)
+        ops = []
+        if donnees.get('appliquer_a_l_ouverte') and ouverte is not None:
+            _recaler_l_ouverte(user, ouverte, regle, aujourdhui, ops)
+        geste = enregistrer_geste(user, 'modification', 'Modifiée', ops) if ops else None
+    return ResultatEcriture(tache_du_compte(user, tache.pk), geste)
+
+
+def _regle_de_la_tache(edition, spec, aujourdhui):
+    """`PATCH taches/{id}/ {"recurrence": …}` : `null` détache la règle ; un dict modifie la règle de la
+    tâche ou, sans règle, en crée une (`frequence` requise). Hors liste blanche d'annulation (§4)."""
+    t, user = edition.tache, edition.user
+    if spec is None:
+        if t.recurrence_id is not None:
+            t.recurrence, t.occurrence_du = None, None
+            edition.ecrire |= {'recurrence', 'occurrence_du'}
+        return
+    valeurs = valeurs_regle(spec, 'recurrence')
+    if t.recurrence_id is not None:
+        regle = _regle_du_compte(user, t.recurrence_id, verrou=True)
+        _appliquer_regle(regle, valeurs, 'recurrence')
+        regle.save()
+        return
+    if 'frequence' not in valeurs:
+        raise serializers.ValidationError({'recurrence': {'frequence': [MESSAGE_REQUIS]}})
+    debut = valeurs.get('date_debut') or t.jour_prevu or aujourdhui
+    regle = RegleRecurrence(company_id=user.company_id, proprietaire=user, date_debut=debut)
+    _appliquer_regle(regle, valeurs, 'recurrence')
+    regle.save()
+    t.recurrence = regle
+    t.occurrence_du = t.jour_prevu or prochaine_occurrence(
+        regle, debut - datetime.timedelta(days=1), debut - datetime.timedelta(days=1),
+        est_ouvre=est_ouvre_de(user, aujourdhui))
+    edition.ecrire |= {'recurrence', 'occurrence_du'}

@@ -865,3 +865,325 @@ class RestaurerTests(BaseApi):
         geste = self._post(f'taches/{tache.pk}/restaurer/').json()['geste_id']
         annuler_geste(self.u1, geste)
         self.assertTrue(_relue(tache).is_deleted)
+
+
+# --- TCH51 : réordonner, écho de changement, rappels, règle de récurrence ---------------------------
+
+class ReordonnerTests(BaseApi):
+    def _reordonner(self, tache, corps, compte=None):
+        return self._post(f'taches/{tache.pk}/reordonner/', corps, compte)
+
+    def _ordre(self, projet):
+        return list(Tache.objects.filter(projet=projet).order_by('rang_projet').values_list('pk', flat=True))
+
+    def _trois(self):
+        projet = fabriques.projet(self.u1)
+        return projet, [fabriques.tache(self.u1, projet=projet) for _ in range(3)]
+
+    def test_placer_entre_deux_voisins_et_numeroter_toute_la_liste(self):
+        projet, (a, b, c) = self._trois()
+        version = _relue(c).lock_version
+        reponse = self._reordonner(c, {'liste': 'projet', 'avant_id': a.pk, 'apres_id': b.pk})
+        self.assertEqual(reponse.status_code, 204)
+        self.assertEqual(self._ordre(projet), [a.pk, c.pk, b.pk])
+        rangs = list(Tache.objects.filter(projet=projet).order_by('rang_projet').values_list('rang_projet', flat=True))
+        self.assertEqual(rangs, [1024, 2048, 3072])
+        self.assertEqual(_relue(c).lock_version, version)
+
+    def test_un_seul_voisin_suffit(self):
+        projet, (a, b, c) = self._trois()
+        self._reordonner(c, {'liste': 'projet', 'apres_id': a.pk})
+        self.assertEqual(self._ordre(projet), [c.pk, a.pk, b.pk])
+        self._reordonner(c, {'liste': 'projet', 'avant_id': b.pk})
+        self.assertEqual(self._ordre(projet), [a.pk, b.pk, c.pk])
+
+    def test_une_liste_du_jour_est_numerotee(self):
+        jour = _j(1)
+        a, b, c = (fabriques.tache(self.u1, jour_prevu=jour) for _ in range(3))
+        self._reordonner(c, {'liste': 'jour', 'apres_id': a.pk})
+        classes = list(Tache.objects.filter(jour_prevu=jour).order_by('rang_jour').values_list('pk', flat=True))
+        self.assertEqual(classes, [c.pk, a.pk, b.pk])
+        self.assertEqual(_relue(c).rang_jour, 1024)
+
+    def test_la_liste_du_jour_demande_un_jour(self):
+        tache = fabriques.tache(self.u1)
+        voisin = fabriques.tache(self.u1)
+        reponse = self._reordonner(tache, {'liste': 'jour', 'apres_id': voisin.pk})
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'liste': ['Valeur inconnue.']}))
+
+    def test_un_voisin_d_un_collegue_repond_comme_inconnu(self):
+        projet, (a, b, c) = self._trois()
+        etranger = fabriques.tache(self.u2)
+        self.assertEqual(self._reordonner(c, {'liste': 'projet', 'avant_id': etranger.pk}).status_code, 404)
+        self.assertEqual(self._ordre(projet), [a.pk, b.pk, c.pk])
+
+    def test_un_voisin_d_une_autre_liste_est_refuse(self):
+        projet, (a, b, c) = self._trois()
+        ailleurs = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
+        reponse = self._reordonner(c, {'liste': 'projet', 'avant_id': ailleurs.pk})
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Valeur inconnue.']}))
+
+    def test_liste_inconnue_ou_sans_voisin_refusees(self):
+        projet, (a, b, c) = self._trois()
+        self.assertEqual(self._reordonner(c, {'liste': 'agenda', 'avant_id': a.pk}).status_code, 400)
+        reponse = self._reordonner(c, {'liste': 'projet'})
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Requis.']}))
+
+    def test_la_tache_d_un_collegue_repond_comme_inconnue(self):
+        autre = fabriques.tache(self.u2)
+        self.assertEqual(self._reordonner(autre, {'liste': 'projet', 'avant_id': autre.pk}).status_code, 404)
+
+
+class ChangementApercuTests(BaseApi):
+    def _apercu(self, tache, corps, **entetes):
+        return self._post(f'taches/{tache.pk}/changement/apercu/', corps, **entetes)
+
+    def test_renommer_rend_la_tache_et_l_echo_sans_rien_ecrire(self):
+        tache = fabriques.tache(self.u1, titre='Devis Settat')
+        reponse = self._apercu(tache, {'geste': 'renommer', 'titre': 'Devis Settat — relance'})
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        modele = exemple('tache_changement')
+        self.assertEqual(list(corps), list(modele))
+        self.assertEqual(list(corps['tache']), list(modele['tache']))
+        self.assertEqual(corps['proposition'], {'geste': 'renommer', 'avant': 'Devis Settat',
+                                                'apres': 'Devis Settat — relance'})
+        self.assertEqual(_relue(tache).titre, 'Devis Settat')
+
+    def test_abandonner_et_supprimer_n_ont_pas_d_apres(self):
+        tache = fabriques.tache(self.u1, titre='Devis')
+        for geste in ('abandonner', 'supprimer'):
+            with self.subTest(geste=geste):
+                corps = self._apercu(tache, {'geste': geste}).json()
+                self.assertEqual(corps['proposition'], {'geste': geste, 'avant': 'Devis', 'apres': None})
+        self.assertEqual((_relue(tache).statut, _relue(tache).is_deleted), (StatutTache.A_FAIRE, False))
+
+    def test_geste_inconnu_ou_titre_vide_refuses(self):
+        tache = fabriques.tache(self.u1)
+        self.assertEqual(self._apercu(tache, {'geste': 'effacer'}).status_code, 400)
+        reponse = self._apercu(tache, {'geste': 'renommer', 'titre': ' '})
+        self.assertEqual((reponse.status_code, list(reponse.json())), (400, ['titre']))
+
+    def test_l_assistant_ne_lit_pas_un_titre_confidentiel(self):
+        tache = fabriques.tache(self.u1, titre='Secret', confidentiel=True)
+        corps = self._apercu(tache, {'geste': 'abandonner'}, **ASSISTANT).json()
+        self.assertEqual(corps['proposition']['avant'], 'Tâche confidentielle')
+        self.assertEqual(corps['tache']['titre'], 'Tâche confidentielle')
+
+    def test_la_tache_d_un_collegue_repond_comme_inconnue(self):
+        autre = fabriques.tache(self.u2)
+        self.assertEqual(self._apercu(autre, {'geste': 'abandonner'}).status_code, 404)
+
+
+class RappelsTests(BaseApi):
+    def _poser(self, tache, corps, compte=None):
+        return self._post(f'taches/{tache.pk}/rappels/', corps, compte)
+
+    def test_poser_un_rappel_rend_la_tache_ecrite_et_pose_la_question_du_1er_rappel(self):
+        tache = fabriques.tache(self.u1, jour_prevu=_j(1))
+        reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '15:00'})
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        self.assertEqual(list(corps), list(exemple('tache_ecrite')))
+        self.assertEqual(list(corps['rappel']), list(exemple('rappel_repeter')['rappel']))
+        self.assertEqual((corps['rappel']['jour'], corps['rappel']['heure'], corps['rappel']['statut']),
+                         (_j(1).isoformat(), '15:00', 'en_attente'))
+        self.assertTrue(corps['question_titres'])
+        self.assertEqual(Rappel.objects.filter(tache=tache, statut=StatutRappel.EN_ATTENTE).count(), 1)
+        self.assertIsNotNone(corps['geste_id'])
+
+    def test_la_question_n_est_plus_posee_apres_la_reponse(self):
+        fabriques.reglages(self.u1, titres_notifications_demande_le=timezone.now())
+        tache = fabriques.tache(self.u1, jour_prevu=_j(1))
+        corps = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '15:00'}).json()
+        self.assertFalse(corps['question_titres'])
+
+    def test_un_rappel_ancre_suit_l_echeance(self):
+        tache = fabriques.tache(self.u1, echeance=_j(4))
+        corps = self._poser(tache, {'ancre': 'echeance', 'decalage_jours': -1, 'heure': '18:00'}).json()
+        self.assertEqual((corps['rappel']['jour'], corps['rappel']['ancre'], corps['rappel']['decalage_jours']),
+                         (_j(3).isoformat(), 'echeance', -1))
+
+    def test_une_ancre_sans_date_est_refusee(self):
+        tache = fabriques.tache(self.u1)
+        reponse = self._poser(tache, {'ancre': 'echeance', 'decalage_jours': -1, 'heure': '18:00'})
+        self.assertEqual((reponse.status_code, list(reponse.json())), (400, ['ancre']))
+
+    def test_cinq_rappels_au_plus_par_tache(self):
+        tache = fabriques.tache(self.u1, jour_prevu=_j(1))
+        for heure in range(8, 13):
+            reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': f'{heure:02d}:00'})
+            self.assertEqual(reponse.status_code, 200)
+        reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '14:00'})
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'rappel': ['5 rappels au plus par tâche.']}))
+
+    def test_heure_requise_et_lisible(self):
+        tache = fabriques.tache(self.u1, jour_prevu=_j(1))
+        self.assertEqual(self._poser(tache, {'jour': _j(1).isoformat()}).json(), {'heure': ['Requis.']})
+        reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': 'midi'})
+        self.assertEqual(reponse.json(), {'heure': ['Heure attendue (HH:MM).']})
+
+    def test_une_tache_close_ou_d_un_collegue_est_refusee(self):
+        close = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
+        self.assertEqual(self._poser(close, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 400)
+        autre = fabriques.tache(self.u2)
+        self.assertEqual(self._poser(autre, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 404)
+        self.assertEqual(Rappel.objects.count(), 0)
+
+    def test_annuler_la_pose_retire_le_rappel(self):
+        tache = fabriques.tache(self.u1, jour_prevu=_j(1))
+        geste = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '15:00'}).json()['geste_id']
+        annuler_geste(self.u1, geste)
+        self.assertFalse(Rappel.objects.filter(tache=tache, statut=StatutRappel.EN_ATTENTE).exists())
+
+
+class RappelRetirerEtRepeterTests(BaseApi):
+    def _rappel(self, compte=None, **champs):
+        compte = compte or self.u1
+        tache = fabriques.tache(compte, jour_prevu=_j(1))
+        champs.setdefault('jour', _j(1))
+        champs.setdefault('heure', datetime.time(15, 0))
+        return Rappel.objects.create(company=compte.company, proprietaire=compte, tache=tache, **champs)
+
+    def test_retirer_annule_le_rappel_et_rend_son_geste(self):
+        rappel = self._rappel()
+        reponse = self._api().delete(f'{URL}rappels/{rappel.pk}/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(list(reponse.json()), ['geste_id'])
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.ANNULE)
+        annuler_geste(self.u1, reponse.json()['geste_id'])
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.EN_ATTENTE)
+
+    def test_retirer_deux_fois_est_sans_effet(self):
+        rappel = self._rappel()
+        self._api().delete(f'{URL}rappels/{rappel.pk}/')
+        second = self._api().delete(f'{URL}rappels/{rappel.pk}/')
+        self.assertEqual((second.status_code, second.json()), (200, {'geste_id': None}))
+
+    def test_le_rappel_d_un_collegue_repond_comme_inconnu(self):
+        rappel = self._rappel(self.u2)
+        self.assertEqual(self._api().delete(f'{URL}rappels/{rappel.pk}/').status_code, 404)
+        self.assertEqual(self._post(f'rappels/{rappel.pk}/repeter/', {'dans_minutes': 10}).status_code, 404)
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.EN_ATTENTE)
+
+    def test_repeter_dans_minutes_cree_un_nouveau_rappel(self):
+        rappel = self._rappel()
+        reponse = self._post(f'rappels/{rappel.pk}/repeter/', {'dans_minutes': 60})
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        modele = exemple('rappel_repeter')
+        self.assertEqual(list(corps), list(modele))
+        self.assertEqual(list(corps['rappel']), list(modele['rappel']))
+        neuf = Rappel.objects.get(pk=corps['rappel']['id'])
+        self.assertEqual((neuf.tache_id, neuf.source, neuf.statut), (rappel.tache_id, 'repetition', 'en_attente'))
+        self.assertNotEqual(neuf.pk, rappel.pk)
+        self.assertIsNotNone(corps['geste_id'])
+
+    def test_repeter_a_un_jour_et_une_heure(self):
+        rappel = self._rappel()
+        corps = self._post(f'rappels/{rappel.pk}/repeter/', {'jour': _j(2).isoformat(), 'heure': '09:00'}).json()
+        self.assertEqual((corps['rappel']['jour'], corps['rappel']['heure']), (_j(2).isoformat(), '09:00'))
+
+    def test_repeter_sans_rien_est_refuse(self):
+        rappel = self._rappel()
+        reponse = self._post(f'rappels/{rappel.pk}/repeter/', {})
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'dans_minutes': ['Requis.']}))
+
+
+class RegleDeRecurrenceTests(BaseApi):
+    def _regle(self, **champs):
+        regle = _serie_hebdo(self.u1, **champs)
+        return regle, _occurrence(self.u1, regle, _j(1))
+
+    def _patch(self, regle, corps, compte=None):
+        return self._api(compte).patch(f'{URL}recurrences/{regle.pk}/', corps, format='json')
+
+    def test_modifier_la_regle_rend_la_tache_ecrite_et_son_libelle(self):
+        regle, tache = self._regle()
+        reponse = self._patch(regle, {'intervalle': 2})
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(list(reponse.json()), list(exemple('tache_ecrite')))
+        regle.refresh_from_db()
+        self.assertEqual(regle.intervalle, 2)
+        self.assertEqual(reponse.json()['tache']['recurrence']['libelle'], 'toutes les 2 semaines le lundi')
+        self.assertEqual((_relue(tache).jour_prevu, reponse.json()['tache']['id']), (_j(1), tache.pk))
+
+    def test_arreter_la_serie(self):
+        regle, tache = self._regle()
+        self._patch(regle, {'actif': False})
+        regle.refresh_from_db()
+        self.assertFalse(regle.actif)
+        corps = self._post(f'taches/{tache.pk}/terminer/').json()
+        self.assertIsNone(corps['suivante'])
+
+    def test_appliquer_a_l_ouverte_recale_sans_report(self):
+        regle = _serie_hebdo(self.u1)
+        retard = _occurrence(self.u1, regle, _j(-3))
+        reponse = self._patch(regle, {'jours_semaine': '0100000', 'appliquer_a_l_ouverte': True})
+        self.assertEqual(reponse.status_code, 200)
+        regle.refresh_from_db()
+        attendu = prochaine_occurrence(regle, _j(-1), _j(-1))
+        relue = _relue(retard)
+        self.assertEqual((relue.jour_prevu, relue.occurrence_du, relue.reports), (attendu, attendu, 0))
+        self.assertGreaterEqual(attendu, _j(0))
+
+    def test_sans_appliquer_l_ouverte_ne_bouge_pas(self):
+        regle = _serie_hebdo(self.u1)
+        retard = _occurrence(self.u1, regle, _j(-3))
+        self._patch(regle, {'jours_semaine': '0100000'})
+        self.assertEqual(_relue(retard).jour_prevu, _j(-3))
+
+    def test_valeurs_refusees_sous_leur_champ(self):
+        regle, _tache = self._regle()
+        for corps, champ in (({'frequence': 'toutes'}, 'frequence'), ({'intervalle': 0}, 'intervalle'),
+                             ({'intervalle': 100}, 'intervalle'), ({'jours_semaine': 'abc'}, 'jours_semaine'),
+                             ({'mode': 'jamais'}, 'mode'), ({'rang_dans_mois': 7}, 'rang_dans_mois'),
+                             ({'jour_du_mois': 40}, 'jour_du_mois')):
+            with self.subTest(corps=corps):
+                reponse = self._patch(regle, corps)
+                self.assertEqual((reponse.status_code, list(reponse.json())), (400, [champ]))
+
+    def test_la_fin_ne_precede_pas_le_debut(self):
+        regle, _tache = self._regle()
+        reponse = self._patch(regle, {'date_fin': (regle.date_debut - datetime.timedelta(days=1)).isoformat()})
+        self.assertEqual((reponse.status_code, reponse.json()),
+                         (400, {'date_fin': ['La date de fin précède la date de début.']}))
+
+    def test_la_regle_d_un_collegue_repond_comme_inconnue(self):
+        regle = _serie_hebdo(self.u2)
+        _occurrence(self.u2, regle, _j(1))
+        self.assertEqual(self._patch(regle, {'intervalle': 3}).status_code, 404)
+        regle.refresh_from_db()
+        self.assertEqual(regle.intervalle, 1)
+
+    def test_la_fiche_porte_le_libelle_de_la_regle(self):
+        _regle, tache = self._regle()
+        corps = self._get(f'taches/{tache.pk}/').json()
+        self.assertEqual(corps['recurrence']['libelle'], 'chaque lundi')
+        self.assertEqual(corps['recurrence']['libelle'],
+                         exemple('tache_recurrente_ecrite')['suivante']['recurrence']['libelle'])
+
+    def test_patch_de_la_tache_cree_une_regle(self):
+        tache = fabriques.tache(self.u1, jour_prevu=_j(2))
+        corps = {'recurrence': {'frequence': 'quotidien'}, 'lock_version': _relue(tache).lock_version}
+        reponse = self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()['tache']
+        self.assertEqual((corps['recurrente'], corps['recurrence']['libelle'], corps['routine']),
+                         (True, 'chaque jour', True))
+        relue = _relue(tache)
+        self.assertEqual((relue.occurrence_du, relue.recurrence.proprietaire), (_j(2), self.u1))
+
+    def test_patch_de_la_tache_sans_frequence_est_refuse_et_null_detache(self):
+        tache = fabriques.tache(self.u1, jour_prevu=_j(2))
+        corps = {'recurrence': {'intervalle': 2}, 'lock_version': _relue(tache).lock_version}
+        reponse = self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'recurrence': {'frequence': ['Requis.']}}))
+        regle, serie = self._regle()
+        self._api().patch(f'{URL}taches/{serie.pk}/', {'recurrence': None, 'lock_version': _relue(serie).lock_version},
+                          format='json')
+        relue = _relue(serie)
+        self.assertEqual((relue.recurrence_id, relue.occurrence_du), (None, None))
