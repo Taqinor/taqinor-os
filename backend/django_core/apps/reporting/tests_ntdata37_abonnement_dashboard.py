@@ -265,6 +265,48 @@ class AbonnementDashboardTests(TestCase):
         self.assertEqual(scheduled_reports._rendre_saved_query(rapport),
                          (None, None, None, None))
 
+    def test_dashboard_avec_widget_stock_exige_stock_export(self):
+        """ADRG146 — programmer un tableau de bord = exporter chaque jeu lu par
+        ses widgets : ``stock_export`` pour un widget ``stock_produits`` (403
+        sinon, aucun rapport) ; au rendu, au nom du propriétaire, un widget
+        refusé n'est pas exécuté et devient un bloc d'erreur."""
+        from apps.stock.models import Produit
+        Produit.objects.create(company=self.company, nom='Onduleur ADRG146',
+                               sku='ADRG146-P', prix_vente=100,
+                               quantite_stock=3)
+        widget_stock = {'id': 'stock', 'titre': 'Stock', 'dataset': 'stock_produits',
+                        'spec': {'select': ['nom']}}
+        dashboard = self._dashboard(partage=True, layout={'widgets': [widget_stock]})
+        url = '/api/django/reporting/saved-reports/'
+        resultats = {}
+        for nom_role in ('Commercial responsable', 'Directeur'):
+            user, api = self._api_role(nom_role)
+            avant = SavedReport.objects.count()
+            resp = api.post(url, {
+                'name': 'Stock', 'target_kind': 'dashboard', 'cible_id': dashboard.pk,
+                'schedule': 'weekly', 'recipients': 'x@exemple.ma'}, format='json')
+            resultats[nom_role] = (resp, avant, SavedReport.objects.count(), user, api)
+        resp, avant, apres, commercial, api_c = resultats['Commercial responsable']
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(str(resp.data['detail']), 'Accès au jeu de données refusé.')
+        self.assertEqual(apres, avant)
+        self.assertEqual(resultats['Directeur'][0].status_code, 201,
+                         resultats['Directeur'][0].content)
+        liste = api_c.get(url).json()
+        self.assertEqual(len(liste.get('results', liste)), 1)  # le seul envoi du Directeur
+        self.assertFalse(SavedReport.objects.filter(owner=commercial).exists())
+
+        # Rendu : widget stock ajouté APRÈS la création du rapport (ORM).
+        tableau = self._dashboard(partage=True)
+        rapport = self._rapport(owner=commercial, cible_id=tableau.pk)
+        tableau.layout = {'widgets': tableau.layout['widgets'] + [widget_stock]}
+        tableau.save()
+        html = scheduled_reports.rendre_dashboard_html(rapport, tableau)
+        self.assertNotIn('Onduleur ADRG146', html)
+        self.assertIn('<h2>Stock</h2><p class="erreur">Accès au jeu de données '
+                      'refusé.</p>', html)
+        self.assertIn('NTDATA37 SA', html)  # l'autre widget reste rendu
+
     def test_cible_personnelle_d_un_collegue_refusee(self):
         """ADRG124 — le tableau PERSONNEL d'un collègue n'est pas une cible :
         404 au champ, aucun rapport ; ses propres tableaux et les partagés, si."""

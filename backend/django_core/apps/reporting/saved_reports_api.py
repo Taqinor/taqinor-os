@@ -99,12 +99,21 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                     if instance is not None:
                         raise _id_corps_inconnu_409(erreurs)
                     raise NotFound(erreurs)
+                from core import data_explorer
                 if kind == SavedReport.TargetKind.QUERY and (
                         not self.partial or {'cible_id', 'target_kind'} & set(attrs)):
                     # ADRG123 — programmer l'envoi d'une requête = l'exporter :
                     # code ``*_export`` du module du jeu (403 sinon).
-                    from core import data_explorer
                     data_explorer.exiger_export_dataset(cible_obj.dataset, requete.user)
+                elif kind == SavedReport.TargetKind.DASHBOARD:
+                    # ADRG146 — programmer un tableau de bord = exporter le jeu de
+                    # CHAQUE widget, à chaque écriture (jeu inconnu : rendu en erreur).
+                    for widget in (cible_obj.layout or {}).get('widgets') or []:
+                        if isinstance(widget, dict) and widget.get('dataset'):
+                            try:
+                                data_explorer.exiger_export_dataset(widget['dataset'], requete.user)
+                            except data_explorer.DatasetInconnu:
+                                pass
         return attrs
 
 
