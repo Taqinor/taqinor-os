@@ -659,7 +659,7 @@ class LeadIntakeActionsMixin:
                     'de': de.pk, 'vers': vers.pk if vers else None,
                     'vers_nom': nom,
                     **apercu_delegation(request.user, de)})
-            prevenir = corps.get('prevenir_clients', True)
+            prevenir = corps.get('prevenir_clients', False)
             if not isinstance(prevenir, bool):
                 raise DelegationRefusee(
                     'prevenir_clients', 'Vrai ou faux attendu.')

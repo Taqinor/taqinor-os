@@ -212,7 +212,9 @@ def _poser_touche_passation(lead, user, ancien_responsable=None):
 
     Posée seulement sur un lead DÉJÀ CONTACTÉ (``first_contacted_at``) : sur
     un lead jamais joint il n'y a rien à annoncer, et le premier message du
-    protocole fait déjà les présentations.
+    protocole fait déjà les présentations. Jamais sur un lead au Froid (audit
+    des cadences, 17/11/2026) : un dossier parqué ne reçoit aucune touche
+    individuelle (D-CADV-2).
 
     IDEMPOTENTE par libellé (``_poser_etape_visite``) : deux réattributions
     d'affilée déplacent la même touche, elles n'en empilent pas deux. Aucune
@@ -224,7 +226,7 @@ def _poser_touche_passation(lead, user, ancien_responsable=None):
         return None
     if not getattr(lead, 'first_contacted_at', None):
         return None
-    if lead.stage in (stages.SIGNED,):
+    if lead.stage in (stages.SIGNED, stages.COLD):
         return None
     etape = _poser_etape_passation(lead)
     if etape is not None and ancien_responsable is not None:

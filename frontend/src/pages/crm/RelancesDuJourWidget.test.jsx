@@ -256,6 +256,7 @@ async function ouvrirEtChoisir() {
   const select = await screen.findByLabelText('Collègue')
   await screen.findByRole('option', { name: 'meryem' })
   fireEvent.change(select, { target: { value: '12' } })
+  await screen.findByTestId('delegation-apercu')
 }
 
 describe('Déléguer mes dossiers (17/11/2026)', () => {
@@ -281,29 +282,48 @@ describe('Déléguer mes dossiers (17/11/2026)', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it("annonce l'aperçu du serveur puis délègue, prévenir les clients coché par défaut", async () => {
+  it("annonce l'aperçu du serveur puis délègue, passation décochée par défaut", async () => {
     const onDone = vi.fn()
     render(<BoutonDeleguerDossiers onDone={onDone} />)
     await ouvrirEtChoisir()
     expect(crmApi.apercuDelegation).toHaveBeenCalledWith({ vers: '12' })
     expect(await screen.findByTestId('delegation-apercu')).toHaveTextContent(
       '26 dossiers, dont 41 étapes ouvertes (40 en retard), passeront à Meryem.')
-    expect(screen.getByRole('checkbox')).toBeChecked()
+    expect(screen.getByRole('checkbox')).not.toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
     await waitFor(() => expect(crmApi.deleguerDossiers).toHaveBeenCalledWith(
-      { vers: 12, prevenir_clients: true }))
+      { vers: 12, prevenir_clients: false }))
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(
       '26 dossiers confiés à Meryem.'))
     expect(onDone).toHaveBeenCalledWith(RESULTAT)
   })
 
-  it('décocher la passation est transmis au serveur', async () => {
+  it('cocher la passation est transmis au serveur', async () => {
     mount()
     await ouvrirEtChoisir()
+    expect(screen.getByLabelText(/Poser une étape de passation/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
     await waitFor(() => expect(crmApi.deleguerDossiers).toHaveBeenCalledWith(
-      { vers: 12, prevenir_clients: false }))
+      { vers: 12, prevenir_clients: true }))
+  })
+
+  it('0 dossier : la phrase le dit et « Déléguer » reste grisé', async () => {
+    crmApi.apercuDelegation.mockResolvedValue({ data: { ...APERCU, dossiers: 0 } })
+    mount()
+    await ouvrirEtChoisir()
+    expect(screen.getByTestId('delegation-apercu')).toHaveTextContent('Aucun dossier à confier à Meryem.')
+    expect(screen.getByRole('button', { name: 'Déléguer' })).toBeDisabled()
+  })
+
+  it('le collègue est nommé comme dans l’aperçu (prénom, à défaut identifiant)', async () => {
+    crmApi.getAssignableUsers.mockResolvedValue({ data: [
+      { id: 3, username: 'reda' }, { id: 12, username: 'meryem', first_name: 'Meryem' },
+    ] })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Déléguer mes dossiers/ }))
+    expect(await screen.findByRole('option', { name: 'Meryem' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'reda' })).toBeInTheDocument()
   })
 
   it('agit sur un autre responsable avec `de`', async () => {
@@ -316,9 +336,10 @@ describe('Déléguer mes dossiers (17/11/2026)', () => {
     fireEvent.change(select, { target: { value: '12' } })
     await waitFor(() => expect(crmApi.apercuDelegation).toHaveBeenCalledWith(
       { vers: '12', de: 3 }))
+    await screen.findByTestId('delegation-apercu')
     fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
     await waitFor(() => expect(crmApi.deleguerDossiers).toHaveBeenCalledWith(
-      { vers: 12, prevenir_clients: true, de: 3 }))
+      { vers: 12, prevenir_clients: false, de: 3 }))
   })
 
   it('un refus du serveur s’affiche sous le champ, sans toast', async () => {
@@ -334,12 +355,13 @@ describe('Déléguer mes dossiers (17/11/2026)', () => {
     expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  it('sans collègue choisi, la consigne s’affiche sous le champ et rien n’est écrit', async () => {
+  it('sans collègue choisi (donc sans aperçu), « Déléguer » est grisé et rien n’est écrit', async () => {
     mount()
     fireEvent.click(screen.getByRole('button', { name: /Déléguer mes dossiers/ }))
     await screen.findByLabelText('Collègue')
-    fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Choisissez le collègue')
+    const bouton = screen.getByRole('button', { name: 'Déléguer' })
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
     expect(crmApi.deleguerDossiers).not.toHaveBeenCalled()
   })
 })

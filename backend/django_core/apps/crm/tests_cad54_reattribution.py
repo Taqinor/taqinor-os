@@ -321,21 +321,59 @@ class DelegationDesDossiersTests(_Base):
         self.assertTrue(dues <= vues(cible))
         self.assertFalse(dues & vues(self.moi))
 
-    def test_passation_posee_par_defaut_sautee_sans_prevenir(self):
-        suivi, _f, _r, _a = self._jeu()
-        self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
-        self.assertEqual(
-            suivi.relance_etapes.filter(libelle=PASSATION_LIBELLE).count(), 1)
-        sans_prevenir = self._mien('Sans prevenir')
+    def test_passation_sur_demande_jamais_au_froid(self):
+        """Audit des cadences (17/11/2026) — la passation n'est posée que si on
+        la demande, et jamais sur un dossier au Froid (D-CADV-2)."""
+        suivi, froid, _r, _a = self._jeu()
         res = self.api.post(
-            self.URL, {'vers': self.ancien.pk, 'prevenir_clients': False},
+            self.URL, {'vers': self.nouveau.pk, 'prevenir_clients': True},
             format='json')
         self.assertEqual(res.status_code, 200, res.content)
-        sans_prevenir.refresh_from_db()
-        self.assertEqual(sans_prevenir.owner_id, self.ancien.pk)
-        self.assertFalse(sans_prevenir.relance_etapes.filter(
+        self.assertEqual(
+            suivi.relance_etapes.filter(libelle=PASSATION_LIBELLE).count(), 1)
+        self.assertFalse(froid.relance_etapes.filter(
+            libelle=PASSATION_LIBELLE).exists())
+        self.assertEqual(res.data['passations_posees'], 1)
+        par_defaut = self._mien('Par defaut')
+        res = self.api.post(self.URL, {'vers': self.ancien.pk}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        par_defaut.refresh_from_db()
+        self.assertEqual(par_defaut.owner_id, self.ancien.pk)
+        self.assertFalse(par_defaut.relance_etapes.filter(
             libelle=PASSATION_LIBELLE).exists())
         self.assertEqual(res.data['passations_posees'], 0)
+
+    def test_un_signe_avec_une_etape_ouverte_suit_ses_etapes(self):
+        ouvert = self._mien('Signe ouvert', stage=stages.SIGNED)
+        etape = self._touche(ouvert, libelle='Confirmer la signature')
+        clos = self._mien('Signe clos', stage=stages.SIGNED)
+        apercu = self.api.get(self.URL, {'vers': self.nouveau.pk})
+        self.assertEqual(apercu.status_code, 200, apercu.content)
+        self.assertEqual(
+            (apercu.data['dossiers'], apercu.data['etapes_ouvertes']), (1, 1))
+        res = self.api.post(
+            self.URL, {'vers': self.nouveau.pk, 'prevenir_clients': True},
+            format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        ouvert.refresh_from_db()
+        clos.refresh_from_db()
+        self.assertEqual((ouvert.owner_id, clos.owner_id),
+                         (self.nouveau.pk, self.moi.pk))
+        self.assertTrue(RelanceEtape.objects.filter(
+            pk=etape.pk, lead=ouvert, statut=RelanceEtape.Statut.A_FAIRE).exists())
+        self.assertEqual(res.data['passations_posees'], 0)
+
+    def test_cible_sans_acces_au_crm_409(self):
+        self._jeu()
+        sans_crm = User.objects.create_user(
+            username=f'{self.slug}-sans-crm', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Sans CRM', permissions=[]))
+        for res in (self.api.get(self.URL, {'vers': sans_crm.pk}),
+                    self.api.post(self.URL, {'vers': sans_crm.pk}, format='json')):
+            self.assertEqual(res.status_code, 409, res.content)
+            self.assertIn('accès au CRM', res.data['vers'][0])
+        self.assertFalse(Lead.objects.filter(owner=sans_crm).exists())
 
     def test_chatter_en_masse_de_la_reattribution(self):
         suivi, _f, _r, _a = self._jeu()
