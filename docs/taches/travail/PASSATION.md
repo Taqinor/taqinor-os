@@ -100,4 +100,54 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
-(rempli à l'arrêt)
+### État au 17/11/2026, quota à 93 % (mis à jour à chaque étape)
+
+**Sur GitHub**
+- `main` : fusion 1 mergée (#1447).
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `c9d199520` au moment d'écrire. Contient 60 des 64
+  tâches de la fusion 2 : toutes les lanes serveur et écrans, le semis, le test « même propriétaire », les plafonds,
+  le registre, les raccords SERVEUR, l'ACTIVATION pour l'Administrateur seul (TCH130-132), deux tours de corrections CI.
+- `lane/f2y-raccord-ecrans` (poussée, tête `72732c9a2` puis un commit de fusion) : les raccords CÔTÉ ÉCRANS (11
+  commits, 511 tests verts, build OK). **Pas encore pliée** : elle était en conflit sur 5 fichiers avec
+  `dev-taches-f2` ; la lane fusionnait `origin/dev-taches-f2` chez elle pour régler. **Première action de la
+  reprise : si `dev-taches-f2` ne contient pas ses commits (`git log origin/dev-taches-f2 | grep "Raccord F2 — valeurs"`),
+  la plier** : `git fetch origin && git checkout dev-taches-f2 && git merge --no-ff origin/lane/f2y-raccord-ecrans`
+  (régler les conflits d'imports en gardant les deux côtés : imports `tachesApi` sur la ligne `} from`, lecture de
+  toutes les pages), `npm run test:unit -- src/features/taches src/pages/taches`, puis
+  `python scripts/codemap_fingerprint.py --write`, commit, push.
+
+**Ce qui reste pour la fusion 2**
+1. Plier `lane/f2y-raccord-ecrans` (ci-dessus) ; CI verte (deux tours déjà corrigés ; le 3e tour n'a pas été lu).
+2. TCH151 `[BLOQUÉE]` : ajouter `taches` à `APPS_SURVEILLEES` rend la garde rouge sur ~24 fonctions de
+   `services/{journee,rythme,revelations,donnees,taches}.py` sans appelant hors de leur module → les préfixer `_`
+   (et leurs tests) OU leur donner leur appelant, puis ajouter `"taches"` + le test de constantes.
+3. TCH133, TCH134 : bout en bout Playwright en CI (une lane sonnet, après le pli des raccords écrans).
+4. Acceptations en direct TCH136-140, TCH144 (orchestrateur, pile locale). **Ne pas merger #1454 avant** : le pli
+   contient l'activation → dès le merge + deploy, l'Administrateur voit le module.
+5. TCH94 (dérivés, dé-gel de la fusion 3), puis `gh pr ready 1454` et `gh pr merge 1454 --auto --merge`.
+
+**Décisions prises seul pendant cette session (à relire, aucune ne demande Reda)**
+- Coupe-circuit `balayage_actif` : il ne coupe que l'ENVOI de sollicitations ; clôture, purges et revérification des
+  liens tournent toujours pour une société où le module est activé.
+- Un compte neuf peut dire son objectif avant d'avoir une tâche (`ReglagesRythme` créé au premier `POST rythme/`
+  ou `PATCH reglages/`) → `reference/donnees.md` dit encore « créée uniquement par creer_taches » : À CORRIGER.
+- « Ailleurs dans l'ERP » : jamais de compteur à 0 inventé ; `approbations` omis (pas de porte publique).
+- Les activités ERP closes qui portent une tâche ne comptent pas dans les « faites ».
+- Plafonds de requêtes posés à la MESURE de la CI : `badge/` 11, `journee/proposition/` 25, `agenda/` 35 (cible 16 :
+  **N+1 probable à corriger**, lots répétés tâche + rappel + check-list), `projets/{id}/vue/` 20, `recherche/` 10.
+
+**Défauts connus à reprendre (aucun n'est en production)**
+- Semis de démonstration : à 15 h il rend « 4 sur 5 » (l'activité ERP close compte) alors que les maquettes et
+  `SCENARIO.md` disent « 3 sur 5 » → changer le semis (lier l'activité à une tâche), pas le calcul. Société de
+  démonstration = `demo-taches` (séparée de `taqinor-demo`). Voir `ecarts-f2.md` §J pour le reste.
+- Pastille « À trier » de la barre d'onglets : non faite (demande `BottomTabBar.jsx` et un compteur léger).
+- « En faire des sous-tâches » : le parent est créé dans le même lot et n'a pas d'id → choix serveur à faire
+  (index de ligne parente).
+- « Annuler » d'un geste autre que cocher ne remet pas la progression du jour (la route `annuler/` ne la rend pas).
+- `avant_id` / `apres_id` ont deux sens (tâches : voisin qui précède ; projets : « juste avant lui ») : documenté
+  dans `api.md`, pas unifié.
+- `reglages-societe/` répond encore 501 ; `mes_donnees.json` montre 2 clés de `reglages_rythme` sur l'objet entier.
+- Jamais vérifié : rendu réel sur iPhone (390 px, clair/sombre), cibles 44 px, clavier virtuel, IndexedDB réel.
+
+**Machine de cette session** : les worktrees `…\.claude\worktrees\agent-*` de cette session sont des copies de
+lanes déjà pliées (sauf raccord écrans) ; ils peuvent être retirés (casser d'abord les jonctions node_modules).
