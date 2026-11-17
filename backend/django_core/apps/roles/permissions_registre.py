@@ -653,6 +653,10 @@ ALL_PERMISSIONS = [
     # catalogue) ; aucun autre rôle système. Fondation : volontairement absent
     # de ``PERMISSION_MODULE`` (jamais masquable par un toggle de module).
     'peut_reinitialiser_demo',
+    # ── TCH5 — tâches et agenda personnels (module `taches`) : déclaré, accordé
+    # à AUCUN rôle tant que le module n'est pas activé (exclu du Directeur
+    # ci-dessous, donc de l'Administrateur qui en dérive).
+    'taches_voir',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -749,6 +753,7 @@ PERMISSION_MODULE = {
     # togglable), même statut fondation que ``parametres_voir`` ci-dessus
     # (cf. ``test_fondation_et_donnees_sensibles_sans_module``) : les
     # mapper masquerait leur case sur un toggle qui n'existe pas.
+    'taches_voir': 'taches',  # TCH5
 }
 
 #: APFS28 (D-APFS-4) — lectures CROISÉES : ``(module, vue): codes`` qui ouvrent
@@ -975,7 +980,8 @@ UTILISATEUR_PERMISSIONS = [
 # Aucun marqueur de portée → voit tous les enregistrements de la société.
 DIRECTEUR_PERMISSIONS = [
     p for p in ALL_PERMISSIONS
-    if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF)
+    if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF,
+                 'taches_voir')  # taches — retiré à l'activation
 ]
 
 # Administrateur (= « Admin ») : comme le Directeur, MAIS sans le Journal

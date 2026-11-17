@@ -30,3 +30,18 @@ class SocleTachesTests(SimpleTestCase):
         from pathlib import Path
         racine = Path(__file__).resolve().parent.parent
         self.assertFalse((racine / 'admin.py').exists())
+
+
+class DroitTachesVoirTests(SimpleTestCase):
+    """TCH5 — `taches_voir` déclaré, porté par AUCUN rôle système (invariant 28)."""
+
+    def test_droit_declare_en_fin_de_catalogue(self):
+        from apps.roles.permissions_registre import ALL_PERMISSIONS, PERMISSION_MODULE
+        self.assertEqual(ALL_PERMISSIONS.count('taches_voir'), 1)
+        self.assertEqual(PERMISSION_MODULE.get('taches_voir'), 'taches')
+
+    def test_aucun_role_systeme_ne_le_porte(self):
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        porteurs = [nom for nom, permissions in CANONICAL_SYSTEM_ROLES
+                    if 'taches_voir' in permissions]
+        self.assertEqual(porteurs, [])
