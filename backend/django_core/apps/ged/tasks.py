@@ -49,6 +49,8 @@ def signature_relances_expiration():
     """XGED2 — Balayage quotidien : relances de signataires dus + expiration
     des demandes échues (une société à la fois, jamais destructif : n'annule
     QUE des demandes déjà `en_attente` avec `expires_at` dépassée)."""
+    from datetime import timedelta
+
     from django.conf import settings
     from django.utils import timezone
 
@@ -66,12 +68,15 @@ def signature_relances_expiration():
             fenetre = fenetre_notifications(company)
             if fenetre.ouverte:
                 total_relances += len(services.relancer_signataires_dus(company))
-            elif (fenetre.prochaine_ouverture - timezone.now()).total_seconds() < (
-                    settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout']):
-                # AMSG98 — jamais d'`eta` au-delà du délai de re-livraison du
-                # broker : sinon le balayage du jour ouvré suivant s'en charge.
+            elif timezone.localdate(fenetre.prochaine_ouverture) == timezone.localdate():
+                # AMSG106 — ouverture plus tard le jour même : reprise relais
+                # (jamais d'`eta` au-delà du délai de re-livraison du broker),
+                # qui relit la fenêtre ; un autre jour : le balayage suivant.
                 relancer_signataires_societe.apply_async(
-                    args=[company.pk], eta=fenetre.prochaine_ouverture)
+                    args=[company.pk], eta=min(
+                        fenetre.prochaine_ouverture, timezone.now() + timedelta(
+                            seconds=settings.CELERY_BROKER_TRANSPORT_OPTIONS[
+                                'visibility_timeout'] - 600)))
             total_expirees += services.expirer_demandes_echues(company)
         except Exception:  # pragma: no cover - défensif, une société KO
             # n'interrompt jamais les suivantes.
@@ -88,12 +93,28 @@ def signature_relances_expiration():
 def relancer_signataires_societe(company_id):
     """AMSG73 — relances de signataires d'UNE société, reprises à
     l'ouverture de sa fenêtre des messages (`eta` posé par le balayage)."""
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.utils import timezone
+
     from authentication.selectors import active_companies
+    from apps.notifications.selectors import fenetre_notifications
 
     from . import services
 
     company = active_companies().filter(pk=company_id).first()
-    return len(services.relancer_signataires_dus(company)) if company else 0
+    if not company:
+        return 0
+    fenetre = fenetre_notifications(company)  # AMSG106 — relit la fenêtre
+    if not fenetre.ouverte:
+        if timezone.localdate(fenetre.prochaine_ouverture) == timezone.localdate():
+            relancer_signataires_societe.apply_async(args=[company_id], eta=min(
+                fenetre.prochaine_ouverture, timezone.now() + timedelta(
+                    seconds=settings.CELERY_BROKER_TRANSPORT_OPTIONS[
+                        'visibility_timeout'] - 600)))
+        return 0
+    return len(services.relancer_signataires_dus(company))
 
 
 @shared_task(name='ged.verifier_integrite_archives')
