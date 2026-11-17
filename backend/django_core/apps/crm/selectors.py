@@ -101,6 +101,7 @@ from .fiche_selectors import (
     leads_actifs_sans_prochaine_etape, leads_parques_sans_touche,
     leads_reveil_aveugle, leads_fermes_avec_touche_ouverte, saisies_joint_anormales,
 )
+from .dsr_provider import cibles_du_sujet  # noqa: F401 — TCH154, porte d'effacement lue par taches
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
 __all__ = [

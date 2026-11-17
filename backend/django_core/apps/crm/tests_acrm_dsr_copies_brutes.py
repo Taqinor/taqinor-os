@@ -135,3 +135,50 @@ class DsrCopiesBrutesTests(TestCase):
         self.assertEqual((archive.old_value, archive.new_value),
                          ('Anonymisé', 'Anonymisé'))
         self._sans_pii(archive.body)
+
+
+class CiblesDuSujetTests(TestCase):
+    """TCH154 — ``crm.selectors.cibles_du_sujet`` : la porte que ``taches``
+    lit pour résoudre un sujet 09-08 en leads et clients, d'UNE société."""
+
+    def setUp(self):
+        from apps.crm.models import Client
+        self.company = Company.objects.create(
+            nom='TCH154 Solaire', slug='tch154-a')
+        self.autre = Company.objects.create(
+            nom='TCH154 Autre', slug='tch154-b')
+        self.cl = Client.objects.create(
+            company=self.company, nom=NOM, email=EMAIL)
+        self.par_mail = Lead.objects.create(
+            company=self.company, nom=NOM, email=EMAIL)
+        self.par_tel = Lead.objects.create(
+            company=self.company, nom=NOM, telephone=TELEPHONE)
+        self.etranger = Lead.objects.create(
+            company=self.autre, nom=NOM, email=EMAIL, telephone=TELEPHONE)
+        Client.objects.create(company=self.autre, nom=NOM, email=EMAIL)
+        Lead.objects.create(
+            company=self.company, nom='Autre personne',
+            email='autre.tch154@example.com', telephone='+212661000154')
+
+    def test_par_email(self):
+        from apps.crm.selectors import cibles_du_sujet
+        cibles = cibles_du_sujet(self.company, EMAIL.upper())
+        self.assertEqual(cibles['leads'], [self.par_mail.pk])
+        self.assertEqual(cibles['clients'], [self.cl.pk])
+
+    def test_par_telephone(self):
+        from apps.crm.selectors import cibles_du_sujet
+        cibles = cibles_du_sujet(self.company, '0661191919')
+        self.assertEqual(cibles, {'leads': [self.par_tel.pk], 'clients': []})
+
+    def test_une_seule_societe(self):
+        from apps.crm.selectors import cibles_du_sujet
+        cibles = cibles_du_sujet(self.autre, TELEPHONE)
+        self.assertEqual(cibles['leads'], [self.etranger.pk])
+        self.assertNotIn(self.par_tel.pk, cibles['leads'])
+
+    def test_sujet_inconnu(self):
+        from apps.crm.selectors import cibles_du_sujet
+        self.assertEqual(
+            cibles_du_sujet(self.company, 'personne@example.com'),
+            {'leads': [], 'clients': []})
