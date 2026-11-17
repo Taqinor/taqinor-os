@@ -63,6 +63,19 @@ function instructionsAgent(debut) {
     .filter((e) => /\] sql_agent_ro LOG: {2}(statement|execute [^:]*): /.test(e))
     .map((e) => e.replace(/^[\s\S]*? sql_agent_ro LOG: {2}(statement|execute [^:]*): /, '').replace(/\s+/g, ' ').trim())
 }
+/** Les journaux Postgres et du service IA sont écrits par d'AUTRES processus : les relit jusqu'à y voir les requêtes
+ *  de l'agent du tour (au moins une) et deux journaux qui ne bougent plus entre deux relectures. Au-delà de 15 s, rien
+ *  n'est affirmé ici : les assertions de l'étape jugent ce qui a été écrit. */
+async function journauxDuTourEcrits(debut) {
+  let avant = null
+  await expect.poll(() => {
+    const n = instructionsAgent(debut).length
+    const etat = `${n}:${tailleDe(PG)}:${tailleDe(IA_LOG)}`
+    const stable = n > 0 && etat === avant
+    avant = etat
+    return stable
+  }, { timeout: 15_000, intervals: [500] }).toBe(true).catch(() => undefined)
+}
 /** Requêtes de l'agent qui LISENT la table `table` (FROM/JOIN, réécrite ou non ; jamais le catalogue). */
 const lectures = (instr, table) => instr.filter((s) => new RegExp(`\\b(from|join)\\s+(\\(\\s*select\\s+\\*\\s+from\\s+)?("?public"?\\.)?"?${table}"?\\b`, 'i').test(s)
   && !/pg_catalog|information_schema/i.test(s))
@@ -84,7 +97,7 @@ async function demander(page, qui, question) {
   // Réponse UTILISATEUR affichée dans le tiroir (première ligne de la réponse servie).
   const premiere = (corps.answer || '').split('\n').map((l) => l.trim()).find((l) => l.length > 0) || ''
   if (premiere) await expect(panneau, `${qui} : réponse affichée à l'écran`).toContainText(premiere.slice(0, 40))
-  await new Promise((res) => setTimeout(res, 1500)) // le journal Postgres est écrit par un autre processus
+  await journauxDuTourEcrits(debut)
   const instr = instructionsAgent(debut)
   const metier = instr.filter((x) => !BRUIT.test(x))
   // Journal du service IA pendant le tour : refus de la garde SQL (« SECURITE: requete refusee (<motif>) »), erreurs.

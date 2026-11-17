@@ -69,11 +69,16 @@ etape('PF7.4-ATST56', ['ATST56'], async ({ page, context, suivi, testInfo }) => 
   await expect.poll(() => vierge.isClosed(), { timeout: 15_000, message: 'l\'onglet vierge se ferme sans confirmation' }).toBe(true)
   expect(vus1.length, 'aucun beforeunload demandé à la fermeture d\'un générateur vierge').toBe(0)
 
-  // Persistance : rouvert, aucun brouillon n'est proposé.
+  // Persistance : rouvert, aucun brouillon n'est proposé. L'horloge de la page est pilotée (temps qui s'écoule
+  // normalement) pour que l'attente de l'écriture du brouillon soit une condition et non un sommeil.
+  await page.clock.install()
   await page.goto('/ventes/devis/nouveau')
   await expect(page.locator('#gen-form')).toBeVisible({ timeout: 60_000 })
   await expect(page.locator(LIGNES).first()).toBeVisible({ timeout: 60_000 })
-  await page.waitForTimeout(2_500)
+  // Composition posée et réseau au repos (comme l'onglet vierge), puis l'horloge de la page avance au-delà du
+  // débounce de l'écriture du brouillon (800 ms, useDraftAutosave) : tout minuteur d'écriture en attente a tiré.
+  await page.waitForLoadState('networkidle', { timeout: 90_000 }).catch(() => undefined)
+  await page.clock.runFor(2_500)
   await expect(page.getByTestId('draft-restore-banner'), 'rouvert : aucun « Reprendre le brouillon » proposé').toHaveCount(0)
   expect(await page.evaluate((k) => window.localStorage.getItem(k), CLE), 'rouvert : la clé est toujours absente').toBeNull()
 

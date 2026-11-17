@@ -23,11 +23,14 @@ const TELEPHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
 
 // ── service IA réel (FastAPI du workflow), branché sous /api/fastapi comme nginx en prod ─────────────────────
 const IA = process.env.E2E_IA_URL
-const attendre = (ms) => new Promise((r) => setTimeout(r, ms))
 const jetonDe = async (context) => (await context.cookies()).find((c) => c.name === 'access_token')?.value || ''
-/** `latenceMs` : connexion bridée — délai à l'aller ET au retour de chaque appel au service IA. */
-async function brancherIA(page, { latenceMs = 0 } = {}) {
+/** `bridee` : connexion bridée — chaque appel au service IA attend, à l'aller ET au retour, un aller-retour RÉEL du
+ *  navigateur sur le réseau émulé par l'étape (CDP `Network.emulateNetworkConditions`) : `route.fetch` part du client
+ *  HTTP de Playwright (Node), hors de ce réseau ; la latence vient donc de la connexion bridée elle-même, pas d'un minuteur. */
+async function brancherIA(page, { bridee = false } = {}) {
   expect(IA, 'service IA lancé par le workflow (E2E_IA_URL)').toBeTruthy()
+  const allerRetourBride = () => page.evaluate(() => fetch('/api/django/auth/me/', { cache: 'no-store', credentials: 'same-origin' })
+    .then((x) => x.status)).catch(() => undefined)
   await page.route(/\/api\/fastapi\//, async (route) => {
     const req = route.request()
     const u = new URL(req.url())
@@ -36,9 +39,9 @@ async function brancherIA(page, { latenceMs = 0 } = {}) {
     const jeton = await jetonDe(page.context())
     if (jeton) headers.authorization = `Bearer ${jeton}`
     try {
-      if (latenceMs) await attendre(latenceMs)
+      if (bridee) await allerRetourBride()
       const rep = await route.fetch({ url: `${IA}${u.pathname.replace(/^\/api\/fastapi/, '')}${u.search}`, headers, timeout: 300_000, maxRedirects: 0 })
-      if (latenceMs) await attendre(latenceMs)
+      if (bridee) await allerRetourBride()
       await route.fulfill({ response: rep })
     } catch {
       await route.abort().catch(() => undefined)

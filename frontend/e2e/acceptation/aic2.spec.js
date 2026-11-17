@@ -24,11 +24,14 @@ const TELEPHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
 
 // ── service IA réel (FastAPI du workflow), branché sous /api/fastapi comme nginx en prod ─────────────────────
 const IA = process.env.E2E_IA_URL
-const attendre = (ms) => new Promise((r) => setTimeout(r, ms))
 const jetonDe = async (context) => (await context.cookies()).find((c) => c.name === 'access_token')?.value || ''
-/** `latenceMs` : connexion bridée — délai à l'aller ET au retour de chaque appel au service IA. */
-async function brancherIA(page, { latenceMs = 0 } = {}) {
+/** `bridee` : connexion bridée — chaque appel au service IA attend, à l'aller ET au retour, un aller-retour RÉEL du
+ *  navigateur sur le réseau émulé par l'étape (CDP `Network.emulateNetworkConditions`) : `route.fetch` part du client
+ *  HTTP de Playwright (Node), hors de ce réseau ; la latence vient donc de la connexion bridée elle-même, pas d'un minuteur. */
+async function brancherIA(page, { bridee = false } = {}) {
   expect(IA, 'service IA lancé par le workflow (E2E_IA_URL)').toBeTruthy()
+  const allerRetourBride = () => page.evaluate(() => fetch('/api/django/auth/me/', { cache: 'no-store', credentials: 'same-origin' })
+    .then((x) => x.status)).catch(() => undefined)
   await page.route(/\/api\/fastapi\//, async (route) => {
     const req = route.request()
     const u = new URL(req.url())
@@ -37,9 +40,9 @@ async function brancherIA(page, { latenceMs = 0 } = {}) {
     const jeton = await jetonDe(page.context())
     if (jeton) headers.authorization = `Bearer ${jeton}`
     try {
-      if (latenceMs) await attendre(latenceMs)
+      if (bridee) await allerRetourBride()
       const rep = await route.fetch({ url: `${IA}${u.pathname.replace(/^\/api\/fastapi/, '')}${u.search}`, headers, timeout: 300_000, maxRedirects: 0 })
-      if (latenceMs) await attendre(latenceMs)
+      if (bridee) await allerRetourBride()
       await route.fulfill({ response: rep })
     } catch {
       await route.abort().catch(() => undefined)
@@ -143,11 +146,11 @@ etape('P7.1-AIC91-progression', ['AIC91'], async ({ page, context, suivi, testIn
   const nom = `Zerhouni${m}`
   const { lead } = await leadAvecTouche(api, a.id, nom)
   try {
-    // Connexion bridée : réseau du navigateur ralenti (CDP) + 700 ms à l'aller et au retour de chaque appel IA.
+    // Connexion bridée : réseau du navigateur ralenti (CDP) ; chaque appel IA routé paie un aller-retour sur ce réseau à l'aller et au retour.
     const cdp = await a.ctx.newCDPSession(a.p)
     await cdp.send('Network.enable')
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 400, downloadThroughput: 60 * 1024, uploadThroughput: 30 * 1024 })
-    await brancherIA(a.p, { latenceMs: 700 })
+    await brancherIA(a.p, { bridee: true })
     const sondages = []
     a.p.on('response', async (r) => {
       if (!/\/api\/fastapi\/sql-agent\/progression\//.test(new URL(r.url()).pathname)) return

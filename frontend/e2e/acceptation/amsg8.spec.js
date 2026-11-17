@@ -30,7 +30,6 @@ const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 100
 
 // ── service IA réel (FastAPI du workflow), branché sous /api/fastapi comme nginx en prod ─────────────────────
 const IA = process.env.E2E_IA_URL
-const attendre = (ms) => new Promise((r) => setTimeout(r, ms))
 const jetonDe = async (context) => (await context.cookies()).find((c) => c.name === 'access_token')?.value || ''
 async function brancherIA(page) {
   expect(IA, 'service IA lancé par le workflow (E2E_IA_URL)').toBeTruthy()
@@ -168,7 +167,6 @@ etape('PF8.1-AMSG6-assistant-reel', ['AMSG6'], async ({ page, testInfo }) => {
   } finally {
     await r.delete(`${API}/ventes/devis/${d.id}/`, T).catch(() => null)
     await r.delete(`${API}/crm/leads/${lead.id}/`, T).catch(() => null)
-    await attendre(10)
   }
 }, {
   ecart: {

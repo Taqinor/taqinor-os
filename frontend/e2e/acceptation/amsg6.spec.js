@@ -421,7 +421,9 @@ etape('PF8.4-AMSG94', ['AMSG94', 'AMSG68'], async ({ page, suivi }) => {
   expect(rep.status(), 'serveur : 400').toBe(400)
   expect(J(await rep.json()), 'corps du refus : action_config nommé').toContain('action_config')
   await expect(bloc.getByText(/corps obligatoire/), 'erreur « corps obligatoire » SOUS le champ « Config action »').toBeVisible({ timeout: 15_000 })
-  await page.waitForTimeout(1500)
+  // Erreur sous le champ et toast partent du MÊME `catch` (AutomatisationsSection) : l'erreur est rendue, donc la
+  // branche est tranchée ; deux images peintes ⇒ un toast éventuel est déjà rendu par le Toaster.
+  await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
   await expect(page.getByText('Ajout impossible.'), 'le toast « Ajout impossible. » ne paraît plus').toHaveCount(0)
   // Persistance côté serveur : aucune règle de ce nom.
   const regles = listeDe(await lireJson(await page.request.get(`${API}/automation/rules/?page_size=500`, T), 'règles'))
