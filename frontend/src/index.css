@@ -52,3 +52,11 @@
 @import "./styles/calepinage/42-trace-toit.css";
 @import "./styles/lead/43-lead-archive.css";
 @import "./styles/generateur/44-edition-complete-edc.css";
+/* TCH41 — Tâches : base portée des maquettes + une feuille par zone d'écrans (tout sous `.tch`). */
+@import "./styles/taches/base.css";
+@import "./styles/taches/coeur.css";
+@import "./styles/taches/saisie.css";
+@import "./styles/taches/projets.css";
+@import "./styles/taches/agenda.css";
+@import "./styles/taches/reglages.css";
+@import "./styles/taches/presence.css";
