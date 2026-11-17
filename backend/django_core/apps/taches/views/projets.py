@@ -4,18 +4,75 @@ Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche d
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon la forme PROJET partagée ;
 `GESTE` et `REORDONNER` viennent de `views/taches.py` (déclarés une fois).
 """
+import json
+
+from django.http import Http404
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.response import Response
+from rest_framework.utils.encoders import JSONEncoder
 from rest_framework.views import APIView
 
+from apps.taches.selectors import projets as lecture
+from apps.taches.serializers import projets as formes_projets
 from apps.taches.serializers.formes import ProjetSerializer
+from apps.taches.services import projets as ecriture
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, forme_echantillon, parametre, reponses,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, parametre, reponses,
 )
 from apps.taches.views.taches import GESTE, REORDONNER
 from core.idempotency import IdempotentCreateMixin
 from core.openapi_operations import mots_operation
+from core.pagination import StandardPagination
+from core.verrou_optimiste import ConflitVersion
+
+
+def _json(donnees):
+    """Des données JSON pures (dates en texte) : ce que l'idempotence mémorise et rejoue."""
+    return json.loads(json.dumps(donnees, cls=JSONEncoder))
+
+
+def _valider(classe, donnees, **options):
+    """Le corps reçu, validé (400 par champ) ; seules les clés déclarées passent."""
+    serialiseur = classe(data=donnees, **options)
+    serialiseur.is_valid(raise_exception=True)
+    return serialiseur.validated_data
+
+
+def _etat(request):
+    """`(état des projets, contexte des formes)` de la requête, calculés au jour courant."""
+    assistant = est_assistant(request)
+    etat = lecture.etat_projets(request.user, timezone.localdate(), usage='assistant' if assistant else 'ecran')
+    return etat, formes_projets.contexte_de(etat, assistant=assistant)
+
+
+def _projet_ou_404(request, pk):
+    projet = lecture.projet_de(request.user, pk)
+    if projet is None:
+        raise Http404('Introuvable.')
+    return projet
+
+
+def _avec_conflit_projet(request, appel):
+    """Joue `appel()` ; un 409 `conflit_version` porte l'état courant du projet (forme PROJET)."""
+    try:
+        return appel()
+    except ConflitVersion as exc:
+        projet = getattr(exc, 'projet', None)
+        if projet is not None:
+            projet.refresh_from_db()
+            _, ctx = _etat(request)
+            exc.detail['actuel'] = formes_projets.forme_projet(projet, ctx)
+        raise
+
+
+def _ecrit(request, resultat, statut=200):
+    """La réponse `projet_ecrit` d'une écriture (état recalculé APRÈS elle)."""
+    _, ctx = _etat(request)
+    return Response(formes_projets.projet_ecrit(resultat, ctx), status=statut)
+
 
 #: 409 d'un projet : `conflit_version` (`lock_version`, `actuel` = PROJET).
 CONFLIT_PROJET = inline_serializer('TachesConflitProjet', {
@@ -52,13 +109,28 @@ class ProjetsVue(IdempotentCreateMixin, APIView):
     @extend_schema(parameters=[parametre('statut', OpenApiTypes.STR, 'actif, en_pause ou archive.'), *PAGINATION],
                    responses=reponses(forme_echantillon('projets_liste'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        statut = request.query_params.get('statut') or None
+        if statut not in (None, 'actif', 'en_pause', 'archive'):
+            raise serializers.ValidationError({'statut': ['Valeur inconnue.']})
+        etat, ctx = _etat(request)
+        pagination = StandardPagination()
+        page = pagination.paginate_queryset(lecture.projets_filtres(request.user, statut), request, view=self)
+        reponse = pagination.get_paginated_response(ProjetSerializer(page, many=True, context=ctx).data)
+        reponse.data['constat'] = etat.constat
+        return reponse
 
     @extend_schema(request=corps('Projet', {'nom': 'Chantier X', 'priorite': 2, 'couleur': 'vert', 'icone': '',
                                             'objectif': '', 'domaine': ''}, requis=('nom',)),
                    responses=reponses(PROJET_ECRIT, statut=201, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ProjetCreationSerializer, request.data)
+
+        def creer():
+            resultat = ecriture.creer_projet(request.user, **donnees)
+            reponse = _ecrit(request, resultat, 201)
+            reponse.data = _json(reponse.data)
+            return reponse
+        return self._avec_idempotence(request, creer, suffixe=f'u{request.user.pk}')
 
 
 class ProjetVue(APIView):
@@ -68,7 +140,9 @@ class ProjetVue(APIView):
 
     @extend_schema(responses=reponses(ProjetSerializer, erreurs=(404,)))
     def get(self, request, id):
-        raise PasEncore()
+        projet = _projet_ou_404(request, id)
+        _, ctx = _etat(request)
+        return Response(formes_projets.forme_projet(projet, ctx))
 
     @extend_schema(request=inline_serializer('TachesCorpsProjetPatch', {
         'nom': serializers.CharField(required=False, max_length=120),
@@ -86,11 +160,19 @@ class ProjetVue(APIView):
         'lock_version': serializers.IntegerField(),
     }), responses=reponses(ProjetSerializer, erreurs=(400, 404), conflit=CONFLIT_PROJET))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = dict(_valider(formes_projets.ProjetModificationSerializer, request.data))
+        version = donnees.pop('lock_version')
+        projet = _avec_conflit_projet(
+            request, lambda: ecriture.modifier_projet(request.user, id, donnees, version=version))
+        _, ctx = _etat(request)
+        return Response(formes_projets.forme_projet(projet, ctx))
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        _projet_ou_404(request, id)
+        _, ctx = _etat(request)  # lu AVANT la suppression : compteurs et santé du projet tel qu'il était
+        resultat = ecriture.supprimer_projet(request.user, id)
+        return Response(formes_projets.projet_ecrit(resultat, ctx))
 
 
 class ProjetReordonnerVue(APIView):
