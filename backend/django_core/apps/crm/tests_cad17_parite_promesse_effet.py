@@ -1165,6 +1165,11 @@ class PariteStandbyProTests(PariteBase):
         # CADV29 — J+3 annonce J+7, J+7 annonce le devis ; une pièce reçue aussi.
         scenario = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
         lead = self._lead(scenario)
+        # Joint au téléphone (``canal_touche='appel'``) : le client a parlé, son
+        # devis reste promis après les pièces (fondateur, 17/11/2026).
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint au téléphone.')])
         premiere = assurer_prochaine_etape_apres_succes(
             lead, self.acteur, canal_touche='appel')
         self.assertEqual(st.promesses_touche(premiere)[st.CLE_SANS_ISSUE],

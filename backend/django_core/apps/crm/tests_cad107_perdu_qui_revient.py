@@ -303,11 +303,29 @@ class LesNoOpDeliberesTests(_Base):
         """CADV25 — pas de réveil pour lui ; QJ-INVARIANT : une étape, jamais rien."""
         lead = self._lead_perdu(perdu=False)
         lead.activites.all().delete()
+        # Ni issue « joint », ni devis, ni visite, ni marche d'escalier.
+        self.assertFalse(lead.relance_etapes.exists())
         etapes = cadence_touche.reprendre_cadence_apres_reouverture(
             lead, self.acteur)
         self.assertTrue(etapes)
         self.assertNotIn('reveil', {e.cadence for e in etapes})
         self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
+        # Fondateur, 17/11/2026 — jamais le devis d'un client qui n'a jamais
+        # répondu : « Décider la suite ».
+        from apps.crm.cadence_config import CLE_DECIDER_SUITE
+        self.assertEqual([e.cle for e in etapes], [CLE_DECIDER_SUITE])
+
+    def test_le_filet_garde_le_devis_d_un_client_deja_joint(self):
+        """Le repli du filet garde le devis d'un client qui a répondu : seul
+        celui qui n'a JAMAIS répondu reçoit « Décider la suite ». (Le filet
+        est appelé en direct : un lead déjà joint reprend par le réveil, et un
+        gabarit de réveil désactivé retombe sur le gabarit livré.)"""
+        from apps.crm.cadence_config import CLE_DEVIS
+        from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
+        lead = self._lead_perdu(perdu=False)
+        etape = assurer_prochaine_etape_apres_succes(lead, self.acteur)
+        self.assertIsNotNone(etape)
+        self.assertEqual(etape.cle, CLE_DEVIS)
 
     def test_la_cadence_posee_est_bien_le_REVEIL_jamais_une_neuve(self):
         """Garde-fou CADX : aucune cadence n'est inventée pour l'occasion."""

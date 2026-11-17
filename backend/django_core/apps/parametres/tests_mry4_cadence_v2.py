@@ -474,6 +474,114 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
             company=company, cadence=Cadence.REVEIL, ordre=1).canal,
             'whatsapp')
 
+    def test_le_j60_seede_porte_la_cle_que_le_moteur_lui_donne(self):
+        """17/11/2026 — `_adapter_gabarits_reveil` donne TOUJOURS `reveil_a3` au
+        J60 : le gabarit livré ne dit plus `reveil_a2`."""
+        from apps.crm.cadence_plan import _REVEIL_GABARITS
+
+        self.assertEqual(_REVEIL_GABARITS[True][1], _REVEIL_GABARITS[False][1])
+        self.assertEqual(CADENCE_REVEIL_DEFAUT[1]['template_cle'],
+                         _REVEIL_GABARITS[True][1])
+
+    def test_0145_aligne_le_j60_seede_sans_toucher_un_reglage_de_la_societe(self):
+        from importlib import import_module
+
+        module = import_module(
+            'apps.parametres.migrations.0145_reveil_j60_reveil_a3')
+        company = _company('reveil-a3-prod')
+        perso = _company('reveil-a3-perso')
+        appel = _company('reveil-a3-appel')
+        for societe in (company, perso, appel):
+            self._reveil_seed_0609(societe)
+        reveil = CadenceRelanceEtape.objects.filter(cadence=Cadence.REVEIL)
+        reveil.filter(company=perso, ordre=2).update(template_cle='reveil_b')
+        reveil.filter(company=appel, ordre=2).update(canal='appel')
+        module.poser_reveil_a3(self._RegistreSimule, None)
+        lues = {
+            c.slug: reveil.get(company=c, ordre=2).template_cle
+            for c in (company, perso, appel)}
+        self.assertEqual(lues, {
+            'reveil-a3-prod': 'reveil_a3', 'reveil-a3-perso': 'reveil_b',
+            'reveil-a3-appel': 'reveil_a2'})
+        # Le J30 n'est jamais touché, la 2e application ne change rien.
+        self.assertEqual(reveil.get(company=company, ordre=1).template_cle,
+                         'reveil_a1')
+        module.poser_reveil_a3(self._RegistreSimule, None)
+        self.assertEqual(reveil.get(company=company, ordre=2).template_cle,
+                         'reveil_a3')
+
+    # ── 17/11/2026 — des libellés qui disent canal et moment (0146) ──────────
+
+    _LIBELLES_1711 = {
+        (Cadence.CONTACT, 3): '2e appel — laisser un message vocal',
+        (Cadence.CONTACT, 4): '3e appel — le lendemain',
+        (Cadence.CONTACT, 5): '4e appel — laisser un message vocal',
+        (Cadence.CONTACT, 7): '5e appel — dernier essai par téléphone',
+        (Cadence.CONTACT, 8): 'WhatsApp de clôture — « Je classe ? »',
+        (Cadence.APRES_DEVIS, 2): 'Appel de suivi J+2',
+        (Cadence.APRES_DEVIS, 6): 'Appel de suivi J+7',
+        (Cadence.APRES_DEVIS, 3): 'WhatsApp — décision en famille',
+        (Cadence.APRES_DEVIS, 10): 'WhatsApp à 2 mois',
+        (Cadence.APRES_DEVIS, 11): 'Dernier appel à 3 mois',
+        (Cadence.REVEIL, 1): 'Appel de réveil à 1 mois',
+        (Cadence.REVEIL, 2): 'WhatsApp de réveil à 2 mois',
+    }
+
+    def test_les_gabarits_livres_portent_les_libelles_parlants(self):
+        from apps.parametres.models_relance import CADENCES_DEFAUT
+
+        lus = {(cadence, e['ordre']): e['libelle']
+               for cadence in (Cadence.CONTACT, Cadence.APRES_DEVIS,
+                               Cadence.REVEIL)
+               for e in CADENCES_DEFAUT[cadence]}
+        for cle, libelle in self._LIBELLES_1711.items():
+            with self.subTest(cadence=cle[0], ordre=cle[1]):
+                self.assertEqual(lus[cle], libelle)
+
+    def test_0146_renomme_les_anciens_defauts_et_rien_d_autre(self):
+        from importlib import import_module
+
+        module = import_module(
+            'apps.parametres.migrations.0146_libelles_gabarits_1711')
+        company = _company('libelles-1711')
+        anciens = {
+            (Cadence.CONTACT, 4): 'Appel 3',
+            (Cadence.APRES_DEVIS, 2): 'Appel de suivi',
+            # La prod porte déjà ce libellé : intact.
+            (Cadence.APRES_DEVIS, 6): 'Appel de suivi J+7',
+            # Libellé retouché à la main : jamais écrasé.
+            (Cadence.APRES_DEVIS, 3): 'Dimanche en famille (maison)',
+            (Cadence.REVEIL, 1): 'Réveil J30',
+            (Cadence.REVEIL, 2): 'Réveil J60',
+        }
+        for (cadence, ordre), libelle in anciens.items():
+            CadenceRelanceEtape.objects.create(
+                company=company, cadence=cadence, ordre=ordre,
+                canal='appel', delai_jours=ordre, libelle=libelle,
+                actif=True)
+        # Même (cadence, ordre) dans une autre cadence : jamais touché.
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.GENERIQUE, ordre=4,
+            canal='appel', delai_jours=2, libelle='Appel 3', actif=True)
+        module.renommer(self._RegistreSimule, None)
+        lus = {(e.cadence, e.ordre): e.libelle
+               for e in CadenceRelanceEtape.objects.filter(company=company)}
+        self.assertEqual(lus, {
+            (Cadence.CONTACT, 4): '3e appel — le lendemain',
+            (Cadence.APRES_DEVIS, 2): 'Appel de suivi J+2',
+            (Cadence.APRES_DEVIS, 6): 'Appel de suivi J+7',
+            (Cadence.APRES_DEVIS, 3): 'Dimanche en famille (maison)',
+            (Cadence.REVEIL, 1): 'Appel de réveil à 1 mois',
+            (Cadence.REVEIL, 2): 'WhatsApp de réveil à 2 mois',
+            (Cadence.GENERIQUE, 4): 'Appel 3',
+        })
+        # Idempotence.
+        module.renommer(self._RegistreSimule, None)
+        self.assertEqual(
+            {(e.cadence, e.ordre): e.libelle
+             for e in CadenceRelanceEtape.objects.filter(company=company)},
+            lus)
+
     def _module_rattrapage(self):
         from importlib import import_module
         return import_module(
@@ -566,6 +674,60 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
         self.assertEqual(CadenceRelanceEtape.objects.get(
             company=perso, cadence=Cadence.APRES_DEVIS,
             ordre=2).template_cle, '')
+
+    # ── 17/11/2026 — les heures des trois touches après devis (0143) ────────
+
+    def _module_heures_apres_devis(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0143_apres_devis_heures_cibles')
+
+    def test_0143_pose_l_heure_du_gabarit_sur_les_touches_sans_heure(self):
+        """Constat prod du 17/11 : ordres 1, 2 et 6 à `heure_cible` NULL (la
+        touche partait à l'heure de l'envoi du devis) ; libellés de la prod
+        « Appel de suivi J+2 » / « J+7 » — le libellé n'est pas un critère."""
+        company = _company('heures-apres-devis')
+        _v3_apres_devis(company)
+        suivi = CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS)
+        suivi.filter(ordre__in=(1, 2, 6)).update(heure_cible=None)
+        suivi.filter(ordre=2).update(libelle='Appel de suivi J+2')
+        suivi.filter(ordre=6).update(libelle='Appel de suivi J+7')
+        autres_avant = list(suivi.exclude(ordre__in=(1, 2, 6)).order_by(
+            'ordre').values_list('ordre', 'heure_cible', 'libelle'))
+        module = self._module_heures_apres_devis()
+        module.poser_les_heures(self._RegistreSimule, None)
+        self.assertEqual(
+            list(suivi.filter(ordre__in=(1, 2, 6)).order_by('ordre')
+                 .values_list('ordre', 'heure_cible', 'libelle')),
+            [(1, datetime.time(9, 30), "Le PDF s'ouvre bien ?"),
+             (2, datetime.time(18, 0), 'Appel de suivi J+2'),
+             (6, datetime.time(18, 0), 'Appel de suivi J+7')])
+        self.assertEqual(
+            list(suivi.exclude(ordre__in=(1, 2, 6)).order_by('ordre')
+                 .values_list('ordre', 'heure_cible', 'libelle')),
+            autres_avant)
+        # Idempotence.
+        etat = _etat_apres_devis(company)
+        module.poser_les_heures(self._RegistreSimule, None)
+        self.assertEqual(_etat_apres_devis(company), etat)
+
+    def test_0143_laisse_un_barreau_regle_par_la_societe(self):
+        """Heure saisie, délai déplacé ou clé changée : jamais touchés."""
+        perso = _company('heures-apres-devis-perso')
+        _v3_apres_devis(perso)
+        suivi = CadenceRelanceEtape.objects.filter(
+            company=perso, cadence=Cadence.APRES_DEVIS)
+        suivi.filter(ordre=1).update(heure_cible=datetime.time(11, 15))
+        suivi.filter(ordre=2).update(heure_cible=None, delai_jours=4)
+        suivi.filter(ordre=6).update(
+            heure_cible=None, template_cle='appel_suivi_j11')
+        self._module_heures_apres_devis().poser_les_heures(
+            self._RegistreSimule, None)
+        self.assertEqual(
+            list(suivi.filter(ordre__in=(1, 2, 6)).order_by('ordre')
+                 .values_list('ordre', 'heure_cible')),
+            [(1, datetime.time(11, 15)), (2, None), (6, None)])
 
     # ── 17/11/2026 — les textes que le code livre désormais par défaut ──────
 

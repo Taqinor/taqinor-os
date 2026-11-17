@@ -4,8 +4,8 @@ promettait un envoi « J30 puis J60 » que le moteur ne tient jamais.
 `apps/crm/services._adapter_gabarits_reveil` réassigne les gabarits de la
 cadence réveil selon que le lead a déjà reçu un devis : à J30, `reveil_a1`
 ou `reveil_a2` selon le dossier ; à J60, TOUJOURS `reveil_a3` — le barreau
-J60 seedé sous `reveil_a2` (`CADENCE_REVEIL_DEFAUT`) n'est jamais envoyé tel
-quel. Ce fichier verrouille que la légende du document dit le vrai
+J60, seedé sous `reveil_a2` jusqu'au 17/11/2026 (`CADENCE_REVEIL_DEFAUT`,
+désormais `reveil_a3`), n'était jamais envoyé tel quel. Ce fichier verrouille que la légende du document dit le vrai
 routage, pas un test d'écran (React, hors de portée d'un test Django).
 """
 import pathlib

@@ -5,17 +5,18 @@ Une touche de relance n'a PAS de responsable propre : l'écran la montre au
 responsable de son lead. Changer le responsable des leads déplace donc leurs
 touches ouvertes. Le geste passe par ``reattribuer_lead`` (jamais un
 ``update()``) : le nouveau responsable est notifié de ce qu'il hérite, la
-touche de passation « prévenir le client » est posée sur un dossier déjà
-contacté, la file est recalée.
+touche de passation « prévenir le client » n'est posée, sur demande, que sur
+un dossier déjà contacté et hors Froid ; la file est recalée.
 
 PÉRIMÈTRE — « tout ce qui peut encore produire une tâche » : les leads de
 ``de`` ni perdus, ni archivés, ni opposés (``ne_plus_contacter``), ni
-supprimés (le gestionnaire ``objects`` les exclut), et dont l'étape n'est pas
-SIGNÉ. Les leads Froid suivent donc, qu'ils aient une touche ouverte ou non :
-un réveil futur leur en créera une.
+supprimés (le gestionnaire ``objects`` les exclut) ; un lead SIGNÉ seulement
+s'il porte encore une touche ouverte (« Confirmer la signature », acompte).
+Les leads Froid suivent, qu'ils aient une touche ouverte ou non : un réveil
+futur leur en créera une. Seul retour possible : déléguer à nouveau.
 """
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q
 
 from . import activity, stages
 from .cadence_plan import sync_relance_activity
@@ -25,7 +26,7 @@ from .cadence_reponses import reattribuer_lead
 class DelegationRefusee(Exception):
     """Refus NOMMÉ : ``champ`` dit sous quel champ l'écran l'affiche,
     ``statut`` le code HTTP : 400 valeur mal formée, 403 hors portée, 404 collègue
-    introuvable, 409 état (compte désactivé, même personne) — ENF11."""
+    introuvable, 409 état (compte désactivé, sans CRM, même personne) — ENF11."""
 
     def __init__(self, champ, message, statut=400):
         super().__init__(message)
@@ -71,6 +72,10 @@ def resoudre_delegation(user, corps, *, exiger_vers=True):
         raise DelegationRefusee(
             'vers', 'Ce collègue est désactivé : choisissez un compte actif.',
             statut=409)
+    if vers is not None and not _a_acces_au_crm(vers):
+        raise DelegationRefusee(
+            'vers', 'Ce collègue n’a pas accès au CRM : choisissez un autre '
+                    'compte.', statut=409)
     if vers is not None and de.pk == vers.pk:
         raise DelegationRefusee(
             'vers', 'Ces dossiers appartiennent déjà à cette personne : '
@@ -84,15 +89,27 @@ def resoudre_delegation(user, corps, *, exiger_vers=True):
     return de, vers
 
 
+def _a_acces_au_crm(cible):
+    """La cible peut-elle travailler la file du CRM ? La règle de lecture d'un
+    module (admin et compte sans rôle fin passent)."""
+    from authentication.permissions import peut_lire_module
+
+    return peut_lire_module(cible, 'crm')
+
+
 def leads_a_deleguer(user, de):
     """Les leads de ``de`` (société de ``user``, portée de ``user``) qui
     peuvent encore produire une tâche. UNE définition : l'aperçu et l'écriture
     la lisent toutes les deux."""
+    from .models import RelanceEtape
     from .portee_selectors import leads_visibles
 
+    ouverte = RelanceEtape.objects.filter(
+        lead_id=OuterRef('pk'), statut=RelanceEtape.Statut.A_FAIRE)
     return leads_visibles(user, user.company).filter(
         owner=de, perdu=False, is_archived=False, ne_plus_contacter=False,
-    ).exclude(stage=stages.SIGNED)
+    ).annotate(delegation_touche_ouverte=Exists(ouverte)).filter(
+        ~Q(stage=stages.SIGNED) | Q(delegation_touche_ouverte=True))
 
 
 def apercu_delegation(user, de):
@@ -117,7 +134,7 @@ def apercu_delegation(user, de):
     }
 
 
-def deleguer_dossiers(user, de, vers, *, prevenir_clients=True):
+def deleguer_dossiers(user, de, vers, *, prevenir_clients=False):
     """Confie à ``vers`` les leads de ``de`` : une transaction, ``reattribuer_lead``
     par dossier, la ligne d'Historique « en masse » de la réattribution en lot.
 

@@ -385,6 +385,12 @@ class DeuxSocietesTests(_Base):
             username=f'{self.slug}-b-resp', password='x',
             role_legacy='responsable', company=autre)
         lead_b = self._lead(autre, acteur_b, nom='Tazi')
+        # Deux clients joints : le devis est leur suite (17/11/2026 — sans
+        # historique, le filet poserait « Décider la suite »).
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=lead.company, lead=lead, outcome='joint',
+                         kind=LeadActivity.Kind.NOTE, body='Joint.')
+            for lead in (self.lead, lead_b)])
 
         cadence_filet.assurer_prochaine_etape_apres_succes(self.lead, self.acteur)
         cadence_filet.assurer_prochaine_etape_apres_succes(lead_b, acteur_b)

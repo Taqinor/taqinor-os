@@ -84,13 +84,13 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
       { ...INDUSTRIEL, message_cle: 'attente_accord_accuse' }))
   })
 
-  it('un lead résidentiel garde le libellé actuel et aucun accusé n’est proposé', async () => {
+  it('un lead résidentiel lit « (banque) » et aucun accusé n’est proposé', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-23T09:00:00Z'))
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     const onOuvrirMessage = vi.fn()
     ouvrirFait({ ...ETAPE_APPEL, lead_segment: 'residentiel' }, { onFait, onOuvrirMessage })
-    choisirAttente("En attente d'un accord (DPA / banque)")
+    choisirAttente("En attente d'un accord (banque)")
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-10-14' } })
     // Une seule raison vaut pour un lead résidentiel (le financement) : déjà choisie.
     expect(screen.getByLabelText('Raison de l’attente')).toHaveValue('financement')
@@ -105,8 +105,11 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
   it('les raisons proposées dépendent du segment : une seule (présélectionnée) pour un lead sans segment', () => {
     const raisons = (segment) => {
       const { unmount } = ouvrirFait({ ...ETAPE_APPEL, lead_segment: segment })
-      choisirAttente(segment === 'commercial' || segment === 'industriel'
-        ? "En attente d'un accord" : "En attente d'un accord (DPA / banque)")
+      // 17/11/2026 — résidentiel (ou sans segment) : « (banque) » ; agricole : « (DPA / banque) ».
+      choisirAttente({
+        commercial: "En attente d'un accord", industriel: "En attente d'un accord",
+        agricole: "En attente d'un accord (DPA / banque)",
+      }[segment] ?? "En attente d'un accord (banque)")
       const champ = screen.getByLabelText('Raison de l’attente')
       const valeurs = [...champ.querySelectorAll('option')].map((o) => o.value).filter(Boolean)
       const choisie = champ.value

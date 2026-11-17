@@ -184,6 +184,21 @@ class DernierReveilApiTests(TestCase):
         self.assertEqual(premier.statut, RelanceEtape.Statut.ANNULEE)
         self._assert_rappel_convenu(lead, resp)
 
+    def test_le_j30_du_pilote_garde_la_date_du_rappel(self):
+        """Audit des cadences (17/11/2026) — le pilote (facture ≥ 2 000 MAD,
+        jamais joint) n'a QUE le J30 : c'est son dernier réveil, et la date
+        d'un « À rappeler le… » n'est plus perdue."""
+        lead = self._lead(stages.COLD)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=2500)
+        lead.refresh_from_db()
+        premier = self._touche(lead, PREMIER)
+        self.assertTrue(cadence_reponses.est_dernier_reveil(premier))
+
+        resp = self._rappel(premier)
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self._assert_rappel_convenu(lead, resp)
+
     def test_le_premier_reveil_deplace_le_suivant(self):
         lead = self._lead(stages.COLD)
         premier = self._touche(lead, PREMIER)

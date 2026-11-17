@@ -155,7 +155,7 @@ CADENCE_CONTACT_DEFAUT = [
      'canal': CanalRelance.APPEL, 'libelle': "Appel d'ouverture",
      'template_cle': 'appel_ouverture', 'dimanche_ok': False},
     {'ordre': 3, 'delai_jours': 0, 'delai_minutes': 150, 'heure_cible': None,
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 2 (répondeur)',
+     'canal': CanalRelance.APPEL, 'libelle': '2e appel — laisser un message vocal',
      'template_cle': 'repondeur', 'dimanche_ok': False},
     # CAD67 (21/09/2026) — `repondeur` partait DEUX fois en ~20 h (ici ET à
     # l'ordre 6) : le document source (`docs/crm/messages_meryem.md`) le
@@ -164,7 +164,7 @@ CADENCE_CONTACT_DEFAUT = [
     # ce qui espace les deux messages répondeur de ~2 jours au lieu de ~20 h.
     {'ordre': 4, 'delai_jours': 1, 'delai_minutes': 0,
      'heure_cible': datetime.time(10, 30),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 3',
+     'canal': CanalRelance.APPEL, 'libelle': '3e appel — le lendemain',
      'template_cle': 'appel_relance', 'dimanche_ok': False},
     # CADV23 (02/11/2026, D-CADV-1) — protocole v4 : 5 appels + 3 WhatsApp sur
     # 7 jours. Les barreaux 5-8 remplacent les touches 5-11 du v3 (un rappel
@@ -174,7 +174,7 @@ CADENCE_CONTACT_DEFAUT = [
     # appel), `je_classe_j7` (question de clôture).
     {'ordre': 5, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': datetime.time(16, 0),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 4 (répondeur)',
+     'canal': CanalRelance.APPEL, 'libelle': '4e appel — laisser un message vocal',
      'template_cle': 'repondeur', 'dimanche_ok': False},
     {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': datetime.time(17, 45),
@@ -182,11 +182,11 @@ CADENCE_CONTACT_DEFAUT = [
      'template_cle': 'valeur_j1', 'dimanche_ok': False},
     {'ordre': 7, 'delai_jours': 4, 'delai_minutes': 0,
      'heure_cible': datetime.time(11, 0),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dernier)',
+     'canal': CanalRelance.APPEL, 'libelle': '5e appel — dernier essai par téléphone',
      'template_cle': 'appel_dernier', 'dimanche_ok': False},
     {'ordre': 8, 'delai_jours': 7, 'delai_minutes': 0,
      'heure_cible': datetime.time(12, 0),
-     'canal': CanalRelance.WHATSAPP, 'libelle': '« Je classe ? »',
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de clôture — « Je classe ? »',
      'template_cle': 'je_classe_j7', 'dimanche_ok': False},
 ]
 
@@ -221,11 +221,11 @@ CADENCE_APRES_DEVIS_DEFAUT = [
      'template_cle': 'j1_pdf', 'dimanche_ok': False},
     {'ordre': 2, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi J+2',
      'template_cle': 'appel_suivi_j2', 'dimanche_ok': False},
     {'ordre': 3, 'delai_jours': 3, 'delai_minutes': 0,
      'heure_cible': datetime.time(16, 0),
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Dimanche famille',
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp — décision en famille',
      'template_cle': 'dimanche_famille', 'dimanche_ok': True},
     # CADV24 (02/11/2026, D-CADV-3) — cadence v4 : J4 et J6 (WhatsApp morts)
     # sortent du défaut, le trou d'`ordre` 4-5 est gardé (comme AGR514) ; la
@@ -236,7 +236,7 @@ CADENCE_APRES_DEVIS_DEFAUT = [
     # appels.
     {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi J+7',
      'template_cle': 'appel_suivi_j7', 'dimanche_ok': False},
     {'ordre': 7, 'delai_jours': 10, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
@@ -252,11 +252,11 @@ CADENCE_APRES_DEVIS_DEFAUT = [
      'template_cle': 'appel_validite', 'dimanche_ok': False},
     {'ordre': 10, 'delai_jours': 60, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Dernier message',
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp à 2 mois',
      'template_cle': 'j13_dernier', 'dimanche_ok': False},
     {'ordre': 11, 'delai_jours': 90, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
-     'canal': CanalRelance.APPEL, 'libelle': 'Dernier appel',
+     'canal': CanalRelance.APPEL, 'libelle': 'Dernier appel à 3 mois',
      'template_cle': 'appel_dernier_suivi', 'dimanche_ok': False},
 ]
 
@@ -272,13 +272,16 @@ CADENCE_APRES_DEVIS_DEFAUT = [
 # `_adapter_gabarits_reveil` pose le script d'appel (`appel_reveil_devis` /
 # `appel_reveil_sans_devis`) et le rendu traduit les touches déjà ouvertes : un
 # J30 passé en WhatsApp garde `reveil_a1`/`reveil_a2`.
+# 17/11/2026 — la clé SEEDÉE du J60 est « reveil_a3 » (elle valait « reveil_a2 »,
+# que le moteur écrasait toujours : Paramètres annonçait un texte qui ne partait
+# jamais) ; migration 0145 pour les lignes existantes.
 CADENCE_REVEIL_DEFAUT = [
     {'ordre': 1, 'delai_jours': 30, 'delai_minutes': 0, 'heure_cible': None,
-     'canal': CanalRelance.APPEL, 'libelle': 'Réveil J30',
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel de réveil à 1 mois',
      'template_cle': 'reveil_a1', 'dimanche_ok': False},
     {'ordre': 2, 'delai_jours': 60, 'delai_minutes': 0, 'heure_cible': None,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J60',
-     'template_cle': 'reveil_a2', 'dimanche_ok': False},
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de réveil à 2 mois',
+     'template_cle': 'reveil_a3', 'dimanche_ok': False},
 ]
 
 # CAD128 (21/09/2026) — DEUXIÈME AFFAIRE : un client SIGNÉ qui redemande un
