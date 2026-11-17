@@ -1,6 +1,6 @@
 ---
 name: calculateur-suppositions-dites
-description: Règle fondateur du 17/11/2026 (lead « CPE Go Plus ») — toute information dont le calculateur de devis se sert et qu'il a dû supposer est dite à l'utilisateur avec le champ de la fiche ; option batterie C&I retenue tant que la consommation de nuit est inconnue ; câble AC supposé à 10 m avant la visite ; les deux options affichées côte à côte
+description: Règle fondateur du 17/11/2026 (lead « CPE Go Plus ») — toute information dont le calculateur de devis se sert et qu'il a dû supposer est dite à l'utilisateur avec le champ de la fiche ; option batterie C&I retenue tant que la consommation de nuit est inconnue ; câble AC supposé à 10 m avant la visite et jamais sous 10 mm² ; les deux options affichées côte à côte
 metadata:
   type: feedback
 ---
@@ -18,9 +18,12 @@ Décisions de Reda du 17/11/2026, prises sur le lead « CPE Go Plus » (1742, in
   composés ; 3 ou 4 une fois la question répondue). L'option n'est plus composée : l'offre réseau part seule
   et l'écran nomme la question. Si le client a demandé « avec » seule, le devis automatique est refusé en
   nommant ce champ.
-- **Câble AC avant la visite : 10 m par onduleur, plus 30 m** (remplace la valeur du 26/10/2026). À 30 m, la
-  limite de 1 % de chute de tension imposait 6 mm² à un onduleur de 15 kW ; à 10 m le calcul donne 2,5 mm²
-  (15 kW) ou 4 mm² (20 kW). Le câble DC reste à 30 m par chaîne (non tranché le 17/11).
+- **Câble AC d'onduleur : 10 m supposés avant la visite (plus 30 m), et JAMAIS moins de 10 mm².** « I want 10 mm cable for 15 kW inverter — the same for 10 kW and 5 kW, I only use 10 mm cables. » Plancher commercial
+  (`moteur_ci/composition.py` `SECTION_AC_MIN_MM2`), que le calcul dépasse dès que l'échauffement ou la chute de
+  tension l'exigent (50 kW → 16 mm²). Le câble DC reste à 30 m par chaîne et à son plancher de 6 mm² (19/08).
+  Les deux longueurs réelles se saisissent aussi sur l'écran du devis C&I, sans passer par le module Visites.
+  Portée du plancher au 17/11 : les LIGNES du devis C&I ; le schéma électrique, le calepinage et les devis
+  résidentiels calculent leur câble AC ailleurs et ne le portent pas encore (à trancher).
 - **Un devis à deux options montre les DEUX.** L'économie annuelle et le retour de l'option « avec
   batterie » s'affichent à côté de ceux de l'offre réseau sur les écrans internes (bannière de création,
   carte du générateur), lus de l'étude stockée — le PDF et la page client le faisaient déjà.

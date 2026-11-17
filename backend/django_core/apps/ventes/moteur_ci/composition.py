@@ -51,7 +51,7 @@ from decimal import Decimal, InvalidOperation
 
 from core.electrique.cables import (
     AMPACITE_U1000R2V_MONO, AMPACITE_U1000R2V_TRI, CHUTE_CIBLE_AC_PCT,
-    bareme_pour, proposer_section,
+    CRITERE_PLANCHER, bareme_pour, proposer_section,
 )
 from core.electrique.protections import calibre_disjoncteur, courant_emploi_ac
 from core.pricing_paliers import MODE_VOLUME, calculer_prix_paliers
@@ -117,6 +117,11 @@ MOTIF_LONGUEUR = 'longueur non déclarée : à relever à la visite'
 #: la visite, câbles et structure sont chiffrés sur ces hypothèses (devis
 #: préliminaire, prix ajustés après la visite).
 LONGUEUR_AC_DEFAUT_M = 10.0         # par onduleur, onduleur → TGBT (fondateur 17/11/2026 ; 30 m avant)
+#: Fondateur 17/11/2026 — « je n'utilise que du 10 mm² » derrière un onduleur de
+#: 5, 10 ou 15 kW : PLANCHER commercial du câble AC d'onduleur (jamais
+#: normatif) ; l'échauffement ou la chute de tension l'emportent au-dessus.
+SECTION_AC_MIN_MM2 = 10.0
+CRITERE_PLANCHER_AC = 'plancher AC 10 mm² (décision fondateur 17/11/2026)'
 DISTANCE_DC_DEFAUT_M = 30.0         # champ → onduleur ; câble = 2 × chaînes × distance
 PANNEAUX_PAR_CHAINE_DEFAUT = 12     # chaînes non calculées (fiches muettes)
 TYPE_POSE_DEFAUT = 'toit_plat_leste'
@@ -360,7 +365,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     proposee = proposer_section(
         ib, longueur, 400.0 if triphase else 230.0, CHUTE_CIBLE_AC_PCT,
         bareme=bareme, coefficient=math.sqrt(3.0) if triphase else 2.0,
-        calibre_in_a=calibre)
+        calibre_in_a=calibre, section_min_mm2=SECTION_AC_MIN_MM2)
     if proposee.thermique_hors_bareme or proposee.hors_bareme:
         lignes.append(_ligne('cable_ac', None,
                              'Câble AC %s → TGBT' % nom, longueur, 'm',
@@ -380,7 +385,8 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
         'cle': 'section_ac_%s' % (ondu.get('produit') or nom),
         'valeur': section, 'statut': 'source',
         'source': '%s (Ib %.1f A, In %g A, chute %.2f %%)' % (
-            proposee.critere, ib, calibre, proposee.chute_pct)})
+            CRITERE_PLANCHER_AC if proposee.critere == CRITERE_PLANCHER else proposee.critere,
+            ib, calibre, proposee.chute_pct)})
 
 
 MOTIF_CHAINES_BLOQUANTES = 'chaînes non faisables : quantité non calculée'
