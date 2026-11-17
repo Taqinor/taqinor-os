@@ -106,7 +106,7 @@ export default function Propose({ donnees, contexte, geste, enLigne, tout, carte
             <button
               type="button"
               className="bouton second"
-              aria-disabled={!enLigne || undefined}
+              data-necessite-reseau="" aria-disabled={!enLigne || undefined}
               onClick={() => geste.garder(lignes)}
             >
               {n >= 2 ? `Garder ces ${n}` : 'Garder celle-ci'}
@@ -120,7 +120,7 @@ export default function Propose({ donnees, contexte, geste, enLigne, tout, carte
           <button
             type="button"
             className="bouton lien"
-            aria-disabled={!enLigne || undefined}
+            data-necessite-reseau="" aria-disabled={!enLigne || undefined}
             onClick={() => geste.copilote('Planifie ma journée')}
           >
             Planifier avec le Copilote

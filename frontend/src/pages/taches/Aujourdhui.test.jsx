@@ -1,10 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReactReduxContext } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { memoryStore } from '../../lib/offlineOutbox'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
+import { creerFile, definirCompteFile, remplacerFile } from '../../features/taches/horsligne/captureQueue'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -148,17 +151,60 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
   })
 
-  it('hors ligne : la lecture reste, l\'en-tête le dit, cocher est grisé « Possible une fois connecté »', async () => {
+  it('hors ligne : la lecture reste, l\'en-tête le dit ; un geste qui exige le réseau dit « Possible une fois connecté »', async () => {
     servir(donnees())
     monter()
     await screen.findByText('Devis Settat')
     api.post.mockClear()
     fixerEnLigne(false)
     expect(screen.getByText(/Hors ligne · dernière synchro à 09:12/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+    await userEvent.click(screen.getByRole('button', { name: /Garder c/ }))
     expect(api.post).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Possible une fois connecté'))).toBe(true))
-    expect(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).not.toBeChecked()
+  })
+
+  describe('Raccord F2 — file hors ligne et cache du jour (TCH100)', () => {
+    const store = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+    const monterConnecte = () => render(
+      <ReactReduxContext.Provider value={{ store }}>
+        <MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /></MemoryRouter>
+      </ReactReduxContext.Provider>,
+    )
+    let file
+    beforeEach(() => {
+      window.localStorage.clear()
+      file = creerFile({ store: memoryStore() })
+      remplacerFile(file)
+    })
+    afterEach(() => { remplacerFile(null); definirCompteFile(null); window.localStorage.clear() })
+
+    it('cocher et reporter hors ligne partent dans la file : la ligne change tout de suite, « Partira dès le retour du réseau »', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      api.post.mockClear()
+      fixerEnLigne(false)
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+      await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).toBeChecked())
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Partira dès le retour du réseau')
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Devis Settat »' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+      await waitFor(async () => expect((await file.pending()).map((op) => op.op_type)).toEqual(['cocher', 'reporter']))
+      const [, report] = await file.pending()
+      expect(report.payload.corps).toMatchObject({ jour_prevu: donnees().prochain_jour_ouvre, lock_version: expect.any(Number) })
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('ouvert sans réseau, l\'écran lit la journée gardée dans le cache du compte au lieu de rester vide', async () => {
+      servir(donnees())
+      const { unmount } = monterConnecte()
+      await screen.findByText('Devis Settat')
+      unmount()
+      servir(() => Promise.reject(echecReseau()))
+      monterConnecte()
+      expect(await screen.findByText('Devis Settat')).toBeInTheDocument()
+      expect(screen.getByText(/^Pas à jour · \d\d:\d\d$/)).toBeInTheDocument()
+    })
   })
 
   it('aucune tâche : « Colle ou dicte tes listes » et Coller mes listes ouvre la saisie', async () => {

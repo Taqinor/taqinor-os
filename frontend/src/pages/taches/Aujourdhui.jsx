@@ -14,7 +14,9 @@ import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
 import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
-import { useEnLigne } from '../../features/taches/lib/enLigne'
+import { useCompteTaches, useEnLigne } from '../../features/taches/lib/enLigne'
+import { ecrireJournee, lireJournee } from '../../features/taches/horsligne/cacheJournee'
+import { MESSAGE_EN_FILE as TOAST_EN_FILE, enfilerCoche, enfilerReport } from '../../features/taches/horsligne/captureQueue'
 import { accord, aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
 import recordsApi from '../../api/recordsApi'
@@ -64,8 +66,18 @@ function journeeVide(donnees) {
     && rien(propose.pour_objectif) && rien(propose.suite_par_projet) && !(propose.reste_nb > 0)
 }
 
-/** Lit `aujourdhui/` : squelette tardif, liste gardée sur échec, relecture au focus. */
-function useAujourdhui(tout) {
+/** « 15:02 » d'un instant ISO écrit par le cache (heure de l'appareil). */
+function heureLocale(iso) {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * Lit `aujourdhui/` : squelette tardif, liste gardée sur échec, relecture au focus.
+ * Raccord F2 (TCH100) — la journée lue est gardée dans le cache du compte (`cacheJournee`) ; sans réseau, l'écran
+ * s'ouvre sur ce cache (« Hors ligne · dernière synchro à {HH:MM} ») au lieu d'un écran vide.
+ */
+function useAujourdhui(tout, userId) {
   const [donnees, setDonnees] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [derniere, setDerniere] = useState('')
@@ -74,6 +86,7 @@ function useAujourdhui(tout) {
   const vivant = useRef(true)
   const presentes = useRef(false)
   const vuFait = useRef(false)
+  const synchro = useRef(null)
 
   const charger = useCallback(async () => {
     const minuteur = presentes.current ? null : setTimeout(() => setSquelette(true), DELAI_SQUELETTE_MS)
@@ -81,16 +94,29 @@ function useAujourdhui(tout) {
       const { data } = await client.lireAujourdhui(tout ? { tout: 1 } : undefined)
       if (!vivant.current) return
       presentes.current = true
+      synchro.current = new Date()
       setDonnees(data)
       setErreur(false)
       setDerniere(heureDe(data.maintenant))
     } catch {
-      if (vivant.current) setErreur(true)
+      if (!vivant.current) return
+      setErreur(true)
+      const cache = presentes.current || userId === null ? null : lireJournee(userId, aujourdhuiIso())
+      if (cache?.donnees) {
+        presentes.current = true
+        setDonnees(cache.donnees)
+        setDerniere(heureLocale(cache.ecrit_a))
+      }
     } finally {
       if (minuteur) clearTimeout(minuteur)
       if (vivant.current) setSquelette(false)
     }
-  }, [tout])
+  }, [tout, userId])
+
+  // le cache suit l'écran (gestes optimistes compris), daté de la dernière lecture RÉUSSIE
+  useEffect(() => {
+    if (donnees?.jour && userId !== null && synchro.current) ecrireJournee(userId, donnees.jour, donnees, synchro.current)
+  }, [donnees, userId])
 
   useEffect(() => {
     vivant.current = true
@@ -168,7 +194,8 @@ export default function Aujourdhui() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const tout = params.get('tout') === '1'
-  const { donnees, setDonnees, erreur, derniere, squelette, enLigne, charger } = useAujourdhui(tout)
+  const { userId } = useCompteTaches()
+  const { donnees, setDonnees, erreur, derniere, squelette, enLigne, charger } = useAujourdhui(tout, userId)
   const [estampilles, setEstampilles] = useState({})
   const [feuille, setFeuille] = useState(null)
   const [conflit, setConflit] = useState(null)
@@ -190,8 +217,20 @@ export default function Aujourdhui() {
   }, [setDonnees])
 
   const terminer = useCallback(async (item, suivant) => {
-    garde()
     const cle = cleDe(item)
+    // hors ligne (TCH100) : cocher une tâche part dans la file ; décocher et clore une activité ERP attendent le réseau
+    if (!enLigne && item.type === 'tache' && suivant) {
+      try {
+        await enfilerCoche(item.id)
+      } catch (err) {
+        annoncer(frenchError(err)) // sans compte connecté, la file refuse : la case revient en arrière
+        throw err
+      }
+      patcher(cle, (it) => ({ ...it, statut: 'fait' }))
+      proposerAnnuler({ message: TOAST_EN_FILE, annonce: `Fait : ${item.titre}` })
+      return
+    }
+    garde()
     if (item.type === 'activite') {
       if (!suivant) throw new Error('Une activité de l’ERP close ne se rouvre pas ici.')
       await recordsApi.markActivityDone(item.id)
@@ -214,10 +253,22 @@ export default function Aujourdhui() {
         poserProgression(avant)
       },
     })
-  }, [garde, donnees, patcher, poserProgression])
+  }, [garde, enLigne, donnees, patcher, poserProgression])
 
   const poserJour = useCallback(async (item, jour, message, lockVersion = item.lock_version) => {
     const cle = cleDe(item)
+    if (!enLigne) {
+      // hors ligne (TCH100) : reporter / choisir un jour part dans la file, avec le `lock_version` du cache
+      try {
+        await enfilerReport(item.id, { jour_prevu: jour, moment: '', heure_debut: null, quelque_jour: false, lock_version: lockVersion })
+      } catch (err) {
+        annoncer(frenchError(err))
+        return
+      }
+      setEstampilles((e) => ({ ...e, [cle]: `→ ${jourNomme(jour, donnees?.jour)}` }))
+      proposerAnnuler({ message: TOAST_EN_FILE, annonce: message })
+      return
+    }
     try {
       const { data } = await client.planifierTache(item.id, { jour_prevu: jour, lock_version: lockVersion })
       setConflit(null)
@@ -242,13 +293,12 @@ export default function Aujourdhui() {
       }
       annoncer(frenchError(err))
     }
-  }, [donnees, patcher])
+  }, [enLigne, donnees, patcher])
 
   const reporter = useCallback((item) => {
-    try { garde() } catch { return }
     const jour = donnees?.prochain_jour_ouvre
     if (jour) poserJour(item, jour, `Reportée à ${jourNomme(jour, donnees.jour)}`)
-  }, [garde, donnees, poserJour])
+  }, [donnees, poserJour])
 
   const basculerEssentiel = useCallback(async (item, suivant) => {
     try { garde() } catch { return }

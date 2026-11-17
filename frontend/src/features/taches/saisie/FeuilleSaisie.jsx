@@ -6,6 +6,8 @@ import { frenchError } from '../../../lib/frenchError'
 import {
   annulerGeste, classerErreur, definirProprietaire, nouvelleCle, saisieRapide,
 } from '../../../api/tachesApi'
+import { MESSAGE_EN_FILE, enfilerAjout } from '../horsligne/captureQueue'
+import { estEnLigne, useEnLigne } from '../lib/enLigne'
 import { proposerAnnuler } from '../lib/gestes'
 import { jourCourt } from '../lib/textes'
 import ChampSaisie from '../ui/ChampSaisie'
@@ -125,9 +127,40 @@ function corpsApercu(collages, texte, ignorer) {
 function phraseErreur(err) {
   const classee = classerErreur(err)
   if (classee.code === 'validation') return messageChamps(classee.champs) || frenchError(err)
-  if (classee.code === 'reseau') return 'Pas de réseau : ta saisie est gardée, réessaie.'
   if (classee.code === 'autre_compte') return "Une action d'un autre compte a été retirée de la file."
   return frenchError(err)
+}
+
+/** Raccord F2 — textes.md §2.15 (toast) et §2.19 (annonce) d'un ajout mis en file hors ligne. */
+const TOAST_EN_FILE = MESSAGE_EN_FILE
+const ANNONCE_EN_FILE = 'Hors ligne : gardée, elle partira dès le retour du réseau'
+
+/** Coupure : aucune réponse du serveur (le geste part dans la file, jamais perdu). */
+const sansReseau = (err) => classerErreur(err).code === 'reseau'
+
+/**
+ * Le contexte de l'écran qui a ouvert la feuille (`taqinor:taches:saisir` → `detail`) : projet courant (Un projet,
+ * étape comprise), jour courant (Agenda). Une ligne qui ne nomme pas son projet le reçoit ; le jour devient le
+ * « Quand » de départ, visible et retirable.
+ */
+function lireContexte(detail) {
+  const projetId = Number.isInteger(detail?.projet_id) ? detail.projet_id : null
+  return {
+    projetId,
+    projetNom: projetId != null && typeof detail.projet_nom === 'string' ? detail.projet_nom : '',
+    sectionId: projetId != null && Number.isInteger(detail.section_id) ? detail.section_id : null,
+  }
+}
+
+function avecContexte(ligne, contexte) {
+  if (contexte?.projetId == null || ligne.projet_id != null || ligne.nouveau_projet) return ligne
+  return { ...ligne, projet_id: contexte.projetId, ...(contexte.sectionId != null ? { section_id: contexte.sectionId } : {}) }
+}
+
+/** Sans analyse du serveur (coupure) : une ligne par ligne non vide, le texte entier pour titre — rien n'est perdu. */
+function lignesBrutes(textes, { cid, quand }) {
+  return textes.flatMap((t) => t.split('\n')).map((t) => t.trim()).filter(Boolean)
+    .map((titre, index) => ({ index, client_id: `${cid}:${index}`, titre, ...(quand ?? {}) }))
 }
 
 export default function FeuilleSaisie({ ouverte, onFermer }) {
@@ -145,6 +178,8 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
   const [erreur, setErreur] = useState('')
   const [envoi, setEnvoi] = useState(false)
   const [cid, setCid] = useState(() => nouvelleCle())
+  const [contexte, setContexte] = useState(() => lireContexte(null))
+  const enLigne = useEnLigne()
 
   useEffect(() => { if (compte != null) definirProprietaire(compte) }, [compte])
 
@@ -156,7 +191,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   const remettreAZero = useCallback(() => {
     setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampOuvert(false); setIgnorer([])
-    setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle())
+    setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle()); setContexte(lireContexte(null))
   }, [])
 
   // déconnexion : plus aucune trace de la phrase (écran, stockage)
@@ -166,12 +201,17 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
     return () => window.removeEventListener(EVENEMENT_DECONNEXION, surDeconnexion)
   }, [remettreAZero])
 
-  // « Coller mes listes » (état vide d'Aujourd'hui) : l'événement de la coquille peut porter `liste` ou `texte`
+  // « Coller mes listes » (état vide d'Aujourd'hui) : l'événement de la coquille peut porter `liste` ou `texte` ;
+  // Raccord F2 : il porte aussi le contexte de l'écran (`projet_id`, `projet_nom`, `section_id`, `jour_prevu`, `heure_debut`)
   useEffect(() => {
     const surSaisir = (e) => {
       const detail = e?.detail ?? {}
       if (typeof detail.texte === 'string') setTexte(detail.texte)
-      if (detail.liste) setChampOuvert(true)
+      if (detail.liste || detail.coller) setChampOuvert(true)
+      setContexte(lireContexte(detail))
+      if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
+        setQuand({ jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false })
+      }
     }
     window.addEventListener(EVENEMENT_SAISIR, surSaisir)
     return () => window.removeEventListener(EVENEMENT_SAISIR, surSaisir)
@@ -187,7 +227,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   // l'analyse : une puce par jeton lu. Jamais bloquante : sans réseau, la phrase part quand même.
   useEffect(() => {
-    if (!ouverte || ![...collages, texte].some((t) => t.trim())) return undefined
+    if (!ouverte || !enLigne || ![...collages, texte].some((t) => t.trim())) return undefined
     let vivant = true
     const minuteur = setTimeout(() => {
       saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })
@@ -199,7 +239,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
         })
     }, DELAI_APERCU_MS)
     return () => { vivant = false; clearTimeout(minuteur) }
-  }, [ouverte, texte, collages, ignorer])
+  }, [ouverte, enLigne, texte, collages, ignorer])
 
   const frais = apercu && apercu.texte === texte && apercu.collages === collages && apercu.ignorer === ignorer
     ? apercu.donnees : null
@@ -219,10 +259,26 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
     setTexte(''); setChampOuvert(true); setErreur('')
   }
 
-  const creer = async (lignes) => {
+  /** Hors ligne (TCH100) : les lignes partent dans la file, la feuille se ferme, le texte n'est jamais perdu. */
+  const mettreEnFile = async (lignes) => {
+    try {
+      await enfilerAjout(lignes)
+    } catch (err) {
+      // sans compte connecté la file refuse : la phrase reste dans le champ (et dans le brouillon)
+      setErreur(frenchError(err))
+      return
+    }
+    remettreAZero()
+    onFermer?.()
+    proposerAnnuler({ message: TOAST_EN_FILE, annonce: ANNONCE_EN_FILE })
+  }
+
+  const creer = async (lignesLues) => {
+    const lignes = lignesLues.map((l) => avecContexte(l, contexte))
     setEnvoi(true)
     setErreur('')
     try {
+      if (!estEnLigne()) { await mettreEnFile(lignes); return }
       const { data } = await saisieRapide({ lignes, apercu: false }, { cle: cid })
       const n = data?.creees?.length ?? lignes.length
       const geste = data?.geste_id
@@ -234,7 +290,8 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
         onAnnuler: geste ? () => annulerGeste(geste) : undefined,
       })
     } catch (err) {
-      setErreur(phraseErreur(err))
+      if (sansReseau(err)) await mettreEnFile(lignes)
+      else setErreur(phraseErreur(err))
     } finally {
       setEnvoi(false)
     }
@@ -246,9 +303,14 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
     setErreur('')
     let donnees = frais
     try {
+      if (!donnees && !estEnLigne()) throw Object.assign(new Error('hors ligne'), { response: undefined })
       donnees = donnees ?? (await saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })).data
     } catch (err) {
-      setErreur(phraseErreur(err))
+      if (sansReseau(err)) {
+        await mettreEnFile(lignesBrutes([...collages, texte], { cid, quand }).map((l) => avecContexte(l, contexte)))
+      } else {
+        setErreur(phraseErreur(err))
+      }
       setEnvoi(false)
       return
     }
@@ -309,6 +371,13 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : null}
+                {contexte.projetId != null && contexte.projetNom ? (
+                  <button type="button" className="puce lue" aria-label={`Retirer « ${contexte.projetNom} »`}
+                    onClick={() => setContexte(lireContexte(null))}>
+                    <span className="projet-nom">{`● ${contexte.projetNom}`}</span>
+                    <X className="i i-14" aria-hidden="true" />
+                  </button>
+                ) : null}
               </span>
               <button
                 type="button"
@@ -321,6 +390,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
             </div>
           </>
         )}
+        {enLigne ? null : <p className="aide-champ" role="status">Hors ligne : elle partira dès le retour du réseau.</p>}
       </div>
     </FeuilleACrans>
   )

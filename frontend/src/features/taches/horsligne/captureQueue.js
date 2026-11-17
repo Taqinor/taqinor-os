@@ -25,6 +25,8 @@ import { EVENEMENT_DECONNEXION, viderCache } from './cacheJournee'
 
 export const TYPES = { AJOUTER: 'ajouter', COCHER: 'cocher', REPORTER: 'reporter' }
 export const MESSAGE_AUTRE_COMPTE = "Une action d'un autre compte a été retirée de la file."
+/** Toast d'un geste mis en file (textes.md §2.15 « Hors ligne »). */
+export const MESSAGE_EN_FILE = 'Partira dès le retour du réseau'
 
 let compte = null
 const ecouteurs = new Set()
