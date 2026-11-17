@@ -644,3 +644,13 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 .ep-sante-puce svg { color: var(--tch-surveiller); }
 .ep-cp-bloc li .changer::after { inset: -14px -8px; }
 .ep-t-maj { font-size: 0.75rem; }
+/* Tour 3 : une seule famille de sélection (accent), comme « Aujourd'hui » des premières actions */
+.ep-puces-choix .puce[aria-checked="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); }
+@media (min-width: 768px) { .ep-etape-ouverte .boutons .bouton { flex: 0 0 auto; } }
+.ep-t-maj { white-space: nowrap; flex: none; }
+.ep-t-pied .ep-t-ech { flex: 1; min-width: 0; }
+.ep-col .ep-faites-col { color: var(--tch-texte-doux); }
+/* Tour 3 : Copilote — retour à l'icône au-dessus (en ligne, les libellés cassaient sur 2 lignes au tour 2) */
+.ep-demandes button { min-height: 60px; gap: 4px; }
+.ep-ia-fil .ep-bulle-moi { margin-top: 16px; }
+.dark .ep-switch::before { background: var(--foreground); }

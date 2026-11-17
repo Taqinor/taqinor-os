@@ -54,8 +54,19 @@ def journee_type(comptes):
 
 
 def palier_initial(comptes10, dit):
+    """Rév. 2 : rien n'est imposé. -> (palier appliqué, journée type, carte proposée)."""
     t = journee_type(comptes10)
-    return (dit if dit else t), t
+    if dit:
+        return dit, t, ("journee_type" if t != dit else None)
+    return None, t, ("premier" if t != DEFAUT else None)
+
+
+def repondre_premier(reponse, type_):
+    return (type_, "accepte") if reponse == "oui" else (DEFAUT, "accepte")
+
+
+def semaine_courte(statuts):
+    return sum(1 for s in statuts if s == "sans_donnees") >= 3
 
 
 def plafonner_jours(comptes):
@@ -201,9 +212,9 @@ chk("statut (oui,non,0,oui,oui)", statut_jour(True, False, 0, True, True), "eval
 chk("reussie (6,5,1,1)", journee_reussie(6, 5, 1, 1), True)
 chk("reussie (6,5,2,0)", journee_reussie(6, 5, 2, 0), False)
 chk("reussie (4,5,0,0)", journee_reussie(4, 5, 0, 0), False)
-chk("palier_initial regulier", palier_initial([5, 4, 6, 5, 3, 7, 5, 6, 4, 5], None), (5, 5))
-chk("palier_initial rafales", palier_initial([9, 10, 9, 1, 2, 1, 2, 9, 10, 9], None), (6, 6))
-chk("palier_initial dit 5", palier_initial([3, 3, 2, 4, 3, 3, 2, 3, 4, 3], 5), (5, 3))
+chk("palier_initial regulier", palier_initial([5, 4, 6, 5, 3, 7, 5, 6, 4, 5], None), (None, 5, None))
+chk("palier_initial rafales", palier_initial([9, 10, 9, 1, 2, 1, 2, 9, 10, 9], None), (None, 6, "premier"))
+chk("palier_initial dit 5", palier_initial([3, 3, 2, 4, 3, 3, 2, 3, 4, 3], 5), (5, 3, "journee_type"))
 chk("bloc N5 (5,6,5,4,7,5,3,6,5,4)", evaluer_bloc(dict(N=5, tenus=tenus((5, 6, 5, 4, 7, 5, 3, 6, 5, 4), 5)), 30), "monter")
 chk("bloc N6 (5,4,6,5,3,5,6,4,5,4)", evaluer_bloc(dict(N=6, tenus=tenus((5, 4, 6, 5, 3, 5, 6, 4, 5, 4), 6)), 30), "baisser")
 chk("bloc tailles 20 ref 40", evaluer_bloc(dict(N=5, tenus=[True] * 7 + [False] * 3, ref=40, ref_n=40, tailles=[20] * 40), 30), "taille")
@@ -260,6 +271,11 @@ chk("A2 dit 7 sur palier 5", (objectif_dit(dict(palier=5, source="accepte", bloc
 chk("A2 plus sur palier 5 ; moins sur palier 1", (objectif_dit(dict(palier=5, bloc_debut="x"), sens="plus")["palier"],
                                                   objectif_dit(dict(palier=1, bloc_debut="x"), sens="moins")["palier"]), (6, 1))
 chk("A2 dit 15 -> refus", objectif_dit(dict(palier=5), nombre=15), "400")
+print("=== 4 exemples ajoutés par la révision 2 ===")
+chk("premier [Oui, 3] sur [3]*10", repondre_premier("oui", palier_initial([3] * 10, None)[1]), (3, "accepte"))
+chk("premier [Garder 5]", repondre_premier("garder", 3), (5, "accepte"))
+chk("semaine courte : 2 evalues + 3 sans_donnees", semaine_courte(["evalue"] * 2 + ["sans_donnees"] * 3), True)
+chk("semaine normale : 3 evalues + 2 sans_donnees", semaine_courte(["evalue"] * 3 + ["sans_donnees"] * 2), False)
 print("journee type demi-bas : moyenne 4,5 mediane 5 ->", journee_type([4, 5, 4, 5, 4, 5, 4, 5, 4, 5]),
       "; moyenne 5,5 mediane 5,5 ->", journee_type([5, 6, 5, 6, 5, 6, 5, 6, 5, 6]))
 print("sans plafond, R aurait ete", round((65 + 30) / 14, 2))

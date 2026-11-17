@@ -489,3 +489,11 @@
   .ag-tj-item::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
   .ag-lp-vide { border: 1.5px dashed var(--tch-trait); box-shadow: none; }
 }
+.ag-poignee::after { left: -6px; right: -6px; top: -22px; bottom: -17px; }
+@media (min-width: 768px) { .ag-mc.repos { background-color: var(--tch-panneau); } }
+@media (min-width: 768px) { .auj-col { background-color: color-mix(in srgb, var(--tch-accent) 5%, var(--tch-surface)); } }
+@media (min-width: 768px) {
+  .dark .repos-fond, .dark .ag-mc.repos { background-color: color-mix(in srgb, var(--muted) 70%, var(--foreground) 4%); }
+  .dark .auj-col { background-color: color-mix(in srgb, var(--tch-accent) 9%, var(--tch-surface)); }
+}
+@media (min-width: 768px) { .ag-curseur-bloc { left: 372px; top: 20px; } }
