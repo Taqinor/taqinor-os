@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Projets et rituels</title>
+<link rel="stylesheet" href="taches.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M12 2v8"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 6 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/></symbol><symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol></svg><!-- sprite:fin -->
+<main class="planche">
+  <p class="planche-titre">Planche 7 · Projets, plan, rythme</p>
+  <div class="colonnes">
+    <div class="liste" role="list">
+      <p class="note"><b>Carte de projet</b> une ligne, pas une boîte</p>
+      <div class="ligne projet" role="listitem" data-p="ambre">
+        <span class="camembert-cadre"><span class="camembert" style="--avance:.6" role="img" aria-label="12 sur 20"></span></span>
+        <div class="ligne-corps"><div class="titre">Chantier Benali 9 kWc</div>
+          <div class="meta"><span class="chiffres">12 sur 20</span><span>échéance 15 déc.</span></div></div>
+        <div class="ligne-fin"></div>
+      </div>
+      <div class="ligne projet" role="listitem" data-p="indigo">
+        <span class="camembert-cadre"><span class="camembert" style="--avance:.25" role="img" aria-label="3 sur 12"></span></span>
+        <div class="ligne-corps"><div class="titre">Salon Solaire Expo</div>
+          <div class="meta"><span class="chiffres">3 sur 12</span><span class="fort">échéance ven. 27</span></div></div>
+        <div class="ligne-fin"><span class="surveiller" title="À surveiller"><svg class="i i-16"><use href="#i-triangle-alert"/></svg><span class="sr">À surveiller</span></span></div>
+      </div>
+      <div class="ligne projet" role="listitem" data-p="menthe">
+        <span class="camembert-cadre"><span class="camembert" style="--avance:0" role="img" aria-label="0 sur 4"></span></span>
+        <div class="ligne-corps"><div class="titre">Recrutement technicien</div>
+          <div class="meta"><span class="chiffres">0 sur 4</span></div></div>
+        <div class="ligne-fin"><span class="etiquette">À planifier</span></div>
+      </div>
+      <button class="lien-plus" style="min-height:52px"><svg class="i"><use href="#i-plus"/></svg>Nouveau projet</button>
+
+      <p class="note"><b>Bandeau</b> Faire le plan (avant le plan du jour)</p>
+      <div class="bandeau" role="button" tabindex="0">
+        <span class="bandeau-icone"><svg class="i"><use href="#i-sunrise"/></svg></span>
+        <div class="bandeau-texte"><div class="bandeau-titre">Faire le plan</div><div class="bandeau-detail">3 à décider · choisis ton essentiel</div></div>
+        <span class="chevron"><svg class="i i-16"><use href="#i-chevron-right"/></svg></span>
+      </div>
+    </div>
+
+    <div>
+      <p class="note"><b>Proposition de rythme</b> dans le plan du jour</p>
+      <div class="carte">
+        <p class="carte-texte">Tu as tenu 5 tâches 5 jours sur 10 : passer&nbsp;à&nbsp;6&nbsp;?</p>
+        <p class="carte-source">Mon rythme · Garder ce rythme</p>
+        <div class="carte-actions">
+          <button class="bouton second">Oui</button>
+          <button class="bouton discret">Pas maintenant</button>
+        </div>
+      </div>
+
+      <p class="note"><b>Anneau</b> vide · en cours · plein</p>
+      <div class="resume" style="gap:12px 24px;padding-top:8px;flex-wrap:wrap">
+        <span class="anneau" role="img" aria-label="0 sur 6"><svg viewBox="0 0 40 40"><circle class="piste" cx="20" cy="20" r="17"/><circle class="avance" cx="20" cy="20" r="17" stroke-dasharray="106.8" stroke-dashoffset="106.8"/></svg></span>
+        <span class="anneau" role="img" aria-label="4 sur 6"><svg viewBox="0 0 40 40"><circle class="piste" cx="20" cy="20" r="17"/><circle class="avance" cx="20" cy="20" r="17" stroke-dasharray="106.8" stroke-dashoffset="35.6"/></svg></span>
+        <span class="anneau" role="img" aria-label="6 sur 6"><svg viewBox="0 0 40 40"><circle class="piste" cx="20" cy="20" r="17"/><circle class="avance" cx="20" cy="20" r="17" stroke-dasharray="106.8" stroke-dashoffset="0"/></svg></span>
+        <span class="resume-texte" style="flex-basis:100%"><span class="resume-compte">Tout est fait pour aujourd'hui</span><span class="resume-detail chiffres">6/6 · essentiel 2/2 · plan 5/5</span></span>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

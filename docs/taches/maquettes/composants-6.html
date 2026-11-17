@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Sélecteur Quand</title>
+<link rel="stylesheet" href="taches.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-calendar-clock" viewBox="0 0 24 24"><path d="M16 14v2.2l1.6 1"/><path d="M16 2v4"/><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M3 10h5"/><path d="M8 2v4"/><circle cx="16" cy="16" r="6"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol></svg><!-- sprite:fin -->
+<div class="ecran">
+  <div class="page">
+    <div class="col-liste">
+      <header class="entete">
+        <div class="entete-haut">
+          <div><div class="entete-date">Salon Solaire Expo</div><h1 class="entete-titre">Réserver le stand</h1></div>
+        </div>
+      </header>
+      <div class="bloc-puces" style="padding-top:16px">
+        <div class="puces">
+          <button class="puce active" aria-expanded="true"><svg class="i i-16"><use href="#i-calendar"/></svg><span class="chiffres">lun. 23 · 10:00</span></button>
+          <button class="puce vide"><svg class="i i-16"><use href="#i-calendar-clock"/></svg>Échéance</button>
+          <button class="puce" data-p="indigo"><i class="point"></i>Salon Solaire Expo</button>
+          <button class="puce"><svg class="i i-16"><use href="#i-flag"/></svg>Priorité haute</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="voile mobile-seul"></div>
+  <div class="feuille cran-85 popover-bureau" role="dialog" aria-label="Quand">
+    <button class="poignee" aria-label="Réduire la feuille"></button>
+    <div class="feuille-entete">
+      <button class="bouton-icone" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
+      <div class="feuille-titre">Quand</div><span></span>
+    </div>
+    <div class="quand-tuiles" role="radiogroup" aria-label="Jour">
+      <button class="tuile" role="radio" aria-checked="false"><b>Aujourd'hui</b><span class="chiffres">ven. 20</span></button>
+      <button class="tuile" role="radio" aria-checked="false"><b>Demain</b><span class="chiffres">sam. 21</span><small>non travaillé</small></button>
+      <button class="tuile" role="radio" aria-checked="true"><b>Lundi</b><span class="chiffres">lun. 23</span></button>
+    </div>
+    <div class="reglages">
+      <div class="reglage"><span>Choisir un jour</span><span class="valeur"><svg class="i i-16"><use href="#i-chevron-up"/></svg></span></div>
+    </div>
+    <div class="mois" style="margin-top:0">
+      <div class="mois-tete">
+        <button class="bouton-icone" aria-label="Mois précédent"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+        <span class="mois-nom">novembre 2026</span>
+        <button class="bouton-icone" aria-label="Mois suivant"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+      </div>
+      <div class="mois-grille chiffres" role="grid">
+        <span class="jsem">L</span><span class="jsem">M</span><span class="jsem">M</span><span class="jsem">J</span><span class="jsem">V</span><span class="jsem">S</span><span class="jsem">D</span>
+        <span class="jour hors"></span><span class="jour hors"></span><span class="jour hors"></span><span class="jour hors"></span><span class="jour hors"></span><span class="jour hors"></span><span class="jour passe repos"><span>1</span></span>
+        <span class="jour passe"><span>2</span></span><span class="jour passe"><span>3</span></span><span class="jour passe"><span>4</span></span><span class="jour passe"><span>5</span></span><span class="jour passe"><span>6</span></span><span class="jour passe repos"><span>7</span></span><span class="jour passe repos"><span>8</span></span>
+        <span class="jour passe"><span>9</span></span><span class="jour passe"><span>10</span></span><span class="jour passe"><span>11</span></span><span class="jour passe"><span>12</span></span><span class="jour passe"><span>13</span></span><span class="jour passe repos"><span>14</span></span><span class="jour passe repos"><span>15</span></span>
+        <span class="jour passe"><span>16</span></span><span class="jour passe"><span>17</span></span><span class="jour passe"><span>18</span></span><span class="jour passe"><span>19</span></span><span class="jour auj"><span>20</span></span><span class="jour repos"><span>21</span></span><span class="jour repos"><span>22</span></span>
+        <span class="jour choisi"><span>23</span></span><span class="jour"><span>24</span></span><span class="jour"><span>25</span></span><span class="jour"><span>26</span></span><span class="jour"><span>27</span></span><span class="jour repos"><span>28</span></span><span class="jour repos"><span>29</span></span>
+        <span class="jour"><span>30</span></span>
+      </div>
+    </div>
+    <div class="reglages">
+      <div class="reglage"><span>Heure</span><span class="valeur pose chiffres">10:00<svg class="i i-16"><use href="#i-chevron-right"/></svg></span></div>
+      <div class="reglage"><span>Rappel</span><span class="valeur">Aucun<svg class="i i-16"><use href="#i-chevron-right"/></svg></span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

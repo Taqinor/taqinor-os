@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Chargement, erreur, retour</title>
+<link rel="stylesheet" href="taches.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="M10.94 5.274A7 7 0 0 1 15.71 10h1.79a4.5 4.5 0 0 1 4.222 6.057"/><path d="M18.796 18.81A4.5 4.5 0 0 1 17.5 19H9A7 7 0 0 1 5.79 5.78"/><path d="m2 2 20 20"/></symbol></svg><!-- sprite:fin -->
+<main class="planche">
+  <p class="planche-titre">Planche 10 · Chargement, pas à jour, toast</p>
+  <div class="colonnes">
+    <div>
+      <p class="note"><b>Squelette</b> après 1 s, jamais sur une liste déjà affichée</p>
+      <div class="liste squelette" aria-busy="true" aria-label="Chargement">
+        <div class="ligne"><span class="case"><span class="os cercle"></span></span><div class="ligne-corps"><span class="os l1" style="width:68%"></span><span class="os l2" style="width:38%"></span></div><span></span></div>
+        <div class="ligne"><span class="case"><span class="os cercle"></span></span><div class="ligne-corps"><span class="os l1" style="width:52%"></span><span class="os l2" style="width:30%"></span></div><span></span></div>
+        <div class="ligne"><span class="case"><span class="os cercle"></span></span><div class="ligne-corps"><span class="os l1" style="width:74%"></span><span class="os l2" style="width:44%"></span></div><span></span></div>
+      </div>
+    </div>
+    <div>
+      <p class="note"><b>Pas à jour</b> la liste reste, au-dessus d'elle</p>
+      <div class="pas-a-jour" role="status">
+        <svg class="i i-16"><use href="#i-cloud-off"/></svg><span>Pas à jour — <span class="chiffres">09:02</span></span>
+        <button class="bouton lien">Réessayer</button>
+      </div>
+      <div class="liste" role="list" style="margin-top:4px">
+        <div class="ligne" role="listitem">
+          <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Commander les rails de fixation"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+          <div class="ligne-corps"><div class="titre">Commander les rails de fixation</div>
+            <div class="meta"><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+          <div class="ligne-fin"></div>
+        </div>
+      </div>
+
+      <p class="note"><b>Toast</b> 6 s, puis Derniers gestes</p>
+      <div style="padding:8px var(--tch-gouttiere) 0">
+        <div class="toast" role="status"><span>Reportée à lun. 23</span><button>Annuler</button></div>
+        <div class="toast" role="status" style="margin-top:10px"><span>3 tâches faites</span><button>Annuler</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Lignes de tâche 2</title>
+<link rel="stylesheet" href="taches.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol><symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol></svg><!-- sprite:fin -->
+<main class="planche">
+  <p class="planche-titre">Planche 2 · Ligne de tâche (2 sur 2)</p>
+  <div class="colonnes">
+    <div class="liste" role="list">
+      <p class="note"><b>Confidentielle</b></p>
+      <div class="ligne" role="listitem">
+        <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Préparer l'entretien annuel"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+        <div class="ligne-corps"><div class="titre">Préparer l'entretien annuel</div>
+          <div class="meta"><span><svg class="i i-14"><use href="#i-lock"/></svg>Confidentielle</span></div></div>
+        <div class="ligne-fin"></div>
+      </div>
+
+      <p class="note"><b>En attente de…</b> case en pointillé</p>
+      <div class="ligne" role="listitem">
+        <button class="case attente" role="checkbox" aria-checked="false" aria-label="Fait : Valider le calepinage"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+        <div class="ligne-corps"><div class="titre">Valider le calepinage</div>
+          <div class="meta"><span><svg class="i i-14"><use href="#i-hourglass"/></svg>En attente de : retour du client</span></div></div>
+        <div class="ligne-fin"></div>
+      </div>
+
+      <p class="note"><b>Faite</b> reste barrée jusqu'à la sortie de l'écran</p>
+      <div class="ligne faite" role="listitem">
+        <button class="case" role="checkbox" aria-checked="true" aria-label="Fait : Commander les panneaux"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+        <div class="ligne-corps"><div class="titre">Commander les panneaux</div>
+          <div class="meta"><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+        <div class="ligne-fin"></div>
+      </div>
+
+      <p class="note"><b>Estampillée</b> reportée, reste en place</p>
+      <div class="ligne estampillee" role="listitem" aria-live="polite">
+        <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Mettre à jour la grille tarifaire"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+        <div class="ligne-corps"><div class="titre">Mettre à jour la grille tarifaire</div></div>
+        <div class="ligne-fin"><span class="estampille chiffres">→ lun. 23</span></div>
+      </div>
+    </div>
+
+    <div class="liste" role="list">
+      <p class="note"><b>Balayage gauche</b> révèle Reporter</p>
+      <div class="ligne-cadre">
+        <div class="actions droite">
+          <button class="action choisir"><svg class="i"><use href="#i-calendar"/></svg>Choisir<br>un jour</button>
+          <button class="action reporter"><svg class="i"><use href="#i-arrow-right"/></svg>Reporter<small class="chiffres">lun. 23</small></button>
+        </div>
+        <div class="ligne glisse-gauche" role="listitem">
+          <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Imprimer les kakémonos"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+          <div class="ligne-corps"><div class="titre">Imprimer les kakémonos</div>
+            <div class="meta"><span data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span></span></div></div>
+          <div class="ligne-fin"></div>
+        </div>
+      </div>
+
+      <p class="note"><b>Balayage droite</b> révèle Fait</p>
+      <div class="ligne-cadre">
+        <div class="actions">
+          <button class="action fait"><svg class="i"><use href="#i-check"/></svg>Fait</button>
+        </div>
+        <div class="ligne glisse-droite" role="listitem">
+          <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Publier l'annonce"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+          <div class="ligne-corps"><div class="titre">Publier l'annonce</div>
+            <div class="meta"><span data-p="menthe"><i class="point"></i><span class="projet-nom">Recrutement technicien</span></span></div></div>
+          <div class="ligne-fin"></div>
+        </div>
+      </div>
+
+      <p class="note"><b>Sélection</b> appui long → Sélectionner</p>
+      <div class="ligne selectionnee" role="listitem" aria-selected="true">
+        <button class="case selection" role="checkbox" aria-checked="true" aria-label="Sélectionnée : Commander les onduleurs"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+        <div class="ligne-corps"><div class="titre">Commander les onduleurs</div>
+          <div class="meta"><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+        <div class="ligne-fin"></div>
+      </div>
+      <div class="ligne" role="listitem" aria-selected="false">
+        <button class="case selection" role="checkbox" aria-checked="false" aria-label="Sélectionner : Vérifier le compteur"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+        <div class="ligne-corps"><div class="titre">Vérifier le compteur</div>
+          <div class="meta"><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+        <div class="ligne-fin"></div>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

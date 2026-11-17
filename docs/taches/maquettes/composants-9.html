@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · États vides</title>
+<link rel="stylesheet" href="taches.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-clipboard-paste" viewBox="0 0 24 24"><path d="M11 14h10"/><path d="M16 4h2a2 2 0 0 1 2 2v1.344"/><path d="m17 18 4-4-4-4"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113"/><rect x="8" y="2" width="8" height="4" rx="1"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol><symbol id="i-list-plus" viewBox="0 0 24 24"><path d="M16 5H3"/><path d="M11 12H3"/><path d="M16 19H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></symbol></svg><!-- sprite:fin -->
+<main class="planche">
+  <p class="planche-titre">Planche 9 · États vides</p>
+  <div class="colonnes trois">
+    <section>
+      <p class="note"><b>Aujourd'hui</b> premier jour, aucun projet</p>
+      <div class="vide-etat">
+        <span class="vide-picto"><svg class="i"><use href="#i-clipboard-paste"/></svg></span>
+        <p class="vide-phrase">Colle ou dicte tes listes : je les range par projet.</p>
+        <button class="bouton plein">Coller mes listes</button>
+      </div>
+    </section>
+    <section>
+      <p class="note"><b>À trier</b> tout est rangé</p>
+      <div class="vide-etat">
+        <span class="vide-picto"><svg class="i"><use href="#i-inbox"/></svg></span>
+        <p class="vide-phrase">Rien à trier. Ce que tu notes sans jour ni projet arrive ici.</p>
+        <button class="bouton second">Ajouter</button>
+      </div>
+    </section>
+    <section>
+      <p class="note"><b>Projet</b> sans tâche</p>
+      <div class="vide-etat">
+        <span class="vide-picto" data-p="menthe"><svg class="i"><use href="#i-list-plus"/></svg></span>
+        <p class="vide-phrase">Recrutement technicien n'a pas encore de tâche.</p>
+        <button class="bouton second">Planifier le projet</button>
+      </div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

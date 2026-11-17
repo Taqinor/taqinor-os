@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Agenda</title>
+<link rel="stylesheet" href="taches.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol><symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol></svg><!-- sprite:fin -->
+<div class="ecran">
+  <!-- iPhone : vue Jour -->
+  <div class="page mobile-seul">
+    <header class="entete">
+      <div class="entete-haut">
+        <div><div class="entete-date">Novembre 2026</div><h1 class="entete-titre">Agenda</h1></div>
+        <div class="entete-actions">
+          <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+          <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+          <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+        </div>
+      </div>
+    </header>
+    <div class="segmente" role="radiogroup" aria-label="Vue">
+      <button role="radio" aria-checked="true">Jour</button><button role="radio" aria-checked="false">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
+    </div>
+    <div class="bande-jours chiffres">
+      <button class="marque"><small>lun.</small><b>16</b></button>
+      <button><small>mar.</small><b>17</b></button>
+      <button class="marque"><small>mer.</small><b>18</b></button>
+      <button><small>jeu.</small><b>19</b></button>
+      <button aria-current="date"><small>ven.</small><b>20</b></button>
+      <button class="repos"><small>sam.</small><b>21</b></button>
+      <button class="repos"><small>dim.</small><b>22</b></button>
+    </div>
+    <div class="agenda mobile">
+      <div class="agenda-heures chiffres"><div>08:00</div><div>09:00</div><div>10:00</div><div>11:00</div><div>12:00</div><div>13:00</div><div>14:00</div><div>15:00</div></div>
+      <div class="agenda-grille" style="height:448px">
+        <div class="bloc court" data-p="ambre" style="top:28px;height:26px"><b>Appel fournisseur onduleurs</b><small class="chiffres">08:30</small></div>
+        <div class="bloc fait-bloc" data-p="ambre" style="top:56px;height:54px"><b>Envoyer le devis révisé</b><small class="chiffres">09:00 – 10:00</small></div>
+        <div class="bloc court erp" style="top:140px;height:26px"><b>Rappeler pour le devis</b><small class="chiffres">10:30</small></div>
+        <div class="bloc" data-p="ambre" style="top:168px;height:110px;right:calc(50% + 1px)"><b>Montage de la structure</b><small class="chiffres">11:00 – 13:00</small></div>
+        <div class="bloc court" data-p="menthe" style="top:224px;height:26px;left:calc(50% + 1px)"><b>Entretien candidat</b><small class="chiffres">12:00</small></div>
+        <div class="maintenant" style="top:207px"><span class="maintenant-heure chiffres">11:42</span></div>
+        <div class="bloc erp" style="top:336px;height:82px"><b>Visite technique à Témara</b><small class="chiffres">14:00 – 15:30</small></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bureau : vue Semaine -->
+  <div class="planche bureau-seul" style="max-width:1320px;padding-top:24px">
+    <div class="entete-haut" style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:20px">
+        <h1 class="entete-titre">Agenda</h1>
+        <div class="segmente" role="radiogroup" aria-label="Vue" style="margin:0;width:360px">
+          <button role="radio" aria-checked="false">Jour</button><button role="radio" aria-checked="true">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button class="bouton-icone" aria-label="Semaine précédente"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+        <button class="bouton discret">Aujourd'hui</button>
+        <button class="bouton-icone" aria-label="Semaine suivante"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+        <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+      </div>
+    </div>
+    <div class="semaine chiffres">
+      <div class="semaine-tete">
+        <div></div>
+        <div>lun. <b>16</b></div><div>mar. <b>17</b></div><div>mer. <b>18</b></div><div>jeu. <b>19</b></div>
+        <div aria-current="date">ven. <b>20</b></div><div class="repos">sam. <b>21</b></div><div class="repos">dim. <b>22</b></div>
+      </div>
+      <div class="agenda-heures" style="padding-top:12px"><div>08:00</div><div>09:00</div><div>10:00</div><div>11:00</div><div>12:00</div><div>13:00</div><div>14:00</div><div>15:00</div><div>16:00</div><div>17:00</div><div>18:00</div></div>
+      <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
+        <div class="bloc" data-p="ambre" style="top:56px;height:110px"><b>Pose des rails</b><small>09:00 – 11:00</small></div>
+        <div class="bloc court" data-p="olive" style="top:280px;height:26px"><b>Point d'équipe</b></div>
+      </div>
+      <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
+        <div class="bloc erp" style="top:112px;height:54px"><b>Visite technique à Salé</b><small>10:00 – 11:00</small></div>
+        <div class="bloc" data-p="menthe" style="top:336px;height:54px"><b>Trier les CV</b><small>14:00 – 15:00</small></div>
+      </div>
+      <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
+        <div class="bloc" data-p="indigo" style="top:56px;height:82px"><b>Plan du stand</b><small>09:00 – 10:30</small></div>
+        <div class="bloc court erp" style="top:252px;height:26px"><b>Rappel client</b></div>
+      </div>
+      <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
+        <div class="bloc" data-p="ambre" style="top:168px;height:110px;right:calc(50% + 1px)"><b>Montage</b><small>11:00 – 13:00</small></div>
+        <div class="bloc" data-p="menthe" style="top:224px;height:54px;left:calc(50% + 1px)"><b>Entretien</b><small>12:00</small></div>
+      </div>
+      <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
+        <div class="bloc fait-bloc" data-p="ambre" style="top:56px;height:54px"><b>Envoyer le devis révisé</b><small>09:00 – 10:00</small></div>
+        <div class="bloc court erp fait-bloc" style="top:140px;height:26px"><b>Rappeler pour le devis</b></div>
+        <div class="maintenant" style="top:207px;left:-5px"></div>
+        <div class="bloc erp" style="top:336px;height:82px"><b>Visite technique à Témara</b><small>14:00 – 15:30</small></div>
+        <div class="bloc" data-p="indigo" style="top:448px;height:54px"><b>Confirmer le stand</b><small>16:00 – 17:00</small></div>
+      </div>
+      <div class="semaine-col agenda-grille repos-col" style="height:572px;margin-top:12px"></div>
+      <div class="semaine-col agenda-grille repos-col" style="height:572px;margin-top:12px"></div>
+    </div>
+  </div>
+
+  <button class="fab mobile-seul" aria-label="Ajouter une tâche"><svg class="i"><use href="#i-plus"/></svg></button>
+  <nav class="onglets mobile-seul" aria-label="Tâches">
+    <a class="onglet"><svg class="i"><use href="#i-sun"/></svg>Aujourd'hui</a>
+    <a class="onglet"><svg class="i"><use href="#i-inbox"/></svg>À trier<span class="pastille chiffres">3</span></a>
+    <a class="onglet"><svg class="i"><use href="#i-folder"/></svg>Projets</a>
+    <a class="onglet" aria-current="page"><svg class="i"><use href="#i-calendar"/></svg>Agenda</a>
+    <a class="onglet"><svg class="i"><use href="#i-layout-grid"/></svg>Apps</a>
+  </nav>
+</div>
+</body>
+</html>
