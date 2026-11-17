@@ -256,7 +256,7 @@ etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150'], async ({ page, suivi, te
   } finally {
     await nettoyerChantier(o)
   }
-})
+}, { ecart: { base: 'FAIL', raison: "défaut antérieur hors d'ADRG150 : frontend/src/pages/installations/RecurrencesInterventionSection.jsx (section « Interventions récurrentes » du même onglet, ACEL46) lit GET installations/recurrences-intervention/ pour tout rôle ; le Commercial (lecture du chantier par ventes_voir) prend 403 + console.error — même classe que l'écart types-intervention d'ADRG21 (2026-11-13-22edd014f) ; présent à la base f3ca519ae, fichier hors des Files d'ADRG150 ; tâche ouverte chez le propriétaire (PLAN_AUDIT_CHANTIERS, ADRG155)" } })
 
 // ── PF4-ADRG151-planification-ma-journee : menu et routes /planification et /ma-journee sous `installation_voir` ───
 const CALENDRIER = /^\/installations\/interventions\/calendrier\/$/
