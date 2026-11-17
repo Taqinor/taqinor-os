@@ -36,4 +36,8 @@ class TachesConfig(AppConfig):
         # éviter les cycles au chargement des apps). Décommenter quand l'app
         # réagit à l'état d'une autre app (ex. ``ventes`` émet ``devis_accepted``).
         # from . import receivers  # noqa: F401
-        pass
+        #
+        # TCH74 — effacement 09-08, les DEUX portes (reference/donnees.md §5) : le récepteur
+        # `lead_erased` (abonné à l'import de `receivers`) et le fournisseur DSR `taches`.
+        from apps.taches import dsr, receivers  # noqa: F401
+        dsr.register()

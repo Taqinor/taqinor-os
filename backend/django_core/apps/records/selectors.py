@@ -71,3 +71,12 @@ def peut_cloturer_activites(user):
     vue.action = 'marquer_fait'  # l'action DRF de ``done/``
     requete = SimpleNamespace(user=user, method='POST')
     return all(p.has_permission(requete, vue) for p in vue.get_permissions())
+
+
+def a_faire_personnels_de(user, ids=None):
+    """TCH73 — à-faire personnels CRÉÉS par ``user`` dans sa société, dans
+    TOUS leurs états (faits, assignés à un collègue compris) : la conversion
+    en tâches y lit ses raisons de refus. ``ids`` restreint aux identifiants
+    donnés. Jamais l'à-faire d'un autre créateur (XKB4)."""
+    qs = _activites_de(user).filter(personnelle=True, created_by_id=user.pk)
+    return qs if ids is None else qs.filter(pk__in=list(ids))

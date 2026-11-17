@@ -101,6 +101,7 @@ from .fiche_selectors import (
     leads_actifs_sans_prochaine_etape, leads_parques_sans_touche,
     leads_reveil_aveugle, leads_fermes_avec_touche_ouverte, saisies_joint_anormales,
 )
+from .dsr_provider import cibles_du_sujet  # TCH154 — porte d'effacement lue par taches
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
 __all__ = [
@@ -173,6 +174,7 @@ __all__ = [
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
     'telephones_cibles_activites', 'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
     'arrivee_lead_meta', 'hors_heures_ouvrees', 'lead_porte_note', 'porte_une_opposition',
+    'cibles_du_sujet',
 ]
 
 

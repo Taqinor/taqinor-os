@@ -1938,3 +1938,19 @@ class TestSelecteursTaches(TestCase):
             rouvrir_a_faire_personnel(fait, self.b)
         fait.refresh_from_db()
         self.assertTrue(fait.done)
+
+    # ── TCH73 — à-faire personnels créés par l'utilisateur, tous états ──────
+    def test_a_faire_personnels_de_tous_etats_du_seul_createur(self):
+        from apps.records.selectors import a_faire_personnels_de
+        ouvert = self._act(summary='ouvert', personnelle=True)
+        fait = self._act(summary='fait', personnelle=True, done=True)
+        pour_a = self._act(summary='pour A', personnelle=True, assigned_to=self.a)
+        self._act(summary='de A', personnelle=True, created_by=self.a)
+        self._act(summary='pas perso', due_date=date.today())
+        self._act(company=self.co2, activity_type=None, summary='co2',
+                  personnelle=True, created_by=self.c, assigned_to=self.c)
+        self.assertEqual(set(a_faire_personnels_de(self.b).values_list('pk', flat=True)),
+                         {ouvert.pk, fait.pk, pour_a.pk})
+        self.assertEqual(list(a_faire_personnels_de(self.b, ids=[fait.pk, 999999])), [fait])
+        self.assertEqual(list(a_faire_personnels_de(self.c).values_list('summary', flat=True)), ['co2'])
+        self.assertFalse(a_faire_personnels_de(SimpleNamespace(pk=self.b.pk, company_id=None)).exists())
