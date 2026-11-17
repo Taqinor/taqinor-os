@@ -21,6 +21,12 @@ function cliquerDans(groupe, nom) {
   fireEvent.click(screen.getByRole('button', { name: nom }))
 }
 
+// 17/11/2026 — « Ne plus me contacter » : la case « Le client me l’a demandé
+// lui-même » doit être cochée avant « Confirmer ».
+function cocherDemandeClient() {
+  fireEvent.click(within(screen.getByTestId('confirmation-reponse')).getByRole('checkbox'))
+}
+
 // CAD10 — la liste des motifs de perte (Paramètres → CRM), lue au premier
 // refus choisi. Forme du `MotifPerteSerializer` (id, nom, archived, est_junk).
 vi.mock('../../../api/crmApi', () => ({
@@ -445,6 +451,7 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
     ouvrirFait(ETAPE_APPEL, { onFait })
     cliquerDans('Autre réponse', 'Ne plus me contacter')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/sans étape de décision/)
+    cocherDemandeClient()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_APPEL.id, { reponse: 'ne_plus_contacter' }))
@@ -455,6 +462,7 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
     const onOuvrirMessage = vi.fn()
     ouvrirFait(ETAPE_APPEL, { onFait, onOuvrirMessage })
     cliquerDans('Autre réponse', 'Ne plus me contacter')
+    cocherDemandeClient()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onOuvrirMessage).toHaveBeenCalledWith(
       { ...ETAPE_APPEL, message_cle: 'stop_contact' }))
@@ -467,6 +475,7 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
     const onFait = vi.fn(() => Promise.reject(erreur))
     ouvrirFait(ETAPE_APPEL, { onFait })
     cliquerDans('Autre réponse', 'Ne plus me contacter')
+    cocherDemandeClient()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByTestId('erreur-outcome'))
       .toHaveTextContent('Cette touche est déjà traitée.')
@@ -858,12 +867,44 @@ describe('« Autre réponse » — les cinq réponses secondaires, rien de chois
     expect(screen.getByTestId('raison-confirmer')).toHaveTextContent('Choisissez une réponse.')
   })
 
-  it('même avec UNE seule réponse secondaire, elle reste derrière « Autre réponse » (étape devis)', () => {
-    const devis = { ...ETAPE_APPEL, cle: 'devis', libelle: 'Préparer et envoyer le devis (ou fixer un rappel)', cadence: 'generique' }
-    ouvrirFait(devis)
+  it('même avec UNE seule réponse secondaire, elle reste derrière « Autre réponse » (premier contact)', () => {
+    ouvrirFait(ETAPE_APPEL)
     expect(screen.queryByRole('button', { name: 'Ne plus me contacter' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
-    expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
+    expect([...screen.getByTestId('sous-reponses-autre').querySelectorAll('button')]
+      .map((b) => b.textContent)).toEqual(['Ne plus me contacter'])
+  })
+
+  it('17/11/2026 — aucune opposition sur une TÂCHE sans client au bout du fil (devis, décider la suite…)', () => {
+    for (const [cle, libelle] of [
+      ['devis', 'Préparer et envoyer le devis (ou fixer un rappel)'],
+      ['decider_suite', 'Décider la suite — perdu (motif) ou relance ultérieure'],
+      ['devis_modifie', 'Préparer le devis modifié — rappeler le client']]) {
+      ouvrirFait({ ...ETAPE_APPEL, cle, libelle, cadence: 'generique' })
+      expect(screen.queryByRole('button', { name: 'Autre réponse' }), cle).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Ne plus me contacter' }), cle).not.toBeInTheDocument()
+      cleanup()
+    }
+  })
+
+  it('17/11/2026 — « Ne plus me contacter » : Confirmer grisé tant que « le client me l’a demandé » n’est pas coché', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    cliquerDans('Autre réponse', 'Ne plus me contacter')
+    expect(screen.getByTestId('avertissement-reponse')).toBeInTheDocument()
+    expect(screen.getByTestId('confirmation-reponse')).toHaveTextContent('Le client me l’a demandé lui-même')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    expect(screen.getByTestId('raison-confirmer'))
+      .toHaveTextContent('Cochez la case « Le client me l’a demandé lui-même » ci-dessus.')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    expect(onFait).not.toHaveBeenCalled()
+    cocherDemandeClient()
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+    // Changer de réponse puis revenir : la case est à recocher.
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    expect(screen.queryByTestId('confirmation-reponse')).not.toBeInTheDocument()
+    cliquerDans('Autre réponse', 'Ne plus me contacter')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
   })
 
   it('« Ne plus me contacter » affiche l’avertissement d’opposition légale, et lui seul', () => {
@@ -905,10 +946,11 @@ describe('Case « message non ouvert » — ne bloque pas un refus ni une opposi
       outcome: 'refuse', body: 'Marquée faite sans ouverture du message depuis l’ERP.' }))
   })
 
-  it('« Ne plus me contacter » : Confirmer est actif sans cocher', async () => {
+  it('« Ne plus me contacter » : la case du message n’est pas exigée (seule « le client me l’a demandé » l’est)', async () => {
     const onFait = vi.fn(() => Promise.resolve({}))
     ouvrirFait(NON_OUVERT, { onFait })
     cliquerDans('Autre réponse', 'Ne plus me contacter')
+    cocherDemandeClient()
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(NON_OUVERT.id, {

@@ -236,12 +236,14 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
 
   it('un groupe d’un seul membre n’est pas groupé : pastille ordinaire, libellé propre', () => {
     const items = sur('devis', { canal: 'appel' })
+    // 17/11/2026 — plus de « Ne plus me contacter » sur une tâche : plus d'« Autre réponse ».
     expect(etiquettes(items)).toEqual([
       'Devis envoyé — passer à la suite', 'Visite d’abord', 'Pas encore — à rappeler le…',
-      'Client refuse', 'Autre réponse'])
+      'Client refuse'])
     expect(items.some((i) => i.genre === 'groupe')).toBe(false)
-    // « Autre réponse » même avec UNE seule réponse derrière.
-    expect(items.find((i) => i.genre === 'autre').membres).toHaveLength(1)
+    // « Autre réponse » même avec UNE seule réponse derrière (premier contact).
+    expect(sur('contact_appel', { canal: 'appel' }).find((i) => i.genre === 'autre').membres)
+      .toHaveLength(1)
     expect(etiquettes(sur('planifier', { canal: 'appel' }))).toContain('Pas de réponse')
   })
 
@@ -296,6 +298,16 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     }
     expect(proposerDarija(type('devis'), rep('visite'))).toBe(false)
     expect(proposerDarija(type('contact_appel'), null)).toBe(false)
+  })
+
+  it('17/11/2026 — « Ne plus me contacter » : absent des tâches sans client, case de confirmation partout ailleurs', () => {
+    const sansClient = ['devis', 'devis_modifie', 'decider_suite', 'question_prix']
+    for (const t of PARCOURS.etapes) {
+      const ids = t.reponses.map((r) => r.modele)
+      expect(ids.includes('ne_plus_contacter'), t.id).toBe(!sansClient.includes(t.id))
+    }
+    expect(reponseComplete({ modele: 'ne_plus_contacter' }).confirmation)
+      .toBe('Le client me l’a demandé lui-même')
   })
 
   it('« message non ouvert » n’est pas exigé pour un refus, « Ne plus me contacter », le téléphone, la pièce', () => {

@@ -521,6 +521,11 @@ export default function RelanceEtapeRow({
   // commerciale peut avoir écrit depuis son téléphone) — elle rend seulement le geste
   // conscient, et le dit dans le chatter.
   const [sansOuverture, setSansOuverture] = useState(false)
+  // 17/11/2026 — la case de CONFIRMATION déclarée par la table sur la réponse
+  // choisie (`confirmation` : « Ne plus me contacter » → « Le client me l’a
+  // demandé lui-même ») : « Confirmer » reste grisé tant qu'elle n'est pas
+  // cochée. 74 des 101 oppositions de la prod avaient été posées par erreur.
+  const [confirmationCochee, setConfirmationCochee] = useState(false)
   // CAD63 — la réponse « ne parle que darija », saisie AU MOMENT où le client
   // le dit : elle pose la langue sur la fiche une fois pour toutes (champ
   // `langue` du « Fait », seulement si la touche est bien enregistrée).
@@ -594,7 +599,7 @@ export default function RelanceEtapeRow({
     setPanel('')
     setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
-    setSansOuverture(false); setReportMode(''); setErreurRappel('')
+    setSansOuverture(false); setConfirmationCochee(false); setReportMode(''); setErreurRappel('')
     setMotifRefus(''); setErreurMotif(''); setMotifPerte('')
     setRaisonAttente(''); setErreurRaison(''); setGroupeOuvert('')
     setPerduJunk(false); setMotifJunk('')
@@ -647,7 +652,7 @@ export default function RelanceEtapeRow({
   // CAD10/CAD11 — choisir une réponse charge les motifs quand elle en demande.
   const choisirReponse = (idx, basculer = true) => {
     setReponseIdx((cur) => (basculer && cur === idx ? null : idx)); setErreurOutcome('')
-    setErreurMotif(''); setErreurRaison('')
+    setErreurMotif(''); setErreurRaison(''); setConfirmationCochee(false)
     const r = reponsesDisponibles[idx]
     if (r && (r.outcome === 'refuse' || r.junk || r.motif_perte)) chargerMotifs()
   }
@@ -798,6 +803,9 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.date && rappelPasse) return 'La date est déjà passée.'
     if (reponseChoisie.motif_perte && !motifPerte) return 'Choisissez le motif de perte.'
     if (reponseChoisie.raison && !raisonEffective) return 'Choisissez la raison de l’attente.'
+    if (reponseChoisie.confirmation && !confirmationCochee) {
+      return `Cochez la case « ${reponseChoisie.confirmation} » ci-dessus.`
+    }
     if (confirmationOuvertureRequise) return `Cochez la case « ${libelleSansOuverture} » ci-dessus.`
     return ''
   })()
@@ -1400,6 +1408,15 @@ export default function RelanceEtapeRow({
             <p className="text-xs font-medium text-danger" data-testid="avertissement-reponse">
               {reponseChoisie.avertissement}
             </p>
+          )}
+          {reponseChoisie?.confirmation && (
+            <label className="flex items-start gap-1.5 text-xs" data-testid="confirmation-reponse">
+              <input
+                type="checkbox" className="mt-0.5" checked={confirmationCochee}
+                onChange={(e) => setConfirmationCochee(e.target.checked)}
+              />
+              <span>{reponseChoisie.confirmation}</span>
+            </label>
           )}
           {/* CAD17 — la suite annoncée vient du SERVEUR (`etape.suites`,
               dérivée du moteur) : jamais une phrase écrite par cadence.

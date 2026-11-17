@@ -939,6 +939,8 @@ def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
         pastilles += '<span class="pastille">ouvre la planification</span>'
     if r.get('masquee_si') == 'visite_prevue':
         pastilles += '<span class="pastille">absente si une visite est déjà prévue</span>'
+    if r.get('confirmation'):
+        pastilles += f'<span class="pastille">case à cocher : « {esc(r["confirmation"])} »</span>'
     avertissement = ''
     if r.get('avertissement'):
         texte_avertissement = 'Avertissement à l\u2019écran : ' + r['avertissement']
