@@ -85,9 +85,9 @@ class Piece(Vide):  # Avoir / NoteDebit : FK client + FK facture, AUCUN champ id
         self.__dict__.update(client=client, facture=facture, reference=reference, statut="emis")
 
 
-def rendre(env, gabarit, cle, piece):
+def rendre(env, gabarit, cle, piece, cles=(), acheteur=None):  # `acheteur` posé SI le vrai générateur le pose (clés lues par ast)
     return env.get_template(gabarit).render({cle: piece, "entreprise_nom": "Vendeur", "couleur_principale": "#000",
-                                             "langue_document": "fr"})
+                                             "langue_document": "fr", **({"acheteur": acheteur} if "acheteur" in cles else {})})
 
 
 def sonde(ctx=None):
@@ -107,10 +107,10 @@ def sonde(ctx=None):
     temoin = ICE in rendre(env, "avoir.html", "avoir", Piece(cl, fac, "AV-2026-11-0000"))  # avant : l'ICE est bien imprimé
     ns["anonymiser_client"]("societe", cl, nom=f"Client anonymisé #{cl.id}", motif="sonde")
     acheteur_facture = ns["acheteur_de_la_facture"](fac)
-    html_av = rendre(env, "avoir.html", "avoir", Piece(cl, fac, "AV-2026-11-0001"))
-    html_nd = rendre(env, "note_debit.html", "note_debit", Piece(cl, fac, "ND-2026-11-0001"))
     ctx_av = cles_du_contexte("apps/ventes/utils/pdf.py", "generate_avoir_pdf")
     ctx_nd = cles_du_contexte("apps/ventes/utils/pdf.py", "generate_note_debit_pdf")
+    html_av = rendre(env, "avoir.html", "avoir", Piece(cl, fac, "AV-2026-11-0001"), ctx_av, acheteur_facture)
+    html_nd = rendre(env, "note_debit.html", "note_debit", Piece(cl, fac, "ND-2026-11-0001"), ctx_nd, acheteur_facture)
 
     def lu(html):
         return {"nom_anonymise_imprime": "Client anonymisé #12" in html, "ice_d_origine_imprime": ICE in html,
@@ -118,9 +118,7 @@ def sonde(ctx=None):
     av, nd = lu(html_av), lu(html_nd)
     facture_ok = acheteur_facture.nom == "SARL Exemple" and acheteur_facture.ice == ICE
     repro = bool(temoin and facture_ok and figes == [12]
-                 and av["nom_anonymise_imprime"] and not av["ice_d_origine_imprime"]
-                 and nd["nom_anonymise_imprime"] and not nd["ice_d_origine_imprime"]
-                 and "acheteur" not in ctx_av and "acheteur" not in ctx_nd)
+                 and any(x["nom_anonymise_imprime"] and not x["ice_d_origine_imprime"] for x in (av, nd)))  # HTML rendu, plus la clé
     return {"repro": repro, "observe": {
         "geste": "Anonymiser (RGPD) sur la fiche client, puis Créer un avoir / Annuler un avoir / Créer ou annuler une note de débit",
         "temoin_ice_imprime_avant_anonymisation": temoin,
