@@ -45,7 +45,8 @@ const ECRANS = [
     nom: 'aujourdhui-gardee',
     ouvrir: async (page) => {
       await attendreAujourdhui(page)
-      await page.getByRole('button', { name: 'Garder ces 4', exact: true }).first().click()
+      // le nombre proposé dépend de ce que le compte a DÉJÀ fait ce jour (activités ERP closes) : « Garder ces N » ou « Garder celle-ci »
+      await page.getByRole('button', { name: /^Garder (ces \d+|celle-ci)$/ }).first().click()
       await expect(page.getByRole('heading', { name: 'Prévu', exact: true })).toBeVisible()
     },
   },
@@ -147,7 +148,7 @@ const ECRANS = [
     nom: 'recherche',
     ouvrir: async (page) => {
       await ouvrirEcran(page, '/taches/recherche', 'recherche')
-      await expect(page.getByRole('textbox', { name: 'Chercher dans mes tâches' })).toBeVisible()
+      await expect(page.getByRole('searchbox', { name: 'Chercher dans mes tâches' })).toBeVisible()
     },
   },
   {
