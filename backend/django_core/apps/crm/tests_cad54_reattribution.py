@@ -304,9 +304,16 @@ class DelegationDesDossiersTests(_Base):
             return {e.id for e in relance_etapes_dues(
                 self.company, utilisateur, scope='all')}
 
-        self.assertFalse(ouvertes & vues(self.nouveau))
-        self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
-        self.assertTrue(ouvertes <= vues(self.nouveau))
+        # Une cible à la portée « soi » (rôle Commercial) : un compte sans rôle
+        # voit TOUT, donc verrait ces touches avant même la délégation.
+        cible = User.objects.create_user(
+            username=f'{self.slug}-cible', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial cible',
+                permissions=list(COMMERCIAL_PERMISSIONS)))
+        self.assertFalse(ouvertes & vues(cible))
+        self.api.post(self.URL, {'vers': cible.pk}, format='json')
+        self.assertTrue(ouvertes <= vues(cible))
         self.assertFalse(ouvertes & vues(self.moi))
 
     def test_passation_posee_par_defaut_sautee_sans_prevenir(self):
