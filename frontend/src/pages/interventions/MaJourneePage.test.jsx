@@ -314,7 +314,7 @@ describe('MaJourneePage — relances commerciales gatées par la permission serv
 
   it("un Technicien (sans crm_voir) n'appelle pas les relances", async () => {
     installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
-    rendreAvec({ role: 'normal', role_nom: 'Technicien', permissions: ['sav_voir'] })
+    rendreAvec({ role: 'normal', role_nom: 'Technicien', permissions: ['sav_voir', 'installation_voir'] })
     expect(await screen.findByRole('heading', { name: 'Ma journée' })).toBeInTheDocument()
     await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalled())
     expect(crmApi.getRelances).not.toHaveBeenCalled()
@@ -347,5 +347,27 @@ describe('MaJourneePage (AERR36)', () => {
     await userEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(2))
     expect(await screen.findByText("Aucune intervention aujourd'hui")).toBeInTheDocument()
+  })
+})
+
+// ADRG151 — `ma-tournee/` relève de la lecture du module (`installation_voir`).
+describe('MaJourneePage (ADRG151)', () => {
+  const avecAuth = (auth) => render(
+    <Provider store={configureStore({ reducer: { auth: (s = auth) => s } })}>
+      <MemoryRouter><MaJourneePage /></MemoryRouter>
+    </Provider>,
+  )
+
+  it('Commercial responsable : aucun GET ma-tournée', async () => {
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    avecAuth({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_modifier', 'ventes_voir'] })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
+  })
+
+  it('Technicien responsable : la tournée est chargée', async () => {
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    avecAuth({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'installation_gerer'] })
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalled())
   })
 })
