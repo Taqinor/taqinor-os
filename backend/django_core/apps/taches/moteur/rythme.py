@@ -9,12 +9,12 @@ from datetime import timedelta
 from statistics import mean, median
 
 from apps.taches.choix import ModeRythme, ReponseIncitation, SourceObjectif, StatutJour, StatutTache
+from apps.taches.moteur.nombres import arrondir
 
 # --- Constantes nommées (regles.md §6) -------------------------------------
 PALIER_DEFAUT = 5  # objectif de démarrage à froid
 PALIER_MIN = 1
 PALIER_MAX = 12
-DEMI = 0.5  # « au plus proche, la demie vers le bas » (A2.3)
 PLAFOND_FACTEUR = 2  # chaque jour plafonné à 2 × médiane + 1 (A2.3)
 PLAFOND_DECALAGE = 1
 MICRO_MAX_MIN = 10  # micro-tâche : estimation <= 10 min
@@ -97,11 +97,6 @@ class JourCompte:
     essentiels_faits: int = 0
     plan_prevues: int = 0
     plan_faites: int = 0
-
-
-def arrondir(x):
-    """`ceil(x - 0,5)` : au plus proche, la demie vers le bas (seul arrondi du moteur)."""
-    return math.ceil(x - DEMI)
 
 
 def _est_micro(tache):

@@ -18,9 +18,10 @@ Appelant : `texte(type_, cle, donnees, variante, nom_pour)`.
     `constat` : `C1`..`C8`, `C1.detail`, `C8.ecran`, `Cn.question` ; `revue` : `entete`.
 `nom_pour(objet, usage)` rend le nom à montrer (ou `None` : rien de confidentiel).
 """
-import math
 import re
 from datetime import time
+
+from apps.taches.moteur.nombres import arrondir
 
 CONSTANTES = {
     'bloc': 10,          # jours travaillés d'un bloc de rythme
@@ -42,11 +43,6 @@ _JETON = re.compile(r'\{(\w+)(?:\?([^|}]*)\|([^}]*))?\}')
 
 
 # --- Formats communs (textes.md §0) ---------------------------------------------------
-
-def arrondir(x):
-    """Au plus proche, la demie vers le bas (regles.md §0)."""
-    return math.ceil(x - 0.5)
-
 
 def format_heure(t):
     """« 10:00 » : puce, ligne, tuile."""
