@@ -132,7 +132,8 @@ async function optionsDe(p, libelle) {
   return textes.map((t) => t.trim()).filter((t) => t && t !== '—')
 }
 
-etape('PF6.1-ALEC48-casiers-expeditions-qualite', ['ALEC48'], async ({ context, suivi, testInfo }) => {
+etape('PF6.1-ALEC48-casiers-expeditions-qualite', ['ALEC48'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la capture d'étape prend le navigateur du rôle, pas l'onglet vide du projet
   const m = marque()
   const com = await session(testInfo, 'alec48c', 'Commercial')
   const dir = await session(testInfo, 'alec48d', 'Directeur')
@@ -204,7 +205,8 @@ async function ouvrirAvance(p, passe) {
   // Section rendue dans le MÊME rendu, après les deux montages gardés (AvanceSection.jsx).
   await expect(p.getByText("Chantiers — Checklist d'exécution").first(), `${passe}onglet Avancé : section suivante rendue`).toBeVisible({ timeout: 30_000 })
 }
-etape('PF6.4-ALEC49-avance-sections-chantiers', ['ALEC49'], async ({ context, suivi, testInfo }) => {
+etape('PF6.4-ALEC49-avance-sections-chantiers', ['ALEC49'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la capture d'étape prend le navigateur du rôle, pas l'onglet vide du projet
   const cr = await session(testInfo, 'alec49cr', 'Commercial responsable')
   const dir = await session(testInfo, 'alec49d', 'Directeur')
   expect(cr.codesInstallations, 'Given : le Commercial responsable livré ne porte aucun code installation_*').toEqual([])
@@ -257,7 +259,8 @@ ExpeditionTransporteur.objects.filter(pk=${fx.ex}).delete(); UniteLogistique.obj
 Transporteur.objects.filter(pk__in=[${fx.t1}, ${fx.t2}]).delete()
 sortie(1)`).catch(() => null)
 
-etape('PF6.1-ALEC5-tarifs-expedition', ['ALEC5'], async ({ context, suivi, testInfo }) => {
+etape('PF6.1-ALEC5-tarifs-expedition', ['ALEC5'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la capture d'étape prend le navigateur du rôle, pas l'onglet vide du projet
   sondeStricte(testInfo, 'C-ALEC-004')
   const com = await session(testInfo, 'alec5c', 'Commercial')
   const cr = await session(testInfo, 'alec5cr', 'Commercial responsable')
