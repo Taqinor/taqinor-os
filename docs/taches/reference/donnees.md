@@ -87,7 +87,7 @@ Règles transverses (chaque modèle) :
 `derive_tenir` `sous` · `au_dessus` ; `garde_taille` `''` ; `constat` `C1`…`C8` ; `pause` = le type push en pause ;
 `retour` `''` ; `revelation` `mon_iphone` · `ranger_copilote` · `planifier_projet` · `revue`. Réponses permises :
 `monter` {oui, pas_maintenant, garder_ce_rythme (3e refus de suite)} · `baisser` {oui, garder} · `premier` {oui,
-garder} (« [Oui, 3] [Garder 5] » : la baisse du démarrage est proposée, jamais imposée, A2.2, tour 3) · `journee_type`
+garder} (« [Descendre à 3] [Garder 5] » ou « [Monter à 7] [Garder 5] » : jamais appliqué d'office, A2.2, tour 3) · `journee_type`
 {oui, pas_maintenant} · `derive_tenir` {garder, passer} · `garde_taille` {taches_changees, ok} · `constat` {oui,
 pas_maintenant} (C5 : {ok}) · `pause` {reactiver, ok} · `retour` {remettre_dans_propose, une_par_une} · `revelation`
 {ok}. `ignoree` et `expiree` sont posés par la tâche nocturne seulement.
@@ -590,15 +590,17 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
 32. **Ordre d'affichage d'une section** (M13) : `rang_jour` s'il est posé, sinon `cle_tri` ; `reordonner` numérote
     toute la section. Dans un projet : `rang_projet` puis `id` ; `creer_taches()` pose `rang_projet` = dernier du
     projet (ou d'« À trier ») + 1 024, jamais nul pour une tâche créée par la référence.
-33. **Agenda externe — garde de lecture** (A18-M4) : `https://` seulement ; l'hôte est résolu À CHAQUE lecture et
+33. **Agenda externe — garde de lecture** (A18-M4) : `https://` seulement (une adresse `webcal://` est réécrite en
+    `https://` à l'ajout) ; l'hôte est résolu À CHAQUE lecture et
     chaque adresse obtenue doit être publique (ni privée, ni locale, ni de lien, ni réservée) ; connexion faite vers
-    l'adresse vérifiée ; aucune redirection suivie vers une adresse non publique (chaque saut revérifié) ; corps et
-    durée bornés ; résultat mis en cache ; tout échec → `dernier_etat` (texte lisible), jamais d'exception à l'écran ;
+    l'adresse vérifiée ; aucune redirection suivie vers une adresse non publique (chaque saut revérifié) ; corps ≤ 2 Mo et
+    délai ≤ 10 s ; résultat mis en cache 15 minutes ; tout échec → `dernier_etat` (texte lisible), jamais d'exception à l'écran ;
     lecture côté serveur seulement, jamais par le navigateur.
 34. **Proposé** (A18-M1/M2, règle exacte `regles.md` §3.4) : d'abord ce qui presse (`retard`, `echeance_passee`,
     `echeance_proche`), puis la PROCHAINE ACTION de chaque projet actif (sa première tâche `a_faire`, non bloquée,
     hors En réserve, `parent` nul, dans l'ordre `rang_projet`, `id`), projets pris par priorité décroissante puis
-    `rang`, puis la 2e action de chaque projet, et ainsi de suite, jusqu'à N = objectif − faites − gardées ouvertes.
+    `rang`, puis la 2e action de chaque projet, et ainsi de suite, jusqu'à N = objectif − faites − gardées ouvertes ; ce qui presse s'affiche EN ENTIER, même au-delà de N ; le temps
+    disponible ne filtre pas Proposé (un dépassement s'affiche en surcharge).
     Aucun projet ne prend deux places tant qu'un autre projet a une action non proposée. Chaque ligne porte sa
     `raison` (`RaisonPropose`). Le dépliage « toutes les tâches de mes projets » est groupé par projet.
 35. **Temps disponible** du jour = capacité − durée des rendez-vous des agendas externes qui tombent ce jour-là
@@ -864,3 +866,7 @@ privée (A9) est dans `textes.md` §6.
 9. Portes de visibilité `libelles_crm`/`libelles_ventes` ; sources des obligations ; deux portes de l'effacement 09-08.
 10. §6 : migrations seules, découpage renvoyé au plan (4 fusions).
 11. Comptes par script : 21 modèles, 218 champs propres, 11 clés `Preference`.
+
+## Révision 3.1
+
+Boutons « Descendre à / Monter à » · « Garder 5 » ; ce qui presse en entier au-delà de N, temps disponible en surcharge seulement ; `webcal://` → `https://` ; agenda externe 2 Mo, 10 s, cache 15 min ; `palier` reste la seule source de l'objectif (`regles.md` l'applique déjà, lignes 1121-1122).
