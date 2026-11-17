@@ -11,8 +11,8 @@ from rest_framework import serializers
 from rest_framework.views import APIView
 
 from apps.taches.views.base import (
-    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, PasEncore, corps,
-    forme_echantillon, parametre, reponses,
+    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore,
+    corps, forme_echantillon, parametre, reponses,
 )
 from core.idempotency import IdempotentCreateMixin
 
@@ -85,7 +85,7 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
         raise PasEncore()
 
 
-class CaptureVue(APIView):
+class CaptureVue(MethodeAvantJeton, APIView):
     """POST capture/ — Siri / partage, jeton `capture` (J:capture)."""
 
     authentication_classes = AUTH_JETON

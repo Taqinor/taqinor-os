@@ -90,13 +90,13 @@ class PortesTests(TestCase):
             company=cls.a, nom='Benali', prenom='Karim', ville='Casablanca', owner=cls.commercial)
         cls.lead_collegue = Lead.objects.create(company=cls.a, nom='Alami', owner=cls.collegue)
         cls.lead_autre_societe = Lead.objects.create(company=cls.b, nom='Ailleurs')
-        cls.client = Client.objects.create(
+        cls.client_crm = Client.objects.create(
             company=cls.a, nom='Benali', prenom='Karim', email='karim.tch13@example.invalid')
         cls.devis_a_lui = Devis.objects.create(
-            company=cls.a, reference='DEV-TCH13-0001', client=cls.client,
+            company=cls.a, reference='DEV-TCH13-0001', client=cls.client_crm,
             taux_tva=Decimal('20'), created_by=cls.commercial)
         cls.devis_collegue = Devis.objects.create(
-            company=cls.a, reference='DEV-TCH13-0002', client=cls.client,
+            company=cls.a, reference='DEV-TCH13-0002', client=cls.client_crm,
             taux_tva=Decimal('20'), created_by=cls.collegue)
 
     def test_lead_en_portee_visible_avec_son_libelle(self):
@@ -125,7 +125,7 @@ class PortesTests(TestCase):
         self.assertFalse(liens.cible_visible(self.commercial, 'ventes.devis', self.devis_collegue.pk))
 
     def test_client_par_la_porte_du_crm(self):
-        self.assertEqual(liens.libelle_de_cible(self.commercial, 'crm.client', self.client.pk),
+        self.assertEqual(liens.libelle_de_cible(self.commercial, 'crm.client', self.client_crm.pk),
                          'Benali Karim')
 
     def test_cible_hors_cible_liable_refusee_meme_existante(self):

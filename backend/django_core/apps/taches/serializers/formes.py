@@ -11,7 +11,8 @@ La forme ne lit jamais la base pour eux. Les objets sont chargés par `charger_i
 `charger_taches(qs)` : aucune requête par ligne.
 
 Requête « assistant » (`contexte(assistant=True)`) : titres et noms par `nom_pour(…, 'assistant')`,
-`notes` jamais servies, rendez-vous titrés « Rendez-vous » (api.md §0).
+`notes` jamais servies, rendez-vous titrés « Rendez-vous » (api.md §0) ; d'une tâche ou d'un projet
+confidentiel, aucun contenu (`_masque`, regles.md §8).
 """
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema_field
@@ -99,6 +100,12 @@ class _FormeSerializer(serializers.Serializer):
 
     def _calcul(self, type_, pk, champ, defaut):
         return self.context.get('calculs', {}).get((type_, pk), {}).get(champ, defaut)
+
+    def _masque(self, obj):
+        """Vrai sous l'en-tête assistant pour une tâche ou un projet confidentiel : aucun contenu
+        (check-list, `en_attente_de`, lien ERP, étape, étiquettes, texte du projet) ne part
+        (reference/regles.md §8). Les champs restent déclarés : seules les valeurs sont vidées."""
+        return bool(self.context.get('assistant')) and est_confidentielle(obj)
 
 
 # --- Petites formes imbriquées (schéma ; les valeurs sont des dict) ----------------------------
@@ -239,9 +246,12 @@ class ItemSerializer(_FormeSerializer):
     lock_version = serializers.IntegerField(allow_null=True)
 
     def to_representation(self, instance):
-        if isinstance(instance, Tache):
-            return super().to_representation(instance)
-        return self._activite(instance)
+        if not isinstance(instance, Tache):
+            return self._activite(instance)
+        donnees = super().to_representation(instance)
+        if self._masque(instance):
+            donnees['en_attente_de'] = ''
+        return donnees
 
     def _du_contexte(self, obj, champ, defaut):
         return self._calcul(TACHE, obj.pk, champ, defaut)
@@ -264,7 +274,9 @@ class ItemSerializer(_FormeSerializer):
 
     @extend_schema_field(SectionCourteSerializer(allow_null=True))
     def get_section(self, obj):
-        return {'id': obj.section.pk, 'nom': obj.section.nom} if obj.section_id else None
+        if not obj.section_id:
+            return None
+        return {'id': obj.section.pk, 'nom': '' if self._masque(obj) else obj.section.nom}
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_rang(self, obj):
@@ -292,7 +304,7 @@ class ItemSerializer(_FormeSerializer):
 
     @extend_schema_field(LienSerializer(allow_null=True))
     def get_lien(self, obj):
-        return lien_de_tache(obj)
+        return None if self._masque(obj) else lien_de_tache(obj)
 
     @extend_schema_field(CompteChecklistSerializer(allow_null=True))
     def get_checklist(self, obj):
@@ -398,11 +410,15 @@ class TacheSerializer(ItemSerializer):
 
     @extend_schema_field(EtiquetteCourteSerializer(many=True))
     def get_etiquettes(self, obj):
+        if self._masque(obj):
+            return []
         etiquettes = sorted((lien_.etiquette for lien_ in obj.etiquettetache_set.all()), key=lambda e: e.nom_cle)
         return [{'id': e.pk, 'nom': e.nom, 'couleur': e.couleur} for e in etiquettes]
 
     @extend_schema_field(ElementChecklistFormeSerializer(many=True))
     def get_elements_checklist(self, obj):
+        if self._masque(obj):
+            return []  # le compte `checklist` reste servi
         elements = sorted(obj.elementchecklist_set.all(), key=lambda e: (e.rang, e.pk))
         return [{'id': e.pk, 'libelle': e.libelle, 'fait': e.fait, 'rang': e.rang} for e in elements]
 
@@ -497,6 +513,8 @@ def tache_ecrite(tache, *, suivante=None, projet_cree=None, rappel=None, questio
 
 #: Valeurs d'`affichage` tant que l'utilisateur n'a rien mémorisé (clés fermées, api.md §1).
 AFFICHAGE_DEFAUT = {'vue': 'liste', 'tri': 'manuel', 'groupe': 'section', 'montrer_faites': False}
+#: Textes d'un projet confidentiel jamais servis à l'assistant (reference/regles.md §8).
+TEXTES_PROJET = ('objectif', 'domaine', 'issue', 'bilan')
 
 
 class AffichageSerializer(serializers.Serializer):
@@ -545,6 +563,13 @@ class ProjetSerializer(_FormeSerializer):
     focus_semaine = serializers.SerializerMethodField()
     updated_at = serializers.DateTimeField()
     lock_version = serializers.IntegerField()
+
+    def to_representation(self, instance):
+        donnees = super().to_representation(instance)
+        if self._masque(instance):
+            for champ in TEXTES_PROJET:
+                donnees[champ] = ''
+        return donnees
 
     def _du_contexte(self, obj, champ, defaut):
         return self._calcul(PROJET, obj.pk, champ, defaut)

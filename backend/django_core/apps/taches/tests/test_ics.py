@@ -213,6 +213,30 @@ class ErreursTests(unittest.TestCase):
         evts = lire_evenements(texte, DU, AU, fuseau=LOCAL)
         self.assertEqual(evts[0].debut, datetime(2026, 11, 24, 9, 0))
 
+    def _avec_un_hostile(self, lignes_hostiles):
+        """Un fichier : un événement sain, l'événement hostile, un autre événement sain."""
+        sain = ('BEGIN:VEVENT\nUID:{uid}\nDTSTART:2026112{j}T090000Z\nDTEND:2026112{j}T100000Z\n'
+                'SUMMARY:{uid}\nEND:VEVENT\n')
+        texte = ('BEGIN:VCALENDAR\n' + sain.format(uid='avant', j=4)
+                 + 'BEGIN:VEVENT\nUID:hostile\n' + lignes_hostiles + 'SUMMARY:hostile\nEND:VEVENT\n'
+                 + sain.format(uid='apres', j=5) + 'END:VCALENDAR\n')
+        return lire_evenements(texte, DU, AU, fuseau=LOCAL)
+
+    def test_duree_demesuree_ignoree_les_autres_rendus(self):
+        evts = self._avec_un_hostile('DTSTART:20261124T110000Z\nDURATION:P999999999W\n')
+        self.assertEqual([e.titre for e in evts], ['avant', 'apres'])
+
+    def test_date_de_fin_hors_calendrier_ignoree_les_autres_rendus(self):
+        evts = self._avec_un_hostile('DTSTART;VALUE=DATE:99991231\n')
+        self.assertEqual([e.titre for e in evts], ['avant', 'apres'])
+
+    def test_fuseau_qui_est_un_dossier_lu_comme_un_fuseau_inconnu(self):
+        """`TZID=America` (un dossier de tzdata : `PermissionError`/`IsADirectoryError`) ne fait pas
+        tomber l'agenda : il est lu comme tout fuseau inconnu, en heure locale."""
+        evts = self._avec_un_hostile('DTSTART;TZID=America:20261124T110000\n')
+        self.assertEqual([e.titre for e in evts], ['avant', 'hostile', 'apres'])
+        self.assertEqual(evts[1].debut, datetime(2026, 11, 24, 11, 0))
+
 
 class MinutesRendezVousTests(unittest.TestCase):
     """Tableau de regles.md §3.6 : fenêtre 08:30-19:00."""

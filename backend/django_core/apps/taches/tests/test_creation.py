@@ -167,6 +167,15 @@ class CreationTests(TestCase):
         self.assertEqual(ReglagesRythme.objects.filter(company=self.a, proprietaire=self.u1).count(), 1)
         self.assertFalse(ReglagesRythme.objects.filter(proprietaire=self.voisin).exists())
 
+    def test_reglages_poses_avant_la_premiere_ligne(self):
+        """Le verrou des plafonds de rappels porte sur `ReglagesRythme` : la ligne existe déjà quand
+        la première tâche (et son rappel) s'écrit."""
+        vus = []
+        with mock.patch.object(creation, '_creer_ligne', side_effect=lambda ctx, ligne, cid: vus.append(
+                ReglagesRythme.objects.filter(company=self.a, proprietaire=self.u1).exists())):
+            self._creer(_ligne('un'), _ligne('deux'))
+        self.assertEqual(vus, [True, True])
+
     # --- Invariant 32 : rang dans la liste -----------------------------------------------------
 
     def test_rang_projet_dernier_plus_1024(self):
@@ -196,6 +205,15 @@ class CreationTests(TestCase):
         self._creer(_ligne(client_id='abc:0'))
         autre = self._creer(_ligne(client_id='abc:0'), user=self.voisin)
         self.assertEqual(len(autre.creees), 1)
+
+    def test_client_id_long_coupe_la_base_jamais_le_suffixe(self):
+        """63 caractères + `:0`…`:11` : couper le tout à 64 confondait `:1` et `:10` (une ligne perdue)."""
+        resultat = self._creer(*(_ligne(f'ligne {n}') for n in range(12)), client_id='c' * 63)
+        self.assertEqual((len(resultat.creees), resultat.deja_creees), (12, []))
+        cles = list(Tache.objects.filter(proprietaire=self.u1).values_list('client_id', flat=True))
+        self.assertEqual(len(set(cles)), 12)
+        self.assertTrue(all(len(cle) <= 64 for cle in cles))
+        self.assertIn('c' * 61 + ':10', cles)
 
     def test_course_relue_apres_integrity_error(self):
         """Fenêtre de la course forcée : la lecture préalable ne voit pas encore la tâche que l'autre
@@ -269,6 +287,15 @@ class CreationTests(TestCase):
         activite = fabriques.activite(self.voisin)
         with self.assertRaises(Http404):
             self._creer(_ligne(), porte='lien_activite', source='activite', activite=activite)
+
+    def test_a_faire_personnel_d_un_collegue_assigne_a_moi_404(self):
+        """Un à-faire `personnelle=True` créé par un collègue, même assigné au compte, est
+        introuvable (même réponse qu'une activité d'autrui) ; rien n'est écrit."""
+        activite = fabriques.activite(self.u1, created_by=self.voisin)
+        with self.assertRaises(Http404) as ctx:
+            self._creer(_ligne(), porte='lien_activite', source='activite', activite=activite)
+        self.assertEqual(str(ctx.exception), 'Introuvable.')
+        self.assertFalse(Tache.all_objects.filter(activite_origine_id=activite.pk).exists())
 
     # --- Geste, messages, portes ---------------------------------------------------------------
 
