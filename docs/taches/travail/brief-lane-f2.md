@@ -8,12 +8,13 @@ composants `features/taches/ui/`, coquille, pages vides, jetons `--tch-*`. La fu
 
 ## 0. Ton dossier de travail (à respecter absolument)
 
-Ton prompt te donne UN dossier, `C:\dev\taqinor-os\.claude\worktrees\agent-<id>` : c'est un worktree git à toi seul.
-- Le shell revient à un autre dossier après chaque commande : commence CHAQUE commande par un `cd` absolu vers ton
-  dossier (Bash : `cd /c/dev/taqinor-os/.claude/worktrees/agent-<id> && …` ; PowerShell : `Set-Location '<dossier>'; …`).
-- Tous les chemins que tu passes à Read / Edit / Write / Grep / Glob sont ABSOLUS et SOUS ton dossier.
+Tu tournes dans un worktree git ISOLÉ, à toi seul : c'est le dossier courant de ta session
+(`git rev-parse --show-toplevel` te le donne ; note-le, c'est « ton dossier »).
+- Tous les chemins que tu passes à Read / Edit / Write / Grep / Glob sont ABSOLUS et SOUS ton dossier. Si une
+  commande change de dossier, reviens-y par un `cd` absolu.
 - N'écris JAMAIS dans un autre worktree (surtout pas `…\worktrees\erp-task-manager-ai-f8db1b`, `…\dev-taches`,
-  `…\dev-taches-f2`, ni `C:\dev\taqinor-os` lui-même). Lire ce brief hors de ton dossier est la seule exception.
+  `…\dev-taches-f2`, ni `C:\dev\taqinor-os` lui-même) : une garde le refuse, et la contourner par Bash est interdit.
+  Lire ce brief hors de ton dossier est la seule exception.
 - Base : `git fetch origin dev-taches-f2` puis `git checkout -B <ta branche> origin/dev-taches-f2`. Vérifie que
   `backend/django_core/apps/taches/urls.py` et `frontend/src/api/tachesApi.js` existent et que
   `git merge-base --is-ancestor 92379f6f7 HEAD` réussit ; sinon arrête-toi et dis-le.
