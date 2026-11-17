@@ -101,10 +101,11 @@ from apps.audit.selectors import verify_audit_chain
 from apps.crm.models import Client, Lead
 CO = ${SOC}
 def lignes(M, pk):
-    return list(AuditLog.objects.filter(company_id=CO, content_type=ContentType.objects.get_for_model(M), object_id=str(pk), changes__isnull=False).values_list('changes', flat=True))
+    return [[a, c] for a, c in AuditLog.objects.filter(company_id=CO, content_type=ContentType.objects.get_for_model(M), object_id=str(pk), changes__isnull=False).values_list('pk', 'changes')]
 sortie(dict(client=lignes(Client, ${ids.client}), lead=lignes(Lead, ${ids.lead}), temoin=lignes(Client, ${ids.temoin}), chaine=verify_audit_chain(CO)))`)
   const avant = await journal()
-  const texteAvant = J([avant.client, avant.lead])
+  const texteDe = (lignes) => J(lignes.map(([, c]) => c))
+  const texteAvant = texteDe([...avant.client, ...avant.lead])
   for (const v of [pii.tel, neuf.tel, pii.cin, neuf.cin, pii.ice, neuf.ice]) expect(texteAvant, `Given : le journal du sujet porte « ${v} »`).toContain(v)
   expect(avant.chaine.ok, 'chaîne valide avant').toBe(true)
   // When : demande d'effacement sur l'e-mail, traitée par la vraie route (demo_admin = Administrateur, `dsr_traiter`).
@@ -114,23 +115,37 @@ sortie(DataSubjectRequest.objects.create(company_id=${SOC}, subject_identifier=$
   expect(t.status(), `traiter : ${(await t.text()).slice(0, 300)}`).toBe(200)
   // Then : plus aucune valeur personnelle dans les lignes du client et de ses leads ; « [effacé] » ; le témoin intact ; chaîne ok.
   const apresJ = await journal()
-  const texteApres = J([apresJ.client, apresJ.lead])
+  const texteApres = texteDe([...apresJ.client, ...apresJ.lead])
   for (const v of [pii.nom, pii.prenom, email, pii.tel, neuf.tel, pii.cin, neuf.cin, pii.ice, neuf.ice]) {
     expect(texteApres, `après l'effacement : « ${v} » absent du journal du sujet`).not.toContain(v)
   }
   expect(texteApres, 'valeurs remplacées par « [effacé] »').toContain('[effacé]')
-  expect(apresJ.client.length, 'les lignes du client sont gardées ; effacement en ajoute lui-meme').toBeGreaterThanOrEqual(avant.client.length)
-  expect(J(apresJ.client), 'nom de champ gardé').toContain('telephone')
-  const tem = J(apresJ.temoin)
+  // Les lignes d'AVANT, relues PAR CLÉ : toujours présentes, valeurs caviardées, nom de champ gardé.
+  const apresParPk = Object.fromEntries([...apresJ.client, ...apresJ.lead].map(([pk, c]) => [pk, J(c)]))
+  const avantTel = [...avant.client, ...avant.lead].filter(([, c]) => J(c).includes('telephone'))
+  expect(avantTel.length, 'Given : des lignes d\'avant portent le champ telephone').toBeGreaterThanOrEqual(2)
+  for (const [pk] of avantTel) {
+    expect(apresParPk[pk], `ligne d'audit #${pk} toujours présente`).toBeDefined()
+    expect(apresParPk[pk], `ligne #${pk} : « [effacé] » en place des valeurs`).toContain('[effacé')
+    expect(apresParPk[pk], `ligne #${pk} : nom de champ « telephone » gardé`).toContain('telephone')
+  }
+  const tem = texteDe(apresJ.temoin)
   expect(tem, 'témoin : ancien téléphone intact').toContain(temoin.tel)
   expect(tem, 'témoin : nouveau téléphone intact').toContain(temoin.tel2)
   expect(apresJ.chaine.ok, 'la chaîne de hachage reste valide').toBe(true)
   // Persistance : relue une seconde fois ; lecture du Journal d'activité par son API (ce que l'écran lit).
-  expect(J([(await journal()).client]), 'persistance : toujours caviardé').not.toContain(pii.tel)
+  expect(texteDe((await journal()).client), 'persistance : toujours caviardé').not.toContain(pii.tel)
   const ent = await lireJson(await r.get(`${API}/audit/entries/?object_id=${ids.client}`, T), 'journal')
   expect(J(ent), 'API du Journal : aucune valeur personnelle du client').not.toContain(neuf.ice)
-  await page.goto('/journal')
-  await expect(page.locator('body')).toBeVisible()
+  // ÉCRAN : /journal filtré sur le client, « Historique à cette date » ⇒ « [effacé] », ni téléphone, ni CIN, ni ICE.
+  await page.goto(`/journal?model=client&object_id=${ids.client}`)
+  const histo = page.getByRole('button', { name: 'Historique à cette date' }).first()
+  await expect(histo, 'le Journal liste les lignes du client').toBeVisible({ timeout: 60_000 })
+  await histo.click()
+  const dlg = page.getByRole('dialog').filter({ hasText: 'Historique à cette date' })
+  await expect(dlg.getByRole('cell', { name: 'telephone', exact: true }), 'écran : champ telephone reconstruit').toBeVisible({ timeout: 60_000 })
+  await expect(dlg, 'écran : « [effacé] » affiché').toContainText('[effacé]')
+  for (const v of [pii.tel, neuf.tel, pii.cin, neuf.cin, pii.ice, neuf.ice]) await expect(dlg, `écran : « ${v} » absent`).not.toContainText(v)
   await auRepos(suivi)
 })
 
@@ -267,7 +282,7 @@ sortie(AuditLog.objects.filter(company=Company.objects.get(slug='asup-journal-${
 })
 
 // ═══ PF10.4 — ASUP57 : avoir créé / annulé / note de débit après « Anonymiser (RGPD) » ⇒ acheteur figé de la facture ═══
-etape('PF10.4-ASUP57', ['ASUP57'], async ({ page, testInfo }) => {
+etape('PF10.4-ASUP57', ['ASUP57'], async ({ page, suivi, testInfo }) => {
   testInfo.setTimeout(420_000)
   const m = marque()
   const r = page.request
@@ -305,16 +320,45 @@ sortie(1)`)
   const ligneF = facture.lignes[0]
   const ligneAvoir = { produit: ligneF.produit, designation: ligneF.designation, quantite: '0.5', prix_unitaire: ligneF.prix_unitaire, taux_tva: '20.00' }
   const avoir1 = await lireJson(await r.post(`${API}/ventes/factures/${facture.id}/creer-avoir/`, { ...T, data: { motif: 'ASUP57 avant', lignes: [ligneAvoir] } }), 'avoir 1')
-  // When : « Anonymiser (RGPD) » du client, puis avoir créé, avoir existant annulé, note de débit créée.
-  const an = await r.post(`${API}/crm/clients/${clientId}/anonymize/`, T)
-  expect(an.status(), `anonymize : ${(await an.text()).slice(0, 300)}`).toBe(200)
+  // When (ÉCRAN 1/3) : fiche client → « Anonymiser (RGPD) » → « Anonymiser définitivement ».
+  await page.goto('/crm')
+  await page.getByPlaceholder('Rechercher nom, email, tél, ICE, IF, RC, CIN…').fill(nomClient)
+  await page.getByRole('row').filter({ hasText: nomClient }).first().click({ timeout: 60_000 })
+  await expect(page.getByText(`Fiche client — ${nomClient}`)).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: 'Anonymiser (RGPD)' }).click()
+  const alerte = page.getByRole('alertdialog')
+  await expect(alerte).toContainText('Anonymiser ce client ?')
+  await alerte.getByRole('button', { name: 'Anonymiser définitivement' }).click()
+  await expect(toast(page, 'Client anonymisé (données personnelles effacées)')).toBeVisible({ timeout: 30_000 })
   const client = await py(`from apps.crm.models import Client
 c = Client.objects.get(pk=${clientId}); sortie([c.is_anonymized, c.nom, c.ice])`)
   expect(client[0], 'client anonymisé en base').toBe(true)
   expect(client[1], 'le client vivant ne porte plus le nom d\'origine').not.toBe(nomClient)
-  const avoir2 = await lireJson(await r.post(`${API}/ventes/factures/${facture.id}/creer-avoir/`, { ...T, data: { motif: 'ASUP57 après', lignes: [ligneAvoir] } }), 'avoir 2')
-  const ann = await r.post(`${API}/ventes/avoirs/${avoir1.id}/annuler/`, { ...T, data: {} })
-  expect(ann.status(), `annuler : ${(await ann.text()).slice(0, 300)}`).toBe(200)
+  // (ÉCRAN 2/3) : /ventes/factures → « Avoir » sur la facture → « Avoir partiel » (créer un avoir).
+  await page.goto('/ventes/factures')
+  await page.getByPlaceholder('Référence, client').fill(facture.reference)
+  const ligneFact = page.locator(`#facture-row-${facture.id}`).first()
+  await expect(ligneFact, 'facture listée').toBeVisible({ timeout: 60_000 })
+  await ligneFact.getByRole('button', { name: 'Avoir', exact: true }).click()
+  const dialogue = page.getByRole('dialog').filter({ hasText: `Créer un avoir — ${facture.reference}` })
+  await expect(dialogue).toBeVisible({ timeout: 30_000 })
+  await dialogue.locator('input[type="number"]').first().fill('1')
+  const [repAvoir] = await Promise.all([
+    page.waitForResponse((x) => x.request().method() === 'POST' && /\/creer-avoir\/$/.test(new URL(x.url()).pathname), T),
+    dialogue.getByRole('button', { name: 'Avoir partiel' }).click(),
+  ])
+  expect(repAvoir.status(), await repAvoir.text()).toBe(201)
+  const avoir2 = await repAvoir.json()
+  // (ÉCRAN 3/3) : /ventes/avoirs → « Annuler » sur l'avoir existant → « Annuler l'avoir ».
+  await page.goto('/ventes/avoirs')
+  const rangee = page.locator('tr').filter({ hasText: avoir1.reference }).first()
+  await expect(rangee, 'avoir existant listé').toBeVisible({ timeout: 60_000 })
+  await rangee.getByRole('button', { name: 'Annuler', exact: true }).click()
+  const [repAnnul] = await Promise.all([
+    page.waitForResponse((x) => x.request().method() === 'POST' && new RegExp(`/ventes/avoirs/${avoir1.id}/annuler/$`).test(new URL(x.url()).pathname), T),
+    page.getByRole('alertdialog').getByRole('button', { name: "Annuler l'avoir" }).click(),
+  ])
+  expect(repAnnul.status(), await repAnnul.text()).toBe(200)
   const nd = await lireJson(await r.post(`${API}/ventes/factures/${facture.id}/creer-note-debit/`, { ...T, data: { motif: 'pénalité ASUP57', montant: '50.00', taux_tva: '20' } }), 'note de débit')
   // Then : le texte de chaque PDF porte le nom, l'ICE, l'IF, le RC et l'adresse figés — jamais « Client anonymisé » ; re-téléchargé : idem.
   const compact = (s) => String(s).replace(/\s+/g, '')
@@ -331,8 +375,7 @@ c = Client.objects.get(pk=${clientId}); sortie([c.is_anonymized, c.nom, c.ice])`
       expect(texte, `${quoi} (${passe}) : jamais « Client anonymisé »`).not.toContain('Client anonymisé')
     }
   }
-  await page.goto('/ventes/avoirs')
-  await expect(page.locator('body')).toBeVisible()
+  await auRepos(suivi)
 })
 
 // ═══ PF10.2 — ASUP58 : le devis envoyé d'un lead mis à la corbeille ne produit ni relance ni DevisNudgeLog ; restauré, le palier repart ═══
@@ -371,19 +414,24 @@ with transaction.atomic():
     r['notifs_moteur'] = notifs()
     r['declencheurs'] = [bool(ShareLink.objects.filter(devis=d).first().engagement_triggers_fired) for d in ds]
     r['relu'] = DevisNudgeLog.objects.filter(devis=ds[0]).exists()
-    sid = transaction.savepoint()
-    Lead.all_objects.filter(pk=ls.pk).update(is_deleted=False, deleted_at=None, deleted_by=None)
-    send_devis_followup_nudges()
-    r['apres_levee'] = DevisNudgeLog.objects.filter(devis=ds[0]).count()
-    transaction.savepoint_rollback(sid)
-    sid = transaction.savepoint()
+    # RESTAURATION RÉELLE (corbeille) : ASOC86 rejoue la prochaine étape (RelanceEtape ouverte, relance_date reportée) ;
+    # QX13/MRY7 DIFFÈRENT alors le palier (jamais deux messages au client) — le lead n'est plus ÉCARTÉ pour autant.
+    from apps.crm.models import RelanceEtape
+    from apps.ventes.domain.recouvrement import _lead_ecarte
     Lead.all_objects.get(pk=ls.pk).restore()
-    send_devis_followup_nudges()
-    r['apres_restauration'] = DevisNudgeLog.objects.filter(devis=ds[0]).count()
+    ouvertes = RelanceEtape.objects.filter(lead_id=ls.pk, statut=RelanceEtape.Statut.A_FAIRE)
+    r['etapes_ouvertes'] = ouvertes.count()
+    r['ecarte_apres'] = _lead_ecarte(ds[0])
     lr = Lead.objects.get(pk=ls.pk)
     r['relance_date'] = str(lr.relance_date)
-    r['acts_ouvertes'] = lr.activites.count()
-    transaction.savepoint_rollback(sid)
+    r['aujourdhui'] = str(timezone.localdate())
+    send_devis_followup_nudges()
+    r['log_differe'] = DevisNudgeLog.objects.filter(devis=ds[0]).count()
+    # Suivi clos et rappel échu : le palier part au passage suivant.
+    ouvertes.update(statut=RelanceEtape.Statut.ANNULEE)
+    Lead.objects.filter(pk=ls.pk).update(relance_date=None)
+    send_devis_followup_nudges()
+    r['log_apres_echeance'] = DevisNudgeLog.objects.filter(devis=ds[0]).count()
     transaction.set_rollback(True)
 r['rien_laisse'] = not Devis.objects.filter(reference__startswith='DEV-ASUP58-${m}').exists()
 sortie(r)`)
@@ -396,7 +444,11 @@ sortie(r)`)
   expect(res.notifs_moteur[1], 'moteur : le témoin reçoit sa notification').toBeGreaterThan(res.notifs_paliers[1])
   expect(res.relu, 'persistance : relu, toujours aucune ligne pour S').toBe(false)
   console.log(`[ASUP58] ${J(res)}`)
-  expect(res.apres_levee, 'corbeille levée ⇒ le lead n est plus écarté : le palier part au passage suivant').toBe(1)
+  expect(res.etapes_ouvertes, 'restauration réelle : le suivi (RelanceEtape) est rouvert').toBeGreaterThan(0)
+  expect(res.ecarte_apres, 'restauré : le lead n\'est plus écarté').toBe(false)
+  expect(res.relance_date > res.aujourdhui, `relance_date reportée dans le futur (${res.relance_date} > ${res.aujourdhui})`).toBe(true)
+  expect(res.log_differe, 'palier DIFFÉRÉ au passage suivant (relance_date dans le futur) : aucun DevisNudgeLog').toBe(0)
+  expect(res.log_apres_echeance, 'suivi clos et relance_date échue : le palier part (1 DevisNudgeLog)').toBe(1)
   expect(res.rien_laisse, 'transaction annulée').toBe(true)
   // 0 écran (relances produites par le beat) : page ouverte pour les oracles seulement.
   await page.goto('/ventes/devis')
@@ -528,6 +580,15 @@ sortie(n)`)
     await auRepos(suivi)
     await montrer(page)
   } finally { await ctx.dispose() }
+}, {
+  // La « tuile d'attention » du tableau de bord nommée par la clause n'existe pas : `useApprobationsCount.js` (l. 47) est le
+  // seul lecteur de `attention-summary` et ne lit que `approbations` — antérieur à ASUP60 et hors de ses Files. Le chiffre
+  // en_retard / aujourdhui est prouvé par l'API (= Ma file = oracle indépendant) et l'écran Ma file, pas par une tuile.
+  ecart: {
+    base: 'FAIL',
+    raison: 'tuile d\'attention du tableau de bord inexistante : useApprobationsCount.js:47 est le seul lecteur de attention-summary '
+      + '(ne lit que `approbations`), antérieur et hors des Files d\'ASUP60 ; preuve par API + écran Ma file',
+  },
 })
 
 // ═══ PF10.3 — ASUP61 : réappro — le fournisseur ARCHIVÉ le moins cher n'est jamais suggéré ; le BCF part chez l'actif ═══
@@ -618,9 +679,17 @@ from apps.trash.models import ElementSupprime
 e = ElementSupprime.objects.filter(content_type=ContentType.objects.get_for_model(Lead), object_id=${x.corbeille}).order_by('-pk').first()
 sortie(None if e is None else dict(libelle=e.libelle_snapshot, donnees=e.donnees_snapshot))`)
     console.log(`[ASUP62] entrée de la corbeille commune : ${J(corb)}`)
-    // OBSERVATION (hors fini-quand) : le libellé de la corbeille commune est un instantané pris à la suppression.
+    // Clause de preuve : « libellé anonymisé dans la corbeille commune » — le nom d'origine ne doit plus y figurer.
+    // Défaut ANTÉRIEUR hors Files (apps/trash : `libelle_snapshot` garde le nom pris à la suppression) : écart déclaré ci-dessous.
+    if (corb) expect(J(corb), 'corbeille commune : le nom d\'origine du lead n\'apparaît plus').not.toContain(`ASUP62 lead corbeille ${m}`)
     await page.goto('/parametres/corbeille')
     await expect(page.locator('body')).toBeVisible()
     await auRepos(suivi)
   } finally { await ctx.dispose() }
+}, {
+  ecart: {
+    base: 'FAIL',
+    raison: 'libellé de la corbeille commune : `ElementSupprime.libelle_snapshot` (apps/trash) garde le nom d\'origine du lead pris à la suppression, '
+      + 'jamais réécrit par « Anonymiser (RGPD) » — défaut antérieur, hors des Files d\'ASUP62 ; le « fini quand » (lead anonymisé et toujours en corbeille) est tenu',
+  },
 })

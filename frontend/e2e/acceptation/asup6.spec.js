@@ -5,11 +5,14 @@
 // le rôle LIVRÉ du registre (compte d'essai de la société démo), AFFIRME ce que la clause nomme (statut, message,
 // ligne gardée), recharge puis relit la base. Données propres créées par le shell Django et retirées en fin d'étape.
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { spawnSync } from 'node:child_process'
+import { join } from 'node:path'
+import { RACINE } from './_enregistrement.js'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { assurerSessionPage, telephoneMobileUnique, uiLoginJusquAuxApps, connexionApi, lireJson } from '../helpers.js'
 
-const etape = groupe('ASUP', ['ASUP4', 'ASUP5', 'ASUP6', 'ASUP48', 'ASUP56'])
+const etape = groupe('ASUP', ['ASUP4', 'ASUP5', 'ASUP6', 'ASUP44', 'ASUP48', 'ASUP56'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -67,11 +70,23 @@ const fermerVisite = async (p) => {
   const b = p.getByRole('button', { name: 'Fermer la visite guidée' })
   await b.waitFor({ state: 'visible', timeout: 10_000 }).then(() => b.click()).catch(() => undefined)
 }
+/** Rejoue une sonde HÔTE du dossier (`docs/audits/sondes/ASUP/<c>.py`) ; renvoie {ok, res|err}. */
+function sondeHote(constat) {
+  const chemin = join(RACINE, 'docs', 'audits', 'sondes', 'ASUP', `${constat}.py`)
+  const code = 'import runpy, sys, json; ns = runpy.run_path(sys.argv[1]); print("@@S" + json.dumps(ns["sonde"](), default=str))'
+  const r = spawnSync(process.env.E2E_PYTHON || 'python', ['-I', '-c', code, chemin], { cwd: RACINE, encoding: 'utf8', maxBuffer: 20_000_000 })
+  const ligne = (r.stdout || '').split('\n').find((l) => l.startsWith('@@S'))
+  if (!ligne) return { ok: false, err: `${(r.stderr || r.stdout || '').trim().split('\n').pop()}`.slice(0, 300) }
+  return { ok: true, res: JSON.parse(ligne.slice(3)) }
+}
 /** Presse un bouton de ligne hors de la fenêtre visible (cellule d'actions défilante) : focus + Entrée. */
 const presser = async (p, bouton) => { await bouton.focus(); await p.keyboard.press('Enter') }
 
 // ═══ PF10.3 — ASUP4 : /stock › Archivés › Supprimer sur un produit à mouvements ⇒ 409 nommé, produit et mouvements gardés ═══
 etape('PF10.3-ASUP4', ['ASUP4'], async ({ page, suivi, testInfo }) => {
+  const sonde = sondeHote('C-ASUP-002')
+  expect(sonde.ok, `sonde C-ASUP-002 exécutée : ${sonde.err || ''}`).toBe(true)
+  expect(sonde.res.repro, `sonde C-ASUP-002 (repro=false attendu) : ${J(sonde.res.observe)}`).toBe(false)
   const m = marque()
   const nom = `asup4di_${m}`
   await compteRole(nom, 'Directeur')
@@ -151,6 +166,8 @@ for qs in (Paiement.objects.filter(pk=${x.paiement}), Lead.all_objects.filter(pk
     except Exception as exc: print('nettoyage', exc)`)
 
 etape('PF10.1-ASUP5', ['ASUP5'], async ({ page, testInfo }) => {
+  // Sonde C-ASUP-003 : périmée (non rejouable), non comptée comme preuve.
+  console.log('[ASUP5] sonde C-ASUP-003 : périmée (non rejouable), non comptée')
   const m = marque()
   const di = `asup5di_${m}`
   const tech = `asup5te_${m}`
@@ -236,8 +253,87 @@ sortie(dict(actif=U.objects.get(pk=${idTech}).is_active, paiement=Paiement.objec
   await montrer(page)
 })
 
+// ═══ PF10.3 — ASUP44 : supprimer (écran /crm/leads, puis en masse) un lead à visite planifiée ⇒ visite annulée, une note ═══
+etape('PF10.3-ASUP44', ['ASUP44'], async ({ page, suivi, testInfo }) => {
+  const m = marque()
+  const terrain = `asup44te_${m}`
+  const terrainId = await compteRole(terrain, 'Commercial terrain')
+  const noms = [`ASUP44 unitaire ${m}`, `ASUP44 masse ${m}`, `ASUP44 sans visite ${m}`]
+  const tels = noms.map(() => telephoneMobileUnique())
+  const ids = await py(`from apps.crm import stages
+from apps.crm.models import Lead
+from apps.visites import services as visites_services
+from core.dates import aujourd_hui_local
+own = U.objects.get(username='demo_admin'); te = U.objects.get(pk=${terrainId})
+mk = lambda nom, tel: Lead.objects.create(company_id=own.company_id, nom=nom, stage=stages.CONTACTED, owner=own, telephone=tel)
+leads = [mk(n, t) for n, t in zip(${J(noms)}, ${J(tels)})]
+visites, erreurs = [], []
+for l in leads[:2]:
+    v, e = visites_services.planifier_visite(l, own, aujourd_hui_local(), commercial=te)
+    visites.append(v.pk if v else None); erreurs.append(e)
+sortie(dict(leads=[l.pk for l in leads], visites=visites, erreurs=erreurs, prevue=[str(Lead.objects.get(pk=l.pk).visite_prevue_le) for l in leads[:2]], jour=str(aujourd_hui_local())))`)
+  const etat = () => py(`from apps.crm.models import Lead
+from apps.visites.models import VisiteTerrain
+L = [Lead.all_objects.get(pk=pk) for pk in ${J(ids.leads)}]
+V = [VisiteTerrain.objects.get(pk=pk) for pk in ${J(ids.visites)}]
+sortie(dict(visites=[[v.statut, v.date_prevue] for v in V], annulee=VisiteTerrain.Statut.ANNULEE,
+  prevue=[l.visite_prevue_le for l in L], supprime=[l.is_deleted for l in L],
+  notes=[l.activites.filter(body__startswith='Rendez-vous de visite', user__isnull=True).count() for l in L]))`)
+  apres.push(async () => {
+    await py(`from apps.visites.models import VisiteTerrain
+VisiteTerrain.objects.filter(lead_id__in=${J(ids.leads)}).delete()`)
+    await supprimerLeads(ids.leads)
+  })
+  expect(ids.erreurs, 'visites planifiées sans erreur').toEqual([{}, {}])
+  const pt = await ecran(page, suivi, testInfo, terrain)
+  await pt.goto('/visites')
+  await expect(pt.getByRole('heading', { name: 'Ma journée' })).toBeVisible({ timeout: 60_000 })
+  for (const n of noms.slice(0, 2)) await expect(pt.getByText(n, { exact: true }), `avant : « ${n} » dans Ma journée`).toBeVisible({ timeout: 60_000 })
+  // Geste 1 À L'ÉCRAN : /crm/leads (vue liste), « Supprimer » sur le lead à visite, confirmation.
+  await page.goto(`/crm/leads?view=liste&q=${m}`)
+  const ligne = (n) => page.locator('tr.lv-row').filter({ hasText: n })
+  await expect(ligne(noms[0]), 'lead à visite listé').toBeVisible({ timeout: 60_000 })
+  await fermerVisite(page)
+  await presser(page, ligne(noms[0]).getByRole('button', { name: 'Supprimer', exact: true }))
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Supprimer', exact: true }).click()
+  await expect(toast(page, 'Lead supprimé.'), 'toast de suppression').toBeVisible({ timeout: 30_000 })
+  await expect(ligne(noms[0]), 'le lead supprimé quitte la liste').toHaveCount(0, { timeout: 30_000 })
+  // Geste 2 : action en masse « delete » (vraie route) sur le lead à visite et le lead sans visite.
+  const d2 = await page.request.post(`${API}/crm/leads/bulk/`, { ...T, data: { action: 'delete', ids: [ids.leads[1], ids.leads[2]] } })
+  expect(d2.status(), `suppression en masse : ${(await d2.text()).slice(0, 200)}`).toBe(200)
+  const apresE = await etat()
+  expect(apresE.supprime, 'les trois leads sont en corbeille').toEqual([true, true, true])
+  for (const v of apresE.visites) expect(v, 'visite annulée par le module Visites (statut, date vidée)').toEqual([apresE.annulee, null])
+  expect(apresE.prevue, 'visite_prevue_le vidé').toEqual([null, null, null])
+  expect(apresE.notes, 'UNE note système « Rendez-vous de visite … annulé » par lead à visite ; aucune sans visite').toEqual([1, 1, 0])
+  // Écran du technicien, rechargé : plus aucune visite.
+  await pt.reload()
+  await expect(pt.getByRole('heading', { name: 'Ma journée' })).toBeVisible({ timeout: 60_000 })
+  await expect(pt.getByText('Aucune visite aujourd’hui'), 'Ma journée vide').toBeVisible({ timeout: 60_000 })
+  for (const n of noms) await expect(pt.getByText(n, { exact: true }), `après : « ${n} » absent`).toHaveCount(0)
+  // Restaurer le premier lead (corbeille commune) : la visite reste annulée, aucune date replantée.
+  const entree = await py(`from django.contrib.contenttypes.models import ContentType
+from apps.trash.models import ElementSupprime
+from apps.crm.models import Lead
+e = ElementSupprime.objects.filter(content_type=ContentType.objects.get_for_model(Lead), object_id=${ids.leads[0]}).order_by('-pk').first()
+sortie(e.pk if e else None)`)
+  expect(entree, 'entrée de corbeille du lead supprimé').toBeTruthy()
+  const rr = await page.request.post(`${API}/trash/corbeille/${entree}/restaurer/`, T)
+  expect(rr.status(), `restaurer : ${(await rr.text()).slice(0, 200)}`).toBe(200)
+  const fin = await etat()
+  expect(fin.supprime[0], 'lead restauré').toBe(false)
+  expect(fin.visites[0], 'restauré ⇒ la visite reste annulée').toEqual([fin.annulee, null])
+  expect(fin.prevue[0], 'restauré ⇒ aucune date de visite replantée').toBeNull()
+  await pt.reload()
+  await expect(pt.getByText(noms[0], { exact: true }), 'après restauration : toujours absent du planning').toHaveCount(0, { timeout: 60_000 })
+  await auRepos(suivi)
+  await montrer(page)
+})
+
 // ═══ PF10.3 — ASUP48 : « Archiver » sur un lead signé à facture ⇒ 409 nommé sans rien écrire ; en masse : sauté avec la raison ═══
 etape('PF10.3-ASUP48', ['ASUP48'], async ({ page, suivi, testInfo }) => {
+  // Sonde C-ASUP-022 : périmée (non rejouable ; faux négatif ModuleNotFoundError 'apps'), non comptée comme preuve.
+  console.log("[ASUP48] sonde C-ASUP-022 : périmée (non rejouable, faux négatif ModuleNotFoundError 'apps'), non comptée")
   const m = marque()
   const nom = `asup48cr_${m}`
   const cr = await compteRole(nom, 'Commercial responsable')
