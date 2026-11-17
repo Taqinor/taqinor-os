@@ -423,8 +423,10 @@ class ParquerAuFroidTests(TestCase):
         cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
         touche = lead.relance_etapes.get(statut=A_FAIRE)
         self.assertEqual(touche.canal, 'whatsapp')
-        # Un WhatsApp ne lit jamais un script d'appel.
-        self.assertEqual(touche.template_cle, '')
+        # Audit des cadences (17/11/2026) — un WhatsApp ne lit jamais un script
+        # d'appel : il dit qu'il écrit et porte le message « je classe ? ».
+        self.assertEqual((touche.libelle, touche.template_cle),
+                         (cadence_plan.LIBELLE_MESSAGE_AVANT_FROID, 'je_classe_j7'))
 
     def test_parquer_en_standby_garde_l_etape_et_la_date(self):
         from apps.crm.fiche_funnel import parquer_lead
