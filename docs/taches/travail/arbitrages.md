@@ -136,3 +136,25 @@ Toutes les corrections du rapport sont ADOPTÉES. Précisions de l'orchestrateur
 - La notification de mi-journée ouvre l'écran Aujourd'hui (pas directement « Alléger »).
 - Les astuces de geste vues/non vues restent dans le navigateur. Les plafonds de requêtes sont des cibles, à
   remplacer par la mesure à la construction. « En réserve » n'est pas lu par la capture Siri.
+
+## A16 — Second essai de l'architecture des écrans (`verif-spec-7-tour2.md` : 13/20, 0 bloquant, 12 majeurs nouveaux)
+Les corrections N1 à N12 et le placement des 11 fonctions orphelines sont ADOPTÉS. Précisions :
+- **N3 planifier sa semaine** (la « phase de planification » demandée vaut aussi pour la semaine) : la vue Semaine de
+  l'agenda a un volet « À placer » qui liste aussi « Mes projets » ; toucher une tâche puis un jour la place (deux
+  gestes, sans ouvrir de fiche, sans glisser) ; la revue de la semaine se termine par « Planifier ma semaine ».
+- **N4** : les visites et les poses de l'ERP n'ont qu'une date (pas d'heure dans leurs modèles) → bande « Toute la
+  journée ». A14-M8 se lit ainsi.
+- **N5 pastille** : elle ne compte que les tâches GARDÉES pour aujourd'hui et encore ouvertes (Essentiel, Prévu, Ce
+  soir) — jamais « Proposé ». Elle peut donc tomber à 0, et c'est le but.
+- **N6** : après « Alléger ma journée », la section Proposé reste repliée jusqu'au lendemain.
+- **N8 conflit entre deux appareils** : la saisie en cours n'est jamais écrasée ; choix « Garder la mienne / Prendre
+  l'autre ».
+- **N10 accessibilité** : un paragraphe dédié dans la spec 7 et des critères d'acceptation (annonces `aria-live`,
+  toast qui ne disparaît pas sous lecteur d'écran ou tant qu'il a le focus, texte à 130 %, alternatives au balayage
+  et au glisser, cibles ≥ 44 px).
+- **N11 hors ligne** : ajouter, cocher et reporter marchent hors ligne par la même file d'envoi du module ; le reste
+  est grisé.
+- **N12** : le raccourci Siri partagé ne contient JAMAIS de jeton ; il le demande à l'installation.
+- **M2 (suite)** : le bilan du soir dit aussi « N sur OBJECTIF » ; le « plan tenu » est une seconde ligne.
+- **M3 (suite)** : un projet créé à la volée par `#` reçoit la priorité « Moyenne » par défaut, montrée et modifiable
+  d'un toucher dans la liste des projets.

@@ -64,6 +64,7 @@
   --tch-heure-h: 56px;            /* une heure d'agenda */
   --tch-onglets-h: 52px;
   --tch-zone-sure-bas: 34px;      /* iPhone à encoche, maquette */
+  --tch-clavier-h: 336px;         /* clavier iOS + suggestions, maquette seulement */
 
   /* Mouvement : deux courbes ajoutées ; les durées restent --motion-* */
   --tch-ease-entree: cubic-bezier(0.05, 0.7, 0.1, 1);   /* décélérée */
@@ -88,7 +89,10 @@
   --tch-accent-texte: var(--info-foreground);
   --tch-fait: var(--success);
   --tch-fait-texte: var(--success-foreground);
-  --tch-etoile: var(--primary-text);
+  --tch-etoile: var(--primary-text);        /* contour : ≥ 3:1 sur blanc */
+  --tch-etoile-fond: var(--primary);        /* remplissage : l'or de marque */
+  --tch-segment-actif: var(--card);
+  --tch-bloc-erp: color-mix(in oklch, var(--muted-foreground) 13%, var(--card));   /* bloc d'agenda d'une activité ERP */
   --tch-alerte: var(--destructive);
   --tch-surveiller: var(--warning-text);
   /* mélanges vers `transparent` en srgb : en oklch la teinte « vide » du
@@ -119,6 +123,7 @@
   --tch-voile: oklch(8% 0.02 270 / 0.6);
   --tch-survol: color-mix(in srgb, var(--muted) 80%, transparent);
   --tch-trait-grille: color-mix(in srgb, var(--border) 55%, transparent);
+  --tch-segment-actif: color-mix(in oklch, var(--muted) 82%, var(--foreground) 18%);
 }
 
 [data-p] {
@@ -262,7 +267,7 @@ svg.i-24 { width: 24px; height: 24px; }
 
 .ligne-fin { display: flex; align-items: center; gap: 8px; height: var(--tch-tache-lh); color: var(--tch-texte-doux); }
 .heure { font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-texte); }
-svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile); }
+svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-width: 1.5; }
 .drapeau { color: var(--tch-texte); }
 
 /* Faite : la ligne reste, barrée */
@@ -442,6 +447,10 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile); }
 .feuille { display: flex; flex-direction: column; }
 .feuille .saisie-pied { margin-top: auto; padding-top: 14px; }
 .feuille.cran-50 { height: 50vh; }
+/* Clavier ouvert : la feuille prend la hauteur de son contenu, posée sur le clavier */
+.feuille.sur-clavier { height: auto; bottom: var(--tch-clavier-h); padding-bottom: 12px; }
+.clavier { position: absolute; left: 0; right: 0; bottom: 0; height: var(--tch-clavier-h); display: grid; place-items: center;
+  background: var(--tch-panneau); box-shadow: inset 0 0.5px 0 var(--tch-trait); font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); }
 .feuille.cran-85 { height: 85vh; }
 .poignee { display: flex; justify-content: center; align-items: center; height: 44px; margin: -10px auto -10px; width: 88px; flex: none; }
 .poignee::before { content: ""; width: 36px; height: 5px; border-radius: 999px; background: var(--tch-trait); }
@@ -467,7 +476,8 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile); }
 /* Mini-calendrier */
 .mois { margin-top: 14px; }
 .mois-tete { display: flex; align-items: center; justify-content: space-between; height: 44px; }
-.mois-nom { font-size: 1rem; font-weight: 650; }
+.mois-nom { font-size: 1rem; font-weight: 600; }
+.mois-sous { font-weight: 400; color: var(--tch-texte-doux); }
 .mois-grille { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; }
 .mois-grille .jsem { font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); height: 24px; line-height: 24px; }
 .jour { height: 44px; display: grid; place-items: center; font-size: 0.9375rem; }
@@ -491,7 +501,7 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile); }
 .bloc small { display: block; font-size: 0.75rem; line-height: 1.3; font-weight: 500; }
 .bloc.court { display: flex; gap: 6px; align-items: center; padding-block: 0; }
 .bloc.court b { display: inline; }
-.bloc.erp { --tch-bloc-fond: var(--tch-panneau); --tch-bloc-texte: var(--tch-texte); --tch-point: var(--tch-texte-doux); }
+.bloc.erp { --tch-bloc-fond: var(--tch-bloc-erp); --tch-bloc-texte: var(--tch-texte); --tch-point: var(--tch-texte-doux); }
 .bloc.fait-bloc b { text-decoration: line-through; }
 .maintenant { position: absolute; left: -4px; right: 0; height: 2px; background: var(--tch-accent); z-index: 2; }
 .maintenant::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: var(--tch-accent); }
@@ -537,7 +547,7 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile); }
 .segmente { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin: 12px var(--tch-gouttiere) 0; padding: 2px;
   border-radius: 10px; background: var(--tch-panneau); }
 .segmente button { height: 40px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux); }
-.segmente button[aria-checked="true"] { background: var(--tch-surface); color: var(--tch-texte); font-weight: 600; box-shadow: var(--shadow-xs); }
+.segmente button[aria-checked="true"] { background: var(--tch-segment-actif); color: var(--tch-texte); font-weight: 600; box-shadow: var(--shadow-xs); }
 .bande-jours { display: grid; grid-template-columns: repeat(7, 1fr); margin: 10px 8px 6px; text-align: center; }
 .bande-jours button { display: flex; flex-direction: column; align-items: center; gap: 2px; height: 56px; justify-content: center; }
 .bande-jours small { font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); }
@@ -556,8 +566,8 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile); }
 .semaine-tete .repos b { color: var(--tch-texte-doux); font-weight: 500; }
 .semaine-tete [aria-current="date"] { color: var(--tch-accent); font-weight: 600; }
 .semaine-tete [aria-current="date"] b { color: var(--tch-accent-texte); background: var(--tch-accent); border-radius: 999px; padding: 0 8px; }
-.semaine-col { position: relative; box-shadow: inset 1px 0 0 var(--tch-trait); }
-.semaine-col.repos-col { background-color: color-mix(in srgb, var(--muted) 40%, transparent); }
+.semaine-col { position: relative; box-shadow: inset 1px 0 0 var(--tch-trait-grille); background-color: var(--tch-surface); }
+.semaine-col.repos-col { background-color: color-mix(in srgb, var(--muted) 55%, var(--card)); }
 
 .vide-picto[data-p] { background: var(--tch-bloc-fond); color: var(--tch-bloc-texte); }
 @media (min-width: 768px) { .colonnes.trois { grid-template-columns: repeat(3, 1fr); column-gap: 32px; } }
