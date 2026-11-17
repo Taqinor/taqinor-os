@@ -1,3 +1,38 @@
-/* Tâches — zone « projets » (TCH41) : Projets, Un projet, Planifier le projet, Revue (TCH88-TCH93).
-   Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
-   couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+/* Tâches — zone « projets » (TCH41, TCH88-TCH93) : Projets, Un projet, Planifier le projet, Archive, Revue.
+   Port de docs/taches/maquettes/ecrans-projets.css (préfixe ep-), TOUT sous `.tch`, couleurs par jetons
+   de l'ERP ou --tch-* uniquement, :hover sous @media (hover: hover), aucun position: fixed ni z-index en dur. */
+
+/* ── Liste Projets (TCH88) ───────────────────────────────────────────────── */
+.tch .ep-constat { margin: 4px var(--tch-gouttiere) 8px; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ligne.projet .ligne-fin { margin-right: var(--tch-cible); gap: 8px; }
+.tch .ep-prio {
+  display: inline-flex; align-items: center; gap: 6px; min-height: var(--tch-cible); padding: 0 8px;
+  font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte); border-radius: var(--tch-rayon-puce);
+}
+.tch .ep-prio .barres { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.tch .ep-prio .barres i { display: block; width: 3px; border-radius: 1px; background: var(--tch-texte); }
+.tch .ep-prio .barres i:nth-child(1) { height: 12px; }
+.tch .ep-prio .barres i:nth-child(2) { height: 9px; }
+.tch .ep-prio .barres i:nth-child(3) { height: 6px; }
+.tch .ep-prio .barres i.eteinte { background: var(--tch-segment-vide); }
+.tch .ep-prio.aucune { color: var(--tch-texte-doux); }
+@media (hover: hover) {
+  .tch .ep-prio:hover { background: var(--tch-survol); }
+}
+.tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; }
+.tch .ep-aplanifier { font-weight: 600; color: var(--tch-accent); }
+.tch .ep-nouveau {
+  display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 48px;
+  margin: 12px var(--tch-gouttiere) 0; padding: 0 12px; font-size: 1rem; font-weight: 600; color: var(--tch-accent);
+  border-radius: var(--tch-rayon-champ);
+}
+@media (hover: hover) {
+  .tch .ep-nouveau:hover { background: var(--tch-survol); }
+}
+.tch .ep-vide { margin: 24px var(--tch-gouttiere); text-align: center; }
+.tch .ep-vide p { margin: 0 0 12px; font-size: 1.0625rem; font-weight: 600; }
+.tch .ep-formulaire { padding: 4px 0 12px; display: flex; flex-direction: column; gap: 10px; }
+.tch .ep-etiquette { font-size: 0.875rem; font-weight: 600; }
+.tch .ep-erreur { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
+.tch .ep-modeles-lien { align-self: flex-start; }
+.tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: 0.875rem; color: var(--tch-alerte); }
