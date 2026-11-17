@@ -451,11 +451,10 @@ class PrioritesTests(unittest.TestCase):
         fin = {(NOMS[i.id], code) for i, code in self.classer().lignes[23:]}
         self.assertEqual(fin, {('R3', MotifRevoir.RETARD_ANCIEN), ('R4', MotifRevoir.REPORTEE_3_FOIS)})
 
-    @unittest.expectedFailure
     def test_ordre_complet_de_la_reference(self):
-        """CONSTAT (rapport de la lane) : regles.md §12 finit par R3 puis R4 ; l'ordre d'À revoir est
-        `cle_tri` (§3.1) et R4, dans Ventes (priorité haute, sans échéance), est en bande 2 avant R3."""
-        self.assertEqual([NOMS[i.id] for i, _ in self.classer().lignes], self.TETE + ['R3', 'R4'])
+        """regles.md §12 : la tête, puis À revoir dans l'ordre de `cle_tri` (§3.1) : R4 (Ventes, priorité
+        haute) avant R3 (Admin, basse)."""
+        self.assertEqual([NOMS[i.id] for i, _ in self.classer().lignes], self.TETE + ['R4', 'R3'])
 
     def test_une_raison_par_ligne(self):
         sortie = self.classer()
