@@ -75,7 +75,7 @@
         }
       }
     },
-    "refus": { "label": "Refus", "outcome": "refuse", "motif_refus": true },
+    "refus": { "label": "Client refuse", "outcome": "refuse", "motif_refus": true },
     "ne_plus_contacter": {
       "label": "Ne plus me contacter", "reponse": "ne_plus_contacter", "message": "stop_contact", "rang": "autre",
       "avertissement": "Opposition légale : ce client ne pourra plus jamais être relancé. À choisir seulement s’il l’a demandé.",

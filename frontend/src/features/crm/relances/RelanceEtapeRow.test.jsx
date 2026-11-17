@@ -599,7 +599,7 @@ describe('CAD10 RelanceEtapeRow — motif de refus facultatif', () => {
   it('le refus propose la liste paramétrée (sans les archivés) et passe sans motif', async () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     ouvrirFait(ETAPE_APPEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client refuse' }))
     expect(screen.getByLabelText('Motif du refus (facultatif)')).toBeInTheDocument()
     expect(await screen.findByRole('option', { name: 'Prix' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Ancien motif' })).not.toBeInTheDocument()
@@ -818,7 +818,7 @@ describe('Groupes « Pas joint » et « Plus tard… » — première réponse d
   it('choisir une pastille ordinaire referme la seconde rangée', () => {
     ouvrirFait(ETAPE_APPEL)
     fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client refuse' }))
     expect(screen.queryByTestId('sous-reponses-pas_joint')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Répondeur' })).not.toBeInTheDocument()
   })
@@ -926,7 +926,7 @@ describe('« Autre réponse » — les réponses secondaires, rien de choisi d�
     fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
     expect(screen.getByTestId('avertissement-reponse')).toHaveTextContent(AVERTISSEMENT)
     // Une autre réponse (Refus) : plus d'avertissement.
-    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client refuse' }))
     expect(screen.queryByTestId('avertissement-reponse')).not.toBeInTheDocument()
   })
 })

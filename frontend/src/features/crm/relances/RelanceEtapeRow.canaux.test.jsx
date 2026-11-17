@@ -61,7 +61,7 @@ describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => 
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
     cliquerDans('Pas joint', 'Pas de réponse')
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client refuse' }))
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
     cliquerDans('Plus tard…', 'À rappeler le…')
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()

@@ -50,7 +50,7 @@ describe('VISCAD6-B — « Visite acceptée » proposée dès la prise de contac
     expect(screen.getByRole('button', { name: 'Visite acceptée' })).toBeInTheDocument()
     // Les réponses existantes restent TOUTES là (jamais un remplacement).
     expect(screen.getByRole('button', { name: 'Client joint' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Refus' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Client refuse' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
     expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Plus tard…' }))
@@ -143,7 +143,7 @@ describe('VISCAD6-B — réalignement du compte de réponses (contact, 24/09/202
     const premierRegard = [...panneau.querySelectorAll('button')].map((b) => b.textContent)
     expect(premierRegard).toEqual([
       'Le client a répondu', 'Client joint au téléphone', 'Visite acceptée', 'Pas de réponse',
-      'Plus tard…', 'Refus', 'Autre réponse'])
+      'Plus tard…', 'Client refuse', 'Autre réponse'])
     // Une seule seconde rangée à la fois : on ouvre chaque groupe à son tour.
     const restantes = new Set(labels)
     for (const groupe of [null, 'Plus tard…', 'Autre réponse']) {

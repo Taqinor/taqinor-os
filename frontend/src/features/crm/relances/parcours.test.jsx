@@ -213,7 +213,7 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
   it('premier contact (appel) : 6 pastilles dont « Pas joint » (5), « Plus tard… » (3) et « Autre réponse » (1)', () => {
     const items = sur('contact_appel', { canal: 'appel' })
     expect(etiquettes(items)).toEqual([
-      'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Refus', 'Autre réponse'])
+      'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Client refuse', 'Autre réponse'])
     expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label)).toEqual([
       'Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
     expect(items.find((i) => i.cle === 'plus_tard').membres.map((m) => m.reponse.label)).toEqual([
