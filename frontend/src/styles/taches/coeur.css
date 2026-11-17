@@ -1,3 +1,40 @@
 /* Tâches — zone « coeur » (TCH41) : Aujourd'hui, À trier, bilan (écrans cœur, TCH76 et suivantes).
    Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
    couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+
+/* ── TCH76 · Aujourd'hui : port de docs/taches/maquettes/ecrans-coeur.css ─────────────────────── */
+.tch .section.premiere { margin-top: 10px; }
+.tch .section-titre .lien-titre { font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); }
+.tch .moment ~ .section.premiere { margin-top: 24px; }
+.tch .ligne .explique { color: var(--tch-texte); }
+.tch .ligne .journee { color: var(--tch-texte-doux); }
+.tch .estampille.neutre { color: var(--tch-texte); background: var(--tch-panneau); }
+
+/* Écran vide : une phrase, un geste (au pouce, en bas de la zone libre) */
+.tch .vide-plein { display: flex; flex-direction: column; justify-content: center; min-height: calc(100vh - 47px - 116px - 86px); padding-bottom: 24px; }
+.tch .vide-plein .vide-phrase, .tch .vide-plein .vide-aide { text-wrap: balance; }
+.tch .vide-plein .vide-phrase { font-size: 1.1875rem; line-height: 1.4; font-weight: 600; max-width: 22ch; margin-bottom: 8px; }
+.tch .vide-plein .vide-aide { margin: 0 0 24px; max-width: 30ch; font-size: 0.9375rem; line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .vide-plein .bouton.plein { height: 50px; padding: 0 26px; font-size: 1rem; }
+.tch .vide-plein .bouton.discret { margin-top: 6px; }
+.tch .vide-picto.grand { width: 88px; height: 88px; }
+.tch .vide-picto.grand svg { width: 40px; height: 40px; }
+@media (min-width: 768px) { .tch .vide-plein { min-height: 640px; } }
+
+/* Squelette (après 1 s) : mêmes gabarits que les lignes, sans texte */
+.tch .squelette-bloc { margin-top: 22px; }
+.tch .os.titre-section { width: 96px; height: 12px; margin: 0 var(--tch-gouttiere) 8px; }
+.tch .squelette .progression { pointer-events: none; }
+.tch .squelette .segments i { background: var(--tch-piste); }
+
+/* « Prévu » : rendez-vous externe en lecture seule, ligne repliable des activités ERP, bande « Toute la journée » */
+.tch .ligne.lecture-seule { cursor: default; }
+.tch button.ligne.ligne-repli { width: 100%; text-align: left; align-items: center; }
+.tch button.bande-journee { text-align: left; min-height: var(--tch-cible); }
+
+/* Feuilles d'Aujourd'hui (Choisir un jour, Supprimer) : un champ, un bouton large au pouce */
+.tch .choisir-jour { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 20px; }
+.tch .choisir-jour .champ-date { height: 48px; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
+.tch .choisir-jour .bouton.large { width: 100%; height: 50px; font-size: 1rem; }
+.tch .choisir-jour .carte-texte { margin: 0; }
