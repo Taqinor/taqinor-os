@@ -13,11 +13,11 @@
   <div class="page mobile-seul">
     <header class="entete">
       <div class="entete-haut">
-        <div><div class="entete-date">Novembre 2026</div><h1 class="entete-titre">Agenda</h1></div>
+        <div><div class="entete-date">Mardi 24 novembre</div><h1 class="entete-titre">Agenda</h1></div>
         <div class="entete-actions">
           <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
-          <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
           <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+          <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
         </div>
       </div>
     </header>
@@ -25,24 +25,24 @@
       <button role="radio" aria-checked="true">Jour</button><button role="radio" aria-checked="false">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
     </div>
     <div class="bande-jours chiffres">
-      <button class="marque"><small>lun.</small><b>16</b></button>
-      <button><small>mar.</small><b>17</b></button>
-      <button class="marque"><small>mer.</small><b>18</b></button>
-      <button><small>jeu.</small><b>19</b></button>
-      <button aria-current="date"><small>ven.</small><b>20</b></button>
-      <button class="repos"><small>sam.</small><b>21</b></button>
-      <button class="repos"><small>dim.</small><b>22</b></button>
+      <button class="marque"><small>lun.</small><b>23</b></button>
+      <button aria-current="date" aria-selected="true" class="marque"><small>mar.</small><b>24</b></button>
+      <button class="marque"><small>mer.</small><b>25</b></button>
+      <button aria-selected="false" class="marque"><small>jeu.</small><b>26</b></button>
+      <button><small>ven.</small><b>27</b></button>
+      <button class="repos"><small>sam.</small><b>28</b></button>
+      <button class="repos"><small>dim.</small><b>29</b></button>
     </div>
+    <div class="agenda-journee" style="margin:6px var(--tch-gouttiere) 0 8px"><small>journée</small><div class="bloc erp" style="position:static"><b>Visite technique à Témara</b></div></div>
     <div class="agenda mobile">
-      <div class="agenda-heures chiffres"><div>08:00</div><div>09:00</div><div>10:00</div><div>11:00</div><div>12:00</div><div>13:00</div><div>14:00</div><div>15:00</div></div>
-      <div class="agenda-grille" style="height:448px">
-        <div class="bloc court" data-p="ambre" style="top:28px;height:26px"><b>Appel fournisseur onduleurs</b><small class="chiffres">08:30</small></div>
-        <div class="bloc fait-bloc" data-p="ambre" style="top:56px;height:54px"><b>Envoyer le devis révisé</b><small class="chiffres">09:00 – 10:00</small></div>
-        <div class="bloc court erp" style="top:140px;height:26px"><b>Rappeler pour le devis</b><small class="chiffres">10:30</small></div>
-        <div class="bloc" data-p="ambre" style="top:168px;height:110px;right:calc(50% + 1px)"><b>Montage de la structure</b><small class="chiffres">11:00 – 13:00</small></div>
-        <div class="bloc court" data-p="menthe" style="top:224px;height:26px;left:calc(50% + 1px)"><b>Entretien candidat</b><small class="chiffres">12:00</small></div>
-        <div class="maintenant" style="top:207px"><span class="maintenant-heure chiffres">11:42</span></div>
-        <div class="bloc erp" style="top:336px;height:82px"><b>Visite technique à Témara</b><small class="chiffres">14:00 – 15:30</small></div>
+      <div class="agenda-heures chiffres"><div>09:00</div><div>10:00</div><div>11:00</div><div></div><div>13:00</div><div>14:00</div><div>15:00</div></div>
+      <div class="agenda-grille" style="height:calc(var(--tch-heure-h) * 7)">
+        <div class="bloc fait-bloc" data-p="indigo" style="top:calc(var(--tch-heure-h) * 1);height:calc(var(--tch-heure-h) * 0.5 - 2px)"><b>Appeler le fournisseur</b><small class="chiffres">10:00 – 10:30</small></div>
+        <div class="bloc court erp fait-bloc" style="top:calc(var(--tch-heure-h) * 1.5);height:calc(var(--tch-heure-h) * 0.5 - 2px)"><b>Rappeler pour le devis</b><small class="chiffres">10:30</small></div>
+        <div class="bloc" data-p="ambre" style="top:calc(var(--tch-heure-h) * 2);height:calc(var(--tch-heure-h) * 2 - 2px);right:calc(50% + 1px)"><b>Montage de la structure</b><small class="chiffres">11:00 – 13:00</small></div>
+        <div class="bloc" data-p="vert" style="top:calc(var(--tch-heure-h) * 3);height:calc(var(--tch-heure-h) * 0.5 - 2px);left:calc(50% + 1px)"><b>Entretien candidat</b><small class="chiffres">12:00 – 12:30</small></div>
+        <div class="maintenant" style="top:calc(var(--tch-heure-h) * 2.7)"><span class="maintenant-heure chiffres">11:42</span></div>
+        <div class="bloc" data-p="indigo" style="top:calc(var(--tch-heure-h) * 5);height:calc(var(--tch-heure-h) * 1 - 2px)"><b>Préparer la démo onduleur hybride</b><small class="chiffres">14:00 – 15:00</small></div>
       </div>
     </div>
   </div>
@@ -76,7 +76,7 @@
       </div>
       <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
         <div class="bloc erp" style="top:112px;height:54px"><b>Visite technique à Salé</b><small>10:00 – 11:00</small></div>
-        <div class="bloc" data-p="menthe" style="top:336px;height:54px"><b>Trier les CV</b><small>14:00 – 15:00</small></div>
+        <div class="bloc" data-p="vert" style="top:336px;height:54px"><b>Trier les CV</b><small>14:00 – 15:00</small></div>
       </div>
       <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
         <div class="bloc" data-p="indigo" style="top:56px;height:82px"><b>Plan du stand</b><small>09:00 – 10:30</small></div>
@@ -84,7 +84,7 @@
       </div>
       <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
         <div class="bloc" data-p="ambre" style="top:168px;height:110px;right:calc(50% + 1px)"><b>Montage</b><small>11:00 – 13:00</small></div>
-        <div class="bloc" data-p="menthe" style="top:224px;height:54px;left:calc(50% + 1px)"><b>Entretien</b><small>12:00</small></div>
+        <div class="bloc" data-p="vert" style="top:224px;height:54px;left:calc(50% + 1px)"><b>Entretien</b><small>12:00</small></div>
       </div>
       <div class="semaine-col agenda-grille" style="height:572px;margin-top:12px">
         <div class="bloc fait-bloc" data-p="ambre" style="top:56px;height:54px"><b>Envoyer le devis révisé</b><small>09:00 – 10:00</small></div>

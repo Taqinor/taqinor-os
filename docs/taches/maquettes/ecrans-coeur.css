@@ -5,37 +5,6 @@
    géométrie de maquette (barre d'état iOS, clavier), pas des jetons à verser.
    ========================================================================== */
 
-/* ── Cadre iPhone : barre d'état, défilement, indicateur d'accueil ───────── */
-.barre-statut { position: absolute; top: 0; left: 0; right: 0; height: 47px; z-index: 6;
-  display: flex; align-items: center; justify-content: space-between; padding: 6px 26px 0 34px;
-  background: var(--tch-surface);
-  font-size: 1rem; font-weight: 650; color: var(--tch-texte); }
-.barre-statut .glyphes { display: flex; align-items: center; gap: 6px; }
-.barre-statut svg { fill: currentColor; stroke: none; }
-.accueil-indic { position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px; margin-left: -67px;
-  border-radius: 999px; background: var(--tch-texte); z-index: 7; }
-
-@media (max-width: 767px) {
-  .page.defile { height: 100%; overflow-y: auto; padding-top: 47px; padding-bottom: 176px; scrollbar-width: none; }
-  .page.defile::-webkit-scrollbar { display: none; }
-  .page.defile.sans-fab { padding-bottom: 104px; }
-}
-@media (min-width: 768px) {
-  .barre-statut, .accueil-indic { display: none; }
-  .page.defile { height: 100%; overflow-y: auto; }
-}
-
-/* ── Ligne de progression (remplace l'anneau à deux lignes : A14-M1) ──────── */
-.progression { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin-top: 2px;
-  padding: 0 var(--tch-gouttiere); text-align: left; font-size: 0.9375rem; line-height: 1.3; }
-.objectif { display: inline-flex; gap: 3px; flex: none; }
-.objectif i { width: 12px; height: 6px; border-radius: 999px; background: var(--tch-piste); }
-.objectif i.fait { background: var(--tch-fait); }
-.progression-compte { font-weight: 650; }
-.progression-detail { color: var(--tch-texte-doux); }
-.progression .chevron-doux { margin-left: -4px; color: var(--tch-texte-doux); }
-@media (min-width: 768px) { .col-liste .progression { padding-inline: 24px; } }
-
 /* Section : petit écart entre la progression et le premier titre */
 .section.premiere { margin-top: 10px; }
 .section-titre .lien-titre { font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); }
@@ -51,11 +20,6 @@
 .propose-actions .bouton.lien { margin-left: auto; }
 @media (min-width: 768px) { .propose-actions { padding-inline: 24px; } }
 .ligne .explique { color: var(--tch-texte); }
-
-/* Repliés : groupe serré */
-.replies { margin-top: 20px; }
-.replies .replie { margin-top: 0; }
-.replie .indice { margin-left: auto; font-size: var(--tch-meta); font-weight: 400; color: var(--tch-texte-doux); }
 
 /* Activité ERP « toute la journée » : la méta dit l'heure */
 .ligne .journee { color: var(--tch-texte-doux); }
@@ -122,13 +86,6 @@
 .reglage .gauche svg { color: var(--tch-texte-doux); }
 .reglage.copilote-lien { color: var(--tch-accent); font-weight: 600; }
 .reglage.copilote-lien svg { color: var(--tch-accent); }
-.interrupteur { position: relative; width: 51px; height: 31px; flex: none; border-radius: 999px; background: var(--tch-piste);
-  transition: background-color var(--motion-fast) var(--ease-standard); }
-.interrupteur::before { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px;
-  background: var(--card); box-shadow: var(--shadow-sm); transition: transform var(--motion-fast) var(--ease-standard); }
-.interrupteur[aria-checked="true"] { background: var(--tch-accent); }
-.interrupteur[aria-checked="true"]::before { transform: translateX(20px); }
-.interrupteur::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .bouton.fait { background: var(--tch-fait); color: var(--tch-fait-texte); box-shadow: var(--shadow-xs); }
 .bouton.second.accent { color: var(--tch-accent); }
 
@@ -235,9 +192,7 @@
 }
 
 /* Agenda bureau : bande « Toute la journée » */
-.agenda-journee { display: grid; grid-template-columns: 48px 1fr; align-items: center; margin-bottom: 10px; }
-.agenda-journee small { font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); text-align: right; padding-right: 8px; line-height: 1.2; }
-.agenda-journee .bloc { position: static; margin: 0 4px; padding: 6px 8px 6px 10px; }
+
 .agenda-libre { margin: 14px 0 0 56px; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 
 /* ── Menu ⋯ (popover) ───────────────────────────────────────────────────── */
@@ -256,9 +211,7 @@
   .menu-item { font-size: 0.9375rem; }
 }
 
-/* Empilement : le voile couvre aussi l'agenda (trait « maintenant » z 2) et la barre d'état */
-.voile { z-index: 7; }
-.feuille, .clavier, .menu { z-index: 8; }
+
 .accueil-indic { z-index: 9; }
 
 /* iPhone : le menu ⋯ devient une feuille d'actions au pouce ; les actions de l'écran
@@ -276,10 +229,61 @@
   .menu-item svg { position: absolute; right: 18px; }
 }
 @media (max-width: 767px) { .voile.leger { background: var(--tch-voile); } }
-/* Le libellé « maintenant » masque l'heure pleine voisine : son fond doit être celui de la colonne */
-@media (min-width: 768px) { .col-agenda .maintenant-heure { background: var(--background); padding: 1px 4px; margin-right: 6px; } }
+
 @media (min-width: 768px) {
   .col-liste .carte { margin-inline: 24px; }
   .carte-actions.pile { flex-direction: row; align-items: center; }
   .carte-actions.pile .bouton { width: auto; }
 }
+
+/* ══ Tour 2 ═════════════════════════════════════════════════════════════════ */
+/* Feuille haute : plus de ruban du titre de fond au-dessus */
+.feuille.cran-haut { top: 52px; }
+/* Check-list : points plus petits que la case de tâche */
+.point-liste .rond { width: 18px; height: 18px; border-width: 1.5px; }
+.point-liste .rond svg { width: 11px; height: 11px; }
+/* Titre tronqué dans la barre d'une feuille défilée */
+.entete-barre.avec-titre { box-shadow: inset 0 -1px 0 var(--tch-trait); margin-bottom: 0; }
+.titre-barre { flex: 1; min-width: 0; padding: 0 8px; text-align: center; font-size: 0.9375rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Barre latérale : « Nouveau projet » en azur */
+.nav-item.nouveau, .nav-item.nouveau svg { color: var(--tch-accent); }
+/* Vide : sous-texte sur 2 lignes au plus */
+.vide-plein .vide-aide { max-width: 30ch; }
+/* Menu ⋯ : bande franche entre les deux groupes */
+.menu-sep { height: 8px; background: var(--background); }
+/* À trier : les gestes ne doivent pas peser plus que les titres */
+.geste { font-size: 0.9375rem; font-weight: 500; }
+.tri-gestes { margin-top: 0; }
+/* Constat en sombre : un cran au-dessus de la feuille */
+.dark .constat { background: color-mix(in oklch, var(--muted) 90%, var(--foreground)); }
+/* Bilan : « 4 sur 5 » + segments, une seule forme de progression */
+.bilan-tete { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; }
+.bilan-tete .bilan-second { grid-column: 1 / -1; }
+.restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.restes-tete .fiche-label { margin: 0; }
+.bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
+.bouton.petit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.reste-choix .puce.choisi { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+/* Aperçu d'une liste collée : en-tête neutre (pas de bande couleur), puce de priorité du nouveau projet */
+.apercu-projet { background: var(--tch-panneau); color: var(--tch-texte); padding-right: 6px; }
+.apercu-projet .nom { flex: 1; min-width: 0; min-height: 44px; text-align: left; font-size: 1rem; font-weight: 650; }
+.apercu-projet .nom small { color: var(--tch-texte-doux); font-weight: 400; }
+.puce.prio { height: 34px; background: var(--tch-surface); color: var(--tch-texte); gap: 4px; }
+.puce.prio svg { color: var(--tch-texte-doux); }
+/* Bureau : saisie et aperçu EN PLACE dans la liste (jamais de modale pour une saisie) */
+.saisie-place { margin: 16px 8px 0; padding: 12px 16px 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-surface);
+  box-shadow: inset 0 0 0 1.5px var(--tch-accent), var(--shadow-sm); }
+.saisie-place .saisie-texte { min-height: 0; font-size: 1rem; }
+.saisie-place .puces { margin-top: 10px; }
+.saisie-place .saisie-pied { margin-top: 12px; }
+.apercu-place { margin: 16px 8px 0; padding: 16px 20px 0; border-radius: var(--tch-rayon-carte); background: var(--tch-surface);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); }
+.apercu-place .feuille-pied { margin: 16px -20px 0; padding: 12px 20px; background: transparent; border-radius: 0 0 var(--tch-rayon-carte) var(--tch-rayon-carte); }
+.apercu-place .feuille-pied .bouton { height: 44px; font-size: 0.9375rem; }
+@media (min-width: 768px) {
+  .page.trois .col-fiche { height: 100vh; }
+  .page.trois .col-fiche .entete-date { margin-top: 4px; }
+}
+.moment ~ .section.premiere { margin-top: 24px; }
+@media (min-width: 768px) { .ligne.tri .tri-gestes { width: 280px; justify-content: flex-start; } }

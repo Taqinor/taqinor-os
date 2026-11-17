@@ -61,7 +61,7 @@
   --tch-rayon-carte: 16px;
   --tch-rayon-feuille: 20px;
   --tch-rayon-puce: 999px;
-  --tch-heure-h: 56px;            /* une heure d'agenda */
+  --tch-heure-h: 88px;            /* une heure d'agenda sur iPhone : la demi-heure = 44 px, une cible (56 au bureau) */
   --tch-onglets-h: 52px;
   --tch-zone-sure-bas: 34px;      /* iPhone à encoche, maquette */
   --tch-clavier-h: 336px;         /* clavier iOS + suggestions, maquette seulement */
@@ -94,7 +94,7 @@
   --tch-segment-actif: var(--card);
   --tch-bloc-erp: color-mix(in oklch, var(--muted-foreground) 13%, var(--card));   /* bloc d'agenda d'une activité ERP */
   --tch-alerte: var(--destructive);
-  --tch-surveiller: var(--warning-text);
+  --tch-surveiller: color-mix(in oklch, var(--warning-text) 86%, var(--foreground));   /* ≥ 4,5:1 aussi sur --muted */
   /* mélanges vers `transparent` en srgb : en oklch la teinte « vide » du
      transparent tire vers le rose (vu au rendu du tour 1) */
   --tch-survol: color-mix(in srgb, var(--muted) 70%, transparent);
@@ -104,13 +104,15 @@
   --tch-accent-doux: color-mix(in oklch, var(--info) 12%, var(--card));
   --tch-jeton: color-mix(in oklch, var(--info) 16%, var(--card));
   --tch-trait: var(--border);
-  --tch-barre-fond: color-mix(in srgb, var(--card) 86%, transparent);
+  --tch-barre-fond: color-mix(in srgb, var(--card) 94%, transparent);   /* + flou : plus de texte fantôme dessous */
+  --tch-segment-vide: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+  --tch-fond-colonne: var(--tch-surface);   /* fond sous l'étiquette « maintenant » */
 
   /* Nouveaux littéraux (seul endroit) */
   --tch-inverse-fond: var(--foreground);
   --tch-inverse-texte: var(--background);
   --tch-inverse-accent: oklch(80% 0.09 268);
-  --tch-voile: oklch(20% 0.06 270 / 0.24);
+  --tch-voile: color-mix(in srgb, var(--foreground) 32%, transparent);
 }
 .dark {
   --tch-point-l: 72%;  --tch-point-c: 0.115;
@@ -141,6 +143,10 @@
 [data-p="indigo"] { --tch-h: var(--tch-teinte-indigo); }
 [data-p="prune"] { --tch-h: var(--tch-teinte-prune); }
 [data-p="rose"] { --tch-h: var(--tch-teinte-rose); }
+/* Sombre : terre, ambre et olive à 28 % de L virent au brun (3 critiques) → fond neutre, la teinte reste sur le
+   filet, le point et le texte du bloc. */
+.dark [data-p="terre"], .dark [data-p="ambre"], .dark [data-p="olive"] {
+  --tch-bloc-fond: color-mix(in oklch, var(--muted) 85%, var(--tch-point)); }
 
 @media (min-width: 768px) {
   :root {
@@ -152,6 +158,7 @@
     --tch-chiffre: 0.75rem;
     --tch-gouttiere: 24px;
     --tch-ligne-h: 44px;
+    --tch-heure-h: 56px;
   }
 }
 
@@ -598,3 +605,154 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-wi
   .case.coche-anime .rond { animation: none; }
   .rond svg { transition: none; }
 }
+
+
+/* ══ Tour 2 (critiques visuelles) : composants partagés ══════════════════════ */
+svg.i.plein { fill: currentColor; }
+
+/* Progression de la journée : UNE forme, les segments (plus d'anneau, plus de camembert — SCENARIO.md) */
+.segments { display: inline-flex; gap: 3px; flex: none; }
+.segments i { width: 12px; height: 6px; border-radius: 999px; background: var(--tch-segment-vide); }
+.segments i.fait { background: var(--tch-fait); }
+.segments.grand { gap: 4px; }
+.segments.grand i { width: 24px; height: 8px; }
+/* Avancement d'un projet : barre fine */
+.barre-avance { display: block; width: 100%; max-width: 160px; height: 4px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
+.barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
+.ligne.projet .barre-avance { margin-top: 8px; }
+.point-projet { width: var(--tch-cible); height: var(--tch-tache-lh); display: grid; place-items: center; }
+.point-projet::before { content: ""; width: 12px; height: 12px; border-radius: 999px; background: var(--tch-point); }
+/* (.anneau et .camembert restent définis le temps que chaque lane migre ; ne plus les employer) */
+
+/* Titre compact au défilement (iPhone) : 44 px, titre 17 px 600, filet */
+.titre-compact { position: absolute; left: 0; right: 0; top: 47px; z-index: 5; height: 44px; display: none; align-items: center;
+  justify-content: center; padding: 0 64px; background: var(--tch-barre-fond); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 -0.5px 0 var(--tch-trait); font-size: 1.0625rem; font-weight: 600; white-space: nowrap; }
+.titre-compact .entete-actions { position: absolute; right: var(--tch-gouttiere); top: 0; }
+.titre-compact.visible { display: flex; }
+
+/* Bouton flottant : caché au défilement vers le bas (rendu au moindre défilement vers le haut) */
+.fab { transition: transform var(--motion-slow) var(--tch-ease-entree), opacity var(--motion-base) var(--ease-standard); }
+.fab.cache { transform: translateY(calc(100% + 32px)); opacity: 0; pointer-events: none; }
+
+/* Empilement : voile au-dessus de tout le contenu (dont le trait « maintenant », z 2), feuille au-dessus du voile */
+.voile { z-index: 7; }
+.feuille, .clavier, .menu { z-index: 8; }
+
+/* Puce à icône seule : 44 px de large (le ::after n'élargit que la hauteur) */
+.puce.icone { width: 44px; padding: 0; justify-content: center; }
+/* Puce choisie (radio/case) = puce active */
+.puce[aria-checked="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); }
+/* « Nouveau projet » : trait plein + fond teinté (le pointillé est réservé à « En attente ») */
+.puce.nouveau { outline: none; background: var(--tch-bloc-fond); color: var(--tch-bloc-texte); box-shadow: inset 0 0 0 1.5px var(--tch-point); }
+.saisie-texte .jeton { white-space: nowrap; }
+
+/* Agenda */
+.bloc b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.bloc.court b { display: inline; -webkit-line-clamp: unset; white-space: nowrap; }
+.bloc.fait-bloc { background: transparent; color: var(--tch-texte-doux); box-shadow: inset 3px 0 0 var(--tch-trait); }
+.maintenant-heure { background: var(--tch-fond-colonne); border-radius: 4px; padding: 3px 4px; top: -12px; margin-right: 6px; }
+@media (min-width: 768px) { .col-agenda { --tch-fond-colonne: var(--background); } }
+/* Bande de jours : aujourd'hui = cerclé, jour choisi = plein */
+.bande-jours [aria-current="date"] b { background: transparent; color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
+.bande-jours [aria-selected="true"] b { background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none; }
+
+/* Bande « Toute la journée » (visites et poses ERP : une date, jamais d'heure — N4) */
+.agenda-journee { display: grid; grid-template-columns: 48px 1fr; align-items: center; margin-bottom: 10px; }
+.agenda-journee small { font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); text-align: right; padding-right: 8px; line-height: 1.2; }
+.agenda-journee .bloc { position: static; margin: 0 4px; padding: 6px 8px 6px 10px; }
+/* Interrupteur (Confidentielle…) ; éteint lisible en sombre */
+.interrupteur { position: relative; width: 51px; height: 31px; flex: none; border-radius: 999px; background: var(--tch-piste);
+  transition: background-color var(--motion-fast) var(--ease-standard); }
+.interrupteur::before { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px;
+  background: var(--card); box-shadow: var(--shadow-sm); transition: transform var(--motion-fast) var(--ease-standard); }
+.interrupteur[aria-checked="true"] { background: var(--tch-accent); }
+.interrupteur[aria-checked="true"]::before { transform: translateX(20px); }
+.interrupteur::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.dark .interrupteur::before { background: var(--foreground); }
+
+/* ── Ligne de progression de la journée (A14-M1) : segments + « N sur 5 · essentiel n/2 » ── */
+.progression { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin-top: 2px;
+  padding: 0 var(--tch-gouttiere); text-align: left; font-size: 0.9375rem; line-height: 1.3; }
+.progression-compte { font-weight: 650; }
+.progression-detail { color: var(--tch-texte-doux); }
+
+/* ── Carte du moment (une seule ; matin : « 3 tâches proposées pour atteindre 5 · Garder ces 3 ») ── */
+.moment { display: flex; align-items: center; gap: 12px; margin: 10px var(--tch-gouttiere) 0; padding: 10px 10px 10px 16px;
+  min-height: 64px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.moment-texte { flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.35; }
+.moment-texte b { display: block; font-size: 1rem; font-weight: 650; }
+.moment-texte span { color: var(--tch-texte-doux); }
+.moment .bouton { flex: none; background: var(--tch-surface); }
+
+/* ── Bande « Toute la journée » d'Aujourd'hui (avant Prévu, N4) ── */
+.bande-journee { display: flex; align-items: center; gap: 8px; max-width: calc(100% - 2 * var(--tch-gouttiere)); width: fit-content;
+  min-height: 36px; margin: 18px var(--tch-gouttiere) 0; padding: 0 14px 0 12px; border-radius: var(--tch-rayon-puce);
+  background: var(--tch-bloc-erp); font-size: 0.9375rem; }
+.bande-journee b { min-width: 0; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bande-journee small { font-size: var(--tch-meta); color: var(--tch-texte-doux); white-space: nowrap; }
+.bande-journee small::before { content: "· "; }
+.bande-journee svg { color: var(--tch-texte-doux); }
+@media (min-width: 768px) { .col-liste .bande-journee { margin-inline: 24px; } }
+
+/* ── Bureau : trois colonnes fixes (barre latérale 240 · liste · agenda ou panneau), x de la liste identique partout ── */
+.barre-laterale { padding: 24px 12px 24px 16px; }
+.barre-laterale .nom-app { margin: 0 12px 12px; font-family: var(--tch-font-titre); font-size: 1.0625rem; font-weight: 700; }
+.nav-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px;
+  font-size: 0.9375rem; font-weight: 500; color: var(--tch-texte); text-align: left; }
+.nav-item svg { color: var(--tch-texte-doux); }
+.nav-item > span:not(.compte) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item { white-space: nowrap; }
+.nav-item .compte { margin-left: auto; font-size: var(--tch-chiffre); color: var(--tch-texte-doux); }
+.nav-item[aria-current="page"] { background: var(--tch-selection); font-weight: 650; }
+.nav-item[aria-current="page"] svg { color: var(--tch-accent); }
+.nav-item .point { margin: 0 4px; }
+.nav-titre { margin: 20px 12px 4px; font-size: 0.8125rem; font-weight: 650; color: var(--tch-texte-doux); }
+@media (min-width: 768px) {
+  .page.trois { display: grid; grid-template-columns: 240px minmax(0, 1fr) 420px; max-width: none; height: 100vh; overflow: hidden; }
+  .page.trois > * { min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .page.trois.panneau { grid-template-columns: 240px minmax(0, 1fr) 460px; }
+  .page.trois.deux { grid-template-columns: 240px minmax(0, 1fr); }
+  .page.trois .col-liste { padding: 20px 16px 48px; }
+  .page.trois.deux .col-liste > * { max-width: 860px; }
+  .page.trois .col-agenda { padding: 24px 24px 24px 20px; }
+}
+
+/* ── Cadre iPhone : barre d'état, défilement, indicateur d'accueil ───────── */
+.barre-statut { position: absolute; top: 0; left: 0; right: 0; height: 47px; z-index: 6;
+  display: flex; align-items: center; justify-content: space-between; padding: 6px 26px 0 34px;
+  background: var(--tch-surface);
+  font-size: 1rem; font-weight: 650; color: var(--tch-texte); }
+.barre-statut .glyphes { display: flex; align-items: center; gap: 6px; }
+.barre-statut svg { fill: currentColor; stroke: none; }
+.accueil-indic { position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px; margin-left: -67px;
+  border-radius: 999px; background: var(--tch-texte); z-index: 7; }
+
+@media (max-width: 767px) {
+  .page.defile { height: 100%; overflow-y: auto; padding-top: 47px; padding-bottom: 104px; scrollbar-width: none; }
+  .page.defile::-webkit-scrollbar { display: none; }
+  .page.defile.sans-fab { padding-bottom: 104px; }
+}
+@media (min-width: 768px) {
+  .barre-statut, .accueil-indic { display: none; }
+  .page.defile:not(.trois) { height: 100%; overflow-y: auto; }
+}
+
+
+/* Repliés : groupe serré */
+.replies { margin-top: 20px; }
+.replies .replie { margin-top: 0; }
+.replie .indice { margin-left: auto; font-size: var(--tch-meta); font-weight: 400; color: var(--tch-texte-doux); }
+
+
+/* Au défilement vers le bas (état « bas » des maquettes) : titre compact visible, bouton flottant caché */
+[data-defile="bas"] .titre-compact { display: flex; }
+@media (max-width: 767px) { [data-defile="bas"] .fab { transform: translateY(calc(100% + 32px)); opacity: 0; } }
+
+/* Ligne proposée : « Garder » en tête de la méta (le « + » de fin de ligne voulait dire Ajouter ailleurs
+   et tombait sous le bouton flottant) */
+.garder { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: var(--tch-rayon-puce);
+  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 650; }
+.garder::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
+.meta:has(.garder) { margin-top: 4px; }
+@media (max-width: 767px) { .barre-statut ~ .page:not(.defile) { padding-top: 47px; } }

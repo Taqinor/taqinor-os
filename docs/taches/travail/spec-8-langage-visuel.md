@@ -21,8 +21,8 @@ donc jamais d'Archivo pour une heure. Sora : chargée par l'ERP, non utilisée i
 - Ligne : 52 px mini (bureau 44), 65 px avec méta ; gouttière 16 px (bureau 24) ; case ronde 22 px (trait 1,75 px)
   centrée dans une cible de 44 px, alignée sur la PREMIÈRE ligne du titre ; colonne de fin = heure, ★ ou drapeau.
 - Aucun trait entre lignes, aucune ombre ; survol = `--muted` à 70 % ; bureau : survol arrondi 10 px, inset 8 px.
-- Une section sans titre suit Essentiel (le titre « Aujourd'hui » répétait le titre de page) ; « Ce soir »,
-  « Proposé pour aujourd'hui », « Faites 3 ⌄ » (replié) gardent le leur.
+- Sections titrées : Essentiel, Prévu (spec 7 rév. 3), Ce soir, Proposé pour aujourd'hui ; repliés « À revoir 2 ⌄ ».
+  « Toute la journée » (visites, poses) = une pastille avant Prévu, jamais une ligne à heure.
 - Rayons : bloc d'agenda 8 · champ, bandeau « Pas à jour » 12 · bouton 12 (`--radius` + 2) · carte, bandeau, tuile 16
   (tuile 14) · feuille 20 · puce 999.
 - Élévations : liste à plat sur `--card` ; panneaux (bandeau, carte de rythme, tuiles) = `--muted`, sans bordure ;
@@ -44,7 +44,7 @@ le jeton `#projet` de la saisie — jamais sur une ligne entière.
 - **Rouge** (`--destructive`) : « échéance aujourd'hui » ou dépassée, et les actions destructives. Rien d'autre
   (« échéance lun. 23 » proche = `--foreground` 500, sans teinte).
 - **Azur** (`--info`, accent de l'app) : maintenant, sélection, onglet actif, « → lun. 23 », Reporter, jetons lus.
-- **Vert** (`--success`) : la case faite et l'anneau. **Or** : le bouton plein (laiton) et l'étoile Essentielle
+- **Vert** (`--success`) : la case faite, les segments faits, le bouton Fait. **Or** : le bouton plein (laiton) et l'étoile Essentielle
   (remplissage `--primary`, contour `--primary-text` ≥ 3:1 sur blanc).
 - Priorité haute = drapeau lucide en `--foreground`, jamais une teinte. En attente = case en pointillé + texte.
 - Contraste du texte, 1 204 éléments × 4 vues : 0 sous le seuil. Plus faibles : clair 4,92:1 (méta sur ligne
@@ -60,7 +60,7 @@ le jeton `#projet` de la saisie — jamais sur une ligne entière.
 | Balayage relâché, retour | 260 | `--tch-ease-entree` | `transform` |
 | Ajout d'une ligne | 260 | `--tch-ease-entree` | opacité + 8 px, `@starting-style` (jamais au chargement) |
 | Feuille ouverte / fermée | 260 / 180 | entrée / `--tch-ease-sortie` | `transform` |
-| Anneau qui avance | 260 | `--tch-ease-entree` | `stroke-dashoffset` |
+| Segment qui se remplit | 260 | `--tch-ease-entree` | `background-color` |
 Rien au-delà de 260 ms ; aucun mouvement ne retient la main.
 
 ## 6. États vides et icônes
@@ -99,3 +99,23 @@ de `check_hex.mjs`.
 Date fictive des maquettes : vendredi 20 novembre 2026 (demain = sam. 21, prochain jour travaillé = lun. 23,
 cohérent avec « → lun. 23 »). Couleur de la case faite = `--success` plutôt que l'azur, pour que « fait » ait la
 même couleur partout (case, balayage, anneau).
+
+## 10. Révision après les critiques visuelles (tour 2)
+- **Progression : une seule forme.** Journée = 5 segments (12 × 6 px ; 24 × 8 au bilan), vert pour une faite, piste
+  `--muted-foreground` à 35 %. Projet = barre fine 4 px à la couleur du projet. Plus d'anneau, plus de camembert
+  (`.anneau`, `.camembert` restent définis le temps de la migration, ne plus les employer) — `SCENARIO.md`.
+- Carte du moment (`.moment`, `--muted`, rayon 16) sous la progression ; le matin « 3 tâches proposées pour
+  atteindre 5 · Garder ces 3 ».
+- Ligne proposée : puce « Garder » en tête de la méta ; plus de « + » en fin de ligne (« + » = Ajouter, et il tombait
+  sous le bouton flottant).
+- Pointillé réservé à « En attente » : « Nouveau projet » = trait plein + fond teinté.
+- Voile clair = `--foreground` à 32 % ; barre d'onglets `--card` à 94 % + flou ; titre compact 44 px au défilement ;
+  bouton flottant caché au défilement vers le bas, marge basse 104 px ; voile z 7, feuilles z 8.
+- Agenda iPhone : 88 px par heure (la demi-heure = 44 px, une cible) ; 56 au bureau. Heure pleine masquée à moins de
+  20 min du trait « maintenant ». Bloc fait sans fond (filet gris, titre barré). Titre de bloc sur 2 lignes.
+- Sombre : terre, ambre, olive n'ont plus de fond teinté (ils viraient au brun) ; la teinte reste sur le point, le
+  filet et le texte. `--tch-surveiller` relevé (≥ 4,5:1 sur `--muted`).
+- Bureau : trois colonnes fixes — barre latérale 240 px (sections + Mes projets), liste, agenda 420 px ou panneau
+  460 px (fiche, bilan). Saisie et aperçu d'une liste collée EN PLACE dans la liste, jamais en modale.
+- Puce à icône seule 44 px de large ; `.i.plein` ; `.puce[aria-checked]` = `.puce.active` ; bande de jours :
+  aujourd'hui cerclé, jour choisi plein.
