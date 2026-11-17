@@ -1893,3 +1893,48 @@ class TestSelecteursTaches(TestCase):
                              (nom, r.status_code))
             vus.add(attendu)
         self.assertEqual(vus, {True, False})  # la grille distingue bien
+
+    # ── TCH17 — clôture / réouverture d'un à-faire personnel (services) ─────
+    def test_cloture_idempotente_puis_reouverture(self):
+        from apps.records.services import (
+            cloturer_a_faire_personnel, rouvrir_a_faire_personnel)
+        act = self._act(summary='perso', personnelle=True, activity_type=None)
+        self.assertIs(cloturer_a_faire_personnel(act, self.b), act)
+        act.refresh_from_db()
+        self.assertTrue(act.done)
+        self.assertEqual(act.done_by, self.b)
+        premiere = act.done_at
+        self.assertIsNotNone(premiere)
+        cloturer_a_faire_personnel(act, self.b)  # idempotent : rien ne bouge
+        act.refresh_from_db()
+        self.assertEqual((act.done, act.done_at), (True, premiere))
+        rouvrir_a_faire_personnel(act, self.b)
+        act.refresh_from_db()
+        self.assertEqual((act.done, act.done_at, act.done_by), (False, None, None))
+        rouvrir_a_faire_personnel(act, self.b)  # idempotent aussi
+        act.refresh_from_db()
+        self.assertFalse(act.done)
+
+    def test_cloture_refusee_hors_createur(self):
+        from apps.records.services import (
+            cloturer_a_faire_personnel, rouvrir_a_faire_personnel)
+        perso_de_a = self._act(summary='de A pour B', personnelle=True,
+                               created_by=self.a)
+        perso_pour_a = self._act(summary='de B pour A', personnelle=True,
+                                 assigned_to=self.a)
+        pas_perso = self._act(summary='ERP', due_date=date.today())
+        autre = self._act(company=self.co2, activity_type=None, summary='co2',
+                          personnelle=True, created_by=self.c, assigned_to=self.c)
+        fait = self._act(summary='faite par A', personnelle=True,
+                         created_by=self.a, assigned_to=self.a, done=True)
+        refus = [(perso_de_a, self.b), (perso_de_a, self.a), (perso_pour_a, self.b),
+                 (pas_perso, self.b), (autre, self.b), (autre, self.a)]
+        for act, user in refus:
+            with self.assertRaises(Activity.DoesNotExist, msg=(act.summary, user)):
+                cloturer_a_faire_personnel(act, user)
+            act.refresh_from_db()
+            self.assertFalse(act.done, act.summary)
+        with self.assertRaises(Activity.DoesNotExist):
+            rouvrir_a_faire_personnel(fait, self.b)
+        fait.refresh_from_db()
+        self.assertTrue(fait.done)

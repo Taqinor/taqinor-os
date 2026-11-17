@@ -384,3 +384,43 @@ def reveiller_snoozes(company):
         _notifier_reveil_activite(act)
         woken += 1
     return woken
+
+
+def cloturer_a_faire_personnel(activite, user):
+    """TCH17 — clôt l'à-faire personnel ``activite`` de ``user`` (conversion
+    en tâche, app Tâches). Seul son CRÉATEUR, dans sa société, le clôt, et
+    seulement s'il lui est assigné (assigné à un collègue : il reste dans
+    Activités, D-TCH-1). Idempotent : déjà clos, rien ne bouge. Refus et
+    introuvable : ``Activity.DoesNotExist`` (même réponse). Rend ``activite``
+    rafraîchie."""
+    from django.db.models import Q
+    from django.utils import timezone
+
+    if not getattr(user, 'company_id', None) or getattr(activite, 'pk', None) is None:
+        raise Activity.DoesNotExist('À-faire introuvable.')
+    qs = Activity.objects.filter(
+        pk=activite.pk, company_id=user.company_id, personnelle=True,
+        created_by=user).filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
+    if not qs.exists():
+        raise Activity.DoesNotExist('À-faire introuvable.')
+    qs.filter(done=False).update(done=True, done_at=timezone.now(), done_by=user)
+    activite.refresh_from_db(fields=['done', 'done_at', 'done_by'])
+    return activite
+
+
+def rouvrir_a_faire_personnel(activite, user):
+    """TCH17 — rouvre l'à-faire personnel ``activite`` (annulation d'une
+    conversion) : mêmes refus que ``cloturer_a_faire_personnel``, idempotent
+    (déjà ouvert, rien ne bouge). Rend ``activite`` rafraîchie."""
+    from django.db.models import Q
+
+    if not getattr(user, 'company_id', None) or getattr(activite, 'pk', None) is None:
+        raise Activity.DoesNotExist('À-faire introuvable.')
+    qs = Activity.objects.filter(
+        pk=activite.pk, company_id=user.company_id, personnelle=True,
+        created_by=user).filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
+    if not qs.exists():
+        raise Activity.DoesNotExist('À-faire introuvable.')
+    qs.filter(done=True).update(done=False, done_at=None, done_by=None)
+    activite.refresh_from_db(fields=['done', 'done_at', 'done_by'])
+    return activite
