@@ -1030,6 +1030,10 @@
   background: var(--tch-panneau); color: var(--tch-texte-doux); box-shadow: none;
 }
 
+/* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
+.tch button.saisie-bureau { width: calc(100% - 16px); text-align: left; background: none; }
+.tch .saisie-bureau:hover { background: var(--tch-survol); }
+
 /* Focus visible partout (en dernier : bat les ombres propres aux boutons) */
 .tch :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .tch .ligne-actions:focus-visible { opacity: 1; pointer-events: auto; }
