@@ -30,9 +30,11 @@ function paginer(params = {}) {
   }
 }
 
+const mine = vi.hoisted(() => ({ value: { en_retard: [], aujourdhui: [], a_venir: [] } }))
+
 vi.mock('../../api/recordsApi', () => ({
   default: {
-    getMyActivities: () => Promise.resolve({ data: { en_retard: [], aujourdhui: [], a_venir: [] } }),
+    getMyActivities: () => Promise.resolve({ data: mine.value }),
     getMaFile: () => Promise.resolve({ data: { items: [], total: 0, resume: {} } }),
     getActivities: (model, id, extra) => Promise.resolve({ data: paginer(extra) }),
   },
@@ -40,7 +42,39 @@ vi.mock('../../api/recordsApi', () => ({
 
 import MesActivitesPage from './MesActivitesPage'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  mine.value = { en_retard: [], aujourdhui: [], a_venir: [] }
+})
+
+const rendre = () => {
+  const store = configureStore({
+    reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [], user: { id: 1 } }) => s },
+  })
+  return render(
+    <Provider store={store}>
+      <MemoryRouter><MesActivitesPage /></MemoryRouter>
+    </Provider>,
+  )
+}
+
+describe('AMSG102 — brouillon WhatsApp de la note', () => {
+  const WA = 'https://wa.me/212612345678?text=Bonjour%20Sami'
+  it('montre « Ouvrir WhatsApp » vers le lien de la note, sans target_phone', async () => {
+    mine.value = {
+      en_retard: [],
+      a_venir: [],
+      aujourdhui: [
+        { id: 1, summary: 'Envoyer ce WhatsApp', target_model: 'installations.livraison', target_phone: null, note: `Bonjour Sami\n\n${WA}` },
+        { id: 2, summary: 'Sans lien', target_model: 'installations.livraison', target_phone: null, note: 'Rien à envoyer' },
+      ],
+    }
+    rendre()
+    const lien = await screen.findByTitle('Ouvrir WhatsApp')
+    expect(lien).toHaveAttribute('href', WA)
+    expect(screen.getAllByTitle('Ouvrir WhatsApp')).toHaveLength(1)
+  })
+})
 
 describe('ALEA20 — Charge de l’équipe sur toutes les activités ouvertes', () => {
   it('somme 70 (et non 50) sur 2 responsables', async () => {
