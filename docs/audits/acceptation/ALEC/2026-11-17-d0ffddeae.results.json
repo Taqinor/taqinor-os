@@ -1,0 +1,57 @@
+{
+  "sha": "d0ffddeaec8b14fe7a7aff614d27ba968839ad05",
+  "date": "2026-11-17",
+  "groupe": "ALEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "ALEC45",
+    "ALEC46"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF6-ALEC45-cle-telephone-meta",
+      "taches": [
+        "ALEC45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC45-cle-telephone-meta.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC46-miroirs-publicitaires",
+      "taches": [
+        "ALEC46"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC46-miroirs-publicitaires.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : Directeur (témoin) : la lecture SQL de adsengine_insightsnapshot est exécutée"
+    }
+  ]
+}

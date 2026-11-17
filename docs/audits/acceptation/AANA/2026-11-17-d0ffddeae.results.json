@@ -1,21 +1,21 @@
 {
-  "sha": "aedf00e86fc6aa13f45205c3d9641e37b2c01ef9",
+  "sha": "d0ffddeaec8b14fe7a7aff614d27ba968839ad05",
   "date": "2026-11-17",
-  "groupe": "AMSG",
+  "groupe": "AANA",
   "verdict": "PASS",
   "couvre": [
-    "AMSG6"
+    "AANA81"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
     {
-      "id": "PF8.1-AMSG6-assistant-reel",
+      "id": "PA4-AANA81-montant-devis",
       "taches": [
-        "AMSG6"
+        "AANA81"
       ],
       "verdict": "PASS",
       "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.1-AMSG6-assistant-reel.jpg",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AANA-PA4-AANA81-montant-devis.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",

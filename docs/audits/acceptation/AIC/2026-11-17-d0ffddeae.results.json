@@ -1,12 +1,14 @@
 {
-  "sha": "aedf00e86fc6aa13f45205c3d9641e37b2c01ef9",
+  "sha": "d0ffddeaec8b14fe7a7aff614d27ba968839ad05",
   "date": "2026-11-17",
   "groupe": "AIC",
   "verdict": "PASS",
   "couvre": [
     "AIC94"
   ],
-  "couvre_avec_ecart": [],
+  "couvre_avec_ecart": [
+    "AIC94"
+  ],
   "etapes": [
     {
       "id": "P8.1-AIC94-touche-hors-fenetre",
@@ -36,7 +38,7 @@
         "AIC94"
       ],
       "verdict": "PASS",
-      "base_verdict": null,
+      "base_verdict": "FAIL",
       "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P8.2-AIC94-matin-visite.jpg",
       "oracles": {
         "1": "PASS",
@@ -50,7 +52,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": ""
+      "notes": "écart accepté (base FAIL) : aucune heure servie : VisiteTerrain.date_prevue est un DateField, contrat figé par AIC95 (antérieur, hors Files) ; la Preuve P8.2 ne cite pas l'heure"
     }
   ]
 }
