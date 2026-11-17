@@ -1030,6 +1030,21 @@
   background: var(--tch-panneau); color: var(--tch-texte-doux); box-shadow: none;
 }
 
+/* Ligne : le titre est un bouton « étiré » sur toute la ligne (toucher le reste = fiche) ; la case, la
+   puce Garder, l'étoile et le bouton Actions passent AU-DESSUS. Défilement vertical gardé au toucher. */
+.tch .ligne { touch-action: pan-y; }
+.tch .ligne-corps-bouton { position: static; display: block; width: 100%; text-align: left; }
+.tch .ligne-corps-bouton::after { content: ""; position: absolute; inset: 0; }
+.tch .ligne .case, .tch .ligne .garder, .tch .ligne-fin button { position: relative; z-index: 1; }
+.tch .ligne-actions { z-index: 2; }
+/* Étoile interactive : cible de 44 px, alignée sur la première ligne du titre */
+.tch .etoile-bouton { width: var(--tch-cible); height: var(--tch-cible); border-radius: 999px; display: grid; place-items: center;
+  margin: calc((var(--tch-tache-lh) - var(--tch-cible)) / 2) -12px calc((var(--tch-tache-lh) - var(--tch-cible)) / 2) 0;
+  color: var(--tch-texte-doux); }
+.tch .etoile-bouton:hover { background: var(--tch-survol); }
+.tch .etoile-bouton.active { color: var(--tch-etoile); }
+.tch button.garder { border: 0; }
+
 /* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
 .tch button.saisie-bureau { width: calc(100% - 16px); text-align: left; background: none; }
 .tch .saisie-bureau:hover { background: var(--tch-survol); }
