@@ -97,6 +97,25 @@ class EssentielCorps(serializers.Serializer):
     essentielle = serializers.BooleanField()
 
 
+class AllegerCorps(serializers.Serializer):
+    jour = serializers.DateField()
+    garder = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=PLAFOND_LIGNES)
+
+
+class ChoixBilanCorps(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1)
+    choix = serializers.CharField()
+    jour = serializers.DateField(required=False)
+
+
+class CloturerCorps(serializers.Serializer):
+    jour = serializers.DateField()
+    choix = serializers.ListField(child=ChoixBilanCorps(), required=False, default=list,
+                                  max_length=PLAFOND_LIGNES)
+    le_reste = serializers.BooleanField(required=False, default=False)
+    reflexion = serializers.CharField(required=False, allow_blank=True, default='', max_length=280)
+
+
 class AujourdhuiVue(APIView):
     """GET aujourdhui/ — LE contrat de la journée (§2)."""
 
@@ -213,7 +232,12 @@ class AllegerVue(IdempotentCreateMixin, APIView):
                                  requis=('jour', 'garder')),
                    responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        return self._avec_idempotence(request, lambda: self._alleger(request), suffixe=par_compte(request))
+
+    def _alleger(self, request):
+        corps_ = valide(AllegerCorps, request.data)
+        return Response(services.alleger(request.user, corps_['jour'], maintenant(), garder=corps_['garder'],
+                                         assistant=est_assistant(request)))
 
 
 class ClotureVue(APIView):
@@ -223,7 +247,9 @@ class ClotureVue(APIView):
 
     @extend_schema(parameters=[JOUR], responses=reponses(forme_echantillon('journee_cloture'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        with refus_en_400():
+            return Response(services.cloture(request.user, jour_de(request), maintenant(),
+                                             assistant=est_assistant(request)))
 
 
 class CloturerVue(IdempotentCreateMixin, APIView):
@@ -236,4 +262,10 @@ class CloturerVue(IdempotentCreateMixin, APIView):
         'le_reste': True, 'reflexion': '',
     }, requis=('jour',)), responses=reponses(forme_echantillon('journee_cloturee'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        return self._avec_idempotence(request, lambda: self._cloturer(request), suffixe=par_compte(request))
+
+    def _cloturer(self, request):
+        corps_ = valide(CloturerCorps, request.data)
+        with refus_en_400():
+            return Response(services.cloturer(request.user, corps_['jour'], maintenant(), choix=corps_['choix'],
+                                              le_reste=corps_['le_reste'], reflexion=corps_['reflexion']))

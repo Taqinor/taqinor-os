@@ -18,20 +18,21 @@ from django.http import Http404
 from django.utils import timezone
 
 from apps.taches.choix import (
-    CanalIncitation, CarteDuMoment, ClePreference, SectionJournee, StatutSuggestion, StatutTache,
-    TypeIncitationEcran)
+    CanalIncitation, CarteDuMoment, ClePreference, Decision, MotifRevoir, SectionJournee, StatutSuggestion,
+    StatutTache, TypeIncitationEcran)
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.journee import LignePlanJour, PlanJour
-from apps.taches.models.rythme import IncitationCoach
+from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.moteur import classement, gabarits
-from apps.taches.moteur.rythme import RETOUR_JOURS_TRAVAILLES
+from apps.taches.moteur.rythme import RETOUR_JOURS_TRAVAILLES, statut_jour
 from apps.taches.moteur.sollicitations import HEURE_RELANCE_DEFAUT, HEURE_SOIR_DEFAUT
 from apps.taches.selectors import journee as sel
-from apps.taches.selectors.base import jours_travailles_de, taches_de
+from apps.taches.selectors.base import jours_travailles_de, prochain_jour_travaille, taches_de
 from apps.taches.serializers import journee as formes_journee
 from apps.taches.serializers.formes import charger_items, charger_taches, tache_ecrite
 from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
 from apps.taches.services.planification import planifier
+from apps.taches.services.rappels import annuler_rappels
 
 logger = logging.getLogger(__name__)
 
@@ -559,8 +560,7 @@ def _creer_ligne(plan, ops, *, tache_id=None, activite_id=None, **champs):
 def _remplacer_ligne(ligne, ops, **changements):
     """Une ligne n'a pas de champ restaurable (§4) : la changer = la supprimer (opération dure,
     restaurée à l'identique) et en créer une neuve — l'annulation défait les deux."""
-    valeurs = {'plan': ligne.plan_id, 'tache': ligne.tache_id, 'activite_id': ligne.activite_id,
-               **{champ: getattr(ligne, champ) for champ in CHAMPS_LIGNE}}
+    valeurs = _valeurs_ligne(ligne)
     ops.append(op_suppression_dure('ligne_plan_jour', ligne, valeurs))
     plan = ligne.plan
     ligne.delete()
@@ -645,7 +645,221 @@ def marquer_essentielle(user, tache_id, essentielle, maintenant):
     return tache_ecrite(tache, geste_id=geste.pk if geste else None)
 
 
+# --- « Alléger ma journée » (regles.md « Alléger ma journée », TCH58) ------------------------------
+
+def _a_renvoyer(user, jour, garder):
+    """Tâches ouvertes à `jour_prevu` = J, sans échéance ≤ J, que l'on ne garde pas."""
+    return list(taches_de(user).select_for_update().filter(statut=StatutTache.A_FAIRE, jour_prevu=jour)
+                .exclude(pk__in=garder).filter(Q(echeance__isnull=True) | Q(echeance__gt=jour)))
+
+
+def alleger(user, jour, maintenant, *, garder, assistant=False):
+    """POST journee/alleger/ : le reste retourne à ses projets SANS report (`compter_report=False`),
+    ses lignes de plan (essentielles comprises) sont retirées, `allege_le` posé → Proposé replié et
+    vide jusqu'au lendemain. Un seul geste « allegement » annulable."""
+    with transaction.atomic():
+        _taches_du_compte(user, garder)
+        ops = []
+        plan, cree = _plan_verrouille(user, jour, ops)
+        renvoyees = _a_renvoyer(user, jour, garder)
+        for tache in renvoyees:
+            planifier(tache, acteur=user, jour_prevu=None, compter_report=False, collecte=ops)
+        ids = {t.pk for t in renvoyees}
+        for ligne in plan.ligneplanjour_set.filter(tache_id__in=ids):
+            ops.append(op_suppression_dure('ligne_plan_jour', ligne, _valeurs_ligne(ligne)))
+            ligne.delete()
+        avant = plan.allege_le
+        plan.allege_le = maintenant
+        plan.save(update_fields=['allege_le', 'updated_at'])
+        if not cree:
+            ops.append(op_champ('plan_jour', plan, 'allege_le', avant))
+        geste = enregistrer_geste(user, 'allegement', f'{len(ids)} retournées aux projets', ops)
+    return {'aujourdhui': aujourdhui(user, jour, maintenant, assistant=assistant),
+            'renvoyees': sorted(ids), 'geste_id': geste.pk}
+
+
+def _valeurs_ligne(ligne):
+    return {'plan': ligne.plan_id, 'tache': ligne.tache_id, 'activite_id': ligne.activite_id,
+            **{champ: getattr(ligne, champ) for champ in CHAMPS_LIGNE}}
+
+
+# --- Bilan du soir (regles.md « Bilan du soir », TCH58) --------------------------------------------
+
+MESSAGE_BILAN_FERME = "Le bilan d'hier n'est plus modifiable après midi."
+MESSAGE_CHOIX = 'Valeur inconnue.'
+CHOIX_BILAN = (Decision.PROCHAIN_JOUR_OUVRE, Decision.JOUR, Decision.UN_JOUR, Decision.ABANDONNER)
+
+
+def possible_jusqua(jour):
+    """Le bilan d'un jour reste possible jusqu'au lendemain midi (heure murale)."""
+    return timezone.make_aware(datetime.datetime.combine(jour + datetime.timedelta(days=1), MIDI))
+
+
+def verifier_jour_du_bilan(jour, maintenant):
+    """J, ou J − 1 jusqu'à midi ; sinon 400 au champ `jour`."""
+    if jour > maintenant.date() or maintenant >= possible_jusqua(jour):
+        raise Refus({'jour': [MESSAGE_BILAN_FERME]})
+
+
+def _bilan_chiffres(ctx, prog):
+    objectif = ctx.plan.objectif_du_jour if ctx.plan and ctx.plan.objectif_du_jour else ctx.objectif['nb']
+    mode = ctx.objectif['mode']
+    variables = {'mode': mode, 'faites': ctx.compte, 'objectif': objectif, 'ef': prog['essentiel_faites'],
+                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes']}
+    if ctx.objectif['zone']:
+        variables['bas'], variables['haut'] = ctx.objectif['zone']
+    lignes = gabarits.texte('bilan', 'texte', variables).split('\n')
+    return {'faites': ctx.compte, 'objectif': objectif,
+            'objectif_atteint': objectif is not None and ctx.compte >= objectif,
+            'essentiel_faites': prog['essentiel_faites'], 'essentiel_prevues': prog['essentiel_prevues'],
+            'plan_tenues': prog['plan_tenues'], 'plan_lignes': prog['plan_lignes'],
+            'texte': lignes[0], 'texte_gardees': lignes[1] if len(lignes) > 1 else ''}
+
+
+def _restes_et_a_trancher(journee):
+    """(restes, à trancher) : tâches ouvertes d'Essentiel, Prévu, Ce soir ; reportées 3 fois du jour."""
+    restes = [cle for cle in sel.gardes_ouverts(journee) if cle[0] == TACHE]
+    a_trancher = [cle for cle in journee.sections.get(SectionJournee.A_DECIDER, ())
+                  if cle[0] == TACHE and journee.items[cle].jour_prevu == journee.jour
+                  and journee.placements[cle].code == MotifRevoir.REPORTEE_3_FOIS]
+    return restes, a_trancher
+
+
+def cloture(user, jour, maintenant, *, assistant=False):
+    """GET journee/cloture/ : faites, restes, à trancher (marquées, jamais refusées), activités ERP à
+    clore à part, bilan en deux lignes, UN constat au plus."""
+    verifier_jour_du_bilan(jour, maintenant)
+    ctx = lire_contexte(user, jour, maintenant, assistant=assistant)
+    journee, prog = ctx.journee, progression(ctx)
+    rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=ctx.obligations.peut_cloturer)
+    restes, a_trancher = _restes_et_a_trancher(journee)
+    activites = [cle for cle in sel.gardes_ouverts(journee) if cle[0] == ACTIVITE]
+    constat = _carte_proposition(ctx, CarteDuMoment.RYTHME, (TypeIncitationEcran.CONSTAT,))
+    prochain = min((d for d in journee.travailles if d > jour), default=None)
+    return {
+        'jour': jour.isoformat(), 'faites': rendu.items(journee.sections.get(SectionJournee.FAITES, [])),
+        'restes': rendu.items(restes), 'a_trancher': rendu.items(a_trancher),
+        'prochain_jour_ouvre': prochain.isoformat() if prochain else None,
+        'bilan': _bilan_chiffres(ctx, prog), 'constat': constat['proposition'] if constat else None,
+        'activites_a_clore': rendu.items(activites),
+        'possible_jusqua': possible_jusqua(jour).isoformat(),
+    }
+
+
+def _abandonner(user, tache, maintenant, ops):
+    """`abandonner` : statut `annule` + `annule_le` (invariant 16), rappels annulés (invariant 19)."""
+    avant = {'statut': tache.statut, 'annule_le': tache.annule_le, 'triee_le': tache.triee_le}
+    tache.statut, tache.annule_le = StatutTache.ANNULE, maintenant
+    tache.triee_le = tache.triee_le or maintenant
+    tache.save(update_fields=['statut', 'annule_le', 'triee_le', 'updated_at'])
+    ops.extend(op_champ('tache', tache, champ, valeur) for champ, valeur in avant.items()
+               if getattr(tache, champ) != valeur)
+    annuler_rappels(tache, collecte=ops)
+
+
+def _appliquer_choix(user, tache, choix, maintenant, prochain, ops):
+    decision = choix['choix']
+    if decision == Decision.ABANDONNER:
+        return _abandonner(user, tache, maintenant, ops)
+    if decision == Decision.UN_JOUR:
+        planifier(tache, acteur=user, jour_prevu=None, quelque_jour=True, collecte=ops)
+    else:
+        jour = choix.get('jour') if decision == Decision.JOUR else prochain
+        if jour is None:
+            raise Refus({'choix': [MESSAGE_CHOIX]})
+        planifier(tache, acteur=user, jour_prevu=jour, collecte=ops)
+    return True
+
+
+def _choix_du_bilan(user, jour, choix, le_reste):
+    """{tâche: choix} : les choix nommés (tâches du compte, sinon 404), puis « Tout reporter » sur les
+    restes non nommés ; une reportée 3 fois non nommée reste à sa place."""
+    if any(c.get('choix') not in CHOIX_BILAN for c in choix):
+        raise Refus({'choix': [MESSAGE_CHOIX]})
+    taches = _taches_du_compte(user, [c['id'] for c in choix])
+    plan_choix = {c['id']: c for c in choix}
+    if le_reste:
+        restes, _a_trancher = _restes_et_a_trancher(sel.lire_journee(user, jour))
+        for _type, pk in restes:
+            plan_choix.setdefault(pk, {'id': pk, 'choix': Decision.PROCHAIN_JOUR_OUVRE})
+        taches.update(_taches_du_compte(user, [pk for pk in plan_choix if pk not in taches]))
+    return [(taches[pk], c) for pk, c in plan_choix.items()]
+
+
+def _marquer_reportees(plan, ids, ops):
+    for ligne in plan.ligneplanjour_set.filter(tache_id__in=ids, reportee=False):
+        _remplacer_ligne(ligne, ops, reportee=True)
+
+
+def cloturer(user, jour, maintenant, *, choix=(), le_reste=False, reflexion=''):
+    """POST journee/cloturer/ : choix par reste (reports comptés, invariant 4), lignes `reportee`,
+    `cloture_le` et `reflexion` ; un geste « bilan_du_soir » annulable."""
+    verifier_jour_du_bilan(jour, maintenant)
+    prochain = prochain_jour_travaille(user, jour)
+    with transaction.atomic():
+        a_traiter = _choix_du_bilan(user, jour, list(choix), le_reste)
+        ops = []
+        plan, cree = _plan_verrouille(user, jour, ops)
+        reportees = [tache.pk for tache, c in a_traiter
+                     if _appliquer_choix(user, tache, c, maintenant, prochain, ops)]
+        _marquer_reportees(plan, reportees, ops)
+        avant = {'cloture_le': plan.cloture_le, 'reflexion': plan.reflexion}
+        plan.cloture_le, plan.reflexion = maintenant, (reflexion or '')[:280]
+        plan.save(update_fields=['cloture_le', 'reflexion', 'updated_at'])
+        if not cree:
+            ops.extend(op_champ('plan_jour', plan, champ, valeur) for champ, valeur in avant.items()
+                       if getattr(plan, champ) != valeur)
+        geste = enregistrer_geste(user, 'bilan_du_soir', 'Bilan enregistré', ops)
+    return {'plan': {'jour': jour.isoformat(), 'cloture_le': _instant(plan.cloture_le)}, 'geste_id': geste.pk}
+
+
+# --- Passage à minuit : la nuit clôt la veille (regles.md « Passage à minuit », TCH58) -------------
+
+def _en_conge(preferences, jour):
+    for periode in preferences.get(ClePreference.CONGES) or ():
+        try:
+            du = datetime.date.fromisoformat((periode or {}).get('du'))
+            au = datetime.date.fromisoformat((periode or {}).get('au'))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if du <= jour <= au:
+            return True
+    return False
+
+
+def _minutes_faites(user, jour):
+    debut, fin = sel.bornes_du_jour(jour)
+    lignes = (taches_de(user).filter(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin,
+                                     parent__isnull=True)
+              .values_list('duree_reelle_minutes', 'estimation_minutes'))
+    return sum((reelle if reelle is not None else (estimee or 0)) for reelle, estimee in lignes)
+
+
+def _clore_pour(user, hier):
+    """Statut et compteurs du `PlanJour` d'hier de `user` — recalcul déterministe, tâches intactes."""
+    preferences = sel.preferences_de(user)
+    journee = sel.lire_journee(user, hier)
+    compte, detail = sel.compte_faites(user, hier)
+    capacite = sel.capacite_du_jour(user, hier, journee.reglages, preferences, journee.travailles)
+    prog = sel.progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite)
+    conge = _en_conge(preferences, hier)
+    plan, _cree = PlanJour.objects.get_or_create(company_id=user.company_id, proprietaire=user, jour=hier)
+    plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,
+                                   plan=plan.planifie_le is not None, app=plan.app_ouverte_le is not None)
+    plan.compte_rythme = compte
+    plan.essentiels_choisis, plan.essentiels_faits = prog['essentiel_prevues'], prog['essentiel_faites']
+    plan.plan_prevues, plan.plan_faites = prog['plan_lignes'], prog['plan_tenues']
+    plan.minutes_prevues, plan.minutes_faites = prog['minutes_prevues'], _minutes_faites(user, hier)
+    plan.capacite_minutes, plan.capacite_source = capacite
+    plan.save()
+
+
 def clore_jour_precedent(company_id, jour):
-    """Nuit du `jour` : clôt le `PlanJour` de la veille (statut du jour, compteurs) sans toucher aux
-    tâches (regles.md « Passage à minuit »). Livrée vide par TCH37, remplie par TCH58."""
-    return None
+    """Nuit du `jour` : clôt le `PlanJour` de la veille (statut du jour, compteurs) de chaque compte
+    actif qui a des `ReglagesRythme` (invariant 29), sans toucher aux tâches (regles.md « Passage à
+    minuit »). Rejouer la nuit ne change rien de plus. Appelée par `nocturne.executer` (TCH37)."""
+    hier = jour - datetime.timedelta(days=1)
+    reglages = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True)
+                .select_related('proprietaire', 'proprietaire__company'))
+    for ligne in reglages:
+        _clore_pour(ligne.proprietaire, hier)

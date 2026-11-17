@@ -764,3 +764,177 @@ class EssentielTests(_Base):
     def test_tache_d_un_autre_404(self):
         autre = fabriques.compte(self.societe, nom='u2')
         self.etoile(fabriques.tache(autre, projet=fabriques.projet(autre)), statut=404)
+
+
+# --- TCH58 : Alléger, bilan du soir, passage à minuit ---------------------------------------------
+
+class AllegerTests(_Base):
+    """POST journee/alleger/ (regles.md « Alléger ma journée ») : sans report, Proposé replié."""
+
+    def scenario(self):
+        self.garde = self.tache(jour_prevu=J)
+        self.renvoyee = self.tache(jour_prevu=J, reports=2)
+        self.essentielle = self.tache(jour_prevu=J)
+        self.a_echeance = self.tache(jour_prevu=J, echeance=J)
+        self.tache()  # de quoi remplir Proposé s'il n'était pas replié
+        self.plan = fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        for t in (self.garde, self.renvoyee, self.a_echeance):
+            ligne(self.plan, tache=t)
+        ligne(self.plan, tache=self.essentielle, essentielle=True)
+
+    def alleger(self):
+        from apps.taches.services import journee as services
+        return services.alleger(self.u, J, maintenant_a(15, 30), garder=[self.garde.pk])
+
+    def test_le_reste_retourne_aux_projets_sans_report(self):
+        self.scenario()
+        rendu = self.alleger()
+        self.assertEqual(set(rendu), set(exemple('journee_ecrite')))
+        self.assertEqual(rendu['renvoyees'], sorted([self.renvoyee.pk, self.essentielle.pk]))
+        for t in (self.renvoyee, self.essentielle):
+            t.refresh_from_db()
+            self.assertIsNone(t.jour_prevu)
+        self.renvoyee.refresh_from_db()
+        self.assertEqual(self.renvoyee.reports, 2)
+        self.a_echeance.refresh_from_db()
+        self.assertEqual(self.a_echeance.jour_prevu, J)
+        restantes = set(self.plan.ligneplanjour_set.values_list('tache_id', flat=True))
+        self.assertEqual(restantes, {self.garde.pk, self.a_echeance.pk})
+        self.plan.refresh_from_db()
+        self.assertIsNotNone(self.plan.allege_le)
+        self.assertTrue(rendu['aujourdhui']['propose']['replie'])
+        self.assertEqual(rendu['aujourdhui']['propose']['pour_objectif'], [])
+
+    def test_annuler_remet_tout(self):
+        from apps.taches.services.gestes import annuler_geste
+        self.scenario()
+        annuler_geste(self.u, self.alleger()['geste_id'])
+        self.renvoyee.refresh_from_db()
+        self.assertEqual(self.renvoyee.jour_prevu, J)
+        self.plan.refresh_from_db()
+        self.assertIsNone(self.plan.allege_le)
+        self.assertTrue(self.plan.ligneplanjour_set.filter(tache=self.essentielle, essentielle=True).exists())
+
+    def test_tache_d_un_autre_404(self):
+        autre = fabriques.compte(self.societe, nom='u2')
+        etrangere = fabriques.tache(autre, projet=fabriques.projet(autre), jour_prevu=timezone.localdate())
+        reponse = client_de(self.u).post('/api/django/taches/journee/alleger/',
+                                         {'jour': timezone.localdate().isoformat(), 'garder': [etrangere.pk]},
+                                         format='json')
+        self.assertEqual(reponse.status_code, 404)
+
+
+class BilanTests(_Base):
+    """GET journee/cloture/ et POST journee/cloturer/ (regles.md « Bilan du soir »)."""
+
+    def scenario(self):
+        self.faite = self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 10))
+        self.reste = self.tache(jour_prevu=J)
+        self.reste2 = self.tache(jour_prevu=J, moment='soir')
+        self.a_trancher = self.tache(jour_prevu=J, reports=3)
+        self.activite = fabriques.activite(self.u, due_date=J)
+        self.plan = fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        ligne(self.plan, tache=self.faite)
+        ligne(self.plan, tache=self.reste, essentielle=True)
+
+    def cloture(self, jour=J, heure=18, minute=20, jour_heure=J):
+        from apps.taches.services import journee as services
+        return services.cloture(self.u, jour, timezone.localtime(a(jour_heure, heure, minute)))
+
+    def cloturer(self, **corps):
+        from apps.taches.services import journee as services
+        return services.cloturer(self.u, J, maintenant_a(18, 20), **corps)
+
+    def test_contenu_du_bilan(self):
+        self.scenario()
+        rendu, modele = self.cloture(), exemple('journee_cloture')
+        self.assertEqual(set(rendu), set(modele))
+        self.assertEqual(set(rendu['bilan']), set(modele['bilan']))
+        self.assertEqual([i['id'] for i in rendu['faites']], [self.faite.pk])
+        self.assertEqual({i['id'] for i in rendu['restes']}, {self.reste.pk, self.reste2.pk})
+        self.assertEqual([i['id'] for i in rendu['a_trancher']], [self.a_trancher.pk])
+        self.assertEqual([i['id'] for i in rendu['activites_a_clore']], [self.activite.pk])
+        self.assertEqual(rendu['bilan']['texte'], '1 sur 5 · essentiel 0 sur 1')
+        self.assertEqual(rendu['bilan']['texte_gardees'], '1 des 2 gardées')
+        self.assertFalse(rendu['bilan']['objectif_atteint'])
+        from apps.taches.services.journee import possible_jusqua
+        self.assertEqual(rendu['possible_jusqua'], possible_jusqua(J).isoformat())
+
+    def test_bilan_d_hier_jusqu_a_midi(self):
+        from apps.taches.services.journee import Refus
+        self.cloture(jour=jours(-1), heure=11, jour_heure=J)
+        with self.assertRaises(Refus) as refus:
+            self.cloture(jour=jours(-1), heure=12, minute=30, jour_heure=J)
+        self.assertEqual(refus.exception.erreurs, {'jour': ["Le bilan d'hier n'est plus modifiable après midi."]})
+
+    def test_tout_reporter(self):
+        from apps.taches.selectors.base import prochain_jour_travaille
+        self.scenario()
+        rendu = self.cloturer(le_reste=True, reflexion='Bonne journée')
+        self.assertEqual(set(rendu), set(exemple('journee_cloturee')))
+        self.assertEqual(set(rendu['plan']), set(exemple('journee_cloturee')['plan']))
+        prochain = prochain_jour_travaille(self.u, J)
+        for t in (self.reste, self.reste2):
+            t.refresh_from_db()
+            self.assertEqual((t.jour_prevu, t.reports), (prochain, 1))
+        self.a_trancher.refresh_from_db()
+        self.assertEqual((self.a_trancher.jour_prevu, self.a_trancher.reports), (J, 3))
+        self.plan.refresh_from_db()
+        self.assertIsNotNone(self.plan.cloture_le)
+        self.assertEqual(self.plan.reflexion, 'Bonne journée')
+        self.assertTrue(self.plan.ligneplanjour_set.get(tache=self.reste).reportee)
+
+    def test_choix_par_reste(self):
+        self.scenario()
+        lundi = datetime.date(2026, 11, 23)
+        self.cloturer(choix=[{'id': self.reste.pk, 'choix': 'jour', 'jour': lundi},
+                             {'id': self.reste2.pk, 'choix': 'un_jour'},
+                             {'id': self.a_trancher.pk, 'choix': 'abandonner'}])
+        for t in (self.reste, self.reste2, self.a_trancher):
+            t.refresh_from_db()
+        self.assertEqual(self.reste.jour_prevu, lundi)
+        self.assertTrue(self.reste2.quelque_jour)
+        self.assertEqual(self.a_trancher.statut, StatutTache.ANNULE)
+        self.assertIsNotNone(self.a_trancher.annule_le)
+
+    def test_choix_inconnu_400(self):
+        from apps.taches.services.journee import Refus
+        self.scenario()
+        with self.assertRaises(Refus) as refus:
+            self.cloturer(choix=[{'id': self.reste.pk, 'choix': 'demain'}])
+        self.assertEqual(refus.exception.erreurs, {'choix': ['Valeur inconnue.']})
+
+    def test_route_du_jour(self):
+        aujourdhui = timezone.localdate()
+        self.tache(jour_prevu=aujourdhui)
+        client = client_de(self.u)
+        lu = client.get('/api/django/taches/journee/cloture/', {'jour': aujourdhui.isoformat()})
+        self.assertEqual(lu.status_code, 200, lu.content[:300])
+        ecrit = client.post('/api/django/taches/journee/cloturer/',
+                            {'jour': aujourdhui.isoformat(), 'le_reste': True}, format='json')
+        self.assertEqual(ecrit.status_code, 200, ecrit.content[:300])
+        self.assertIsNotNone(ecrit.json()['geste_id'])
+        trop_vieux = client.get('/api/django/taches/journee/cloture/',
+                                {'jour': (aujourdhui - datetime.timedelta(days=3)).isoformat()})
+        self.assertEqual(trop_vieux.status_code, 400)
+
+
+class PassageAMinuitTests(_Base):
+    """`clore_jour_precedent` : la nuit clôt le PlanJour d'hier, tâches intactes, rejouable."""
+
+    def test_clot_la_veille_sans_toucher_aux_taches(self):
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services.journee import clore_jour_precedent
+        fabriques.reglages(self.u)
+        sans_reglages = fabriques.compte(self.societe, nom='u2')
+        self.tache(jour_prevu=jours(-1), statut=StatutTache.FAIT, fait_le=a(jours(-1), 10), estimation_minutes=30)
+        ouverte = self.tache(jour_prevu=jours(-1))
+        clore_jour_precedent(self.societe.pk, J)
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=jours(-1))
+        self.assertEqual((plan.compte_rythme, plan.minutes_faites), (1, 30))
+        self.assertIn(plan.statut_jour, ('evalue', 'non_ouvre'))
+        ouverte.refresh_from_db()
+        self.assertEqual((ouverte.jour_prevu, ouverte.reports), (jours(-1), 0))
+        clore_jour_precedent(self.societe.pk, J)
+        self.assertEqual(PlanJour.objects.filter(proprietaire=self.u).count(), 1)
+        self.assertFalse(PlanJour.objects.filter(proprietaire=sans_reglages).exists())
