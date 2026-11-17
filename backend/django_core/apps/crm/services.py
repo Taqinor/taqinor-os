@@ -137,6 +137,8 @@ from .leads_intake import (  # façade
 
 from .leads_attribution import default_responsable_for  # façade
 
+from .reponses_meta import creer_lead_meta_pull  # façade (pull adsengine, 17/11/2026)
+
 from .fiche_api_publique import (  # façade
     PUBLIC_LEAD_WRITABLE_FIELDS,
     ajouter_note_lead,
@@ -189,7 +191,8 @@ __all__ = [
     'calculer_echeances_cadence', 'clients_par_ids', 'completer_client_depuis_acceptation',
     'create_activity_from_public_api', 'create_draft_lead_from_ocr', 'create_lead_depuis_ticket',
     'create_lead_from_evenement_marketing', 'create_lead_from_meta_lead_ads',
-    'create_lead_from_public_api', 'create_minimal_lead_from_ctwa', 'creer_relance_lead',
+    'create_lead_from_public_api', 'create_minimal_lead_from_ctwa', 'creer_lead_meta_pull',
+    'creer_relance_lead',
     'default_responsable_for', 'delete_leads_for_company', 'demarrer_cadence_contact',
     'detecter_concurrent', 'devis_envoyes_pour_relance', 'domaine_cookies_equipe',
     'ecrire_identite_client', 'enregistrer_appareil_equipe', 'enregistrer_consentements_intake_web',
