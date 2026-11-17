@@ -53,6 +53,8 @@ async function ecran(page, suivi, testInfo, nom) {
   await uiLoginJusquAuxApps(p, { username: nom, password: MDP_ESSAI })
   return p
 }
+// La capture de fin d'étape est prise sur la première page encore ouverte : on ferme `page` (vide) pour que ce soit l'écran réel.
+const montrer = async (page) => { await page.close().catch(() => undefined) }
 const supprimerLeads = (pks) => py(`from apps.crm.models import Lead
 for pk in ${J(pks)}:
     try: Lead.all_objects.filter(pk=pk).delete()
@@ -125,6 +127,7 @@ l = Lead.all_objects.get(pk=${x.lead}); sortie([l.nom, l.is_deleted])`)
     expect(lu, 'lead restauré : fiche anonymisée, plus supprimée').toEqual(['Anonymisé', false])
     expect((await entreeDe(x.lead)).restaure, 'entrée marquée restaurée').toBe(true)
     await auRepos(suivi)
+    await montrer(page)
   } finally { await ctx.dispose() }
 })
 
@@ -163,5 +166,6 @@ sortie(dict(nom=l.nom, email=l.email or '', telephone=l.telephone or '', supprim
     await expect(p.getByTestId('corbeille-row').first(), 'écran : la corbeille est affichée').toBeVisible({ timeout: 60_000 })
     expect(await p.locator('body').innerText(), 'écran : le nom d’origine du lead est absent').not.toContain(`ASUP62 lead corbeille ${m}`)
     await auRepos(suivi)
+    await montrer(page)
   } finally { await ctx.dispose() }
 })
