@@ -1240,15 +1240,18 @@ def cloturer_cadence(lead, user, cadence):
         ici ; `Lead.perdu` n'est jamais touché (décision humaine, MRY22) ;
       * `avancer_stage_lead_vers` respecte le rang du funnel : un lead déjà
         plus avancé (devis envoyé, signé) ne RECULE jamais vers COLD ;
-      * la cadence `reveil` ne se clôture pas elle-même — sinon un lead
-        réveillé sans réponse rentrerait dans une boucle de réveils infinie.
+      * la cadence `reveil` ne pose jamais de réveil (pas de boucle infinie) :
+        hors Froid, le lead est parqué sans rien poser, sauf suivi de devis
+        repris (décision fondateur du 16/11/2026, ``cadence_filet``).
 
     Best-effort : ne lève jamais."""
     from . import horaires
 
-    if cadence == 'reveil':
-        return
     try:
+        if cadence == 'reveil':
+            from .cadence_filet import cloturer_reveils_sans_reponse
+            cloturer_reveils_sans_reponse(lead, user)
+            return
         plafond = _CLOTURE_PLAFOND.get(cadence)
         if plafond is None:
             return

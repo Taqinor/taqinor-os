@@ -240,6 +240,86 @@ class NonRegressionTests(_Base):
         self.assertEqual(self._reveils().count(), 0)
 
 
+class FinDesReveilsTests(_Base):
+    """Décision fondateur du 16/11/2026 — « un DERNIER réveil sans réponse
+    envoie le lead au Froid et ne pose rien ». Avant : un lead HORS Froid
+    recevait « Préparer et envoyer le devis » pour le lendemain (64 leads jamais
+    joints en production). Mutant : rendre ``cloturer_cadence('reveil')`` à son
+    ``return`` d'origine ⇒ l'étape devis réapparaît et le lead reste au funnel."""
+    slug = 'mry11-fin-reveils'
+
+    def _reveils_ouverts(self):
+        self._deja_joint()
+        return _materialiser_tout(
+            self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+
+    def _clore(self, statut=RelanceEtape.Statut.FAIT, outcome='non_joint'):
+        premier, dernier = self._reveils_ouverts()
+        marquer_etape_relance(premier, self.acteur, RelanceEtape.Statut.FAIT,
+                              outcome='non_joint')
+        dernier.refresh_from_db()
+        self.assertEqual(dernier.statut, RelanceEtape.Statut.A_FAIRE)
+        marquer_etape_relance(dernier, self.acteur, statut, outcome=outcome)
+        self.lead.refresh_from_db()
+
+    def _ouvertes(self):
+        return self.lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+
+    def test_sans_reponse_hors_froid_le_lead_part_au_froid_sans_rien_poser(self):
+        from apps.crm.cadence_filet import NOTE_FIN_DES_REVEILS
+        self.assertNotEqual(self.lead.stage, stages.COLD)
+        self._clore()
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertEqual(self.lead.parc_raison, 'pas_maintenant_sans_date')
+        self.assertFalse(self._ouvertes().exists())
+        # Ni « Préparer et envoyer le devis », ni appel à tracer, ni réveil.
+        self.assertFalse(self.lead.relance_etapes.filter(cadence='generique').exists())
+        self.assertEqual(self._reveils().count(), 2)
+        self.assertTrue(self.lead.activites.filter(body=NOTE_FIN_DES_REVEILS).exists())
+        self.assertFalse(self.lead.perdu)
+
+    def test_sauter_le_dernier_reveil_vaut_sans_reponse(self):
+        self._clore(statut=RelanceEtape.Statut.SAUTEE, outcome='')
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertFalse(self._ouvertes().exists())
+
+    def test_un_suivi_de_proposition_pas_alle_au_bout_reprend(self):
+        # Un suivi déjà servi (devis parti hors ERP, SUIVI E6) : barreau 2 fait.
+        premier, dernier = self._reveils_ouverts()
+        gabarit = next(g for g in CadenceRelanceEtape.cadence_pour(
+            self.company, 'apres_devis') if g.ordre == 2)
+        passe = LUNDI - datetime.timedelta(days=5)
+        RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='apres_devis', ordre=2,
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            statut=RelanceEtape.Statut.FAIT, traite_par=self.acteur, traite_le=passe,
+            due_at=passe, due_date=passe.astimezone(horaires.CASABLANCA).date(),
+            cadence_depart=LUNDI - datetime.timedelta(days=7))
+        for etape in (premier, dernier):
+            etape.refresh_from_db()
+            marquer_etape_relance(etape, self.acteur, RelanceEtape.Statut.FAIT,
+                                  outcome='non_joint')
+        self.lead.refresh_from_db()
+        self.assertNotEqual(self.lead.stage, stages.COLD)
+        self.assertFalse(self.lead.parc_raison)
+        [suite] = self._ouvertes()
+        self.assertEqual((suite.cadence, suite.ordre > 2), ('apres_devis', True))
+
+    def test_au_froid_rien_ne_change(self):
+        self.lead.stage = stages.COLD
+        self.lead.save(update_fields=['stage'])
+        self._clore()
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertFalse(self.lead.parc_raison)
+        self.assertFalse(self._ouvertes().exists())
+
+    def test_joint_sur_le_dernier_reveil_garde_sa_suite(self):
+        self._clore(outcome='joint')
+        self.assertNotEqual(self.lead.stage, stages.COLD)
+        self.assertFalse(self.lead.parc_raison)
+        self.assertTrue(self._ouvertes().filter(cadence='generique').exists())
+
+
 class ToucheJointeEnMilieuDeCadenceTests(_Base):
     """LE défaut BLOQUANT de MRY11 × MRY9, reproduit par le VRAI chemin de
     l'écran : le Cockpit poste « Fait » avec l'issue « joint ».

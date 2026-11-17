@@ -156,82 +156,11 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     if lead.relance_etapes.filter(
             statut=RelanceEtape.Statut.A_FAIRE).exists():
         return None
-    # Frontière M3 : le devis du lead se lit via le sélecteur de ventes.
-    from apps.ventes.selectors import dernier_devis_relancable_du_lead
-    # ``avec_plan_devis=False`` (refus) : relancer la PROPOSITION que le
-    # client vient de refuser serait un contresens — étape de décision
-    # générique seulement.
-    devis = (dernier_devis_relancable_du_lead(
-                 lead, brouillon_compris=brouillon_compris)
-             if avec_plan_devis else None)
-    if devis is not None:
-        # CAD1 — le filet ne REJOUE jamais un plan dont des barreaux sont
-        # déjà CONSOMMÉS pour le MÊME devis. Il le POURSUIT : la suite d'une
-        # touche 5 clôturée « intéressé » est la touche 6, jamais la touche 1.
-        # Sans ce garde-fou, l'idempotence de `initialiser_plan_relance` — qui
-        # ne porte que sur les touches OUVERTES (TREADMILL-1538) — laissait
-        # repartir les dix barreaux depuis « maintenant », et le client qui
-        # venait de se dire intéressé recevait « Le PDF s'ouvre bien ? ».
-        # « Consommé » = traité par un humain (FAIT/SAUTÉE) : un plan ANNULÉ
-        # par le moteur reste redémarrable, c'est tout l'objet de
-        # TREADMILL-1538.
-        consomme = _dernier_barreau_consomme(lead, 'apres_devis', devis)
-        if consomme is not None:
-            suite = materialiser_touche_suivante(consomme, user)
-            if suite is not None:
-                # SUIVI I6 (30/09/2026) — ``materialiser_touche_suivante`` ne
-                # touche ni ``Lead.relance_date`` ni le Calendrier : l'appelant
-                # (``marquer_etape_relance``) les avait recalés AVANT ce filet,
-                # sur « plus rien d'ouvert ». Sans ce recalage, la touche
-                # reprise était ouverte et ``relance_date`` restait vide.
-                _recaler_file(lead, user)
-                return suite
-        elif demarrer_plan:
-            etapes = initialiser_plan_relance(
-                lead, user, cadence='apres_devis', devis=devis)
-            ouvertes = [e for e in etapes
-                        if e.statut == RelanceEtape.Statut.A_FAIRE]
-            if ouvertes:
-                _recaler_file(lead, user)
-                return ouvertes[0]
-        # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
-        # CAD2 — idem quand l'appelant interdit le DÉMARRAGE (étape de visite
-        # close) : on poursuit, on ne rejoue jamais depuis le barreau 1.
-    elif avec_plan_devis:
-        # SUIVI E6 (30/09/2026) — aucun devis relançable dans l'ERP, mais un
-        # suivi de proposition a DÉJÀ servi (devis parti hors ERP,
-        # TREADMILL-1538) : on le POURSUIT depuis son dernier barreau
-        # consommé, exactement comme CAD1 le fait pour un devis de l'ERP.
-        # Sans cela, « Client joint » sur un barreau sans devis posait
-        # « Préparer et envoyer le devis » À CÔTÉ du barreau suivant (deux
-        # touches ouvertes), et clore « Question de prix » re-posait l'étape
-        # devis au lieu de reprendre le suivi. Plan épuisé : l'étape
-        # générique ci-dessous.
-        consomme = (_dernier_barreau_consomme(lead, 'apres_devis', None)
-                    if _suivi_de_proposition_existe(lead) else None)
-        if consomme is not None:
-            suite = materialiser_touche_suivante(consomme, user)
-            if suite is not None:
-                # SUIVI I6 — même recalage que la reprise CAD1 ci-dessus.
-                _recaler_file(lead, user)
-                return suite
-        elif brouillon_compris:
-            # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP
-            # compte aussi ». Aucun devis dans l'ERP, mais l'humain vient de
-            # cocher « préparer et envoyer le devis » : le suivi de
-            # proposition démarre SANS objet devis (les gabarits vivent très
-            # bien sans lui — MRY13 omet toute phrase sans valeur réelle),
-            # plutôt que de re-poser le même filet à l'infini. SUIVI E6 —
-            # seulement si AUCUN barreau n'a été consommé : sinon le suivi
-            # est poursuivi (ci-dessus), jamais rejoué depuis le barreau 1.
-            etapes = initialiser_plan_relance(
-                lead, user, cadence='apres_devis', depart=timezone.now(),
-                devis=None)
-            ouvertes = [e for e in etapes
-                        if e.statut == RelanceEtape.Statut.A_FAIRE]
-            if ouvertes:
-                _recaler_file(lead, user)
-                return ouvertes[0]
+    suivi = _reprendre_suivi_de_proposition(
+        lead, user, avec_plan_devis=avec_plan_devis,
+        brouillon_compris=brouillon_compris, demarrer_plan=demarrer_plan)
+    if suivi is not None:
+        return suivi
     # PARAM-CADENCE — l'étape à poser est une CLÉ (défaut : le devis).
     cle = (cle or (cle_de(RelanceEtape(libelle=libelle)) if libelle else '')
            or CLE_DEVIS)
@@ -308,6 +237,136 @@ def assurer_prochaine_etape_apres_succes(lead, user,
               f'{quand_local:%d/%m/%Y à %H:%M} — aucune autre relance '
               'ouverte.'))
     return etape
+
+
+def _reprendre_suivi_de_proposition(lead, user, *, avec_plan_devis,
+                                    brouillon_compris, demarrer_plan):
+    """La PREMIÈRE suite du filet (extraite telle quelle de
+    ``assurer_prochaine_etape_apres_succes``) : le suivi de proposition
+    POURSUIVI (CAD1, SUIVI E6) ou DÉMARRÉ (devis envoyé relançable, ou devis
+    parti hors ERP avec ``brouillon_compris``). Renvoie sa touche ouverte, ou
+    ``None`` : l'appelant pose alors son étape générique (le filet) ou rien
+    (``cloturer_reveils_sans_reponse``)."""
+    # Frontière M3 : le devis du lead se lit via le sélecteur de ventes.
+    from apps.ventes.selectors import dernier_devis_relancable_du_lead
+    # ``avec_plan_devis=False`` (refus) : relancer la PROPOSITION que le
+    # client vient de refuser serait un contresens — étape de décision
+    # générique seulement.
+    devis = (dernier_devis_relancable_du_lead(
+                 lead, brouillon_compris=brouillon_compris)
+             if avec_plan_devis else None)
+    if devis is not None:
+        # CAD1 — le filet ne REJOUE jamais un plan dont des barreaux sont
+        # déjà CONSOMMÉS pour le MÊME devis. Il le POURSUIT : la suite d'une
+        # touche 5 clôturée « intéressé » est la touche 6, jamais la touche 1.
+        # Sans ce garde-fou, l'idempotence de `initialiser_plan_relance` — qui
+        # ne porte que sur les touches OUVERTES (TREADMILL-1538) — laissait
+        # repartir les dix barreaux depuis « maintenant », et le client qui
+        # venait de se dire intéressé recevait « Le PDF s'ouvre bien ? ».
+        # « Consommé » = traité par un humain (FAIT/SAUTÉE) : un plan ANNULÉ
+        # par le moteur reste redémarrable, c'est tout l'objet de
+        # TREADMILL-1538.
+        consomme = _dernier_barreau_consomme(lead, 'apres_devis', devis)
+        if consomme is not None:
+            suite = materialiser_touche_suivante(consomme, user)
+            if suite is not None:
+                # SUIVI I6 (30/09/2026) — ``materialiser_touche_suivante`` ne
+                # touche ni ``Lead.relance_date`` ni le Calendrier : l'appelant
+                # (``marquer_etape_relance``) les avait recalés AVANT ce filet,
+                # sur « plus rien d'ouvert ». Sans ce recalage, la touche
+                # reprise était ouverte et ``relance_date`` restait vide.
+                _recaler_file(lead, user)
+                return suite
+        elif demarrer_plan:
+            etapes = initialiser_plan_relance(
+                lead, user, cadence='apres_devis', devis=devis)
+            ouvertes = [e for e in etapes
+                        if e.statut == RelanceEtape.Statut.A_FAIRE]
+            if ouvertes:
+                _recaler_file(lead, user)
+                return ouvertes[0]
+        # Plan déjà consommé pour CE devis → l'étape générique de l'appelant.
+        # CAD2 — idem quand l'appelant interdit le DÉMARRAGE (étape de visite
+        # close) : on poursuit, on ne rejoue jamais depuis le barreau 1.
+    elif avec_plan_devis:
+        # SUIVI E6 (30/09/2026) — aucun devis relançable dans l'ERP, mais un
+        # suivi de proposition a DÉJÀ servi (devis parti hors ERP,
+        # TREADMILL-1538) : on le POURSUIT depuis son dernier barreau
+        # consommé, exactement comme CAD1 le fait pour un devis de l'ERP.
+        # Sans cela, « Client joint » sur un barreau sans devis posait
+        # « Préparer et envoyer le devis » À CÔTÉ du barreau suivant (deux
+        # touches ouvertes), et clore « Question de prix » re-posait l'étape
+        # devis au lieu de reprendre le suivi. Plan épuisé : l'étape
+        # générique de l'appelant.
+        consomme = (_dernier_barreau_consomme(lead, 'apres_devis', None)
+                    if _suivi_de_proposition_existe(lead) else None)
+        if consomme is not None:
+            suite = materialiser_touche_suivante(consomme, user)
+            if suite is not None:
+                # SUIVI I6 — même recalage que la reprise CAD1 ci-dessus.
+                _recaler_file(lead, user)
+                return suite
+        elif brouillon_compris:
+            # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP
+            # compte aussi ». Aucun devis dans l'ERP, mais l'humain vient de
+            # cocher « préparer et envoyer le devis » : le suivi de
+            # proposition démarre SANS objet devis (les gabarits vivent très
+            # bien sans lui — MRY13 omet toute phrase sans valeur réelle),
+            # plutôt que de re-poser le même filet à l'infini. SUIVI E6 —
+            # seulement si AUCUN barreau n'a été consommé : sinon le suivi
+            # est poursuivi (ci-dessus), jamais rejoué depuis le barreau 1.
+            etapes = initialiser_plan_relance(
+                lead, user, cadence='apres_devis', depart=timezone.now(),
+                devis=None)
+            ouvertes = [e for e in etapes
+                        if e.statut == RelanceEtape.Statut.A_FAIRE]
+            if ouvertes:
+                _recaler_file(lead, user)
+                return ouvertes[0]
+    return None
+
+
+#: Décision fondateur du 16/11/2026 — « un DERNIER réveil sans réponse envoie le
+#: lead au Froid et ne pose rien ». Raison de parcage : celle d'un suivi de devis
+#: épuisé (« Pas maintenant (sans date) », Nurture) — « injoignable » exigerait
+#: des appels tracés (CADV22). La note du chatter dit pourquoi.
+RAISON_FIN_DES_REVEILS = 'pas_maintenant_sans_date'
+NOTE_FIN_DES_REVEILS = ('Réveils terminés sans réponse : le dossier est rangé au '
+                        'Froid, plus aucune relance n’est programmée.')
+
+
+@_sous_verrou_du_lead(_lead_premier_argument)
+def cloturer_reveils_sans_reponse(lead, user):
+    """La fin de la cadence ``reveil`` (``cloturer_cadence`` : dernière touche
+    close « pas de réponse » ou une de ses précisions, ou sautée).
+
+    Décision fondateur du 16/11/2026 : avant, un lead HORS Froid recevait du
+    filet « Préparer et envoyer le devis » pour le lendemain (64 leads jamais
+    joints en production). Désormais un suivi de proposition pas allé au bout
+    REPREND (la moitié « sauf suivi », inchangée) ; sinon le lead est PARQUÉ au
+    Froid (``parquer_lead``) et RIEN n'est posé — ni réveil (pas de boucle), ni
+    étape. ``exiger_touche=False`` : la règle des appels tracés protège la prise
+    de contact d'un lead frais ; ici la cadence de réveil est la touche, et son
+    refus reposerait un appel, ce que la décision exclut. Un client pro est
+    parqué comme les autres (aucun chemin pro au bout des réveils : CADV103 ne
+    lui en pose plus). No-op au Froid, signé, perdu, archivé, « ne plus
+    contacter », ou si une autre étape reste ouverte. Renvoie True si parqué."""
+    from .fiche_funnel import parquer_lead
+
+    lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived', 'ne_plus_contacter',
+                                 'parc_etat', 'parc_raison', 'parc_jusqu_au'])
+    if (lead.stage in (stages.SIGNED, stages.COLD) or lead.perdu or lead.is_archived
+            or lead.ne_plus_contacter
+            or lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE).exists()):
+        return False
+    if _reprendre_suivi_de_proposition(lead, user, avec_plan_devis=True,
+                                       brouillon_compris=False,
+                                       demarrer_plan=True) is not None:
+        return False
+    parquer_lead(lead, RAISON_FIN_DES_REVEILS, None, user, exiger_touche=False)
+    journal_systeme(company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+                    body=NOTE_FIN_DES_REVEILS)
+    return True
 
 
 # ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────

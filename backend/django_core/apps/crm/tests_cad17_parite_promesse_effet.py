@@ -212,6 +212,7 @@ VARIANTES = {
     st.ETAPE_APPELER_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_PIECES_RECUES_SAUF_SUIVI: BRANCHES_SUIVI,
+    st.FROID_APRES_REVEILS_SAUF_SUIVI: BRANCHES_SUIVI,
     # SUIVI E17 — `etape_devis_a_la_date_sauf_suivi` retiré : le dernier
     # réveil pose l'appel « rappel convenu » à la date choisie.
     # 24/09/2026 — `visite_froid_si_seule` retiré (une étape de visite ne
@@ -354,6 +355,18 @@ def _etape_appel_trimestriel(c):
 
 def _dernier_reveil(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est plus au Froid')
+    c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
+
+
+def _froid_apres_reveils_sauf_suivi(c):
+    # Décision fondateur du 16/11/2026 — hors Froid, le dernier réveil sans
+    # réponse : le suivi d'un devis reprend, sinon le Froid et RIEN d'ouvert.
+    if c.variante == 'devis_ouvert':
+        _suivi_repris(c)
+        c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid malgré le suivi')
+        return
+    c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est pas au Froid')
+    c.vrai(c.lead.parc_raison == 'pas_maintenant_sans_date', 'la raison de parcage manque')
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
 
 
@@ -625,6 +638,7 @@ VERIFICATEURS = {
     st.ETAPE_APPEL_AVANT_FROID: _etape_appel_avant_froid,
     st.ETAPE_APPEL_TRIMESTRIEL: _etape_appel_trimestriel,
     st.DERNIER_REVEIL: _dernier_reveil,
+    st.FROID_APRES_REVEILS_SAUF_SUIVI: _froid_apres_reveils_sauf_suivi,
     st.RESTE_AU_FROID: _reste_au_froid,
     st.SORT_DU_FROID: _sort_du_froid,
     st.CONTACT_ARRETEE: _contact_arretee,
