@@ -120,6 +120,15 @@ presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous 
   l'étape 2) et TCH110 (script Scriptable de la grande tuile) pliées et cochées. Reste de TCH109 : brancher la
   révélation `mon_iphone` (J+3) dans `services/revelations.py` (serveur). Le script suit le contrat `tuile.json`
   (`faites`, `essentiel.prevues`), pas l'annexe A de la spec ; vrai Scriptable jamais essayé.
+- **RELECTURE ADVERSE DU CODE DE LA FUSION 2 : `docs/taches/travail/revue-code-f2.md` — 0 bloquant, 4 MAJEURS à corriger
+  AVANT d'activer pour un vrai utilisateur** : annuler le geste du plan du jour supprime tout le plan (bilan compris) ;
+  la journée en cache et le brouillon restent dans le navigateur après déconnexion hors `/taches/*` ; le délai de
+  lecture d'un agenda externe n'est pas tenu (un serveur lent peut bloquer tout l'ERP) ; un agenda en échec est relu
+  à chaque écran (décision prise : mémoriser l'échec 15 min). Une lane les corrigeait à l'arrêt : branche LOCALE
+  `lane/f2-revue` (basée sur `dev-taches-f2`). Si ses commits « F2 revue — … » existent (`git log
+  origin/dev-taches-f2..lane/f2-revue` sur le portable, ou `origin/lane/f2-revue`), les plier dans `dev-taches-f2`
+  puis fusionner `dev-taches-f2` dans `dev-taches-f3` ; sinon relancer la lane avec ce rapport. TCH96 (capture Siri)
+  est pliée et cochée sur `dev-taches-f3` (127 sur 174).
 - **SI LA SESSION A ÉTÉ COUPÉE NET (quota à 100 %)** : quatre lanes tournaient sur la fusion 3, chacune committant tâche
   par tâche sur une branche LOCALE du portable (pas encore sur GitHub) : `lane/f3-tch96` (capture Siri),
   `lane/f3-tch97` (flux d'agenda et tuile), `lane/f3-assistant` (Copilote : TCH161, TCH111, TCH164, TCH112, TCH113…),
