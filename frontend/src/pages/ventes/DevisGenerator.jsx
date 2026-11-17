@@ -167,6 +167,7 @@ import CarteCreation from './generator/CarteCreation'
 import PanneauSucces from './generator/PanneauSucces'
 import BlocsEditionComplete from './generator/BlocsEditionComplete'
 import CarteLeadClient from './generator/CarteLeadClient'
+import OptionRecommandeeEtBatteries from './generator/OptionRecommandeeEtBatteries'
 import ApercuSimulation from './generator/ApercuSimulation'
 import BandeauxEdition from './generator/BandeauxEdition'
 import CarteParametresTechniques from './generator/CarteParametresTechniques'
@@ -1900,22 +1901,12 @@ export default function DevisGenerator({
                 Composition libre (aucun panneau/onduleur imposé)
               </label>
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gen-reco">Option Recommandée</Label>
-              <Select value={recommendedChoice} onValueChange={setRecommendedChoice}>
-                <SelectTrigger id="gen-reco"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Auto">Auto (défaut)</SelectItem>
-                  <SelectItem value="Aucune recommandation">Aucune recommandation</SelectItem>
-                  <SelectItem value="Sans batterie">Sans batterie</SelectItem>
-                  <SelectItem value="Avec batterie">Avec batterie</SelectItem>
-                </SelectContent>
-              </Select>
-              {'recommended_option' in imposees && (
-                <IndicationRegistre chemin="recommended_option" busy={overridesBusy}
-                                    onRegenerer={regenererOverride} />
-              )}
-            </div>
+            <OptionRecommandeeEtBatteries
+              recommendedChoice={recommendedChoice} setRecommendedChoice={setRecommendedChoice}
+              imposees={imposees} overridesBusy={overridesBusy} regenererOverride={regenererOverride}
+              marcheCi={marcheCi} lines={lines} produits={produits} onQuantiteChange={onQuantiteChange}
+              banque={editDevis?.etude_params?.banque_recommandee ?? null}
+              apercuBatterie={apercuCi.donnees?.option_avec?.batterie ?? null} />
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}

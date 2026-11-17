@@ -16,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import resolve
 from rest_framework.exceptions import AuthenticationFailed
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.roles.models import Role
@@ -364,6 +364,23 @@ class AssistantEtBouchonTests(SimpleTestCase):
                 bouchon.authenticate(requete)
         self.assertTrue(bouchon.authenticate_header(self.usine.get('/')).startswith('Bearer'))
 
+    def test_routes_a_jeton_405_avant_le_bouchon(self):
+        """api-fuzz « Unsupported methods » : TRACE/PUT (non servies) → 405 avant le bouchon ;
+        la méthode servie reste un 401 neutre."""
+        usine = APIRequestFactory()
+        for methode, chemin in sorted(ROUTES_A_JETON):
+            correspondance = resolve(concret(chemin))
+            vue = correspondance.func
+            for autre in ('TRACE', 'PUT'):
+                with self.subTest(chemin=chemin, methode=autre):
+                    reponse = vue(usine.generic(autre, concret(chemin)), **correspondance.kwargs)
+                    self.assertEqual(reponse.status_code, 405)
+                    self.assertNotIn('WWW-Authenticate', reponse)
+            with self.subTest(chemin=chemin, methode=methode):
+                reponse = vue(usine.generic(methode, concret(chemin)), **correspondance.kwargs)
+                self.assertEqual(reponse.status_code, 401)
+                self.assertIn('WWW-Authenticate', reponse)
+
 
 class AccesTests(TestCase):
     """Les 106 routes, par de vraies requêtes : 403 sans le droit, 501 avec, 401 sur les jetons."""
@@ -429,3 +446,13 @@ class AccesTests(TestCase):
                     self.assertIn('WWW-Authenticate', reponse)
                 corps.append(reponse.json()['detail'])
             self.assertEqual(len(set(corps)), 1, 'un refus ne dit jamais pourquoi')
+
+    def test_routes_a_jeton_methode_non_servie_405(self):
+        """Par la pile complète (intergiciels compris) : TRACE et PUT → 405, même avec un jeton."""
+        faux = APIClient()
+        faux.credentials(HTTP_AUTHORIZATION='Bearer tqc_inconnu')
+        for _methode, chemin in sorted(ROUTES_A_JETON):
+            for client in (APIClient(), faux):
+                for autre in ('TRACE', 'PUT'):
+                    with self.subTest(chemin=chemin, methode=autre):
+                        self.assertEqual(client.generic(autre, concret(chemin)).status_code, 405)

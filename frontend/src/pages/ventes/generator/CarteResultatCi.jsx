@@ -160,6 +160,12 @@ export default function CarteResultatCi({ donnees, chargement, erreur }) {
                        valeur={`${n(optionAvec.retour_simple_ans, 1)} ans`} />
             )}
           </div>
+          {/* Banque en deux temps : combien de batteries le devis laisse à ajouter plus tard. */}
+          {optionAvec.batterie?.ajout_possible > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="ci-avec-ajout">
+              + {n(optionAvec.batterie.ajout_possible, 0)} batterie{optionAvec.batterie.ajout_possible > 1 ? 's' : ''} possible{optionAvec.batterie.ajout_possible > 1 ? 's' : ''} plus tard
+            </p>
+          )}
         </div>
       )}
       {donnees.sous_reserve_visite?.valeur && (

@@ -398,7 +398,9 @@ def _fenetre_max(e):
     """CLD8 — nombre de paliers regardés au plus depuis ``e`` : le plafond
     physique de sa combinaison, jamais sous le plancher ``PALIERS_REGARDES``."""
     onduleurs = (e.get('onduleurs') or {}) if isinstance(e, dict) else {}
-    haute = _pos(((onduleurs.get('ratio_dc_ac') or {}).get('bornes') or {}).get('haute'))
+    bornes = (onduleurs.get('ratio_dc_ac') or {}).get('bornes') or {}
+    # D1 (17/11/2026) — un hybride porte ce que SA fiche publie (``haute_fiche``).
+    haute = max(_pos(bornes.get('haute')) or 0.0, _pos(bornes.get('haute_fiche')) or 0.0) or None
     plus_gros = max((_pos(c.get('kw_ac')) or 0.0
                      for c in onduleurs.get('combinaison') or []), default=0.0)
     if not haute or not plus_gros:

@@ -35,7 +35,7 @@ from decimal import Decimal
 
 from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
-from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
+from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
 from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_RETOURS_3010B, regles_au_moins
 from .etude_ci_visite import _couche_visite
 
@@ -1786,13 +1786,14 @@ def cles_hors_empreinte():
     v1 retirées (CIQ129) et TOUTE dérivée du schéma (``puissance_kwc`` que
     ``finaliser_caches`` pose APRÈS l'étude à la création, ``production_figee_rasante``
     écrite par ce rafraîchisseur…) — sinon un cache posé après le premier calcul
-    déplaçait l'empreinte au ré-enregistrement à vide. Seule exception :
-    ``taille_creation_ci``, relue comme entrée (``verdict_creation``)."""
+    déplaçait l'empreinte au ré-enregistrement à vide. Exceptions, relues
+    comme entrées : ``taille_creation_ci`` (``verdict_creation``) et
+    ``banque_recommandee`` (D4, ``option_avec.batterie.ajout_possible``)."""
     from .etude_schema import CLES_RETIREES_CI_V1, DERIVEE, SCHEMA
     from .etudes import CLES_DERIVEES_NON_COPIEES
     derivees = {cle for cle, regle in SCHEMA.items() if regle['nature'] == DERIVEE}
     return (derivees | set(CLES_DERIVEES_NON_COPIEES)
-            | set(CLES_RETIREES_CI_V1)) - {CLE_TAILLE_CREATION}
+            | set(CLES_RETIREES_CI_V1)) - {CLE_TAILLE_CREATION, CLE_BANQUE_RECOMMANDEE}
 
 
 def _empreinte(entrees_stockees, kwc, onduleurs, option_avec=None):

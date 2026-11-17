@@ -11,7 +11,8 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
 from apps.taches.views.base import (
-    AUTH_JETON, ERREUR_DETAIL, PERMISSIONS, PasEncore, corps, forme_echantillon, reponses,
+    AUTH_JETON, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore, corps, forme_echantillon,
+    reponses,
 )
 
 
@@ -50,7 +51,7 @@ class TestNotificationVue(APIView):
         raise PasEncore()
 
 
-class TuileVue(APIView):
+class TuileVue(MethodeAvantJeton, APIView):
     """GET tuile/ — tuile Scriptable, jeton `tuile` (J:tuile)."""
 
     authentication_classes = AUTH_JETON
@@ -61,7 +62,7 @@ class TuileVue(APIView):
         raise PasEncore()
 
 
-class FluxVue(APIView):
+class FluxVue(MethodeAvantJeton, APIView):
     """GET flux/{jeton}.ics — calendrier abonné, jeton `flux` dans l'adresse (J:flux)."""
 
     authentication_classes = AUTH_JETON

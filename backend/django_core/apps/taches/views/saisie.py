@@ -20,8 +20,8 @@ from apps.taches.serializers.saisie import (
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.taches import verifier_lien
 from apps.taches.views.base import (
-    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, PasEncore, corps, est_assistant,
-    forme_echantillon, parametre, reponses,
+    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore,
+    corps, est_assistant, forme_echantillon, parametre, reponses,
 )
 from core.idempotency import IdempotentCreateMixin
 
@@ -92,7 +92,7 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
         return Response(reponse_creation(user, resultat, assistant=assistant), status=201)
 
 
-class CaptureVue(APIView):
+class CaptureVue(MethodeAvantJeton, APIView):
     """POST capture/ — Siri / partage, jeton `capture` (J:capture)."""
 
     authentication_classes = AUTH_JETON

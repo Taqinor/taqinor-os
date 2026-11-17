@@ -206,6 +206,11 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'tolerance_pmax_max_pct',
             'ond_courbe_rendement', 'ond_rendement_max_pct',
             'ond_rendement_cec_pct', 'ond_conso_nuit_w',
+            # Fondateur 17/11/2026 — puissance PV maximale raccordable (kWc) :
+            # « Max. PV access power » (Deye hybride) / « Recommended max. PV
+            # power » (Huawei) — la borne panneaux ; jamais une puissance
+            # nominale.
+            'ond_dc_max_kwc',
             'bat_c_rate_charge', 'bat_c_rate_decharge', 'bat_chimie',
             'bat_temp_min_c', 'bat_temp_max_c',
             'opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',

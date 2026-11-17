@@ -14,6 +14,8 @@ Séance du 16-17/11/2026 (PR Taqinor/taqinor-os#1440). Reda a essayé les cadenc
 - **Panneau de réponses simplifié (17/11)** : un seul « Pas joint » (précision facultative), un seul « Plus tard… », le reste sous « Autre réponse » ; réponses filtrées par contexte ; « Ne plus me contacter » porte un avertissement d'opposition légale. Les clés serveur ne changent pas.
 - **Douze corrections de textes approuvées telles quelles (17/11)** : uniquement des phrases déjà validées, recombinées ou raccourcies ; seuls mots nouveaux : « comme convenu » et « pour fixer la date de la visite technique ». Darija à formuler par un locuteur natif : `repondeur` (nouvelle phrase FR), `appel_rappel_convenu`, `appel_planifier_visite`.
 - **Bouton « Déléguer mes dossiers » (17/11)** : Reda veut confier ses dossiers à Meryem. (La liste des leads avait déjà « Réassigner » en lot.)
+- **Liste froide dans l'ERP, tirée par la commerciale (17/11)** : carte « Liste froide » du cockpit, « selon sa charge » — jamais des étapes datées poussées. Lot et plafond = **10** appels ouverts (« make it 10 »), 2 tentatives par dossier.
+- **Nettoyage appliqué en prod le 17/11 sur « oui » de Reda** : liste 1 (réveils aveugles : 48 dossiers, 90 étapes annulées) et liste 2 (441 contacts Odoo froids archivés, étiquette `archive_odoo`, « Restaurer » les rouvre). Liste 3 (37 rebonds à remettre au Froid) NON appliquée : attend son oui ; tant qu'elle ne l'est pas, 42 dossiers de la liste 1 restent vivants sans étape (37 sans responsable, 5 à Reda). Fiches de test (21) et 101 oppositions : toujours à revoir par Reda.
 - **Pas de PR ni de push tant qu'un changement de la séance est ouvert**, sauf feu vert explicite (donné le 17/11 pour ce lot).
 
 ## Faits mesurés en prod (lecture seule, 17/11) — ne pas re-dériver
@@ -36,6 +38,11 @@ Séance du 16-17/11/2026 (PR Taqinor/taqinor-os#1440). Reda a essayé les cadenc
 ## Ordre recommandé (accepté pour l'étape 1 ; le reste attend Reda)
 
 1. Livrer les correctifs du moteur (ce lot). 2. Nettoyage sur listes validées par Reda, AVANT toute attribution (archive des contacts Odoo froids, 207 dossiers morts hors des étapes vives, réveils aveugles, téléphones). 3. Revue des 101 oppositions sur preuve. 4. Passation des dossiers de Reda à Meryem après le nettoyage, étapes re-datées. 5. Une liste du lundi à deux règles (lead vivant sans étape ; étape en retard de plus de 2 jours ouvrés). 6. Appeler seulement les joints-et-chiffrés, avec un élément nouveau. À ne pas construire maintenant : écran de travail de la liste froide, échelles d'escalade, plafonds d'étape, job d'archive à 12 mois.
+
+## Audit final du 17/11 — deux faits vérifiés en prod (les autres constats : rapport de séance)
+
+- Les 5 comptes actifs ont un prénom VIDE (le login porte le prénom). Depuis ACVI54 (« jamais le login dans un message »), toute phrase portant `{conseiller}` est omise : le premier WhatsApp part sans « Bonjour…, je suis … de TAQINOR », le script d'ouverture sans « c'est un appel commercial », la confirmation de visite sans la ligne STOP. Remède immédiat : renseigner les prénoms (écriture prod = oui de Reda).
+- Gabarits de prod = gabarits du code, sauf l'heure de l'après-devis ordres 1, 2 et 6 (vide en prod → la touche part à l'heure d'envoi du devis au lieu de 9 h 30 / 18 h) : migration de données à écrire.
 
 ## Ouvert
 

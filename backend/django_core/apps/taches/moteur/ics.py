@@ -98,10 +98,11 @@ def _evenements_bruts(lignes):
 
 
 def _zone(nom):
-    """Fuseau demandé ; un nom inconnu retombe sur `None` (lu en heure locale)."""
+    """Fuseau demandé ; un nom inconnu retombe sur `None` (lu en heure locale), y compris un nom
+    qui désigne un dossier de tzdata (`TZID=America` : `PermissionError`/`IsADirectoryError`)."""
     try:
         return ZoneInfo(FUSEAUX_WINDOWS.get(nom, nom))
-    except (ZoneInfoNotFoundError, ValueError):
+    except (ZoneInfoNotFoundError, ValueError, OverflowError, OSError):
         return None
 
 
@@ -175,8 +176,8 @@ def _rendez_vous(props, agenda_id, local):
     try:
         debut, entiere = _lire_date_heure(valeur, params, local)
         fin = _fin(props, debut, entiere, local)
-    except ValueError:
-        return None  # un événement illisible est ignoré, jamais une erreur à l'écran
+    except (ValueError, OverflowError, OSError):
+        return None  # un événement illisible (ou hors calendrier) est ignoré, jamais une erreur à l'écran
     titre = _texte_ics(props.get('SUMMARY', ({}, ''))[1])
     return RendezVousPur(_cle(agenda_id, props), agenda_id, titre, debut, max(fin, debut), entiere)
 

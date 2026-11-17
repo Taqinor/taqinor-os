@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: b732399826126950a154c39ac1c5858882f958d93aa4f4f0493b458f8028f1a4
+Structure fingerprint: 1d7c3ec0a3629b60a459ffc6e77fa53bdef34ed4e8fe285b7c8a95c8e39b795e
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -166,7 +166,7 @@ taqinor-os/
 |  |  |                           parked.py (the 47-label registry), calepinage + electrique pure engines, reglementaire/ (82-21)
 |  |  +- app_template/            Scaffold source for `manage.py startapp_erp`
 |  |  +- authentication/          Tenant root: Company + CustomUser, JWT, registration (NOT under apps/)
-|  |  +- apps/                    39 kept apps — see §4
+|  |  +- apps/                    40 kept apps — see §4
 |  +- parked/                     SOLMVP37 source mirror of the 47 shelled apps (pre-shell code, no
 |  |                              migrations); refreshed from the archive tag by parquer_miroir.py;
 |  |                              core_calepinage/ = parked core.calepinage rives/etude (ACAL)
@@ -176,9 +176,9 @@ taqinor-os/
 |
 +- frontend/                      React/Vite SPA
 |  +- src/router/                 Route table + moduleRoutes.jsx module registry + moduleGating
-|  +- src/pages/                  22 page folders (see §5)
-|  +- src/features/               27 feature folders: Redux slices, domain logic, module.config.jsx
-|  +- src/api/                    39 axios clients; resource.js shared CRUD factory
+|  +- src/pages/                  23 page folders (see §5)
+|  +- src/features/               28 feature folders: Redux slices, domain logic, module.config.jsx
+|  +- src/api/                    40 axios clients; resource.js shared CRUD factory
 |  +- src/components/ hooks/ store/ utils/   layout, offline, sav + cross-cutting helpers
 |  +- src/design/ lib/ ui/        Design system (tokens/theme, format utils, primitives, DataTable)
 |  +- src/i18n/                   fr/en/ar, RTL, hijri display
@@ -213,7 +213,7 @@ statuspage's SLA/uptime models). Full story, families, PHASE 2 return order and 
 
 ## 4. Backend, app by app
 
-39 apps under `backend/django_core/apps/` plus two top-level packages (`core`,
+40 apps under `backend/django_core/apps/` plus two top-level packages (`core`,
 `authentication`). Every app is served at `/api/django/<prefix>/` **and** at the identical
 `/api/v1/<prefix>/` alias (`_APP_URLS` is mounted twice in `erp_agentique/urls.py`); public
 tokenized channels sit outside that list under `/api/django/public/…` and `/api/public/…`.
@@ -244,7 +244,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
 | `accessreview` | `accessreview/` | 3 | Access-review campaigns, attestation, SoD rules. |
 | `audit` | `audit/` | 1 | `AuditLog` activity trail. |
-| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based; `file_key` indexé, registre des détenteurs de clés `cles_stockage.py`, ADOC193) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses). |
+| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based; `file_key` indexé, registre des détenteurs de clés `cles_stockage.py`, ADOC193) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses) ; `selectors.py` / `services.py` (lecture et écriture des historiques pour `taches`, sans importer ses modèles). |
 | `customfields` | `custom-fields/` | 4 | Admin-defined fields and custom objects, registry fed by the platform manifests. |
 | `dataimport` | `imports/` | 4 | Two-step CSV/XLSX import (dry-run + commit), registry-driven targets, `ExternalRef`. |
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |
@@ -259,6 +259,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `offlinesync` | `offlinesync/` | 1 | Single offline write outbox (`OfflineOperation`), one `operations/batch/` sync point. |
 | `onboarding` | `onboarding/` | 4 | « Premiers pas » checklist + product tours, auto-completed via `core.events`. `GET onboarding/progress/resume/` (ApiKey scope `read:licence`, pourcentage seul — NTDMO35) ; textes CSV `onboarding/export-textes.csv` / `import-textes.csv` (`textes_csv.py`, NTDMO36) ; webhook `onboarding.item_complete` (NTDMO34). |
 | `statuspage` | `statuspage/` | 6 | Public status page: components, incidents, 90-day uptime buckets, subscribers. `core` reads its models for SLA/uptime. |
+| `taches` | `taches/` | 21 | Gestionnaire de tâches et agenda personnel PRIVÉ par utilisateur : projets, tâches, plan du jour, rythme, rappels, agendas externes ; module INVISIBLE tant que le droit `taches_voir` n'est accordé à aucun rôle ; modules purs `moteur/` et `saisie/` ; dossier `docs/taches/README.md`. |
 | `contact` | `contact/` | 0 | Public landing contact form — **PARKED by flag** (`CONTACT_FORM_ENABLED=0` -> 404, no email). No models. |
 | `core` | `core/` | ~53 | **Foundation, NOT under apps/**: `drf_compat.py` (DRF 3.18 ramené au comportement 3.15 au `ready()` — ADCG61), abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). Outbox durable des effets (`enqueue_durable`, `dispatch_outbox.livrer_maintenant`, NTPLT11) ; `archive_union.py` (`?archive=1`, NTPLT38) ; `verrou_optimiste.py` + `champs_plateforme.VerrouOptimisteMixin` (`lock_version`, 409, NTPLT17) ; `recherche_fts.py` + commande `rebuild_search_index` (NTPLT32). Garde propriétaire des tableaux/requêtes (`proprietaire_seul.py`, APUB14) ; `couper-lien` des exports de réversibilité (APUB2). |
 
@@ -335,12 +336,14 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **COCKPIT-CONTRÔLE (30/09/2026)** : bloc « Contrôle du suivi » du cockpit CRM — `apps/crm/controle_suivi.py` (lecture pure, requêtes indépendantes du volume) servi par `GET crm/relance-etapes/controle/?jours=7|14|30&owner=` (contrat `contract_samples/controle_suivi.json` : retard en JOURS OUVRÉS, congés déclarés, étapes reportées) ; traces `RelanceEtape.due_initial_at`/`nb_reports` (migration crm 0116, règle unique `services.deplacer_echeance_etape`) ; la liste `relance-etapes/?scope=` sert le bloc `file` (`selectors.file_du_cockpit`, tâches ouvertes dans « maintenant ») ; « Sauter » refusé sur une tâche ; écran `pages/crm/ControleSuiviPanel.jsx` + `controleSuiviTexte.js` (repliable, même ordre pour tous les rôles), file « À faire aujourd'hui » (`RelancesDuJourWidget.jsx`) ; garde « scénario vécu » `apps/crm/tests_cockpit_scenario.py` contre l'oracle indépendant `apps/crm/cockpit_oracle_outils.py`.
 - **SUIVI-FILTRE + SUIVI-ÉQUIPE (29/10/2026)** : écran « Suivi des relances » (`pages/crm/RelancesSuiviPage.jsx`) — les cinq compteurs serveur (`resume`) sont des cases à cocher multi-sélection (filtrage d'écran des lignes servies, choix dans l'URL `?statut=a_faire&statut=en_retard`, « En retard » = à faire ET échue, règle unique `estEnRetard`, dans `features/crm/relances/fusionSuivi.js` depuis SUIVI-RELOAD) ; bloc « Vue d'équipe » des rôles responsable/admin (`pages/crm/RelancesEquipePanel.jsx` : 4 tuiles, une barre empilée HTML par commercial toujours en retard → traitées en retard → à temps → sautées, colonnes recharts par jour avec tableau équivalent, clic = borner la file au commercial) nourri par le bloc ADDITIF `par_commercial` de `GET crm/relance-etapes/controle/` (`controle_suivi._par_commercial`, pure, une ligne par entrée de `commerciaux` quel que soit `owner`, `en_retard_actuel` + `aujourdhui`, contrat `controle_suivi.json`).
 - **CLARTÉ DES CADENCES (16-17/11/2026)** : la table `relances/parcours_suivi.json` (v1.6) déclare des `groupes` (« Pas joint », « Plus tard… »), un `rang: autre` (« Autre réponse ») et des filtres de contexte, lus par `parcours.js` (`organiserReponses`) ; type d'étape `pieces_recues` (« Relancer le client pour ses pièces », message `relance_pieces`) ; fin de la cadence `reveil` hors Froid = parcage sans étape (`cadence_filet.cloturer_reveils_sans_reponse`) ; délégation des dossiers : `apps/crm/delegation.py` + action `leads/deleguer/` (GET aperçu, POST écriture, droit `crm_reassign`), écran `relances/DelegationDialog.jsx` (Suivi des relances + carte « À faire aujourd'hui ») ; textes : clés `appel_ouverture_*`, `appel_validite`, `appel_dernier_suivi`, `appel_reveil_*`, `message_creneau`, `appel_rappel_convenu`, `appel_planifier_visite` (migrations parametres 0139-0142). fiche d'un lead au Froid : bouton « Le client a répondu » (`workspace/RecontactFroid.jsx` → route `leads/<id>/recontact/`, CADV35). Décisions : `docs/claude-memory/cadence-clarte-1711.md`.
+  - **Liste froide (17/11/2026)** : `apps/crm/liste_froide.py` + action `leads/liste-froide/` (GET état de l'appelant, POST `{nombre}` = prise ; droit `crm_modifier` ; contrat `liste_froide.json`) — vivier A (K3) / B (K5-K6 au palier 1) lu sur `cadence_selectors.seaux_reactivation` (`palier_1_reactivation`), plafond 10 appels ouverts, 2 tentatives ; étape = réveil hors gabarit clé `CLE_LISTE_FROIDE` (`cadence_reperes`) ; carte `pages/crm/ListeFroideCard.jsx` du cockpit.
 - **SUIVI-RELOAD (02/11/2026, incident de production)** : sur « Suivi des relances », un geste ne relit plus la PÉRIODE entière (jusqu'à 62 j, ~1,5 Mo — la relecture dépassait le délai d'attente du navigateur et l'écran se vidait d'un « Indisponible pour le moment. » en pleine séance, pendant que les ouvriers gunicorn redémarraient) : la touche vient de la réponse de SON geste et ses sœurs de `GET crm/relance-etapes/?lead=` (quelques Ko, même sérialiseur) ; l'ouverture de WhatsApp ne coûte plus aucune lecture de liste (le POST `whatsapp/` rend déjà `etape`). Fusion + delta des compteurs serveur dans le module PUR `features/crm/relances/fusionSuivi.js` (`fusionnerLignes`, `estEnRetard`, tri de lecture du serveur rejoué) ; un rafraîchissement en échec n'efface JAMAIS la liste déjà servie (avis « Liste non rafraîchie » + « Réessayer »), seul un chargement de nouvelle fenêtre (onglet, responsable) reste une erreur.
 - **QAH (28/09/2026) — tester « comme un humain »** : `tests/test_tenant_sweep.py` + `testkit/tenant_sweep.py` (balayage IDOR/BOLA de ~390 viewsets, cliquets `EXCLUSIONS`/`FUITES_CONNUES`, opt-in `ci_shard.TOP_LEVEL_MODULES`) ; invariants Hypothesis `apps/ventes/tests/test_invariants_{money,documents}.py` ; différentiel `solar.js` ↔ serveur `apps/ventes/tests/test_solar_differential.py` + corpus figé `fixtures/solar_corpus*.json` (`frontend/scripts/solar_corpus.mjs`).
 
 ### ventes / crm / parametres / visites / core — Groupes CIQ (C&I) et AGR (agricole), vague 1 (05/10/2026)
 
 - **ventes — moteur C&I** : `apps/ventes/moteur_ci/` (`profils` profil de charge, `charge`, `talons` talon par type de commerce — archétype sourcé ou défaut fondateur 20 %, `production`, `onduleurs` choix/limitation export, `composition` composition auto du devis C&I) ; `tarif_ci.py` (tarifs officiels → prix/forfaits C&I) ; `economie_ci.py` (économies autoconso, `Devis.etude_params`). Champs ajoutés sur `Produit` (`ond_*`/`lim_*`/`log_*`/`prot_*`, `type_pose`, `paliers_prix_vente`), `Lead`/`Client` (profil PRO : ICE/RC/IF, tension, régime d'équipes, groupe électrogène, cos φ, `releve_conso`), `CompanyProfile.forfaits_ci`/`bande_prix_kwc_ci`/`responsable_leads_pro` — aucune classe de modèle nouvelle. `apps/crm/categories_commerciales.py` : les 23 catégories commerciales du lead (`Lead.CategorieCommerciale`) + `equipements_hors_horaires` (talon déclaré, migration crm 0142, 26-27/10/2026).
+- **ventes — option « avec batterie » C&I (17/11/2026)** : un hybride porte la puissance PV maximale de SA fiche (`stock.FicheTechnique.ond_dc_max_kwc`, `moteur_ci/onduleurs.combiner_onduleurs(fiche_fait_foi=True)`) ; banque recommandée mémorisée (`etude_params.banque_recommandee`) ; suppositions dites à la commerciale (`domain/suppositions_ci.py`, clé `champ_lead`). Écran : `pages/ventes/generator/OptionRecommandeeEtBatteries.jsx` + `ControleBatteriesDepart.jsx` (« Batteries au départ », `features/ventes/calc/batteriesDepart.js`) ; fiche produit : `pages/stock/ChampsRendementEtPvMaxOnduleur.jsx`.
 - **ventes — pompage agricole** : `domain/pompage.py` (`etudier_pompage`, calcul unique) ; `POST /ventes/etude-pompage/preview/` (`etude_pompage_view.py`, AGR121, sans écriture) ; `POST /ventes/economie-pompage/preview/` + `GET devis/<pk>/economie-pompage/` (`views/economie_pompage.py`, AGR206) ; `quote_engine/agricole/mentions.py` (mentions du document agricole 3 p.).
 - **crm** : `audit_energetique.py` ; `public_affiner_views.py` → `GET/POST /crm/public/lead-affiner/<idempotency_key>/` (CIQ413, questionnaire PRO du site public, 404 opaque) ; `@action` lead `references-proches` (GET) et `resume-associe` (POST, responsable/admin).
 - **parametres** : `tarifs_officiels.py` (CIQ202, tarifs réglementés lus par le moteur C&I).
@@ -468,7 +471,9 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `tiers` | `/tiers` |
 | `ia` | `/ia` |
 
-### Features (`frontend/src/features`) — 27 folders
+| `taches` | `/taches` (→ `/taches/aujourdhui`), `/taches/aujourdhui`, `/taches/a-trier`, `/taches/projets`, `/taches/projets/archive`, `/taches/projets/modeles`, `/taches/projets/:id`, `/taches/agenda`, `/taches/revue`, `/taches/rythme`, `/taches/recherche`, `/taches/supprimees`, `/taches/reglages/:rubrique?` — sans entrée de nav (module invisible, garde `taches_voir`) |
+
+### Features (`frontend/src/features`) — 28 folders
 
 - **auth** — session/JWT (`authSlice.js`).
 - **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
@@ -485,19 +490,20 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 - **portail** — client-portal administration + the client-facing portal screens.
 - **admin / adminops / entites / audit / uxviews / tiers / notifications / onboarding / core** — administration, audit log, saved views, party directory, notification prefs, « Premiers pas », the « Données » explorer.
 - **ia** — AI assistant chat (registry-driven actions with propose->confirm + typed result cards in `cartes/`, voice input, hands-free mode) + OCR; `iaSlice.js`, `voice/`, `cartes/`.
+- **taches** — gestionnaire de tâches personnel (module.config-registered, 13 routes, aucune entrée de nav) : `coquille/`, `fiche/`, `lib/`, `saisie/`, `ui/`, client `api/tachesApi.js`, pages `pages/taches/`.
 - **offlinesync** — mobile-first role homes under `/mobile/*` + `readCache.js`, `AFaireAujourdhui.jsx`.
 - **pwa** — auto-update service worker UI, `appLock.js` + `AppLockGate.jsx`.
 - **kanban / queue** — shared libraries **deliberately kept** (consumed by CRM and notifications), not modules.
 - **`frontend/parked/`** — the 37 shelled modules' features/pages/api/components, moved by `git mv`, excluded from ESLint, Vitest, Docker and the repo check scripts. See its `README.md`.
 
-### Pages (`frontend/src/pages`) — 22 folders
+### Pages (`frontend/src/pages`) — 23 folders
 
 `crm/` (ClientList, LeadsPage, ParrainagePage + `leads/`), `ventes/` (DevisList,
 DevisGenerator, FactureList, FactureForm, AvoirsPage, RelancesPage,
 BonCommandeList), `stock/`, `installations/`, `interventions/`, `outillage/`, `sav/`,
 `monitoring/`, `ged/`, `reporting/`, `approbations/`, `activities/`, `admin/`,
 `parametres/`, `preferences/`, `onboarding/`, `aide/`, `tiers/`, `visites/`, `ia/`,
-`home/`, `ui/`. Top-level: `Dashboard.jsx`, `Journal.jsx`, `CalendarPage.jsx`,
+`taches/`, `home/`, `ui/`. Top-level: `Dashboard.jsx`, `Journal.jsx`, `CalendarPage.jsx`,
 `CartePage.jsx`, `Landing.jsx`, `Login.jsx`, `RegisterCompany.jsx`, `Reporting.jsx`,
 `Rapports.jsx`.
 
@@ -579,7 +585,7 @@ All verified against source, not prose.
 
 Each line is a place a prose doc says something the **code contradicts**. Code wins.
 
-1. **App inventory.** `CLAUDE.md`'s repo-facts lists "authentication, stock, crm, ventes, reporting, parametres, roles, contact" and `README.md` frames the system as "five core modules + extras". The code has **39 apps under `apps/`** plus the top-level `authentication` and `core` packages — including `installations`, `sav`, `ged`, `portail`, `adsengine`, `calepinage`, `visites`, `achats`, `facturation`, `records`, `customfields`, `documents`, `dataimport`, which the headline lists omit. 47 further apps exist only as migration shells (§3).
+1. **App inventory.** `CLAUDE.md`'s repo-facts lists "authentication, stock, crm, ventes, reporting, parametres, roles, contact" and `README.md` frames the system as "five core modules + extras". The code has **40 apps under `apps/`** plus the top-level `authentication` and `core` packages — including `installations`, `sav`, `ged`, `portail`, `adsengine`, `calepinage`, `visites`, `achats`, `facturation`, `records`, `customfields`, `documents`, `dataimport`, which the headline lists omit. 47 further apps exist only as migration shells (§3).
 2. **`authentication` and `core` are not under `apps/`.** They live at `backend/django_core/{authentication,core}/`, which is why the backend-tests command runs `test apps authentication` specifically.
 3. **Quote engine swap already landed.** `README.md` says the quote-generation logic is "slated for replacement by an external tool". In the code the swap is **done**: the premium engine is vendored at `apps/ventes/quote_engine/` and `/proposal` is the canonical path (CLAUDE.md rule #4 is current; the README line is stale).
 4. **CI has 16 jobs, not four.** CLAUDE.md and README describe four checks. The four named ones are still the policy merge gate, but the workflow defines 16 (§7) subject to per-job path filtering.

@@ -345,6 +345,16 @@ CLE_RAPPEL_FDA = 'rappel_fda'
 #: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
 CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
 CLES_ETAPES_MOTEUR = (CLE_PIECES_RECUES, CLE_RAPPEL_FDA, CLE_VALIDITE_A_RENOUVELER)
+#: Liste froide (fondateur, 17/11/2026) — l'appel qu'une commerciale PREND
+#: elle-même sur un dossier au Froid (``liste_froide.py``). Retrouvé par sa
+#: CLÉ stable, mais volontairement HORS de ``CLES_ETAPES_MOTEUR`` : ce n'est
+#: pas une étape de filet, c'est un RÉVEIL hors gabarit (cadence ``reveil``,
+#: rang ``LISTE_FROIDE_ORDRE`` au-delà de tout barreau, comme le réveil
+#: saisonnier). Le panneau, la promesse et le moteur le lisent donc comme le
+#: dernier appel de réveil d'un dossier au Froid — sans un cas de plus.
+CLE_LISTE_FROIDE = 'liste_froide'
+LIBELLE_LISTE_FROIDE = 'Appeler — liste froide'
+LISTE_FROIDE_ORDRE = 99
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.

@@ -30,6 +30,47 @@ logger = logging.getLogger(__name__)
 CHOIX = ('sans', 'avec', 'les_deux')
 LES_DEUX = 'les_deux'
 CLE = 'option_avec'
+#: D4 (fondateur 17/11/2026) — la banque RECOMMANDÉE à la création du devis
+#: automatique (``etude_params``), gardée quand le vendeur en chiffre moins.
+CLE_BANQUE_RECOMMANDEE = 'banque_recommandee'
+
+
+def banque_recommandee(etude):
+    """D4 — ``{produit, nom, quantite}`` de la banque de l'option « avec »
+    composée par l'étude (``etude['option_avec']['batterie']``), ``None``
+    sans option « avec » ou sans batterie."""
+    batterie = ((etude or {}).get(CLE) or {}).get('batterie') or {}
+    try:
+        quantite = int(batterie.get('quantite') or 0)
+    except (TypeError, ValueError):
+        quantite = 0
+    if batterie.get('produit') is None or quantite <= 0:
+        return None
+    return {'produit': batterie['produit'], 'nom': batterie.get('nom') or '',
+            'quantite': quantite}
+
+
+def avec_recommandation(batterie, recommandee):
+    """D4 — le bloc ``batterie`` servi + ``quantite_recommandee`` /
+    ``ajout_possible`` (clés ADDITIVES, toujours présentes) : lues sur
+    ``recommandee`` quand elle porte LE MÊME article, sinon ``None`` ; le
+    nombre de batteries que l'on peut ajouter = recommandée − chiffrée (≥ 0)."""
+    batterie = dict(batterie or {})
+    reco = None
+    if isinstance(recommandee, dict) and recommandee.get('produit') is not None \
+            and recommandee.get('produit') == batterie.get('produit'):
+        try:
+            reco = int(recommandee.get('quantite'))
+        except (TypeError, ValueError):
+            reco = None
+    try:
+        quantite = int(batterie.get('quantite'))
+    except (TypeError, ValueError):
+        quantite = None
+    batterie['quantite_recommandee'] = reco
+    batterie['ajout_possible'] = (None if reco is None or quantite is None
+                                  else max(0, reco - quantite))
+    return batterie
 
 
 def choix_batterie(valeur, lead=None):
@@ -273,7 +314,7 @@ def _flux_option_avec(evaluation, economie, investissement, ctx):
         kwh_evites_an=kwh, **(ctx.get('flux') or {}))
 
 
-def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
+def _bloc(evaluation, valoriser=None, ctx=None, investissement=None, recommandee=None):
     """La forme servie ``etude['option_avec']`` (jamais ``prix_achat``) : le
     bilan SANS sa ventilation horaire (le PDF et l'écran lisent les totaux),
     l'``economie_ci`` complète quand le valoriseur la sert (document à option
@@ -287,7 +328,8 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     manque. ``ctx`` : ``{tva_recuperable, taux_tva_pct, batterie, flux,
     regles_2710}``.
     ``investissement`` : ``{ht, ttc, lignes}`` imposé (option des lignes du
-    devis) ; sinon celui de la composition."""
+    devis) ; sinon celui de la composition. ``recommandee`` (D4) : la banque
+    recommandée (:func:`avec_recommandation`)."""
     from .etude_ci import _forme_composition
 
     from core.money import quantize_mad
@@ -308,7 +350,7 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     return {
         'kwc': evaluation['kwc'], 'nb_panneaux': _nb_panneaux(evaluation.get('composition')),
         'puissance_ac_kw': evaluation.get('puissance_ac'),
-        'batterie': evaluation['batterie'],
+        'batterie': avec_recommandation(evaluation['batterie'], recommandee),
         # Les seules clés servables d'un appareil (jamais sa fiche SpecOnduleur).
         'onduleurs': {'combinaison': [
             {k: item.get(k) for k in ('produit', 'nom', 'kw_ac', 's_max_kva', 'quantite')}
@@ -451,7 +493,8 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         kwc_depart=evaluation['kwc'], pmax_wc=(catalogue.get('module') or {}).get('pmax_wc'),
         combiner=lambda kwc: combiner_onduleurs(
             kwc, bat['hybrides'], phase=phase, module=catalogue.get('module_spec'),
-            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True),
+            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True,
+            fiche_fait_foi=True),
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
         ps_kva=ps_kva, production_de=production_de,
@@ -571,7 +614,11 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
     hybrides basse tension et les batteries du catalogue C&I présents sur les
     lignes de l'option « avec » (variante ``avec`` ou commune), ou ``None``
     quand il manque l'un ou l'autre. Une banque de modèles mêlés (saisie du
-    vendeur) est lue à sa capacité utile totale."""
+    vendeur) est lue à sa capacité utile totale. ``recommandee`` (D4) : la
+    banque recommandée à la création (``etude_params.banque_recommandee`` du
+    devis des lignes), ``None`` sans elle — hors de ``empreinte`` de
+    l'option : la clé stockée entre déjà dans celle du devis
+    (``etude_ci.cles_hors_empreinte``)."""
     bat = catalogue.get('batterie') or {}
     hybrides = {h['produit']: h for h in bat.get('hybrides') or []}
     batteries = {b['produit']: b for b in bat.get('batteries') or []}
@@ -595,7 +642,17 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
             'investissement': _investissement_des_lignes(lignes, devis),
             'onduleurs': {'combinaison': [dict(hybrides[p], quantite=q) for p, q in sorted(q_h.items())]},
             'hybrides': list(hybrides.values()),
+            'recommandee': _recommandee_des_lignes(lignes, devis),
             'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())]}
+
+
+def _recommandee_des_lignes(lignes, devis=None):
+    """D4 — ``etude_params.banque_recommandee`` du devis (à défaut, celui des
+    lignes), ``None`` sans lui."""
+    devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
+                           if d is not None), None)
+    valeur = (getattr(devis, 'etude_params', None) or {}).get(CLE_BANQUE_RECOMMANDEE)
+    return valeur if isinstance(valeur, dict) else None
 
 
 def _ctx_flux(contexte, batterie):
@@ -620,7 +677,7 @@ def _recomposer(catalogue, imposee, contexte):
     onduleurs = combiner_onduleurs(
         imposee['kwc'], bat.get('hybrides') or [], phase=contexte.get('phase'),
         module=catalogue.get('module_spec'), ac_max_kw=contexte.get('ps_kva'),
-        max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True) or {}
+        max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True, fiche_fait_foi=True) or {}
     composition = _composer_avec(
         lambda kwc, ond: contexte['composer'](kwc, ond, bat.get('elements')),
         imposee['kwc'], onduleurs, imposee['banque'])
@@ -647,7 +704,8 @@ def _option_imposee(imposee, contexte):
         valoriser=contexte['valoriser'], simuler=simuler_batterie_jour,
         hybrides=imposee['hybrides'], taux_tva_pct=contexte.get('taux_tva_pct'))
     bloc = _bloc(evaluation, contexte['valoriser'], _ctx_flux(contexte, imposee['banque']),
-                 investissement=imposee.get('investissement'))
+                 investissement=imposee.get('investissement'),
+                 recommandee=imposee.get('recommandee'))
     bloc['nb_panneaux'] = imposee.get('nb_panneaux') or bloc['nb_panneaux']
     angle = inclinaison_pose(imposee['kwc'], bornes_pub)
     if angle is not None:
@@ -744,7 +802,9 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         sortie['alertes'].append(_alerte_dominee(evaluation, evalue, sortie['alertes'], choix))
         return sortie
     fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
-    sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche))
+    # D4 — l'option composée EST la recommandation (ajout possible : 0).
+    sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche),
+                           recommandee=evalue['batterie'])
     if evalue.get('inclinaison_retenue_deg') is not None:
         # R1 (P2) — clé ADDITIVE : l'inclinaison de la pose qui loge CE champ
         # (30° / rasante 10°), seulement quand le toit plat sans pente la donne.

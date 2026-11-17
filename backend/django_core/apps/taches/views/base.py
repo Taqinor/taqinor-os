@@ -10,7 +10,8 @@
   n'envoie que le cookie).
 - `JetonPasEncoreLivre` : BOUCHON d'authentification des trois routes à jeton (capture, flux,
   tuile) tant que `JetonAccesAuthentication` n'est pas livrée : refuse TOUT en 401 neutre, avec
-  `authenticate_header` (sinon DRF rendrait 403), sans jamais dire pourquoi.
+  `authenticate_header` (sinon DRF rendrait 403), sans jamais dire pourquoi. `MethodeAvantJeton` :
+  sur ces trois vues, une méthode non servie répond 405 avant ce bouchon.
 - Outillage de schéma OpenAPI des modules de vues : `forme_echantillon(nom)` (la forme de
   l'`exemple` d'un échantillon de `contract_samples/`), `corps(nom, exemple)`, `reponses(...)`,
   `parametre(...)`, `page_de(...)`.
@@ -25,7 +26,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import APIException, AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed, MethodNotAllowed
 from rest_framework.permissions import BasePermission
 
 from authentication.permissions import IsAuthenticatedInterne
@@ -80,6 +81,18 @@ class JetonPasEncoreLivre(BaseAuthentication):
 
 
 AUTH_JETON = [JetonPasEncoreLivre]
+
+
+class MethodeAvantJeton:
+    """Mixin des vues à jeton : une méthode que la vue ne sert pas répond 405 AVANT
+    l'authentification (api-fuzz « Unsupported methods ») — DRF authentifie avant de chercher le
+    gestionnaire, et le bouchon rendait 401 à un TRACE. La méthode servie garde son 401 neutre."""
+
+    def perform_authentication(self, request):
+        methode = request.method.lower()
+        if methode not in self.http_method_names or not hasattr(self, methode):
+            raise MethodNotAllowed(request.method)
+        super().perform_authentication(request)
 
 
 class JetonTachesSchema(OpenApiAuthenticationExtension):

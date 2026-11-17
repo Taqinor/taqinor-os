@@ -4,6 +4,7 @@ Base requise (`TestCase`) : joué par la CI. Deux sociétés réelles (`'a'`, `'
 la société A. Chaque test lit l'état STOCKÉ après l'annulation (jamais un espion).
 """
 import datetime
+from unittest import mock
 
 from django.contrib.contenttypes.models import ContentType
 from django.http import Http404
@@ -215,6 +216,28 @@ class GesteTests(TestCase):
         tache.refresh_from_db()
         self.assertIsNone(tache.content_type_id)
         self.assertEqual(rendu['conflits'][0]['raison'], 'introuvable')
+
+    def _geste_qui_repose(self, tache, lien):
+        return enregistrer_geste(self.u1, 'modification', 'Modifiée',
+                                 [{'op': 'champ', 'objet': 'tache', 'id': tache.pk, 'champ': 'lien',
+                                   'avant': lien, 'apres': None}])
+
+    def test_lien_repose_par_la_porte_cible_visible(self):
+        """Le lien reposé est revérifié par `selectors.liens.cible_visible` (portée du compte) : sorti
+        de sa portée, il est refusé ; visible, il est reposé `ok` à l'identifiant de la cible."""
+        lien = {'cible': 'crm.lead', 'id': 4242}
+        tache = fabriques.tache(self.u1)
+        with mock.patch('apps.taches.selectors.liens.cible_visible', return_value=False) as porte:
+            rendu = annuler_geste(self.u1, self._geste_qui_repose(tache, lien).pk)
+        porte.assert_called_once_with(self.u1, 'crm.lead', 4242)
+        tache.refresh_from_db()
+        self.assertIsNone(tache.content_type_id)
+        self.assertEqual(rendu['conflits'][0]['raison'], 'introuvable')
+        with mock.patch('apps.taches.selectors.liens.cible_visible', return_value=True):
+            annuler_geste(self.u1, self._geste_qui_repose(tache, lien).pk)
+        tache.refresh_from_db()
+        self.assertEqual((tache.content_type, tache.object_id, tache.lien_etat),
+                         (ContentType.objects.get_by_natural_key('crm', 'lead'), 4242, 'ok'))
 
     # --- Propriétaire du geste, ancienneté ------------------------------------------------
 

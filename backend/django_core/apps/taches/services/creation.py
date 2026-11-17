@@ -177,13 +177,17 @@ def _champs_simples(ligne):
 
 
 def _client_id(ligne, client_id, rang, nombre):
-    """`client_id` de la ligne, sinon celui de l'envoi (`:<n>` par ligne d'un envoi multi-lignes)."""
+    """`client_id` de la ligne, sinon celui de l'envoi (`:<n>` par ligne d'un envoi multi-lignes).
+    Une base trop longue est coupée, JAMAIS le suffixe `:<n>` (sinon `:1` et `:10` se confondraient)."""
     propre = ligne.get('client_id')
     if propre:
         return str(propre)[:64]
     if not client_id:
         return None
-    return str(client_id)[:64] if nombre == 1 else f'{client_id}:{ligne.get("index", rang)}'[:64]
+    if nombre == 1:
+        return str(client_id)[:64]
+    suffixe = f':{ligne.get("index", rang)}'
+    return (str(client_id)[:max(0, 64 - len(suffixe))] + suffixe)[:64]
 
 
 # --- Identifiants reçus, revérifiés (invariant 9) ---------------------------------------------
@@ -200,14 +204,16 @@ def _parent_verifie(user, parent):
 
 def _activite_verifiee(user, activite, nombre):
     """L'activité ERP à convertir ou à lier : de la société, assignée au compte (ou à-faire personnel
-    sans assigné qu'il a créé), pas encore liée à une tâche vivante (409 `deja_lie`)."""
+    sans assigné qu'il a créé), pas encore liée à une tâche vivante (409 `deja_lie`). L'à-faire
+    personnel d'un collègue (XKB4 : invisible au compte, même assigné) est introuvable."""
     if activite is None:
         return None
     if nombre != 1:
         raise ValueError("creer_taches : une activité ne se lie qu'à une seule ligne.")
     a_lui = (activite.assigned_to_id == user.pk
              or (activite.assigned_to_id is None and activite.created_by_id == user.pk))
-    if activite.company_id != user.company_id or not a_lui:
+    prive_d_autrui = activite.personnelle and activite.created_by_id != user.pk
+    if activite.company_id != user.company_id or not a_lui or prive_d_autrui:
         raise Http404('Introuvable.')
     if Tache.objects.filter(company_id=user.company_id, activite_origine_id=activite.pk).exists():
         raise ConflitEtat({'detail': MESSAGE_DEJA_LIE, 'code': 'deja_lie'})
@@ -500,10 +506,13 @@ def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, pare
         ctx.parent = _parent_verifie(user, parent)
         ctx.activite = _activite_verifiee(user, activite, len(lignes))
         ctx.lien = _lien_verifie(user, lien) if lien else None
+        if lignes:
+            # AVANT les lignes : le verrou des plafonds de rappels (`services.rappels`) porte sur
+            # cette ligne ; absente, deux premiers envois simultanés dépasseraient 100 rappels.
+            ReglagesRythme.objects.get_or_create(company_id=user.company_id, proprietaire=user)
         for rang, ligne in enumerate(lignes):
             _par_ligne(ctx, rang, ligne, _client_id(ligne, client_id, rang, len(lignes)))
         if ctx.creees:
-            ReglagesRythme.objects.get_or_create(company_id=user.company_id, proprietaire=user)
             revelations.apres_creation(user, ctx.creees, ctx.projets_crees, porte=porte)
         geste = _geste(ctx)
     return ResultatCreation(ctx.creees, ctx.projets_crees, ctx.deja_creees, geste)

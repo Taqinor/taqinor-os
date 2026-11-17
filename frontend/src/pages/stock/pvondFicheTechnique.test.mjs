@@ -303,6 +303,7 @@ test('champsFichePourType ne garde que les champs du type, en nombres', () => {
     ond_bat_v_min: null, ond_bat_v_max: null,
     // CALX355 — bloc « rendement onduleur » : vides → null, courbe → null.
     ond_rendement_max_pct: null, ond_rendement_cec_pct: null,
+    ond_dc_max_kwc: null,
     // Champ booléen du bloc onduleur : converti en `false`, jamais `null`.
     ond_bat_aucune: false,
     ond_courbe_rendement: null,
@@ -385,7 +386,8 @@ test('groupeFicheAffichage(onduleur) : les 15 variables, dans l’ordre du formu
     'ond_rendement_euro_pct', 'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
     'ond_bat_v_min', 'ond_bat_v_max',
     // CALX355 — bloc « rendement onduleur ».
-    'ond_rendement_max_pct', 'ond_rendement_cec_pct', 'ond_courbe_rendement',
+    'ond_rendement_max_pct', 'ond_rendement_cec_pct', 'ond_dc_max_kwc',
+    'ond_courbe_rendement',
   ])
   // Les trois variables que le fondateur a nommées sont bien SÉPARÉES.
   const parCle = Object.fromEntries(groupe.lignes.map((l) => [l.cle, l]))
@@ -398,7 +400,7 @@ test('groupeFicheAffichage(onduleur) : les 15 variables, dans l’ordre du formu
 test('un champ non renseigné affiche « à renseigner », JAMAIS un défaut ni un zéro', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   const vides = groupe.lignes.filter((l) => l.absente)
-  assert.equal(vides.length, 14)
+  assert.equal(vides.length, 15)
   for (const ligne of vides) assert.equal(ligne.valeur, VALEUR_ABSENTE)
   // La règle « never invent numbers » à l'écran : aucune valeur de repli.
   assert.equal(valeurFicheAffichee('ond_v_max_abs', { type_fiche: 'onduleur' }),
@@ -471,7 +473,7 @@ test('tout champ éditable du formulaire porte un libellé d’affichage', () =>
 
 test('CALX355 — un champ vide n’est JAMAIS envoyé à 0 (tous les blocs)', () => {
   const blocs = {
-    onduleur_reseau: ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
+    onduleur_reseau: ['ond_rendement_max_pct', 'ond_rendement_cec_pct', 'ond_dc_max_kwc'],
     panneau: ['noct_c', 'bifacialite_pct', 'tolerance_pmax_min_pct', 'tolerance_pmax_max_pct'],
     batterie: ['bat_c_rate_charge', 'bat_c_rate_decharge', 'bat_temp_min_c', 'bat_temp_max_c'],
     optimiseur: ['opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',

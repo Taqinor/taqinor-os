@@ -175,6 +175,10 @@ const crmApi = {
   // GET = l'aperçu (dossiers / étapes ouvertes / en retard), POST = l'écriture.
   apercuDelegation: (params) => api.get('/crm/leads/deleguer/', { params }),
   deleguerDossiers: (payload) => api.post('/crm/leads/deleguer/', payload),
+  // « Liste froide » du cockpit (17/11/2026) — contrat `liste_froide.json` :
+  // GET = l'état de l'appelant, POST `{ nombre }` = prendre ces dossiers.
+  getListeFroide: () => api.get('/crm/leads/liste-froide/'),
+  prendreListeFroide: (nombre) => api.post('/crm/leads/liste-froide/', { nombre }),
   // Export Excel (.xlsx) d'une sélection — réponse binaire (blob).
   exportLeadsXlsx: (ids) =>
     api.post('/crm/leads/export-xlsx/', { ids }, { responseType: 'blob' }),
