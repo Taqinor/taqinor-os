@@ -197,7 +197,7 @@ def _refus_date_passee(quand, libelle_champ):
 #: « Client joint »), le citer ici renvoyait vers un bouton introuvable.
 MESSAGE_ISSUE_APPEL_OBLIGATOIRE = (
     "Issue de l'appel obligatoire : Client joint, Pas de réponse, "
-    'À rappeler le… ou Refus. C\'est elle qui programme le prochain geste.')
+    'À rappeler le… ou Client refuse. C\'est elle qui programme le prochain geste.')
 
 
 #: SUIVI E8 (30/09/2026) — « Fait », « Sauter » et « Reporter » sur une

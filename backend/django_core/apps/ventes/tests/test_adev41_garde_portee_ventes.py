@@ -61,6 +61,8 @@ ROUTES_SONDEES = {
     'economie-pompage-preview', 'economie-ci-preview',
     # CORC2 — devis C&I révisé après visite (``devis`` du corps).
     'etude-ci-reviser-apres-visite',
+    # D-HYB-4 — batteries d'un brouillon C&I recomposées (``devis`` du corps).
+    'etude-ci-recomposer-batteries',
     'ventes-dashboard',
 }
 

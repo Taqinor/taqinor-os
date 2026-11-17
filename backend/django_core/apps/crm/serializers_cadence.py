@@ -37,6 +37,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # (`type_installation`, '' si non renseigné). Lecture seule : il ne sert
     # qu'aux CONSIGNES d'écran, jamais au rythme de la cadence.
     lead_segment = serializers.SerializerMethodField()
+    # 17/11/2026 (contrat `relance_etape_v2.json`, additif) — le lead a-t-il
+    # déjà reçu un devis ? Lu par la table du parcours (contexte `sans_devis`) :
+    # sur le débrief d'une visite faite AVANT tout devis, les réponses de devis
+    # (question de prix, devis modifié, décision à plusieurs) n'ont pas de sens.
+    lead_devis_envoye = serializers.SerializerMethodField()
     devis_reference = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
     # MRY30 — QUI a traité la touche, et QUAND. Le modèle les portait déjà
@@ -138,6 +143,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'lead_segment',
             # CADV11 — additif (contrat `relance_etape_v2.json`).
             'rappel_convenu_le',
+            # 17/11/2026 — additif (contrat `relance_etape_v2.json`).
+            'lead_devis_envoye',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -190,6 +197,32 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         """AGR531 — ``Lead.type_installation`` ou ``''`` (lead déjà chargé :
         aucune requête de plus)."""
         return getattr(obj.lead, 'type_installation', None) or ''
+
+    def get_lead_devis_envoye(self, obj) -> bool:
+        """17/11/2026 — ``True`` si le lead a déjà reçu un devis : stade « Devis
+        envoyé » ou au-delà (Relance, Signé — couvre un devis parti hors ERP),
+        sinon un devis sorti du brouillon dans Ventes (``selectors`` de ventes,
+        UNE requête pour toutes les touches de la page, jamais une par touche)."""
+        from . import stages
+
+        stades_avec_devis = (stages.QUOTE_SENT, stages.FOLLOW_UP, stages.SIGNED)
+        if getattr(obj.lead, 'stage', None) in stades_avec_devis:
+            return True
+        cache = self.context.setdefault('_leads_avec_devis', {'lus': set(), 'avec': set()})
+        if obj.lead_id not in cache['lus']:
+            from apps.ventes.selectors import leads_ayant_recu_un_devis
+
+            # Même patron que ``_visite_du_lead`` : sur une LISTE, ``self.parent``
+            # est le ListSerializer et son ``.instance`` (déjà lu) porte toutes
+            # les touches de la réponse — une seule lecture pour tous les leads.
+            instances = getattr(getattr(self, 'parent', None), 'instance', None)
+            ids = {obj.lead_id}
+            if instances is not None:
+                ids |= {t.lead_id for t in instances
+                        if getattr(t.lead, 'stage', None) not in stades_avec_devis}
+            cache['avec'] |= leads_ayant_recu_un_devis(obj.company_id, ids)
+            cache['lus'] |= ids
+        return obj.lead_id in cache['avec']
 
     def get_lead_contact_preference(self, obj) -> str:
         """CAD82 — ``whatsapp_only`` | ``phone_ok`` | '' (rien de posé)."""

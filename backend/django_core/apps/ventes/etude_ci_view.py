@@ -16,8 +16,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .domain.suppositions_ci import alertes_pour_la_commerciale
@@ -190,3 +192,69 @@ def devis_reviser_apres_visite(request):
         'mesures_utilisees': resultat['mesures_utilisees'],
         'alertes': resultat['alertes'],
     })
+
+
+#: D-HYB-4 — réponse de ``etude-ci/recomposer-batteries/`` (contrat
+#: ``contract_samples/devis_recomposer_batteries.json``).
+DevisRecomposerBatteriesResponse = inline_serializer('DevisRecomposerBatteriesResponse', {
+    'devis_id': serializers.IntegerField(),
+    'nb_batteries': serializers.IntegerField(),
+    'quantite_recommandee': serializers.IntegerField(),
+    'nb_panneaux_avec': serializers.IntegerField(allow_null=True),
+    'kwc_avec': serializers.FloatField(allow_null=True),
+    'lignes_changees': serializers.BooleanField(),
+    'onduleur_extension': serializers.JSONField(allow_null=True),
+    'alertes': serializers.ListField(child=serializers.JSONField()),
+})
+
+
+@extend_schema(
+    summary="Devis C&I brouillon : nombre de batteries choisi (D-HYB-4)",
+    description=("1 ≤ N ≤ banque calculée : panneaux redimensionnés pour N, onduleur "
+                 "hybride gardé pour la banque maximale ; lignes de l'option « avec » "
+                 "recomposées, option « sans » inchangée. Brouillon seulement, aucun "
+                 "statut écrit. Contrat devis_recomposer_batteries.json."),
+    request=inline_serializer('DevisRecomposerBatteriesRequest', {
+        'devis': serializers.IntegerField(), 'nb_batteries': serializers.IntegerField()}),
+    responses={200: DevisRecomposerBatteriesResponse,
+               400: inline_serializer('DevisRecomposerBatteriesSaisie', {
+                   'detail': serializers.CharField(), 'field': serializers.CharField()}),
+               404: inline_serializer('DevisRecomposerBatteriesIntrouvable', {
+                   'detail': serializers.CharField()}),
+               409: inline_serializer('DevisRecomposerBatteriesRefus', {
+                   'detail': serializers.CharField(), 'field': serializers.CharField()})},
+)
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')])
+def devis_recomposer_batteries(request):
+    """POST /ventes/etude-ci/recomposer-batteries/ — {devis, nb_batteries}."""
+    from rest_framework.exceptions import NotFound, ParseError
+
+    from core.conflit_etat import ConflitEtat
+
+    from .domain.recomposition_batteries_ci import (RecompositionBatteriesError,
+                                                    recomposer_batteries)
+
+    if not isinstance(request.data, dict):
+        raise ParseError('Corps JSON objet attendu.')
+    company = getattr(request.user, 'company', None)
+    devis = _devis_de_la_societe(company, request.data.get('devis'), request.user)
+    if devis is None:
+        raise NotFound('Devis introuvable.')
+    try:
+        resultat = recomposer_batteries(devis, request.data.get('nb_batteries'),
+                                        user=request.user)
+    except RecompositionBatteriesError as exc:
+        if exc.statut_http == 400:
+            raise SaisieBatteriesRefusee({'detail': exc.message, 'field': exc.champ})
+        raise ConflitEtat({'detail': exc.message, 'field': exc.champ})
+    return Response(resultat)
+
+
+class SaisieBatteriesRefusee(APIException):
+    """400 ``{detail, field}`` — ``nb_batteries`` absent, non entier, < 1 ou
+    au-delà de la banque calculée (le corps, pas l'état du devis : 409)."""
+
+    status_code = 400
+    default_detail = 'Nombre de batteries invalide.'
+    default_code = 'nb_batteries_invalide'

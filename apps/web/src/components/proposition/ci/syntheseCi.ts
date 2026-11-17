@@ -161,6 +161,11 @@ export interface SyntheseCiOptionBatterie {
    * `textes_non_rentable`) quand le moteur marque l'option `batterie_rentable: false` ; `null` sinon.
    */
   nonRentable: { badge: TextesCi; ligne: TextesCi } | null;
+  /**
+   * D-ONDULEUR-EXTENSION (17/11/2026) — phrase SERVIE trilingue (`option_batterie.extension.textes`) : onduleur hybride
+   * retenu pour l'extension, un plus petit suffirait au départ. `null` = absente/vide/malformée. Jamais recomposée ici.
+   */
+  extension: TextesCi | null;
 }
 
 /**
@@ -452,6 +457,7 @@ export function syntheseCi(
               }
             : null,
           nonRentable: lireNonRentableCi(brut.option_batterie.valeur_chiffree),
+          extension: estRecord(brut.option_batterie.extension) ? lireTextesCi(brut.option_batterie.extension.textes) : null,
         }
       : null,
     services: estRecord(brut.services)

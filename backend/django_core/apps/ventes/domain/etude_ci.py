@@ -130,6 +130,7 @@ FEUILLES = (
     ('mise_a_la_terre_necessaire', 'contraintes.mise_a_la_terre_necessaire'),
     ('tva_recuperable', 'tva_recuperable'),
     ('batterie_souhaitee', 'options.batterie_souhaitee'), ('om', 'options.om'),
+    ('nb_batteries', 'options.nb_batteries'),  # D-HYB-4 (17/11/2026) : 1 ≤ N ≤ R
     ('taille_explicite_kwc', 'taille_explicite_kwc'),
     # CIQ134 — cos φ déclaré (feuille PRIVÉE : alerte interne seulement).
     ('_cos_phi', 'cos_phi'),
@@ -786,11 +787,13 @@ def lire_catalogue_ci(company):
         }
         # ADEV87 — la fiche électrique du module retenu (chaînes).
         module_spec = specs_module(specs, produit.nom)[0] if specs else None
+    # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec » ;
+    # D-SOC-1 (17/11/2026) — l'article « Socles » du résidentiel (toit plat lesté).
+    from .etude_ci_batterie import catalogue_batterie_ci, elements_socle_ci
+    elements += elements_socle_ci(objets.values())
     prix_par_id = {e['id']: e['prix_vente_ht'] for e in elements if e.get('prix_vente_ht')}
     if module and module.get('prix_vente_ht'):
         prix_par_id[module['produit']] = module['prix_vente_ht']
-    # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec ».
-    from .etude_ci_batterie import catalogue_batterie_ci
     return {'elements': elements, 'onduleurs': onduleurs, 'module': module,
             'module_spec': module_spec, 'prix_par_id': prix_par_id,
             'batterie': catalogue_batterie_ci(objets.values())}
@@ -1508,7 +1511,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), reference_sans=evaluation,
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
-        talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice')
+        talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice',
+        nb_batteries=res.valeur('nb_batteries'))
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
 

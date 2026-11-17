@@ -38,7 +38,7 @@ CLES_PORTE_DE_SORTIE = [
 #: Les scripts d'appel (et le message de répondeur) se DISENT à voix haute :
 #: ils ne portent pas la phrase STOP (CADV34 : tout message ÉCRIT la porte).
 CLES_SCRIPTS_A_VOIX_HAUTE = [
-    'appel_ouverture', 'repondeur', 'appel_relance', 'appel_dernier',
+    'appel_ouverture', 'appel_relance', 'appel_dernier',
     'appel_dimanche', 'appel_suivi_j2', 'appel_suivi_j7', 'appel_suivi_j11',
     # 17/11/2026 — l'appel d'ouverture par origine, un script par appel après
     # devis (J28, J90) et les deux appels de réveil J30.
@@ -48,13 +48,24 @@ CLES_SCRIPTS_A_VOIX_HAUTE = [
     'appel_dernier_suivi', 'appel_reveil_devis', 'appel_reveil_sans_devis',
 ]
 
-#: 17/11/2026 — deux scripts d'appel FR seulement (darija à formuler).
-CLES_SCRIPTS_FR_SEULEMENT = ['appel_rappel_convenu', 'appel_planifier_visite']
+#: 17/11/2026 — trois scripts d'appel FR seulement (darija à formuler) ;
+#: `repondeur` en fait partie depuis que son français dit « je vous ai envoyé »
+#: quand sa darija disait « je vais vous envoyer ».
+CLES_SCRIPTS_FR_SEULEMENT = [
+    'appel_rappel_convenu', 'appel_planifier_visite', 'repondeur']
 
 #: CADV34 — les 8 clés de CAD110 + les 14 que CADV34 complète : TOUT message
 #: WhatsApp écrit des cadences contact, après-devis, deuxième affaire, visite.
 CLES_ECRITES_CADV34 = CLES_PORTE_DE_SORTIE + list(CLES_PORTE_DE_SORTIE_CADV34)
 PHRASE_STOP_FR = "Répondez STOP et je n'insiste plus."
+#: 17/11/2026 — la signature finale des messages de visite : la phrase STOP la
+#: PRÉCÈDE (elle ne partage jamais son fragment).
+SIGNATURE = ' — {conseiller}'
+
+
+def _sans_signature(texte):
+    return texte.removesuffix(SIGNATURE)
+
 
 _CROCHETS = [
     (r'\[Prénom\]', '{prenom}'),
@@ -144,11 +155,15 @@ class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
         for cle in CLES_ECRITES_CADV34:
             with self.subTest(cle=cle, langue='fr'):
                 self.assertTrue(
-                    MESSAGE_TEMPLATE_DEFAULTS[cle].endswith(PHRASE_STOP_FR),
+                    _sans_signature(MESSAGE_TEMPLATE_DEFAULTS[cle]).endswith(
+                        PHRASE_STOP_FR),
                     f'{cle} (FR) ne finit pas par la phrase STOP')
+            if cle not in MESSAGE_TEMPLATE_DEFAULTS_DARIJA:
+                continue  # `passation` : français seulement, comme le catalogue
             with self.subTest(cle=cle, langue='darija'):
                 self.assertTrue(
-                    MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle].endswith(darija),
+                    _sans_signature(
+                        MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle]).endswith(darija),
                     f'{cle} (darija) ne finit pas par la phrase STOP')
 
     def test_la_phrase_n_est_posee_qu_une_fois(self):
@@ -156,7 +171,8 @@ class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
             with self.subTest(cle=cle):
                 self.assertEqual(MESSAGE_TEMPLATE_DEFAULTS[cle].count('STOP'), 1)
                 self.assertEqual(
-                    MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle].count('STOP'), 1)
+                    MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle, 'STOP').count(
+                        'STOP'), 1)
 
     def test_les_variantes_de_segment_des_cles_porteuses_aussi(self):
         darija = self._phrase_darija()
@@ -167,13 +183,15 @@ class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
                 for cle, texte in textes.items():
                     if cle in CLES_PORTE_DE_SORTIE_CADV34:
                         with self.subTest(segment=segment, cle=cle):
-                            self.assertTrue(texte.endswith(phrase))
+                            self.assertTrue(
+                                _sans_signature(texte).endswith(phrase))
 
     def test_aucun_script_a_voix_haute_ne_porte_stop(self):
         for cle in CLES_SCRIPTS_A_VOIX_HAUTE:
             with self.subTest(cle=cle):
                 self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS[cle])
-                self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle])
+                self.assertNotIn(
+                    'STOP', MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle, ''))
 
     def test_les_scripts_fr_seulement_ne_portent_pas_stop_non_plus(self):
         for cle in CLES_SCRIPTS_FR_SEULEMENT:
@@ -195,8 +213,51 @@ class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
             set(CLES_ECRITES_CADV34) & set(CLES_SCRIPTS_FR_SEULEMENT), set())
 
     def test_les_cles_cadv34_sont_au_catalogue(self):
+        # `passation` (texte de CAD54, ACVI51) est au choix du modèle sans être
+        # une clé de `CLES_RELANCE` (aucun barreau de plan ne la porte).
         for cle in CLES_PORTE_DE_SORTIE_CADV34:
-            self.assertIn(cle, CLES_RELANCE)
+            self.assertIn(cle, set(CLES_RELANCE) | {'passation'})
+
+    def test_sans_date_de_validite_la_phrase_qui_y_renvoie_part_avec_elle(self):
+        """17/11/2026 — `appel_validite` (et `j9_validite`) : sans date, la
+        phrase « valable jusqu'au … » est omise (MRY13) ; « Après, je dois
+        revalider… » ne renvoyait plus à rien. Les deux partent ensemble, en FR
+        et en darija ; avec la date, rien ne change."""
+        from apps.crm.cadence_messages import _omettre_phrases_incompletes
+
+        for texte in (MESSAGE_TEMPLATE_DEFAULTS['appel_validite'],
+                      MESSAGE_TEMPLATE_DEFAULTS_DARIJA['appel_validite'],
+                      MESSAGE_TEMPLATE_DEFAULTS['j9_validite'],
+                      MESSAGE_TEMPLATE_DEFAULTS_DARIJA['j9_validite']):
+            with self.subTest(texte=texte[:30]):
+                reste = _omettre_phrases_incompletes(texte, ['date_validite'])
+                self.assertNotIn('{date_validite}', reste)
+                self.assertNotIn('revalider', reste)
+                self.assertNotIn('نعاود نتأكد', reste)
+                self.assertEqual(
+                    _omettre_phrases_incompletes(texte, []), texte)
+
+    def test_la_phrase_stop_precede_la_signature_et_survit_sans_prenom(self):
+        """17/11/2026 — « … on recale le passage. — Meryem Répondez STOP… »
+        collait STOP derrière la signature ; sans prénom, `_omettre_phrases_
+        incompletes` retirait la signature ET la phrase STOP d'un seul bloc.
+        Le rendu réel (vraies fonctions) garde STOP, sans prénom comme avec."""
+        from apps.crm.cadence_messages import _omettre_phrases_incompletes
+
+        darija = self._phrase_darija()
+        for cle in ('visite_proposition', 'visite_confirmation',
+                    'visite_releve_point_eau'):
+            for texte, phrase in (
+                    (MESSAGE_TEMPLATE_DEFAULTS[cle], PHRASE_STOP_FR),
+                    (MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle], darija)):
+                with self.subTest(cle=cle, phrase=phrase):
+                    self.assertTrue(texte.endswith(phrase + SIGNATURE))
+                    self.assertEqual(texte.count(SIGNATURE), 1)
+                    sans_prenom = _omettre_phrases_incompletes(
+                        texte, ['conseiller'])
+                    self.assertTrue(sans_prenom.endswith(phrase), sans_prenom)
+                    self.assertNotIn('{conseiller}', sans_prenom)
+                    self.assertNotIn('—  ', sans_prenom)
 
 
 class FideliteALaSourceTests(SimpleTestCase):

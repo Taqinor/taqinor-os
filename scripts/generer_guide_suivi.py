@@ -81,7 +81,7 @@ DESCRIPTION_GED = (
 CABINET_GED = 'Documentation'
 DOSSIER_GED = 'Guides'
 
-DATE_CHANGEMENTS = '30/09/2026'
+DATE_CHANGEMENTS = '17/11/2026'
 
 EDGE_CANDIDATS = (
     r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
@@ -324,6 +324,13 @@ def valider_table(table: dict) -> None:
         for cle in ('id', 'famille', 'nom', 'question', 'reponses'):
             if not etape.get(cle):
                 erreur(f'Table : l’étape « {etape.get("id", "?")} » n’a pas de champ « {cle} ».')
+        for r in reponses_resolues(table, etape):
+            contextes = [r.get('masquee_si')] if r.get('masquee_si') else []
+            contextes += list(r.get('variantes_contexte') or {})
+            for contexte in contextes:
+                if contexte not in MASQUEE_SI:
+                    erreur(f'Table : l’étape « {etape["id"]} » cite un contexte inconnu du guide : '
+                           f'{contexte!r}.')
     for section, champs in (('gestes', ('label', 'effet')), ('evenements', ('quand', 'effet'))):
         for element in table[section]:
             for cle in champs:
@@ -754,37 +761,43 @@ REGLES = (
     '\u00ab Perdu \u00bb est ta décision, avec son motif \u2014 jamais un effet de bord.',
 )
 
-# Ce qui a changé le 30/09/2026 (8 lignes au plus) — écrit en français simple
-# à partir des constats de la correction du suivi : (mot d'appel, phrase).
+# Ce qui a changé le 17/11/2026 (8 lignes au plus) — écrit en français simple
+# pour la commerciale, à partir des décisions de la semaine : (mot d'appel, phrase).
 CHANGEMENTS = (
-    ('Appel fait en avance.',
-     'L\u2019issue d\u2019un appel passé en avance sur sa date se saisit maintenant, comme pour '
-     'n\u2019importe quel appel.'),
-    ('Étape du devis.',
-     '\u00ab Préparer et envoyer le devis \u00bb se traite le jour même : elle est posée pour '
-     'demain, mais rien ne t\u2019oblige à attendre.'),
-    ('Fenêtre de planification.',
-     'Elle ne disparaît plus : elle s\u2019ouvre avant tout enregistrement, et si tu annules, '
-     'rien n\u2019est enregistré.'),
-    ('Envoi du devis.',
-     'Envoyer le devis démarre le suivi de proposition, même si une visite est en cours.'),
-    ('Décider la suite.',
-     'L\u2019étape propose \u00ab Perdu \u2014 clore le dossier \u00bb, avec son motif ; un refus ne la '
-     'repose plus en boucle.'),
-    ('Visite refusée.',
-     'Refuser ou annuler la visite n\u2019arrête plus tout le suivi : le rendez-vous est annulé, '
-     'le suivi continue sans visite.'),
-    ('Visite reportée.',
-     'Reporter une visite la déplace : elle n\u2019est jamais doublée.'),
-    ('Fiche du lead.',
-     'Après avoir cliqué sur \u00ab Appeler \u00bb, tu peux saisir l\u2019issue de l\u2019appel '
-     'directement depuis la fiche du lead.'),
+    ('Moins de réponses à l’écran.',
+     'Une seule pastille « Pas joint » (la précision est facultative) et une seule '
+     '« Plus tard… » ; les réponses plus rares sont rangées sous « Autre réponse ».'),
+    ('Pièces du client.',
+     'Nouvelle étape « Relancer le client pour ses pièces » : un client professionnel joint '
+     'sans facture reçoit d’abord une relance pour ses pièces, avec un message prêt.'),
+    ('Dernier réveil.',
+     'Si le dernier réveil reste sans réponse, le dossier part au Froid et aucune étape '
+     '« Préparer et envoyer le devis » n’apparaît.'),
+    ('Ne plus me contacter.',
+     'Seulement quand le client le demande : coche « Le client me l’a demandé lui-même » '
+     'avant de confirmer. Cette réponse n’est plus proposée quand le client n’est pas au bout '
+     'du fil (préparer le devis, décider la suite…).'),
+    ('Numéro invalide.',
+     'Proposé sur tous les appels (sous « Pas joint ») et sur les messages '
+     '(« Numéro invalide / pas sur WhatsApp », sous « Autre réponse »).'),
+    ('Déléguer mes dossiers.',
+     'Un bouton confie d’un geste tes dossiers encore à travailler à une collègue : leurs étapes '
+     'passent avec eux.'),
+    ('Dossier au Froid.',
+     'Le client se manifeste enfin ? Sur sa fiche, le bouton « Le client a répondu » rouvre '
+     'le dossier.'),
 )
 
 OU_TROUVER = (
     ('Les touches du jour, tous leads confondus', 'Cockpit CRM \u2192 \u00ab Relances du jour \u00bb'),
     ('Toutes les touches, jour par jour', 'Menu CRM \u2192 \u00ab Suivi des relances \u00bb'),
     ('Les étapes et les réponses d\u2019un lead', 'Fiche du lead \u2192 section \u00ab Suivi commercial \u00bb'),
+    # 17/11/2026 — les deux boutons de la semaine.
+    ('Confier tes dossiers à une collègue',
+     'Cockpit CRM → « Relances du jour », ou Menu CRM → « Suivi des relances » : '
+     'bouton « Déléguer mes dossiers »'),
+    ('Un client au Froid qui répond enfin',
+     'Fiche du lead au Froid → bouton « Le client a répondu »'),
     ('Les délais et les messages du suivi',
      'Paramètres \u2192 Référentiels \u2192 \u00ab Cadences de relance \u00bb'),
     ('Ce guide', 'Documents (GED) \u2192 cabinet \u00ab Documentation \u00bb \u2192 dossier \u00ab Guides \u00bb'),
@@ -920,6 +933,33 @@ def mention_raisons(r: dict) -> str:
     return f'<br><span class="note">{esc_ecran(texte)}</span>'
 
 
+#: Les contextes ``masquee_si`` de la table (``CONTEXTES_MASQUANTS`` de ``parcours.js``)
+#: dits en clair dans le guide ; un contexte inconnu fait échouer la génération.
+MASQUEE_SI = {
+    'visite_prevue': 'absente si une visite est déjà prévue',
+    'touche_appel': 'sur un message seulement',
+    'sans_devis': 'absente si aucun devis n’a été envoyé',
+}
+
+
+#: Les contextes de ``variantes_contexte`` dits en clair (le libellé change, rien d'autre).
+QUAND_CONTEXTE = {
+    'sans_devis': 'Si aucun devis n’a été envoyé',
+    'visite_prevue': 'Si une visite est déjà prévue',
+    'touche_appel': 'Sur un appel',
+}
+
+
+def mention_contextes(r: dict) -> str:
+    """17/11/2026 — les variantes de CONTEXTE d'une réponse (``variantes_contexte`` :
+    seul le libellé lu change), en une ligne sous la cellule."""
+    morceaux = [f'{QUAND_CONTEXTE.get(c, c)} : « {v.get("label", r.get("label", ""))} »'
+                for c, v in (r.get('variantes_contexte') or {}).items()]
+    if not morceaux:
+        return ''
+    return '<br><span class="note">' + esc_ecran(' · '.join(morceaux)) + '</span>'
+
+
 def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
     """Une ligne « Ta réponse / Ce qui se passe ensuite » du guide."""
     pastilles = ''
@@ -937,15 +977,18 @@ def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
         pastilles += '<span class="pastille">ouvre « Pièce reçue »</span>'
     elif r.get('geste'):
         pastilles += '<span class="pastille">ouvre la planification</span>'
-    if r.get('masquee_si') == 'visite_prevue':
-        pastilles += '<span class="pastille">absente si une visite est déjà prévue</span>'
+    if r.get('masquee_si'):
+        pastilles += f'<span class="pastille">{esc(MASQUEE_SI[r["masquee_si"]])}</span>'
+    if r.get('confirmation'):
+        pastilles += f'<span class="pastille">case à cocher : « {esc(r["confirmation"])} »</span>'
     avertissement = ''
     if r.get('avertissement'):
         texte_avertissement = 'Avertissement à l\u2019écran : ' + r['avertissement']
         avertissement = f'<br><span class="note">{esc_ecran(texte_avertissement)}</span>'
     classe = ' class="membre"' if membre else ''
     return (f'<tr><td{classe}><strong>{esc(r["label"])}</strong>{pastilles}</td>'
-            f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}{mention_raisons(r)}{avertissement}</td></tr>')
+            f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}{mention_contextes(r)}'
+            f'{mention_raisons(r)}{avertissement}</td></tr>')
 
 
 def ligne_groupe(nom: str, explication: str, nombre: int) -> str:

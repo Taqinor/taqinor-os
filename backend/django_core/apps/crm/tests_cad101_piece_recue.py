@@ -145,6 +145,20 @@ class PieceRecueTests(_Base):
         self.assertEqual(resp.status_code, 409)
         self.assertIn('etape', resp.data['erreurs'])
 
+    def test_un_dossier_signe_est_refuse_sans_poser_le_devis(self):
+        """Audit des cadences (17/11/2026) — sur un Signé, la pièce ne repose
+        jamais « Préparer et envoyer le devis » : refus d'état, rien d'écrit."""
+        Lead.objects.filter(pk=self.lead.pk).update(stage=stages.SIGNED)
+        resp = self._piece(type_piece='facture')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['erreurs']['etape'],
+                         'Ce dossier est signé : la pièce se range dans ses '
+                         'documents, pas ici.')
+        self.etape.refresh_from_db()
+        self.assertEqual(self.etape.statut, RelanceEtape.Statut.A_FAIRE)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            libelle=FILET_JOINT_LIBELLE).exists())
+
     def test_sur_l_etape_preparer_le_devis_elle_reste_ouverte(self):
         filet = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='generique',

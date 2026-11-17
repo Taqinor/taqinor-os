@@ -608,6 +608,8 @@
     devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: postEtudeHorairePreview -> /api/django/ventes/etude-horaire/preview
     avertissements:inconnu, consommation:objet, detail:texte, dimensionnement:inconnu, estimation_conso:inconnu, etude:inconnu, profil:objet
+- frontend/src/api/ventesApi.js :: recomposerBatteriesCi -> /api/django/ventes/etude-ci/recomposer-batteries
+    alertes:liste, devis_id:inconnu, kwc_avec:inconnu, lignes_changees:booleen, nb_batteries:inconnu, nb_panneaux_avec:inconnu, onduleur_extension:inconnu, quantite_recommandee:inconnu
 - frontend/src/api/ventesApi.js :: resoudrePlanCommission -> /api/django/ventes/plans-commission/resoudre
     owner:inconnu, plan:inconnu, source:inconnu
 - frontend/src/api/ventesApi.js :: revoquerLienPublic -> /api/django/ventes/devis/<>/revoquer-lien-public

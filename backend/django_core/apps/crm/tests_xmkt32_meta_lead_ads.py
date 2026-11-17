@@ -32,7 +32,7 @@ import json
 from unittest import mock
 
 from django.db.models import Q
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from authentication.models import Company
@@ -800,3 +800,198 @@ class MetaLeadgenIdValidationTests(TestCase):
         self.assertEqual(data, {'field_data': []})
         # Normalisé (espaces retirés) puis interpolé.
         self.assertTrue(seen['url'].startswith(f'{GRAPH_BASE_URL}/123456789?'))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Décision fondateur du 17/11/2026 — les réponses BRUTES du formulaire Meta
+# sont gardées à vie sur la ligne ``WebsiteLeadPayload`` (``crm.reponses_meta``).
+# ════════════════════════════════════════════════════════════════════════════
+def _reponse_graph(leadgen_id='8101'):
+    """Réponse Graph réaliste — avec deux pièges à jeton qui ne doivent JAMAIS
+    être gardés (``paging.next`` et un ``access_token`` parasite)."""
+    return {
+        'id': leadgen_id, 'created_time': '2026-11-10T09:00:00+0000',
+        'form_id': 'F-1', 'ad_id': 'AD-1',
+        'field_data': [
+            {'name': 'full_name', 'values': ['Yassine Bennani']},
+            {'name': 'phone_number', 'values': ['+212661112233']},
+            {'name': 'email', 'values': ['yassine@example.com']},
+            {'name': 'votre_facture_mensuelle', 'values': ['1500-2500 DH']},
+        ],
+        'paging': {'next': f'https://graph.facebook.com/x?access_token={ACCESS_TOKEN}'},
+        'access_token': ACCESS_TOKEN,
+    }
+
+
+class ReponsesMetaNettoyageTests(SimpleTestCase):
+    """Pur Python : aucun jeton ne survit au nettoyage, le reste est verbatim."""
+
+    def test_aucun_jeton_garde(self):
+        from apps.crm.reponses_meta import nettoyer_reponse_graph
+        propre = nettoyer_reponse_graph(_reponse_graph())
+        self.assertNotIn(ACCESS_TOKEN, json.dumps(propre))
+        self.assertNotIn('paging', propre)
+        self.assertNotIn('access_token', propre)
+        self.assertEqual(propre['field_data'], _reponse_graph()['field_data'])
+        self.assertEqual((propre['id'], propre['form_id']), ('8101', 'F-1'))
+
+
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN,
+                   META_LEAD_ADS_APP_SECRET=APP_SECRET)
+class ReponsesMetaWebhookTests(TestCase):
+    """Webhook, rejeu, lecture, effacement 09-08 et rétention."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Reponses', slug='taqinor-reponses')
+        self.url = reverse('meta-lead-ads-webhook')
+
+    def _post(self, payload):
+        body = json.dumps(payload).encode('utf-8')
+        return self.client.post(
+            self.url, data=body, content_type='application/json',
+            HTTP_X_HUB_SIGNATURE_256=_sign(APP_SECRET, body))
+
+    def _lignes(self):
+        from apps.crm.models import WebsiteLeadPayload
+        return WebsiteLeadPayload.objects.filter(
+            company=self.company, source='meta_lead_ads').order_by('pk')
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_webhook_garde_les_reponses_et_les_cles_de_notification(self, fetch_mock):
+        fetch_mock.return_value = _reponse_graph()
+        self.assertEqual(self._post(_notification_payload(
+            leadgen_id='8101', ad_id='AD-1', form_id='F-1')).status_code, 200)
+        raw = self._lignes().get()
+        self.assertTrue(raw.processed)
+        self.assertEqual(raw.error, '')
+        self.assertIsNotNone(raw.lead_id)
+        self.assertEqual(raw.payload['leadgen_id'], '8101')
+        self.assertEqual(raw.payload['ad_id'], 'AD-1')
+        self.assertEqual(raw.payload['reponses_meta']['field_data'],
+                         _reponse_graph()['field_data'])
+        self.assertTrue(raw.payload['reponses_meta_recues_le'])
+        self.assertNotIn(ACCESS_TOKEN, json.dumps(raw.payload))
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_retry_et_rejeu_ne_dupliquent_pas(self, fetch_mock):
+        from apps.crm.webhooks import replay_meta_lead_payload
+        fetch_mock.return_value = _reponse_graph()
+        self._post(_notification_payload(leadgen_id='8101'))
+        self._post(_notification_payload(leadgen_id='8101'))  # retry Meta
+        premiere = self._lignes().first()
+        garde_le = premiere.payload['reponses_meta_recues_le']
+        ok, detail, _lead = replay_meta_lead_payload(premiere)
+        self.assertTrue(ok, msg=detail)
+        avec = [r for r in self._lignes() if 'reponses_meta' in r.payload]
+        self.assertEqual([r.pk for r in avec], [premiere.pk])
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.payload['reponses_meta_recues_le'], garde_le)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_lecture_question_reponse_dans_l_ordre(self, fetch_mock):
+        from apps.crm.reponses_meta import reponses_meta_du_lead
+        from apps.crm.serializers import LeadSerializer
+        fetch_mock.return_value = _reponse_graph()
+        self._post(_notification_payload(leadgen_id='8101'))
+        lead = Lead.objects.get(company=self.company, external_id='8101')
+        lu = reponses_meta_du_lead(lead)
+        self.assertEqual(
+            [r['question'] for r in lu['reponses']],
+            ['full_name', 'phone_number', 'email', 'votre_facture_mensuelle'])
+        self.assertEqual(lu['reponses'][3]['reponse'], '1500-2500 DH')
+        self.assertTrue(lu['recues_le'])
+        masque = reponses_meta_du_lead(lead, masquer_pii=True)
+        self.assertEqual(masque['reponses'][1]['reponse'], '•••')
+        self.assertEqual(masque['reponses'][2]['reponse'], '•••')
+        self.assertEqual(masque['reponses'][3]['reponse'], '1500-2500 DH')
+        detail = LeadSerializer(context={'include_chatter_recent': True})
+        self.assertIn('reponses_meta', detail.fields)  # détail seulement
+        self.assertEqual(detail.get_reponses_meta(lead), lu)
+        self.assertNotIn('reponses_meta', LeadSerializer().fields)
+        manuel = Lead.objects.create(company=self.company, nom='Manuel')
+        self.assertIsNone(reponses_meta_du_lead(manuel))
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_effacement_09_08_vide_les_reponses_sans_resurrection(self, fetch_mock):
+        from apps.crm.dsr_provider import PAYLOAD_CAVIARDE, anonymiser_lead
+        fetch_mock.return_value = _reponse_graph()
+        self._post(_notification_payload(leadgen_id='8101'))
+        lead = Lead.objects.get(company=self.company, external_id='8101')
+        anonymiser_lead(self.company, lead, motif='test 09-08')
+        self.assertEqual(self._lignes().get().payload, PAYLOAD_CAVIARDE)
+        self._post(_notification_payload(leadgen_id='8101'))  # retry Meta
+        self.assertFalse(any('reponses_meta' in r.payload for r in self._lignes()))
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_retention_par_age_ne_purge_pas_les_reponses(self, fetch_mock):
+        import datetime
+
+        from django.utils import timezone
+
+        from apps.crm.leads_retention import purge_website_lead_payloads
+        fetch_mock.return_value = _reponse_graph()
+        self._post(_notification_payload(leadgen_id='8101'))
+        plus_tard = timezone.now() + datetime.timedelta(days=4000)
+        self.assertEqual(purge_website_lead_payloads(plus_tard, True), 0)
+        self.assertEqual(self._lignes().count(), 1)
+
+
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN)
+class RecupererReponsesMetaCommandeTests(TestCase):
+    """``manage.py recuperer_reponses_meta`` — Graph toujours simulé."""
+
+    def setUp(self):
+        from apps.crm.models import WebsiteLeadPayload
+        self.company = Company.objects.create(nom='Recup Co', slug='recup-co')
+        self.lead_a = Lead.objects.create(
+            company=self.company, nom='A', source=Lead.Source.META_LEAD_ADS,
+            external_system='meta_lead_ads', external_id='7001')
+        self.raw_a = WebsiteLeadPayload.objects.create(
+            company=self.company, source='meta_lead_ads', processed=True,
+            lead=self.lead_a, payload={'leadgen_id': '7001', 'ad_id': 'AD'})
+        self.lead_b = Lead.objects.create(  # lead Meta SANS ligne brute
+            company=self.company, nom='B', source=Lead.Source.META_LEAD_ADS,
+            external_system='meta_lead_ads', external_id='7002')
+
+    def _lancer(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command('recuperer_reponses_meta', '--company-slug', 'recup-co',
+                     *args, stdout=out)
+        return out.getvalue()
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_dry_run_compte_sans_appeler_meta(self, fetch_mock):
+        sortie = self._lancer('--dry-run')
+        fetch_mock.assert_not_called()
+        self.assertIn('à récupérer 2', sortie)
+        self.raw_a.refresh_from_db()
+        self.assertNotIn('reponses_meta', self.raw_a.payload)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_execution_reelle_idempotente(self, fetch_mock):
+        from apps.crm.models import WebsiteLeadPayload
+        fetch_mock.side_effect = lambda lg, tok: _reponse_graph(lg)
+        self.assertIn('récupérées 2', self._lancer())
+        self.raw_a.refresh_from_db()
+        self.assertEqual(self.raw_a.payload['ad_id'], 'AD')
+        self.assertEqual(self.raw_a.payload['reponses_meta']['id'], '7001')
+        ligne_b = WebsiteLeadPayload.objects.get(lead=self.lead_b)
+        self.assertEqual(ligne_b.payload['reponses_meta']['id'], '7002')
+        self.lead_b.refresh_from_db()
+        self.assertEqual(self.lead_b.nom, 'B')  # aucune colonne touchée
+        fetch_mock.reset_mock()
+        self.assertIn('déjà présentes 2', self._lancer())
+        fetch_mock.assert_not_called()
+        self.assertEqual(WebsiteLeadPayload.objects.filter(
+            company=self.company).count(), 2)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_soumission_expiree_chez_meta(self, fetch_mock):
+        import urllib.error
+        fetch_mock.side_effect = urllib.error.HTTPError(
+            'https://graph', 400, 'Bad Request', {}, None)
+        self.assertIn('expirées chez Meta 2', self._lancer())

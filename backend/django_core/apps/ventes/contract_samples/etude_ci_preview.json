@@ -187,7 +187,7 @@
     "toit": "{type_pose (vocabulaire CIQ7), surface_utile_m2, surface_type declaree|mesuree|calepinage, pente_deg, azimut_deg, couverture, charge_admissible_kg_m2 + charge_admissible_source}",
     "contraintes": "{revente_choisie, nb_points_raccordement, longueur_dc_m, longueur_ac_m, besoin_cellule_mt, mise_a_la_terre_necessaire} — `mise_a_la_terre_necessaire` (R3.7, fondateur 28/10/2026) : true ⇒ la composition ajoute « Mise à la terre du champ PV » ; false ⇒ rien ; null/absent ⇒ rien + alerte interne CI_MISE_A_LA_TERRE_VISITE (à vérifier à la visite). Posée aussi par la visite C&I validée : `releve_ci_pour_lead(...)['mise_a_la_terre']` = {constate conforme | a_creer | a_verifier | null, motif} — a_creer ⇒ true, conforme ⇒ false, sinon rien ; une saisie (corps) passe devant",
     "tva_recuperable": "oui | non | inconnu — lu par l'économie (D-CIQ-3)",
-    "options": "{batterie_souhaitee, om}",
+    "options": "{batterie_souhaitee, om, nb_batteries} — nb_batteries (D-HYB-4, fondateur 17/11/2026) : entier ≥ 1 ou null/absent ; N < banque calculée R ⇒ l'option « avec » est redimensionnée pour N batteries (panneaux), onduleur hybride gardé pour R ; N ≥ R ou absent ⇒ la banque calculée ; persisté dans `etude_params.options.nb_batteries` par `etude-ci/recomposer-batteries/` (contrat devis_recomposer_batteries.json) ; une valeur non entière est ignorée",
     "taille_explicite_kwc": "nombre ou null — SOUVERAINE (D-QJR5-13) : la taille n'est plus calculée, `raison_arret` = taille_explicite",
     "site": "un site par étude (le multi-site reste aux lots QJR667)"
   },
@@ -2046,6 +2046,16 @@
           "a_confirmer_visite": true
         },
         {
+          "role": "socle_ci",
+          "produit": 73,
+          "designation": "Socles",
+          "quantite": 200,
+          "unite": "u",
+          "prix_connu": true,
+          "motif": null,
+          "a_confirmer_visite": false
+        },
+        {
           "role": "onduleur_string_tri",
           "produit": 48,
           "designation": "Onduleur réseau Huawei 50kW Triphasé",
@@ -2672,6 +2682,16 @@
           "a_confirmer_visite": true
         },
         {
+          "role": "socle_ci",
+          "produit": 73,
+          "designation": "Socles",
+          "quantite": 200,
+          "unite": "u",
+          "prix_connu": true,
+          "motif": null,
+          "a_confirmer_visite": false
+        },
+        {
           "role": "onduleur_string_tri",
           "produit": 48,
           "designation": "Onduleur réseau Huawei 50kW Triphasé",
@@ -3064,7 +3084,7 @@
     "version_moteur": "texte — change à chaque évolution de formule",
     "devis_auto": "CORC1 (27/10/2026) — {possible, message, champ} : le devis automatique C&I passerait-il sur cette étude ? MÊME refus que le bouton (`etude_ci.refus_devis_auto_ci`) — `message` s'adresse au vendeur (une consigne, jamais le jargon du moteur), `champ` nomme le champ du LEAD à compléter (bouton « Compléter »), ou `composition` (catalogue / prix à régler par l'administrateur) ou `taille` (cause du moteur) ; possible=true ⇒ message et champ null. Toujours présent.",
     "feuille_consommation_retenue": "AMOT104 (C-AMOT-VER-004) — la feuille de consommation que le moteur a RETENUE pour chiffrer : kwh_mensuels | kwh_mensuel_declare | kwh_annuel | factures_mad | releve_kwh | facture_hiver_mad | bill_kwh | courbe_mesuree | registres_mt ; null sans consommation. Lue par la synthèse C&I et la couverture industrielle (AMOT105) ; dans `etude_params.etude_ci` : clé DÉRIVÉE `moteur_ci`, hors empreinte d'entrées ; absente d'un bloc posé avant AMOT104 (devis envoyés : rendu inchangé).",
-    "option_avec": "Clé ADDITIVE (fondateur 26/10/2026) ; dans `etude_params.etude_ci` elle est ABSENTE, et l'aperçu la sert à null (CORC1), quand l'option « avec batterie » n'est pas composée (choix « sans », aucun hybride basse tension ni batterie à fiche complète au catalogue) : {kwc, nb_panneaux, puissance_ac_kw, batterie{produit, nom, quantite, kwh_utile_unitaire, capacite_utile_kwh, rendement, puissance_charge_kw, surplus_jour_min_kwh, mois_surplus_min, se_remplit_tous_les_jours, besoin_nocturne_kwh?, reduite?, panneaux_ajoutes?, quantite_recommandee (D4 : banque recommandée à la création, null sans elle ou autre article), ajout_possible (D4 : recommandée − chiffrée, ≥ 0, null sans recommandée)}, onduleurs{combinaison, ratio_dc_ac}, composition (forme `composition`, hybrides à la place des onduleurs string + banque homogène), bilan (forme `bilan` sans `horaire`, + batterie{capacite_utile_kwh, restitue_kwh_an, charge_kwh_an, rendement}), economie_ci (forme `economie_ci` de ce bilan), economie_annuelle_mad, cout_vente_ht, retour_simple_ans, inclinaison_retenue_deg? (R1, ADDITIVE : la pose qui loge CE champ — 30 ou 10, toit plat sans pente déclarée), batterie_rentable? + motif_non_rentable?{retour_marginal_ans, horizon_annees, code} (D-CI-BATTERIE-NON-RENTABLE, niveau de règles 5, ADDITIVES : présentes à `false` seulement quand le supplément sur « sans » ne se rembourse pas dans l'horizon de 10 ans — option montrée au meilleur groupe de modules, jamais recommandée ; retour remplacement batterie compris)} — jamais prix_achat ni marge"
+    "option_avec": "Clé ADDITIVE (fondateur 26/10/2026) ; dans `etude_params.etude_ci` elle est ABSENTE, et l'aperçu la sert à null (CORC1), quand l'option « avec batterie » n'est pas composée (choix « sans », aucun hybride basse tension ni batterie à fiche complète au catalogue) : {kwc, nb_panneaux, puissance_ac_kw, batterie{produit, nom, quantite, kwh_utile_unitaire, capacite_utile_kwh, rendement, puissance_charge_kw, surplus_jour_min_kwh, mois_surplus_min, se_remplit_tous_les_jours, besoin_nocturne_kwh?, reduite?, panneaux_ajoutes?, quantite_recommandee (D4 : banque recommandée à la création, null sans elle ou autre article), ajout_possible (D4 : recommandée − chiffrée, ≥ 0, null sans recommandée)}, onduleurs{combinaison, ratio_dc_ac}, composition (forme `composition`, hybrides à la place des onduleurs string + banque homogène), bilan (forme `bilan` sans `horaire`, + batterie{capacite_utile_kwh, restitue_kwh_an, charge_kwh_an, rendement}), economie_ci (forme `economie_ci` de ce bilan), economie_annuelle_mad, cout_vente_ht, retour_simple_ans, inclinaison_retenue_deg? (R1, ADDITIVE : la pose qui loge CE champ — 30 ou 10, toit plat sans pente déclarée), batterie_rentable? + motif_non_rentable?{retour_marginal_ans, horizon_annees, code} (D-CI-BATTERIE-NON-RENTABLE, niveau de règles 5, ADDITIVES : présentes à `false` seulement quand le supplément sur « sans » ne se rembourse pas dans l'horizon de 10 ans — option montrée au meilleur groupe de modules, jamais recommandée ; retour remplacement batterie compris), onduleur_extension (D-HYB-5, fondateur 17/11/2026, TOUJOURS présente : null, ou {retenu{produit, nom, kw_ac (par appareil), quantite}, suffisant{produit, nom, kw_ac, quantite}, batteries_max} quand moins de batteries que la banque calculée sont chiffrées — `options.nb_batteries`, ou lignes sous `banque_recommandee` — et qu'une combinaison d'hybrides plus petite porterait le champ : l'onduleur gardé est celui de la banque maximale ; quantite_recommandee = cette banque maximale, ajout_possible = maximale − chiffrée)} — jamais prix_achat ni marge"
   },
   "interdit": [
     "prix_achat",
@@ -3156,7 +3176,7 @@
       {
         "cle": "banque_recommandee",
         "proprietaire": "moteur_ci",
-        "pourquoi": "D4 (fondateur 17/11/2026) — {produit, nom, quantite} de la banque de l'option « avec » RECOMMANDÉE à la création du devis automatique ; le vendeur peut en chiffrer moins (panneaux et hybrides gardés pour la banque complète) : le rafraîchisseur sert alors `option_avec.batterie.quantite_recommandee` et `ajout_possible` (même article seulement, sinon null) ; entre dans l'empreinte comme `taille_creation_ci` ; copiée avec les lignes"
+        "pourquoi": "D4 (fondateur 17/11/2026) — {produit, nom, quantite} de la banque de l'option « avec » RECOMMANDÉE à la création du devis automatique ; le vendeur peut en chiffrer moins (D-HYB-4, 17/11/2026 après-midi : `options.nb_batteries` = N, panneaux redimensionnés pour N, hybrides gardés pour la banque complète — `etude-ci/recomposer-batteries/`) : le rafraîchisseur sert alors `option_avec.batterie.quantite_recommandee` et `ajout_possible` (même article seulement, sinon null) ; entre dans l'empreinte comme `taille_creation_ci` ; copiée avec les lignes"
       }
     ],
     "renvois": {

@@ -3013,10 +3013,10 @@ def _process_meta_lead_entry(raw, value, company, access_token):
         # jamais l'heure de réception : SLA/KPI mesurent depuis l'arrivée.
         created_time=value.get('created_time'),
         origine='Meta Lead Ads (webhook)')
-    raw.lead = lead
-    raw.processed = True
-    raw.error = ''
-    raw.save(update_fields=['lead', 'processed', 'error'])
+    # 17/11/2026 (décision fondateur) — même clôture qu'avant (lead/processed/
+    # error) + la réponse Graph BRUTE gardée sur la ligne (Meta l'efface à 90 j).
+    from .reponses_meta import cloturer_ligne_meta
+    cloturer_ligne_meta(raw, lead, lead_data)
     # ADSDEEP17 — événement domaine (M6) : ``adsengine`` matérialise un
     # MetaLeadMirror (leads par ad) SANS que ``crm`` l'importe. Best-effort :
     # un abonné en échec ne casse jamais la capture.

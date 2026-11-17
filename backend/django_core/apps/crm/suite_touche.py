@@ -319,9 +319,11 @@ REPONSES_PAR_TYPE = {
     TYPE_CONTACT_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
+    # 17/11/2026 — « Ne plus me contacter » retiré des TÂCHES sans client au
+    # bout du fil (devis, décider la suite, question de prix, devis modifié) :
+    # 74 des 101 oppositions de la prod avaient été posées par erreur ici.
     TYPE_DEVIS: (
-        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
-        'ne_plus_contacter'),
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse'),
     TYPE_APPEL_APRES_REPONSE: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
         'ne_plus_contacter'),
@@ -340,7 +342,7 @@ REPONSES_PAR_TYPE = {
         'sans_issue', 'rappel', 'visite_acceptee', 'refuse',
         'ne_plus_contacter'),
     TYPE_DECIDER_SUITE: (
-        'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),
+        'perdu', 'rappel', 'sans_issue'),
     TYPE_SUIVI_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
         'plus_tard', 'attente_accord', 'question_prix', 'devis_modifie',
@@ -351,7 +353,7 @@ REPONSES_PAR_TYPE = {
         'devis_modifie', 'decision_famille', 'decision_proprietaire',
         'ne_plus_contacter'),
     TYPE_QUESTION_PRIX: (
-        'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
+        'sans_issue', 'rappel', 'refuse'),
     TYPE_PLANIFIER: (
         'rappel', 'non_joint', 'visite_abandonnee', 'refuse',
         'ne_plus_contacter'),
@@ -363,15 +365,17 @@ REPONSES_PAR_TYPE = {
         'devis_modifie', 'decision_famille', 'decision_proprietaire',
         'refuse', 'ne_plus_contacter'),
     TYPE_DEVIS_MODIFIE: (
-        'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
+        'sans_issue', 'rappel', 'refuse'),
     TYPE_REVEIL_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
         'attente_accord', 'refuse', 'ne_plus_contacter'),
     TYPE_REVEIL_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
+    # 17/11/2026 — « Numéro invalide / pas sur WhatsApp » (issue « non
+    # joint ») servi aussi sur une étape générique MESSAGE.
     TYPE_GENERIQUE: (
-        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse', 'non_joint',
         'ne_plus_contacter'),
 }
 
@@ -522,8 +526,35 @@ def est_derniere_touche(etape, ordres):
     MÊME lecture que le moteur (ACRM12) : aucun barreau actif d'ordre supérieur.
     Une touche en cours sur un barreau DÉSACTIVÉ n'est donc pas la dernière s'il
     en reste après elle : la suite part du premier d'entre eux. Un réveil
-    saisonnier (CAD74, ordre au-delà du gabarit) reste la dernière."""
-    return not any(ordre > etape.ordre for ordre in ordres or ())
+    saisonnier (CAD74, ordre au-delà du gabarit) reste la dernière. Un réveil
+    lit les barreaux que SON lead aura vraiment (``ordres_reveil_du_lead``)."""
+    ordres = ordres_reveil_du_lead(etape, ordres)
+    return not any(ordre > etape.ordre for ordre in ordres)
+
+
+def ordres_reveil_du_lead(etape, ordres):
+    """Audit des cadences (17/11/2026) — les barreaux ``reveil`` qui existeront
+    VRAIMENT pour le lead de ``etape``, par la règle du moteur
+    (``materialiser_touche_suivante`` tranche le gabarit à
+    ``nombre_reveils_permis``) : un barreau existe s'il est déjà posé dans la
+    même génération, ou si le lead a droit à ce rang. Sans elle, le J30 du
+    pilote (un seul réveil) promettait une suite qui ne vient jamais et un
+    « À rappeler le… » y perdait sa date. Autre cadence, touche sans lead
+    enregistré ou sans barreau après elle : ``ordres`` inchangés."""
+    ordres = frozenset(ordres or ())
+    lead = getattr(etape, 'lead', None)
+    if (etape.cadence != 'reveil' or getattr(lead, 'pk', None) is None
+            or not any(ordre > etape.ordre for ordre in ordres)):
+        return ordres
+    from .cadence_plan import nombre_reveils_permis
+
+    poses = lead.relance_etapes.filter(cadence='reveil')
+    if etape.cadence_depart is not None:
+        poses = poses.filter(cadence_depart=etape.cadence_depart)
+    poses = ordres & set(poses.values_list('ordre', flat=True))
+    permis = nombre_reveils_permis(lead)
+    return poses | (ordres if permis is None
+                    else frozenset(sorted(ordres)[:permis]))
 
 
 def cles_de_reponse(etape):
@@ -863,6 +894,29 @@ class LecteurParcage:
         self._exiges = {}
         self._cycles = {}
         self._pieces = {}
+        self._historique = {}
+
+    def historique(self, lead):
+        """``cadence_filet._client_a_deja_repondu``, en lot. Un lead non
+        enregistré (contrôles purs) garde le cas général : vrai."""
+        from apps.ventes.selectors import leads_ayant_recu_un_devis
+
+        from .cadence_filet import q_traces_de_reponse
+        from .cadence_plan import ISSUES_CLIENT_JOINT
+        from .models import LeadActivity, RelanceEtape
+
+        if lead is None or lead.pk is None:
+            return True
+        if lead.pk not in self._historique:
+            ids = {t.lead_id for t in (self.touches or ())} | {lead.pk}
+            vus = set(LeadActivity.objects.filter(
+                lead_id__in=ids, outcome__in=ISSUES_CLIENT_JOINT,
+            ).values_list('lead_id', flat=True))
+            vus |= leads_ayant_recu_un_devis(lead.company_id, list(ids))
+            vus |= set(RelanceEtape.objects.filter(lead_id__in=ids).filter(
+                q_traces_de_reponse()).values_list('lead_id', flat=True))
+            self._historique.update({i: i in vus for i in ids})
+        return self._historique[lead.pk]
 
     def pieces(self, lead):
         """``etat_pieces_ci`` (CADV29), en lot ; un lead non enregistré (contrôles
@@ -994,6 +1048,25 @@ _PIECES_A_LA_PLACE_DU_DEVIS = {
 }
 
 
+#: Fondateur, 17/11/2026 — les réponses où le client PARLE : leur étape devis reste.
+_CLES_CLIENT_REPOND = ('joint', 'interesse', 'joint_telephone', 'visite_acceptee')
+_CODES_DEVIS_DEMAIN = (ETAPE_DEVIS_DEMAIN, ETAPE_DEVIS_DEMAIN_SAUF_SUIVI)
+
+
+def _decider_si_jamais_repondu(etape, cle, codes, lecteur):
+    """Fondateur, 17/11/2026 — la promesse dit ce que le filet fait
+    (``assurer_prochaine_etape_apres_succes``) : sans réponse, le devis d'un
+    client jamais joint ni chiffré devient « Décider la suite »."""
+    from .cadence_config import CLE_DECIDER_SUITE, cle_de
+
+    if (cle in _CLES_CLIENT_REPOND or not set(codes) & set(_CODES_DEVIS_DEMAIN)
+            or cle_de(etape) == CLE_DECIDER_SUITE
+            or lecteur.historique(getattr(etape, 'lead', None))):
+        return codes
+    return [ETAPE_DECIDER_SUITE if code in _CODES_DEVIS_DEMAIN else code
+            for code in codes]
+
+
 def _pieces_avant_devis(etape, codes, lecteur):
     """CADV29 — la promesse dit ce que le moteur fera (``pieces_ci_dues``). La
     lecture n'a lieu que pour un lead pro à qui le devis serait promis."""
@@ -1081,7 +1154,8 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None,
         if cle in conditions and (DERNIERE_FROID_REVEILS in codes
                                   or ETAPE_APPEL_TRIMESTRIEL in codes):
             codes = [ETAPE_APPEL_AVANT_FROID]
-        promesses[cle] = _pieces_avant_devis(etape, codes, lecteur)
+        promesses[cle] = _decider_si_jamais_repondu(
+            etape, cle, _pieces_avant_devis(etape, codes, lecteur), lecteur)
     return promesses
 
 

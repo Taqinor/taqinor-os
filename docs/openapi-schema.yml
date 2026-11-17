@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5164, operations: 7996, components: 4108}
+counts: {paths: 5166, operations: 7998, components: 4113}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3822,6 +3822,7 @@ operations:
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_list
 - post /api/django/ventes/etude-ci/preview/ -> django_ventes_etude_ci_preview_create
+- post /api/django/ventes/etude-ci/recomposer-batteries/ -> django_ventes_etude_ci_recomposer_batteries_create
 - post /api/django/ventes/etude-ci/reviser-apres-visite/ -> django_ventes_etude_ci_reviser_apres_visite_create
 - post /api/django/ventes/etude-horaire/preview/ -> django_ventes_etude_horaire_preview_create
 - post /api/django/ventes/etude-pompage/preview/ -> django_ventes_etude_pompage_preview_create
@@ -7824,6 +7825,7 @@ operations:
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_list
 - post /api/v1/ventes/etude-ci/preview/ -> v1_ventes_etude_ci_preview_create
+- post /api/v1/ventes/etude-ci/recomposer-batteries/ -> v1_ventes_etude_ci_recomposer_batteries_create
 - post /api/v1/ventes/etude-ci/reviser-apres-visite/ -> v1_ventes_etude_ci_reviser_apres_visite_create
 - post /api/v1/ventes/etude-horaire/preview/ -> v1_ventes_etude_horaire_preview_create
 - post /api/v1/ventes/etude-pompage/preview/ -> v1_ventes_etude_pompage_preview_create
@@ -10651,6 +10653,11 @@ components:
 - DevisPrixNegocieReponse
 - DevisProlongerValiditeCorpsRequest
 - DevisProlongerValiditeReponse
+- DevisRecomposerBatteriesIntrouvable
+- DevisRecomposerBatteriesRefus
+- DevisRecomposerBatteriesRequestRequest
+- DevisRecomposerBatteriesResponse
+- DevisRecomposerBatteriesSaisie
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
 - DevisReviseVisiteIntrouvable

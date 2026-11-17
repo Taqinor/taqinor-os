@@ -84,6 +84,8 @@ MAX_PAS = 2000
 ROLES_DE_TAILLE = frozenset({
     'panneau', 'onduleur_string_tri', 'structure', 'structure_ci', 'cable_dc',
     'cable_ac', 'protection_ac', 'coffret_dc', 'pose_structure', 'pose_modules',
+    # D-SOC-1 (17/11/2026) — 2 socles par panneau sur toit plat lesté.
+    'socle_ci',
 })
 
 SOURCE_PS = 'décision fondateur du 03/10/2026 (D-CIQ-2) — puissance souscrite déclarée'

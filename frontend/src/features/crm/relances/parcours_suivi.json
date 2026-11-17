@@ -1,6 +1,6 @@
 {
   "_doc": "SUIVI-PARCOURS (30/09/2026) — LA TABLE UNIQUE du suivi commercial : pour chaque ÉTAPE, sa question, ses réponses, ce que chaque réponse ENVOIE au serveur, ce qui SE PASSE ENSUITE et ce qui est seulement STOCKÉ. Trois lecteurs, une seule source : (1) l'écran (`RelanceEtapeRow.jsx` y lit question et réponses — plus aucune liste écrite à la main par cadence) ; (2) la garde de parcours (`backend/django_core/apps/crm/tests_parcours_suivi.py` rejoue chaque réponse par l'API réelle et vérifie `suite`) ; (3) le guide PDF publié dans la GED (`docs/meryem/`, généré par `scripts/generer_guide_suivi.py`). Modifier une réponse ici sans que le moteur suive casse la garde ; modifier le moteur sans cette table aussi. Les PHRASES affichées sous une réponse choisie restent celles du serveur (`etape.suites` → `suite_phrases.json`, garde CAD17) : `effet` est le texte du GUIDE.",
-  "version": "1.6",
+  "version": "1.7",
   "maj": "2026-11-17",
   "legende_suite": {
     "etape": "Une étape de clé `cle` est ouverte ensuite (`jour` : aujourdhui | demain | date_choisie).",
@@ -47,8 +47,8 @@
       "precision": "Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer. La troisième fois : Froid (sauf une date du trimestre en cours)."
     },
     "attente_accord": {
-      "label": "En attente d'un accord (DPA / banque)", "reponse": "attente_accord", "date": true, "groupe": "plus_tard",
-      "precision": "La date convenue et la raison de l’attente sont obligatoires. L’étiquette de la raison est posée (« Attend un accord (DPA / banque) » pour l’administration) ; aucun message n’est proposé.",
+      "label": "En attente d'un accord (banque)", "reponse": "attente_accord", "date": true, "groupe": "plus_tard",
+      "precision": "La date convenue est obligatoire ; la raison de l’attente (la banque ou l’organisme de financement) est déjà choisie et son étiquette est posée. Aucun message n’est proposé.",
       "raison": true,
       "raisons": [
         { "valeur": "direction", "libelle": "La direction / le comité", "segments": ["commercial", "industriel"] },
@@ -59,6 +59,10 @@
         { "valeur": "administration", "libelle": "L'administration (DPA, dossier FDA)", "segments": ["agricole", "commercial", "industriel"] }
       ],
       "variantes_segment": {
+        "agricole": {
+          "label": "En attente d'un accord (DPA / banque)",
+          "precision": "La date convenue et la raison de l’attente sont obligatoires. L’étiquette de la raison est posée (« Attend un accord (DPA / banque) » pour l’administration) ; aucun message n’est proposé."
+        },
         "commercial": {
           "label": "En attente d'un accord",
           "precision": "La date convenue et la raison de l’attente sont obligatoires. Une étiquette dit ce qu’on attend (direction, banque, bailleur des murs…) ; un accusé vous est proposé juste après.",
@@ -71,10 +75,11 @@
         }
       }
     },
-    "refus": { "label": "Refus", "outcome": "refuse", "motif_refus": true },
+    "refus": { "label": "Client refuse", "outcome": "refuse", "motif_refus": true },
     "ne_plus_contacter": {
       "label": "Ne plus me contacter", "reponse": "ne_plus_contacter", "message": "stop_contact", "rang": "autre",
       "avertissement": "Opposition légale : ce client ne pourra plus jamais être relancé. À choisir seulement s’il l’a demandé.",
+      "confirmation": "Le client me l’a demandé lui-même",
       "precision": "L’accusé « je ne vous rappellerai plus » vous est proposé juste après."
     },
     "question_prix": {
@@ -138,7 +143,9 @@
     },
     {
       "id": "piece_recue", "label": "Pièce reçue",
-      "masque_sur": ["suivi_appel", "suivi_message", "question_prix", "devis_modifie", "decider_suite"],
+      "masque_sur": ["suivi_appel", "suivi_message", "question_prix", "devis_modifie", "decider_suite",
+                     "confirmation", "debrief", "planifier", "reveil_appel", "reveil_message", "generique",
+                     "pieces_recues"],
       "effet": "Le client a envoyé sa facture, son adresse ou sa localisation : la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée.",
       "variantes_segment": {
         "commercial": {
@@ -169,14 +176,14 @@
       "id": "contact_appel",
       "famille": "Prise de contact",
       "nom": "Appel de prise de contact",
-      "exemples": ["Appel d’ouverture", "Appel 2 (répondeur)", "Appel 3", "Appel 4 (répondeur)", "Appel 5 (dernier)"],
+      "exemples": ["Appel d’ouverture", "2e appel — laisser un message vocal", "3e appel — le lendemain", "4e appel — laisser un message vocal", "5e appel — dernier essai par téléphone"],
       "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["appel"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
         {
           "modele": "joint",
-          "effet": "La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Préparer et envoyer le devis » — pour demain, et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.",
-          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }]
+          "effet": "La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Préparer et envoyer le devis » — pour demain, et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).",
+          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }]
         },
         {
           "modele": "visite",
@@ -236,7 +243,7 @@
       "id": "contact_message",
       "famille": "Prise de contact",
       "nom": "Message de prise de contact",
-      "exemples": ["Message d’identité", "WhatsApp de valeur", "« Je classe ? »"],
+      "exemples": ["Message d’identité", "WhatsApp de valeur", "WhatsApp de clôture — « Je classe ? »"],
       "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "reponses": [
@@ -247,8 +254,8 @@
         },
         {
           "modele": "joint_telephone",
-          "effet": "Appel passé au lieu du message, et le client a décroché : même suite qu’un appel abouti — « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.",
-          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }]
+          "effet": "Appel passé au lieu du message, et le client a décroché : même suite qu’un appel abouti — « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).",
+          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }]
         },
         {
           "modele": "visite",
@@ -266,6 +273,7 @@
         { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue. La troisième fois : Froid (sauf une date du trimestre en cours).", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "attente_accord", "effet": "Étiquette de la raison de l’attente (« Attend un accord (DPA / banque) » pour l’administration), puis la veille de « Plus tard » : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "numero_invalide", "label": "Numéro invalide / pas sur WhatsApp", "rang": "autre", "effet": "Le numéro n’existe pas ou n’est pas sur WhatsApp : comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
     },
@@ -290,8 +298,7 @@
           "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" }
         },
         { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
-        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
-        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }
       ]
     },
     {
@@ -301,11 +308,12 @@
       "reconnaissance": { "cles": ["appel_apres_reponse"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
-        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "pas_de_reponse", "effet": "Étape suivante : « Message — proposer un créneau pour l’appel », aujourd’hui.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
+        { "modele": "numero_invalide", "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
@@ -333,11 +341,12 @@
       "reconnaissance": { "cles": ["dernier_appel"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
-        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
-        { "modele": "pas_de_reponse", "effet": "On chiffre quand même : « Préparer et envoyer le devis » est posée pour demain (« Pas de réponse » reste dans l’historique). Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
-        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
-        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "pas_de_reponse", "effet": "On chiffre quand même : « Préparer et envoyer le devis » est posée pour demain (« Pas de réponse » reste dans l’historique). Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "numero_invalide", "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
@@ -350,11 +359,12 @@
       "reconnaissance": { "cles": ["rappel_convenu"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
-        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis. Client commercial ou industriel sans pièce reçue : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "etape", "cle": "pieces_recues" } }, { "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "pas_de_reponse", "effet": "Étape suivante : « Rappeler — dernier essai avant de chiffrer », demain.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "numero_invalide", "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la nouvelle date.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
@@ -392,15 +402,14 @@
       "reponses": [
         { "modele": "perdu", "effet": "Le lead passe Perdu avec le motif choisi : toutes ses relances s’arrêtent, il sort des files. Il reste rouvrable depuis sa fiche.", "suite": { "type": "fin", "etat": "perdu" } },
         { "modele": "rappel", "label": "Relancer plus tard — le…", "effet": "L’étape reste ouverte, déplacée à la date choisie : la décision se reprend ce jour-là.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
-        { "modele": "fait", "label": "Le client revient — reprendre", "effet": "Si un suivi de proposition n’était pas allé au bout, il reprend ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
-        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+        { "modele": "fait", "label": "Le client revient — reprendre", "effet": "Si un suivi de proposition n’était pas allé au bout, il reprend ; sinon « Préparer et envoyer le devis » est posée pour demain. Client commercial ou industriel sans pièce reçue, sans suivi de devis à reprendre : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "reprise" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "reprise_ou", "cle": "pieces_recues" } }] }
       ]
     },
     {
       "id": "suivi_appel",
       "famille": "Suivi de proposition (après devis)",
       "nom": "Appel de suivi de la proposition",
-      "exemples": ["Appel de suivi (J+2, J+7)", "Appel de décision (J+14)", "Appel de validité (J+28)", "Dernier appel (J+90)"],
+      "exemples": ["Appel de suivi (J+2, J+7)", "Appel de décision (J+14)", "Appel de validité (J+28)", "Dernier appel à 3 mois"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["appel"] },
       "question": "Avez-vous eu le client ?",
       "aide": "Le client accepte ? Marquez le devis accepté dans Ventes → Devis : le dossier passe en Signé et les relances s’arrêtent.",
@@ -425,6 +434,7 @@
         },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "barreau_suivant" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "numero_invalide", "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant. Sur la dernière touche du suivi : « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue. La troisième fois : Froid (sauf une date du trimestre en cours).", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
@@ -440,7 +450,7 @@
       "id": "suivi_message",
       "famille": "Suivi de proposition (après devis)",
       "nom": "Message de suivi de la proposition",
-      "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Garanties fabricants", "Dernier message"],
+      "exemples": ["Le PDF s’ouvre bien ?", "WhatsApp — décision en famille", "Garanties fabricants", "WhatsApp à 2 mois"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "aide": "Le client accepte ? Marquez le devis accepté dans Ventes → Devis : le dossier passe en Signé et les relances s’arrêtent.",
@@ -457,6 +467,7 @@
         { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
         { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; touche suivante programmée. Sur la dernière touche du suivi : l’étiquette, puis « Décider la suite » pour demain.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
         { "modele": "decision_proprietaire", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; touche suivante programmée. Sur la dernière touche du suivi : l’étiquette, puis « Décider la suite » pour demain.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
+        { "modele": "numero_invalide", "label": "Numéro invalide / pas sur WhatsApp", "rang": "autre", "effet": "Le numéro n’existe pas ou n’est pas sur WhatsApp : comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
     },
@@ -470,8 +481,7 @@
       "reponses": [
         { "modele": "fait", "label": "Décision prise — reprendre le suivi", "effet": "Le suivi de proposition reprend à sa touche suivante (jamais depuis le début).", "suite": { "type": "suivi_proposition" } },
         { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
-        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
-        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }
       ]
     },
     {
@@ -499,7 +509,7 @@
       "question": "Le rendez-vous est-il confirmé ?",
       "reponses": [
         { "modele": "joint", "label": "Confirmé — le rendez-vous tient", "effet": "La confirmation est gardée dans l’historique. Rien d’autre ne bouge : le « Débrief visite » attend le lendemain de la visite.", "suite": { "type": "inchange" } },
-        { "modele": "sans_reponse", "effet": "« Pas de réponse » est gardé dans l’historique. La visite reste prévue et le « Débrief visite » attend.", "suite": { "type": "inchange" } },
+        { "modele": "sans_reponse", "label": "Pas de réponse — la visite reste prévue", "effet": "« Pas de réponse » est gardé dans l’historique ; rien n’est relancé. La visite reste prévue et le « Débrief visite » attend.", "suite": { "type": "inchange" } },
         { "modele": "replanifier", "effet": "La planification s’ouvre : la visite existante est déplacée à la nouvelle date, la confirmation et le débrief suivent. Cette étape reste ouverte, à la veille de la nouvelle date.", "suite": { "type": "visite_planifiee" } },
         { "modele": "visite_abandonnee", "label": "Annule le rendez-vous", "effet": "Le rendez-vous est annulé (le technicien est prévenu), la confirmation et le débrief sont retirés. Le suivi continue sans visite : le suivi de proposition reprend s’il était pendant, sinon « Préparer et envoyer le devis » est posée.", "suite": { "type": "reprise" } },
         { "modele": "refus", "label": "Ne veut plus du projet", "effet": "Toutes les relances s’arrêtent, le rendez-vous est annulé ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
@@ -511,20 +521,21 @@
       "famille": "Visite technique",
       "nom": "Débrief visite — rappeler le client",
       "reconnaissance": { "cles": ["debrief"], "libelles": ["Débrief visite — rappeler le client"] },
-      "question": "La visite a eu lieu — le client est-il joint ?",
+      "question": "La visite est passée — avez-vous eu le client ?",
       "reponses": [
         { "modele": "joint", "label": "Oui, client joint après la visite", "effet": "Le suivi de proposition reprend à sa touche suivante s’il était pendant ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
         { "modele": "sans_reponse", "effet": "Si un suivi de proposition est pendant, il continue ; sinon étape « Rappeler — dernier essai avant de chiffrer », demain. Jamais au Froid.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "numero_invalide", "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "replanifier", "label": "La visite n’a pas eu lieu — nouvelle date", "effet": "La planification s’ouvre : la visite est déplacée, la confirmation et le débrief suivent.", "suite": { "type": "visite_planifiee" } },
         { "modele": "visite_abandonnee", "label": "La visite n’aura pas lieu", "effet": "La visite n’a pas eu lieu : le rendez-vous passé garde sa date dans l’historique, les étapes de la visite sont retirées et le suivi continue sans visite.", "suite": { "type": "reprise" } },
-        { "modele": "question_prix", "effet": "Étape « Question de prix — préparer l’appel du fondateur » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
-        { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
-        { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
-        { "modele": "decision_proprietaire", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
-        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "question_prix", "masquee_si": "sans_devis", "effet": "Étape « Question de prix — préparer l’appel du fondateur » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
+        { "modele": "devis_modifie", "masquee_si": "sans_devis", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
+        { "modele": "decision_famille", "masquee_si": "sans_devis", "effet": "Étiquette « Décision à plusieurs » ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
+        { "modele": "decision_proprietaire", "masquee_si": "sans_devis", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
+        { "modele": "refus", "label": "Refuse la proposition", "variantes_contexte": { "sans_devis": { "label": "Client refuse" } }, "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
     },
@@ -539,23 +550,23 @@
       "reponses": [
         { "modele": "fait", "label": "Devis modifié envoyé — passer à la suite", "effet": "Le dossier passe « Devis envoyé » et le suivi de proposition démarre pour ce devis. Envoyé DEPUIS l’ERP, tout ceci se fait tout seul et cette étape se ferme d’elle-même.", "suite": { "type": "suivi_proposition" } },
         { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
-        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
-        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }
       ]
     },
     {
       "id": "reveil_appel",
       "famille": "Réveil (dossier au Froid)",
       "nom": "Appel de réveil",
-      "exemples": ["Réveil J30"],
+      "exemples": ["Appel de réveil à 1 mois"],
       "reconnaissance": { "cadences": ["reveil"], "canaux": ["appel"] },
       "question": "Résultat du réveil ?",
       "reponses": [
-        { "modele": "joint", "effet": "Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "joint", "effet": "Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Préparer et envoyer le devis » est posée pour demain. Client commercial ou industriel sans pièce reçue, sans suivi de devis à reprendre : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "reprise" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "reprise_ou", "cle": "pieces_recues" } }] },
         { "modele": "visite", "effet": "Le dossier sort du Froid ; planification, ou étape « Planifier la visite ».", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "pas_de_reponse", "effet": "Le dossier reste au Froid ; le réveil suivant garde sa date. Après le dernier réveil : plus aucune relance.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; note « Répondeur ».", "suite": { "type": "barreau_suivant" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; note « Occupé ».", "suite": { "type": "barreau_suivant" } },
+        { "modele": "numero_invalide", "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "rappel", "effet": "Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil : le dossier sort du Froid et « Rappeler le client — rappel convenu » est posée à cette date.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "plus_tard", "effet": "Veille : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "attente_accord", "effet": "Étiquette de la raison de l’attente (« Attend un accord (DPA / banque) » pour l’administration), puis la veille de « Plus tard » : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
@@ -567,18 +578,19 @@
       "id": "reveil_message",
       "famille": "Réveil (dossier au Froid)",
       "nom": "Message de réveil",
-      "exemples": ["Réveil J60"],
+      "exemples": ["WhatsApp de réveil à 2 mois"],
       "reconnaissance": { "cadences": ["reveil"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "reponses": [
         { "modele": "a_repondu", "effet": "Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Appeler le client — il a répondu au message » est posée.", "suite": { "type": "reprise_ou", "cle": "appel_apres_reponse", "jour": "aujourdhui" } },
-        { "modele": "joint_telephone", "effet": "Client eu au téléphone : le dossier sort du Froid ; un suivi pas allé au bout reprend, sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "joint_telephone", "effet": "Client eu au téléphone : le dossier sort du Froid ; un suivi pas allé au bout reprend, sinon « Préparer et envoyer le devis » est posée pour demain. Client commercial ou industriel sans pièce reçue, sans suivi de devis à reprendre : « Relancer le client pour ses pièces » à la place du devis (dans trois jours).", "suite": { "type": "reprise" }, "variantes": [{ "contexte": "pro_sans_piece", "suite": { "type": "reprise_ou", "cle": "pieces_recues" } }] },
         { "modele": "visite", "effet": "Le dossier sort du Froid ; planification, ou étape « Planifier la visite ».", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "pas_de_reponse", "effet": "Le dossier reste au Froid. Après le dernier réveil : plus aucune relance.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
         { "modele": "rappel", "effet": "Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil : le dossier sort du Froid et « Rappeler le client — rappel convenu » est posée à cette date.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "plus_tard", "effet": "Veille : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "attente_accord", "effet": "Étiquette de la raison de l’attente (« Attend un accord (DPA / banque) » pour l’administration), puis la veille de « Plus tard » : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Les réveils s’arrêtent ; le dossier reste au Froid.", "suite": { "type": "fin", "etat": "froid" } },
+        { "modele": "numero_invalide", "label": "Numéro invalide / pas sur WhatsApp", "rang": "autre", "effet": "Le numéro n’existe pas ou n’est pas sur WhatsApp : comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
     },
@@ -594,9 +606,11 @@
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie (sur un barreau de l’ancien plan : la touche suivante est programmée à cette date).", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "numero_invalide", "label": "Numéro invalide / pas sur WhatsApp", "rang": "autre", "masquee_si": "touche_appel", "effet": "Sur un message : le numéro n’existe pas ou n’est pas sur WhatsApp. Comme « Fait — passer à la suite », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.", "suite": { "type": "reprise" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ],
       "reponses_appel": [
+        { "modele": "pas_de_reponse", "effet": "Le client n’a pas décroché : comme « Fait — passer à la suite » ; « Pas de réponse » est gardé dans l’historique.", "suite": { "type": "reprise" } },
         { "modele": "repondeur", "effet": "Comme « Fait — passer à la suite » ; la note « Répondeur » est gardée dans l’historique.", "suite": { "type": "reprise" } },
         { "modele": "occupe", "effet": "Comme « Fait — passer à la suite » ; la note « Occupé » est gardée dans l’historique.", "suite": { "type": "reprise" } },
         {

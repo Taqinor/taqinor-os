@@ -81,6 +81,45 @@ class PullLeadsTests(TestCase):
             MetaLeadMirror.objects.filter(
                 company=self.company, leadgen_id='lg-100').count(), 1)
 
+    def test_pull_garde_les_reponses_brutes_une_seule_ligne(self):
+        """17/11/2026 — le pull garde la réponse Graph TELLE QUELLE sur UNE
+        ligne brute ``meta_lead_ads`` rattachée au lead ; un second pull ne
+        la duplique pas ; aucun jeton n'est gardé."""
+        import json
+
+        from apps.crm.models import WebsiteLeadPayload
+        pull_ad_leads_for_company(
+            self.company, self.conn, PullFakeClient(), name_token='tok')
+        pull_ad_leads_for_company(
+            self.company, self.conn, PullFakeClient(), name_token='tok')
+        raw = WebsiteLeadPayload.objects.get(
+            company=self.company, source='meta_lead_ads')
+        lead = Lead.objects.get(company=self.company, external_id='lg-100')
+        self.assertEqual(raw.lead_id, lead.pk)
+        self.assertEqual(raw.payload['leadgen_id'], 'lg-100')
+        self.assertEqual(
+            raw.payload['reponses_meta']['field_data'],
+            PullFakeClient().get_ad_leads('ad1')[0]['field_data'])
+        self.assertNotIn('tok', json.dumps(raw.payload))
+
+    def test_pull_complete_la_ligne_du_webhook(self):
+        """Une ligne webhook existe déjà pour ce leadgen (Graph en échec) : le
+        pull y pose les réponses, sans en créer une seconde ni toucher à
+        ``processed``/``error``."""
+        from apps.crm.models import WebsiteLeadPayload
+        raw = WebsiteLeadPayload.objects.create(
+            company=self.company, source='meta_lead_ads',
+            payload={'leadgen_id': 'lg-100', 'ad_id': 'ad1'},
+            error='Récupération Graph échouée')
+        pull_ad_leads_for_company(self.company, self.conn, PullFakeClient())
+        self.assertEqual(WebsiteLeadPayload.objects.filter(
+            company=self.company).count(), 1)
+        raw.refresh_from_db()
+        self.assertIn('reponses_meta', raw.payload)
+        self.assertEqual(raw.payload['ad_id'], 'ad1')
+        self.assertFalse(raw.processed)
+        self.assertEqual(raw.error, 'Récupération Graph échouée')
+
     def test_noop_when_client_lacks_method(self):
         class Old:
             pass

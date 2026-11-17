@@ -64,6 +64,23 @@ class SchemaCiV2Test(SimpleTestCase):
         self.assertEqual(es.valider(bloc), [])
         self.assertEqual(es.cles_refusees_pour(es.ECRAN, bloc), [])
 
+    def test_d_hyb_4_nb_batteries_entree_persistee_dans_options(self):
+        """D-HYB-4 (17/11/2026) — ``options.nb_batteries`` est une FEUILLE
+        d'entrée : lue dans le corps / le devis, recopiée dans
+        ``etude_params.options`` ; une saisie non entière n'est pas un choix."""
+        from apps.ventes.domain.etude_ci import FEUILLES, entrees_pour_etude_params
+        from apps.ventes.domain.etude_ci_batterie import nb_batteries_choisi
+        self.assertIn(('nb_batteries', 'options.nb_batteries'), FEUILLES)
+        self.assertEqual(es.valider({'options': {'om': True, 'nb_batteries': 2}}), [])
+        self.assertEqual(entrees_pour_etude_params({
+            'om': {'valeur': True}, 'nb_batteries': {'valeur': 2}})['options'],
+            {'om': True, 'nb_batteries': 2})
+        for valeur, attendu in ((2, 2), (2.0, 2), ('3', 3), (1, 1), (0, None), (-1, None),
+                                (1.5, None), (True, None), (None, None), ('deux', None),
+                                (float('nan'), None), (float('inf'), None)):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(nb_batteries_choisi(valeur), attendu)
+
     def test_cle_inconnue_nommee_en_francais(self):
         reproches = es.valider({'cle_inventee_ci': 1})
         self.assertEqual(len(reproches), 1)

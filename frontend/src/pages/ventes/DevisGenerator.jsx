@@ -1904,9 +1904,8 @@ export default function DevisGenerator({
             <OptionRecommandeeEtBatteries
               recommendedChoice={recommendedChoice} setRecommendedChoice={setRecommendedChoice}
               imposees={imposees} overridesBusy={overridesBusy} regenererOverride={regenererOverride}
-              marcheCi={marcheCi} lines={lines} produits={produits} onQuantiteChange={onQuantiteChange}
-              banque={editDevis?.etude_params?.banque_recommandee ?? null}
-              apercuBatterie={apercuCi.donnees?.option_avec?.batterie ?? null} />
+              marcheCi={marcheCi} lines={lines} produits={produits}
+              ecran={{ editDevis, dirty, recharger: rechargerDevisRecompose, optionAvec: apercuCi.donnees?.option_avec }} />
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}

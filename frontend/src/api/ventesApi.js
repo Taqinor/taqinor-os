@@ -335,6 +335,12 @@ const ventesApi = {
   // passe après. Le verrou PVGIS côté serveur évite le double téléchargement.
   etudeCiPreview: (body, config = {}) =>
     api.post('/ventes/etude-ci/preview/', body, { timeout: 60000, ...config }),
+  // 17/11/2026 — choisir le nombre de batteries au départ : le serveur réécrit
+  // les LIGNES de l'option batterie d'un brouillon (panneaux redimensionnés,
+  // onduleur conservé). 409 {detail} non brouillon ; 400 {nb_batteries:[…]} ;
+  // 404 devis invisible. Corps {devis, nb_batteries}.
+  recomposerBatteriesCi: (devis, nbBatteries) =>
+    api.post('/ventes/etude-ci/recomposer-batteries/', { devis, nb_batteries: nbBatteries }),
   // CIQ223 — aperçu de l'économie C&I (CIQ205-CIQ210), aucune écriture.
   // Corps {sortie_etude_ci, saisies, lignes} ; forme : `contract_samples/economie_ci.json`.
   economieCiPreview: (body, config = {}) =>

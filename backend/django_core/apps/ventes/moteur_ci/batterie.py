@@ -646,11 +646,120 @@ def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva
     return retenu, banques[id(retenu)], reduite
 
 
+#: D-HYB-4 / D-HYB-5 (fondateur 17/11/2026, après-midi) — le vendeur choisit
+#: 1 ≤ N ≤ R batteries : panneaux redimensionnés pour N, onduleur gardé pour R.
+SOURCE_BATTERIES_CHOISIES = 'décision fondateur du 17/11/2026'
+
+
+def _cablable(onduleurs):
+    """Combinaison présente et sans bloquant (chaînes faisables)."""
+    return bool((onduleurs or {}).get('combinaison')) and not any(
+        a.get('niveau') == 'bloquant' for a in (onduleurs or {}).get('alertes') or [])
+
+
+def _n_cablable_force(m, n_haut, pmax_wc, combiner, ps_kva):
+    """D-HYB-4 — ``(n, onduleurs, None)`` sur la combinaison FORCÉE : ``m``
+    panneaux, sauf quand leurs chaînes ne se découpent pas sur les appareils
+    gardés et que ``m + 1`` (sous ``n_haut``) se câble — même idée que
+    :func:`_n_cablable`, jamais au-delà du toit."""
+    onduleurs = combiner(_kwc(m, pmax_wc)) or {}
+    if _cablable(onduleurs) or m + 1 > n_haut:
+        return m, onduleurs, None
+    suivant = combiner(_kwc(m + 1, pmax_wc)) or {}
+    if _cablable(suivant) and _combinaison_tenue(suivant, ps_kva):
+        return m + 1, suivant, None
+    return m, onduleurs, None
+
+
+def _identite_onduleurs(onduleurs):
+    return sorted((x.get('produit'), int(x.get('quantite') or 0))
+                  for x in (onduleurs or {}).get('combinaison') or [])
+
+
+def _resume_onduleur(onduleurs):
+    """``{produit, nom, kw_ac, quantite}`` d'une combinaison homogène."""
+    items = (onduleurs or {}).get('combinaison') or []
+    return {'produit': items[0].get('produit'), 'nom': items[0].get('nom') or '',
+            'kw_ac': _f(items[0].get('kw_ac')), 'quantite': _unites(onduleurs)}
+
+
+def onduleur_extension(garde, suffisant, batteries_max):
+    """D-HYB-5 (fondateur 17/11/2026) — ``None`` quand la plus petite
+    combinaison qui porte le champ (``suffisant``) est celle gardée (même
+    modèle, même nombre) ou n'est pas plus petite ; sinon ``{retenu,
+    suffisant, batteries_max}`` (``retenu`` / ``suffisant`` : ``{produit, nom,
+    kw_ac, quantite}``) — le devis dit qu'un onduleur plus petit suffirait."""
+    from apps.ventes.moteur_ci.taille import _puissance_ac
+    ids_g, ids_s = _identite_onduleurs(garde), _identite_onduleurs(suffisant)
+    # Hybrides en parallèle d'UN SEUL modèle (CMP11) : une combinaison mêlée
+    # ne se dit pas en une phrase « un onduleur de N kW » — rien d'imprimé.
+    if len(ids_g) != 1 or len(ids_s) != 1 or ids_g == ids_s:
+        return None
+    if _unites(suffisant) >= _unites(garde) and _puissance_ac(suffisant) >= _puissance_ac(garde):
+        return None
+    return {'retenu': _resume_onduleur(garde), 'suffisant': _resume_onduleur(suffisant),
+            'batteries_max': int(batteries_max)}
+
+
+def _hypothese_choix(modules, maxi):
+    return {'cle': 'batteries_choisies', 'valeur': modules, 'statut': 'source',
+            'source': '%d batterie%s choisie%s sur %d calculées : panneaux redimensionnés pour '
+                      '%d batterie%s, onduleur gardé pour %d — %s' % (
+                          modules, 's' if modules > 1 else '', 's' if modules > 1 else '',
+                          maxi, modules, 's' if modules > 1 else '', maxi,
+                          SOURCE_BATTERIES_CHOISIES)}
+
+
+def _redimensionner(retenu, banque, modules, *, n_bas, n_haut, pmax_wc, bilan_de, ps_kva,
+                    combiner_impose, evaluer):
+    """D-HYB-4 — l'option « avec » à ``modules`` batteries du modèle de la
+    banque maximale (``banque``) : champ le plus petit qui les remplit (jamais
+    sous le départ « sans », QJR612), puis la montée des panneaux par la règle
+    marginale — chaque champ évalué sur la combinaison FORCÉE au modèle et au
+    nombre d'appareils de ``retenu`` (onduleur gardé pour la banque maximale).
+    Le choix du vendeur est souverain : aucune règle marginale ne le refuse.
+    ``(evaluation, banque)`` ou ``None`` (aucun champ câblable)."""
+    items = (retenu.get('onduleurs') or {}).get('combinaison') or []
+    if not items or combiner_impose is None:
+        return None
+    produit, unites = items[0].get('produit'), _unites(retenu.get('onduleurs'))
+
+    def force(kwc):
+        return combiner_impose(kwc, produit, unites)
+    champ = _champ_rempli(dict(banque, quantite=modules), n_bas=n_bas, n_haut=n_haut,
+                          pmax_wc=pmax_wc, bilan_de=bilan_de, combiner=force, ps_kva=ps_kva)
+    if isinstance(champ, dict):
+        return None
+    n, banque_n, _reduite = champ
+    evaluation = monter_regle_marginale(
+        n, n_haut, pmax_wc, lambda m: evaluer(m, banque_n, force, _n_cablable_force))
+    return None if evaluation is None else (evaluation, banque_n)
+
+
+def _appliquer_choix(evaluation, banque, modules_choisis, combiner, pmax_wc, **ctx):
+    """D-HYB-4 / D-HYB-5 — ``(evaluation, banque, choisie?, extension)`` :
+    inchangés sans choix ou quand ``modules_choisis`` ≥ la banque calculée ;
+    sinon l'option redimensionnée (:func:`_redimensionner`) et l'extension
+    (:func:`onduleur_extension`) contre la combinaison LIBRE de son champ."""
+    maxi = int(banque['quantite'])
+    if modules_choisis is None or not 1 <= int(modules_choisis) < maxi:
+        return evaluation, banque, False, None
+    # Jamais plus de panneaux que l'option à la banque complète (« le nombre
+    # de panneaux réduit » avec moins de batteries).
+    ctx['n_haut'] = max(ctx['n_bas'], min(ctx['n_haut'], evaluation['n']))
+    reduite = _redimensionner(evaluation, banque, int(modules_choisis), pmax_wc=pmax_wc, **ctx)
+    if reduite is None:
+        return evaluation, banque, False, None
+    choisie, banque_n = reduite
+    suffisant = combiner(choisie['kwc']) or {}
+    return choisie, banque_n, True, onduleur_extension(choisie['onduleurs'], suffisant, maxi)
+
+
 def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension,
                              revente_choisie, combiner, composer, valoriser, batteries, simuler,
                              hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None,
                              production_de=None, cout_depart=None, economie_depart=None,
-                             remplacement=None):
+                             remplacement=None, modules_choisis=None, combiner_impose=None):
     """L'option « avec batterie » : banque montée module par module par la
     règle marginale (:func:`_monter_banque`, fondateur 30/10/2026 —
     chaque module avec les panneaux qu'il tire pour se remplir, QJR612), puis,
@@ -691,11 +800,12 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
         kwc_max = PAS_KWC * MAX_PAS      # la borne de taille existante (aucun toit)
     n_haut = max(n_bas, int(math.floor(kwc_max * 1000.0 / pmax_wc + 1e-9)))
 
-    def evaluer(m, banque):
+    def evaluer(m, banque, comb=combiner, cablage=_n_cablable):
         # Fondateur 17/11/2026 — chaque candidat est évalué à son nombre
         # CÂBLABLE (+1 panneau s'il évite un hybride) : coût, économie et
         # composition de la règle marginale sont ceux du champ retenu.
-        m, onduleurs, ajout = _n_cablable(m, n_haut, pmax_wc, combiner, ps_kva)
+        # D-HYB-4 : ``comb`` / ``cablage`` forcés à l'onduleur gardé.
+        m, onduleurs, ajout = cablage(m, n_haut, pmax_wc, comb, ps_kva)
         kwc = _kwc(m, pmax_wc)
         if not _combinaison_tenue(onduleurs, ps_kva):
             return None
@@ -719,6 +829,12 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
                                         lambda m: evaluer(m, banque))
     if evaluation is None:
         evaluation = depart
+    maxi = dict(banque)
+    evaluation, banque, choisie, extension = _appliquer_choix(
+        evaluation, banque, modules_choisis, combiner, pmax_wc, n_bas=n_bas, n_haut=n_haut,
+        bilan_de=bilan_de, ps_kva=ps_kva, combiner_impose=combiner_impose, evaluer=evaluer)
+    if choisie:
+        depart, reduite = {}, False
     mord = _borne_parallele_mord(combiner, evaluation['n'] + 1, pmax_wc)
     borne_parallele = [_alerte('HYBRIDES_PARALLELE_MAX', (
         'Champ « avec batterie » borné à %.1f kWc : le plus grand champ porté par au plus '
@@ -732,7 +848,12 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     evaluation['batterie'].update(besoin_nocturne_kwh=round(besoin, 2), reduite=reduite,
                                   panneaux_ajoutes=max(0, n_final - n_bas),
                                   panneaux_retires=max(0, n_bas - n_final))
+    # D-HYB-5 — toujours présente (None sans choix, banque complète, même onduleur).
+    evaluation['onduleur_extension'] = extension
+    choix = [_hypothese_choix(int(banque['quantite']), int(maxi['quantite']))] if choisie else []
     return {'evaluation': evaluation, 'motif': None,
+            'banque_max': {'produit': maxi.get('produit'), 'nom': maxi.get('nom') or '',
+                           'quantite': int(maxi['quantite'])},
             'prix_a_renseigner': list(evaluation['composition'].get('prix_a_renseigner') or []),
             'alertes': borne_parallele + [_alerte('BATTERIE_REDUITE_AU_TOIT', (
                 'Banque réduite à %d module(s) : le surplus solaire du champ maximal ne remplit '
@@ -743,4 +864,4 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
                             'source': '%s ; %s ; %s ; %s' % (
                                 SOURCE_DECISION, SOURCE_BANQUE, SOURCE_REMPLISSAGE,
                                 SOURCE_HORIZON_AVEC)}] + (
-                                    [_hypothese_cablage(ajout)] if ajout else [])}
+                                    [_hypothese_cablage(ajout)] if ajout else []) + choix}

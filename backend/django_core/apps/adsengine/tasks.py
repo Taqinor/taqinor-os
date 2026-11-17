@@ -937,13 +937,13 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                 deja_connu = MetaLeadMirror.objects.filter(
                     company=company, leadgen_id=leadgen_id).exists()
             try:
-                from apps.crm.services import create_lead_from_meta_lead_ads
+                from apps.crm.services import creer_lead_meta_pull
                 # MRY0 (lot B) — ``created_time`` : l'heure Meta RÉELLE, pas
                 # l'heure du pull. Sans elle, tout lead rattrapé portait
                 # l'heure du beat (07:25) : SLA, KPI premier contact et
                 # notifications « nouveau lead » étaient tous faux.
-                lead = create_lead_from_meta_lead_ads(
-                    company=company, leadgen_id=leadgen_id,
+                lead = creer_lead_meta_pull(
+                    lead_row, company=company, leadgen_id=leadgen_id,
                     field_data=field_data, ad_id=ad.meta_id,
                     adgroup_id=targeting.get('adset_id', ''), form_id=form_id,
                     access_token=token,

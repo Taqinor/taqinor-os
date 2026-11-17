@@ -111,8 +111,7 @@ def assignable_users(request):
 
     Léger et accessible à la Commerciale (le sélecteur de responsable doit
     fonctionner pour elle, pas seulement pour l'admin) — contrairement à
-    /users/ réservé à l'admin. Renvoie de quoi peindre un avatar Odoo
-    (initiales/photo) + nom + poste.
+    /users/ réservé à l'admin. Avatar Odoo (initiales/photo), nom, prénom, poste.
     """
     from authentication.models import CustomUser
     from authentication.avatars import presign_avatar
@@ -127,6 +126,7 @@ def assignable_users(request):
         {
             'id': u.id,
             'username': u.username,
+            'first_name': u.first_name or '',
             'poste': u.poste or None,
             'avatar_url': presign_avatar(u.avatar_key),
         }

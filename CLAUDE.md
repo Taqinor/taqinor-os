@@ -74,13 +74,19 @@ repo yet, the rule still applies to any future integration.
 - **Deploys — Claude STOPS AT THE MERGE (règle fondateur 2026-09-08, supersedes the 02/09 « Claude fait
   TOUT » rule and every older wording).** Reda, 08/09: « stop deploying yourself, it takes you ages to
   deploy while when I deploy locally it only takes me 2 min ». After a merge to `main`, Claude runs NO
-  deploy and NO server wait/verification loop: it says « mergé — l'auto-deploy du serveur suit en ~4 min,
-  ou `scripts/deploy-prod.ps1` chez toi en 2 min » and moves on. Only on Reda's explicit request does Claude
+  deploy and NO server wait/verification loop: it says « mergé — à déployer par toi :
+  `scripts/deploy-prod.ps1`, ~2 min » and moves on. Only on Reda's explicit request does Claude
   run `scripts/deploy-prod.ps1` or verify the server. Facts that stay true: the public site (`apps/web`)
   auto-deploys via **Cloudflare Workers Builds** on every merge to `main` (NEVER ask for a Cloudflare API
   token, NEVER run `wrangler deploy`; Worker secrets are dashboard-only); for the ERP (Django + React on
-  Hetzner, `api.taqinor.ma`), `/opt/autodeploy/auto-deploy.sh` LIVES ON THE SERVER and fires by itself on
-  merges to `main` (intentional — never disable it). Known traps (for when Reda asks for a check): the
+  Hetzner, `api.taqinor.ma`), `/opt/autodeploy/auto-deploy.sh` LIVES ON THE SERVER but **no longer fires by itself:
+  the ERP deploys ONLY when Reda launches it (règle fondateur 2026-11-17, supersedes « never disable it »)**.
+  Reda, 17/11 : « stop the automatic deploy and only let me do it manually » — measured that day: 10 automatic
+  deploys in one working day, each restarting the containers for 3 to 9 minutes. The systemd timer
+  `taqinor-autodeploy.timer` is DISABLED on the server (`systemctl disable --now`); the service stays, and
+  `scripts/deploy-prod.ps1` still starts it (`systemctl start taqinor-autodeploy.service`). NEVER re-enable the
+  timer (nor run `installer-serveur.sh` / step 9 of `docs/production.md`, which enable it) unless Reda asks; a
+  merge to `main` is therefore NOT live until he deploys — say so in every report. Known traps (for when Reda asks for a check): the
   « HEALTHCHECK ECHEC — rollback automatique » can be a FALSE rollback, and two
   simultaneous deploys collide (« container name already in use » on celery_worker) — so
   never launch deploy-prod.ps1 while auto-deploy is still running. Diagnose first without

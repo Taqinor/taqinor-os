@@ -158,7 +158,9 @@ class TestSyntheseCiCoeur(SimpleTestCase):
         self.assertEqual(s["option_batterie"],
                          {"totaux": {"ttc": 100000.0},
                           "valeur_chiffree": None,
-                          "motif": "valeur non chiffrée"})
+                          "motif": "valeur non chiffrée",
+                          # D-HYB-5 — toujours présente, null sans extension.
+                          "extension": None})
 
     def test_definitions_dans_la_langue_du_document(self):
         for langue in ("en", "ar"):

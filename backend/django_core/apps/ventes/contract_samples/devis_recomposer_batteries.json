@@ -1,0 +1,57 @@
+{
+  "endpoint": "POST /api/django/ventes/etude-ci/recomposer-batteries/",
+  "pourquoi": "D-HYB-4 / D-HYB-5 (fondateur, 17/11/2026 après-midi — remplacent la règle du matin « panneaux gardés pour la banque complète ») — CONTRAT D'ABORD (PACT10). Le vendeur choisit le nombre de batteries N de l'option « avec batterie » d'un devis C&I BROUILLON : 1 ≤ N ≤ R, R = la banque que le calculateur trouve (règle marginale des 10 ans, `quantite_recommandee`). Pour N < R, les PANNEAUX sont redimensionnés pour N batteries (le plus petit champ qui remplit N modules chaque jour du mois le plus bas, jamais sous la taille de l'offre réseau, puis la montée des panneaux par la règle marginale, jamais au-delà du champ de la banque complète) et l'ONDULEUR HYBRIDE reste celui de la banque maximale R (« Inverter for the maximum » : panneaux et batteries s'ajoutent plus tard sans le remplacer). Le choix du vendeur est souverain : la règle marginale ne le refuse pas, mais le verdict « non rentable » (D-CI-BATTERIE-NON-RENTABLE) reste servi par l'étude. L'étude est recalculée avec les entrées du lead et du devis (même fonction que la création, `etude_ci.etudier_ci`, taille de l'offre réseau GARDÉE) ; les lignes de l'option « avec » sont recomposées par le même code que la création (`etude_ci_batterie.lignes_du_scenario` → `fusionner_kits`) et le même écrivain que la révision après visite (pipeline MODE_ECRIRE, échéancier re-basé, UNE transaction : un refus n'écrit rien) ; l'option « sans » ressort inchangée. `etude_params.options.nb_batteries` = N ; `etude_params.banque_recommandee` = R (posée quand le devis la précède). Remonter à N = R rend les lignes « avec » de la création. Aucun statut écrit (règle #4) ; remise globale et en-tête intouchés. Consommateur : écran du devis C&I (sélecteur « Nombre de batteries », maximum = `quantite_recommandee`). Rôles : responsable / admin (même garde que « Réviser après visite »).",
+  "corps": {
+    "devis": 1349,
+    "nb_batteries": 1
+  },
+  "corps_regles": {
+    "devis": "entier — un devis de la société de l'appelant et de sa portée, sinon 404",
+    "nb_batteries": "nombre entier ≥ 1 (jamais un booléen, un texte ni 1,5), au plus la banque calculée R — sinon 400 {detail, field: 'nb_batteries'} ; au-delà de R, `detail` dit le maximum"
+  },
+  "exemple": {
+    "devis_id": 1349,
+    "nb_batteries": 1,
+    "quantite_recommandee": 3,
+    "nb_panneaux_avec": 42,
+    "kwc_avec": 29.82,
+    "lignes_changees": true,
+    "onduleur_extension": {
+      "retenu": {"produit": 412, "nom": "Onduleur hybride Deye SUN-20K-SG05LP3", "kw_ac": 20.0, "quantite": 1},
+      "suffisant": {"produit": 411, "nom": "Onduleur hybride Deye SUN-15K-SG05LP3", "kw_ac": 15.0, "quantite": 1},
+      "batteries_max": 3
+    },
+    "alertes": [
+      {"code": "longueurs_non_relevees", "champ": "contraintes", "message": "Longueurs de câble non relevées — à confirmer à la visite.", "niveau": "alerte", "interne": true}
+    ]
+  },
+  "exemple_meme_onduleur": {
+    "devis_id": 1349,
+    "nb_batteries": 3,
+    "quantite_recommandee": 3,
+    "nb_panneaux_avec": 54,
+    "kwc_avec": 38.34,
+    "lignes_changees": true,
+    "onduleur_extension": null,
+    "alertes": []
+  },
+  "refus": {
+    "400": "{detail, field: 'nb_batteries'} — absent, < 1, non entier, ou au-delà de la banque calculée (`detail` : « Au plus R batterie(s) : c'est la banque calculée pour ce client … »)",
+    "404": "{detail} — devis absent, d'une autre société ou hors portée de l'appelant",
+    "409": "{detail, field} — field ∈ mode_installation (devis non C&I) | devis (version remplacée ou archivée) | statut (devis non brouillon : « Devis « Envoyé » : ses batteries ne peuvent plus être recomposées. Utilisez « Réviser » pour en créer une nouvelle version. ») | scenario (devis sans option « avec batterie » : ni « Les deux » ni « Avec batterie ») | lead (devis sans lead) | option_avec (l'étude ne compose plus d'option « avec ») | echeancier (le TTC recomposé laisse un acompte en MAD au-delà du nouveau total : rien d'écrit) | <champ du lead ou composition/taille> (même refus que le devis automatique, `etude_ci.refus_devis_auto_ci`). `detail` est une consigne en français pour le vendeur."
+  },
+  "regles_sorties": {
+    "devis_id": "id du brouillon recomposé SUR PLACE (même référence)",
+    "nb_batteries": "N retenu (= `etude_params.options.nb_batteries`)",
+    "quantite_recommandee": "R, la banque calculée (= `etude_params.banque_recommandee.quantite`, le maximum du sélecteur)",
+    "nb_panneaux_avec": "panneaux de l'option « avec » recomposée (null si non lisible)",
+    "kwc_avec": "kWc de l'option « avec » recomposée",
+    "lignes_changees": "vrai quand au moins une ligne PRODUIT (désignation, variante, quantité, prix) a changé ; faux = déjà à N",
+    "onduleur_extension": "D-HYB-5 — null quand l'onduleur gardé est aussi la plus petite combinaison qui porte le champ (même modèle, même nombre) ou N = R ; sinon {retenu{produit, nom, kw_ac (par appareil), quantite}, suffisant{produit, nom, kw_ac, quantite}, batteries_max} — le PDF client l'écrit sous l'option « avec batterie » (« Onduleur hybride 20 kW retenu pour l'extension : l'installation peut recevoir jusqu'à 3 batteries (2 à ajouter plus tard). Un onduleur de 15 kW suffirait pour l'installation de départ. ») ; même forme que `option_avec.onduleur_extension` de etude_ci_preview.json",
+    "alertes": "[{code, champ, message, niveau alerte|bloquant, interne}] — alertes de l'étude recalculée (niveau info exclu)"
+  },
+  "interdit": [
+    "prix_achat",
+    "marge"
+  ]
+}

@@ -58,6 +58,11 @@ class _Base(TestCase):
         cls.structure = Produit.objects.create(
             company=cls.co, nom='Structure bac acier C&I', prix_vente=Decimal('300'),
             prix_achat=Decimal('150'), role_ci='structure_ci', type_pose='bac_acier')
+        # D-SOC-1 (17/11/2026) — toit plat lesté (déclaré ou supposé) : 2 socles
+        # par panneau, l'article « Socles » du résidentiel (aucun rôle C&I).
+        cls.socles = Produit.objects.create(
+            company=cls.co, nom='Socles', sku='SOC-STD', prix_vente=Decimal('67'),
+            prix_achat=Decimal('40'))
         # ADEV79 (D-ACI-6=a) — un poste fixe sans prix fait refuser : le cas
         # « complet » porte ses coffrets, protection, comptage, logger et
         # forfaits de prestations TARIFÉS.
@@ -449,6 +454,29 @@ class DevisAutoCITests(_Base):
         self.assertIn('câble ac', noms)
         etude = devis.etude_params['etude_ci']
         self.assertEqual(etude['composition']['a_chiffrer_visite'], [])
+        # D-SOC-1 — toit inconnu ⇒ toit plat lesté supposé ⇒ 2 socles par
+        # panneau, sur leur propre ligne, en plus de la structure.
+        panneaux = sum(li.quantite for li in devis.lignes.filter(produit=self.panneau))
+        socles = devis.lignes.get(produit=self.socles)
+        self.assertEqual(socles.quantite, 2 * panneaux)
+        self.assertEqual(socles.designation, 'Socles')
+        self.assertEqual(socles.prix_unitaire, Decimal('67'))
+        self.assertNotIn('prix_achat', str(etude['composition']))
+
+    def test_socles_sans_prix_refus_nommant_les_socles(self):
+        # D-SOC-1 — « Socles » sans prix de vente : refus nommé, jamais un 0
+        # ni une omission silencieuse.
+        Produit.objects.filter(pk=self.socles.pk).update(prix_vente=0)
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), type_toiture=None)
+        with self.assertRaises(AutoDevisError) as ctx:
+            self._auto(lead)
+        self.assertIn('Prix à renseigner', ctx.exception.message)
+        self.assertIn('Socles', ctx.exception.message)
+        self.assertEqual(ctx.exception.field, 'composition')
+
+    def test_toit_bac_acier_aucun_socle(self):
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertFalse(devis.lignes.filter(produit=self.socles).exists())
 
     def test_agricole_tunnel_toujours_refuse(self):
         # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le
@@ -658,6 +686,21 @@ class OptionBatterieCITests(_Base):
         apres = devis.etude_params['etude_ci']['option_avec']
         self.assertEqual(apres['inclinaison_retenue_deg'], attendu)
         self.assertEqual(apres['bilan']['production_kwh'], avec['bilan']['production_kwh'])
+
+    def test_socles_de_chaque_option_suivent_ses_panneaux(self):
+        # D-SOC-1 — toit plat lesté déclaré : chaque option porte 2 socles par
+        # panneau DE CETTE OPTION (variante comme la structure, fusionner_kits).
+        Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',
+                               prix_vente=Decimal('450'), prix_achat=Decimal('200'),
+                               role_ci='structure_ci', type_pose='toit_plat_leste')
+        devis = self._auto(self._boulangerie(type_toiture='terrasse_beton'))
+        self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
+        for variante in ('sans', 'avec'):
+            lignes = devis.lignes.filter(variante__in=(variante, ''))
+            panneaux = sum(li.quantite for li in lignes.filter(produit=self.panneau))
+            socles = sum(li.quantite for li in lignes.filter(produit=self.socles))
+            self.assertGreater(panneaux, 0, variante)
+            self.assertEqual(socles, 2 * panneaux, variante)
 
     def test_choix_avec_du_lead_option_avec_seule(self):
         devis = self._auto(self._boulangerie(batterie_souhaitee='avec'))
@@ -1597,6 +1640,111 @@ class RevisionApresVisiteCorc2Tests(_Base):
         resultat = self._reviser(envoye)
         self.assertTrue(resultat['cree'])
         self.assertEqual(Devis.objects.get(pk=resultat['devis'].pk).echeancier, tout_pct)
+
+
+class RecomposerBatteriesTests(_Base):
+    """D-HYB-4 (fondateur 17/11/2026, après-midi) — le vendeur choisit N
+    batteries (1 ≤ N ≤ R) sur un brouillon C&I : panneaux redimensionnés pour
+    N, onduleur gardé pour R, lignes « avec » recomposées, « sans » intactes ;
+    contrat ``devis_recomposer_batteries.json``."""
+
+    URL = '/api/django/ventes/etude-ci/recomposer-batteries/'
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        _semer_batterie(cls)
+
+    def _devis(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='boulangerie',
+                          jours_ouverture=list(range(1, 8)), heure_debut=7, heure_fin=21,
+                          surface_toiture_m2=Decimal('200'))
+        devis = self._auto(lead)
+        reco = devis.etude_params.get('banque_recommandee') or {}
+        # Précondition du cas : une banque calculée d'au moins 2 modules (le
+        # moteur pur en compose 21 de 5 kWh sur la même boulangerie, CIQ116).
+        self.assertGreaterEqual(int(reco.get('quantite') or 0), 2, reco)
+        return devis, reco
+
+    def _post(self, devis_id, nb, user=None):
+        api = APIClient()
+        api.force_authenticate(user or self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            return api.post(self.URL, {'devis': devis_id, 'nb_batteries': nb}, format='json')
+
+    @staticmethod
+    def _option(devis, exclue):
+        """(produit, quantité, prix) des lignes produit d'une option."""
+        return sorted((li.produit_id, li.quantite, li.prix_unitaire) for li in devis.lignes.all()
+                      if li.type_ligne == 'produit' and (li.variante or '') != exclue)
+
+    def _panneaux_avec(self, devis):
+        return sum(li.quantite for li in devis.lignes.filter(produit_id=self.panneau.id)
+                   if (li.variante or '') != 'sans')
+
+    def test_une_batterie_puis_retour_a_la_banque_calculee(self):
+        devis, reco = self._devis()
+        sans_avant, avec_avant = self._option(devis, 'avec'), self._option(devis, 'sans')
+        panneaux_avant = self._panneaux_avec(devis)
+        r = self._post(devis.pk, 1)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((r.data['devis_id'], r.data['nb_batteries'],
+                          r.data['quantite_recommandee'], r.data['lignes_changees']),
+                         (devis.pk, 1, reco['quantite'], True))
+        self.assertIn('onduleur_extension', r.data)
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(relu.statut, Devis.Statut.BROUILLON)          # règle #4
+        self.assertEqual(sum(li.quantite for li in relu.lignes.filter(produit_id=reco['produit'])), 1)
+        self.assertLess(self._panneaux_avec(relu), panneaux_avant)
+        self.assertEqual(self._option(relu, 'avec'), sans_avant)       # « sans » intacte
+        self.assertEqual(relu.etude_params['banque_recommandee'], reco)
+        self.assertEqual(relu.etude_params['options']['nb_batteries'], 1)
+        option = relu.etude_params['etude_ci']['option_avec']
+        self.assertEqual((option['batterie']['quantite'], option['batterie']['quantite_recommandee'],
+                          option['batterie']['ajout_possible']),
+                         (1, reco['quantite'], reco['quantite'] - 1))
+        self.assertIn('onduleur_extension', option)
+        self.assertNotIn('prix_achat', str(r.data))
+        # Retour à R : les lignes « avec » de la création reviennent.
+        r = self._post(devis.pk, reco['quantite'])
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['onduleur_extension'])
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(self._option(relu, 'sans'), avec_avant)
+        self.assertEqual(self._option(relu, 'avec'), sans_avant)
+        self.assertEqual(relu.etude_params['options']['nb_batteries'], reco['quantite'])
+
+    def test_refus_nommes_rien_ecrit(self):
+        devis, reco = self._devis()
+        lignes = self._option(devis, None)
+        # Au-delà de la banque calculée : 400 qui dit le maximum.
+        r = self._post(devis.pk, reco['quantite'] + 1)
+        self.assertEqual((r.status_code, r.data['field']), (400, 'nb_batteries'), r.data)
+        self.assertIn('Au plus %d batterie' % reco['quantite'], r.data['detail'])
+        for faux in (0, -1, 1.5, True, '2', None):
+            with self.subTest(nb=faux):
+                r = self._post(devis.pk, faux)
+                self.assertEqual((r.status_code, r.data['field']), (400, 'nb_batteries'))
+        # Autre société : 404, jamais un calcul sur ses données.
+        autre = Company.objects.get_or_create(slug='ciq120-autre', defaults={'nom': 'Autre'})[0]
+        intrus = User.objects.create_user(username='ciq120_intrus', password='x',
+                                          role_legacy='responsable', company=autre)
+        self.assertEqual(self._post(devis.pk, 1, user=intrus).status_code, 404)
+        # Devis envoyé : 409, la consigne « Réviser ».
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        r = self._post(devis.pk, 1)
+        self.assertEqual((r.status_code, r.data.get('field')), (409, 'statut'), r.data)
+        self.assertIn('Réviser', r.data['detail'])
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(self._option(relu, None), lignes)
+        self.assertEqual(relu.statut, Devis.Statut.ENVOYE)
+        self.assertNotIn('nb_batteries', relu.etude_params.get('options') or {})
+
+    def test_devis_sans_option_avec_409(self):
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                                      batterie_souhaitee='sans'))
+        r = self._post(devis.pk, 1)
+        self.assertEqual((r.status_code, r.data.get('field')), (409, 'scenario'), r.data)
 
 
 class BrouillonsMultiplesCorc7Tests(_Base):

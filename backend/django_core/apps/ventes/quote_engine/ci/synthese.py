@@ -638,9 +638,13 @@ def _option_batterie(data):
             pct = _pct(bilan.get(cle))
             if pct is not None:
                 valeur.setdefault(f"{cle}_pct", pct)
+    from .mentions import extension_option_avec
     return {"totaux": bloc.get("totaux"),
             "valeur_chiffree": valeur,
-            "motif": None if valeur else bloc.get("motif")}
+            "motif": None if valeur else bloc.get("motif"),
+            # D-HYB-5 (17/11/2026) — l'onduleur gardé pour l'extension : null
+            # quand rien n'est à dire (la page web la lit, le PDF l'imprime).
+            "extension": extension_option_avec(data)}
 
 
 #: CIQ331 — jalon CIQ212 (``data['jalons_paiement']``) → (jalon, libellé)

@@ -73,9 +73,14 @@ def purge_website_lead_payloads(now, apply_) -> int:
     if days <= 0:
         return 0
     cutoff = now - timezone.timedelta(days=days)
+    # 17/11/2026 (décision fondateur) — les réponses BRUTES d'un formulaire
+    # Meta sont gardées À VIE à côté du lead (Meta les efface à 90 j) : jamais
+    # purgées par âge. L'effacement 09-08 du lead, lui, les caviarde toujours.
     qs = WebsiteLeadPayload.objects.filter(
         processed=True, received_at__lt=cutoff,
-    ).filter(Q(error__isnull=True) | Q(error=''))
+    ).filter(Q(error__isnull=True) | Q(error='')).exclude(
+        source=WebsiteLeadPayload.Source.META_LEAD_ADS,
+        payload__has_key='reponses_meta')
     count = qs.count()
     if apply_ and count:
         qs.delete()

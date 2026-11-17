@@ -129,6 +129,24 @@ class EscalierSansReponseTests(_Base):
         # Après le dernier essai, le filet reprend son cours : on chiffre.
         self.assertEqual(suite.libelle, FILET_JOINT_LIBELLE)
 
+    def test_repondu_par_message_jamais_joint_l_escalier_finit_sur_le_devis(self):
+        """Fondateur, 17/11/2026 — un client qui a répondu par message a parlé :
+        sans aucune issue « joint » au chatter, l'escalier entier, jamais
+        décroché, se termine sur le devis (« dernier essai avant de chiffrer »),
+        jamais sur « Décider la suite »."""
+        self.assertFalse(self.lead.activites.filter(outcome='joint').exists())
+        appel = self._filet(FILET_APPEL_LIBELLE)
+        marquer_etape_relance(
+            appel, self.acteur, RelanceEtape.Statut.FAIT, outcome='non_joint')
+        message = self._seule_ouverte()
+        marquer_etape_relance(
+            message, self.acteur, RelanceEtape.Statut.FAIT, outcome='')
+        dernier = self._seule_ouverte()
+        self.assertEqual(dernier.libelle, FILET_DERNIER_APPEL_LIBELLE)
+        marquer_etape_relance(
+            dernier, self.acteur, RelanceEtape.Statut.FAIT, outcome='non_joint')
+        self.assertEqual(self._seule_ouverte().libelle, FILET_JOINT_LIBELLE)
+
     def test_aucun_barreau_n_est_ajoute_a_une_cadence(self):
         etape = self._filet(FILET_APPEL_LIBELLE)
         marquer_etape_relance(
