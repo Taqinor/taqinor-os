@@ -34,7 +34,11 @@ function CocheCarree({ coche, titre, onBasculer }) {
 /** Ce qui explique qu'une ligne soit décochée d'office (textes.md §2.3). */
 function noteDeLigne(ligne) {
   if (ligne.deja_faite) return 'Déjà faite'
-  if (ligne.doublon_de != null) return 'Déjà dans tes tâches'
+  if (ligne.doublon_de != null) {
+    // Raccord F2 — `doublon_projet` servi : « Déjà dans « {projet} » » ; sinon le repli sans nom
+    const projet = typeof ligne.doublon_projet === 'string' ? ligne.doublon_projet : ligne.doublon_projet?.nom
+    return projet ? `Déjà dans « ${projet} »` : 'Déjà dans tes tâches'
+  }
   if (ligne.doublon_de_ligne != null) return 'En double dans cette liste'
   return ''
 }

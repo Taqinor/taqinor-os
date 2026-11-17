@@ -22,7 +22,7 @@ import { annoncer, proposerAnnuler } from '../lib/gestes'
 const FAMILLES = [
   ['chantiers', 'Chantiers'],
   ['tickets', 'Tickets'],
-  ['da_a_commander', 'DA à commander'],
+  ['da_a_commander', "Demandes d'achat à commander"], // « DA » = sigle interne : en clair (textes.md §0, sans jargon)
   ['leads_chauds', 'Leads chauds'],
   ['rappels', 'Rappels'],
   ['devis_expirant', 'Devis expirant'],
@@ -59,7 +59,9 @@ export function Ailleurs() {
       </div>
     )
   }
-  const lignes = FAMILLES.filter(([cle]) => Number(etat.donnees?.[cle]) > 0)
+  // Raccord F2 — une famille ABSENTE de la réponse, ou servie à 0 faute de porte publique (approbations, mentions),
+  // n'a pas de ligne : jamais un compteur inventé ; seules les familles servies et non nulles s'affichent.
+  const lignes = FAMILLES.filter(([cle]) => Number.isFinite(etat.donnees?.[cle]) && etat.donnees[cle] > 0)
   if (lignes.length === 0) return <p className="section-sous">Rien à signaler.</p>
   return (
     <div className="liste" role="list">
@@ -105,6 +107,8 @@ export function useLierActivite({ donnees, setDonnees, garde, charger }) {
       if (data.tache?.jour_prevu === donnees.jour) {
         setDonnees((d) => ({ ...d, journee: [...(d.journee ?? []), data.tache] }))
       }
+      // Raccord F2 — `lier-activite/` rend la `progression` du jour : elle suit sans relire la journée
+      if (data.progression && typeof data.progression.faites === 'number') setDonnees((d) => ({ ...d, progression: data.progression }))
       proposerAnnuler({
         message: "Tâche liée à l'activité",
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },

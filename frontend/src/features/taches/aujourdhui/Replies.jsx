@@ -82,7 +82,7 @@ export function useARevoir({ donnees, setDonnees, garde, charger }) {
 function ActionsARevoir({ item, geste, revoir, minimum }) {
   const [calendrier, setCalendrier] = useState(false)
   return (
-    <div className="reste-choix revoir-actions" role="group" aria-label={`Que faire de « ${item.titre} » ?`}>
+    <div className="reste-choix revoir-actions" role="group" aria-label={`Que faire de « ${item.titre} » ?`} data-necessite-reseau="">
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'aujourdhui')}>Aujourd&apos;hui</button>
       <button type="button" className="puce" aria-expanded={calendrier} onClick={() => setCalendrier((v) => !v)}>Choisir un jour</button>
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'un_jour')}>En réserve</button>
@@ -141,10 +141,10 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne }) {
         <Replie titre="À revoir" compte={aDecider.length}>
           {aDecider.some(estTache) ? (
             <div className="propose-actions">
-              <button type="button" className="bouton second" aria-disabled={!enLigne || undefined} onClick={revoir.toutEnReserve}>
+              <button type="button" className="bouton second" data-necessite-reseau="" aria-disabled={!enLigne || undefined} onClick={revoir.toutEnReserve}>
                 Tout en réserve
               </button>
-              <button type="button" className="bouton lien" aria-disabled={!enLigne || undefined}
+              <button type="button" className="bouton lien" data-necessite-reseau="" aria-disabled={!enLigne || undefined}
                 onClick={() => geste.copilote('Aide-moi à prioriser')}>
                 Revoir avec le Copilote
               </button>

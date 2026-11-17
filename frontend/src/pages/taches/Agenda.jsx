@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
-import { annulerGeste, lireAgenda, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
 import PlanifierSemaine from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
@@ -12,7 +13,10 @@ import {
 } from '../../features/taches/lib/textes'
 import GrilleAgenda from '../../features/taches/ui/GrilleAgenda'
 import LigneTache from '../../features/taches/ui/LigneTache'
+import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
+import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { frenchError } from '../../lib/frenchError'
 
 /* ============================================================================
@@ -126,6 +130,19 @@ function deplacerVers(donnees, item, jour, heureDebut) {
   return {
     ...donnees,
     jours: jours.map((j) => (j.jour === jour ? { ...j, [cible]: [...j[cible], posee] } : j)),
+    a_placer: sans(donnees.a_placer),
+    mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
+  }
+}
+
+/** Raccord F2 — la tâche quitte l'agenda chargé (supprimée, ou prévue ailleurs : elle reparaît au relu). */
+function sansItem(donnees, id) {
+  if (!donnees) return donnees
+  const sans = (items) => (items ?? []).filter((it) => !(it.type === 'tache' && it.id === id))
+  return {
+    ...donnees,
+    jours: (donnees.jours ?? []).map((j) => Object.fromEntries(
+      Object.entries(j).map(([cle, val]) => [cle, LISTES_JOUR.includes(cle) ? sans(val) : val]))),
     a_placer: sans(donnees.a_placer),
     mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
   }
@@ -267,7 +284,7 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
       <div className="liste" role="list">
         {uniques.map((t) => (
           <LigneTache key={`tache:${t.id}`} item={t} aujourdhui={aujourdhui}
-            onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} />
+            onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} onAction={gestes.action} />
         ))}
       </div>
     </>
@@ -297,7 +314,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
           <div className="liste" role="list">
             {jour.sans_heure.map((t) => (
               <LigneTache key={`tache:${t.id}`} item={t} aujourdhui={aujourdhui}
-                onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} />
+                onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} onAction={gestes.action} />
             ))}
           </div>
         </section>
@@ -377,18 +394,19 @@ function VueAVenir({ jours, aujourdhui, gestes }) {
   ))
 }
 
-function BandeauPasAJour({ maj, message, onReessayer }) {
+/** Raccord F2 — aucun agenda externe ajouté : l'invitation de textes.md §2.8 (lue une fois, jamais devinée). */
+function InvitationAgendas({ onOuvrir }) {
   return (
-    <div className="pas-a-jour" role="alert">
-      <span>{maj ? `Pas à jour · ${maj}` : 'Pas à jour'}{message ? ` — ${message}` : ''}</span>
-      <button type="button" className="bouton discret" onClick={onReessayer}>Réessayer</button>
+    <div className="bandeau" role="region" aria-label="Mes agendas">
+      <span className="bandeau-texte">Ajoute ton agenda pour voir tes rendez-vous ici.</span>
+      <button type="button" className="bouton discret" onClick={onOuvrir}>Mes agendas</button>
     </div>
   )
 }
 
 // --- Gestes de l'écran ------------------------------------------------------------------------
 
-function useGestes(setDonnees, setParams) {
+function useGestes(setDonnees) {
   const poserStatut = useCallback((id, statut) => {
     setDonnees((d) => avecItem(d, id, (it) => ({ ...it, statut })))
   }, [setDonnees])
@@ -411,9 +429,8 @@ function useGestes(setDonnees, setParams) {
     }
   }, [poserStatut])
 
-  const ouvrir = useCallback((item) => {
-    setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(item.id)); return suite })
-  }, [setParams])
+  const ouvrirFiche = useOuvrirFiche()
+  const ouvrir = useCallback((item) => ouvrirFiche(item.id), [ouvrirFiche])
 
   const ajouter = useCallback((jour, heureDebut) => {
     window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: { jour_prevu: jour, heure_debut: heureDebut } }))
@@ -555,9 +572,37 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const [relire, setRelire] = useState(0)
   const [erreurGeste, setErreurGeste] = useState('')
   const derniere = useRef(0)
-  const gestes = useGestes(setDonnees, setParams)
+  const gestes = useGestes(setDonnees)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
+  const navigate = useNavigate()
+  // Mes agendas (§2.20) : rangés dans Réglages → Avancé en attendant « Mon iPhone » (F3) ; lus une fois
+  const [agendas, setAgendas] = useState(null)
+  useEffect(() => {
+    let vivant = true
+    listerAgendasExternes()
+      // 3 agendas au plus : seule la question « aucun ? » compte — vide seulement sans ligne ET sans page suivante (`next`)
+      .then((r) => {
+        const { results, next } = r?.data ?? {}
+        if (vivant) setAgendas(Array.isArray(results) ? (results.length === 0 && !next ? [] : results) : null)
+      })
+      .catch(() => { if (vivant) setAgendas(null) }) // illisible : pas d'invitation plutôt qu'une fausse
+    return () => { vivant = false }
+  }, [])
+  const ouvrirMesAgendas = useCallback(() => navigate('/taches/reglages/avance'), [navigate])
+  // Raccord F2 — le gestionnaire commun des actions de ligne (menu ⋯) ; prévue un autre jour, la ligne part
+  const actions = useActionsLigne({
+    aujourdhui,
+    maj: (id, champs) => setDonnees((d) => avecItem(d, id, (it) => ({ ...it, ...champs }))),
+    retirer: (item) => {
+      let avant = null
+      setDonnees((d) => { avant = d; return sansItem(d, item.id) })
+      return () => setDonnees((d) => avant ?? d)
+    },
+    sortApres: (code) => code === 'planifier',
+  })
+  // une création (saisie, créneau « Ajouter à {HH:MM} », file rejouée) : l'agenda se relit une fois
+  useApresCreation(useCallback(() => setRelire((n) => n + 1), []))
 
   useEffect(() => {
     derniere.current += 1
@@ -571,8 +616,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       setDonnees(reponse.data)
       setEchec(null)
       setMaj(heureMaj())
-    }).catch((err) => {
-      if (rang === derniere.current) setEchec(frenchError(err, "L'agenda n'a pas pu être lu."))
+    }).catch(() => {
+      if (rang === derniere.current) setEchec(true)
     })
   }, [periode.du, periode.au, vueLue, projet, relire])
 
@@ -589,6 +634,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const jours = dates.map((iso) => parJour[iso] ?? jourVide(iso))
   const gestesEcran = {
     ...gestes,
+    action: actions.surAction,
     cocher: (item) => {
       setErreurGeste('')
       gestes.basculer(item, item.statut !== 'fait').catch((err) => setErreurGeste(frenchError(err)))
@@ -605,11 +651,13 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     />
   )
 
+  // Raccord F2 — l'état « Pas à jour · {HH:MM} » [Réessayer] de la référence (textes.md §2.2, spec-7 « Partout ») :
+  // au premier échec, sans heure de mise à jour, il dit « Pas à jour » seul — jamais une phrase de plus.
   const etats = (
     <>
-      {echec ? <BandeauPasAJour maj={maj} message={echec} onReessayer={() => setRelire((n) => n + 1)} /> : null}
+      {echec ? <BandeauPasAJour derniere={maj} onReessayer={() => setRelire((n) => n + 1)} /> : null}
       {erreurGeste ? <p className="ag-erreur" role="alert">{erreurGeste}</p> : null}
-      {!donnees && !echec ? <p className="ag-chargement" role="status">Chargement</p> : null}
+      <ChargementTardif actif={!donnees && !echec} />
     </>
   )
 
@@ -623,7 +671,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         />
         {etats}
         <PlanifierSemaine
-          jours={jours} aujourdhui={aujourdhui} aPlacer={donnees?.a_placer ?? []}
+          jours={jours} aujourdhui={aujourdhui} capacite={donnees?.capacite?.minutes ?? null} aPlacer={donnees?.a_placer ?? []}
           mesProjets={donnees?.mes_projets ?? []} choisie={choisie} posees={placement.posees}
           onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
           onPoser={(item, iso) => placement.poser(item, iso, null)}
@@ -635,7 +683,10 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   }
 
   return (
-    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}>
+    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
+      actionsEcran={[{ libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
+      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
+      contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
       <div className="ag-vues">
         <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
         {vue === 'semaine' ? (
@@ -650,20 +701,23 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         onAujourdhui={() => changer({ jour: null })}
       />
       {etats}
-      {vue === 'jour' ? (
+      {agendas && agendas.length === 0 && (vue === 'jour' || vue === 'semaine')
+        ? <InvitationAgendas onOuvrir={ouvrirMesAgendas} /> : null}
+      {/* rien de lu : ni grille vide ni « Rien ce jour-là » (ce serait un constat inventé) */}
+      {donnees && vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
           placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet}
           onChoisir={(iso) => changer({ jour: iso })} />
       ) : null}
-      {vue === 'jour' && placement.posee ? (
+      {donnees && vue === 'jour' && placement.posee ? (
         <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
       ) : null}
-      {vue === 'semaine' ? (
+      {donnees && vue === 'semaine' ? (
         <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
           onChoisir={choisirJour} />
       ) : null}
-      {vue === 'mois' ? (
+      {donnees && vue === 'mois' ? (
         <>
           <VueMois du={periode.du} au={periode.au} mois={jour.slice(0, 7)} jours={donnees?.jours}
             aujourdhui={aujourdhui} jourChoisi={jour} onChoisir={(iso) => changer({ jour: iso })} />
@@ -674,7 +728,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
           </section>
         </>
       ) : null}
-      {vue === 'a-venir' ? <VueAVenir jours={jours} aujourdhui={aujourdhui} gestes={gestesEcran} /> : null}
+      {donnees && vue === 'a-venir' ? <VueAVenir jours={jours} aujourdhui={aujourdhui} gestes={gestesEcran} /> : null}
     </CoquilleTaches>
   )
 }

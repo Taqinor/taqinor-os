@@ -105,7 +105,7 @@
 .tch .un-mot svg:last-child { margin-left: auto; }
 .tch .champ-mot { width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
   box-shadow: inset 0 0 0 1px var(--tch-trait); font: inherit; font-size: 1rem; color: var(--tch-texte); resize: vertical; }
-.tch .erreur-champ { margin: 10px 0 0; font-size: 0.875rem; color: var(--destructive); }
+.tch .erreur-champ { margin: 8px 0 0; font-size: 0.875rem; line-height: 1.4; font-weight: 600; color: var(--tch-alerte); } /* etat-erreur-champ.html (.es-erreur) ; une seule définition */
 .tch .bilan .feuille-pied .bouton.discret { flex: none; min-width: 72px; }
 .tch .bilan .vide-phrase { margin: 22px 0 0; max-width: none; text-align: center; }
 

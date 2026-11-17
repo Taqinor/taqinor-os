@@ -41,18 +41,50 @@ function useClavier(actif) {
   return actif ? clavier : 0
 }
 
+/**
+ * Raccord F2 — le retour arrière du navigateur (geste de l'iPhone) ferme la feuille au lieu de quitter l'écran :
+ * à l'ouverture, une entrée d'historique MARQUÉE est posée (sans changer l'adresse) ; un retour qui la retire ferme
+ * la feuille ; une fermeture par la croix, Échap ou le voile retire l'entrée. La pose est différée d'un tour pour
+ * que le double montage du mode strict (développement) n'en laisse aucune.
+ */
+function useRetourFerme(actif, onFermer) {
+  const fermer = useRef(onFermer)
+  useEffect(() => { fermer.current = onFermer })
+  useEffect(() => {
+    if (!actif || typeof window === 'undefined' || typeof window.history?.pushState !== 'function') return undefined
+    const marque = `tch-feuille-${Math.random().toString(36).slice(2)}`
+    let posee = false
+    let parRetour = false
+    const surRetour = () => {
+      if (posee && window.history.state?.tchFeuille !== marque) { parRetour = true; fermer.current?.() }
+    }
+    const minuteur = setTimeout(() => {
+      window.history.pushState({ ...(window.history.state ?? {}), tchFeuille: marque }, '')
+      posee = true
+      window.addEventListener('popstate', surRetour)
+    }, 0)
+    return () => {
+      clearTimeout(minuteur)
+      window.removeEventListener('popstate', surRetour)
+      if (posee && !parRetour && window.history.state?.tchFeuille === marque) window.history.back()
+    }
+  }, [actif])
+}
+
 export default function FeuilleACrans({
   ouverte,
   onFermer,
   titre,
   cranInitial = '50',
   variante = 'dialogue',
+  historique = true,
   children,
 }) {
   const [cran, setCran] = useState(cranInitial)
   const feuille = useRef(null)
   const origine = useRef(null)
   const clavier = useClavier(Boolean(ouverte))
+  useRetourFerme(Boolean(ouverte) && historique, onFermer)
 
   useEffect(() => {
     if (!ouverte) return undefined

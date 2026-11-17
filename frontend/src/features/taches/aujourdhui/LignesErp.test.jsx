@@ -96,6 +96,20 @@ describe('TCH81 — Ailleurs dans l\'ERP', () => {
     expect(await screen.findByText('Écran des activités')).toBeInTheDocument()
   })
 
+  it('Raccord F2 — une famille absente de la réponse ou servie à 0 (approbations, mentions) n\'a pas de ligne : aucun 0 inventé', async () => {
+    const { chantiers, ...sansChantiers } = contrat('ailleurs')
+    expect(chantiers).toBeDefined()
+    servir({ ailleurs: () => Promise.resolve({ data: { ...sansChantiers, approbations: 0, mentions: 0, relances: 2 } }) })
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: "Ailleurs dans l'ERP" }))
+    expect(await screen.findByRole('listitem', { name: 'Relances : 2. Ouvrir' })).toBeInTheDocument()
+    expect(screen.queryByRole('listitem', { name: /^Chantiers/ })).toBeNull()
+    expect(screen.queryByRole('listitem', { name: /^Approbations/ })).toBeNull()
+    expect(screen.queryByRole('listitem', { name: /^Mentions/ })).toBeNull()
+    expect(screen.queryByText(/ 0\. Ouvrir/)).toBeNull()
+  })
+
   it('une famille illisible est dite, avec Réessayer', async () => {
     let appel = 0
     servir({ ailleurs: () => (appel++ === 0 ? Promise.reject(new Error('Network Error')) : Promise.resolve({ data: contrat('ailleurs') })) })

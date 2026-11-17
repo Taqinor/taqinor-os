@@ -67,7 +67,7 @@ export function DialogueSupprimer({ projet, onFait, onFermer }) {
 function nomDuChangement(c, noms) {
   if (c.objet === 'projet') return c.champ === 'echeance' ? 'Échéance du projet' : 'Date de début du projet'
   if (c.objet === 'section') return noms?.sections?.[c.id] ?? 'Étape'
-  return noms?.taches?.[c.id] ?? 'Tâche'
+  return c.titre || noms?.taches?.[c.id] || 'Tâche' // `changements[].titre` servi par `decaler/`
 }
 
 export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), onFait, onFermer }) {
@@ -89,7 +89,11 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
       const { data } = await decalerProjet(projet.id, { delta_jours: valeur, apercu: true })
       if (mien === rang.current) setApercu(data)
     } catch (err) {
-      if (mien === rang.current) setErreur(premiere(err?.response?.data?.delta_jours) ?? frenchError(err, 'Le décalage n\'a pas pu être calculé. Réessaie.'))
+      if (mien !== rang.current) return
+      // 400 « N tâches passeraient avant aujourd'hui » : le serveur rend aussi l'aperçu ; il s'affiche, Appliquer reste éteint
+      const corps = err?.response?.status === 400 ? err.response.data : null
+      if (Array.isArray(corps?.changements)) setApercu({ changements: corps.changements, refuse: true })
+      setErreur(premiere(corps?.delta_jours) ?? frenchError(err, 'Le décalage n\'a pas pu être calculé. Réessaie.'))
     }
   }
 
@@ -142,7 +146,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
             </ul>
           </>
         ) : null}
-        <Pied onFermer={onFermer} principal={{ libelle: 'Appliquer', onClick: appliquer }} occupe={occupe} desactive={!apercu || n === 0} />
+        <Pied onFermer={onFermer} principal={{ libelle: 'Appliquer', onClick: appliquer }} occupe={occupe} desactive={!apercu || apercu.refuse || n === 0} />
       </div>
     </FeuilleACrans>
   )
@@ -150,7 +154,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
 
 const OUVERTES = [
   ['boite', 'Les remettre dans À trier'],
-  ['abandonner', 'Les abandonner'],
+  ['annuler', 'Les abandonner'], // `taches_ouvertes` ∈ boite · annuler · deplacer (TerminerSerializer)
   ['deplacer', 'Les déplacer vers…'],
 ]
 

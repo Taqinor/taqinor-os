@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -156,13 +156,14 @@ describe('TCH92 — Projets : Supprimer depuis la ligne', () => {
     await user.click(within(dialogue).getByRole('button', { name: 'Supprimer' }))
     expect(api.supprimerProjet).toHaveBeenCalledWith(3)
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Ventes' })).toBeNull())
-    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » supprimé')
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent(/^« Ventes » et ses \d+ tâches? supprimés/) // textes.md §2.15
   })
 })
 
 describe('TCH88 — Projets : Nouveau projet et navigation', () => {
-  it('« Créer » ouvre aussitôt Planifier le projet', async () => {
-    api.creerProjet.mockResolvedValue({ data: { ...projets().results[0], id: 9, nom: 'Salon' } })
+  it('« Créer » ouvre aussitôt Planifier le projet (réponse `projet_ecrit` : { projet, … })', async () => {
+    const ecrit = exempleContrat('taches', 'projet_ecrit')
+    api.creerProjet.mockResolvedValue({ data: { ...ecrit, projet: { ...ecrit.projet, id: 9, nom: 'Salon', statut: 'actif' } } })
     monter()
     const user = userEvent.setup()
     await screen.findByRole('button', { name: 'Ventes' })
@@ -193,5 +194,37 @@ describe('TCH88 — Projets : Nouveau projet et navigation', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: 'Ventes' }))
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/projets/3')
+  })
+})
+
+describe('Raccord F2 — Projets : « Nouveau projet » de la palette', () => {
+  it('`?nouveau=1` ouvre la feuille « Nouveau projet » ; la fermer retire le paramètre', async () => {
+    render(
+      <MemoryRouter initialEntries={['/taches/projets?nouveau=1']}>
+        <Routes>
+          <Route path="/taches/projets" element={<><Projets /><Lieu /></>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const feuille = await screen.findByRole('dialog', { name: 'Nouveau projet' })
+    expect(within(feuille).getByLabelText('Nom du projet')).toBeInTheDocument()
+    await userEvent.setup().click(within(feuille).getByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(screen.getByTestId('lieu')).toHaveTextContent(/^\/taches\/projets$/))
+  })
+})
+
+describe('Raccord F2 — Projets : chargement', () => {
+  it('rien pendant 1 s, puis le squelette « Chargement » ; il part dès que la liste arrive', async () => {
+    vi.useFakeTimers()
+    const attentes = []
+    const finir = (r) => attentes.forEach((ok) => ok(r))
+    api.listerProjets.mockImplementation(() => new Promise((ok) => { attentes.push(ok) }))
+    monter()
+    expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(screen.getByRole('status', { name: 'Chargement' })).toBeInTheDocument()
+    await act(async () => { finir(reponseContrat('taches', 'projets_liste')); await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
+    vi.useRealTimers()
   })
 })

@@ -4,6 +4,8 @@ import { Ellipsis } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import TrierUneParUne from '../../features/taches/atrier/TrierUneParUne'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
+import { useApresCreation } from '../../features/taches/lib/fiche'
 import { frenchError } from '../../lib/frenchError'
 import {
   annulerGeste, classerErreur, convertirActivites, creerProjet, listerToutesLesTaches,
@@ -94,6 +96,8 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     .catch((err) => { setEchec(frenchError(err)); setCharge(true) }), [])
 
   useEffect(() => { lire(vue) }, [vue, lire])
+  // une création ailleurs (saisie, collage, file rejouée) : la liste se relit une fois, sans recharger la page
+  useApresCreation(useCallback(() => { lire(vue) }, [vue, lire]))
 
   useEffect(() => {
     lireAujourdhui({ jour: aujourdhui })
@@ -125,7 +129,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       })
     } catch (err) {
       remettre()
-      setErreur(classerErreur(err).code === 'reseau' ? 'Pas de réseau : la tâche est restée dans la liste.' : frenchError(err))
+      setErreur(classerErreur(err).code === 'reseau' ? 'Possible une fois connecté' : frenchError(err))
     }
   }, [lignes])
 
@@ -144,8 +148,9 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   const nouveauProjet = async (tache, nom) => {
     try {
       const { data } = await creerProjet({ nom })
-      setProjets((liste) => [...liste, data])
-      await appliquer(tache, 'deplacer', { projet_id: data.id }, `Déplacée dans « ${data.nom} »`)
+      const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
+      setProjets((liste) => [...liste, cree])
+      await appliquer(tache, 'deplacer', { projet_id: cree.id }, `Déplacée dans « ${cree.nom} »`)
     } catch (err) {
       setErreur(frenchError(err))
     }
@@ -192,8 +197,9 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     try {
       const { data } = await traiterLot({ ids, action: 'deplacer', valeurs: { par_tache: parTache } })
       setPropositions(null)
+      const n = data?.appliquees?.length ?? ids.length
       proposerAnnuler({
-        message: `${accord(data?.appliquees?.length ?? ids.length, 'tâche')} rangée${ids.length > 1 ? 's' : ''}`,
+        message: n >= 2 ? `${n} tâches rangées` : `${n} tâche rangée`, // accord sur le même nombre que l'affiché
         onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); await lire(vue) } : undefined,
       })
     } catch (err) {
@@ -250,6 +256,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
 
       {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
       {echec ? <p className="erreur-champ" role="alert">{echec}</p> : null}
+      <ChargementTardif actif={!charge} />
 
       {uneParUne ? (
         <TrierUneParUne

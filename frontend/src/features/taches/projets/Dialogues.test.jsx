@@ -71,7 +71,7 @@ describe('TCH92 — Décaler les dates', () => {
     await user.click(screen.getByRole('radio', { name: '+1 semaine' }))
     expect(api.decalerProjet).toHaveBeenCalledWith(3, { delta_jours: 7, apercu: true })
     expect(await screen.findByText('1 date change.')).toBeInTheDocument()
-    const ligne = screen.getByText('Poser la structure').closest('li')
+    const ligne = screen.getByText('Devis Settat').closest('li') // `changements[].titre` servi par decalage.json
     expect(ligne).toHaveTextContent('ven. 20')
     expect(ligne).toHaveTextContent('ven. 27')
     expect(onFait).not.toHaveBeenCalled()
@@ -89,6 +89,18 @@ describe('TCH92 — Décaler les dates', () => {
     await user.type(screen.getByLabelText('Nombre de jours (− pour avancer)'), '-2')
     expect(await screen.findByRole('alert')).toHaveTextContent('2 tâches passeraient avant aujourd\'hui.')
     expect(screen.getByLabelText('Nombre de jours (− pour avancer)')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
+  })
+
+  it('Raccord F2 — le 400 porte l\'aperçu (`changements`, `titre` servi) : il s\'affiche, Appliquer reste fermé', async () => {
+    api.decalerProjet.mockRejectedValue({ response: { status: 400, data: {
+      error: 'validation', delta_jours: ['1 tâche passerait avant aujourd\'hui.'], avant_aujourdhui: 1,
+      changements: [{ objet: 'tache', id: 77, champ: 'jour_prevu', avant: '2026-11-18', apres: '2026-11-16', titre: 'Appeler le loueur' }],
+    } } })
+    render(<DialogueDecaler projet={projet()} noms={noms} aujourdhui={AUJOURDHUI} onFait={() => {}} onFermer={() => {}} />)
+    await utilisateur().click(screen.getByRole('radio', { name: '−1 semaine' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 tâche passerait avant aujourd\'hui.')
+    expect(screen.getByText('Appeler le loueur')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
   })
 })
@@ -128,6 +140,16 @@ describe('TCH92 — Terminer le projet', () => {
     await user.selectOptions(choix, 'Site web')
     await user.click(screen.getByRole('button', { name: 'Terminer' }))
     expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'atteint', bilan: '', taches_ouvertes: 'deplacer', projet_cible_id: 5 })
+  })
+
+  it('Raccord F2 — « Les abandonner » envoie `taches_ouvertes: annuler`, la valeur que le serveur accepte', async () => {
+    api.terminerProjet.mockResolvedValue(reponseContrat('taches', 'projet_ecrit'))
+    render(<DialogueTerminer projet={projet()} onFait={() => {}} onFermer={() => {}} />)
+    const user = utilisateur()
+    await user.click(screen.getByRole('radio', { name: 'Abandonné' }))
+    await user.click(screen.getByRole('radio', { name: 'Les abandonner' }))
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'abandonne', bilan: '', taches_ouvertes: 'annuler', projet_cible_id: null })
   })
 
   it('un projet sans tâche ouverte ne pose pas la question des tâches ouvertes', () => {

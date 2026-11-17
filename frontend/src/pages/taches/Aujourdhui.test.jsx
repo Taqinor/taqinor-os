@@ -1,10 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReactReduxContext } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { memoryStore } from '../../lib/offlineOutbox'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
+import { creerFile, definirCompteFile, remplacerFile } from '../../features/taches/horsligne/captureQueue'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -148,17 +151,83 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
   })
 
-  it('hors ligne : la lecture reste, l\'en-tête le dit, cocher est grisé « Possible une fois connecté »', async () => {
+  it('hors ligne : la lecture reste, l\'en-tête le dit ; un geste qui exige le réseau dit « Possible une fois connecté »', async () => {
     servir(donnees())
     monter()
     await screen.findByText('Devis Settat')
     api.post.mockClear()
     fixerEnLigne(false)
     expect(screen.getByText(/Hors ligne · dernière synchro à 09:12/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+    await userEvent.click(screen.getByRole('button', { name: /Garder c/ }))
     expect(api.post).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Possible une fois connecté'))).toBe(true))
-    expect(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).not.toBeChecked()
+  })
+
+  describe('Raccord F2 — file hors ligne et cache du jour (TCH100)', () => {
+    const store = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+    const monterConnecte = () => render(
+      <ReactReduxContext.Provider value={{ store }}>
+        <MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /></MemoryRouter>
+      </ReactReduxContext.Provider>,
+    )
+    let file
+    beforeEach(() => {
+      window.localStorage.clear()
+      file = creerFile({ store: memoryStore() })
+      remplacerFile(file)
+    })
+    afterEach(() => { remplacerFile(null); definirCompteFile(null); window.localStorage.clear() })
+
+    it('cocher et reporter hors ligne partent dans la file : la ligne change tout de suite, « Partira dès le retour du réseau »', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      api.post.mockClear()
+      fixerEnLigne(false)
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+      await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).toBeChecked())
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Partira dès le retour du réseau')
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Devis Settat »' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+      await waitFor(async () => expect((await file.pending()).map((op) => op.op_type)).toEqual(['cocher', 'reporter']))
+      const [, report] = await file.pending()
+      expect(report.payload.corps).toMatchObject({ jour_prevu: donnees().prochain_jour_ouvre, lock_version: expect.any(Number) })
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('un brouillon de saisie gardé : la carte « Ta saisie de tout à l\'heure t\'attend. » ; Reprendre ouvre la saisie', async () => {
+      window.localStorage.setItem('taches:brouillon:7:42', JSON.stringify({ texte: 'Appeler le notaire', quand: null }))
+      servir(donnees())
+      const ouverture = vi.fn()
+      window.addEventListener('taqinor:taches:saisir', ouverture)
+      monterConnecte()
+      const carte = await screen.findByRole('region', { name: 'Brouillon' })
+      expect(carte).toHaveTextContent("Ta saisie de tout à l'heure t'attend.")
+      await userEvent.click(within(carte).getByRole('button', { name: 'Reprendre' }))
+      expect(ouverture).toHaveBeenCalledTimes(1)
+      expect(await screen.findByRole('textbox', { name: 'Ajouter une tâche' })).toHaveValue('Appeler le notaire')
+      window.removeEventListener('taqinor:taches:saisir', ouverture)
+    })
+
+    it('une création ailleurs (`taqinor:taches:creees`) relit la journée une fois', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      const avant = api.get.mock.calls.length
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:creees', { detail: { creees: [] } })) })
+      await waitFor(() => expect(api.get.mock.calls.length).toBe(avant + 1))
+    })
+
+    it('ouvert sans réseau, l\'écran lit la journée gardée dans le cache du compte au lieu de rester vide', async () => {
+      servir(donnees())
+      const { unmount } = monterConnecte()
+      await screen.findByText('Devis Settat')
+      unmount()
+      servir(() => Promise.reject(echecReseau()))
+      monterConnecte()
+      expect(await screen.findByText('Devis Settat')).toBeInTheDocument()
+      expect(screen.getByText(/^Pas à jour · \d\d:\d\d$/)).toBeInTheDocument()
+    })
   })
 
   it('aucune tâche : « Colle ou dicte tes listes » et Coller mes listes ouvre la saisie', async () => {
@@ -201,6 +270,39 @@ describe('TCH76 — gestes optimistes', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
     await waitFor(() => expect(api.post.mock.calls.map((c) => c[0])).toContain('/taches/taches/42/terminer/'))
     expect(await screen.findByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('Raccord F2 — ⋯ → En attente de… pose l\'attente sans ouvrir la fiche ; la ligne quitte la journée, Annuler la remet', async () => {
+    servir(donnees())
+    api.post.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/attendre/') ? { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 88 } : {} }))
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'En attente de…' }))
+    const feuille = await screen.findByRole('dialog', { name: 'En attente de…' })
+    await userEvent.type(within(feuille).getByLabelText('De qui ou de quoi ?'), 'Lydec')
+    await userEvent.click(within(feuille).getByRole('button', { name: 'En attente' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/attendre/', { en_attente_de: 'Lydec' }))
+    expect(screen.queryByText('Timbres')).toBeNull()
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('En attente de : Lydec')
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/88/annuler/', {}))
+    expect(await screen.findByText('Timbres')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('Raccord F2 — la `progression` rendue par une écriture (reporter) met la progression à jour sans relire la journée', async () => {
+    const d = donnees()
+    servir(d)
+    const ecrite = exempleContrat('taches', 'tache_ecrite')
+    api.post.mockResolvedValue({ data: { ...ecrite, geste_id: 70, progression: { ...d.progression, faites: 2 } } })
+    monter()
+    await screen.findByText('Devis Settat')
+    expect(screen.getByRole('button', { name: /^1 sur \d+ faites/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(await screen.findByRole('button', { name: /^2 sur \d+ faites/ })).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 

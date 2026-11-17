@@ -15,6 +15,12 @@ vi.mock('../../api/tachesApi', async (original) => ({
   rouvrirTache: vi.fn(),
   supprimerTache: vi.fn(),
   restaurerTache: vi.fn(),
+  traiterLot: vi.fn(),
+  planifierTache: vi.fn(),
+  listerTousLesProjets: vi.fn(),
+  annulerGeste: vi.fn(),
+  attendreTache: vi.fn(),
+  listerToutesLesTaches: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -81,7 +87,7 @@ describe('TCH89 — Un projet : étapes', () => {
     expect(within(etape).getByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
     const sans = screen.getByRole('region', { name: 'Sans étape' })
     expect(within(sans).getByRole('button', { name: 'Timbres' })).toBeInTheDocument()
-    expect(screen.getByText('Faites (12)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Faites/ })).toHaveTextContent('12')
   })
 
   it('cocher met la ligne et l\'avancement à jour sur place ; Annuler la rouvre', async () => {
@@ -115,36 +121,62 @@ describe('TCH89 — Un projet : étapes', () => {
   })
 })
 
-describe('TCH89 — Un projet : ajouter une tâche', () => {
-  it('« Ajouter une tâche » dans une étape crée la tâche dans cette étape', async () => {
-    const creee = tacheEcrite()
-    creee.tache.id = 77
-    creee.tache.titre = 'Relancer Settat'
-    creee.tache.jour_prevu = null
-    api.creerTache.mockResolvedValue({ data: creee })
-    monter()
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+describe('Raccord F2 — Un projet : chiffres servis seulement', () => {
+  it('compteurs servis par le contrat : « 4 sur 5 » (Études), « 8 sur 15 » (Sans étape) ; sans compteurs, aucun « n sur m »', async () => {
+    const { unmount } = monter()
     const etape = await screen.findByRole('region', { name: 'Études' })
-    await user.click(within(etape).getByRole('button', { name: 'Ajouter une tâche' }))
-    await user.type(within(etape).getByLabelText('Ajouter une tâche'), 'Relancer Settat{Enter}')
-    expect(api.creerTache).toHaveBeenCalledWith({
-      titre: 'Relancer Settat', projet_id: 3, section_id: 8, client_id: expect.any(String),
-    })
-    expect(await within(etape).findByRole('button', { name: 'Relancer Settat' })).toBeInTheDocument()
-    expect(screen.getByText('12 sur 21 · échéance 15/12')).toBeInTheDocument()
+    expect(within(etape).getByText('4 sur 5')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Sans étape' })).getByText('8 sur 15')).toBeInTheDocument()
+    unmount()
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.forEach((s) => { delete s.compteurs })
+    delete vue.sans_section_compteurs
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    monter()
+    const nue = await screen.findByRole('region', { name: 'Études' })
+    expect(within(nue).queryByText(/ sur /)).toBeNull()
+    expect(screen.getByRole('button', { name: /^Faites/ })).toHaveTextContent('12')
   })
 
-  it('un refus du serveur s\'affiche sous le champ et la saisie reste', async () => {
-    api.creerTache.mockRejectedValue({ response: { status: 400, data: { titre: ['Le titre est vide.'] } } })
+  it('servis par le serveur : « {faites} sur {total} » par étape (`compteurs`) ; « Faites (n) » déplié lit les faites', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections[0].compteurs = { ouvertes: 3, faites: 2 }
+    vue.sans_section_compteurs = { ouvertes: 1, faites: 4 }
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    api.listerToutesLesTaches.mockResolvedValue([{ ...vue.sections[0].taches[0], id: 99, titre: 'Dossier signé', statut: 'fait' }])
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await screen.findByRole('region', { name: 'Études' })
+    expect(within(etape).getByText('2 sur 5')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Sans étape' })).getByText('4 sur 5')).toBeInTheDocument()
+    expect(api.listerToutesLesTaches).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: /^Faites/ }))
+    expect(api.listerToutesLesTaches).toHaveBeenCalledWith({ projet: 3, statut: 'fait', tri: 'fait_le' })
+    expect(await screen.findByRole('button', { name: 'Dossier signé' })).toBeInTheDocument()
+  })
+})
+
+describe('TCH89 — Un projet : ajouter une tâche', () => {
+  it('Raccord F2 — « Ajouter une tâche » d\'une étape ouvre LA feuille de saisie avec ce projet et cette étape', async () => {
+    const ouverture = vi.fn()
+    window.addEventListener('taqinor:taches:saisir', ouverture)
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await screen.findByRole('region', { name: 'Études' })
     await user.click(within(etape).getByRole('button', { name: 'Ajouter une tâche' }))
-    const champ = within(etape).getByLabelText('Ajouter une tâche')
-    await user.type(champ, 'x{Enter}')
-    expect(await within(etape).findByRole('alert')).toHaveTextContent('Le titre est vide.')
-    expect(champ).toHaveAttribute('aria-invalid', 'true')
-    expect(champ).toHaveValue('x')
+    expect(ouverture).toHaveBeenCalledTimes(1)
+    expect(ouverture.mock.calls[0][0].detail).toEqual({ projet_id: 3, projet_nom: 'Ventes', section_id: 8 })
+    expect(await screen.findByRole('dialog', { name: 'Ajouter une tâche' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retirer « Ventes »' })).toBeInTheDocument()
+    window.removeEventListener('taqinor:taches:saisir', ouverture)
+  })
+
+  it('Raccord F2 — après une création (`taqinor:taches:creees`), la vue se relit une fois, sans recharger la page', async () => {
+    monter()
+    await screen.findByRole('region', { name: 'Études' })
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new CustomEvent('taqinor:taches:creees', { detail: { creees: [] } }))
+    await waitFor(() => expect(api.lireVueProjet).toHaveBeenCalledTimes(2))
   })
 })
 
@@ -171,6 +203,78 @@ describe('TCH89 — Un projet : priorité', () => {
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { statut: 'en_pause', lock_version: 4 })
     expect(await screen.findByText('En pause')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » en pause')
+  })
+})
+
+describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gestionnaire commun', () => {
+  const ouvrirMenu = async (user, titre) => {
+    const etape = await screen.findByRole('region', { name: 'Études' })
+    await user.click(within(etape).getByRole('button', { name: `Actions pour « ${titre} »` }))
+    return etape
+  }
+  beforeEach(() => {
+    api.annulerGeste.mockResolvedValue({ data: { restaurees: [], conflits: [], deja: false } })
+    api.listerTousLesProjets.mockResolvedValue([
+      { id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3 }, { id: 5, nom: 'Site web', couleur: 'ciel', priorite: 2 },
+    ])
+  })
+
+  it('Déplacer… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 91 } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('option', { name: 'Site web' }))
+    expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'deplacer', valeurs: { projet_id: 5 } })
+    await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Déplacée dans « Site web »')
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(api.annulerGeste).toHaveBeenCalledWith(91)
+    expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+  })
+
+  it('Priorité → Basse passe par le lot `prioriser` ; En réserve par `planifier/` avec le lock_version', async () => {
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 92 } })
+    api.planifierTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 93 } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Priorité' }))
+    await user.click(await screen.findByRole('radio', { name: 'Basse' }))
+    expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'prioriser', valeurs: { priorite: 1 } })
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Priorité basse')
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ quelque_jour: true, jour_prevu: null, lock_version: expect.any(Number) }))
+  })
+
+  it('Supprimer demande confirmation, retire la ligne ; Annuler la restaure à sa place', async () => {
+    api.supprimerTache.mockResolvedValue({ data: { geste_id: 94 } })
+    api.restaurerTache.mockResolvedValue({ data: tacheEcrite() })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    const dialogue = await screen.findByRole('dialog', { name: 'Supprimer' })
+    expect(dialogue).toHaveTextContent('Supprimer « Devis Settat » ?')
+    await user.click(within(dialogue).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
+    expect(api.supprimerTache).toHaveBeenCalledWith(20)
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(api.restaurerTache).toHaveBeenCalledWith(20)
+    expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
+  })
+
+  it('un refus du serveur remet la ligne et le dit', async () => {
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [], refusees: [{ id: 20, raison: 'close' }], geste_id: null } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('option', { name: 'Site web' }))
+    expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
   })
 })
 

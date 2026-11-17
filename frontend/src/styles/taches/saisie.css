@@ -11,7 +11,6 @@
 }
 .tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
 .tch .puces.saisie { margin-top: 2px; }
-.tch .erreur-champ { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
 .tch .alertes-saisie {
   margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
   font-size: 0.8125rem; color: var(--tch-texte-doux);
@@ -23,11 +22,6 @@
 .tch .selecteur-quand { margin-top: 4px; }
 
 /* TCH83 — aperçu d'une liste collée (port de docs/taches/maquettes/ecrans-coeur.css) */
-.tch .feuille-pied {
-  display: flex; align-items: center; gap: 10px; margin: 12px calc(-1 * var(--tch-gouttiere)) 0;
-  padding: 12px var(--tch-gouttiere); background: var(--tch-surface-haute); box-shadow: inset 0 1px 0 var(--tch-trait);
-}
-.tch .feuille-pied .bouton.large { flex: 1; }
 .tch .apercu-liste { display: flex; flex-direction: column; }
 .tch .apercu-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 2px; }
 .tch .apercu-entete .feuille-titre { text-align: left; font-size: 1.25rem; margin: 0; }

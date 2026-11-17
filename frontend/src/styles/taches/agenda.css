@@ -224,3 +224,49 @@
 .tch .ag-pj-ajout {
   grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; padding: 0 0 6px; font-size: 0.9375rem; font-weight: 600;
 }
+
+/* Raccord F2 — Planifier ma semaine au BUREAU (≥ 1024 px) : les sept jours en colonnes à cartes
+   (docs/taches/maquettes/agenda-semaine-planifier.html, ecrans-agenda.css .ag-pcols / .ag-carte) ; iPhone : sept lignes. */
+.tch .ag-pj-cartes { display: none; }
+@media (min-width: 1024px) {
+  .tch .ag-planifier .ag-jours { flex-direction: row; align-items: stretch; gap: 8px; padding: 14px 0 24px; min-height: 420px; }
+  .tch .ag-planifier .ag-pj-place { flex: 1 1 0; min-width: 0; display: flex; }
+  .tch .ag-planifier .ag-pj-place.repos { flex: 0 0 64px; }
+  .tch .ag-planifier .ag-pj {
+    display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; min-height: 100%;
+    padding: 10px 8px 8px; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait);
+  }
+  .tch .ag-planifier .ag-pj .j { padding: 0 4px; font-size: 0.875rem; }
+  .tch .ag-planifier .ag-pj .n { padding: 0 4px 4px; font-size: 0.75rem; }
+  .tch .ag-planifier .ag-pj.repos { align-items: center; background: var(--ag-repos); box-shadow: none; }
+  .tch .ag-planifier .ag-pj.repos .j { color: var(--tch-texte-doux); font-weight: 500; text-align: center; }
+  .tch .ag-planifier .ag-pj.nouveau { background: var(--ag-cible); box-shadow: inset 0 0 0 2px var(--tch-accent); }
+  .tch .ag-planifier .ag-pj-ajout { display: none; }
+  .tch .ag-pj-cartes { display: flex; flex-direction: column; gap: 6px; }
+  .tch .ag-carte {
+    display: flex; flex-direction: column; gap: 2px; padding: 7px 10px 8px; border-radius: 10px;
+    background: var(--tch-panneau); font-size: 0.8125rem; line-height: 1.125rem; text-align: left;
+  }
+  .tch .ag-carte .h { font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
+  .tch .ag-carte .m { display: flex; align-items: flex-start; gap: 6px; font-size: 0.75rem; color: var(--tch-texte-doux); min-width: 0; }
+  .tch .ag-carte .m .point { flex: none; margin-top: 5px; }
+  .tch .ag-carte .m span { overflow: hidden; text-overflow: ellipsis; }
+  .tch .ag-carte.faite { background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait); }
+  .tch .ag-carte.faite .t { color: var(--tch-texte-doux); text-decoration: line-through; }
+}
+
+/* Raccord F2 — barre de charge d'un jour (capacité servie par agenda/ ; repère de capacité aux 2/3) — ecrans-agenda.css */
+.tch .ag-charge {
+  position: relative; flex: none; display: flex; width: 72px; height: 6px; border-radius: 999px; overflow: hidden;
+  background: var(--tch-piste);
+}
+.tch .ag-charge::after {
+  content: ""; position: absolute; left: 66.667%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--tch-surface);
+}
+.tch .ag-charge i { display: block; height: 100%; width: var(--c); flex: none; }
+.tch .ag-charge i.b { background: var(--tch-texte-doux); }
+.tch .ag-charge i.bp { background: var(--tch-surveiller); }
+.tch .ag-pj .ag-charge { grid-column: 2; margin-bottom: 4px; }
+@media (min-width: 1024px) {
+  .tch .ag-planifier .ag-pj .ag-charge { width: 100%; margin: 0; }
+}

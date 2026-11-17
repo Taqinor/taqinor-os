@@ -5,11 +5,13 @@ import { Search } from 'lucide-react'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
 import {
-  annulerGeste, listerToutesLesEtiquettes, listerTousLesProjets, rouvrirTache, supprimerTache,
-  restaurerTache, terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
+  annulerGeste, listerToutesLesEtiquettes, listerTousLesProjets, rouvrirTache,
+  terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
+import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
+import { useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 
 /* ============================================================================
@@ -31,7 +33,18 @@ const PUCES_JOUR = [
   ['en_attente', 'En attente'], ['avec_echeance', 'Avec échéance'],
 ]
 
-const ouverte = (t) => t.statut !== 'fait' && t.statut !== 'abandonne'
+// StatutTache : a_faire · en_attente · fait · annule (« abandonnée » à l'écran)
+const ouverte = (t) => t.statut !== 'fait' && t.statut !== 'annule'
+
+/** Puces servies par `GET taches/?periode=` (aujourdhui : jour prévu = J ; semaine : J à J+6) ; ET entre les deux = J. */
+function periodeServie(puces) {
+  if (puces.includes('aujourdhui')) return 'aujourdhui'
+  if (puces.includes('sept_jours')) return 'semaine'
+  return null
+}
+
+/** Tris servis par `GET taches/?tri=` (rang par défaut) ; « Jour » et « Création » restent triés ici. */
+const TRI_SERVI = { priorite: 'priorite', echeance: 'echeance' }
 
 /** Les puces de jour, lues sur la ligne et le jour de l'appareil (ET entre puces). */
 function correspond(tache, puce, aujourdhui) {
@@ -102,7 +115,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     return () => clearTimeout(minuteur)
   }, [saisie, q, setParams])
 
-  const serveur = faites || haute || reserve || projetId != null || etiquetteId != null
+  const periode = periodeServie(puces)
+  const triServi = TRI_SERVI[tri]
+  const serveur = faites || haute || reserve || projetId != null || etiquetteId != null || periode != null
   const mots = q.trim()
 
   useEffect(() => {
@@ -115,6 +130,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       priorite_min: haute ? 3 : undefined,
       inclure_faites: faites ? true : undefined,
       vue: reserve ? 'quelque_jour' : undefined,
+      periode: periode ?? undefined, // Raccord F2 : « Aujourd'hui » / « 7 jours » servis
+      tri: triServi,
     }
     // Liste paginée (50) : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0).
     const lecture = serveur
@@ -126,14 +143,21 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       .then((suite) => { if (courant) { setResultat(suite); setLu(true); setErreur('') } })
       .catch((err) => { if (courant) setErreur(frenchError(err)) })
     return () => { courant = false }
-  }, [mots, serveur, faites, haute, reserve, projetId, etiquetteId])
+  }, [mots, serveur, faites, haute, reserve, projetId, etiquetteId, periode, triServi])
 
   const chargerProjets = useCallback(() => {
     if (projets.length === 0) listerTousLesProjets().then(setProjets).catch((err) => setErreur(frenchError(err)))
   }, [projets.length])
+  // Les étiquettes (`etiquettes/`) ne sont servies qu'en F4 (TCH166, 501 d'ici là) : sans liste lue, le filtre
+  // « Étiquette » n'apparaît pas — ce n'est pas une erreur de l'écran, rien n'est affiché.
+  const [etiquettesLues, setEtiquettesLues] = useState(false)
   useEffect(() => {
-    if (replie && etiquettes.length === 0) listerToutesLesEtiquettes().then(setEtiquettes).catch((err) => setErreur(frenchError(err)))
-  }, [replie, etiquettes.length])
+    if (!replie || etiquettesLues) return
+    listerToutesLesEtiquettes()
+      .then(setEtiquettes)
+      .catch(() => setEtiquettes([]))
+      .finally(() => setEtiquettesLues(true))
+  }, [replie, etiquettesLues])
 
   const actif = serveur || Boolean(mots)
   const lignes = useMemo(() => (actif ? resultat.taches : [])
@@ -143,11 +167,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const faitesLignes = lignes.filter((t) => !ouverte(t))
   const projetsTrouves = serveur || !actif ? [] : resultat.projets
 
-  const ouvrirFiche = (item) => setParams((actuels) => {
-    const suite = new URLSearchParams(actuels)
-    suite.set('tache', String(item.id))
-    return suite
-  })
+  const ouvrirLaFiche = useOuvrirFiche()
+  const ouvrirFiche = (item) => ouvrirLaFiche(item.id)
   const majLigne = (id, suite) => setResultat((r) => ({ ...r, taches: r.taches.map((t) => (t.id === id ? { ...t, ...suite } : t)) }))
 
   const terminer = async (item, suivant) => {
@@ -160,19 +181,21 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       })
     }
   }
-  const action = async (code, item) => {
-    if (code !== 'supprimer') { ouvrirFiche(item); return }
-    try {
-      await supprimerTache(item.id)
-      setResultat((r) => ({ ...r, taches: r.taches.filter((t) => t.id !== item.id) }))
-      proposerAnnuler({
-        message: 'Supprimée',
-        onAnnuler: async () => { await restaurerTache(item.id); setResultat((r) => ({ ...r, taches: [item, ...r.taches] })) },
+  // Raccord F2 — le gestionnaire commun des actions de ligne : chaque geste change la ligne sur place, sans relire.
+  const actions = useActionsLigne({
+    aujourdhui,
+    maj: majLigne,
+    retirer: (item) => {
+      let rang = -1
+      setResultat((r) => { rang = r.taches.findIndex((t) => t.id === item.id); return { ...r, taches: r.taches.filter((t) => t.id !== item.id) } })
+      return () => setResultat((r) => {
+        const taches = [...r.taches]
+        taches.splice(rang < 0 ? 0 : Math.min(rang, taches.length), 0, item)
+        return { ...r, taches }
       })
-    } catch (err) {
-      setErreur(frenchError(err))
-    }
-  }
+    },
+  })
+  const action = actions.surAction
 
   const basculerPuce = (cle) => setPuces((l) => (l.includes(cle) ? l.filter((c) => c !== cle) : [...l, cle]))
   const projetChoisi = projets.find((p) => p.id === projetId)
@@ -182,7 +205,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     <CoquilleTaches
       ecran="recherche"
       titre="Recherche"
-      selecteurProjet={{
+      feuille={actions.feuille}
+      conflit={actions.conflit}
+      selecteurProjet={actions.selecteurProjet ?? {
         ouverte: selecteur, onFermer: () => setSelecteur(false), projets, sansProjet: false,
         onChoisir: (id) => { setProjetId(id); setSelecteur(false) },
         onNouveau: () => setSelecteur(false),
@@ -224,13 +249,15 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
             ))}
             <button type="button" className="puce" role="checkbox" aria-checked={reserve} onClick={() => setReserve((v) => !v)}>En réserve</button>
           </div>
-          <label className="champ-etiquette">
-            <span>Étiquette</span>
-            <select className="champ" value={etiquetteId ?? ''} onChange={(e) => setEtiquetteId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Toutes</option>
-              {etiquettes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-            </select>
-          </label>
+          {etiquettes.length > 0 ? (
+            <label className="champ-etiquette">
+              <span>Étiquette</span>
+              <select className="champ" value={etiquetteId ?? ''} onChange={(e) => setEtiquetteId(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Toutes</option>
+                {etiquettes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label className="champ-etiquette">
             <span>Tri</span>
             <select className="champ" value={tri} onChange={(e) => setTri(e.target.value)}>

@@ -7,6 +7,8 @@ import {
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_DECONNEXION, viderCache } from './cacheJournee'
 
+const EVENEMENT_CREEES = 'taqinor:taches:creees' // = lib/fiche.js, FeuilleSaisie (sans import : la file reste sans routeur)
+
 /* ============================================================================
    TCH100 — La file d'envoi hors ligne du module Tâches : UN `Outbox` (lib/offlineOutbox.js — le moteur unique de
    l'application, jamais un second) sur `createModuleOutboxStore('taches')`. Trois gestes se mettent en file quand
@@ -25,6 +27,8 @@ import { EVENEMENT_DECONNEXION, viderCache } from './cacheJournee'
 
 export const TYPES = { AJOUTER: 'ajouter', COCHER: 'cocher', REPORTER: 'reporter' }
 export const MESSAGE_AUTRE_COMPTE = "Une action d'un autre compte a été retirée de la file."
+/** Toast d'un geste mis en file (textes.md §2.15 « Hors ligne »). */
+export const MESSAGE_EN_FILE = 'Partira dès le retour du réseau'
 
 let compte = null
 const ecouteurs = new Set()
@@ -194,6 +198,8 @@ export function brancherRejeu({ surJetees, f = fileTaches() } = {}) {
   const surEnLigne = async () => {
     const res = await rejouerFile(f)
     if (res?.jetees.length) surJetees?.(res.jetees.length)
+    // Raccord F2 — des gestes faits hors ligne viennent d'arriver : les écrans ouverts se relisent une fois
+    if (res?.flushed > 0) window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { rejeu: true } }))
   }
   const surDeconnexion = async () => {
     await f.clear()

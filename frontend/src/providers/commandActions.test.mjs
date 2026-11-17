@@ -19,7 +19,7 @@ const clear = installLocalStorage()
 
 const {
   NAV_ACTIONS, filterActions, CREATE_ACTIONS, filterCreateActions,
-  filterContextActions, readRecentEntities, pushRecentEntity,
+  filterContextActions, readRecentEntities, pushRecentEntity, TACHES_ACTIONS, filterTachesActions,
 } = await import('./commandActions.js')
 
 test('NAV_ACTIONS: dérivées des raccourcis, bien formées (label + route + puce)', () => {
@@ -156,4 +156,15 @@ test('TCH119 : « c t » ouvre la saisie par événement, jamais une navigation 
   assert.equal(CREATE_ACTIONS.some((a) => a.keys === 'c t'), false)
   assert.equal(CREATE_ACTIONS.every((a) => typeof a.to === 'string'), true)
   assert.deepEqual(CREATE_ACTIONS.map((a) => a.keys), ['c l', 'c d', 'c c'])
+})
+
+test('Raccord F2 Tâches : la recherche en tête, puis Nouveau projet, Faire le bilan et les onglets (routes réelles)', () => {
+  const vide = filterTachesActions('')
+  assert.deepEqual(vide.map((a) => a.label), ['Chercher dans mes tâches', 'Nouveau projet', 'Faire le bilan', 'À trier', 'Projets', 'Agenda'])
+  for (const a of vide) assert.ok(a.to.startsWith('/taches/'))
+  assert.equal(new Set(TACHES_ACTIONS.map((a) => a.id)).size, TACHES_ACTIONS.length)
+  const devis = filterTachesActions('devis Settat')
+  assert.equal(devis[0].label, 'Chercher « devis Settat » dans mes tâches')
+  assert.equal(devis[0].to, '/taches/recherche?q=devis%20Settat')
+  assert.deepEqual(filterTachesActions('agen').map((a) => a.label), ['Chercher « agen » dans mes tâches', 'Agenda'])
 })

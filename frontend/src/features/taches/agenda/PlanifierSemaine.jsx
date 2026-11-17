@@ -10,15 +10,28 @@ import VoletAPlacer from '../ui/VoletAPlacer'
    d'un jour à l'autre puis Entrée. Jour passé : « passé · {n} faites », non posable ; jour non
    travaillé : « non travaillé ». En-tête de jour « {n} tâches · {durée} ». Bouton **Terminer**.
    Maquettes : agenda-semaine-planifier.html, agenda-semaine-planifier-pose.html ; textes.md §2.8.
-   La capacité du jour (« pour {cap} ») n'est pas servie par `agenda.json` : elle n'est pas
-   affichée (aucun chiffre inventé). Le composant ne parle jamais au serveur.
+   La capacité du jour (« pour {cap} », barre de charge) n'est affichée que si `agenda/` la sert (`capacite.minutes`) :
+   aucun chiffre inventé. Le composant ne parle jamais au serveur.
    ========================================================================== */
 
 const versUtc = (iso) => { const [a, m, j] = iso.split('-').map(Number); return Date.UTC(a, m - 1, j) }
 const nomJour = (iso) => `${ABR_JOURS[new Date(versUtc(iso)).getUTCDay()]} ${Number(iso.slice(8, 10))}`
 const accordTaches = (n) => (n >= 2 ? `${n} tâches` : `${n} tâche`)
 
-function resume(jour, aujourdhui) {
+/** Barre de charge (maquette : la capacité est le repère à 2/3 de la barre ; au-delà, la part en trop). */
+function BarreCharge({ minutes, capacite }) {
+  const echelle = capacite * 1.5
+  const dans = Math.min(minutes, capacite) / echelle * 100
+  const trop = Math.max(0, Math.min(minutes, echelle) - capacite) / echelle * 100
+  return (
+    <span className="ag-charge" aria-hidden="true">
+      <i className="b" style={{ '--c': `${dans}%` }} />
+      {trop > 0 ? <i className="bp" style={{ '--c': `${trop}%` }} /> : null}
+    </span>
+  )
+}
+
+function resume(jour, aujourdhui, capaciteServie = null) {
   const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   if (jour.jour < aujourdhui) {
     const faites = taches.filter((t) => t.statut === 'fait').length
@@ -27,17 +40,50 @@ function resume(jour, aujourdhui) {
   if (!jour.ouvre || jour.ferie) return { repos: true, texte: jour.ferie ? 'Férié' : 'non travaillé' }
   const ouvertes = taches.filter((t) => t.statut !== 'fait')
   const minutes = ouvertes.reduce((n, t) => n + (t.estimation_minutes || 0), 0)
+  // Raccord F2 — « {n} tâches · {h} pour {cap} » (textes.md §2.8) et la barre de charge SEULEMENT si `agenda/` sert
+  // la capacité (`capacite: {minutes, source}`) ; sinon elles sont omises, jamais devinées.
+  const capacite = Number.isFinite(capaciteServie) && capaciteServie > 0 ? capaciteServie : null
+  if (capacite) {
+    return {
+      texte: `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite)}`,
+      charge: { minutes, capacite },
+    }
+  }
   return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
 }
 
-function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
-  const { passe, repos, texte } = resume(jour, aujourdhui)
+/** Raccord F2 — au bureau (≥ 1024 px), chaque jour est une COLONNE à cartes (agenda-semaine-planifier.html) ; sur
+ * iPhone ces cartes sont masquées et le jour reste une ligne. Décor seulement : le nom du jour reste sur le bouton. */
+function CartesDuJour({ jour }) {
+  const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
+  if (taches.length === 0) return null
+  return (
+    <span className="ag-pj-cartes" aria-hidden="true">
+      {taches.map((t) => {
+        const heure = t.heure_debut ? t.heure_debut.slice(0, 5) : ''
+        const d = dureeTexte(t.estimation_minutes)
+        return (
+          <span key={t.id} className={t.statut === 'fait' ? 'ag-carte faite' : 'ag-carte'}>
+            {heure ? <span className="h">{d ? `${heure} · ${d}` : heure}</span> : null}
+            <span className="t">{t.titre}</span>
+            {t.projet ? (
+              <span className="m"><i className="point" data-p={t.projet.couleur || undefined} /><span>{t.projet.nom}</span></span>
+            ) : null}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
+  const { passe, repos, texte, charge } = resume(jour, aujourdhui, capacite)
   const nom = nomJour(jour.jour)
   const classes = ['ag-pj', passe ? 'passe' : '', repos ? 'repos' : '', jour.jour === aujourdhui ? 'auj' : '',
     posee ? 'nouveau' : ''].filter(Boolean).join(' ')
   const poser = () => (choisie ? onPoser(choisie, jour.jour) : onOuvrirJour(jour.jour))
   return (
-    <div role="listitem">
+    <div role="listitem" className={repos ? 'ag-pj-place repos' : 'ag-pj-place'}>
       <button
         ref={refBouton}
         type="button"
@@ -51,6 +97,8 @@ function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, re
       >
         <span className="j">{nom}</span>
         <span className="n">{texte}</span>
+        {charge ? <BarreCharge {...charge} /> : null}
+        <CartesDuJour jour={jour} />
         {posee ? (
           <span className="ag-pj-ajout" data-p={posee.projet?.couleur || undefined}>
             <i className="point" aria-hidden="true" />{posee.titre}
@@ -86,7 +134,7 @@ function useFlechesJours(actif, boutons) {
  * choisie (objet ou nul) ; `posees` : `{jour: tâche}` des dernières poses ; `onPoser(item, jour)`.
  */
 export default function PlanifierSemaine({
-  jours, aujourdhui, aPlacer = [], mesProjets = [], choisie = null, posees = {},
+  jours, aujourdhui, capacite = null, aPlacer = [], mesProjets = [], choisie = null, posees = {},
   onChoisir, onPoser, onOuvrirJour, onTerminer,
 }) {
   const boutons = useRef([])
@@ -103,7 +151,7 @@ export default function PlanifierSemaine({
         <div className="ag-jours chiffres" role="list" aria-label="Jours de la semaine">
           {jours.map((j, rang) => (
             <LigneJour
-              key={j.jour} jour={j} aujourdhui={aujourdhui} choisie={choisie} posee={posees[j.jour] ?? null}
+              key={j.jour} jour={j} aujourdhui={aujourdhui} capacite={capacite} choisie={choisie} posee={posees[j.jour] ?? null}
               onPoser={onPoser} onOuvrirJour={onOuvrirJour}
               refBouton={(el) => { boutons.current[rang] = el }}
             />

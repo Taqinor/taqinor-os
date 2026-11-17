@@ -262,6 +262,7 @@ export default function LigneTache({
               <DropdownMenuItem onSelect={reporter}>Reporter à {reporterLibelle}</DropdownMenuItem>
             ) : null}
             {!activite ? <DropdownMenuItem onSelect={action('choisir_jour')}>Choisir un jour</DropdownMenuItem> : null}
+            {!activite && !item.quelque_jour ? <DropdownMenuItem onSelect={action('reserve')}>En réserve</DropdownMenuItem> : null}
             {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Déplacer…</DropdownMenuItem> : null}
             {!activite ? (
               <DropdownMenuItem onSelect={action('essentiel')}>

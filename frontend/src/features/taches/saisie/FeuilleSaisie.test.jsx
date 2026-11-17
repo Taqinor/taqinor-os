@@ -3,7 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { memoryStore } from '../../../lib/offlineOutbox'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captureQueue'
 import { reinitialiserGestes } from '../lib/gestes'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, lireBrouillon, messageChamps } from './FeuilleSaisie'
@@ -173,9 +175,83 @@ describe('TCH82 — feuille de saisie', () => {
     expect(lireBrouillon(7, 42)).toBeNull()
   })
 
+  it('Raccord F2 — le contexte de l\'écran (projet courant) part avec la ligne qui n\'en nomme pas', async () => {
+    const user = userEvent.setup()
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({
+      data: corps.apercu ? { ...apercu, lignes: [{ ...apercu.lignes[0], champs: { jour_prevu: '2026-11-18' } }], projets_nouveaux: [] } : creation,
+    }))
+    const { onFermer } = monter()
+    act(() => {
+      window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes', section_id: 8 } }))
+    })
+    expect(screen.getByRole('button', { name: 'Retirer « Ventes »' })).toBeInTheDocument()
+    await user.type(champ(), 'Appeler Karim demain')
+    await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+    const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
+    expect(envoi.lignes[0]).toMatchObject({ projet_id: 3, section_id: 8, jour_prevu: '2026-11-18' })
+  })
+
+  it('Raccord F2 — le jour de l\'Agenda devient le « Quand » de départ, retirable', async () => {
+    monter()
+    act(() => {
+      window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { jour_prevu: '2026-11-20', heure_debut: '10:00' } }))
+    })
+    expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /10:00/ })).toBeInTheDocument()
+  })
+
+  describe('Raccord F2 — hors ligne', () => {
+    let file
+    beforeEach(async () => {
+      file = creerFile({ store: memoryStore() })
+      remplacerFile(file)
+      definirCompteFile(42, 7)
+    })
+    afterEach(() => {
+      Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
+      remplacerFile(null)
+      definirCompteFile(null)
+    })
+
+    it('sans réseau, « Ajouter » met la phrase en file : « Partira dès le retour du réseau », rien n\'est perdu', async () => {
+      const user = userEvent.setup()
+      const { onFermer } = monter()
+      await user.type(champ(), PHRASE)
+      await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
+      act(() => {
+        Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+        window.dispatchEvent(new Event('offline'))
+      })
+      expect(screen.getByText('Hors ligne : elle partira dès le retour du réseau.')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(onFermer).toHaveBeenCalled())
+      expect(mocks.saisieRapide.mock.calls.some(([corps]) => corps.apercu === false)).toBe(false)
+      const [op] = await file.pending()
+      expect(op.payload.corps.lignes[0]).toMatchObject({ titre: 'Appeler Karim', nouveau_projet: { nom: 'SiteWeb' } })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Partira dès le retour du réseau')
+    })
+
+    it('une coupure pendant l\'envoi met la ligne en file au lieu d\'une erreur ; sans analyse, le texte entier sert de titre', async () => {
+      const user = userEvent.setup()
+      mocks.saisieRapide.mockRejectedValue(new Error('Network Error'))
+      const { onFermer } = monter()
+      await user.type(champ(), 'Rappeler Salma')
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(onFermer).toHaveBeenCalled())
+      const [op] = await file.pending()
+      expect(op.payload.corps.lignes).toEqual([expect.objectContaining({ index: 0, titre: 'Rappeler Salma' })])
+      expect(screen.queryByText(/Pas de réseau/)).toBeNull()
+    })
+  })
+
   it('messageChamps lit le champ fautif, par ligne ou non', () => {
     expect(messageChamps(erreurs.champ)).toBe('Projet inexistant.')
     expect(messageChamps(erreurs.par_ligne)).toBe('Le titre est vide une fois la date et le projet retirés.')
     expect(messageChamps(null)).toBe('')
+    // Raccord F2 — le 400 porte aussi `error` à la racine : il n'est jamais pris pour le champ fautif
+    expect(messageChamps({ error: ['validation'], projet_id: ['Projet inexistant.'] })).toBe('Projet inexistant.')
+    expect(messageChamps({ error: ['validation'] })).toBe('')
   })
 })

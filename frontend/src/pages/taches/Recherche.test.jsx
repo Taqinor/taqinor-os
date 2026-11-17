@@ -9,7 +9,7 @@ import Recherche from './Recherche'
 import Supprimees from './Supprimees'
 
 const api = vi.hoisted(() => ({
-  rechercher: vi.fn(), listerTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(),
+  rechercher: vi.fn(), listerTaches: vi.fn(), listerToutesLesTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(),
   listerSupprimees: vi.fn(), listerGestes: vi.fn(), restaurerProjet: vi.fn(), restaurerTache: vi.fn(), annulerGeste: vi.fn(),
   terminerTache: vi.fn(), rouvrirTache: vi.fn(), supprimerTache: vi.fn(),
 }))
@@ -43,7 +43,8 @@ const monter = (url = '/taches/recherche?q=devis') => render(
 
 beforeEach(() => {
   api.rechercher.mockResolvedValue({ data: MIXTE })
-  api.listerTaches.mockResolvedValue({ data: { results: MIXTE.taches, count: 3 } })
+  api.listerTaches.mockResolvedValue({ data: { results: MIXTE.taches, count: 3, next: null } })
+  api.listerToutesLesTaches.mockResolvedValue(MIXTE.taches)
   api.listerTousLesProjets.mockResolvedValue(projetsListe.results)
   api.listerToutesLesEtiquettes.mockResolvedValue(etiquettes.results)
   api.listerSupprimees.mockResolvedValue({ data: supprimees })
@@ -128,6 +129,50 @@ describe('TCH87 — Recherche', () => {
     // « En réserve » est une vue du serveur
     await user.click(screen.getByRole('checkbox', { name: 'En réserve' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
+  })
+
+  it('Raccord F2 — « Aujourd\'hui » et « 7 jours » passent par `periode` du serveur, le tri servi suit', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
+    await user.click(screen.getByRole('checkbox', { name: '7 jours' }))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', periode: 'semaine' })))
+    await user.click(screen.getByRole('checkbox', { name: "Aujourd'hui" }))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui' })))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Tri' }), 'echeance')
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui', tri: 'echeance' })))
+  })
+
+  it('Raccord F2 — étiquettes pas encore servies (501) : ni erreur ni filtre Étiquette', async () => {
+    const user = userEvent.setup()
+    api.listerToutesLesEtiquettes.mockRejectedValue(erreurHttp({ detail: 'Pas encore.' }, 501))
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
+    await waitFor(() => expect(api.listerToutesLesEtiquettes).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('combobox', { name: 'Étiquette' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('Raccord F2 — une tâche abandonnée (statut `annule`) n\'est pas rangée dans Ouvertes', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [item(20, 'Devis Settat'), item(30, 'Devis abandonné', { statut: 'annule' })] } })
+    monter()
+    expect(await screen.findByRole('region', { name: 'Ouvertes (1)' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Ouvertes (1)' })).queryByText('Devis abandonné')).toBeNull()
+  })
+
+  it('Raccord F2 — une ligne ouvre la fiche (`?tache=`) ; la croix la ferme par le retour, l\'écran reste tel quel', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('button', { name: 'Devis Settat' }))
+    const fiche = await screen.findByRole('dialog')
+    await user.click(within(fiche).getByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })).toHaveValue('devis')
+    expect(screen.getByRole('region', { name: 'Ouvertes (2)' })).toBeInTheDocument()
   })
 
   it('tri par priorité : la plus haute d\'abord', async () => {

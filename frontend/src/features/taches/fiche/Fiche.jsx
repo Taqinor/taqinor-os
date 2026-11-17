@@ -36,12 +36,15 @@ const CHAMP_DE_ERREUR = {
   echeance: 'echeance', echeance_heure: 'echeance', titre: 'titre', notes: 'notes', priorite: 'priorite',
   projet_id: 'projet', essentielle: 'essentielle', essentielles: 'essentielle', libelle: 'checklist',
 }
-const PRIORITES = [['Basse', 1], ['Moyenne', 2], ['Haute', 3]]
+const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de textes.md §2.3 / §2.6 : Haute · Moyenne · Basse
 
 /** `{champ: [messages]}` d'un 400 → `{ champDeLaFiche: premier message }` (le reste : `general`). */
+const CLES_HORS_CHAMP = new Set(['error', 'code', 'detail'])
+
 function erreursParChamp(champs) {
   const sortie = {}
   Object.entries(champs ?? {}).forEach(([cle, liste]) => {
+    if (CLES_HORS_CHAMP.has(cle)) return // le 400 porte aussi `error` (et `code`) à la racine : jamais un champ
     const message = Array.isArray(liste) && typeof liste[0] === 'string' ? liste[0] : ''
     if (message) sortie[CHAMP_DE_ERREUR[cle] ?? 'general'] = message
   })
@@ -238,8 +241,9 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const nouveauProjet = async (nom) => {
     try {
       const { data } = await creerProjet({ nom })
-      setProjets((liste) => (liste ? [...liste, data] : liste))
-      choisirProjet(data.id)
+      const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
+      setProjets((liste) => (liste ? [...liste, cree] : liste))
+      choisirProjet(cree.id)
     } catch (err) {
       erreur('projet', erreursParChamp(classerErreur(err).champs).projet || classerErreur(err).champs?.nom?.[0] || frenchError(err))
     }
@@ -276,7 +280,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
 
   return (
     <div data-fiche={id} className="fiche">
-      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85">
+      {/* la fiche vit dans l'adresse (`?tache=`) : le retour arrière la ferme déjà, pas d'entrée d'historique en plus */}
+      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false}>
         {chargement && !tache ? <p className="vide-phrase" role="status">Chargement…</p> : null}
         {echec && !tache ? <p className="erreur-champ" role="alert">{echec}</p> : null}
         {tache ? (
