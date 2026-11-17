@@ -190,7 +190,7 @@ il reste à réaligner la référence, puis à la vérifier une dernière fois.
 
 ## A18 — Critique finale avant construction (`critique-finale.md` : 1 bloquant, 8 majeurs ; verdict « prêt après corrections »)
 Toutes les corrections sont ADOPTÉES. Ce qu'elles changent :
-- **B1 — les sources des tâches restent lisibles.** Le plan cite `docs/taches/travail/…` dans 119 tâches : ces pièces
+- **B1 — les sources des tâches restent lisibles.** Le plan citait les pièces du dossier de travail de la branche (rapport resté sur la branche de travail) dans 119 tâches : ces pièces
   ne peuvent pas être supprimées avant la construction. Sur `main` vivent : `docs/taches/reference/` (fait foi),
   `docs/taches/conception/` (socle, arbitrages, spec-2 à spec-8, consignes de construction — déplacés depuis
   `travail/`), `docs/taches/maquettes/` (sans les captures) et `docs/taches/README.md`. Les recherches, rapports de

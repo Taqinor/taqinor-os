@@ -438,7 +438,7 @@ sans motif d'À revoir (§4.2) ; `exclure` retirés.
 6. **Planifier ma semaine** : `agenda/?vue=semaine` → `mes_projets` = le tour complet (étape 3, sans N), groupé par
    projet ; toucher une tâche puis un jour = `planifier(jour_prevu=jour)`.
 
-**Jeu de test (recalculé par `docs/taches/travail/integ2/propose.py`, cette session).** Projets : Ventes (haute,
+**Jeu de test (recalculé par un script jetable (rapport resté sur la branche de travail), cette session).** Projets : Ventes (haute,
 rang 1024 ; 12 tâches V1…V12 sans date, `rang_projet` 1024…12288, + R4 reportée 3 fois), Maison (moyenne, rang 1024 ;
 R1 prévue 16/11, M1 prévue ven. 20, M2, M3), Polydesign (moyenne, rang 2048 ; R2 échéance 12/11, D1 en réserve, D2
 bloquée, D3, D4), Admin (basse ; A1 échéance jeu. 19, A2, A3, R3 prévue 05/11), Salon (haute, **en pause** : 2 tâches),
@@ -789,7 +789,7 @@ par `nom_pour`).
 
 ### 6.10 Exemples chiffrés — 49 de spec-5a §7 + 12 de A2 + 4 de la révision 2 + 5 variantes v1, RECALCULÉS
 
-Recalculés par le script jetable `docs/taches/travail/integ2/recalcul.py` (bibliothèque standard, règles finales :
+Recalculés par un script jetable (rapport resté sur la branche de travail) (bibliothèque standard, règles finales :
 seuil 5/10, demie vers le bas, plafonnement, objectif dit, premier objectif proposé et jamais imposé, semaine
 courte), relancé en révision 2 : **65/65 conformes**. Les 49 d'origine restent vrais au nouveau seuil (leurs blocs
 font 7/10 et 2/10) ; `palier_initial` rend désormais (palier appliqué, journée type, carte), d'où les sorties 10-12
