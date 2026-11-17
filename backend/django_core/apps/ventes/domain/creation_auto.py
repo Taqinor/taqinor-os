@@ -118,6 +118,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         verdict_taille_creation)
     from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.domain.etude_ci_batterie import lignes_des_options
+    from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
     from apps.ventes.models import Devis
 
     taille = target_kwc if target_kwc not in (None, '') else getattr(
@@ -180,7 +181,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                     'message': ('« %s » à chiffrer après la visite technique : hors '
                                 'total, devis estimé sous réserve de visite.' % poste)}
                    for poste in (etude.get('composition') or {}).get('a_chiffrer_visite') or []]
-        alertes += [dict(a) for a in etude.get('alertes') or []
+        alertes += [dict(a) for a in alertes_pour_la_commerciale(etude)
                     if a.get('niveau') in ('alerte', 'bloquant')
                     and a.get('code') != 'a_chiffrer_visite']
         alertes += _alertes_brouillons_ci_du_lead(devis)

@@ -5,7 +5,29 @@
    affichent la MÊME chose : une seule implémentation. Jamais un chiffre
    inventé — le message du serveur, tel quel. ALEA51 — en AVERTISSEMENT
    (sous le succès), jamais en rouge. */
-export default function AlertesDevisAuto({ alertes }) {
+import fieldLabels from '../../../features/crm/workspace/fieldLabels'
+
+/* D 17/11/2026 — « À compléter sur la fiche : <libellé> » : la colonne du lead
+   qui lèverait l'hypothèse. Libellé inconnu de fieldLabels → rien (jamais le
+   nom brut de la colonne). Avec `onAllerAuChamp` : un bouton qui saute au
+   champ ; sans : du texte. */
+export function PointeurChampLead({ champLead, onAllerAuChamp }) {
+  const libelle = champLead ? fieldLabels[champLead]?.label : null
+  if (!libelle) return null
+  return (
+    <span data-testid="alerte-champ-lead"> —{' '}
+      {onAllerAuChamp ? (
+        <button type="button" className="underline" onClick={() => onAllerAuChamp(champLead)}>
+          À compléter sur la fiche : {libelle}
+        </button>
+      ) : (
+        <>À compléter sur la fiche : {libelle}</>
+      )}
+    </span>
+  )
+}
+
+export default function AlertesDevisAuto({ alertes, onAllerAuChamp }) {
   if (!Array.isArray(alertes) || alertes.length === 0) return null
   return (
     <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-left text-sm"
@@ -18,6 +40,7 @@ export default function AlertesDevisAuto({ alertes }) {
                 client : marquée pour le vendeur. */}
             {a.interne === true && <strong data-testid="ldp-alerte-interne">Vendeur seulement — </strong>}
             {a.message || a.code}
+            <PointeurChampLead champLead={a.champ_lead} onAllerAuChamp={onAllerAuChamp} />
           </li>
         ))}
       </ul>

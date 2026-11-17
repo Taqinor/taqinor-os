@@ -368,3 +368,46 @@ describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous �
     expect(screen.getByTestId('erreur-tarif-base_tarifs')).toBeInTheDocument()
   })
 })
+
+describe('D 17/11/2026 — carte résultat : option avec batterie + pointeur vers la fiche', () => {
+  const ECO = exempleContrat('ventes', 'economie_ci')
+  const donnees = (extra = {}) => ({ ...EXEMPLE, economie_ci: ECO, ...extra })
+  const AVEC = {
+    kwc: 12.5, cout_vente_ht: 200000, economie_annuelle_mad: 31000, retour_simple_ans: 7.3,
+    batterie: { nom: 'Dyness 10', quantite: 2, capacite_utile_kwh: 18 },
+  }
+
+  it('option_avec présente : second groupe titré, chiffres, premier groupe étiqueté', () => {
+    render(<CarteResultatCi donnees={donnees({ option_avec: AVEC })} />)
+    const g = screen.getByTestId('ci-option-avec')
+    expect(g).toHaveTextContent('Option avec batterie')
+    expect(g).toHaveTextContent('2 × Dyness 10')
+    expect(g).toHaveTextContent('12,50 kWc')
+    expect(g).toHaveTextContent('Économie estimée / an (HT)')
+    expect(g).toHaveTextContent('7,3 ans')
+    expect(screen.getByText('Option sans batterie')).toBeInTheDocument()
+  })
+
+  it('valeur nulle omise ; sans option_avec aucun groupe ni étiquette', () => {
+    const { rerender } = render(<CarteResultatCi donnees={donnees({
+      option_avec: { ...AVEC, retour_simple_ans: null } })} />)
+    expect(screen.queryByTestId('ci-avec-retour')).toBeNull()
+    expect(screen.getByTestId('ci-avec-economie-an')).toBeInTheDocument()
+    rerender(<CarteResultatCi donnees={donnees({ option_avec: null })} />)
+    expect(screen.queryByTestId('ci-option-avec')).toBeNull()
+    expect(screen.queryByText('Option sans batterie')).toBeNull()
+  })
+
+  it('alerte avec champ_lead : « À compléter sur la fiche » + libellé ; sans : rien', () => {
+    const base = EXEMPLE.alertes[0]
+    render(<CarteResultatCi donnees={donnees({ alertes: [
+      { ...base, champ_lead: 'equipements_hors_horaires' },
+      { ...base, code: 'AUTRE', message: 'Autre', champ_lead: 'colonne_inconnue' },
+      { ...base, code: 'SANS', message: 'Sans pointeur', champ_lead: undefined },
+    ] })} />)
+    const p = screen.getAllByTestId('alerte-champ-lead')
+    expect(p).toHaveLength(1)
+    expect(p[0]).toHaveTextContent('À compléter sur la fiche : Équipements hors horaires')
+    expect(screen.getByTestId('ci-alertes')).not.toHaveTextContent('colonne_inconnue')
+  })
+})

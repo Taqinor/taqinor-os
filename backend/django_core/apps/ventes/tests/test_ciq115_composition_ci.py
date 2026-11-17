@@ -119,14 +119,14 @@ class CompositionTests(TestCase):
         self.assertEqual(ac['quantite'], 30)
 
     def test_longueur_non_declaree_estimee_jamais_vide(self):
-        # Fondateur 26/10/2026 — devis préliminaire : 30 m par onduleur,
+        # Fondateur 26/10 puis 17/11/2026 — devis préliminaire : 10 m par onduleur,
         # chiffré, ajusté après la visite (jamais une ligne vide).
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50,
                                 'quantite': 1}]}
         comp = composer_ci(60, self.cat, onduleurs=ond,
                            entrees=_entrees(longueur_ac_m=None), forfaits={})
         ac = self._lignes(comp, 'cable_ac')[0]
-        self.assertEqual(ac['quantite'], 30.0)
+        self.assertEqual(ac['quantite'], 10.0)
         self.assertTrue(ac['a_confirmer_visite'])
         self.assertFalse(ac.get('a_chiffrer_visite'))
 

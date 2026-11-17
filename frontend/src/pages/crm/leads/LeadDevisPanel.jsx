@@ -607,7 +607,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   un chiffre inventé : le message du serveur, tel quel), en
                   AVERTISSEMENT sous le succès (ALEA51). AGQ25 — rendu UNIQUE,
                   partagé avec le générateur. */}
-              <AlertesDevisAuto alertes={alertes} />
+              <AlertesDevisAuto alertes={alertes} onAllerAuChamp={completerChamp} />
               {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
                   (envoyé : le client verra la version corrigée) ; figé →
                   « Réviser ». Le détail est déjà lu (getDevisById). */}

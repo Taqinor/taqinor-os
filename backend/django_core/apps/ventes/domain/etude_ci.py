@@ -1507,7 +1507,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         phase=phase, ps_kva=_ps_kva(res), composer=composer,
         borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), reference_sans=evaluation,
-        regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B))  # D-CI-BATTERIE-NON-RENTABLE
+        regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
+        talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice')
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
 
@@ -1573,10 +1574,10 @@ def entrees_pour_etude_params(entrees_resolues):
 CHAMP_LEAD_DES_ALERTES = {
     'tarif': 'contrat_electricite',
     'rythme.jours_ouverts': 'jours_ouverture',
-    'rythme.plages': 'heure_debut',
+    'rythme.plages': 'heure_debut', 'rythme.talon': 'equipements_hors_horaires',
 }
 #: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
-ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut')
+ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut', 'equipements_hors_horaires')
 #: ADEV89 — phases du site admises par le devis automatique (jamais « inconnu »).
 PHASES_DECLAREES = ('mono', 'tri')
 # ALEA54 — ces refus s'adressent à la COMMERCIALE : une consigne à suivre auprès

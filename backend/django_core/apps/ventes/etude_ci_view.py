@@ -20,6 +20,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
+from .domain.suppositions_ci import alertes_pour_la_commerciale
+
 #: Identifiants de contexte retirés du corps avant le calcul.
 CLES_CONTEXTE = ('devis', 'lead')
 
@@ -119,7 +121,7 @@ def etude_ci_preview(request):
         'economie_ci': etude['economie_ci'],
         'composition': etude['composition'],
         'regime_8221_suggere': etude['regime_8221_suggere'],
-        'alertes': etude['alertes'],
+        'alertes': alertes_pour_la_commerciale(etude),
         'hypotheses': etude['hypotheses'],
         'methode': etude['methode'],
         'version_moteur': etude['version_moteur'],

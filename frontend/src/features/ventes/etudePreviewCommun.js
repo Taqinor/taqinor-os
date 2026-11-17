@@ -38,6 +38,7 @@ export function alertesDuServeur(reponse, messageParDefaut, complement = () => (
     cle: `${a?.code || 'alerte'}-${a?.champ || ''}-${i}`,
     code: a?.code || null,
     champ: a?.champ || null,
+    champ_lead: a?.champ_lead || null,
     ...complement(a),
     message: a?.message || a?.code || messageParDefaut,
   }))

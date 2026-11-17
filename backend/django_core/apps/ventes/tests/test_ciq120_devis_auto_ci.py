@@ -731,9 +731,34 @@ class ReponseAutoALEA51Tests(_Base):
         self.assertEqual(premiere.status_code, 201, premiere.data)
         self.assertEqual(rejeu.status_code, 200, rejeu.data)
         for cle in ('total_ttc', 'economie_an_1_ht', 'retour_ans',
+                    'economie_an_1_ht_avec', 'retour_ans_avec', 'kwc_avec',
                     'postes_apres_visite'):
             self.assertIn(cle, rejeu.data)
             self.assertEqual(rejeu.data[cle], premiere.data[cle])
+        # Aucune batterie au catalogue de ce test : l'option « avec » est tue.
+        self.assertIsNone(premiere.data['economie_an_1_ht_avec'])
+
+    def test_resume_dit_aussi_l_option_avec_batterie(self):
+        # Fondateur 17/11/2026 — la bannière ne disait que l'offre réseau :
+        # l'économie et le retour de l'option « avec » sont LUS de l'étude
+        # stockée (les mêmes que le PDF), jamais recalculés.
+        from types import SimpleNamespace
+        from apps.ventes.views.devis import _resume_devis_auto
+        avec = {'kwc': 35.03, 'economie_annuelle_mad': 63438.27, 'retour_simple_ans': 4.7}
+
+        def resume(option_avec):
+            devis = SimpleNamespace(total_ttc=None, company=None,
+                                    etude_params={'etude_ci': {'option_avec': option_avec}})
+            with mock.patch('apps.ventes.economie_ci.economie_ci_pour_devis', return_value={}):
+                return _resume_devis_auto(devis)
+
+        dit = resume(avec)
+        self.assertEqual((dit['economie_an_1_ht_avec'], dit['retour_ans_avec'], dit['kwc_avec']),
+                         (63438.27, 4.7, 35.03))
+        for absente in (None, {}, dict(avec, economie_annuelle_mad=0)):
+            tu = resume(absente)
+            self.assertEqual((tu['economie_an_1_ht_avec'], tu['retour_ans_avec'], tu['kwc_avec']),
+                             (None, None, None))
 
 
 class PostesNonChiffresUniques(SimpleTestCase):
@@ -1031,11 +1056,102 @@ class OptionAvecDomineeTests(SimpleTestCase):
         self.assertEqual(sortie['bloc'], {'kwc': 199})
         self.assertFalse([a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE'])
 
+    def test_consommation_de_nuit_inconnue_option_retenue_question_nommee(self):
+        # Fondateur 17/11/2026 (lead « CPE Go Plus ») — « Équipements hors
+        # horaires » sans réponse : la batterie n'est pas composée sur une
+        # supposition (6 × 16 kWh sortaient d'une conso étalée sur 24 h).
+        from apps.ventes.domain import etude_ci_batterie as m
+        from apps.ventes.domain.etude_ci import refus_devis_auto_ci
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+
+        def lancer(choix):
+            with mock.patch.object(m, '_dimensionner') as dimensionner:
+                sortie = m.option_avec_de_l_etude(
+                    catalogue, dict(self.SANS), choix=choix, lead=None, talon_inconnu=True)
+            dimensionner.assert_not_called()
+            self.assertIsNone(sortie['bloc'])
+            return sortie['alertes']
+
+        for choix, niveau in ((None, 'alerte'), ('les_deux', 'alerte'), ('avec', 'bloquant')):
+            (alerte,) = lancer(choix)
+            self.assertEqual(alerte['code'], 'OPTION_BATTERIE_TALON_INCONNU')
+            self.assertEqual(alerte['niveau'], niveau, choix)
+            self.assertIn('Équipements hors horaires', alerte['message'])
+            self.assertNotIn('talon', alerte['message'].lower())
+        self.assertEqual(lancer('sans'), [])
+        # « Avec » voulu par le client : le refus nomme le champ de la fiche.
+        message, champ = refus_devis_auto_ci({'alertes': lancer('avec')})
+        self.assertEqual(champ, 'equipements_hors_horaires')
+        self.assertIn('Équipements hors horaires', message)
+
     def test_cout_ou_economie_manquant_aucun_verdict(self):
         for avec in (self._avec(None, 100.0), self._avec(2e6, None)):
             self.assertIsNotNone(self._lancer(avec)['bloc'])
         from apps.ventes.domain.etude_ci_batterie import _option_dominee
         self.assertFalse(_option_dominee({'cout': None, 'economie': 1.0}, self._avec(2e6, 0.5)))
+
+
+class SuppositionsDitesTests(SimpleTestCase):
+    """Fondateur 17/11/2026 — toute entrée que le calcul a dû SUPPOSER est
+    dite à la commerciale avec le champ de la fiche qui la lève
+    (``suppositions_ci.alertes_pour_la_commerciale`` : aperçu + journal)."""
+
+    ETUDE = {
+        'alertes': [
+            {'code': 'talon_non_declare', 'champ': 'rythme.talon', 'niveau': 'alerte',
+             'interne': False, 'message': 'Talon non déclaré : la borne…'},
+            {'code': 'puissance_souscrite_inconnue', 'champ': 'puissance_souscrite_kva',
+             'niveau': 'alerte', 'interne': True, 'message': 'Puissance souscrite non déclarée…'},
+            {'code': 'longueurs_non_relevees', 'champ': 'contraintes', 'niveau': 'alerte',
+             'interne': True, 'message': 'Longueurs de câble non relevées.'}],
+        'hypotheses': [
+            {'cle': 'consommation', 'valeur': None, 'statut': 'estimation',
+             'source': 'factures MAD converties au tarif C&I (grille)'},
+            {'cle': 'inclinaison_deg', 'valeur': 30.0, 'statut': 'estimation', 'source': 's'},
+            {'cle': 'azimut_deg', 'valeur': 0, 'statut': 'estimation', 'source': 's'},
+            {'cle': 'pas_kwc', 'valeur': 5, 'statut': 'source', 'source': 'D-CIQ-2'}],
+    }
+
+    def _dites(self, etude=None):
+        from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
+        return alertes_pour_la_commerciale(self.ETUDE if etude is None else etude)
+
+    def test_chaque_supposition_nomme_le_champ_de_la_fiche(self):
+        import copy
+        avant = copy.deepcopy(self.ETUDE)
+        par_code = {a['code']: a for a in self._dites()}
+        self.assertEqual(self.ETUDE, avant)  # l'étude n'est jamais modifiée
+        for code, champ in (('talon_non_declare', 'equipements_hors_horaires'),
+                            ('puissance_souscrite_inconnue', 'compteur_puissance_kva'),
+                            ('supposition_consommation', 'conso_mensuelle_kwh'),
+                            ('supposition_inclinaison_deg', 'inclinaison_deg'),
+                            ('supposition_azimut_deg', 'orientation')):
+            self.assertEqual(par_code[code]['champ_lead'], champ, code)
+        # Une alerte qui ne tient à aucune réponse de la fiche reste telle quelle.
+        self.assertNotIn('champ_lead', par_code['longueurs_non_relevees'])
+        self.assertEqual(par_code['longueurs_non_relevees'], self.ETUDE['alertes'][2])
+        # Une hypothèse sourcée (pas une estimation) n'est pas une supposition.
+        self.assertNotIn('supposition_pas_kwc', par_code)
+
+    def test_consigne_lisible_jamais_le_jargon_du_moteur(self):
+        par_code = {a['code']: a for a in self._dites()}
+        for code in ('talon_non_declare', 'puissance_souscrite_inconnue'):
+            for jargon in ('talon', 'borne'):
+                self.assertNotIn(jargon, par_code[code]['message'].lower(), code)
+        self.assertIn('la nuit', par_code['talon_non_declare']['message'])
+        self.assertIn('facture en dirhams', par_code['supposition_consommation']['message'])
+        self.assertIn('30°', par_code['supposition_inclinaison_deg']['message'])
+        # Les lignes ajoutées ne partent jamais au client.
+        for code in ('supposition_consommation', 'supposition_inclinaison_deg'):
+            self.assertTrue(par_code[code]['interne'])
+            self.assertEqual(par_code[code]['niveau'], 'alerte')
+
+    def test_un_champ_deja_dit_par_une_alerte_n_est_pas_redit(self):
+        etude = {'alertes': [{'code': 'consommation_absente', 'champ': 'consommation',
+                              'niveau': 'bloquant', 'interne': False, 'message': 'm'}],
+                 'hypotheses': [self.ETUDE['hypotheses'][0]]}
+        self.assertEqual([a['code'] for a in self._dites(etude)], ['consommation_absente'])
+        self.assertEqual(self._dites({}), [])
 
 
 class OptionAvecNonRentableTests(SimpleTestCase):

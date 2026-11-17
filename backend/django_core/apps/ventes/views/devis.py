@@ -76,10 +76,18 @@ def _resume_devis_auto(devis):
     total = devis.total_ttc
     resume = {'total_ttc': float(total) if total is not None else None,
               'economie_an_1_ht': None, 'retour_ans': None,
+              'economie_an_1_ht_avec': None, 'retour_ans_avec': None, 'kwc_avec': None,
               'postes_apres_visite': []}
     etude = (devis.etude_params or {}).get('etude_ci')
     if not isinstance(etude, dict):
         return resume
+    # Fondateur 17/11/2026 — un devis à deux options DIT les deux : l'économie
+    # et le retour de l'option « avec batterie » sont ceux que l'étude a
+    # stockés (``option_avec``, les mêmes que lit le PDF), jamais recalculés.
+    avec = etude.get('option_avec')
+    if isinstance(avec, dict) and (avec.get('economie_annuelle_mad') or 0) > 0:
+        resume.update(economie_an_1_ht_avec=avec.get('economie_annuelle_mad'),
+                      retour_ans_avec=avec.get('retour_simple_ans'), kwc_avec=avec.get('kwc'))
     composition = etude.get('composition') or {}
     resume['postes_apres_visite'] = list(composition.get('a_chiffrer_visite') or [])
     try:
@@ -644,6 +652,9 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                         'total_ttc': resume['total_ttc'],
                         'economie_an_1_ht': resume['economie_an_1_ht'],
                         'retour_ans': resume['retour_ans'],
+                        'economie_an_1_ht_avec': resume['economie_an_1_ht_avec'],
+                        'retour_ans_avec': resume['retour_ans_avec'],
+                        'kwc_avec': resume['kwc_avec'],
                         'postes_apres_visite': resume['postes_apres_visite'],
                     },
                     status=status.HTTP_200_OK)
@@ -700,6 +711,9 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 'total_ttc': resume['total_ttc'],
                 'economie_an_1_ht': resume['economie_an_1_ht'],
                 'retour_ans': resume['retour_ans'],
+                'economie_an_1_ht_avec': resume['economie_an_1_ht_avec'],
+                'retour_ans_avec': resume['retour_ans_avec'],
+                'kwc_avec': resume['kwc_avec'],
                 'postes_apres_visite': resume['postes_apres_visite'],
             },
             status=status.HTTP_201_CREATED)

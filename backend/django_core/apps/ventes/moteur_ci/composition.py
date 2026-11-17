@@ -116,7 +116,7 @@ MOTIF_LONGUEUR = 'longueur non déclarée : à relever à la visite'
 #: Fondateur 26/10/2026 — un devis C&I ne laisse JAMAIS un prix vide : avant
 #: la visite, câbles et structure sont chiffrés sur ces hypothèses (devis
 #: préliminaire, prix ajustés après la visite).
-LONGUEUR_AC_DEFAUT_M = 30.0         # par onduleur, onduleur → TGBT
+LONGUEUR_AC_DEFAUT_M = 10.0         # par onduleur, onduleur → TGBT (fondateur 17/11/2026 ; 30 m avant)
 DISTANCE_DC_DEFAUT_M = 30.0         # champ → onduleur ; câble = 2 × chaînes × distance
 PANNEAUX_PAR_CHAINE_DEFAUT = 12     # chaînes non calculées (fiches muettes)
 TYPE_POSE_DEFAUT = 'toit_plat_leste'
