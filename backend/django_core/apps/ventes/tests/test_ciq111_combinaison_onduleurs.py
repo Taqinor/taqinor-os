@@ -346,6 +346,86 @@ class ParalleleMemeModeleTests(TestCase):
         self.assertTrue(r['motif'])
 
 
+def _module_715():
+    """Module 715 Wc, classe Voc 49,5 V (fenêtre Deye SG05LP3 : 5 à 14 modules)."""
+    from core.electrique.types import SpecModule
+    return SpecModule(vmp_v=41.6, voc_v=49.5, isc_a=18.3, imp_a=17.2, pmax_wc=715,
+                      temp_coeff_voc_pct_c=-0.25)
+
+
+def _hybrides_deye_fiche(dc_max_15=30, dc_max_20=40):
+    """Deye SUN-15K/20K-SG05LP3 aux fiches de la lane stock (17/11/2026) :
+    36 A par MPPT, Isc 54 A, 2 chaînes par MPPT ; ``dc_max_kwc`` publié ou
+    non (``None``)."""
+    from core.electrique.types import SpecOnduleur
+    sortie = []
+    for pid, kw, prix, dc in ((11, 15, '30000', dc_max_15), (12, 20, '40000', dc_max_20)):
+        spec = SpecOnduleur(n_mppt=2, mppt_v_min=160, mppt_v_max=650, v_max_abs=800,
+                            i_max_mppt_a=36, ac_kw=kw, phases=3, isc_max_mppt_a=54)
+        sortie.append(dict(_cand(pid, 'Deye %dK' % kw, kw, prix, spec), dc_max_kwc=dc,
+                           chaines_max_par_mppt=2))
+    return sortie
+
+
+class FicheFaitFoiTests(TestCase):
+    """D1 (fondateur 17/11/2026, lead « CPE Go Plus ») — la limite de
+    panneaux d'un HYBRIDE est la puissance PV maximale de sa fiche (40 kWc sur
+    le 20 kW), plus la borne atelier 1,35 × AC ; les onduleurs réseau gardent
+    la règle d'avant."""
+
+    def _combiner(self, nb, hybrides, fiche=True):
+        return combiner_onduleurs(nb * 715 / 1000.0, hybrides, phase='tri', module=_module_715(),
+                                  max_appareils=10, homogene=True, fiche_fait_foi=fiche)
+
+    def test_un_seul_20kw_porte_le_champ_sous_sa_fiche(self):
+        # 48 et 50 modules (34,3 / 35,75 kWc, DC/AC 1,72 / 1,79) : 1 × 20 kW,
+        # chaînes faisables (2 entrées × 2 chaînes de 12 / 13 modules).
+        for nb in (48, 50):
+            r = self._combiner(nb, _hybrides_deye_fiche())
+            self.assertEqual([(x['kw_ac'], x['quantite']) for x in r['combinaison']],
+                             [(20.0, 1)], nb)
+            self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), nb)
+            self.assertEqual([a for a in r['alertes'] if a['niveau'] == 'bloquant'], [])
+            self.assertEqual(r['ratio_dc_ac']['bornes']['haute_fiche'], 2.0)
+            self.assertGreater(r['ratio_dc_ac']['valeur'], 1.35)
+            fiche = [h for h in r['hypotheses'] if h['cle'] == 'dc_max_kwc']
+            self.assertEqual([h['valeur'] for h in fiche], [40.0])
+            self.assertIn('puissance PV maximale de la fiche : 40 kWc', fiche[0]['source'])
+            self.assertNotIn("seule la borne DC/AC s'applique", repr(r['hypotheses']))
+
+    def test_49_modules_la_fiche_porte_mais_les_chaines_non(self):
+        # 49 modules : sous les 40 kWc de la fiche, mais 2 entrées × 2 chaînes
+        # (une longueur par entrée, ≤ 14 modules) n'en raccordent jamais un
+        # nombre impair ⇒ la découpe rejette 1 × 20 kW, deux appareils.
+        r = self._combiner(49, _hybrides_deye_fiche())
+        self.assertEqual(sum(x['quantite'] for x in r['combinaison']), 2)
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 49)
+        self.assertEqual([a for a in r['alertes'] if a['niveau'] == 'bloquant'], [])
+
+    def test_fiche_muette_la_borne_dc_ac_reste(self):
+        for nb in (48, 50):
+            r = self._combiner(nb, _hybrides_deye_fiche(None, None))
+            self.assertEqual(sum(x['quantite'] for x in r['combinaison']), 2, nb)
+            self.assertNotIn('haute_fiche', r['ratio_dc_ac']['bornes'])
+            self.assertIn("seule la borne DC/AC s'applique", repr(r['hypotheses']))
+
+    def test_onduleur_reseau_inchange(self):
+        # Sans ``fiche_fait_foi`` (option « sans ») : ``dc_max_kwc`` ne fait
+        # que baisser la capacité — 1,35 × 20 = 27 kWc, deux appareils.
+        a = self._combiner(50, _hybrides_deye_fiche(), fiche=False)
+        b = combiner_onduleurs(35.75, _hybrides_deye_fiche(), phase='tri', module=_module_715(),
+                               max_appareils=10, homogene=True)
+        self.assertEqual(a, b)
+        self.assertEqual(sum(x['quantite'] for x in a['combinaison']), 2)
+        self.assertNotIn('haute_fiche', a['ratio_dc_ac']['bornes'])
+
+    def test_au_dela_de_40_kwc_hybrides_identiques_en_parallele(self):
+        # 100 modules (71,5 kWc) : 2 × 20 kW (2 × 40 kWc) avant 3 × 15 kW.
+        r = self._combiner(100, _hybrides_deye_fiche())
+        self.assertEqual([(x['kw_ac'], x['quantite']) for x in r['combinaison']], [(20.0, 2)])
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 100)
+
+
 class GardeAstTests(TestCase):
     def test_module_pur(self):
         arbre = ast.parse(CHEMIN.read_text(encoding='utf-8'))

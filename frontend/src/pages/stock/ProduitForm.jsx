@@ -1767,6 +1767,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                            value={ficheFields.ond_rendement_cec_pct}
                            onChange={e => setFicheField('ond_rendement_cec_pct', e.target.value)} />
                   </FormField>
+                  <FormField label="Puissance PV maximale raccordable (kWc)" htmlFor="pf-ft-dcmax"
+                             hint={'Fiche constructeur : "Max. PV access power" (hybride) ou "Recommended max. PV power"'}>
+                    <Input id="pf-ft-dcmax" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_dc_max_kwc}
+                           onChange={e => setFicheField('ond_dc_max_kwc', e.target.value)} />
+                  </FormField>
                   <EditeurCourbeFiche {...propsCourbe('ond_courbe_rendement')} />
                 </>
               )}

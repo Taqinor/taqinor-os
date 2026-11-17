@@ -167,6 +167,7 @@ import CarteCreation from './generator/CarteCreation'
 import PanneauSucces from './generator/PanneauSucces'
 import BlocsEditionComplete from './generator/BlocsEditionComplete'
 import CarteLeadClient from './generator/CarteLeadClient'
+import ControleBatteriesDepart from './generator/ControleBatteriesDepart'
 import ApercuSimulation from './generator/ApercuSimulation'
 import BandeauxEdition from './generator/BandeauxEdition'
 import CarteParametresTechniques from './generator/CarteParametresTechniques'
@@ -1916,6 +1917,12 @@ export default function DevisGenerator({
                                     onRegenerer={regenererOverride} />
               )}
             </div>
+            {marcheCi && (
+              <ControleBatteriesDepart
+                lines={lines} produits={produits} onQuantiteChange={onQuantiteChange}
+                banque={editDevis?.etude_params?.banque_recommandee ?? null}
+                apercuBatterie={apercuCi.donnees?.option_avec?.batterie ?? null} />
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}

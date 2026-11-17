@@ -28,6 +28,31 @@ Décisions de Reda du 17/11/2026, prises sur le lead « CPE Go Plus » (1742, in
   batterie » s'affichent à côté de ceux de l'offre réseau sur les écrans internes (bannière de création,
   carte du générateur), lus de l'étude stockée — le PDF et la page client le faisaient déjà.
 
+**Décisions du même jour sur l'option « avec batterie » (questions interactives, 17/11/2026) :**
+
+- **D-HYB-1 — limite de panneaux d'un onduleur HYBRIDE = la fiche constructeur.** Le moteur plafonnait tout
+  onduleur à 1,35 × sa puissance AC (convention d'atelier non sourcée) : un Deye 20 kW ne portait que 27 kWc,
+  d'où 2 × 15 kW pour 35 kWc. Reda : « the 20 kW version of Deye might handle higher number of panels… the
+  remaining power would be used to charge the batteries and the inverter AC output is capped at 20 kW ». La
+  fiche Deye (SUN-14-20K-SG05LP3-EU-SM2, révision 2026) donne « Max. PV access power » = 2 × l'AC (40 kW sur
+  le 20 kW) et « Max. PV input power » 32 kW. Retenu : la puissance RACCORDABLE (access power), portée par
+  `FicheTechnique.ond_dc_max_kwc` ; fiche muette ⇒ l'ancien 1,35. Les onduleurs RÉSEAU gardent leur règle.
+  Quand un panneau de plus rend le champ câblable sur UN hybride au lieu de deux (49 → 50 panneaux de 715 Wc
+  sur un 20 kW : deux trackers de deux chaînes égales), l'option prend ce panneau et le dit.
+  LIMITE CONNUE au 17/11 : le bilan horaire ne plafonne pas la production à la puissance AC de l'hybride
+  (sans effet tant que la charge du site reste sous cette puissance ; à modéliser — non tranché).
+- **D-HYB-2 — Deye 15 et 20 kW triphasés : unités de la révision COURANTE** (36 A par MPPT sur les deux
+  trackers, Isc 54 A, 2 chaînes par MPPT) — les valeurs stockées (20 A / 30 A) venaient de la fiche de juin 2024.
+- **D-HYB-3 — haute tension seulement pour les grandes banques.** Le Deye 30 kW ne prend qu'une batterie HV,
+  et la BOS-B est un empilage série (5 à 15 modules de 16 kWh d'après les notes du catalogue, ~80 kWh mini) :
+  incompatible avec « une batterie pour commencer ». Sous ce minimum : basse tension, le plus gros hybride
+  unique qui porte le champ, puis des hybrides identiques en parallèle. La composition HV automatique n'est
+  PAS construite au 17/11 (il faut les valeurs de fiche de la BOS-B et un champ « modules minimum »).
+- **D-HYB-4 — « une batterie pour commencer » = prêt pour la suite.** Panneaux et onduleur hybride restent
+  dimensionnés pour la banque RECOMMANDÉE ; le devis porte le nombre de batteries choisi sur l'écran du
+  devis ; l'écran dit combien pourront s'ajouter ; les économies sont celles des batteries réellement devisées.
+  La recommandation est mémorisée à la création (`etude_params.banque_recommandee`).
+
 **Why:** Reda a découvert les 6 batteries sans qu'aucun écran dise sur quoi elles reposaient, puis n'a vu que
 les chiffres de l'offre réseau en ouvrant le devis. Le même jour, une puissance souscrite saisie à −12 kVA
 bloquait l'option batterie avec un message accusant le catalogue (PR #1442).
