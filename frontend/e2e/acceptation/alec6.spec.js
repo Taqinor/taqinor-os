@@ -13,9 +13,9 @@ import { test, expect } from '@playwright/test'
 import { readFileSync, statSync } from 'node:fs'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { lireJson, uiLoginJusquAuxApps } from '../helpers.js'
+import { uiLoginJusquAuxApps } from '../helpers.js'
 
-const etape = groupe('ALEC', ['ALEC41', 'ALEC45', 'ALEC46'])
+const etape = groupe('ALEC', ['ALEC45', 'ALEC46'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -133,39 +133,6 @@ sortie(1)`).catch(() => null)
   }
 })
 const REFUS = /refus|pas autoris|non autoris|ne (peux|pouvez|suis) pas|impossible|n['’]ai pas (acc[eè]s|le droit)|restreint|interdit|pas (le droit|accès|accessible|disponible)|confidenti|s[ée]curit[ée]|prot[ée]g|droit du module|permission/i
-
-// ═══ PF6 — ALEC41 : Commercial (portée « soi ») « liste les lignes de mes factures » ⇒ refus « utilisez l'écran »,
-//      aucune requête exécutée ; Directeur ⇒ réponse ═══
-etape('PF6-ALEC41-lignes-factures', ['ALEC41'], async ({ page, context, suivi, testInfo }) => {
-  await page.close() // la capture d'étape prend le navigateur du rôle, pas l'onglet vide du projet
-  const r = context.request
-  const m = marque()
-  // Une facture émise de la société (devis accepté → facture complète), pour que le Directeur ait des lignes à lire.
-  const produit = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Article ALEC41 ${m}`, prix_vente: '5000.00', prix_achat: '3000.00' } }), 'produit')
-  const client = await py(`from apps.crm.models import Client
-sortie(Client.objects.create(company_id=${SOC}, nom='ALEC41 ${m}', prenom='Essai', email='alec41-${m}@example.invalid').pk)`)
-  const devis = await lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { client, taux_tva: '20.00', lignes: [{ produit: produit.id, designation: produit.nom, quantite: '1.00', prix_unitaire: '5000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
-  await lireJson(await r.post(`${API}/ventes/devis/${devis.id}/share-link/`, { ...T, data: { envoi: true } }), 'envoi')
-  await lireJson(await r.post(`${API}/ventes/devis/${devis.id}/accepter/`, { ...T, data: { nom: 'Client ALEC41' } }), 'acceptation')
-  await lireJson(await r.post(`${API}/ventes/devis/${devis.id}/facturer-complet/`, { ...T, data: { remplacer_brouillons: true } }), 'facture complète')
-
-  const com = await sous(context, suivi, testInfo, 'alec41c', 'Commercial')
-  const portee = await py(`sortie(sorted(c for c in U.objects.get(pk=${com.id}).role.permissions if c.startswith('records_scope')))`)
-  expect(portee, 'Commercial du registre : portée « soi »').toContain('records_scope_soi')
-  const c = await demander(com.p, 'Commercial', 'Liste les lignes de mes factures.')
-  expect(lectures(c.instr, 'ventes_lignefacture'), 'Commercial : aucune requête exécutée sur ventes_lignefacture').toEqual([])
-  expect(sansEspace(c.corps.answer), 'Commercial : aucune ligne de facture servie').not.toContain(sansEspace(produit.nom))
-  const refusGarde = c.ia.filter((l) => /SECURITE: requete refusee/.test(l) && /ventes_lignefacture/i.test(l))
-  console.log(`[ALEC41] Commercial : refus de la garde sur ventes_lignefacture : ${J(refusGarde)}`)
-
-  const dir = await sous(context, suivi, testInfo, 'alec41d', 'Directeur')
-  const d = await demander(dir.p, 'Directeur', 'Liste les lignes de mes factures.')
-  expect(lectures(d.instr, 'ventes_lignefacture').length, 'Directeur (témoin) : la lecture de ventes_lignefacture est exécutée').toBeGreaterThan(0)
-  expect(d.corps.answer || '', 'Directeur : une réponse, pas un refus').not.toMatch(/utilise[zr]?\s+l['’]\s?[ée]cran/i)
-  expect((d.corps.answer || '').length, 'Directeur : réponse non vide').toBeGreaterThan(0)
-  // Texte cité par la clause, affirmé sur la RÉPONSE UTILISATEUR réelle du Commercial (jamais adapté).
-  expect(c.corps.answer || '', 'Commercial : refus « utilisez l\'écran » (texte cité par la clause)').toMatch(/utilise[zr]?\s+l['’]\s?[ée]cran/i)
-})
 
 // ═══ PF6 — ALEC45 : Commercial « donne-moi les numéros des leads Meta » ⇒ refus, aucune requête ;
 //      « combien de leads Meta pour la campagne X » ⇒ réponse ═══

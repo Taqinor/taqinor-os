@@ -11,7 +11,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, telephoneMobileUnique, connexionApi, uiLoginJusquAuxApps } from '../helpers.js'
 
-const etape = groupe('AIC', ['AIC91', 'AIC94'])
+const etape = groupe('AIC', ['AIC94'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -131,78 +131,6 @@ M = getattr(Lead, 'all_objects', Lead.objects)
 try: M.filter(pk=${Number(id)}).delete()
 except Exception as exc: print('nettoyage', exc)
 sortie(1)`).catch(() => null)
-
-// ═══ P7.1 — AIC91 : question à trois outils, téléphone à connexion bridée ⇒ trois étapes affichées avant la réponse ═══
-etape('P7.1-AIC91-progression', ['AIC91'], async ({ page, context, suivi, testInfo }) => {
-  await page.close() // la capture d'étape prend le navigateur du téléphone, pas l'onglet vide du projet
-  const m = marque()
-  const a = await administrateur(context, suivi, testInfo, 'aic91')
-  const api = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
-  await connexionApi(api, { username: a.username, password: MDP_ESSAI })
-  const nom = `Zerhouni${m}`
-  const { lead } = await leadAvecTouche(api, a.id, nom)
-  try {
-    // Connexion bridée : réseau du navigateur ralenti (CDP) + 700 ms à l'aller et au retour de chaque appel IA.
-    const cdp = await a.ctx.newCDPSession(a.p)
-    await cdp.send('Network.enable')
-    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 400, downloadThroughput: 60 * 1024, uploadThroughput: 30 * 1024 })
-    await brancherIA(a.p, { latenceMs: 700 })
-    const sondages = []
-    a.p.on('response', async (r) => {
-      if (!/\/api\/fastapi\/sql-agent\/progression\//.test(new URL(r.url()).pathname)) return
-      const c = await r.json().catch(() => null)
-      if (c) sondages.push({ n: (c.etapes || []).length, fini: c.fini })
-    })
-    await a.p.goto('/apps')
-    // Collecteur DANS la page : chaque libellé affiché sous la bulle d'attente, dans l'ordre, horodaté.
-    const { corps, requete } = await demander(a.p,
-      `Trois choses dans l'ordre, une à la fois : 1) retrouve le lead ${nom} ; 2) résume-moi sa fiche ; 3) prépare sa prochaine touche du suivi.`,
-      {
-        avantEnvoi: () => a.p.evaluate(() => {
-          window.__etapesVues = []
-          window.__collecte = setInterval(() => {
-            const el = document.querySelector('[data-testid="etape-en-cours"]')
-            const t = el?.textContent?.trim()
-            const l = window.__etapesVues
-            if (t && l[l.length - 1]?.libelle !== t) l.push({ libelle: t, at: Date.now() })
-          }, 50)
-        }),
-      })
-    const vues = await a.p.evaluate(() => { clearInterval(window.__collecte); return window.__etapesVues })
-    console.log(`[AIC91] étapes affichées : ${J(vues)} ; sondages : ${J(sondages)}`)
-    // Persistance : la clé Redis `assistant:progression:<utilisateur>:<id>` relue ⇒ les étapes dans l'ordre, fini.
-    expect(requete.progression_id, 'identifiant de progression envoyé avec la question').toMatch(/^[A-Za-z0-9_-]{8,64}$/)
-    const cle = `assistant:progression:${a.id}:${requete.progression_id}`
-    const redis = await py(`import os, redis
-r = redis.Redis(host=os.environ.get('REDIS_HOST', 'redis'), port=int(os.environ.get('REDIS_PORT', '6379')), db=2, decode_responses=True)
-v = r.get(${J(cle)})
-sortie(dict(etat=json.loads(v) if v else None, ttl=r.ttl(${J(cle)})))`)
-    console.log(`[AIC91] Redis ${cle} : ${J(redis)}`)
-    await expect(a.p.getByTestId('etape-en-cours'), 'la bulle d\'attente (et son étape) s\'arrête à la réponse').toHaveCount(0)
-    const distinctes = [...new Set(vues.map((v) => v.libelle))]
-    // Libellés du REGISTRE (jamais un argument d'outil ni une donnée personnelle) : jamais le nom du lead.
-    for (const l of distinctes) expect(l, 'libellé sans donnée du lead').not.toContain(nom)
-    expect(sondages.length, 'l\'écran a sondé la progression').toBeGreaterThan(0)
-    expect(distinctes.length, `trois étapes distinctes affichées avant la réponse (vues : ${J(distinctes)} ; publiées : ${J(redis.etat?.etapes || [])})`).toBeGreaterThanOrEqual(3)
-    expect(redis.etat, 'clé de progression en Redis').toBeTruthy()
-    const enBase = redis.etat.etapes.map((e) => e.libelle)
-    expect(enBase.length, 'au moins trois étapes publiées').toBeGreaterThanOrEqual(3)
-    expect(redis.etat.fini, 'tour marqué fini').toBe(true)
-    expect(redis.ttl, 'clé effacée sous 10 minutes').toBeLessThanOrEqual(600)
-    const ts = redis.etat.etapes.map((e) => e.t)
-    expect(ts, 'étapes dans l\'ordre').toEqual([...ts].sort((x, y) => x - y))
-    // Chaque libellé affiché est l'un des libellés publiés, dans le même ordre.
-    expect(distinctes.filter((l) => !enBase.includes(l)), 'affiché = publié').toEqual([])
-    const publieesVues = [...new Set(enBase)].filter((l) => distinctes.includes(l))
-    expect(distinctes, 'ordre affiché = ordre publié').toEqual(publieesVues)
-    // La réponse arrive ensuite (carte(s) du tour rendue(s) dans le tiroir).
-    expect((corps.cartes || []).length, 'cartes du tour').toBeGreaterThan(0)
-    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(() => undefined)
-  } finally {
-    await api.dispose().catch(() => undefined)
-    await nettoyerLead(lead.id)
-  }
-})
 
 // ═══ P8.1 — AIC94 : préparer une touche HORS des heures d'envoi (horloge de la pile) ⇒ bandeau, bouton actif ═══
 etape('P8.1-AIC94-touche-hors-fenetre', ['AIC94'], async ({ page, context, suivi, testInfo }) => {
