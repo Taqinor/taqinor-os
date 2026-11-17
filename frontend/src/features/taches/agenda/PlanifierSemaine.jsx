@@ -10,8 +10,8 @@ import VoletAPlacer from '../ui/VoletAPlacer'
    d'un jour à l'autre puis Entrée. Jour passé : « passé · {n} faites », non posable ; jour non
    travaillé : « non travaillé ». En-tête de jour « {n} tâches · {durée} ». Bouton **Terminer**.
    Maquettes : agenda-semaine-planifier.html, agenda-semaine-planifier-pose.html ; textes.md §2.8.
-   La capacité du jour (« pour {cap} ») n'est pas servie par `agenda.json` : elle n'est pas
-   affichée (aucun chiffre inventé). Le composant ne parle jamais au serveur.
+   La capacité du jour (« pour {cap} ») n'est affichée que si `agenda/` la sert (`jours[].capacite_minutes`) :
+   aucun chiffre inventé. Le composant ne parle jamais au serveur.
    ========================================================================== */
 
 const versUtc = (iso) => { const [a, m, j] = iso.split('-').map(Number); return Date.UTC(a, m - 1, j) }
@@ -27,6 +27,15 @@ function resume(jour, aujourdhui) {
   if (!jour.ouvre || jour.ferie) return { repos: true, texte: jour.ferie ? 'Férié' : 'non travaillé' }
   const ouvertes = taches.filter((t) => t.statut !== 'fait')
   const minutes = ouvertes.reduce((n, t) => n + (t.estimation_minutes || 0), 0)
+  // Raccord F2 — « {n} tâches · {h} pour {cap} » (textes.md §2.8) SEULEMENT si le serveur sert la capacité du jour
+  // (`jours[].capacite_minutes`, même nom que `progression.capacite_minutes`) ; sinon elle est omise, jamais devinée.
+  const capacite = Number.isFinite(jour.capacite_minutes) && jour.capacite_minutes > 0 ? jour.capacite_minutes : null
+  if (capacite) {
+    return {
+      texte: `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite)}`,
+      surcharge: minutes > capacite,
+    }
+  }
   return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
 }
 

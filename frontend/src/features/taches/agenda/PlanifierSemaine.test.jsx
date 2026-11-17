@@ -66,6 +66,15 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(onPoser).toHaveBeenCalledWith(formation, '2026-11-19')
   })
 
+  it('Raccord F2 — « {n} tâches · {h} pour {cap} » seulement si la capacité du jour est servie', () => {
+    const jours = septJours().map((j) => (j.jour === '2026-11-17' ? { ...j, capacite_minutes: 420 } : j))
+    monter({ jours })
+    const liste = screen.getByRole('list', { name: 'Jours de la semaine' })
+    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 7 h' })).toBeInTheDocument()
+    // un jour sans capacité servie : rien d'inventé
+    expect(within(liste).getByRole('button', { name: 'jeu. 19 · 0 tâche' })).toBeInTheDocument()
+  })
+
   it('tâche choisie : → et ← vont d\'un jour posable à l\'autre (le passé est sauté)', () => {
     monter({ choisie: agenda().mes_projets[0].items[0] })
     fireEvent.keyDown(window, { key: 'ArrowRight' })

@@ -59,7 +59,9 @@ export function Ailleurs() {
       </div>
     )
   }
-  const lignes = FAMILLES.filter(([cle]) => Number(etat.donnees?.[cle]) > 0)
+  // Raccord F2 — une famille ABSENTE de la réponse, ou servie à 0 faute de porte publique (approbations, mentions),
+  // n'a pas de ligne : jamais un compteur inventé ; seules les familles servies et non nulles s'affichent.
+  const lignes = FAMILLES.filter(([cle]) => Number.isFinite(etat.donnees?.[cle]) && etat.donnees[cle] > 0)
   if (lignes.length === 0) return <p className="section-sous">Rien à signaler.</p>
   return (
     <div className="liste" role="list">

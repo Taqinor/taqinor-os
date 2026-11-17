@@ -120,6 +120,29 @@ describe('TCH89 — Un projet : étapes', () => {
   })
 })
 
+describe('Raccord F2 — Un projet : chiffres servis seulement', () => {
+  it('sans compte servi, une étape n\'affiche aucun « n sur m » ; « Faites (12) » reste un compte', async () => {
+    monter()
+    const etape = await screen.findByRole('region', { name: 'Études' })
+    expect(within(etape).queryByText(/ sur /)).toBeNull()
+    expect(screen.getByText('Faites (12)')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Faites/ })).toBeNull()
+  })
+
+  it('servis par le serveur : « {faites} sur {total} » par étape et « Faites (n) » dépliable', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections[0].avancement = { faites: 2, total: 5 }
+    vue.faites = [{ ...vue.sections[0].taches[0], id: 99, titre: 'Dossier signé', statut: 'fait' }]
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await screen.findByRole('region', { name: 'Études' })
+    expect(within(etape).getByText('2 sur 5')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Faites/ }))
+    expect(screen.getByRole('button', { name: 'Dossier signé' })).toBeInTheDocument()
+  })
+})
+
 describe('TCH89 — Un projet : ajouter une tâche', () => {
   it('Raccord F2 — « Ajouter une tâche » d\'une étape ouvre LA feuille de saisie avec ce projet et cette étape', async () => {
     const ouverture = vi.fn()
