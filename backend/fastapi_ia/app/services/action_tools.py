@@ -756,6 +756,32 @@ def _cle_dans_le_corps(action: dict[str, Any]) -> bool:
     return action.get("key") in _CLE_DANS_LE_CORPS or "idempotency_key" in proprietes
 
 
+#: TCH114 — tout appel d'une action `taches.*` porte cet en-tete (api.md §0
+#: « Requete assistant ») : Django sert alors la forme assistant (objets
+#: confidentiels masques). Pose par `headers=` de `_django_call` ;
+#: `internal_headers()` reste inchange (Django tient aussi le Bearer pour
+#: assistant : un oubli echoue ferme).
+PREFIXE_TACHES = "taches."
+ENTETE_ASSISTANT = {"X-Taqinor-Assistant": "1"}
+#: Fiche ouverte (contexte pose par l'ECRAN, jamais par le modele) -> `lien`
+#: d'une tache creee par le Copilote ; le devis prime sur le lead.
+_LIENS_DU_CONTEXTE = (("devis_id", "ventes.devis"), ("lead_id", "crm.lead"))
+
+
+def _avec_lien_du_contexte(ctx: ActionContext, action: dict[str, Any],
+                           body: dict[str, Any]) -> dict[str, Any]:
+    """`taches.tache.creer` : le `lien` vient du contexte du tour (fiche
+    ouverte), jamais d'une entree du modele (le schema ne la declare pas)."""
+    if action.get("key") != "taches.tache.creer":
+        return body
+    contexte = getattr(ctx, "contexte_tour", None) or {}
+    for cle, cible in _LIENS_DU_CONTEXTE:
+        valeur = contexte.get(cle)
+        if isinstance(valeur, int) and not isinstance(valeur, bool) and valeur > 0:
+            return {**body, "lien": {"cible": cible, "id": valeur}}
+    return body
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
     *, idempotency_key: str | None = None,
@@ -765,18 +791,24 @@ def _execute_catalogue_action(
     « document » n'appelle pas Django (COP1) : son lien suffit. ACNC42 — la cle
     d'idempotence voyage dans le corps (paiement, ou action dont le schema la
     declare) ou l'en-tete (le reste) ; c'est TOUJOURS l'empreinte du jeton,
-    jamais une valeur choisie par le modele (elle l'ecrase)."""
+    jamais une valeur choisie par le modele (elle l'ecrase). TCH114 — une
+    action `taches.*` part avec l'en-tete assistant et, a la creation, le lien
+    de la fiche ouverte."""
     if action.get("carte") == "document":
         return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
     methode = action.get("method", "POST")
+    extra: dict[str, Any] = {}
+    if str(action.get("key", "")).startswith(PREFIXE_TACHES):
+        extra["headers"] = dict(ENTETE_ASSISTANT)
+        body = _avec_lien_du_contexte(ctx, action, body)
     if not idempotency_key:
-        return _django_call(ctx, path, method=methode, payload=body)
+        return _django_call(ctx, path, method=methode, payload=body, **extra)
     if _cle_dans_le_corps(action):
         corps = {**(body or {}), "idempotency_key": idempotency_key}
-        return _django_call(ctx, path, method=methode, payload=corps)
+        return _django_call(ctx, path, method=methode, payload=corps, **extra)
     return _django_call(ctx, path, method=methode, payload=body,
-                        idempotency_key=idempotency_key)
+                        idempotency_key=idempotency_key, **extra)
 
 
 def run_catalogue_action(

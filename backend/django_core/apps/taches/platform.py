@@ -24,7 +24,7 @@ PLATFORM = {
     'record_targets': [],          # 'app.model' chatter/records (ALLOWED_TARGETS)
     'customfield_models': [],      # 'model' à champs perso (customfields)
     'import_specs': [],            # entités import/export (dataimport)
-    'agent_actions_module': '',    # 'apps.taches.agent_actions'
+    'agent_actions_module': 'apps.taches.agent_actions',  # TCH111 : 19 actions `taches.*`
     'automation_state_fields': [],  # [{'model': 'app.model', 'field': 'statut'}]
     'kpi_providers': [],           # fournisseurs de KPI/agrégats (reporting)
 }

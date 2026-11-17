@@ -774,6 +774,40 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertIsNone(envoyes[1]["erreur"])
         self.assertEqual(envoyes[1]["tokens"]["cache_write"], 0)
 
+    def test_tour_taches_prive_dans_le_journal(self):
+        """TCH115 — un tour « Tâches » (outil `taches.*`, écran `/taches…`, ou
+        erreur d'un appel `taches.*` sans outil journalisé) garde ses codes
+        mais ni question, ni réponse, ni texte d'erreur ; un tour CRM est
+        journalisé tel quel."""
+        from app.services import sql_agent_service as svc
+        envoyes = []
+        tours = (
+            ("Ajoute Devis Settat", {"intention": "bug", "answer": "Devis Settat ajouté",
+                                     "outils_appeles": ["taches.tache.creer"],
+                                     "erreur": {"status": 500, "outil": "taches.tache.creer",
+                                                "message": "Devis Settat"}}, {"ecran": "/crm/relances"}),
+            ("Où j'en suis ?", {"intention": "donnee", "answer": "Devis Settat reste"},
+             {"ecran": "/taches/aujourdhui"}),
+            ("Et Lydec ?", {"intention": "bug", "answer": "Lydec", "erreur": {
+                "status": 0, "outil": "taches.journee.lire", "message": "Lydec"}}, {"ecran": "/crm"}),
+            ("Relance Benali", {"intention": "donnee", "answer": "Voici la touche",
+                                "outils_appeles": ["crm.lead.chercher"]}, {"ecran": "/crm/relances"}),
+        )
+        with mock.patch.object(_at, "journaliser_evenement_assistant",
+                               lambda ctx, corps: envoyes.append(corps) or 1):
+            for question, sortie, contexte in tours:
+                svc.SQLAgentService._journaliser(question, sortie, None, contexte)
+        avec_outil, sans_outil, erreur_seule, crm = envoyes
+        for prive in (avec_outil, sans_outil, erreur_seule):
+            self.assertEqual((prive["question"], prive["resume_reponse"], prive["ecran"]),
+                             ("[tâches — privé]", "", "/taches"))
+        self.assertEqual(avec_outil["erreur"], {"status": 500, "outil": "taches.tache.creer", "message": ""})
+        self.assertEqual(avec_outil["outils_appeles"], ["taches.tache.creer"])
+        self.assertEqual(erreur_seule["erreur"]["message"], "")
+        self.assertNotIn("Settat", str(envoyes[:3]) + str(sans_outil))
+        self.assertEqual((crm["question"], crm["resume_reponse"], crm["ecran"]),
+                         ("Relance Benali", "Voici la touche", "/crm/relances"))
+
     def test_jeu_d_outils_sql_allege(self):
         """COP-B5 — le modele ne recoit plus `sql_db_query_checker` (appel
         modele cache) ni `sql_db_list_tables` ; une table hors perimetre rend

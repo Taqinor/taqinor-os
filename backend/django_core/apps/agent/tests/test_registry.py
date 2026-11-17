@@ -586,3 +586,43 @@ class PromptAgentSqlSchemaTests(SimpleTestCase):
         self.assertIn("statut IN ('emise','payee','en_retard')", nb[0])
         self.assertNotIn('ventes_devis.montant', self.texte)
         self.assertNotIn('statut_paiement', self.texte)
+
+
+# TCH112 — cartes Tâches du Copilote (reference/api.md §8, §11) : chacune est une
+# clé de CARTES, nommée dans `cartes_donnees` d'`assistant_reponse.json` par
+# l'échantillon de SA route, et toute action `taches.*` rend l'une d'elles.
+CARTES_TACHES = ('ma_journee', 'plan_propose', 'liste_taches', 'tache',
+                 'capture_apercu', 'rythme', 'plan_projet', 'projet',
+                 'revue_semaine', 'priorites', 'point')
+_DJANGO_CORE = Path(__file__).resolve().parents[3]
+_CHEMIN_ECHANTILLON = re.compile(r'apps/[a-z_]+/contract_samples/[a-z_]+\.json')
+
+
+class CartesTachesTests(SimpleTestCase):
+    def _cartes_donnees(self):
+        import json
+        chemin = _DJANGO_CORE / 'apps' / 'agent' / 'contract_samples' / 'assistant_reponse.json'
+        return json.loads(chemin.read_text(encoding='utf-8'))['cartes_donnees']
+
+    def test_chaque_carte_taches_est_dans_cartes(self):
+        from apps.agent.registry import CARTES
+        self.assertEqual(sorted(set(CARTES_TACHES) - CARTES), [])
+
+    def test_chaque_carte_taches_nomme_un_echantillon_qui_existe(self):
+        donnees = self._cartes_donnees()
+        for carte in CARTES_TACHES:
+            with self.subTest(carte=carte):
+                chemins = _CHEMIN_ECHANTILLON.findall(donnees.get(carte, ''))
+                self.assertTrue(chemins, carte)
+                for chemin in chemins:
+                    self.assertTrue((_DJANGO_CORE / chemin).is_file(), chemin)
+
+    def test_cartes_donnees_ne_nomme_que_des_cartes_connues(self):
+        from apps.agent.registry import CARTES
+        self.assertEqual(sorted(set(self._cartes_donnees()) - CARTES), [])
+
+    def test_toute_action_taches_rend_une_carte_taches(self):
+        for action in all_actions():
+            if action.key.startswith('taches.'):
+                with self.subTest(cle=action.key):
+                    self.assertIn(action.carte, CARTES_TACHES)

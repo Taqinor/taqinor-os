@@ -525,6 +525,35 @@ def _contenu_systeme(provider: str, allow_price: bool,
              "cache_control": {"type": "ephemeral", "ttl": "1h"}}], docs["present"]
 
 
+#: TCH115 (socle §2.6, spec-5b « Journal ») — un tour « Tâches » est PRIVE :
+#: le journal de l'assistant n'en garde ni la question, ni la reponse, ni le
+#: texte d'une erreur ; l'administrateur voit date, intention, outils, modele,
+#: repli, jetons, cout et codes d'erreur.
+QUESTION_TACHES_PRIVEE = "[tâches — privé]"
+ECRAN_TACHES = "/taches"
+
+
+def _tour_taches_prive(corps: dict[str, Any]) -> bool:
+    """Un outil `taches.*` appele, un ecran `/taches…`, ou une erreur venue
+    d'un appel `taches.*` (sans outil journalise) : le tour est prive."""
+    ecran = corps.get("ecran") or ""
+    outil_erreur = str((corps.get("erreur") or {}).get("outil") or "")
+    return (any(str(o).startswith("taches.") for o in corps.get("outils_appeles") or [])
+            or ecran == ECRAN_TACHES or ecran.startswith(ECRAN_TACHES + "/")
+            or outil_erreur.startswith("taches."))
+
+
+def _masquer_tour_taches(corps: dict[str, Any]) -> dict[str, Any]:
+    """Question remplacee, reponse et texte d'erreur vides, ecran ramene a
+    `/taches` ; le tampon du navigateur (messages lus a l'ecran) est retire."""
+    erreur = corps.get("erreur")
+    if isinstance(erreur, dict):
+        erreur = {k: v for k, v in erreur.items() if k != "diagnostic"}
+        erreur["message"] = ""
+    return {**corps, "question": QUESTION_TACHES_PRIVEE, "resume_reponse": "",
+            "ecran": ECRAN_TACHES, "erreur": erreur}
+
+
 def suggestions_pour_ecran(ecran: str) -> list[str]:
     """AIC9 — trois questions du manifeste (cle `suggestions`) pour le plus
     long prefixe de route qui couvre `ecran` ; [] sans manifeste."""
@@ -1809,6 +1838,8 @@ class SQLAgentService:
             "tokens": dict(out.get("tokens") or {
                 "cache_read": 0, "cache_write": 0, "input": 0, "output": 0}),
         }
+        if _tour_taches_prive(corps):
+            corps = _masquer_tour_taches(corps)
         try:
             return journaliser_evenement_assistant(action_ctx, corps)
         except Exception as exc:  # pragma: no cover - best-effort
@@ -1839,7 +1870,7 @@ class SQLAgentService:
         try:
             # COP-B3 — le copilote est allume pour ce compte quand le
             # catalogue recu de Django porte une action du lot `copilote`.
-            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx)
+            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).

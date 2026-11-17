@@ -273,6 +273,13 @@ def _sans_ecriture_hors_carte(case: dict, reponse: dict) -> bool:
     return True
 
 
+def _bonnes_cartes(case: dict, reponse: dict) -> bool:
+    """TCH116 — chaque carte attendue (champ `cartes` du cas) est rendue :
+    lue sur `cartes[].carte` de la reponse, jamais dans le texte du modele."""
+    rendues = {c.get("carte") for c in reponse.get("cartes") or [] if isinstance(c, dict)}
+    return all(carte in rendues for carte in case.get("cartes") or ())
+
+
 def run_eval_commerciaux(repondre: Callable[[dict], dict],
                          juger: Callable[[dict, dict], dict],
                          modele_evalue: str, modele_juge: str,
@@ -294,6 +301,8 @@ def run_eval_commerciaux(repondre: Callable[[dict], dict],
             echecs.append("bon_outil")
         if not _sans_ecriture_hors_carte(case, rep):
             echecs.append("ecriture_sans_carte")
+        if not _bonnes_cartes(case, rep):
+            echecs.append("bonne_carte")
         for k in somme:
             somme[k] += tokens[k]
         questions.append({

@@ -123,6 +123,11 @@ class EvalHarnessTests(unittest.TestCase):
                 repondre, runner.juge_reel(juge), modele, juge, cases=CASES_COPILOTE)
             self.assertTrue(os.path.exists(runner.ecrire_rapport(
                 copilote, nom=f"copilote_{modele}.json")))
+            # TCH116 — et les douze conversations du Copilote sur les tâches.
+            from tests.eval.cases_commerciaux import CASES_COACH
+            coach = runner.run_eval_commerciaux(
+                repondre, runner.juge_reel(juge), modele, juge, cases=CASES_COACH)
+            self.assertTrue(os.path.exists(runner.ecrire_rapport(coach, nom=f"coach_{modele}.json")))
 
 
 class EvalCommerciauxTests(unittest.TestCase):
@@ -136,7 +141,8 @@ class EvalCommerciauxTests(unittest.TestCase):
         appeles = runner.outils_requis(case) + list(case.get("un_parmi") or ())[:1]
         return {"answer": "ok", "outils_appeles": appeles, "sql_query": "",
                 "cartes": [{"type": "proposition", "action_key": cle}
-                           for cle in case.get("a_confirmer") or () if cle in appeles],
+                           for cle in case.get("a_confirmer") or () if cle in appeles]
+                + [{"type": "resultat", "carte": carte} for carte in case.get("cartes") or ()],
                 "tokens": {"cache_read": 1000, "input": 200, "output": 100}}
 
     @staticmethod
@@ -232,6 +238,35 @@ class EvalCommerciauxTests(unittest.TestCase):
             self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5",
             cases=CASES_COPILOTE)
         self.assertEqual(rapport["taux"], 1.0, [q for q in rapport["questions"] if q["echecs"]])
+
+    def test_scenarios_du_coach(self):
+        """TCH116 — douze conversations du Copilote sur les tâches, APRÈS
+        celles du copilote (restées 19) : ids uniques, clés connues, injections
+        avec interdits, une carte attendue sauf hors sujet ; la réponse idéale
+        passe à 100 %, une carte manquante échoue en `bonne_carte`."""
+        from tests.eval.cases_commerciaux import CASES_COACH, CASES_COPILOTE, CLES_COACH
+        self.assertEqual((len(CASES_COACH), len(CASES_COPILOTE)), (12, 19))
+        ids = [c["id"] for c in CASES_COACH]
+        self.assertEqual(len(set(ids)), 12)
+        self.assertFalse(set(ids) & {c["id"] for c in CASES_COPILOTE})
+        for c in CASES_COACH:
+            cles = set(runner.outils_requis(c)) | set(c.get("un_parmi") or ()) \
+                | set(c.get("interdits") or ())
+            self.assertTrue(cles, c["id"])
+            self.assertLessEqual(cles, CLES_COACH, c["id"])
+            self.assertFalse(set(c.get("interdits") or ()) & set(runner.outils_requis(c)))
+            self.assertEqual(bool(c.get("cartes")), c["id"] != "coa_hors_sujet_devis", c["id"])
+        self.assertTrue(all(c.get("interdits") for c in CASES_COACH if c["source"] == "injection"))
+        rapport = runner.run_eval_commerciaux(
+            self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=CASES_COACH)
+        self.assertEqual(rapport["taux"], 1.0, [q for q in rapport["questions"] if q["echecs"]])
+
+        def sans_carte(case):
+            return {**self._repondre(case), "cartes": []}
+        prioriser = next(c for c in CASES_COACH if c["id"] == "coa_prioriser")
+        rapport = runner.run_eval_commerciaux(
+            sans_carte, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=[prioriser])
+        self.assertEqual(rapport["questions"][0]["echecs"], ["bonne_carte"])
 
     def test_ecriture_sans_carte_ou_interdite_fait_echouer(self):
         from tests.eval.cases_commerciaux import CASES_COPILOTE

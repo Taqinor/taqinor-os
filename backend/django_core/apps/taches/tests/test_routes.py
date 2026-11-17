@@ -475,3 +475,33 @@ class AccesTests(TestCase):
                 for autre in ('TRACE', 'PUT'):
                     with self.subTest(chemin=chemin, methode=autre):
                         self.assertEqual(client.generic(autre, concret(chemin)).status_code, 405)
+
+
+class BearerSansEnteteTests(TestCase):
+    """TCH163 — invariant 37 (api.md §0, R22) : un appel en `Authorization: Bearer` SANS l'en-tête
+    `X-Taqinor-Assistant` est servi en mode ASSISTANT (titre confidentiel masqué, notes absentes) —
+    l'oubli de l'en-tête par le relais échoue FERMÉ ; le navigateur (cookie) voit tout."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.compte = fabriques.compte(fabriques.societe('bearer'))
+        secret = fabriques.projet(cls.compte, nom='Canari-projet', confidentiel=True)
+        cls.tache = fabriques.tache(cls.compte, projet=secret, titre='Canari-titre', notes='Canari-notes')
+
+    def _lire(self, client):
+        reponse = client.get(f'/api/django/taches/taches/{self.tache.pk}/')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse
+
+    def test_bearer_seul_masque_titre_et_notes(self):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.compte)}')
+        reponse = self._lire(client)
+        self.assertNotIn('canari', reponse.content.decode('utf-8').lower())
+        self.assertEqual(reponse.json()['notes'], '')
+
+    def test_le_navigateur_au_cookie_voit_tout(self):
+        client = APIClient()
+        client.cookies['access_token'] = str(AccessToken.for_user(self.compte))
+        rendu = self._lire(client).json()
+        self.assertEqual((rendu['titre'], rendu['notes']), ('Canari-titre', 'Canari-notes'))

@@ -107,14 +107,50 @@ def outil_schema(db):
     return _Schema(db=db, description=DESCRIPTION_SCHEMA_SQL)
 
 
-def catalogue_du_tour(ctx) -> list[dict]:
+#: TCH114 (api.md §8) — jeu réduit hors claude (Groq : 8 000 jetons par
+#: minute) sur un écran `/taches…` : ces 7 actions seulement, ni CRM ni autre.
+JEU_GROQ_TACHES = (
+    "taches.journee.lire", "taches.plan.proposer", "taches.journee.prioriser",
+    "taches.tache.creer", "taches.tache.terminer", "taches.liste.ranger",
+    "taches.rythme.regler",
+)
+PREFIXE_ECRAN_TACHES = "/taches"
+
+
+def _ecran_taches(contexte: Optional[dict]) -> bool:
+    ecran = (contexte or {}).get("ecran")
+    return isinstance(ecran, str) and (ecran == PREFIXE_ECRAN_TACHES
+                                       or ecran.startswith(PREFIXE_ECRAN_TACHES + "/"))
+
+
+def _jeu_du_fournisseur(catalogue: list[dict], fournisseur: str,
+                        contexte: Optional[dict]) -> list[dict]:
+    """Sous claude : le catalogue entier. Ailleurs : sur `/taches…`, le jeu
+    réduit des tâches seul ; hors `/taches`, aucune action `taches.*`."""
+    if fournisseur == "claude":
+        return catalogue
+    if _ecran_taches(contexte):
+        return [a for a in catalogue if isinstance(a, dict) and a.get("key") in JEU_GROQ_TACHES]
+    return [a for a in catalogue
+            if not (isinstance(a, dict) and str(a.get("key", "")).startswith("taches."))]
+
+
+def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
+                      fournisseur: Optional[str] = None) -> list[dict]:
     """Catalogue d'actions du compte (filtré par Django) : il décide si le
-    copilote est allumé (`prompt_copilote.copilote_allume`). [] sans relais."""
+    copilote est allumé (`prompt_copilote.copilote_allume`). [] sans relais.
+    TCH114 — réduit selon le fournisseur du tour (défaut : le principal) et
+    l'écran du contexte ; le contexte est gardé sur `ctx` pour le tour (le
+    `lien` d'une tâche créée en vient)."""
     from app.services.action_tools import actions_available, fetch_catalogue
     if not actions_available(ctx):
         return []
+    if fournisseur is None:
+        from app.services.sql_agent_service import SQL_AGENT_PROVIDER
+        fournisseur = SQL_AGENT_PROVIDER
+    ctx.contexte_tour = dict(contexte or {})
     # Gardé pour le tour : `build_action_tools` ne relit pas Django.
-    ctx.catalogue_tour = fetch_catalogue(ctx)
+    ctx.catalogue_tour = _jeu_du_fournisseur(fetch_catalogue(ctx), (fournisseur or "").lower(), contexte)
     return ctx.catalogue_tour
 
 

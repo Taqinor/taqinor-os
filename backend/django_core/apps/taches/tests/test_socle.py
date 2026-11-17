@@ -27,8 +27,10 @@ class SocleTachesTests(SimpleTestCase):
     def test_platform_sans_surface(self):
         from apps.taches.platform import PLATFORM
         self.assertEqual(PLATFORM['module'], 'taches')
+        # TCH111 : seule surface câblée, les actions du Copilote.
+        self.assertEqual(PLATFORM['agent_actions_module'], 'apps.taches.agent_actions')
         for cle, valeur in PLATFORM.items():
-            if cle != 'module':
+            if cle not in ('module', 'agent_actions_module'):
                 self.assertFalse(valeur, cle)
 
     def test_aucun_admin(self):

@@ -336,6 +336,8 @@ SANS_ID = {
     ('POST', 'capture/'): lambda m: ('capture/', {'titre': 'Appeler le fournisseur demain'}),
     ('GET', 'tuile/'): lambda m: ('tuile/', None),  # compte forcé (`force_authenticate`) : celui du jeton
     ('GET', 'flux/{jeton}.ics'): lambda m: ('flux/tqf_force.ics', None),  # idem : le jeton de l'adresse n'est pas lu
+    ('GET', 'journee/priorites/'): lambda m: ('journee/priorites/', None),
+    ('GET', 'journee/point/'): lambda m: ('journee/point/', None),
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
