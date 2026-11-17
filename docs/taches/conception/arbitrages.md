@@ -1,0 +1,239 @@
+# Arbitrages de l'orchestrateur après la contradiction des spécifications 2 à 6
+
+Cinq rapports ont attaqué les sept spécifications : `verif-specs-2-3.md` (2 bloquants, 14 majeurs),
+`verif-specs-4-6.md` (1 bloquant, 9 majeurs), `verif-coherence.md` (48 divergences dont 9 bloquantes, 15 trous),
+`verif-securite-specs.md` (6 majeurs), `verif-spec-5a.md` (3 majeurs).
+
+**Règle par défaut : la correction recommandée par le vérificateur est ADOPTÉE** pour tout constat BLOQUANT ou MAJEUR,
+et pour tout MINEUR qui n'ajoute pas de périmètre. Ce fichier ne liste que les points où l'orchestrateur tranche
+autrement, précise, ou décide entre deux vérificateurs. Ordre de primauté : `socle.md` (§0 et §8) → ce fichier →
+`spec-7-ecrans.md` pour les MOTS et la navigation → les rapports de vérification → les spécifications.
+
+## A1 — La dictée Siri COMPREND les dates (renverse la résolution C3 de `verif-coherence.md`)
+`POST taches/capture/` (jeton `capture`) passe le texte au MÊME analyseur que la saisie rapide : jour, heure, moment,
+échéance, priorité, durée, et projet EXISTANT désigné par `#nom`. Par jeton, jamais de création de projet,
+d'étiquette, de récurrence ni de rappel. Sans rien de reconnu, la tâche va dans la Boîte. La réponse (lue à voix haute
+par Siri) dit ce qui a été compris : « Ajouté pour demain 10 h : appeler le fournisseur ». Raison : « ajouter
+facilement » est la demande du fondateur ; le risque de sécurité est inchangé (le jeton ne fait toujours que créer
+une tâche pour son propriétaire). Le socle §2.5 se lit donc : « un jeton `capture` ne peut QUE créer une tâche pour
+son propriétaire ».
+
+## A2 — Le rythme POUSSE vraiment (complète `spec-5a-rythme.md` d'après `verif-spec-5a.md`, question 6)
+1. **L'objectif qu'il DÉCLARE prime et s'applique tout de suite.** « Je veux en faire plus » → l'objectif monte
+   immédiatement : au nombre qu'il donne, sinon d'un cran. Aucune attente de bloc. Même chose à la baisse.
+2. La règle par blocs de 10 jours travaillés ne sert plus qu'à PROPOSER la suite : +1 quand il a tenu l'objectif
+   5 jours sur 10 (seuil corrigé, 6/10 était trop lent), −1 quand il l'a tenu 3 jours ou moins. Jamais imposé,
+   jamais plus d'un cran, plancher 1. Pas de double saut (rejeté par la mesure : il emballe le tricheur).
+3. Arrondi : « au plus proche, la demie vers le bas » (écrit ainsi partout). Pour le niveau de référence du mode qui
+   maintient, chaque jour est plafonné à 2 × médiane + 1 (un jour à 30 tâches ne fausse plus la référence).
+4. Ce qui fait faire PLUS au quotidien, en mode qui pousse, au-delà du chiffre : le plan du matin rempli jusqu'à
+   l'objectif ; l'essentiel du jour choisi d'abord ; une heure fixée pour chaque tâche du plan (« quand ? ») ; le
+   point de mi-journée avec le compte réel ; la découpe proposée pour toute tâche reportée 3 fois ; le bilan du soir
+   factuel. Ce sont ces six leviers que les écrans et le coach doivent rendre visibles.
+5. Les textes manquants relevés (mode sans objectif, mode qui maintient, relance « projet négligé ») sont à écrire
+   dans la référence.
+
+## A3 — Liens ERP : seulement les cibles dont on sait vérifier la visibilité
+Une cible n'est liable que si son app expose un sélecteur de visibilité pour l'utilisateur. En première version :
+lead, client, devis (sélecteurs existants cités par `verif-securite-specs.md` M1). Les autres cibles déclarées
+(facture, chantier, ticket…) deviennent liables quand un sélecteur de visibilité existe — sinon un commercial
+restreint lirait des noms hors de sa portée par simple énumération d'identifiants.
+
+## A4 — Suggestions venues de l'ERP
+Titre sans nom de client (« Préparer le chantier du devis accepté », le nom se lit par le lien, à l'ouverture, avec
+les droits du moment). Destinataire strict (le responsable du lead du devis, sinon personne). Un fournisseur
+d'effacement (`core/dsr.py`) pour `taches`. Trois suggestions allumées, une éteinte, comme `spec-6a-erp.md`.
+
+## A5 — Assistant : écrire sans tap seulement sur une demande sûre
+Dès qu'un contenu non fiable est entré dans le tour (liste collée, libellé ou note venant d'un lead ou d'un client,
+page lue), toute écriture passe en carte à valider au doigt. Les tâches créées par l'assistant portent
+`source='assistant'` et un petit repère à l'écran. Au plus 3 écritures par tour.
+
+## A6 — « Confidentiel » est hérité et vérifié par un test canari
+Projet confidentiel → ses tâches et leurs étapes le sont. Deux fonctions uniques : `est_confidentielle()` et
+`nom_pour(usage)`. Un test pose une tâche confidentielle au titre reconnaissable et vérifie qu'aucune route servie à
+l'assistant, au flux de calendrier, à la tuile, aux notifications ni aux suggestions ne rend ce titre.
+
+## A7 — Annuler : un seul mécanisme, côté serveur
+`GesteAnnulable` (état d'avant, liste blanche de champs, propriétaire vérifié, purge à 7 jours), une route
+`gestes/<id>/annuler/`, un seul toast. Aucune route n'accepte un état d'avant envoyé par le navigateur.
+
+## A8 — Fichiers d'un autre propriétaire
+Chaque édition d'un fichier étranger est une tâche À PART, écrite dans le plan du propriétaire de ce fichier (ou le
+plan transverse quand elle en touche plusieurs), minimale et en fin de liste. `PLAN_TACHES.md` ne contient que des
+tâches dont tous les fichiers appartiennent à `taches`, plus les surfaces partagées en ajout seul. À régler au L3 n°9
+avec `scripts/check_ownership.py`.
+
+## A9 — La vérité dite à l'utilisateur
+Le texte de l'écran Réglages → « Vie privée » est écrit mot pour mot dans la référence, à partir de la liste « à dire
+franchement au fondateur » de `verif-securite-specs.md` : court, sans jargon, sans minimiser.
+
+## A10 — Raccourcis clavier
+`g t` est pris par le SAV : l'écran du jour utilise la lettre déclarée dans `module.config` (proposition `g j`),
+et `c t` ouvre la saisie par l'événement unique `taqinor:taches:saisir`.
+
+## A11 — « Toutes les tâches de mes projets apparaissent dans mon to-do quotidien » (demande mot pour mot)
+L'écran Aujourd'hui n'est JAMAIS vide tant qu'un projet actif a une tâche ouverte. Sous les tâches choisies pour le
+jour, une section **« Proposé pour aujourd'hui »** montre, classées par le moteur (priorité du projet, priorité de
+la tâche, échéance), les prochaines tâches de TOUS ses projets : d'abord ce qu'il faut pour atteindre l'objectif du
+jour, puis « Voir toutes les tâches de mes projets » qui déplie la suite, groupée par projet. Un geste sur une ligne
+proposée la met à aujourd'hui ; cocher directement une ligne proposée la compte comme faite aujourd'hui. « Faire le
+plan » n'est que cette même proposition, validée en lot avec le choix de l'essentiel : le rituel reste facultatif,
+la liste du jour marche sans lui. Les tâches « Un jour », « En attente de… », « Après… » non débloquées et celles
+des projets en pause n'y figurent pas.
+
+## A12 — Le Copilote est visible, pas replié
+Le fondateur veut « the AI agent in there ». Depuis Aujourd'hui, le Copilote s'ouvre en UN geste (le bouton global
+du panneau existant), et, ouvert depuis un écran Tâches, il montre d'emblée quatre demandes prêtes à toucher :
+« Planifie ma journée », « Aide-moi à prioriser », « Range ma liste », « Où j'en suis ? ». Les boutons
+« … avec le Copilote » des écrans (plan, À trier, fiche, Mon rythme) restent là où `spec-7-ecrans.md` les place.
+Sans clé d'IA, le bouton explique en une phrase pourquoi il est indisponible ; tout le reste marche.
+
+## A13 — Le nom de l'écran du jour
+« Aujourd'hui » (et non « Ma journée », déjà pris deux fois dans l'ERP). Les routes d'API ne changent pas.
+
+## A14 — Après l'essai de l'architecture des écrans (`verif-spec-7.md` : 13/20, 1 bloquant, 11 majeurs)
+Toutes les corrections du rapport sont ADOPTÉES. Précisions de l'orchestrateur :
+- **B1 retour de congé** : une seule carte au retour (« Tu reviens après 10 jours : 18 tâches attendaient. [Les
+  remettre dans Proposé] [Les voir une par une] »), jamais une file de choix obligatoires ; aucun report compté ;
+  la notification du matin ne compte que les tâches du jour.
+- **M1 Aujourd'hui trop chargé** : ordre vertical imposé et écrit — (1) une ligne de progression « 1 sur 5 · essentiel
+  0/2 » (l'anneau détaillé s'ouvre au toucher) ; (2) Essentiel ; (3) Aujourd'hui (heures fixes en tête, obligations
+  de l'ERP mêlées) ; (4) Ce soir ; (5) Proposé pour aujourd'hui avec le bouton unique « Garder ces N » (le bandeau
+  « Faire le plan » et la section Proposé sont UNE même chose) ; (6) repliés : À revoir, En attente, Faites, Ailleurs
+  dans l'ERP. La première tâche est visible sans défiler.
+- **M2** : le chiffre montré est « faites sur OBJECTIF » (« 1 sur 5 ») ; le plan tenu est une seconde donnée, repliée.
+- **M3** : la priorité du projet est demandée à l'étape 1 de « Planifier le projet » (Haute / Moyenne / Basse, une
+  touche) et montrée par une puce dans la liste des projets ; « Trier par priorité » reste disponible.
+- **M4** : quand un constat sur son comportement existe, UN seul est montré dans le bilan du soir (jamais plus d'un
+  par jour) ; l'écran Mon rythme garde la liste.
+- **M5** : la carte « Mon iPhone » apparaît dès le premier collage. Le raccourci Siri prêt à installer ne peut pas
+  être fabriqué depuis le dépôt : un réglage facultatif `TACHES_RACCOURCI_SIRI_URL` affiche un bouton « Installer le
+  raccourci » quand un lien iCloud y est posé ; sinon, les étapes guidées. (Geste de Reda, une fois : créer le
+  raccourci sur son iPhone et coller son lien de partage.)
+- **M6** : une tâche capturée est rangée comme l'analyseur l'a comprise (jour reconnu → elle a son jour et sort de
+  « À trier ») ; « 10 h » avec une espace est reconnu ; un rappel sans jour pose le jour du rappel.
+- **M7 alléger la journée** : depuis Aujourd'hui, un geste « Alléger ma journée » → il garde ce qu'il coche, le reste
+  retourne dans Proposé SANS report compté (ce n'est pas un échec, c'est un ajustement).
+- **M8 agenda** : les visites et les poses de l'ERP s'affichent à leur heure quand l'ERP la connaît. Lire un agenda
+  personnel externe (adresse ICS qu'il colle) est classé AVANCÉ et construit dans la dernière vague, avec les gardes
+  de sécurité d'une lecture d'adresse externe (https seulement, adresses publiques seulement, taille et durée
+  bornées, cache) ; s'il ne tient pas dans la construction, il est noté comme reste à faire, pas abandonné.
+- **M9** : dans un texte collé, une première ligne suivie d'au moins deux lignes est proposée comme PROJET
+  (« Nouveau projet : … »), modifiable dans l'aperçu.
+- **M10 vocabulaire** : « À revoir » remplace « À décider » ; « En réserve » remplace « Un jour ». « À trier » et
+  « À planifier » sont gardés.
+- **M11** : la palette de commandes a une ligne « Chercher dans mes tâches » (la recherche globale de l'ERP ne les
+  indexe pas, par vie privée).
+
+## A15 — Points laissés à l'orchestrateur par l'intégrateur de la référence
+- Palette de projet : 10 couleurs, celles de `spec-8-langage-visuel.md` (clés et valeurs) — la référence s'aligne.
+- Conservation : compteurs du jour (`PlanJour`, sans aucun titre) 400 jours (le rythme et les constats ont besoin
+  de recul) ; lignes de plan 90 jours ; journal des sollicitations 90 jours ; rappels clos 30 jours ; gestes
+  annulables 7 jours ; tâches et projets supprimés 30 jours.
+- Aucune sollicitation pour un compte qui n'a jamais créé de tâche (le module est allumé pour toute la société :
+  personne ne doit recevoir un « plan du matin » sans avoir jamais ouvert l'app).
+- La notification de mi-journée ouvre l'écran Aujourd'hui (pas directement « Alléger »).
+- Les astuces de geste vues/non vues restent dans le navigateur. Les plafonds de requêtes sont des cibles, à
+  remplacer par la mesure à la construction. « En réserve » n'est pas lu par la capture Siri.
+
+## A16 — Second essai de l'architecture des écrans (`verif-spec-7-tour2.md` : 13/20, 0 bloquant, 12 majeurs nouveaux)
+Les corrections N1 à N12 et le placement des 11 fonctions orphelines sont ADOPTÉS. Précisions :
+- **N3 planifier sa semaine** (la « phase de planification » demandée vaut aussi pour la semaine) : la vue Semaine de
+  l'agenda a un volet « À placer » qui liste aussi « Mes projets » ; toucher une tâche puis un jour la place (deux
+  gestes, sans ouvrir de fiche, sans glisser) ; la revue de la semaine se termine par « Planifier ma semaine ».
+- **N4** : les visites et les poses de l'ERP n'ont qu'une date (pas d'heure dans leurs modèles) → bande « Toute la
+  journée ». A14-M8 se lit ainsi.
+- **N5 pastille** : elle ne compte que les tâches GARDÉES pour aujourd'hui et encore ouvertes (Essentiel, Prévu, Ce
+  soir) — jamais « Proposé ». Elle peut donc tomber à 0, et c'est le but.
+- **N6** : après « Alléger ma journée », la section Proposé reste repliée jusqu'au lendemain.
+- **N8 conflit entre deux appareils** : la saisie en cours n'est jamais écrasée ; choix « Garder la mienne / Prendre
+  l'autre ».
+- **N10 accessibilité** : un paragraphe dédié dans la spec 7 et des critères d'acceptation (annonces `aria-live`,
+  toast qui ne disparaît pas sous lecteur d'écran ou tant qu'il a le focus, texte à 130 %, alternatives au balayage
+  et au glisser, cibles ≥ 44 px).
+- **N11 hors ligne** : ajouter, cocher et reporter marchent hors ligne par la même file d'envoi du module ; le reste
+  est grisé.
+- **N12** : le raccourci Siri partagé ne contient JAMAIS de jeton ; il le demande à l'installation.
+- **M2 (suite)** : le bilan du soir dit aussi « N sur OBJECTIF » ; le « plan tenu » est une seconde ligne.
+- **M3 (suite)** : un projet créé à la volée par `#` reçoit la priorité « Moyenne » par défaut, montrée et modifiable
+  d'un toucher dans la liste des projets.
+
+## A17 — Troisième essai des écrans (`verif-spec-7-tour3.md` : 15/20, 0 bloquant, 4 majeurs nouveaux) + vérification de la référence (`verif-reference.md` : 0 bloquant, 10 majeurs) + manques relevés par le second intégrateur (fin de `reference/regles.md`)
+Tout est ADOPTÉ. Le troisième évaluateur juge l'architecture « presque prête » et ne demande pas de quatrième tour :
+il reste à réaligner la référence, puis à la vérifier une dernière fois.
+- **T1** : `reference/donnees.md` et `reference/api.md` sont réalignés sur A15, A16, A17 et la révision 3 de la spec 7.
+- **T2** : la carte « plan proposé » du Copilote adopte en mode express (« Garder ces N ») : jamais de choix obligé
+  par tâche à revoir avant de pouvoir valider.
+- **T3** : la carte « Mon iPhone » vit 3 jours au plus sur Aujourd'hui, puis seulement dans Réglages ; elle ne
+  bloque pas les autres révélations.
+- **T4** : à la pose du premier rappel, une question unique « Montrer le titre sur l'écran verrouillé ? » règle la
+  préférence (socle §2.8 respecté : sans réponse, les notifications restent sans titre).
+- **M1 (fin)** : le matin, « Garder ces N » est porté par la carte du moment, en haut d'Aujourd'hui.
+- **M2 (fin)** : partout « N sur OBJECTIF » ; le plan tenu est une seconde donnée.
+- **M3 (fin)** : chaque « Nouveau projet » d'un aperçu de collage porte une puce de priorité (Moyenne par défaut).
+- « Encore 10 min · 1 h · Demain 9 h » à l'ouverture d'un rappel : placé sur la fiche ouverte par le rappel.
+- « Lier une tâche à une activité ERP » : une route le pose (la tâche garde `activite_origine`, l'activité n'est pas close).
+- **Référence — corrections de `verif-reference.md`** : palette à 10 clés ; `PlanJour` gardé 400 jours ; les réglages
+  du rythme ne naissent qu'à la première tâche créée (jamais par `vu/`) ; routes à jeton : société prise du jeton après
+  vérification que l'utilisateur peut y opérer ; décision « garder » ajoutée ; `PATCH reglages/` par liste blanche,
+  le mode ne change que par la route du rythme ; fournisseur d'effacement `taches` ; pagination fixée par liste ;
+  `proprietaire_attendu` sur les envois hors ligne ; ordre d'affichage d'une section écrit ; orphelins repris.
+- **Manques relevés par le second intégrateur** : `PlanJour.allege_le` ; la zone de l'objectif en mode « Garder ce
+  rythme » ; créneau et ordre gardés sur les lignes de plan ; motif « À revoir » pour une activité ERP en retard ; un
+  projet commun PAR collage ; erreur pour un objectif hors 1-12.
+- **Mise en production sans demi-état (majeur 10 de `verif-reference.md`)** : tant que tout n'est pas construit, le
+  module reste invisible : droit déclaré mais accordé à aucun rôle, aucune entrée de navigation. L'octroi du droit et
+  la navigation arrivent dans la DERNIÈRE vague.
+- **Tutoiement** : l'app Tâches et le Copilote disent « tu » (espace personnel, ton du coach) ; les composants
+  partagés de l'ERP gardent leurs textes.
+
+## A18 — Critique finale avant construction (`critique-finale.md` : 1 bloquant, 8 majeurs ; verdict « prêt après corrections »)
+Toutes les corrections sont ADOPTÉES. Ce qu'elles changent :
+- **B1 — les sources des tâches restent lisibles.** Le plan cite `docs/taches/travail/…` dans 119 tâches : ces pièces
+  ne peuvent pas être supprimées avant la construction. Sur `main` vivent : `docs/taches/reference/` (fait foi),
+  `docs/taches/conception/` (socle, arbitrages, spec-2 à spec-8, consignes de construction — déplacés depuis
+  `travail/`), `docs/taches/maquettes/` (sans les captures) et `docs/taches/README.md`. Les recherches, rapports de
+  vérification, critiques et scripts jetables restent sur la branche de travail, pas sur `main`.
+- **M1 — « Proposé » fait tourner les projets.** Demande du fondateur : « toutes les tâches de mes projets
+  apparaissent dans mon to-do quotidien ». Règle : pour chaque projet actif, la PROCHAINE ACTION est sa première
+  tâche ouverte dans l'ordre du projet (`rang_projet`), non bloquée, non « En réserve ». Proposé prend d'abord la
+  prochaine action de chaque projet, dans l'ordre de priorité des projets (puis leur rang), puis la deuxième de
+  chaque projet, et ainsi de suite, jusqu'à N = objectif − faites − gardées ouvertes. Un projet ne monopolise jamais
+  la proposition. « Voir toutes les tâches de mes projets » déplie la suite, groupée par projet.
+- **M2 — ce qui presse passe devant.** Une tâche prévue un jour passé (retard de la veille) ou dont l'échéance tombe
+  dans les 2 jours travaillés à venir est proposée EN TÊTE de Proposé, avant le tour des projets, avec sa raison
+  (« prévue hier », « échéance jeudi »). « À revoir » ne garde que ce qui demande une vraie décision : les tâches
+  reportées 3 fois et les retards de plus de 7 jours.
+- **M3 — le Copilote aide vraiment à prioriser, même sans modèle de langage.** (a) Les quatre demandes prêtes
+  (« Planifie ma journée », « Aide-moi à prioriser », « Range ma liste », « Où j'en suis ? ») sont servies par des
+  routes DÉTERMINISTES de `taches` et rendent leurs cartes sans appel à un modèle : elles marchent sans clé d'IA et
+  sous n'importe quel fournisseur. (b) « Aide-moi à prioriser » rend une carte dédiée : toutes les tâches ouvertes
+  classées, chacune avec sa raison en une ligne, et trois gestes par ligne (Essentiel · Aujourd'hui · Plus tard dans
+  la semaine) plus « Garder ces N ». (c) Une action `taches.tache.modifier` (priorité, échéance, projet) sur demande
+  explicite, annulable. (d) Les réglages d'IA de la production (fournisseur, clé) restent un geste de Reda, dit dans
+  le README.
+- **M4 — l'agenda montre ses rendez-vous.** La lecture d'agendas externes par adresse ICS devient ESSENTIELLE :
+  jusqu'à 3 adresses (Microsoft 365, Google, iCloud), lues côté serveur avec les gardes de sécurité d'une adresse
+  externe (https seulement, adresses publiques seulement, taille et durée bornées, cache, jamais de redirection
+  vers une adresse privée), affichées en lecture seule dans l'agenda et dans Aujourd'hui, et leur durée est
+  retranchée du temps disponible du jour. Construite dans la fusion du cœur, par une lane au modèle le plus sûr.
+- **M5 — un cœur essayable tôt.** Quatre fusions au lieu de trois : **F1** socle (invisible) ; **F2** le CŒUR
+  complet et utilisable — saisie, À trier, fiche, projets et planification, Aujourd'hui, agenda (avec agendas
+  externes), bilan, revue, Mon rythme, Réglages, recherche, hors ligne — activé pour les seuls Administrateurs à la
+  fin de F2, après acceptation en direct : Reda peut l'essayer pendant que la suite se construit ; **F3** iPhone
+  (pastille, notifications, calendrier abonné, Siri, tuile) et Copilote ; **F4** tout ce qui est AVANCÉ et replié
+  (modèles de projet, tableau, chronologie, vues enregistrées, étiquettes, suggestions de l'ERP…), puis
+  l'ouverture aux autres rôles internes.
+- **M6 — une seule vérité sur l'hôte** : Python 3.13 de ce poste a Django (`makemigrations`, `check`, tests sans
+  base tournent localement avec `PYTHONPATH=C:\dev\wpstub`) ; les tests qui ont besoin de la base ne tournent qu'en
+  CI. Le plan et les consignes de construction disent la même chose.
+- **M7 — ce qui ne se prouve que sur un vrai iPhone** (pastille, notifications en production, tuile, Siri,
+  calendrier abonné) est construit et testé autant qu'un navigateur le permet, puis listé comme « à essayer par Reda
+  sur son iPhone » : aucune tâche ne prétend l'avoir prouvé.
+- **M8 — activation prudente** : d'abord le rôle Administrateur seul ; un réglage coupe-circuit arrête le balayage
+  des sollicitations et des rappels sans redéploiement.
+- Vie privée (restes) : l'en-tête qui marque un tour « Tâches » pour le relais de l'assistant échoue FERMÉ (sans
+  lui, pas de titre dans le journal) avec un test côté relais ; un test vérifie que les tables de `taches` ne sont
+  pas dans la liste des tables que l'agent SQL peut interroger ; Siri ne lit jamais le nom d'un projet
+  confidentiel ; le texte « Vie privée » dit les trois silences relevés.
