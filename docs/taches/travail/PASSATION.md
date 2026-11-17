@@ -100,31 +100,26 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
-### État au 17/11/2026, quota à 93 % (mis à jour à chaque étape)
+### État au 17/11/2026, quota à 94 % (mis à jour à chaque étape)
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `c9d199520` au moment d'écrire. Contient 60 des 64
-  tâches de la fusion 2 : toutes les lanes serveur et écrans, le semis, le test « même propriétaire », les plafonds,
-  le registre, les raccords SERVEUR, l'ACTIVATION pour l'Administrateur seul (TCH130-132), deux tours de corrections CI.
-- `lane/f2y-raccord-ecrans` (poussée, tête `72732c9a2` puis un commit de fusion) : les raccords CÔTÉ ÉCRANS (11
-  commits, 511 tests verts, build OK). **Pas encore pliée** : elle était en conflit sur 5 fichiers avec
-  `dev-taches-f2` ; la lane fusionnait `origin/dev-taches-f2` chez elle pour régler. **Première action de la
-  reprise : si `dev-taches-f2` ne contient pas ses commits (`git log origin/dev-taches-f2 | grep "Raccord F2 — valeurs"`),
-  la plier** : `git fetch origin && git checkout dev-taches-f2 && git merge --no-ff origin/lane/f2y-raccord-ecrans`
-  (régler les conflits d'imports en gardant les deux côtés : imports `tachesApi` sur la ligne `} from`, lecture de
-  toutes les pages), `npm run test:unit -- src/features/taches src/pages/taches`, puis
-  `python scripts/codemap_fingerprint.py --write`, commit, push.
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `ac88526e8` au moment d'écrire. Contient 61 des 64
+  tâches de la fusion 2, TOUT plié : lanes serveur et écrans, semis, « même propriétaire », plafonds, registre,
+  raccords serveur ET écrans (511 tests front verts, build OK), activation Administrateur seul (TCH130-132),
+  TCH151, deux tours de corrections CI, cinq défauts connus corrigés (agenda en une lecture, semis à « 3 sur 5 »,
+  progression après « Annuler »).
+- En cours à l'arrêt : lane `lane/f2z-e2e` (TCH133, TCH134, bout en bout Playwright). Si elle a rendu, sa branche
+  est poussée sur origin sous ce nom et la ligne ci-dessous le dit.
 
 **Ce qui reste pour la fusion 2**
-1. Plier `lane/f2y-raccord-ecrans` (ci-dessus) ; CI verte (deux tours déjà corrigés ; le 3e tour n'a pas été lu).
-2. TCH151 `[BLOQUÉE]` : ajouter `taches` à `APPS_SURVEILLEES` rend la garde rouge sur ~24 fonctions de
-   `services/{journee,rythme,revelations,donnees,taches}.py` sans appelant hors de leur module → les préfixer `_`
-   (et leurs tests) OU leur donner leur appelant, puis ajouter `"taches"` + le test de constantes.
-3. TCH133, TCH134 : bout en bout Playwright en CI (une lane sonnet, après le pli des raccords écrans).
-4. Acceptations en direct TCH136-140, TCH144 (orchestrateur, pile locale). **Ne pas merger #1454 avant** : le pli
+1. CI verte sur `ac88526e8` ou la tête suivante : le 3e tour n'a pas été lu. Lire les rouges par
+   `gh pr checks 1454`, les confier à une lane sonnet (modèle de prompt : celui des tours 1 et 2, « corrige le test
+   s'il est faux, le code sinon, jamais d'assertion élargie »).
+2. TCH133, TCH134 : plier `lane/f2z-e2e` si elle existe sur origin, sinon relancer la lane.
+3. Acceptations en direct TCH136-140, TCH144 (orchestrateur, pile locale). **Ne pas merger #1454 avant** : le pli
    contient l'activation → dès le merge + deploy, l'Administrateur voit le module.
-5. TCH94 (dérivés, dé-gel de la fusion 3), puis `gh pr ready 1454` et `gh pr merge 1454 --auto --merge`.
+4. TCH94 (dérivés, dé-gel de la fusion 3), puis `gh pr ready 1454` et `gh pr merge 1454 --auto --merge`.
 
 **Décisions prises seul pendant cette session (à relire, aucune ne demande Reda)**
 - Coupe-circuit `balayage_actif` : il ne coupe que l'ENVOI de sollicitations ; clôture, purges et revérification des
