@@ -26,6 +26,7 @@ from apps.taches.moteur.gabarits import format_heure, format_jour
 from apps.taches.saisie.grammaire import moment_de
 from apps.taches.selectors.base import jours_travailles_de, taches_de
 from apps.taches.services.gestes import enregistrer_geste, op_champ
+from apps.taches.services.rappels import recalculer_ancres
 from core.verrou_optimiste import CHAMP_VERSION, CODE_CONFLIT_VERSION, ConflitVersion
 
 MESSAGE_CONFLIT = "Cet enregistrement a été modifié par quelqu'un d'autre depuis son ouverture."
@@ -162,10 +163,6 @@ def _avertissements(acteur, t, aujourdhui):
     return sortie
 
 
-def _apres_le_jour(t, collecte):
-    """Ce qui suit le jour posé, dans la même transaction (rappels ancrés : TCH35)."""
-
-
 def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque_jour=False,
               compter_report=True, version=None, collecte=None):
     """Pose le jour, l'heure, le moment ou « En réserve » de `tache` (à `acteur`) → résultat
@@ -180,7 +177,7 @@ def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque
         _ecrire(t, jour, moment, heure, quelque_jour, maintenant, report)
         ops = [op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()
                if getattr(t, champ) != valeur]
-        ops += _apres_le_jour(t, collecte) or []
+        ops += recalculer_ancres(t)  # rappels ancrés sur le jour prévu (TCH35)
         geste = None
         if collecte is not None:
             collecte.extend(ops)
