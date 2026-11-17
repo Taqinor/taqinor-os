@@ -1,136 +1,151 @@
-# Spec 7 — L'ensemble : navigation, vocabulaire, écrans (`features/taches`) — révision 2
+# Spec 7 — L'ensemble : navigation, vocabulaire, écrans (`features/taches`) — révision 3
 
-Loi : `recherche-7-simplicite.md` (« R7 »), `arbitrages.md` A11-A14. Chemins : `frontend/src/`. API inchangée.
+Loi : R7 (`recherche-7-simplicite.md`), `arbitrages.md` A11-A16. Chemins : `frontend/src/`.
 
 ## 1. Modèle mental (le test)
 
-1. « Je note tout ici d'un geste ; ce qui n'a pas de place attend dans **À trier**. »
-2. « Chaque matin l'ERP me **propose** ma journée ; je **garde** ce que je fais et je choisis mon **essentiel**. »
-3. « **Aujourd'hui** montre tout ce que j'ai à faire, ce que l'ERP attend de moi compris. »
-4. « Le reste vit dans ses **projets** ; l'**agenda** me montre quand. »
+1. « Je note tout d'un geste ; ce qui n'a pas de place attend dans **À trier**. »
+2. « Le matin l'ERP **propose** ; je **garde** ce que je fais et choisis mon **essentiel**. »
+3. « **Aujourd'hui** montre ce que j'ai à faire, ERP compris. »
+4. « Le reste vit dans ses **projets** ; dans l'**agenda** je place ma semaine. »
 5. « Le soir le **bilan**, en fin de semaine la **revue** ; le **Copilote** m'aide à décider et à tenir mon rythme. »
 
-Hors de ces phrases → AVANCÉ (étiquettes, vues, modèles, burn-up).
+Hors de ces phrases → AVANCÉ.
 
 ## 2. Navigation
 
-Barre du bas : 5 onglets dont « Apps » ; ≤ 4 sections → toutes directes (`components/layout/BottomTabBar.jsx:33-48`).
-`nav.items` = 4 (le 1er = porte, `crm/module.config.jsx:83-88`), lus aussi par la barre latérale (`lib/apps/ActiveAppContext.jsx:153-158`).
+5 onglets dont « Apps », ≤ 4 sections toutes directes (`components/layout/BottomTabBar.jsx:33-48`) ; `nav.items` = 4, le 1er
+= porte (`crm/module.config.jsx:83-88`), aussi dans la barre latérale (`lib/apps/ActiveAppContext.jsx:153-158`).
 
-| Onglet | Route | Pastille |
+| Onglet | Route | Pastille d'onglet |
 |---|---|---|
-| Aujourd'hui | `/taches/aujourdhui` (`/taches` y redirige) | — |
-| À trier | `/taches/a-trier` | nombre (masqué à 0) |
+| Aujourd'hui | `/taches/aujourdhui` (`/taches` y mène) | — |
+| À trier | `/taches/a-trier` | nombre, masqué à 0 (ajout à `BottomTabBar.jsx`, A8) |
 | Projets | `/taches/projets[/:id]` | — |
-| Agenda | `/taches/agenda?vue=jour\|semaine\|mois\|a-venir` | — |
+| Agenda | `/taches/agenda?vue=jour\|semaine\|mois\|a-venir[&projet=]` | — |
 
-**Le seul « Plus »** : ⋯ dans la ligne de titre : actions de l'écran (Aujourd'hui : Alléger ma journée, Sélectionner),
-puis Revue · Mon rythme · Supprimées récemment · Réglages ; à côté, la loupe. **Copilote** : bouton global
-(`components/layout/Header.jsx:210-219`, iPhone non vérifié), 4 demandes prêtes : « Planifie ma journée », « Aide-moi à
-prioriser », « Range ma liste », « Où j'en suis ? » ; sans clé, une phrase dit pourquoi (A12). **Ajouter** : bouton
-flottant iPhone (`ui/FloatingActionButton.jsx:6`). Fiche `?tache=<id>` ; `aujourdhui?ouvrir=bilan|alleger`.
-**Pastille** (corrige 6b §2) : lignes ouvertes d'Essentiel, Prévu, Ce soir et de Proposé montré.
+**Seul « Plus »** : ⋯ du titre, touche affichée par item : actions de l'écran (Aujourd'hui : Alléger, Réorganiser,
+Sélectionner, En faire mon accueil), puis Revue · Mon rythme · Supprimées récemment · Réglages ; loupe à côté.
+**Copilote** : bouton global (`components/layout/Header.jsx:210-219`, iPhone non vérifié), 4 demandes : « Planifie ma
+journée », « Aide-moi à prioriser », « Range ma liste », « Où j'en suis ? » ; sans clé ou hors ligne, une phrase.
+**Ajouter** : bouton flottant (`ui/FloatingActionButton.jsx:6`), seul bouton plein. Fiche `?tache=<id>` ; notifications
+→ Aujourd'hui (A15). **Pastille (N5)** : gardées encore ouvertes (Essentiel, Prévu, Ce soir), jamais Proposé ; peut valoir 0.
+
+Comptes **atteindre / accomplir**, identiques au §7.
 
 | Fonction | Où | Gestes depuis Aujourd'hui |
 |---|---|---|
-| Ajouter, coller une liste, dicter | bouton flottant → feuille de saisie | 1 |
-| Cocher · Reporter | case · balayage gauche (fiche → Reporter) | 1 · 1 (2) |
-| Garder la proposition · essentiel | « Garder ces N » · ★ sur la ligne | 1 · 1 |
-| Fiche (notes, check-list, Quand, Échéance, Projet, Priorité, ★) | ligne | 1 |
-| Heure, rappel | fiche → Quand → Heure / Rappel | 3 |
-| Répéter, étiquettes, durée, en attente de, jalon, lié à, confidentielle, découper | fiche → Plus | 3 |
-| Déplacer, réorganiser | appui long (fiche → Projet) | 2 (3) |
-| Alléger ma journée · Sélectionner | ⋯ → choix | 2 |
-| Copilote et ses 4 demandes | bouton global | 1 · 2 |
-| À trier, suggestions ERP, à-faire à convertir | onglet | 1 |
-| Un projet · En réserve · En pause | Projets → ligne | 2 |
-| Planifier le projet | Projets → projet → bandeau ou ⋯ | 3 |
-| Tableau, Chronologie, burn-up, décaler, modèle, terminer, archiver | Projets → projet → ⋯ → choix | **4** |
-| Archive, Modèles | Projets → ⋯ → choix | 3 |
-| Agenda · placer à une heure | onglet · À placer → tâche → créneau | 1 · 3 |
-| Bilan du soir | bandeau du soir ou notification | 1 |
-| Recherche · filtres · vues | loupe · Filtres · Enregistrer | 1 · 2 · 3 |
-| Revue, Mon rythme (aussi par la progression), Supprimées récemment | ⋯ → choix | 2 |
-| Mode du rythme, Ce que j'ai remarqué | ⋯ → Mon rythme → choix | 3 |
-| Congés, jours courts, temps disponible | ⋯ → Mon rythme → Mes jours → champ (Copilote : 1) | **4** |
-| Notifications, Mon iPhone, Vie privée, L'ERP me suggère | ⋯ → Réglages → rubrique | 3 |
-| Exporter, Tout effacer, réglages avancés, agenda externe | ⋯ → Réglages → rubrique → bouton | **4** |
+| Ajouter (texte, collage, dictée) | bouton flottant → Retour | 1 / 2 |
+| Cocher · Reporter (ou ligne → Reporter) · Choisir un jour | case · balayage gauche · balayage → Choisir → jour | 1 / 1 · 1 / 1 (2 / 2) · 2 / 3 |
+| Garder, essentiel · fiche | « Garder ces N », puis ★ · ligne | 1 / 1 (+1 par ★) · 1 / 1 |
+| Heure, rappel | ligne → Quand → Heure ou Rappel → choix | 3 / 4 (rappel préréglé 3) |
+| Répéter, étiquettes, durée, en attente de, jalon, lié à, confidentielle, découper | ligne → Plus → champ | 3 / 4 |
+| Déplacer, en attente, priorité, essentiel | appui long → choix → valeur (ou ligne → champ) | 2 / 3 |
+| Réorganiser · Sélectionner | ⋯ → choix | 2 / 2 + déplacements |
+| Alléger ma journée | carte de 15 h (ou ⋯) → cocher k → Garder ces k | 1 (2) / 2 (3) + k |
+| Copilote | bouton global → demande (→ Adopter) | 1 / 2 (3) |
+| Lier une tâche à une activité ERP | appui long sur l'activité → choix → Ajouter | 2 / 3 |
+| Trier, suggestions, à-faire à convertir | À trier → bouton (Projet… : + projet) | 1 / 2 (3) |
+| Trier une par une | À trier → ⋯ → choix | 3 / 3 |
+| Un projet · En réserve · En pause | Projets → ligne | 2 / 2 |
+| Priorité d'un projet · Mettre en haut | Projets → puce → niveau · Projets → appui long → choix | 2 / 3 · 3 / 3 |
+| Planifier le projet | Projets → projet → bandeau → priorité · Suivant · puce · Terminer | 3 / 7 |
+| Vues, Voir dans l'agenda, burn-up, Décaler, Modèle, Dupliquer, Pause, Terminer, Supprimer · Archive, Modèles | Projets → projet → ⋯ · Projets → ⋯ | **4** / 4-5 · 3 / 3 |
+| Placer à une heure | Agenda → tâche d'« À placer » → créneau | 2 / 3 |
+| Planifier ma semaine | Agenda → Semaine → À placer → (tâche → jour) | 3 / 3 + 2 par tâche |
+| Bilan du soir (d'hier jusqu'à 12 h) | carte ou notification → Tout reporter → Valider | 1 / 3 |
+| Revue de la semaine | ⋯ → Revue (ou notification) | 2 / 2 + 1 par projet |
+| Recherche, filtres, vues | loupe → Filtres → Enregistrer | 1 · 2 · 3 |
+| Mon rythme · mode | toucher la progression · → mode | 1 · 2 |
+| Congés, jours courts, temps disponible | progression → Mes jours → champ | 3 / 4 (Copilote 1) |
+| Supprimées récemment · En faire mon accueil | ⋯ → choix (→ Restaurer) | 2 / 3 · 2 / 2 |
+| Notifications, Mon iPhone, Vie privée, ERP me suggère | ⋯ → Réglages → rubrique | 3 / 4 |
+| Exporter, Tout effacer, Avancé (messages sans délai, ICS) | ⋯ → Réglages → rubrique → bouton | **4** / 4-5 |
 
-Les **4** : rares, à ≤ 2 gestes de leur écran (R7 règle 3).
+Les **4** : rares, à ≤ 2 gestes de leur écran (R7 r.3).
 
 ## 3. Vocabulaire fermé (écrans, notifications, Copilote, tuile, flux)
 
 | Terme | Définition | Interdits |
 |---|---|---|
-| **Aujourd'hui** | l'écran du jour (A13) | Ma journée (déjà `installations/module.config.jsx:81`, `visites/module.config.jsx:51`) |
-| Prévu · Ce soir | tâches qu'il a mises à aujourd'hui · celles du soir | aujourd'hui (nom de l'écran) |
-| Proposé pour aujourd'hui · Garder ces N | prochaines tâches de ses projets, classées par l'ERP · les mettre à aujourd'hui | suggestions, plan proposé |
-| Plan du jour · plan tenu | ce qu'il a gardé le matin · « 4 des 5 gardées », dit au bilan | plan 3/5 |
-| Alléger ma journée | garder une partie, le reste retourne dans Proposé sans report | décharger |
-| À trier | reçu sans projet ni jour | boîte de réception, inbox |
-| À revoir | prévue un jour passé, reportée 3 fois, ou échéance proche sans jour ; motif par ligne | à décider, en retard |
-| En réserve | gardée sans jour (`quelque_jour`) | un jour, plus tard, peut-être |
-| Projet · Étape · Jalon | résultat · partie d'un projet (`Section`) · tâche-repère | section, phase ; « domaine » montré « Groupe » |
-| Planifier le projet · À planifier | 2 minutes guidées · pas encore fait | cadrage |
-| Check-list · point · sous-tâche | cases dans une tâche · une case · tâche sous une tâche | étapes |
-| Quand · « Quand je la fais » | jour prévu, puce « jeu. 19 » · son libellé dans la fiche | planifiée le |
+| **Aujourd'hui** | l'écran du jour (A13) | Ma journée (`installations/module.config.jsx:81`, `visites/module.config.jsx:51`) |
+| Prévu · Ce soir · Toute la journée | gardé pour aujourd'hui · le soir · visites et poses (sans heure, N4) | jour prévu |
+| Proposé pour aujourd'hui · Garder ces N | prochaines tâches des projets, classées · les passer dans Prévu | plan proposé |
+| Alléger ma journée | en garder une partie, le reste retourne aux projets sans report | — |
+| À trier · Trier une par une | reçu sans projet ni jour · une carte par tâche | boîte de réception |
+| À revoir | jour passé, reportée 3 fois, échéance proche sans jour | à décider, en retard |
+| En réserve | gardée sans jour | un jour, plus tard |
+| Projet · Étape · Jalon | résultat · partie d'un projet (`Section`) · tâche-repère | section, phase |
+| Planifier le projet · À planifier · Planifier ma semaine | 2 minutes guidées · pas fait · placer dans les jours | — |
+| Mettre en haut | premier des projets | épingler |
+| Check-list · point · sous-tâche | cases d'une tâche · une case · tâche fille | étapes |
+| Quand (« Quand je la fais ») | jour où il la fera, puce « jeu. 19 » | planifiée le |
 | Échéance | date limite, puce « échéance ven. 20 » | deadline |
-| Demain | toujours J+1 ; un report ailleurs dit sa date (« lun. 23 ») | — |
-| Reporter · Choisir un jour · Décaler les dates | à plus tard (prochain jour travaillé) · n'importe quel jour · tout un projet | repousser, replanifier |
-| Passer · Pas maintenant · Suivant · Fermer | quitter un rituel · refuser, ça reviendra · carte suivante · fermer une feuille | plus tard |
-| Essentiel(le) | 1 à 3 tâches choisies (★) | important(e), focus |
-| Priorité haute/moyenne/basse | l'échelle unique, tâches et projets | urgent |
-| Abandonner · Annuler · Supprimer | ne plus faire (gardée) · défaire un geste (toast) · retirer, 30 jours (Supprimées récemment) | corbeille |
-| En attente de… | une personne ou chose, ou une autre tâche (`bloquee_par`) | après, bloquée |
-| Bilan du soir · Revue de la semaine | rituel du soir · hebdo, remplace le bilan ce jour-là | clôture |
+| Demain | toujours J+1, jamais un bouton de report | — |
+| Reporter · Choisir un jour · Décaler les dates | au prochain jour travaillé, nommé (« Reporter à lun. 23 ») · tout jour · tout un projet | replanifier |
+| Passer · Pas maintenant · Suivant · Fermer | quitter un rituel · refuser pour l'instant · carte suivante · fermer | plus tard |
+| Essentiel(le) | 1 à 3 tâches (★) | important(e), focus |
+| Priorité haute · moyenne · basse · aucune | l'échelle unique ; projet né par `#` = moyenne | urgent |
+| Abandonner · Annuler · Supprimer | ne plus faire · défaire un geste · retirer 30 jours | corbeille |
+| En attente de… | quelqu'un, quelque chose ou une tâche (puce « attend : Visite ») | après, bloquée |
+| Bilan du soir · Revue de la semaine · Semaine courte | soir · hebdo, au lieu du bilan · revue sans chiffres (≥ 3 jours vides) | clôture |
+| Reprise | progression du jour de retour (au lieu de « 0 sur 5 ») | — |
 | Projet de la semaine | mis en avant 7 jours | focus |
-| Copilote | l'assistant de l'ERP (`features/ia/CopilotPanel.jsx:141`) | coach, IA, agent |
-| Mon rythme · objectif du jour | l'écran · nombre visé, montré « 1 sur 5 » | palier, bloc, zone, score |
-| En faire plus · Garder ce rythme · Sans objectif | modes `pousser`/`tenir`/`libre` | pousser, tenir, libre |
-| Objectif atteint | compte ≥ objectif | journée réussie/ratée, série |
-| Durée · temps disponible | d'une tâche · minutes de travail par jour | estimation, capacité |
-| Rappel | alarme posée par lui | alerte |
-| Message de 15 h | l'unique notification de journée (heure réglée) | relance (mot du CRM, `crm/module.config.jsx:109`) |
+| Copilote | l'assistant (`features/ia/CopilotPanel.jsx:141`) | coach, IA |
+| Mon rythme · objectif du jour | l'écran · nombre visé (« 1 sur 5 ») | palier, score |
+| Gardées faites | 2e ligne du bilan (« 4 des 5 gardées ») | plan tenu |
+| En faire plus · Garder ce rythme · Sans objectif | modes `pousser`/`tenir`/`libre` | pousser, tenir |
+| Objectif atteint | compte ≥ objectif | réussie/ratée, série |
+| Durée · temps disponible | d'une tâche · minutes de travail par jour | capacité |
+| Rappel | alarme qu'il pose ; « Encore 10 min · 1 h · Demain 9 h » | alerte |
+| Message de 15 h | notification de journée (heure réglée) | relance (CRM, `crm/module.config.jsx:109`) |
 | Activité ERP · Lié à | activité de l'ERP · lien vers une fiche | tâche ERP |
-| Confidentielle | jamais montrée au Copilote ni en titre hors de l'app | privée |
+| Confidentielle | cachée au Copilote et hors de l'app | privée |
 
-Jours « travaillés », jamais « ouvrés ».
+Jours « travaillés » (jamais « ouvrés »).
 
 ## 4. Les écrans
 
-Partout : un bouton plein ; section vide absente ; squelette après 1 s, jamais sur une liste affichée ; erreur = liste
-gardée + « Pas à jour · Réessayer » ; hors ligne = dernier état, ajouts en file (6b §8) ; une carte du moment au plus.
+Partout : squelette après 1 s, jamais sur une liste affichée ; erreur : liste gardée, « Pas à jour · Réessayer » ;
+relecture au retour du focus. **Carte du moment**, une seule : retour > brouillon (« Reprendre ») > bilan d'hier (avant
+12 h) > « 1 sur 6 à 15 h · Alléger » > « Faire le bilan » > rythme > Mon iPhone > astuce. **Hors ligne (N11)** : ajouter,
+cocher, reporter en file (6b §8) ; le reste grisé, « Possible une fois connecté » ; saisie gardée.
 
-**Aujourd'hui, de haut en bas (A14-M1)** : titre, loupe, ⋯ → (1) progression « 1 sur 5 · essentiel 0/2 » (faites sur
-OBJECTIF ; toucher → plan tenu, temps, Mon rythme) → (2) carte du moment, le soir « Faire le bilan » → (3) Essentiel →
-(4) **Prévu** : heures fixes en tête (visites, poses, blocs), puis tâches et obligations ERP mêlées (> 3 activités sans
-heure : une ligne repliable), « Suivi des relances : 5 » → (5) Ce soir → (6) **Proposé pour aujourd'hui** jusqu'à
-l'objectif, 1re ligne expliquée (« échéance jeudi · projet prioritaire Ventes »), ★ par ligne, **Garder ces N**, « Voir
-toutes les tâches de mes projets » → (7) repliés : À revoir (lot « Tout en réserve »), En attente, Faites, Ailleurs dans
-l'ERP. Le matin, 3-5 sont vides : la 1re tâche proposée est visible sans défiler (estimé). Jamais vide tant qu'un projet
-actif a une tâche ouverte (A11).
+**Aujourd'hui, de haut en bas** : titre, loupe, ⋯ → (1) progression « 1 sur 5 · essentiel 0/2 » (« Reprise » au
+retour ; toucher → Mon rythme) → (2) carte du moment → (3) Essentiel → (4) Toute la journée, puis **Prévu** : blocs à
+leur heure, tâches et activités ERP mêlées (> 3 sans heure : une ligne repliable), « Suivi des relances : 5 » → (5) Ce
+soir → (6) **Proposé pour aujourd'hui** jusqu'à l'objectif, 1re ligne expliquée (« échéance jeudi · projet prioritaire
+Ventes »), « Garder ces N » (contour), surcharge à côté (« 5 h 10 pour 4 h »), « Voir tout » ; replié jusqu'au lendemain après « Alléger » → (7) repliés : À revoir (« Tout en réserve »), En attente,
+Faites, Ailleurs dans l'ERP. Après « Garder » : « Touche ★ pour ton essentiel », focus sur « Prévu ». Jamais vide tant
+qu'un projet actif a une tâche ouverte (A11).
 
-| Écran | Action principale | Visible d'emblée | Replié |
-|---|---|---|---|
-| Saisie, aperçu | Ajouter / Créer N tâches | champ, puces (×), Quand · Projet · Priorité | Coller encore, Ranger par projet |
-| Fiche | Fait | Quand · Échéance · Projet · Priorité, ★, notes, check-list, Reporter | Plus ; « confier = activité ERP » |
-| À trier | (par ligne) | Suggéré par l'ERP ; Aujourd'hui · Demain · Projet… · ⋯ | En réserve, Copilote |
-| Agenda | Ajouter (créneau vide = son heure) | 4 vues, ← Aujourd'hui →, À placer (n) | affichage |
-| Projets | Ajouter | priorité, nom, 12 sur 20, à surveiller, À planifier ; Nouveau projet ; En réserve | En pause, Archive, Modèles |
-| Un projet | Ajouter | fini quand…, priorité, échéance, 12 sur 20, santé, jalon ; étapes | Faites ; vues, Décaler, Terminer |
-| Planifier le projet | Suivant | priorité + fini quand… · échéance (1 sem → 3 mois, 6 sem) · premières actions | étapes, jalons, risque |
-| Bilan du soir | Valider | faites ; par reste Demain · Choisir un jour · En réserve · Abandonner ; « Le reste → lun. 23 » ; plan tenu ; un constat | un mot |
-| Alléger ma journée | Garder ces N | lignes du jour, rien de coché | — |
-| Revue | Terminer | 4 faits ; carte par projet (Garder · Pause · Terminer · Suivant) ; projet de la semaine | intention |
-| Mon rythme | (mode) | objectif + source, 3 modes, 14 jours, proposition | constats, Mes jours |
-| Recherche · Réglages · Supprimées | — · — · Restaurer | Faites aussi, Projet, Priorité · 5 rubriques · 30 jours | filtres, vues · Avancé · Derniers gestes |
-| Carte cockpit « Tâches · Aujourd'hui » | Ouvrir | « 1 sur 5 », 3 lignes cochables | — |
+| Écran | Action principale | Visible d'emblée | Replié | Vide · hors ligne |
+|---|---|---|---|---|
+| Aujourd'hui | Ajouter | ci-dessus | ci-dessus | sans projet : « Colle ou dicte tes listes » + Coller · file |
+| Saisie, aperçu | Ajouter / Créer N | champ, puces (×), Quand · Projet · Priorité | Coller encore, Ranger | « Aucune ligne lisible » · file |
+| Fiche | Fait | Quand · Échéance · Projet · Priorité, ★, notes, check-list, Reporter | Plus ; confier = activité ERP | — · saisie gardée |
+| À trier | (par ligne) | Suggéré par l'ERP ; Aujourd'hui · Demain · Projet… · ⋯ | En réserve, une par une, Copilote | « Rien à trier » · file |
+| Agenda | Ajouter (créneau vide = son heure) | 4 vues, ← Aujourd'hui →, Toute la journée, À placer (Semaine : + « Mes projets ») | affichage, « Férié » (nom v1.1) | « Rien ce jour-là » · lecture |
+| Projets | Ajouter | puce de priorité, nom, 12 sur 20, à surveiller, À planifier ; Nouveau projet ; En réserve | En pause ; Archive, Modèles, Trier | « Aucun projet » + Coller · lecture |
+| Un projet | Ajouter | nom + priorité ; « 12 sur 20 · échéance 20/12 » ; santé si signal ; étapes | Détails ; Faites ; ⋯ | « Planifier le projet » + Passer · lecture |
+| Planifier le projet | Suivant | seul après Créer : priorité + fini quand… · échéance (1 sem → 3 mois, 6 sem ; avance seule) · actions + Copilote | étapes, jalons, risque | — · brouillon gardé |
+| Bilan du soir | Valider | « 4 sur 5 », « 4 des 5 gardées » ; par reste : Reporter à lun. 23 · Choisir un jour · En réserve · Abandonner ; Tout reporter ; un constat | un mot | « Tout est fait » · choix gardés |
+| Alléger | Garder ces k | lignes de Prévu, rien coché | — | — · grisé |
+| Revue | Terminer → Planifier ma semaine | 4 faits (ou « Semaine courte, on reprend lundi ») ; par projet : Garder · Pause · Terminer · Suivant | intention, projet de la semaine | « Aucun projet actif » · grisé |
+| Mon rythme | (mode) | aujourd'hui, 3 modes, 14 jours, proposition | constats, Mes jours, Comprendre mon rythme | « 3 jours sur 10 » · lecture |
+| Recherche | — | champ ; Faites aussi · Projet ▾ · Priorité haute | 7 filtres, tri, Enregistrer | « Rien pour « … » » · dernière liste |
+| Réglages, Mon iPhone | — · l'étape en cours | 5 rubriques · 5 étapes (6b §9) | Avancé · jetons | — · lecture |
+| Supprimées récemment | Restaurer | 30 jours ; un projet = une ligne (projet + tâches) | Derniers gestes | « Rien de supprimé » · grisé |
+| Copilote | la demande | 4 demandes | — | sans clé, hors ligne : une phrase |
+| Carte cockpit | Ouvrir | « 1 sur 5 », 3 lignes | — | « Rien de gardé » · lecture |
 
-Bureau : agenda du jour à droite, colonne des projets, glisser, boutons au survol. iPhone : Semaine en 7 lignes. **Retour d'absence (B1)** : fin de congé ou ≥ 3 jours travaillés sans
-ouverture → « Tu reviens après 10 jours : 18 tâches attendaient. » [Les remettre dans Proposé] [Les voir une par une] ;
-aucun report, notification du matin = tâches du jour. **Mon iPhone (M5)** : carte au 1er « Créer N tâches »,
-notifications d'abord ; « Installer le raccourci » si `TACHES_RACCOURCI_SIRI_URL` est posé. **ICS externe (M8)** :
-dernière vague (https, adresses publiques, bornes, cache).
+Bureau : agenda du jour à droite, colonne des projets, glisser. iPhone : Semaine en 7 lignes ; bloc → Déplacer →
+créneau. **Retour (B1)** : fin de congé ou ≥ 3 jours sans ouverture → « Tu reviens après 10 jours : 18 tâches
+attendaient. » [Les remettre dans Proposé] [Les voir une par une]. **Supprimer le projet (N7)** : dialogue « … et ses 25
+tâches ? » ; tâche restaurée seule → À trier. **Conflit (N8)** : « Modifiée sur ton autre appareil à 10:42 · Garder la
+mienne · Prendre l'autre ». **Siri (N12)** : raccourci sans jeton, demandé à l'installation ; « Copier mon jeton » ;
+« Installer » si `TACHES_RACCOURCI_SIRI_URL` (`deploy`, A8). Activité ERP cochée : close dans l'ERP, sans « Annuler ».
+Récurrente : « Fait · prochaine jeu. 19 ».
 
 ## 5. Gestes et clavier
 
@@ -138,137 +153,144 @@ dernière vague (https, adresses publiques, bornes, cache).
 |---|---|---|
 | Toucher la case | Fait / défait ; la ligne reste, barrée, jusqu'à la sortie de l'écran | — |
 | Toucher le reste | fiche | — |
-| Balayage gauche | révèle Reporter (au jour nommé) + Choisir un jour ; complet = Reporter ; estampille « → lun. 23 » en place | fiche → Reporter |
+| Balayage gauche | révèle « Reporter à lun. 23 » + Choisir un jour ; complet = Reporter, estampille en place | fiche ; Actions |
 | Balayage droite | révèle Fait ; complet = Fait | case |
-| Appui long | Choisir un jour · Déplacer… · Essentiel · En attente de… · Priorité · Sélectionner · Réorganiser · Supprimer | fiche (★ compris) ; ⋯ → Sélectionner |
-| Glisser | iPhone : en mode Réorganiser (poignées, ▲▼) ; bureau : direct | ▲▼, `Alt+↑/↓` |
+| Appui long | Choisir un jour · Déplacer… · Essentiel · En attente de… · Priorité · Lier une tâche (activité ERP) · Supprimer | Actions ; fiche |
+| Glisser | iPhone : mode Réorganiser (▲▼, ▲ en tête d'étape = étape précédente) ; bureau : direct | ⋯ → Réorganiser, `Alt+↑/↓` |
 
-Écriture → toast « Annuler » 6 s (`lib/mutateWithUndo.js:39`), puis Derniers gestes. Supprimer : jamais par balayage. Clavier muet sous un dialogue (`providers/focusedRecordShortcuts.jsx:98-113`) ;
-**aucune touche seule ne fait disparaître une ligne** (règle maison du 02/10) : elle reste, estampillée.
+Aucune touche seule ne fait disparaître une ligne (règle maison du 02/10). Clavier muet sous un dialogue
+(`providers/focusedRecordShortcuts.jsx:98-113`) et (N1) après `g` ou `c` pendant le délai de séquence. Focus initial :
+1re ligne ; `j`/`k` parcourent les lignes visibles, Proposé compris.
 
 | Touche | Effet |
 |---|---|
-| `c t` · `g j` (partout) | Créer une tâche · Aujourd'hui (`shortcut:'j'` du module, `providers/shortcuts.js:69` ; `g t` = SAV, `:35`) |
-| `n` · `/` · `?` · Ctrl/⌘ K | ajouter ici · chercher · aide · palette |
+| `c t` · `g j` (partout) | Créer une tâche · Aujourd'hui (`shortcut:'j'`, `providers/shortcuts.js:69` ; `g t` = SAV, `:35`) |
+| `n` · `/` · `?` · Ctrl/⌘ K | ajouter ici (contexte d'écran ; une puce tapée ne passe pas à la suivante) · chercher · aide · palette |
 | `j` `k` · Entrée · Échap | ligne suivante/précédente (`shortcuts.js:141`) · fiche · fermer |
-| Espace · `d` · `m` · `x` · `h` · `*` | Fait · Quand (Entrée = Reporter au jour proposé) · Déplacer · Sélectionner · Heure · Essentiel |
-| `Alt+↑/↓` · `Maj+↓` · Ctrl/⌘ Z | réordonner · bloc +15 min · annuler |
+| Espace · `e` · `d` · `m` · `x` · `h` · `*` | Fait · renommer · Quand (Entrée = Reporter au jour nommé) · Déplacer · Sélectionner · Heure · Essentiel |
+| `Alt+↑/↓` · `Maj+↓` · Ctrl/⌘ Z hors champ | réordonner · bloc +15 min · annuler |
 | Agenda : ← → · `t` | période · aujourd'hui |
 
-Palette (partout) : Créer une tâche, **Chercher dans mes tâches** (non indexées, socle §2.4), Nouveau projet, Faire le
-bilan, les 4 onglets ; « Supprimer/Abandonner « titre » » avec dialogue nommant la tâche.
+**N2** : `taches` au registre de l'aide (`providers/focusedRecordShortcuts.jsx:46`) ; palette : Créer une tâche, Chercher
+dans mes tâches (non indexées, socle §2.4), Copilote et ses 4 demandes, Nouveau projet, Faire le bilan, les 4 onglets,
+« Supprimer/Abandonner « titre » » (dialogue nommant) — fichiers `deploy`, A8.
 
-## 6. Parcours chiffrés (gestes hors texte)
+## 6. Accessibilité (N10)
+
+`role=status` annonce chaque geste (« Fait : Appeler Karim », « Reportée à lun. 23 », « 5 gardées », « 3 retournées
+aux projets », « Annulé »). Toast « Annuler » 8 s (`duration`, `lib/toast.js:140`), en pause survolé ou focalisé ;
+réglage « Messages sans délai » (WCAG 2.2.1). Chaque ligne a un bouton « Actions », visible au focus (Tab, VoiceOver),
+qui ouvre le menu de l'appui long : rien n'exige balayage ni glisser (WCAG 2.5.1, 2.5.7). Cibles ≥ 44 px (case, ★, ×,
+▲▼). Texte en rem (Dynamic Type d'une PWA : de mémoire). Contrastes 4,5:1 et 3:1 ; mouvement réduit.
+Critères — Étant donné… alors : (1) lecteur d'écran, je coche → `role=status` dit « Fait : <titre> » ; (2) toast
+focalisé, 8 s passent → il reste ; (3) réglage allumé → il reste jusqu'à fermeture ; (4) toute action de ligne au clavier
+par Tab → Actions → item ; (5) texte à 130 %, 390 × 844 → 1re tâche d'Aujourd'hui visible sans défiler ; (6) axe-core :
+0 violation par écran ; (7) toute cible ≥ 44 × 44 px CSS ; (8) après « Garder ces N », focus sur « Prévu ».
+
+## 7. Parcours chiffrés (gestes hors texte)
 
 | # | Parcours | iPhone | Bureau | Cible |
 |---|---|---|---|---|
 | 1 | Demain dans un projet | + · « … demain #Polydesign » · Retour = 2 | `n` · Entrée = 2 | 2 / 2 |
-| 2 | Nouveau projet | idem, « #SiteWeb » = 2 | 2 | 2 / 2 |
+| 2 | Nouveau projet (moyenne) | « #SiteWeb » = 2 | 2 | 2 / 2 |
 | 3 | Cocher | 1 | Espace 1 | 1 / 1 |
-| 4 | Reporter à demain | balayage 1 (fiche → Reporter 2) | survol 1 ; `d` Entrée 2 | 1 / 1 |
-| 5 | Choisir un autre jour | balayage · Choisir · jour = 3 | survol Quand · jour = 2 | 3 / 2 |
+| 4 | Reporter | balayage 1 (ligne → Reporter 2) | survol 1 ; `d` Entrée 2 | 1 / 1 |
+| 5 | Choisir un autre jour | balayage · Choisir · jour = 3 | survol 2 ; `d` · jour · Entrée 3 | 3 / 2 |
 | 6 | Déplacer dans un projet | appui long · Déplacer · projet = 3 | `m` · Entrée = 2 | 3 / 2 |
-| 7 | Plan du jour, 2 essentielles | notification · ★★ · Garder ces 5 = 4 | 4 | 2 + ★ |
-| 8 | Bilan du soir | notification · « Le reste → lun. 23 » · Valider = 3 | 3 | 3 |
-| 9 | Vider À trier (3 vers projets, 2 datées) | 1 + 3×2 + 2 = 9 ; Copilote 3 | 9 | 1 + ≤ 2 par tâche |
+| 7 | Garder sa journée, 2 essentielles | notification · Garder ces 5 · ★★ = 4 | 4 | 2 + ★ |
+| 8 | Bilan du soir | notification · Tout reporter · Valider = 3 | 3 | 3 |
+| 9 | Vider À trier (3 projets, 2 dates) | 1 + 3×2 + 2 = 9 ; Copilote 3 | 9 | 1 + 2 / tâche |
 | 10 | Créer et planifier un projet | Projets · Nouveau · Créer · priorité · Suivant · puce · Terminer = 7 | 7 | 7 |
-| 11 | Poser un rappel | ligne · Quand · Rappel = 3 (tapé : 0) | 3 | 3 |
-| 12 | Copilote, prioriser | bouton · demande · Adopter = 3 | 3 | 3 |
-| 13 | Retour de 10 jours de congé | ouvrir · Les remettre · Garder ces 5 = 3 (avant ≥ 18) | 3 | 3 |
-| 14 | 1re ouverture, 4 notes Apple | 8 pour la 1re (dont 6 d'iOS), 7 par note suivante (Coller encore), Créer = 30 | ≈ 3 par note | — |
-| 15 | 15 h, 1 sur 6, alléger | notification · 2 · Garder ces 2 = 4 (sans : 5 ; avant : 5 reports comptés) | 5 | 4 |
+| 11 | Rappel | ligne · Quand · préréglé = 3 (heure précise 4, tapé 0) | 3 | 3 |
+| 12 | Copilote, prioriser | bouton · demande · Adopter = 3 | Ctrl K · Entrée · Adopter = 3 | 3 |
+| 13 | Retour de 10 jours de congé | ouvrir · Les remettre · Garder ces 5 = 3 | 3 | 3 |
+| 14 | 1re ouverture, 4 notes Apple | 8 + 3 × 7 (Coller encore) + Créer = 30, dont 24 d'iOS | ≈ 3 / note | — |
+| 15 | 15 h, 1 sur 6, alléger | notification · Alléger · 2 · Garder ces 2 = 5 | ⋯ · Alléger · 2 · Garder = 5 | 5 |
+| 16 | **Planifier ma semaine**, 15 tâches | fin de Revue · bouton · 15 × (tâche · jour) = 31 (onglet : 33) | 15 glissers | 1 + 2 / tâche |
+| 17 | 4 tâches à une heure | Agenda · 4 × (tâche · créneau) = 9 | 4 glissers | 1 + 2 / tâche |
+| 18 | Clavier : 3 ajouts, 2 cochées, 2 reportées, 2 déplacées, Copilote | — | ≈ 19 touches (`g j`, `n`, `j`, Espace, `d`, `m`, Ctrl K) | — |
+| 19 | Projet de 25 : ouvrir, réordonner 3, Tableau | 2 · 9 · 2 (mémorisée) | 2 · 6 · 2 | — |
+| 20 | Brouillon · récurrente cochée à tort · projet supprimé à tort | 2 · 1 · 1 (Supprimées : 3) | idem | — |
+| 21 | 4 jours absents, ven. 17 h | ouvrir · Les remettre · Garder ces 3 = 3 ; 18 h Semaine courte · Passer 1 | 4 | — |
+| 22 | Deux appareils | coché ailleurs : relu au focus 0 ; conflit : Garder la mienne 1 | idem | — |
 
-Cibles 1-6 : R7 §3. KLM du 1 ≈ 7,75 s ≤ 8 s. Au-dessus : le 4 au clavier (règle maison). Le 14 reste lourd (iOS),
-mais juste (M9) ; le 10 paie la priorité (M3).
+Cibles 1-6 : R7 §3. Au-dessus : le 4 au clavier (règle maison) ; le 14, par iOS.
 
-## 7. Première utilisation
+## 8. Première utilisation
 
-Pas de visite. Aujourd'hui vide : « Colle ou dicte tes listes : je les range par projet. » + **Coller mes listes**
-(D-TCH-4) → aperçu (1re ligne suivie de ≥ 2 lignes, ou « Maison : » = « Nouveau projet : … » ; Coller encore) →
-**Créer N tâches** → carte Mon iPhone ; le lendemain Proposé est rempli et la notification sonne. Objectif 5 « valeur
-par défaut » ; pas de proposition de rythme avant 10 jours. Une révélation par jour, une fois : `#`, balayage, Copilote
-(à 5 à trier), Planifier (1er projet), Revue (fin de 1re semaine), « J'ai 10 jours de toi » (5a §3.10), `n`/`?`.
+Pas de visite. Aujourd'hui sans projet : « Colle ou dicte tes listes. » + **Coller mes listes** (D-TCH-4) → aperçu
+(1re ligne suivie de ≥ 2 lignes = « Nouveau projet : … » ; Coller encore) → **Créer N tâches** → carte Mon iPhone ; le
+lendemain Proposé est rempli et la notification sonne (A15). Objectif 5 « valeur par défaut », aucune proposition de
+rythme avant 10 jours. Une révélation par jour : `#`, balayage, Copilote, Planifier, Revue, « J'ai 10 jours de toi », `n`/`?`.
 
-## 8. Arbitrage final (E essentiel · A avancé · X écarté)
+## 9. Arbitrage final (E essentiel · A avancé · X écarté)
 
-| Fonction | Classe | Correction |
+| Fonction | Classe | Source |
 |---|---|---|
-| Saisie partout, analyseur FR/EN (« 10 h »), puces, chaîne, `#projet`, Nouveau projet, Quand/Échéance, priorité, collage + aperçu + titre de note (M9) + Coller encore, doublons, Annuler | E | — |
-| Capture Siri rangée comme comprise (A1, M6) ; rappel sans jour pose le jour | E | spec 2 §3.4 : tout dans la Boîte |
-| Rangement par le Copilote | E s'il est disponible | — |
-| À trier en un geste, sélecteur de projet, check-list, notes, En réserve, recherche, à-faire convertis | E | — |
-| Étiquettes, durée, récurrence, rappel par la phrase, projet suggéré, couleur, icône, sous-tâches, en attente de, confidentielle, filtres, tri, vues, Derniers gestes, sélection multiple | A | « Après… » fondu dans En attente de… |
-| Captures hors ligne | E, invisible | autres gestes hors ligne X v1 |
-| Glisser-déposer | E bureau, A iPhone | spec 3 : direct iPhone |
-| Ligne de progression « faites sur objectif » | **E** | spec 3/5a : objectif replié, « 4/6 » |
-| Essentiel, Prévu, Ce soir, obligations ERP mêlées, Suivi des relances | E | bandeau agenda fondu |
-| **Proposé pour aujourd'hui + Garder ces N** = plan du jour | **E** | A11 ; plus de dialogue (spec 3) |
-| À revoir replié + lot « Tout en réserve » | E | spec 3 : un choix par ligne |
-| Retour d'absence en une carte | **E** | B1 |
-| Alléger ma journée, sans report | **E** (⋯, message de 15 h) | M7 |
-| « Le reste → lun. 23 » ; un constat au bilan | E | spec 3 : n + 2 ; M4 |
-| Agenda 4 vues, blocs, rappels posés, visites et poses à leur heure | E | M8 ; spec 3 : journée entière |
-| 3 jours, n° de semaine, jours travaillés seuls, échéances dans l'agenda, rappel avant bloc, agenda externe ICS | A | M8 |
-| Auto-planification, déplacer un événement ERP, rappel de lieu, boutons de notification iOS | X | spec 3 |
-| Projets : ordre manuel, priorité demandée et en puce, statuts, À planifier, 12 sur 20, santé, négligé, revue, terminer | E | M3 |
-| Constat de projets ; vues Tableau / Chronologie | A | spec 4 : E |
-| Groupe, Trier par priorité, dates d'étape, jalons, décaler, burn-up, projet de la semaine, modèles, dupliquer, archive | A | — |
+| Saisie partout, analyseur FR/EN, puces, chaîne, `#projet`, Nouveau projet, Quand/Échéance, priorité, collage + aperçu + titre de note, doublons, Annuler | E | spec 2, M9 |
+| Siri rangé comme compris, sans jeton ; rangement par le Copilote | E | A1, M6, N12 |
+| À trier en un geste, sélecteur de projet, check-list, notes, En réserve, recherche, à-faire convertis | E | spec 2 |
+| Trier une par une, étiquettes, durée, récurrence, rappel par la phrase, projet suggéré, couleur, icône, sous-tâches, en attente de, confidentielle, filtres, vues, Derniers gestes, sélection multiple | A | spec 2 |
+| Ajouter, cocher, reporter hors ligne | **E** | N11 (spec 3 : X) |
+| Glisser-déposer | E bureau, A iPhone | N10 |
+| Progression sur objectif, Reprise ; Essentiel, Prévu, Ce soir, Toute la journée, activités ERP (lier une tâche), Suivi des relances | E | M2, N4, N9 |
+| Proposé + Garder ces N + surcharge ; Alléger puis Proposé replié ; À revoir + Tout en réserve ; retour en une carte | E | A11, M7, N6, B1 |
+| Bilan (4 sur 5, gardées faites, Tout reporter, un constat), bilan d'hier jusqu'à 12 h ; rappel « Encore 10 min… » | E | M2, M4, spec 3 |
+| Agenda 4 vues, blocs, rappels posés, Planifier ma semaine | E | N3 |
+| 3 jours, n° de semaine, jours travaillés seuls, échéances dans l'agenda, rappel avant bloc, nom du férié (v1.1), agenda externe ICS | A | M8 |
+| Auto-planification, déplacer un événement ERP, rappel de lieu, boutons iOS | X | spec 3 |
+| Projets : ordre manuel, Mettre en haut, priorité (moyenne par défaut, touchable), statuts, À planifier, 12 sur 20, santé, négligé, revue, terminer, supprimer (restauration en une ligne) | E | M3, N7 |
+| Constat, Tableau / Chronologie mémorisées, Voir dans l'agenda, groupe, Trier par priorité, jalons, décaler, burn-up, projet de la semaine, modèles, dupliquer, archive, découpage Copilote | A | spec 4 |
 | Plusieurs prérequis, Gantt, tableau par statut, statut couleur, plafond, OKR, modèles fournis | X | spec 4 |
-| Objectif déclaré appliqué aussitôt, propositions +1/−1, Garder ce rythme, 4 faits | E | A2 |
-| Sans objectif, jours courts, liste des constats, repère P60 | A | — |
+| Objectif déclaré appliqué aussitôt, propositions +1/−1, Garder ce rythme, 4 faits, Semaine courte | E | A2, N9 |
+| Sans objectif, jours courts, liste des constats, repère P60 | A | spec 5a |
 | Points, badges, séries ; P60 objectif ou borne ; heures imposées | X | spec 5a |
-| Copilote à 1 geste + 4 demandes prêtes | **E** | A12 ; spec 7 r1 : A |
-| Boutons « … avec le Copilote » (Proposé, À trier, fiche, Mon rythme) | A | — |
-| Liens ERP lead, client, devis, posés depuis la fiche ouverte | E | A3 |
-| ✓+ sur les fiches ERP, suggestions devis accepté / chantier réceptionné ou annulé | E | — |
-| Visite validée, suggestions société, Ailleurs dans l'ERP | A | — |
+| Copilote à 1 geste, 4 demandes, palette | E | A12, N2 |
+| Boutons « … avec le Copilote » (Proposé, À trier, fiche, planification, Mon rythme) | A | — |
+| Liens ERP lead, client, devis ; ✓+ ; suggestions devis accepté, chantier réceptionné ou annulé | E | A3 |
+| Visite validée, suggestions société, Ailleurs dans l'ERP | A | spec 6a |
 | Chatter, Ma file, visites liées, autres suggestions | X | spec 6a |
-| Pastille, notifications, carte Mon iPhone au 1er collage, accueil, carte cockpit, flux, Siri, tuile, export, tout effacer | E | M5 |
-| « Installer le raccourci », raccourci de manifeste « Tâches » | A | — |
+| Pastille, notifications, Mon iPhone au 1er collage, En faire mon accueil, carte cockpit, flux, Siri, tuile, export, tout effacer, conflit sans perte, §6 | E | N5, M5, N8, N10 |
+| « Installer le raccourci », raccourci de manifeste, messages sans délai | A | — |
 
-**Replié davantage** (R7 §1, règle 12) : constat, vues iPhone, minutes, plan tenu, 7 filtres, heure et rappel, glisser
-iPhone, phrase de santé. **Déplié** : objectif, Proposé, Copilote, priorité des projets, « Le reste → lun. 23 ».
+**Replié davantage** (R7 §1, règle 12) : constat, vues iPhone, minutes, 7 filtres, heure et rappel, glisser iPhone,
+détails d'un projet, ★. **Déplié** : objectif, Proposé, Copilote, priorité des projets, Tout reporter, Planifier ma semaine.
 
-## 9. Composants (`features/taches/ui/` ; vers `ui/`, unité deploy `docs/ownership.yml:805`, au 2e usage)
+## 10. Composants (`features/taches/ui/` ; vers `ui/`, unité deploy `docs/ownership.yml:805`, au 2e usage)
 
-| Composant | Réutilise | Accessibilité · acceptation |
+| Composant | Réutilise | Acceptation |
 |---|---|---|
-| `LigneTache` | `useSwipeReveal` recopié (`ui/datatable/DataTable.jsx:183`), `ContextMenu` | balayage = item de menu (WCAG 2.5.7) ; ligne gardée jusqu'au rechargement |
-| `CaseRonde`, `Etoile` | `Checkbox` (`ui/Checkbox.jsx:16`, 18 px) dans 44 px | Espace / `*` ; < 0,1 s, retour arrière si échec ; 4e ★ refusée |
-| `SelecteurQuand`, `ChampSaisie` | `DatePicker`, `TimePicker`, `Segmented`, `useDraftAutosave` | `radiogroup` ; puces annoncées ; annexe A spec 2 + « 10 h » ; texte jamais perdu |
-| `FeuilleACrans` | `Sheet` (`ui/Sheet.jsx:15`, sans crans) | poignée = bouton ; brouillon gardé |
-| `GrilleAgenda`, `Tableau` | `@dnd-kit/core`, `dndA11y.js`, `kanbanA11y.js` | toucher puis créneau ; « Déplacer vers… » |
-| `AnneauProgression`, `CarteDuMoment`, `SelecteurProjet`, `ApercuListe` | SVG, `Card`, `Combobox`, `Checkbox` | jamais un % seul ; une carte ; « + Nouveau projet » fixe ; même rendu que `capture_apercu` |
+| `LigneTache` | `useSwipeReveal` recopié (`ui/datatable/DataTable.jsx:183`), `ContextMenu` | bouton Actions ; ligne gardée jusqu'au rechargement |
+| `CaseRonde`, `Etoile` | `Checkbox` (`ui/Checkbox.jsx:16`, 18 px) dans 44 px | < 0,1 s, retour arrière si échec ; 4e ★ refusée |
+| `SelecteurQuand`, `ChampSaisie` | `DatePicker`, `TimePicker`, `Segmented`, `useDraftAutosave` | annexe A spec 2 + « 10 h » ; brouillon signalé |
+| `FeuilleACrans`, `CarteDuMoment`, `BandeauConflit` | `Sheet` (`ui/Sheet.jsx:15`), `Card`, `NextActionBanner` | ordre du §4 ; saisie conservée |
+| `GrilleAgenda`, `VoletAPlacer`, `Tableau` | `@dnd-kit/core`, `dndA11y.js`, `kanbanA11y.js` | toucher puis créneau ou jour |
+| `AnneauProgression`, `SelecteurProjet`, `ApercuListe` | SVG, `Combobox`, `Checkbox` | « + Nouveau projet » fixe ; même rendu que `capture_apercu` |
 
-## 10. Incohérences entre specs et résolution
+## 11. Incohérences entre specs et résolution
 
 | Incohérence | Résolution |
 |---|---|
-| « Ma journée » ; `g t` pris ; « coach » ; routes `/taches/bilan`, `?coach=1` / `?ouvrir=plan` | Aujourd'hui ; `g j` ; Copilote ; §2 |
-| plan en dialogue (3) et Proposé (A11) ; « Tout au prochain jour ouvré » comptait des reports | Garder ces N ; Alléger ma journée |
-| capture datée dans la Boîte (2) / A1 ; pastille sans Proposé (6b) ; ERP en journée entière (3) | rangée comme comprise ; pastille corrigée ; heure réelle |
-| demain J+1 ou jour ouvré ; trois annulations ; glisser iPhone 150 ms / mode réorganiser | J+1 ; `GesteAnnulable` (A7) ; mode Réorganiser |
-| `heure_prevue`/`heure_debut` ; « étapes » triple ; À décider, Un jour, Plus tard, Corbeille, Tâche privée, attend, importante, relance | `heure_debut` ; §3 |
+| « Ma journée », `g t`, « coach », `/taches/bilan`, `?coach=1` ; plan en dialogue (3) | §2-§3 ; Garder ces N |
+| « Tout au prochain jour ouvré » comptait des reports ; capture datée dans la Boîte (2) ; pastille avec Proposé | Alléger ; rangée comme comprise ; gardées seules |
+| hors ligne « Ajouter désactivé » (2 §6), écritures X (3) ; 409 « par quelqu'un d'autre » (3) | file (N11) ; conflit sans perte (N8) |
+| rappel dans la fiche (3) ; bandeau Planifier (4) ; visites « à l'heure » ; phrases 5a « prévues ou en retard », « 4 faites sur 6 » | Quand ; ouverte seule ; Toute la journée ; « 3 prévues · objectif 5 », « 4 sur 5 » |
+| « Demain » au bilan ; trois annulations ; glisser 150 ms ; `heure_prevue` ; « étapes » triple | Reporter à lun. 23 ; `GesteAnnulable` (A7) ; Réorganiser ; `heure_debut` ; Étape = section |
 
-## 11. Auto-évaluation (refaite)
+## 12. Auto-évaluation
 
-Heuristiques : état 2 · monde réel 1 (Prévu/Proposé à apprendre) · contrôle 2 · cohérence 2 · prévention 1 (dictée mal
-rangée possible) · reconnaître 1 (`#`, balayages, appui long, doublés) · efficacité 2 · minimalisme 1 (le soir 4
-sections + 4 repliés) · erreurs 2 · aide 1 (pas de `?` iPhone) = **15/20**, note d'auteur, indulgente.
-Parcours cognitif : retour de congé oui partout ; 15 h sans notification **non** à « voit l'action » (Alléger sous ⋯) ;
-notes Apple oui, coût iOS ; parcours 1 **non** pour `#` tapé. 20 règles : 18 oui. WCAG, hauteurs : non mesurés.
-**Non résolu** : copier-coller iOS ; Siri prêt = geste de Reda ; projets sans rétroplanning ; Copilote iPhone à vérifier.
+Heuristiques : 2 partout sauf monde réel 1 (Prévu/Proposé à apprendre), reconnaître 1 (`#`, balayages, appui long,
+doublés), minimalisme 1 (le soir, 4 sections + 4 repliés), aide 1 (pas de `?` sur iPhone) = 16/20, note d'auteur.
+Parcours cognitif : retour, 15 h, semaine : oui ; `#` tapé : non. §2, §4 et §7 recoupés. **Non résolu** : copier-coller
+iOS ; Siri = geste de Reda ; pas de rétroplanning ; Copilote iPhone, Dynamic Type, question d'import non vérifiés ;
+4 fichiers `deploy` à tracer. Choix par défaut : toast 8 s (R7) au lieu de 6 s maison ; tâche restaurée sans son projet
+→ À trier. Objection au socle : aucune.
 
-## Choix par défaut et objection
+## Révision 3 : ce qui a changé
 
-« Prévu » évite de répéter le nom de l'écran ; « Message de 15 h » suit l'heure réglée. Objection : aucune.
-
-## Révision 2 : ce qui a changé
-
-1. Aujourd'hui : ordre écrit, « 1 sur 5 », Prévu, Proposé + « Garder ces N » = plan du jour (A11, M1, M2).
-2. Retour d'absence en une carte (B1) ; « Alléger ma journée » (M7) : aucun report compté.
-3. Priorité du projet demandée, en puce (M3) ; un constat au bilan (M4).
-4. Mon iPhone au 1er collage (M5) ; capture rangée comme comprise (M6) ; titre de note = projet (M9).
-5. Agenda : ERP à l'heure, ICS externe AVANCÉ (M8) ; « Chercher dans mes tâches » (M11).
-6. À revoir, En réserve, Message de 15 h, Suivant, En attente de… (M10) ; Copilote à 1 geste (A12).
-7. Pastille corrigée ; parcours 13-15 ; note refaite 15/20.
+1. Clavier : `g`/`c` (N1), aide et palette (N2), `e`, Ctrl Z.
+2. Planifier ma semaine (N3) ; Toute la journée (N4) ; pastille sur les gardées (N5).
+3. Proposé replié après Alléger (N6) ; Supprimer le projet (N7) ; conflit sans perte (N8).
+4. Semaine courte, Reprise, cartes (N9) ; §6 (N10).
+5. Hors ligne étendu (N11) ; Siri sans jeton (N12) ; « 4 sur 5 » au bilan ; projet `#` = moyenne.
+6. Orphelines placées, états par écran, comptes alignés, parcours 16-22.
