@@ -141,6 +141,26 @@ class TestLastOwnerGuards(TestCase):
         self.assertEqual(r.status_code, 204, getattr(r, 'data', None))
         self.assertFalse(User.objects.filter(pk=vierge.pk).exists())
 
+    def test_donnees_taches_ne_sont_pas_des_traces(self):
+        """TCH18 — un compte qui n'a que ses données `taches` (40 tâches, un projet, ses
+        réglages) n'a laissé aucune trace : '' (jamais « N tâches »), il se supprime (204)
+        et ses données le suivent (CASCADE)."""
+        from apps.taches.models.taches import Tache
+        from apps.taches.tests import fabriques
+        from authentication.views import _traces_du_compte
+
+        commercial = fabriques.compte(self.company, nom='tch18')
+        projet = fabriques.projet(commercial)
+        for i in range(40):
+            fabriques.tache(commercial, projet=projet if i % 2 else None)
+        fabriques.reglages(commercial)
+
+        self.assertEqual(_traces_du_compte(commercial), '')
+        r = auth(self.owner).delete(f'/api/django/users/{commercial.id}/')
+        self.assertEqual(r.status_code, 204, getattr(r, 'data', None))
+        self.assertFalse(User.objects.filter(pk=commercial.pk).exists())
+        self.assertFalse(Tache.objects.filter(company=self.company).exists())
+
 
 class TestRecoverOwnerCommand(TestCase):
     def test_resets_existing_owner_password_and_protects(self):
