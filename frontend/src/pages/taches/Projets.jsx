@@ -6,6 +6,7 @@ import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { DialogueSupprimer } from '../../features/taches/projets/Dialogues'
 import LigneProjet from '../../features/taches/projets/LigneProjet'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { accord, aujourdhuiIso, jourLong } from '../../features/taches/lib/textes'
 
@@ -235,6 +236,7 @@ export default function Projets() {
       }}
     >
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
+      <ChargementTardif actif={!charge} />
       {actifs.length > 0 && constat ? <p className="ep-constat chiffres">{constatTexte(constat)}</p> : null}
 
       {vide ? (

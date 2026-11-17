@@ -9,6 +9,7 @@ import { PuchePriorite, avancementDe } from '../../features/taches/projets/Ligne
 import { DialogueDecaler, DialogueSupprimer, DialogueTerminer } from '../../features/taches/projets/Dialogues'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
@@ -263,6 +264,7 @@ export default function Projet() {
       </div>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {introuvable ? <p className="ep-alerte-ligne" role="alert">Ce projet n'existe plus.</p> : null}
+      <ChargementTardif actif={!vue && !erreur && !introuvable} />
       {vue && planifier ? (
         <PlanifierProjet projet={projet} aujourdhui={aujourdhui} onTermine={planifie} onPasser={fermerPlanification} />
       ) : null}

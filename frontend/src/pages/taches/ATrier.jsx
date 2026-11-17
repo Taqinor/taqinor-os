@@ -4,6 +4,7 @@ import { Ellipsis } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import TrierUneParUne from '../../features/taches/atrier/TrierUneParUne'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useApresCreation } from '../../features/taches/lib/fiche'
 import { frenchError } from '../../lib/frenchError'
 import { annulerGeste, classerErreur, convertirActivites, creerProjet, lireAujourdhui, listerToutesLesTaches, listerTousLesProjets, saisieRapide, traiterLot } from '../../api/tachesApi'
@@ -253,6 +254,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
 
       {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
       {echec ? <p className="erreur-champ" role="alert">{echec}</p> : null}
+      <ChargementTardif actif={!charge} />
 
       {uneParUne ? (
         <TrierUneParUne

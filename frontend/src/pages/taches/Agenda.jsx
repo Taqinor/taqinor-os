@@ -16,6 +16,7 @@ import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { frenchError } from '../../lib/frenchError'
 
 /* ============================================================================
@@ -656,7 +657,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     <>
       {echec ? <BandeauPasAJour derniere={maj} onReessayer={() => setRelire((n) => n + 1)} /> : null}
       {erreurGeste ? <p className="ag-erreur" role="alert">{erreurGeste}</p> : null}
-      {!donnees && !echec ? <p className="ag-chargement" role="status">Chargement</p> : null}
+      <ChargementTardif actif={!donnees && !echec} />
     </>
   )
 
