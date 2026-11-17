@@ -324,6 +324,14 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     }
 
 
+#: Consigne à la commerciale (jamais le jargon du moteur : « talon », « borne »).
+MSG_BATTERIE_TALON_INCONNU = (
+    'Option « avec batterie » non proposée : demandez au client si des équipements '
+    'tournent la nuit ou quand le site est fermé (question « Équipements hors '
+    'horaires » de la fiche). Sans cette réponse, la consommation de nuit n’est pas '
+    'connue et la batterie ne peut pas être dimensionnée.')
+
+
 def _alerte(code, message, niveau='alerte'):
     return {'code': code, 'champ': 'option_avec', 'message': message,
             'niveau': niveau, 'interne': True}
@@ -670,6 +678,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     # cachée ; ``reference_sans`` : l'option « sans » même quand
     # ``evaluation`` n'est pas passée (onduleurs imposés par les lignes).
     regles_3010b = contexte.pop('regles_3010b', True)
+    talon_inconnu = contexte.pop('talon_inconnu', False)
     reference_sans = contexte.pop('reference_sans', None) or evaluation
     production_rasante = contexte.pop('production_rasante', None)
     flux['production_rasante'] = production_rasante
@@ -691,6 +700,15 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     choix = choix_batterie(choix, lead)
     if evaluation is None or choix == 'sans':
         return vide
+    if talon_inconnu:
+        # Fondateur 17/11/2026 (lead « CPE Go Plus ») — rien ne dit ce que le
+        # site consomme la nuit : la borne prudente pour les panneaux (énergie
+        # étalée sur 24 h) est la PLUS favorable à la batterie (6 modules de
+        # 16 kWh composés sur une supposition). L'option attend la réponse.
+        return dict(vide, alertes=[{
+            'code': 'OPTION_BATTERIE_TALON_INCONNU', 'champ': 'rythme.talon',
+            'message': MSG_BATTERIE_TALON_INCONNU, 'interne': True,
+            'niveau': 'bloquant' if choix == 'avec' else 'alerte'}])
     bat = catalogue.get('batterie') or {}
     batteries = batteries_compatibles(bat.get('batteries'), bat.get('hybrides'))
     if bat.get('hybrides') and batteries:

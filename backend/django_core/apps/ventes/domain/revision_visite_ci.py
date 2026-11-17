@@ -1,7 +1,7 @@
 """CORC2 — le devis C&I RÉVISÉ APRÈS LA VISITE TECHNIQUE (27/10/2026).
 
 Le devis automatique C&I est un devis PRÉLIMINAIRE (fondateur 26/10/2026 :
-câble DC = 2 × chaînes × 30 m, câble AC = 30 m par onduleur, toit inconnu =
+câble DC = 2 × chaînes × 30 m, câble AC = 10 m par onduleur (17/11/2026), toit inconnu =
 toit plat lesté ; « les prix pourront être ajustés après la visite
 technique »). Une fois la visite C&I VALIDÉE, ses mesures (longueurs de
 cheminement, couverture, surface, pente, charge admissible, tension,

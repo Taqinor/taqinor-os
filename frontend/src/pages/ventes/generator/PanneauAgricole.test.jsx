@@ -444,3 +444,21 @@ describe('alertes du devis automatique (AGQ25)', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('AlertesDevisAuto — pointeur vers le champ du lead (17/11/2026)', () => {
+  const alertes = [
+    { ...exempleContrat('ventes', 'etude_ci_preview').alertes[0], champ_lead: 'equipements_hors_horaires' },
+  ]
+  it('sans gestionnaire : texte simple avec le libellé', () => {
+    render(<AlertesDevisAuto alertes={alertes} />)
+    expect(screen.getByTestId('alerte-champ-lead'))
+      .toHaveTextContent('À compléter sur la fiche : Équipements hors horaires')
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+  it('avec gestionnaire : un bouton qui saute au champ', () => {
+    const aller = vi.fn()
+    render(<AlertesDevisAuto alertes={alertes} onAllerAuChamp={aller} />)
+    fireEvent.click(screen.getByRole('button', { name: /Équipements hors horaires/ }))
+    expect(aller).toHaveBeenCalledWith('equipements_hors_horaires')
+  })
+})

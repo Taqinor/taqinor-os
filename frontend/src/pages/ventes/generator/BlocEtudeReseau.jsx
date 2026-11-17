@@ -245,13 +245,14 @@ function Retenu({ resolues, cle, champ = null, repris = [] }) {
   )
 }
 
-function Nombre({ id, label, value, onChange, placeholder, testid }) {
+function Nombre({ id, label, value, onChange, placeholder, testid, aide }) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Input id={id} type="number" min="0" step="any" placeholder={placeholder}
              data-testid={testid || id} value={value ?? ''}
              onChange={(e) => onChange(e.target.value)} />
+      {aide && <p className="text-xs text-muted-foreground" data-testid={`${testid || id}-aide`}>{aide}</p>}
     </div>
   )
 }
@@ -463,6 +464,16 @@ export default function BlocEtudeReseau({
           {tailleLimiteeToit && (
             <p className="text-xs text-warning" data-testid="ci-taille-toit">{tailleLimiteeToit}</p>
           )}
+        </div>
+        <div className="grid gap-1.5">
+          <Nombre id="gen-ci-longueur-ac" label="Distance onduleur → TGBT (m)" value={p.longueurAcM}
+                  onChange={(v) => setChamp('longueurAcM', v)}
+                  aide="Vide : 10 m supposés avant la visite" />
+        </div>
+        <div className="grid gap-1.5">
+          <Nombre id="gen-ci-longueur-dc" label="Distance champ → onduleur, un sens (m)" value={p.longueurDcM}
+                  onChange={(v) => setChamp('longueurDcM', v)}
+                  aide="Vide : 30 m supposés avant la visite" />
         </div>
       </fieldset>
 

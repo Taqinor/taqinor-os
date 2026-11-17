@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LEAD_TYPE_TO_MODE } from './autoQuote'
+import { LEAD_TYPE_TO_MODE, libelleSuccesDevisAuto } from './autoQuote'
 import { DAY_USAGE_DEFAULTS } from './solar'
 
 // QX52 — parité mode↔type sur 4 modes (frontend). Aucun mode ne tombe dans le
@@ -34,5 +34,24 @@ describe('CIQ128 — plus de part diurne C&I d’écran', () => {
     expect(DAY_USAGE_DEFAULTS).not.toHaveProperty('Commerciale')
     expect(DAY_USAGE_DEFAULTS).not.toHaveProperty('Industrielle')
     expect(typeof DAY_USAGE_DEFAULTS['Résidentielle']).toBe('number')
+  })
+})
+
+// D 17/11/2026 — le bandeau de succès dit aussi l'option AVEC batterie.
+describe('libelleSuccesDevisAuto — option avec batterie', () => {
+  const normaliser = (t) => t.replace(/[\u202f\u00a0]/g, ' ')
+  const base = { reference: 'DEV-1', kwc: 5, total_ttc: 41000, economie_an_1_ht: 12000, retour_ans: 4.2 }
+  it('sans les clés « avec » : la phrase historique, inchangée', () => {
+    expect(normaliser(libelleSuccesDevisAuto(base)))
+      .toBe('DEV-1 · 5 kWc · 41 000 MAD TTC · économie ≈ 12 000 MAD/an · retour ≈ 4,2 ans')
+    expect(libelleSuccesDevisAuto({ ...base, economie_an_1_ht_avec: null, retour_ans_avec: null }))
+      .toBe(libelleSuccesDevisAuto(base))
+  })
+  it('avec les clés « avec » : les deux options sont libellées', () => {
+    const t = normaliser(libelleSuccesDevisAuto({
+      ...base, economie_an_1_ht_avec: 15000, retour_ans_avec: 6.1, kwc_avec: 6,
+    }))
+    expect(t).toContain('sans batterie : économie ≈ 12 000 MAD/an · retour ≈ 4,2 ans')
+    expect(t).toContain('avec batterie : économie ≈ 15 000 MAD/an · retour ≈ 6,1 ans')
   })
 })

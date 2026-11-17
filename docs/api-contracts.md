@@ -561,7 +561,7 @@
 - frontend/src/api/ventesApi.js :: contacterSuperieur -> /api/django/ventes/devis/<>/contacter-superieur
     detail:texte, recipients:liste
 - frontend/src/api/ventesApi.js :: creerDevisAuto -> /api/django/ventes/devis/auto
-    alertes:inconnu, detail:inconnu, economie_an_1_ht:inconnu, field:inconnu, id:inconnu, kwc:inconnu, nb_lignes:nombre, postes_apres_visite:inconnu, proposal_path:inconnu, proposal_token:inconnu, reference:inconnu, retour_ans:inconnu, statut:inconnu, total_ttc:inconnu
+    alertes:inconnu, detail:inconnu, economie_an_1_ht:inconnu, economie_an_1_ht_avec:inconnu, field:inconnu, id:inconnu, kwc:inconnu, kwc_avec:inconnu, nb_lignes:nombre, postes_apres_visite:inconnu, proposal_path:inconnu, proposal_token:inconnu, reference:inconnu, retour_ans:inconnu, retour_ans_avec:inconnu, statut:inconnu, total_ttc:inconnu
 - frontend/src/api/ventesApi.js :: deletePreset -> /api/django/ventes/presets/<>
     detail:texte
 - frontend/src/api/ventesApi.js :: demanderSignatureAvenant -> /api/django/ventes/devis/<>/avenant/demander-signature

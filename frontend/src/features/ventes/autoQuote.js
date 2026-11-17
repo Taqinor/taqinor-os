@@ -213,6 +213,8 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
 export function libelleSuccesDevisAuto(resultat) {
   if (!resultat) return ''
   const morceaux = []
+  const avecBatterie = Number(resultat.economie_an_1_ht_avec)
+  const optionAvec = resultat.economie_an_1_ht_avec != null && Number.isFinite(avecBatterie) && avecBatterie > 0
   if (resultat.reference) morceaux.push(resultat.reference)
   const kwc = Number(resultat.kwc)
   if (Number.isFinite(kwc) && kwc > 0) morceaux.push(`${formatNumber(kwc, { decimals: 0 })} kWc`)
@@ -222,11 +224,19 @@ export function libelleSuccesDevisAuto(resultat) {
   }
   const eco = Number(resultat.economie_an_1_ht)
   if (resultat.economie_an_1_ht != null && Number.isFinite(eco) && eco > 0) {
-    morceaux.push(`économie ≈ ${formatMAD(Math.round(eco / 100) * 100, { decimals: 0 })}/an`)
+    morceaux.push(`${optionAvec ? 'sans batterie : ' : ''}économie ≈ ${formatMAD(Math.round(eco / 100) * 100, { decimals: 0 })}/an`)
   }
   const retour = Number(resultat.retour_ans)
   if (resultat.retour_ans != null && Number.isFinite(retour) && retour > 0) {
     morceaux.push(`retour ≈ ${formatNumber(retour, { decimals: 1 })} ans`)
+  }
+  if (optionAvec) {
+    let avec = `avec batterie : économie ≈ ${formatMAD(Math.round(avecBatterie / 100) * 100, { decimals: 0 })}/an`
+    const retourAvec = Number(resultat.retour_ans_avec)
+    if (resultat.retour_ans_avec != null && Number.isFinite(retourAvec) && retourAvec > 0) {
+      avec += ` · retour ≈ ${formatNumber(retourAvec, { decimals: 1 })} ans`
+    }
+    morceaux.push(avec)
   }
   const postes = Array.isArray(resultat.postes_apres_visite) ? resultat.postes_apres_visite.length : 0
   if (postes > 0) {

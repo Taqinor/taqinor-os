@@ -630,6 +630,10 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
     'total_ttc': s.FloatField(allow_null=True),
     'economie_an_1_ht': s.FloatField(allow_null=True),
     'retour_ans': s.FloatField(allow_null=True),
+    # Fondateur 17/11/2026 — l'option « avec batterie » d'un devis à deux options.
+    'economie_an_1_ht_avec': s.FloatField(allow_null=True),
+    'retour_ans_avec': s.FloatField(allow_null=True),
+    'kwc_avec': s.FloatField(allow_null=True),
     'postes_apres_visite': s.ListField(child=s.CharField()),
 })
 
