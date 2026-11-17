@@ -6,15 +6,18 @@ champs changés et enregistre le geste annulable (reference/donnees.md §4).
 
 - `regler_rythme` : `POST rythme/`, SEUL chemin du mode (MAJ-6) ; l'objectif dit s'applique tout de
   suite au `PlanJour` de J s'il n'est pas clos (A2.1).
-- `etapes_nocturnes` : étape de nuit appelée par `nocturne.executer` (TCH37) ; remplie par TCH70.
+- `etapes_nocturnes` : étape de nuit appelée par `nocturne.executer` (TCH37) : blocs et propositions,
+  dérive, constats, révélation `revue`, cartes expirées, push ignorés, pauses (TCH70).
 """
 import datetime
 import re
 from dataclasses import fields, replace
 from decimal import Decimal
+from statistics import mean, median
 from types import SimpleNamespace
 
 from django.db import transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.taches.choix import (
@@ -26,18 +29,25 @@ from apps.taches.choix import (
     SourceObjectif,
     SourcePreference,
     StatutJour,
+    StatutProjet,
+    StatutTache,
     TypeIncitationEcran,
+    TypeIncitationPush,
 )
-from apps.taches.models.journee import PlanJour
-from apps.taches.models.rythme import Preference, ReglagesRythme
+from apps.taches.models.journee import LignePlanJour, PlanJour
+from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
-from apps.taches.moteur.gabarits import texte
-from apps.taches.selectors.base import _du_compte, taches_de
+from apps.taches.moteur.gabarits import CONSTANTES, texte
+from apps.taches.moteur.sante import NEGLIGE_JOURS, ProjetSante, neglige
+from apps.taches.moteur.sollicitations import ETAT_PAUSE, HEURE_RELANCE_DEFAUT, etat_decroissance
+from apps.taches.selectors.base import _du_compte, projets_de, taches_de
 from apps.taches.selectors.rythme import (
     TYPES_PROPOSITION,
+    bornes_du_jour,
     cartes_de,
     ouvertes,
     plan_du_jour,
+    plans_de,
     plans_du_rythme,
     preference_de,
     preferences_de,
@@ -342,9 +352,11 @@ def _rythme_repondu(user, reglages, carte, reponse, jour):
     etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
     if carte.type == TypeIncitationEcran.PROPOSITION_PALIER:
         neuf = _palier(etat, carte, reponse, jour)
-    elif reponse == _R.PASSER:  # dérive : R = arrondir(moyenne), fixée ce jour (§6.6)
-        moyenne = float((carte.donnees or {}).get('moyenne'))
-        neuf = replace(etat, tenir_reference=moteur.arrondir(moyenne), tenir_fixee_le=jour)
+    elif reponse == _R.PASSER:  # dérive : R = arrondir(moyenne) (le `m` de la carte), fixée ce jour (§6.6)
+        donnees = carte.donnees or {}
+        m = donnees.get('m')
+        m = moteur.arrondir(float(donnees.get('moyenne'))) if m is None else m
+        neuf = replace(etat, tenir_reference=m, tenir_fixee_le=jour)
     else:
         return []
     operations = ecrire_etat(reglages, neuf)
@@ -747,8 +759,305 @@ def modifier_reglages(user, donnees, *, est_admin):
     return reglages
 
 
+# --- Cartes et nuit (TCH70) ------------------------------------------------------------------
+
+#: Une carte à réponse expire à J+7 (donnees.md §2.12 ; `mon_iphone` : J+3, posé par TCH109).
+EXPIRATION_CARTE_JOURS = 7
+#: « Ignorée » = push non ouvert dans les 3 heures (regles.md §7).
+IGNOREE_APRES = datetime.timedelta(hours=3)
+#: Heure du passage de nuit (api.md §9, 03:00 Africa/Casablanca).
+HEURE_NUIT = datetime.time(3, 0)
+#: Pushes lus pour la décroissance d'un type (la série de 14 ignorées tient largement dedans).
+PUSHES_LUS = 60
+SILENCE_DERIVE_JOURS = moteur.SILENCE_TENIR_JOURS
+FENETRE_CONSTATS = datetime.timedelta(days=moteur.FENETRE_CONSTATS_JOURS)
+FENETRE_C3 = datetime.timedelta(days=moteur.FENETRE_C3_JOURS)
+FENETRE_NEGLIGE = datetime.timedelta(days=NEGLIGE_JOURS)
+STATUTS_OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
+STATUTS_CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
+#: C7 : tâches reportées 3 fois ou plus (la même constante que la phrase, textes.md « Constats »).
+REPORTS_A_REVOIR = CONSTANTES['reports']
+
+
+def creer_carte(user, type_, cle, jour, donnees, *, expire_jours=EXPIRATION_CARTE_JOURS):
+    """Une carte d'écran (`IncitationCoach`) du `jour` — idempotente : la contrainte
+    `taches_incit_uniq` (société, propriétaire, type, jour, clé) rend la même au rejeu."""
+    carte, _creee = IncitationCoach.objects.get_or_create(
+        company_id=user.company_id, proprietaire=user, type=type_, jour=jour, cle=cle,
+        defaults={'canal': CanalIncitation.ECRAN, 'donnees': donnees,
+                  'expire_le': jour + datetime.timedelta(days=expire_jours)})
+    return carte
+
+
+def _carte_palier(user, etat, decision, jour):
+    n = etat.palier if etat.palier is not None else moteur.PALIER_DEFAUT
+    tenus = sum(1 for c in etat.comptes_bloc if c >= n)
+    if decision == moteur.DECISION_MONTER:
+        donnees = {'N': n, 'N1': n + 1, 'tenus': tenus, 'refus': etat.refus_montee + 1}
+    else:
+        donnees = {'N': n, 'N_1': n - 1, 'tenus': tenus}
+    creer_carte(user, TypeIncitationEcran.PROPOSITION_PALIER, decision, jour, donnees)
+
+
+def _demarrage_a_froid(user, etat, comptes, jour):
+    """Au 10e jour évalué : journée type, `bloc_debut` = lendemain ; rien n'est imposé (§6.5 point 2)."""
+    if len(comptes) < moteur.BLOC_JOURS:
+        return etat
+    dit = etat.palier if etat.palier_source == SourceObjectif.DIT else None
+    _applique, journee_type, carte = moteur.palier_initial(comptes[-moteur.BLOC_JOURS:], dit)
+    if carte is not None:
+        donnees = {'type': journee_type, **({'dit': dit} if dit is not None else {})}
+        creer_carte(user, TypeIncitationEcran.PROPOSITION_PALIER, carte, jour, donnees)
+    return replace(etat, bloc_debut=jour)
+
+
+def _blocs(user, etat, jour):
+    """POUSSER : démarrage à froid, ou clôture du bloc de 10 jours évalués et sa proposition (une au
+    plus, jamais imposée) ; le bloc repart le lendemain du jour clos (= `jour`)."""
+    if etat.mode != ModeRythme.POUSSER:
+        return etat
+    if etat.bloc_debut is None:
+        return _demarrage_a_froid(user, etat, list(etat.comptes_recents), jour)
+    if len(etat.comptes_bloc) < moteur.BLOC_JOURS:
+        return etat
+    hier = jour - datetime.timedelta(days=1)
+    decision = moteur.evaluer_bloc(etat, hier)
+    if decision in (moteur.DECISION_MONTER, moteur.DECISION_BAISSER):
+        _carte_palier(user, etat, decision, jour)
+    return moteur.clore_bloc(etat, hier, decision, None)
+
+
+def _derive(user, etat, plans, jour):
+    """TENIR : R fixée après 14 jours évalués, puis dérive hors zone → carte, et 28 jours de silence
+    quelle que soit la réponse (§6.6)."""
+    if etat.mode != ModeRythme.TENIR:
+        return etat
+    if etat.tenir_fixee_le is None:
+        reference = moteur.reference_tenir(etat.comptes_recents)
+        if reference is None:
+            return etat
+        etat = replace(etat, tenir_reference=reference, tenir_fixee_le=jour)
+    comptes = [p.compte_rythme for p in jours_evalues(plans, jour) if p.jour >= etat.tenir_fixee_le]
+    sens = moteur.derive_tenir(etat.tenir_reference, comptes, jour, etat.tenir_silence_jusquau)
+    if sens is None:
+        return etat
+    moyenne = moteur._moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
+    bas, haut = moteur.bande_tenir(float(etat.tenir_reference))
+    creer_carte(user, TypeIncitationEcran.DERIVE_TENIR, sens, jour, {
+        'moyenne': round(moyenne, 4), 'R': float(etat.tenir_reference), 'bas': bas, 'haut': haut,
+        'm': moteur.arrondir(moyenne)})
+    return replace(etat, tenir_silence_jusquau=jour + datetime.timedelta(days=SILENCE_DERIVE_JOURS))
+
+
+# --- Constats (§6.9) : les données lues, puis les nombres de la phrase -----------------------
+
+def _lignes_constats(user, jour):
+    lignes = (_du_compte(LignePlanJour.objects, user, champ='plan__proprietaire')
+              .filter(plan__jour__gte=jour - FENETRE_CONSTATS, plan__jour__lt=jour)
+              .select_related('plan'))
+    return tuple(moteur.LigneConstat(jour=x.plan.jour, creneau=x.creneau, faite=x.faite,
+                                     essentielle=x.essentielle, rang=x.rang) for x in lignes)
+
+
+def _heures_faits(user, jour):
+    debut, _fin = bornes_du_jour(jour - FENETRE_CONSTATS)
+    fin, _ = bornes_du_jour(jour)
+    faits = taches_de(user).filter(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
+    locales = (timezone.localtime(f) for f in faits.values_list('fait_le', flat=True))
+    return tuple((moment.date(), moment.hour) for moment in locales)
+
+
+def _projet_neglige(user, jour):
+    """Le projet de plus haute priorité que `sante.neglige` rend (C8), ou `None`."""
+    debut, _fin = bornes_du_jour(jour - FENETRE_NEGLIGE)
+    actionnable = Q(tache__statut=StatutTache.A_FAIRE, tache__quelque_jour=False, tache__parent__isnull=True,
+                    tache__is_deleted=False) & (Q(tache__bloquee_par__isnull=True)
+                                                | Q(tache__bloquee_par__statut__in=STATUTS_CLOS)
+                                                | Q(tache__bloquee_par__is_deleted=True))
+    faite = Q(tache__statut=StatutTache.FAIT, tache__fait_le__gte=debut, tache__is_deleted=False)
+    projets = list(projets_de(user).filter(statut=StatutProjet.ACTIF).annotate(
+        n_actionnables=Count('tache', filter=actionnable, distinct=True),
+        n_faites=Count('tache', filter=faite, distinct=True)))
+    purs = [ProjetSante(id=p.pk, nom='', priorite=p.priorite, rang=p.rang, statut=p.statut,
+                        statut_depuis=timezone.localtime(p.statut_depuis).date(), actionnables=p.n_actionnables)
+            for p in projets]
+    negliges = neglige(purs, {p.pk: p.n_faites for p in projets}, jour)
+    if not negliges:
+        return None
+    return max((p for p in purs if p.id in negliges), key=lambda p: (p.priorite, -p.rang)).id
+
+
+def _refus_constats(user):
+    """Code → jour du dernier « Pas maintenant » (un constat refusé se tait 28 jours)."""
+    refus = {}
+    for code, repondu_le in (cartes_de(user).filter(type=TypeIncitationEcran.CONSTAT, reponse=_R.PAS_MAINTENANT)
+                             .order_by('repondu_le').values_list('cle', 'repondu_le')):
+        refus[code] = timezone.localtime(repondu_le).date() if repondu_le else None
+    return refus
+
+
+def donnees_constats(user, plans, jour):
+    """Tout ce que `moteur.constats` lit, depuis les lignes réelles du compte (fenêtres §6.9)."""
+    jours = tuple(moteur.JourCompte(jour=p.jour, statut_jour=p.statut_jour, compte=p.compte_rythme,
+                                    essentiels_choisis=p.essentiels_choisis, essentiels_faits=p.essentiels_faits,
+                                    plan_prevues=p.plan_prevues, plan_faites=p.plan_faites) for p in plans)
+    reportees = taches_de(user).filter(statut__in=STATUTS_OUVERTS, reports__gte=REPORTS_A_REVOIR).count()
+    return moteur.DonneesConstats(
+        jour=jour, jours=jours, lignes=_lignes_constats(user, jour), heures_faits=_heures_faits(user, jour),
+        reportees_3=reportees, projet_neglige_id=_projet_neglige(user, jour), refus=_refus_constats(user))
+
+
+def _nombres_c2(d):
+    en_tete, ailleurs = moteur._essentiels_classes(moteur._lignes_fenetre(d))
+    return {'a': sum(f for _j, f in en_tete), 'na': len(en_tete), 'b': sum(f for _j, f in ailleurs),
+            'nb': len(ailleurs)}
+
+
+def _nombres_c3(constat, d):
+    """« {Jour} : {m1} … , {m2} les autres jours » : `m2` = moyenne des AUTRES jours de la fenêtre."""
+    jour_semaine = constat.donnees['jour_semaine']
+    autres = [j.compte for j in d.jours if j.statut_jour == StatutJour.EVALUE and j.jour.weekday() != jour_semaine
+              and 0 <= (d.jour - j.jour).days < moteur.FENETRE_C3_JOURS]
+    return {'jour': jour_semaine, 'm1': round(constat.donnees['moyenne'], 1),
+            'm2': round(mean(autres), 1) if autres else round(constat.donnees['moyenne_generale'], 1)}
+
+
+def _nombres_c4(constat, d):
+    plans = [j for j in d.jours if j.statut_jour == StatutJour.EVALUE and j.plan_prevues > 0
+             and 0 <= (d.jour - j.jour).days < moteur.FENETRE_CONSTATS_JOURS]
+    return {'p': moteur.arrondir(median(j.plan_prevues for j in plans)),
+            'f': moteur.arrondir(median(j.plan_faites for j in plans)),
+            'n': constat.donnees['plans'], 'f1': constat.donnees['limite']}
+
+
+def _nombres_c5(constat, d):
+    debut, part = max(constat.donnees['tranches'].items(), key=lambda t: t[1])
+    n = sum(1 for jour, _h in d.heures_faits if 0 <= (d.jour - jour).days < moteur.FENETRE_CONSTATS_JOURS)
+    return {'p': moteur.arrondir(part), 'n': n, 'h1': debut, 'h2': debut + moteur.C5_TRANCHE_HEURES}
+
+
+def nombres_du_constat(constat, d):
+    """Les nombres de la phrase du constat (textes.md « Constats ») — ids et nombres, jamais un titre."""
+    if constat.code == 'C1':
+        return {'taux': {k: moteur.arrondir(v) for k, v in constat.donnees['taux'].items()},
+                'meilleur': constat.donnees['meilleur']}
+    if constat.code == 'C2':
+        return _nombres_c2(d)
+    if constat.code == 'C3':
+        return _nombres_c3(constat, d)
+    if constat.code == 'C4':
+        return _nombres_c4(constat, d)
+    if constat.code == 'C5':
+        return _nombres_c5(constat, d)
+    if constat.code == 'C7':
+        return {'n': constat.donnees['nb']}
+    return {'projet_id': constat.donnees['projet_id']} if constat.code == 'C8' else dict(constat.donnees)
+
+
+def _constat_a_taire(user, code, jour):
+    """Une carte du même constat encore ouverte, ou répondue depuis moins de 28 jours : rien de neuf
+    (une carte acceptée reste « la dernière » de son constat, I13)."""
+    derniere = (cartes_de(user).filter(type=TypeIncitationEcran.CONSTAT, cle=code)
+                .order_by('-jour', '-pk').first())
+    if derniere is None:
+        return False
+    if not derniere.reponse:
+        return derniere.expire_le is None or derniere.expire_le >= jour
+    return (jour - derniere.jour).days < moteur.SILENCE_CONSTAT_JOURS
+
+
+def _constats(user, jour):
+    plans = plans_de(user, jour - FENETRE_C3, jour - datetime.timedelta(days=1))
+    donnees = donnees_constats(user, plans, jour)
+    for constat in moteur.constats(donnees):
+        if not _constat_a_taire(user, constat.code, jour):
+            creer_carte(user, TypeIncitationEcran.CONSTAT, constat.code, jour, nombres_du_constat(constat, donnees))
+
+
+# --- Expirations, ignorées, pauses (regles.md §7) --------------------------------------------
+
+def _expirer(company_id, jour):
+    """Cartes d'écran sans réponse dont `expire_le` est passé : `expiree` (ce n'est pas un refus)."""
+    (IncitationCoach.objects.filter(company_id=company_id, canal=CanalIncitation.ECRAN, reponse='',
+                                    expire_le__lt=jour)
+     .update(reponse=_R.EXPIREE, updated_at=timezone.now()))
+
+
+def _ignorer(company_id, jour):
+    """Push non ouverts dans les 3 heures (ni `ouvert_le`) : `ignoree`."""
+    nuit = timezone.make_aware(datetime.datetime.combine(jour, HEURE_NUIT))
+    (IncitationCoach.objects.filter(company_id=company_id, canal=CanalIncitation.PUSH, reponse='',
+                                    montre_le__isnull=False, ouvert_le__isnull=True,
+                                    montre_le__lte=nuit - IGNOREE_APRES)
+     .update(reponse=_R.IGNOREE, updated_at=timezone.now()))
+
+
+def _serie_ignorees(user, type_):
+    """La suite chronologique (vrai = ignorée) des push `type_` tranchés (ignorés ou ouverts)."""
+    pushes = (cartes_de(user).filter(canal=CanalIncitation.PUSH, type=type_, montre_le__isnull=False)
+              .filter(Q(reponse=_R.IGNOREE) | Q(ouvert_le__isnull=False))
+              .order_by('-jour', '-pk').values_list('reponse', flat=True)[:PUSHES_LUS])
+    return [reponse == _R.IGNOREE for reponse in reversed(list(pushes))]
+
+
+def _fin_de_serie(serie):
+    """Ignorées de suite à la fin de la série (une ouverture remet à zéro)."""
+    compte = 0
+    for ignoree in reversed(serie):
+        if not ignoree:
+            break
+        compte += 1
+    return compte
+
+
+def _pauser(user, reglages, jour):
+    """14 ignorées de suite → le type passe dans `pauses_sollicitations` + carte `pause`."""
+    en_pause = {_type_pause(p) for p in reglages.pauses_sollicitations or []}
+    for type_ in TypeIncitationPush.values:
+        serie = _serie_ignorees(user, type_)
+        if type_ in en_pause or etat_decroissance(serie) != ETAT_PAUSE:
+            continue
+        ignorees = _fin_de_serie(serie)
+        reglages.pauses_sollicitations = [*(reglages.pauses_sollicitations or []),
+                                          {'type': type_, 'ignorees': ignorees}]
+        donnees = {'type_pause': type_, 'ignorees': ignorees}
+        if type_ == TypeIncitationPush.RELANCE:
+            donnees['heure'] = _heure_dite(user, ClePreference.RELANCE_JOUR, HEURE_RELANCE_DEFAUT)
+        creer_carte(user, TypeIncitationEcran.PAUSE, type_, jour, donnees)
+        reglages.save(update_fields=['pauses_sollicitations', 'updated_at'])
+
+
+def _heure_dite(user, cle, defaut):
+    preference = preference_de(user, cle)
+    valeur = preference.valeur if preference is not None else None
+    return valeur if isinstance(valeur, str) and _HEURE.match(valeur) else defaut.strftime('%H:%M')
+
+
+# --- La nuit d'une société -------------------------------------------------------------------
+
+def nuit_du_compte(reglages, jour):
+    """Les étapes de rythme d'UN compte : blocs et propositions, dérive, constats (si « Comprendre
+    mon rythme »), révélation `revue`, pauses."""
+    from apps.taches.services import revelations  # import local : revelations lit creer_carte d'ici
+    user = reglages.proprietaire
+    user.company_id = reglages.company_id  # la société de la ligne fait foi (MAJ-4)
+    if reglages.comprendre_mon_rythme:
+        plans = plans_du_rythme(user, jour)
+        etat = _derive(user, _blocs(user, etat_rythme(reglages, plans, jour), jour), plans, jour)
+        ecrire_etat(reglages, etat)
+        _constats(user, jour)
+    revelations.revelation_revue(user, reglages, jour)
+    _pauser(user, reglages, jour)
+
+
 def etapes_nocturnes(company_id, jour):
-    """Nuit du `jour` : jour clos, blocs, propositions, dérive, constats (si « Comprendre mon
-    rythme »), révélation `revue`, cartes expirées, push `ignoree`, pauses à 14 (api.md §9). Livrée
-    vide par TCH37, remplie par TCH70."""
-    return None
+    """Nuit du `jour` (api.md §9) pour la société `company_id` : cartes expirées et push ignorés
+    d'abord (la décroissance les lit), puis, pour chaque compte actif qui a une `ReglagesRythme`
+    (invariant 29), ses étapes de rythme. Idempotente : `bloc_debut` et silence avancés, contrainte
+    unique des cartes, mises à jour conditionnées par l'état."""
+    _expirer(company_id, jour)
+    _ignorer(company_id, jour)
+    lignes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True)
+              .select_related('proprietaire').order_by('pk'))
+    for reglages in lignes:
+        nuit_du_compte(reglages, jour)
