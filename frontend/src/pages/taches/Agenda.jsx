@@ -52,7 +52,7 @@ const deux = (n) => String(n).padStart(2, '0')
 // --- Dates (ISO `AAAA-MM-JJ`, calcul en UTC : aucune horloge cachée) ---------------------------
 
 const versUtc = (iso) => { const [a, m, j] = iso.split('-').map(Number); return Date.UTC(a, m - 1, j) }
-const versIso = (t) => new Date(t).toISOString().slice(0, 10)
+const versIso = (t) => new Date(t).toISOString().split('T')[0]
 const decaler = (iso, jours) => versIso(versUtc(iso) + jours * 86400000)
 const lundiDe = (iso) => decaler(iso, -((new Date(versUtc(iso)).getUTCDay() + 6) % 7))
 const estIso = (texte) => /^\d{4}-\d{2}-\d{2}$/.test(String(texte ?? ''))
