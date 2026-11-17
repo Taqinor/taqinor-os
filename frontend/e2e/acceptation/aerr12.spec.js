@@ -139,7 +139,7 @@ async function ouvrirFiche(p, id, nomLead) {
 etape('PF12.178-AERR178', ['AERR178'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr178_${m}`
-  const cr = await compteRole(nom, 'Commercial responsable')
+  const cr = await compteRole(nom, 'Commercial')
   const [A] = await creerLeads(cr, [{ nom: `Karim B. ${m}`, prenom: '', telephone: telephoneMobileUnique(), stage: 'CONTACTED' }])
   apres.push(() => supprimerLeads([A]))
   const { p, api } = await ecran(page, suivi, testInfo, nom)
@@ -167,7 +167,7 @@ etape('PF12.178-AERR178', ['AERR178'], async ({ page, suivi, testInfo }) => {
 etape('PF12.179-AERR179', ['AERR179'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr179_${m}`
-  const cr = await compteRole(nom, 'Commercial responsable')
+  const cr = await compteRole(nom, 'Commercial')
   const [A] = await creerLeads(cr, [{ nom: `Modale ${m}`, prenom: '', telephone: telephoneMobileUnique(), stage: 'CONTACTED' }])
   apres.push(() => supprimerLeads([A]))
   const { p } = await ecran(page, suivi, testInfo, nom)
@@ -362,7 +362,7 @@ etape('PF12.132-AERR132', ['AERR132'], async ({ page, suivi, testInfo }) => {
 etape('PF12.176-AERR176', ['AERR176'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr176_${m}`
-  const cr = await compteRole(nom, 'Commercial responsable')
+  const cr = await compteRole(nom, 'Commercial')
   const [lead] = await creerLeads(cr, [{ nom: `AERR176 ${m}`, prenom: 'Essai', telephone: telephoneMobileUnique(), stage: 'NEW' }])
   apres.push(() => supprimerLeads([lead]))
   const nbRdv = () => py(`from apps.crm.models import Appointment

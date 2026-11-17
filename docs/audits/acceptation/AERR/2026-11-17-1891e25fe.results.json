@@ -1,5 +1,5 @@
 {
-  "sha": "02bafff623e47ad72cf38bd255a0a6cc9ed24ad5",
+  "sha": "1891e25fe006b9f70df589bebf70250e44628af9",
   "date": "2026-11-17",
   "groupe": "AERR",
   "verdict": "PASS",
@@ -10,7 +10,8 @@
     "AERR176",
     "AERR177",
     "AERR178",
-    "AERR179"
+    "AERR179",
+    "AERR114"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -207,6 +208,29 @@
       "base_verdict": null,
       "corps": "PASS",
       "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.112-AERR112-calage.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.114-AERR114-suppr",
+      "taches": [
+        "AERR114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.114-AERR114-suppr.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
