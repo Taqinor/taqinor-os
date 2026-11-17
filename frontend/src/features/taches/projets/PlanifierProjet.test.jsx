@@ -76,7 +76,7 @@ describe('TCH91 — Planifier le projet : pas 1 et pas 2', () => {
     expect(window.localStorage.getItem(CLE)).toBeNull()
   })
 
-  it('Raccord F2 — une action laissée « Sans jour » part en `quand: plus_tard` (valeur du serveur)', async () => {
+  it('Raccord F2 — une action laissée « Sans jour » part en `quand` vide (valeur du serveur ; `sans_jour` est refusé)', async () => {
     monter()
     const user = utilisateur()
     await user.click(screen.getByRole('button', { name: 'Suivant' }))
@@ -86,7 +86,7 @@ describe('TCH91 — Planifier le projet : pas 1 et pas 2', () => {
       .toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('button', { name: 'Terminer' }))
     expect(api.planifierProjet).toHaveBeenCalledWith(3, expect.objectContaining({
-      actions: [{ titre: 'Appeler le loueur', quand: 'plus_tard' }],
+      actions: [{ titre: 'Appeler le loueur', quand: '' }],
     }))
   })
 

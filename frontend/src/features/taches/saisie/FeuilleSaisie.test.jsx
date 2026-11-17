@@ -250,5 +250,8 @@ describe('TCH82 — feuille de saisie', () => {
     expect(messageChamps(erreurs.champ)).toBe('Projet inexistant.')
     expect(messageChamps(erreurs.par_ligne)).toBe('Le titre est vide une fois la date et le projet retirés.')
     expect(messageChamps(null)).toBe('')
+    // Raccord F2 — le 400 porte aussi `error` à la racine : il n'est jamais pris pour le champ fautif
+    expect(messageChamps({ error: ['validation'], projet_id: ['Projet inexistant.'] })).toBe('Projet inexistant.')
+    expect(messageChamps({ error: ['validation'] })).toBe('')
   })
 })

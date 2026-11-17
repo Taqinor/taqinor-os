@@ -273,6 +273,7 @@ export default function Aujourdhui() {
     try {
       const { data } = await client.planifierTache(item.id, { jour_prevu: jour, lock_version: lockVersion })
       setConflit(null)
+      poserProgression(data.progression) // `tache_ecrite.progression` : la progression suit sans relire la journée
       setEstampilles((e) => ({ ...e, [cle]: `→ ${jourNomme(jour, donnees?.jour)}` }))
       patcher(cle, (it) => ({ ...it, lock_version: data.tache?.lock_version ?? it.lock_version }))
       proposerAnnuler({
@@ -294,7 +295,7 @@ export default function Aujourdhui() {
       }
       annoncer(frenchError(err))
     }
-  }, [enLigne, donnees, patcher])
+  }, [enLigne, donnees, patcher, poserProgression])
 
   const reporter = useCallback((item) => {
     const jour = donnees?.prochain_jour_ouvre
@@ -305,6 +306,7 @@ export default function Aujourdhui() {
     try { garde() } catch { return }
     try {
       const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
+      poserProgression(data.progression)
       setDonnees((d) => {
         const { suite, item: trouve } = retirer(d, cleDe(item))
         if (!trouve) return d
@@ -328,7 +330,7 @@ export default function Aujourdhui() {
     } catch (err) {
       annoncer(frenchError(err))
     }
-  }, [garde, setDonnees])
+  }, [garde, setDonnees, poserProgression])
 
   /** Sort une ligne de sa section ; rend la fonction qui la remet à sa place (Annuler, refus du serveur). */
   const sortirLigne = useCallback((item) => {
@@ -417,6 +419,7 @@ export default function Aujourdhui() {
     prochainJourOuvre: donnees?.prochain_jour_ouvre,
     maj: (id, champs) => patcher(`tache:${id}`, (it) => ({ ...it, ...champs })),
     retirer: sortirLigne,
+    apresEcriture: (data) => poserProgression(data?.progression),
     // en réserve ou en attente, la tâche quitte la journée (elle revient au relu, dans « En attente »)
     sortApres: (code, item, valeurs) => (code === 'planifier' && Boolean(valeurs.quelque_jour)) || code === 'attente',
     actionsPropres,

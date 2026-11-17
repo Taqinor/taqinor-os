@@ -107,6 +107,8 @@ export function useLierActivite({ donnees, setDonnees, garde, charger }) {
       if (data.tache?.jour_prevu === donnees.jour) {
         setDonnees((d) => ({ ...d, journee: [...(d.journee ?? []), data.tache] }))
       }
+      // Raccord F2 — `lier-activite/` rend la `progression` du jour : elle suit sans relire la journée
+      if (data.progression && typeof data.progression.faites === 'number') setDonnees((d) => ({ ...d, progression: data.progression }))
       proposerAnnuler({
         message: "Tâche liée à l'activité",
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },

@@ -17,10 +17,10 @@ import { PRIORITES } from './LigneProjet'
    ========================================================================== */
 
 const PRIORITE_AIDE = { 3: 'passe avant les autres', 2: 'le rythme normal', 1: 'quand il reste du temps' }
-// valeurs de `actions[].quand` acceptées par `planification/` (serializers/projets.py) : aujourdhui · demain · plus_tard
-const QUAND = [['aujourdhui', "Aujourd'hui"], ['demain', 'Demain'], ['plus_tard', 'Sans jour']]
-/** Un brouillon d'avant le raccord peut porter l'ancien `sans_jour` : il part en `plus_tard`. */
-const quandServi = (quand) => (quand === 'sans_jour' ? 'plus_tard' : quand)
+// valeurs de `actions[].quand` acceptées par `planification/` : aujourdhui · demain · plus_tard · '' (sans jour)
+const QUAND = [['aujourdhui', "Aujourd'hui"], ['demain', 'Demain'], ['', 'Sans jour']]
+/** Un brouillon d'avant le raccord peut porter `sans_jour` (refusé) ou `plus_tard` : « Sans jour » part en `''`. */
+const quandServi = (quand) => (quand === 'sans_jour' || quand === 'plus_tard' || quand == null ? '' : quand)
 const ECHEANCES = [['1 semaine', 'jours', 7], ['2 semaines', 'jours', 14], ['1 mois', 'mois', 1], ['6 semaines', 'jours', 42], ['3 mois', 'mois', 3]]
 export const QUESTION_COPILOTE = 'Découpe ce projet en étapes'
 const CLE_BROUILLON = (id) => `taqinor:draft:taches:plan-projet:${id}`
@@ -139,7 +139,7 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
           aria-invalid={erreurs.risque ? 'true' : undefined} aria-describedby={erreurs.risque ? 'pp-risque-err' : undefined} />
         <Erreur id="pp-risque-err" texte={erreurs.risque} />
         <button type="button" className="bouton second" disabled={!etat.risque.trim()}
-          onClick={() => maj({ actions: [...etat.actions, { titre: etat.risque.trim(), quand: 'plus_tard' }], risque: '' })}>
+          onClick={() => maj({ actions: [...etat.actions, { titre: etat.risque.trim(), quand: '' }], risque: '' })}>
           En faire une tâche
         </button>
       </div>
@@ -152,7 +152,7 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
   const ajouter = (e) => {
     e.preventDefault()
     if (!nouvelle.trim()) return
-    maj({ actions: [...etat.actions, { titre: nouvelle.trim(), quand: 'plus_tard' }] })
+    maj({ actions: [...etat.actions, { titre: nouvelle.trim(), quand: '' }] })
     setNouvelle('')
   }
   const ouvrirCopilote = () => window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, {

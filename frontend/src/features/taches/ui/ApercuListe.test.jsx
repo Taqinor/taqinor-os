@@ -104,11 +104,14 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
         ligne(1, 0, 'Réserver le stand', { cochee: false, doublon_de_ligne: 0 }),
         ligne(2, 0, 'Appeler Karim', { cochee: false, deja_faite: true }),
         ligne(3, 0, 'Envoyer le devis', { cochee: false, doublon_de: 41 }),
+        ligne(4, 0, 'Relancer Settat', { cochee: false, doublon_de: 42, doublon_projet: 'Ventes' }),
       ],
     })
     expect(screen.getByText('En double dans cette liste')).toBeInTheDocument()
     expect(screen.getByText('Déjà faite')).toBeInTheDocument()
     expect(screen.getByText('Déjà dans tes tâches')).toBeInTheDocument()
+    // Raccord F2 — le projet du doublon, quand le serveur le sert
+    expect(screen.getByText('Déjà dans « Ventes »')).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'Créer : Réserver le stand', checked: false })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Créer 1 tâche' })).toBeInTheDocument()
   })

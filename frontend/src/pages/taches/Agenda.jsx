@@ -580,7 +580,11 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   useEffect(() => {
     let vivant = true
     listerAgendasExternes()
-      .then((r) => { if (vivant) setAgendas(Array.isArray(r?.data?.results) ? r.data.results : null) })
+      // 3 agendas au plus : seule la question « aucun ? » compte — vide seulement sans ligne ET sans page suivante (`next`)
+      .then((r) => {
+        const { results, next } = r?.data ?? {}
+        if (vivant) setAgendas(Array.isArray(results) ? (results.length === 0 && !next ? [] : results) : null)
+      })
       .catch(() => { if (vivant) setAgendas(null) }) // illisible : pas d'invitation plutôt qu'une fausse
     return () => { vivant = false }
   }, [])
@@ -666,7 +670,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         />
         {etats}
         <PlanifierSemaine
-          jours={jours} aujourdhui={aujourdhui} aPlacer={donnees?.a_placer ?? []}
+          jours={jours} aujourdhui={aujourdhui} capacite={donnees?.capacite?.minutes ?? null} aPlacer={donnees?.a_placer ?? []}
           mesProjets={donnees?.mes_projets ?? []} choisie={choisie} posees={placement.posees}
           onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
           onPoser={(item, iso) => placement.poser(item, iso, null)}

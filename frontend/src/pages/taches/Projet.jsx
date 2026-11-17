@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, Diamond, TriangleAlert } from 'lucide-react'
-import {
-  annulerGeste, classerErreur, lireVueProjet, modifierProjet, restaurerProjet, rouvrirProjet,
-  rouvrirTache, terminerTache,
-} from '../../api/tachesApi'
+import { annulerGeste, classerErreur, lireVueProjet, modifierProjet, restaurerProjet, rouvrirProjet, rouvrirTache, terminerTache, listerToutesLesTaches } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
@@ -154,6 +151,8 @@ export default function Projet() {
   }
   useApresCreation(useCallback(() => { charger() }, [charger]))
   const ouvrirFiche = useOuvrirFiche()
+  // « Faites (n) » déplié : toutes les pages des faites du projet, dernières faites d'abord (lue à la demande)
+  const chargerFaites = useCallback(() => listerToutesLesTaches({ projet: Number(id), statut: 'fait', tri: 'fait_le' }), [id])
 
   // Raccord F2 — le gestionnaire commun des actions de ligne (Choisir un jour, En réserve, Déplacer, En attente de,
   // Priorité, ★, Supprimer) : optimiste, annulable, sans relire la vue. Déplacée hors du projet, la ligne part.
@@ -277,6 +276,7 @@ export default function Projet() {
             onTerminer={terminer}
             onOuvrir={(t) => ouvrirFiche(t.id)}
             onAction={actions.surAction}
+            chargerFaites={chargerFaites}
             onAjouter={ajouter}
             onAnnonce={annoncer}
           />

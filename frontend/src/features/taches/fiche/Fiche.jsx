@@ -39,9 +39,12 @@ const CHAMP_DE_ERREUR = {
 const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de textes.md §2.3 / §2.6 : Haute · Moyenne · Basse
 
 /** `{champ: [messages]}` d'un 400 → `{ champDeLaFiche: premier message }` (le reste : `general`). */
+const CLES_HORS_CHAMP = new Set(['error', 'code', 'detail'])
+
 function erreursParChamp(champs) {
   const sortie = {}
   Object.entries(champs ?? {}).forEach(([cle, liste]) => {
+    if (CLES_HORS_CHAMP.has(cle)) return // le 400 porte aussi `error` (et `code`) à la racine : jamais un champ
     const message = Array.isArray(liste) && typeof liste[0] === 'string' ? liste[0] : ''
     if (message) sortie[CHAMP_DE_ERREUR[cle] ?? 'general'] = message
   })

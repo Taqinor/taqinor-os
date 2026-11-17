@@ -292,6 +292,20 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
+  it('Raccord F2 — la `progression` rendue par une écriture (reporter) met la progression à jour sans relire la journée', async () => {
+    const d = donnees()
+    servir(d)
+    const ecrite = exempleContrat('taches', 'tache_ecrite')
+    api.post.mockResolvedValue({ data: { ...ecrite, geste_id: 70, progression: { ...d.progression, faites: 2 } } })
+    monter()
+    await screen.findByText('Devis Settat')
+    expect(screen.getByRole('button', { name: /^1 sur \d+ faites/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(await screen.findByRole('button', { name: /^2 sur \d+ faites/ })).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledTimes(1)
+  })
+
   it('une activité ERP cochée close dans l\'ERP, sans Annuler', async () => {
     const d = donnees()
     d.journee.find((i) => i.type === 'activite').peut_cloturer = true

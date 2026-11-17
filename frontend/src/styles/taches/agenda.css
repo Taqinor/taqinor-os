@@ -254,3 +254,19 @@
   .tch .ag-carte.faite { background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait); }
   .tch .ag-carte.faite .t { color: var(--tch-texte-doux); text-decoration: line-through; }
 }
+
+/* Raccord F2 — barre de charge d'un jour (capacité servie par agenda/ ; repère de capacité aux 2/3) — ecrans-agenda.css */
+.tch .ag-charge {
+  position: relative; flex: none; display: flex; width: 72px; height: 6px; border-radius: 999px; overflow: hidden;
+  background: var(--tch-piste);
+}
+.tch .ag-charge::after {
+  content: ""; position: absolute; left: 66.667%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--tch-surface);
+}
+.tch .ag-charge i { display: block; height: 100%; width: var(--c); flex: none; }
+.tch .ag-charge i.b { background: var(--tch-texte-doux); }
+.tch .ag-charge i.bp { background: var(--tch-surveiller); }
+.tch .ag-pj .ag-charge { grid-column: 2; margin-bottom: 4px; }
+@media (min-width: 1024px) {
+  .tch .ag-planifier .ag-pj .ag-charge { width: 100%; margin: 0; }
+}

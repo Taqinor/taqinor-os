@@ -91,6 +91,18 @@ describe('TCH92 — Décaler les dates', () => {
     expect(screen.getByLabelText('Nombre de jours (− pour avancer)')).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
   })
+
+  it('Raccord F2 — le 400 porte l\'aperçu (`changements`, `titre` servi) : il s\'affiche, Appliquer reste fermé', async () => {
+    api.decalerProjet.mockRejectedValue({ response: { status: 400, data: {
+      error: 'validation', delta_jours: ['1 tâche passerait avant aujourd\'hui.'], avant_aujourdhui: 1,
+      changements: [{ objet: 'tache', id: 77, champ: 'jour_prevu', avant: '2026-11-18', apres: '2026-11-16', titre: 'Appeler le loueur' }],
+    } } })
+    render(<DialogueDecaler projet={projet()} noms={noms} aujourdhui={AUJOURDHUI} onFait={() => {}} onFermer={() => {}} />)
+    await utilisateur().click(screen.getByRole('radio', { name: '−1 semaine' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 tâche passerait avant aujourd\'hui.')
+    expect(screen.getByText('Appeler le loueur')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
+  })
 })
 
 describe('TCH92 — Terminer le projet', () => {

@@ -10,7 +10,7 @@ import VoletAPlacer from '../ui/VoletAPlacer'
    d'un jour à l'autre puis Entrée. Jour passé : « passé · {n} faites », non posable ; jour non
    travaillé : « non travaillé ». En-tête de jour « {n} tâches · {durée} ». Bouton **Terminer**.
    Maquettes : agenda-semaine-planifier.html, agenda-semaine-planifier-pose.html ; textes.md §2.8.
-   La capacité du jour (« pour {cap} ») n'est affichée que si `agenda/` la sert (`jours[].capacite_minutes`) :
+   La capacité du jour (« pour {cap} », barre de charge) n'est affichée que si `agenda/` la sert (`capacite.minutes`) :
    aucun chiffre inventé. Le composant ne parle jamais au serveur.
    ========================================================================== */
 
@@ -18,7 +18,20 @@ const versUtc = (iso) => { const [a, m, j] = iso.split('-').map(Number); return 
 const nomJour = (iso) => `${ABR_JOURS[new Date(versUtc(iso)).getUTCDay()]} ${Number(iso.slice(8, 10))}`
 const accordTaches = (n) => (n >= 2 ? `${n} tâches` : `${n} tâche`)
 
-function resume(jour, aujourdhui) {
+/** Barre de charge (maquette : la capacité est le repère à 2/3 de la barre ; au-delà, la part en trop). */
+function BarreCharge({ minutes, capacite }) {
+  const echelle = capacite * 1.5
+  const dans = Math.min(minutes, capacite) / echelle * 100
+  const trop = Math.max(0, Math.min(minutes, echelle) - capacite) / echelle * 100
+  return (
+    <span className="ag-charge" aria-hidden="true">
+      <i className="b" style={{ '--c': `${dans}%` }} />
+      {trop > 0 ? <i className="bp" style={{ '--c': `${trop}%` }} /> : null}
+    </span>
+  )
+}
+
+function resume(jour, aujourdhui, capaciteServie = null) {
   const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   if (jour.jour < aujourdhui) {
     const faites = taches.filter((t) => t.statut === 'fait').length
@@ -27,13 +40,13 @@ function resume(jour, aujourdhui) {
   if (!jour.ouvre || jour.ferie) return { repos: true, texte: jour.ferie ? 'Férié' : 'non travaillé' }
   const ouvertes = taches.filter((t) => t.statut !== 'fait')
   const minutes = ouvertes.reduce((n, t) => n + (t.estimation_minutes || 0), 0)
-  // Raccord F2 — « {n} tâches · {h} pour {cap} » (textes.md §2.8) SEULEMENT si le serveur sert la capacité du jour
-  // (`jours[].capacite_minutes`, même nom que `progression.capacite_minutes`) ; sinon elle est omise, jamais devinée.
-  const capacite = Number.isFinite(jour.capacite_minutes) && jour.capacite_minutes > 0 ? jour.capacite_minutes : null
+  // Raccord F2 — « {n} tâches · {h} pour {cap} » (textes.md §2.8) et la barre de charge SEULEMENT si `agenda/` sert
+  // la capacité (`capacite: {minutes, source}`) ; sinon elles sont omises, jamais devinées.
+  const capacite = Number.isFinite(capaciteServie) && capaciteServie > 0 ? capaciteServie : null
   if (capacite) {
     return {
       texte: `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite)}`,
-      surcharge: minutes > capacite,
+      charge: { minutes, capacite },
     }
   }
   return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
@@ -63,8 +76,8 @@ function CartesDuJour({ jour }) {
   )
 }
 
-function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
-  const { passe, repos, texte } = resume(jour, aujourdhui)
+function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
+  const { passe, repos, texte, charge } = resume(jour, aujourdhui, capacite)
   const nom = nomJour(jour.jour)
   const classes = ['ag-pj', passe ? 'passe' : '', repos ? 'repos' : '', jour.jour === aujourdhui ? 'auj' : '',
     posee ? 'nouveau' : ''].filter(Boolean).join(' ')
@@ -84,6 +97,7 @@ function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, re
       >
         <span className="j">{nom}</span>
         <span className="n">{texte}</span>
+        {charge ? <BarreCharge {...charge} /> : null}
         <CartesDuJour jour={jour} />
         {posee ? (
           <span className="ag-pj-ajout" data-p={posee.projet?.couleur || undefined}>
@@ -120,7 +134,7 @@ function useFlechesJours(actif, boutons) {
  * choisie (objet ou nul) ; `posees` : `{jour: tâche}` des dernières poses ; `onPoser(item, jour)`.
  */
 export default function PlanifierSemaine({
-  jours, aujourdhui, aPlacer = [], mesProjets = [], choisie = null, posees = {},
+  jours, aujourdhui, capacite = null, aPlacer = [], mesProjets = [], choisie = null, posees = {},
   onChoisir, onPoser, onOuvrirJour, onTerminer,
 }) {
   const boutons = useRef([])
@@ -137,7 +151,7 @@ export default function PlanifierSemaine({
         <div className="ag-jours chiffres" role="list" aria-label="Jours de la semaine">
           {jours.map((j, rang) => (
             <LigneJour
-              key={j.jour} jour={j} aujourdhui={aujourdhui} choisie={choisie} posee={posees[j.jour] ?? null}
+              key={j.jour} jour={j} aujourdhui={aujourdhui} capacite={capacite} choisie={choisie} posee={posees[j.jour] ?? null}
               onPoser={onPoser} onOuvrirJour={onOuvrirJour}
               refBouton={(el) => { boutons.current[rang] = el }}
             />

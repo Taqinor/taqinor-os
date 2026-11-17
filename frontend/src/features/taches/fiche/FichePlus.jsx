@@ -2,10 +2,7 @@ import { useState } from 'react'
 import { Link as LienIcone, X } from 'lucide-react'
 
 import { frenchError } from '../../../lib/frenchError'
-import {
-  attendreTache, classerErreur, creerTache, modifierRecurrence, nouvelleCle, poserRappel, recevoirTache, rechercher,
-  restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache,
-} from '../../../api/tachesApi'
+import { attendreTache, classerErreur, creerTache, modifierRecurrence, nouvelleCle, poserRappel, recevoirTache, rechercher, restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache } from '../../../api/tachesApi'
 import { proposerAnnuler } from '../lib/gestes'
 import { accord, duree, heure, jourCourt } from '../lib/textes'
 import CaseRonde from '../ui/CaseRonde'

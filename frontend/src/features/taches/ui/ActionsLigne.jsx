@@ -18,7 +18,8 @@ import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
    réconcilié par la réponse, défait par le toast « Annuler » (`gestes/{id}/annuler/`) — jamais une relecture de
    toute la liste. Un refus remet la ligne comme avant et le DIT.
 
-   L'écran fournit trois rappels sur SON état :
+   L'écran fournit trois rappels sur SON état (et `apresEcriture(data)`, facultatif : la réponse d'une écriture, dont la
+   `progression` du jour) :
      · `maj(id, champs)` — pose des champs sur la ligne (optimiste, puis réconciliation, puis retour arrière) ;
      · `retirer(item)` — retire la ligne et rend la fonction qui la remet (facultatif) ;
      · `sortApres(code, item, valeurs)` — vrai si, sur CET écran, la ligne quitte la liste après le geste
@@ -77,14 +78,15 @@ export function FeuilleSupprimer({ item, onConfirmer }) {
 // eslint-disable-next-line react-refresh/only-export-components -- hook du gestionnaire, co-localisé avec ses feuilles (D-ENF22)
 export function useActionsLigne({
   aujourdhui = aujourdhuiIso(), prochainJourOuvre = null, maj, retirer = null, sortApres = () => false, actionsPropres = {},
+  apresEcriture = null,
 }) {
   const [feuille, setFeuille] = useState(null)
   const [projets, setProjets] = useState(null)
   const [conflit, setConflit] = useState(null)
   const fermer = useCallback(() => setFeuille(null), [])
-  const rappels = useRef({ maj, retirer, sortApres })
+  const rappels = useRef({ maj, retirer, sortApres, apresEcriture })
   const relancer = useRef(null)
-  useEffect(() => { rappels.current = { maj, retirer, sortApres } })
+  useEffect(() => { rappels.current = { maj, retirer, sortApres, apresEcriture } })
 
   /** Pose le changement sur la ligne (ou la sort) ; rend la fonction qui le défait. */
   const poser = useCallback((code, item, champs, valeurs = champs) => {
@@ -118,6 +120,7 @@ export function useActionsLigne({
       const { data } = await planifierTache(item.id, corps)
       setConflit(null)
       if (data?.tache?.lock_version != null) rappels.current.maj(item.id, { lock_version: data.tache.lock_version })
+      rappels.current.apresEcriture?.(data)
       proposerAnnuler({
         message,
         onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); defaire() } : undefined,
@@ -181,6 +184,7 @@ export function useActionsLigne({
     const defaire = poser('attente', item, { statut: 'en_attente', en_attente_de: texte })
     try {
       const { data } = await attendreTache(item.id, { en_attente_de: texte })
+      rappels.current.apresEcriture?.(data)
       proposerAnnuler({
         message: `En attente de : ${texte}`,
         onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); defaire() } : undefined,
@@ -194,6 +198,7 @@ export function useActionsLigne({
     const defaire = poser('essentiel', item, { essentielle: suivant })
     try {
       const { data } = await marquerEssentiel({ tache_id: item.id, essentielle: suivant })
+      rappels.current.apresEcriture?.(data)
       proposerAnnuler({
         message: suivant ? 'Essentielle' : 'Plus essentielle',
         annonce: `${suivant ? 'Essentielle' : 'Plus essentielle'} : ${item.titre}`,

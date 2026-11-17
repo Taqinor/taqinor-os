@@ -20,6 +20,7 @@ vi.mock('../../api/tachesApi', async (original) => ({
   listerTousLesProjets: vi.fn(),
   annulerGeste: vi.fn(),
   attendreTache: vi.fn(),
+  listerToutesLesTaches: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -86,7 +87,7 @@ describe('TCH89 — Un projet : étapes', () => {
     expect(within(etape).getByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
     const sans = screen.getByRole('region', { name: 'Sans étape' })
     expect(within(sans).getByRole('button', { name: 'Timbres' })).toBeInTheDocument()
-    expect(screen.getByText('Faites (12)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Faites/ })).toHaveTextContent('12')
   })
 
   it('cocher met la ligne et l\'avancement à jour sur place ; Annuler la rouvre', async () => {
@@ -121,25 +122,28 @@ describe('TCH89 — Un projet : étapes', () => {
 })
 
 describe('Raccord F2 — Un projet : chiffres servis seulement', () => {
-  it('sans compte servi, une étape n\'affiche aucun « n sur m » ; « Faites (12) » reste un compte', async () => {
+  it('sans compte servi, une étape n\'affiche aucun « n sur m » ; « Faites (12) » est un compte qu\'on déplie', async () => {
     monter()
     const etape = await screen.findByRole('region', { name: 'Études' })
     expect(within(etape).queryByText(/ sur /)).toBeNull()
-    expect(screen.getByText('Faites (12)')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Faites/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Faites/ })).toHaveTextContent('12')
   })
 
-  it('servis par le serveur : « {faites} sur {total} » par étape et « Faites (n) » dépliable', async () => {
+  it('servis par le serveur : « {faites} sur {total} » par étape (`compteurs`) ; « Faites (n) » déplié lit les faites', async () => {
     const vue = exempleContrat('taches', 'projet_vue')
-    vue.sections[0].avancement = { faites: 2, total: 5 }
-    vue.faites = [{ ...vue.sections[0].taches[0], id: 99, titre: 'Dossier signé', statut: 'fait' }]
+    vue.sections[0].compteurs = { ouvertes: 3, faites: 2 }
+    vue.sans_section_compteurs = { ouvertes: 1, faites: 4 }
     api.lireVueProjet.mockResolvedValue({ data: vue })
+    api.listerToutesLesTaches.mockResolvedValue([{ ...vue.sections[0].taches[0], id: 99, titre: 'Dossier signé', statut: 'fait' }])
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await screen.findByRole('region', { name: 'Études' })
     expect(within(etape).getByText('2 sur 5')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Sans étape' })).getByText('4 sur 5')).toBeInTheDocument()
+    expect(api.listerToutesLesTaches).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: /^Faites/ }))
-    expect(screen.getByRole('button', { name: 'Dossier signé' })).toBeInTheDocument()
+    expect(api.listerToutesLesTaches).toHaveBeenCalledWith({ projet: 3, statut: 'fait', tri: 'fait_le' })
+    expect(await screen.findByRole('button', { name: 'Dossier signé' })).toBeInTheDocument()
   })
 })
 

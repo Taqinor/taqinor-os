@@ -9,7 +9,7 @@ import LigneTache from '../ui/LigneTache'
    Présentation seule : l'écran (`pages/taches/Projet.jsx`) écrit, met à jour sur place et annule ; ce composant
    rappelle `onTerminer`, `onOuvrir`, `onAction`, `onAjouter(sectionId)`.
    Raccord F2 — le compte d'une étape (« {faites} sur {total} ») et la liste des faites ne s'affichent que si le
-   serveur les sert (`sections[].avancement`, `faites`) : jamais un chiffre recalculé ici ; sinon « Faites ({n}) »
+   serveur les sert (`sections[].compteurs`, `sans_section_compteurs`) ; la liste des faites est lue à la demande. Sinon « Faites ({n}) »
    reste le seul compte, lu de `faites_nb`.
    ========================================================================== */
 
@@ -23,14 +23,16 @@ function AjouterTache({ sectionId, onAjouter }) {
   )
 }
 
-/** « {faites} sur {total} » d'une étape — seulement si le serveur le sert (`sections[].avancement`), jamais recompté ici. */
-function compteEtape(avancement) {
-  const { faites, total } = avancement ?? {}
+/** « {faites} sur {total} » d'une étape — seulement si le serveur le sert (`sections[].compteurs`,
+ * `sans_section_compteurs` : { ouvertes, faites }, comme `projet.compteurs`), jamais recompté ici. */
+function compteEtape(compteurs) {
+  const { faites, ouvertes } = compteurs ?? {}
+  const total = Number.isInteger(compteurs?.total) ? compteurs.total : (Number.isInteger(ouvertes) && Number.isInteger(faites) ? ouvertes + faites : null)
   return Number.isInteger(faites) && Number.isInteger(total) && total > 0 ? `${faites} sur ${total}` : ''
 }
 
-function Etape({ nom, taches, sectionId, aujourdhui, poignees, avancement = null }) {
-  const compte = compteEtape(avancement)
+function Etape({ nom, taches, sectionId, aujourdhui, poignees, compteurs = null }) {
+  const compte = compteEtape(compteurs)
   return (
     <section className="section ep-etape" aria-label={nom}>
       <h2 className="section-titre"><span>{nom}</span>{compte ? <span className="compte chiffres">{compte}</span> : null}</h2>
@@ -55,19 +57,38 @@ function Etape({ nom, taches, sectionId, aujourdhui, poignees, avancement = null
   )
 }
 
-/** « Faites (n) » : dépliable quand le serveur sert la liste (`faites`), sinon le seul compte servi (`faites_nb`). */
-function Faites({ vue, aujourdhui, poignees }) {
+/**
+ * « Faites (n) » : le compte vient de `faites_nb` ; déplié, la liste est lue à la demande (`chargerFaites`, toutes
+ * les pages de `GET taches/?projet=&statut=fait&tri=fait_le`). Un échec garde le compte et le dit, avec Réessayer.
+ */
+function Faites({ vue, aujourdhui, poignees, chargerFaites }) {
   const [ouvert, setOuvert] = useState(false)
+  const [liste, setListe] = useState(null)
+  const [echec, setEchec] = useState(false)
   if (!(vue.faites_nb > 0)) return null
-  const liste = Array.isArray(vue.faites) ? vue.faites : null
-  if (!liste) return <div className="ep-etape ep-faites"><span className="chiffres">{`Faites (${vue.faites_nb})`}</span></div>
+  if (!chargerFaites) return <div className="ep-etape ep-faites"><span className="chiffres">{`Faites (${vue.faites_nb})`}</span></div>
+  const lire = () => {
+    setEchec(false)
+    chargerFaites().then(setListe).catch(() => setEchec(true))
+  }
+  const basculer = () => {
+    if (!ouvert && liste === null) lire()
+    setOuvert((v) => !v)
+  }
   return (
     <section className="section ep-etape ep-faites" aria-label="Faites">
-      <button type="button" className="replie" aria-expanded={ouvert} onClick={() => setOuvert((v) => !v)}>
+      <button type="button" className="replie" aria-expanded={ouvert} onClick={basculer}>
         <span>Faites</span><span className="compte chiffres">{vue.faites_nb}</span>
         <ChevronDown className="i i-16" aria-hidden="true" />
       </button>
-      {ouvert ? (
+      {ouvert && echec ? (
+        <div className="pas-a-jour" role="status">
+          <span>Pas à jour</span>
+          <button type="button" className="bouton lien" onClick={lire}>Réessayer</button>
+        </div>
+      ) : null}
+      {ouvert && !echec && liste === null ? <div className="squelette" role="status" aria-label="Chargement" /> : null}
+      {ouvert && liste ? (
         <div className="liste" role="list">
           {liste.map((t) => (
             <LigneTache key={`${t.type}:${t.id}`} item={t} contexte="projet" aujourdhui={aujourdhui}
@@ -78,8 +99,7 @@ function Faites({ vue, aujourdhui, poignees }) {
     </section>
   )
 }
-
-export default function VueListe({ vue, aujourdhui, onTerminer, onOuvrir, onAction, onAjouter, onAnnonce }) {
+export default function VueListe({ vue, aujourdhui, onTerminer, onOuvrir, onAction, onAjouter, onAnnonce, chargerFaites = null }) {
   const poignees = { onTerminer, onOuvrir, onAction, onAjouter, onAnnonce }
   const sections = vue.sections ?? []
   const sansSection = vue.sans_section ?? []
@@ -87,12 +107,13 @@ export default function VueListe({ vue, aujourdhui, onTerminer, onOuvrir, onActi
     <div className="ep-vue-liste">
       {sections.map((s) => (
         <Etape key={s.id} nom={s.nom} taches={s.taches ?? []} sectionId={s.id} aujourdhui={aujourdhui} poignees={poignees}
-          avancement={s.avancement} />
+          compteurs={s.compteurs} />
       ))}
       {sansSection.length > 0 || sections.length === 0 ? (
-        <Etape nom="Sans étape" taches={sansSection} sectionId={null} aujourdhui={aujourdhui} poignees={poignees} />
+        <Etape nom="Sans étape" taches={sansSection} sectionId={null} aujourdhui={aujourdhui} poignees={poignees}
+          compteurs={vue.sans_section_compteurs} />
       ) : null}
-      <Faites vue={vue} aujourdhui={aujourdhui} poignees={poignees} />
+      <Faites vue={vue} aujourdhui={aujourdhui} poignees={poignees} chargerFaites={chargerFaites} />
     </div>
   )
 }

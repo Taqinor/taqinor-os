@@ -4,9 +4,7 @@ import { Search } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
-import {
-  annulerGeste, listerTaches, listerToutesLesEtiquettes, listerTousLesProjets, rechercher, rouvrirTache, terminerTache,
-} from '../../api/tachesApi'
+import { annulerGeste, listerToutesLesTaches, listerToutesLesEtiquettes, listerTousLesProjets, rechercher, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
@@ -124,7 +122,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     if (!serveur && !mots) return undefined
     let courant = true
     const lecture = serveur
-      ? listerTaches({
+      ? listerToutesLesTaches({
         q: mots || undefined,
         projet: projetId ?? undefined,
         etiquette: etiquetteId ?? undefined,
@@ -133,7 +131,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         vue: reserve ? 'quelque_jour' : undefined,
         periode: periode ?? undefined,
         tri: triServi,
-      }).then((r) => ({ projets: [], taches: r.data?.results ?? [] }))
+      }).then((taches) => ({ projets: [], taches })) // toutes les pages : une liste filtrée ne s'arrête pas à la page 1
       : rechercher({ q: mots, limite: 25 }).then((r) => ({ projets: r.data?.projets ?? [], taches: r.data?.taches ?? [] }))
     lecture
       .then((suite) => { if (courant) { setResultat(suite); setLu(true); setErreur('') } })

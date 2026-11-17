@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, FolderPlus } from 'lucide-react'
-import {
-  creerProjet, listerProjets, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite,
-} from '../../api/tachesApi'
+import { creerProjet, listerProjets, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { DialogueSupprimer } from '../../features/taches/projets/Dialogues'

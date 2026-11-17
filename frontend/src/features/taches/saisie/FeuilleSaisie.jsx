@@ -103,7 +103,8 @@ export function messageChamps(champs) {
       if (m) return m
     }
   }
-  for (const liste of Object.values(champs)) {
+  for (const [cle, liste] of Object.entries(champs)) {
+    if (cle === 'error' || cle === 'code') continue // clé de racine du 400, jamais un champ fautif
     const m = premier(liste)
     if (m) return m
   }
