@@ -20,6 +20,7 @@ from django.utils import timezone
 from apps.taches.choix import (
     CanalIncitation,
     ClePreference,
+    FamilleSuggestion,
     ModeRythme,
     ReponseIncitation,
     SourceObjectif,
@@ -27,10 +28,11 @@ from apps.taches.choix import (
     StatutJour,
     TypeIncitationEcran,
 )
+from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
 from apps.taches.moteur.gabarits import texte
-from apps.taches.selectors.base import taches_de
+from apps.taches.selectors.base import _du_compte, taches_de
 from apps.taches.selectors.rythme import (
     TYPES_PROPOSITION,
     cartes_de,
@@ -636,6 +638,113 @@ def entete_coach(user, jour):
         sortie.append(ligne[:reste])
         reste -= len(sortie[-1])
     return [ligne for ligne in sortie if ligne]
+
+
+# --- PATCH reglages/ (TCH69) -----------------------------------------------------------------
+
+NON_MODIFIABLE = 'Non modifiable ici.'
+RESERVE_ADMIN = 'Réservé à un administrateur.'
+#: Liste blanche de `PATCH reglages/` (reference/api.md §4 `reglages/`) ; tout autre champ → 400.
+BOOLEENS_REGLAGES = ('titres_notifications', 'titres_calendrier', 'titres_tuile', 'messages_sans_delai',
+                     'suggestions_societe', 'erp_dans_journee', 'comprendre_mon_rythme')
+LISTE_BLANCHE_REGLAGES = frozenset({*BOOLEENS_REGLAGES, 'rappel_avant_bloc_min', 'projet_arret_jours',
+                                    'familles_suggestions', 'pauses_sollicitations'})
+ARRET_MIN, ARRET_MAX = 5, 30  # `projet_arret_jours` (donnees.md §2.10)
+MINUTES_MAX = 32767  # borne de `PositiveSmallIntegerField`
+#: Cartes du rythme effacées quand « Comprendre mon rythme » est coupé (donnees.md §8).
+CARTES_DU_PROFIL = (TypeIncitationEcran.CONSTAT, *TYPES_PROPOSITION)
+#: Champs de rythme de `ReglagesRythme` remis à nul (ou zéro) avec le profil (donnees.md §8).
+PROFIL_REGLAGES = {'tenir_reference': None, 'tenir_fixee_le': None, 'tenir_silence_jusquau': None,
+                   'ref_taille_min': None, 'meilleur_tenu': None, 'echec_niveau': None, 'echec_le': None,
+                   'echec_n': 0}
+#: Champs de rythme du `PlanJour` effacés avec le profil (donnees.md §8).
+PROFIL_PLANS = {'statut_jour': '', 'compte_rythme': 0, 'micro_comptees': 0, 'taille_mediane_min': None}
+
+
+class ReserveAdministrateur(Exception):
+    """`suggestions_societe` modifié par un non-administrateur : 403, rien d'écrit."""
+
+
+def _type_pause(pause):
+    return pause.get('type') if isinstance(pause, dict) else pause
+
+
+def _pauses(valeur, reglages):
+    """« Réactiver » : la liste dite ne peut que RETIRER des types en pause (la nuit seule en ajoute)."""
+    actuelles = list(reglages.pauses_sollicitations or [])
+    if not isinstance(valeur, list):
+        raise ErreursRythme({'pauses_sollicitations': [VALEUR_INCONNUE]})
+    gardes = {_type_pause(p) for p in valeur}
+    if not gardes <= {_type_pause(p) for p in actuelles}:
+        raise ErreursRythme({'pauses_sollicitations': [VALEUR_INCONNUE]})
+    return [p for p in actuelles if _type_pause(p) in gardes]
+
+
+def _valeur_reglage(champ, valeur, reglages):
+    """La valeur validée de `champ` (liste blanche), ou `ErreursRythme`."""
+    erreur = ErreursRythme({champ: [VALEUR_INCONNUE]})
+    if champ in BOOLEENS_REGLAGES:
+        if not isinstance(valeur, bool):
+            raise erreur
+        return valeur
+    if champ == 'projet_arret_jours':
+        if isinstance(valeur, bool) or not isinstance(valeur, int) or not ARRET_MIN <= valeur <= ARRET_MAX:
+            raise erreur
+        return valeur
+    if champ == 'rappel_avant_bloc_min':
+        if valeur is not None and (isinstance(valeur, bool) or not isinstance(valeur, int)
+                                   or not 1 <= valeur <= MINUTES_MAX):
+            raise erreur
+        return valeur
+    if champ == 'familles_suggestions':
+        if not isinstance(valeur, list) or not set(valeur) <= set(FamilleSuggestion.values):
+            raise erreur
+        return [f for f in FamilleSuggestion.values if f in valeur]
+    return _pauses(valeur, reglages)
+
+
+def _valeurs_reglages(donnees, reglages, est_admin):
+    hors_liste = {champ: [NON_MODIFIABLE] for champ in donnees if champ not in LISTE_BLANCHE_REGLAGES}
+    if hors_liste:
+        raise ErreursRythme(hors_liste)
+    if 'suggestions_societe' in donnees and not est_admin:
+        raise ReserveAdministrateur()
+    return {champ: _valeur_reglage(champ, valeur, reglages) for champ, valeur in donnees.items()}
+
+
+def effacer_profil(user, reglages):
+    """« Comprendre mon rythme » coupé : rien n'est plus calculé ni GARDÉ (donnees.md §8) — cartes
+    du rythme supprimées, état de « Garder ce rythme » et mémoires remis à nul, champs de rythme des
+    `PlanJour` effacés. Le mode et l'objectif restent."""
+    cartes_de(user).filter(type__in=CARTES_DU_PROFIL).delete()
+    for champ, valeur in PROFIL_REGLAGES.items():
+        setattr(reglages, champ, valeur)
+    _du_compte(PlanJour.objects, user).update(**PROFIL_PLANS, updated_at=timezone.now())
+    return list(PROFIL_REGLAGES)
+
+
+def modifier_reglages(user, donnees, *, est_admin):
+    """`PATCH reglages/` (liste blanche, sans geste) → réglages relus. `titres_notifications` pose
+    `titres_notifications_demande_le` (question du 1er rappel, A17-T4). Lève `ErreursRythme` (400),
+    `ReserveAdministrateur` (403), `SansReglages` (404)."""
+    if not hasattr(donnees, 'items'):
+        raise ErreursRythme({'non_field_errors': [VALEUR_INCONNUE]})
+    with transaction.atomic():
+        reglages = reglages_de(user, verrou=True)
+        if reglages is None:
+            raise SansReglages()
+        valeurs = _valeurs_reglages(dict(donnees.items()), reglages, est_admin)
+        coupe = reglages.comprendre_mon_rythme and valeurs.get('comprendre_mon_rythme') is False
+        for champ, valeur in valeurs.items():
+            setattr(reglages, champ, valeur)
+        ecrits = [*valeurs, 'updated_at']
+        if 'titres_notifications' in valeurs:
+            reglages.titres_notifications_demande_le = timezone.now()
+            ecrits.append('titres_notifications_demande_le')
+        if coupe:
+            ecrits += effacer_profil(user, reglages)
+        reglages.save(update_fields=ecrits)
+    return reglages
 
 
 def etapes_nocturnes(company_id, jour):
