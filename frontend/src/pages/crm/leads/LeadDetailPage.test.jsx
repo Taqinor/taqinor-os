@@ -33,6 +33,7 @@ vi.mock('../../../features/crm/workspace/LeadWorkspace', () => ({
 vi.mock('../../../features/uxviews/FavoriButton', () => ({ default: () => null }))
 
 import LeadDetailPage from './LeadDetailPage'
+import crmApi from '../../../api/crmApi'
 
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia(false) })
 
@@ -69,5 +70,27 @@ describe('LeadDetailPage — AERR120 refus de « Signé »', () => {
     expect(screen.getByLabelText('ICE')).toHaveValue('001122334455667')
     expect(screen.getByText('Date invalide.')).toBeInTheDocument()
     expect(screen.getByTestId('chemin')).toHaveTextContent('/crm/leads/12')
+  })
+})
+
+describe('LeadDetailPage — AERR112 lecture en panne', () => {
+  const monter = () => render(
+    <MemoryRouter initialEntries={['/crm/leads/12']}>
+      <Routes><Route path="/crm/leads/:id" element={<LeadDetailPage />} /></Routes>
+    </MemoryRouter>,
+  )
+
+  it('500 : Lecture impossible + Réessayer, jamais « Lead introuvable »', async () => {
+    crmApi.getLead.mockRejectedValueOnce({ response: { status: 500 } })
+    monter()
+    expect(await screen.findByText('Lecture impossible')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+    expect(screen.queryByText('Lead introuvable')).not.toBeInTheDocument()
+  })
+
+  it('404 : Lead introuvable', async () => {
+    crmApi.getLead.mockRejectedValueOnce({ response: { status: 404 } })
+    monter()
+    expect(await screen.findByText('Lead introuvable')).toBeInTheDocument()
   })
 })
