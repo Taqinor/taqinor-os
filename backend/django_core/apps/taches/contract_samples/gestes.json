@@ -1,0 +1,16 @@
+{
+  "endpoint": "GET /api/django/taches/gestes/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes ». Source : docs/taches/reference/api.md annexe A (`gestes.json`), recopié mot pour mot.",
+  "exemple": {
+    "results": [
+      {
+        "id": 77,
+        "type": "planification",
+        "message": "Reportée à jeu. 19",
+        "created_at": "2026-11-17T09:20:00+01:00",
+        "annule_le": null,
+        "annulable": true
+      }
+    ]
+  }
+}

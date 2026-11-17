@@ -1,0 +1,30 @@
+{
+  "endpoint": "GET /api/django/taches/tuile/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET tuile/ · consommateurs : `scriptTuile.js` ». Source : docs/taches/reference/api.md annexe A (`tuile.json`), recopié mot pour mot.",
+  "exemple": {
+    "jour": "2026-11-17",
+    "maj": "2026-11-17T09:41:00+01:00",
+    "faites": 1,
+    "prevues": 4,
+    "objectif": 5,
+    "essentiel": {
+      "faites": 0,
+      "prevues": 1
+    },
+    "top": [
+      {
+        "id": 20,
+        "titre": "Devis Settat",
+        "heure": "10:00",
+        "priorite": 2
+      }
+    ],
+    "reste": 1,
+    "prochaine_echeance": {
+      "titre": "Devis Settat",
+      "jour": "2026-11-19",
+      "heure": null
+    },
+    "lien": "https://erp.example/taches/aujourdhui"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "endpoint": "POST /api/django/taches/projets/{id}/planification/apercu/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST projets/{id}/planification/apercu/ · consommateurs : Planifier le projet, carte `plan_projet` ». Source : docs/taches/reference/api.md annexe A (`planification_apercu.json`), recopié mot pour mot.",
+  "exemple": {
+    "sections": [
+      {
+        "nom": "Études",
+        "taches": [
+          {
+            "titre": "Visite",
+            "jalon": false,
+            "sous_taches": [
+              "photos"
+            ]
+          },
+          {
+            "titre": "Mise en service",
+            "jalon": true,
+            "sous_taches": []
+          }
+        ]
+      }
+    ]
+  }
+}

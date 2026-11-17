@@ -1,0 +1,31 @@
+{
+  "endpoint": "POST /api/django/taches/vu/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST vu/ · consommateurs : Aujourd'hui ». Source : docs/taches/reference/api.md annexe A (`vu.json`), recopié mot pour mot.",
+  "exemple": {
+    "carte_du_moment": {
+      "type": "retour",
+      "proposition": {
+        "id": 52,
+        "type": "retour",
+        "cle": "",
+        "texte": "Tu reviens après 10 jours : 18 tâches attendaient.",
+        "donnees": {
+          "jours": 10,
+          "taches": 18
+        },
+        "boutons": [
+          {
+            "reponse": "remettre_dans_propose",
+            "libelle": "Les remettre dans Proposé"
+          },
+          {
+            "reponse": "une_par_une",
+            "libelle": "Les voir une par une"
+          }
+        ],
+        "expire_le": "2026-11-24"
+      },
+      "donnees": {}
+    }
+  }
+}

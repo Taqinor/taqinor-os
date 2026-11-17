@@ -1,0 +1,252 @@
+{
+  "endpoint": "GET /api/django/taches/journee/proposition/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET journee/proposition/ · consommateurs : « Voir tout », carte `plan_propose`, « Planifie ma journée » ». Source : docs/taches/reference/api.md annexe A (`journee_proposition.json`), recopié mot pour mot.",
+  "exemple": {
+    "jour": "2026-11-17",
+    "objectif": {
+      "nb": 5,
+      "source": "accepte",
+      "mode": "pousser",
+      "zone": null
+    },
+    "capacite": {
+      "minutes": 240,
+      "source": "defaut",
+      "rendez_vous_minutes": 60,
+      "disponible_minutes": 180
+    },
+    "a_decider": [
+      {
+        "type": "tache",
+        "id": 50,
+        "titre": "Site web",
+        "statut": "a_faire",
+        "projet": {
+          "id": 9,
+          "nom": "SiteWeb",
+          "couleur": "indigo",
+          "priorite": 2
+        },
+        "section": null,
+        "parent_id": null,
+        "priorite": 1,
+        "jour_prevu": "2026-11-13",
+        "moment": "",
+        "heure_debut": null,
+        "echeance": null,
+        "echeance_heure": null,
+        "quelque_jour": false,
+        "estimation_minutes": null,
+        "reports": 3,
+        "rang": null,
+        "motif": "reportee_3_fois",
+        "raison": null,
+        "explication": "reportée 3 fois",
+        "rappel": null,
+        "lien": null,
+        "checklist": null,
+        "sous_taches": null,
+        "recurrente": false,
+        "routine": false,
+        "jalon": false,
+        "bloquee_par": null,
+        "en_attente_de": "",
+        "essentielle": false,
+        "prevue_au_plan": false,
+        "confidentiel": false,
+        "confidentielle": false,
+        "source": "rapide",
+        "peut_cloturer": true,
+        "lock_version": 6
+      }
+    ],
+    "proposition": [
+      {
+        "item": {
+          "type": "tache",
+          "id": 21,
+          "titre": "Déclaration TVA",
+          "statut": "a_faire",
+          "projet": {
+            "id": 4,
+            "nom": "Admin",
+            "couleur": "prune",
+            "priorite": 1
+          },
+          "section": null,
+          "parent_id": null,
+          "priorite": 3,
+          "jour_prevu": null,
+          "moment": "",
+          "heure_debut": null,
+          "echeance": "2026-11-19",
+          "echeance_heure": null,
+          "quelque_jour": false,
+          "estimation_minutes": 30,
+          "reports": 0,
+          "rang": null,
+          "motif": null,
+          "raison": {
+            "code": "echeance_proche",
+            "texte": "échéance jeudi"
+          },
+          "explication": "échéance jeudi",
+          "rappel": null,
+          "lien": null,
+          "checklist": null,
+          "sous_taches": null,
+          "recurrente": false,
+          "routine": false,
+          "jalon": false,
+          "bloquee_par": null,
+          "en_attente_de": "",
+          "essentielle": false,
+          "prevue_au_plan": false,
+          "confidentiel": false,
+          "confidentielle": false,
+          "source": "rapide",
+          "peut_cloturer": true,
+          "lock_version": 2
+        },
+        "deja_prevue": false,
+        "cochee": true
+      },
+      {
+        "item": {
+          "type": "tache",
+          "id": 30,
+          "titre": "Préparer formation",
+          "statut": "a_faire",
+          "projet": {
+            "id": 7,
+            "nom": "Équipe",
+            "couleur": "bleu",
+            "priorite": 3
+          },
+          "section": null,
+          "parent_id": null,
+          "priorite": 0,
+          "jour_prevu": null,
+          "moment": "",
+          "heure_debut": null,
+          "echeance": null,
+          "echeance_heure": null,
+          "quelque_jour": false,
+          "estimation_minutes": 45,
+          "reports": 0,
+          "rang": null,
+          "motif": null,
+          "raison": {
+            "code": "prochaine_action",
+            "texte": "prochaine action de Équipe"
+          },
+          "explication": "prochaine action de Équipe",
+          "rappel": null,
+          "lien": null,
+          "checklist": null,
+          "sous_taches": null,
+          "recurrente": false,
+          "routine": false,
+          "jalon": false,
+          "bloquee_par": null,
+          "en_attente_de": "",
+          "essentielle": false,
+          "prevue_au_plan": false,
+          "confidentiel": false,
+          "confidentielle": false,
+          "source": "manuel",
+          "peut_cloturer": true,
+          "lock_version": 2
+        },
+        "deja_prevue": false,
+        "cochee": true
+      }
+    ],
+    "charge": {
+      "minutes_estimees": 150,
+      "sans_estimation": 1,
+      "surcharge": false,
+      "non_calculable": false
+    },
+    "rythme": {
+      "id": 41,
+      "type": "proposition_palier",
+      "cle": "monter",
+      "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+      "donnees": {
+        "N": 5,
+        "N1": 6,
+        "tenus": 7
+      },
+      "boutons": [
+        {
+          "reponse": "oui",
+          "libelle": "Monter à 6"
+        },
+        {
+          "reponse": "pas_maintenant",
+          "libelle": "Pas maintenant"
+        }
+      ],
+      "expire_le": "2026-11-24"
+    },
+    "suite_par_projet": [
+      {
+        "projet": {
+          "id": 7,
+          "nom": "Équipe",
+          "couleur": "bleu",
+          "priorite": 3
+        },
+        "items": [
+          {
+            "type": "tache",
+            "id": 31,
+            "titre": "Réserver la salle",
+            "statut": "a_faire",
+            "projet": {
+              "id": 7,
+              "nom": "Équipe",
+              "couleur": "bleu",
+              "priorite": 3
+            },
+            "section": null,
+            "parent_id": null,
+            "priorite": 0,
+            "jour_prevu": null,
+            "moment": "",
+            "heure_debut": null,
+            "echeance": null,
+            "echeance_heure": null,
+            "quelque_jour": false,
+            "estimation_minutes": null,
+            "reports": 0,
+            "rang": 2048,
+            "motif": null,
+            "raison": {
+              "code": "action_suivante",
+              "texte": "puis dans Équipe"
+            },
+            "explication": "puis dans Équipe",
+            "rappel": null,
+            "lien": null,
+            "checklist": null,
+            "sous_taches": null,
+            "recurrente": false,
+            "routine": false,
+            "jalon": false,
+            "bloquee_par": null,
+            "en_attente_de": "",
+            "essentielle": false,
+            "prevue_au_plan": false,
+            "confidentiel": false,
+            "confidentielle": false,
+            "source": "manuel",
+            "peut_cloturer": true,
+            "lock_version": 0
+          }
+        ]
+      }
+    ]
+  }
+}
