@@ -51,5 +51,6 @@ Faites : 5 + 4 + 7 + 5 = **21** · objectif atteint **3 jours sur 4** · essenti
 - UNE forme par idée : **segments** pour la progression de la journée (partout : Aujourd'hui, bilan, tuile,
   cockpit, Copilote) ; **barre fine** pour l'avancement d'un projet ; plus d'anneau, plus de camembert.
 - La tuile n'est pas interactive : pas de case à cocher, un point de couleur de projet devant chaque ligne.
-- Vocabulaire : `docs/taches/travail/spec-7-ecrans.md` §3. Interdits vus dans les maquettes : « Plus tard »,
-  « Après… » écrit « attend : », « plan 3/5 » comme chiffre principal.
+- Vocabulaire : `docs/taches/travail/spec-7-ecrans.md` §3 et `docs/taches/reference/textes.md` §1 font foi.
+  Interdits vus dans les maquettes : « Plus tard », « Après… », « plan 3/5 » comme chiffre principal. Une tâche qui
+  en attend une autre porte la puce « attend : {titre} » (terme « En attente de… »).

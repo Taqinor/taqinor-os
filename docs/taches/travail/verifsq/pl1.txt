@@ -1,0 +1,118 @@
+# Lane plan for docs/taches/travail/essai-plan/essai-F1.md  (max-lanes=8)
+Portée : --group 'Fusion F1' — 47 tâche(s) ouverte(s) retenue(s) sur 144 (97 hors portée, invisibles aux portes SCA3 / PACT11 / @after externe)
+
+47 buildable task(s) across 11 independent lane(s) -> 21 wave(s), up to 7 in parallel.
+0 gated (auto-gating is OFF — every category builds; this stays 0 by design), 0 unassigned (need a @lane:/@files: tag).
+Model mix (auto-routed; `@model:` tag overrides): 2 haiku / 37 sonnet / 8 opus — dispatch each lane's Agent with the lane's `model=` below (founder rule: never inherit the session model).
+
+## Workers (8 time-balanced agents — dispatch ONE per row; each drains its lanes in sequence)
+Effort is bin-packed (LPT) so all agents finish together: makespan ~40 vs total 116 (size cost S=1/M=2/L=4/XL=6; untagged=M).
+File-disjoint: 0 lane-pair(s) merged on a shared declared file, so every worker folds clean (append-only surfaces like index.css exempt).
+- **Agent 1** (model=opus, cost~40, 15 task(s)): taches/socle[TCH1/TCH2/TCH3/TCH4/TCH5/TCH6/TCH7/TCH8/TCH9/TCH10/TCH11/TCH12/TCH13/TCH14/TCH15]
+- **Agent 2** (model=sonnet, cost~18, 6 task(s)): taches/socle-front[TCH41/TCH42/TCH43/TCH44/TCH45/TCH46]
+- **Agent 3** (model=sonnet, cost~12, 4 task(s)): taches/pur-rythme[TCH25/TCH26/TCH27/TCH28]
+- **Agent 4** (model=sonnet, cost~11, 5 task(s)): taches/socle-services[TCH33/TCH34/TCH35/TCH36/TCH37]
+- **Agent 5** (model=sonnet, cost~10, 3 task(s)): taches/pur-saisie[TCH38/TCH39/TCH40]
+- **Agent 6** (model=opus, cost~9, 6 task(s)): taches/etranger-securite[TCH16/TCH17/TCH18/TCH19], taches/pur-projets[TCH31/TCH32]
+- **Agent 7** (model=sonnet, cost~9, 5 task(s)): taches/pur-classement[TCH22/TCH23/TCH24], taches/etranger-parametres[TCH20/TCH21]
+- **Agent 8** (model=sonnet, cost~7, 3 task(s)): taches/pur-sollicitations[TCH29/TCH30], taches/orchestrateur[TCH47]
+
+## Pipelined merge-batches (3 wave(s) of ~80 tasks — build wave K+1 while wave K tests/CIs; waves are mutually file-disjoint so they never collide)
+Dispatch wave 1's agents now; when any agent finishes, work-steal the heaviest not-yet-started lane of the next wave (keeps the pipeline full and successive waves length-balanced).
+- **Wave 1** (32 tasks, 7 agents):
+    - agent 1 (model=opus, cost~40, 15 task(s)): taches/socle
+    - agent 2 (model=sonnet, cost~12, 4 task(s)): taches/pur-rythme
+    - agent 3 (model=sonnet, cost~6, 3 task(s)): taches/pur-classement
+    - agent 4 (model=sonnet, cost~6, 2 task(s)): taches/pur-sollicitations
+    - agent 5 (model=opus, cost~5, 4 task(s)): taches/etranger-securite
+    - agent 6 (model=sonnet, cost~4, 2 task(s)): taches/pur-projets
+    - agent 7 (model=sonnet, cost~3, 2 task(s)): taches/etranger-parametres
+- **Wave 2** (14 tasks, 3 agents):
+    - agent 1 (model=sonnet, cost~18, 6 task(s)): taches/socle-front
+    - agent 2 (model=sonnet, cost~11, 5 task(s)): taches/socle-services
+    - agent 3 (model=sonnet, cost~10, 3 task(s)): taches/pur-saisie
+- **Wave 3** (1 tasks, 1 agents):
+    - agent 1 (model=haiku, cost~1, 1 task(s)): taches/orchestrateur
+
+## Waves (each row builds in parallel; one task per lane)
+- **Wave 1** (7 parallel):
+    - `TCH1`  [taches/socle] (haiku)
+    - `TCH16`  [taches/etranger-securite] (opus)
+    - `TCH25`  [taches/pur-rythme] (sonnet)
+    - `TCH22`  [taches/pur-classement] (sonnet)
+    - `TCH20`  [taches/etranger-parametres] (sonnet)
+    - `TCH31`  [taches/pur-projets] (sonnet)
+    - `TCH29`  [taches/pur-sollicitations] (sonnet)
+- **Wave 2** (7 parallel):
+    - `TCH2`  [taches/socle] (sonnet)  after TCH1
+    - `TCH17`  [taches/etranger-securite] (opus)  after TCH16
+    - `TCH26`  [taches/pur-rythme] (sonnet)  after TCH25
+    - `TCH23`  [taches/pur-classement] (sonnet)  after TCH22
+    - `TCH21`  [taches/etranger-parametres] (sonnet)  after TCH20
+    - `TCH32`  [taches/pur-projets] (sonnet)  after TCH31
+    - `TCH30`  [taches/pur-sollicitations] (sonnet)  after TCH29
+- **Wave 3** (4 parallel):
+    - `TCH3`  [taches/socle] (sonnet)  after TCH2
+    - `TCH18`  [taches/etranger-securite] (opus)
+    - `TCH27`  [taches/pur-rythme] (sonnet)  after TCH26
+    - `TCH24`  [taches/pur-classement] (sonnet)  after TCH23
+- **Wave 4** (3 parallel):
+    - `TCH4`  [taches/socle] (sonnet)  after TCH1
+    - `TCH19`  [taches/etranger-securite] (opus)
+    - `TCH28`  [taches/pur-rythme] (sonnet)  after TCH27
+- **Wave 5** (1 parallel):
+    - `TCH5`  [taches/socle] (opus)  after TCH4
+- **Wave 6** (1 parallel):
+    - `TCH6`  [taches/socle] (sonnet)  after TCH4
+- **Wave 7** (2 parallel):
+    - `TCH7`  [taches/socle] (sonnet)  after TCH6
+    - `TCH38`  [taches/pur-saisie] (sonnet)  after TCH6
+- **Wave 8** (2 parallel):
+    - `TCH8`  [taches/socle] (sonnet)  after TCH7
+    - `TCH39`  [taches/pur-saisie] (sonnet)  after TCH38
+- **Wave 9** (2 parallel):
+    - `TCH9`  [taches/socle] (sonnet)  after TCH8
+    - `TCH40`  [taches/pur-saisie] (sonnet)  after TCH39
+- **Wave 10** (1 parallel):
+    - `TCH10`  [taches/socle] (sonnet)  after TCH6
+- **Wave 11** (1 parallel):
+    - `TCH11`  [taches/socle] (opus)  after TCH8
+- **Wave 12** (1 parallel):
+    - `TCH12`  [taches/socle] (opus)  after TCH11
+- **Wave 13** (2 parallel):
+    - `TCH13`  [taches/socle] (opus)  after TCH12,TCH3
+    - `TCH33`  [taches/socle-services] (sonnet)  after TCH12,TCH9
+- **Wave 14** (2 parallel):
+    - `TCH14`  [taches/socle] (sonnet)  after TCH13,TCH2
+    - `TCH34`  [taches/socle-services] (sonnet)  after TCH33
+- **Wave 15** (2 parallel):
+    - `TCH15`  [taches/socle] (sonnet)  after TCH14,TCH5
+    - `TCH35`  [taches/socle-services] (sonnet)  after TCH33
+- **Wave 16** (2 parallel):
+    - `TCH41`  [taches/socle-front] (sonnet)  after TCH15
+    - `TCH36`  [taches/socle-services] (sonnet)  after TCH10,TCH13,TCH34,TCH35
+- **Wave 17** (2 parallel):
+    - `TCH42`  [taches/socle-front] (sonnet)  after TCH15,TCH3
+    - `TCH37`  [taches/socle-services] (sonnet)  after TCH36
+- **Wave 18** (1 parallel):
+    - `TCH43`  [taches/socle-front] (sonnet)  after TCH15,TCH42
+- **Wave 19** (2 parallel):
+    - `TCH44`  [taches/socle-front] (sonnet)  after TCH15,TCH43
+    - `TCH47`  [taches/orchestrateur] (haiku)  after TCH15,TCH43
+- **Wave 20** (1 parallel):
+    - `TCH45`  [taches/socle-front] (sonnet)  after TCH15,TCH44
+- **Wave 21** (1 parallel):
+    - `TCH46`  [taches/socle-front] (sonnet)  after TCH15,TCH44
+
+## Lanes (tasks inside a lane run in sequence; model = lane's max tier)
+- **taches/socle** (15, model=opus): TCH1, TCH2, TCH3, TCH4, TCH5, TCH6, TCH7, TCH8, TCH9, TCH10, TCH11, TCH12, TCH13, TCH14, TCH15
+- **taches/socle-front** (6, model=sonnet, owners=deploy): TCH41, TCH42, TCH43, TCH44, TCH45, TCH46
+- **taches/socle-services** (5, model=sonnet): TCH33, TCH34, TCH35, TCH36, TCH37
+- **taches/etranger-securite** (4, model=opus, owners=securite): TCH16, TCH17, TCH18, TCH19
+- **taches/pur-rythme** (4, model=sonnet): TCH25, TCH26, TCH27, TCH28
+- **taches/pur-classement** (3, model=sonnet): TCH22, TCH23, TCH24
+- **taches/pur-saisie** (3, model=sonnet): TCH38, TCH39, TCH40
+- **taches/etranger-parametres** (2, model=sonnet, owners=parametres): TCH20, TCH21
+- **taches/pur-projets** (2, model=sonnet): TCH31, TCH32
+- **taches/pur-sollicitations** (2, model=sonnet): TCH29, TCH30
+- **taches/orchestrateur** (1, model=haiku): TCH47

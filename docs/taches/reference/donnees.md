@@ -27,7 +27,8 @@ Règles transverses (chaque modèle) :
 - Unicité : champs commençant par `company` ; sur Projet/Tache, `is_deleted=False` dans `condition`. Noms ≤ 30
   caractères, préfixe `taches_`. Django 5.2 : `CheckConstraint(condition=…, name=…)` (mot-clé) ; tout `JSONField` à
   défaut liste ou dict prend un appelable (`default=list`, `default=dict`).
-- `nom_cle` (Projet, Section, Etiquette) : calculé dans le seul `save()` du modèle par `saisie.cle_nom(nom)` ;
+- `nom_cle` (Projet, Section, Etiquette) : calculé dans le seul `save()` du modèle par `cle_nom(nom)` du paquet
+  `saisie/normalisation.py` (les modèles ne dépendent pas de l'analyseur) ;
   `bulk_create` et `QuerySet.update(nom=…)` INTERDITS sur ces trois modèles (sinon `''` et collision).
 - Jours = `timezone.localdate()` dans le fuseau de la société (`CELERY_TIMEZONE = 'Africa/Casablanca'`).
 - Ordre manuel : entiers espacés de 1 024 ; renumérotation de la seule liste concernée par `QuerySet.update()`.
@@ -58,7 +59,7 @@ Règles transverses (chaque modèle) :
 | `MotifRevoir` | `reportee_3_fois` · `jour_passe` · `echeance_passee` · `echeance_proche` · `activite_passee` (activité ERP due avant J) | s3 §3.1, A17 |
 | `Decision` (sous-ensembles par route, api.md) | `aujourdhui` · `garder` (sa date si ≥ J, sinon J) · `prochain_jour_ouvre` « Reporter à lun. 23 » · `jour` (+ date) · `un_jour` « En réserve » · `abandonner` | s3, A17 (MAJ-5), spec-7 r3 |
 | `FamilleObligation` | `visite` · `pose` · `intervention` (date seule, bande « Toute la journée », N4) · `touches` (« Suivi des relances ») | s6a, A16-N4, min-21 |
-| `CarteDuMoment` (ordre de priorité) | `retour` · `bilan_hier` · `garder` · `alleger` · `faire_bilan` · `rythme` · `revelation` (le brouillon et l'astuce de geste sont posés par le navigateur, spec-7 r3 §4) | spec-7 r3 §4, A17-M1 |
+| `CarteDuMoment` (ordre de priorité) | `retour` · `bilan_hier` · `garder` · `alleger` · `faire_bilan` · `rythme` · `pause` (sollicitation mise en pause) · `revelation` (le brouillon et l'astuce de geste sont posés par le navigateur, spec-7 r3 §4) | spec-7 r3 §4, A17-M1 |
 | `CodeSante` | `sans_prochaine_action` · `a_l_arret` · `echeance_menacee` · `neglige` · `tout_fait` | s4 §E-F |
 | `AlerteSaisie` | `deux_<type>` · `date_passee` · `heure_passee` · `plusieurs_projets` · `projet_archive` · `date_invalide` · `duree_hors_bornes` | s2, regles manque 12 |
 | `TypeJeton` (saisie) | `jour` · `heure` · `moment` · `echeance` · `quelque_jour` · `projet` · `section` · `priorite` · `etiquette` · `duree` · `recurrence` · `rappel` | s2 §3.1 |
@@ -612,7 +613,7 @@ Paquets (les gardes lisent `models/`, `services/`, `views/`, `serializers/`) :
   `platform.py` (manifeste, `agent_actions_module`, `record_targets: []`), `sweeps.py`, `contract_samples/` ; front
   `module.config.jsx` SANS navigation + pages vides + `features/taches/api/client.js` + `ui/LigneTache.jsx`. Droit
   déclaré dans `permissions_registre.py` (tâche étrangère), accordé à aucun rôle.
-- **L1 saisie** : `saisie.py`, `moteur/recurrence.py`, `services/creation.py`, `views/saisie.py`, `serializers/saisie.py`.
+- **L1 saisie** : paquet `saisie/` (sauf `normalisation.py` et `dates_pures.py`, livrés par L0), `moteur/recurrence.py`, `services/creation.py`, `views/saisie.py`, `serializers/saisie.py`.
 - **L2 journée** : `moteur/classement.py`, `selectors/journee.py`, `views/journee.py`, `views/agenda.py`.
 - **L3 projets** : `moteur/{sante,decalage}.py`, `views/projets.py`.
 - **L4 rythme** : `moteur/{rythme,sollicitations,gabarits}.py`, `nocturne.py`, `views/rythme.py`, `views/reglages.py`.
@@ -628,7 +629,7 @@ Paquets (les gardes lisent `models/`, `services/`, `views/`, `serializers/`) :
 
 | Fichier | Fonctions |
 |---|---|
-| `saisie.py` | `normaliser`, `cle_nom`, `analyser(texte, maintenant, projets, etiquettes, ignorer, porte)` (porte `capture` : jour, heure, moment, échéance, priorité, durée, projet EXISTANT, « projet <nom> » en tête), `decouper_collage(textes, …)` (projet par collage), `decouper_plan(texte)` |
+| paquet `saisie/` (`normalisation.py` : `normaliser`, `cle_nom` ; `dates_pures.py` ; `grammaire.py`, `analyseur.py` ; `collage.py` ; `plan.py` ; `__init__.py` sans ré-export) | `analyser(texte, maintenant, projets, etiquettes, ignorer, porte)` (porte `capture` : jour, heure, moment, échéance, priorité, durée, projet EXISTANT, « projet <nom> » en tête), `decouper_collage(textes, …)` (projet par collage), `decouper_plan(texte)` |
 | `moteur/recurrence.py` | `premiere_occurrence`, `prochaine_occurrence`, `libelle_regle` |
 | `moteur/classement.py` | `placer`, `cle_tri`, `explication`, `capacite`, `proposer_plan` |
 | `moteur/sante.py` | `avancement`, `burnup`, `sans_prochaine_action`, `a_l_arret`, `echeance_menacee`, `neglige`, `tout_fait`, `constat_projets` |
@@ -724,3 +725,7 @@ privée (A9) est dans `textes.md` §6.
 12. Invariants 27-32 : projet supprimé, module invisible, condition d'émission, lien d'activité, hors ligne, ordre.
 13. Lanes L0-L7 et dernière vague ; fichiers régénérés une fois par l'orchestrateur.
 14. Gabarits déplacés dans `textes.md` ; `tuile_pure`, `decouper_plan`, `semaine_courte`, `tout_fait` nommés.
+
+## Révision 2.1
+
+`CarteDuMoment` gagne `pause` (après `rythme`) ; `cle_nom` vit dans `saisie/normalisation.py`, `saisie` devient un paquet (plan-squelette §7).

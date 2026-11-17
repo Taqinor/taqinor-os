@@ -44,8 +44,7 @@ mise en page bureau à deux colonnes, anneau et camembert, toutes les surcouches
 
 ## Écarts assumés
 1. « Fini quand… » replié (Détails, spec 7).
-2. « Après « … » » au lieu de « attend : » : consigne du coordinateur et `SCENARIO.md`. **Contradiction** :
-   `spec-7-ecrans.md` §3 ligne 90 dit encore « puce « attend : Visite » » et interdit « après » — à trancher dans la spec.
+2. (levé) « attend : … » rétabli partout (spec 7 §3, `textes.md` §1) ; « Après… » interdit.
 3. Revue : « Suivant » par carte sur iPhone seulement ; « Passer » quitte la revue.
 4. « Proposé pour aujourd'hui », « objectif atteint » (termes interdits évités).
 5. Rythme : proposition au-dessus du graphique.

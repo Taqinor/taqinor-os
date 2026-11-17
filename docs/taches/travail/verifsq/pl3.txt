@@ -1,0 +1,113 @@
+# Lane plan for docs/taches/travail/essai-plan/essai-F3.md  (max-lanes=8)
+Portée : --group 'Fusion F3' — 41 tâche(s) ouverte(s) retenue(s) sur 47 (6 hors portée, invisibles aux portes SCA3 / PACT11 / @after externe)
+
+41 buildable task(s) across 11 independent lane(s) -> 13 wave(s), up to 8 in parallel.
+0 gated (auto-gating is OFF — every category builds; this stays 0 by design), 0 unassigned (need a @lane:/@files: tag).
+Model mix (auto-routed; `@model:` tag overrides): 1 haiku / 25 sonnet / 15 opus — dispatch each lane's Agent with the lane's `model=` below (founder rule: never inherit the session model).
+
+## Workers (8 time-balanced agents — dispatch ONE per row; each drains its lanes in sequence)
+Effort is bin-packed (LPT) so all agents finish together: makespan ~20 vs total 96 (size cost S=1/M=2/L=4/XL=6; untagged=M).
+File-disjoint: 0 lane-pair(s) merged on a shared declared file, so every worker folds clean (append-only surfaces like index.css exempt).
+- **Agent 1** (model=opus, cost~20, 8 task(s)): taches/final[TCH127/TCH128/TCH129/TCH130/TCH131/TCH132/TCH133/TCH134]
+- **Agent 2** (model=opus, cost~14, 5 task(s)): taches/presence[TCH95/TCH96/TCH97/TCH98/TCH99]
+- **Agent 3** (model=sonnet, cost~13, 4 task(s)): taches/ecran-reglages[TCH107/TCH108/TCH109/TCH110]
+- **Agent 4** (model=opus, cost~12, 6 task(s)): taches/assistant[TCH111/TCH112/TCH113/TCH114/TCH115/TCH116]
+- **Agent 5** (model=sonnet, cost~10, 4 task(s)): taches/presence-front[TCH100/TCH101/TCH102/TCH103]
+- **Agent 6** (model=opus, cost~9, 6 task(s)): taches/agenda-externe[TCH121/TCH122], taches/etranger-coquille[TCH123/TCH124/TCH125/TCH126]
+- **Agent 7** (model=sonnet, cost~9, 4 task(s)): taches/cartes[TCH117/TCH118], taches/etranger-deploy[TCH119/TCH120]
+- **Agent 8** (model=sonnet, cost~9, 4 task(s)): taches/ecran-agenda[TCH104/TCH105/TCH106], taches/orchestrateur[TCH135]
+
+## Pipelined merge-batches (4 wave(s) of ~80 tasks — build wave K+1 while wave K tests/CIs; waves are mutually file-disjoint so they never collide)
+Dispatch wave 1's agents now; when any agent finishes, work-steal the heaviest not-yet-started lane of the next wave (keeps the pipeline full and successive waves length-balanced).
+- **Wave 1** (28 tasks, 8 agents):
+    - agent 1 (model=opus, cost~14, 5 task(s)): taches/presence
+    - agent 2 (model=sonnet, cost~13, 4 task(s)): taches/ecran-reglages
+    - agent 3 (model=opus, cost~12, 6 task(s)): taches/assistant
+    - agent 4 (model=sonnet, cost~10, 4 task(s)): taches/presence-front
+    - agent 5 (model=sonnet, cost~8, 3 task(s)): taches/ecran-agenda
+    - agent 6 (model=sonnet, cost~6, 2 task(s)): taches/cartes
+    - agent 7 (model=opus, cost~5, 2 task(s)): taches/agenda-externe
+    - agent 8 (model=sonnet, cost~3, 2 task(s)): taches/etranger-deploy
+- **Wave 2** (4 tasks, 1 agents):
+    - agent 1 (model=sonnet, cost~4, 4 task(s)): taches/etranger-coquille
+- **Wave 3** (8 tasks, 1 agents):
+    - agent 1 (model=opus, cost~20, 8 task(s)): taches/final
+- **Wave 4** (1 tasks, 1 agents):
+    - agent 1 (model=haiku, cost~1, 1 task(s)): taches/orchestrateur
+
+## Waves (each row builds in parallel; one task per lane)
+- **Wave 1** (8 parallel):
+    - `TCH111`  [taches/assistant] (opus)  after TCH15
+    - `TCH95`  [taches/presence] (opus)  after TCH12,TCH15
+    - `TCH107`  [taches/ecran-reglages] (sonnet)  after TCH15,TCH46
+    - `TCH100`  [taches/presence-front] (sonnet)  after TCH46
+    - `TCH104`  [taches/ecran-agenda] (sonnet)  after TCH15,TCH46
+    - `TCH121`  [taches/agenda-externe] (opus)  after TCH9
+    - `TCH117`  [taches/cartes] (sonnet)  after TCH83
+    - `TCH119`  [taches/etranger-deploy] (sonnet)
+- **Wave 2** (8 parallel):
+    - `TCH112`  [taches/assistant] (opus)  after TCH111
+    - `TCH96`  [taches/presence] (opus)  after TCH39,TCH95
+    - `TCH108`  [taches/ecran-reglages] (sonnet)  after TCH107
+    - `TCH101`  [taches/presence-front] (sonnet)  after TCH100
+    - `TCH105`  [taches/ecran-agenda] (sonnet)  after TCH104
+    - `TCH122`  [taches/agenda-externe] (opus)  after TCH121
+    - `TCH118`  [taches/cartes] (sonnet)  after TCH117
+    - `TCH120`  [taches/etranger-deploy] (sonnet)
+- **Wave 3** (5 parallel):
+    - `TCH113`  [taches/assistant] (opus)  after TCH112
+    - `TCH97`  [taches/presence] (opus)  after TCH24,TCH56,TCH96
+    - `TCH109`  [taches/ecran-reglages] (sonnet)  after TCH108
+    - `TCH102`  [taches/presence-front] (sonnet)  after TCH101
+    - `TCH106`  [taches/ecran-agenda] (sonnet)  after TCH105
+- **Wave 4** (5 parallel):
+    - `TCH114`  [taches/assistant] (opus)  after TCH113
+    - `TCH98`  [taches/presence] (sonnet)  after TCH21,TCH70,TCH97
+    - `TCH110`  [taches/ecran-reglages] (sonnet)  after TCH109
+    - `TCH123`  [taches/etranger-coquille] (sonnet)  after TCH102
+    - `TCH103`  [taches/presence-front] (sonnet)  after TCH102
+- **Wave 5** (4 parallel):
+    - `TCH127`  [taches/final] (opus)  after TCH111,TCH70,TCH75,TCH97,TCH98
+    - `TCH115`  [taches/assistant] (opus)  after TCH114
+    - `TCH99`  [taches/presence] (sonnet)  after TCH98
+    - `TCH124`  [taches/etranger-coquille] (sonnet)  after TCH101
+- **Wave 6** (3 parallel):
+    - `TCH128`  [taches/final] (opus)  after TCH122,TCH127
+    - `TCH116`  [taches/assistant] (opus)  after TCH115
+    - `TCH125`  [taches/etranger-coquille] (sonnet)  after TCH103
+- **Wave 7** (2 parallel):
+    - `TCH129`  [taches/final] (sonnet)  after TCH128
+    - `TCH126`  [taches/etranger-coquille] (sonnet)  after TCH103
+- **Wave 8** (1 parallel):
+    - `TCH130`  [taches/final] (opus)  after TCH129
+- **Wave 9** (1 parallel):
+    - `TCH131`  [taches/final] (sonnet)  after TCH124,TCH130
+- **Wave 10** (1 parallel):
+    - `TCH132`  [taches/final] (opus)  after TCH131
+- **Wave 11** (1 parallel):
+    - `TCH133`  [taches/final] (sonnet)  after TCH132
+- **Wave 12** (1 parallel):
+    - `TCH134`  [taches/final] (sonnet)  after TCH133
+- **Wave 13** (1 parallel):
+    - `TCH135`  [taches/orchestrateur] (haiku)  after TCH118,TCH126,TCH134
+
+## Lanes (tasks inside a lane run in sequence; model = lane's max tier)
+- **taches/final** (8, model=opus, owners=deploy/securite): TCH127, TCH128, TCH129, TCH130, TCH131, TCH132, TCH133, TCH134
+- **taches/assistant** (6, model=opus, owners=analyse): TCH111, TCH112, TCH113, TCH114, TCH115, TCH116
+- **taches/presence** (5, model=opus): TCH95, TCH96, TCH97, TCH98, TCH99
+- **taches/ecran-reglages** (4, model=sonnet, owners=deploy): TCH107, TCH108, TCH109, TCH110
+- **taches/etranger-coquille** (4, model=sonnet, owners=analyse/deploy): TCH123, TCH124, TCH125, TCH126
+- **taches/presence-front** (4, model=sonnet, owners=deploy): TCH100, TCH101, TCH102, TCH103
+- **taches/ecran-agenda** (3, model=sonnet, owners=deploy): TCH104, TCH105, TCH106
+- **taches/agenda-externe** (2, model=opus): TCH121, TCH122
+- **taches/cartes** (2, model=sonnet, owners=analyse): TCH117, TCH118
+- **taches/etranger-deploy** (2, model=sonnet, owners=deploy): TCH119, TCH120
+- **taches/orchestrateur** (1, model=haiku): TCH135
+
+## Acceptation (orchestrateur) — jamais en lane ni refusée, jouée sur la pile locale avant le push (règle 3-bis, AMET89)
+- `TCH139` : TCH — 97/144 cochées, couverture n/d
+- `TCH140` : TCH — 97/144 cochées, couverture n/d
+- `TCH141` : TCH — 97/144 cochées, couverture n/d
+- `TCH142` : TCH — 97/144 cochées, couverture n/d
+- `TCH143` : TCH — 97/144 cochées, couverture n/d
+- `TCH144` : TCH — 97/144 cochées, couverture n/d

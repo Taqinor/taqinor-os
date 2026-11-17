@@ -110,7 +110,7 @@ le brouillon devant et l'astuce derrière) :
 ```json
 {"type":"garder","proposition":null,"donnees":{"n":5,"objectif":5}}
 ```
-`retour`, `rythme`, `revelation` portent une PROPOSITION ; `bilan_hier` `{"jour"}` ; `garder` `{"n","objectif"}` ;
+`retour`, `rythme`, `pause`, `revelation` portent une PROPOSITION ; `bilan_hier` `{"jour"}` ; `garder` `{"n","objectif"}` ;
 `alleger` `{"faites","prevues"}` ; `faire_bilan` `{}`.
 **OBJECTIF** `{"nb":5,"source":"accepte","mode":"pousser","zone":null}` (`zone` `[4,6]` en `tenir` ; `nb:null` en `libre`).
 **PROGRESSION**
@@ -430,10 +430,11 @@ A17-T2) → `{"aujourdhui":AUJOURDHUI,"geste_id":81}` ; 400 `{"essentielles":["3
 **`journee/cloture/`** →
 ```json
 {"jour":"2026-11-17","faites":[ITEM],"restes":[ITEM],"a_trancher":[ITEM],"prochain_jour_ouvre":"2026-11-19",
- "bilan":{"faites":4,"objectif":5,"objectif_atteint":false,"essentiel_faites":1,"essentiel_prevues":2,"plan_tenues":4,"plan_lignes":5,"texte":"Aujourd'hui : 4 faites (objectif 5) · essentiel 1 sur 2 · plan tenu 4 sur 5."},
+ "bilan":{"faites":4,"objectif":5,"objectif_atteint":false,"essentiel_faites":1,"essentiel_prevues":2,"plan_tenues":4,"plan_lignes":5,"texte":"4 sur 5 · essentiel 1 sur 2","texte_gardees":"4 des 5 gardées"},
  "constat":PROPOSITION,"activites_a_clore":[ITEM],"possible_jusqua":"2026-11-18T12:00:00+01:00"}
 ```
-`constat` : un au plus (A14-M4), sinon `null` ; `a_trancher` = restes `reportee_3_fois` (marqués, jamais refusés).
+`texte` = 1re ligne « N sur OBJECTIF », `texte_gardees` = 2e ligne (`textes.md` §4.3) ; `constat` : un au plus
+(A14-M4), sinon `null` ; `a_trancher` = restes `reportee_3_fois` (marqués, jamais refusés).
 **`journee/cloturer/`** `{"jour","choix":[{"id":52,"choix":"jour","jour":"2026-11-23"}],"le_reste":true,"reflexion":""}`
 (`choix` ∈ `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter » au prochain jour
 travaillé ; les `a_trancher` non nommés restent en place) → `{"plan":{"cloture_le":"…"},"geste_id":83}`.
@@ -511,6 +512,14 @@ ici."]}`. `raccourci_siri_url` = `settings.TACHES_RACCOURCI_SIRI_URL` (vide → 
 **`agenda-externe/`** POST `{"url":"https://…/basic.ics","libelle":"Perso"}` → `{"hote":"calendar.example","libelle":"Perso",
 "actif":true,"dernier_etat":""}` ; 400 `{"url":["Adresse https publique attendue."]}`.
 
+**Listes simples** (échantillons de la rév. 2.1) :
+- `GET etiquettes/` → `{"count":2,"next":null,"previous":null,"results":[{"id":2,"nom":"magasin","couleur":"ciel"},{"id":3,"nom":"appels","couleur":"ambre"}]}`.
+- `GET vues/` → `[{"id":4,"nom":"Haute cette semaine","rang":1024,"filtres":{"priorite_min":3,"projets":[3],"inclure_faites":false}}]`.
+- `GET modeles/` → `{"count":1,"next":null,"previous":null,"results":[{"id":2,"nom":"Salon","created_at":"2026-11-10T09:00:00+01:00","nb_taches":12,"nb_sections":3}]}`.
+- `GET jetons/` → `[{"id":3,"usage":"flux","prefixe":"tqf_Ab12","libelle":"","created_at":"2026-11-17T09:00:00+01:00","dernier_usage_le":"2026-11-17T09:41:00+01:00","revoque_le":null}]` (jamais `jeton` ni `jeton_hash`).
+- `GET mes-donnees/` → `{"exporte_le":"2026-11-17T10:00:00+01:00","projet":[{…}],"section":[],"tache":[{…}],"element_checklist":[],"etiquette":[],"etiquette_tache":[],"regle_recurrence":[],"plan_jour":[],"ligne_plan_jour":[],"reglages_rythme":[{…}],"preference":[],"incitation_coach":[],"rappel":[],"jeton_acces":[{"id":3,"usage":"flux","prefixe":"tqf_Ab12","revoque_le":null}],"geste_annulable":[],"vue_enregistree":[],"modele_projet":[],"revue_projet":[],"suggestion_tache":[],"agenda_externe":[]}`
+  (une clé par modèle, les 20 ; supprimées non purgées comprises ; jetons sans empreinte ; chaque objet = ses champs de `donnees.md` §2).
+
 ## 5. Hors ligne (A16-N11 ; MAJ-9)
 
 `features/taches/captureQueue.js` = `Outbox` du module (`lib/offlineOutbox.js:304`, `createModuleOutboxStore('taches')`),
@@ -530,7 +539,14 @@ lecture `taches:aujourdhui:<user>:<jour>` ; tout vidé sur `taqinor:auth-logout`
 | `lot.json` · `lier_activite.json` · `geste_annuler.json` · `gestes.json` · `supprimees.json` | gestes | sélection, À trier · appui long · toast · Derniers gestes · Supprimées |
 | `journee_proposition.json` · `journee_cloture.json` | plan · bilan | « Voir tout », carte `plan_propose` · Bilan |
 | `agenda.json` · `recherche.json` | idem | Agenda, Planifier ma semaine · Recherche, palette, `liste_taches` |
-| `projets_liste.json` · `projet_vue.json` · `supprimees.json` | projets | Projets · Un projet, carte `projet` |
+| `projets_liste.json` · `projet_vue.json` | projets | Projets · Un projet, carte `projet` |
+| `projet_ecrit.json` | réponses d'écriture de projet : `terminer/`, `restaurer/`, `DELETE projets/{id}/` | Un projet ⋯, Archive, Supprimées récemment |
+| `revue_decision.json` | `PUT revue/projets/{projet_id}/` | Revue |
+| `rappel_repeter.json` | `rappels/{id}/repeter/` | fiche ouverte par le rappel |
+| `etiquettes.json` · `vues.json` | `GET etiquettes/` (paginé) · `GET vues/` (non paginé) | Fiche → Plus, filtres · Recherche |
+| `modeles_liste.json` · `jetons_liste.json` | `GET modeles/` (paginé) · `GET jetons/` (non paginé) | Modèles, Nouveau projet → Depuis un modèle · Mon iPhone |
+| `agenda_externe.json` | `GET`/`POST agenda-externe/` | Réglages → Avancé |
+| `mes_donnees.json` · `tout_effacer.json` | `GET mes-donnees/` · `POST tout-effacer/` | Réglages → Mes données |
 | `planification_apercu.json` · `decalage.json` · `modele_instancier.json` · `revue_projets.json` | s4 | Planifier · Décaler · Modèles · Revue, `revue_semaine` |
 | `rythme.json` · `proposition.json` | rythme | Mon rythme, carte `rythme` · cartes, bilan, plan |
 | `reglages.json` · `jeton.json` · `tuile.json` | réglages | Réglages, Mon iPhone · `scriptTuile.js` |
@@ -541,7 +557,7 @@ lecture `taches:aujourdhui:<user>:<jour>` ; tout vidé sur `taqinor:auth-logout`
 | Route | Écran | Paramètres |
 |---|---|---|
 | `/taches` | mène à `/taches/aujourdhui` | — |
-| `/taches/aujourdhui` | Aujourd'hui (accueil : `MOBILE_HOME_ALLOWED_ROUTES` + `setLandingModule('taches')`) | `tache=<id>` |
+| `/taches/aujourdhui` | Aujourd'hui (accueil : `MOBILE_HOME_ALLOWED_ROUTES` + `setLandingModule('taches')`) | `tache=<id>`, `ouvrir=bilan` (ouvre le bilan du soir ; `ouvrir=plan` n'existe pas : le plan est la carte du moment) |
 | `/taches/a-trier` | À trier (pastille d'onglet = `a_trier.boite_reception`) | `tache` |
 | `/taches/projets` · `/taches/projets/:id` | Projets · Un projet | `vue`, `planifier=1`, `tache` |
 | `/taches/projets/archive` · `/taches/projets/modeles` | Archive · Modèles | — |
@@ -549,8 +565,8 @@ lecture `taches:aujourdhui:<user>:<jour>` ; tout vidé sur `taqinor:auth-logout`
 | `/taches/revue` · `/taches/rythme` · `/taches/recherche` · `/taches/supprimees` | Revue · Mon rythme · Recherche (`q`) · Supprimées | — |
 | `/taches/reglages[/:rubrique]` | Réglages | `notifications`, `iphone`, `vie-privee`, `suggestions`, `donnees`, `avance` |
 
-Notifications (A15, spec-7 r3 §2) : `plan_matin`, `bilan_soir`, `relance` → `/taches/aujourdhui` (la carte du moment
-porte Garder, Alléger ou le bilan) · `revue_semaine` → `/taches/revue` · rappel → `/taches/aujourdhui?tache=<id>`
+Notifications (A15, spec-7 r3 §2) : `plan_matin`, `relance` → `/taches/aujourdhui` sans paramètre (la carte du moment
+porte Garder ou Alléger) · `bilan_soir` → `/taches/aujourdhui?ouvrir=bilan` · `revue_semaine` → `/taches/revue` · rappel → `/taches/aujourdhui?tache=<id>`
 (« Encore 10 min · 1 h · Demain 9 h ») · test → `/taches/reglages/iphone`. Touches `g j`, `c t` →
 `taqinor:taches:saisir`. Navigation et `appSku` : dernière vague seulement.
 
@@ -631,7 +647,8 @@ dernière vague) · `frontend/src/lib/apps/appSkus.js` (dernière vague) · `app
   passe par `planifier/`.
 - **R19** (rév. 2) `lier-activite/` : seule route nouvelle demandée (A17) ; une tâche par activité
   (`taches_tache_act_uniq`).
-- **R20** (rév. 2) Liens de notification : tous vers Aujourd'hui sauf revue et rappel (A15) ; paramètre `ouvrir` retiré.
+- **R20** (rév. 2.1) Liens de notification : vers Aujourd'hui sans paramètre, sauf bilan (`?ouvrir=bilan`, tranché par
+  l'orchestrateur), revue et rappel (A15).
 
 ## Ce que les specs demandaient et que je n'ai PAS repris
 
@@ -641,7 +658,7 @@ dernière vague) · `frontend/src/lib/apps/appSkus.js` (dernière vague) · `app
   `incitations`, `cartes_coach` → `carte_du_moment` ; `suggestions{nb}`, `a_convertir{nb}` → `a_trier` (C39).
 - Réponse capture `{"ok"}`, erreur `{"champ","detail"}` (s6b) → forme commune (C3) ; rejeu `200 deja` sur
   `saisie-rapide/` → `201 deja_creees` (C9).
-- Liens `?du=matin`, `/taches/bilan`, `?rituel=`, `/taches/boite`, `/taches/taches/<id>`, `?coach=1`, `?ouvrir=plan|bilan|alleger`.
+- Liens `?du=matin`, `/taches/bilan`, `?rituel=`, `/taches/boite`, `/taches/taches/<id>`, `?coach=1`, `?ouvrir=plan|alleger`.
 - Accueil `'/taches'` (s6a) → `/taches/aujourdhui` ; raccourci de manifeste « Mes tâches » → « Tâches ».
 - Beat toutes les 5 min (s6b), `taches.calculer_rythme` séparé (s5a) → minute + nocturne (C15) ; `TACHE_RAPPEL` (C14).
 - Tuile `fait`, `essentiel.total` → `faites`, `essentiel.prevues` (C35).
@@ -684,3 +701,7 @@ dernière vague) · `frontend/src/lib/apps/appSkus.js` (dernière vague) · `app
 16. Module invisible jusqu'à la dernière vague ; fichiers étrangers listés ; budgets révisés.
 17. Comptes recalculés par script : 100 routes (la rév. 1 en avait 107 au compte de `verif-reference.md` ; écart
     = GET redondants retirés, `lier-activite/` et `supprimees/` ajoutés), 16 actions.
+
+## Révision 2.1
+
+`?ouvrir=bilan` rétabli (route du front, notification du bilan) ; `pause` ajouté à CARTE_DU_MOMENT ; bilan en « 4 sur 5 » + « 4 des 5 gardées » ; 10 échantillons ajoutés au §6 avec leurs exemples, doublon `supprimees.json` retiré.
