@@ -1018,8 +1018,11 @@ validé par `apps/publicapi/validators.py` ; lecture immédiate, `dernier_etat` 
 | 5 Contenu | `BEGIN:VCALENDAR` présent, au moins un VEVENT lisible ou un calendrier vide | `illisible` |
 | 6 Succès | événements mis en cache par adresse, 15 min (IR23) ; `dernier_chargement_le`, `ok` | — |
 
-`rafraichir/` ignore le cache. Les événements ne vont JAMAIS en base. Un échec efface le cache de l'adresse : ses
-rendez-vous disparaissent et son état est dit (Agenda, Réglages).
+`rafraichir/` ignore le cache. Les événements ne vont JAMAIS en base. Un échec REMPLACE le texte en cache de l'adresse
+et y est retenu 15 min comme un succès : l'adresse n'est pas relue pendant ce temps, ses rendez-vous sont absents
+(jamais d'anciens présentés comme frais) et son état est dit (Agenda, Réglages) ; « Rafraîchir » (`rafraichir/`) ou un
+nouvel enregistrement de l'adresse la relit aussitôt (revue F2 #6). Le délai total est une échéance absolue (connexion,
+redirections, en-têtes, corps) et une requête d'écran borne ensemble la lecture de tous ses agendas (10 s).
 
 **`lire_evenements(texte, du, au) -> tuple[RendezVousPur]`** : lignes dépliées (RFC 5545 : une ligne commençant par une
 espace continue la précédente) ; par VEVENT : `DTSTART`, `DTEND` ou `DURATION`, `SUMMARY` (échappements `\,` `\;` `\n`
