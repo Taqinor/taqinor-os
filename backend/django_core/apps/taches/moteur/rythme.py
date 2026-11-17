@@ -333,3 +333,89 @@ def repondre_premier(etat, journee_type, choix):
     """Réponse à la carte `premier` : `oui` -> palier = type ; `garder` -> palier 5."""
     palier = journee_type if choix == ReponseIncitation.OUI else PALIER_DEFAUT
     return _maj(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE)
+
+
+# --- TCH27 : « Garder ce rythme » et bascules (TENIR, §6.6-§6.7) ------------
+
+JOURS_REFERENCE = 14  # R = moyenne des 14 derniers jours évalués
+JOURS_TYPE = 10  # journée type = les 10 derniers jours évalués
+SILENCE_TENIR_JOURS = 28  # silence après une dérive, quelle que soit la réponse
+DECIMALES_REFERENCE = 2  # `tenir_reference` est un DecimalField(4,2)
+DERIVE_SOUS = 'sous'
+DERIVE_AU_DESSUS = 'au_dessus'
+
+
+def _moyenne_plafonnee(comptes):
+    plafonnes = plafonner_jours(comptes)
+    return sum(plafonnes) / len(plafonnes)
+
+
+def reference_tenir(comptes):
+    """R = moyenne (plafonnée) des 14 derniers jours évalués ; `None` s'il en manque."""
+    derniers = list(comptes)[-JOURS_REFERENCE:]
+    if len(derniers) < JOURS_REFERENCE:
+        return None
+    return round(_moyenne_plafonnee(derniers), DECIMALES_REFERENCE)
+
+
+def bande_tenir(reference):
+    """Zone `(R - b, R + b)` avec `b = max(1 ; 0,2 R)`."""
+    return _bande(reference)
+
+
+def derive_tenir(reference, comptes, jour, silence):
+    """`sous` | `au_dessus` | `None` : moyenne plafonnée des 14 derniers jours hors zone.
+
+    Rien pendant le silence (`tenir_silence_jusquau`, 28 jours après une dérive) ;
+    `comptes` = jours évalués DEPUIS la fixation de R, il en faut 14.
+    """
+    if reference is None or (silence is not None and jour <= silence):
+        return None
+    derniers = list(comptes)[-JOURS_REFERENCE:]
+    if len(derniers) < JOURS_REFERENCE:
+        return None
+    moyenne = _moyenne_plafonnee(derniers)
+    bas, haut = _bande(float(reference))
+    if moyenne < bas:
+        return DERIVE_SOUS
+    if moyenne > haut:
+        return DERIVE_AU_DESSUS
+    return None
+
+
+def _vers_tenir(etat, jour):
+    reference = reference_tenir(etat.comptes_recents)
+    if reference is None:  # R provisoire = palier courant (ou 5), fixée après 14 jours
+        return {'tenir_reference': _palier(etat), 'tenir_fixee_le': None}
+    return {'tenir_reference': reference, 'tenir_fixee_le': jour}
+
+
+def _vers_pousser(etat, jour):
+    if etat.mode == ModeRythme.TENIR:
+        reference = etat.tenir_reference if etat.tenir_reference is not None else _palier(etat)
+        palier = max(PALIER_MIN, arrondir(float(reference)))
+        return {'palier': palier, 'palier_source': SourceObjectif.CALCULE,
+                'bloc_debut': jour + timedelta(days=1)}
+    recents = list(etat.comptes_recents)[-JOURS_TYPE:]  # LIBRE -> POUSSER : journée type
+    if len(recents) < JOURS_TYPE:
+        return {'palier': None, 'palier_source': '', 'bloc_debut': None}  # démarrage à froid
+    palier = palier_initial(recents, None)[1]
+    return {'palier': palier, 'palier_source': SourceObjectif.CALCULE,
+            'bloc_debut': jour + timedelta(days=1)}
+
+
+def basculer(etat, mode, jour):
+    """Change de mode (§6.7) : remet blocs, refus et essai à zéro ; garde `meilleur_tenu` et les échecs.
+
+    L'abandon de la proposition en attente est affaire de la couche appelante
+    (la proposition vit dans `IncitationCoach`, pas dans l'état).
+    """
+    if mode == etat.mode:
+        return etat
+    champs = {'mode': mode, 'refus_montee': 0, 'blocs_a_sauter': 0, 'baisse_refusee': False,
+              'essai_restant': False, 'comptes_bloc': (), 'tenir_silence_jusquau': None}
+    if mode == ModeRythme.TENIR:
+        champs.update(_vers_tenir(etat, jour))
+    elif mode == ModeRythme.POUSSER:
+        champs.update(_vers_pousser(etat, jour))
+    return _maj(etat, **champs)

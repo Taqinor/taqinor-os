@@ -356,5 +356,134 @@ class ObjectifTests(unittest.TestCase):
         self.assertEqual((neuf.palier, neuf.palier_source), (5, SourceObjectif.ACCEPTE))
 
 
+class ReferenceTenirTests(unittest.TestCase):
+    """R, bande et dérive (§6.6)."""
+
+    def test_ex21_quatorze_jours_somme_70(self):
+        # Ex. 21 : 14 jours de somme 70 -> 5,0.
+        self.assertAlmostEqual(rythme.reference_tenir([5] * 7 + [5] * 7), 5.0, places=2)
+        self.assertAlmostEqual(rythme.reference_tenir([4, 6] * 7), 5.0, places=2)
+
+    def test_ex22_treize_jours(self):
+        # Ex. 22 : 13 jours -> None.
+        self.assertIsNone(rythme.reference_tenir([5] * 13))
+
+    def test_ex23_quatorze_fois_sept(self):
+        # Ex. 23 : 14 × 7 -> 7,0.
+        self.assertAlmostEqual(rythme.reference_tenir([7] * 14), 7.0, places=2)
+
+    def test_garde_les_quatorze_derniers(self):
+        self.assertAlmostEqual(rythme.reference_tenir([100] * 5 + [6] * 14), 6.0, places=2)
+
+    def test_ex57_plafond_dans_la_reference(self):
+        # Ex. 57 : 13 × 5 + 30 -> 5,43 (sans plafond : 6,79).
+        self.assertAlmostEqual(rythme.reference_tenir([5] * 13 + [30]), 5.43, places=2)
+
+    def test_ex24_bande_cinq(self):
+        # Ex. 24 : 5 -> (4 ; 6).
+        self.assertEqual(rythme.bande_tenir(5), (4, 6))
+
+    def test_ex25_bande_huit(self):
+        # Ex. 25 : 8 -> (6,4 ; 9,6).
+        bas, haut = rythme.bande_tenir(8)
+        self.assertAlmostEqual(bas, 6.4, places=2)
+        self.assertAlmostEqual(haut, 9.6, places=2)
+
+    def test_ex26_bande_deux(self):
+        # Ex. 26 : 2 -> (1 ; 3).
+        self.assertEqual(rythme.bande_tenir(2), (1, 3))
+
+    def test_ex27_derive_sous(self):
+        # Ex. 27 : R 5, 11 × 3 + 3 × 4 (moyenne 3,21) -> `sous`.
+        self.assertEqual(rythme.derive_tenir(5, [3] * 11 + [4] * 3, jour_n(100), None), 'sous')
+
+    def test_ex28_derive_au_dessus(self):
+        # Ex. 28 : R 5, 13 × 7 + 6 (moyenne 6,93) -> `au_dessus`.
+        self.assertEqual(rythme.derive_tenir(5, [7] * 13 + [6], jour_n(100), None), 'au_dessus')
+
+    def test_ex29_silence(self):
+        # Ex. 29 : silence jusqu'au j70, jour 50 -> None (même hors zone).
+        self.assertIsNone(rythme.derive_tenir(5, [3] * 14, jour_n(50), jour_n(70)))
+        self.assertEqual(rythme.derive_tenir(5, [3] * 14, jour_n(71), jour_n(70)), 'sous')
+
+    def test_ex58_un_jour_a_trente_reste_dans_la_zone(self):
+        # Ex. 58 : R 5, 13 × 5 + 30 -> None (dans la zone grâce au plafond).
+        self.assertIsNone(rythme.derive_tenir(5, [5] * 13 + [30], jour_n(100), None))
+
+    def test_pas_assez_de_jours_ou_pas_de_reference(self):
+        self.assertIsNone(rythme.derive_tenir(5, [3] * 13, jour_n(100), None))
+        self.assertIsNone(rythme.derive_tenir(None, [3] * 14, jour_n(100), None))
+
+    def test_borne_stricte_de_la_zone(self):
+        # Moyenne exactement sur la borne basse (4) : strictement hors zone seulement.
+        self.assertIsNone(rythme.derive_tenir(5, [4] * 14, jour_n(100), None))
+
+
+class BasculerTests(unittest.TestCase):
+    """Bascules entre les trois modes (§6.7)."""
+
+    def _tenir(self, reference):
+        return EtatRythme(mode=ModeRythme.TENIR, tenir_reference=reference, meilleur_tenu=6,
+                          echec_niveau=7, echec_n=2, refus_montee=2, blocs_a_sauter=2, essai_restant=True)
+
+    def test_ex33_tenir_cinq_six(self):
+        # Ex. 33 : TENIR R 5,6 -> POUSSER : palier 6.
+        self.assertEqual(rythme.basculer(self._tenir(5.6), ModeRythme.POUSSER, jour_n(0)).palier, 6)
+
+    def test_ex34_tenir_cinq_cinq(self):
+        # Ex. 34 : TENIR R 5,5 -> POUSSER : palier 5.
+        self.assertEqual(rythme.basculer(self._tenir(5.5), ModeRythme.POUSSER, jour_n(0)).palier, 5)
+
+    def test_ex35_tenir_quatre_cinq(self):
+        # Ex. 35 : TENIR R 4,5 -> POUSSER : palier 4.
+        self.assertEqual(rythme.basculer(self._tenir(4.5), ModeRythme.POUSSER, jour_n(0)).palier, 4)
+
+    def test_ex36_tenir_cinq_cinquante_et_un(self):
+        # Ex. 36 : TENIR R 5,51 -> POUSSER : palier 6.
+        self.assertEqual(rythme.basculer(self._tenir(5.51), ModeRythme.POUSSER, jour_n(0)).palier, 6)
+
+    def test_tenir_vers_pousser_plancher_un(self):
+        self.assertEqual(rythme.basculer(self._tenir(0.4), ModeRythme.POUSSER, jour_n(0)).palier, 1)
+
+    def test_ex37_pousser_vers_tenir(self):
+        # Ex. 37 : POUSSER -> TENIR, 14 derniers = 13 × 5 + 8 (73) -> R 5,21.
+        etat = EtatRythme(palier=5, comptes_recents=tuple([5] * 13 + [8]))
+        neuf = rythme.basculer(etat, ModeRythme.TENIR, jour_n(0))
+        self.assertAlmostEqual(float(neuf.tenir_reference), 5.21, places=2)
+        self.assertEqual((neuf.mode, neuf.tenir_fixee_le), (ModeRythme.TENIR, jour_n(0)))
+
+    def test_pousser_vers_tenir_provisoire(self):
+        # Moins de 14 jours : R provisoire = palier courant (ou 5), non fixée.
+        neuf = rythme.basculer(EtatRythme(palier=4, comptes_recents=(4,) * 5), ModeRythme.TENIR, jour_n(0))
+        self.assertEqual((neuf.tenir_reference, neuf.tenir_fixee_le), (4, None))
+        froid = rythme.basculer(EtatRythme(), ModeRythme.TENIR, jour_n(0))
+        self.assertEqual(froid.tenir_reference, 5)
+
+    def test_vers_libre_objectif_nul(self):
+        neuf = rythme.basculer(EtatRythme(palier=6), ModeRythme.LIBRE, jour_n(0))
+        self.assertEqual((neuf.mode, neuf.objectif), (ModeRythme.LIBRE, None))
+
+    def test_libre_vers_pousser_journee_type(self):
+        # LIBRE -> POUSSER : journée type des 10 derniers jours évalués.
+        etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=tuple([2] * 4 + [3] * 10))
+        neuf = rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0))
+        self.assertEqual((neuf.palier, neuf.bloc_debut), (3, jour_n(1)))
+
+    def test_libre_vers_pousser_sans_historique_demarrage_a_froid(self):
+        etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=(3,) * 4, palier=7)
+        neuf = rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0))
+        self.assertEqual((neuf.palier, neuf.bloc_debut, neuf.objectif), (None, None, 5))
+
+    def test_remet_a_zero_et_garde_les_echecs(self):
+        neuf = rythme.basculer(self._tenir(5), ModeRythme.POUSSER, jour_n(0))
+        self.assertEqual((neuf.refus_montee, neuf.blocs_a_sauter, neuf.essai_restant, neuf.baisse_refusee),
+                         (0, 0, False, False))
+        self.assertEqual((neuf.meilleur_tenu, neuf.echec_niveau, neuf.echec_n), (6, 7, 2))
+
+    def test_meme_mode_ne_change_rien(self):
+        etat = EtatRythme(palier=6)
+        self.assertIs(rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0)), etat)
+
+
 if __name__ == '__main__':
     unittest.main()
