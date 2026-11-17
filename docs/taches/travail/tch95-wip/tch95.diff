@@ -1,0 +1,452 @@
+﻿diff --git a/backend/django_core/apps/taches/selectors/base.py b/backend/django_core/apps/taches/selectors/base.py
+index ec997fdbf..5dd215e02 100644
+--- a/backend/django_core/apps/taches/selectors/base.py
++++ b/backend/django_core/apps/taches/selectors/base.py
+@@ -14,6 +14,7 @@ from django.db.models.functions import Lower
+ from apps.notifications.calendar_utils import jours_ouvres_entre
+ from apps.taches.choix import ClePreference
+ from apps.taches.models.gestes import GesteAnnulable
++from apps.taches.models.presence import JetonAcces
+ from apps.taches.models.projets import Projet, Section
+ from apps.taches.models.rythme import Preference
+ from apps.taches.models.taches import Etiquette, EtiquetteTache, Rappel, Tache
+@@ -67,6 +68,11 @@ def gestes_de(user):
+     return _du_compte(GesteAnnulable.objects, user)
+ 
+ 
++def jetons_de(user):
++    """Jetons d'accès de `user` dans sa société (révoqués compris)."""
++    return _du_compte(JetonAcces.objects, user)
++
++
+ def _preferences(user, *cles):
+     lignes = _du_compte(Preference.objects, user).filter(cle__in=cles)
+     return {ligne.cle: ligne.valeur for ligne in lignes}
+diff --git a/backend/django_core/apps/taches/tests/test_meme_proprietaire.py b/backend/django_core/apps/taches/tests/test_meme_proprietaire.py
+index 04fb09f65..aac3228fa 100644
+--- a/backend/django_core/apps/taches/tests/test_meme_proprietaire.py
++++ b/backend/django_core/apps/taches/tests/test_meme_proprietaire.py
+@@ -256,6 +256,7 @@ CAS_DETAILS = (
+     Cas('DELETE', 'agendas-externes/{id}/', 'chemin', ('AG',), lambda m, x: (f'agendas-externes/{x.AG.pk}/', None)),
+     Cas('POST', 'agendas-externes/{id}/rafraichir/', 'chemin', ('AG',),
+         lambda m, x: (f'agendas-externes/{x.AG.pk}/rafraichir/', None)),
++    Cas('POST', 'jetons/{id}/revoquer/', 'chemin', ('J',), lambda m, x: (f'jetons/{x.J.pk}/revoquer/', None)),
+ )
+ 
+ CAS_PROJETS = (
+@@ -328,6 +329,8 @@ SANS_ID = {
+     ('POST', 'tout-effacer/'): lambda m: ('tout-effacer/', {'confirmation': 'EFFACER'}),
+     ('GET', 'agendas-externes/'): lambda m: ('agendas-externes/', None),
+     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
++    ('GET', 'jetons/'): lambda m: ('jetons/', None),
++    ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
+ }
+ #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
+ AUSSI_SANS_ID = (
+@@ -373,6 +376,7 @@ def _monde(compte, jour):
+     Preference.objects.create(company=societe, proprietaire=compte, cle=ClePreference.HEURE_LIMITE, valeur='19:00')
+     m.A = fabriques.activite(compte)
+     m.AG = fabriques.agenda_externe(compte, actif=False)
++    m.J, _clair = fabriques.jeton(compte, 'flux')
+     return m
+ 
+ 
+diff --git a/backend/django_core/apps/taches/tests/test_routes.py b/backend/django_core/apps/taches/tests/test_routes.py
+index d035fb44f..25c89a0c6 100644
+--- a/backend/django_core/apps/taches/tests/test_routes.py
++++ b/backend/django_core/apps/taches/tests/test_routes.py
+@@ -2,9 +2,10 @@
+ 
+ Sans base (SimpleTestCase) : les 106 couples méthode × chemin de reference/api.md §3 résolvent,
+ chaque chemin sert EXACTEMENT ses méthodes, chaque vue lève `PasEncore` (501) et porte la
+-permission STRICTE ; `est_assistant`, la permission et le bouchon des routes à jeton.
++permission STRICTE ; `est_assistant`, la permission et l'authentification des routes à jeton (chacune
++celle de SON usage, TCH95).
+ Avec base (TestCase, CI) : 403 sans `taches_voir` pour tout compte (y compris un compte hérité
+-« responsable » sans rôle fin), 501 avec, 401 neutre sur capture, flux et tuile.
++« responsable » sans rôle fin), 501 avec, refus neutre sur capture et tuile (401), flux (404).
+ """
+ import inspect
+ import json
+@@ -15,15 +16,14 @@ from types import SimpleNamespace
+ from django.contrib.auth import get_user_model
+ from django.test import RequestFactory, SimpleTestCase, TestCase
+ from django.urls import resolve
+-from rest_framework.exceptions import AuthenticationFailed
++from rest_framework.exceptions import AuthenticationFailed, NotFound
+ from rest_framework.test import APIClient, APIRequestFactory
+ from rest_framework_simplejwt.tokens import AccessToken
+ 
+ from apps.roles.models import Role
++from apps.taches.auth_jeton import JetonAccesAuthentication, JetonCapture, JetonFlux, JetonTuile
+ from apps.taches.tests import fabriques
+-from apps.taches.views.base import (
+-    AUTH_JETON, JetonPasEncoreLivre, PasEncore, PermissionTaches, est_assistant,
+-)
++from apps.taches.views.base import PasEncore, PermissionTaches, est_assistant
+ 
+ PREFIXE = '/api/django/taches/'
+ API_MD = Path(__file__).resolve().parents[5] / 'docs' / 'taches' / 'reference' / 'api.md'
+@@ -139,8 +139,12 @@ DELETE agendas-externes/{id}/
+ POST agendas-externes/{id}/rafraichir/
+ """
+ ROUTES = [tuple(ligne.split(' ', 1)) for ligne in ROUTES_TEXTE.strip().splitlines()]
+-#: Routes à jeton (J:x) : authentifiées par le bouchon tant que le jeton n'est pas livré.
+-ROUTES_A_JETON = {('POST', 'capture/'), ('GET', 'tuile/'), ('GET', 'flux/{jeton}.ics')}
++#: Routes à jeton (J:x) → l'authentification de LEUR usage (et elle seule).
++AUTH_PAR_ROUTE = {('POST', 'capture/'): JetonCapture, ('GET', 'tuile/'): JetonTuile,
++                  ('GET', 'flux/{jeton}.ics'): JetonFlux}
++ROUTES_A_JETON = set(AUTH_PAR_ROUTE)
++#: Statut du refus neutre : 404 pour le flux (le jeton est dans l'adresse), 401 sinon.
++STATUT_REFUS = {('GET', 'flux/{jeton}.ics'): 404}
+ #: Routes réservées à un administrateur (`IsAdminRole`).
+ ROUTES_ADMIN = {('GET', 'reglages-societe/'), ('PATCH', 'reglages-societe/')}
+ VALEURS = {'{id}': '7', '{projet_id}': '3', '{cle}': 'heure_limite', '{jeton}': 'tqf_abcdef'}
+@@ -209,8 +213,12 @@ class RoutesSansBaseTests(SimpleTestCase):
+             with self.subTest(methode=methode, chemin=chemin):
+                 vue = resolve(concret(chemin)).func.view_class
+                 self.assertIn(PermissionTaches, vue.permission_classes)
+-                jeton = (methode, chemin) in ROUTES_A_JETON
+-                self.assertEqual(list(vue.authentication_classes) == AUTH_JETON, jeton)
++                a_jeton = [a for a in vue.authentication_classes if issubclass(a, JetonAccesAuthentication)]
++                attendue = AUTH_PAR_ROUTE.get((methode, chemin))
++                if attendue is None:
++                    self.assertEqual(a_jeton, [])
++                else:
++                    self.assertEqual(list(vue.authentication_classes), [attendue])
+ 
+     def test_chaque_vue_leve_pas_encore(self):
+         for methode, chemin in ROUTES:
+@@ -357,16 +365,25 @@ class AssistantEtBouchonTests(SimpleTestCase):
+         requete.COOKIES['access_token'] = 'abc.def'
+         self.assertFalse(est_assistant(requete))
+ 
+-    def test_bouchon_refuse_tout_en_401(self):
+-        bouchon = JetonPasEncoreLivre()
+-        for requete in (self.usine.get('/'), self.usine.get('/', HTTP_AUTHORIZATION='Bearer tqc_x')):
+-            with self.assertRaises(AuthenticationFailed):
+-                bouchon.authenticate(requete)
+-        self.assertTrue(bouchon.authenticate_header(self.usine.get('/')).startswith('Bearer'))
+-
+-    def test_routes_a_jeton_405_avant_le_bouchon(self):
+-        """api-fuzz « Unsupported methods » : TRACE/PUT (non servies) → 405 avant le bouchon ;
+-        la méthode servie reste un 401 neutre."""
++    def test_jeton_absent_ou_mal_forme_refuse_sans_lire_la_base(self):
++        """Sans base : aucun en-tête, un autre schéma, un préfixe d'un autre usage ou un clair trop
++        court sont refusés AVANT toute requête (le refus neutre ne dépend que de la forme)."""
++        for classe in (JetonCapture, JetonTuile):
++            for entete in ('', 'Basic abc', 'Bearer tqf_' + 'a' * 43, 'Bearer tqc_x', 'Bearer'):
++                with self.subTest(classe=classe.__name__, entete=entete[:12]):
++                    requete = self.usine.get('/', HTTP_AUTHORIZATION=entete) if entete else self.usine.get('/')
++                    with self.assertRaises(AuthenticationFailed):
++                        classe().authenticate(requete)
++            self.assertTrue(classe().authenticate_header(self.usine.get('/')).startswith('Bearer'))
++        flux = JetonFlux()
++        for clair in ('', 'tqc_' + 'a' * 43, 'tqf_court'):
++            requete = SimpleNamespace(parser_context={'kwargs': {'jeton': clair}})
++            with self.subTest(clair=clair[:6]), self.assertRaises(NotFound):
++                flux.authenticate(requete)
++
++    def test_routes_a_jeton_405_avant_le_jeton(self):
++        """api-fuzz « Unsupported methods » : TRACE/PUT (non servies) → 405 avant l'authentification ;
++        la méthode servie reste un refus neutre (401, 404 pour le flux)."""
+         usine = APIRequestFactory()
+         for methode, chemin in sorted(ROUTES_A_JETON):
+             correspondance = resolve(concret(chemin))
+@@ -378,12 +395,13 @@ class AssistantEtBouchonTests(SimpleTestCase):
+                     self.assertNotIn('WWW-Authenticate', reponse)
+             with self.subTest(chemin=chemin, methode=methode):
+                 reponse = vue(usine.generic(methode, concret(chemin)), **correspondance.kwargs)
+-                self.assertEqual(reponse.status_code, 401)
+-                self.assertIn('WWW-Authenticate', reponse)
++                refus = STATUT_REFUS.get((methode, chemin), 401)
++                self.assertEqual(reponse.status_code, refus)
++                self.assertEqual('WWW-Authenticate' in reponse, refus == 401)
+ 
+ 
+ class AccesTests(TestCase):
+-    """Les 106 routes, par de vraies requêtes : 403 sans le droit, 501 avec, 401 sur les jetons."""
++    """Les 106 routes, par de vraies requêtes : 403 sans le droit, 501 avec, refus neutre sur les jetons."""
+ 
+     @classmethod
+     def setUpTestData(cls):
+@@ -439,11 +457,12 @@ class AccesTests(TestCase):
+         faux.credentials(HTTP_AUTHORIZATION='Bearer tqc_inconnu')
+         for methode, chemin in sorted(ROUTES_A_JETON):
+             corps = []
++            refus = STATUT_REFUS.get((methode, chemin), 401)
+             for client in (APIClient(), jwt, faux):
+                 reponse = self._appel(client, methode, chemin)
+                 with self.subTest(methode=methode, chemin=chemin):
+-                    self.assertEqual(reponse.status_code, 401)
+-                    self.assertIn('WWW-Authenticate', reponse)
++                    self.assertEqual(reponse.status_code, refus)
++                    self.assertEqual('WWW-Authenticate' in reponse, refus == 401)
+                 corps.append(reponse.json()['detail'])
+             self.assertEqual(len(set(corps)), 1, 'un refus ne dit jamais pourquoi')
+ 
+diff --git a/backend/django_core/apps/taches/views/base.py b/backend/django_core/apps/taches/views/base.py
+index db83452ca..58c46fc79 100644
+--- a/backend/django_core/apps/taches/views/base.py
++++ b/backend/django_core/apps/taches/views/base.py
+@@ -8,10 +8,9 @@
+ - `est_assistant(request)` : la requête vient du relais de l'assistant — en-tête
+   `X-Taqinor-Assistant` OU authentification `Authorization: Bearer` (échec FERMÉ : le navigateur
+   n'envoie que le cookie).
+-- `JetonPasEncoreLivre` : BOUCHON d'authentification des trois routes à jeton (capture, flux,
+-  tuile) tant que `JetonAccesAuthentication` n'est pas livrée : refuse TOUT en 401 neutre, avec
+-  `authenticate_header` (sinon DRF rendrait 403), sans jamais dire pourquoi. `MethodeAvantJeton` :
+-  sur ces trois vues, une méthode non servie répond 405 avant ce bouchon.
++- Les trois routes à jeton (capture, flux, tuile) sont authentifiées par
++  `apps.taches.auth_jeton.JetonAccesAuthentication` de leur usage (TCH95). `MethodeAvantJeton` :
++  sur ces trois vues, une méthode non servie répond 405 avant l'authentification.
+ - Outillage de schéma OpenAPI des modules de vues : `forme_echantillon(nom)` (la forme de
+   l'`exemple` d'un échantillon de `contract_samples/`), `corps(nom, exemple)`, `reponses(...)`,
+   `parametre(...)`, `page_de(...)`.
+@@ -21,12 +20,10 @@ import re
+ from functools import lru_cache
+ from pathlib import Path
+ 
+-from drf_spectacular.extensions import OpenApiAuthenticationExtension
+ from drf_spectacular.types import OpenApiTypes
+ from drf_spectacular.utils import OpenApiParameter, inline_serializer
+ from rest_framework import serializers
+-from rest_framework.authentication import BaseAuthentication
+-from rest_framework.exceptions import APIException, AuthenticationFailed, MethodNotAllowed
++from rest_framework.exceptions import APIException, MethodNotAllowed
+ from rest_framework.permissions import BasePermission
+ 
+ from authentication.permissions import IsAuthenticatedInterne
+@@ -36,7 +33,6 @@ DROIT = 'taches_voir'
+ ENTETE_ASSISTANT = 'X-Taqinor-Assistant'
+ PREFIXE_BEARER = 'Bearer '
+ DETAIL_PAS_ENCORE = 'Pas encore construit.'
+-DETAIL_NON_AUTHENTIFIE = 'Authentification requise.'
+ 
+ 
+ class PasEncore(APIException):
+@@ -70,23 +66,11 @@ def est_assistant(request):
+     return (entetes.get('Authorization') or '').startswith(PREFIXE_BEARER)
+ 
+ 
+-class JetonPasEncoreLivre(BaseAuthentication):
+-    """Bouchon des routes à jeton (capture, flux, tuile) : 401 neutre pour TOUT appel."""
+-
+-    def authenticate(self, request):
+-        raise AuthenticationFailed(DETAIL_NON_AUTHENTIFIE)
+-
+-    def authenticate_header(self, request):
+-        return 'Bearer realm="taches"'
+-
+-
+-AUTH_JETON = [JetonPasEncoreLivre]
+-
+-
+ class MethodeAvantJeton:
+     """Mixin des vues à jeton : une méthode que la vue ne sert pas répond 405 AVANT
+     l'authentification (api-fuzz « Unsupported methods ») — DRF authentifie avant de chercher le
+-    gestionnaire, et le bouchon rendait 401 à un TRACE. La méthode servie garde son 401 neutre."""
++    gestionnaire, et le refus du jeton rendait 401 à un TRACE. La méthode servie garde son refus
++    neutre."""
+ 
+     def perform_authentication(self, request):
+         methode = request.method.lower()
+@@ -95,17 +79,6 @@ class MethodeAvantJeton:
+         super().perform_authentication(request)
+ 
+ 
+-class JetonTachesSchema(OpenApiAuthenticationExtension):
+-    """Schéma OpenAPI du jeton d'accès `taches` (`tqc_…`, `tqt_…`), porté en `Bearer`."""
+-
+-    target_class = 'apps.taches.views.base.JetonPasEncoreLivre'
+-    name = 'jetonTaches'
+-
+-    def get_security_definition(self, auto_schema):
+-        return {'type': 'http', 'scheme': 'bearer',
+-                'description': "Jeton d'accès personnel de l'app Tâches (capture, tuile)."}
+-
+-
+ # --- Schémas OpenAPI ---------------------------------------------------------------------------
+ 
+ ECHANTILLONS = Path(__file__).resolve().parent.parent / 'contract_samples'
+diff --git a/backend/django_core/apps/taches/views/presence.py b/backend/django_core/apps/taches/views/presence.py
+index aa1c71c7e..f457feed5 100644
+--- a/backend/django_core/apps/taches/views/presence.py
++++ b/backend/django_core/apps/taches/views/presence.py
+@@ -1,44 +1,82 @@
+ """L'iPhone (reference/api.md §3.4 ; conception/spec-6b-iphone.md) : jetons d'accès, notification
+ de test, tuile Scriptable, calendrier abonné.
+ 
+-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; la
+-tuile et le flux sont authentifiés par le BOUCHON `JetonPasEncoreLivre` (401 neutre) tant que
+-`JetonAccesAuthentication` n'est pas livrée. Le flux sert du `text/calendar` ; son jeton est dans
+-l'adresse (aucun en-tête d'authentification au schéma).
++`jetons/` (session, jamais sous l'en-tête assistant : 403) : la liste ne sert jamais d'empreinte ; la
++création rend le clair UNE fois et révoque l'ancien du même usage. La tuile et le flux sont
++authentifiés par `JetonAccesAuthentication` de LEUR usage (`auth_jeton.py`) ; le flux sert du
++`text/calendar`, son jeton est dans l'adresse (aucun en-tête d'authentification au schéma) et ses
++réponses d'erreur ne sont jamais journalisées avec leur chemin. Une route pas encore construite lève
++`PasEncore` (501).
+ """
++from django.db.models import F
+ from drf_spectacular.types import OpenApiTypes
+ from drf_spectacular.utils import extend_schema
++from rest_framework import status
++from rest_framework.exceptions import NotFound
++from rest_framework.permissions import BasePermission
++from rest_framework.response import Response
++from rest_framework.settings import api_settings
+ from rest_framework.views import APIView
+ 
++from apps.taches.auth_jeton import JetonFlux, JetonTuile, emettre_jeton, revoquer_jeton
++from apps.taches.selectors.base import jetons_de
++from apps.taches.serializers.presence import JetonEntreeSerializer, JetonSerializer, forme_jeton_cree
++from apps.taches.throttles import ThrottleFlux, ThrottleTuile
+ from apps.taches.views.base import (
+-    AUTH_JETON, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore, corps, forme_echantillon,
++    ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore, corps, est_assistant, forme_echantillon,
+     reponses,
+ )
+ 
++#: `jetons/` rend au plus 20 lignes (api.md §0), actives d'abord puis les plus récentes.
++PLAFOND_JETONS = 20
++DETAIL_INTROUVABLE = 'Introuvable.'
++DEBITS = list(api_settings.DEFAULT_THROTTLE_CLASSES)
++
++
++class HorsAssistant(BasePermission):
++    """403 sous l'en-tête assistant (api.md §0 : `jetons/` ne sert jamais le relais du Copilote)."""
++
++    message = "L'assistant ne gère pas les jetons."
++
++    def has_permission(self, request, view):
++        return not est_assistant(request)
++
+ 
+ class JetonsVue(APIView):
+     """GET jetons/ (sans empreinte) · POST jetons/ `{usage}` (clair rendu UNE fois)."""
+ 
+-    permission_classes = PERMISSIONS
++    permission_classes = [*PERMISSIONS, HorsAssistant]
+ 
+     @extend_schema(responses=reponses(forme_echantillon('jetons_liste')))
+     def get(self, request):
+-        raise PasEncore()
++        jetons = (jetons_de(request.user)
++                  .order_by(F('revoque_le').desc(nulls_first=True), '-created_at', '-pk')[:PLAFOND_JETONS])
++        return Response({'results': JetonSerializer(jetons, many=True).data})
+ 
+     @extend_schema(request=corps('Jeton', {'usage': 'flux', 'libelle': ''}, requis=('usage',)),
+                    responses=reponses(forme_echantillon('jeton'), statut=201, erreurs=(400,)))
+     def post(self, request):
+-        raise PasEncore()
++        entree = JetonEntreeSerializer(data=request.data)
++        entree.is_valid(raise_exception=True)
++        jeton, clair = emettre_jeton(request.user, entree.validated_data['usage'],
++                                     entree.validated_data['libelle'])
++        reponse = Response(forme_jeton_cree(request, jeton, clair), status=status.HTTP_201_CREATED)
++        reponse['Cache-Control'] = 'no-store'
++        return reponse
+ 
+ 
+ class JetonRevoquerVue(APIView):
+-    """POST jetons/{id}/revoquer/."""
++    """POST jetons/{id}/revoquer/ — l'id d'un autre compte répond comme un id inconnu (404)."""
+ 
+-    permission_classes = PERMISSIONS
++    permission_classes = [*PERMISSIONS, HorsAssistant]
+ 
+     @extend_schema(request=None, responses=reponses(None, statut=204, erreurs=(404,)))
+     def post(self, request, id):
+-        raise PasEncore()
++        jeton = jetons_de(request.user).filter(pk=id).first()
++        if jeton is None:
++            raise NotFound(DETAIL_INTROUVABLE)
++        revoquer_jeton(jeton)
++        return Response(status=status.HTTP_204_NO_CONTENT)
+ 
+ 
+ class TestNotificationVue(APIView):
+@@ -54,8 +92,9 @@ class TestNotificationVue(APIView):
+ class TuileVue(MethodeAvantJeton, APIView):
+     """GET tuile/ — tuile Scriptable, jeton `tuile` (J:tuile)."""
+ 
+-    authentication_classes = AUTH_JETON
++    authentication_classes = [JetonTuile]
+     permission_classes = PERMISSIONS
++    throttle_classes = [*DEBITS, ThrottleTuile]
+ 
+     @extend_schema(responses={200: forme_echantillon('tuile'), 401: ERREUR_DETAIL, 429: ERREUR_DETAIL})
+     def get(self, request):
+@@ -65,12 +104,21 @@ class TuileVue(MethodeAvantJeton, APIView):
+ class FluxVue(MethodeAvantJeton, APIView):
+     """GET flux/{jeton}.ics — calendrier abonné, jeton `flux` dans l'adresse (J:flux)."""
+ 
+-    authentication_classes = AUTH_JETON
++    authentication_classes = [JetonFlux]
+     permission_classes = PERMISSIONS
++    throttle_classes = [*DEBITS, ThrottleFlux]
++
++    def finalize_response(self, request, response, *args, **kwargs):
++        """Le chemin porte le jeton : une réponse d'erreur n'est jamais écrite par `django.request`
++        (« Not Found: /…/flux/<jeton>.ics ») ; `Cache-Control: no-store` partout."""
++        response = super().finalize_response(request, response, *args, **kwargs)
++        if response.status_code >= 400:
++            response._has_been_logged = True
++        response['Cache-Control'] = 'no-store'
++        return response
+ 
+     @extend_schema(auth=[], responses={
+         (200, 'text/calendar'): OpenApiTypes.STR,
+-        (401, 'application/json'): ERREUR_DETAIL,
+         (404, 'application/json'): ERREUR_DETAIL,
+         (429, 'application/json'): ERREUR_DETAIL,
+     })
+diff --git a/backend/django_core/apps/taches/views/saisie.py b/backend/django_core/apps/taches/views/saisie.py
+index 868e3209d..bea0115c6 100644
+--- a/backend/django_core/apps/taches/views/saisie.py
++++ b/backend/django_core/apps/taches/views/saisie.py
+@@ -1,8 +1,8 @@
+ """Saisie (reference/api.md §3.2, §4) : saisie rapide et capture (Siri, partage).
+ 
+ `saisie-rapide/` (TCH48) : aperçu, « Range ma liste » (`ids`) et création tout ou rien. La capture
+-lève `PasEncore` (501) jusqu'à sa tâche ; elle est authentifiée par le BOUCHON `JetonPasEncoreLivre`
+-(401 neutre) tant que `JetonAccesAuthentication` n'est pas livrée. `CHAMPS_LIGNE` (le format d'une
++lève `PasEncore` (501) jusqu'à sa tâche ; elle est authentifiée par le jeton `capture`
++(`auth_jeton.JetonCapture`, 401 neutre) et bornée par ses débits. `CHAMPS_LIGNE` (le format d'une
+ ligne à créer, api.md §4) est déclaré dans `serializers/saisie.py` : `taches/` POST le réutilise.
+ """
+ from django.db import transaction
+@@ -10,8 +10,10 @@ from drf_spectacular.types import OpenApiTypes
+ from drf_spectacular.utils import extend_schema, inline_serializer
+ from rest_framework import serializers
+ from rest_framework.response import Response
++from rest_framework.settings import api_settings
+ from rest_framework.views import APIView
+ 
++from apps.taches.auth_jeton import JetonCapture
+ from apps.taches.choix import Source
+ from apps.taches.serializers.saisie import (
+     CHAMPS_LIGNE, SaisieEntreeSerializer, apercu_ids, apercu_saisie, reponse_creation, valider_lignes,
+@@ -19,8 +21,9 @@ from apps.taches.serializers.saisie import (
+ )
+ from apps.taches.services.creation import creer_taches
+ from apps.taches.services.taches import verifier_lien
++from apps.taches.throttles import ThrottleCapture, ThrottleCaptureJour
+ from apps.taches.views.base import (
+-    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore,
++    ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore,
+     corps, est_assistant, forme_echantillon, parametre, reponses,
+ )
+ from core.idempotency import IdempotentCreateMixin
+@@ -95,8 +98,9 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
+ class CaptureVue(MethodeAvantJeton, APIView):
+     """POST capture/ — Siri / partage, jeton `capture` (J:capture)."""
+ 
+-    authentication_classes = AUTH_JETON
++    authentication_classes = [JetonCapture]
+     permission_classes = PERMISSIONS
++    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, ThrottleCapture, ThrottleCaptureJour]
+ 
+     @extend_schema(
+         request=corps('Capture', {'titre': 'appeler le fournisseur demain 10 h', 'notes': '',

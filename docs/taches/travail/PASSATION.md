@@ -100,7 +100,7 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
-### État au 17/11/2026, quota à 96 % (dernière mise à jour de la session du portable)
+### État FINAL de la session du portable — 17/11/2026, quota à 97 % (arrêt volontaire, marge de sécurité)
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
@@ -114,6 +114,23 @@ fusion 3). Les lanes F3 pliées y sont cochées dans SON plan ; à la reprise, a
 `origin/main` dans `dev-taches-f3` et ouvrir sa PR. Lanes F3 (`plan_lanes.py … --group "Fusion F3"`) : assistant (10,
 opus), presence (8, opus), cartes (3), ecran-iphone (3), etranger-coquille-F3 (1), etranger-deploy-F3 (1),
 presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous pour celles qui sont faites.
+
+**Journal de la fusion 3 (branche `dev-taches-f3`, tête `222b97433`, PAS de PR ouverte, CI jamais jouée dessus)**
+- Pliées et cochées (8 tâches, 123 cochées sur 174) : TCH117, TCH165, TCH118 (cartes Tâches du Copilote, 4 demandes
+  prêtes), TCH101, TCH124 (pastille du jour et « À trier »), TCH120 (badge au push, raccourci de l'app), TCH20
+  (4 types de notification, migration `notifications/0079`), TCH21 (`notify(badge=n)`).
+- **TCH95 à moitié faite, NON committée** : le travail est sauvé dans `docs/taches/travail/tch95-wip/` (cette branche) :
+  `tch95.diff` (à appliquer sur `dev-taches-f3` par `git apply`) + 3 fichiers neufs (`auth_jeton.py`, `throttles.py`,
+  `presence.py` = `serializers/presence.py`). Il manquait `tests/test_jetons.py`, le lint, et la validation CI du
+  flux en 404 neutre. Reprendre la lane `taches/presence` à TCH95, puis TCH96, TCH97, TCH155, TCH98, TCH174.
+- Restes déclarés par la lane cartes : pas de feuille de style pour les cartes du Copilote (classes `.ep-carte-ia*`
+  de la maquette absentes) ; `CopilotPanel.jsx` n'appelle pas encore `lancerDemandePrete` / `estEcranTaches` (une
+  ligne, par la lane assistant) ; gestes « Changer de projet / d'étape », « Tout ajouter » d'un plan et l'écho
+  « Modifier » absents faute de donnée servie ; la pastille fait 2 requêtes (`badge/` + `aujourdhui/`).
+- Non commencées : lanes assistant (TCH161, 111, 164, 112, 113, 114, 163, 115, 162, 116), ecran-iphone (TCH109,
+  110, 160), final-F3 (TCH127), TCH135, acceptations TCH141, TCH171, TCH143.
+- Sur ce portable, le worktree `…\worktrees\dev-taches-f2` est positionné sur la branche `dev-taches-f3`.
+- Réservations de plan (`plan_claims.py`) RENDUES à l'arrêt pour que l'autre poste puisse les prendre.
 
 **Ce qui reste pour la fusion 2, dans l'ordre**
 0. (FAIT) CI verte sur `7c50012ee`. Si `main` a avancé : fusionner `origin/main`, régénérer OpenAPI + empreinte.
