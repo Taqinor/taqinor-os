@@ -47,7 +47,7 @@ from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeInc
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.rythme import IncitationCoach, Preference
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence
-from apps.taches.services.donnees import MODELES, lignes_du_compte
+from apps.taches.services.donnees import MODELES, _lignes_du_compte
 from apps.taches.tests import fabriques
 from apps.taches.tests.test_routes import PREFIXE, ROUTES, est_construite
 
@@ -385,11 +385,11 @@ def empreinte():
 
 
 def empreinte_de(*comptes):
-    """Les lignes de ces comptes seulement (les 21 modèles par `lignes_du_compte`, leurs activités)."""
+    """Les lignes de ces comptes seulement (les 21 modèles par `_lignes_du_compte`, leurs activités)."""
     lignes = {}
     for compte in comptes:
         for cle in MODELES:
-            lignes[(cle, compte.pk)] = list(lignes_du_compte(cle, compte).order_by('pk').values_list())
+            lignes[(cle, compte.pk)] = list(_lignes_du_compte(cle, compte).order_by('pk').values_list())
         activites = Activity._base_manager.filter(Q(assigned_to=compte) | Q(created_by=compte))
         lignes[('activite', compte.pk)] = list(activites.order_by('pk').values_list())
     return lignes

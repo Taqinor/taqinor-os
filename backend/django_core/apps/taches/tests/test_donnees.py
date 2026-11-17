@@ -33,7 +33,7 @@ from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach
 from apps.taches.models.taches import Rappel, Tache
 from apps.taches.serializers.formes import LIBELLE_LEAD_EFFACE, lien_de_tache
-from apps.taches.services.donnees import MODELES, exporter, lignes_du_compte
+from apps.taches.services.donnees import MODELES, exporter, _lignes_du_compte
 from apps.taches.services.erp import reverifier_liens
 from apps.taches.services.gestes import enregistrer_geste
 from apps.taches.services.purge import purger
@@ -217,7 +217,7 @@ class ToutEffacerTests(_Base):
             'agenda_externe': 1, 'suggestion_tache': 1})
         for cle in MODELES:
             with self.subTest(cle=cle):
-                self.assertFalse(lignes_du_compte(cle, self.u1).exists())
+                self.assertFalse(_lignes_du_compte(cle, self.u1).exists())
         self.assertEqual(set(Tache.all_objects.values_list('pk', flat=True)), {du_voisin.pk, d_ailleurs.pk})
         activite.refresh_from_db()  # l'activité de l'ERP n'appartient pas à `taches` : intacte
         self.assertFalse(activite.done)

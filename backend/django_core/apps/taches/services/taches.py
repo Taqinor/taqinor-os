@@ -380,7 +380,7 @@ def _etiquettes(edition, ids):
         lien.delete()
 
 
-def lien_courant(tache):
+def _lien_courant(tache):
     """`{"cible", "id"}` du lien ERP stocké, ou `None`."""
     if tache.content_type_id is None or tache.object_id is None:
         return None
@@ -399,7 +399,7 @@ def verifier_lien(user, lien):
 def _lien(edition, lien):
     """Pose ou retire le lien ERP (cible ∈ `CibleLiable` ET visible : sinon 400 sur `lien`)."""
     tache = edition.tache
-    avant = lien_courant(tache)
+    avant = _lien_courant(tache)
     if lien is None:
         tache.content_type, tache.object_id = None, None
         tache.lien_etat, tache.lien_libelle, tache.lien_verifie_le = '', '', None
@@ -410,7 +410,7 @@ def _lien(edition, lien):
         tache.object_id = lien['id']
         tache.lien_etat, tache.lien_verifie_le = LienEtat.OK, timezone.now()
         tache.lien_libelle = libelle_de_cible(edition.user, lien['cible'], lien['id']) or ''
-    if lien_courant(tache) != avant:
+    if _lien_courant(tache) != avant:
         edition.avant['lien'] = avant
         edition.ecrire |= {'content_type', 'object_id', 'lien_etat', 'lien_libelle', 'lien_verifie_le'}
 
@@ -852,7 +852,7 @@ def _controle_regle(champ, valeur):
     return valeur
 
 
-def valeurs_regle(spec, enveloppe=None):
+def _valeurs_regle(spec, enveloppe=None):
     """Les valeurs REVÉRIFIÉES de `spec` (dict) pour une règle ; 400 sous le champ fautif
     (`{"<champ>": […]}`, ou `{"<enveloppe>": {"<champ>": […]}}`)."""
     if not isinstance(spec, dict):
@@ -929,7 +929,7 @@ def modifier_regle(user, regle_id, donnees, *, aujourdhui=None):
     aujourdhui = aujourdhui or timezone.localdate()
     with transaction.atomic():
         regle = _regle_du_compte(user, regle_id, verrou=True)
-        _appliquer_regle(regle, valeurs_regle(donnees))
+        _appliquer_regle(regle, _valeurs_regle(donnees))
         if 'actif' in donnees:
             regle.actif = donnees['actif']
         regle.save()
@@ -950,7 +950,7 @@ def _regle_de_la_tache(edition, spec, aujourdhui):
             t.recurrence, t.occurrence_du = None, None
             edition.ecrire |= {'recurrence', 'occurrence_du'}
         return
-    valeurs = valeurs_regle(spec, 'recurrence')
+    valeurs = _valeurs_regle(spec, 'recurrence')
     if t.recurrence_id is not None:
         regle = _regle_du_compte(user, t.recurrence_id, verrou=True)
         _appliquer_regle(regle, valeurs, 'recurrence')

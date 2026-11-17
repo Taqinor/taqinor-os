@@ -447,7 +447,7 @@ _DEFAIRE = {
 }
 
 
-def rouvrir_sources_converties(user, operations, bilan):
+def _rouvrir_sources_converties(user, operations, bilan):
     """Annuler une conversion (« conversion » d'à-faire ERP en tâches) rouvre l'à-faire SOURCE de chaque
     tâche dont la création vient d'être défaite, par `records.services.rouvrir_a_faire_personnel` (lu par
     `records.selectors.a_faire_personnels_de` : jamais l'à-faire d'un autre créateur). Une tâche restée en
@@ -490,7 +490,7 @@ def annuler_geste(user, geste_id):
             if defaire is not None:
                 defaire(user, etape, bilan)
         if geste.type == 'conversion':
-            rouvrir_sources_converties(user, geste.operations, bilan)
+            _rouvrir_sources_converties(user, geste.operations, bilan)
         geste.annule_le = timezone.now()
         geste.save(update_fields=['annule_le', 'updated_at'])
     return bilan.rendu()

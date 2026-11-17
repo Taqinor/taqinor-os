@@ -892,8 +892,8 @@ class BilanTests(_Base):
         self.assertEqual(rendu['bilan']['texte'], '1 sur 5 · essentiel 0 sur 1')
         self.assertEqual(rendu['bilan']['texte_gardees'], '1 des 2 gardées')
         self.assertFalse(rendu['bilan']['objectif_atteint'])
-        from apps.taches.services.journee import possible_jusqua
-        self.assertEqual(rendu['possible_jusqua'], possible_jusqua(J).isoformat())
+        from apps.taches.services.journee import _possible_jusqua
+        self.assertEqual(rendu['possible_jusqua'], _possible_jusqua(J).isoformat())
 
     def test_bilan_d_hier_jusqu_a_midi(self):
         from apps.taches.services.journee import Refus

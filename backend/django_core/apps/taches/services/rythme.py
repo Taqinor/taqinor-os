@@ -99,7 +99,7 @@ def _en_decimal(valeur):
     return None if valeur is None else Decimal(str(round(float(valeur), DECIMALES_REFERENCE)))
 
 
-def jours_evalues(plans, jour):
+def _jours_evalues(plans, jour):
     """`PlanJour` évalués avant `jour`, chronologiques (seul `evalue` entre au rythme, §6.2)."""
     return [p for p in plans if p.statut_jour == StatutJour.EVALUE and p.jour < jour]
 
@@ -109,14 +109,14 @@ def etat_rythme(reglages, plans, jour):
     et ceux du bloc en cours (jours évalués depuis `bloc_debut`, 10 au plus)."""
     valeurs = {nom: getattr(reglages, nom) for nom in CHAMPS_ETAT}
     valeurs['tenir_reference'] = _en_float(reglages.tenir_reference)
-    evalues = jours_evalues(plans, jour)
+    evalues = _jours_evalues(plans, jour)
     bloc = [p.compte_rythme for p in evalues if reglages.bloc_debut and p.jour >= reglages.bloc_debut]
     etat = moteur.EtatRythme(**valeurs, comptes_recents=tuple(p.compte_rythme for p in evalues),
                              comptes_bloc=tuple(bloc[:moteur.BLOC_JOURS]))
     return replace(etat, objectif=moteur.objectif_affiche(etat)[0])
 
 
-def ecrire_etat(reglages, etat):
+def _ecrire_etat(reglages, etat):
     """Réécrit sur `reglages` les champs que le moteur a changés → opérations annulables (les champs
     de la liste blanche `reglages_rythme`, donnees.md §4 ; les autres sont écrits sans opération)."""
     avant, changes = {}, []
@@ -137,7 +137,7 @@ def ecrire_etat(reglages, etat):
 
 # --- Objectif du jour ------------------------------------------------------------------------
 
-def jours_courts(user):
+def _jours_courts_dits(user):
     """Jours courts DITS (`Preference.jours_courts`, entiers 0-6) ; absents = aucun."""
     preference = preference_de(user, ClePreference.JOURS_COURTS)
     valeur = preference.valeur if preference is not None else []
@@ -152,7 +152,7 @@ def objectif_du_jour(etat, jour, courts):
     return max(moteur.PALIER_MIN, nb - 1)
 
 
-def appliquer_au_jour(user, jour, etat, *, avant_plan=False):
+def _appliquer_au_jour(user, jour, etat, *, avant_plan=False):
     """L'objectif s'applique TOUT DE SUITE au `PlanJour` de J s'il existe et n'est pas clos (A2.1).
 
     `avant_plan` (réponse à une carte, §6.5 point 6) : seulement si le plan du jour n'est pas encore
@@ -162,7 +162,7 @@ def appliquer_au_jour(user, jour, etat, *, avant_plan=False):
         return []
     if avant_plan and plan.planifie_le is not None:
         return []
-    neuf = objectif_du_jour(etat, jour, jours_courts(user))
+    neuf = objectif_du_jour(etat, jour, _jours_courts_dits(user))
     if plan.objectif_du_jour == neuf:
         return []
     avant = plan.objectif_du_jour
@@ -171,7 +171,7 @@ def appliquer_au_jour(user, jour, etat, *, avant_plan=False):
     return [op_champ('plan_jour', plan, 'objectif_du_jour', avant)]
 
 
-def abandonner_propositions(user, jour):
+def _abandonner_propositions(user, jour):
     """Une bascule abandonne la proposition en attente (§6.7) : elle sort de « ouverte » ce jour
     (`expire_le` = veille) ; la nuit la marque `expiree` (seule à poser cette réponse)."""
     veille = jour - datetime.timedelta(days=1)
@@ -236,7 +236,7 @@ def _nouvel_etat(etat, mode, objectif, sens, jour):
     return moteur.basculer(etat, mode, jour)
 
 
-def reglages_a_ecrire(user):
+def _reglages_a_ecrire(user):
     """La `ReglagesRythme` de `user`, VERROUILLÉE, créée au premier geste qui l'ÉCRIT (`POST rythme/`,
     `PATCH reglages/`) : un compte neuf dit son objectif ou règle ses interrupteurs avant sa première
     tâche. Une LECTURE n'en crée jamais (`reglages_ou_defauts`). Dans une transaction de l'appelant ;
@@ -250,17 +250,17 @@ def regler_rythme(user, donnees, jour):
 
     Le nombre dit (1-12) ou « plus »/« moins » passe par `moteur.objectif_dit` (le mode devient
     `pousser`) ; un autre mode par `moteur.basculer`. Lève `ErreursRythme` (400). Un compte sans
-    réglages les reçoit ici (`reglages_a_ecrire`).
+    réglages les reçoit ici (`_reglages_a_ecrire`).
     """
     mode, objectif, sens = _lire_corps(donnees)
     with transaction.atomic():
-        reglages = reglages_a_ecrire(user)
+        reglages = _reglages_a_ecrire(user)
         etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
         neuf = _nouvel_etat(etat, mode, objectif, sens, jour)
-        operations = ecrire_etat(reglages, neuf)
+        operations = _ecrire_etat(reglages, neuf)
         if neuf.mode != etat.mode:
-            abandonner_propositions(user, jour)
-        operations += appliquer_au_jour(user, jour, neuf)
+            _abandonner_propositions(user, jour)
+        operations += _appliquer_au_jour(user, jour, neuf)
         geste = None
         if operations:
             geste = enregistrer_geste(user, 'rythme', confirmation(etat, neuf, objectif, sens), operations)
@@ -278,7 +278,7 @@ def reglages_ou_defauts(user):
 
 # --- Préférences dites (écrites par une carte, l'écran ou le Copilote) -----------------------
 
-def ecrire_preference(user, cle, valeur, source):
+def _ecrire_preference(user, cle, valeur, source):
     """Pose `cle` = `valeur` (validée par l'appelant) → opérations annulables (création ou valeur)."""
     preference = preference_de(user, cle, verrou=True)
     if preference is None:
@@ -330,7 +330,7 @@ class PropositionExpiree(Exception):
     """La carte n'est plus ouverte (répondue ou expirée) : 409 `proposition_expiree`."""
 
 
-def reponses_permises(carte):
+def _reponses_permises(carte):
     """L'ensemble des réponses permises à `carte`."""
     if carte.type == TypeIncitationEcran.PROPOSITION_PALIER:
         permises = set(REPONSES_PALIER.get(carte.cle, ()))
@@ -368,10 +368,10 @@ def _rythme_repondu(user, reglages, carte, reponse, jour):
         neuf = replace(etat, tenir_reference=m, tenir_fixee_le=jour)
     else:
         return []
-    operations = ecrire_etat(reglages, neuf)
+    operations = _ecrire_etat(reglages, neuf)
     if neuf.mode != etat.mode:
-        abandonner_propositions(user, jour)
-    return operations + appliquer_au_jour(user, jour, neuf, avant_plan=True)
+        _abandonner_propositions(user, jour)
+    return operations + _appliquer_au_jour(user, jour, neuf, avant_plan=True)
 
 
 def _reactiver(reglages, carte):
@@ -391,13 +391,13 @@ def _constat_accepte(user, carte):
     """L'action d'un constat accepté qui pose une préférence (source `carte`) ; les autres (C4, C6,
     C7, C8) vivent par la carte acceptée elle-même (I13)."""
     if carte.cle in CONSTATS_ESSENTIEL_LE_MATIN:
-        return ecrire_preference(user, ClePreference.ESSENTIEL_LE_MATIN, True, SourcePreference.CARTE)
+        return _ecrire_preference(user, ClePreference.ESSENTIEL_LE_MATIN, True, SourcePreference.CARTE)
     if carte.cle == 'C3':
         jour_court = (carte.donnees or {}).get('jour')
         if not isinstance(jour_court, int):
             return []
-        valeur = sorted(jours_courts(user) | {jour_court})
-        return ecrire_preference(user, ClePreference.JOURS_COURTS, valeur, SourcePreference.CARTE)
+        valeur = sorted(_jours_courts_dits(user) | {jour_court})
+        return _ecrire_preference(user, ClePreference.JOURS_COURTS, valeur, SourcePreference.CARTE)
     return []
 
 
@@ -426,7 +426,7 @@ def _carte_a_repondre(user, carte_id, reponse, jour):
     carte = cartes_de(user).select_for_update().filter(pk=carte_id, canal=CanalIncitation.ECRAN).first()
     if carte is None:
         raise Introuvable()
-    if reponse not in reponses_permises(carte):
+    if reponse not in _reponses_permises(carte):
         raise ErreursRythme({'reponse': [REPONSE_INCONNUE]})
     if carte.reponse or carte.repondu_le is not None or (carte.expire_le is not None and carte.expire_le < jour):
         raise PropositionExpiree()
@@ -567,7 +567,7 @@ VALIDATIONS = {
 }
 
 
-def valider_preference(cle, valeur):
+def _valider_preference(cle, valeur):
     """La valeur normalisée de `cle`, ou `ErreursRythme` (`cle` inconnue, `valeur` hors règle)."""
     validation = VALIDATIONS.get(cle)
     if validation is None:
@@ -578,16 +578,16 @@ def valider_preference(cle, valeur):
 def poser_preference(user, cle, valeur, source):
     """`POST preferences/` : pose ce que `user` a DIT (`source` = `copilote` sous l'en-tête assistant,
     sinon `ecran`) → geste annulable (ou `None` si rien n'a changé)."""
-    valeur = valider_preference(cle, valeur)
+    valeur = _valider_preference(cle, valeur)
     with transaction.atomic():
         reglages_de(user, verrou=True)  # sérialise les écritures du compte
-        operations = ecrire_preference(user, cle, valeur, source)
+        operations = _ecrire_preference(user, cle, valeur, source)
         if not operations:
             return None
-        return enregistrer_geste(user, 'preference', f'Noté : {phrase_preference(cle, valeur)}', operations)
+        return enregistrer_geste(user, 'preference', f'Noté : {_phrase_preference(cle, valeur)}', operations)
 
 
-def phrase_preference(cle, valeur):
+def _phrase_preference(cle, valeur):
     """La phrase d'une préférence dite (toast « Noté : {phrase} · Annuler », textes.md §2.15) : celle de
     l'en-tête du Copilote ; une note libre n'est jamais recopiée (son seul libellé)."""
     if cle == ClePreference.NOTE_LIBRE:
@@ -610,7 +610,7 @@ def retirer_preference(user, cle):
         return enregistrer_geste(user, 'preference', f'Retirée : {ClePreference(cle).label.lower()}', [operation])
 
 
-def faites_aujourdhui(user, jour):
+def _faites_aujourdhui(user, jour):
     """Le compte du rythme du `jour` : `moteur.compte_du_jour` sur les tâches faites ce jour (une
     routine — quotidienne ou jours ouvrés, intervalle 1 — comptée 0) et les activités ERP closes par
     lui ce jour (`selectors.journee.activites_closes_du_jour`, le même compte qu'`aujourdhui/`)."""
@@ -659,7 +659,8 @@ def entete_coach(user, jour):
     au plus pour les deux, formées depuis des clés fermées (jamais un titre, une note, un projet)."""
     reglages = reglages_ou_defauts(user)
     etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
-    lignes = [_ligne_rythme(etat, faites_aujourdhui(user, jour), objectif_du_jour(etat, jour, jours_courts(user)))]
+    objectif = objectif_du_jour(etat, jour, _jours_courts_dits(user))
+    lignes = [_ligne_rythme(etat, _faites_aujourdhui(user, jour), objectif)]
     dites = [_dite(p.cle, p.valeur) for p in preferences_de(user) if p.cle != ClePreference.NOTE_LIBRE]
     if dites:
         lignes.append('Préférences dites : ' + ' · '.join(dites))
@@ -742,7 +743,7 @@ def _valeurs_reglages(donnees, reglages, est_admin):
     return {champ: _valeur_reglage(champ, valeur, reglages) for champ, valeur in donnees.items()}
 
 
-def effacer_profil(user, reglages):
+def _effacer_profil(user, reglages):
     """« Comprendre mon rythme » coupé : rien n'est plus calculé ni GARDÉ (donnees.md §8) — cartes
     du rythme supprimées, état de « Garder ce rythme » et mémoires remis à nul, champs de rythme des
     `PlanJour` effacés. Le mode et l'objectif restent."""
@@ -756,12 +757,12 @@ def effacer_profil(user, reglages):
 def modifier_reglages(user, donnees, *, est_admin):
     """`PATCH reglages/` (liste blanche, sans geste) → réglages relus. `titres_notifications` pose
     `titres_notifications_demande_le` (question du 1er rappel, A17-T4). Lève `ErreursRythme` (400),
-    `ReserveAdministrateur` (403). Un compte sans réglages les reçoit ici (`reglages_a_ecrire`) ; un
+    `ReserveAdministrateur` (403). Un compte sans réglages les reçoit ici (`_reglages_a_ecrire`) ; un
     corps refusé lève dans la transaction, qui défait la création."""
     if not hasattr(donnees, 'items'):
         raise ErreursRythme({'non_field_errors': [VALEUR_INCONNUE]})
     with transaction.atomic():
-        reglages = reglages_a_ecrire(user)
+        reglages = _reglages_a_ecrire(user)
         valeurs = _valeurs_reglages(dict(donnees.items()), reglages, est_admin)
         coupe = reglages.comprendre_mon_rythme and valeurs.get('comprendre_mon_rythme') is False
         for champ, valeur in valeurs.items():
@@ -771,7 +772,7 @@ def modifier_reglages(user, donnees, *, est_admin):
             reglages.titres_notifications_demande_le = timezone.now()
             ecrits.append('titres_notifications_demande_le')
         if coupe:
-            ecrits += effacer_profil(user, reglages)
+            ecrits += _effacer_profil(user, reglages)
         reglages.save(update_fields=ecrits)
     return reglages
 
@@ -854,7 +855,7 @@ def _derive(user, etat, plans, jour):
         if reference is None:
             return etat
         etat = replace(etat, tenir_reference=reference, tenir_fixee_le=jour)
-    comptes = [p.compte_rythme for p in jours_evalues(plans, jour) if p.jour >= etat.tenir_fixee_le]
+    comptes = [p.compte_rythme for p in _jours_evalues(plans, jour) if p.jour >= etat.tenir_fixee_le]
     sens = moteur.derive_tenir(etat.tenir_reference, comptes, jour, etat.tenir_silence_jusquau)
     if sens is None:
         return etat
@@ -913,7 +914,7 @@ def _refus_constats(user):
     return refus
 
 
-def donnees_constats(user, plans, jour):
+def _donnees_constats(user, plans, jour):
     """Tout ce que `moteur.constats` lit, depuis les lignes réelles du compte (fenêtres §6.9)."""
     jours = tuple(moteur.JourCompte(jour=p.jour, statut_jour=p.statut_jour, compte=p.compte_rythme,
                                     essentiels_choisis=p.essentiels_choisis, essentiels_faits=p.essentiels_faits,
@@ -953,7 +954,7 @@ def _nombres_c5(constat, d):
     return {'p': moteur.arrondir(part), 'n': n, 'h1': debut, 'h2': debut + moteur.C5_TRANCHE_HEURES}
 
 
-def nombres_du_constat(constat, d):
+def _nombres_du_constat(constat, d):
     """Les nombres de la phrase du constat (textes.md « Constats ») — ids et nombres, jamais un titre."""
     if constat.code == 'C1':
         return {'taux': {k: moteur.arrondir(v) for k, v in constat.donnees['taux'].items()},
@@ -985,10 +986,10 @@ def _constat_a_taire(user, code, jour):
 
 def _constats(user, jour):
     plans = plans_de(user, jour - FENETRE_C3, jour - datetime.timedelta(days=1))
-    donnees = donnees_constats(user, plans, jour)
+    donnees = _donnees_constats(user, plans, jour)
     for constat in moteur.constats(donnees):
         if not _constat_a_taire(user, constat.code, jour):
-            creer_carte(user, TypeIncitationEcran.CONSTAT, constat.code, jour, nombres_du_constat(constat, donnees))
+            creer_carte(user, TypeIncitationEcran.CONSTAT, constat.code, jour, _nombres_du_constat(constat, donnees))
 
 
 # --- Expirations, ignorées, pauses (regles.md §7) --------------------------------------------
@@ -1052,7 +1053,7 @@ def _heure_dite(user, cle, defaut):
 
 # --- La nuit d'une société -------------------------------------------------------------------
 
-def nuit_du_compte(reglages, jour):
+def _nuit_du_compte(reglages, jour):
     """Les étapes de rythme d'UN compte : blocs et propositions, dérive, constats (si « Comprendre
     mon rythme »), révélation `revue`, pauses."""
     from apps.taches.services import revelations  # import local : revelations lit creer_carte d'ici
@@ -1061,7 +1062,7 @@ def nuit_du_compte(reglages, jour):
     if reglages.comprendre_mon_rythme:
         plans = plans_du_rythme(user, jour)
         etat = _derive(user, _blocs(user, etat_rythme(reglages, plans, jour), jour), plans, jour)
-        ecrire_etat(reglages, etat)
+        _ecrire_etat(reglages, etat)
         _constats(user, jour)
     revelations.revelation_revue(user, reglages, jour)
     _pauser(user, reglages, jour)
@@ -1077,4 +1078,4 @@ def etapes_nocturnes(company_id, jour):
     lignes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True)
               .select_related('proprietaire').order_by('pk'))
     for reglages in lignes:
-        nuit_du_compte(reglages, jour)
+        _nuit_du_compte(reglages, jour)

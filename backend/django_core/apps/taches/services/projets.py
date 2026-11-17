@@ -518,7 +518,7 @@ class DecalageRefuse(Exception):
         self.refus, self.changements, self.avant_aujourdhui = refus, changements, list(avant_aujourdhui)
 
 
-def titrer_changements(changements, projet, sections, taches, usage):
+def _titrer_changements(changements, projet, sections, taches, usage):
     """Chaque ligne de `decalage` reçoit le `titre` de son objet par `nom_pour` (confidentialité
     respectée ; le nom d'une étape d'un projet confidentiel devient « Étape » hors de l'écran, comme
     dans la santé). Les tâches du projet sont déjà lues : projet et parent posés en mémoire, sans requête."""
@@ -553,9 +553,9 @@ def decaler_projet(user, projet_id, delta, *, apercu=True, usage='ecran'):
             return [], None
         resultat = decaler(delta, jour, projet, sections, taches, _prochain_ouvre(user, dates, delta))
         if resultat.refus:
-            raise DecalageRefuse(resultat.refus, titrer_changements(resultat.apercu, projet, sections, taches,
-                                                                    usage), resultat.avant_aujourdhui)
-        changements = titrer_changements(resultat.changements, projet, sections, taches, usage)
+            raise DecalageRefuse(resultat.refus, _titrer_changements(resultat.apercu, projet, sections, taches,
+                                                                     usage), resultat.avant_aujourdhui)
+        changements = _titrer_changements(resultat.changements, projet, sections, taches, usage)
         if apercu or not changements:
             return changements, None
         ops = _appliquer_decalage(user, projet, sections, taches, changements)
