@@ -31,11 +31,14 @@ vi.mock('../../../api/crmApi', () => {
 
 import crmApi from '../../../api/crmApi'
 import LeadsPage from './LeadsPage'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 const [PREMIERE, DEUXIEME] = PIPELINE_STAGES
+// Lignes tirées de l'exemple de contrat committé (crm/lead_list), champs utiles au test surchargés.
+const LISTE = exempleContrat('crm', 'lead_list')
 const LEADS = [
-  { id: 1, nom: 'Alpha', stage: PREMIERE, owner: null, devis: [], stage_since_days: 1 },
-  { id: 2, nom: 'Bravo', stage: PREMIERE, owner: null, devis: [], stage_since_days: 1 },
+  { ...LISTE.results[0], id: 1, nom: 'Alpha', stage: PREMIERE, owner: null, devis: [], stage_since_days: 1 },
+  { ...LISTE.results[0], id: 2, nom: 'Bravo', stage: PREMIERE, owner: null, devis: [], stage_since_days: 1 },
 ]
 // Codes des stores `init_roles` (permissions_registre.py) — seuls les codes CRM comptent ici.
 const COMMERCIAL = ['crm_voir', 'crm_creer', 'crm_modifier', 'crm_export']
@@ -65,7 +68,7 @@ async function menuPerdu() {
 const pickers = () => screen.findAllByTitle('Assigner un responsable')
 
 beforeEach(() => {
-  crmApi.getLeads.mockResolvedValue({ data: { results: LEADS, next: null } })
+  crmApi.getLeads.mockResolvedValue({ data: { ...LISTE, results: LEADS, next: null } })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks(); sessionStorage.clear() })
 
