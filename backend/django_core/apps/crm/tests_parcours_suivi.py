@@ -152,6 +152,25 @@ class TableParcoursTests(SimpleTestCase):
                 modeles = [r['modele'] for r in etape['reponses']]
                 self.assertEqual(len(modeles), len(set(modeles)), modeles)
 
+    def test_les_groupes_les_rangs_et_les_segments_de_raison_sont_declares(self):
+        """17/11/2026 — la PRÉSENTATION des réponses (groupes « Pas joint » / « Plus tard… »,
+        « Autre réponse », raisons d'attente par segment) vit dans la table : un groupe cité par un
+        modèle existe, un rang ne vaut que « autre », jamais les deux sur un modèle, et chaque raison
+        d'attente dit les segments où elle vaut. Rien de tout cela n'est une clé envoyée au serveur."""
+        t = table()
+        for modele_id, modele in t['modeles'].items():
+            with self.subTest(modele=modele_id):
+                if 'groupe' in modele:
+                    self.assertIn(modele['groupe'], t['groupes'])
+                if 'rang' in modele:
+                    self.assertEqual(modele['rang'], 'autre')
+                self.assertFalse('groupe' in modele and 'rang' in modele)
+        segments = {'residentiel', 'agricole', 'commercial', 'industriel'}
+        for raison in t['modeles']['attente_accord']['raisons']:
+            with self.subTest(raison=raison['valeur']):
+                self.assertTrue(raison['segments'])
+                self.assertLessEqual(set(raison['segments']), segments)
+
     def test_chaque_envoi_est_connu_de_la_spec(self):
         issues = {cle for cle, _libelle in LeadActivity.OUTCOMES}
         for etape in table()['etapes']:
