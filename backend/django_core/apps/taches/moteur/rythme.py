@@ -404,6 +404,10 @@ def _vers_pousser(etat, jour):
             'bloc_debut': jour + timedelta(days=1)}
 
 
+def _fenetre_ok(jour, ref, fenetre):
+    return 0 <= (jour - ref).days < fenetre
+
+
 def basculer(etat, mode, jour):
     """Change de mode (§6.7) : remet blocs, refus et essai à zéro ; garde `meilleur_tenu` et les échecs.
 
@@ -419,3 +423,260 @@ def basculer(etat, mode, jour):
     elif mode == ModeRythme.POUSSER:
         champs.update(_vers_pousser(etat, jour))
     return _maj(etat, **champs)
+
+
+# --- TCH28 : constats, retour d'absence, semaine courte, repère (§6.9, §4.8) -
+
+FENETRE_CONSTATS_JOURS = 28  # fenêtre des constats, sauf C3
+FENETRE_C3_JOURS = 56  # C3 exige 8 jours d'un même jour de semaine : 28 jours n'en donnent que 4
+SILENCE_CONSTAT_JOURS = 28  # un constat refusé se tait 28 jours
+CONSTATS_MAX = 8
+C1_MIN_LIGNES = 30
+C1_ECART = 25  # points
+C2_MIN_JOURS = 15
+C2_ECART = 30
+C3_MIN_JOURS = 8
+C3_ECART = 1  # tâches sous la moyenne générale
+C4_MIN_PLANS = 10
+C4_ECART = 2
+C4_PART = 0.6
+C5_MIN_TACHES = 30
+C5_TRANCHE_HEURES = 2
+C6_MIN_TACHES = 5
+C6_RATIO_BAS = 0.8
+C6_RATIO_HAUT = 1.25
+C7_MIN = 1
+RETOUR_JOURS_TRAVAILLES = 3  # >= 3 jours travaillés depuis la dernière ouverture
+REPERE_JOURS = 9
+REPERE_PERCENTILE = 0.6
+REPERE_DECIMALES = 1
+SEMAINE_COURTE_JOURS = 3  # >= 3 jours `sans_donnees` dans la semaine
+POURCENT = 100
+
+# Comme les autres comportements « hors de la première livraison » : C6 est éteint
+# faute de durée réelle mesurée (critique m6) ; les champs et la formule restent.
+CONSTAT_C6_ACTIF = False
+
+ACTION_ESSENTIEL_MATIN = 'essentiel_le_matin'
+ACTION_JOURS_COURTS = 'jours_courts'
+ACTION_GARDER_LIMITE = 'garder_limite'
+ACTION_DUREE_CORRIGEE = 'duree_corrigee'
+ACTION_A_REVOIR = 'a_revoir'
+ACTION_PROPOSE_DEMAIN = 'propose_demain'
+
+
+@dataclass(frozen=True)
+class LigneConstat:
+    """Une ligne de plan figée (`LignePlanJour`) vue par C1 et C2."""
+    jour: object
+    creneau: str = ''
+    faite: bool = False
+    essentielle: bool = False
+    rang: object = None
+
+
+@dataclass(frozen=True)
+class DonneesConstats:
+    """Tout ce que `constats` lit (aucun ORM) ; les fenêtres sont filtrées ici.
+
+    `heures_faits` = `(jour, heure locale de fait_le)` ; `taches_mesurees` =
+    `(projet_id, minutes estimées, minutes réelles)` ; `refus` = code -> jour du
+    « Pas maintenant » ; `reportees_3` = tâches ouvertes reportées 3 fois ou plus ;
+    `projet_neglige_id` = projet de plus haute priorité non vide de `neglige()`.
+    """
+    jour: object
+    comprendre_mon_rythme: bool = True
+    jours: tuple = ()
+    lignes: tuple = ()
+    heures_faits: tuple = ()
+    taches_mesurees: tuple = ()
+    reportees_3: int = 0
+    projet_neglige_id: object = None
+    refus: object = None
+
+
+@dataclass(frozen=True)
+class Constat:
+    """Un constat : numéro `C<n>`, nombres (ids, jamais de titres) et action proposée."""
+    code: str
+    donnees: dict
+    action: object = None
+
+
+def _pct(ok, total):
+    return POURCENT * ok / total
+
+
+def _lignes_fenetre(d):
+    return [x for x in d.lignes if _fenetre_ok(d.jour, x.jour, FENETRE_CONSTATS_JOURS)]
+
+
+def _constat_c1(d):
+    groupes = {}
+    for ligne in _lignes_fenetre(d):
+        if ligne.creneau:
+            groupes.setdefault(ligne.creneau, []).append(ligne.faite)
+    taux = {c: _pct(sum(v), len(v)) for c, v in groupes.items() if len(v) >= C1_MIN_LIGNES}
+    if len(taux) < 2 or max(taux.values()) - min(taux.values()) < C1_ECART:
+        return None
+    meilleur = max(taux, key=taux.get)
+    return Constat('C1', {'taux': taux, 'meilleur': meilleur}, ACTION_ESSENTIEL_MATIN)
+
+
+def _essentiels_classes(lignes):
+    """Lignes essentielles `(jour, faite)` : en tête du plan (rang minimal du jour) / ailleurs."""
+    rang_min = {}
+    for ligne in lignes:
+        if ligne.rang is not None:
+            rang_min[ligne.jour] = min(rang_min.get(ligne.jour, ligne.rang), ligne.rang)
+    en_tete, ailleurs = [], []
+    for ligne in lignes:
+        if ligne.essentielle and ligne.rang is not None:
+            cible = en_tete if ligne.rang == rang_min[ligne.jour] else ailleurs
+            cible.append((ligne.jour, ligne.faite))
+    return en_tete, ailleurs
+
+
+def _constat_c2(d):
+    en_tete, ailleurs = _essentiels_classes(_lignes_fenetre(d))
+    # 15 jours chacun (un jour compte dans les deux familles s'il a deux essentiels).
+    if len({j for j, _ in en_tete}) < C2_MIN_JOURS or len({j for j, _ in ailleurs}) < C2_MIN_JOURS:
+        return None
+    taux_tete = _pct(sum(f for _, f in en_tete), len(en_tete))
+    taux_ailleurs = _pct(sum(f for _, f in ailleurs), len(ailleurs))
+    if taux_tete - taux_ailleurs < C2_ECART:
+        return None
+    return Constat('C2', {'premier': taux_tete, 'ailleurs': taux_ailleurs}, ACTION_ESSENTIEL_MATIN)
+
+
+def _constat_c3(d):
+    evalues = [j for j in d.jours if j.statut_jour == StatutJour.EVALUE
+               and _fenetre_ok(d.jour, j.jour, FENETRE_C3_JOURS)]
+    if not evalues:
+        return None
+    generale = mean(j.compte for j in evalues)
+    moyennes = {}
+    for semaine_jour in range(7):
+        comptes = [j.compte for j in evalues if j.jour.weekday() == semaine_jour]
+        if len(comptes) >= C3_MIN_JOURS and mean(comptes) <= generale - C3_ECART:
+            moyennes[semaine_jour] = mean(comptes)
+    if not moyennes:
+        return None
+    pire = min(moyennes, key=moyennes.get)
+    return Constat('C3', {'jour_semaine': pire, 'moyenne': moyennes[pire], 'moyenne_generale': generale},
+                   ACTION_JOURS_COURTS)
+
+
+def _constat_c4(d):
+    plans = [j for j in d.jours if j.statut_jour == StatutJour.EVALUE and j.plan_prevues > 0
+             and _fenetre_ok(d.jour, j.jour, FENETRE_CONSTATS_JOURS)]
+    if len(plans) < C4_MIN_PLANS:
+        return None
+    trop = sum(1 for j in plans if j.plan_prevues - j.plan_faites >= C4_ECART)
+    if trop < C4_PART * len(plans):
+        return None
+    limite = arrondir(median(j.plan_faites for j in plans)) + 1
+    return Constat('C4', {'plans': len(plans), 'limite': limite}, ACTION_GARDER_LIMITE)
+
+
+def _constat_c5(d):
+    heures = [h for jour, h in d.heures_faits if _fenetre_ok(d.jour, jour, FENETRE_CONSTATS_JOURS)]
+    if len(heures) < C5_MIN_TACHES:
+        return None
+    tranches = {}
+    for heure in heures:
+        debut = heure - heure % C5_TRANCHE_HEURES
+        tranches[debut] = tranches.get(debut, 0) + 1
+    return Constat('C5', {'tranches': {k: _pct(v, len(heures)) for k, v in sorted(tranches.items())}}, None)
+
+
+def _constat_c6(d):
+    if not CONSTAT_C6_ACTIF:
+        return None
+    par_projet = {}
+    for projet_id, estime, reel in d.taches_mesurees:
+        if estime and reel is not None:
+            par_projet.setdefault(projet_id, []).append(reel / estime)
+    hors = {p: median(r) for p, r in par_projet.items()
+            if len(r) >= C6_MIN_TACHES and not C6_RATIO_BAS <= median(r) <= C6_RATIO_HAUT}
+    if not hors:
+        return None
+    pire = max(hors, key=lambda p: abs(math.log(hors[p])))
+    return Constat('C6', {'projet_id': pire, 'ratio': hors[pire]}, ACTION_DUREE_CORRIGEE)
+
+
+def _constat_c7(d):
+    if d.reportees_3 < C7_MIN:
+        return None
+    return Constat('C7', {'nb': d.reportees_3}, ACTION_A_REVOIR)
+
+
+def _constat_c8(d):
+    if d.projet_neglige_id is None:
+        return None
+    return Constat('C8', {'projet_id': d.projet_neglige_id}, ACTION_PROPOSE_DEMAIN)
+
+
+_CONSTATS = (_constat_c1, _constat_c2, _constat_c3, _constat_c4,
+             _constat_c5, _constat_c6, _constat_c7, _constat_c8)
+
+
+def constats(donnees):
+    """Les constats calculables, de C1 à C8 (8 au plus), `[]` si « comprendre mon rythme » est éteint.
+
+    Un constat refusé (« Pas maintenant ») se tait 28 jours. Le choix de celui
+    qu'on montre au bilan du soir (un seul) appartient à la couche appelante.
+    """
+    if not donnees.comprendre_mon_rythme:
+        return []
+    refus = donnees.refus or {}
+    sortie = []
+    for calcul in _CONSTATS:
+        constat = calcul(donnees)
+        if constat is None:
+            continue
+        refuse_le = refus.get(constat.code)
+        if refuse_le is not None and (donnees.jour - refuse_le).days < SILENCE_CONSTAT_JOURS:
+            continue
+        sortie.append(constat)
+    return sortie[:CONSTATS_MAX]
+
+
+def retour_absence(jours, taches, jour=None):
+    """Donnees de la carte `retour` (§4.8), ou `None` si ce n'est pas un retour.
+
+    `jours` = `JourCompte` chronologiques depuis la dernière ouverture (incluse)
+    jusqu'à la veille de J ; `taches` = ids des tâches `a_faire` prévues dans
+    cette période. Retour = fin d'un congé OU >= 3 jours travaillés strictement
+    après la dernière ouverture. `jour` (J) vaut le lendemain du dernier jour lu.
+    """
+    jours = list(jours)
+    if not jours:
+        return None
+    apres = jours[1:]
+    travailles = sum(1 for j in apres if j.statut_jour in (StatutJour.SANS_DONNEES, StatutJour.EVALUE))
+    en_conge = any(j.statut_jour == StatutJour.CONGE for j in apres)
+    if travailles < RETOUR_JOURS_TRAVAILLES and not en_conge:
+        return None
+    jour = jour if jour is not None else jours[-1].jour + timedelta(days=1)
+    return {'jours': (jour - jours[0].jour).days, 'taches': list(taches)}
+
+
+def semaine_courte(statuts):
+    """Vrai si la semaine compte >= 3 jours `sans_donnees` (revue sans chiffres, A16-N9)."""
+    return sum(1 for s in statuts if s == StatutJour.SANS_DONNEES) >= SEMAINE_COURTE_JOURS
+
+
+def repere_p60(comptes):
+    """Repère P60 (§6.5 point 8) : percentile 60 linéaire des 9 derniers jours, 1 décimale.
+
+    `None` s'il y a moins de 9 jours. Affiché, jamais un objectif.
+    """
+    derniers = sorted(list(comptes)[-REPERE_JOURS:])
+    if len(derniers) < REPERE_JOURS:
+        return None
+    position = REPERE_PERCENTILE * (len(derniers) - 1)
+    bas = math.floor(position)
+    haut = min(bas + 1, len(derniers) - 1)
+    valeur = derniers[bas] + (position - bas) * (derniers[haut] - derniers[bas])
+    return round(valeur, REPERE_DECIMALES)

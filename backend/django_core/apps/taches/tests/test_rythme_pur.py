@@ -485,5 +485,216 @@ class BasculerTests(unittest.TestCase):
         self.assertIs(rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0)), etat)
 
 
+class SemaineCourteTests(unittest.TestCase):
+    """Semaine courte (§6.9, A16-N9)."""
+
+    def test_ex64_deux_evalues_trois_sans_donnees(self):
+        # Ex. 64 : 2 `evalue` + 3 `sans_donnees` -> vrai (revue sans chiffres).
+        statuts = [StatutJour.EVALUE] * 2 + [StatutJour.SANS_DONNEES] * 3
+        self.assertTrue(rythme.semaine_courte(statuts))
+
+    def test_ex65_trois_evalues_deux_sans_donnees(self):
+        # Ex. 65 : 3 `evalue` + 2 `sans_donnees` -> faux.
+        statuts = [StatutJour.EVALUE] * 3 + [StatutJour.SANS_DONNEES] * 2
+        self.assertFalse(rythme.semaine_courte(statuts))
+
+
+class ReperePtests(unittest.TestCase):
+    """Repère P60 (§6.5 point 8) : 3 exemples d'`integ2/propose.py`."""
+
+    def test_repere_neuf_jours_croissants(self):
+        # [3,4,5,5,5,6,6,7,8] -> 5,8.
+        self.assertEqual(rythme.repere_p60([3, 4, 5, 5, 5, 6, 6, 7, 8]), 5.8)
+
+    def test_repere_neuf_fois_cinq(self):
+        # 9 × 5 -> 5,0.
+        self.assertEqual(rythme.repere_p60([5] * 9), 5.0)
+
+    def test_repere_deux_a_dix(self):
+        # [2…10] -> 6,8.
+        self.assertEqual(rythme.repere_p60(list(range(2, 11))), 6.8)
+
+    def test_repere_moins_de_neuf_jours(self):
+        self.assertIsNone(rythme.repere_p60([5] * 8))
+
+
+J_C = date(2026, 11, 17)
+
+
+def il_y_a(n):
+    return J_C - timedelta(days=n)
+
+
+def donnees(**champs):
+    return rythme.DonneesConstats(jour=J_C, **champs)
+
+
+def codes(d):
+    return [c.code for c in rythme.constats(d)]
+
+
+class ConstatsTests(unittest.TestCase):
+    """Constats C1-C8 (§6.9) : chacun au minimum exact, juste en dessous, et ses nombres."""
+
+    def test_rien_sans_donnees(self):
+        self.assertEqual(rythme.constats(donnees()), [])
+
+    def test_c1_creneaux(self):
+        # C1 : écart >= 25 points entre créneaux, 30 lignes minimum par créneau.
+        lignes = ([rythme.LigneConstat(il_y_a(1), 'matin', i < 24) for i in range(30)]
+                  + [rythme.LigneConstat(il_y_a(2), 'apres_midi', i < 12) for i in range(30)])
+        constat = rythme.constats(donnees(lignes=tuple(lignes)))[0]
+        self.assertEqual((constat.code, constat.action, constat.donnees['meilleur']),
+                         ('C1', 'essentiel_le_matin', 'matin'))
+
+    def test_c1_minimum_et_ecart(self):
+        court = ([rythme.LigneConstat(il_y_a(1), 'matin', True)] * 29
+                 + [rythme.LigneConstat(il_y_a(1), 'apres_midi', False)] * 30)
+        self.assertNotIn('C1', codes(donnees(lignes=tuple(court))))
+        proche = ([rythme.LigneConstat(il_y_a(1), 'matin', i < 18) for i in range(30)]
+                  + [rythme.LigneConstat(il_y_a(1), 'apres_midi', i < 12) for i in range(30)])
+        self.assertNotIn('C1', codes(donnees(lignes=tuple(proche))))  # 60 % vs 40 % = 20 points
+
+    def test_c1_hors_fenetre(self):
+        vieux = ([rythme.LigneConstat(il_y_a(40), 'matin', i < 24) for i in range(30)]
+                 + [rythme.LigneConstat(il_y_a(40), 'apres_midi', i < 12) for i in range(30)])
+        self.assertNotIn('C1', codes(donnees(lignes=tuple(vieux))))
+
+    def _lignes_c2(self, jours_en_tete, jours_ailleurs):
+        """Un essentiel en tête (rang 1, fait 4 jours sur 5) et un ailleurs (rang 2, fait 1 sur 3)."""
+        lignes = []
+        for i in range(jours_en_tete):
+            lignes.append(rythme.LigneConstat(il_y_a(i), '', i % 5 != 0, True, 1))
+        for i in range(jours_ailleurs):
+            lignes.append(rythme.LigneConstat(il_y_a(i), '', True, False, 1))
+            lignes.append(rythme.LigneConstat(il_y_a(i), '', i % 3 == 0, True, 2))
+        return tuple(lignes)
+
+    def test_c2_essentiel_en_tete(self):
+        # C2 : essentiel fait en tête vs ailleurs, écart >= 30 points, 15 jours chacun.
+        constat = rythme.constats(donnees(lignes=self._lignes_c2(15, 15)))[0]
+        self.assertEqual((constat.code, round(constat.donnees['premier']), round(constat.donnees['ailleurs'])),
+                         ('C2', 80, 33))
+
+    def test_c2_quatorze_jours_ne_suffisent_pas(self):
+        self.assertNotIn('C2', codes(donnees(lignes=self._lignes_c2(14, 15))))
+        self.assertNotIn('C2', codes(donnees(lignes=self._lignes_c2(15, 14))))
+
+    def _jours_c3(self, lundis):
+        jours = []
+        for i in range(56):
+            jour = il_y_a(i)
+            compte = 1 if jour.weekday() == 0 else 6
+            jours.append(rythme.JourCompte(jour, compte=compte))
+        garde = [j for j in jours if j.jour.weekday() != 0]
+        return tuple(garde + [j for j in jours if j.jour.weekday() == 0][:lundis])
+
+    def test_c3_jour_faible(self):
+        # C3 : un lundi à 1 pour une moyenne générale ~5,3, 8 lundis -> jours_courts.
+        constat = rythme.constats(donnees(jours=self._jours_c3(8)))[0]
+        self.assertEqual((constat.code, constat.action, constat.donnees['jour_semaine']),
+                         ('C3', 'jours_courts', 0))
+
+    def test_c3_sept_lundis_ne_suffisent_pas(self):
+        self.assertNotIn('C3', codes(donnees(jours=self._jours_c3(7))))
+
+    def _jours_c4(self, trop):
+        jours = []
+        for i in range(10):
+            faites = 2 if i < trop else 5
+            jours.append(rythme.JourCompte(il_y_a(i + 1), plan_prevues=5, plan_faites=faites))
+        return tuple(jours)
+
+    def test_c4_trop_garde(self):
+        # C4 : gardées - faites >= 2 sur >= 60 % de 10 plans -> limite médiane faite + 1.
+        constat = rythme.constats(donnees(jours=self._jours_c4(6)))[0]
+        self.assertEqual((constat.code, constat.donnees['limite']), ('C4', 3))
+
+    def test_c4_cinq_sur_dix_ne_suffit_pas(self):
+        self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(5))))
+
+    def test_c4_neuf_plans_ne_suffisent_pas(self):
+        self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(10)[:9])))
+
+    def test_c5_tranches_de_deux_heures(self):
+        # C5 : part des tâches finies par tranche de 2 h, 30 tâches minimum, aucune action.
+        heures = tuple((il_y_a(1), 9) for _ in range(20)) + tuple((il_y_a(2), 15) for _ in range(10))
+        constat = rythme.constats(donnees(heures_faits=heures))[0]
+        self.assertEqual((constat.code, constat.action), ('C5', None))
+        self.assertAlmostEqual(constat.donnees['tranches'][8], 66.67, places=1)
+        self.assertAlmostEqual(constat.donnees['tranches'][14], 33.33, places=1)
+        self.assertNotIn('C5', codes(donnees(heures_faits=heures[:29])))
+
+    def _mesurees(self, reel):
+        return tuple((3, 30, reel) for _ in range(5))
+
+    def test_c6_eteint_en_v1(self):
+        # C6 hors de la première livraison (critique m6).
+        self.assertNotIn('C6', codes(donnees(taches_mesurees=self._mesurees(60))))
+
+    def test_c6_allume(self):
+        with mock.patch.object(rythme, 'CONSTAT_C6_ACTIF', True):
+            constat = rythme.constats(donnees(taches_mesurees=self._mesurees(60)))[0]
+            self.assertEqual((constat.code, constat.donnees['projet_id'], constat.donnees['ratio']),
+                             ('C6', 3, 2.0))
+            self.assertEqual(rythme.constats(donnees(taches_mesurees=self._mesurees(30))), [])
+            self.assertEqual(rythme.constats(donnees(taches_mesurees=self._mesurees(60)[:4])), [])
+
+    def test_c7_reportees(self):
+        # C7 : tâches reportées 3 fois ou plus (ouvertes), minimum 1 -> À revoir.
+        constat = rythme.constats(donnees(reportees_3=2))[0]
+        self.assertEqual((constat.code, constat.donnees['nb'], constat.action), ('C7', 2, 'a_revoir'))
+        self.assertNotIn('C7', codes(donnees(reportees_3=0)))
+
+    def test_c8_projet_neglige(self):
+        # C8 : `neglige()` non vide -> une de ses tâches dans Proposé de demain.
+        constat = rythme.constats(donnees(projet_neglige_id=5))[0]
+        self.assertEqual((constat.code, constat.donnees['projet_id']), ('C8', 5))
+        self.assertNotIn('C8', codes(donnees()))
+
+    def test_refus_se_tait_vingt_huit_jours(self):
+        base = dict(reportees_3=1, projet_neglige_id=5)
+        self.assertEqual(codes(donnees(refus={'C7': il_y_a(27)}, **base)), ['C8'])
+        self.assertEqual(codes(donnees(refus={'C7': il_y_a(28)}, **base)), ['C7', 'C8'])
+
+    def test_comprendre_mon_rythme_coupe_tout(self):
+        self.assertEqual(rythme.constats(donnees(reportees_3=3, comprendre_mon_rythme=False)), [])
+
+    def test_ordre_par_numero_et_huit_au_plus(self):
+        sortie = codes(donnees(reportees_3=1, projet_neglige_id=5))
+        self.assertEqual(sortie, ['C7', 'C8'])
+        self.assertLessEqual(len(sortie), rythme.CONSTATS_MAX)
+
+
+class RetourAbsenceTests(unittest.TestCase):
+    """Retour d'absence (§4.8)."""
+
+    def _jours(self, *statuts):
+        return [rythme.JourCompte(il_y_a(len(statuts) - i), statut_jour=s) for i, s in enumerate(statuts)]
+
+    def test_trois_jours_travailles_apres_la_derniere_ouverture(self):
+        jours = self._jours(StatutJour.EVALUE, StatutJour.SANS_DONNEES, StatutJour.SANS_DONNEES,
+                            StatutJour.NON_OUVRE, StatutJour.SANS_DONNEES)
+        self.assertEqual(rythme.retour_absence(jours, [1, 2]), {'jours': 5, 'taches': [1, 2]})
+
+    def test_deux_jours_ne_suffisent_pas(self):
+        jours = self._jours(StatutJour.EVALUE, StatutJour.SANS_DONNEES, StatutJour.NON_OUVRE,
+                            StatutJour.SANS_DONNEES)
+        self.assertIsNone(rythme.retour_absence(jours, [1]))
+
+    def test_la_derniere_ouverture_ne_compte_pas(self):
+        jours = self._jours(StatutJour.EVALUE, StatutJour.EVALUE, StatutJour.EVALUE, StatutJour.NON_OUVRE)
+        self.assertIsNone(rythme.retour_absence(jours, []))
+
+    def test_fin_de_conge(self):
+        jours = self._jours(StatutJour.EVALUE, StatutJour.CONGE, StatutJour.CONGE)
+        self.assertEqual(rythme.retour_absence(jours, [7])['jours'], 3)
+
+    def test_jour_explicite_et_vide(self):
+        jours = self._jours(StatutJour.EVALUE, StatutJour.CONGE)
+        self.assertEqual(rythme.retour_absence(jours, [], jour=J_C + timedelta(days=2))['jours'], 4)
+        self.assertIsNone(rythme.retour_absence([], [1]))
+
+
 if __name__ == '__main__':
     unittest.main()
