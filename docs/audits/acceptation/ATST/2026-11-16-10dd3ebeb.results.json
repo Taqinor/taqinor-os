@@ -1,0 +1,57 @@
+{
+  "sha": "10dd3ebebc582e24e00d76f6926047d7671eff05",
+  "date": "2026-11-16",
+  "groupe": "ATST",
+  "verdict": "PASS",
+  "couvre": [
+    "ATST56",
+    "ATST23"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF7.4-ATST56",
+      "taches": [
+        "ATST56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-16/ACCEPTATION-ATST-PF7.4-ATST56.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF7.3-ATST23",
+      "taches": [
+        "ATST23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-16/ACCEPTATION-ATST-PF7.3-ATST23.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
