@@ -1,0 +1,666 @@
+# rejeu sur runner GitHub (2026-11-17T10:30:10Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes AERR --conteneur <django_core>
+
+== C-AERR-001 (sha 3acfee471)
+attendu : FactureList : `if (loading && !showForm)` et `if (error)` sans condition sur factures.length (ni Réessayer) ; gestes qui relancent fetchFactures() ; Remises .catch avec setRows([])
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-002 (sha 3acfee471)
+attendu : DevisList : `if (loading)` / `if (error)` sans devis.length ; dispatch(fetchDevis()) dans handleDelete/submitVariante/submitGamme et dans le catch de rafraichirDevis
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-003 (sha 3acfee471)
+attendu : un seul appel fetchFacturesKpis(), dans un useEffect de montage `[dispatch]`, et un seul réducteur qui écrit state.facturesKpis
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-004 (sha 3acfee471)
+attendu : load : .catch sans aucun set*(...) ; rendu `rows.length === 0 ? (` sans variable d'erreur dans la chaîne de conditions
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-005 (sha 3acfee471)
+attendu : setAcceptTarget(null) situé avant `ventesApi.accepterDevis(` dans submitAccept ; `champ` jamais lu
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-006 (sha 3acfee471)
+attendu : setFromResponse(err) (argument exact = la variable du catch) dans handleSubmit ; aucun rendu de errors.date_echeance / taux_tva / remise_globale
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-007 (sha 3acfee471)
+attendu : corps de handleBulkAction sans confirm* et aucun appel de la barre précédé d'une confirmation
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-009 (sha 3acfee471)
+attendu : catch réduit à console.warn(...) puis toast.success(...) plus loin dans la même fonction (3 fonctions)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-011 (sha 3acfee471)
+attendu : clear() dans rechargerDevisRecompose sans dirty/confirm ; ajouter et creer sans dirty/confirm
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-021 (sha 3acfee471)
+attendu : branche key === 'a' qui appelle approve( sans confirm/dialog
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-022 (sha 3acfee471)
+attendu : corps de onKey sans dialogueParDessus( ni aucune autre garde de dialogue/boîte
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-024 (sha 3acfee471)
+attendu : `message: fieldErrors[firstKey]` nu (sans libellé de champ) dans getApiError
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-027 (sha 3acfee471)
+attendu : .catch du chargement sans drapeau d'échec (ni setForm(null)) dans les 5 composants
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 8, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-028 (sha 3acfee471)
+attendu : branche `{error ? (` avec <EmptyState sans action= / onRetry
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-029 (sha 3acfee471)
+attendu : au moins un .catch contenant setItems([])
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-031 (sha 3acfee471)
+attendu : dans load, .catch sans aucun appel set*( (donc pas d'état d'erreur)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-033 (sha 3acfee471)
+attendu : removeRule / remove (2) sans confirm* dans leur corps ni avant leurs appels
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-034 (sha 3acfee471)
+attendu : markSigned et cancelSignature sans confirm* dans leur corps ni avant leurs appels
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-038 (sha 3acfee471)
+attendu : updateLead( dans changeLeadStage sans confirm* ni mutateWithUndo
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-044 (sha 3acfee471)
+attendu : retour anticipé `if (error) return <StateBlock …>` sans condition sur la liste, OU `const onSaved = () => refetch()`
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-045 (sha 3acfee471)
+attendu : Widget : setError(true) sans jamais setError(false) ET `error ? (` à la place de la file ; Panneau : catch avec donnees: null
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-046 (sha 3acfee471)
+attendu : catch contenant setLeadLu(leadId) et setEtapes([]), et l'effet qui appelle onEtapes( ne regarde pas `erreur`
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-047 (sha 3acfee471)
+attendu : logInteraction( et updateLead( dans le même bloc try de submit + littéral « L'appel n'a pas pu être journalisé — réessayez. »
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-048 (sha 3acfee471)
+attendu : ni useServerFieldErrors ni fieldErrors dans le fichier, et le littéral « Erreur lors de la création du lead. »
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-049 (sha 3acfee471)
+attendu : handleCancel appelle updateAppointment(... 'annule') sans confirm( / ConfirmDialog / mutateWithUndo, corps ou site d'appel
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-050 (sha 3acfee471)
+attendu : supprimer (dans SlotTile) appelle deleteVisitePhoto( sans confirm( / ConfirmDialog / mutateWithUndo / undo, corps ou site d'appel
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-051 (sha 3acfee471)
+attendu : recharger : .catch(() => setErreur(...)) sans condition sur une visite déjà chargée ; rendu `if (erreur || !visite) return`
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-052 (sha 3acfee471)
+attendu : useLeadDraft.js sans useNavigationGuard/useBlocker et aucun nettoyage d'effet qui appelle flush
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 8, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-053 (sha 3acfee471)
+attendu : load contient un .catch qui appelle setEvents([])
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-063 (sha 3acfee471)
+attendu : TicketDetail : useState(ticket) sans effet de réinitialisation ET <TicketDetail ticket={detailTicket} sans key=
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-064 (sha 3acfee471)
+attendu : bloc onKey contenant 'Escape' et fermerDetail()/closeDetail() sans dialogueParDessus/confirmLeaveIfDirty/defaultPrevented
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-065 (sha 3acfee471)
+attendu : handleDragEnd appelle onChangeStatus( sans confirmation avant l'appel, le parent aussi, et cloture/receptionne atteignables en un dépôt
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-066 (sha 3acfee471)
+attendu : handleDragEnd -> onChangeStatus( sans confirmation, patchStatus sans confirmation ni Annuler
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-069 (sha 3acfee471)
+attendu : loading ? … : error ? … sans test sur les lignes, et onSaved={reload}
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-070 (sha 3acfee471)
+attendu : if (error) return <EmptyState …> dont la condition ne teste pas les lignes (actifs.length)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-071 (sha 3acfee471)
+attendu : .catch(() => setError( dans fetchData et if (error) return sans test sur items/filtered
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-072 (sha 3acfee471)
+attendu : .catch(() => setItems([])) dans le reload des deux fichiers
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-073 (sha 3acfee471)
+attendu : load : chemin d'échec setRows([]) sans setError/setErreur, rendu EmptyState « Aucune intervention aujourd'hui »
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-074 (sha 3acfee471)
+attendu : onOpenChange qui appelle onClose() sans confirmLeaveIfDirty ni garde (3 dialogues)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-075 (sha 3acfee471)
+attendu : onOpenChange qui appelle onClose() sans confirmLeaveIfDirty ni garde
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-077 (sha 3acfee471)
+attendu : onClick={valider} et validerConsommation( dans valider sans confirmation
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-078 (sha 3acfee471)
+attendu : .catch(() => setRows([])) sans état d'erreur dans les 4 panneaux
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-091 (sha 3acfee471)
+attendu : le bloc <LeadWorkspace de LeadDetailPage sans onSigneRefuse= alors que LeadWorkspace.jsx appelle onSigneRefuse?.(
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-092 (sha 3acfee471)
+attendu : suppressErrorToast + .catch(() => []) + « Rien d'urgent » sans variable d'erreur ; CommercialHome .catch avec setLeads([])/setEvents([])
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-093 (sha 3acfee471)
+attendu : dans chargerMotifs, .catch qui pose setMotifs([]) sans remettre motifsDemandes.current à false
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-095 (sha 3acfee471)
+attendu : .catch du chargement sans drapeau d'échec et submit non conditionné (Gammes) ; `if (!id) return` sans message (Achats)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER1-100 (sha 47f925be1)
+attendu : catch sans setNotes + alerte masquée si notes non vide + boîte montée en permanence sans key ni remise à zéro de notes
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER1-140 (sha 47f925be1)
+attendu : erreursEntiersProduit({quantite_stock: '-3', ...}) non vide ET validate() l'applique en édition ET l'input pf-qte est disabled={isEdit}
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER1-160 (sha 47f925be1)
+attendu : au moins une section autonome à brouillon local encore rendue par `tab === … &&` (hors SectionGardee)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER1-161 (sha 47f925be1)
+attendu : catch de reassign sans throw + apply: () => onReassign(...) dans mutateWithUndo + onReassign: reassign
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER2-200 (sha d986bb9bc)
+attendu : remise à faux seulement dans reset + reset appelé seulement au succès + aucune remise à la fermeture ni au changement de lead
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 13, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER2-201 (sha d986bb9bc)
+attendu : bloc de remise à zéro sans cleEnvoi/motif/montant + clé remise à null au seul succès + endpoint serveur sans id de facture + survivant PaiementDialog
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 14, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER2-202 (sha d986bb9bc)
+attendu : email et monitoring rendus par tab === … && hors SectionGardee + brouillon local à sauvegarde explicite dans les deux sections
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 13, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER2-203 (sha d986bb9bc)
+attendu : noteBody, interv, pieceForm, retirerForm, motif déclarés mais absents du dirty + un seul useDirtyGuard + selectionner gardé par isAnyFormDirty
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 14, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AERR-VER2-204 (sha d986bb9bc)
+attendu : garde sur onOpenChange + bouton Fermer à onClick={onClose} nu dans RecettePompageDialog et TicketsPage
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+
+== bilan AERR : 0/55 OK
+  C-AERR-001.py    ÉCART (échec)
+  C-AERR-002.py    ÉCART (échec)
+  C-AERR-003.py    ÉCART (échec)
+  C-AERR-004.py    ÉCART (échec)
+  C-AERR-005.py    ÉCART (échec)
+  C-AERR-006.py    ÉCART (échec)
+  C-AERR-007.py    ÉCART (échec)
+  C-AERR-009.py    ÉCART (échec)
+  C-AERR-011.py    ÉCART (échec)
+  C-AERR-021.py    ÉCART (échec)
+  C-AERR-022.py    ÉCART (échec)
+  C-AERR-024.py    ÉCART (échec)
+  C-AERR-027.py    ÉCART (échec)
+  C-AERR-028.py    ÉCART (échec)
+  C-AERR-029.py    ÉCART (échec)
+  C-AERR-031.py    ÉCART (échec)
+  C-AERR-033.py    ÉCART (échec)
+  C-AERR-034.py    ÉCART (échec)
+  C-AERR-038.py    ÉCART (échec)
+  C-AERR-044.py    ÉCART (échec)
+  C-AERR-045.py    ÉCART (échec)
+  C-AERR-046.py    ÉCART (échec)
+  C-AERR-047.py    ÉCART (échec)
+  C-AERR-048.py    ÉCART (échec)
+  C-AERR-049.py    ÉCART (échec)
+  C-AERR-050.py    ÉCART (échec)
+  C-AERR-051.py    ÉCART (échec)
+  C-AERR-052.py    ÉCART (échec)
+  C-AERR-053.py    ÉCART (échec)
+  C-AERR-063.py    ÉCART (échec)
+  C-AERR-064.py    ÉCART (échec)
+  C-AERR-065.py    ÉCART (échec)
+  C-AERR-066.py    ÉCART (échec)
+  C-AERR-069.py    ÉCART (échec)
+  C-AERR-070.py    ÉCART (échec)
+  C-AERR-071.py    ÉCART (échec)
+  C-AERR-072.py    ÉCART (échec)
+  C-AERR-073.py    ÉCART (échec)
+  C-AERR-074.py    ÉCART (échec)
+  C-AERR-075.py    ÉCART (échec)
+  C-AERR-077.py    ÉCART (échec)
+  C-AERR-078.py    ÉCART (échec)
+  C-AERR-091.py    ÉCART (échec)
+  C-AERR-092.py    ÉCART (échec)
+  C-AERR-093.py    ÉCART (échec)
+  C-AERR-095.py    ÉCART (échec)
+  C-AERR-VER1-100.py ÉCART (échec)
+  C-AERR-VER1-140.py ÉCART (échec)
+  C-AERR-VER1-160.py ÉCART (échec)
+  C-AERR-VER1-161.py ÉCART (échec)
+  C-AERR-VER2-200.py ÉCART (échec)
+  C-AERR-VER2-201.py ÉCART (échec)
+  C-AERR-VER2-202.py ÉCART (échec)
+  C-AERR-VER2-203.py ÉCART (échec)
+  C-AERR-VER2-204.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

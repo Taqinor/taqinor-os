@@ -1,0 +1,11 @@
+# rejeu DIRECT sur runner GitHub (2026-11-17T10:32:04Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 ; arbre du depot sous /tmp/racine, backend/django_core -> /app
+# commande : docker exec -w /app -e PYTHONPATH=/app <django_core> python /tmp/racine/docs/audits/sondes/ASUP/<sonde>.py
+
+== C-ASUP-003 (direct)
+{'repro': False, 'observe': {'compte_actif_ordinaire': 409, 'compte_responsable_de_calepinage': 409, 'destroy_appelle_traces': True, 'modeles_emportes_en_cascade': 39, 'exemples': ['adminops.LectureAnnonce', 'adminops.SessionImpersonation', 'automation.ApprovalDelegation', 'crm.ForecastSnapshot', 'crm.PeriodeAbsence', 'crm.PermanenceEquipe', 'crm.SavedView', 'ged.AclGed'], 'liens_mis_a_null': 313, 'liens_protect': 1, 'geste': 'Administration > Utilisateurs > Supprimer (UsersManagement)'}}
+code : 0
+
+== C-ASUP-022 (direct)
+{'repro': False, 'observe': {'est_lead_signe_avant': True, 'est_lead_signe_apres_archivage': True, 'lead_archive': False, 'issue_du_geste': "ConflitEtat: Impossible d'archiver ce lead signé : une facture existe", 'journal': [], 'methode': 'execution'}}
+code : 0
+

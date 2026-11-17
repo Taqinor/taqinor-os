@@ -1,0 +1,41 @@
+# rejeu DIRECT sur runner GitHub (2026-11-17T10:32:11Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 ; arbre du depot sous /tmp/racine, backend/django_core -> /app
+# commande : docker exec -w /app -e PYTHONPATH=/app <django_core> python /tmp/racine/docs/audits/sondes/AERR/<sonde>.py
+
+== C-AERR-001 (direct)
+{
+ "repro": false,
+ "observe": {
+  "introuvable": [],
+  "defaut_encore_present": [],
+  "retour_chargement": {
+   "condition": "loading && !showForm && factures.length === 0",
+   "bouton_reessayer": false
+  },
+  "retour_erreur": {
+   "condition": "error && factures.length === 0",
+   "bouton_reessayer": true
+  },
+  "FactureList.dispatch_fetchFactures": 4,
+  "useFactureGestes.dispatch_fetchFactures": 1,
+  "useFactureLot.dispatch_fetchFactures": 0,
+  "useFactureDocuments.dispatch_fetchFactures": 1,
+  "PaiementsPage.rendu_squelette_sans_condition_lignes": 0
+ },
+ "methode": "lecture écran"
+}
+code : 0
+
+== C-AERR-044 (direct)
+{
+ "repro": false,
+ "observe": {
+  "introuvable": [],
+  "erreur_remplace_liste_et_fiche_sans_garde_leads": false,
+  "erreur_derivee_gardee_par_la_liste": true,
+  "onSaved_relit_toute_la_liste": false,
+  "onRetry_dans_StateBlock": false
+ },
+ "methode": "lecture écran"
+}
+code : 0
+

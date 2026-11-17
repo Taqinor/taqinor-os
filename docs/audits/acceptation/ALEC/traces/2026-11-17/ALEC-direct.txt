@@ -1,0 +1,158 @@
+# rejeu DIRECT sur runner GitHub (2026-11-17T10:32:09Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 ; arbre du depot sous /tmp/racine, backend/django_core -> /app
+# commande : docker exec -w /app -e PYTHONPATH=/app <django_core> python /tmp/racine/docs/audits/sondes/ALEC/<sonde>.py
+
+== C-ALEC-016 (direct)
+Traceback (most recent call last):
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-016.py", line 126, in <module>
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))
+                     ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-016.py", line 83, in sonde
+    reg, g, roles = monde()
+                    ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-016.py", line 68, in monde
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-016.py", line 68, in <dictcomp>
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+                ^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-016.py", line 66, in __init__
+    s.is_admin_role, s.is_responsable = adm(s), resp(s)
+                                                ^^^^^^^
+  File "authentication/models.py", line 487, in is_responsable
+    return self._role_grants_write(self.role.permissions or [])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "authentication/models.py", line 498, in _role_grants_write
+    connus = codes_du_registre()  # ATST13 — registre absent : ImproperlyConfigured
+             ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 97, in codes_du_registre
+    _registre_modules()  # jamais de repli permissif
+    ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 88, in _registre_modules
+    raise ImproperlyConfigured(
+django.core.exceptions.ImproperlyConfigured: Registre des modules de permissions non enregistré : 'apps.roles' doit figurer dans INSTALLED_APPS (son ready() appelle authentication.permissions.enregistrer_registre_modules).
+code : 1
+
+== C-ALEC-020 (direct)
+Traceback (most recent call last):
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-020.py", line 168, in <module>
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))
+                     ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-020.py", line 124, in sonde
+    reg, g, roles = monde()
+                    ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-020.py", line 68, in monde
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-020.py", line 68, in <dictcomp>
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+                ^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-020.py", line 66, in __init__
+    s.is_admin_role, s.is_responsable = adm(s), resp(s)
+                                                ^^^^^^^
+  File "authentication/models.py", line 487, in is_responsable
+    return self._role_grants_write(self.role.permissions or [])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "authentication/models.py", line 498, in _role_grants_write
+    connus = codes_du_registre()  # ATST13 — registre absent : ImproperlyConfigured
+             ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 97, in codes_du_registre
+    _registre_modules()  # jamais de repli permissif
+    ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 88, in _registre_modules
+    raise ImproperlyConfigured(
+django.core.exceptions.ImproperlyConfigured: Registre des modules de permissions non enregistré : 'apps.roles' doit figurer dans INSTALLED_APPS (son ready() appelle authentication.permissions.enregistrer_registre_modules).
+code : 1
+
+== C-ALEC-024 (direct)
+Traceback (most recent call last):
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-024.py", line 141, in <module>
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))
+                     ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-024.py", line 104, in sonde
+    reg, g, roles = monde()
+                    ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-024.py", line 69, in monde
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-024.py", line 69, in <dictcomp>
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+                ^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-024.py", line 67, in __init__
+    s.is_admin_role, s.is_responsable = adm(s), resp(s)
+                                                ^^^^^^^
+  File "authentication/models.py", line 487, in is_responsable
+    return self._role_grants_write(self.role.permissions or [])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "authentication/models.py", line 498, in _role_grants_write
+    connus = codes_du_registre()  # ATST13 — registre absent : ImproperlyConfigured
+             ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 97, in codes_du_registre
+    _registre_modules()  # jamais de repli permissif
+    ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 88, in _registre_modules
+    raise ImproperlyConfigured(
+django.core.exceptions.ImproperlyConfigured: Registre des modules de permissions non enregistré : 'apps.roles' doit figurer dans INSTALLED_APPS (son ready() appelle authentication.permissions.enregistrer_registre_modules).
+code : 1
+
+== C-ALEC-025 (direct)
+Traceback (most recent call last):
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-025.py", line 160, in <module>
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))
+                     ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-025.py", line 115, in sonde
+    reg, g, roles = monde()
+                    ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-025.py", line 69, in monde
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-025.py", line 69, in <dictcomp>
+    roles = {n: FauxUser(n, p) for n, p in reg["CANONICAL_SYSTEM_ROLES"] if n not in portail}
+                ^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-025.py", line 67, in __init__
+    s.is_admin_role, s.is_responsable = adm(s), resp(s)
+                                                ^^^^^^^
+  File "authentication/models.py", line 487, in is_responsable
+    return self._role_grants_write(self.role.permissions or [])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "authentication/models.py", line 498, in _role_grants_write
+    connus = codes_du_registre()  # ATST13 — registre absent : ImproperlyConfigured
+             ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 97, in codes_du_registre
+    _registre_modules()  # jamais de repli permissif
+    ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 88, in _registre_modules
+    raise ImproperlyConfigured(
+django.core.exceptions.ImproperlyConfigured: Registre des modules de permissions non enregistré : 'apps.roles' doit figurer dans INSTALLED_APPS (son ready() appelle authentication.permissions.enregistrer_registre_modules).
+code : 1
+
+== C-ALEC-VER1-102 (direct)
+Traceback (most recent call last):
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-VER1-102.py", line 140, in <module>
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))
+                     ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-VER1-102.py", line 96, in sonde
+    g, users = monde()
+               ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-VER1-102.py", line 71, in monde
+    return g, {n: FauxUser(n, roles[n]) for n in ("Commercial terrain", "Admin RH", "Directeur")}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-VER1-102.py", line 71, in <dictcomp>
+    return g, {n: FauxUser(n, roles[n]) for n in ("Commercial terrain", "Admin RH", "Directeur")}
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/ALEC/C-ALEC-VER1-102.py", line 68, in __init__
+    s.is_admin_role, s.is_responsable = adm(s), resp(s)
+                                                ^^^^^^^
+  File "authentication/models.py", line 487, in is_responsable
+    return self._role_grants_write(self.role.permissions or [])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "authentication/models.py", line 498, in _role_grants_write
+    connus = codes_du_registre()  # ATST13 — registre absent : ImproperlyConfigured
+             ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 97, in codes_du_registre
+    _registre_modules()  # jamais de repli permissif
+    ^^^^^^^^^^^^^^^^^^^
+  File "/app/authentication/permissions.py", line 88, in _registre_modules
+    raise ImproperlyConfigured(
+django.core.exceptions.ImproperlyConfigured: Registre des modules de permissions non enregistré : 'apps.roles' doit figurer dans INSTALLED_APPS (son ready() appelle authentication.permissions.enregistrer_registre_modules).
+code : 1
+

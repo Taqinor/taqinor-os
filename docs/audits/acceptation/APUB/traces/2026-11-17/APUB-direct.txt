@@ -1,0 +1,71 @@
+# rejeu DIRECT sur runner GitHub (2026-11-17T10:32:12Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 ; arbre du depot sous /tmp/racine, backend/django_core -> /app
+# commande : docker exec -w /app -e PYTHONPATH=/app <django_core> python /tmp/racine/docs/audits/sondes/APUB/<sonde>.py
+
+== C-APUB-004 (direct)
+{
+ "repro": false,
+ "observe": {
+  "methode": "exécution (3 vues get, _rapport_publiable, ensure_lien_rapport_token extraits par ast) + ast (écrivains)",
+  "jeton_stable_a_la_recloture": true,
+  "ecritures_save": 1,
+  "pose_il_y_a": "5 ans (statut validée)",
+  "statut_par_vue": {
+   "InterventionRapportPublicView": 404,
+   "InterventionRapportPhotoPublicView": 404,
+   "InterventionRapportPdfPublicView": 404
+  },
+  "gardes_vues": {
+   "InterventionRapportPublicView": [
+    "[AllowAny]",
+    "[]"
+   ],
+   "InterventionRapportPhotoPublicView": [
+    "[]",
+    "[AllowAny]"
+   ],
+   "InterventionRapportPdfPublicView": [
+    "[AllowAny]",
+    "[]"
+   ]
+  },
+  "servi_apres_5_ans": false,
+  "ecrivains_lien_rapport_token": [
+   "apps/installations/models_intervention.py:333 self.lien_rapport_token = token",
+   "apps/installations/models_intervention.py:340 self.lien_rapport_token = None"
+  ],
+  "revocation_ou_rotation": [
+   "apps/installations/models_intervention.py:340 self.lien_rapport_token = None"
+  ]
+ }
+}
+code : 0
+
+== C-APUB-007 (direct)
+{
+ "repro": false,
+ "observe": {
+  "methode": "exécution (post_chat_message, _append_transcript, create_lead_from_livechat, doublon_a_reprendre, _froid_a_reprendre, normalize_phone, extract_livechat_qualification extraits par ast)",
+  "route": "POST /api/django/crm/public/chat/sessions/<token>/messages/",
+  "decorateurs": [
+   "authentication_classes([])",
+   "permission_classes([AllowAny])",
+   "parser_classes([JSONParser])",
+   "throttle_classes([PublicChatRateThrottle])"
+  ],
+  "statut_http": 404,
+  "lead_created_repondu": null,
+  "lead_existant": {
+   "pk": 41,
+   "etape": "SIGNED",
+   "email_apres": null,
+   "saves": 0
+  },
+  "notes_ecrites_sur": [],
+  "leads_crees": 0,
+  "session_rattachee_au_lead": null,
+  "historique_du_lead_existant_ecrit": false,
+  "ecrans_ou_site_appelants": []
+ }
+}
+code : 0
+

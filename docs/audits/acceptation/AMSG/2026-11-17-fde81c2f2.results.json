@@ -1,0 +1,56 @@
+{
+  "sha": "fde81c2f28fe7887eebe075c7165534ad947a20b",
+  "date": "2026-11-17",
+  "groupe": "AMSG",
+  "verdict": "FAIL",
+  "couvre": [
+    "AMSG105"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "SONDES.sonde-py.AMSG105",
+      "taches": [
+        "AMSG105"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMSG/traces/2026-11-17/AMSG-sondes.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue) ; clause jouée telle qu'écrite : python scripts/sonde.py --toutes AMSG ; sortie 1 attendue quand repro est faux (verdict ÉCART) ; C-AMSG-003 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; C-AMSG-007 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; C-AMSG-009 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; sondes du groupe en erreur dans ce rejeu : 14/14 ; DÉFAUT : scripts/sonde.py exécute la source de la sonde avec exec() dans un espace sans `__file__` : toute sonde qui calcule RACINE = Path(__file__).resolve().parents[4] lève NameError avant de rien juger, et le conteneur ne monte que backend/django_core sous /app (pas docs/ ni le reste du dépôt)"
+    },
+    {
+      "id": "SONDES.direct.AMSG105",
+      "taches": [
+        "AMSG105"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMSG/traces/2026-11-17/AMSG-direct.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue) ; rejeu DIRECT hors sonde.py : arbre du dépôt copié sous /tmp/racine du conteneur (backend/django_core -> /app), `python /tmp/racine/docs/audits/sondes/AMSG/<sonde>.py` ; C-AMSG-003 : code 0, repro False, erreur non ; C-AMSG-007 : code 0, repro False, erreur non ; C-AMSG-009 : code 1, repro None, erreur oui (NameError: name 'timezone' is not defined) [REFUS]"
+    }
+  ]
+}

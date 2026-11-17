@@ -1,0 +1,56 @@
+{
+  "sha": "fde81c2f28fe7887eebe075c7165534ad947a20b",
+  "date": "2026-11-17",
+  "groupe": "ALEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "ALEC50"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "SONDES.sonde-py.ALEC50",
+      "taches": [
+        "ALEC50"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ALEC/traces/2026-11-17/ALEC-sondes.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue) ; clause jouée telle qu'écrite : python scripts/sonde.py --toutes ALEC ; sortie 1 attendue quand repro est faux (verdict ÉCART) ; C-ALEC-016 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; C-ALEC-020 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; C-ALEC-024 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; C-ALEC-025 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; C-ALEC-VER1-102 : verdict ÉCART, repro None, erreur oui (NameError: name '__file__' is not defined. Did you mean: '__name__'?), base inchangée non [REFUS] ; sondes du groupe en erreur dans ce rejeu : 27/27 ; DÉFAUT : scripts/sonde.py exécute la source de la sonde avec exec() dans un espace sans `__file__` : toute sonde qui calcule RACINE = Path(__file__).resolve().parents[4] lève NameError avant de rien juger, et le conteneur ne monte que backend/django_core sous /app (pas docs/ ni le reste du dépôt)"
+    },
+    {
+      "id": "SONDES.direct.ALEC50",
+      "taches": [
+        "ALEC50"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ALEC/traces/2026-11-17/ALEC-direct.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue) ; rejeu DIRECT hors sonde.py : arbre du dépôt copié sous /tmp/racine du conteneur (backend/django_core -> /app), `python /tmp/racine/docs/audits/sondes/ALEC/<sonde>.py` ; C-ALEC-016 : code 1, repro None, erreur oui (ImproperlyConfigured) [REFUS] ; C-ALEC-020 : code 1, repro None, erreur oui (ImproperlyConfigured) [REFUS] ; C-ALEC-024 : code 1, repro None, erreur oui (ImproperlyConfigured) [REFUS] ; C-ALEC-025 : code 1, repro None, erreur oui (ImproperlyConfigured) [REFUS] ; C-ALEC-VER1-102 : code 1, repro None, erreur oui (ImproperlyConfigured) [REFUS]"
+    }
+  ]
+}

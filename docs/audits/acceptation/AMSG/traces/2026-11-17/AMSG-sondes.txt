@@ -1,0 +1,174 @@
+# rejeu sur runner GitHub (2026-11-17T10:29:47Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes AMSG --conteneur <django_core>
+
+== C-AMSG-001 (sha 3acfee471)
+attendu : POST questionnaire-lien/ sur un lead ne_plus_contacter (et perdu, archivé) rend 200 + url du questionnaire au lieu d'un 409 ; l'écran en fait un lien wa.me pré-rempli sans lire l'opposition
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-002 (sha 3acfee471)
+attendu : wa_drafts porte un brouillon WhatsApp (et la ligne le numéro) pour les devis des leads opposé, perdu et archivé, comme pour le témoin contactable
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-003 (sha 3acfee471)
+attendu : après le STOP sur A, peut_contacter(B) reste vrai pour la fiche B existante au même numéro, et un numéro opposé recollé sur une fiche existante la laisse contactable ; seule une fiche CRÉÉE après naît opposée
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-004 (sha 3acfee471)
+attendu : après POST clients/<id>/anonymize/ le client est anonymisé, mais son lead garde nom, téléphone, WhatsApp et e-mail, sans ne_plus_contacter ni empreinte : peut_contacter(lead) reste vrai
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-005 (sha 3acfee471)
+attendu : erase_crm('x@example.invalid') n'efface que la fiche qui porte l'e-mail ; la fiche sœur au même téléphone (sans e-mail) garde son identité et reste contactable
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 10, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-006 (sha 3acfee471)
+attendu : POST factures/<id>/whatsapp/ modele=relance sur une facture en retard dont contestee_le est posé rend 200 + wa_url au lieu d'un 409 ; l'écran offre « Relancer par WhatsApp » sans lire contestee_le
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-007 (sha 3acfee471)
+attendu : risque « internal » ⇒ exécuté au vol sans proposition ; la vue COMMIT whatsapp_devis appelle mark_devis_sent : devis brouillon → envoye + événement devis_sent (étape du lead, cadence)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-008 (sha 3acfee471)
+attendu : EmailLog « envoye » alors que rien ne part ; RelanceLog niveau 1 créée, prochaine_relance avancée (niveau consommé) ; is_email_configured() répond pourtant faux
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-009 (sha 3acfee471)
+attendu : chaque emplacement dit « envoyé » (emails_envoyes=1, email_sent=True, True) alors que rien ne part ; le brouillon WhatsApp du rappel J-1 est compté puis jeté
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 14, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-010 (sha 3acfee471)
+attendu : adresses du seed à domaine non réservé > 0 ; aucun backend enveloppe défini ni branché
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 11, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-011 (sha 3acfee471)
+attendu : lot et unitaire : la facture annulée et la brouillon partent (EmailLog « envoye », message dans la boîte d'envoi, réponse « Email envoyé ») comme la facture émise
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-012 (sha 3acfee471)
+attendu : le rappel part aux 4 factures, dont la contestée, celle du client MANUEL et celle sous promesse ; _motif_facture ne donne aucun motif d'arrêt pour une facture en retard contestée
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-VER2-101 (sha d64fa1e4e)
+attendu : e-mail éteint : _envoyer_invitation_portail rend False et send_mail n'est pas appelé, mais la vue répond 201 sans aucune clé disant que l'e-mail n'est pas parti, et l'écran affiche « Invitation envoyée. »
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 15, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-AMSG-VER3-100 (sha a12f40f82)
+attendu : paire existante au déploiement (empreinte de A déjà posée par la migration 0154) : après un nouveau STOP sur A, un enregistrement de A et un de B, peut_contacter(B) reste vrai ; témoin (paire neuve) : la sœur est cochée
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 14, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+
+== bilan AMSG : 0/14 OK
+  C-AMSG-001.py    ÉCART (échec)
+  C-AMSG-002.py    ÉCART (échec)
+  C-AMSG-003.py    ÉCART (échec)
+  C-AMSG-004.py    ÉCART (échec)
+  C-AMSG-005.py    ÉCART (échec)
+  C-AMSG-006.py    ÉCART (échec)
+  C-AMSG-007.py    ÉCART (échec)
+  C-AMSG-008.py    ÉCART (échec)
+  C-AMSG-009.py    ÉCART (échec)
+  C-AMSG-010.py    ÉCART (échec)
+  C-AMSG-011.py    ÉCART (échec)
+  C-AMSG-012.py    ÉCART (échec)
+  C-AMSG-VER2-101.py ÉCART (échec)
+  C-AMSG-VER3-100.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

@@ -1,0 +1,330 @@
+# rejeu sur runner GitHub (2026-11-17T10:29:02Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes ALEC --conteneur <django_core>
+
+== C-ALEC-001 (sha ae5a7ae4c)
+attendu : jeton/lien servi sans masque à tous les rôles internes (même sans code ged) ; le jeton global d'une demande à 2 destinataires OTP la passe à « signe » (destinataires non signés, otp_valide faux) ; voie destinataire sans OTP refusée ; rejeu refusé
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-002 (sha ae5a7ae4c)
+attendu : des rôles livrés sans prix_achat_voir ni marge_voir lisent la structure d'un kit AVEC cout_total_roll_up, marge et cout_unitaire/cout_total par composant
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-003 (sha ae5a7ae4c)
+attendu : le commentaire de révision porte prix_achat_unitaire ; la liste sans cible exclut leads/modules refusés mais JAMAIS achats : 10 rôles livrés sans prix_achat_voir le lisent
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-004 (sha ae5a7ae4c)
+attendu : des rôles livrés sans prix_achat_voir obtiennent le tarif_base du transporteur (offres[].cout et tarif_base), alors que cout_reel est masqué par le même mécanisme ailleurs
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-005 (sha ae5a7ae4c)
+attendu : le masque retire seuil_ca_achat et montant_fixe mais taux_pct (la remise fournisseur) sort en clair pour les rôles livrés sans prix_achat_voir
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-006 (sha ae5a7ae4c)
+attendu : des rôles livrés sans prix_achat_voir lisent montant_approuve (total d'achat HT du BCF) ; le même total est masqué ailleurs (MasqueMontantsAchatMixin sur le BCF)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-007 (sha ae5a7ae4c)
+attendu : tout rôle interne obtient reste_categorie / reste_total (budget d'achat restant) ; synthese rend les enveloppes budget/engagé sans masque aux rôles livrés sans prix_achat_voir
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-008 (sha ae5a7ae4c)
+attendu : cout_soustraitance rend cout_composite à des rôles livrés sans prix_achat_voir ; depuis_devis rend cout_prevu (somme des prix d'achat) faute de context
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-009 (sha ae5a7ae4c)
+attendu : avec une seule expédition du jour, expeditions_du_jour[0].cout_total = son cout_reel exact, servi à des rôles livrés sans prix_achat_voir
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-010 (sha ae5a7ae4c)
+attendu : le GET rend le champ token en clair à des rôles livrés sans prix_achat_voir ; ce jeton ouvre sans authentification la route publique des documents fournisseur (factures, solde)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-011 (sha ae5a7ae4c)
+attendu : le corps de la notification (in-app et e-mail) contient « Montant estimé : 1640.00 DH » pour des destinataires manager sans prix_achat_voir
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-012 (sha ae5a7ae4c)
+attendu : le créateur du devis (Commercial, sans marge_voir) lit, par object_history, un détail « marge_snapshot : — → 4000.00 » : le diff générique ne rédige que les secrets
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-013 (sha ae5a7ae4c)
+attendu : SELECT cout FROM sav_ticket, SELECT donnees_structurees FROM ia_ocr_document et SELECT email, telephone FROM crm_client ne sont pas refusés ; les rôles livrés sans prix_achat_voir / sans client_pii_voir passent
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-014 (sha ae5a7ae4c)
+attendu : _validate_and_secure(sql, company_id, allow_price) ne reçoit ni module ni portée ; le service ne lit que prix_achat_voir ; des rôles sans code du module d'une table, et des rôles à portée, lisent la table société entière
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-016 (sha ae5a7ae4c)
+attendu : list/retrieve/recherche/... et DepotPublicViewSet list : des rôles livrés sans aucun code ged_* ou sans client_pii_voir franchissent la garde ; le sélecteur n'a ni droit de module ni portée
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-017 (sha ae5a7ae4c)
+attendu : Commercial terrain et Admin RH (sans installation_voir ni client_pii_voir) franchissent les 4 vues PDF de chantier
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 8, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-018 (sha ae5a7ae4c)
+attendu : list/retrieve des tiers franchis par tous les rôles internes ; cin, telephone, email, adresse servis sans client_pii_voir ni portée ; le miroir Client => Tiers recopie ces champs
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-019 (sha ae5a7ae4c)
+attendu : les rôles livrés à portée (Commercial, Commercial responsable, Technicien(s), Viewer) lisent le journal de toute la société ; get_queryset ne filtre pas sur l'utilisateur ; payload et resultat sont servis
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-020 (sha ae5a7ae4c)
+attendu : des rôles livrés à portée (Commercial soi, Commercial responsable sous-arbre, Technicien équipe, Viewer) franchissent les 3 gardes et les corps de fonction n'appliquent aucune portée
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-021 (sha ae5a7ae4c)
+attendu : Commercial, Commercial responsable et Viewer lisent les lignes de toutes les factures de la société ; le get_queryset des lignes n'applique aucune portée alors que celui des factures le fait
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-022 (sha ae5a7ae4c)
+attendu : des rôles livrés à portée (Commercial, Commercial responsable, Technicien(s), Viewer) franchissent LectureDuModule(sav) ; tournee_preventive ne reçoit que la société et rend client_nom, gps_lat, gps_lng, technicien
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-023 (sha ae5a7ae4c)
+attendu : le rôle Technicien franchit la garde ; le corps ne lit de request.user que la société et n'applique aucune portée alors que la docstring promet « jamais visible par le technicien lui-même »
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 9, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-024 (sha ae5a7ae4c)
+attendu : des rôles livrés sans journal_activite_voir (Commercial responsable, Technicien responsable, Responsable, Admin RH, Admin Ventes) franchissent la garde de settings_audit_log et settings_audit_sections
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 10, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-025 (sha ae5a7ae4c)
+attendu : réglage éteint : aucun filtre pour Commercial, Commercial responsable, Viewer ; réglage allumé : filtre responsable|cree_par sans portée de rôle ; nom et ville du lead servis
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 10, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-VER1-101 (sha d64fa1e4e4)
+attendu : Commercial (records_scope_soi) : SELECT ... FROM ventes_lignefacture passe module + portée (aucun refus), alors que SELECT ... FROM ventes_facture est refusé « Portée restreinte »
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-VER1-102 (sha d64fa1e4e4)
+attendu : Commercial terrain (aucun code ged_*) et Admin RH (sans client_pii_voir) franchissent la lecture des demandes de signature et des signataires ; la vue documents refuse le Commercial terrain
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 12, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ALEC-VER2-201 (sha a12f40f821)
+attendu : Commercial (records_scope_soi) : SELECT phone_key, crm_lead_id FROM adsengine_metaleadmirror passe module + portée (témoin crm_client refusé « Portée restreinte ») ; Commercial terrain et Admin RH (ni client_pii_voir ni adsengine_view) passent aussi ; phone_key hors de toute liste de colonnes gardées ; la clé est le numéro
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 15, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+
+== bilan ALEC : 0/27 OK
+  C-ALEC-001.py    ÉCART (échec)
+  C-ALEC-002.py    ÉCART (échec)
+  C-ALEC-003.py    ÉCART (échec)
+  C-ALEC-004.py    ÉCART (échec)
+  C-ALEC-005.py    ÉCART (échec)
+  C-ALEC-006.py    ÉCART (échec)
+  C-ALEC-007.py    ÉCART (échec)
+  C-ALEC-008.py    ÉCART (échec)
+  C-ALEC-009.py    ÉCART (échec)
+  C-ALEC-010.py    ÉCART (échec)
+  C-ALEC-011.py    ÉCART (échec)
+  C-ALEC-012.py    ÉCART (échec)
+  C-ALEC-013.py    ÉCART (échec)
+  C-ALEC-014.py    ÉCART (échec)
+  C-ALEC-016.py    ÉCART (échec)
+  C-ALEC-017.py    ÉCART (échec)
+  C-ALEC-018.py    ÉCART (échec)
+  C-ALEC-019.py    ÉCART (échec)
+  C-ALEC-020.py    ÉCART (échec)
+  C-ALEC-021.py    ÉCART (échec)
+  C-ALEC-022.py    ÉCART (échec)
+  C-ALEC-023.py    ÉCART (échec)
+  C-ALEC-024.py    ÉCART (échec)
+  C-ALEC-025.py    ÉCART (échec)
+  C-ALEC-VER1-101.py ÉCART (échec)
+  C-ALEC-VER1-102.py ÉCART (échec)
+  C-ALEC-VER2-201.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

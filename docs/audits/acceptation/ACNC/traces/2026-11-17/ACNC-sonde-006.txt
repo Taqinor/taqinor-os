@@ -1,0 +1,15 @@
+# rejeu sur runner GitHub (2026-11-17T10:32:00Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py ACNC/C-ACNC-006 --conteneur <django_core>
+
+== C-ACNC-006 (sha 3acfee471)
+attendu : 1 000 -> 1 100 -> 1 210 au second envoi ; après panne au 3e produit puis nouvel essai : certains produits à +21 %, d'autres à +10 %
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 13, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

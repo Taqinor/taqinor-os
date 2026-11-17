@@ -1,0 +1,234 @@
+# rejeu sur runner GitHub (2026-11-17T10:28:30Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes ASUP --conteneur <django_core>
+
+== C-ASUP-001 (sha 3acfee471)
+attendu : après « Anonymiser (RGPD) », l'acheteur d'une facture émise sans instantané perd son identité légale (nom remplacé, ICE/IF/RC/adresse vides)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-002 (sha 3acfee471)
+attendu : force_delete d'un produit archivé à 2 mouvements rend 200 et efface les 2 MouvementStock puis le produit
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-003 (sha 3acfee471)
+attendu : destroy rend 204 pour un compte actif ordinaire ; des dizaines de modèles partent en CASCADE et des centaines de liens d'auteur passent à NULL
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-004 (sha 3acfee471)
+attendu : ProductionWarrantyViewSet hérite du destroy de DRF (aucune surcharge, DELETE non exclu) et l'écran appelle la suppression
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-005 (sha 3acfee471)
+attendu : les 3 chemins d'effacement / rétention lisent Lead.objects et jamais Lead.all_objects
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-006 (sha 3acfee471)
+attendu : restaurer_lead rend vivant un lead absorbé par une fusion et replante sa prochaine étape, sans refus
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-007 (sha 3acfee471)
+attendu : après restauration générique : is_archived False alors que archived_at / archived_by restent remplis
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-008 (sha 3acfee471)
+attendu : anonymize appelle anonymiser_client et aucune fonction d'effacement des leads ni des ventes
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-015 (sha 3acfee471)
+attendu : 3 leads archivés + 1 lead ouvert (+1 supprimé) du même commercial : _leads_ouverts_count rend 4 au lieu de 1
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-016 (sha 3acfee471)
+attendu : lead archivé ou perdu : _nudge_suppressed rend False (la relance part) alors que l'opposé rend True
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-017 (sha 3acfee471)
+attendu : 12 non lues archivées (70 j) + 3 récentes : la liste en montre 3, unread-count et read-all en comptent 15
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-018 (sha 3acfee471)
+attendu : le chemin de suppression n'atteint aucune fonction annuler_rendez_vous*, alors que archiver_lead l'appelle
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-019 (sha 3acfee471)
+attendu : ni ma_file / pieces_visibles / _activites_visibles ne lisent l'état archivé ou supprimé de la cible, ni l'archivage ne clôt les à-faire manuels
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-020 (sha 3acfee471)
+attendu : le rappel est envoyé pour un lead archivé/perdu/supprimé ; ni dispatch ni annuler_rendez_vous_du_lead ne lisent l'état du lead ni n'annulent crm.Appointment
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-021 (sha 3acfee471)
+attendu : cheapest_prix_fournisseur rend le fournisseur archivé (1 200) et exiger_fournisseur_commandable ne lève pas pour lui
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-022 (sha 3acfee471)
+attendu : archiver un lead signé réussit sans garde ; est_lead_signe passe de True à False
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-023 (sha 3acfee471)
+attendu : lead archivé + devis accepté : étape = Signé, is_archived reste True, est_lead_signe = False (le lead perdu, lui, est levé)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-VER2-101 (sha d64fa1e4e)
+attendu : après « Anonymiser (RGPD) », un avoir ou une note de débit (re)rendu sur une facture figée imprime le client vivant anonymisé : nom remplacé, ICE/IF/RC/adresse absents ; la facture d'origine, elle, garde son acheteur
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 10, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-ASUP-VER3-100 (sha a12f40f82)
+attendu : après « Anonymiser (RGPD) », l'export comptable (et le journal des ventes, le grand livre reconstitué) listent la facture, l'avoir et la note de débit émis sous le client vivant anonymisé, ICE vide, alors que l'acheteur figé de la facture (PDF) garde nom et ICE
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 13, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+
+== bilan ASUP : 0/19 OK
+  C-ASUP-001.py    ÉCART (échec)
+  C-ASUP-002.py    ÉCART (échec)
+  C-ASUP-003.py    ÉCART (échec)
+  C-ASUP-004.py    ÉCART (échec)
+  C-ASUP-005.py    ÉCART (échec)
+  C-ASUP-006.py    ÉCART (échec)
+  C-ASUP-007.py    ÉCART (échec)
+  C-ASUP-008.py    ÉCART (échec)
+  C-ASUP-015.py    ÉCART (échec)
+  C-ASUP-016.py    ÉCART (échec)
+  C-ASUP-017.py    ÉCART (échec)
+  C-ASUP-018.py    ÉCART (échec)
+  C-ASUP-019.py    ÉCART (échec)
+  C-ASUP-020.py    ÉCART (échec)
+  C-ASUP-021.py    ÉCART (échec)
+  C-ASUP-022.py    ÉCART (échec)
+  C-ASUP-023.py    ÉCART (échec)
+  C-ASUP-VER2-101.py ÉCART (échec)
+  C-ASUP-VER3-100.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

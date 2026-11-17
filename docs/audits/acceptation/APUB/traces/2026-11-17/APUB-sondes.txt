@@ -1,0 +1,138 @@
+# rejeu sur runner GitHub (2026-11-17T10:31:41Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes APUB --conteneur <django_core>
+
+== C-APUB-001 (sha ae5a7ae4c)
+attendu : 10 rôles internes livrés lisent le jeton sans pouvoir lancer l'export ; la vue publique sert un jeton du bucket uploads
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-002 (sha ae5a7ae4c)
+attendu : peut_gerer(directeur2, fondateur) = refus ; attester rétrograde quand même le fondateur protégé ; admins restants = []
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-003 (sha ae5a7ae4c)
+attendu : 40 POST au même QR, textes p0..p39 → 40 tickets créés (numéros consommés) ; témoin : 40 POST au même texte → 1 ticket
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-004 (sha ae5a7ae4c)
+attendu : page, photo et PDF rendent 200 sur un jeton de 5 ans ; 1 seule écriture de lien_rapport_token (la pose)
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-005 (sha ae5a7ae4c)
+attendu : 10 POST au même lien, canal c0..c9 → 10 transmissions (notify_client_contact_request) ; témoin canal fixe ×10 → 1
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-007 (sha ae5a7ae4c)
+attendu : réponse 200 sans compte ; lead Signé : e-mail vide → e-mail du visiteur, note « Transcript livechat » ajoutée
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 7, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-008 (sha ae5a7ae4c)
+attendu : lead Signé → Froid par l'API publique : étape finale Froid, desaccepter_devis_du_lead appelé 0 fois ; témoin Signé → Contacté refusé
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-009 (sha ae5a7ae4c)
+attendu : Commercial, Technicien, Responsable (sans adsengine_flightplan_manage) passent POST/PATCH/DELETE ; Viewer refusé ; 0 route hors registre n'exige le code
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-010 (sha ae5a7ae4c)
+attendu : Viewer et Utilisateur passent POST/PATCH/DELETE sur les 3 viewsets ; alice modifie et supprime le tableau et la requête partagés de bob
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 5, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-037 (sha ae5a7ae4c)
+attendu : jeton → None pour les 3 états ; compte → permission True, BCF servis, date confirmée écrite
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+== C-APUB-038 (sha ae5a7ae4c)
+attendu : origine https://taqinor.ma → ACAO=origine + ACAC=true sur /api/django/crm/leads/, cookie Lax joint
+observé : AUCUN RÉSULTAT (code 1) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/core/management/commands/shell.py", line 257, in handle
+    exec(sys.stdin.read(), {**globals(), **self.get_namespace(**options)})
+  File "<string>", line 60, in <module>
+  File "<string>", line 38, in _rejouer
+  File "sonde", line 6, in <module>
+NameError: name '__file__' is not defined. Did you mean: '__name__'?
+verdict : ÉCART
+base inchangée : inconnue
+
+== bilan APUB : 0/11 OK
+  C-APUB-001.py    ÉCART (échec)
+  C-APUB-002.py    ÉCART (échec)
+  C-APUB-003.py    ÉCART (échec)
+  C-APUB-004.py    ÉCART (échec)
+  C-APUB-005.py    ÉCART (échec)
+  C-APUB-007.py    ÉCART (échec)
+  C-APUB-008.py    ÉCART (échec)
+  C-APUB-009.py    ÉCART (échec)
+  C-APUB-010.py    ÉCART (échec)
+  C-APUB-037.py    ÉCART (échec)
+  C-APUB-038.py    ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

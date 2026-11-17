@@ -1,0 +1,77 @@
+# rejeu DIRECT sur runner GitHub (2026-11-17T10:32:10Z), sha fde81c2f28fe7887eebe075c7165534ad947a20b, conteneur 64931d3e2105831d753a892c79629373a6ed646c3a7f269b7fbdea2a290cf967 ; arbre du depot sous /tmp/racine, backend/django_core -> /app
+# commande : docker exec -w /app -e PYTHONPATH=/app <django_core> python /tmp/racine/docs/audits/sondes/AMSG/<sonde>.py
+
+== C-AMSG-003 (direct)
+{
+ "repro": false,
+ "observe": {
+  "methode": "exécution du vrai Lead.save, des vrais leads_doublons/portee_selectors et du vrai chemin du STOP (cadence_reponses)",
+  "scenario": "A et B au même numéro ; STOP sur A ; B modifiée ; C créée après ; D recolle le numéro opposé",
+  "contactable_avant_stop": {
+   "A": true,
+   "B": true
+  },
+  "contactable_apres_stop": {
+   "A": false,
+   "B_existante": false,
+   "C_creee_apres": false,
+   "D_numero_recolle": false
+  },
+  "empreintes_posees": 1,
+  "ne_plus_contacter": {
+   "A": true,
+   "B": true,
+   "C": true,
+   "D": true
+  },
+  "fonction_lue_a_l_envoi": "apps/crm/portee_selectors.py::peut_contacter"
+ }
+}
+code : 0
+
+== C-AMSG-007 (direct)
+{
+ "repro": false,
+ "observe": {
+  "methode": "exécution du vrai relais FastAPI + vraie vue Django (url_path) + vrai mark_devis_sent (ast, bouchons)",
+  "action": "crm.lead.whatsapp_prepare",
+  "endpoint": "/api/django/crm/assistant/leads/{id}/whatsapp-devis-apercu/",
+  "risque_catalogue": "internal",
+  "risques_a_confirmer_du_relais": [
+   "irreversible",
+   "outward"
+  ],
+  "proposition_a_confirmer": false,
+  "appels_relayes": [
+   "POST /api/django/crm/assistant/leads/12/whatsapp-devis-apercu/"
+  ],
+  "vue_executee": {
+   "fichier": "backend/django_core/apps/crm/devis_views.py",
+   "vue": "LeadDevisActionsMixin.whatsapp_devis_apercu"
+  },
+  "statut_devis": "brouillon → brouillon",
+  "effets": [],
+  "message_envoye_par_quelquun": false,
+  "sortie_relais": "{\"type\": \"result\", \"action_key\": \"crm.lead.whatsapp_prepare\", \"libelle\": \"Préparer un envoi WhatsApp de devis\", \"carte\": null, \"ok\": true, \"data\": {\"wa_url\": \"h"
+ }
+}
+code : 0
+
+== C-AMSG-009 (direct)
+calendar_utils: chargement WorkingHoursConfig échoué : name 'WorkingHoursConfig' is not defined
+calendar_utils: chargement Holiday échoué : name 'Holiday' is not defined
+calendar_utils: chargement WorkingHoursConfig échoué : name 'WorkingHoursConfig' is not defined
+calendar_utils: chargement Holiday échoué : name 'Holiday' is not defined
+calendar_utils: chargement Holiday échoué : name 'Holiday' is not defined
+Traceback (most recent call last):
+  File "/tmp/racine/docs/audits/sondes/AMSG/C-AMSG-009.py", line 118, in <module>
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1, default=str))
+                     ^^^^^^^
+  File "/tmp/racine/docs/audits/sondes/AMSG/C-AMSG-009.py", line 94, in sonde
+    r1 = espace("apps/installations/tasks.py", b)["rappel_rdv_j1"]()  # 1. rappel de pose J-1
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "apps.installations.tasks", line 216, in rappel_rdv_j1
+  File "apps.notifications.selectors", line 104, in fenetre_notifications
+NameError: name 'timezone' is not defined
+code : 1
+
