@@ -1,0 +1,86 @@
+# BRIEF — gestionnaire de tâches/projets personnel + coach IA dans TAQINOR OS
+
+Working names: backend app `apps/taches` (URL prefix `taches/`, module key `taches`), frontend `features/taches` + `pages/taches`, plan file `docs/plans/PLAN_TACHES.md`, task-id prefix `TCH`. French UI. Repo root = current working directory.
+
+## 1. The founder's request (verbatim, two messages)
+
+> i have tried using many project managers, or task managers, but i dont like them i want to have my own in my ERP, the last i used was odoo with its big screen in my first page of my iphone which i liked, but i want to add tasks to projects, and to have the AI agent in there help me prioritise things, and plan them carefully, of course the ERP should follow me everywhere and try to understand my behaviour, and if i say i want to achieve more tasks dailly it should help on that and if i say that is enough it should help me keep the same pace, AI must help in undestanding me and pushing me forward. [...] i expect the best.
+
+> [...] copies all the nice functionalities from to do and project management solutions, so i want for example to have multiple projects, with priorities, and all their tasks show up in my daily todo and easily add a task to one of those projects or even in a new project in something called new project, and also a planning phase, and all the fancy stuff. [...] this app should be the best in term of ease of use and prettiness [...] easily implemented and the tasks well written. [...] i want the best in one go!
+
+User = Reda, solo founder of a small solar installer (Morocco), NOT a coder, lives on his iPhone (ERP = installed PWA), also desktop. Small team (a sales rep, a dev employee, technicians).
+
+## 2. R1 facts (verified by scouts with file:line; paths relative to backend/django_core unless noted)
+
+### Existing task-like primitives
+- `apps/records/models.py:120` `Activity` = overloaded foundation model: planned activity + chatter entry (`kind`) + personal to-do. Fields: content_type/object_id (nullable), `personnelle` (bool, visible to creator only), activity_type (nullable FK), summary, note, `due_date` (DateField, no time), snoozed_until/snoozed_at/snooze_trigger_event, assigned_to, done/done_at/done_by, auto_relance, created_by. No project, priority, estimate, recurrence, ordering, soft delete.
+- Personal to-do ALREADY EXISTS (XKB4): POST `/api/django/records/activities/` without target → personal Activity (views.py:416-433). Screens: `/activites` (MesActivitesPage, quick-add « + À faire » at frontend/src/pages … MesActivitesPage.jsx:249-355), `/calendrier` (CalendarPage). Routes `mine` (:461), `ma-file` (:487), `done`, `snooze`.
+- Tokenised iCal feed already exists: `apps/reporting/calendar.py` (`build_ics` :529, `calendar_ics` :591, `calendar_ics_subscription` :620; `_activites_visibles` :107 pulls Activities into the calendar).
+- Parked app `apps/gestion_projet` (~45 models incl. `ProjetChantier`, `Tache`, Gantt/CPM, timesheets, budgets; tables kept, models removed from state by migration 0045; depends on parked btp_chantier). Restoring it = heavy, wrong fit. Do NOT reuse the label `gestion_projet`. Name clashes to mind: `Tache` (parked model in another app label — OK as a class name in a new app but confusing), stock routes `taches-reappro-interne`, `installations.JalonProjet`.
+- No generic recurrence engine in `core`. No calendar sync with Google/Microsoft.
+- Platform primitives to compose: `core.models.TenantModel` (:62), `SoftDeleteModel` (:155) + trash registry `apps/trash/registry.py:27 enregistrer_restaurateur`, `core/champs_plateforme.py:31 VerrouOptimisteMixin` (lock_version, 409), `core/viewsets.py:65 CompanyScopedModelViewSet`, `core/numbering.py:114 next_reference`, records Comment/Attachment/Tag/Follower + `ChatterViewSetMixin` (records/views.py:194) with targets declared in the app's `platform.py` (`record_targets`), events bus package `core/events/` (`subscribe_durable`, `emit_reliable`, `enqueue_durable`), global search `_SEARCH_SPECS` in `apps/reporting/search.py:430`, `uxviews.SavedView`.
+- Behaviour signals already stored: `audit.AuditLog`, `authentication.UserSession`, `uxviews.EcranRecent`, `agent.AgentActionLog`, `agent.AssistantEvent`, `Activity.done_at/done_by`. `notifications.WorkingHoursConfig` is per COMPANY (working days, hours/day, holidays, Ramadan window), not per user.
+
+### Assistant stack
+- `apps/agent/registry.py`: `AgentAction(key,label,description,endpoint,method,inputs(JSON-Schema),required_permission,risk,confirm_summary,carte,lot,objets)`. risk ∈ internal/outward/irreversible; outward+irreversible → signed single-use proposal (Redis, TTL 300 s) confirmed by a finger TAP on a card (voice NEVER confirms). `internal` runs immediately with relayed JWT (+ idempotency key on POST).
+- Closed lists: `CARTES` (registry.py:35-47: liste_leads, file_touches, matin, fiche_lead, touche, suite_touche, wa_message, wa_devis, document, visite, diagnostic), mirrored by hand in `frontend/src/features/ia/cartes/cartes.js:31` + `CartesDuMessage.jsx:62-74` (unknown card → generic fallback); `OBJETS` (lead, devis, touche, facture, client) + `LibellesObjetsView` hard-codes crm/ventes; lots {copilote, herite}.
+- New app registers via `'agent_actions_module': 'apps.x.agent_actions'` in its `platform.py` + `register_actions()` (example `apps/adsengine/agent_actions.py:58`) → also gets ModuleToggle gating.
+- `ASSISTANT_COPILOTE` default `admins`: lot `copilote` visible to admin-role users only (fine for the founder). An action with NO lot is served to everyone.
+- FastAPI (`backend/fastapi_ia/app/services/`): provider default `groq` / `openai/gpt-oss-120b` (light prompt, no manual, 8 000 TPM); Claude = `claude-sonnet-5-5`, effort `low`, cached system block (manual 70 k chars + manifest), rejects `temperature`. `ASSISTANT_MOTEUR=langchain` default; `natif` only with claude+copilote. Per-turn header (date/time Casablanca, prénom, rôle, écran, ids) goes in the USER message. Context whitelist: ecran, lead_id, devis_id, touche_id — any other id silently dropped (frontend `construireContexte` copilotMessages.js:89, FastAPI `ContexteEcran` sql_agent.py:43-52, `relais_copilote.py:213`).
+- NO proactivity (assistant never speaks first), NO per-user long-term memory/profile, NO cost cap in code. `crm.digest_matin` card is deterministic server data. Prompt consignes are written for a SALES REP; `test_prompt_copilote.py` pins a closed key list (`CLES_CANONIQUES` allows only crm.*/reporting.*), a closed capitalised-word list and a 950-word limit.
+- Manual/manifest (`backend/fastapi_ia/assistant/`) generated by the Claude Code skill `assistant-manuel` — no CI staleness guard.
+- Another screen can open the assistant pre-filled: `window.dispatchEvent(new CustomEvent('taqinor:assistant:ouvrir', {detail:{ecran, question, envoyer:true}}))` (copilotMessages.js:66).
+- Price table (USD/Mtok, services.py:236): sonnet-5-5 in 2.0 / out 10.0 / cache_read 0.10 / cache_write 4.0.
+
+### Mobile / PWA / notifications
+- PWA: vite-plugin-pwa injectManifest, SW `frontend/src/sw.js` (push handler :104 with data.link deep-link, notificationclick :192). Manifest has 5 `shortcuts` (guarded by `features/pwa/shortcuts.test.mjs`) — NOT supported on iOS. `navigator.setAppBadge` unused anywhere (it IS supported on iOS 16.4+ installed web apps).
+- Web push works on iOS installed web apps (16.4+), no action buttons on iOS → plain notification + deep link. Backend: `apps/notifications` `PushSubscription`, `services.notify(user, event_type, title, body, link, …, respect_quiet_hours=True)` (services.py:624); `event_type` is a CLOSED enum (`types_evenements.py` / `models.EventType`, golden tests); quiet hours defer delivery (`programmee_pour`, sweep every 5 min); dedupe via `MarqueurEmissionBalayage` (company,event_type,cle,periode). Frontend push prompt hidden if `VITE_VAPID_PUBLIC_KEY` empty (build-time var).
+- Celery beat: `erp_agentique/celery.py` (tz Africa/Casablanca), task names `<app>.<snake>`, queue route in settings base.py (`scheduled`), autodiscovered module names only: tasks, scheduled, beat_tasks, sweeps, digests, scheduled_reports, tasks_i18n.
+- App shell: a module appears on the home grid via ONE `features/<x>/module.config.jsx` (glob-imported) + backend `module_manifest` in `apps.py`; ON by default for all companies. Admin mobile home = `/mobile/cockpit`; `MOBILE_HOME_ALLOWED_ROUTES` (authentication/selectors.py ~195) is a strict whitelist. No founder « today » surface exists.
+- Quick capture hooks: command palette (`providers/CommandPalette.jsx`, `commandActions.js`), shortcuts (`providers/shortcuts.js`: `g x` goto, `c x` create; founder rule: shortcuts NEVER destructive), quick-create host (`features/uxviews/quickcreate/`, `QUICK_CREATE_TYPES`), `ui/FloatingActionButton.jsx` (not global), global search.
+- Offline outbox (`apps/offlinesync/registry.py`): module enum closed (needs enum + migration to add `taches`).
+- UI kit `frontend/src/ui/`: Button, IconButton, Sheet, Dialog, ResponsiveDialog, ConfirmDialog, DataTable, DatePicker, TimePicker, Combobox, MultiSelect, Select, Segmented, Tabs, Switch, Checkbox, Badge, Tag, StatusPill, EmptyState, Skeleton, Toaster (single, sonner), Tooltip, Popover, DropdownMenu, ContextMenu, Form, useDraftAutosave, usePullToRefresh. `@dnd-kit/core` in package.json. No Kanban component (helpers only).
+
+### iPhone presence (web research, sources fetched)
+- A true Home Screen widget needs a native app (no web-app widget API found). Credible PWA-only package: (1) web push + app badge (count due today); (2) subscribed webcal/ICS feed → native Calendar widget on the first home page (pull refresh 5 min…hourly); (3) Siri/Shortcuts « ajouter une tâche » POSTing to a token-protected endpoint; (4) optional Scriptable (free app) widget rendering a JSON endpoint = real big tile, one-time setup.
+- Odoo iOS = web view wrapper + push; no official widget verified.
+
+### Best-in-class patterns (web research; mostly review blogs = weak evidence)
+- Copy: Things « Today » (only scheduled/due, overdue handled apart) + « This Evening » + « Someday »; unified inbox + triage (Akiflow, Linear); natural-language / voice quick add (Todoist); Sunsama guided morning plan with capacity warning + evening shutdown; Todoist Karma daily goal (default 5/day) with days off + vacation mode; Linear cycles with automatic rollover; Odoo private to-do convertible into project task; AI proposes, user approves.
+- Avoid: silent auto-rescheduling/reshuffling (Motion, Reclaim complaints), overdue pile-up shown as guilt, streaks punishing pauses, desktop-first rituals, too many features on by default.
+
+### Behaviour science (sources fetched unless marked [S]=search summary)
+- Specific challenging goals beat « do your best » on straightforward tasks; for new/complex work a learning/process goal beats a number (Seijts & Latham 2005).
+- If-then plans (when/where): d = .65 over 94 tests (Gollwitzer & Sheeran 2006) — upper bound.
+- Planning fallacy: bias eliminated when people connect past similar experiences to the prediction (Buehler, Griffin & Ross 1994, study 4) → show « your similar tasks took X ».
+- Rewards contingent on completion/performance undermine intrinsic motivation (d −0.28…−0.40); positive informational feedback raises it (d 0.33) (Deci, Koestner & Ryan 1999). Gamification effects may be novelty-bound (Hamari 2014). Highlighting broken streaks reduces continuation [S].
+- Prompts habituate: HeartSteps suggestions +14 % steps, effect declining ~3 %/day, undetectable by day 29 (Klasnja 2018) → hard daily cap, rotate content, prefer moments the user opens the app. No source for an « N prompts/day » threshold.
+- ADAPTIVE GOAL RULE (closest analogue to « do more / hold my pace »): WalkIT — daily goal = 60th percentile of the last 9 non-missing days, rounded up; goals may rise, stay or fall; advantage = slower decay, not bigger initial gain (Adams 2017). No published « hold » rule.
+- Reflection: 15 min end-of-day written reflection → +22.8 % on final test (Di Stefano et al., Wipro). Detachment correlates with lower exhaustion (r −.36), tiny with performance (r .09).
+- Chronotype: >80 % of 65 studies find no main effect → show the user his own completion-by-hour histogram, never auto-assign hours.
+- Task count alone is gameable; report it with important-task completion and plan-completion ratio (design judgment; « mere urgency effect » Zhu 2018 [S]).
+
+### Governance checklist for a new app (from the guards' sources — nothing executed)
+- `docs/ownership.yml`: add owner block `taches` (plan `docs/plans/PLAN_TACHES.md`, paths apps/taches/**, features/taches/**, api/tachesApi*, pages/taches/**) + `plans:` map entry; shared surfaces are append-only (urls.py, settings/base.py, appSkus.js, openapi-schema.yml, scripts/*.txt).
+- Plan task line: `- [ ] TCH12 — libellé … Files: \`path\`, \`path\`. (ROUTINE) (@after: TCH3) (@lane: backend/taches) (@model: sonnet)`; id regex `[A-Z]{1,6}\d{1,4}`; `@acceptation` = live acceptance played by the orchestrator. `check_test_placement`: a NEW test file must be cited in backticks by a ticked task with « Nouveau fichier car : » ; no task-id in test file names. `check_taches_cablage` FORMES 1/3: a task creating a screen names its mount file (`module.config.jsx`) + reachability clause; a task naming backend AND frontend files requires a shared contract (`apps/taches/contract_samples/*.json` + export in `frontend/src/test/fixtures/contractSamples.js`). House rule PACT10: contract first; PACT11: frontend task `@after` its backend task.
+- Scaffold `python manage.py startapp_erp taches` (docs/module-playbook.md, 8 wiring points); prefer `views.py`; `INSTALLED_APPS` + `_APP_URLS` (`erp_agentique/urls.py:28`, mounted at api/django/ and api/v1/); `apps.py` `module_manifest` (key, sku, label, icone, depends, description, categorie); `platform.py` PLATFORM dict.
+- Guards: TenantModel + CompanyScopedModelViewSet mandatory (frozen baselines reject hand-rolled company FK / unscoped viewset); every CASCADE needs inline `# on_delete: <raison>`; unique constraints include `company`; no `datetime.now()`; `get_or_create` needs a backing UniqueConstraint; functions ≤ 60 logical lines on new code; new settings key declared in settings + `.env.example`; every public function in `services.py` must have a non-test caller; no bespoke `*Activity` model, no direct weasyprint, no count()+1, no new FileField (use records.Attachment); Celery tasks take pks, beat tasks registered + routed.
+- Permissions: append `taches_voir`, `taches_gerer` at the END of `ALL_PERMISSIONS` (`apps/roles/permissions_registre.py:69`), `PERMISSION_MODULE` line, system-role lists; write codes must be used in server code.
+- OpenAPI: `docs/openapi-schema.yml` committed, drift blocking → `python scripts/check_openapi_schema.py --write`; viewsets need resolvable serializers / `extend_schema`; query filters declared.
+- Frontend: `features/taches/module.config.jsx` (copy `features/tiers/module.config.jsx`), UNIQUE glyph, row in `src/lib/apps/appSkus.js`, api client `src/api/tachesApi.js`, every .jsx reachable from a route, tests `*.test.jsx|js|mjs` under src/, CSS under `styles/<owner>/` + one `@import` appended to index.css, e2e DOM hooks are a contract, single Toaster.
+- CODEMAP: add §4 row + §5 routes + features line, then `PYTHONIOENCODING=utf-8 python scripts/codemap_fingerprint.py --write`.
+- Another live session currently holds plan claims on `app:agent`, `app:crm`, `app:erp_agentique`, `app:scripts`, `app:ventes` → edits there must be minimal, append-only and coordinated.
+
+## 3. House rules that bind the design
+- Multi-tenant: `company` FK everywhere, never from the request body. Cross-app reads via the target's `selectors.py`, writes via its `services.py`, or string FKs — never import another domain app's models/views.
+- NEVER hand-roll a platform primitive (chatter, numbering, notifications, soft delete, optimistic lock, search…).
+- Zero invented number: every figure shown to the user is real, derived-traceable, or omitted.
+- Errors point at the faulty field; a list on screen never empties on a failed refresh; shortcuts are never destructive; no hardcoded person names.
+- No new paid/external dependency without the founder's OK.
+- Key-gated AI: everything must stay useful with NO LLM key (deterministic engine first, LLM = conversational layer on top).
+
+## 4. Founder decisions (answered 2026-11-17, interactive — never re-ask)
+- D-TCH-1 — PRIVÉ SEULEMENT: each user has a private space; NO delegation, NO shared projects in this build. Keep the schema able to grow into sharing later, build none of it.
+- D-TCH-2 — iPhone: EVERYTHING incl. the big tile: icon opening « Ma journée », app badge (count of today's tasks), push notifications, tasks in the native Apple Calendar widget via subscribed feed, Siri dictation shortcut, AND a Scriptable widget (free third-party app accepted by the founder, guided 5-minute setup).
+- D-TCH-3 — AI proactivity default: morning plan + evening wrap-up + AT MOST one nudge during the day; adjustable in-app.
+- D-TCH-4 — Starting data: the founder PASTES/dictates raw lists, the AI proposes the sorting into projects, he validates. No Odoo import.
