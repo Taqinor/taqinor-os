@@ -335,8 +335,9 @@ class TextesCorrigesDu1711Tests(SimpleTestCase):
             "Votre projet est-il toujours d'actualité ?"))
         self.assertIn("Votre projet est-il toujours d'actualité ?",
                       fr['reveil_b'])
-        self.assertIn("c'est un appel commercial",
-                      fr['appel_ouverture'])
+        # 17/11/2026 — le lead du formulaire a demandé à être appelé : plus de
+        # « c'est un appel commercial » sur le script de base.
+        self.assertNotIn("appel commercial", fr['appel_ouverture'])
         sans = fr['appel_reveil_sans_devis']
         self.assertEqual(
             sans,
@@ -656,3 +657,77 @@ class MessagesApiTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('prix_total', json.dumps(resp.data, ensure_ascii=False))
+
+
+class LignesStockeesAuTexteDAvantTests(TestCase):
+    """17/11/2026 — 0147 : une ligne qui porte EXACTEMENT l'ancien défaut reçoit
+    le nouveau ; un texte retouché par la société n'est jamais touché."""
+
+    class _Registre:
+        @staticmethod
+        def get_model(app_label, model_name):
+            assert (app_label, model_name) == ('parametres', 'MessageTemplate')
+            return MessageTemplate
+
+    ANCIENNE_CONFIRMATION = (
+        "Bonjour, on confirme la visite technique prévue {date_visite} chez "
+        "vous. Le technicien vérifie le toit, la charpente et le tableau "
+        "électrique — prévoyez l'accès au compteur. Votre présence est "
+        "importante : c'est l'occasion de répondre à toutes vos questions sur "
+        "place. En cas d'empêchement, répondez-moi ici et on recale le "
+        "passage. — {conseiller} Répondez STOP et je n'insiste plus.")
+
+    def _module(self):
+        from importlib import import_module
+        return import_module('apps.parametres.migrations.0147_textes_lignes_1711')
+
+    def test_les_anciens_defauts_sont_remplaces_les_textes_maison_non(self):
+        brut = Company.objects.create(nom='L1711a', slug='l1711-brut')
+        maison = Company.objects.create(nom='L1711b', slug='l1711-maison')
+        ancien_j4 = MESSAGE_TEMPLATE_DEFAULTS['j4_preuve'].replace(
+            'kWc. Petite', 'kWc. Le suivi de production est en temps réel, '
+            'je peux vous montrer. Petite')
+        ancien_ouverture = MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture'].replace(
+            '{marque}. Vous venez',
+            "{marque} — c'est un appel commercial. Vous venez")
+        MessageTemplate.objects.create(
+            company=brut, cle='visite_confirmation',
+            corps_fr=self.ANCIENNE_CONFIRMATION)
+        MessageTemplate.objects.create(
+            company=brut, cle='j4_preuve', corps_fr=ancien_j4)
+        MessageTemplate.objects.create(
+            company=brut, cle='appel_ouverture', corps_fr=ancien_ouverture)
+        MessageTemplate.objects.create(
+            company=brut, cle='repondeur', corps_fr='',
+            corps_darija="السلام عليكم {civilite} {prenom}، {conseiller} من "
+            "{marque}. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي "
+            "نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم "
+            "مبروك.")
+        MessageTemplate.objects.create(
+            company=maison, cle='visite_confirmation',
+            corps_fr=self.ANCIENNE_CONFIRMATION + ' Merci !')
+        MessageTemplate.objects.create(
+            company=maison, cle='appel_ouverture', corps_fr=ancien_ouverture
+            + ' À bientôt.')
+        module = self._module()
+        module.corriger(self._Registre, None)
+        lu = {(m.company_id, m.cle): m for m in MessageTemplate.objects.all()}
+        self.assertEqual(
+            lu[(brut.pk, 'visite_confirmation')].corps_fr,
+            MESSAGE_TEMPLATE_DEFAULTS['visite_confirmation'])
+        self.assertEqual(lu[(brut.pk, 'j4_preuve')].corps_fr,
+                         MESSAGE_TEMPLATE_DEFAULTS['j4_preuve'])
+        self.assertEqual(lu[(brut.pk, 'appel_ouverture')].corps_fr,
+                         MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture'])
+        self.assertEqual(lu[(brut.pk, 'repondeur')].corps_darija, '')
+        self.assertEqual(
+            lu[(maison.pk, 'visite_confirmation')].corps_fr,
+            self.ANCIENNE_CONFIRMATION + ' Merci !')
+        self.assertTrue(lu[(maison.pk, 'appel_ouverture')].corps_fr.endswith(
+            ' À bientôt.'))
+        # Idempotence : la 2e application ne change plus rien.
+        module.corriger(self._Registre, None)
+        self.assertEqual(
+            lu[(brut.pk, 'j4_preuve')].corps_fr,
+            MessageTemplate.objects.get(
+                company=brut, cle='j4_preuve').corps_fr)
