@@ -434,9 +434,13 @@ def masquer_guillemets(texte):
 # --------------------------------------------------------------- candidats
 
 def candidats(masque, texte, ctx, motifs=MOTIFS, registre=None, types=None):
-    """Tous les candidats convertis de `motifs`, et les alertes des lectures rejetées."""
+    """Tous les candidats convertis de `motifs`, et les alertes des lectures rejetées.
+
+    Un texte rejeté (date impossible, durée hors bornes) reste du texte : aucun
+    autre candidat ne peut le lire à sa place (« pendant 20h » ne devient pas 20:00).
+    """
     registre = registre or CONVERTISSEURS
-    trouves, rejets = [], []
+    trouves, rejets, rejetes = [], [], []
     for motif in motifs:
         if types is not None and motif.type not in types:
             continue
@@ -447,10 +451,13 @@ def candidats(masque, texte, ctx, motifs=MOTIFS, registre=None, types=None):
             lu = conv(m, ctx, texte)
             if isinstance(lu, Rejet):
                 rejets.append(lu.alerte)
+                rejetes.append(m.span())
             elif lu is not None:
                 trouves.append(Candidat(
                     m.start(), m.end(), motif.type, lu.valeur, lu.libelle, tuple(lu.alertes)))
-    return trouves, rejets
+    libres = [c for c in trouves
+              if not any(c.debut < fin and debut < c.fin for debut, fin in rejetes)]
+    return libres, rejets
 
 
 def _suit_un_jour(c, masque, jours):
