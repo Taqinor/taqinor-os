@@ -26,7 +26,7 @@ import {
 import { PageHeader } from '../ui/PageHeader'
 import { Table } from './reporting/Table'
 import KpiP2pCard from '../features/reporting/KpiP2pCard'
-import { useHasPermission, useIsAdminOrResponsable } from '../hooks/useHasPermission'
+import { useHasPermission, useIsAdminOrResponsable, useCanLireTableauDeBord } from '../hooks/useHasPermission'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
 // K149 — toutes les figures passent par les utilitaires F19 (Intl fr-MA / MAD).
@@ -197,7 +197,9 @@ export function Component() {
   const aCodeExport = useHasPermission('reporting_export')
   const palierResponsable = useIsAdminOrResponsable()
   const sansRoleFin = !useSelector((s) => s.auth.role_nom)
-  const peutExporter = aCodeExport || (sansRoleFin && palierResponsable)
+  // ADRG145 — `GET reporting/dashboard/` exige la lecture des ventes (ADRG120, 1 définition).
+  const peutLireTableau = useCanLireTableauDeBord()
+  const peutExporter = peutLireTableau && (aCodeExport || (sansRoleFin && palierResponsable))
   const navigate = useNavigate()
   const { data, loading, error } = useSelector((s) => s.reporting)
 
@@ -210,8 +212,8 @@ export function Component() {
   const [kpiFederes, setKpiFederes] = useState(null)
 
   useEffect(() => {
-    dispatch(fetchDashboard())
-  }, [dispatch])
+    if (peutLireTableau) dispatch(fetchDashboard())
+  }, [dispatch, peutLireTableau])
 
   useEffect(() => {
     reportingApi.kpiFederes()
@@ -243,6 +245,33 @@ export function Component() {
     .get('/reporting/dashboard/', { params: { export: 'xlsx' }, responseType: 'blob' })
     .then((r) => downloadXlsx(r.data, 'reporting-dashboard.xlsx'))
     .catch(() => {})
+
+  const cartesKpiFederes = kpiFederes && kpiFederes.length > 0 && (
+    <Card className="mb-4">
+      <CardHeader><CardTitle>KPI fédérés</CardTitle></CardHeader>
+      <CardContent>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {kpiFederes.map((t) => (
+            <Stat
+              key={t.id}
+              label={t.label}
+              value={t.unite ? `${formatNumber(t.valeur)} ${t.unite}` : formatNumber(t.valeur)}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  if (!peutLireTableau) {
+    return (
+      <div className="ui-root page" style={{ maxWidth: 1200 }}>
+        <PageHeader title="Reporting & Analytics" icon={BarChart3} />
+        <EmptyState icon={AlertTriangle} title="Tableau réservé aux rôles des ventes" description="Votre rôle n'a pas accès au tableau de bord des ventes." />
+        {cartesKpiFederes}
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -481,22 +510,7 @@ export function Component() {
 
       {/* ── WIR100(b) — KPI fédérés (ARC40) : tuiles agrégées des providers
           `kpi_providers` des modules actifs (rh/paie/contrats/compta…). ── */}
-      {kpiFederes && kpiFederes.length > 0 && (
-        <Card className="mb-4">
-          <CardHeader><CardTitle>KPI fédérés</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {kpiFederes.map((t) => (
-                <Stat
-                  key={t.id}
-                  label={t.label}
-                  value={t.unite ? `${formatNumber(t.valeur)} ${t.unite}` : formatNumber(t.valeur)}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {cartesKpiFederes}
 
       {/* ── AANA45 — Achats → paiement (KPI P2P, lecture seule, valeurs servies). ── */}
       <KpiP2pCard />
