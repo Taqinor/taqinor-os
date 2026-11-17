@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import LigneTache from '../ui/LigneTache'
 
@@ -7,51 +6,18 @@ import LigneTache from '../ui/LigneTache'
    puis « Faites ({n}) ». Forme lue : `projet_vue.json` (`sections[].taches`, `sans_section`, `faites_nb`).
    Maquette : docs/taches/maquettes/projet-liste.html. Textes : reference/textes.md §2.6.
    Présentation seule : l'écran (`pages/taches/Projet.jsx`) écrit, met à jour sur place et annule ; ce composant
-   rappelle `onTerminer`, `onOuvrir`, `onAction`, `onAjouter(sectionId, titre)`.
+   rappelle `onTerminer`, `onOuvrir`, `onAction`, `onAjouter(sectionId)`.
    Le compte d'une étape n'est PAS servi (le contrat ne donne que les tâches ouvertes) : jamais un chiffre
    recalculé ici ; seul « Faites ({n}) » vient de `faites_nb`.
    ========================================================================== */
 
+/** Raccord F2 — « Ajouter une tâche » d'une étape ouvre LA feuille de saisie (analyse, hors ligne, brouillon),
+ * avec le projet et l'étape en contexte : `onAjouter(sectionId)`. */
 function AjouterTache({ sectionId, onAjouter }) {
-  const [ouvert, setOuvert] = useState(false)
-  const [titre, setTitre] = useState('')
-  const [erreur, setErreur] = useState('')
-  const nom = `ep-ajout-${sectionId ?? 'sans'}`
-
-  const envoyer = async (e) => {
-    e.preventDefault()
-    if (!titre.trim()) return
-    try {
-      await onAjouter(sectionId, titre.trim())
-      setTitre('')
-      setErreur('')
-    } catch (err) {
-      setErreur(err?.message || 'La tâche n\'a pas été ajoutée. Réessaie.')
-    }
-  }
-
-  if (!ouvert) {
-    return (
-      <button type="button" className="ep-ajouter" onClick={() => setOuvert(true)}>
-        <Plus className="i i-16" aria-hidden="true" />Ajouter une tâche
-      </button>
-    )
-  }
   return (
-    <form className="ep-ajout" onSubmit={envoyer} noValidate>
-      <label className="sr" htmlFor={nom}>Ajouter une tâche</label>
-      <input
-        id={nom}
-        className="champ"
-        placeholder="Ajouter une tâche…"
-        value={titre}
-        onChange={(e) => setTitre(e.target.value)}
-        aria-invalid={erreur ? 'true' : undefined}
-        aria-describedby={erreur ? `${nom}-erreur` : undefined}
-        autoFocus
-      />
-      {erreur ? <p id={`${nom}-erreur`} className="ep-erreur" role="alert">{erreur}</p> : null}
-    </form>
+    <button type="button" className="ep-ajouter" onClick={() => onAjouter(sectionId)}>
+      <Plus className="i i-16" aria-hidden="true" />Ajouter une tâche
+    </button>
   )
 }
 

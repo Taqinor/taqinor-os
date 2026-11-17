@@ -13,6 +13,7 @@ import {
 import GrilleAgenda from '../../features/taches/ui/GrilleAgenda'
 import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
+import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
 import { frenchError } from '../../lib/frenchError'
 
@@ -402,7 +403,7 @@ function BandeauPasAJour({ maj, message, onReessayer }) {
 
 // --- Gestes de l'écran ------------------------------------------------------------------------
 
-function useGestes(setDonnees, setParams) {
+function useGestes(setDonnees) {
   const poserStatut = useCallback((id, statut) => {
     setDonnees((d) => avecItem(d, id, (it) => ({ ...it, statut })))
   }, [setDonnees])
@@ -425,9 +426,8 @@ function useGestes(setDonnees, setParams) {
     }
   }, [poserStatut])
 
-  const ouvrir = useCallback((item) => {
-    setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(item.id)); return suite })
-  }, [setParams])
+  const ouvrirFiche = useOuvrirFiche()
+  const ouvrir = useCallback((item) => ouvrirFiche(item.id), [ouvrirFiche])
 
   const ajouter = useCallback((jour, heureDebut) => {
     window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: { jour_prevu: jour, heure_debut: heureDebut } }))
@@ -569,7 +569,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const [relire, setRelire] = useState(0)
   const [erreurGeste, setErreurGeste] = useState('')
   const derniere = useRef(0)
-  const gestes = useGestes(setDonnees, setParams)
+  const gestes = useGestes(setDonnees)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
   // Raccord F2 — le gestionnaire commun des actions de ligne (menu ⋯) ; prévue un autre jour, la ligne part
@@ -583,6 +583,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     },
     sortApres: (code) => code === 'planifier',
   })
+  // une création (saisie, créneau « Ajouter à {HH:MM} », file rejouée) : l'agenda se relit une fois
+  useApresCreation(useCallback(() => setRelire((n) => n + 1), []))
 
   useEffect(() => {
     derniere.current += 1
@@ -662,7 +664,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
 
   return (
     <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
-      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}>
+      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
+      contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
       <div className="ag-vues">
         <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
         {vue === 'semaine' ? (

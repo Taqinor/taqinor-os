@@ -277,7 +277,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
 
   return (
     <div data-fiche={id} className="fiche">
-      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85">
+      {/* la fiche vit dans l'adresse (`?tache=`) : le retour arrière la ferme déjà, pas d'entrée d'historique en plus */}
+      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false}>
         {chargement && !tache ? <p className="vide-phrase" role="status">Chargement…</p> : null}
         {echec && !tache ? <p className="erreur-champ" role="alert">{echec}</p> : null}
         {tache ? (

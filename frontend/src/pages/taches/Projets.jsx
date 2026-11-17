@@ -233,7 +233,7 @@ export default function Projets() {
       {vide ? (
         <div className="ep-vide">
           <p>Aucun projet</p>
-          <button type="button" className="bouton plein" onClick={() => window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR))}>
+          <button type="button" className="bouton plein" onClick={() => window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: { coller: true } }))}>
             Coller mes listes
           </button>
         </div>

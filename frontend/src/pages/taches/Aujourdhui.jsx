@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
+import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
+import { lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
+import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
 } from '../../features/taches/aujourdhui/Sections'
@@ -186,7 +188,14 @@ export default function Aujourdhui() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const tout = params.get('tout') === '1'
-  const { userId } = useCompteTaches()
+  const { userId, societe } = useCompteTaches()
+  // la carte « Ta saisie de tout à l'heure t'attend. » [Reprendre] lit le brouillon de la feuille de saisie
+  const [brouillon, setBrouillon] = useState(() => lireBrouillon(societe, userId))
+  useEffect(() => {
+    const relire = () => setBrouillon(lireBrouillon(societe, userId))
+    window.addEventListener(EVENEMENT_SAISIE_FERMEE, relire)
+    return () => window.removeEventListener(EVENEMENT_SAISIE_FERMEE, relire)
+  }, [societe, userId])
   const { donnees, setDonnees, erreur, derniere, squelette, enLigne, charger } = useAujourdhui(tout, userId)
   const [estampilles, setEstampilles] = useState({})
   const [feuille, setFeuille] = useState(null)
@@ -391,9 +400,9 @@ export default function Aujourdhui() {
   const revoir = useARevoir({ donnees, setDonnees, garde, charger })
   const lier = useLierActivite({ donnees, setDonnees, garde, charger })
 
-  const ouvrirFiche = useCallback((id) => {
-    setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(id)); return suite })
-  }, [setParams])
+  const ouvrirFiche = useOuvrirFiche()
+  // une création (saisie, collage, file rejouée) : la journée se relit une fois, sans recharger la page
+  useApresCreation(useCallback(() => { charger(); setBrouillon(lireBrouillon(societe, userId)) }, [charger, societe, userId]))
 
   // Raccord F2 — le gestionnaire commun des actions de ligne ; Aujourd'hui garde son ★ (la ligne change de section),
   // son Reporter / Choisir un jour (estampille « → jeu. 19 ») et « Lier une tâche » des activités ERP.
@@ -596,6 +605,14 @@ export default function Aujourdhui() {
           onBilan={(jourBilan) => ouvrirFeuille('bilan', { jour: jourBilan })}
           onNaviguer={navigate}
           onCopilote={geste.copilote}
+          brouillon={brouillon ? (
+            <div className="carte" role="region" aria-label="Brouillon">
+              <p className="carte-texte">Ta saisie de tout à l&apos;heure t&apos;attend.</p>
+              <div className="carte-actions">
+                <button type="button" className="bouton second" onClick={() => ouvrirSaisie({})}>Reprendre</button>
+              </div>
+            </div>
+          ) : null}
         />
       ) : null}
       {donnees && journeeVide(donnees) ? (

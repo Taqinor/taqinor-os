@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, Diamond, TriangleAlert } from 'lucide-react'
 import {
-  annulerGeste, classerErreur, creerTache, lireVueProjet, modifierProjet, nouvelleCle, restaurerProjet, rouvrirProjet,
+  annulerGeste, classerErreur, lireVueProjet, modifierProjet, restaurerProjet, rouvrirProjet,
   rouvrirTache, terminerTache,
 } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
-import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
+import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
+import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
 import { DialogueDecaler, DialogueSupprimer, DialogueTerminer } from '../../features/taches/projets/Dialogues'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
@@ -145,24 +146,14 @@ export default function Projet() {
     }
   }
 
-  const ajouter = async (sectionId, titre) => {
-    try {
-      const { data } = await creerTache({ titre, projet_id: vue.projet.id, section_id: sectionId, client_id: nouvelleCle() })
-      const tache = data.tache ?? data
-      setVue((v) => {
-        const ajout = (liste) => [...(liste ?? []), tache]
-        if (sectionId == null) return { ...v, sans_section: ajout(v.sans_section), avancement: { ...v.avancement, total: v.avancement.total + 1 } }
-        return {
-          ...v,
-          sections: v.sections.map((s) => (s.id === sectionId ? { ...s, taches: ajout(s.taches) } : s)),
-          avancement: { ...v.avancement, total: v.avancement.total + 1 },
-        }
-      })
-      annoncer(`Ajoutée : ${titre}`)
-    } catch (err) {
-      throw new Error(err?.response?.data?.titre?.[0] ?? frenchError(err, 'La tâche n\'a pas été ajoutée. Réessaie.'))
-    }
+  // Raccord F2 — « + » (coquille) et « Ajouter une tâche » (étape) ouvrent LA feuille de saisie avec ce projet
+  // (et cette étape) en contexte ; après la création, la vue se relit une fois (sans recharger la page).
+  const contexteSaisie = useMemo(() => (vue ? { projet_id: vue.projet.id, projet_nom: vue.projet.nom } : null), [vue])
+  const ajouter = (sectionId) => {
+    window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: { ...contexteSaisie, section_id: sectionId } }))
   }
+  useApresCreation(useCallback(() => { charger() }, [charger]))
+  const ouvrirFiche = useOuvrirFiche()
 
   // Raccord F2 — le gestionnaire commun des actions de ligne (Choisir un jour, En réserve, Déplacer, En attente de,
   // Priorité, ★, Supprimer) : optimiste, annulable, sans relire la vue. Déplacée hors du projet, la ligne part.
@@ -265,7 +256,7 @@ export default function Projet() {
 
   return (
     <CoquilleTaches ecran="projet" titre={projet?.nom ?? 'Projet'} actionsEcran={actionsEcran}
-      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}>
+      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit} contexteSaisie={contexteSaisie}>
       <div className="ep-barre">
         <button type="button" className="ep-retour" onClick={() => navigate('/taches/projets')}>
           <ChevronLeft className="i" aria-hidden="true" />Projets
@@ -284,7 +275,7 @@ export default function Projet() {
             vue={vue}
             aujourdhui={aujourdhui}
             onTerminer={terminer}
-            onOuvrir={(t) => setParams((p) => { const s = new URLSearchParams(p); s.set('tache', String(t.id)); return s })}
+            onOuvrir={(t) => ouvrirFiche(t.id)}
             onAction={actions.surAction}
             onAjouter={ajouter}
             onAnnonce={annoncer}

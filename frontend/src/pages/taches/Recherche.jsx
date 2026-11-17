@@ -11,6 +11,7 @@ import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
+import { useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 
 /* ============================================================================
@@ -162,11 +163,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const faitesLignes = lignes.filter((t) => !ouverte(t))
   const projetsTrouves = serveur || !actif ? [] : resultat.projets
 
-  const ouvrirFiche = (item) => setParams((actuels) => {
-    const suite = new URLSearchParams(actuels)
-    suite.set('tache', String(item.id))
-    return suite
-  })
+  const ouvrirLaFiche = useOuvrirFiche()
+  const ouvrirFiche = (item) => ouvrirLaFiche(item.id)
   const majLigne = (id, suite) => setResultat((r) => ({ ...r, taches: r.taches.map((t) => (t.id === id ? { ...t, ...suite } : t)) }))
 
   const terminer = async (item, suivant) => {

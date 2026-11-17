@@ -111,6 +111,33 @@ describe('TCH45 — FeuilleACrans', () => {
     )
     expect(screen.getByRole('button', { name: 'ouvreur' })).toHaveFocus()
   })
+
+  it('Raccord F2 — le retour arrière du navigateur ferme la feuille (l\'écran reste) ; fermée autrement, l\'entrée est retirée', async () => {
+    const onFermer = vi.fn()
+    const pose = vi.spyOn(window.history, 'pushState')
+    const retour = vi.spyOn(window.history, 'back')
+    const { rerender } = render(<FeuilleACrans ouverte titre="Quand" onFermer={onFermer}><button type="button">x</button></FeuilleACrans>)
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(1))
+    const marque = pose.mock.calls[0][0].tchFeuille
+    expect(window.history.state?.tchFeuille).toBe(marque)
+    // le geste « retour » de l'iPhone : l'entrée marquée part, la feuille se ferme
+    act(() => { window.history.back() })
+    await vi.waitFor(() => expect(onFermer).toHaveBeenCalledTimes(1))
+    rerender(<FeuilleACrans ouverte={false} titre="Quand" onFermer={onFermer} />)
+    expect(retour).toHaveBeenCalledTimes(1) // le nôtre seulement : fermée PAR le retour, rien à retirer de plus
+    // fermée par la croix : l'entrée posée est retirée
+    rerender(<FeuilleACrans ouverte titre="Quand" onFermer={onFermer}><button type="button">x</button></FeuilleACrans>)
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(2))
+    rerender(<FeuilleACrans ouverte={false} titre="Quand" onFermer={onFermer} />)
+    expect(retour).toHaveBeenCalledTimes(2)
+  })
+
+  it('Raccord F2 — `historique={false}` (la fiche, déjà dans l\'adresse) ne pose aucune entrée', async () => {
+    const pose = vi.spyOn(window.history, 'pushState')
+    render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
+    await new Promise((fin) => { setTimeout(fin, 5) })
+    expect(pose).not.toHaveBeenCalled()
+  })
 })
 
 describe('TCH45 — SelecteurProjet', () => {

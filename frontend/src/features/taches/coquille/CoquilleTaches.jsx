@@ -20,6 +20,7 @@ import {
   MESSAGE_AUTRE_COMPTE, brancherRejeu, definirCompteFile, etatFile, garderLaMienne, prendreLAutre, rejouerFile, useVersionFile,
 } from '../horsligne/captureQueue'
 import { heure as heureDe } from '../lib/textes'
+import { MARQUE_FICHE } from '../lib/fiche'
 
 /* ============================================================================
    TCH43 — LA coquille de l'app Tâches : UNE seule, montée par chaque page de
@@ -43,6 +44,8 @@ import { heure as heureDe } from '../lib/textes'
 
 /** Événement DOM qui ouvre la feuille de saisie (`detail` facultatif : texte, projet). */
 export const EVENEMENT_SAISIR = 'taqinor:taches:saisir'
+/** Émis à la fermeture de la feuille de saisie (Aujourd'hui relit alors son brouillon : carte « Reprendre »). */
+export const EVENEMENT_SAISIE_FERMEE = 'taqinor:taches:saisie-fermee'
 
 const DESTINATIONS = [
   ['Revue de la semaine', '/taches/revue'],
@@ -119,10 +122,10 @@ export function ZoneAnnonces() {
 
 export default function CoquilleTaches({
   ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null,
-  feuille = null, selecteurProjet = null, selection = null, copilote = {}, conflit = null, children,
+  feuille = null, selecteurProjet = null, selection = null, copilote = {}, conflit = null, contexteSaisie = null, children,
 }) {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, state: etatLieu } = useLocation()
   const enLigne = useEnLigne()
   const [params, setParams] = useSearchParams()
   const redux = useContext(ReactReduxContext)
@@ -135,14 +138,24 @@ export default function CoquilleTaches({
   const tacheId = params.get('tache')
 
   const ouvrirSaisie = useCallback(() => setSaisieOuverte(true), [])
-  const fermerSaisie = useCallback(() => setSaisieOuverte(false), [])
+  const fermerSaisie = useCallback(() => {
+    setSaisieOuverte(false)
+    window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIE_FERMEE))
+  }, [])
+  // « + » et « Ajouter une tâche » passent par l'événement : la feuille reçoit le contexte de l'écran (projet, jour)
+  const demanderSaisie = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: contexteSaisie ?? {} }))
+  }, [contexteSaisie])
+  // Raccord F2 — ouverte par `useOuvrirFiche` (entrée d'historique marquée), la fiche se ferme par le retour : le
+  // bouton « retour » du navigateur et la croix font la même chose, on ne quitte jamais l'écran.
   const fermerFiche = useCallback(() => {
+    if (etatLieu?.[MARQUE_FICHE]) { navigate(-1); return }
     setParams((actuels) => {
       const suite = new URLSearchParams(actuels)
       suite.delete('tache')
       return suite
     }, { replace: true })
-  }, [setParams])
+  }, [setParams, navigate, etatLieu])
 
   // Hors ligne (TCH100) : le compte qui écrit, le rejeu au retour du réseau, le vidage à la déconnexion.
   useEffect(() => {
@@ -166,6 +179,20 @@ export default function CoquilleTaches({
     window.addEventListener(EVENEMENT_SAISIR, ouvrirSaisie)
     return () => window.removeEventListener(EVENEMENT_SAISIR, ouvrirSaisie)
   }, [ouvrirSaisie])
+
+  // Touche `n` « Ajouter ici » (textes.md §2.1) : la saisie, avec le contexte de l'écran. Jamais dans un champ ni
+  // sous une feuille ouverte ; elle n'écrit rien (aucun raccourci destructif).
+  useEffect(() => {
+    const surTouche = (e) => {
+      if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
+      if (e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
+      if (document.querySelector('.tch [role="dialog"]')) return
+      e.preventDefault()
+      demanderSaisie()
+    }
+    document.addEventListener('keydown', surTouche)
+    return () => document.removeEventListener('keydown', surTouche)
+  }, [demanderSaisie])
 
   const synchro = derniereSynchro ?? (userId === null ? null : lireDerniereSynchro(userId))
   const premierConflit = file.conflits[0]
@@ -217,7 +244,7 @@ export default function CoquilleTaches({
           </div>
         </header>
 
-        <button type="button" className="saisie-bureau bureau-seul" onClick={ouvrirSaisie}>
+        <button type="button" className="saisie-bureau bureau-seul" onClick={demanderSaisie}>
           <Plus className="i" aria-hidden="true" />
           Ajouter une tâche
           <kbd aria-hidden="true">n</kbd>
@@ -231,7 +258,7 @@ export default function CoquilleTaches({
       {selection && selection.n > 0 ? (
         <BarreSelection {...selection} />
       ) : (
-        <button type="button" className="fab mobile-seul" aria-label="Ajouter une tâche" onClick={ouvrirSaisie}>
+        <button type="button" className="fab mobile-seul" aria-label="Ajouter une tâche" onClick={demanderSaisie}>
           <Plus className="i" aria-hidden="true" />
         </button>
       )}

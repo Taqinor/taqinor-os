@@ -161,6 +161,19 @@ describe('TCH87 — Recherche', () => {
     expect(within(screen.getByRole('region', { name: 'Ouvertes (1)' })).queryByText('Devis abandonné')).toBeNull()
   })
 
+  it('Raccord F2 — une ligne ouvre la fiche (`?tache=`) ; la croix la ferme par le retour, l\'écran reste tel quel', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('button', { name: 'Devis Settat' }))
+    const fiche = await screen.findByRole('dialog')
+    await user.click(within(fiche).getByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })).toHaveValue('devis')
+    expect(screen.getByRole('region', { name: 'Ouvertes (2)' })).toBeInTheDocument()
+  })
+
   it('tri par priorité : la plus haute d\'abord', async () => {
     const user = userEvent.setup()
     monter()

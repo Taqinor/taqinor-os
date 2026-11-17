@@ -195,6 +195,29 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       expect(api.post).not.toHaveBeenCalled()
     })
 
+    it('un brouillon de saisie gardé : la carte « Ta saisie de tout à l\'heure t\'attend. » ; Reprendre ouvre la saisie', async () => {
+      window.localStorage.setItem('taches:brouillon:7:42', JSON.stringify({ texte: 'Appeler le notaire', quand: null }))
+      servir(donnees())
+      const ouverture = vi.fn()
+      window.addEventListener('taqinor:taches:saisir', ouverture)
+      monterConnecte()
+      const carte = await screen.findByRole('region', { name: 'Brouillon' })
+      expect(carte).toHaveTextContent("Ta saisie de tout à l'heure t'attend.")
+      await userEvent.click(within(carte).getByRole('button', { name: 'Reprendre' }))
+      expect(ouverture).toHaveBeenCalledTimes(1)
+      expect(await screen.findByRole('textbox', { name: 'Ajouter une tâche' })).toHaveValue('Appeler le notaire')
+      window.removeEventListener('taqinor:taches:saisir', ouverture)
+    })
+
+    it('une création ailleurs (`taqinor:taches:creees`) relit la journée une fois', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      const avant = api.get.mock.calls.length
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:creees', { detail: { creees: [] } })) })
+      await waitFor(() => expect(api.get.mock.calls.length).toBe(avant + 1))
+    })
+
     it('ouvert sans réseau, l\'écran lit la journée gardée dans le cache du compte au lieu de rester vide', async () => {
       servir(donnees())
       const { unmount } = monterConnecte()

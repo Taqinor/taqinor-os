@@ -121,35 +121,26 @@ describe('TCH89 — Un projet : étapes', () => {
 })
 
 describe('TCH89 — Un projet : ajouter une tâche', () => {
-  it('« Ajouter une tâche » dans une étape crée la tâche dans cette étape', async () => {
-    const creee = tacheEcrite()
-    creee.tache.id = 77
-    creee.tache.titre = 'Relancer Settat'
-    creee.tache.jour_prevu = null
-    api.creerTache.mockResolvedValue({ data: creee })
+  it('Raccord F2 — « Ajouter une tâche » d\'une étape ouvre LA feuille de saisie avec ce projet et cette étape', async () => {
+    const ouverture = vi.fn()
+    window.addEventListener('taqinor:taches:saisir', ouverture)
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await screen.findByRole('region', { name: 'Études' })
     await user.click(within(etape).getByRole('button', { name: 'Ajouter une tâche' }))
-    await user.type(within(etape).getByLabelText('Ajouter une tâche'), 'Relancer Settat{Enter}')
-    expect(api.creerTache).toHaveBeenCalledWith({
-      titre: 'Relancer Settat', projet_id: 3, section_id: 8, client_id: expect.any(String),
-    })
-    expect(await within(etape).findByRole('button', { name: 'Relancer Settat' })).toBeInTheDocument()
-    expect(screen.getByText('12 sur 21 · échéance 15/12')).toBeInTheDocument()
+    expect(ouverture).toHaveBeenCalledTimes(1)
+    expect(ouverture.mock.calls[0][0].detail).toEqual({ projet_id: 3, projet_nom: 'Ventes', section_id: 8 })
+    expect(await screen.findByRole('dialog', { name: 'Ajouter une tâche' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retirer « Ventes »' })).toBeInTheDocument()
+    window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
-  it('un refus du serveur s\'affiche sous le champ et la saisie reste', async () => {
-    api.creerTache.mockRejectedValue({ response: { status: 400, data: { titre: ['Le titre est vide.'] } } })
+  it('Raccord F2 — après une création (`taqinor:taches:creees`), la vue se relit une fois, sans recharger la page', async () => {
     monter()
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const etape = await screen.findByRole('region', { name: 'Études' })
-    await user.click(within(etape).getByRole('button', { name: 'Ajouter une tâche' }))
-    const champ = within(etape).getByLabelText('Ajouter une tâche')
-    await user.type(champ, 'x{Enter}')
-    expect(await within(etape).findByRole('alert')).toHaveTextContent('Le titre est vide.')
-    expect(champ).toHaveAttribute('aria-invalid', 'true')
-    expect(champ).toHaveValue('x')
+    await screen.findByRole('region', { name: 'Études' })
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new CustomEvent('taqinor:taches:creees', { detail: { creees: [] } }))
+    await waitFor(() => expect(api.lireVueProjet).toHaveBeenCalledTimes(2))
   })
 })
 

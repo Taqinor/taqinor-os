@@ -4,6 +4,7 @@ import { Ellipsis } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import TrierUneParUne from '../../features/taches/atrier/TrierUneParUne'
+import { useApresCreation } from '../../features/taches/lib/fiche'
 import { frenchError } from '../../lib/frenchError'
 import {
   annulerGeste, classerErreur, convertirActivites, creerProjet, lireAujourdhui, listerToutesLesTaches,
@@ -95,6 +96,8 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     .catch((err) => { setEchec(frenchError(err)); setCharge(true) }), [])
 
   useEffect(() => { lire(vue) }, [vue, lire])
+  // une création ailleurs (saisie, collage, file rejouée) : la liste se relit une fois, sans recharger la page
+  useApresCreation(useCallback(() => { lire(vue) }, [vue, lire]))
 
   useEffect(() => {
     lireAujourdhui({ jour: aujourdhui })
