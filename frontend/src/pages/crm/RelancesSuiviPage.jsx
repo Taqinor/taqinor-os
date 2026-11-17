@@ -17,6 +17,7 @@ import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
 import { estEnRetard, fusionnerLignes } from '../../features/crm/relances/fusionSuivi'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import RelancesEquipePanel from './RelancesEquipePanel'
+import BoutonDeleguerDossiers from '../../features/crm/relances/DelegationDialog'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toastError } from '../../lib/toast'
 import { TableauLignes } from '../../ui/TableauDefilant'
@@ -587,6 +588,13 @@ export default function RelancesSuiviPage() {
   const owner = ownerFiltre === 'moi'
     ? currentUserId
     : (ownerFiltre === 'tous' ? '' : ownerFiltre)
+  // « Déléguer » agit sur le responsable précisément choisi (rôles responsable/
+  // admin) ; « Moi » et « Toute l'équipe » = mes propres dossiers.
+  const deDelegation = /^\d+$/.test(String(owner)) && String(owner) !== String(currentUserId)
+    ? Number(owner) : null
+  const deNomDelegation = deDelegation
+    ? (users.find((u) => String(u.id) === String(deDelegation))?.username ?? '')
+    : ''
   // La fenêtre SERVEUR de l'onglet courant : celle qui est demandée, et celle
   // que `resume` compte (lue aussi par `fusionnerLignes`).
   const bornes = useMemo(() => bornesOnglet(onglet, today), [onglet, today])
@@ -758,6 +766,13 @@ export default function RelancesSuiviPage() {
             </SelectContent>
           </Select>
         )}
+        {/* 17/11/2026 — confier ces dossiers à un collègue (droit crm_reassign,
+            testé par le bouton) ; avec un responsable précis choisi, il agit
+            sur SES dossiers (`de`), sinon sur les miens. */}
+        <BoutonDeleguerDossiers
+          de={deDelegation} deNom={deNomDelegation}
+          onDone={() => charger({ enPlace: true })}
+        />
       </div>
 
       {/* SUIVI-ÉQUIPE — la vue d'équipe des responsables, AVANT la file ; elle

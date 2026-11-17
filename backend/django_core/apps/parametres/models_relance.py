@@ -229,9 +229,11 @@ CADENCE_APRES_DEVIS_DEFAUT = [
      'template_cle': 'dimanche_famille', 'dimanche_ok': True},
     # CADV24 (02/11/2026, D-CADV-3) — cadence v4 : J4 et J6 (WhatsApp morts)
     # sortent du défaut, le trou d'`ordre` 4-5 est gardé (comme AGR514) ; la
-    # validité du devis ne suit plus le dernier barreau (CADV81). Aucune clé
-    # de message nouvelle : les appels J14, J28 et J90 réutilisent
-    # `appel_suivi_j11`, le WhatsApp J60 réutilise `j13_dernier`.
+    # validité du devis ne suit plus le dernier barreau (CADV81). Le WhatsApp
+    # J60 réutilise `j13_dernier`. 17/11/2026 (fondateur) : l'appel J14 garde
+    # `appel_suivi_j11`, mais J28 et J90 ont chacun SON script
+    # (`appel_validite`, `appel_dernier_suivi`) — un seul script servait trois
+    # appels.
     {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
@@ -247,7 +249,7 @@ CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 9, 'delai_jours': 28, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de validité',
-     'template_cle': 'appel_suivi_j11', 'dimanche_ok': False},
+     'template_cle': 'appel_validite', 'dimanche_ok': False},
     {'ordre': 10, 'delai_jours': 60, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dernier message',
@@ -255,7 +257,7 @@ CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 11, 'delai_jours': 90, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Dernier appel',
-     'template_cle': 'appel_suivi_j11', 'dimanche_ok': False},
+     'template_cle': 'appel_dernier_suivi', 'dimanche_ok': False},
 ]
 
 # Réveil des dormants — deux touches seulement, très espacées.
@@ -266,6 +268,10 @@ CADENCE_APRES_DEVIS_DEFAUT = [
 # J+N ne changent pas. La touche saisonnière `reveil_b` n'est PAS un barreau
 # de cette échelle : c'est une touche calendaire, hors gabarit
 # (`apps/crm/cadence_reveil_saison.py`).
+# 17/11/2026 — la clé seedée (`reveil_a1`) reste ; tant que le J30 est un APPEL,
+# `_adapter_gabarits_reveil` pose le script d'appel (`appel_reveil_devis` /
+# `appel_reveil_sans_devis`) et le rendu traduit les touches déjà ouvertes : un
+# J30 passé en WhatsApp garde `reveil_a1`/`reveil_a2`.
 CADENCE_REVEIL_DEFAUT = [
     {'ordre': 1, 'delai_jours': 30, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.APPEL, 'libelle': 'Réveil J30',
@@ -287,7 +293,11 @@ CADENCE_REVEIL_DEFAUT = [
 # premier change — un client acquis ne se présente pas, on le retrouve.
 CADENCE_DEUXIEME_AFFAIRE_DEFAUT = [
     dict(CADENCE_CONTACT_DEFAUT[0], template_cle='deuxieme_affaire'),
-    dict(CADENCE_CONTACT_DEFAUT[1], template_cle='appel_ouverture'),
+    # 17/11/2026 — l'appel d'ouverture du client déjà signé ne dit plus « vous
+    # venez de remplir notre formulaire » : son script cite leur première
+    # installation (`appel_ouverture_deuxieme_affaire`).
+    dict(CADENCE_CONTACT_DEFAUT[1],
+         template_cle='appel_ouverture_deuxieme_affaire'),
 ]
 
 # ── PARAM-CADENCE (décision fondateur du 25/09/2026) ────────────────────────
@@ -368,12 +378,18 @@ CADENCE_APRES_CONTACT_DEFAUT = [
     _barreau_moteur(2, CLE_APPEL_APRES_REPONSE, LIBELLE_APPEL_APRES_REPONSE,
                     delai_jours=0, canal=CanalRelance.APPEL,
                     template_cle='appel_apres_reponse'),
+    # 17/11/2026 (fondateur) — trois étapes du moteur n'avaient rien à dire :
+    # le message de créneau, le dernier essai (script du 3e appel du protocole)
+    # et le rappel convenu.
     _barreau_moteur(3, CLE_MESSAGE_CRENEAU, LIBELLE_MESSAGE_CRENEAU,
-                    delai_jours=0, canal=CanalRelance.WHATSAPP),
+                    delai_jours=0, canal=CanalRelance.WHATSAPP,
+                    template_cle='message_creneau'),
     _barreau_moteur(4, CLE_DERNIER_APPEL, LIBELLE_DERNIER_APPEL,
-                    delai_jours=1, canal=CanalRelance.APPEL),
+                    delai_jours=1, canal=CanalRelance.APPEL,
+                    template_cle='appel_relance'),
     _barreau_moteur(5, CLE_RAPPEL_CONVENU, LIBELLE_RAPPEL_CONVENU,
-                    delai_jours=1, canal=CanalRelance.APPEL),
+                    delai_jours=1, canal=CanalRelance.APPEL,
+                    template_cle='appel_rappel_convenu'),
     _barreau_moteur(6, CLE_DECIDER_SUITE, LIBELLE_DECIDER_SUITE,
                     delai_jours=1, canal=CanalRelance.APPEL),
 ]
@@ -384,7 +400,8 @@ CADENCE_APRES_CONTACT_DEFAUT = [
 #: lendemain, préparer le devis modifié le lendemain.
 CADENCE_VISITE_DEFAUT = [
     _barreau_moteur(1, CLE_PLANIFIER, LIBELLE_PLANIFIER, delai_jours=0,
-                    canal=CanalRelance.APPEL),
+                    canal=CanalRelance.APPEL,
+                    template_cle='appel_planifier_visite'),
     _barreau_moteur(2, CLE_CONFIRMATION, LIBELLE_CONFIRMATION, delai_jours=1,
                     canal=CanalRelance.WHATSAPP,
                     template_cle='visite_confirmation'),

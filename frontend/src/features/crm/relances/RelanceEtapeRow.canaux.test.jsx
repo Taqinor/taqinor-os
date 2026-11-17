@@ -12,10 +12,22 @@ import { toastInfo } from '../../../lib/toast'
 
 import crmApi from '../../../api/crmApi'
 
+// Une réponse rangée derrière un groupe (« Pas joint », « Plus tard… ») ou derrière
+// « Autre réponse » : on ouvre d'abord son groupe, puis on clique la réponse.
+function cliquerDans(groupe, nom) {
+  fireEvent.click(screen.getByRole('button', { name: groupe }))
+  fireEvent.click(screen.getByRole('button', { name: nom }))
+}
+
 const TOUCHES = exempleContrat('crm', 'relance_etape_v2').results
 const ETAPE_APPEL = TOUCHES.find((t) => t.canal === 'appel')
 const ETAPE_WHATSAPP = TOUCHES.find((t) => t.canal === 'whatsapp')
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
+// Le WhatsApp du contrat est un message du SUIVI de proposition ; la prise de
+// contact par message est le même WhatsApp rangé dans la cadence `contact`.
+const ETAPE_CONTACT_MESSAGE = {
+  ...ETAPE_WHATSAPP, cadence: 'contact', cle: '', libelle: 'Message d’identité',
+}
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.sessionStorage.clear() })
 
@@ -24,21 +36,57 @@ describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => 
     const onFait = vi.fn(() => Promise.resolve({}))
     ligne(ETAPE_APPEL, { onFait })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     fireEvent.click(screen.getByRole('checkbox', { name: /ne parle que darija/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
-      ETAPE_APPEL.id, { outcome: 'non_joint', langue: 'darija' }))
+      ETAPE_APPEL.id, { outcome: 'joint', langue: 'darija' }))
   })
 
   it('jamais cochée d’office, et absente pour un lead déjà en darija', () => {
     const { unmount } = ligne(ETAPE_APPEL)
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     expect(screen.getByRole('checkbox', { name: /ne parle que darija/ })).not.toBeChecked()
     unmount()
     ligne({ ...ETAPE_APPEL, lead_langue: 'darija' })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
+  })
+
+  it('n’apparaît qu’une fois le client JOINT : ni avant le choix, ni sur « Pas de réponse », « Refus »…', () => {
+    ligne(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
+    cliquerDans('Pas joint', 'Pas de réponse')
+    expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
+    cliquerDans('Plus tard…', 'À rappeler le…')
+    expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
+    expect(screen.getByTestId('ne-parle-que-darija')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    expect(screen.getByTestId('ne-parle-que-darija')).toBeInTheDocument()
+  })
+
+  it('jamais sur une TÂCHE (préparer le devis…), même avec une réponse « joint »', () => {
+    ligne({ ...ETAPE_APPEL, cle: 'devis', libelle: 'Préparer et envoyer le devis (ou fixer un rappel)', cadence: 'generique' })
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Visite d’abord' }))
+    expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
+  })
+
+  it('la langue ne part pas si la case a été cochée puis la réponse changée pour « Pas de réponse »', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    ligne(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /ne parle que darija/ }))
+    cliquerDans('Pas joint', 'Pas de réponse')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, { outcome: 'non_joint' }))
   })
 
   it('un refus serveur sur la langue s’affiche SOUS la case, avec le message exact', async () => {
@@ -46,7 +94,7 @@ describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => 
     const onFait = vi.fn(() => Promise.reject(erreur))
     ligne(ETAPE_APPEL, { onFait })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     fireEvent.click(screen.getByRole('checkbox', { name: /ne parle que darija/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByTestId('erreur-langue')).toHaveTextContent('« Langue du message »')
@@ -73,7 +121,7 @@ describe('CAD80 — « Appeler » ne fait plus perdre la note en cours', () => {
     const { unmount } = ligne(ETAPE_APPEL, { onFait })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'), { target: { value: NOTE } })
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalled())
     await waitFor(() => expect(window.sessionStorage.length).toBe(0))
@@ -167,17 +215,39 @@ describe('CAD101 — pièce reçue sur WhatsApp : le geste pour l’enregistrer'
     const { unmount } = ligne(ETAPE_APPEL)
     expect(screen.getByRole('button', { name: /Pièce reçue/ })).toBeInTheDocument()
     unmount()
-    const { unmount: u2 } = ligne(ETAPE_WHATSAPP, { enAvance: true })
+    const { unmount: u2 } = ligne(ETAPE_CONTACT_MESSAGE, { enAvance: true })
     expect(screen.getByRole('button', { name: /Pièce reçue/ })).toBeInTheDocument()
     u2()
     ligne(ETAPE_APPEL, { readOnly: true })
     expect(screen.queryByRole('button', { name: /Pièce reçue/ })).not.toBeInTheDocument()
   })
 
+  it('le bouton est retiré du suivi après devis (appel ET message) et des tâches qui ne l’attendent pas', () => {
+    const SUIVI_APPEL = { ...ETAPE_APPEL, cadence: 'apres_devis', cle: '', libelle: 'Appel de suivi' }
+    const types = {
+      suivi_message: ETAPE_WHATSAPP,
+      suivi_appel: SUIVI_APPEL,
+      question_prix: { ...ETAPE_APPEL, cle: '', libelle: 'Question de prix — préparer l’appel du fondateur (aucune offre avant sa décision)', cadence: 'generique' },
+      devis_modifie: { ...ETAPE_APPEL, cle: 'devis_modifie', libelle: 'Préparer le devis modifié — rappeler le client', cadence: 'apres_devis' },
+      decider_suite: { ...ETAPE_APPEL, cle: 'decider_suite', libelle: 'Décider la suite', cadence: 'generique' },
+    }
+    for (const [type, etape] of Object.entries(types)) {
+      const { unmount } = ligne(etape)
+      expect(screen.queryByRole('button', { name: /Pièce reçue/ }), type).not.toBeInTheDocument()
+      unmount()
+    }
+    // … et il reste sur les types qui l'attendent (planifier, devis).
+    for (const cle of ['devis', 'planifier']) {
+      const { unmount } = ligne({ ...ETAPE_APPEL, cle, libelle: cle, cadence: 'generique' })
+      expect(screen.getByRole('button', { name: /Pièce reçue/ }), cle).toBeInTheDocument()
+      unmount()
+    }
+  })
+
   it('« Facture » + Confirmer : la touche est close et l’étape « préparer le devis » annoncée', async () => {
     crmApi.enregistrerPieceRecue.mockResolvedValue({ data: REPONSE })
     const onPieceRecue = vi.fn()
-    ligne(ETAPE_WHATSAPP, { onPieceRecue })
+    ligne(ETAPE_CONTACT_MESSAGE, { onPieceRecue })
     fireEvent.click(screen.getByRole('button', { name: /Pièce reçue/ }))
     expect(screen.getByTestId('suite-piece-recue'))
       .toHaveTextContent('l’étape « Préparer et envoyer le devis » est posée')

@@ -50,9 +50,11 @@ describe('VISCAD6-B — « Visite acceptée » proposée dès la prise de contac
     expect(screen.getByRole('button', { name: 'Visite acceptée' })).toBeInTheDocument()
     // Les réponses existantes restent TOUTES là (jamais un remplacement).
     expect(screen.getByRole('button', { name: 'Client joint' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'À rappeler le…' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refus' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
+    expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard…' }))
+    expect(screen.getByRole('button', { name: 'À rappeler le…' })).toBeInTheDocument()
   })
 
   it('choisie puis confirmée : envoie l’issue serveur exacte ET ouvre la modale de planification (même modale que VISCAD6)', async () => {
@@ -136,10 +138,21 @@ describe('VISCAD6-B — réalignement du compte de réponses (contact, 24/09/202
     const labels = type.reponses.map((r) => ({ ...PARCOURS.modeles[r.modele], ...r }).label)
     expect(labels).toContain('Le client a répondu')
     expect(labels).toContain('Client joint au téléphone')
-    for (const label of labels) {
-      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    // Au premier regard : 7 pastilles — « Plus tard… » (À rappeler, Plus tard,
+    // En attente d'un accord) et « Autre réponse » (Ne plus me contacter) rangent le reste.
+    const premierRegard = [...panneau.querySelectorAll('button')].map((b) => b.textContent)
+    expect(premierRegard).toEqual([
+      'Le client a répondu', 'Client joint au téléphone', 'Visite acceptée', 'Pas de réponse',
+      'Plus tard…', 'Refus', 'Autre réponse'])
+    // Une seule seconde rangée à la fois : on ouvre chaque groupe à son tour.
+    const restantes = new Set(labels)
+    for (const groupe of [null, 'Plus tard…', 'Autre réponse']) {
+      if (groupe) fireEvent.click(screen.getByRole('button', { name: groupe }))
+      for (const label of [...restantes]) {
+        if (screen.queryByRole('button', { name: label })) restantes.delete(label)
+      }
     }
+    expect([...restantes]).toEqual([])
     expect(screen.queryByRole('button', { name: 'Répondeur' })).not.toBeInTheDocument()
-    expect(panneau.querySelectorAll('button')).toHaveLength(labels.length)
   })
 })

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4988, operations: 7776, components: 3661}
+counts: {paths: 4990, operations: 7780, components: 3662}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -991,6 +991,8 @@ operations:
 - post /api/django/crm/leads/ -> django_crm_leads_create
 - post /api/django/crm/leads/bulk/ -> django_crm_leads_bulk_create
 - get /api/django/crm/leads/check-duplicates/ -> django_crm_leads_check_duplicates_list
+- get /api/django/crm/leads/deleguer/ -> django_crm_leads_deleguer_retrieve
+- post /api/django/crm/leads/deleguer/ -> django_crm_leads_deleguer_create
 - get /api/django/crm/leads/doublons/ -> django_crm_leads_doublons_list
 - post /api/django/crm/leads/export-xlsx/ -> django_crm_leads_export_xlsx_create
 - get /api/django/crm/leads/kpi-cadences/ -> django_crm_leads_kpi_cadences_retrieve
@@ -4920,6 +4922,8 @@ operations:
 - post /api/v1/crm/leads/ -> v1_crm_leads_create
 - post /api/v1/crm/leads/bulk/ -> v1_crm_leads_bulk_create
 - get /api/v1/crm/leads/check-duplicates/ -> v1_crm_leads_check_duplicates_list
+- get /api/v1/crm/leads/deleguer/ -> v1_crm_leads_deleguer_retrieve
+- post /api/v1/crm/leads/deleguer/ -> v1_crm_leads_deleguer_create
 - get /api/v1/crm/leads/doublons/ -> v1_crm_leads_doublons_list
 - post /api/v1/crm/leads/export-xlsx/ -> v1_crm_leads_export_xlsx_create
 - get /api/v1/crm/leads/kpi-cadences/ -> v1_crm_leads_kpi_cadences_retrieve
@@ -7987,6 +7991,8 @@ query_params:
   get /api/django/crm/forecast/rollup/: equipe periode
   get /api/django/crm/leads/: archived entite ordering page page_size search source stage
   get /api/django/crm/leads/check-duplicates/: email exclude ordering page page_size phone search telephone
+  get /api/django/crm/leads/deleguer/: de vers
+  post /api/django/crm/leads/deleguer/: de vers
   get /api/django/crm/leads/doublons/: archived ordering page page_size search
   get /api/django/crm/leads/kpi-cadences/: jours
   get /api/django/crm/leads/kpi-premier-contact/: jours
@@ -8794,6 +8800,8 @@ query_params:
   get /api/v1/crm/forecast/rollup/: equipe periode
   get /api/v1/crm/leads/: archived entite ordering page page_size search source stage
   get /api/v1/crm/leads/check-duplicates/: email exclude ordering page page_size phone search telephone
+  get /api/v1/crm/leads/deleguer/: de vers
+  post /api/v1/crm/leads/deleguer/: de vers
   get /api/v1/crm/leads/doublons/: archived ordering page page_size search
   get /api/v1/crm/leads/kpi-cadences/: jours
   get /api/v1/crm/leads/kpi-premier-contact/: jours
@@ -10171,6 +10179,7 @@ components:
 - CrmControleSuivi
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
+- CrmDeleguerRequestRequest
 - CrmDispatchAttribuerRequestRequest
 - CrmDispatchReglagesReponse
 - CrmEquipeStatistiques

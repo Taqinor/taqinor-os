@@ -21,6 +21,13 @@ vi.mock('../../../../lib/toast', () => ({ toastError: vi.fn() }))
 import crmApi from '../../../../api/crmApi'
 import CadenceFrise from './CadenceFrise'
 
+// Une réponse rangée derrière un groupe (« Pas joint », « Plus tard… ») ou derrière
+// « Autre réponse » : on ouvre d'abord son groupe, puis on clique la réponse.
+function cliquerDans(groupe, nom) {
+  fireEvent.click(screen.getByRole('button', { name: groupe }))
+  fireEvent.click(screen.getByRole('button', { name: nom }))
+}
+
 beforeEach(() => {
   crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { count: ETAPES.length, results: ETAPES } })
 })
@@ -113,7 +120,7 @@ describe('MRY32 — actions directement depuis la frise', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /^Fait$/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     // QJ-QUESTIONS — une réponse est désormais OBLIGATOIRE avant Confirmer.
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.marquerRelanceEtapeFait)
       .toHaveBeenCalledWith(501, { outcome: 'non_joint' }))

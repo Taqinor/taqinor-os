@@ -16,6 +16,13 @@ import {
 } from './suite'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
+// Une réponse rangée derrière un groupe (« Pas joint », « Plus tard… ») ou derrière
+// « Autre réponse » : on ouvre d'abord son groupe, puis on clique la réponse.
+function cliquerDans(groupe, nom) {
+  fireEvent.click(screen.getByRole('button', { name: groupe }))
+  fireEvent.click(screen.getByRole('button', { name: nom }))
+}
+
 const [ETAPE_APPEL, ETAPE_APRES_DEVIS] = exempleContrat('crm', 'relance_etape_v2').results
 
 afterEach(() => { cleanup() })
@@ -116,7 +123,7 @@ describe('CAD17 RelanceEtapeRow — le panneau « Fait » affiche la suite DU SE
       suites: { ...ETAPE_APPEL.suites, non_joint: ['derniere_froid_reveils'] },
     }
     ouvrirFait(derniere)
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     expect(screen.getByTestId('suite-reponse'))
       .toHaveTextContent(phraseEffet('derniere_froid_reveils'))
     expect(screen.getByTestId('suite-reponse'))
@@ -130,7 +137,7 @@ describe('CAD17 RelanceEtapeRow — le panneau « Fait » affiche la suite DU SE
       conditions_suite: { non_joint: '3 appels sur 5 tracés' },
     }
     ouvrirFait(derniere)
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     const suite = screen.getByTestId('suite-reponse')
     expect(suite).toHaveTextContent(phraseEffet('etape_appel_avant_froid'))
     expect(suite).toHaveTextContent('3 appels sur 5 tracés.')
@@ -140,21 +147,21 @@ describe('CAD17 RelanceEtapeRow — le panneau « Fait » affiche la suite DU SE
 
   it('Répondeur / Occupé annoncent la suite de « non_joint » (même issue serveur)', () => {
     ouvrirFait(ETAPE_APPEL)
-    fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))
+    cliquerDans('Pas joint', 'Répondeur')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(
       ETAPE_APPEL.suites.non_joint.map(phraseEffet).join(' '))
   })
 
   it('une réponse du client (CAD-A) lit SA clé : « Plus tard » annonce la veille', () => {
     ouvrirFait(ETAPE_APRES_DEVIS)
-    fireEvent.click(screen.getByRole('button', { name: 'Plus tard — pas maintenant' }))
+    cliquerDans('Plus tard…', 'Plus tard — pas maintenant')
     expect(screen.getByTestId('suite-reponse'))
       .toHaveTextContent(phraseEffet('veille_meme_touche'))
   })
 
   it('une touche sans `suites` n’annonce rien plutôt qu’une suite fausse', () => {
     ouvrirFait({ ...ETAPE_APPEL, suites: {} })
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/^$/)
   })
 })

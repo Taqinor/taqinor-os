@@ -270,7 +270,9 @@ MOTS_DARIJA_QUI_MENTENT = ('فاتورة', 'السطح', 'العائلة')
 CLES_DARIJA_POMPAGE = (
     'valeur_j1', 'reveil_a1', 'reveil_a2', 'reveil_a3', 'rappel_plus_tard',
     'dimanche_famille', 'visite_proposition', 'visite_confirmation',
-    'j4_preuve', 'debrief_visite')
+    'j4_preuve', 'debrief_visite',
+    # 17/11/2026 — les deux appels de réveil J30 (« sur votre toit, en 3D »).
+    'appel_reveil_devis', 'appel_reveil_sans_devis')
 
 
 def _variantes_darija_du_guide():
@@ -478,6 +480,44 @@ class Ciq501TextesB2BTests(SimpleTestCase):
             self.assertIsNone(variante_segment('j6_garanties', segment))
 
 
+class AppelsDeReveilEtDernierAppelDeSuiviTests(SimpleTestCase):
+    """17/11/2026 — le réveil J30 est un APPEL : « sur votre toit, en 3D » ne se
+    dit ni à un pompage ni à une entreprise, et « l'estimation à jour » prend le
+    mot du segment (`reveil_a2`/`reveil_a1`). Les variantes sont faites des
+    seules phrases de la variante `reveil_a1` du segment."""
+
+    def test_le_texte_de_base_dit_le_toit_et_la_3d_les_variantes_non(self):
+        base = MESSAGE_TEMPLATE_DEFAULTS['appel_reveil_devis']
+        self.assertIn('toit', base)
+        self.assertIn('3D', base)
+        for segment in SEGMENTS_EXPOSES:
+            texte = variante_segment('appel_reveil_devis', segment)
+            with self.subTest(segment=segment):
+                self.assertIsNotNone(texte)
+                for mot in MOTS_PAR_SEGMENT[segment]:
+                    self.assertNotIn(mot.lower(), texte.lower())
+                self.assertNotIn('3d', texte.lower())
+                self.assertIn("c'est un appel commercial", texte)
+                self.assertTrue(texte.endswith(
+                    "Votre projet est-il toujours d'actualité ?"))
+
+    def test_sans_devis_seul_le_pompage_a_sa_variante(self):
+        self.assertIsNotNone(
+            variante_segment('appel_reveil_sans_devis', SEGMENT_POMPAGE))
+        for segment in SEGMENTS_B2B:
+            self.assertIsNone(variante_segment('appel_reveil_sans_devis', segment))
+
+    def test_le_dernier_appel_de_suivi_change_un_seul_mot_par_segment(self):
+        base = MESSAGE_TEMPLATE_DEFAULTS['appel_dernier_suivi']
+        self.assertEqual(
+            variante_segment('appel_dernier_suivi', SEGMENT_POMPAGE),
+            base.replace("l'estimation à jour", 'le chiffrage à jour'))
+        for segment in SEGMENTS_B2B:
+            self.assertEqual(
+                variante_segment('appel_dernier_suivi', segment),
+                base.replace("l'estimation à jour", "l'étude à jour"))
+
+
 class Ciq501RenduLeadCommercialTests(TestCase):
     """(b) — ``valeur_j1`` d'un lead COMMERCIAL sans société : la phrase
     ``{societe}`` est omise, la salutation et la demande restent ; un lead
@@ -543,7 +583,9 @@ class Ciq501RenduLeadCommercialTests(TestCase):
 CLES_B2B_DARIJA = (
     'valeur_j1', 'reveil_a1', 'reveil_a2', 'reveil_a3', 'rappel_plus_tard',
     'dimanche_famille', 'visite_proposition', 'visite_confirmation',
-    'j4_preuve', 'debrief_visite', 'parrainage')
+    'j4_preuve', 'debrief_visite', 'parrainage',
+    # 17/11/2026 — l'appel de réveil J30 « dormant avec devis ».
+    'appel_reveil_devis')
 
 #: Les mots darija RÉSIDENTIELS qu'un patron ne doit plus recevoir.
 MOTS_DARIJA_B2B_INTERDITS = ('فاتورة الضو', 'العائلة', 'السطح')

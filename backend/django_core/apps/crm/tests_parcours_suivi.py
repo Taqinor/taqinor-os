@@ -49,7 +49,7 @@ from apps.crm.models import LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.parcours_suivi_outils import (
     CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_DERNIERE_TOUCHE,
     CONTEXTES_VARIANTE,
-    ETATS_FIN, FAMILLES, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
+    ETATS_FIN, FAMILLES, GESTES_PIECE, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
     REPONSES_SPEC, TYPES_SUIVI, ParcoursBase, cas_de_la_famille, etapes_de_la_table,
     reponse_de, reponses, reponses_appel, table, type_de)
 from apps.parametres import models_relance
@@ -62,8 +62,10 @@ A_FAIRE = RelanceEtape.Statut.A_FAIRE
 
 def _cles_du_moteur():
     """Les clés ``CLE_*`` du gabarit de Paramètres (``models_relance``)."""
-    return {valeur for nom, valeur in vars(models_relance).items()
+    cles = {valeur for nom, valeur in vars(models_relance).items()
             if nom.startswith('CLE_') and isinstance(valeur, str)}
+    # Les étapes que le MOTEUR pose hors gabarit (``pieces_recues``, ``rappel_fda``…).
+    return cles | set(cadence_reperes.CLES_ETAPES_MOTEUR)
 
 
 # ── 1. La table est saine ──────────────────────────────────────────────────────────────────
@@ -150,6 +152,25 @@ class TableParcoursTests(SimpleTestCase):
                 modeles = [r['modele'] for r in etape['reponses']]
                 self.assertEqual(len(modeles), len(set(modeles)), modeles)
 
+    def test_les_groupes_les_rangs_et_les_segments_de_raison_sont_declares(self):
+        """17/11/2026 — la PRÉSENTATION des réponses (groupes « Pas joint » / « Plus tard… »,
+        « Autre réponse », raisons d'attente par segment) vit dans la table : un groupe cité par un
+        modèle existe, un rang ne vaut que « autre », jamais les deux sur un modèle, et chaque raison
+        d'attente dit les segments où elle vaut. Rien de tout cela n'est une clé envoyée au serveur."""
+        t = table()
+        for modele_id, modele in t['modeles'].items():
+            with self.subTest(modele=modele_id):
+                if 'groupe' in modele:
+                    self.assertIn(modele['groupe'], t['groupes'])
+                if 'rang' in modele:
+                    self.assertEqual(modele['rang'], 'autre')
+                self.assertFalse('groupe' in modele and 'rang' in modele)
+        segments = {'residentiel', 'agricole', 'commercial', 'industriel'}
+        for raison in t['modeles']['attente_accord']['raisons']:
+            with self.subTest(raison=raison['valeur']):
+                self.assertTrue(raison['segments'])
+                self.assertLessEqual(set(raison['segments']), segments)
+
     def test_chaque_envoi_est_connu_de_la_spec(self):
         issues = {cle for cle, _libelle in LeadActivity.OUTCOMES}
         for etape in table()['etapes']:
@@ -160,7 +181,7 @@ class TableParcoursTests(SimpleTestCase):
                     if 'outcome' in reponse:
                         self.assertIn(reponse['outcome'], issues)
                     if 'geste' in reponse:
-                        self.assertIn(reponse['geste'], GESTES_PLANIFICATION)
+                        self.assertIn(reponse['geste'], GESTES_PLANIFICATION | GESTES_PIECE)
                     self.assertTrue({'reponse', 'outcome', 'geste'} & set(reponse),
                                     'la réponse n’envoie rien')
             for entree in etape.get('reponses_appel', ()):

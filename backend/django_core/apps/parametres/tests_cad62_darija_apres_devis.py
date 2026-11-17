@@ -39,13 +39,18 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 
 from apps.parametres.models_messages import (
-    CLES_REACTIVATION, CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
-    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, PLACEHOLDERS_RELANCE, MessageTemplate,
+    CLES_FR_SEULEMENT, CLES_REACTIVATION, CLES_RELANCE,
+    MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+    PLACEHOLDERS_RELANCE, MessageTemplate,
 )
 
-#: CADV107 — seule exception nommée à la doctrine : la darija des textes de
+#: CADV107 — exception nommée à la doctrine : la darija des textes de
 #: réactivation reste à écrire (CADM1), jamais traduite automatiquement.
-_CLES_DARIJA_DUES = [c for c in CLES_RELANCE if c not in CLES_REACTIVATION]
+#: 17/11/2026 — même exception pour les deux appels FR seulement
+#: (`CLES_FR_SEULEMENT`, à formuler par un locuteur natif).
+_CLES_DARIJA_DUES = [c for c in CLES_RELANCE
+                     if c not in CLES_REACTIVATION
+                     and c not in CLES_FR_SEULEMENT]
 
 #: Les 11 clés que CAD62 comble (Done de la tâche).
 CLES_CAD62 = [
@@ -148,7 +153,9 @@ class CouvertureDarijaCompleteTests(SimpleTestCase):
             len([c for c in _CLES_DARIJA_DUES
                  if (MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(c) or '').strip()]),
             len(_CLES_DARIJA_DUES))
-        self.assertEqual(len(_CLES_DARIJA_DUES) + 3, len(CLES_RELANCE))
+        self.assertEqual(
+            len(_CLES_DARIJA_DUES) + len(CLES_REACTIVATION)
+            + len(CLES_FR_SEULEMENT), len(CLES_RELANCE))
 
     def test_les_11_cles_cad62_sont_bien_les_clés_qui_manquaient(self):
         """Anti-faux-vert : si CAD62 n'avait rien ajouté, ce test échouerait

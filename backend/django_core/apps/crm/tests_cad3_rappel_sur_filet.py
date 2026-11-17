@@ -165,10 +165,15 @@ class RappelSurFiletTests(_Base):
         self.assertEqual(premiere.cle, CLE_PIECES_RECUES)
         self.assertEqual(premiere.canal, RelanceEtape.Canal.WHATSAPP)
         self.assertEqual(premiere.cadence, 'generique')
+        # 16/11/2026 — l'étape se nomme pour ce qu'on y fait, et porte son message.
+        self.assertEqual(
+            premiere.libelle, 'Relancer le client pour ses pièces (factures, schéma)')
+        self.assertEqual(premiere.template_cle, 'relance_pieces')
         self.assertEqual(premiere.due_date, LUNDI.date() + datetime.timedelta(days=3))
         self._clore_fait(premiere)
         ouvertes = self._ouvertes()
         self.assertEqual([e.cle for e in ouvertes], [CLE_PIECES_RECUES])
+        self.assertEqual(ouvertes[0].template_cle, 'relance_pieces')
         self.assertEqual(ouvertes[0].due_date, LUNDI.date() + datetime.timedelta(days=7))
         self._clore_fait(ouvertes[0])
         ouvertes = self._ouvertes()

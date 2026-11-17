@@ -203,11 +203,17 @@ def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
         logger.warning('MRY11: lecture des devis du lead #%s impossible',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return
+    from apps.parametres.models_messages import CLE_APPEL_PAR_CLE_REVEIL
+
     cles = _REVEIL_GABARITS[avec_devis]
     for decalage, etape in enumerate(sorted(etapes, key=lambda e: e.ordre)):
         rang = rang_initial + decalage
         if etape.template_cle in _REVEIL_CLES_SEEDEES and rang < len(cles):
             etape.template_cle = cles[rang]
+            # 17/11/2026 — un réveil en APPEL lit le script d'appel.
+            if etape.canal == RelanceEtape.Canal.APPEL:
+                etape.template_cle = CLE_APPEL_PAR_CLE_REVEIL.get(
+                    etape.template_cle, etape.template_cle)
 
 
 #: MRY4 — le gabarit « dimanche famille » du suivi après devis n'est PAS pour
@@ -1203,13 +1209,16 @@ def _poser_touche_avant_froid(lead, user, cadence, *, libelle=LIBELLE_TOUCHE_AVA
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     canal = _canal_touche_de_plus(lead)
     quand = quand or _creneau_dans(lead, 1)
+    # 17/11/2026 — script `appel_dernier` ; pas le trimestriel pro (CADV102).
+    template_cle = ('appel_dernier' if canal == RelanceEtape.Canal.APPEL
+                    and libelle == LIBELLE_TOUCHE_AVANT_FROID else '')
     # Le suivi d'un devis garde son devis, comme ``materialiser_touche_suivante``.
     close = (lead.relance_etapes.filter(cadence=cadence, traite_le__isnull=False)
              .order_by('-traite_le').first())
     etape = RelanceEtape(
         company=lead.company, lead=lead, cadence=cadence,
         ordre=max((g.ordre for g in gabarits), default=0) + 1,
-        canal=canal, libelle=libelle,
+        canal=canal, libelle=libelle, template_cle=template_cle,
         due_at=quand, due_initial_at=quand,
         due_date=quand.astimezone(horaires.CASABLANCA).date(),
         devis_id=close.devis_id if close else None,
@@ -1240,15 +1249,18 @@ def cloturer_cadence(lead, user, cadence):
         ici ; `Lead.perdu` n'est jamais touché (décision humaine, MRY22) ;
       * `avancer_stage_lead_vers` respecte le rang du funnel : un lead déjà
         plus avancé (devis envoyé, signé) ne RECULE jamais vers COLD ;
-      * la cadence `reveil` ne se clôture pas elle-même — sinon un lead
-        réveillé sans réponse rentrerait dans une boucle de réveils infinie.
+      * la cadence `reveil` ne pose jamais de réveil (pas de boucle infinie) :
+        hors Froid, le lead est parqué sans rien poser, sauf suivi de devis
+        repris (décision fondateur du 16/11/2026, ``cadence_filet``).
 
     Best-effort : ne lève jamais."""
     from . import horaires
 
-    if cadence == 'reveil':
-        return
     try:
+        if cadence == 'reveil':
+            from .cadence_filet import cloturer_reveils_sans_reponse
+            cloturer_reveils_sans_reponse(lead, user)
+            return
         plafond = _CLOTURE_PLAFOND.get(cadence)
         if plafond is None:
             return
