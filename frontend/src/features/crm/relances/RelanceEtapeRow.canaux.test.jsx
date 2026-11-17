@@ -61,7 +61,7 @@ describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => 
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
     cliquerDans('Pas joint', 'Pas de réponse')
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client refuse' }))
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
     cliquerDans('Plus tard…', 'À rappeler le…')
     expect(screen.queryByTestId('ne-parle-que-darija')).not.toBeInTheDocument()
@@ -230,14 +230,20 @@ describe('CAD101 — pièce reçue sur WhatsApp : le geste pour l’enregistrer'
       question_prix: { ...ETAPE_APPEL, cle: '', libelle: 'Question de prix — préparer l’appel du fondateur (aucune offre avant sa décision)', cadence: 'generique' },
       devis_modifie: { ...ETAPE_APPEL, cle: 'devis_modifie', libelle: 'Préparer le devis modifié — rappeler le client', cadence: 'apres_devis' },
       decider_suite: { ...ETAPE_APPEL, cle: 'decider_suite', libelle: 'Décider la suite', cadence: 'generique' },
+      // 17/11/2026 — visite, réveils, générique et relance des pièces.
+      planifier: { ...ETAPE_APPEL, cle: 'planifier', libelle: 'planifier', cadence: 'generique' },
+      debrief: { ...ETAPE_APPEL, cle: 'debrief', libelle: 'Débrief', cadence: 'apres_devis' },
+      reveil_appel: { ...ETAPE_APPEL, cle: '', libelle: 'Réveil', cadence: 'reveil' },
+      generique: { ...ETAPE_APPEL, cle: '', libelle: 'Rappeler le client (il l’a demandé)', cadence: 'generique' },
+      pieces_recues: { ...ETAPE_WHATSAPP, cle: 'pieces_recues', libelle: 'Pièces reçues ?', cadence: 'generique' },
     }
     for (const [type, etape] of Object.entries(types)) {
       const { unmount } = ligne(etape)
       expect(screen.queryByRole('button', { name: /Pièce reçue/ }), type).not.toBeInTheDocument()
       unmount()
     }
-    // … et il reste sur les types qui l'attendent (planifier, devis).
-    for (const cle of ['devis', 'planifier']) {
+    // … et il reste sur les types qui l'attendent (devis, dernier essai avant de chiffrer).
+    for (const cle of ['devis', 'dernier_appel']) {
       const { unmount } = ligne({ ...ETAPE_APPEL, cle, libelle: cle, cadence: 'generique' })
       expect(screen.getByRole('button', { name: /Pièce reçue/ }), cle).toBeInTheDocument()
       unmount()

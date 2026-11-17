@@ -151,6 +151,15 @@ def _contexte_preuve(lead):
     }
 
 
+#: 17/11/2026 — début des phrases qui renvoient à la phrase PRÉCÉDENTE de leur
+#: texte : sans la date de validité, « Après, je dois revalider les prix… »
+#: ne renvoyait plus à rien (`appel_validite`, `j9_validite`, leur darija et la
+#: forme e-mail de `j9_validite`). Aucun mot nouveau : ces phrases sont celles
+#: du texte validé, seul leur départ est lié à celui de la phrase d'avant.
+_SUITES_LIEES = ('Après, je dois revalider', 'Au-delà, je dois revalider',
+                 'من بعد، خاصني نعاود نتأكد')
+
+
 def _omettre_phrases_incompletes(texte, manquants):
     """MRY13 — retire les phrases qui portent un placeholder sans valeur.
 
@@ -167,11 +176,28 @@ def _omettre_phrases_incompletes(texte, manquants):
             lignes_gardees.append(ligne)
             continue
         morceaux = ligne.split('. ')
-        gardes = [m for m in morceaux
-                  if not any(trou in m for trou in trous)]
+        gardes, precedent_retire = [], False
+        for morceau in morceaux:
+            retire = any(trou in morceau for trou in trous)
+            # 17/11/2026 — une phrase qui ne se comprend qu'à la suite de la
+            # précédente (« Après, je dois revalider… ») part avec elle.
+            if (precedent_retire and not retire
+                    and morceau.lstrip().startswith(_SUITES_LIEES)):
+                retire = True
+            if not retire:
+                gardes.append(morceau)
+            precedent_retire = retire
         if gardes:
             recolle = '. '.join(gardes)
-            if ligne.rstrip().endswith('.') and not recolle.endswith('.'):
+            # 17/11/2026 — une signature finale (« — {conseiller} ») retirée
+            # faute de prénom emportait avec elle le point de la phrase qui la
+            # précédait (le découpage consomme « . ») : sans lui, la phrase
+            # « Répondez STOP… » ou « …le passage » finissait sans point.
+            signature_retiree = (
+                len(morceaux) > 1 and morceaux[-1].lstrip().startswith('—')
+                and any(trou in morceaux[-1] for trou in trous))
+            if ((ligne.rstrip().endswith('.') or signature_retiree)
+                    and not recolle.endswith('.')):
                 recolle += '.'
             lignes_gardees.append(recolle)
     return '\n'.join(lignes_gardees).strip()
@@ -828,8 +854,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # placeholders manquants) — sans catalogue, la phrase est OMISE.
     # CAD70 — sans AUCUNE réalisation utilisable (le cas PAR DÉFAUT d'une
     # société qui n'a rien publié), les phrases de preuve sautent toutes et il
-    # ne reste qu'une phrase orpheline (« Le suivi de production est en temps
-    # réel… ») : la touche ne doit alors PAS proposer ce message. Le drapeau
+    # ne reste qu'une phrase orpheline (avant le 17/11/2026 « Le suivi de
+    # production est en temps réel… », aujourd'hui la seule ligne STOP) : la
+    # touche ne doit alors PAS proposer ce message. Le drapeau
     # `preuve_manquante` le dit à l'aperçu (et le POST `whatsapp/` le refuse).
     preuve_manquante = False
     if any(t in (corps or '') for t in _PLACEHOLDERS_PREUVE):

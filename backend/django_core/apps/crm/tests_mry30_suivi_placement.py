@@ -582,7 +582,7 @@ class DecisionDormantTests(_PlacementBase):
         lead = self._lead('Pilote', stage=stages.NEW, jours=60)
         Lead.objects.filter(pk=lead.pk).update(facture_hiver=2300)
         ligne = self._placer(apply=False)['apercu'][0]
-        self.assertEqual(ligne['prochaine_touche'], 'Réveil J30')
+        self.assertEqual(ligne['prochaine_touche'], 'Appel de réveil à 1 mois')
         self._placer()
         self.assertEqual(len(self._reveils(lead)), 1)
 
@@ -1101,7 +1101,7 @@ class LotsTests(_PlacementBase):
         ligne = self._placer(apply=False)['apercu'][0]
         self.assertEqual(ligne['lead'], self.dormants[2].pk)
         self.assertEqual(ligne['prochaine_le'], self._creneau(2).isoformat())
-        self.assertEqual(ligne['prochaine_touche'], 'Réveil J30')
+        self.assertEqual(ligne['prochaine_touche'], 'Appel de réveil à 1 mois')
 
     def test_le_lot_ne_deborde_pas_sur_le_jour_suivant_sans_raison(self):
         """Cinq dormants tiennent dans les huit créneaux d'un jour ouvré :

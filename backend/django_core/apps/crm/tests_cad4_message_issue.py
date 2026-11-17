@@ -22,7 +22,7 @@ from apps.crm.cadence_views import MESSAGE_ISSUE_APPEL_OBLIGATOIRE
 User = get_user_model()
 
 #: Les libellés que `RelanceEtapeRow.jsx` (QUESTIONS.contact) propose.
-REPONSES_ECRAN = ('Client joint', 'Pas de réponse', 'À rappeler le…', 'Refus')
+REPONSES_ECRAN = ('Client joint', 'Pas de réponse', 'À rappeler le…', 'Client refuse')
 
 
 class MessageIssuePurTests(SimpleTestCase):

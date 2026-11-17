@@ -1159,9 +1159,11 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
         # Aucune clé d'appel ne porte la phrase, et chaque porteuse la porte
         # EN FIN de texte (les clés WhatsApp l'ont toutes après CADV34).
         self.assertFalse(porteuses & appels, sorted(porteuses & appels))
+        # 17/11/2026 — la phrase précède la signature finale « — {conseiller} ».
         for cle in sorted(porteuses):
-            self.assertTrue(
-                MESSAGE_TEMPLATE_DEFAULTS[cle].endswith(phrase_stop), cle)
+            sans_signature = MESSAGE_TEMPLATE_DEFAULTS[cle].removesuffix(
+                ' — {conseiller}')
+            self.assertTrue(sans_signature.endswith(phrase_stop), cle)
         # Plancher de CAD110 : ses huit clés la portent toujours.
         self.assertTrue({
             'je_classe_j7', 'cloture_j14', 'j13_dernier', 'j14_pause',

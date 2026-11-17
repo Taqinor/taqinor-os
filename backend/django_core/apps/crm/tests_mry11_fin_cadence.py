@@ -454,6 +454,33 @@ class GabaritsReveilTests(_Base):
         self._facture(facture_hiver=800, facture_ete=2300)
         self.assertEqual(len(calculer_echeances_cadence(self.lead, 'reveil', LUNDI)), 1)
 
+    def test_le_j30_du_pilote_est_le_dernier_reveil(self):
+        """Audit des cadences (17/11/2026) — le J30 du pilote n'a pas de J60 :
+        l'écran le lit comme le DERNIER réveil, comme le moteur. Mutant :
+        ``ordres_reveil_du_lead`` rendant ``ordres`` ⇒ « touche suivante »."""
+        from apps.crm import suite_touche
+        from apps.crm.cadence_reponses import est_dernier_reveil
+        self._facture(facture_hiver=2500)
+        [touche] = initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil', depart=LUNDI)
+        self.assertTrue(est_dernier_reveil(touche))
+        self.assertEqual(suite_touche.promesses_touche(touche)['non_joint'],
+                         [suite_touche.DERNIER_REVEIL])
+
+    def test_un_lead_a_deux_reveils_garde_son_j60(self):
+        from apps.crm import suite_touche
+        from apps.crm.cadence_reponses import est_dernier_reveil
+        self._deja_joint()
+        self._facture()
+        premier, second = initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil', depart=LUNDI)
+        attendu = [suite_touche.TOUCHE_SUIVANTE, suite_touche.RESTE_AU_FROID]
+        self.assertEqual(suite_touche.promesses_touche(premier)['non_joint'], attendu)
+        # Le J60 pas encore posé naîtra : le lead y a droit.
+        second.delete()
+        self.assertFalse(est_dernier_reveil(premier))
+        self.assertEqual(suite_touche.promesses_touche(premier)['non_joint'], attendu)
+
     def test_sous_le_seuil_le_lead_n_a_aucun_reveil(self):
         self._facture(facture_hiver=800)
         self.assertEqual(initialiser_plan_relance(

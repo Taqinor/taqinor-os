@@ -257,6 +257,12 @@
    "nom": "rappel_convenu_le",
    "read_only": true,
    "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_devis_envoye",
+   "read_only": true,
+   "required": false
   }
  ]
 }

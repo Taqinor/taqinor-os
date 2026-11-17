@@ -337,14 +337,15 @@ describe('libelleReponse — une réponse qui porte SEULE la clé dit son libell
 })
 
 describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le libellé générique de l\'issue', () => {
-  it('generique : `non_joint` est portée par quatre réponses d\'appel, la première est « Répondeur » (trompeur)', () => {
+  it('generique : `non_joint` est portée par cinq réponses d\'appel, le générique l\'emporte', () => {
     // La prémisse, lue dans la table : `reponses_appel` de `generique` (objets
-    // `{ modele, effet, suite… }`) porte `non_joint` quatre fois.
+    // `{ modele, effet, suite… }`) porte `non_joint` cinq fois — « Pas de réponse »
+    // en tête depuis le 17/11/2026 (la réponse « message seulement » est retirée sur un appel).
     const partagees = porteuses('generique', 'non_joint')
-    expect(partagees.map((r) => r.label)).toEqual(['Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
-    // … le libellé lisible est donc le générique, pas celui de la première.
+    expect(partagees.map((r) => r.label)).toEqual(
+      ['Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
+    // … le libellé lisible est le générique de l'issue.
     expect(libelleReponse('generique', 'non_joint')).toBe('Pas de réponse')
-    expect(libelleReponse('generique', 'non_joint')).not.toBe(partagees[0].label)
   })
 
   it('les types d\'appel dont `non_joint` est partagée disent « Pas de réponse » (comme leur première réponse : un seul libellé depuis le 17/11/2026)', () => {
@@ -359,9 +360,9 @@ describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le l
     expect(porteuses('devis', 'rappel')).toHaveLength(1)
     expect(libelleReponse('devis', 'rappel')).toBe('Pas encore — à rappeler le…')
     expect(libelleReponse('devis', 'rappel')).not.toBe(LIBELLES_ISSUE.rappel)
-    // Sur un message, « Pas de réponse » est seule de son issue : un seul libellé pour les deux modèles.
-    expect(porteuses('suivi_message', 'non_joint')).toHaveLength(1)
-    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
+    // « Planifier la visite » : « Pas de réponse » est seule de son issue — son libellé.
+    expect(porteuses('planifier', 'non_joint')).toHaveLength(1)
+    expect(libelleReponse('planifier', 'non_joint')).toBe('Pas de réponse')
   })
 
   it('accepte dans `reponses_appel` des identifiants de modèle (chaînes) comme des objets', () => {
@@ -370,8 +371,9 @@ describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le l
     expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
     type.reponses_appel = ['repondeur', 'occupe'] // identifiants de modèle, sans objet
     try {
-      // Trois réponses partagent maintenant `non_joint` : le générique l'emporte.
-      expect(porteuses('suivi_message', 'non_joint')).toHaveLength(3)
+      // Quatre réponses partagent maintenant `non_joint` (Pas de réponse, Numéro
+      // invalide / pas sur WhatsApp, Répondeur, Occupé) : le générique l'emporte.
+      expect(porteuses('suivi_message', 'non_joint')).toHaveLength(4)
       expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
     } finally {
       delete type.reponses_appel
@@ -399,7 +401,7 @@ describe('libelleReponse — clé absente du type : repli générique, sinon la 
     expect(porteuses('devis', 'non_joint')).toHaveLength(0)
     expect(libelleReponse('devis', 'non_joint')).toBe('Pas de réponse')
     expect(libelleReponse('type_inconnu', 'joint')).toBe('Client joint')
-    expect(libelleReponse(undefined, 'refuse')).toBe('Refus')
+    expect(libelleReponse(undefined, 'refuse')).toBe('Client refuse')
   })
 
   it('une clé que personne ne connaît s\'affiche telle quelle', () => {

@@ -1168,11 +1168,10 @@ def _materialiser_touche_suivante(etape_close, user=None):
     return None, RaisonSuite.FIN_GABARIT
 
 
-#: D-CADV22-PROMESSE (Reda, 02/11/2026) — la touche posée quand la dernière
-#: touche d'une cadence ne peut pas parquer le lead.
+#: D-CADV22-PROMESSE (02/11/2026) — la dernière touche ne peut pas parquer le lead.
 LIBELLE_TOUCHE_AVANT_FROID = 'Appeler le client — appel à tracer avant le Froid'
-#: CADV102 (D-CADV-10) — le lead pro au bout de sa cadence : un trimestre (13
-#: semaines) de Standby, puis cet appel.
+LIBELLE_MESSAGE_AVANT_FROID = 'Écrire au client une dernière fois avant le Froid'
+#: CADV102 (D-CADV-10) — le pro au bout de sa cadence : 13 semaines de Standby, puis cet appel.
 LIBELLE_APPEL_TRIMESTRIEL = 'Appel trimestriel'
 STANDBY_PRO_JOURS = 91
 
@@ -1195,13 +1194,13 @@ def _creneau_dans(lead, jours):
 def _poser_touche_avant_froid(lead, user, cadence, *, libelle=LIBELLE_TOUCHE_AVANT_FROID,
                               quand=None):
     """D-CADV22-PROMESSE — un AUTRE appel (``_canal_touche_de_plus``), jamais
-    « Préparer et envoyer le devis ». CADV102 — ou l'« Appel trimestriel » d'un pro.
+    « Préparer et envoyer le devis » ; un lead « WhatsApp uniquement » reçoit le
+    message « je classe ? ». CADV102 — ou l'« Appel trimestriel » d'un pro.
 
-    La touche reste dans SA cadence, juste après le dernier barreau : hors
-    gabarit, sa clôture sans réponse donne ``FIN_GABARIT`` et rejoue donc la fin
-    de cadence. Ce n'est pas une boucle : chaque appel tracé rapproche le seuil
-    (et une touche SAUTÉE ne compte pas, elle reposera la même touche) ; chaque
-    trimestre consomme un cycle (``CYCLES_STANDBY_PRO_MAX``)."""
+    Dans SA cadence, après le dernier barreau : hors gabarit, sa clôture sans
+    réponse donne ``FIN_GABARIT`` et rejoue la fin de cadence. Pas une boucle :
+    chaque appel tracé rapproche le seuil (une touche SAUTÉE reposera la même) ;
+    chaque trimestre consomme un cycle (``CYCLES_STANDBY_PRO_MAX``)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
@@ -1209,9 +1208,10 @@ def _poser_touche_avant_froid(lead, user, cadence, *, libelle=LIBELLE_TOUCHE_AVA
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     canal = _canal_touche_de_plus(lead)
     quand = quand or _creneau_dans(lead, 1)
-    # 17/11/2026 — script `appel_dernier` ; pas le trimestriel pro (CADV102).
-    template_cle = ('appel_dernier' if canal == RelanceEtape.Canal.APPEL
-                    and libelle == LIBELLE_TOUCHE_AVANT_FROID else '')
+    template_cle = ''  # 17/11/2026 — aucun script pour le trimestriel pro.
+    if libelle == LIBELLE_TOUCHE_AVANT_FROID:
+        libelle, template_cle = ((libelle, 'appel_dernier') if canal == RelanceEtape.Canal.APPEL
+                                 else (LIBELLE_MESSAGE_AVANT_FROID, 'je_classe_j7'))
     # Le suivi d'un devis garde son devis, comme ``materialiser_touche_suivante``.
     close = (lead.relance_etapes.filter(cadence=cadence, traite_le__isnull=False)
              .order_by('-traite_le').first())

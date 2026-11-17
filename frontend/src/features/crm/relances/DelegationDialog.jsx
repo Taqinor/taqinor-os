@@ -17,15 +17,20 @@ import { toastSuccess } from '../../../lib/toast'
    avec lui. Contrat : `apps/crm/contract_samples/lead_deleguer.json`
    (`GET`/`POST /crm/leads/deleguer/`) — la phrase de l'aperçu lit les chiffres
    du serveur, jamais un recompte écran. Un refus s'affiche SOUS le champ qui
-   le cause (`useServerFieldErrors`), jamais en toast nu.
+   le cause (`useServerFieldErrors`), jamais en toast nu. Audit des cadences
+   (17/11/2026) : « Déléguer » attend l'aperçu et reste grisé à 0 dossier ; la
+   passation n'est posée que si on la coche (décochée par défaut).
    ========================================================================== */
 
 const plurielDossier = (n) => `${n} dossier${n > 1 ? 's' : ''}`
 const plurielEtape = (n) => `${n} étape${n > 1 ? 's' : ''} ouverte${n > 1 ? 's' : ''}`
+/** Le nom d'un collègue, comme le serveur le donne dans l'aperçu (`vers_nom`). */
+const nomCollegue = (u) => u.first_name || u.username
 
 /** La phrase de l'aperçu. */
 function phraseApercu(apercu) {
   const { dossiers, etapes_ouvertes: ouvertes, etapes_en_retard: retard, vers_nom: nom } = apercu
+  if (!dossiers) return `Aucun dossier à confier à ${nom}.`
   return `${plurielDossier(dossiers)}, dont ${plurielEtape(ouvertes)} (${retard} en retard), passeront à ${nom}.`
 }
 
@@ -37,7 +42,7 @@ export function DelegationDialog({ open, onOpenChange, de = null, deNom = '', on
   const [users, setUsers] = useState([])
   const [vers, setVers] = useState('')
   const [apercu, setApercu] = useState(null)
-  const [prevenir, setPrevenir] = useState(true)
+  const [prevenir, setPrevenir] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -95,7 +100,7 @@ export function DelegationDialog({ open, onOpenChange, de = null, deNom = '', on
         <DialogHeader>
           <DialogTitle>À qui confier {de ? `les dossiers de ${deNom || 'ce collègue'}` : 'vos dossiers'} ?</DialogTitle>
           <DialogDescription>
-            Les dossiers encore à travailler (ni perdus, ni archivés, ni signés, ni opposés) et leurs étapes de relance passent au collègue choisi.
+            Les dossiers encore à travailler passent au collègue choisi avec leurs étapes de relance : les dossiers au Froid aussi, et un dossier signé s'il lui reste une étape ouverte (jamais un perdu, un archivé ni un opposé). Il n'y a pas d'annulation : pour les reprendre, il faudra les déléguer à nouveau.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1">
@@ -109,7 +114,7 @@ export function DelegationDialog({ open, onOpenChange, de = null, deNom = '', on
           >
             <option value="">Choisir…</option>
             {users.filter((u) => String(u.id) !== String(exclureId)).map((u) => (
-              <option key={u.id} value={String(u.id)}>{u.username}</option>
+              <option key={u.id} value={String(u.id)}>{nomCollegue(u)}</option>
             ))}
           </select>
           {(errors.vers || errors.de) && (
@@ -127,7 +132,7 @@ export function DelegationDialog({ open, onOpenChange, de = null, deNom = '', on
             onCheckedChange={(v) => setPrevenir(v === true)}
           />
           <label htmlFor="delegation-prevenir" className="text-sm">
-            Prévenir chaque client du changement de conseiller (une étape de passation par dossier déjà contacté)
+            Poser une étape de passation sur chaque dossier déjà contacté (message à envoyer par vous)
           </label>
         </div>
         {errors.prevenir_clients && (
@@ -138,7 +143,7 @@ export function DelegationDialog({ open, onOpenChange, de = null, deNom = '', on
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Annuler</Button>
-          <Button onClick={deleguer} disabled={busy}>Déléguer</Button>
+          <Button onClick={deleguer} disabled={busy || !apercu || !apercu.dossiers}>Déléguer</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

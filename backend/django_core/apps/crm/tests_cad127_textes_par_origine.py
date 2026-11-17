@@ -375,6 +375,8 @@ class AppelOuvertureSuitLOrigineTests(_Base):
         rendu = message_pour_etape(self._touche_appel(lead), user=self.acteur)
         self.assertIn('Vous venez de remplir notre formulaire pour le solaire',
                       rendu['message'])
+        # 17/11/2026 — le script de base n'a plus « c'est un appel commercial ».
+        self.assertNotIn('appel commercial', rendu['message'])
 
     def test_le_prescripteur_nomme_la_phrase_d_origine(self):
         lead = self._lead('reference', nom='ParrainAppel')

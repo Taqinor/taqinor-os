@@ -89,6 +89,15 @@ class AucunBarreauNAjouteTests(SimpleTestCase):
 class PassationEtRappelApresReponseTests(SimpleTestCase):
     """ACVI51 — deux clés qui rendaient un texte vide."""
 
+    def test_les_deux_cles_sont_listees_dans_parametres_messages(self):
+        """17/11/2026 — un texte absent de `MessageTemplate.Cle` est invisible
+        dans Paramètres → Messages : la société ne peut ni le lire ni l'adapter."""
+        choix = {c for c, _ in MessageTemplate.Cle.choices}
+        for cle in ('passation', 'appel_apres_reponse'):
+            with self.subTest(cle=cle):
+                self.assertIn(cle, choix)
+                self.assertLessEqual(len(cle), 40)  # max_length du champ
+
     def test_les_deux_cles_ont_un_texte(self):
         from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS
         for cle in ('passation', 'appel_apres_reponse'):

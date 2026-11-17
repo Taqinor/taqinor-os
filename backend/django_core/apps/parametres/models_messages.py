@@ -73,8 +73,11 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51
     # est déjà assurée par le devis envoyé — une phrase courte suffit ici,
     # pas un pavé dans le WhatsApp.
+    # 17/11/2026 (fondateur) — un prospect qui a rempli le formulaire a demandé à
+    # être appelé : la mention « c'est un appel commercial » est retirée de CETTE
+    # origine seulement ; elle reste sur toutes les autres ouvertures d'appel.
     'appel_ouverture':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Vous venez de remplir "
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Vous venez de remplir "
         "notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je "
         "vous dérange deux minutes ?",
     'repondeur':
@@ -167,8 +170,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "question.",
     'j4_preuve':
         "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. "
-        "Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous "
-        "montrer. Petite vidéo du chantier : {lien_video_preuve}.",
+        "Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
     # 17/11/2026 (fondateur) — salutation standard + phrase d'ouverture déjà
     # validée dans sa forme e-mail (`MESSAGE_TEMPLATE_FORMES_EMAIL`).
     'j6_garanties':
@@ -345,11 +347,11 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. "
         "غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'appel_ouverture':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على "
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عمرتو دابا الفورم ديالنا على "
         "الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
-    'repondeur':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة "
-        "الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
+    # 17/11/2026 — `repondeur` n'a plus de darija : son français dit « je vous ai
+    # envoyé un message WhatsApp », l'ancienne darija « je vais vous envoyer »
+    # (voir `CLES_FR_SEULEMENT`) ; l'ancien texte reste dans le guide source.
     'valeur_j1':
         "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة "
         "ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف "
@@ -443,7 +445,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.",
     'j4_preuve':
         "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: "
-        "{puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
+        "{puissance_preuve} kWc.",
     'j6_garanties':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو "
         "صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}.",
@@ -859,6 +861,14 @@ class MessageTemplate(models.Model):
         APPEL_PLANIFIER_VISITE = (
             'appel_planifier_visite',
             "Visite — script d'appel pour planifier la visite")
+        # 17/11/2026 — deux textes qui existaient déjà (ACVI51) mais que
+        # Paramètres → Messages ne listait pas : la société ne pouvait pas les voir.
+        PASSATION = (
+            'passation',
+            "Passation — le dossier change de conseiller (message au client)")
+        APPEL_APRES_REPONSE = (
+            'appel_apres_reponse',
+            "Après l'appel — script de l'appel quand le client a répondu au message")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1655,10 +1665,13 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. حاولت نعيط ليكم ولكن ما لقيتكمش. شمن وقت يناسبكم "
         "باش نعيط ليكم خمس دقايق؟",
 })
-#: 17/11/2026 — les deux clés dont la darija reste à formuler par un locuteur
+#: 17/11/2026 — les trois clés dont la darija reste à formuler par un locuteur
 #: natif : `get_corps(..., 'darija')` retombe sur le FR (jamais une traduction
 #: automatique) — seconde exception, avec `CLES_REACTIVATION`, à « darija COMPLÈTE ».
-CLES_FR_SEULEMENT = ('appel_rappel_convenu', 'appel_planifier_visite')
+#: `repondeur` : son français (« je vous ai envoyé ») contredisait sa darija
+#: (« je vais vous envoyer »), retirée jusqu'à une nouvelle formulation.
+CLES_FR_SEULEMENT = ('appel_rappel_convenu', 'appel_planifier_visite',
+                     'repondeur')
 
 #: 17/11/2026 — l'appel d'ouverture SUIT l'origine du lead exactement comme
 #: `identite` (CAD127) : clé d'identité choisie → clé d'appel correspondante.
@@ -1679,6 +1692,21 @@ CLE_APPEL_PAR_CLE_REVEIL = {
 }
 
 
+# ACVI51 (C-ACVI-069) — le texte annoncé par CAD54 pour la passation, et le
+# script du rappel après réponse : placeholders rendables seulement, darija en
+# repli français (`get_corps`).
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'passation': (
+        "Bonjour {prenom}, c'est {conseiller} de {marque}. Je reprends "
+        "votre dossier à partir d'aujourd'hui : n'hésitez pas à m'écrire ici "
+        "pour toute question."
+    ),
+    'appel_apres_reponse': (
+        "Bonjour {prenom}, c'est {conseiller} de {marque}. Vous m'avez "
+        "répondu, je vous appelle pour faire le point sur votre projet."
+    ),
+})
+
 # ── CADV34 (02/11/2026, D-CADV-1) — la porte de sortie sur TOUT message écrit ─
 #
 # Loi 09-08 art. 10 al. 5 : l'opposition doit être possible « chaque fois
@@ -1698,14 +1726,31 @@ CLES_PORTE_DE_SORTIE_CADV34 = (
     'valeur_j1', 'vocal_j3', 'j1_pdf', 'j4_preuve', 'j6_garanties',
     'j9_validite', 'dimanche_famille', 'deuxieme_affaire',
     'visite_confirmation', 'relance_pieces', 'message_creneau',
+    # 17/11/2026 — messages ÉCRITS (WhatsApp) qui n'avaient pas la porte : la visite
+    # proposée / de relevé du point d'eau, les deux dossiers institutionnels et la
+    # passation (`appel_apres_reponse`, lui, est un script d'APPEL : jamais de STOP).
+    'visite_proposition', 'visite_releve_point_eau', 'dossier_8221',
+    'dossier_fda', 'passation',
 )
+
+
+#: 17/11/2026 — la signature finale des messages de visite. La phrase STOP se
+#: pose AVANT elle : derrière, elle donnait « — Meryem Répondez STOP… » et
+#: partageait le fragment de la signature, que le rendu retire en entier
+#: (`_omettre_phrases_incompletes`) quand le responsable n'a pas de prénom.
+SIGNATURE_FINALE = ' — {conseiller}'
 
 
 def _poser_porte_de_sortie(table, phrase):
     for cle in CLES_PORTE_DE_SORTIE_CADV34:
         texte = table.get(cle)
-        if texte and not texte.endswith(phrase):
-            table[cle] = f'{texte} {phrase}'
+        if not texte:
+            continue
+        corps, signature = texte, ''
+        if texte.endswith(SIGNATURE_FINALE):
+            corps, signature = texte[:-len(SIGNATURE_FINALE)], SIGNATURE_FINALE
+        if not corps.endswith(phrase):
+            table[cle] = f'{corps} {phrase}{signature}'
 
 
 _poser_porte_de_sortie(MESSAGE_TEMPLATE_DEFAULTS, PORTE_DE_SORTIE_FR)
@@ -1715,18 +1760,3 @@ for _table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.values():
 for _table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA.values():
     _poser_porte_de_sortie(_table, PORTE_DE_SORTIE_DARIJA)
 del _table
-
-# ACVI51 (C-ACVI-069) — le texte annoncé par CAD54 pour la passation, et le
-# script du rappel après réponse : placeholders rendables seulement, darija en
-# repli français (`get_corps`).
-MESSAGE_TEMPLATE_DEFAULTS.update({
-    'passation': (
-        "Bonjour {prenom}, c'est {conseiller} de {marque}. Je reprends "
-        "votre dossier à partir d'aujourd'hui : n'hésitez pas à m'écrire ici "
-        "pour toute question."
-    ),
-    'appel_apres_reponse': (
-        "Bonjour {prenom}, c'est {conseiller} de {marque}. Vous m'avez "
-        "répondu, je vous appelle pour faire le point sur votre projet."
-    ),
-})

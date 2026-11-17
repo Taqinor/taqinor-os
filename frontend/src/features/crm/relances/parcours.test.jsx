@@ -4,7 +4,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
   PARCOURS, typeEtape, reponsesDeLEtape, reponseComplete, estTache, estTacheSansAppel,
   familleCanal, gestes, organiserReponses, raisonsDuSegment, gesteVisible,
-  proposerDarija, confirmationMessageExigee,
+  proposerDarija, confirmationMessageExigee, CONTEXTES_MASQUANTS,
 } from './parcours'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
@@ -112,6 +112,30 @@ describe('parcours.js — la table est saine', () => {
       'ne_plus_contacter', 'question_prix', 'devis_modifie', 'decision_famille', 'decision_proprietaire'])
   })
 
+  it('17/11/2026 — chaque contexte cité (`masquee_si`, `variantes_contexte`) existe dans CONTEXTES_MASQUANTS', () => {
+    // Une faute de frappe était ignorée sans bruit : la réponse ne se masquait jamais.
+    const cites = []
+    const lire = (objet, ou) => {
+      if (objet.masquee_si !== undefined) cites.push([ou, objet.masquee_si])
+      for (const c of Object.keys(objet.variantes_contexte || {})) cites.push([`${ou} (variante)`, c])
+    }
+    for (const [id, modele] of Object.entries(PARCOURS.modeles)) lire(modele, `modèle ${id}`)
+    for (const type of PARCOURS.etapes) {
+      for (const entree of [...type.reponses, ...(type.reponses_appel || [])]) {
+        if (typeof entree !== 'string') lire(entree, `${type.id}/${entree.modele}`)
+      }
+    }
+    expect(cites.length).toBeGreaterThan(0) // anti-faux-vert : la table en cite
+    for (const [ou, contexte] of cites) {
+      expect(typeof CONTEXTES_MASQUANTS[contexte], `${ou} : contexte « ${contexte} » inconnu`).toBe('function')
+    }
+    // Et chaque contexte connu sert au moins une fois (aucun prédicat mort).
+    const servis = new Set(cites.map(([, c]) => c))
+    for (const contexte of Object.keys(CONTEXTES_MASQUANTS)) {
+      expect(servis.has(contexte), `contexte « ${contexte} » jamais cité par la table`).toBe(true)
+    }
+  })
+
   it('un seul libellé « Pas de réponse » pour pas_de_reponse ET sans_reponse (même issue serveur)', () => {
     expect(PARCOURS.modeles.pas_de_reponse.label).toBe('Pas de réponse')
     expect(PARCOURS.modeles.sans_reponse.label).toBe('Pas de réponse')
@@ -213,36 +237,67 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
   it('premier contact (appel) : 6 pastilles dont « Pas joint » (5), « Plus tard… » (3) et « Autre réponse » (1)', () => {
     const items = sur('contact_appel', { canal: 'appel' })
     expect(etiquettes(items)).toEqual([
-      'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Refus', 'Autre réponse'])
+      'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Client refuse', 'Autre réponse'])
     expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label)).toEqual([
       'Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
     expect(items.find((i) => i.cle === 'plus_tard').membres.map((m) => m.reponse.label)).toEqual([
-      'À rappeler le…', 'Plus tard — pas maintenant', "En attente d'un accord (DPA / banque)"])
+      'À rappeler le…', 'Plus tard — pas maintenant', "En attente d'un accord (banque)"])
     expect(items.find((i) => i.genre === 'autre').membres.map((m) => m.reponse.label))
       .toEqual(['Ne plus me contacter'])
   })
 
-  it('après devis (appel) : 6 pastilles ; Numéro invalide et A bloqué n’y sont plus', () => {
+  it('après devis (appel) : 6 pastilles ; Numéro invalide dans « Pas joint », A bloqué absent', () => {
     const items = sur('suivi_appel', { canal: 'appel' })
     expect(etiquettes(items)).toEqual([
       'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Refuse la proposition', 'Autre réponse'])
     expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label))
-      .toEqual(['Pas de réponse', 'Répondeur', 'Occupé'])
+      .toEqual(['Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide'])
     expect(items.find((i) => i.genre === 'autre').membres).toHaveLength(5)
     const ids = reponsesDeLEtape(type('suivi_appel'), TOUCHE).map((r) => r.id)
-    expect(ids).not.toContain('numero_invalide')
+    expect(ids).toContain('numero_invalide')
     expect(ids).not.toContain('bloque')
+  })
+
+  it('17/11/2026 — « Numéro invalide » : dans « Pas joint » sur chaque appel, sous « Autre réponse » sur chaque message', () => {
+    for (const id of ['contact_appel', 'suivi_appel', 'reveil_appel', 'appel_apres_reponse',
+      'dernier_appel', 'rappel_convenu', 'debrief']) {
+      const items = sur(id, { canal: 'appel', visite_prevue_le: null })
+      const pasJoint = items.find((i) => i.cle === 'pas_joint')
+      expect(pasJoint?.membres.map((m) => m.reponse.id), id).toContain('numero_invalide')
+      expect(etiquettes(items), id).not.toContain('Numéro invalide')
+    }
+    for (const id of ['contact_message', 'suivi_message', 'reveil_message', 'generique']) {
+      const items = sur(id, { canal: 'whatsapp', visite_prevue_le: null })
+      const autre = items.find((i) => i.genre === 'autre')
+      const membre = autre.membres.find((m) => m.reponse.id === 'numero_invalide')
+      expect(membre?.reponse.label, id).toBe('Numéro invalide / pas sur WhatsApp')
+      expect(membre.reponse.junk, id).toBe('Numéro invalide')
+      expect(items.find((i) => i.cle === 'pas_joint'), id).toBeUndefined()
+    }
+    // Étape générique sur un APPEL : une seule « Numéro invalide », celle de « Pas joint ».
+    const appel = reponsesDeLEtape(type('generique'), { ...TOUCHE, canal: 'appel' })
+    expect(appel.filter((r) => r.id === 'numero_invalide').map((r) => r.label)).toEqual(['Numéro invalide'])
   })
 
   it('un groupe d’un seul membre n’est pas groupé : pastille ordinaire, libellé propre', () => {
     const items = sur('devis', { canal: 'appel' })
+    // 17/11/2026 — plus de « Ne plus me contacter » sur une tâche : plus d'« Autre réponse ».
     expect(etiquettes(items)).toEqual([
       'Devis envoyé — passer à la suite', 'Visite d’abord', 'Pas encore — à rappeler le…',
-      'Client refuse', 'Autre réponse'])
+      'Client refuse'])
     expect(items.some((i) => i.genre === 'groupe')).toBe(false)
-    // « Autre réponse » même avec UNE seule réponse derrière.
-    expect(items.find((i) => i.genre === 'autre').membres).toHaveLength(1)
+    // « Autre réponse » même avec UNE seule réponse derrière (premier contact).
+    expect(sur('contact_appel', { canal: 'appel' }).find((i) => i.genre === 'autre').membres)
+      .toHaveLength(1)
     expect(etiquettes(sur('planifier', { canal: 'appel' }))).toContain('Pas de réponse')
+  })
+
+  it('17/11/2026 — étape générique sur un appel : « Pas joint » commence par « Pas de réponse »', () => {
+    const items = sur('generique', { canal: 'appel' })
+    expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label)).toEqual([
+      'Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
+    // Sur un message, pas de groupe « Pas joint ».
+    expect(sur('generique', { canal: 'whatsapp' }).some((i) => i.cle === 'pas_joint')).toBe(false)
   })
 
   it('le premier membre d’un groupe est celui de la table (présélection de l’écran)', () => {
@@ -262,6 +317,36 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     }
   })
 
+  it('17/11/2026 — débrief sans devis envoyé : réponses de devis retirées, « Client refuse »', () => {
+    const debrief = type('debrief')
+    expect(debrief.question).toBe('La visite est passée — avez-vous eu le client ?')
+    const DE_DEVIS = ['question_prix', 'devis_modifie', 'decision_famille', 'decision_proprietaire']
+    const lire = (lead_devis_envoye) => reponsesDeLEtape(debrief, {
+      ...DEBRIEF, canal: 'appel', visite_prevue_le: null, lead_devis_envoye })
+    const sans = lire(false)
+    for (const id of DE_DEVIS) expect(sans.some((r) => r.id === id), id).toBe(false)
+    expect(sans.find((r) => r.id === 'refus').label).toBe('Client refuse')
+    expect(sans.find((r) => r.id === 'refus').outcome).toBe('refuse')
+    // Un devis envoyé — ou l'information absente (ancien serveur) : tout reste.
+    for (const valeur of [true, undefined]) {
+      const avec = lire(valeur)
+      for (const id of DE_DEVIS) expect(avec.some((r) => r.id === id), `${id}/${valeur}`).toBe(true)
+      expect(avec.find((r) => r.id === 'refus').label).toBe('Refuse la proposition')
+    }
+    expect(sans).toHaveLength(lire(true).length - DE_DEVIS.length)
+    // Le contrat de la touche porte la clé servie.
+    expect(DEBRIEF).toHaveProperty('lead_devis_envoye')
+  })
+
+  it('17/11/2026 — confirmation de la veille : « Pas de réponse » dit que la visite reste prévue', () => {
+    const confirmation = PARCOURS.etapes.find((t) => t.id === 'confirmation')
+    const r = reponsesDeLEtape(confirmation, { ...TOUCHE, canal: 'whatsapp' })
+      .find((x) => x.id === 'sans_reponse')
+    expect(r.label).toBe('Pas de réponse — la visite reste prévue')
+    expect(r.outcome).toBe('non_joint')
+    expect(r.suite).toEqual({ type: 'inchange' })
+  })
+
   it('raisons d’attente : résidentiel (ou sans segment) = financement seul ; pros = les six', () => {
     const raisons = (lead_segment) => reponsesDeLEtape(type('contact_appel'), { ...TOUCHE, canal: 'appel', lead_segment })
       .find((r) => r.id === 'attente_accord').raisons.map((r) => r.valeur)
@@ -276,11 +361,15 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     expect(raisonsDuSegment([{ valeur: 'x' }], 'agricole')).toEqual([{ valeur: 'x' }])
   })
 
-  it('« Pièce reçue » : masqué sur le suivi après devis et les tâches qui ne l’attendent pas', () => {
-    for (const id of ['suivi_appel', 'suivi_message', 'question_prix', 'devis_modifie', 'decider_suite']) {
+  it('« Pièce reçue » : masqué sur le suivi après devis, la visite, les réveils, le générique et les tâches qui ne l’attendent pas', () => {
+    // 17/11/2026 — aussi confirmation, débrief, planifier, réveils, générique, et
+    // « Relancer le client pour ses pièces » (sa réponse « Oui — pièce reçue » le fait déjà).
+    for (const id of ['suivi_appel', 'suivi_message', 'question_prix', 'devis_modifie', 'decider_suite',
+      'confirmation', 'debrief', 'planifier', 'reveil_appel', 'reveil_message', 'generique', 'pieces_recues']) {
       expect(gesteVisible('piece_recue', type(id)), id).toBe(false)
     }
-    for (const id of ['contact_appel', 'devis', 'planifier', 'pieces_recues', 'generique']) {
+    for (const id of ['contact_appel', 'contact_message', 'devis', 'appel_apres_reponse', 'message_creneau',
+      'dernier_appel', 'rappel_convenu']) {
       expect(gesteVisible('piece_recue', type(id)), id).toBe(true)
     }
     expect(gesteVisible('sauter', type('suivi_appel'))).toBe(true)
@@ -296,6 +385,16 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     }
     expect(proposerDarija(type('devis'), rep('visite'))).toBe(false)
     expect(proposerDarija(type('contact_appel'), null)).toBe(false)
+  })
+
+  it('17/11/2026 — « Ne plus me contacter » : absent des tâches sans client, case de confirmation partout ailleurs', () => {
+    const sansClient = ['devis', 'devis_modifie', 'decider_suite', 'question_prix']
+    for (const t of PARCOURS.etapes) {
+      const ids = t.reponses.map((r) => r.modele)
+      expect(ids.includes('ne_plus_contacter'), t.id).toBe(!sansClient.includes(t.id))
+    }
+    expect(reponseComplete({ modele: 'ne_plus_contacter' }).confirmation)
+      .toBe('Le client me l’a demandé lui-même')
   })
 
   it('« message non ouvert » n’est pas exigé pour un refus, « Ne plus me contacter », le téléphone, la pièce', () => {
@@ -369,9 +468,14 @@ describe('CIQ509 — libellés pros de la table du parcours', () => {
       const etape = { ...touche, canal: 'appel', lead_segment }
       expect(trouver(etape, 'decision_famille').label).toBe('Décision à plusieurs — en famille')
       expect(trouver(etape, 'decision_proprietaire').label).toBe('Décision à plusieurs — le propriétaire')
-      expect(trouver(etape, 'attente_accord').label).toBe("En attente d'un accord (DPA / banque)")
+      // 17/11/2026 — la banque seule pour un particulier (ou un lead sans segment).
+      expect(trouver(etape, 'attente_accord').label).toBe("En attente d'un accord (banque)")
       expect(trouver(etape, 'attente_accord').message).toBeUndefined()
     }
+    // L'agricole garde « (DPA / banque) » : la DPA et le dossier FDA comptent pour lui.
+    const agricole = trouver({ ...touche, canal: 'appel', lead_segment: 'agricole' }, 'attente_accord')
+    expect(agricole.label).toBe("En attente d'un accord (DPA / banque)")
+    expect(agricole.reponse).toBe('attente_accord')
   })
 
   it('« En attente d’un accord » pro : libellé neutre, accusé proposé, raisons de la table', () => {
