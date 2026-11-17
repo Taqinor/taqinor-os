@@ -149,6 +149,9 @@ class LeadIntakeActionsMixin:
     """
 
     def get_permissions(self):
+        if self.action == 'deleguer':
+            # 17/11/2026 — confier ses dossiers : ``crm_reassign`` (ADRG20).
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('crm_reassign')()]
         if self.action in ('duplicates', 'check_duplicates', 'doublons',
                            'roi_sources', 'sla_breach',
                            # MRY19 — lecture ouverte à tout rôle, comme
@@ -621,3 +624,46 @@ class LeadIntakeActionsMixin:
             'count': qs.count(),
             'results': self._serialiser_leads_en_lot(qs),
         })
+
+    @extend_schema(
+        request=sd.corps(
+            'CrmDeleguerRequest',
+            vers=serializers.IntegerField(),
+            de=serializers.IntegerField(required=False, allow_null=True),
+            prevenir_clients=serializers.BooleanField(required=False)),
+        parameters=[
+            sd.param_entier_ou_vide('vers', 'Collègue qui reçoit (aperçu GET).'),
+            sd.param_entier_ou_vide('de', "Propriétaire actuel ; défaut : l'appelant.")],
+        responses=sd.OBJ)
+    @action(detail=False, methods=['get', 'post'], url_path='deleguer',
+            permission_classes=[IsResponsableOrAdmin])
+    def deleguer(self, request):
+        """17/11/2026 — « Déléguer mes dossiers » : les leads encore à travailler
+        d'un responsable passent à un collègue (voir ``delegation.py``).
+
+        GET ``?vers=&de=`` = l'aperçu (dossiers, touches ouvertes, en retard) ;
+        POST ``{vers, de?, prevenir_clients?}`` = l'écriture. Société et acteur
+        viennent du serveur ; droit ``crm_reassign`` (get_permissions)."""
+        from .delegation import (
+            DelegationRefusee, apercu_delegation, deleguer_dossiers,
+            resoudre_delegation)
+        ecriture = request.method == 'POST'
+        corps = corps_objet(request) if ecriture else request.query_params
+        try:
+            de, vers = resoudre_delegation(request.user, corps)
+            nom = vers.first_name or vers.username
+            if not ecriture:
+                return Response({
+                    'de': de.pk, 'vers': vers.pk, 'vers_nom': nom,
+                    **apercu_delegation(request.user, de)})
+            prevenir = corps.get('prevenir_clients', True)
+            if not isinstance(prevenir, bool):
+                raise DelegationRefusee(
+                    'prevenir_clients', 'Vrai ou faux attendu.')
+            resultat = deleguer_dossiers(
+                request.user, de, vers, prevenir_clients=prevenir)
+        except DelegationRefusee as refus:
+            return Response({refus.champ: [refus.message],
+                             'detail': refus.message}, status=refus.statut)
+        return Response({'de': de.pk, 'vers': vers.pk, 'vers_nom': nom,
+                         **resultat})
