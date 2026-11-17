@@ -1,3 +1,36 @@
 /* Tâches — zone « presence » (TCH41) : Présence dans le reste de l'ERP : carte du cockpit, créer une tâche depuis ici (TCH102, TCH103).
    Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
    couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+
+/* TCH109 — Mon iPhone : cinq étapes repliables (port de ecrans-projets.css, maquette mon-iphone.html). */
+.tch .ep-intro { margin: 8px var(--tch-gouttiere) 0; font-size: 0.9375rem; line-height: 1.5; color: var(--tch-texte-doux); }
+.tch .ep-progres-etapes { display: flex; align-items: center; gap: 10px; margin: 14px var(--tch-gouttiere) 0; font-size: 0.875rem; font-weight: 600; }
+.tch .ep-progres-etapes .ep-barre-avance { flex: 1; height: 6px; }
+.tch .ep-progres-etapes .ep-barre-avance i { background: var(--tch-fait); }
+.tch .ep-etapes { list-style: none; margin: 12px 0 0; padding: 0; }
+.tch .ep-etape-i { display: grid; grid-template-columns: 44px 1fr auto; column-gap: 8px; align-items: center; width: 100%; min-height: 64px; text-align: left;
+  padding: 6px var(--tch-gouttiere) 6px calc(var(--tch-gouttiere) - 11px); }
+.tch .ep-etape-i * { text-align: left; }
+.tch .ep-etape-i .num { width: 26px; height: 26px; justify-self: center; border-radius: 999px; display: grid; place-items: center;
+  font-size: 0.8125rem; font-weight: 700; box-shadow: inset 0 0 0 1.75px var(--tch-texte-doux); }
+.tch .ep-etape-i.fait .num { background: var(--tch-fait); box-shadow: none; color: var(--tch-fait-texte); }
+.tch .ep-etape-i.fait .num svg { width: 14px; height: 14px; stroke-width: 3; }
+.tch .ep-etape-i.encours .num { background: var(--tch-accent); box-shadow: none; color: var(--tch-accent-texte); }
+.tch .ep-etape-i b { display: block; font-size: 1rem; font-weight: 600; line-height: 1.35; }
+.tch .ep-etape-i.fait b { font-weight: 500; }
+.tch .ep-etape-i .etat { display: block; font-size: var(--tch-meta); line-height: 1.35; color: var(--tch-texte-doux); }
+.tch .ep-etape-i.fait .etat { color: var(--tch-fait); font-weight: 500; }
+.tch .ep-etape-i .chevron { width: 44px; height: 44px; display: grid; place-items: center; color: var(--tch-texte-doux); margin-right: -12px; }
+.tch .ep-etape-ouverte { margin: 0 var(--tch-gouttiere) 6px; padding: 14px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.tch .ep-phrase { margin: 0 0 12px; font-size: 0.9375rem; line-height: 1.45; }
+.tch .ep-etape-ouverte .bouton { min-height: 44px; }
+.tch .bouton.ep-large { width: 100%; height: 48px; }
+.tch .ep-etape-ouverte .rassure { margin: 10px 0 0; font-size: 0.8125rem; line-height: 1.4; color: var(--tch-texte-doux); }
+.tch .ep-alamain { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin-top: 4px; font-size: 0.9375rem; font-weight: 500; color: var(--tch-accent); }
+.tch .ep-interrupteurs { margin: 4px var(--tch-gouttiere) 0; }
+.tch .ep-inter { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; box-shadow: inset 0 -1px 0 var(--tch-trait); font-size: 0.9375rem; }
+.tch .ep-inter:last-child { box-shadow: none; }
+.tch .ep-jeton { margin: 12px 0 0; }
+.tch .ep-jeton-valeur { display: block; margin: 0 0 10px; padding: 10px 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-surface); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.tch .ep-jeton-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tch .ep-etape-ouverte ol { margin: 0 0 10px; padding-left: 20px; font-size: 0.9375rem; line-height: 1.5; }

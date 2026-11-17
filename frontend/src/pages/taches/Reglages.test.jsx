@@ -10,7 +10,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import {
   ajouterAgendaExterne, exporterMesDonnees, lireReglages, listerAgendasExternes, modifierAgendaExterne,
-  modifierReglages, rafraichirAgendaExterne, retirerAgendaExterne, toutEffacer,
+  listerJetons, modifierReglages, rafraichirAgendaExterne, retirerAgendaExterne, toutEffacer,
 } from '../../api/tachesApi'
 import Reglages from './Reglages'
 
@@ -21,6 +21,7 @@ vi.mock('../../api/tachesApi', async (importOriginal) => ({
   exporterMesDonnees: vi.fn(),
   toutEffacer: vi.fn(),
   listerAgendasExternes: vi.fn(),
+  listerJetons: vi.fn(),
   ajouterAgendaExterne: vi.fn(),
   modifierAgendaExterne: vi.fn(),
   rafraichirAgendaExterne: vi.fn(),
@@ -52,6 +53,7 @@ function monter(url = '/taches/reglages') {
 beforeEach(() => {
   lireReglages.mockResolvedValue({ data: exemple('reglages') })
   listerAgendasExternes.mockResolvedValue({ data: exemple('agendas_externes') })
+  listerJetons.mockResolvedValue({ data: exemple('jetons_liste') })
 })
 afterEach(() => { vi.clearAllMocks(); reinitialiserGestes() })
 
@@ -73,7 +75,7 @@ describe('TCH108 — Réglages', () => {
     monter()
     const liste = await screen.findByRole('list')
     const lignes = within(liste).getAllByRole('listitem')
-    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Vie privée', 'Mes données', 'Avancé'])
+    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Mon iPhone', 'Vie privée', 'Mes données', 'Avancé'])
     expect(within(liste).getByText('Ce qui part au Copilote, qui peut lire')).toBeInTheDocument()
     expect(within(liste).getByText('Exporter, tout effacer')).toBeInTheDocument()
     await userEvent.click(within(liste).getByRole('button', { name: /Avancé/ }))
@@ -137,24 +139,27 @@ describe('TCH108 — Réglages', () => {
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/aujourdhui')
   })
 
-  it('Avancé : « Messages sans délai » se pose, les agendas sont listés avec leur état lisible', async () => {
+  it('Mon iPhone : les agendas (étape 2) sont listés avec leur état lisible ; Avancé : « Messages sans délai » se pose', async () => {
     modifierReglages.mockResolvedValue({ data: {} })
-    monter('/taches/reglages/avance')
+    monter('/taches/reglages/iphone')
+    await userEvent.click(await screen.findByRole('button', { name: /Voir tes tâches dans le Calendrier/ }))
     expect(await screen.findByText('Microsoft 365 · outlook.office365.com')).toBeInTheDocument()
     expect(screen.getByText('À jour à 09:05.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('switch', { name: 'Messages sans délai' }))
+    await userEvent.click(screen.getByRole('button', { name: /Avancé/ }))
+    await userEvent.click(await screen.findByRole('switch', { name: 'Messages sans délai' }))
     expect(modifierReglages).toHaveBeenCalledWith({ messages_sans_delai: true })
     expect(await screen.findByRole('switch', { name: 'Messages sans délai', checked: true })).toBeInTheDocument()
   })
 
-  it('Avancé : ajouter un agenda, refus d\'une adresse sous le champ, rafraîchir, masquer et retirer', async () => {
+  it('Mon iPhone : ajouter un agenda, refus d\'une adresse sous le champ, rafraîchir, masquer et retirer', async () => {
     const refus = { ...exemple('agenda_externe'), id: 3, libelle: 'Bureau', hote: 'agenda.example', dernier_etat: 'illisible' }
     ajouterAgendaExterne.mockRejectedValueOnce(erreur400({ url: ['3 agendas au plus.'] }))
     ajouterAgendaExterne.mockResolvedValueOnce({ data: refus })
     rafraichirAgendaExterne.mockResolvedValue({ data: { ...exemple('agenda_externe'), dernier_etat: 'injoignable' } })
     modifierAgendaExterne.mockResolvedValue({ data: { ...exemple('agenda_externe'), actif: false } })
     retirerAgendaExterne.mockResolvedValue({ data: null })
-    monter('/taches/reglages/avance')
+    monter('/taches/reglages/iphone')
+    await userEvent.click(await screen.findByRole('button', { name: /Voir tes tâches dans le Calendrier/ }))
     await screen.findByText('Microsoft 365 · outlook.office365.com')
 
     const adresse = screen.getByRole('textbox', { name: "Adresse de l'agenda (https://… ou webcal://…)" })
