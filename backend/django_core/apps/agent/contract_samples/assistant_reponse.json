@@ -39,7 +39,18 @@
     "wa_devis": "apps/crm/contract_samples/whatsapp_devis_apercu.json + `lead_id`, `devis_ids` et `langue` (la langue réellement rendue ; l'écran s'en sert pour appeler le commit `whatsapp-devis` avec le même texte)",
     "document": "apps/agent/contract_samples/assistant_document.json",
     "visite": "apps/crm/contract_samples/lead_visite_planifier.json",
-    "diagnostic": "apps/reporting/contract_samples/assistant_diagnostic.json"
+    "diagnostic": "apps/reporting/contract_samples/assistant_diagnostic.json",
+    "ma_journee": "apps/taches/contract_samples/aujourdhui.json",
+    "plan_propose": "apps/taches/contract_samples/journee_proposition.json",
+    "liste_taches": "apps/taches/contract_samples/recherche.json",
+    "tache": "apps/taches/contract_samples/tache_ecrite.json (écriture) ; apps/taches/contract_samples/projet_ecrit.json (projet créé) ; apps/taches/contract_samples/tache_changement.json (écho : rien n'est écrit)",
+    "capture_apercu": "apps/taches/contract_samples/saisie_apercu.json",
+    "rythme": "apps/taches/contract_samples/rythme.json",
+    "plan_projet": "apps/taches/contract_samples/planification_apercu.json",
+    "projet": "apps/taches/contract_samples/projet_vue.json",
+    "revue_semaine": "apps/taches/contract_samples/revue_projets.json",
+    "priorites": "apps/taches/contract_samples/priorites.json",
+    "point": "apps/taches/contract_samples/point.json"
   },
   "exemple_corps": {
     "question": "Prépare ma prochaine relance",

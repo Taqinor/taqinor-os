@@ -44,6 +44,19 @@ CARTES = frozenset({
     'document',       # lien vers un PDF client (/proposal)
     'visite',         # visite planifiée : {visite, prochaine_touche}
     'diagnostic',     # état technique (admin) : santé, problèmes récents
+    # Tâches (TCH112, `apps/taches/agent_actions.py`) : rendues par
+    # `frontend/src/features/taches/cartes/CartesTaches.jsx`.
+    'ma_journee',     # la journée : GET taches/aujourdhui/
+    'plan_propose',   # le plan proposé : GET taches/journee/proposition/
+    'liste_taches',   # recherche : GET taches/recherche/
+    'tache',          # une tâche écrite (annulation) ou un écho de changement
+    'capture_apercu',  # rangement proposé d'une liste : POST taches/saisie-rapide/ (aperçu)
+    'rythme',         # rythme, objectif, préférences : GET/POST taches/rythme/
+    'plan_projet',    # étapes proposées d'un projet : planification/apercu/
+    'projet',         # vue d'un projet : GET taches/projets/{id}/vue/
+    'revue_semaine',  # revue des projets : GET taches/revue/projets/
+    'priorites',      # « Aide-moi à prioriser » : GET taches/journee/priorites/
+    'point',          # « Où j'en suis ? » : GET taches/journee/point/
 })
 
 # Lot de déploiement d'une action (interrupteur ``ASSISTANT_COPILOTE`` lu par
