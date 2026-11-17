@@ -324,3 +324,23 @@ for d in [date(2026, 11, 18), date(2026, 11, 19), date(2026, 11, 20), date(2026,
 print("in 2 weeks :", J + timedelta(14), "; dans 3 jours :", J + timedelta(3))
 print("lundi vu un lundi 23/11 :", date(2026, 11, 23) + timedelta(7))
 print("ordinal 17/11/2026 % 3 :", J.toordinal() % 3)
+
+print("=== révision 3 : première livraison sans plafond de micro-tâches, garde de taille ni mémoire d'échec (m5) ===")
+
+
+def compte_v1(taches, activites=0):
+    return sum(1 for t in taches if not (t.get("sous_tache") or t.get("routine"))) + activites
+
+
+def evaluer_v1(e, jour):
+    e2 = dict(e, ref=None, echec=None)
+    return evaluer_bloc(e2, jour)
+
+
+chk("v1 compte 4x30+3x5", compte_v1([dict(estimation=30)] * 4 + [dict(estimation=5)] * 3), 7)
+chk("v1 bloc tailles 20 ref 40", evaluer_v1(dict(N=5, tenus=[True] * 7 + [False] * 3, ref=40, ref_n=40, tailles=[20] * 40), 30), "monter")
+e = clore_bloc(dict(N=7, tenus=[True] * 2 + [False] * 8), 60, "baisser", "oui")
+chk("v1 baisse 7->6 j60 (échec non lu)", e["N"], 6)
+chk("v1 montee vers 7 j90", evaluer_v1(dict(N=6, tenus=[True] * 7 + [False] * 3, echec=(7, 60, 1)), 90), "monter")
+chk("v1 montee vers 7 j101", evaluer_v1(dict(N=6, tenus=[True] * 7 + [False] * 3, echec=(7, 60, 1)), 101), "monter")
+print(sum(RES), "/", len(RES), "OK au total")

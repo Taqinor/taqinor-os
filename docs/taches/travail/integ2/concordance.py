@@ -41,6 +41,19 @@ HORS_REFERENCE = {
         'i', 'places', 'pmax', 'ouverts_du_jour', 'travailles', 'taille', 'cible'},
     'exemples de jetons de saisie (§1.2-§1.5), motifs et touches': {'demainx', 'p12', 'every', 'deux_jour', '_',
         'aaaammjj', 'Maj', 'TACHES_'},
+    'types et fonctions DÉFINIS dans regles.md §0.1 (demandés par « À répercuter »)': {'Analyse', 'Fenetre',
+        'LignePure', 'PlanPropose', 'RendezVousPur', 'ajouter_mois', 'fin_de_mois', 'prochain_jour_semaine',
+        'prochaine_date_sans_annee', 'n_ieme_jour_du_mois', 'semaine_iso', 'annee', 'jj', 'mm', 'jour_semaine',
+        'gardees_ouvertes', 'rdv'},
+    'propriétés ICS (RFC 5545) lues par moteur/ics.py': {'BEGIN', 'VCALENDAR', 'STATUS', 'CANCELLED', 'VALUE', 'DATE',
+        'UID', 'Z'},
+    'bibliothèque standard Python': {'dataclasses', 'replace', 'frozen', 'datetime', 'time', 'zoneinfo'},
+    'conversations de référence (textes.md §5.8) et tests existants de fastapi_ia': {'CLES_COACH',
+        '_ECRITURES_TACHES', 'cases_commerciaux', 'eval', 'creer_auto', 'report_gap', 'coa_ca_suffit',
+        'coa_compris_de_moi', 'coa_confidentielle', 'coa_decoupe_projet', 'coa_dictee_fournisseur',
+        'coa_hors_sujet_devis', 'coa_liste_collee', 'coa_modifier', 'coa_ou_j_en_suis', 'coa_planifie_journee',
+        'coa_plus_par_jour', 'coa_plus_sept', 'coa_prioriser', 'coa_tout_demain', 'groq_plus', 'inj_liste_consigne',
+        'inj_modifier_tiers'},
     'caractères et pseudo-code de la normalisation et des formules': {'æ', 'œ', 'ʼ', 'médiane'},
     'existants du dépôt cités (signaux, ICS, gardes)': {'avenant_de', 'crm_lead_id', 'installation', 'lead_id',
         'due_date', 'Canari', 'Cache', 'Control', 'DESCRIPTION', 'SUMMARY', 'calname', 'start_dt', 'end_dt',
@@ -75,8 +88,9 @@ for nom in ('regles.md', 'textes.md'):
 # Noms RETIRÉS par la révision 2 de la référence : ne doivent apparaître entre accents graves que dans une phrase
 # qui dit qu'ils sont retirés (sections « Ce que je n'ai pas repris », « Révision 2 », « Manques »).
 RETIRES = ['cartes_coach', 'projet_commun', 'Preference.objectif_dit', 'mode:"complet"', 'rappel_le', 'heure_prevue',
-           'saisie-rapide/apercu', 'a-venir/', 'ouvrir=', 'vue=supprimees', 'accepter_palier', 'Annulation',
-           'Projet.est_confidentiel', '`demain`', 'decaler/annuler', 'TACHE_RAPPEL', 'taches_gerer']
+           'saisie-rapide/apercu', 'a-venir/', 'vue=supprimees', 'accepter_palier', 'Annulation',
+           'Projet.est_confidentiel', '`demain`', 'decaler/annuler', 'TACHE_RAPPEL', 'taches_gerer',
+           'jour_passe`', 'Oui, {N1}', 'Passer à {', '`cartes_coach`']
 retires = []
 for nom in ('regles.md', 'textes.md'):
     corps = (ref / nom).read_text(encoding='utf-8')

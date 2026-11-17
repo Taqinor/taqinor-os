@@ -139,7 +139,7 @@
 
 /* Panneau de droite (bureau) : la rubrique ouverte */
 @media (min-width: 768px) {
-  .page.trois .es-panneau { padding: 28px 32px 40px 28px; background: var(--tch-surface); box-shadow: inset 1px 0 0 var(--tch-trait); }
+  .page.trois .es-panneau { padding: 28px 32px 40px 28px; }   /* fond : panneau droit partagé (taches.css) */
   .es-panneau .es-reglages, .es-panneau .es-aide, .es-panneau .es-note, .es-panneau .es-sous { margin-inline: 0; }
   .es-panneau .es-verite { margin-inline: 0; }
 }
@@ -294,8 +294,6 @@
 .saisie-place.es-saisie-erreur { box-shadow: inset 0 0 0 1.5px var(--tch-alerte), var(--shadow-sm); }
 /* Réserve sous la liste quand un toast sans bouton flottant couvre le bas (écrans sans « + ») */
 @media (max-width: 767px) { .page.defile.es-avec-toast { padding-bottom: 168px; } }
-/* Bouton indisponible : neutre (l'or atténué vire au brun en sombre) */
-.bouton[aria-disabled="true"] { background: var(--tch-panneau); color: var(--tch-texte-doux); box-shadow: none; }
 
 /* ── Première utilisation : Mon rythme le premier jour ─────────────────── */
 .es-attente-rythme { display: flex; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 14px 14px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }

@@ -432,11 +432,8 @@
 .ag-jours.cibles .ag-pj-duo .ag-pj { background: var(--ag-cible); }
 
 /* ══ Tour 3 (critique tour 2) ════════════════════════════════════════════ */
-/* N1 : le trait « maintenant » passe SOUS les blocs ; le point et l'heure restent dans la gouttière */
-.ag .maintenant { z-index: 0; }
-.ag .bloc { z-index: 1; }
+/* N1 : trait « maintenant » sous les blocs, bloc fait opaque : partagés (taches.css, unification) */
 .ag .bloc.choisi, .ag .bloc.souleve { z-index: 3; }
-.ag .bloc.fait-bloc { background: var(--tch-surface); }   /* sans teinte, mais opaque : le trait ne le barre pas */
 
 /* N3 : en sombre, le fond neutre de terre/ambre/olive se mélange en sRGB (en OKLCH il vire au mauve) */
 .dark .ag [data-p="terre"], .dark .ag [data-p="ambre"], .dark .ag [data-p="olive"] {

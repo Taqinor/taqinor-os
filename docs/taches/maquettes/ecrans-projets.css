@@ -62,7 +62,7 @@
 @media (min-width: 768px) {
   .ep-projet-col { position: relative; }
   .page.trois.deux .col-liste.ep-vue-large > * { max-width: none; }
-  .ep-panneau-projet .col-agenda { padding: 20px 8px 24px; background: var(--tch-surface); box-shadow: inset 1px 0 0 var(--tch-trait); }
+  .ep-panneau-projet .col-agenda { padding: 20px 8px 24px; }   /* fond : panneau droit partagé (taches.css) */
   .ep-panneau-projet .col-liste .ep-nouveau { display: none; }
   .ep-panneau-projet .ligne.ouvert-bureau { background: var(--tch-selection); }
 }
@@ -488,7 +488,6 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 /* ── Tour 5 (second critique) ───────────────────────────────────────────── */
 /* M1 : « Nouveau projet » azur avec dossier-plus dans la barre latérale (comme Aujourd'hui),
    et la rangée de l'iPhone gardée en fin de liste dans la colonne du milieu */
-.barre-laterale .nav-item.nouveau, .barre-laterale .nav-item.nouveau svg { color: var(--tch-accent); }
 @media (min-width: 768px) {
   .ep-panneau-projet .col-liste .ep-nouveau { display: flex; width: calc(100% - 16px); margin: 6px 8px 0; }
 }
@@ -576,6 +575,3 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 /* Tuile : « Visite technique à Témara · Toute la journée » tient entier */
 .ep-tuile.grande .ep-t-liste li { font-size: 0.875rem; column-gap: 8px; }
 .ep-tuile.grande .ep-t-liste li .h { font-size: 0.75rem; }
-/* Alias transitoire : les écrans d'un autre lot peuvent encore porter .ep-plein (remplacé par .segments.plein) */
-.segments.ep-plein { display: flex; width: 100%; gap: 5px; }
-.segments.ep-plein i { flex: 1; width: auto; height: 10px; }

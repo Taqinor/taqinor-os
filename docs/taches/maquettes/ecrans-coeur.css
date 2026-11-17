@@ -244,7 +244,6 @@
 .entete-barre.avec-titre { box-shadow: inset 0 -1px 0 var(--tch-trait); margin-bottom: 0; }
 
 /* Barre latérale : « Nouveau projet » en azur */
-.nav-item.nouveau, .nav-item.nouveau svg { color: var(--tch-accent); }
 /* Vide : sous-texte sur 2 lignes au plus */
 .vide-plein .vide-aide { max-width: 30ch; }
 /* Menu ⋯ : bande franche entre les deux groupes */
