@@ -186,6 +186,61 @@ class MarginGuardTests(unittest.TestCase):
             if original is not None:
                 parent._run = original
 
+    def test_refus_de_portee_nomme_sa_raison(self):
+        """ALEC51 — refus de DROIT (registre livre) : le motif part au modele
+        (Commercial « Portee restreinte… utilisez l'ecran », Technicien : nom du
+        module), sans execution ; ecriture / SQL illisible : refus generique
+        inchange ; Directeur : execution, filtree par societe."""
+        import importlib.util
+        try:
+            from langchain_community.utilities import SQLDatabase
+            from sqlalchemy import create_engine, text
+        except Exception as exc:  # pragma: no cover - deps IA absentes
+            self.skipTest(f"langchain indisponible : {exc}")
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        engine = create_engine("sqlite://")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE ventes_lignefacture "
+                              "(id INTEGER, company_id INTEGER, designation TEXT)"))
+        db = SQLDatabase(engine, include_tables=["ventes_lignefacture"])
+        sql = "SELECT designation FROM ventes_lignefacture"
+        executees = []
+
+        def fake_parent_run(self, query, run_manager=None):
+            executees.append(query)
+            return "RAN"
+
+        def outil(nom):
+            return svc._make_secure_query_tool(
+                db, 7, allow_purchase_price=False, permissions=list(roles[nom]))
+
+        parent = svc._make_secure_query_tool(db, 7).__class__.__mro__[1]
+        original = parent._run
+        parent._run = fake_parent_run
+        try:
+            out = outil("Commercial")._run(sql)
+            self.assertIn("Portee restreinte", out)
+            self.assertIn("utilisez l'ecran", out)
+            self.assertNotEqual(out, svc._UNSAFE_QUERY_REPLY)
+            self.assertIn("module ventes", outil("Technicien")._run(sql))
+            self.assertEqual(executees, [])
+            for illisible in ("DELETE FROM ventes_lignefacture", "SELEC designation FROM"):
+                self.assertEqual(outil("Commercial")._run(illisible),
+                                 svc._UNSAFE_QUERY_REPLY, illisible)
+            self.assertEqual(executees, [])
+            self.assertIn("RAN", outil("Directeur")._run(sql))
+            self.assertEqual(len(executees), 1)
+            self.assertIn("company_id = 7", executees[0])
+        finally:
+            parent._run = original
+
 
 class _FakeDB:
     """Stub minimal d'objet db (jamais interroge : le parent _run est stubbe)."""
