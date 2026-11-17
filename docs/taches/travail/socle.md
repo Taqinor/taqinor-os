@@ -123,3 +123,32 @@ y ajoute déclare « Code net : … lignes nettes attendues ≤ N ») ; `apps/ro
 mobile) ; `frontend/src/sw.js`, `vite.config.js`, `Layout.jsx`, `lib/apps/appSkus.js` ; `docs/ownership.yml` ;
 `docs/openapi-schema.yml` (régénéré) ; `docs/CODEMAP.md`. Une autre session tient des réservations sur `agent`,
 `crm`, `erp_agentique`, `scripts`, `ventes` : ces éditions attendent leur libération ou se coordonnent.
+
+## 8. Corrections après le critique de complétude (`critique-1-socle.md`) — font foi sur les sections précédentes
+
+- **Droits (remplace la ligne « Droits » du §4).** UN SEUL code : `taches_voir`. Il ouvre le module et autorise
+  l'utilisateur à lire ET écrire SES PROPRES données (`read_permission = write_permission = 'taches_voir'`). Jamais de
+  code `taches_gerer` : tout code qui ne finit pas par `_voir` fait d'un rôle un « responsable »
+  (`authentication/models.py:492-515`) et lui ouvrirait toutes les gardes `IsResponsableOrAdmin` de l'ERP. Accordé aux
+  rôles système INTERNES seulement ; jamais aux rôles portail ; pas aux rôles à liste blanche d'apps (Commercial
+  terrain) dans cette construction.
+- **Multi-sociétés.** Une tâche appartient à (société active, utilisateur), comme toute donnée de l'ERP : changer de
+  société change d'espace de tâches. Dit dans l'écran Réglages.
+- **Cycle de vie du compte.** Les données de `taches` suivent le compte (CASCADE) et ne doivent ni rendre un compte
+  non supprimable ni afficher « N tâches » à l'administrateur : `taches` est exclu du décompte des traces
+  (`authentication/views.py:1394-1425`, tâche à part chez son propriétaire). Aucune sollicitation pour un compte
+  inactif. L'utilisateur peut exporter ses données (JSON) et tout effacer depuis Réglages.
+- **Purge.** Une tâche ou un projet supprimé est purgé définitivement après 30 jours (tâche planifiée propre à
+  `taches`) — rien d'autre ne le fait (`trash/services.py:143-148` ne voit pas ces lignes).
+- **Coach.** Les actions du coach sont dans le lot `copilote` : visibles des administrateurs tant que
+  `ASSISTANT_COPILOTE=admins` (le fondateur l'est). Le masquage du journal couvre AUSSI un tour sans outil dès que
+  l'écran de contexte est un écran Tâches. Jeu d'outils réduit sous Groq (8 000 jetons/minute) : au L3 n°5.
+- **Langue de saisie.** L'analyseur de saisie rapide comprend le FRANÇAIS ET L'ANGLAIS (le fondateur écrit dans les
+  deux). L'interface reste en français, via le mécanisme de traduction existant de l'ERP.
+- **Registre des traitements (loi 09-08).** Le profil de rythme est un traitement de données personnelles : une
+  ligne au registre (`core/models.py:2275`) + un interrupteur « comprendre mon rythme » par utilisateur (allumé par
+  défaut, coupable : plus aucun profil calculé ni conservé).
+- **Performance.** `GET taches/aujourdhui/` reçoit un plafond de requêtes dans `docs/query-budgets.yml`.
+- **Fuseau.** Jours calculés dans le fuseau de la société (`Africa/Casablanca`) ; pas de fuseau par utilisateur dans
+  cette construction (limite connue en voyage, dite dans Réglages). Liens ERP : seules les cibles déclarées par leur
+  app sont liables (`records/serializers.py:56-57`).
