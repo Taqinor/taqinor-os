@@ -160,7 +160,7 @@ for pk in ${J([d.a, d.b, d.d, d.e, d.c])}:
         pass
 sortie(1)`).catch(() => undefined)
   }
-})
+}, { ecart: { base: 'FAIL', raison: "clause « sonde rejouée ⇒ repro False » non jouable : docs/audits/sondes/AMSG/C-AMSG-003.py ne charge plus (ImportError `activity` dans leads_doublons.py, import ajouté par 3c5d382fc) — défaut de la sonde, hors Files: ; l'étape rejoue le scénario de la sonde sur le vrai code (vraie route STOP) et affirme la base et l'écran" } })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // AMSG30 — commande remettre_relances_non_parties (dry-run par défaut, puis --appliquer --factures)
@@ -654,13 +654,19 @@ sortie(1)`).catch(() => undefined)
 
 etape('PF8.5-AMSG96', ['AMSG96', 'AMSG56'], async ({ page, testInfo }) => {
   const m = marque().toUpperCase()
+  const s009 = sonde('C-AMSG-009')
+  expect([s009.repro, s009.observe.emplacements_qui_disent_envoye], 'sonde C-AMSG-009 : repro False, aucun emplacement ne dit « envoyé »').toEqual([false, []])
   const d = await montage96(m, true)
   try {
     // « Expédier » par la VRAIE route sur chaque livraison, sans clé d'envoi.
     for (const k of ['liv_a', 'liv_b', 'liv_c', 'liv_d']) {
       const rep = await lireJson(await page.request.post(`${API}/installations/livraisons/${d[k]}/expedier/`, { ...T, data: {} }), `expédier ${k}`)
       expect(rep.statut, `${k} en transit`).toBe('en_transit')
+      if ('email_sent' in rep) expect(rep.email_sent, `${k} : email_sent faux`).toBe(false)
     }
+    const transit = await py(`from apps.installations.models import Livraison
+sortie([[bool(Livraison.objects.get(pk=pk).notifie_transit_le), Livraison.objects.get(pk=pk).statut] for pk in ${J([d.liv_a, d.liv_b, d.liv_c, d.liv_d])}])`)
+    expect(transit, 'relu : notifie_transit_le posé (brouillon remis), en transit').toEqual([[true, 'en_transit'], [true, 'en_transit'], [true, 'en_transit'], [true, 'en_transit']])
     // Rappel J-1 sur le chantier A : balayage rejoué dans le shell (le beat ne tourne pas sur le runner).
     const sweep = await py(`import datetime as dt
 from django.contrib.contenttypes.models import ContentType
@@ -703,9 +709,9 @@ sortie(out)`)
   } finally {
     await nettoyer96(d)
   }
-}, { ecart: { base: 'FAIL', raison: "clause « avec le lien wa.me » : /activites n'affiche pas le lien — MesActivitesPage.jsx targetLink sans entrée installations.livraison/intervention, records/serializers.py get_target_phone rend None hors crm, la note portant le brouillon wa.me n'est jamais montrée ; défaut antérieur hors Files: des tâches (METHODE règle b), non corrigé" } })
+}, { ecart: { base: 'FAIL', raison: "aucun écran de livraison (décision produit, hors Files) ; tâche montrée dans /activites ; lien wa.me non affiché (défaut antérieur, hors Files : MesActivitesPage.jsx targetLink sans entrée livraison/intervention, get_target_phone None hors crm, note wa.me jamais montrée)" } })
 
-etape('PF8.5-AMSG96-ecran', ['AMSG96'], async ({ page, context, testInfo }) => {
+etape('PF8.5-AMSG96-ecran', ['AMSG96', 'AMSG56'], async ({ page, context, testInfo }) => {
   const m = marque().toUpperCase()
   const d = await montage96(m, false)
   try {
@@ -722,4 +728,4 @@ etape('PF8.5-AMSG96-ecran', ['AMSG96'], async ({ page, context, testInfo }) => {
   } finally {
     await nettoyer96(d)
   }
-}, { ecart: { base: 'FAIL', raison: "clause « avec le lien wa.me » : /activites n'affiche pas le lien — MesActivitesPage.jsx targetLink sans entrée installations.livraison/intervention, records/serializers.py get_target_phone rend None hors crm, la note portant le brouillon wa.me n'est jamais montrée ; défaut antérieur hors Files: des tâches (METHODE règle b), non corrigé" } })
+}, { ecart: { base: 'FAIL', raison: "aucun écran de livraison (décision produit, hors Files) ; tâche montrée dans /activites ; lien wa.me non affiché (défaut antérieur, hors Files : MesActivitesPage.jsx targetLink sans entrée livraison/intervention, get_target_phone None hors crm, note wa.me jamais montrée)" } })
