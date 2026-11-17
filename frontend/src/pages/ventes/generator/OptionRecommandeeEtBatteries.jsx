@@ -2,6 +2,8 @@
 // « Batteries au départ » — deux cellules voisines de la carte « Paramètres »,
 // sorties de `DevisGenerator.jsx` (fichier de plus de 2 000 lignes qui ne doit
 // pas grossir). Le bloc « Option Recommandée » est rendu à l'identique.
+// `ecran` = { editDevis, dirty, recharger, optionAvec } (le devis ouvert, l'écart
+// avec la référence, le chargeur `?edit=`, l'aperçu serveur `option_avec`).
 import {
   Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
@@ -10,7 +12,7 @@ import ControleBatteriesDepart from './ControleBatteriesDepart'
 
 export default function OptionRecommandeeEtBatteries({
   recommendedChoice, setRecommendedChoice, imposees, overridesBusy, regenererOverride,
-  marcheCi, lines, produits, onQuantiteChange, banque, apercuBatterie,
+  marcheCi, lines, produits, ecran,
 }) {
   return (
     <>
@@ -30,13 +32,9 @@ export default function OptionRecommandeeEtBatteries({
                               onRegenerer={regenererOverride} />
         )}
       </div>
-      {/* Fondateur 17/11/2026 — proposer moins de batteries au départ : les
-          panneaux et l'onduleur restent dimensionnés pour la banque recommandée. */}
-      {marcheCi && (
-        <ControleBatteriesDepart
-          lines={lines} produits={produits} onQuantiteChange={onQuantiteChange}
-          banque={banque} apercuBatterie={apercuBatterie} />
-      )}
+      {/* Fondateur 17/11/2026 — choisir 1…maximum calculé : le serveur redimensionne
+          les panneaux, l'onduleur reste dimensionné pour le maximum. */}
+      {marcheCi && <ControleBatteriesDepart lines={lines} produits={produits} ecran={ecran} />}
     </>
   )
 }

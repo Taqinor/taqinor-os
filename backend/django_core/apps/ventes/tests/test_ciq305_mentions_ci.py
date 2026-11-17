@@ -213,6 +213,68 @@ class TestTableMentions(SimpleTestCase):
         self.assertEqual(_badge_non_rentable({"com_synthese": {"option_batterie": {
             "valeur_chiffree": valeur_option_avec(data)}}}, "com"), "")
 
+    def test_d_hyb_5_onduleur_garde_pour_l_extension_fr_en_ar(self):
+        """D-HYB-5 (fondateur 17/11/2026) — 1 batterie chiffrée sur 3
+        calculées, hybride 20 kW gardé, un 15 kW suffirait : UNE phrase sous
+        l'option « avec batterie » (bloc PDF, tableau deux options, synthèse
+        web), dans les trois langues, faits servis seulement ; rien quand
+        l'étude sert ``onduleur_extension`` null ou ne la sert pas."""
+        from apps.ventes.quote_engine.ci.blocs import bloc_option_avec
+        from apps.ventes.quote_engine.ci.mentions import extension_option_avec
+        from apps.ventes.quote_engine.commercial.equip import tableau_deux_options
+        data = self._deux_options(31000)
+        avec = data["etude"]["etude_ci"]["option_avec"]
+        avec["batterie"]["quantite"] = 1
+        data["option_batterie"] = {"totaux": {"ht_net": 394250, "tva": 78850,
+                                              "ttc": 473100}, "lignes": []}
+        avant = {lg: bloc_option_avec(dict(data, langue_sortie=lg), lambda cle, fr: fr,
+                                      lambda x: f"{x:,.0f}", ("#000", "#111", "#222", "#333"))
+                 for lg in ("fr", "en", "ar")}
+        self.assertIsNone(extension_option_avec(data))
+        avec["onduleur_extension"] = None
+        self.assertIsNone(extension_option_avec(data))
+        self.assertIsNone(synthese_ci(data)["option_batterie"]["extension"])
+        self.assertEqual(bloc_option_avec(dict(data, langue_sortie="fr"), lambda cle, fr: fr,
+                                          lambda x: f"{x:,.0f}", ("#000", "#111", "#222", "#333")),
+                         avant["fr"])
+        avec["onduleur_extension"] = {
+            "retenu": {"produit": 12, "nom": "Deye 20", "kw_ac": 20.0, "quantite": 1},
+            "suffisant": {"produit": 11, "nom": "Deye 15", "kw_ac": 15.0, "quantite": 1},
+            "batteries_max": 3}
+        ext = extension_option_avec(data)
+        self.assertEqual(ext["textes"]["fr"], (
+            "Onduleur hybride 20 kW retenu pour l'extension : l'installation peut recevoir "
+            "jusqu'à 3 batteries (2 à ajouter plus tard). Un onduleur de 15 kW suffirait "
+            "pour l'installation de départ."))
+        self.assertEqual(ext["textes"]["en"], (
+            "20 kW hybrid inverter selected for expansion: the installation can take up to "
+            "3 batteries (2 to add later). A 15 kW inverter would be enough for the initial "
+            "installation."))
+        for chiffre in ("20", "15", "3", "2"):
+            self.assertIn(chiffre, ext["textes"]["ar"])
+        self.assertEqual({k: ext[k] for k in ("retenu_kw", "suffisant_kw", "batteries_max",
+                                              "batteries_a_ajouter")},
+                         {"retenu_kw": 20.0, "suffisant_kw": 15.0, "batteries_max": 3,
+                          "batteries_a_ajouter": 2})
+        self.assertEqual(synthese_ci(data)["option_batterie"]["extension"], ext)
+        for lg in ("fr", "en", "ar"):
+            html = bloc_option_avec(dict(data, langue_sortie=lg), lambda cle, fr: fr,
+                                    lambda x: f"{x:,.0f}", ("#000", "#111", "#222", "#333"))
+            self.assertIn(ext["textes"][lg], html)
+            self.assertNotEqual(html, avant[lg])
+            duo = tableau_deux_options(dict(data, langue_sortie=lg), lambda cle, fr: fr,
+                                       lambda x: f"{x:,.0f}", ("#000",) * 5,
+                                       [{"designation": "Panneau", "quantite": 10}])
+            self.assertIn(ext["textes"][lg], "".join(duo))   # fragments de la page 2
+        # Plusieurs appareils : le pluriel ; banque déjà complète : rien.
+        avec["onduleur_extension"]["retenu"]["quantite"] = 2
+        avec["onduleur_extension"]["suffisant"]["quantite"] = 2
+        self.assertTrue(extension_option_avec(data)["textes"]["fr"].startswith(
+            "2 onduleurs hybrides de 20 kW retenus pour l'extension"))
+        self.assertIn("2 onduleurs de 15 kW suffiraient", extension_option_avec(data)["textes"]["fr"])
+        avec["batterie"]["quantite"] = 3
+        self.assertIsNone(extension_option_avec(data))
+
     def test_tarif_utilise_et_sa_source(self):
         tarif = {"origine": "grille_officielle", "contrat": "bt_patente",
                  "mention": "Grille ONEE, repli",

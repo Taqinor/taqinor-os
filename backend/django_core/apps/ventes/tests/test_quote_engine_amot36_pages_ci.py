@@ -125,6 +125,31 @@ class PagesCiTests(SimpleTestCase):
                 self.assertIn("Batterie Dyness 10 kWh", texte)
                 self.assertIn("Retour sur investissement", texte)
 
+    def test_d_hyb_5_extension_onduleur_sans_page_de_plus(self):
+        """D-HYB-5 (fondateur 17/11/2026) — la phrase de l'onduleur gardé pour
+        l'extension tient dans le bloc de l'option « avec » : aucune page de
+        plus (commerce 3, usine 4), aucun bloc sous le pied."""
+        import fitz
+        for nom, sample, renderer, pages in GABARITS:
+            with self.subTest(gabarit=nom):
+                data = _avec_option_batterie(copy.deepcopy(sample.build()))
+                avec = data["etude"]["etude_ci"]["option_avec"]
+                avec["batterie"] = {"quantite": 1}
+                avec["onduleur_extension"] = {
+                    "retenu": {"produit": 2, "nom": "Deye 20", "kw_ac": 20.0, "quantite": 2},
+                    "suffisant": {"produit": 1, "nom": "Deye 15", "kw_ac": 15.0, "quantite": 2},
+                    "batteries_max": 10}
+                data["cgv_ci"] = _puces(18)
+                doc = fitz.open(stream=renderer.render_pdf_bytes(data), filetype="pdf")
+                self.assertEqual(len(doc), pages)
+                texte = " ".join(" ".join(page.get_text().split()) for page in doc)
+                self.assertIn("jusqu'à 10 batteries (9 à ajouter plus tard)", texte)
+                for page in doc:
+                    pied = page.rect.height * (1 - equip.PIED_MM / 297.0)
+                    for bloc in page.get_text("blocks"):
+                        self.assertFalse(bloc[1] < pied - 1 and bloc[3] > pied + 1,
+                                         (nom, bloc[4][:60]))
+
     def test_quarante_puces_renvoi_imprime(self):
         for nom, sample, renderer, _pages in GABARITS:
             with self.subTest(gabarit=nom):

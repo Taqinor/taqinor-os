@@ -130,6 +130,7 @@ FEUILLES = (
     ('mise_a_la_terre_necessaire', 'contraintes.mise_a_la_terre_necessaire'),
     ('tva_recuperable', 'tva_recuperable'),
     ('batterie_souhaitee', 'options.batterie_souhaitee'), ('om', 'options.om'),
+    ('nb_batteries', 'options.nb_batteries'),  # D-HYB-4 (17/11/2026) : 1 ≤ N ≤ R
     ('taille_explicite_kwc', 'taille_explicite_kwc'),
     # CIQ134 — cos φ déclaré (feuille PRIVÉE : alerte interne seulement).
     ('_cos_phi', 'cos_phi'),
@@ -1510,7 +1511,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), reference_sans=evaluation,
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
-        talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice')
+        talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice',
+        nb_batteries=res.valeur('nb_batteries'))
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
 

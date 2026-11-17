@@ -450,6 +450,65 @@ def valeur_option_avec(data):
     return valeur
 
 
+#: D-HYB-5 (fondateur 17/11/2026) — l'onduleur hybride gardé pour la banque
+#: maximale, dit au client quand un plus petit suffirait au départ (phrase
+#: française approuvée par le fondateur). Clés : 1 appareil / plusieurs.
+TEXTES_EXTENSION_ONDULEUR = {
+    "retenu": {
+        "fr": ("Onduleur hybride {kw} kW retenu pour l'extension",
+               "{n} onduleurs hybrides de {kw} kW retenus pour l'extension"),
+        "en": ("{kw} kW hybrid inverter selected for expansion",
+               "{n} × {kw} kW hybrid inverters selected for expansion"),
+        "ar": ("تم اختيار عاكس هجين بقدرة {kw} كيلوواط للتوسعة",
+               "تم اختيار {n} عواكس هجينة بقدرة {kw} كيلوواط للتوسعة"),
+    },
+    "batteries": {
+        "fr": " : l'installation peut recevoir jusqu'à {max} batteries ({ajout} à ajouter plus tard). ",
+        "en": ": the installation can take up to {max} batteries ({ajout} to add later). ",
+        "ar": ": يمكن للمنشأة استيعاب ما يصل إلى {max} بطاريات ({ajout} تُضاف لاحقًا). ",
+    },
+    "suffisant": {
+        "fr": ("Un onduleur de {kw} kW suffirait pour l'installation de départ.",
+               "{n} onduleurs de {kw} kW suffiraient pour l'installation de départ."),
+        "en": ("A {kw} kW inverter would be enough for the initial installation.",
+               "{n} × {kw} kW inverters would be enough for the initial installation."),
+        "ar": ("عاكس بقدرة {kw} كيلوواط يكفي للمنشأة الأولية.",
+               "{n} عواكس بقدرة {kw} كيلوواط تكفي للمنشأة الأولية."),
+    },
+}
+
+
+def _texte_appareils(cle, langue, kw, n):
+    seul, plusieurs = TEXTES_EXTENSION_ONDULEUR[cle][langue]
+    kw_txt = _nombre_langue(kw, langue, 0 if float(kw).is_integer() else 1)
+    return (seul if n == 1 else plusieurs).format(kw=kw_txt, n=n)
+
+
+def extension_option_avec(data):
+    """D-HYB-5 — ``{textes{fr,en,ar}, retenu_kw, suffisant_kw, batteries_max,
+    batteries_a_ajouter}`` quand l'étude sert ``option_avec.onduleur_extension``
+    (moins de batteries chiffrées que la banque maximale ET un onduleur plus
+    petit suffirait), ``None`` sinon (anciens devis, banque complète, même
+    onduleur : rien d'imprimé). Des faits SERVIS seulement : kW par appareil,
+    nombre d'appareils, banque maximale, batteries chiffrées."""
+    avec = _dict(_dict(_dict(_dict(data).get("etude")).get("etude_ci")).get("option_avec"))
+    ext = _dict(avec.get("onduleur_extension"))
+    retenu, suffisant = _dict(ext.get("retenu")), _dict(ext.get("suffisant"))
+    kw_r, kw_s = nombre_normalise(retenu.get("kw_ac")), nombre_normalise(suffisant.get("kw_ac"))
+    n_r, n_s = nombre_normalise(retenu.get("quantite")), nombre_normalise(suffisant.get("quantite"))
+    maxi = nombre_normalise(ext.get("batteries_max"))
+    chiffrees = nombre_normalise(_dict(avec.get("batterie")).get("quantite"))
+    if not (kw_r and kw_s and n_r and n_s and maxi and chiffrees) or maxi <= chiffrees:
+        return None
+    ajout = int(maxi - chiffrees)
+    textes = {lg: (_texte_appareils("retenu", lg, kw_r, int(n_r))
+                   + TEXTES_EXTENSION_ONDULEUR["batteries"][lg].format(max=int(maxi), ajout=ajout)
+                   + _texte_appareils("suffisant", lg, kw_s, int(n_s)))
+              for lg in ("fr", "en", "ar")}
+    return {"textes": textes, "retenu_kw": kw_r, "suffisant_kw": kw_s,
+            "batteries_max": int(maxi), "batteries_a_ajouter": ajout}
+
+
 def economie_ttc_option_avec(data):
     """AMOT115 — l'économie de l'année 1 TTC SERVIE de l'option « avec
     batterie » (``etude_ci.option_avec.economie_ci.economie_annee1``), jamais

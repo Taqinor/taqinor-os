@@ -394,6 +394,10 @@ CHEMINS_BASCULES = {
     # (sous la transaction du geste) puis ``MODE_RAFRAICHIR``. Golden :
     # ``test_ciq120_devis_auto_ci.RevisionApresVisiteCorc2Tests``.
     'domain/revision_visite_ci.py': 2,
+    # D-HYB-4 (17/11/2026) — les batteries d'un brouillon C&I recomposées :
+    # ``MODE_ECRIRE`` (sous la transaction du geste) puis ``MODE_RAFRAICHIR``,
+    # comme CORC2. Golden : ``test_ciq120_devis_auto_ci.RecomposerBatteriesTests``.
+    'domain/recomposition_batteries_ci.py': 2,
 }
 
 

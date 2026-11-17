@@ -454,7 +454,7 @@ def tableau_deux_options(d, L, fmt_mad, couleurs, items_sans):
     builder (``all_items`` / ``option_batterie``), montants par
     ``lignes_remisees`` ; aucun chiffre calculé. ``None`` hors deux options
     (l'offre seule garde sa page d'avant)."""
-    from ..ci.blocs import langue, textes_non_rentable
+    from ..ci.blocs import langue, texte_extension, textes_non_rentable
     from ..ci.mentions import valeur_option_avec
     bloc = d.get("option_batterie")
     tot_a = (bloc or {}).get("totaux") if isinstance(bloc, dict) else None
@@ -517,6 +517,9 @@ def tableau_deux_options(d, L, fmt_mad, couleurs, items_sans):
     opt = L("ci_opt_option", "Option")
     note_nr = (f'<div style="font-size:7pt;color:{muted};padding:4px 10px 6px;">'
                f'{ligne_nr}</div>') if ligne_nr else ""
+    ligne_ext = texte_extension(d, lg)  # D-HYB-5 — onduleur gardé pour l'extension
+    note_nr += (f'<div style="font-size:7pt;color:{muted};padding:4px 10px 6px;">'
+                f'{ligne_ext}</div>') if ligne_ext else ""
     titre_a = nom_a + (f' &mdash; <span style="font-weight:400;">{badge}</span>'
                        if badge else "")
 

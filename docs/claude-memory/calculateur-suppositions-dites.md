@@ -48,11 +48,18 @@ Décisions de Reda du 17/11/2026, prises sur le lead « CPE Go Plus » (1742, in
   incompatible avec « une batterie pour commencer ». Sous ce minimum : basse tension, le plus gros hybride
   unique qui porte le champ, puis des hybrides identiques en parallèle. La composition HV automatique n'est
   PAS construite au 17/11 (il faut les valeurs de fiche de la BOS-B et un champ « modules minimum »).
-- **D-HYB-4 — « une batterie pour commencer » = prêt pour la suite.** Panneaux et onduleur hybride restent
-  dimensionnés pour la banque RECOMMANDÉE ; le devis porte le nombre de batteries choisi sur l'écran du
-  devis ; l'écran dit combien pourront s'ajouter ; les économies sont celles des batteries réellement devisées.
-  La recommandation est mémorisée à la création (`etude_params.banque_recommandee`).
-
+- **D-HYB-4 — nombre de batteries AU CHOIX, de 1 au maximum calculé (révisé le 17/11/2026 après-midi).** Le matin
+  Reda avait retenu « prêt pour la suite » (panneaux gardés pour la banque complète) ; en voyant l'écran il a
+  tranché autrement : « i expect the number of panels to be reduced if we use only one battery… this number
+  should be choosable… with the maximum calculated by the quote calculator (for this client the maximum should
+  be 3) ». Retenu : sur l'écran du devis, un choix de 1 à R (R = banque calculée, mémorisée dans
+  `etude_params.banque_recommandee`) ; les PANNEAUX sont redimensionnés pour le nombre choisi ; l'ONDULEUR
+  hybride reste celui de la banque maximale (on ajoute batteries et panneaux plus tard sans le remplacer).
+- **D-HYB-5 — l'onduleur gardé pour l'extension se DIT sur le devis.** « If we use an inverter just to fit
+  future batteries and a smaller inverter can still be used this should be mentioned in the quote. » Quand un
+  onduleur plus petit suffirait au champ réduit, le PDF client, la page client et l'écran le disent (FR/EN/AR
+  sur le PDF) : « Onduleur hybride 20 kW retenu pour l'extension : l'installation peut recevoir jusqu'à 3
+  batteries (2 à ajouter plus tard). Un onduleur de 15 kW suffirait pour l'installation de départ. »
 - **D-SOC-1 — socles sur les devis C&I (17/11/2026).** « Why the calculator don't add socles, they should be
   added to the quote. » Le moteur C&I n'avait aucune règle de socles (le résidentiel en pose 2 par panneau).
   Retenu : 2 socles par panneau quand la pose est un toit plat LESTÉ, et aussi quand le type de toit n'est pas

@@ -73,6 +73,21 @@ def avec_recommandation(batterie, recommandee):
     return batterie
 
 
+def nb_batteries_choisi(valeur):
+    """D-HYB-4 (fondateur 17/11/2026) — ``options.nb_batteries`` lu : un
+    entier ≥ 1 (« 2 » et 2.0 compris), sinon ``None`` (aucun choix : la banque
+    calculée). Un booléen n'est jamais un nombre de batteries."""
+    if isinstance(valeur, bool) or valeur is None:
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= nombre < 1e6 or nombre != int(nombre):
+        return None
+    return int(nombre)
+
+
 def choix_batterie(valeur, lead=None):
     """``'sans'`` / ``'avec'`` / ``'les_deux'`` : la valeur explicite du corps,
     sinon ``lead.batterie_souhaitee``, sinon les deux. Un booléen (case
@@ -374,6 +389,9 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None, recommandee
         'cout_vente_ht': None if cout is None else float(quantize_mad(str(cout))),
         'retour_simple_ans': ((flux or {}).get('indicateurs') or {}).get('retour_dixieme_ans'),
         'economie_flux': flux,
+        # D-HYB-5 (17/11/2026) — toujours présente : None, ou {retenu,
+        # suffisant, batteries_max} quand un onduleur plus petit suffirait.
+        'onduleur_extension': evaluation.get('onduleur_extension'),
     }
 
 
@@ -486,12 +504,13 @@ def _marquer_non_rentable(sortie, verdict):
 
 
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
-                  borne_toit, production_rasante=None, regles_3010b=False, **noyau):
+                  borne_toit, production_rasante=None, regles_3010b=False, nb_batteries=None,
+                  **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import (
         MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
     )
-    from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
+    from apps.ventes.moteur_ci.onduleurs import combiner_impose, combiner_onduleurs
     from apps.ventes.moteur_ci.taille import inclinaison_pose
     # R1 (P2, arbitrage coordinatrice 28/10/2026) — la règle (1)→(3) vaut
     # pour CHAQUE option : le champ « avec » est évalué dans la pose qui le
@@ -515,6 +534,11 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         # D-CI-BATTERIE-NON-RENTABLE (niveau 5) : aucun groupe dans l'horizon ⇒
         # le groupe au meilleur retour, remplacement de la batterie compris.
         remplacement=_remplacement_moteur(noyau.get('taux_tva_pct')) if regles_3010b else None,
+        # D-HYB-4 (17/11/2026) — N batteries choisies : panneaux pour N, onduleur pour R.
+        modules_choisis=nb_batteries_choisi(nb_batteries),
+        combiner_impose=lambda kwc, produit, quantite: combiner_impose(
+            kwc, bat['hybrides'], produit, quantite, phase=phase,
+            module=catalogue.get('module_spec'), ac_max_kw=ps_kva, fiche_fait_foi=True),
         **noyau)
     if resultat.get('evaluation'):
         resultat['evaluation']['inclinaison_retenue_deg'] = inclinaison_pose(
@@ -574,6 +598,19 @@ def lignes_des_options(etude, lead=None):
     if choix_batterie(choix, lead) == 'avec':
         return avec, SCENARIO_AVEC_BATTERIE
     return _fusion_variantee(sans, avec), SCENARIO_LES_DEUX
+
+
+def lignes_du_scenario(etude, scenario):
+    """D-HYB-4 — les lignes de l'étude pour le scénario STOCKÉ d'un devis
+    (recomposition des batteries) : « avec batterie » seule ⇒ les lignes de
+    l'option « avec » ; sinon les deux options variantées par la MÊME fusion
+    que la création (:func:`lignes_des_options`)."""
+    from .etude_ci import lignes_du_devis_ci
+    from .scenario import SCENARIO_AVEC_BATTERIE
+    avec = lignes_du_devis_ci((etude.get(CLE) or {}).get('composition'))
+    if scenario == SCENARIO_AVEC_BATTERIE:
+        return avec
+    return _fusion_variantee(lignes_du_devis_ci(etude.get('composition')), avec)
 
 
 def _investissement_des_lignes(lignes, devis=None):
@@ -654,6 +691,7 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
             'onduleurs': {'combinaison': [dict(hybrides[p], quantite=q) for p, q in sorted(q_h.items())]},
             'hybrides': list(hybrides.values()),
             'recommandee': _recommandee_des_lignes(lignes, devis),
+            'module_spec': catalogue.get('module_spec'),  # D-HYB-5 (chaînes du suffisant)
             'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())]}
 
 
@@ -678,17 +716,54 @@ def _ctx_flux(contexte, batterie):
             'flux': contexte.get('flux_options') or {}, 'batterie': batterie}
 
 
+def _attend_extension(imposee):
+    """D-HYB-4 — moins de batteries chiffrées que la banque recommandée (même
+    article) : l'onduleur des lignes est gardé pour l'extension."""
+    batterie = avec_recommandation(imposee.get('banque'), imposee.get('recommandee'))
+    return bool(batterie.get('ajout_possible'))
+
+
+def _combinaison_libre(kwc, hybrides, contexte, module_spec):
+    from apps.ventes.moteur_ci.batterie import MAX_HYBRIDES_PARALLELE
+    from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
+    return combiner_onduleurs(
+        kwc, hybrides or [], phase=contexte.get('phase'), module=module_spec,
+        ac_max_kw=contexte.get('ps_kva'), max_appareils=MAX_HYBRIDES_PARALLELE,
+        homogene=True, fiche_fait_foi=True) or {}
+
+
+def extension_des_lignes(imposee, contexte):
+    """D-HYB-5 — ``onduleur_extension`` de l'option des LIGNES : seulement
+    quand la banque recommandée dépasse la banque chiffrée (même article) ;
+    l'onduleur des lignes contre la combinaison LIBRE à leur kWc."""
+    from apps.ventes.moteur_ci.batterie import onduleur_extension
+    if not _attend_extension(imposee):
+        return None
+    libre = _combinaison_libre(imposee['kwc'], imposee.get('hybrides'), contexte,
+                               imposee.get('module_spec'))
+    return onduleur_extension(imposee.get('onduleurs'), libre,
+                              int(imposee['recommandee']['quantite']))
+
+
 def _recomposer(catalogue, imposee, contexte):
     """CORC10 — l'option « avec » des lignes RECOMPOSÉE à sa taille vendue
     (kWc et banque des lignes, jamais redimensionnés) : hybrides recombinés à
-    ce kWc et composition avec les entrées de l'étude (mesures de visite)."""
-    from apps.ventes.moteur_ci.batterie import MAX_HYBRIDES_PARALLELE, _composer_avec
-    from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
+    ce kWc et composition avec les entrées de l'étude (mesures de visite).
+    D-HYB-4 — moins de batteries que la banque recommandée : l'onduleur des
+    lignes est GARDÉ (même modèle, même nombre) s'il porte encore le champ."""
+    from apps.ventes.moteur_ci.batterie import _composer_avec
+    from apps.ventes.moteur_ci.onduleurs import combiner_impose
     bat = catalogue.get('batterie') or {}
-    onduleurs = combiner_onduleurs(
-        imposee['kwc'], bat.get('hybrides') or [], phase=contexte.get('phase'),
-        module=catalogue.get('module_spec'), ac_max_kw=contexte.get('ps_kva'),
-        max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True, fiche_fait_foi=True) or {}
+    onduleurs = _combinaison_libre(imposee['kwc'], bat.get('hybrides'), contexte,
+                                   catalogue.get('module_spec'))
+    garde = (imposee.get('onduleurs') or {}).get('combinaison') or []
+    if _attend_extension(imposee) and len(garde) == 1:
+        force = combiner_impose(
+            imposee['kwc'], bat.get('hybrides') or [], garde[0].get('produit'),
+            int(garde[0].get('quantite') or 0), phase=contexte.get('phase'),
+            module=catalogue.get('module_spec'), ac_max_kw=contexte.get('ps_kva'),
+            fiche_fait_foi=True)
+        onduleurs = force if force.get('combinaison') else onduleurs
     composition = _composer_avec(
         lambda kwc, ond: contexte['composer'](kwc, ond, bat.get('elements')),
         imposee['kwc'], onduleurs, imposee['banque'])
@@ -718,6 +793,7 @@ def _option_imposee(imposee, contexte):
                  investissement=imposee.get('investissement'),
                  recommandee=imposee.get('recommandee'))
     bloc['nb_panneaux'] = imposee.get('nb_panneaux') or bloc['nb_panneaux']
+    bloc['onduleur_extension'] = extension_des_lignes(imposee, contexte)  # D-HYB-5
     angle = inclinaison_pose(imposee['kwc'], bornes_pub)
     if angle is not None:
         bloc['inclinaison_retenue_deg'] = angle      # clé ADDITIVE, comme à l'étude
@@ -748,6 +824,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     # ``evaluation`` n'est pas passée (onduleurs imposés par les lignes).
     regles_3010b = contexte.pop('regles_3010b', True)
     talon_inconnu = contexte.pop('talon_inconnu', False)
+    nb_batteries = contexte.pop('nb_batteries', None)  # D-HYB-4 (options.nb_batteries)
     reference_sans = contexte.pop('reference_sans', None) or evaluation
     production_rasante = contexte.pop('production_rasante', None)
     flux['production_rasante'] = production_rasante
@@ -783,7 +860,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     if bat.get('hybrides') and batteries:
         resultat = _dimensionner(catalogue, bat, batteries, evaluation,
                                  production_rasante=production_rasante,
-                                 regles_3010b=regles_3010b, **contexte)
+                                 regles_3010b=regles_3010b, nb_batteries=nb_batteries,
+                                 **contexte)
     else:
         resultat = {'evaluation': None, 'prix_a_renseigner': [], 'alertes': [], 'hypotheses': [],
                     'motif': 'aucun onduleur hybride basse tension ni batterie basse tension '
@@ -813,9 +891,10 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         sortie['alertes'].append(_alerte_dominee(evaluation, evalue, sortie['alertes'], choix))
         return sortie
     fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
-    # D4 — l'option composée EST la recommandation (ajout possible : 0).
+    # D4 — l'option composée EST la recommandation (ajout possible : 0) ;
+    # D-HYB-4 : N batteries choisies ⇒ la banque calculée R (ajout R − N).
     sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche),
-                           recommandee=evalue['batterie'])
+                           recommandee=resultat.get('banque_max') or evalue['batterie'])
     if evalue.get('inclinaison_retenue_deg') is not None:
         # R1 (P2) — clé ADDITIVE : l'inclinaison de la pose qui loge CE champ
         # (30° / rasante 10°), seulement quand le toit plat sans pente la donne.

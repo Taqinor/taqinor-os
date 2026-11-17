@@ -174,7 +174,7 @@ const TITRE_SANS_CI: TextesCi = {
 };
 
 export interface LigneComparaisonCi {
-  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour' | 'non_rentable';
+  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour' | 'non_rentable' | 'extension_onduleur';
   libelle: TextesCi | null;
   /** Valeur déjà formatée (nombres) ; vide pour la phrase servie. */
   valeur: string;
@@ -216,6 +216,8 @@ export function comparaisonBatterieCi(
   // D-CI-BATTERIE-NON-RENTABLE — option montrée, marquée (badge servi au titre), raison servie sous les chiffres.
   const nr = ob.nonRentable;
   if (nr) avec.push({ cle: 'non_rentable', libelle: null, valeur: '', textes: nr.ligne });
+  // D-ONDULEUR-EXTENSION — phrase servie (3 langues), affichée telle quelle sous les chiffres ; absente ⇒ rien.
+  if (ob.extension) avec.push({ cle: 'extension_onduleur', libelle: null, valeur: '', textes: ob.extension });
   const titreAvec: TextesCi = nr
     ? { fr: `${LBL_COMPARAISON_CI.titre.fr} — ${nr.badge.fr}`, en: `${LBL_COMPARAISON_CI.titre.en} — ${nr.badge.en}`, ar: `${LBL_COMPARAISON_CI.titre.ar} — ${nr.badge.ar}` }
     : LBL_COMPARAISON_CI.titre;
