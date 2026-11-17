@@ -695,6 +695,27 @@ class ParcoursCompletsTests(ParcoursBase):
         for cle in (CLE_CONFIRMATION, CLE_DEBRIEF):
             self.assertEqual(len(self._etapes_de_cle(lead, cle)), 1, self.msg(cle, lead))
 
+    def _ligne_servie(self, lead, etape):
+        resp = self.appel('get', f'/api/django/crm/relance-etapes/?lead={lead.pk}')
+        lignes = [ligne for ligne in resp.data['results'] if ligne['id'] == etape.pk]
+        self.assertEqual(len(lignes), 1, self.msg('la touche n’est pas servie', lead))
+        return lignes[0]
+
+    def test_i_debrief_dit_si_un_devis_a_ete_envoye(self):
+        """17/11/2026 — ``lead_devis_envoye`` (contexte ``sans_devis`` de la table : sur le
+        débrief d'une visite faite AVANT tout devis, l'écran retire les réponses de devis et
+        dit « Client refuse »). Faux sans devis ; vrai dès le devis envoyé (stade « Devis
+        envoyé ») ; vrai encore si le stade a reculé mais qu'un devis est sorti du brouillon."""
+        from apps.crm.models import Lead
+
+        lead, debrief = self.amener('debrief')
+        self.assertIs(self._ligne_servie(lead, debrief)['lead_devis_envoye'], False)
+        self.assertEqual(reponse_de('debrief', 'question_prix').get('masquee_si'), 'sans_devis')
+        self.envoyer_devis(lead)
+        self.assertIs(self._ligne_servie(lead, debrief)['lead_devis_envoye'], True)
+        Lead.objects.filter(pk=lead.pk).update(stage=stages.CONTACTED)
+        self.assertIs(self._ligne_servie(lead, debrief)['lead_devis_envoye'], True)
+
     def test_h_double_clic_sur_une_touche_deja_traitee(self):
         """Double clic : rejouer « Fait » (et « Sauter », « Reporter ») sur une touche déjà
         traitée → 400 ``erreurs.etape``, et rien ne bouge."""

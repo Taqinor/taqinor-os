@@ -319,9 +319,11 @@ REPONSES_PAR_TYPE = {
     TYPE_CONTACT_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
+    # 17/11/2026 — « Ne plus me contacter » retiré des TÂCHES sans client au
+    # bout du fil (devis, décider la suite, question de prix, devis modifié) :
+    # 74 des 101 oppositions de la prod avaient été posées par erreur ici.
     TYPE_DEVIS: (
-        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
-        'ne_plus_contacter'),
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse'),
     TYPE_APPEL_APRES_REPONSE: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
         'ne_plus_contacter'),
@@ -340,7 +342,7 @@ REPONSES_PAR_TYPE = {
         'sans_issue', 'rappel', 'visite_acceptee', 'refuse',
         'ne_plus_contacter'),
     TYPE_DECIDER_SUITE: (
-        'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),
+        'perdu', 'rappel', 'sans_issue'),
     TYPE_SUIVI_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
         'plus_tard', 'attente_accord', 'question_prix', 'devis_modifie',
@@ -351,7 +353,7 @@ REPONSES_PAR_TYPE = {
         'devis_modifie', 'decision_famille', 'decision_proprietaire',
         'ne_plus_contacter'),
     TYPE_QUESTION_PRIX: (
-        'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
+        'sans_issue', 'rappel', 'refuse'),
     TYPE_PLANIFIER: (
         'rappel', 'non_joint', 'visite_abandonnee', 'refuse',
         'ne_plus_contacter'),
@@ -363,15 +365,17 @@ REPONSES_PAR_TYPE = {
         'devis_modifie', 'decision_famille', 'decision_proprietaire',
         'refuse', 'ne_plus_contacter'),
     TYPE_DEVIS_MODIFIE: (
-        'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
+        'sans_issue', 'rappel', 'refuse'),
     TYPE_REVEIL_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
         'attente_accord', 'refuse', 'ne_plus_contacter'),
     TYPE_REVEIL_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
+    # 17/11/2026 — « Numéro invalide / pas sur WhatsApp » (issue « non
+    # joint ») servi aussi sur une étape générique MESSAGE.
     TYPE_GENERIQUE: (
-        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse', 'non_joint',
         'ne_plus_contacter'),
 }
 

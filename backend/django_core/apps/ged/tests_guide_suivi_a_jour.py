@@ -56,6 +56,9 @@ CONSIGNE_POMPAGE = ('Relancez `python scripts/generer_guide_suivi.py '
 
 FICHIER_SUIVI = 'Suivi_commercial_etapes_et_reponses.pdf'
 FICHIER_VISITE = 'Guide_visite_suivi_commercial.pdf'
+#: Décision fondateur du 17/11/2026 — retirés de la publication jusqu'à réécriture.
+RETIRES_DU_MANIFESTE = ('Guide_Meryem_TAQINOR.pdf', 'Protocole_rappel_Meryem.pdf',
+                        'Carte_Meryem_une_page.pdf')
 
 CONSIGNE = ('La table du parcours a changé : relancez '
             '`python scripts/generer_guide_suivi.py` et committez le HTML et '
@@ -135,6 +138,18 @@ class GuideSuiviAJourTests(SimpleTestCase):
         # La version du guide du suivi est celle de la table du parcours.
         table = json.loads(TABLE.read_text(encoding='utf-8'))
         self.assertEqual(suivi['version'], str(table['version']), CONSIGNE)
+
+    def test_les_trois_anciens_guides_de_meryem_ne_sont_plus_publies(self):
+        """Décision fondateur du 17/11/2026 — le Guide de Meryem, le Protocole
+        de rappel et la Carte une page décrivent l'ancien rythme (« six appels
+        … quatorze jours ») et n'ont pas de source : retirés du manifeste (plus
+        publiés) jusqu'à leur réécriture. Les PDF restent dans le dépôt."""
+        publies = {e.get('fichier') for e in _manifeste()}
+        for fichier in RETIRES_DU_MANIFESTE:
+            with self.subTest(fichier=fichier):
+                self.assertNotIn(fichier, publies)
+                self.assertTrue((DOCS / fichier).is_file(), f'{fichier} a disparu du dépôt.')
+        self.assertIn(FICHIER_SUIVI, publies)
 
     def test_toutes_les_entrees_du_manifeste_ont_une_destination_valide(self):
         for entree in _manifeste():

@@ -168,9 +168,14 @@ CONTEXTES_DERNIERE_TOUCHE = ('derniere_touche', 'derniere_touche_appels_manquant
 #: pour ses pièces » est déjà faite sans pièce, la touche amenée est la SECONDE — sa
 #: clôture rend la main à l'étape devis.
 CONTEXTE_SECONDE_RELANCE_PIECES = 'seconde_relance_pieces'
+#: 17/11/2026 (CADV29, D-CADV-10) — ``pro_sans_piece`` : le lead est commercial ou
+#: industriel et n'a encore envoyé aucune pièce — la suite annoncée « devis » devient
+#: « Relancer le client pour ses pièces » (``cadence_filet.pieces_ci_dues``).
+CONTEXTE_PRO_SANS_PIECE = 'pro_sans_piece'
 CONTEXTES_VARIANTE = frozenset({*CONTEXTES_DERNIERE_TOUCHE, 'perdu_junk',
                                 CONTEXTE_AGRICOLE_SANS_RELEVE_EAU,
-                                CONTEXTE_SECONDE_RELANCE_PIECES})
+                                CONTEXTE_SECONDE_RELANCE_PIECES,
+                                CONTEXTE_PRO_SANS_PIECE})
 JOURS = frozenset({'aujourdhui', 'demain', 'date_choisie'})
 ETATS_FIN = frozenset({'froid', 'perdu', 'ne_plus_contacter'})
 #: La clé serveur de la réponse « Fait — passer à la suite » (aucune issue).
@@ -1135,6 +1140,11 @@ class ParcoursBase(TestCase):
             # AGR530 — le même dossier, devenu un pompage au point d'eau
             # inconnu (aucune donnée hydraulique) : la seule différence.
             Lead.objects.filter(pk=lead.pk).update(type_installation='agricole')
+            lead.refresh_from_db()
+        if cas.contexte == CONTEXTE_PRO_SANS_PIECE:
+            # CADV29 — le même dossier, client industriel sans pièce reçue (lead neuf :
+            # aucune pièce, aucun passage de « Relancer le client pour ses pièces »).
+            Lead.objects.filter(pk=lead.pk).update(type_installation='industriel')
             lead.refresh_from_db()
         if cas.contexte == CONTEXTE_SECONDE_RELANCE_PIECES:
             # La première relance est faite sans pièce : la touche amenée est la seconde.

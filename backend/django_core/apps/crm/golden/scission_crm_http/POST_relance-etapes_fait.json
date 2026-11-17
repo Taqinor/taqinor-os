@@ -15,6 +15,7 @@
   "id": "etape#2",
   "lead": "lead#2",
   "lead_contact_preference": "",
+  "lead_devis_envoye": false,
   "lead_email": "",
   "lead_est_junk": false,
   "lead_langue": "fr",
