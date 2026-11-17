@@ -622,6 +622,25 @@ def garde_contact_du_lead(lead):
         raise ConflitEtat(f'Message refusé : {refus}.')
 
 
+def _gabarit_de_l_etape_moteur(etape):
+    """Le gabarit de message PAR DÉFAUT d'une étape posée sans ``template_cle`` :
+    celui du barreau livré de sa clé de moteur (``message_creneau``,
+    ``dernier_appel``, ``rappel_convenu``, ``planifier``), ``''`` pour toute
+    autre étape. « Pièces reçues ? » (hors gabarit) garde son message propre."""
+    if etape.cle == 'pieces_recues':
+        return 'relance_pieces'
+    from apps.parametres.models_relance import barreau_par_defaut
+
+    from . import cadence_config
+
+    cle_moteur = cadence_config.cle_de(etape)
+    cadence = cadence_config.CADENCE_DE_LA_CLE.get(cle_moteur)
+    if cadence is None:
+        return ''
+    return (barreau_par_defaut(cadence, cle_moteur) or {}).get(
+        'template_cle', '') or ''
+
+
 def message_pour_etape(etape, *, request=None, user=None, cle=None,
                        langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
@@ -662,9 +681,18 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     template_cle = cle or etape.template_cle
     # 16/11/2026 — l'étape « Relancer le client pour ses pièces » porte son
     # message ; celles déjà ouvertes en prod (template_cle vide) le retrouvent
-    # par leur clé de moteur.
-    if not template_cle and etape.cle == 'pieces_recues':
-        template_cle = 'relance_pieces'
+    # par leur clé de moteur. 17/11/2026 — même règle pour toute étape du
+    # moteur sans gabarit (message de créneau, dernier essai, rappel convenu,
+    # planifier la visite) : le gabarit PAR DÉFAUT de sa clé.
+    if not template_cle:
+        template_cle = _gabarit_de_l_etape_moteur(etape)
+    # 17/11/2026 — un réveil posé en APPEL lit le script d'appel : les textes
+    # `reveil_a1`/`reveil_a2` (« je vous l'envoie ici… Répondez STOP ») sont
+    # des WhatsApp. Les étapes déjà ouvertes en prod portent encore l'ancienne
+    # clé ; un réveil passé en WhatsApp la garde.
+    if not cle and etape.canal == RelanceEtape.Canal.APPEL:
+        from apps.parametres.models_messages import CLE_APPEL_PAR_CLE_REVEIL
+        template_cle = CLE_APPEL_PAR_CLE_REVEIL.get(template_cle, template_cle)
     # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
     # de remplir notre formulaire » est faux pour un lead venu par téléphone,
     # en boutique, par recommandation ou d'un message entrant. La clé est
@@ -1381,8 +1409,11 @@ def _mois_dossier_francais(lead):
 def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
     """La clé de message à RENDRE pour cette touche — souvent ``cle_gabarit``.
 
-    Ne change QUE la touche d'identité (`identite`) : toutes les autres clés
-    passent inchangées, y compris une clé personnalisée par la société.
+    Ne change QUE la touche d'identité (`identite`) et, depuis le 17/11/2026,
+    l'appel d'ouverture (`appel_ouverture`, mêmes règles d'origine : sa clé est
+    celle de l'identité choisie, traduite par ``CLE_APPEL_OUVERTURE_PAR_IDENTITE``) :
+    toutes les autres clés passent inchangées, y compris une clé personnalisée
+    par la société.
 
     Ordre de décision :
 
@@ -1395,13 +1426,23 @@ def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
       3. sinon `identite` reste : `site_web` et `meta_ads` sont de VRAIS
          formulaires, la phrase d'origine y est exacte.
     """
-    if cle_gabarit != 'identite':
+    if cle_gabarit not in ('identite', 'appel_ouverture'):
         return cle_gabarit
     try:
-        from apps.parametres.models_messages import CLE_IDENTITE_PAR_CANAL
+        from apps.parametres.models_messages import (
+            CLE_APPEL_OUVERTURE_PAR_IDENTITE, CLE_IDENTITE_PAR_CANAL)
     except ImportError:
         return cle_gabarit
 
+    cle_identite = _cle_identite_par_origine(lead, reference, CLE_IDENTITE_PAR_CANAL)
+    if cle_gabarit == 'identite':
+        return cle_identite or cle_gabarit
+    return CLE_APPEL_OUVERTURE_PAR_IDENTITE.get(cle_identite, cle_gabarit)
+
+
+def _cle_identite_par_origine(lead, reference, par_canal):
+    """La clé d'identité que l'ORIGINE du lead désigne, ``None`` si le premier
+    message d'origine (`identite`, formulaire) est exact."""
     ouverture = getattr(lead, 'date_origine', None)  # ACVI47
     if ouverture is not None and reference is not None:
         from . import horaires
@@ -1410,7 +1451,7 @@ def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
             return 'identite_ancien_dossier'
 
     canal = (getattr(lead, 'canal', None) or '').strip()
-    return CLE_IDENTITE_PAR_CANAL.get(canal, cle_gabarit)
+    return par_canal.get(canal)
 
 
 #: L'étiquette posée par cette réponse (seedée par ``views.seed_tags``).

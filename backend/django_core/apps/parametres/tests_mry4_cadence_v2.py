@@ -567,6 +567,139 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
             company=perso, cadence=Cadence.APRES_DEVIS,
             ordre=2).template_cle, '')
 
+    # ── 17/11/2026 — les textes que le code livre désormais par défaut ──────
+
+    def _module_textes_1711(self):
+        from importlib import import_module
+        return import_module('apps.parametres.migrations.0142_gabarits_textes_1711')
+
+    def _prod_avant_1711(self, company):
+        """Les gabarits tels que la prod les portait le 16/11 : J28 et J90 sur
+        le script du J14, l'appel du client signé sur `appel_ouverture`, les
+        étapes du moteur (créneau, dernier essai, rappel convenu, planifier)
+        sans aucun gabarit de message."""
+        for ordre, jours in ((8, 14), (9, 28), (11, 90)):
+            CadenceRelanceEtape.objects.create(
+                company=company, cadence=Cadence.APRES_DEVIS, ordre=ordre,
+                canal='appel', delai_jours=jours, libelle=f'Appel J{jours}',
+                template_cle='appel_suivi_j11', actif=True)
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.DEUXIEME_AFFAIRE, ordre=2,
+            canal='appel', delai_jours=0, delai_minutes=3,
+            libelle="Appel d'ouverture", template_cle='appel_ouverture',
+            actif=True)
+        CadenceRelanceEtape.seed_cadence(company, Cadence.APRES_CONTACT)
+        CadenceRelanceEtape.seed_cadence(company, Cadence.VISITE)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cle__in=['message_creneau', 'dernier_appel',
+                                      'rappel_convenu', 'planifier'],
+        ).update(template_cle='')
+
+    def _textes_1711(self, company):
+        return {
+            'j14': CadenceRelanceEtape.objects.get(
+                company=company, cadence=Cadence.APRES_DEVIS, ordre=8),
+            'j28': CadenceRelanceEtape.objects.get(
+                company=company, cadence=Cadence.APRES_DEVIS, ordre=9),
+            'j90': CadenceRelanceEtape.objects.get(
+                company=company, cadence=Cadence.APRES_DEVIS, ordre=11),
+            'signe': CadenceRelanceEtape.objects.get(
+                company=company, cadence=Cadence.DEUXIEME_AFFAIRE, ordre=2),
+            **{cle: CadenceRelanceEtape.objects.get(
+                company=company, cle=cle)
+               for cle in ('message_creneau', 'dernier_appel',
+                           'rappel_convenu', 'planifier', 'confirmation',
+                           'appel_apres_reponse')},
+        }
+
+    def test_les_defauts_livres_portent_les_nouveaux_textes(self):
+        """Un barreau seedé APRÈS ce lot les porte déjà : même clés que la
+        migration (la garde empêche code et migration de diverger)."""
+        company = _company('textes1711-defauts')
+        CadenceRelanceEtape.seed_cadence(company, Cadence.APRES_CONTACT)
+        CadenceRelanceEtape.seed_cadence(company, Cadence.VISITE)
+        CadenceRelanceEtape.seed_cadence(company, Cadence.APRES_DEVIS)
+        CadenceRelanceEtape.seed_cadence(company, Cadence.DEUXIEME_AFFAIRE)
+        lus = self._textes_1711(company)
+        self.assertEqual(
+            {c: lus[c].template_cle for c in (
+                'j14', 'j28', 'j90', 'signe', 'message_creneau',
+                'dernier_appel', 'rappel_convenu', 'planifier')},
+            {'j14': 'appel_suivi_j11', 'j28': 'appel_validite',
+             'j90': 'appel_dernier_suivi',
+             'signe': 'appel_ouverture_deuxieme_affaire',
+             'message_creneau': 'message_creneau',
+             'dernier_appel': 'appel_relance',
+             'rappel_convenu': 'appel_rappel_convenu',
+             'planifier': 'appel_planifier_visite'})
+
+    def test_la_migration_1711_pose_les_textes_sur_les_barreaux_restes_au_defaut(self):
+        company = _company('textes1711-prod')
+        self._prod_avant_1711(company)
+        avant = self._textes_1711(company)
+        self.assertEqual(avant['message_creneau'].template_cle, '')
+        self._module_textes_1711().poser_les_textes(
+            self._RegistreSimule, None)
+        lus = self._textes_1711(company)
+        self.assertEqual(
+            {c: lus[c].template_cle for c in lus},
+            {'j14': 'appel_suivi_j11', 'j28': 'appel_validite',
+             'j90': 'appel_dernier_suivi',
+             'signe': 'appel_ouverture_deuxieme_affaire',
+             'message_creneau': 'message_creneau',
+             'dernier_appel': 'appel_relance',
+             'rappel_convenu': 'appel_rappel_convenu',
+             'planifier': 'appel_planifier_visite',
+             'confirmation': 'visite_confirmation',
+             'appel_apres_reponse': 'appel_apres_reponse'})
+
+    def test_la_migration_1711_est_idempotente(self):
+        company = _company('textes1711-idem')
+        self._prod_avant_1711(company)
+        module = self._module_textes_1711()
+        module.poser_les_textes(self._RegistreSimule, None)
+        premier = {c: b.template_cle for c, b in self._textes_1711(company).items()}
+        module.poser_les_textes(self._RegistreSimule, None)
+        self.assertEqual(
+            {c: b.template_cle for c, b in self._textes_1711(company).items()},
+            premier)
+
+    def test_un_barreau_regle_par_la_societe_reste_intact(self):
+        company = _company('textes1711-perso')
+        self._prod_avant_1711(company)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cle='dernier_appel').update(
+            template_cle='appel_dernier')
+        CadenceRelanceEtape.objects.filter(
+            company=company, cle='message_creneau').update(canal='appel')
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=9).update(
+            delai_jours=30)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=11).update(
+            template_cle='appel_suivi_j7')
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.DEUXIEME_AFFAIRE, ordre=2).update(
+            template_cle='appel_dimanche')
+        self._module_textes_1711().poser_les_textes(
+            self._RegistreSimule, None)
+        lus = self._textes_1711(company)
+        self.assertEqual(lus['dernier_appel'].template_cle, 'appel_dernier')
+        self.assertEqual(lus['message_creneau'].template_cle, '')
+        self.assertEqual(lus['j28'].template_cle, 'appel_suivi_j11')
+        self.assertEqual(lus['j90'].template_cle, 'appel_suivi_j7')
+        self.assertEqual(lus['signe'].template_cle, 'appel_dimanche')
+        # Les autres textes, eux, sont posés.
+        self.assertEqual(lus['rappel_convenu'].template_cle,
+                         'appel_rappel_convenu')
+
+    def test_la_migration_1711_ne_cree_aucune_ligne(self):
+        company = _company('textes1711-vide')
+        self._module_textes_1711().poser_les_textes(
+            self._RegistreSimule, None)
+        self.assertEqual(CadenceRelanceEtape.objects.filter(
+            company=company).count(), 0)
+
 
 class CadenceApiTests(TestCase):
     def setUp(self):

@@ -79,7 +79,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "vous dérange deux minutes ?",
     'repondeur':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de votre demande solaire. Je "
-        "vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
+        "vous ai envoyé un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
     'valeur_j1':
         "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai "
         "besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre "
@@ -99,6 +99,8 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ;
     # le moteur clôture réellement à J14 (`cloture_j14`), donc « dans une
     # semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
+    # 17/11/2026 (fondateur) — « dans une semaine » est RETIRÉ : aucune date
+    # n'est promise au client (FR et darija, mots supprimés seulement).
     # CAD110 (21/09/2026) — loi 09-08 art. 10 al. 5 : l'exception de
     # prospection exige une opposition possible « chaque fois qu'un
     # courrier […] est adressé » et des coordonnées valables pour faire
@@ -109,7 +111,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # alourdir le début, c'est le suivi long qui expose).
     'je_classe_j7':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Sans nouvelle de votre part, je mets votre demande de "
-        "côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je "
+        "côté. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je "
         "n'insiste plus.",
     'cloture_j14':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je classe votre demande pour ne pas vous déranger. Si "
@@ -167,18 +169,22 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. "
         "Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous "
         "montrer. Petite vidéo du chantier : {lien_video_preuve}.",
+    # 17/11/2026 (fondateur) — salutation standard + phrase d'ouverture déjà
+    # validée dans sa forme e-mail (`MESSAGE_TEMPLATE_FORMES_EMAIL`).
     'j6_garanties':
-        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par "
-        "équipement est dans votre proposition : {lien}.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Les garanties de votre installation sont accordées "
+        "par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre "
+        "proposition : {lien}.",
     'j9_validite':
         "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la "
         "disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
     # CAD110 — porte de sortie (voir la note au-dessus de `je_classe_j7`) :
     # les deux DERNIÈRES touches après-devis, celles qui portent le plus
     # loin dans le suivi.
+    # 17/11/2026 (fondateur) — salutation standard ajoutée, le reste inchangé.
     'j13_dernier':
-        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse "
-        "tranquille. Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : dites-moi si le projet est "
+        "toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.",
     'j14_pause':
         "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la "
         "réactiver. Répondez STOP et je n'insiste plus.",
@@ -266,7 +272,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # codé en dur (même règle que le reste du catalogue, garde SCA29).
     'appel_relance':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire "
-        "d'hier — vous avez deux minutes maintenant ?",
+        "— vous avez deux minutes maintenant ?",
     'appel_dernier':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre "
         "projet solaire est-il toujours d'actualité ?",
@@ -365,8 +371,8 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # au-dessus de `je_classe_j7` FR) : « جاوبو STOP وما نلحوش عليكم » =
     # « répondez STOP et je n'insiste plus ».
     'je_classe_j7':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب "
-        "من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب. "
+        "كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.",
     'cloture_j14':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو "
         "ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.",
@@ -406,7 +412,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # CAD-F — CAD67 (21/09/2026) — darija des deux nouveaux scripts d'appel.
     # CAD96 (fold post-merge) — {marque} plutôt que « TAQINOR » codé en dur.
     'appel_relance':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — "
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص الطلب ديالكم — "
         "عندكم جوج دقايق دابا؟",
     'appel_dernier':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش "
@@ -439,14 +445,15 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: "
         "{puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
     'j6_garanties':
-        "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض "
-        "ديالكم: {lien}.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو "
+        "صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}.",
     'j9_validite':
         "العرض ديالكم صالح حتى {date_validite}. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط "
         "عليكم، باش ما نعطيكمش ثمن غير صحيح.",
     # CAD110 — porte de sortie sur les deux dernières touches après-devis.
     'j13_dernier':
-        "ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال "
+        "كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.",
     'j14_pause':
         "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP "
         "وما نلحوش عليكم.",
@@ -641,6 +648,21 @@ CLES_RELANCE = [
     'reactivation_k6_p2',
     # 16/11/2026 — « Relancer le client pour ses pièces » (étape `pieces_recues`, lead pro).
     'relance_pieces',
+    # 17/11/2026 — corrections de textes : l'appel d'ouverture par origine (+ client déjà
+    # signé), un script par appel après devis (J28, J90), le réveil J30 en appel, et les
+    # étapes du moteur qui n'avaient rien à dire.
+    'appel_ouverture_reference',
+    'appel_ouverture_telephone',
+    'appel_ouverture_whatsapp_entrant',
+    'appel_ouverture_ancien_dossier',
+    'appel_ouverture_deuxieme_affaire',
+    'appel_validite',
+    'appel_dernier_suivi',
+    'appel_reveil_devis',
+    'appel_reveil_sans_devis',
+    'message_creneau',
+    'appel_rappel_convenu',
+    'appel_planifier_visite',
 ]
 
 #: CADV107 — les clés de réactivation : seule exception à la doctrine CAD62
@@ -702,8 +724,8 @@ class MessageTemplate(models.Model):
         REPONDEUR = 'repondeur', "Relance — message sur répondeur"
         # CAD67 — Appel 3 (relance, J1) et Appel 6 (dernier, avant clôture).
         APPEL_RELANCE = 'appel_relance', "Relance — script d'appel 3 (J1)"
-        APPEL_DERNIER = 'appel_dernier', "Relance — script du dernier appel (J10)"
-        VALEUR_J1 = 'valeur_j1', "Relance — message de valeur (J1)"
+        APPEL_DERNIER = 'appel_dernier', "Relance — script du dernier appel (J4)"
+        VALEUR_J1 = 'valeur_j1', "Relance — message de valeur (J2)"
         VOCAL_J3 = 'vocal_j3', "Relance — script du vocal (J3)"
         APPEL_DIMANCHE = 'appel_dimanche', "Relance — script d'appel du dimanche"
         JE_CLASSE_J7 = 'je_classe_j7', "Relance — « je classe ? » (J7)"
@@ -716,13 +738,13 @@ class MessageTemplate(models.Model):
         APPEL_SUIVI_J2 = (
             'appel_suivi_j2', "Après devis — script d'appel de suivi (J2)")
         J4_PREUVE = 'j4_preuve', "Après devis — chantier comparable (J4)"
-        J6_GARANTIES = 'j6_garanties', "Après devis — garanties fabricants (J6)"
+        J6_GARANTIES = 'j6_garanties', "Après devis — garanties fabricants (J10)"
         APPEL_SUIVI_J7 = (
             'appel_suivi_j7', "Après devis — script d'appel de suivi (J7)")
         J9_VALIDITE = 'j9_validite', "Après devis — validité de la proposition (J9)"
         APPEL_SUIVI_J11 = (
-            'appel_suivi_j11', "Après devis — script d'appel de suivi (J11)")
-        J13_DERNIER = 'j13_dernier', "Après devis — dernier message (J13)"
+            'appel_suivi_j11', "Après devis — script d'appel de décision (J14)")
+        J13_DERNIER = 'j13_dernier', "Après devis — dernier message (J60)"
         J14_PAUSE = 'j14_pause', "Après devis — mise en pause (J14)"
         DIMANCHE_FAMILLE = 'dimanche_famille', "Après devis — dimanche famille"
         ANNONCE_APPEL_REDA = 'annonce_appel_reda', "Annonce de l'appel du fondateur"
@@ -803,6 +825,40 @@ class MessageTemplate(models.Model):
         # 16/11/2026 — étape « Relancer le client pour ses pièces » (lead pro).
         RELANCE_PIECES = (
             'relance_pieces', "Relance — pièces du client (lead professionnel)")
+        # 17/11/2026 — corrections de textes de la cadence de suivi.
+        APPEL_OUVERTURE_REFERENCE = (
+            'appel_ouverture_reference',
+            "Relance — script d'appel d'ouverture, lead venu par recommandation (J0)")
+        APPEL_OUVERTURE_TELEPHONE = (
+            'appel_ouverture_telephone',
+            "Relance — script d'appel d'ouverture, lead venu par téléphone ou en boutique (J0)")
+        APPEL_OUVERTURE_WHATSAPP_ENTRANT = (
+            'appel_ouverture_whatsapp_entrant',
+            "Relance — script d'appel d'ouverture, lead né d'un message entrant (J0)")
+        APPEL_OUVERTURE_ANCIEN_DOSSIER = (
+            'appel_ouverture_ancien_dossier',
+            "Relance — script d'appel d'ouverture, dossier ancien repris (J0)")
+        APPEL_OUVERTURE_DEUXIEME_AFFAIRE = (
+            'appel_ouverture_deuxieme_affaire',
+            "Relance — script d'appel d'ouverture, client déjà signé qui revient")
+        APPEL_VALIDITE = (
+            'appel_validite', "Après devis — script d'appel de validité (J28)")
+        APPEL_DERNIER_SUIVI = (
+            'appel_dernier_suivi',
+            "Après devis — script du dernier appel de suivi (J90)")
+        APPEL_REVEIL_DEVIS = (
+            'appel_reveil_devis',
+            "Réveil — script d'appel, dormant avec devis (J30)")
+        APPEL_REVEIL_SANS_DEVIS = (
+            'appel_reveil_sans_devis',
+            "Réveil — script d'appel, lead jamais chiffré (J30)")
+        MESSAGE_CRENEAU = (
+            'message_creneau', "Après l'appel — proposer un créneau (message)")
+        APPEL_RAPPEL_CONVENU = (
+            'appel_rappel_convenu', "Après l'appel — script du rappel convenu")
+        APPEL_PLANIFIER_VISITE = (
+            'appel_planifier_visite',
+            "Visite — script d'appel pour planifier la visite")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1150,6 +1206,53 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['commercial'] = (
 MESSAGE_TEMPLATE_VARIANTES_SEGMENT['commercial'] = (
     MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel'])
 
+# 17/11/2026 — variantes de SEGMENT des appels de réveil et du dernier appel de suivi
+# (posées AVANT `CLES_VARIANTES_SEGMENT`, calculée plus bas) : « sur votre toit, en 3D » ne se
+# dit pas à un pompage ni à une entreprise (CAD126) — chaque variante est faite
+# UNIQUEMENT des phrases de la variante `reveil_a1`/`reveil_a2` du segment, de
+# « — c'est un appel commercial » et de la question de `reveil_b`.
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT['agricole'].update({
+    'appel_reveil_devis':
+        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque} — c'est un appel commercial. Vous aviez reçu "
+        "un devis de pompage solaire chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à "
+        "jour — c'est gratuit, sans engagement. Votre projet est-il toujours d'actualité ?",
+    'appel_reveil_sans_devis':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Il y a un mois, vous "
+        "vous renseigniez sur le pompage solaire. Votre projet est-il toujours d'actualité ?",
+    # `appel_dernier_suivi` : seul « l'estimation à jour » change, pour le mot de
+    # la variante `reveil_a2` du segment.
+    'appel_dernier_suivi':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : dites-moi si le projet est "
+        "toujours d'actualité, et si non, je vous laisse tranquille. Si le projet reprend, je vous envoie le "
+        "chiffrage à jour.",
+})
+# `industriel` est partagé avec `commercial` (même dict, voir plus haut).
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel'].update({
+    'appel_reveil_devis':
+        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque} — c'est un appel commercial. Vous aviez reçu "
+        "une étude solaire chez nous. Si le projet revient d'actualité, je vous refais l'étude à jour — c'est "
+        "gratuit, sans engagement. Votre projet est-il toujours d'actualité ?",
+    'appel_dernier_suivi':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : dites-moi si le projet est "
+        "toujours d'actualité, et si non, je vous laisse tranquille. Si le projet reprend, je vous envoie l'étude à "
+        "jour.",
+})
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['agricole'].update({
+    'appel_reveil_devis':
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque} — هادا اتصال تجاري. كنتو توصلتو بعرض ديال "
+        "الضخ بالطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الحساب ديال الثمن محين — بلاش، بلا ما "
+        "تلتزمو بوالو. واش المشروع ديالكم مازال كيهمكم؟",
+    'appel_reveil_sans_devis':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. هادي شهر كنتو كتسولو على "
+        "الضخ بالطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟",
+})
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['industriel'].update({
+    'appel_reveil_devis':
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque} — هادا اتصال تجاري. كنتو توصلتو بدراسة ديال "
+        "الطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الدراسة محينة — بلاش، بلا ما تلتزمو بوالو. واش "
+        "المشروع ديالكم مازال كيهمكم؟",
+})
+
 # ── CIQ520 (06/10/2026) — base B2B PARTAGÉE + SURCHARGES COMMERCIALES ────
 #
 # Le commercial EST, par défaut, l'objet industriel (base B2B ci-dessus). Un
@@ -1450,6 +1553,131 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
         'الوقت، إلا [شكون خاصو يعطي الموافقة] احتاج العرض ولا ورقة الملخص ديالو، قولوها ليا ونصيفطهم ليكم.',
 })
 
+# ── 17/11/2026 (fondateur) — CORRECTIONS DE TEXTES DE LA CADENCE DE SUIVI ─────
+#
+# Textes approuvés le 17/11/2026, COMPOSÉS de phrases déjà validées (aucun mot
+# nouveau, aucun chiffre) ; source de vérité : `docs/crm/messages_meryem.md`.
+# Salutation standard = « Bonjour {civilite} {prenom}, {conseiller} de {marque}. »
+# (darija : celle de `je_classe_j7`). Les clés d'APPEL ne portent pas la ligne
+# STOP (un script se dit à voix haute) ; `message_creneau`, écrit, la porte
+# (`CLES_PORTE_DE_SORTIE_CADV34`).
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    # B — l'appel d'ouverture dit la vérité sur l'ORIGINE du lead, comme
+    # `identite_*` (CAD127) : seule la phrase d'origine change, copiée mot pour
+    # mot de la clé `identite_*` correspondante ; la mention légale (loi 31-08
+    # art. 51, loi 09-08 art. 5 §3 — CAD109) reste identique, dans sa PROPRE
+    # phrase : sans prescripteur ou sans mois, la phrase d'origine est omise
+    # (MRY13) et la mention légale part quand même.
+    'appel_ouverture_reference':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. {prescripteur} nous a "
+        "parlé de vous pour le solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous "
+        "dérange deux minutes ?",
+    'appel_ouverture_telephone':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Suite à notre échange au "
+        "sujet du solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux "
+        "minutes ?",
+    'appel_ouverture_whatsapp_entrant':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Merci pour votre message "
+        "au sujet du solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange "
+        "deux minutes ?",
+    'appel_ouverture_ancien_dossier':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Vous nous aviez "
+        "consultés en {mois_dossier} au sujet du solaire. Vous pouvez me demander à tout moment d'où viennent vos "
+        "coordonnées. Je vous dérange deux minutes ?",
+    # Le client déjà signé (cadence `deuxieme_affaire`, étape 2).
+    'appel_ouverture_deuxieme_affaire':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Nous avons déjà "
+        "travaillé ensemble sur votre première installation. Vous pouvez me demander à tout moment d'où viennent "
+        "vos coordonnées. Je vous dérange deux minutes ?",
+    # C — un script par appel après devis (J28 et J90 réutilisaient celui du J14).
+    'appel_validite':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Votre proposition est valable jusqu'au "
+        "{date_validite}. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous "
+        "presser, c'est pour ne pas vous annoncer un prix faux. Où en est votre réflexion ?",
+    'appel_dernier_suivi':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : dites-moi si le projet est "
+        "toujours d'actualité, et si non, je vous laisse tranquille. Si le projet reprend, je vous envoie "
+        "l'estimation à jour.",
+    # D — le réveil J30 est un APPEL : il lisait un texte WhatsApp (« je vous
+    # l'envoie ici… Répondez STOP »). `reveil_a1`/`reveil_a2` restent pour un
+    # J30 passé en WhatsApp.
+    'appel_reveil_devis':
+        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque} — c'est un appel commercial. Vous aviez reçu "
+        "un devis solaire chez nous. On peut maintenant vous montrer vos panneaux posés sur votre toit, en 3D, avec "
+        "l'estimation à jour de vos économies — c'est gratuit, sans engagement. Votre projet est-il toujours "
+        "d'actualité ?",
+    'appel_reveil_sans_devis':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Il y a un mois, vous "
+        "vous renseigniez sur le solaire. Votre projet est-il toujours d'actualité ?",
+    # E — étapes du moteur qui n'avaient aucun texte à dire.
+    'message_creneau':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je n'ai pas réussi à vous joindre. Quel moment vous "
+        "arrange pour un appel de cinq minutes ?",
+    # Sans darija : le repli français de `get_corps` sert (`CLES_FR_SEULEMENT`).
+    'appel_rappel_convenu':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous rappelle comme convenu — vous avez deux "
+        "minutes maintenant ?",
+    'appel_planifier_visite':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle pour fixer la date de la visite "
+        "technique.",
+})
+MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
+    'appel_ouverture_reference':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. {prescripteur} هضر لينا عليكم "
+        "بخصوص الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
+    'appel_ouverture_telephone':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. بعد الهضرة ديالنا على الطاقة "
+        "الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
+    'appel_ouverture_whatsapp_entrant':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. شكرا على الرسالة ديالكم "
+        "بخصوص الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
+    'appel_ouverture_ancien_dossier':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. كنتو سولتونا ف {mois_dossier} "
+        "على الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
+    'appel_ouverture_deuxieme_affaire':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. خدمنا مع بعضياتنا ف التجهيزة "
+        "الأولى ديالكم. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
+    'appel_validite':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. العرض ديالكم صالح حتى {date_validite}. من بعد، "
+        "خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح. فين وصلتو ف "
+        "التفكير؟",
+    'appel_dernier_suivi':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال "
+        "كيهمكم، وإلا لا، نخليكم ف حالكم. إلا رجع المشروع كيهمكم، غادي نصيفط ليكم التقدير الجديد.",
+    'appel_reveil_devis':
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque} — هادا اتصال تجاري. كنتو توصلتو بعرض للطاقة "
+        "الشمسية عندنا. دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير "
+        "ديالكم — بلاش، بلا ما تلتزمو بوالو. واش المشروع ديالكم مازال كيهمكم؟",
+    'appel_reveil_sans_devis':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. هادي شهر كنتو كتسولو على "
+        "الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟",
+    'message_creneau':
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. حاولت نعيط ليكم ولكن ما لقيتكمش. شمن وقت يناسبكم "
+        "باش نعيط ليكم خمس دقايق؟",
+})
+#: 17/11/2026 — les deux clés dont la darija reste à formuler par un locuteur
+#: natif : `get_corps(..., 'darija')` retombe sur le FR (jamais une traduction
+#: automatique) — seconde exception, avec `CLES_REACTIVATION`, à « darija COMPLÈTE ».
+CLES_FR_SEULEMENT = ('appel_rappel_convenu', 'appel_planifier_visite')
+
+#: 17/11/2026 — l'appel d'ouverture SUIT l'origine du lead exactement comme
+#: `identite` (CAD127) : clé d'identité choisie → clé d'appel correspondante.
+#: Le client déjà signé n'y figure pas : son script est posé sur l'étape 2 de
+#: sa cadence (`CADENCE_DEUXIEME_AFFAIRE_DEFAUT`), sans routage.
+CLE_APPEL_OUVERTURE_PAR_IDENTITE = {
+    'identite_reference': 'appel_ouverture_reference',
+    'identite_telephone': 'appel_ouverture_telephone',
+    'identite_whatsapp_entrant': 'appel_ouverture_whatsapp_entrant',
+    'identite_ancien_dossier': 'appel_ouverture_ancien_dossier',
+}
+
+#: 17/11/2026 — un réveil posé en APPEL lit le script d'appel, pas le WhatsApp
+#: (`cadence_plan._adapter_gabarits_reveil`, `cadence_messages.message_pour_etape`).
+CLE_APPEL_PAR_CLE_REVEIL = {
+    'reveil_a1': 'appel_reveil_devis',
+    'reveil_a2': 'appel_reveil_sans_devis',
+}
+
 
 # ── CADV34 (02/11/2026, D-CADV-1) — la porte de sortie sur TOUT message écrit ─
 #
@@ -1469,7 +1697,7 @@ CLES_PORTE_DE_SORTIE_CADV34 = (
     'identite_whatsapp_entrant', 'identite_ancien_dossier',
     'valeur_j1', 'vocal_j3', 'j1_pdf', 'j4_preuve', 'j6_garanties',
     'j9_validite', 'dimanche_famille', 'deuxieme_affaire',
-    'visite_confirmation', 'relance_pieces',
+    'visite_confirmation', 'relance_pieces', 'message_creneau',
 )
 
 

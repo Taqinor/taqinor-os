@@ -482,9 +482,25 @@ class GabaritsReveilTests(_Base):
         self._deja_joint()
         self._epuiser('contact')
         self.assertEqual(self._reveils().count(), 2)
-        self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])
+        # 17/11/2026 — le J30 est un APPEL : il lit le script d'appel (avant :
+        # `reveil_a2`, un WhatsApp). Le J60 reste un WhatsApp : `reveil_a3`.
+        self.assertEqual(self._cles_reveil(),
+                         ['appel_reveil_sans_devis', 'reveil_a3'])
 
     def test_un_dormant_avec_devis_recoit_A1_puis_la_derniere_chance(self):
+        self._devis('envoye')
+        _materialiser_tout(
+            self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+        self.assertEqual(self._cles_reveil(),
+                         ['appel_reveil_devis', 'reveil_a3'])
+
+    def test_un_j30_passe_en_whatsapp_garde_les_textes_whatsapp(self):
+        """17/11/2026 — une société qui a fait de son J30 un WhatsApp garde
+        `reveil_a1`/`reveil_a2` : seul un J30 en APPEL lit le script d'appel."""
+        CadenceRelanceEtape.cadence_pour(self.company, 'reveil')
+        CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='reveil', ordre=1,
+        ).update(canal='whatsapp')
         self._devis('envoye')
         _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
@@ -499,4 +515,5 @@ class GabaritsReveilTests(_Base):
         self._deja_joint()
         _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
-        self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])
+        self.assertEqual(self._cles_reveil(),
+                         ['appel_reveil_sans_devis', 'reveil_a3'])

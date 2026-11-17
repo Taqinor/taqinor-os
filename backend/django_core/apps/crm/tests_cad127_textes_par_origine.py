@@ -283,3 +283,285 @@ class PiecesRecuesRendUnMessageTests(_Base):
                 self.assertIn('factures', texte)
                 self.assertIn('STOP', texte)
                 self.assertNotIn('{', texte)
+
+class AppelOuvertureSuitLOrigineTests(_Base):
+    """17/11/2026 — « Vous venez de remplir notre formulaire » se disait aussi AU
+    TÉLÉPHONE : l'appel d'ouverture suit l'origine comme `identite`, avec les
+    MÊMES règles (canal enregistré, dossier d'un mois antérieur) et la même
+    omission quand le prescripteur ou le mois manque — la mention légale
+    (appel commercial, d'où viennent les coordonnées) part dans tous les cas."""
+    slug = 'cad127-appel'
+
+    def setUp(self):
+        super().setUp()
+        # Sans prénom de conseiller, la salutation (qui le porte) est omise.
+        self.acteur.first_name = 'Karim'
+        self.acteur.save(update_fields=['first_name'])
+
+    MENTION = "d'où viennent vos coordonnées"
+
+    def _touche_appel(self, lead, ordre=2):
+        quand = datetime.datetime.combine(
+            AUJOURDHUI, datetime.time(10, 3), tzinfo=horaires.CASABLANCA)
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=ordre,
+            due_at=quand, due_date=AUJOURDHUI, canal='appel',
+            libelle="Appel d'ouverture", template_cle='appel_ouverture')
+
+    def test_chaque_canal_d_origine_rend_SA_cle_d_appel(self):
+        attendu = {
+            'reference': 'appel_ouverture_reference',
+            'telephone': 'appel_ouverture_telephone',
+            'walk_in': 'appel_ouverture_telephone',
+            'whatsapp_ctwa': 'appel_ouverture_whatsapp_entrant',
+            'site_web': 'appel_ouverture',
+            'meta_ads': 'appel_ouverture',
+            'autre': 'appel_ouverture',
+            '': 'appel_ouverture',
+        }
+        for canal, cle in attendu.items():
+            with self.subTest(canal=canal):
+                lead = self._lead(canal, nom=f'A-{canal or "vide"}')
+                self.assertEqual(
+                    _cle_identite_pour_lead(lead, 'appel_ouverture',
+                                            reference=AUJOURDHUI), cle)
+
+    def test_un_dossier_d_un_mois_anterieur_prime_sur_le_canal(self):
+        lead = self._lead('telephone', nom='AncienAppel')
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=datetime.datetime(
+                2026, 3, 4, 9, 0, tzinfo=horaires.CASABLANCA))
+        lead.refresh_from_db()
+        self.assertEqual(
+            _cle_identite_pour_lead(lead, 'appel_ouverture',
+                                    reference=AUJOURDHUI),
+            'appel_ouverture_ancien_dossier')
+        rendu = message_pour_etape(self._touche_appel(lead), user=self.acteur)
+        self.assertIn('Vous nous aviez consultés en mars 2026 au sujet du '
+                      'solaire.', rendu['message'])
+        self.assertIn(self.MENTION, rendu['message'])
+
+    def test_les_autres_cles_d_appel_ne_sont_pas_detournees(self):
+        lead = self._lead('telephone', nom='AutresAppels')
+        for cle in ('appel_relance', 'appel_dernier', 'repondeur',
+                    'appel_validite', 'appel_ouverture_telephone'):
+            with self.subTest(cle=cle):
+                self.assertEqual(
+                    _cle_identite_pour_lead(lead, cle, reference=AUJOURDHUI),
+                    cle)
+
+    def test_le_message_rendu_dit_l_origine_et_garde_la_mention_legale(self):
+        for canal, phrase in (
+                ('telephone', 'Suite à notre échange au sujet du solaire.'),
+                ('walk_in', 'Suite à notre échange au sujet du solaire.'),
+                ('whatsapp_ctwa',
+                 'Merci pour votre message au sujet du solaire.')):
+            with self.subTest(canal=canal):
+                lead = self._lead(canal, nom=f'R-{canal}')
+                rendu = message_pour_etape(self._touche_appel(lead),
+                                           user=self.acteur)
+                message = rendu['message']
+                self.assertIn(phrase, message)
+                self.assertNotIn('formulaire', message.lower())
+                self.assertIn("c'est un appel commercial", message)
+                self.assertIn(self.MENTION, message)
+                self.assertTrue(message.endswith('Je vous dérange deux '
+                                                 'minutes ?'))
+                self.assertNotIn('STOP', message)
+
+    def test_un_lead_de_formulaire_garde_le_texte_d_origine(self):
+        lead = self._lead('site_web', nom='FormulaireAppel')
+        rendu = message_pour_etape(self._touche_appel(lead), user=self.acteur)
+        self.assertIn('Vous venez de remplir notre formulaire pour le solaire',
+                      rendu['message'])
+
+    def test_le_prescripteur_nomme_la_phrase_d_origine(self):
+        lead = self._lead('reference', nom='ParrainAppel')
+        parrain = Client.objects.create(
+            company=self.company, nom='Benali',
+            email='parrain.appel@example.com')
+        Parrainage.objects.create(
+            company=self.company, parrain=parrain, filleul_lead=lead)
+        rendu = message_pour_etape(self._touche_appel(lead), user=self.acteur)
+        self.assertIn('Benali nous a parlé de vous pour le solaire.',
+                      rendu['message'])
+        self.assertIn(self.MENTION, rendu['message'])
+
+    def test_sans_parrain_la_phrase_d_origine_est_omise_la_mention_reste(self):
+        """MRY13 : jamais un crochet, jamais un nom inventé — et la mention
+        légale, dans sa propre phrase, n'est PAS emportée avec elle."""
+        lead = self._lead('reference', nom='SansParrainAppel')
+        rendu = message_pour_etape(self._touche_appel(lead), user=self.acteur)
+        message = rendu['message']
+        self.assertNotIn('{prescripteur}', message)
+        self.assertNotIn('nous a parlé de vous', message)
+        self.assertIn('prescripteur', rendu['placeholders_manquants'])
+        self.assertIn("c'est un appel commercial", message)
+        self.assertIn(self.MENTION, message)
+
+    def test_la_langue_darija_suit_la_meme_origine(self):
+        lead = self._lead('telephone', nom='DarijaAppel')
+        rendu = message_pour_etape(self._touche_appel(lead),
+                                   user=self.acteur, langue='darija')
+        self.assertIn('بعد الهضرة ديالنا على الطاقة الشمسية.',
+                      rendu['message'])
+        self.assertIn('هادا اتصال تجاري', rendu['message'])
+        self.assertNotIn('الفورم', rendu['message'])
+
+    def test_le_client_deja_signe_lit_son_script_sur_son_barreau(self):
+        lead = self._lead('site_web', nom='Signe')
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='deuxieme_affaire',
+            ordre=2, due_at=MAINTENANT, due_date=AUJOURDHUI, canal='appel',
+            libelle="Appel d'ouverture",
+            template_cle='appel_ouverture_deuxieme_affaire')
+        rendu = message_pour_etape(etape, user=self.acteur)
+        self.assertIn('Nous avons déjà travaillé ensemble sur votre première '
+                      'installation.', rendu['message'])
+        self.assertNotIn('formulaire', rendu['message'].lower())
+        self.assertIn(self.MENTION, rendu['message'])
+
+
+class EtapesDuMoteurSansGabaritTests(_Base):
+    """17/11/2026 — une étape posée SANS `template_cle` mais portant une clé de
+    moteur rend le texte PAR DÉFAUT de cette clé (étapes déjà ouvertes en prod,
+    société dont la ligne de gabarit est vide). `pieces_recues` garde le sien."""
+    slug = 'cad127-moteur'
+
+    def setUp(self):
+        super().setUp()
+        # Sans prénom de conseiller, la salutation (qui le porte) est omise.
+        self.acteur.first_name = 'Karim'
+        self.acteur.save(update_fields=['first_name'])
+
+    def _etape(self, lead, ordre, cle, canal, libelle, template_cle=''):
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='generique', ordre=ordre,
+            cle=cle, due_at=MAINTENANT, due_date=AUJOURDHUI, canal=canal,
+            libelle=libelle, template_cle=template_cle)
+
+    def test_chaque_etape_du_moteur_sans_gabarit_rend_le_defaut_de_sa_cle(self):
+        lead = self._lead('site_web', nom='Moteur')
+        cas = (
+            ('message_creneau', 'whatsapp',
+             "Message — proposer un créneau pour l'appel",
+             "Je n'ai pas réussi à vous joindre. Quel moment vous arrange "
+             'pour un appel de cinq minutes ?'),
+            ('dernier_appel', 'appel',
+             'Rappeler — dernier essai avant de chiffrer',
+             'Je reviens vers vous pour votre demande solaire — vous avez '
+             'deux minutes maintenant ?'),
+            ('rappel_convenu', 'appel', 'Rappeler le client — rappel convenu',
+             'Je vous rappelle comme convenu — vous avez deux minutes '
+             'maintenant ?'),
+            ('planifier', 'appel', 'Planifier la visite technique convenue',
+             'Je vous appelle pour fixer la date de la visite technique.'),
+        )
+        for ordre, (cle, canal, libelle, phrase) in enumerate(cas, start=1):
+            with self.subTest(cle=cle):
+                rendu = message_pour_etape(
+                    self._etape(lead, ordre, cle, canal, libelle),
+                    user=self.acteur)
+                self.assertIn(phrase, rendu['message'])
+                self.assertTrue(rendu['message'].startswith('Bonjour'))
+                self.assertNotIn('{', rendu['message'])
+        # Seul le message écrit porte la porte de sortie.
+        message = message_pour_etape(
+            RelanceEtape.objects.get(lead=lead, cle='message_creneau'),
+            user=self.acteur)['message']
+        self.assertIn('STOP', message)
+
+    def test_une_etape_reconnue_par_son_libelle_par_defaut_aussi(self):
+        """Posée avant la clé (`cle` vide) : reconnue par son libellé par défaut."""
+        lead = self._lead('site_web', nom='MoteurAncien')
+        rendu = message_pour_etape(
+            self._etape(lead, 1, '', 'appel',
+                        'Rappeler le client — rappel convenu'),
+            user=self.acteur)
+        self.assertIn('Je vous rappelle comme convenu', rendu['message'])
+
+    def test_l_etape_devis_n_a_toujours_aucun_texte(self):
+        lead = self._lead('site_web', nom='Devis')
+        rendu = message_pour_etape(
+            self._etape(lead, 1, 'devis', 'appel',
+                        'Préparer et envoyer le devis (ou fixer un rappel)'),
+            user=self.acteur)
+        self.assertEqual(rendu['message'], '')
+
+    def test_un_gabarit_pose_n_est_jamais_remplace(self):
+        lead = self._lead('site_web', nom='Gabarit')
+        rendu = message_pour_etape(
+            self._etape(lead, 1, 'dernier_appel', 'appel',
+                        'Rappeler — dernier essai avant de chiffrer',
+                        template_cle='appel_dernier'), user=self.acteur)
+        self.assertIn('Dernier essai avant de classer votre demande',
+                      rendu['message'])
+
+
+class LeReveilJ30EnAppelLitLeScriptDAppelTests(_Base):
+    """17/11/2026 — le réveil J30 est un APPEL : il lisait le WhatsApp
+    `reveil_a1`/`reveil_a2` (« je vous l'envoie ici… Répondez STOP »). Les
+    étapes déjà ouvertes en prod portent encore l'ancienne clé : le rendu la
+    traduit sur un canal d'appel ; un réveil passé en WhatsApp la garde."""
+    slug = 'cad127-reveil'
+
+    def setUp(self):
+        super().setUp()
+        # Sans prénom de conseiller, la salutation (qui le porte) est omise.
+        self.acteur.first_name = 'Karim'
+        self.acteur.save(update_fields=['first_name'])
+
+    def _reveil(self, lead, ordre, template_cle, canal):
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='reveil', ordre=ordre,
+            due_at=MAINTENANT, due_date=AUJOURDHUI, canal=canal,
+            libelle='Réveil J30', template_cle=template_cle)
+
+    def test_un_reveil_en_appel_lit_le_script_d_appel(self):
+        lead = self._lead('site_web', nom='ReveilAppel')
+        for ordre, (cle, phrase) in enumerate((
+                ('reveil_a1', 'Vous aviez reçu un devis solaire chez nous.'),
+                ('reveil_a2', 'Il y a un mois, vous vous renseigniez sur le '
+                              'solaire.')), start=1):
+            with self.subTest(cle=cle):
+                rendu = message_pour_etape(
+                    self._reveil(lead, ordre, cle, 'appel'), user=self.acteur)
+                message = rendu['message']
+                self.assertIn(phrase, message)
+                self.assertIn("c'est un appel commercial", message)
+                self.assertTrue(message.endswith(
+                    "Votre projet est-il toujours d'actualité ?"))
+                self.assertNotIn('STOP', message)
+                self.assertNotIn(' ici', message)
+
+    def test_un_reveil_en_whatsapp_garde_son_texte_whatsapp(self):
+        lead = self._lead('site_web', nom='ReveilWhatsApp')
+        rendu = message_pour_etape(
+            self._reveil(lead, 1, 'reveil_a1', 'whatsapp'), user=self.acteur)
+        self.assertIn('Je me lance ?', rendu['message'])
+        self.assertIn('STOP', rendu['message'])
+
+    def test_le_script_d_appel_stocke_se_rend_tel_quel(self):
+        lead = self._lead('site_web', nom='ReveilStocke')
+        rendu = message_pour_etape(
+            self._reveil(lead, 1, 'appel_reveil_devis', 'appel'),
+            user=self.acteur)
+        self.assertIn('en 3D', rendu['message'])
+        self.assertNotIn('STOP', rendu['message'])
+
+    def test_un_lead_agricole_n_entend_ni_toit_ni_3d(self):
+        lead = self._lead('site_web', nom='ReveilAgricole')
+        lead.type_installation = Lead.TypeInstallation.AGRICOLE
+        lead.save(update_fields=['type_installation'])
+        devis = message_pour_etape(
+            self._reveil(lead, 1, 'reveil_a1', 'appel'),
+            user=self.acteur)['message']
+        self.assertIn('devis de pompage solaire', devis)
+        self.assertIn('je vous refais le chiffrage à jour', devis)
+        for mot in ('toit', '3D', 'économies'):
+            self.assertNotIn(mot, devis)
+        sans = message_pour_etape(
+            self._reveil(lead, 2, 'reveil_a2', 'appel'),
+            user=self.acteur)['message']
+        self.assertIn('vous renseigniez sur le pompage solaire', sans)
+

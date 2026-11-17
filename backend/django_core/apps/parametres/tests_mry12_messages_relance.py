@@ -22,8 +22,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.parametres.models_messages import (
-    CLES_REACTIVATION, CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
-    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, MESSAGE_TEMPLATE_VARIANTES_SEGMENT,
+    CLES_FR_SEULEMENT, CLES_REACTIVATION, CLES_RELANCE,
+    MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+    MESSAGE_TEMPLATE_FORMES_EMAIL, MESSAGE_TEMPLATE_VARIANTES_SEGMENT,
     MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA, PLACEHOLDERS_RELANCE,
     MessageTemplate,
 )
@@ -222,6 +223,218 @@ class RelancePiecesComposeeDeValeurJ1Tests(SimpleTestCase):
             MESSAGE_TEMPLATE_DEFAULTS_DARIJA['relance_pieces'], reste)
 
 
+#: La salutation standard (FR / darija) : « Bonjour {civilite} {prenom}, … ».
+SALUTATION_FR = 'Bonjour {civilite} {prenom}, {conseiller} de {marque}.'
+SALUTATION_DARIJA = 'السلام عليكم {civilite} {prenom}، {conseiller} من {marque}.'
+STOP_FR = " Répondez STOP et je n'insiste plus."
+STOP_DARIJA = ' جاوبو STOP وما نلحوش عليكم.'
+
+
+class TextesCorrigesDu1711Tests(SimpleTestCase):
+    """17/11/2026 (fondateur) — corrections de textes de la cadence de suivi :
+    des SUPPRESSIONS et des RECOMBINAISONS de phrases déjà validées, jamais un
+    mot nouveau. Chaque texte est comparé à ses sources, phrase pour phrase."""
+
+    def test_suppressions_seules_sur_les_trois_textes_existants(self):
+        fr, da = MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        self.assertEqual(
+            fr['je_classe_j7'],
+            SALUTATION_FR + ' Sans nouvelle de votre part, je mets votre '
+            'demande de côté. Un simple « plus tard » me suffit pour la '
+            'garder ouverte.' + STOP_FR)
+        self.assertNotIn('dans une semaine', fr['je_classe_j7'])
+        self.assertNotIn('من هنا لأسبوع', da['je_classe_j7'])
+        self.assertIn('على جنب. كلمة «من بعد»', da['je_classe_j7'])
+        self.assertEqual(
+            fr['appel_relance'],
+            SALUTATION_FR + ' Je reviens vers vous pour votre demande '
+            'solaire — vous avez deux minutes maintenant ?')
+        self.assertNotIn("d'hier", fr['appel_relance'])
+        self.assertNotIn('ديال البارح', da['appel_relance'])
+        self.assertIn('الطلب ديالكم — عندكم', da['appel_relance'])
+
+    def test_repondeur_passe_au_passe_compose_et_la_darija_ne_bouge_pas(self):
+        self.assertIn('Je vous ai envoyé un message WhatsApp, répondez-y '
+                      'quand vous voulez.',
+                      MESSAGE_TEMPLATE_DEFAULTS['repondeur'])
+        self.assertNotIn('Je vous envoie un message',
+                         MESSAGE_TEMPLATE_DEFAULTS['repondeur'])
+        self.assertEqual(
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA['repondeur'],
+            SALUTATION_DARIJA + ' كنعيط ليكم بخصوص الطلب ديالكم على الطاقة '
+            'الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما '
+            'بغيتو. نهاركم مبروك.')
+
+    def test_garanties_et_dernier_message_gagnent_la_salutation_standard(self):
+        fr, da = MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        email = MESSAGE_TEMPLATE_FORMES_EMAIL['j6_garanties']['corps']
+        phrase_email = email.split(', ', 1)[1].split(' Le détail')[0]
+        self.assertEqual(
+            fr['j6_garanties'],
+            SALUTATION_FR + ' ' + phrase_email[0].upper() + phrase_email[1:]
+            + ' Le détail par équipement est dans votre proposition : '
+            '{lien}.' + STOP_FR)
+        self.assertEqual(
+            fr['j13_dernier'],
+            SALUTATION_FR + " Je ne veux pas insister : dites-moi si le "
+            "projet est toujours d'actualité, et si non, je vous laisse "
+            'tranquille.' + STOP_FR)
+        for cle in ('j6_garanties', 'j13_dernier'):
+            with self.subTest(cle=cle):
+                self.assertTrue(da[cle].startswith(SALUTATION_DARIJA + ' '))
+        # Le texte darija d'origine suit la salutation, mot pour mot.
+        self.assertIn(
+            'هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل '
+            'الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}.',
+            da['j6_garanties'])
+        self.assertIn(
+            'ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا '
+            'لا، نخليكم ف حالكم.', da['j13_dernier'])
+
+    def test_les_deux_appels_apres_devis_sont_des_recombinaisons(self):
+        fr, da = MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        validite = fr['j9_validite'].replace(STOP_FR, '')
+        j13 = fr['j13_dernier'].replace(SALUTATION_FR + ' ', '').replace(
+            STOP_FR, '')
+        self.assertEqual(
+            fr['appel_validite'],
+            SALUTATION_FR + ' ' + validite + ' Où en est votre réflexion ?')
+        self.assertIn('où en est votre réflexion ?', fr['appel_suivi_j11'])
+        self.assertEqual(
+            fr['appel_dernier_suivi'],
+            SALUTATION_FR + ' ' + j13 + " Si le projet reprend, je vous "
+            "envoie l'estimation à jour.")
+        self.assertIn("je vous envoie l'estimation à jour",
+                      fr['reveil_a2'])
+        # darija : mêmes recombinaisons des clés sources.
+        validite_da = da['j9_validite'].replace(STOP_DARIJA, '')
+        self.assertEqual(
+            da['appel_validite'],
+            SALUTATION_DARIJA + ' ' + validite_da + ' فين وصلتو ف التفكير؟')
+        self.assertIn('فين وصلتو ف التفكير؟', da['appel_suivi_j11'])
+        j13_da = da['j13_dernier'].replace(
+            SALUTATION_DARIJA + ' ', '').replace(STOP_DARIJA, '')
+        self.assertEqual(
+            da['appel_dernier_suivi'],
+            SALUTATION_DARIJA + ' ' + j13_da
+            + ' إلا رجع المشروع كيهمكم، غادي نصيفط ليكم التقدير الجديد.')
+        self.assertIn('إلا رجع المشروع كيهمكم', da['reveil_a2'])
+        self.assertIn('غادي نصيفط ليكم التقدير الجديد', da['reveil_a2'])
+
+    def test_les_deux_appels_de_reveil_sont_faits_des_phrases_des_reveils(self):
+        fr = MESSAGE_TEMPLATE_DEFAULTS
+        devis = fr['appel_reveil_devis']
+        a1 = fr['reveil_a1']
+        for morceau in (
+                'vous aviez reçu un devis solaire chez nous.',
+                "on peut maintenant vous montrer vos panneaux posés sur "
+                "votre toit, en 3d, avec l'estimation à jour de vos économies",
+                "c'est gratuit, sans engagement"):
+            with self.subTest(morceau=morceau):
+                self.assertIn(morceau, devis.lower())
+                self.assertIn(morceau, a1.lower())
+        self.assertTrue(devis.endswith(
+            "Votre projet est-il toujours d'actualité ?"))
+        self.assertIn("Votre projet est-il toujours d'actualité ?",
+                      fr['reveil_b'])
+        self.assertIn("c'est un appel commercial",
+                      fr['appel_ouverture'])
+        sans = fr['appel_reveil_sans_devis']
+        self.assertEqual(
+            sans,
+            'Bonjour {civilite} {prenom}, {conseiller} de {marque} '
+            "— c'est un appel commercial. Il y a un mois, vous vous "
+            "renseigniez sur le solaire. Votre projet est-il toujours "
+            "d'actualité ?")
+        self.assertIn('Il y a un mois, vous vous renseigniez sur le solaire.',
+                      fr['reveil_a2'])
+        for cle in ('appel_reveil_devis', 'appel_reveil_sans_devis'):
+            for texte in (fr[cle], MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle]):
+                with self.subTest(cle=cle):
+                    self.assertNotIn('STOP', texte)
+                    self.assertNotIn(' ici', texte)
+
+    def test_les_variantes_de_segment_n_utilisent_que_les_phrases_du_segment(self):
+        agri = MESSAGE_TEMPLATE_VARIANTES_SEGMENT['agricole']
+        b2b = MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel']
+        question = "Votre projet est-il toujours d'actualité ?"
+        mention = "— c'est un appel commercial."
+        for table in (agri, b2b):
+            self.assertTrue(table['appel_reveil_devis'].endswith(question))
+            self.assertIn(mention, table['appel_reveil_devis'])
+        # Chaque phrase de la variante vient de la variante `reveil_a1` du segment.
+        for table in (agri, b2b):
+            a1 = table['reveil_a1']
+            for phrase in table['appel_reveil_devis'].split('. ')[1:-1]:
+                with self.subTest(phrase=phrase):
+                    self.assertIn(phrase.rstrip('.'), a1)
+        self.assertIn('il y a un mois, vous vous renseigniez sur le pompage '
+                      'solaire.',
+                      agri['appel_reveil_sans_devis'].lower())
+        self.assertIn('Il y a un mois, vous vous renseigniez sur le pompage '
+                      'solaire.', agri['reveil_a2'])
+        self.assertNotIn('appel_reveil_sans_devis', b2b)
+        # `appel_dernier_suivi` : seul le mot de la fin change, comme dans `reveil_a2`.
+        base = MESSAGE_TEMPLATE_DEFAULTS['appel_dernier_suivi']
+        self.assertEqual(
+            agri['appel_dernier_suivi'],
+            base.replace("l'estimation à jour", 'le chiffrage à jour'))
+        self.assertEqual(
+            b2b['appel_dernier_suivi'],
+            base.replace("l'estimation à jour", "l'étude à jour"))
+        self.assertIn('le chiffrage à jour', agri['reveil_a2'])
+        self.assertIn("l'étude à jour", b2b['reveil_a1'])
+        # Darija : le texte de base disait « السطح » et « 3D » — chaque segment a le sien.
+        da_agri = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['agricole']
+        da_b2b = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['industriel']
+        for cle in ('appel_reveil_devis', 'appel_reveil_sans_devis'):
+            self.assertIn(cle, da_agri)
+        self.assertIn('appel_reveil_devis', da_b2b)
+        self.assertNotIn('السطح', da_agri['appel_reveil_devis'])
+        self.assertNotIn('السطح', da_b2b['appel_reveil_devis'])
+
+    def test_etapes_sans_texte_message_creneau_et_deux_appels(self):
+        fr, da = MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        self.assertEqual(
+            fr['message_creneau'],
+            SALUTATION_FR + " Je n'ai pas réussi à vous joindre. Quel moment "
+            "vous arrange pour un appel de cinq minutes ?" + STOP_FR)
+        valeur = fr['valeur_j1']
+        self.assertIn("Je n'ai pas réussi à vous joindre.".lower(),
+                      valeur.lower())
+        self.assertIn('Quel moment vous arrange pour un appel de cinq '
+                      'minutes ?', valeur)
+        self.assertTrue(da['message_creneau'].endswith(
+            'شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟' + STOP_DARIJA))
+        self.assertEqual(
+            fr['appel_rappel_convenu'],
+            SALUTATION_FR + ' Je vous rappelle comme convenu — vous avez '
+            'deux minutes maintenant ?')
+        self.assertEqual(
+            fr['appel_planifier_visite'],
+            SALUTATION_FR + ' Je vous appelle pour fixer la date de la visite '
+            'technique.')
+        for cle in CLES_FR_SEULEMENT:
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, da)
+                self.assertNotIn('STOP', fr[cle])
+
+    def test_les_douze_cles_sont_au_catalogue_et_au_choix_du_modele(self):
+        nouvelles = (
+            'appel_ouverture_reference', 'appel_ouverture_telephone',
+            'appel_ouverture_whatsapp_entrant', 'appel_ouverture_ancien_dossier',
+            'appel_ouverture_deuxieme_affaire', 'appel_validite',
+            'appel_dernier_suivi', 'appel_reveil_devis',
+            'appel_reveil_sans_devis', 'message_creneau',
+            'appel_rappel_convenu', 'appel_planifier_visite')
+        choix = {c for c, _ in MessageTemplate.Cle.choices}
+        for cle in nouvelles:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, CLES_RELANCE)
+                self.assertIn(cle, choix)
+                self.assertLessEqual(len(cle), 40)  # max_length du champ
+
+
 class LAncreDuRepliDarijaTests(SimpleTestCase):
     """`CLE_SANS_DARIJA_VALIDEE` doit RESTER une clé sans darija validée.
 
@@ -242,8 +455,10 @@ class LAncreDuRepliDarijaTests(SimpleTestCase):
         """Une clé de `CLES_RELANCE` ne peut PAS servir d'ancre : la doctrine
         CAD62 garantit qu'elles ont TOUTES leur darija."""
         self.assertNotIn(CLE_SANS_DARIJA_VALIDEE, CLES_RELANCE)
-        # CADV107 — seule exception : la darija de réactivation (CADM1).
-        for cle in set(CLES_RELANCE) - set(CLES_REACTIVATION):
+        # CADV107 — exception : la darija de réactivation (CADM1) ; 17/11/2026 —
+        # les deux appels FR seulement (`CLES_FR_SEULEMENT`).
+        for cle in (set(CLES_RELANCE) - set(CLES_REACTIVATION)
+                    - set(CLES_FR_SEULEMENT)):
             with self.subTest(cle=cle):
                 self.assertIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
 

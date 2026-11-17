@@ -328,6 +328,8 @@ class ParquerAuFroidTests(TestCase):
         from apps.crm.cadence_touche import marquer_etape_relance
         lead = self._lead_pro_devis_envoye()
         cadence_plan.cloturer_cadence(lead, self.acteur, 'apres_devis')
+        # L'appel trimestriel n'a pas de script validé : jamais celui du dernier appel.
+        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).template_cle, '')
         for cycle in (1, 2, 3):
             lead.refresh_from_db()
             self.assertEqual((lead.parc_etat, lead.stage),
@@ -347,8 +349,12 @@ class ParquerAuFroidTests(TestCase):
         cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
         lead.refresh_from_db()
         self.assertIsNone(lead.parc_etat)
-        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).libelle,
+        touche = lead.relance_etapes.get(statut=A_FAIRE)
+        self.assertEqual(touche.libelle,
                          cadence_plan.LIBELLE_TOUCHE_AVANT_FROID)
+        # 17/11/2026 — un appel : il lit le script du dernier appel.
+        self.assertEqual((touche.canal, touche.template_cle),
+                         ('appel', 'appel_dernier'))
 
     def test_les_appels_systeme_ne_comptent_pas(self):
         from apps.crm.fiche_funnel import nb_contacts_humains
@@ -407,6 +413,7 @@ class ParquerAuFroidTests(TestCase):
         [appel] = lead.relance_etapes.filter(statut=A_FAIRE)
         self.assertEqual((appel.cadence, appel.canal), ('contact', 'appel'))
         self.assertEqual(appel.libelle, cadence_plan.LIBELLE_TOUCHE_AVANT_FROID)
+        self.assertEqual(appel.template_cle, 'appel_dernier')
         self.assertGreater(appel.ordre, max(e['ordre'] for e in CADENCES_DEFAUT['contact']))
         self.assertFalse(lead.relance_etapes.filter(q_etape(CLE_DEVIS)).exists())
 
@@ -414,7 +421,10 @@ class ParquerAuFroidTests(TestCase):
         lead = self._lead_neuf(
             contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
         cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
-        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).canal, 'whatsapp')
+        touche = lead.relance_etapes.get(statut=A_FAIRE)
+        self.assertEqual(touche.canal, 'whatsapp')
+        # Un WhatsApp ne lit jamais un script d'appel.
+        self.assertEqual(touche.template_cle, '')
 
     def test_parquer_en_standby_garde_l_etape_et_la_date(self):
         from apps.crm.fiche_funnel import parquer_lead
