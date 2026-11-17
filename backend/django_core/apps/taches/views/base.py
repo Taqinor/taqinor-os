@@ -8,10 +8,9 @@
 - `est_assistant(request)` : la requête vient du relais de l'assistant — en-tête
   `X-Taqinor-Assistant` OU authentification `Authorization: Bearer` (échec FERMÉ : le navigateur
   n'envoie que le cookie).
-- `JetonPasEncoreLivre` : BOUCHON d'authentification des trois routes à jeton (capture, flux,
-  tuile) tant que `JetonAccesAuthentication` n'est pas livrée : refuse TOUT en 401 neutre, avec
-  `authenticate_header` (sinon DRF rendrait 403), sans jamais dire pourquoi. `MethodeAvantJeton` :
-  sur ces trois vues, une méthode non servie répond 405 avant ce bouchon.
+- Les trois routes à jeton (capture, flux, tuile) sont authentifiées par
+  `apps.taches.auth_jeton.JetonAccesAuthentication` de leur usage (TCH95). `MethodeAvantJeton` :
+  sur ces trois vues, une méthode non servie répond 405 avant l'authentification.
 - Outillage de schéma OpenAPI des modules de vues : `forme_echantillon(nom)` (la forme de
   l'`exemple` d'un échantillon de `contract_samples/`), `corps(nom, exemple)`, `reponses(...)`,
   `parametre(...)`, `page_de(...)`.
@@ -21,12 +20,10 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
-from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import APIException, AuthenticationFailed, MethodNotAllowed
+from rest_framework.exceptions import APIException, MethodNotAllowed
 from rest_framework.permissions import BasePermission
 
 from authentication.permissions import IsAuthenticatedInterne
@@ -36,7 +33,6 @@ DROIT = 'taches_voir'
 ENTETE_ASSISTANT = 'X-Taqinor-Assistant'
 PREFIXE_BEARER = 'Bearer '
 DETAIL_PAS_ENCORE = 'Pas encore construit.'
-DETAIL_NON_AUTHENTIFIE = 'Authentification requise.'
 
 
 class PasEncore(APIException):
@@ -70,40 +66,17 @@ def est_assistant(request):
     return (entetes.get('Authorization') or '').startswith(PREFIXE_BEARER)
 
 
-class JetonPasEncoreLivre(BaseAuthentication):
-    """Bouchon des routes à jeton (capture, flux, tuile) : 401 neutre pour TOUT appel."""
-
-    def authenticate(self, request):
-        raise AuthenticationFailed(DETAIL_NON_AUTHENTIFIE)
-
-    def authenticate_header(self, request):
-        return 'Bearer realm="taches"'
-
-
-AUTH_JETON = [JetonPasEncoreLivre]
-
-
 class MethodeAvantJeton:
     """Mixin des vues à jeton : une méthode que la vue ne sert pas répond 405 AVANT
     l'authentification (api-fuzz « Unsupported methods ») — DRF authentifie avant de chercher le
-    gestionnaire, et le bouchon rendait 401 à un TRACE. La méthode servie garde son 401 neutre."""
+    gestionnaire, et le refus du jeton rendait 401 à un TRACE. La méthode servie garde son refus
+    neutre."""
 
     def perform_authentication(self, request):
         methode = request.method.lower()
         if methode not in self.http_method_names or not hasattr(self, methode):
             raise MethodNotAllowed(request.method)
         super().perform_authentication(request)
-
-
-class JetonTachesSchema(OpenApiAuthenticationExtension):
-    """Schéma OpenAPI du jeton d'accès `taches` (`tqc_…`, `tqt_…`), porté en `Bearer`."""
-
-    target_class = 'apps.taches.views.base.JetonPasEncoreLivre'
-    name = 'jetonTaches'
-
-    def get_security_definition(self, auto_schema):
-        return {'type': 'http', 'scheme': 'bearer',
-                'description': "Jeton d'accès personnel de l'app Tâches (capture, tuile)."}
 
 
 # --- Schémas OpenAPI ---------------------------------------------------------------------------

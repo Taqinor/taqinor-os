@@ -1,8 +1,8 @@
 """Saisie (reference/api.md §3.2, §4) : saisie rapide et capture (Siri, partage).
 
 `saisie-rapide/` (TCH48) : aperçu, « Range ma liste » (`ids`) et création tout ou rien. La capture
-lève `PasEncore` (501) jusqu'à sa tâche ; elle est authentifiée par le BOUCHON `JetonPasEncoreLivre`
-(401 neutre) tant que `JetonAccesAuthentication` n'est pas livrée. `CHAMPS_LIGNE` (le format d'une
+lève `PasEncore` (501) jusqu'à sa tâche ; elle est authentifiée par le jeton `capture`
+(`auth_jeton.JetonCapture`, 401 neutre) et bornée par ses débits. `CHAMPS_LIGNE` (le format d'une
 ligne à créer, api.md §4) est déclaré dans `serializers/saisie.py` : `taches/` POST le réutilise.
 """
 from django.db import transaction
@@ -10,8 +10,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
+from apps.taches.auth_jeton import JetonCapture
 from apps.taches.choix import Source
 from apps.taches.serializers.saisie import (
     CHAMPS_LIGNE, SaisieEntreeSerializer, apercu_ids, apercu_saisie, reponse_creation, valider_lignes,
@@ -19,8 +21,9 @@ from apps.taches.serializers.saisie import (
 )
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.taches import verifier_lien
+from apps.taches.throttles import ThrottleCapture, ThrottleCaptureJour
 from apps.taches.views.base import (
-    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore,
+    ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore,
     corps, est_assistant, forme_echantillon, parametre, reponses,
 )
 from core.idempotency import IdempotentCreateMixin
@@ -95,8 +98,9 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
 class CaptureVue(MethodeAvantJeton, APIView):
     """POST capture/ — Siri / partage, jeton `capture` (J:capture)."""
 
-    authentication_classes = AUTH_JETON
+    authentication_classes = [JetonCapture]
     permission_classes = PERMISSIONS
+    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, ThrottleCapture, ThrottleCaptureJour]
 
     @extend_schema(
         request=corps('Capture', {'titre': 'appeler le fournisseur demain 10 h', 'notes': '',
