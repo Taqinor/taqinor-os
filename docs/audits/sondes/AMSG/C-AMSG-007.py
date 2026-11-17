@@ -64,7 +64,7 @@ def sonde(ctx=None):
     class RemiseNonApprouvee(Exception): pass
     dj = {"Response": lambda data=None, status=200, **k: NS(data=data, status_code=status), "logger": logging.getLogger("sonde"),
           "status": NS(HTTP_400_BAD_REQUEST=400, HTTP_403_FORBIDDEN=403), "transaction": NS(atomic=contextlib.nullcontext),
-          "ConflitEtat": ConflitEtat, "MOTIF_CONTACT_REFUSE": "contact_refuse", "peut_contacter": lambda o: True,
+          "ConflitEtat": ConflitEtat, "MOTIF_CONTACT_REFUSE": "contact_refuse", "peut_contacter": lambda o: True, "garde_contact_du_lead": lambda l: None,
           "pii_masquee_pour": lambda u: False, "corps_objet": lambda r: r.data, "coerce_id_list": lambda l: [int(x) for x in l],
           "devis_for_lead": lambda l, ids: [devis] if 45 in ids else [], "normalize_phone_e164": lambda p: p,
           "RemiseNonApprouvee": RemiseNonApprouvee, "exiger_approbation_remise": lambda d, u, enregistrer: None,
@@ -82,7 +82,7 @@ def sonde(ctx=None):
     reel(DJ / "apps/crm/devis_views.py", {"_refuser_si_oppose", "_refus_pii_whatsapp"}, dj)
     route = {}
 
-    def _django_call(c, path, method="POST", payload=None):  # le relais HTTP, remplacé par l'appel de la vraie vue
+    def _django_call(c, path, method="POST", payload=None, **_):  # le relais HTTP, remplacé par l'appel de la vraie vue
         appels.append(f"{method} {path}")
         trouve = vue_de([s for s in path.split("/") if s][-1])
         if trouve is None: route["non_resolue"] = path; return {"ok": False, "status": 404, "error": "route introuvable"}
@@ -93,9 +93,21 @@ def sonde(ctx=None):
         return {"ok": r.status_code < 300, "status": r.status_code, "data": r.data}
     ia = {"Any": typing.Any, "Optional": typing.Optional, "quote": urllib.parse.quote, "ActionContext": object, "json": json, "re": re,
           "logger": logging.getLogger("sonde"), "_django_call": _django_call, "_stash_proposal": lambda *a: "jeton-signé"}
-    reel(IA / "app/services/action_tools.py", {"RISK_INTERNAL", "RISK_OUTWARD", "RISK_IRREVERSIBLE", "_RISK_NEEDS_CONFIRM",
-         "STATUTS_REPONSE_NORMALE", "intention_pour_statut", "ActionValidationError", "_JSON_TYPE_CHECK", "validate_inputs",
-         "_coerce", "_PATH_PARAM_RE", "_build_path", "_human_preview", "_execute_catalogue_action", "run_catalogue_action"}, ia)
+    # le module ENTIER (toutes ses fonctions, classes et constantes : il gagne des auxiliaires à chaque correctif) ; httpx bouchonné
+    import importlib, unittest.mock
+    for n in ast.walk(_arbre(IA / "app/services/action_tools.py")):  # imports du module : stdlib réelle, le reste bouchonné
+        for al in (n.names if isinstance(n, (ast.Import, ast.ImportFrom)) else []):
+            nom = (al.asname or al.name).split(".")[0]
+            if nom in ia: continue
+            try:
+                mod = importlib.import_module(n.module if isinstance(n, ast.ImportFrom) else al.name)
+                ia[nom] = getattr(mod, al.name) if isinstance(n, ast.ImportFrom) else importlib.import_module(nom)
+            except Exception:
+                ia[nom] = unittest.mock.MagicMock()
+    ia["__name__"] = "app.services.action_tools"
+    tout = {getattr(n, "name", None) or (n.targets[0].id if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) else None)
+            for n in _arbre(IA / "app/services/action_tools.py").body}
+    reel(IA / "app/services/action_tools.py", tout - {None, "_django_call", "_stash_proposal", "logger"}, ia)  # relais HTTP et jeton : bouchons de la sonde
     action, collecte = action_du_catalogue(), []
     pyc, sys.dont_write_bytecode = sys.dont_write_bytecode, True
     try:
