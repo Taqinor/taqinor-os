@@ -1,3 +1,139 @@
 /* Tâches — zone « coeur » (TCH41) : Aujourd'hui, À trier, bilan (écrans cœur, TCH76 et suivantes).
    Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
    couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+
+/* ── TCH76 · Aujourd'hui : port de docs/taches/maquettes/ecrans-coeur.css ─────────────────────── */
+.tch .section.premiere { margin-top: 10px; }
+.tch .section-titre .lien-titre { font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); }
+.tch .moment ~ .section.premiere { margin-top: 24px; }
+.tch .ligne .explique { color: var(--tch-texte); }
+.tch .ligne .journee { color: var(--tch-texte-doux); }
+.tch .estampille.neutre { color: var(--tch-texte); background: var(--tch-panneau); }
+
+/* Écran vide : une phrase, un geste (au pouce, en bas de la zone libre) */
+.tch .vide-plein { display: flex; flex-direction: column; justify-content: center; min-height: calc(100vh - 47px - 116px - 86px); padding-bottom: 24px; }
+.tch .vide-plein .vide-phrase, .tch .vide-plein .vide-aide { text-wrap: balance; }
+.tch .vide-plein .vide-phrase { font-size: 1.1875rem; line-height: 1.4; font-weight: 600; max-width: 22ch; margin-bottom: 8px; }
+.tch .vide-plein .vide-aide { margin: 0 0 24px; max-width: 30ch; font-size: 0.9375rem; line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .vide-plein .bouton.plein { height: 50px; padding: 0 26px; font-size: 1rem; }
+.tch .vide-plein .bouton.discret { margin-top: 6px; }
+.tch .vide-picto.grand { width: 88px; height: 88px; }
+.tch .vide-picto.grand svg { width: 40px; height: 40px; }
+@media (min-width: 768px) { .tch .vide-plein { min-height: 640px; } }
+
+/* Squelette (après 1 s) : mêmes gabarits que les lignes, sans texte */
+.tch .squelette-bloc { margin-top: 22px; }
+.tch .os.titre-section { width: 96px; height: 12px; margin: 0 var(--tch-gouttiere) 8px; }
+.tch .squelette .progression { pointer-events: none; }
+.tch .squelette .segments i { background: var(--tch-piste); }
+
+/* « Prévu » : rendez-vous externe en lecture seule, ligne repliable des activités ERP, bande « Toute la journée » */
+.tch .ligne.lecture-seule { cursor: default; }
+.tch button.ligne.ligne-repli { width: 100%; text-align: left; align-items: center; }
+.tch button.bande-journee { text-align: left; min-height: var(--tch-cible); }
+
+/* Feuilles d'Aujourd'hui (Choisir un jour, Supprimer) : un champ, un bouton large au pouce */
+.tch .choisir-jour { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 20px; }
+.tch .choisir-jour .champ-date { height: 48px; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
+.tch .choisir-jour .bouton.large { width: 100%; height: 50px; font-size: 1rem; }
+.tch .choisir-jour .carte-texte { margin: 0; }
+
+/* ── TCH77 · Progression (détail au toucher) et carte du moment ───────────────────────────────── */
+.tch .progression-faits { margin: 2px var(--tch-gouttiere) 0; padding: 12px 14px 4px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.tch .progression-faits p { margin: 0 0 6px; font-size: 0.9375rem; line-height: 1.4; }
+.tch .progression-faits .bouton.lien { height: 44px; margin-left: -10px; font-weight: 600; color: var(--tch-accent); }
+.tch .carte.retour { padding: 18px 16px 16px; }
+.tch .carte.retour .carte-texte { font-size: 1.0625rem; line-height: 1.4; font-weight: 600; margin-bottom: 4px; }
+.tch .carte-actions.pile { flex-direction: column; align-items: stretch; gap: 6px; }
+.tch .carte-actions.pile .bouton { width: 100%; }
+.tch .carte.rythme .carte-texte { font-size: 1.0625rem; line-height: 1.4; }
+.tch .carte .carte-actions { flex-wrap: wrap; }
+.tch .carte .carte-actions .bouton { min-height: 44px; }
+@media (min-width: 768px) {
+  .tch .carte-actions.pile { flex-direction: row; align-items: center; }
+  .tch .carte-actions.pile .bouton { width: auto; }
+}
+
+/* Astuce de geste et révélations : une carte « moment » à icône, OK au pouce */
+.tch .moment.revelation { align-items: flex-start; padding: 14px 10px 10px 14px; }
+.tch .revelation .bandeau-icone { flex: none; width: 36px; height: 36px; background: var(--tch-surface); color: var(--tch-accent); }
+.tch .revelation .moment-texte { padding-top: 2px; }
+.tch .revelation .moment-texte b { font-weight: 500; font-size: 0.9375rem; line-height: 1.4; }
+.tch .revelation .carte-actions { margin-top: 8px; margin-left: -4px; }
+.tch .revelation .carte-actions .bouton { height: 44px; padding: 0 14px; background: var(--tch-surface); }
+.tch .demo-balayage { position: relative; height: 36px; margin-top: 10px; border-radius: 10px; overflow: hidden; background: var(--tch-accent); }
+.tch .demo-balayage span { position: absolute; inset: 0 auto 0 0; width: calc(100% - 92px); display: flex; align-items: center; gap: 8px;
+  padding: 0 10px; white-space: nowrap; overflow: hidden; background: var(--tch-surface); color: var(--tch-texte); font-size: 0.875rem; font-weight: 400; }
+.tch .demo-balayage span i { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); flex: none; }
+/* ── TCH81 · Repliés : actions d'une ligne d'À revoir, lignes « Ailleurs dans l'ERP » ──────────── */
+.tch .revoir-actions { margin-top: 0; padding: 0 var(--tch-gouttiere) 12px calc(var(--tch-gouttiere) + var(--tch-cible) - 4px); background: var(--tch-surface); }
+.tch .revoir-actions .champ-date { height: 44px; padding: 0 10px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
+.tch .replies .propose-actions { padding-top: 4px; }
+.tch .replies .ligne-repli { align-items: center; }
+.tch .replies .ligne-repli .ligne-fin { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-texte-doux); }
+
+/* ── TCH80 · Bilan du soir (port de ecrans-coeur.css « Bilan du soir » + tour 2) ──────────────── */
+.tch .bilan-tete { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; }
+.tch .bilan-tete .bilan-compte { grid-column: 1 / -1; font-size: 1.375rem; font-weight: 700; line-height: 1.2; }
+.tch .bilan-essentiel { font-size: 1rem; font-weight: 500; color: var(--tch-texte-doux); }
+.tch .bilan-second { font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .bilan-section { margin-top: 22px; }
+.tch .bilan-section .fiche-label { margin-bottom: 0; }
+.tch .fiche-label { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 4px;
+  font-size: 0.9375rem; font-weight: 650; color: var(--tch-texte-doux); }
+.tch .fiche-label .compte { font-size: var(--tch-chiffre); font-weight: 500; }
+.tch .reste { display: grid; grid-template-columns: 44px 1fr; column-gap: 0; padding: 8px 0; margin-left: -11px; }
+.tch .reste .case { margin-block: calc((var(--tch-tache-lh) - var(--tch-cible)) / 2); }
+.tch .reste .titre { font-size: 1rem; line-height: 1.375rem; }
+.tch .reste .meta { margin-top: 1px; }
+.tch .reste-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.tch .reste-choix .puce { height: 34px; }
+.tch .reste-choix .puce.choisi { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+.tch .restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.tch .restes-tete .fiche-label { margin: 0; }
+.tch .bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
+.tch .bouton.petit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.tch .lien-bloc { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 0.875rem; font-weight: 600; color: var(--tch-accent); text-align: left; }
+.tch .constat { display: flex; gap: 12px; margin-top: 22px; padding: 14px 14px 6px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.tch .constat .bandeau-icone { width: 32px; height: 32px; color: var(--tch-accent); }
+.tch .constat p { margin: 4px 0 0; font-size: 0.9375rem; line-height: 1.45; }
+.dark .tch .constat { background: color-mix(in oklch, var(--muted) 88%, var(--foreground)); }
+.tch .un-mot { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 10px;
+  font-size: 1rem; color: var(--tch-texte-doux); text-align: left; box-shadow: inset 0 1px 0 var(--tch-trait); }
+.tch .un-mot svg:last-child { margin-left: auto; }
+.tch .champ-mot { width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font: inherit; font-size: 1rem; color: var(--tch-texte); resize: vertical; }
+.tch .erreur-champ { margin: 10px 0 0; font-size: 0.875rem; color: var(--destructive); }
+.tch .bilan .feuille-pied .bouton.discret { flex: none; min-width: 72px; }
+.tch .bilan .vide-phrase { margin: 22px 0 0; max-width: none; text-align: center; }
+
+/* ── TCH79 · Menu ⋯ : modes Réorganiser / Sélectionner, feuille « Alléger ma journée » ────────── */
+.tch .mode-ecran { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 8px var(--tch-gouttiere) 0;
+  padding: 0 4px 0 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 0.9375rem; font-weight: 600; }
+.tch .mode-ecran .bouton.lien { min-height: 44px; font-weight: 650; color: var(--tch-accent); }
+.tch .ligne-reorg { display: flex; align-items: stretch; background: var(--tch-surface); }
+.tch .ligne-reorg > .ligne-cadre { flex: 1; min-width: 0; }
+.tch .reorg-controles { display: flex; flex-direction: column; justify-content: center; flex: none; padding-right: 4px; }
+.tch .reorg-controles .bouton-icone { width: var(--tch-cible); height: var(--tch-cible); color: var(--tch-texte-doux); }
+.tch .alleger .carte-source { margin: 4px 0 8px; font-size: 0.875rem; line-height: 1.4; }
+.tch .ligne-courte { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -11px; }
+.tch .ligne-courte .case { margin: 0; }
+.tch .ligne-courte .texte { font-size: 1rem; line-height: 1.375rem; }
+.tch .feuille-pied { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; margin: 12px calc(-1 * var(--tch-gouttiere)) 0;
+  padding: 12px var(--tch-gouttiere) 16px; background: var(--tch-surface-haute); box-shadow: inset 0 1px 0 var(--tch-trait); }
+.tch .feuille-pied .bouton { height: 50px; font-size: 1rem; }
+.tch .feuille-pied .bouton.large { flex: 1; }
+
+/* ── TCH78 · Proposé pour aujourd'hui ─────────────────────────────────────────────────────────── */
+.tch .propose-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px var(--tch-gouttiere) 0; }
+.tch .propose-actions .bouton.second { height: 44px; padding: 0 16px; }
+.tch .propose-actions .bouton.lien { margin-left: auto; min-height: 44px; }
+.tch .charge-surcharge { font-size: var(--tch-meta); color: var(--tch-texte-doux); }
+.tch .suite-projets { margin-top: 4px; }
+.tch .groupe-projet { margin-top: 14px; font-weight: 600; color: var(--tch-texte); }
+.tch .groupe-projet [data-p] { display: inline-flex; align-items: center; gap: 8px; }
+@media (min-width: 768px) { .tch .propose-actions { padding-inline: 24px; } }
+.tch .demo-balayage b { position: absolute; right: 0; top: 0; bottom: 0; width: 92px; display: grid; place-items: center;
+  font-size: 0.75rem; font-weight: 650; color: var(--tch-accent-texte); }
