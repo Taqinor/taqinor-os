@@ -7,6 +7,7 @@ import { frenchError } from '../../../lib/frenchError'
 import { pushSupported, subscribeToPush } from '../../pwa/pushSubscribe'
 import { jourCourt } from '../lib/textes'
 import { Agendas } from '../reglages/Rubriques'
+import { scriptPour } from './scriptTuile'
 
 /* ============================================================================
    TCH109 — « Mon iPhone » (Réglages → /taches/reglages/iphone) : cinq étapes repliables, chacune
@@ -208,6 +209,20 @@ function EtapeCalendrier({ bloc, revele }) {
 
 /* ── Étape 4 : tuile ─────────────────────────────────────────────────────────────────────────── */
 
+function CopierLeScript() {
+  const [etat, setEtat] = useState('')
+  const copierScript = async () => {
+    setEtat((await copier(scriptPour(window.location.origin))) ? 'copie' : 'echec')
+  }
+  return (
+    <>
+      <button type="button" className="bouton second" onClick={copierScript}>Copier le script</button>
+      {etat === 'copie' ? <p className="rassure" role="status">Script copié. Il ne contient pas ton jeton.</p> : null}
+      {etat === 'echec' ? <p className="es-erreur" role="alert">Copie impossible : réessaie.</p> : null}
+    </>
+  )
+}
+
 function EtapeTuile({ bloc }) {
   return (
     <>
@@ -219,6 +234,7 @@ function EtapeTuile({ bloc }) {
         <li>Écran d'accueil → appui long → « + » → Scriptable → grande taille → Ajouter ; touche la tuile en mode modification → Script : « Tâches ».</li>
       </ol>
       {bloc}
+      <CopierLeScript />
       <p className="rassure">{"Toucher la tuile ouvre Aujourd'hui (parfois dans Safari, qui peut te demander de te connecter)."}</p>
       <p className="rassure">La tuile se met à jour quand l'iPhone le décide ; l'heure de mise à jour est écrite en bas.</p>
     </>

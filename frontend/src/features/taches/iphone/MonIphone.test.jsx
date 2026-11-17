@@ -131,6 +131,18 @@ describe('TCH109 — Mon iPhone', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Jeton refusé.')
   })
 
+  it('tuile : « Copier le script » copie le script de l\'ERP, sans aucun jeton', async () => {
+    monter()
+    await ouvrir(/Installer la grande tuile/)
+    await userEvent.click(await screen.findByRole('button', { name: 'Copier le script' }))
+    expect(presse).toHaveBeenCalledTimes(1)
+    const copie = presse.mock.calls[0][0]
+    expect(copie).toContain(`const BASE = "${window.location.origin}";`)
+    expect(copie).not.toContain('__BASE__')
+    expect(copie).not.toMatch(/tq[cft]_[A-Za-z0-9]{8}/)
+    expect(await screen.findByText('Script copié. Il ne contient pas ton jeton.')).toBeInTheDocument()
+  })
+
   it('notifications : l\'autorisation fait passer l\'étape à « Actives », un test part, la clé absente est dite', async () => {
     subscribeToPush.mockResolvedValueOnce({ ok: false, reason: 'unconfigured' })
     subscribeToPush.mockResolvedValueOnce({ ok: true })
