@@ -513,6 +513,32 @@ class AssistantStatsTests(TestCase):
             'claude-sonnet-5-5', {'cache_write': 500_000}), 2.0)
         self.assertEqual(agent_services.cout_estime_usd('inconnu', {'cache_write': 5}), 0.0)
 
+    def test_cout_du_jour_par_utilisateur(self):
+        """AIC90 (D-COP-1) — le budget lit le coût du JOUR de l'APPELANT (même
+        calcul que les stats) ; plafond atteint => ``atteint`` ; vide => aucune borne."""
+        from apps.agent.views import MESSAGE_BUDGET_ATTEINT
+        url = URL_EVENEMENTS + 'budget/'
+        contrat = json.loads((Path(__file__).resolve().parent.parent
+                              / 'contract_samples' / 'assistant_budget.json')
+                             .read_text(encoding='utf-8'))
+        with override_settings(ASSISTANT_PLAFOND_JOUR_USD='2'):
+            resp = _auth(self.vendeur).get(url)
+            self.assertEqual(resp.status_code, 200, resp.content)
+            self.assertEqual(set(resp.data), set(contrat['exemple']))
+            # Sonnet 3,20 + Haiku 0,20 = 3,40 pour le vendeur ; le repli ne coûte rien.
+            self.assertEqual((resp.data['plafond_usd'], resp.data['cout_jour_usd'],
+                              resp.data['atteint']), (2.0, 3.4, True))
+            self.assertEqual(resp.data['message'], MESSAGE_BUDGET_ATTEINT)
+            self.assertEqual(resp.data['message'], contrat['exemple']['message'])
+            col = _auth(self.collegue).get(url)
+            self.assertEqual((col.data['cout_jour_usd'], col.data['atteint']), (0.0, False))
+        with override_settings(ASSISTANT_PLAFOND_JOUR_USD='3,5'):
+            self.assertFalse(_auth(self.vendeur).get(url).data['atteint'])
+        with override_settings(ASSISTANT_PLAFOND_JOUR_USD=''):
+            resp = _auth(self.vendeur).get(url)
+            self.assertEqual((resp.data['plafond_usd'], resp.data['atteint']), (None, False))
+        self.assertEqual(APIClient().get(url).status_code, 401)
+
     def test_stats_admin_seul(self):
         self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 403)
         self.assertEqual(_auth(self.admin).get(self.URL, {'semaines': 'x'}).status_code, 400)

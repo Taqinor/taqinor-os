@@ -1302,6 +1302,10 @@ def _modele_effectif(provider: str) -> str:
     return model
 
 
+MESSAGE_BUDGET_ATTEINT = ("Budget du jour de l'assistant atteint : reponses par "
+                          "le modèle de secours jusqu'à demain.")
+
+
 class _RefusFournisseur(Exception):
     """AIC4 — le LLM a REFUSE la requete (credits, quota, indisponibilite,
     cle) avant toute action executee : seul motif de repli."""
@@ -1807,6 +1811,18 @@ class SQLAgentService:
             logger.warning("Journal de l'assistant en echec : %s", exc)
             return None
 
+    @staticmethod
+    def _budget_atteint(action_ctx) -> bool:
+        """AIC90 — le cout du jour de l'appelant a-t-il atteint le plafond ?
+        Lecture Django (contrat assistant_budget.json) ; illisible => faux."""
+        from app.services import action_tools as at
+        if not at.actions_available(action_ctx):
+            return False
+        res = at._django_call(action_ctx, "/api/django/agent/evenements/budget/",
+                              method="GET")
+        data = res.get("data") if res.get("ok") else None
+        return bool(isinstance(data, dict) and data.get("atteint") is True)
+
     async def _query(
         self,
         question: str,
@@ -1823,6 +1839,20 @@ class SQLAgentService:
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
+            # AIC90 (D-COP-1) — budget du jour atteint : tout le tour part sur le
+            # repli, sans moteur natif ni appel a Claude (jamais un arret).
+            if await asyncio.to_thread(self._budget_atteint, action_ctx):
+                repli = (SQL_AGENT_FALLBACK_PROVIDER or "").lower()
+                if repli and repli != SQL_AGENT_PROVIDER.lower():
+                    out = await asyncio.to_thread(
+                        self._run_agent, question, company_id or 0, user_id or 0,
+                        action_ctx, repli, contexte, copilote,
+                    )
+                    return {**out, "repli": True, "modele": _modele_effectif(repli),
+                            "answer": f"{MESSAGE_BUDGET_ATTEINT}\n\n{out.get('answer') or ''}".rstrip()}
+                logger.warning("Budget du jour atteint mais aucun repli distinct "
+                               "configure (%r) : le tour reste sur %s", repli,
+                               SQL_AGENT_PROVIDER)
             natif = await asyncio.to_thread(
                 relais.tour_natif, self, question, company_id or 0,
                 user_id or 0, action_ctx, contexte, catalogue)
