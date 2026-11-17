@@ -108,6 +108,7 @@ class AgendasExternesVue(IdempotentCreateMixin, APIView):
     """GET agendas-externes/ (`{"results":[…]}`, ≤ 3) · POST (une adresse ICS, lue aussitôt)."""
 
     permission_classes = PERMISSIONS
+    pagination_class = None  # liste à plafond (≤ 3) : objet `{"results"}`, jamais paginé (api.md §0)
 
     @extend_schema(responses=reponses(forme_echantillon('agendas_externes')))
     def get(self, request):

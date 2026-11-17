@@ -5,9 +5,8 @@ import { Search } from 'lucide-react'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
 import {
-  annulerGeste, listerTaches, listerToutesLesEtiquettes, listerTousLesProjets, rechercher, rouvrirTache, supprimerTache,
-  restaurerTache, terminerTache,
-} from '../../api/tachesApi'
+  annulerGeste, listerToutesLesEtiquettes, listerTousLesProjets, rouvrirTache, supprimerTache,
+  restaurerTache, terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
@@ -109,15 +108,19 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   useEffect(() => {
     if (!serveur && !mots) return undefined
     let courant = true
+    const filtres = {
+      q: mots || undefined,
+      projet: projetId ?? undefined,
+      etiquette: etiquetteId ?? undefined,
+      priorite_min: haute ? 3 : undefined,
+      inclure_faites: faites ? true : undefined,
+      vue: reserve ? 'quelque_jour' : undefined,
+    }
+    // Liste paginée (50) : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0).
     const lecture = serveur
-      ? listerTaches({
-        q: mots || undefined,
-        projet: projetId ?? undefined,
-        etiquette: etiquetteId ?? undefined,
-        priorite_min: haute ? 3 : undefined,
-        inclure_faites: faites ? true : undefined,
-        vue: reserve ? 'quelque_jour' : undefined,
-      }).then((r) => ({ projets: [], taches: r.data?.results ?? [] }))
+      ? listerTaches(filtres).then(async (r) => ({
+        projets: [], taches: r.data?.next ? await listerToutesLesTaches(filtres) : (r.data?.results ?? []),
+      }))
       : rechercher({ q: mots, limite: 25 }).then((r) => ({ projets: r.data?.projets ?? [], taches: r.data?.taches ?? [] }))
     lecture
       .then((suite) => { if (courant) { setResultat(suite); setLu(true); setErreur('') } })

@@ -578,6 +578,7 @@ class GestesVue(APIView):
     """GET gestes/ — derniers gestes (7 jours)."""
 
     permission_classes = PERMISSIONS
+    pagination_class = None  # liste à plafond (7 jours, ≤ 200) : objet `{"results"}`, jamais paginé (api.md §0)
 
     @extend_schema(responses=reponses(forme_echantillon('gestes')))
     def get(self, request):

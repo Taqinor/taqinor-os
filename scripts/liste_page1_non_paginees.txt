@@ -73,3 +73,6 @@ frontend/src/pages/crm/RelancesDuJourWidget.jsx::CadencesEchues  crm/relance-eta
 frontend/src/pages/crm/comptes/PlanComptePage.jsx::PlanComptePage  crm/plans-compte/<id>/historique/  @action(pagination_class=None), chatter complet en liste brute @backend/django_core/apps/crm/clients_views.py::PlanCompteViewSet.historique
 # ENF15 tranche 04/11 (liste_page1) — adsengine : catalogue et journal des règles, pagination_class=None posée explicitement (elles renvoyaient déjà une liste complète).
 frontend/src/features/adsengine/RulesScreen.jsx::RulesScreen  adsengine/regles/catalogue/ + regles/journal/  @action(pagination_class=None) catalogue statique complet et journal complet {results} (les règles RulePolicy passent par fetchAllPages) @backend/django_core/apps/adsengine/views.py::RulePolicyViewSet.journal
+# TCH : listes à plafond du gestionnaire de tâches (api.md §0), objet {results} non paginé.
+frontend/src/features/taches/reglages/Rubriques.jsx::Agendas  taches/agendas-externes/  AgendasExternesVue pagination_class=None (≤ 3 agendas par compte) @backend/django_core/apps/taches/views/agenda_externe.py::AgendasExternesVue
+frontend/src/pages/taches/Supprimees.jsx::Supprimees  taches/gestes/  GestesVue pagination_class=None (gestes des 7 derniers jours, ≤ 200) @backend/django_core/apps/taches/views/taches.py::GestesVue
