@@ -176,8 +176,7 @@ class RoutesSansBaseTests(SimpleTestCase):
         self.assertEqual(len(set(ROUTES)), 106)
 
     def test_table_conforme_a_api_md(self):
-        if not API_MD.is_file():
-            self.skipTest('docs/taches/reference/api.md absent de cet environnement')
+        # docs/ est présent là où tournent les tests (patron de crm/tests_cad163_objectif_sans_8221.py).
         self.assertEqual(set(ROUTES), couples_d_api_md())
 
     def test_chaque_couple_resout_vers_une_vue_qui_sert_la_methode(self):
