@@ -1,0 +1,79 @@
+{
+  "sha": "0d2f1f716cb69904d30c01332f34d7ef699eb703",
+  "date": "2026-11-17",
+  "groupe": "AIC",
+  "verdict": "FAIL",
+  "couvre": [
+    "AIC91",
+    "AIC94"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P7.1-AIC91-progression",
+      "taches": [
+        "AIC91"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P7.1-AIC91-progression.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : trois étapes distinctes affichées avant la réponse (vues : [\"Retrouver un lead\",\"Préparer une touche du suivi\"] ; publiées : [{\"libelle\":\"Retrouver un lead\",\"t\":1794876108},{\"libelle\":\"Résumer un lead\",\"t\":1794876110},{\"libelle\":\"Préparer une touche du suivi\",\"t\":1794876111}])"
+    },
+    {
+      "id": "P8.1-AIC94-touche-hors-fenetre",
+      "taches": [
+        "AIC94"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P8.1-AIC94-touche-hors-fenetre.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P8.2-AIC94-matin-visite",
+      "taches": [
+        "AIC94"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P8.2-AIC94-matin-visite.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

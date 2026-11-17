@@ -1,0 +1,80 @@
+{
+  "sha": "0d2f1f716cb69904d30c01332f34d7ef699eb703",
+  "date": "2026-11-17",
+  "groupe": "ALEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "ALEC41",
+    "ALEC45",
+    "ALEC46"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF6-ALEC41-lignes-factures",
+      "taches": [
+        "ALEC41"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC41-lignes-factures.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : Commercial : refus « utilisez l'écran » (texte cité par la clause)"
+    },
+    {
+      "id": "PF6-ALEC45-cle-telephone-meta",
+      "taches": [
+        "ALEC45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC45-cle-telephone-meta.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC46-miroirs-publicitaires",
+      "taches": [
+        "ALEC46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC46-miroirs-publicitaires.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
