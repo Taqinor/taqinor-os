@@ -250,6 +250,34 @@
   ]
  },
  {
+  "action": "liste_froide",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "liste_froide",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_modifier"
+   }
+  ]
+ },
+ {
   "action": "locataire",
   "methode": "GET",
   "permissions": [

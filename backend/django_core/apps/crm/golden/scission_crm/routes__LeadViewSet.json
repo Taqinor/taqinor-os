@@ -626,6 +626,24 @@
  },
  {
   "actions_map": {
+   "get": "liste_froide",
+   "post": "liste_froide"
+  },
+  "motif": "^leads/liste-froide/$",
+  "nom": "lead-liste-froide",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "liste_froide",
+   "post": "liste_froide"
+  },
+  "motif": "^leads/liste-froide\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-liste-froide",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
    "get": "mesure_cadence"
   },
   "motif": "^leads/mesure-cadence/$",
