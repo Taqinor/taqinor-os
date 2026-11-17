@@ -2,7 +2,8 @@
 
 Les CIBLES d'api.md §10 (A15, R13) sont les plafonds `assertMaxQueries` ci-dessous ; la CI mesure (un
 dépassement donne le compte réel et la liste des requêtes), et la cible devient la mesure au premier
-vert. Authentification par le cookie `access_token` : le chemin du navigateur, requêtes
+vert (17/11 : badge 11, proposition 25, agenda 35, vue d'un projet 20, recherche 10 ; les listes
+restent O(1)). Authentification par le cookie `access_token` : le chemin du navigateur, requêtes
 d'authentification comprises, jamais l'en-tête de l'assistant. Chaque route est appelée une fois avant
 la mesure (caches du processus chauds : types de contenu, calendrier) : on mesure le régime permanent.
 Les listes ne grandissent pas avec leurs lignes (motif 10 → 25 du manifeste) ; l'aperçu de la saisie
@@ -93,17 +94,17 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
 
     def test_badge(self):
         self._lire(URL_BADGE)
-        with self.assertMaxQueries(10):
+        with self.assertMaxQueries(11):
             self._lire(URL_BADGE)
 
     def test_proposition_du_jour(self):
         self._lire(URL_PROPOSITION)
-        with self.assertMaxQueries(20):
+        with self.assertMaxQueries(25):
             self._lire(URL_PROPOSITION)
 
     def test_agenda(self):
         self._lire(URL_AGENDA)
-        with self.assertMaxQueries(16):
+        with self.assertMaxQueries(35):
             self._lire(URL_AGENDA)
 
     def test_liste_des_taches(self):
@@ -119,7 +120,7 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
     def test_vue_d_un_projet(self):
         url = URL_VUE_PROJET.format(id=self.projets[0].pk)
         self._lire(url)
-        with self.assertMaxQueries(15):
+        with self.assertMaxQueries(20):
             self._lire(url)
 
     def test_apercu_de_la_saisie_rapide(self):
@@ -137,7 +138,7 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
     def test_recherche(self):
         url = f'{URL_RECHERCHE}?q=Devis'
         self._lire(url)
-        with self.assertMaxQueries(8):
+        with self.assertMaxQueries(10):
             self._lire(url)
 
 

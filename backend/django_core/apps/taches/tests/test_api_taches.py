@@ -1048,7 +1048,7 @@ class RappelsTests(BaseApi):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
         self.assertEqual(champs(self._poser(tache, {'jour': _j(1).isoformat()}).json()), {'heure': ['Requis.']})
         reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': 'midi'})
-        self.assertEqual(reponse.json(), {'heure': ['Heure attendue (HH:MM).']})
+        self.assertEqual(champs(reponse.json()), {'heure': ['Heure attendue (HH:MM).']})
 
     def test_une_tache_close_ou_d_un_collegue_est_refusee(self):
         close = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())

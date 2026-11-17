@@ -52,10 +52,10 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
     monter()
     await screen.findByText('Déclaration TVA')
     const bloc = proposé()
-    expect(within(bloc).getByText('En tête : échéance jeudi.')).toBeInTheDocument()
+    expect(within(bloc).getByText('En tête : échéance jeu. 19.')).toBeInTheDocument()
     const lignes = [...bloc.querySelectorAll('[data-ligne]')]
     expect(lignes.map((l) => l.querySelector('.titre').textContent)).toEqual(['Déclaration TVA', 'Ranger le bureau', 'Préparer formation'])
-    expect(lignes.map((l) => l.querySelector('.explique').textContent)).toEqual(['échéance jeudi', 'prévue hier', 'prochaine action de Équipe'])
+    expect(lignes.map((l) => l.querySelector('.explique').textContent)).toEqual(['échéance jeu. 19', 'prévue hier', 'prochaine action de Équipe'])
     expect(within(bloc).queryByRole('checkbox', { name: /Essentielle/ })).toBeNull()
   })
 
@@ -113,7 +113,7 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/taches/aujourdhui/', { params: { tout: 1 } }))
     const groupe = await screen.findByRole('group', { name: 'Équipe' })
     expect(within(groupe).getByText('Réserver la salle')).toBeInTheDocument()
-    expect(within(groupe).getByText('puis dans Équipe')).toBeInTheDocument()
+    expect(within(groupe).getByText('suite de Équipe')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Masquer' }))
     expect(screen.queryByRole('group', { name: 'Équipe' })).toBeNull()
   })

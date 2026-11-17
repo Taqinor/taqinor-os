@@ -110,8 +110,10 @@ class SemisTests(TestCase):
         _semer('--reinitialiser', '--heure', '15:00')
         self.user = get_user_model().objects.get(username=commande.NOM_COMPTE)
         progression = self._aujourdhui('15:00')['progression']
-        self.assertEqual((progression['faites'], progression['essentiel_faites'], progression['essentiel_prevues']),
-                         (3, 1, 2))
+        # regles.md §6.1 : l'activité ERP « Rappeler pour le devis » close à 10:40 compte 1 (invariant 13) en
+        # plus des 3 tâches (rails, fournisseur, devis) ; SCENARIO.md §3 dit « 3 sur 5 » sans la compter.
+        self.assertEqual((progression['faites'], progression['detail']['activites_closes'],
+                          progression['essentiel_faites'], progression['essentiel_prevues']), (4, 1, 1, 2))
 
     def test_vide_ne_laisse_aucune_tache(self):
         _semer('--reinitialiser', '--vide')
