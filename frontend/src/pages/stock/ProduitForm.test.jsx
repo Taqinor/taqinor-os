@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -218,5 +222,35 @@ describe('AERR142 — retrait d’un prix fournisseur', () => {
     expect(retirer).toHaveBeenCalledTimes(2)
     lire.mockRestore()
     retirer.mockRestore()
+  })
+})
+
+describe('ADRG142 — prix fournisseurs selon le droit', () => {
+  const enveloppe = (permissions) => ({ children }) => (
+    <Provider store={configureStore({
+      reducer: {
+        auth: (s = { role: 'admin', role_nom: 'Responsable', permissions }) => s,
+        stock: (s = { categories: [], fournisseurs: [], produits: [] }) => s,
+      },
+    })}>
+      <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>
+    </Provider>
+  )
+  const ouvrirAvec = async (permissions) => {
+    const lire = vi.spyOn(stockApi, 'getProduitPrixFournisseurs').mockResolvedValue({ data: [] })
+    render(<ProduitForm produit={BATTERIE} onClose={() => {}} onSaved={() => {}} />,
+      { wrapper: enveloppe(permissions) })
+    await screen.findByText('Données maîtres')
+    return lire
+  }
+  it('sans prix_achat_voir : aucun appel prix-fournisseurs', async () => {
+    const lire = await ouvrirAvec(['stock_voir', 'stock_modifier'])
+    expect(lire).not.toHaveBeenCalled()
+    lire.mockRestore()
+  })
+  it('avec prix_achat_voir : la section charge les lignes', async () => {
+    const lire = await ouvrirAvec(['stock_voir', 'stock_modifier', 'prix_achat_voir'])
+    await waitFor(() => expect(lire).toHaveBeenCalled())
+    lire.mockRestore()
   })
 })
