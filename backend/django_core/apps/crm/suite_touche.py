@@ -522,8 +522,35 @@ def est_derniere_touche(etape, ordres):
     MÊME lecture que le moteur (ACRM12) : aucun barreau actif d'ordre supérieur.
     Une touche en cours sur un barreau DÉSACTIVÉ n'est donc pas la dernière s'il
     en reste après elle : la suite part du premier d'entre eux. Un réveil
-    saisonnier (CAD74, ordre au-delà du gabarit) reste la dernière."""
-    return not any(ordre > etape.ordre for ordre in ordres or ())
+    saisonnier (CAD74, ordre au-delà du gabarit) reste la dernière. Un réveil
+    lit les barreaux que SON lead aura vraiment (``ordres_reveil_du_lead``)."""
+    ordres = ordres_reveil_du_lead(etape, ordres)
+    return not any(ordre > etape.ordre for ordre in ordres)
+
+
+def ordres_reveil_du_lead(etape, ordres):
+    """Audit des cadences (17/11/2026) — les barreaux ``reveil`` qui existeront
+    VRAIMENT pour le lead de ``etape``, par la règle du moteur
+    (``materialiser_touche_suivante`` tranche le gabarit à
+    ``nombre_reveils_permis``) : un barreau existe s'il est déjà posé dans la
+    même génération, ou si le lead a droit à ce rang. Sans elle, le J30 du
+    pilote (un seul réveil) promettait une suite qui ne vient jamais et un
+    « À rappeler le… » y perdait sa date. Autre cadence, touche sans lead
+    enregistré ou sans barreau après elle : ``ordres`` inchangés."""
+    ordres = frozenset(ordres or ())
+    lead = getattr(etape, 'lead', None)
+    if (etape.cadence != 'reveil' or getattr(lead, 'pk', None) is None
+            or not any(ordre > etape.ordre for ordre in ordres)):
+        return ordres
+    from .cadence_plan import nombre_reveils_permis
+
+    poses = lead.relance_etapes.filter(cadence='reveil')
+    if etape.cadence_depart is not None:
+        poses = poses.filter(cadence_depart=etape.cadence_depart)
+    poses = ordres & set(poses.values_list('ordre', flat=True))
+    permis = nombre_reveils_permis(lead)
+    return poses | (ordres if permis is None
+                    else frozenset(sorted(ordres)[:permis]))
 
 
 def cles_de_reponse(etape):
