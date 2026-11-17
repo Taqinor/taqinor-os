@@ -91,3 +91,37 @@ Sans clé d'IA, le bouton explique en une phrase pourquoi il est indisponible ; 
 
 ## A13 — Le nom de l'écran du jour
 « Aujourd'hui » (et non « Ma journée », déjà pris deux fois dans l'ERP). Les routes d'API ne changent pas.
+
+## A14 — Après l'essai de l'architecture des écrans (`verif-spec-7.md` : 13/20, 1 bloquant, 11 majeurs)
+Toutes les corrections du rapport sont ADOPTÉES. Précisions de l'orchestrateur :
+- **B1 retour de congé** : une seule carte au retour (« Tu reviens après 10 jours : 18 tâches attendaient. [Les
+  remettre dans Proposé] [Les voir une par une] »), jamais une file de choix obligatoires ; aucun report compté ;
+  la notification du matin ne compte que les tâches du jour.
+- **M1 Aujourd'hui trop chargé** : ordre vertical imposé et écrit — (1) une ligne de progression « 1 sur 5 · essentiel
+  0/2 » (l'anneau détaillé s'ouvre au toucher) ; (2) Essentiel ; (3) Aujourd'hui (heures fixes en tête, obligations
+  de l'ERP mêlées) ; (4) Ce soir ; (5) Proposé pour aujourd'hui avec le bouton unique « Garder ces N » (le bandeau
+  « Faire le plan » et la section Proposé sont UNE même chose) ; (6) repliés : À revoir, En attente, Faites, Ailleurs
+  dans l'ERP. La première tâche est visible sans défiler.
+- **M2** : le chiffre montré est « faites sur OBJECTIF » (« 1 sur 5 ») ; le plan tenu est une seconde donnée, repliée.
+- **M3** : la priorité du projet est demandée à l'étape 1 de « Planifier le projet » (Haute / Moyenne / Basse, une
+  touche) et montrée par une puce dans la liste des projets ; « Trier par priorité » reste disponible.
+- **M4** : quand un constat sur son comportement existe, UN seul est montré dans le bilan du soir (jamais plus d'un
+  par jour) ; l'écran Mon rythme garde la liste.
+- **M5** : la carte « Mon iPhone » apparaît dès le premier collage. Le raccourci Siri prêt à installer ne peut pas
+  être fabriqué depuis le dépôt : un réglage facultatif `TACHES_RACCOURCI_SIRI_URL` affiche un bouton « Installer le
+  raccourci » quand un lien iCloud y est posé ; sinon, les étapes guidées. (Geste de Reda, une fois : créer le
+  raccourci sur son iPhone et coller son lien de partage.)
+- **M6** : une tâche capturée est rangée comme l'analyseur l'a comprise (jour reconnu → elle a son jour et sort de
+  « À trier ») ; « 10 h » avec une espace est reconnu ; un rappel sans jour pose le jour du rappel.
+- **M7 alléger la journée** : depuis Aujourd'hui, un geste « Alléger ma journée » → il garde ce qu'il coche, le reste
+  retourne dans Proposé SANS report compté (ce n'est pas un échec, c'est un ajustement).
+- **M8 agenda** : les visites et les poses de l'ERP s'affichent à leur heure quand l'ERP la connaît. Lire un agenda
+  personnel externe (adresse ICS qu'il colle) est classé AVANCÉ et construit dans la dernière vague, avec les gardes
+  de sécurité d'une lecture d'adresse externe (https seulement, adresses publiques seulement, taille et durée
+  bornées, cache) ; s'il ne tient pas dans la construction, il est noté comme reste à faire, pas abandonné.
+- **M9** : dans un texte collé, une première ligne suivie d'au moins deux lignes est proposée comme PROJET
+  (« Nouveau projet : … »), modifiable dans l'aperçu.
+- **M10 vocabulaire** : « À revoir » remplace « À décider » ; « En réserve » remplace « Un jour ». « À trier » et
+  « À planifier » sont gardés.
+- **M11** : la palette de commandes a une ligne « Chercher dans mes tâches » (la recherche globale de l'ERP ne les
+  indexe pas, par vie privée).
