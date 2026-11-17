@@ -1,0 +1,57 @@
+{
+  "sha": "62e0212dfcc597c2de5c78e4c84116aead91a11d",
+  "date": "2026-11-17",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG19",
+    "ADCG2"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF3.prod.ADCG2-ordre-journal",
+      "taches": [
+        "ADCG2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-17/ADCG2-ADCG19-prod.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "journalctl -u taqinor-autodeploy (lecture seule) : au deploy du 15/11 04:13 (et 06:21, 08:19, 09:53) migrate (« Running migrations ») precede « Container django_core Recreate » (up -d) qui precede « Restarting » ; volet banc : etape PF3.deploy.ADCG2 du run 43976149687 (enregistrement ADCG 2026-11-16-5b91cf8da)"
+    },
+    {
+      "id": "PF3.prod.ADCG19-health-ready",
+      "taches": [
+        "ADCG19"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-17/ADCG2-ADCG19-prod.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "GET https://api.taqinor.ma/api/django/core/health/ready/ apres l'auto-deploy : dernier_demarrage.sha = daed8f767cbaae0636cf795f4caa83cf3f66c9ec (non null)"
+    }
+  ]
+}

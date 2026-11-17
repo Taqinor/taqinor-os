@@ -1,0 +1,26 @@
+# C-ACEL-001 rejouée sur dev-all-acc6 62e0212df le 2026-11-17T00:23:25Z
+    7
+   ],
+   "8": [
+    8
+   ],
+   "9": [
+    9
+   ],
+   "3": [
+    6
+   ],
+   "None": [
+    6
+   ]
+  },
+  "heures_reglees_jamais_dues": [],
+  "plus_d_un_envoi_par_jour": [],
+  "conforme_a_l_ecran_3h_et_vide_a_6h": {
+   "3": true,
+   "None": true
+  },
+  "premier_continue_de_la_boucle": 489,
+  "premiere_ligne_historique": 500
+ }
+}

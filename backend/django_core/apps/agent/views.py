@@ -24,7 +24,8 @@ from apps.records.champs_stricts import RegexStricte
 
 from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
-from .selectors import agregats_par_modele, cout_des_agregats, noms_des_leads
+from .selectors import (agregats_par_modele, cout_des_agregats,
+                        cout_du_jour_utilisateur, noms_des_leads)
 from .services import (
     CHAMPS_TOKENS, ActionNotUndoableError, agent_hmac_secret, annuler_action,
     anonymiser_texte, borner_erreur, hacher_identifiant,
@@ -583,6 +584,39 @@ class AssistantEventExportView(APIView):
                 'non_supportes': par_intention['manque'] + par_intention['hors_champ'],
             },
         })
+
+
+MESSAGE_BUDGET_ATTEINT = ("Budget du jour de l'assistant atteint : réponses par "
+                          "le modèle de secours jusqu'à demain.")
+
+
+class AssistantBudgetView(APIView):
+    """AIC90 (D-COP-1) — ``GET /api/django/agent/evenements/budget/`` : coût du
+    jour de l'APPELANT vs plafond ``ASSISTANT_PLAFOND_JOUR_USD`` (contrat
+    ``assistant_budget.json``). Lu par le relais avant chaque tour ; au plafond
+    il bascule sur le repli, jamais un arrêt. Lecture seule, société de l'appelant."""
+
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(responses=inline_serializer('AssistantBudget', {
+        'plafond_usd': drf_serializers.FloatField(allow_null=True),
+        'cout_jour_usd': drf_serializers.FloatField(),
+        'atteint': drf_serializers.BooleanField(),
+        'message': drf_serializers.CharField()}))
+    def get(self, request):
+        from django.conf import settings
+        try:
+            plafond = float(str(getattr(settings, 'ASSISTANT_PLAFOND_JOUR_USD', '')
+                                or '').replace(',', '.'))
+        except ValueError:
+            plafond = None
+        if plafond is not None and plafond < 0:
+            plafond = None
+        cout = round(cout_du_jour_utilisateur(request.user.company, request.user), 4)
+        return Response({
+            'plafond_usd': plafond, 'cout_jour_usd': cout,
+            'atteint': plafond is not None and cout >= plafond,
+            'message': MESSAGE_BUDGET_ATTEINT})
 
 
 class AssistantEventStatsView(APIView):

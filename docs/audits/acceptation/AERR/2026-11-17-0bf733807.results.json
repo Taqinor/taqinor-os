@@ -1,0 +1,259 @@
+{
+  "sha": "0bf733807f47f3b345216526d4c8e229c30bd429",
+  "date": "2026-11-17",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR1",
+    "AERR117",
+    "AERR120",
+    "AERR132"
+  ],
+  "couvre_avec_ecart": [
+    "AERR1"
+  ],
+  "etapes": [
+    {
+      "id": "PF12.132-AERR132",
+      "taches": [
+        "AERR132"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.132-AERR132.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.114-AERR114-gabarit",
+      "taches": [
+        "AERR114-confirmations"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.114-AERR114-gabarit.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.114-AERR114-releve",
+      "taches": [
+        "AERR114-confirmations"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.114-AERR114-releve.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.114-AERR114-pose",
+      "taches": [
+        "AERR114-confirmations"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.114-AERR114-pose.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.120-AERR120",
+      "taches": [
+        "AERR120"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.120-AERR120.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.1-AERR1-note-debit",
+      "taches": [
+        "AERR1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.1-AERR1-note-debit.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde C-AERR-001 périmée : son détecteur (`docs/audits/sondes/AERR/C-AERR-001.py`) compte des relectures totales GARDÉES À DESSEIN (chaque geste relit la liste, lignes conservées) et un squelette montré seulement sur liste VIDE (PaiementsPage.jsx:569) ; elle rend repro:true sur le code corrigé. La preuve est l'écran : lignes gardées, avis « Liste pas à jour » + Réessayer, boîtes montées (Factures run 43641375588, Note de débit, Encaissements)"
+    },
+    {
+      "id": "PF12.1-AERR1-encaissements",
+      "taches": [
+        "AERR1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.1-AERR1-encaissements.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.117b-reassignation",
+      "taches": [
+        "AERR117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.117b-reassignation.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.117c-type-client",
+      "taches": [
+        "AERR117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.117c-type-client.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.117d-mois-cloture",
+      "taches": [
+        "AERR117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.117d-mois-cloture.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.117e-rdv-notes",
+      "taches": [
+        "AERR117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.117e-rdv-notes.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

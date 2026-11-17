@@ -1,5 +1,5 @@
 # Audit PF8 « messages envoyés aux clients » — 2026-11-11 — L2
-<!-- dossier-v3 | groupe: AMSG | base: 63b1e02 | fraicheur: 3acfee4 | constats: 43 | taches: 64 | decisions: 6 -->
+<!-- dossier-v3 | groupe: AMSG | base: 63b1e02 | fraicheur: 3acfee4 | constats: 43 | taches: 65 | decisions: 6 -->
 
 ## 1. Charte
 | Champ | Valeur |

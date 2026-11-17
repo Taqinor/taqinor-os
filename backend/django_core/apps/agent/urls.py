@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import (AgentActionConfirmerView, AgentActionLogView,
+from .views import (AgentActionConfirmerView, AssistantBudgetView, AgentActionLogView,
                     AgentActionsView, AgentActionUndoView,
                     AssistantEventExportView, AssistantEventNoteView,
                     AssistantEventStatsView, AssistantEventView,
@@ -25,6 +25,9 @@ urlpatterns = [
          name='agent-assistant-evenement-note'),
     path('evenements/export/', AssistantEventExportView.as_view(), name='agent-assistant-export'),
     path('evenements/stats/', AssistantEventStatsView.as_view(), name='agent-assistant-stats'),
+    # AIC90 — coût du jour de l'appelant vs plafond (relais FastAPI).
+    path('evenements/budget/', AssistantBudgetView.as_view(),
+         name='agent-assistant-budget'),
     # COP-G4 — libellés des objets nommés dans l'aperçu d'une proposition.
     path('libelles/', LibellesObjetsView.as_view(), name='agent-libelles'),
 ]

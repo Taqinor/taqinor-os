@@ -213,10 +213,13 @@ app.conf.beat_schedule = {
     # décide elle-même des rapports dus (`_due_schedules`, toutes cadences
     # confondues — apps/reporting/scheduled_reports.py), donc l'entrée
     # hebdomadaire ne faisait que la rejouer une 2ᵉ fois chaque lundi à la même
-    # minute. L'entrée quotidienne couvre déjà le lundi.
-    'reporting-email-saved-reports-daily': {
+    # minute. L'entrée couvre déjà le lundi. ACEL1 (D-ACEL-1 = heure_respectee) :
+    # chaque heure pile de 6 h à 23 h — l'écran fait choisir l'heure d'envoi ;
+    # une seule ligne par jour (`_deja_journalise_ce_jour`), sans heure = 6 h.
+    'reporting-email-saved-reports': {
         'task': 'reporting.email_saved_reports',
-        'schedule': crontab(hour=6, minute=0),
+        'schedule': crontab(minute=0, hour='6-23'),
+        'options': _expire_dans(3600),
     },
     # NTEXT12 — abonnements aux rapports (report-builder). Tourne à CHAQUE
     # heure pile : le `cron` de chaque abonnement décide s'il est dû (grain =

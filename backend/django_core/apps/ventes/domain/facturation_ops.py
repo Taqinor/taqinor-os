@@ -244,14 +244,19 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
     ``sorties`` (dict, facultatif) — ASTK135 : reçoit ``{produit_id: qte}``
     des quantités réellement sorties, pour que l'appelant SOLDE la
     réservation du chantier (``solder_reservations_chantier_vente``).
+
+    ASTK250 (D-ASTK-VER-1 = a) — une sortie qui puise dans la quarantaine
+    (rappel, réception non conforme) n'est JAMAIS refusée : UNE note au devis
+    des lignes (``ligne.devis``, posé par ``lignes_reliquat_vente``) la trace.
     """
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
         mouvement_type_sortie, record_stock_movement,
         verrouiller_produit, check_negative_stock_guard,
+        quantite_disponible_hors_quarantaine,
     )
 
-    moved = False
+    moved, quarantaine, devis = False, [], None
     for ligne in lignes:
         # XSAL5/XSAL14 — ne décompte QUE les lignes produit effectives : ni
         # option non activée, ni ligne de section/note (sans produit).
@@ -276,6 +281,14 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
             continue
         qte_avant = produit.quantite_stock
         qte_apres = qte_avant - qte
+        # ASTK250 — part de la sortie prise dans la quarantaine (jamais refusée).
+        en_q = min(qte, max(qte_avant, 0)) - (
+            quantite_disponible_hors_quarantaine(company, produit))
+        if en_q > 0:
+            quarantaine.append(f'{produit.sku or produit.nom} : {en_q} '
+                               'unité(s) en quarantaine sorties (rappel ou '
+                               'réception non conforme)')
+            devis = devis or getattr(ligne, 'devis', None)
         # AUD228 — route par la garde paramétrable (société) plutôt qu'un
         # blocage en dur : `stock_negatif_autorise` (AchatsParametres) est
         # respecté ici. Message INCHANGÉ quand le réglage refuse (défaut).
@@ -302,6 +315,9 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
         if sorties is not None:
             sorties[produit.id] = sorties.get(produit.id, 0) + qte
         moved = True
+    if quarantaine and devis is not None:
+        from apps.ventes import activity
+        activity.log_devis_note(devis, user, ' ; '.join(quarantaine) + '.')
     return moved
 
 
@@ -371,7 +387,7 @@ def lignes_reliquat_vente(devis, company):
     from types import SimpleNamespace
     deja = quantites_deja_sorties_pour_vente(devis, company)
     return [SimpleNamespace(compte_dans_totaux=True, produit_id=pid,
-                            quantite=qte - deja.get(pid, 0))
+                            quantite=qte - deja.get(pid, 0), devis=devis)
             for pid, qte in _panier_vendu(devis).items()
             if qte > deja.get(pid, 0)]
 
