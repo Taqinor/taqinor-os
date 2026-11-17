@@ -1,0 +1,450 @@
+{
+  "sha": "bee2dcfb9e8e83ea12a04d809c9c3557067b4ac9",
+  "date": "2026-11-17",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG71",
+    "ADRG73",
+    "ADRG110",
+    "ADRG111",
+    "ADRG112",
+    "ADRG113",
+    "ADRG118",
+    "ADRG119",
+    "ADRG120",
+    "ADRG75",
+    "ADRG99",
+    "ADRG106",
+    "ADRG107",
+    "ADRG108",
+    "ADRG114",
+    "ADRG115",
+    "ADRG116",
+    "ADRG117",
+    "ADRG121"
+  ],
+  "couvre_avec_ecart": [
+    "ADRG110"
+  ],
+  "etapes": [
+    {
+      "id": "PF4.3-ADRG71",
+      "taches": [
+        "ADRG71"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.3-ADRG71.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG73",
+      "taches": [
+        "ADRG73"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.3-ADRG73.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG118",
+      "taches": [
+        "ADRG118"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG118.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG119",
+      "taches": [
+        "ADRG119"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG119.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG120",
+      "taches": [
+        "ADRG120"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG120.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG110",
+      "taches": [
+        "ADRG110"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG110.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : frontend/src/lib/apps/useAppBadges.js (ADRG141, 25249c17a du 15/11) demande GET reporting/reports/kpi-federes/?vue=badges dès que estResponsable() est vrai (tout code d'écriture, ici visites_creer du Commercial terrain), mais la route répond 403 à ce rôle (relevé du run 43975878757 sur l'accueil /apps) : 403 + console.error ; appel antérieur à ADRG110 (b77a96bd5, 13/11 : tout rôle l'appelait alors), hors des Files d'ADRG110 (onboarding), aucun rapport avec stock/produits ; oracle 2 — GET http://localhost:4173/api/django/reporting/reports/kpi-federes/?vue=badges → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/reporting/reports/kpi-federes/?vue=badges)"
+    },
+    {
+      "id": "PF4.4-ADRG111",
+      "taches": [
+        "ADRG111"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG111.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG112",
+      "taches": [
+        "ADRG112"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG112.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG113",
+      "taches": [
+        "ADRG113"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG113.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG75",
+      "taches": [
+        "ADRG75"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG75.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG99",
+      "taches": [
+        "ADRG99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG99.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG117",
+      "taches": [
+        "ADRG117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG117.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG106",
+      "taches": [
+        "ADRG106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG106.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG107",
+      "taches": [
+        "ADRG107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG107.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG108",
+      "taches": [
+        "ADRG108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG108.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG114",
+      "taches": [
+        "ADRG114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG114.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG115",
+      "taches": [
+        "ADRG115"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG115.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG116",
+      "taches": [
+        "ADRG116"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG116.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG121",
+      "taches": [
+        "ADRG121"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG121.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
