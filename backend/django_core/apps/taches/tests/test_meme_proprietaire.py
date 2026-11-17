@@ -331,6 +331,9 @@ SANS_ID = {
     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
     ('GET', 'jetons/'): lambda m: ('jetons/', None),
     ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
+    # Le projet de la capture est lu par son NOM parmi les projets du compte (test_capture.py : celui
+    # d'un collègue reste du texte) ; aucun id n'est reçu.
+    ('POST', 'capture/'): lambda m: ('capture/', {'titre': 'Appeler le fournisseur demain'}),
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
