@@ -1540,13 +1540,18 @@ class SQLAgentService:
         15 s). NTPLT4 — pose app.current_company sur les connexions de CE
         moteur quand RLS est actif (no-op sans POSTGRES_RLS_ENABLED)."""
         from langchain_community.utilities import SQLDatabase
+        from sqlalchemy import inspect as sa_inspect
         from app.core import database as _database
-        relevant_tables = [
-            t for t in self._get_relevant_tables(question)
-            if t in _ALLOWED_TABLES
-        ] or list(_ALLOWED_TABLES)
+        engine = _database.create_sql_agent_engine()
+        permises = list(_ALLOWED_TABLES)
+        try:  # AIC102 — table absente (base neuve sans RUN_DB_DDL) : retiree
+            presentes = set(sa_inspect(engine).get_table_names())
+            permises = [t for t in permises if t in presentes] or permises
+        except Exception as exc:  # inspection impossible : regle d'avant
+            logger.warning("Tables de la base non inspectees (%s).", exc)
+        relevant_tables = [t for t in self._get_relevant_tables(question) if t in permises] or permises
         db = SQLDatabase(
-            _database.create_sql_agent_engine(),
+            engine,
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )
