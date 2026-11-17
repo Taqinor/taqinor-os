@@ -1461,3 +1461,68 @@ class OrganigrammeTest(TestCase):
         self.assertEqual(u.role_id, self.r_com.pk)
         self.assertTrue(SettingsAuditLog.objects.filter(
             company=self.company, field='user:org_sans_role:role').exists())
+
+
+# ── TCH130 — activation de `taches` pour l'Administrateur SEUL ─────────────
+
+
+class ActivationTachesAdministrateurTests(TestCase):
+    """TCH130 (donnees.md inv. 28, arbitrages A18-M8) — fin de F2 : `taches_voir`
+    est porté par le SEUL rôle système « Administrateur » ; le Directeur reste
+    exclu ; `init_roles` l'applique aux sociétés existantes au déploiement ; un
+    compte hérité sans rôle fin n'entre pas."""
+
+    DROIT = 'taches_voir'
+
+    def test_liste_exacte_des_roles_systeme_qui_le_portent(self):
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        noms = [nom for nom, _permissions in CANONICAL_SYSTEM_ROLES]
+        # Tous les rôles système sont énumérés (internes, légacy, délégués,
+        # portail) : aucune dérivation ne le donne à un autre rôle.
+        for attendu in ('Directeur', 'Administrateur', 'Commercial responsable',
+                        'Commercial', 'Commercial terrain',
+                        'Technicien responsable', 'Technicien', 'Viewer',
+                        'Responsable', 'Utilisateur', 'Admin RH',
+                        'Admin Ventes', 'Portail client', 'Portail fournisseur',
+                        'Portail partenaire'):
+            self.assertIn(attendu, noms)
+        porteurs = [nom for nom, permissions in CANONICAL_SYSTEM_ROLES
+                    if self.DROIT in permissions]
+        self.assertEqual(porteurs, ['Administrateur'])
+
+    def test_accorde_explicitement_une_seule_fois(self):
+        from apps.roles.permissions_registre import (
+            ADMIN_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+        self.assertEqual(ADMIN_PERMISSIONS.count(self.DROIT), 1)
+        self.assertNotIn(self.DROIT, DIRECTEUR_PERMISSIONS)
+
+    def test_init_roles_atteint_les_societes_existantes(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.roles.permissions_registre import ADMIN_PERMISSIONS
+        deja = Company.objects.create(nom='TCH130 déjà semée', slug='tch130-deja')
+        neuve = Company.objects.create(nom='TCH130 sans rôle', slug='tch130-neuve')
+        # État d'AVANT l'activation : Administrateur semé sans le droit.
+        role = Role.objects.create(
+            company=deja, nom='Administrateur', est_systeme=True,
+            permissions=[p for p in ADMIN_PERMISSIONS if p != self.DROIT])
+        admin = User.objects.create_user(
+            username='tch130_admin', password=None, company=deja, role=role)
+        call_command('init_roles', verbosity=0, stdout=StringIO())
+        for societe in (deja, neuve):
+            roles = list(Role.objects.filter(company=societe))
+            self.assertTrue(roles, societe.slug)
+            self.assertEqual(
+                [r.nom for r in roles if self.DROIT in (r.permissions or [])],
+                ['Administrateur'], societe.slug)
+        admin = User.objects.select_related('role').get(pk=admin.pk)
+        self.assertTrue(admin.has_erp_permission(self.DROIT))
+
+    def test_compte_herite_sans_role_fin_n_entre_pas(self):
+        societe = Company.objects.create(nom='TCH130 hérités', slug='tch130-herites')
+        for palier in ('admin', 'responsable', 'normal'):
+            compte = User.objects.create_user(
+                username=f'tch130_{palier}', password=None, company=societe,
+                role_legacy=palier)
+            self.assertIsNone(compte.role_id)
+            self.assertFalse(compte.has_erp_permission(self.DROIT), palier)

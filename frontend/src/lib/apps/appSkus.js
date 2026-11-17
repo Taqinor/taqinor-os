@@ -104,7 +104,7 @@ export const MANIFESTES = {
   sav: { sku: 'solar_core', libelle: 'Après-vente', installable: true },
   scm: { sku: 'optional', libelle: 'Planification supply chain', installable: true },
   stock: { sku: 'solar_core', libelle: 'Stock', installable: true },
-  taches: { sku: 'generic', libelle: 'Tâches', installable: false },
+  taches: { sku: 'generic', libelle: 'Tâches', installable: true },
   territoires: { sku: 'generic', libelle: 'Territoires commerciaux', installable: true },
   tiers: { sku: 'generic', libelle: 'Tiers', installable: true },
   transport: { sku: 'optional', libelle: 'Transport', installable: true },

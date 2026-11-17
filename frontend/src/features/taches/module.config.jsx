@@ -1,15 +1,17 @@
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import { Navigate } from 'react-router-dom'
+import { Calendar, Folder, Inbox, ListTodo, Sun } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
-   TCH43 — Module frontend « Tâches » (apps.taches) : routes déclarées, AUCUNE nav.
+   TCH43 — Module frontend « Tâches » (apps.taches) : routes déclarées.
    ----------------------------------------------------------------------------
    Clé `taches` IDENTIQUE au manifeste backend (`apps/taches/apps.py`, vérifiée par
-   `scripts/check_modules.py`). Le module est INVISIBLE jusqu'à l'activation (TCH131) :
-   ni `nav` (donc aucune entrée de menu, aucune tuile d'app), ni libellé de section.
-   Les écrans restent atteignables par URL directe, comme les notifications (`plan_matin`,
-   `bilan_soir`, rappel…) les ouvriront ; chaque route porte `// contextuelle: …` pour la
-   garde `scripts/check_ecrans_atteignables.py` (route sans entrée de nav).
+   `scripts/check_modules.py`). TCH131 — activation : `nav` à 4 onglets (spec-7 §2,
+   maquette `coque.js`), chacun gardé par `taches_voir` comme les routes — le lanceur,
+   la barre latérale, la barre d'onglets et les épinglés ne montrent le module qu'à un
+   compte qui porte le droit (l'Administrateur seul en F2, donnees.md inv. 28). Les
+   autres écrans s'ouvrent depuis ces onglets (menu « Plus » de la coquille, liens).
 
    Table des routes : docs/taches/reference/api.md §7 (13 routes). `/taches/projets/archive`
    et `/taches/projets/modeles` sont statiques : elles passent avant `/taches/projets/:id`.
@@ -38,9 +40,22 @@ function AllerAAujourdhui() {
 const ROLES = ['normal', 'responsable', 'admin']
 const GARDE = { roles: ROLES, perm: 'taches_voir' }
 
+const navIcon = (Comp) => createElement(Comp, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
+
 const config = {
   key: 'taches',
   order: 60,
+  nav: {
+    label: 'Tâches', labelKey: 'nav.section.taches',
+    // Glyphe d'APP unique (ODY34, `lib/apps/appGlyph.test.jsx`) ; les onglets gardent ceux de la maquette.
+    icon: appGlyph(ListTodo),
+    items: [
+      { to: '/taches/aujourdhui', label: "Aujourd'hui", k: 'nav.taches_aujourdhui', icon: navIcon(Sun), ...GARDE },
+      { to: '/taches/a-trier', label: 'À trier', k: 'nav.taches_a_trier', icon: navIcon(Inbox), ...GARDE },
+      { to: '/taches/projets', label: 'Projets', k: 'nav.taches_projets', icon: navIcon(Folder), ...GARDE },
+      { to: '/taches/agenda', label: 'Agenda', k: 'nav.taches_agenda', icon: navIcon(Calendar), ...GARDE },
+    ],
+  },
   titles: [
     ['/taches/reglages', 'Tâches — Réglages'],
     ['/taches/supprimees', 'Tâches — Supprimées récemment'],
@@ -56,31 +71,18 @@ const config = {
   ],
   sectionLabels: { taches: 'Tâches' },
   routes: [
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches', component: AllerAAujourdhui, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/aujourdhui', component: Aujourdhui, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/a-trier', component: ATrier, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/projets', component: Projets, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/projets/archive', component: ProjetsArchive, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/projets/modeles', component: ProjetsModeles, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/projets/:id', component: Projet, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/agenda', component: Agenda, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/revue', component: Revue, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/rythme', component: Rythme, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/recherche', component: Recherche, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/supprimees', component: Supprimees, ...GARDE },
-    // contextuelle: module invisible jusqu'à TCH131
     { path: '/taches/reglages/:rubrique?', component: Reglages, ...GARDE },
   ],
 }

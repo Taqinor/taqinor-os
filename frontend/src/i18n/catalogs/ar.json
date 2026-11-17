@@ -115,6 +115,11 @@
   "nav.partenaires": "الشركاء",
   "nav.concurrents_perte": "المنافسون (الصفقات المفقودة)",
   "nav.defis": "التحديات",
+  "nav.section.taches": "المهام",
+  "nav.taches_aujourdhui": "اليوم",
+  "nav.taches_a_trier": "للفرز",
+  "nav.taches_projets": "المشاريع",
+  "nav.taches_agenda": "الأجندة",
 
   "title.dashboard": "لوحة القيادة",
   "title.stock.bons_commande_fournisseur": "سندات طلب الموردين",

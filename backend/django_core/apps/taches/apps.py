@@ -25,7 +25,8 @@ class TachesConfig(AppConfig):
         'label': 'Taches',
         'icone': '',
         'depends': [],
-        'installable': False,
+        # TCH131 — activation (fin de F2, donnees.md inv. 28) : le module devient installable.
+        'installable': True,
         'description': 'Module taches (à décrire).',
         # Ventes/Finance/RH/Stock/Services/Marketing/Technique/Commercial.
         'categorie': 'Technique',
