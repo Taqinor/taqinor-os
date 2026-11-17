@@ -145,6 +145,15 @@ def profondeur_remise_effective(devis, *, remise_globale=None):
     Le résultat n'est JAMAIS inférieur à la remise globale : une donnée de
     ligne aberrante (remise négative, ligne à prix nul) ne peut pas AFFAIBLIR
     un seuil qui se déclenchait hier.
+
+    AIC98 (D-COP-2 = guide_strict) — une BAISSE DE PRIX DE LIGNE est une
+    remise : pour une ligne dont le prix a été TAPÉ (``prix_manuel``, posé par
+    l'écran, ``/devis-lignes/`` et donc l'assistant), le brut part du prix de
+    référence (:func:`prix_applicable` : liste de prix ou prix standard), au
+    moins le prix saisi (une hausse compte 0 % et ne masque pas la baisse d'une
+    autre ligne). Une ligne au prix du moteur (palier C&I, forfait, transport —
+    ``prix_manuel`` faux), sans produit ou au barème par panneau garde son prix
+    saisi pour base : le moteur n'accorde pas de remise.
     """
     globale = Decimal(str(
         (remise_globale if remise_globale is not None
@@ -153,6 +162,8 @@ def profondeur_remise_effective(devis, *, remise_globale=None):
     if lignes_liees is None:
         return globale
 
+    from .catalogue import porte_bareme_par_panneau
+    client = getattr(devis, 'client', None)
     brut = Decimal('0')
     net_lignes = Decimal('0')
     for ligne in lignes_liees.all():
@@ -160,7 +171,13 @@ def profondeur_remise_effective(devis, *, remise_globale=None):
             continue
         if ligne.quantite is None or ligne.prix_unitaire is None:
             continue
-        brut += Decimal(str(ligne.quantite)) * Decimal(str(ligne.prix_unitaire))
+        base = Decimal(str(ligne.prix_unitaire))
+        if (getattr(ligne, 'prix_manuel', False) and ligne.produit_id
+                and not porte_bareme_par_panneau(ligne.produit)):
+            reference = prix_applicable(produit=ligne.produit, client=client,
+                                        quantite=ligne.quantite)['prix']
+            base = max(base, Decimal(str(reference or 0)))
+        brut += Decimal(str(ligne.quantite)) * base
         # ``LigneDevis.total_ht`` PORTE déjà la remise de ligne : on ne
         # réimplémente pas la formule d'argent de `ventes`, on la consomme.
         net_lignes += Decimal(str(ligne.total_ht))

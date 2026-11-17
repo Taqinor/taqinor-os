@@ -15,7 +15,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.parametres.models import CompanyProfile
-from apps.ventes.models import Devis
+from apps.stock.models import Produit
+from apps.ventes.domain.tarification import profondeur_remise_effective
+from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
 
 User = get_user_model()
@@ -92,3 +94,51 @@ class TestDiscountGuard(TestCase):
             f'/api/django/ventes/devis/{d.id}/approuver-remise/')
         r = self._envoyer(self.resp, d)
         self.assertEqual(r.status_code, 200, r.data)
+
+    # ── AIC98 (D-COP-2 = guide_strict) : une baisse de prix de LIGNE compte ──
+    def _devis_une_ligne(self, prix, *, prix_manuel=False, produit=True):
+        CompanyProfile.objects.update_or_create(
+            company=self.company,
+            defaults={'discount_approval_threshold': Decimal('2')})
+        p = Produit.objects.create(
+            company=self.company, nom='Onduleur',
+            sku=f'AIC98-{prix}-{prix_manuel}', prix_vente=Decimal('10000'),
+            quantite_stock=5) if produit else None
+        d = Devis.objects.create(
+            company=self.company,
+            reference=f'DEV-AIC98-{prix}-{prix_manuel}-{produit}',
+            client=self.client_obj, statut='brouillon',
+            taux_tva=Decimal('20'), remise_globale=Decimal('0'))
+        ligne = LigneDevis.objects.create(
+            devis=d, produit=p, designation='Onduleur', quantite=1,
+            prix_unitaire=Decimal(prix), remise=Decimal('0'),
+            prix_manuel=prix_manuel)
+        return d, ligne
+
+    def test_baisse_de_prix_de_ligne_comptee_comme_remise(self):
+        # 10 000 → 9 000 TAPÉ (la PATCH /devis-lignes/ pose prix_manuel, comme
+        # l'assistant), seuil 2 %, aucune remise globale : 10 % ⇒ envoi refusé.
+        d, ligne = self._devis_une_ligne('10000')
+        r = self._api(self.resp).patch(
+            f'/api/django/ventes/devis-lignes/{ligne.id}/',
+            {'prix_unitaire': '9000'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        ligne.refresh_from_db()
+        self.assertTrue(ligne.prix_manuel)
+        self.assertEqual(profondeur_remise_effective(d), Decimal('10.00'))
+        r = self._envoyer(self.resp, d)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('10', str(r.data))
+        d.refresh_from_db()
+        self.assertEqual(d.statut, 'brouillon')  # relu : pas envoyé sans accord
+
+    def test_prix_de_ligne_reference_hausse_et_sans_produit_zero(self):
+        # Au prix de référence ⇒ 0 % ; hausse ⇒ 0 % ; sans produit ⇒ base =
+        # prix saisi ; prix du moteur (prix_manuel faux) ⇒ base = prix saisi.
+        cas = [('10000', True, True), ('12000', True, True),
+               ('9000', True, False), ('9000', False, True)]
+        for prix, manuel, produit in cas:
+            d, _ = self._devis_une_ligne(prix, prix_manuel=manuel,
+                                         produit=produit)
+            self.assertEqual(profondeur_remise_effective(d), Decimal('0'),
+                             (prix, manuel, produit))
