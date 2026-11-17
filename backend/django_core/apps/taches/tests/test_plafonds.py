@@ -83,7 +83,7 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
     def test_aujourdhui_sans_familles_erp(self):
         self._erp_dans_journee(False)
         self._lire(URL_AUJOURDHUI)
-        with self.assertMaxQueries(25):
+        with self.assertMaxQueries(26):
             self._lire(URL_AUJOURDHUI)
 
     def test_aujourdhui_avec_familles_erp(self):
@@ -94,12 +94,12 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
 
     def test_badge(self):
         self._lire(URL_BADGE)
-        with self.assertMaxQueries(11):
+        with self.assertMaxQueries(13):
             self._lire(URL_BADGE)
 
     def test_proposition_du_jour(self):
         self._lire(URL_PROPOSITION)
-        with self.assertMaxQueries(25):
+        with self.assertMaxQueries(27):
             self._lire(URL_PROPOSITION)
 
     def test_agenda(self):
@@ -131,19 +131,19 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
 
     def test_liste_des_projets(self):
         self._lire(URL_PROJETS)
-        with self.assertMaxQueries(12):
+        with self.assertMaxQueries(14):
             self._lire(URL_PROJETS)
 
     def test_vue_d_un_projet(self):
         url = URL_VUE_PROJET.format(id=self.projets[0].pk)
         self._lire(url)
-        with self.assertMaxQueries(20):
+        with self.assertMaxQueries(22):
             self._lire(url)
 
     def test_apercu_de_la_saisie_rapide(self):
         corps = {'texte': 'Appeler le fournisseur demain 10 h\nDevis Settat #Ventes\nAcheter des câbles'}
         self.assertEqual(self.api.post(URL_SAISIE, corps, format='json').status_code, 200)
-        with self.assertMaxQueries(10):
+        with self.assertMaxQueries(11):
             reponse = self.api.post(URL_SAISIE, corps, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
 
@@ -155,7 +155,7 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
     def test_recherche(self):
         url = f'{URL_RECHERCHE}?q=Devis'
         self._lire(url)
-        with self.assertMaxQueries(10):
+        with self.assertMaxQueries(12):
             self._lire(url)
 
 

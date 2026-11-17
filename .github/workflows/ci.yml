@@ -2259,6 +2259,12 @@ jobs:
           # The simulator catalogue (defaults to the seeded `taqinor-demo`
           # company) is what the auto-devis sizing matches against.
           python manage.py seed_catalogue
+          # CI F2 — `taches_voir` n'est accordé à aucun rôle système avant l'activation du module : sans lui,
+          # `demo_admin` (compte sans rôle fin) reçoit 403 sur `tout-effacer/` et sur toute route Tâches. Lane 2
+          # seulement (elle seule joue les specs taches-*), base jetable : superutilisateur, comme un propriétaire.
+          if [ "${{ matrix.shard }}" = "2" ]; then
+            python manage.py shell -c "from authentication.models import CustomUser; CustomUser.objects.filter(username='demo_admin').update(is_superuser=True)"
+          fi
           # SOLMVP (21/09/2026) — plus de `seed_ao_demo` : l'app AO est une coquille.
       - name: Install frontend dependencies
         working-directory: frontend
