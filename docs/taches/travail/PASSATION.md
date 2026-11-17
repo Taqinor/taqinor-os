@@ -104,7 +104,7 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `de17e63b5` (3e tour de corrections CI plié). **63 des 64 tâches de la fusion 2 sont
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `d51181d5e` (4 tours de corrections CI pliés ; tout est vert SAUF `e2e-shard (2)`). **63 des 64 tâches de la fusion 2 sont
   pliées et cochées** (115 tâches cochées sur 174 au total). Tout le code de la fusion 2 y est : serveur, écrans,
   raccords des deux côtés, semis, sécurité, plafonds, activation Administrateur seul, bout en bout Playwright.
 - Aucune lane en cours, aucune branche de lane non pliée. Rien d'important ne vit seulement sur le portable.
@@ -145,6 +145,9 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
   lecture seule sur la prod (accord permanent) si le compte de Reda est superutilisateur ou porte le rôle
   Administrateur ; sinon son geste est : Paramètres → Utilisateurs → se donner le rôle « Administrateur » (à écrire
   dans `docs/taches/README.md` et dans le rapport final).
+- **Confirmé au tour 4 : l'ÉCRAN ne lit que les droits du RÔLE** (`/auth/me/` → `role.permissions`) ; même un
+  superutilisateur sans rôle fin ne voit pas le module (le serveur, lui, le laisse passer). Donc Reda doit porter le
+  rôle Administrateur. Le tour 4 donne ce rôle à `demo_admin` dans le shard 2 de la CI (heredoc dans `ci.yml`).
 - E2E : le 3e tour a levé le 403 en passant `demo_admin` superutilisateur DANS LE SHARD 2 de la CI seulement
   (6 lignes de `.github/workflows/ci.yml`). Les 57 tests n'ont donc ENCORE JAMAIS atteint leur vrai contenu : le
   prochain run dira les vrais écarts (sélecteurs, écrans, accessibilité). Si ce passage en superutilisateur gêne
