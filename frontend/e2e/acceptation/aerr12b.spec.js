@@ -77,7 +77,7 @@ Calepinage.objects.filter(pk=${cal.id}).delete()`))
   // Boîte Radix par-dessus : la palette ⌘K ; le focus quitte son champ de saisie.
   await bouton.dispatchEvent('click') // quitte le mode dessin sans toucher à l'obstacle
   await page.keyboard.press('Control+k')
-  const palette = page.getByRole('dialog', { name: 'Palette de commandes' })
+  const palette = page.getByRole('dialog', { name: 'Recherche rapide' })
   await expect(palette, 'boîte posée par-dessus l\'atelier').toBeVisible({ timeout: 30_000 })
   await page.evaluate(() => { document.activeElement?.blur?.(); document.querySelector('[role="dialog"][aria-label="Palette de commandes"]')?.focus() })
   await page.keyboard.press('Delete')
