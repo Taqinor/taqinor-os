@@ -179,6 +179,8 @@ describe('carte touche — WhatsApp (RELANCE-WA)', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     await userEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    // 17/11/2026 — l'opposition exige la case « Le client me l’a demandé lui-même ».
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Le client me l’a demandé lui-même' }))
     await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.getRelanceEtapeMessage).toHaveBeenCalledWith(TOUCHE_WA.id, 'stop_contact'))
     expect(window.open).not.toHaveBeenCalled()
