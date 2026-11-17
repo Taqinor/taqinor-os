@@ -297,6 +297,8 @@
 /* Colonne Agenda : « Toute la journée » sur deux lignes dans la gouttière de 48 px */
 .agenda-journee small { font-size: 0.6875rem; padding-right: 6px; }
 /* iPhone : la fin d'une ligne que le bouton flottant recouvrirait se décale à sa gauche (rien dessous) */
-@media (max-width: 767px) { .ligne.libere-fab .ligne-fin { margin-right: 64px; } }
 /* Bilan : « Passer » aligné sur la colonne du titre (le texte, pas la boîte de 44 px) */
 .entete-barre > .bouton.discret:first-child { margin-left: -8px; }
+
+/* Matin, iPhone : au repos, le bouton flottant tombe sur le titre de Proposé, jamais sur une ligne (drapeau, heure) */
+@media (max-width: 767px) { .section.espace-fab { margin-top: 48px; } }

@@ -300,3 +300,9 @@
 .es-attente-rythme .bandeau-icone { flex: none; width: 36px; height: 36px; color: var(--tch-accent); }
 .es-attente-rythme p { margin: 0; font-size: 0.9375rem; line-height: 1.45; }
 .es-attente-rythme p b { display: block; font-size: 1rem; font-weight: 650; margin-bottom: 2px; }
+
+/* Hors ligne : dit dans la ligne du dessus (pas de bandeau qui décale la liste sous le bouton flottant) */
+.entete-date.es-hors-ligne { display: flex; align-items: center; gap: 6px; color: var(--tch-texte); }
+/* Hors ligne, iPhone : le Copilote (qui a besoin du réseau) cède sa place à la ligne d'état, sur une ligne */
+@media (max-width: 767px) { .copilote.es-hors-reseau { display: none; } }
+.entete-date.es-hors-ligne span { white-space: nowrap; }

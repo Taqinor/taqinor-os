@@ -279,7 +279,7 @@
   .ag-btete .segmente { margin: 0 12px 0 0; width: 340px; }
   .ag-btete .copilote { margin: 0 2px; }
   .ag-btete .raccourci kbd { background: var(--tch-panneau); }
-  .ag-bcorps { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; border-top: 1px solid var(--tch-trait); }
+  .ag-bcorps { display: grid; grid-template-columns: minmax(0, 1fr) 420px; min-height: 0; border-top: 1px solid var(--tch-trait); }
   .ag-bcorps.seul { grid-template-columns: minmax(0, 1fr); }
   .ag-bmain { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .ag-bmain .ag-tj { padding: 8px 0; }
@@ -509,7 +509,7 @@
 .ag-plan-entete .entete-haut { align-items: flex-end; }
 @media (min-width: 768px) {
   /* le titre de page tombe à y = 76 comme dans les écrans cœur : la date du jour est réservée au-dessus */
-  .ag-btete { padding: 24px 24px 14px; }
+  .ag-btete { padding: 24px 24px 14px 40px; }   /* titre à x 297 comme les autres écrans du bureau */
   .ag-btete-g { align-items: center; }
   .ag-ttl { margin-right: 16px; }
   .ag-btete .entete-titre { margin-right: 0; }
@@ -517,13 +517,15 @@
   /* Semaine : « Toute la journée » décollé du rail ; trait « maintenant » sur toute la colonne du jour, sous les blocs */
   .ag-semtj .ag-tj-label { padding-left: 12px; }
   .ag-semcol.auj { background-color: color-mix(in srgb, var(--tch-accent) 5%, transparent); }
-  .ag-semcol .maintenant { z-index: auto; left: 0; right: 0; }
+  /* trait visible : au-dessus du fond des blocs, sous leur texte */
+  .ag-semcol .bloc { z-index: auto; }
+  .ag-semcol .bloc > * { position: relative; z-index: 3; }
+  .ag-semcol .maintenant { z-index: 2; left: 0; right: 0; }
   .ag-semcol .maintenant::before { left: -4px; z-index: 2; }
 }
 /* J1 (tour 4) : moins de hauteur au-dessus de la grille → plus de 5,5 h visibles sur iPhone */
 @media (max-width: 767px) {
   .ag { --ag-h: 84px; --ag-barre-h: 58px; }
-  .ag-entete { padding-top: 0; }
   .ag-vues { margin-top: 2px; }
   .ag-bande { margin-top: 0; }
   .ag .bande-jours button, .ag .ag-fleche { height: 46px; }
