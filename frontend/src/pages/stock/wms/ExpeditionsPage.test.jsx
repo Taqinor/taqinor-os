@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { makeAuthStore, renderStockPage } from '../stockPage.testHelpers'
+import { configureStore } from '@reduxjs/toolkit'
+import authReducer from '../../../features/auth/store/authSlice'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -129,6 +131,26 @@ describe('ASTK220 — ExpeditionsPage', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: /^Tarifs de l'expédition/ }))[0])
     expect(await screen.findByText(`${offre.libelle} — —`, { exact: false })).toBeInTheDocument()
     expect(screen.queryByText(new RegExp(`${offre.libelle} — .*${offre.devise}`))).toBeNull()
+  })
+})
+
+describe('ALEC48 — casiers selon le droit', () => {
+  const appelsCasiers = () => api.get.mock.calls.filter(([u]) => u.includes('bin-locations'))
+  const monterAvec = (permissions) => renderStockPage(ExpeditionsPage, configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: { auth: {
+      user: { id: 1, portee: 'interne' }, role: 'responsable', role_nom: 'Responsable', permissions,
+      isAuthenticated: true, loading: false,
+    } },
+  }))
+  it('sans droit du module chantiers : aucun appel bin-locations', async () => {
+    monterAvec(['stock_voir', 'stock_modifier', 'stock_mouvement'])
+    await screen.findByLabelText(/Dimensions de l'unité 000000000000000012/)
+    expect(appelsCasiers()).toHaveLength(0)
+  })
+  it('avec le droit : les casiers sont demandés', async () => {
+    monterAvec(['stock_voir', 'stock_modifier', 'stock_mouvement', 'installation_voir'])
+    await waitFor(() => expect(appelsCasiers().length).toBeGreaterThan(0))
   })
 })
 

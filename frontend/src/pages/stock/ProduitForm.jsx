@@ -10,7 +10,7 @@ import {
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
 import { useIsAdmin } from '../../hooks/useHasPermission'
-import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import stockApi from '../../api/stockApi'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { formatMAD, formatPercent } from '../../lib/format'
@@ -430,6 +430,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
   // `catalogue_prix_modifier` (le serveur refuse sinon, 403) : champ figé.
   const peutModifierPrix = usePermissionAchats('catalogue_prix_modifier')
   const prixVenteFige = isEdit && !peutModifierPrix
+  const voitPrixAchat = useVoitPrixAchat()  // ADRG142 — prix fournisseurs : `prix_achat_voir`
 
   const [saving, setSaving] = useState(false)
   // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
@@ -1054,6 +1055,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
         }
       }
       onSaved?.()
+      if (isEdit) toast.success('Produit mis à jour.')  // AERR177
       // VX92 — « Créer un autre » (uniquement à la création) : on vide le
       // formulaire et on refocalise le champ 1 au lieu de fermer le dialog.
       if (!isEdit && creerUnAutre) {
@@ -2282,7 +2284,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
           {/* WIR67 — champs personnalisés (module « produit »). */}
           <CustomFieldsInput module="produit" value={customData} onChange={setCustomData} />
 
-          {isEdit && (
+          {isEdit && voitPrixAchat && (
             <PrixFournisseursSection produitId={produit.id} fournisseurs={fournisseurs} isAdmin={isAdmin} />
           )}
 
