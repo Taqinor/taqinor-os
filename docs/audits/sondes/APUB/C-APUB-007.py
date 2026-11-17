@@ -74,14 +74,19 @@ def scenario():
                                     save=lambda update_fields=None: None)
     class Response(dict):
         def __init__(s, data=None, status=200): super().__init__(); s.data, s.status_code = data, status
-    ns = {"__name__": "apps.crm.public_chat_views", "__package__": "apps.crm", "Response": Response,
+    class Http404(Exception): pass
+    # APUB10 (D-APUB-2 = parquer) : _exiger_livechat_ouvert lit settings.LIVECHAT_PUBLIC_ENABLED, faux par défaut
+    # (erp_agentique/settings/base.py : os.environ.get('LIVECHAT_PUBLIC_ENABLED', '0') == '1') : réglage de la prod.
+    ns = {"__name__": "apps.crm.public_chat_views", "__package__": "apps.crm", "Response": Response, "Http404": Http404,
+          "settings": types.SimpleNamespace(),
           "status": types.SimpleNamespace(HTTP_404_NOT_FOUND=404, HTTP_410_GONE=410, HTTP_400_BAD_REQUEST=400),
           "timezone": types.SimpleNamespace(now=datetime.datetime.now),
           "ChatSessionPublique": types.SimpleNamespace(Statut=St, objects=types.SimpleNamespace(
               filter=lambda token=None: types.SimpleNamespace(first=lambda: session if token == "tok" else None)))}
-    _, fonctions = extraire("apps/crm/public_chat_views.py", {"post_chat_message", "_append_transcript", "DEFAULT_AWAY_MESSAGE"}, ns)
+    _, fonctions = extraire("apps/crm/public_chat_views.py", {"post_chat_message", "_append_transcript", "DEFAULT_AWAY_MESSAGE", "_exiger_livechat_ouvert"}, ns)
     decorateurs = [d for d in fonctions["post_chat_message"] if "classes" in d]
-    rep = ns["post_chat_message"](types.SimpleNamespace(data={"message": MESSAGE}, user=None), "tok")
+    try: rep = ns["post_chat_message"](types.SimpleNamespace(data={"message": MESSAGE}, user=None), "tok")
+    except Http404: rep = Response({"detail": "Livechat public désactivé."}, 404)  # le réglage éteint refuse AVANT toute écriture
     return {"decorateurs": decorateurs, "statut_http": rep.status_code, "lead_created_repondu": (rep.data or {}).get("lead_created"),
             "lead_existant": {"pk": existant.pk, "etape": existant.stage, "email_apres": existant.email, "saves": existant.saves},
             "notes_ecrites_sur": journal, "leads_crees": len(crees), "session_rattachee_au_lead": getattr(session.lead, "pk", None)}
