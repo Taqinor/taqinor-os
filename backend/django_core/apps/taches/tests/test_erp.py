@@ -191,6 +191,18 @@ class LierTests(_Base):
         activite.refresh_from_db()
         self.assertFalse(activite.done)
 
+    def test_idempotency_key_par_compte(self):
+        """Revue F2 #7 : même clé, même corps, autre compte → jamais la réponse (tâche, titre) du premier."""
+        activite = self._activite_erp()
+        corps, cle = {'activite_id': activite.pk}, {'HTTP_IDEMPOTENCY_KEY': 'k-lier'}
+        premier = self._api().post(LIER, corps, format='json', **cle)
+        rejeu = self._api().post(LIER, corps, format='json', **cle)
+        collegue = self._api(self.u2).post(LIER, corps, format='json', **cle)
+        self.assertEqual((premier.status_code, rejeu.json()), (201, premier.json()))
+        self.assertEqual(collegue.status_code, 404)
+        self.assertNotIn("Préparer l'appel Benali", collegue.content.decode('utf-8'))
+        self.assertEqual(Tache.objects.filter(activite_origine=activite).count(), 1)
+
     def test_une_activite_sans_date_ou_reportee_se_lie(self):
         import datetime
 

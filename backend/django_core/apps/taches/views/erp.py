@@ -18,6 +18,7 @@ from apps.taches.services.erp import PLAFOND_CONVERSION, convertir_activites, li
 from apps.taches.views.base import (
     ERREUR_CODE, PERMISSIONS, PasEncore, est_assistant, forme_echantillon, reponses,
 )
+from apps.taches.views.journee import par_compte
 from core.idempotency import IdempotentCreateMixin
 
 MESSAGE_REQUIS = 'Requis.'
@@ -83,7 +84,8 @@ class LierActiviteVue(IdempotentCreateMixin, APIView):
     }), responses=reponses(forme_echantillon('lier_activite'), statut=201, erreurs=(400, 404),
                            conflit=ERREUR_CODE))
     def post(self, request):
-        return self._avec_idempotence(request, lambda: self._lier(request))
+        # Revue F2 #7 : clés par compte, comme toute écriture du module (jamais la réponse d'un collègue rejouée).
+        return self._avec_idempotence(request, lambda: self._lier(request), suffixe=par_compte(request))
 
     def _lier(self, request):
         corps = _CorpsLier(data=request.data)
