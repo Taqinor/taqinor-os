@@ -268,6 +268,14 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     expect(etiquettes(sur('planifier', { canal: 'appel' }))).toContain('Pas de réponse')
   })
 
+  it('17/11/2026 — étape générique sur un appel : « Pas joint » commence par « Pas de réponse »', () => {
+    const items = sur('generique', { canal: 'appel' })
+    expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label)).toEqual([
+      'Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
+    // Sur un message, pas de groupe « Pas joint ».
+    expect(sur('generique', { canal: 'whatsapp' }).some((i) => i.cle === 'pas_joint')).toBe(false)
+  })
+
   it('le premier membre d’un groupe est celui de la table (présélection de l’écran)', () => {
     const items = sur('contact_appel', { canal: 'appel' })
     for (const g of items.filter((i) => i.genre === 'groupe')) {
