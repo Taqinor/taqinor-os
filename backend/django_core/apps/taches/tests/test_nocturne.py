@@ -7,8 +7,13 @@ par une fonction de test ; le rejeu passe par les VRAIES étapes.
 import datetime
 from unittest import mock
 
+from django.apps import apps
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
+from apps.notifications.models import Notification
+from apps.records.models import Activity
 from apps.taches import nocturne, sweeps
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.presence import ReglagesSociete
@@ -129,3 +134,56 @@ class TachePlanifieeNocturneTests(TestCase):
         self.assertEqual((entree['schedule'].hour, entree['schedule'].minute), ({3}, {0}))
         self.assertEqual(entree['options'], {'expires': 3600})
         self.assertEqual(settings.CELERY_TASK_ROUTES['taches.nocturne'], {'queue': 'scheduled'})
+
+
+def _lignes_taches(**filtre_proprietaire):
+    """Nombre de lignes de CHAQUE modèle de l'app `taches` (corbeille comprise) → `{modèle: n}`. Avec
+    `proprietaire__in=[…]`, seuls les modèles qui portent un `proprietaire` sont comptés, filtrés dessus."""
+    comptes = {}
+    for modele in apps.get_app_config('taches').get_models():
+        lignes = modele._base_manager.all()
+        if filtre_proprietaire:
+            if 'proprietaire' not in {champ.name for champ in modele._meta.get_fields()}:
+                continue
+            lignes = lignes.filter(**filtre_proprietaire)
+        comptes[modele.__name__] = lignes.count()
+    return comptes
+
+
+class NuitSansEffetPourUnCompteInactifTests(TestCase):
+    """F2 — la nuit ne parcourt que les comptes qui ont des données Tâches (`ReglagesRythme`) : un compte
+    qui n'a jamais ouvert le module n'a aucune ligne créée, et le coût ne dépend pas de la taille de la
+    société."""
+
+    def test_les_comptes_sans_donnees_n_ont_aucune_ligne(self):
+        societe = fabriques.societe('nuit1')
+        actif = fabriques.compte(societe, nom='actif')
+        inactifs = [fabriques.compte(societe, nom='vide1'), fabriques.compte(societe, nom='vide2')]
+        fabriques.reglages(actif)
+        fabriques.tache(actif, jour_prevu=JOUR)
+        notifications = Notification.objects.count()
+        activites = Activity.objects.count()
+        nocturne.executer(societe.pk, JOUR)
+        self.assertEqual(sum(_lignes_taches(proprietaire__in=inactifs).values()), 0)
+        self.assertEqual(Notification.objects.count(), notifications)
+        self.assertEqual(Activity.objects.count(), activites)
+
+    def _requetes(self, slug, comptes):
+        societe = fabriques.societe(slug)
+        for numero in range(comptes):
+            fabriques.compte(societe, nom=f'u{numero}')
+        avant = _lignes_taches()
+        notifications = Notification.objects.count()
+        activites = Activity.objects.count()
+        with CaptureQueriesContext(connection) as requetes:
+            nocturne.executer(societe.pk, JOUR)
+        self.assertEqual(_lignes_taches(), avant)
+        self.assertEqual(sum(avant.values()), 0)
+        self.assertEqual(Notification.objects.count(), notifications)
+        self.assertEqual(Activity.objects.count(), activites)
+        return len(requetes)
+
+    def test_societe_sans_donnee_n_ecrit_rien_et_coute_la_meme_chose_quelle_que_soit_sa_taille(self):
+        petite = self._requetes('nuit2', 3)
+        grande = self._requetes('nuit3', 30)
+        self.assertEqual(petite, grande)
