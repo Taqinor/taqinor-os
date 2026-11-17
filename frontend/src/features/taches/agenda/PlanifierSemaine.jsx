@@ -39,6 +39,30 @@ function resume(jour, aujourdhui) {
   return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
 }
 
+/** Raccord F2 — au bureau (≥ 1024 px), chaque jour est une COLONNE à cartes (agenda-semaine-planifier.html) ; sur
+ * iPhone ces cartes sont masquées et le jour reste une ligne. Décor seulement : le nom du jour reste sur le bouton. */
+function CartesDuJour({ jour }) {
+  const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
+  if (taches.length === 0) return null
+  return (
+    <span className="ag-pj-cartes" aria-hidden="true">
+      {taches.map((t) => {
+        const heure = t.heure_debut ? t.heure_debut.slice(0, 5) : ''
+        const d = dureeTexte(t.estimation_minutes)
+        return (
+          <span key={t.id} className={t.statut === 'fait' ? 'ag-carte faite' : 'ag-carte'}>
+            {heure ? <span className="h">{d ? `${heure} · ${d}` : heure}</span> : null}
+            <span className="t">{t.titre}</span>
+            {t.projet ? (
+              <span className="m"><i className="point" data-p={t.projet.couleur || undefined} /><span>{t.projet.nom}</span></span>
+            ) : null}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
 function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
   const { passe, repos, texte } = resume(jour, aujourdhui)
   const nom = nomJour(jour.jour)
@@ -46,7 +70,7 @@ function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, re
     posee ? 'nouveau' : ''].filter(Boolean).join(' ')
   const poser = () => (choisie ? onPoser(choisie, jour.jour) : onOuvrirJour(jour.jour))
   return (
-    <div role="listitem">
+    <div role="listitem" className={repos ? 'ag-pj-place repos' : 'ag-pj-place'}>
       <button
         ref={refBouton}
         type="button"
@@ -60,6 +84,7 @@ function LigneJour({ jour, aujourdhui, choisie, posee, onPoser, onOuvrirJour, re
       >
         <span className="j">{nom}</span>
         <span className="n">{texte}</span>
+        <CartesDuJour jour={jour} />
         {posee ? (
           <span className="ag-pj-ajout" data-p={posee.projet?.couleur || undefined}>
             <i className="point" aria-hidden="true" />{posee.titre}

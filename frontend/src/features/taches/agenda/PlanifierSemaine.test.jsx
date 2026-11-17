@@ -75,6 +75,15 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(within(liste).getByRole('button', { name: 'jeu. 19 · 0 tâche' })).toBeInTheDocument()
   })
 
+  it('Raccord F2 — chaque jour porte ses cartes (colonnes du bureau), décor muet : le nom du jour reste celui du bouton', () => {
+    monter()
+    const mardi = screen.getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15' })
+    const cartes = mardi.querySelector('.ag-pj-cartes')
+    expect(cartes).toHaveAttribute('aria-hidden', 'true')
+    expect(cartes.querySelectorAll('.ag-carte')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'dim. 22 · non travaillé' }).closest('.ag-pj-place')).toHaveClass('repos')
+  })
+
   it('tâche choisie : → et ← vont d\'un jour posable à l\'autre (le passé est sauté)', () => {
     monter({ choisie: agenda().mes_projets[0].items[0] })
     fireEvent.keyDown(window, { key: 'ArrowRight' })
@@ -118,7 +127,9 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     }))
     const jeudi = await screen.findByRole('button', { name: /^jeu\. 19 · 1 tâche · 45 min$/ })
     expect(jeudi).toHaveClass('nouveau')
-    expect(within(jeudi).getByText('Préparer formation')).toBeInTheDocument()
+    // la puce de la pose (iPhone) et la carte de la colonne (bureau, Raccord F2) portent la tâche posée
+    expect(jeudi.querySelector('.ag-pj-ajout')).toHaveTextContent('Préparer formation')
+    expect(jeudi.querySelector('.ag-pj-cartes')).toHaveTextContent('Préparer formation')
     expect(screen.queryByRole('button', { name: /Préparer formation/, pressed: false })).toBeNull()
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Placée jeu. 19')
     // aucune fiche ouverte, aucune relecture de l'agenda

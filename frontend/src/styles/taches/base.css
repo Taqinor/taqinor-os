@@ -440,6 +440,20 @@
 .tch .bouton.rond-micro {
   width: 44px; padding: 0; border-radius: 999px; color: var(--tch-texte-doux);
 }
+/* Raccord F2 — variantes communes à tous les écrans (une seule définition : projets, réglages, conflit, feuilles) */
+.tch .bouton.danger {
+  background: var(--destructive); color: var(--destructive-foreground); box-shadow: var(--shadow-xs);
+}
+.tch .bouton.plein-accent {
+  background: var(--tch-accent); color: var(--tch-accent-texte);
+}
+.tch .bouton:disabled {
+  opacity: 0.5; cursor: default;
+}
+/* Hors ligne (TCH100) : un geste marqué data-necessite-reseau est grisé ; la coquille dit « Possible une fois connecté » */
+.tch[data-hors-ligne] [data-necessite-reseau] {
+  opacity: 0.5; cursor: default;
+}
 .tch .bandeau {
   display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 12px 8px 12px 14px;
   min-height: 64px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
@@ -1136,4 +1150,3 @@
 .tch .conflit .carte-actions { margin-top: 10px; }
 .tch .conflit .bouton { height: 40px; padding: 0 14px; font-size: 0.9375rem; position: relative; }
 .tch .conflit .bouton::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
-.tch .conflit .bouton.plein-accent { background: var(--tch-accent); color: var(--tch-accent-texte); }
