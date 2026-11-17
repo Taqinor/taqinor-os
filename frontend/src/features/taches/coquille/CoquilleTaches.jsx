@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { CloudOff, Ellipsis, Plus, Search } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
 import Fiche from '../fiche/Fiche'
 import FeuilleSaisie from '../saisie/FeuilleSaisie'
+import BarreSelection from '../ui/BarreSelection'
+import BoutonCopilote from '../ui/BoutonCopilote'
+import FeuilleACrans from '../ui/FeuilleACrans'
+import SelecteurProjet from '../ui/SelecteurProjet'
 import { useEnLigne } from '../lib/enLigne'
 
 /* ============================================================================
@@ -17,6 +21,9 @@ import { useEnLigne } from '../lib/enLigne'
      · la fiche d'une tâche, ouverte par `?tache=<id>` ;
      · la feuille de saisie, ouverte par ce bouton ou par l'événement
        `taqinor:taches:saisir` (touche `c t`, palette, cockpit) ;
+     · le bouton « Copilote » (TCH45) et les composants partagés que chaque écran pilote par
+       une prop : `feuille` (FeuilleACrans), `selecteurProjet` (SelecteurProjet dans sa feuille),
+       `selection` (BarreSelection des actions en lot) ;
      · l'état « Hors ligne » (`useEnLigne`).
    L'ERP fournit lui-même barre latérale, barre d'onglets et en-tête global : la coquille
    n'invente aucune navigation (le module reste invisible jusqu'à l'activation, TCH131).
@@ -55,9 +62,11 @@ function MenuPlus({ actionsEcran, navigate }) {
 }
 
 export default function CoquilleTaches({
-  ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null, enteteExtra = null, children,
+  ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null,
+  feuille = null, selecteurProjet = null, selection = null, copilote = {}, children,
 }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const enLigne = useEnLigne()
   const [params, setParams] = useSearchParams()
   const [saisieOuverte, setSaisieOuverte] = useState(false)
@@ -105,7 +114,7 @@ export default function CoquilleTaches({
               >
                 <Search className="i" aria-hidden="true" />
               </button>
-              {enteteExtra}
+              <BoutonCopilote ecran={pathname} {...copilote} />
               <MenuPlus actionsEcran={actionsEcran} navigate={navigate} />
             </div>
           </div>
@@ -120,12 +129,33 @@ export default function CoquilleTaches({
         {children}
       </div>
 
-      <button type="button" className="fab mobile-seul" aria-label="Ajouter une tâche" onClick={ouvrirSaisie}>
-        <Plus className="i" aria-hidden="true" />
-      </button>
+      {selection && selection.n > 0 ? (
+        <BarreSelection {...selection} />
+      ) : (
+        <button type="button" className="fab mobile-seul" aria-label="Ajouter une tâche" onClick={ouvrirSaisie}>
+          <Plus className="i" aria-hidden="true" />
+        </button>
+      )}
 
       {tacheId ? <Fiche id={tacheId} onFermer={fermerFiche} /> : null}
       <FeuilleSaisie ouverte={saisieOuverte} onFermer={fermerSaisie} />
+      {feuille ? <FeuilleACrans {...feuille} /> : null}
+      {selecteurProjet ? (
+        <FeuilleACrans
+          ouverte={Boolean(selecteurProjet.ouverte)}
+          onFermer={selecteurProjet.onFermer}
+          titre={selecteurProjet.titre ?? 'Projet'}
+          cranInitial="85"
+        >
+          <SelecteurProjet
+            projets={selecteurProjet.projets}
+            valeur={selecteurProjet.valeur}
+            sansProjet={selecteurProjet.sansProjet}
+            onChoisir={selecteurProjet.onChoisir}
+            onNouveau={selecteurProjet.onNouveau}
+          />
+        </FeuilleACrans>
+      ) : null}
     </div>
   )
 }

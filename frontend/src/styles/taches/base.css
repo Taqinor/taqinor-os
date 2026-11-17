@@ -1045,6 +1045,16 @@
 .tch .etoile-bouton.active { color: var(--tch-etoile); }
 .tch button.garder { border: 0; }
 
+/* Feuille à crans : le corps défile, la poignée et l'en-tête restent */
+.tch .feuille-corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 4px; }
+.tch .feuille .poignee { background: none; border: 0; }
+/* Bouton Copilote : la phrase (hors ligne, sans clé) se pose dessous, lue par role=status */
+.tch .copilote-groupe { position: relative; display: inline-flex; }
+.tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: 3; width: min(320px, 80vw); padding: 12px 14px;
+  border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); color: var(--tch-texte);
+  font-size: 0.875rem; line-height: 1.35; box-shadow: var(--shadow-md); }
+.tch .copilote[aria-disabled="true"] { opacity: 0.6; }
+
 /* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
 .tch button.saisie-bureau { width: calc(100% - 16px); text-align: left; background: none; }
 .tch .saisie-bureau:hover { background: var(--tch-survol); }
