@@ -1,0 +1,67 @@
+{
+  "endpoint": "POST /api/django/crm/leads/liste-froide/",
+  "pourquoi": "17/11/2026 (fondateur : les appels de la liste froide se font DANS l'ERP, et la commerciale les TIRE quand sa journée le permet — « un bouton pour prendre d'anciens leads, selon sa charge » —, jamais des étapes datées poussées sur des jours déjà pleins). LE contrat de la carte « Liste froide » du cockpit. GET = l'état pour l'APPELANT ; POST `{nombre}` = la prise. Vivier = les leads de l'appelant (`owner`), au Froid (clé COLD de STAGES.py), ni perdus, ni archivés, ni opposés, ni à l'état Archive, ni importés d'Odoo, avec un numéro marocain exploitable, sans aucune étape ouverte, en deux groupes classés par `cadence_selectors.seaux_reactivation` (une seule définition des seaux) : A = joint ET chiffré (K3 : issue joint / intéressé / visite acceptée saisie par une personne + devis sorti du brouillon) ; B = lead Meta jamais joint (K5 / K6) au palier 1 du pilote d'appel D-CADV-2 (`palier_1_reactivation` : facture d'hiver ou d'été ≥ 2 000 MAD, ou projet immédiat / à moins de 3 mois). Ordre de prise : A puis B, le plus récent d'abord. Deux tentatives au plus par dossier : après un « pas de réponse » (ou une étape sautée) il revient au vivier un AUTRE jour ; après la seconde, ou après toute autre réponse, il en sort. Plafond : 5 appels de la liste froide ouverts par personne — au-delà, la prise est refusée. La prise pose UN appel (cadence `reveil`, clé `liste_froide`, libellé « Appeler — liste froide », script `appel_reveil_devis` pour A, `appel_ouverture` pour B) au prochain créneau d'appel de la société, une transaction par dossier, avec la ligne système du chatter. Droit `crm_modifier` (GET compris).",
+  "forme_serveur": "partielle",
+  "corps": {
+    "nombre": 5
+  },
+  "exemple": {
+    "dossiers_chiffres": 9,
+    "demandes_sans_reponse": 95,
+    "appels_ouverts": 5,
+    "plafond_appels_ouverts": 5,
+    "prise_max": 0,
+    "peut_prendre": false,
+    "raison": "Vous avez déjà 5 appels de la liste froide ouverts : appelez-les avant d’en prendre d’autres.",
+    "places": [
+      {
+        "lead": 1512,
+        "nom": "Prospect Exemple",
+        "groupe": "A",
+        "etape": 48211,
+        "due_at": "2026-11-18T09:00:00+01:00"
+      }
+    ],
+    "nombre_places": 5,
+    "pour_le": "2026-11-18",
+    "du_jour": false
+  },
+  "exemple_apercu": {
+    "dossiers_chiffres": 14,
+    "demandes_sans_reponse": 100,
+    "appels_ouverts": 0,
+    "plafond_appels_ouverts": 5,
+    "prise_max": 5,
+    "peut_prendre": true,
+    "raison": ""
+  },
+  "exemple_vide": {
+    "dossiers_chiffres": 0,
+    "demandes_sans_reponse": 0,
+    "appels_ouverts": 0,
+    "plafond_appels_ouverts": 5,
+    "prise_max": 0,
+    "peut_prendre": false,
+    "raison": "Aucun dossier de la liste froide ne vous attend aujourd’hui."
+  },
+  "exemple_refus": {
+    "nombre": ["Vous avez déjà 5 appels de la liste froide ouverts : appelez-les avant d’en prendre d’autres."],
+    "detail": "Vous avez déjà 5 appels de la liste froide ouverts : appelez-les avant d’en prendre d’autres."
+  },
+  "notes": {
+    "dossiers_chiffres": "Groupe A restant à appeler pour l'appelant (entier).",
+    "demandes_sans_reponse": "Groupe B restant à appeler pour l'appelant (entier).",
+    "appels_ouverts": "Étapes « Appeler — liste froide » encore à faire sur les leads de l'appelant.",
+    "plafond_appels_ouverts": "5 : au-delà, la prise est refusée (la carte affiche « appels_ouverts / plafond »).",
+    "prise_max": "Ce qu'une prise poserait maintenant : min(5, plafond − ouverts, dossiers restants). Le bouton s'écrit « Prendre <prise_max> dossiers ».",
+    "peut_prendre": "Vrai ssi prise_max > 0.",
+    "raison": "Une phrase en français quand la prise est refusée (plafond atteint, vivier vide), chaîne vide sinon.",
+    "places": "POST seulement : les étapes posées, dans l'ordre de prise ; `due_at` ISO Africa/Casablanca.",
+    "nombre_places": "POST seulement : longueur de `places` (un dossier changé entre-temps est sauté, jamais doublé).",
+    "pour_le": "POST seulement : date locale du créneau d'appel des étapes posées.",
+    "du_jour": "POST seulement : vrai si ce créneau tombe aujourd'hui (l'écran écrit « ajoutés à vos étapes du jour »).",
+    "corps": "`{nombre}` entier 1..5 (absent : 5) ; un nombre hors bornes ou non entier = 400 sous `nombre`.",
+    "exemple_refus": "409 sous `nombre` quand rien ne peut être pris (la phrase est `raison`).",
+    "forme_serveur": "`partielle` : le POST ajoute `places`, `nombre_places`, `pour_le`, `du_jour` à la forme du GET ; l'exemple sert l'écran."
+  }
+}

@@ -16,6 +16,7 @@ import RelancesDuJourWidget from './RelancesDuJourWidget'
 import ControleSuiviPanel from './ControleSuiviPanel'
 import KpiRelancesPanel from './KpiRelancesPanel'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
+import ListeFroideCard from './ListeFroideCard'
 import { ChiffresCockpit } from '../../ui/module/ChiffresCockpit'
 
 /* ============================================================================
@@ -154,6 +155,9 @@ export default function CrmCockpit() {
   // compteur avance et le « Contrôle du suivi » relit le serveur. Sans lui, le bandeau
   // continuait d'annoncer un retard que la commerciale venait de traiter.
   const [versionFile, setVersionFile] = useState(0)
+  // Liste froide (17/11/2026) — une prise pose des appels : la file du jour et le
+  // contrôle les relisent (la file, elle, ne se relit pas sur ses propres gestes).
+  const [versionPrise, setVersionPrise] = useState(0)
 
   // VX55 — annule les requêtes en vol au démontage (même patron que
   // ClientList/LeadsPage) : une réponse tardive ne doit jamais écraser
@@ -207,7 +211,7 @@ export default function CrmCockpit() {
           « Adhérence » (CKP5) : leur contenu utile est repris par le contrôle
           (à-l'heure, retards, sautées, premier contact, dossiers sans étape). */}
       <div className="mt-4" data-testid="cockpit-controle-suivi">
-        <ControleSuiviPanel rafraichir={versionFile} />
+        <ControleSuiviPanel rafraichir={versionFile + versionPrise} />
       </div>
 
       <div className="mt-4">
@@ -222,7 +226,9 @@ export default function CrmCockpit() {
       </div>
 
       <div className="mt-4" data-testid="cockpit-file">
-        <RelancesDuJourWidget onChange={() => setVersionFile((v) => v + 1)} />
+        <RelancesDuJourWidget
+          onChange={() => setVersionFile((v) => v + 1)} rafraichir={versionPrise}
+        />
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -231,6 +237,8 @@ export default function CrmCockpit() {
             (`useIsAdminOrResponsable`, `null` sinon) — même esprit que le
             badge « vient de la pub » de `IdentityRail.jsx`. */}
         <PlacementAnciensLeadsCard />
+        {/* Liste froide (17/11/2026) — se tait pour qui n'a aucun dossier au vivier. */}
+        <ListeFroideCard onPris={() => setVersionPrise((v) => v + 1)} />
         <DormantAccountsWidget />
         <PortfolioWidget />
       </div>

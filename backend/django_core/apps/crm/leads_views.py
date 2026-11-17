@@ -152,6 +152,10 @@ class LeadIntakeActionsMixin:
         if self.action == 'deleguer':
             # 17/11/2026 — confier ses dossiers : ``crm_reassign`` (ADRG20).
             return [IsResponsableOrAdmin(), DroitDeLaGrille('crm_reassign')()]
+        if self.action == 'liste_froide':
+            # 17/11/2026 — prendre ses appels de la liste froide : le droit
+            # d'écriture des leads (``crm_modifier``), GET compris.
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('crm_modifier')()]
         if self.action in ('duplicates', 'check_duplicates', 'doublons',
                            'roi_sources', 'sla_breach',
                            # MRY19 — lecture ouverte à tout rôle, comme
@@ -668,3 +672,30 @@ class LeadIntakeActionsMixin:
                              'detail': refus.message}, status=refus.statut)
         return Response({'de': de.pk, 'vers': vers.pk, 'vers_nom': nom,
                          **resultat})
+
+    @extend_schema(
+        request=sd.corps(
+            'CrmListeFroideRequest',
+            nombre=serializers.IntegerField(required=False, min_value=1, max_value=5)),
+        responses=sd.OBJ)
+    @action(detail=False, methods=['get', 'post'], url_path='liste-froide',
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('crm_modifier')])
+    def liste_froide(self, request):
+        """17/11/2026 — la liste froide de l'APPELANT (``liste_froide.py``,
+        contrat ``liste_froide.json``) : GET = ce que la carte du cockpit
+        montre ; POST ``{nombre: 1..5}`` = prendre ces dossiers (un appel posé
+        au prochain créneau sur chacun). Seuls ses propres leads ; société et
+        acteur viennent du serveur ; droit ``crm_modifier`` (get_permissions)."""
+        from .liste_froide import PRISE_MAX, PriseRefusee, etat_liste_froide, prendre_dossiers
+        company = request.user.company
+        if request.method != 'POST':
+            return Response(etat_liste_froide(company, request.user))
+        corps = corps_objet(request)
+        try:
+            resultat = prendre_dossiers(
+                company, request.user, corps.get('nombre', PRISE_MAX))
+        except PriseRefusee as refus:
+            return Response({refus.champ: [refus.message],
+                             'detail': refus.message}, status=refus.statut)
+        return Response(resultat)

@@ -1311,3 +1311,271 @@ class CommandeReparationTests(_PlacementBase):
             self.assertNotIn('test', (lead.tags or '').split(', '))
         rejeu = self._appeler('marquer_fiches_test', '--apply')
         self.assertIn('0 fiche(s) à numéro partagé, 0 « Signé »', rejeu)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Liste froide (fondateur, 17/11/2026) — la sœur du placement pour les leads
+# au FROID : la commerciale PREND ses appels (`leads/liste-froide/`), jamais
+# des étapes poussées. Contrat `contract_samples/liste_froide.json`.
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Mardi 24 novembre 2026, 10 h à Casablanca : jour ouvré, dans la fenêtre
+#: d'appel (le prochain créneau d'appel est donc « maintenant »).
+MARDI_LF = datetime.datetime(2026, 11, 24, 10, 0, tzinfo=horaires.CASABLANCA)
+LISTE_FROIDE_URL = '/api/django/crm/leads/liste-froide/'
+A_FAIRE = RelanceEtape.Statut.A_FAIRE
+
+
+class ListeFroideTests(TestCase):
+
+    def setUp(self):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+
+        gel = frozen(MARDI_LF)
+        self.horloge = gel.start()
+        self.addCleanup(gel.stop)
+        self.company = _company('liste-froide')
+        role = Role.objects.create(company=self.company, nom='Commerciale LF',
+                                   permissions=list(COMMERCIAL_PERMISSIONS))
+        self.moi = User.objects.create_user(
+            username='lf-moi', password='x', company=self.company, role=role)
+        self.collegue = User.objects.create_user(
+            username='lf-collegue', password='x', company=self.company, role=role)
+        self.api = APIClient()
+        self.api.force_authenticate(self.moi)
+        self._n = 0
+
+    def _froid(self, nom, *, jours=10, **kw):
+        """Un lead Meta au Froid, jamais joint, facture d'hiver 2 500 MAD."""
+        self._n += 1
+        kw.setdefault('owner', self.moi)
+        kw.setdefault('source', Lead.Source.META_LEAD_ADS)
+        kw.setdefault('facture_hiver', Decimal('2500'))
+        kw.setdefault('telephone', f'+2126612{self._n:05d}')
+        lead = Lead.objects.create(company=kw.pop('company', self.company),
+                                   nom=nom, stage=stages.COLD, **kw)
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=MARDI_LF - datetime.timedelta(days=jours))
+        lead.refresh_from_db()
+        return lead
+
+    def _chiffre(self, lead):
+        """Joint par une personne et chiffré (devis envoyé), puis rangé au Froid :
+        un « joint » humain sort le lead du Froid (MRY9), d'où le retour."""
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, user=self.moi,
+            kind=LeadActivity.Kind.APPEL, outcome='joint', body='Joint.')
+        client = Client.objects.create(company=self.company, nom=lead.nom)
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-LF-{lead.pk}', client=client,
+            lead=lead, statut=Devis.Statut.ENVOYE, taux_tva=20,
+            date_envoi=MARDI_LF - datetime.timedelta(days=5))
+        RelanceEtape.objects.filter(lead=lead).delete()
+        Lead.objects.filter(pk=lead.pk).update(stage=stages.COLD)
+        lead.refresh_from_db()
+        return lead
+
+    def _ouverte(self, lead):
+        return lead.relance_etapes.get(statut=A_FAIRE)
+
+    def _repondre(self, etape, outcome):
+        res = self.api.post(f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
+                            {'outcome': outcome}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def _prendre(self, nombre):
+        res = self.api.post(LISTE_FROIDE_URL, {'nombre': nombre}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        return res.data
+
+    def _restant(self, cle='demandes_sans_reponse'):
+        return self.api.get(LISTE_FROIDE_URL).data[cle]
+
+    def test_vivier_deux_groupes_et_exclusions(self):
+        from apps.crm.liste_froide import vivier
+
+        a = self._chiffre(self._froid('A chiffre', jours=40, facture_hiver=None))
+        b_ancien = self._froid('B ancien', jours=120)
+        b_recent = self._froid('B recent', jours=3, facture_hiver=None,
+                               project_timeline=Lead.ProjectTimeline.IMMEDIAT)
+        b_ete = self._froid('B ete', jours=60, facture_hiver=Decimal('600'),
+                            facture_ete=Decimal('2400'))
+        exclus = [
+            self._froid('Petite facture', facture_hiver=Decimal('600')),
+            self._froid('Perdu', perdu=True),
+            self._froid('Archive', is_archived=True),
+            self._froid('Oppose', ne_plus_contacter=True),
+            self._froid('Import', source=Lead.Source.ODOO_IMPORT_TEST,
+                        canal=Lead.Canal.META_ADS),
+            self._froid('Etranger', telephone='+33612345678'),
+            self._froid('Sans numero', telephone=''),
+            self._froid('Du collegue', owner=self.collegue),
+        ]
+        ouvert = self._froid('Etape ouverte')
+        RelanceEtape.objects.create(
+            company=self.company, lead=ouvert, cadence='generique', ordre=1,
+            canal='appel', libelle='Autre', due_at=MARDI_LF,
+            due_date=MARDI_LF.date())
+        supprime = self._froid('Supprime')
+        Lead.all_objects.filter(pk=supprime.pk).update(is_deleted=True)
+        autre = Company.objects.create(nom='LF autre', slug='lf-autre')
+        self._froid('Autre societe', company=autre)
+
+        ordre = [(lead.pk, groupe) for lead, groupe in vivier(self.company, self.moi)]
+        self.assertEqual(ordre, [(a.pk, 'A'), (b_recent.pk, 'B'), (b_ete.pk, 'B'),
+                                 (b_ancien.pk, 'B')])
+        pris = {pk for pk, _g in ordre}
+        for lead in exclus + [ouvert, supprime]:
+            self.assertNotIn(lead.pk, pris, lead.nom)
+        res = self.api.get(LISTE_FROIDE_URL)
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data, {
+            'dossiers_chiffres': 1, 'demandes_sans_reponse': 3, 'appels_ouverts': 0,
+            'plafond_appels_ouverts': 5, 'prise_max': 4, 'peut_prendre': True,
+            'raison': ''})
+
+    def test_la_prise_pose_un_appel_par_dossier_dans_l_ordre(self):
+        from apps.crm.cadence_reperes import CLE_LISTE_FROIDE, LIBELLE_LISTE_FROIDE
+
+        a = self._chiffre(self._froid('A chiffre', jours=40))
+        b = self._froid('B recent', jours=2)
+        self._froid('B ancien', jours=90)
+        data = self._prendre(2)
+        self.assertEqual([p['lead'] for p in data['places']], [a.pk, b.pk])
+        self.assertEqual((data['nombre_places'], data['du_jour'], data['appels_ouverts'],
+                          data['demandes_sans_reponse']), (2, True, 2, 1))
+        for lead, script in ((a, 'appel_reveil_devis'), (b, 'appel_ouverture')):
+            etape = self._ouverte(lead)
+            self.assertEqual((etape.cadence, etape.cle, etape.canal, etape.libelle,
+                              etape.template_cle),
+                             ('reveil', CLE_LISTE_FROIDE, 'appel',
+                              LIBELLE_LISTE_FROIDE, script))
+            self.assertEqual(etape.due_at, MARDI_LF)
+            lead.refresh_from_db()
+            self.assertEqual(lead.stage, stages.COLD)
+            self.assertEqual(lead.relance_date, MARDI_LF.date())
+            note = lead.activites.get(body__contains='prise dans la liste froide')
+            self.assertIsNone(note.user_id)  # ligne système : pas un contact (QJ7)
+        b.refresh_from_db()
+        self.assertIsNone(b.first_contacted_at)
+
+    def test_plafond_de_cinq_appels_ouverts(self):
+        for i in range(7):
+            self._froid(f'B{i}', jours=i + 1)
+        self.assertEqual(self._prendre(3)['nombre_places'], 3)
+        self.assertEqual(self._prendre(5)['nombre_places'], 2, 'au plus 5 ouverts au total')
+        etat = self.api.get(LISTE_FROIDE_URL).data
+        self.assertEqual((etat['appels_ouverts'], etat['prise_max'], etat['peut_prendre']),
+                         (5, 0, False))
+        self.assertIn('5 appels', etat['raison'])
+        refus = self.api.post(LISTE_FROIDE_URL, {'nombre': 1}, format='json')
+        self.assertEqual(refus.status_code, 409, refus.content)
+        self.assertEqual(refus.data['nombre'], [etat['raison']])
+        self.assertEqual(RelanceEtape.objects.filter(
+            company=self.company, statut=A_FAIRE).count(), 5)
+
+    def test_nombre_invalide_400(self):
+        self._froid('B')
+        for nombre in (0, 6, '3', True, None, 2.5):
+            res = self.api.post(LISTE_FROIDE_URL, {'nombre': nombre}, format='json')
+            self.assertEqual(res.status_code, 400, (nombre, res.content))
+            self.assertIn('nombre', res.data)
+        self.assertFalse(RelanceEtape.objects.filter(company=self.company).exists())
+
+    def test_deux_tentatives_la_seconde_un_autre_jour(self):
+        lead = self._froid('B')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertFalse(lead.relance_etapes.filter(statut=A_FAIRE).exists(),
+                         'pas de réponse : rien d’autre n’est posé')
+        self.assertEqual(self._restant(), 0, 'jamais deux fois le même jour')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=1))
+        self.assertEqual(self._restant(), 1)
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=7))
+        self.assertEqual(self._restant(), 0, 'deux tentatives : sorti du vivier')
+
+    def test_joint_sort_du_froid_et_pose_la_suite(self):
+        from apps.crm import suite_touche as st
+
+        a = self._chiffre(self._froid('A', jours=40))
+        b = self._froid('B', jours=3)
+        self._prendre(2)
+        for lead in (a, b):
+            etape = self._ouverte(lead)
+            self.assertEqual(st.type_etape(etape), st.TYPE_REVEIL_APPEL)
+            self.assertEqual(st.cles_de_reponse(etape)[:-1],
+                             list(st.REPONSES_PAR_TYPE[st.TYPE_REVEIL_APPEL]))
+            promesses = st.promesses_touche(etape)
+            self.assertIn(st.SORT_DU_FROID, promesses['joint'])
+            self.assertEqual(promesses['non_joint'], [st.DERNIER_REVEIL])
+            self.assertEqual(promesses['rappel'],
+                             [st.SORT_DU_FROID, st.ETAPE_RAPPEL_CONVENU_A_LA_DATE])
+            self._repondre(etape, 'joint')
+            lead.refresh_from_db()
+            self.assertNotEqual(lead.stage, stages.COLD, lead.nom)
+            suite = list(lead.relance_etapes.filter(statut=A_FAIRE))
+            self.assertTrue(suite, f'{lead.nom} : une suite est posée')
+            self.assertNotIn('liste_froide', [e.cle for e in suite])
+        # A : le suivi de son devis envoyé démarre ; B n'a pas de devis : la
+        # suite d'un appel abouti est « Préparer et envoyer le devis ».
+        self.assertEqual({e.cadence for e in a.relance_etapes.filter(statut=A_FAIRE)},
+                         {'apres_devis'})
+        self.assertEqual(self._ouverte(b).cle, 'devis')
+        self.assertEqual(self._restant('appels_ouverts'), 0)
+
+    def test_refus_reste_au_froid_et_sort_du_vivier(self):
+        lead = self._froid('B')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'refuse')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertFalse(lead.relance_etapes.filter(statut=A_FAIRE).exists())
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=3))
+        self.assertEqual(self._restant(), 0)
+
+    def test_droit_crm_modifier_exige_et_seuls_ses_leads(self):
+        from apps.roles.models import Role
+
+        self._froid('Du collegue', owner=self.collegue)
+        mien = self._froid('Mien')
+        self.assertEqual([p['lead'] for p in self._prendre(5)['places']], [mien.pk])
+        lecteur = User.objects.create_user(
+            username='lf-lecteur', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Lecture LF',
+                                     permissions=['crm_voir']))
+        api = APIClient()
+        api.force_authenticate(lecteur)
+        self.assertEqual(api.get(LISTE_FROIDE_URL).status_code, 403)
+        self.assertEqual(api.post(LISTE_FROIDE_URL, {'nombre': 1},
+                                  format='json').status_code, 403)
+        self.assertEqual(APIClient().get(LISTE_FROIDE_URL).status_code, 401)
+
+    def test_les_regles_de_coherence_restent_vertes_sur_un_appel_pris(self):
+        from apps.crm.fiche_selectors import (
+            leads_fermes_avec_touche_ouverte, leads_parques_sans_touche,
+            leads_reveil_aveugle)
+
+        pris = self._froid('Pris')
+        self._prendre(1)
+        etape = self._ouverte(pris)
+        # Témoin : un réveil du gabarit sur un jamais-joint reste signalé.
+        aveugle = self._froid('Aveugle', owner=self.collegue)
+        RelanceEtape.objects.create(
+            company=self.company, lead=aveugle, cadence='reveil', ordre=1,
+            canal='appel', libelle='Réveil J30', due_at=MARDI_LF,
+            due_date=MARDI_LF.date())
+        self.assertEqual([ligne['id'] for ligne in leads_reveil_aveugle(self.company)],
+                         [aveugle.pk])
+        for regle in (leads_fermes_avec_touche_ouverte, leads_parques_sans_touche):
+            self.assertNotIn(pris.pk, [ligne['id'] for ligne in regle(self.company)])
+        # « Ne plus me contacter » sur l'appel pris : plus aucune touche ouverte.
+        res = self.api.post(f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
+                            {'reponse': 'ne_plus_contacter'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertNotIn(pris.pk, [ligne['id'] for ligne in
+                                   leads_fermes_avec_touche_ouverte(self.company)])

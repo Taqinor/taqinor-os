@@ -1234,36 +1234,54 @@ REACTIVATION_ERE_MOTEUR = datetime.date(2026, 9, 6)
 REACTIVATION_K6_FACTURE_MIN = 2000
 
 
-def seaux_reactivation(company, maintenant=None):
+def palier_1_reactivation(lead):
+    """Le palier 1 (§5.3, D-CADV-2 : le pilote d'appel des jamais-joints) : une
+    facture déclarée d'au moins 2 000 MAD, en hiver OU en été, ou un projet
+    « immédiat » / « à moins de 3 mois ». Lu par K6 palier 1 et par la liste
+    froide (``liste_froide.py``) : une seule définition."""
+    from .models import Lead
+
+    return ((lead.facture_hiver or 0) >= REACTIVATION_K6_FACTURE_MIN
+            or (lead.facture_ete or 0) >= REACTIVATION_K6_FACTURE_MIN
+            or lead.project_timeline in (Lead.ProjectTimeline.IMMEDIAT,
+                                         Lead.ProjectTimeline.MOINS_3_MOIS))
+
+
+def seaux_reactivation(company, maintenant=None, *, exclu=None):
     """CADV32 — chaque dormant (Froid) de la société dans UN seul seau, dans l'ordre
     de précédence du §5.1 : K3 (joint et chiffré), K5 (Meta jamais joint, ère du
     moteur), K6 palier 1, K6 palier 2 (Meta jamais joint, avant). Opposés, archivés
-    et perdus écartés d'abord (``motif_exclu_du_contact``). D-CADV-11 — le palier 2
-    reste vide tant que ``REACTIVATION_K6_PALIER2`` est faux. Lecture pure, une
-    requête par nature de donnée, jamais une par lead ; forme :
-    ``contract_samples/reactivation_seaux.json`` (``seaux``)."""
+    et perdus écartés d'abord (``motif_exclu_du_contact``, ou ``exclu`` : la liste
+    froide, qui appelle au lieu d'écrire, passe sa propre éligibilité). « Joint » et
+    « chiffré » sont ceux de CADV25 (``_a_un_historique_client``) : une issue
+    ``ISSUES_CLIENT_JOINT`` saisie par une personne, un devis sorti du brouillon.
+    D-CADV-11 — le palier 2 reste vide tant que ``REACTIVATION_K6_PALIER2`` est
+    faux. Lecture pure, une requête par nature de donnée, jamais une par lead ;
+    forme : ``contract_samples/reactivation_seaux.json`` (``seaux``)."""
     from django.conf import settings
     from django.utils import timezone
 
-    from apps.ventes.selectors import devis_envoyes_par_lead
+    from apps.ventes.selectors import leads_ayant_recu_un_devis
 
     from . import horaires, stages
+    from .cadence_plan import ISSUES_CLIENT_JOINT
     from .cadence_reveil_saison import motif_exclu_du_contact
-    from .mesure_cadence import ISSUES_JOINT
     from .models import Lead, LeadActivity
 
+    exclu = exclu or motif_exclu_du_contact
     leads = list(Lead.objects.filter(
         company=company, stage=stages.COLD,
         date_creation__lte=maintenant or timezone.now()).order_by('pk'))
     ids = [lead.pk for lead in leads]
     joints = set(LeadActivity.objects.filter(
-        company=company, lead_id__in=ids, outcome__in=ISSUES_JOINT,
+        company=company, lead_id__in=ids, outcome__in=ISSUES_CLIENT_JOINT,
+        user__isnull=False,
     ).values_list('lead_id', flat=True))
-    chiffres = {ligne['lead_id'] for ligne in devis_envoyes_par_lead(company, ids)}
+    chiffres = leads_ayant_recu_un_devis(company, ids)
     seaux = {'K3': [], 'K5': [], 'K6_p1': [], 'K6_p2': []}
     palier_2 = bool(getattr(settings, 'REACTIVATION_K6_PALIER2', False))
     for lead in leads:
-        if motif_exclu_du_contact(lead):
+        if exclu(lead):
             continue
         if lead.pk in joints:
             if lead.pk in chiffres:
@@ -1274,9 +1292,7 @@ def seaux_reactivation(company, maintenant=None):
         cree_le = lead.date_creation.astimezone(horaires.CASABLANCA).date()
         if cree_le >= REACTIVATION_ERE_MOTEUR:
             seaux['K5'].append(lead.pk)
-        elif ((lead.facture_hiver or 0) >= REACTIVATION_K6_FACTURE_MIN
-              or lead.project_timeline in (Lead.ProjectTimeline.IMMEDIAT,
-                                           Lead.ProjectTimeline.MOINS_3_MOIS)):
+        elif palier_1_reactivation(lead):
             seaux['K6_p1'].append(lead.pk)
         elif palier_2:
             seaux['K6_p2'].append(lead.pk)
@@ -1569,17 +1585,22 @@ def leads_reveil_sans_historique(company):
 
     Un réveil dit « on se reparle » : sans conversation ni proposition passée,
     il n'a rien à réveiller (157 messages → 0 conversation, constat v4 §4.5).
+    Exception D-CADV-2 : l'appel de la liste froide (clé ``CLE_LISTE_FROIDE``)
+    est PRIS par une personne sur la population du pilote d'appel (facture
+    ≥ 2 000 MAD ou projet proche) — ce n'est pas un réveil aveugle posé par le
+    moteur, il n'est pas compté.
     Lecture seule, en lot : une requête pour les touches, une pour les joints,
     une pour les devis. Renvoie un ``QuerySet`` de ``Lead`` trié par id."""
     from apps.ventes.selectors import leads_ayant_recu_un_devis
 
     from .cadence_plan import ISSUES_CLIENT_JOINT
+    from .cadence_reperes import CLE_LISTE_FROIDE
     from .models import Lead, LeadActivity, RelanceEtape
 
     avec_reveil = set(RelanceEtape.objects.filter(
         company=company, cadence='reveil',
         statut=RelanceEtape.Statut.A_FAIRE,
-    ).values_list('lead_id', flat=True))
+    ).exclude(cle=CLE_LISTE_FROIDE).values_list('lead_id', flat=True))
     if not avec_reveil:
         return Lead.objects.none()
     joints = set(LeadActivity.objects.filter(

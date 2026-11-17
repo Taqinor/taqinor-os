@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4988, operations: 7778, components: 3661}
+counts: {paths: 4990, operations: 7782, components: 3662}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -996,6 +996,8 @@ operations:
 - post /api/django/crm/leads/export-xlsx/ -> django_crm_leads_export_xlsx_create
 - get /api/django/crm/leads/kpi-cadences/ -> django_crm_leads_kpi_cadences_retrieve
 - get /api/django/crm/leads/kpi-premier-contact/ -> django_crm_leads_kpi_premier_contact_retrieve
+- get /api/django/crm/leads/liste-froide/ -> django_crm_leads_liste_froide_retrieve
+- post /api/django/crm/leads/liste-froide/ -> django_crm_leads_liste_froide_create
 - get /api/django/crm/leads/mesure-cadence/ -> django_crm_leads_mesure_cadence_retrieve
 - post /api/django/crm/leads/placement-cadences/ -> django_crm_leads_placement_cadences_create
 - get /api/django/crm/leads/relances/ -> django_crm_leads_relances_retrieve
@@ -4926,6 +4928,8 @@ operations:
 - post /api/v1/crm/leads/export-xlsx/ -> v1_crm_leads_export_xlsx_create
 - get /api/v1/crm/leads/kpi-cadences/ -> v1_crm_leads_kpi_cadences_retrieve
 - get /api/v1/crm/leads/kpi-premier-contact/ -> v1_crm_leads_kpi_premier_contact_retrieve
+- get /api/v1/crm/leads/liste-froide/ -> v1_crm_leads_liste_froide_retrieve
+- post /api/v1/crm/leads/liste-froide/ -> v1_crm_leads_liste_froide_create
 - get /api/v1/crm/leads/mesure-cadence/ -> v1_crm_leads_mesure_cadence_retrieve
 - post /api/v1/crm/leads/placement-cadences/ -> v1_crm_leads_placement_cadences_create
 - get /api/v1/crm/leads/relances/ -> v1_crm_leads_relances_retrieve
@@ -10196,6 +10200,7 @@ components:
 - CrmLeadVisitePlanifiee
 - CrmLeadVisites
 - CrmLeadsExportRequestRequest
+- CrmListeFroideRequestRequest
 - CrmLocataireRequestRequest
 - CrmLogInteractionRequestKindEnum
 - CrmLogInteractionRequestOutcomeEnum

@@ -259,7 +259,7 @@ function Progression({ file }) {
   )
 }
 
-export default function RelancesDuJourWidget({ onChange } = {}) {
+export default function RelancesDuJourWidget({ onChange, rafraichir = 0 } = {}) {
   const navigate = useNavigate()
   // COCKPIT-CONTRÔLE — un geste réussi de la file change ce que dit le « Contrôle du
   // suivi » voisin (un retard traité, un premier contact posé…) : la page le relit.
@@ -301,7 +301,7 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
     queueMicrotask(() => setLoading(true))
     return charger()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` referme `scope`, déjà en dépendance ; l'ajouter provoquerait la même relecture à chaque rendu sans rien changer. (D-ENF22)
-  }, [scope])
+  }, [scope, rafraichir])  // `rafraichir` : la page signale une écriture voisine (liste froide)
 
   const retirer = (id) => setEtapes((prev) => prev.filter((e) => e.id !== id))
 
