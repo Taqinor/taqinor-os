@@ -88,7 +88,7 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
             resultat = creer_taches(
                 user, lignes, source=Source.ASSISTANT if assistant else Source.RAPIDE,
                 porte='assistant' if assistant else 'saisie', client_id=donnees.get('client_id') or None,
-                lien=donnees.get('lien') or None, parent=donnees.get('parent_id'))
+                lien=donnees.get('lien') or None, parent=donnees.get('parent_id'), par_ligne=True)
         return Response(reponse_creation(user, resultat, assistant=assistant), status=201)
 
 

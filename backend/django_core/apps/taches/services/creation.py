@@ -88,6 +88,7 @@ class _Contexte:
     parent: object = None
     activite: object = None
     lien: object = None
+    par_ligne: bool = False
     creees: list = field(default_factory=list)
     projets_crees: list = field(default_factory=list)
     deja_creees: list = field(default_factory=list)
@@ -473,7 +474,7 @@ def _par_ligne(ctx, rang, ligne, cid):
     try:
         _creer_ligne(ctx, ligne, cid)
     except serializers.ValidationError as exc:
-        if ctx.porte != 'saisie':
+        if ctx.porte != 'saisie' and not ctx.par_ligne:
             raise
         raise serializers.ValidationError({'lignes': {str(ligne.get('index', rang)): exc.detail}})
 
@@ -494,14 +495,15 @@ def _geste(ctx):
                              ctx.ops_contenants + ctx.ops_taches)
 
 
-def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None):
+def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None,
+                 par_ligne=False):
     """Crée les tâches de `lignes` pour `user` (une transaction, tout ou rien) → `ResultatCreation`
     (`creees`, `projets_crees`, `deja_creees` = `client_id` déjà vus, `geste`)."""
     if porte not in PORTES or source not in Source.values:
         raise ValueError(f'creer_taches : porte {porte!r} ou source {source!r} inconnue')
     lignes = list(lignes or ())
     ctx = _Contexte(user=user, source=source, porte=porte, maintenant=timezone.now(),
-                    aujourdhui=timezone.localdate())
+                    aujourdhui=timezone.localdate(), par_ligne=par_ligne)
     with transaction.atomic():
         ctx.parent = _parent_verifie(user, parent)
         ctx.activite = _activite_verifiee(user, activite, len(lignes))
