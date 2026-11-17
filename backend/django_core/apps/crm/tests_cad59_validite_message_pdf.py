@@ -114,6 +114,8 @@ class LAppelDeValiditeTests(_Base):
         self.assertNotIn("jusqu'au .", message)
         self.assertIn('date_validite', rendu['placeholders_manquants'])
         self.assertTrue(message.endswith('Où en est votre réflexion ?'))
+        # 17/11/2026 — la phrase qui renvoyait à la date part avec elle.
+        self.assertNotIn('revalider', message)
 
 
 class LaMemeRegleTests(_Base):
@@ -168,6 +170,7 @@ class LeMessageJ9Tests(_Base):
             date_validite=passee, reference='DEV-CAD59-PASSEE'))
         self.assertNotIn(passee.strftime('%d/%m/%Y'), rendu['message'])
         self.assertNotIn("valable jusqu'au", rendu['message'].lower())
+        self.assertNotIn('revalider', rendu['message'])  # 17/11/2026
         self.assertIn('date_validite', rendu['placeholders_manquants'])
 
         expire = self._devis(

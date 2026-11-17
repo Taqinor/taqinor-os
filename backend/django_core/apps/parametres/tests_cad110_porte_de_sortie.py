@@ -218,6 +218,25 @@ class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
         for cle in CLES_PORTE_DE_SORTIE_CADV34:
             self.assertIn(cle, set(CLES_RELANCE) | {'passation'})
 
+    def test_sans_date_de_validite_la_phrase_qui_y_renvoie_part_avec_elle(self):
+        """17/11/2026 — `appel_validite` (et `j9_validite`) : sans date, la
+        phrase « valable jusqu'au … » est omise (MRY13) ; « Après, je dois
+        revalider… » ne renvoyait plus à rien. Les deux partent ensemble, en FR
+        et en darija ; avec la date, rien ne change."""
+        from apps.crm.cadence_messages import _omettre_phrases_incompletes
+
+        for texte in (MESSAGE_TEMPLATE_DEFAULTS['appel_validite'],
+                      MESSAGE_TEMPLATE_DEFAULTS_DARIJA['appel_validite'],
+                      MESSAGE_TEMPLATE_DEFAULTS['j9_validite'],
+                      MESSAGE_TEMPLATE_DEFAULTS_DARIJA['j9_validite']):
+            with self.subTest(texte=texte[:30]):
+                reste = _omettre_phrases_incompletes(texte, ['date_validite'])
+                self.assertNotIn('{date_validite}', reste)
+                self.assertNotIn('revalider', reste)
+                self.assertNotIn('نعاود نتأكد', reste)
+                self.assertEqual(
+                    _omettre_phrases_incompletes(texte, []), texte)
+
     def test_la_phrase_stop_precede_la_signature_et_survit_sans_prenom(self):
         """17/11/2026 — « … on recale le passage. — Meryem Répondez STOP… »
         collait STOP derrière la signature ; sans prénom, `_omettre_phrases_

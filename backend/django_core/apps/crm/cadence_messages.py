@@ -151,6 +151,15 @@ def _contexte_preuve(lead):
     }
 
 
+#: 17/11/2026 — début des phrases qui renvoient à la phrase PRÉCÉDENTE de leur
+#: texte : sans la date de validité, « Après, je dois revalider les prix… »
+#: ne renvoyait plus à rien (`appel_validite`, `j9_validite`, leur darija et la
+#: forme e-mail de `j9_validite`). Aucun mot nouveau : ces phrases sont celles
+#: du texte validé, seul leur départ est lié à celui de la phrase d'avant.
+_SUITES_LIEES = ('Après, je dois revalider', 'Au-delà, je dois revalider',
+                 'من بعد، خاصني نعاود نتأكد')
+
+
 def _omettre_phrases_incompletes(texte, manquants):
     """MRY13 — retire les phrases qui portent un placeholder sans valeur.
 
@@ -167,8 +176,17 @@ def _omettre_phrases_incompletes(texte, manquants):
             lignes_gardees.append(ligne)
             continue
         morceaux = ligne.split('. ')
-        gardes = [m for m in morceaux
-                  if not any(trou in m for trou in trous)]
+        gardes, precedent_retire = [], False
+        for morceau in morceaux:
+            retire = any(trou in morceau for trou in trous)
+            # 17/11/2026 — une phrase qui ne se comprend qu'à la suite de la
+            # précédente (« Après, je dois revalider… ») part avec elle.
+            if (precedent_retire and not retire
+                    and morceau.lstrip().startswith(_SUITES_LIEES)):
+                retire = True
+            if not retire:
+                gardes.append(morceau)
+            precedent_retire = retire
         if gardes:
             recolle = '. '.join(gardes)
             # 17/11/2026 — une signature finale (« — {conseiller} ») retirée
