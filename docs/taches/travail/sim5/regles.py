@@ -87,6 +87,13 @@ def jour_tenu(compte, objectif, essentiels_choisis, essentiels_faits):
         return False
     if not TENU_ESSENTIEL:
         return compte >= objectif
+    return journee_reussie(compte, objectif, essentiels_choisis, essentiels_faits)
+
+
+def journee_reussie(compte, objectif, essentiels_choisis, essentiels_faits):
+    """Réussie = objectif atteint ET essentiel fait (au moins un, s'il en a choisi). Sans objectif (LIBRE) : None."""
+    if objectif is None:
+        return None
     return compte >= objectif and (essentiels_choisis == 0 or essentiels_faits >= 1)
 
 
@@ -212,7 +219,7 @@ def clore_bloc(e, jour, decision, reponse):
 
 
 # ---------------------------------------------------------------- 4. TENIR
-TENIR_ROGNER = 2      # on retire les 2 plus hauts et les 2 plus bas des 14 jours (moyenne rognée)
+TENIR_ROGNER = 0      # testé à 2 (moyenne rognée) : gain marginal (1,9 vs 2,4 alertes, profil 7b) -> moyenne simple (socle §6)
 
 
 def moyenne_rognee(comptes):
@@ -283,6 +290,45 @@ def jour_tenir(e, compte, jour):
     if a:
         e2.silence_jusqua = jour + TENIR_SILENCE
     return e2, a, m
+
+
+# ---------------------------------------------------------------- 6. sollicitations (socle §5)
+PRIORITE_RELANCE = ('echeance_du_jour', 'derive_rythme', 'projet_neglige')
+PAUSE_APRES = 14
+
+
+def choisir_relance(candidats):
+    """La relance UNIQUE de journée : la première présente dans PRIORITE_RELANCE, sinon None."""
+    for k in PRIORITE_RELANCE:
+        if k in candidats:
+            return k
+    return None
+
+
+def etat_decroissance(ignorees):
+    """ignorees = booléens chronologiques des sollicitations ENVOYÉES d'un type (True = ignorée).
+    'pause' si les 14 dernières sont toutes ignorées, sinon 'normal'. Une ouverture remet à zéro."""
+    run = 0
+    for x in reversed(ignorees):
+        if not x:
+            break
+        run += 1
+    return 'pause' if run >= PAUSE_APRES else 'normal'
+
+
+def variante(ordinal_du_jour):
+    """Rotation des 3 formulations : 0, 1, 2 selon le jour (date.toordinal() % 3)."""
+    return ordinal_du_jour % 3
+
+
+def derive_pousser_journee(compte_15h, objectif, essentiel_fait):
+    """Relance « dérive » en POUSSER à 15 h : moins de la moitié de l'objectif ET essentiel non fait."""
+    return objectif is not None and compte_15h < objectif / 2 and not essentiel_fait
+
+
+def surchauffe_tenir_journee(compte_15h, R):
+    """Relance « dérive » en TENIR à 15 h : déjà au haut de la zone ou au-delà."""
+    return R is not None and compte_15h >= bande_tenir(R)[1]
 
 
 def repondre_tenir(e, reponse, moyenne):

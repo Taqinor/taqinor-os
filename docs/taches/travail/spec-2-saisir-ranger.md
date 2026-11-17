@@ -1,8 +1,7 @@
 # Spécification L3 n°2 — Saisir et ranger (`apps/taches`)
 
-Conforme au socle (§8 compris). Django relatif à `backend/django_core/`, front à `frontend/src/`. Repère des exemples :
-**mardi 17/11/2026 10:00, Africa/Casablanca** ; projets Polydesign (id 3), Maison (id 5, section Achats id 8) ; aucune
-étiquette. **E** = ESSENTIEL, **A** = AVANCÉ (replié), **X** = ÉCARTÉ.
+Chemins : `backend/django_core/`, `frontend/src/`. Repère : **mardi 17/11/2026 10:00, Africa/Casablanca** ; projets
+Polydesign (3), Maison (5, section Achats 8). **E** ESSENTIEL, **A** AVANCÉ, **X** ÉCARTÉ.
 
 ## 1. Parcours (gestes ; le texte tapé ou dicté n'est pas compté)
 
@@ -12,36 +11,31 @@ Conforme au socle (§8 compris). Django relatif à `backend/django_core/`, front
 | P2 Ajouter depuis tout écran | `c` `t`, Entrée = **3** | loupe de l'en-tête (Header.jsx:186-188), « Créer une tâche », Ajouter = **3** |
 | P3 Dans un nouveau projet | P1 en tapant `#Nom` : **+0** | idem, ou puce Projet + « Créer « Nom » » : **+2** |
 | P4 Coller une liste sans IA | Ctrl+V, « Une par ligne », « Créer 12 tâches » = **3** | Coller (2), choix, Créer = **4** |
-| P5 Liste rangée par l'IA | P4 jusqu'à l'aperçu, « Ranger avec l'assistant », corrections, « Tout ajouter » = **4** + corrections | idem |
+| P5 Liste rangée par l'IA | P4, « Ranger avec l'assistant », « Tout ajouter » = **5** + corrections | **6** + corrections |
 | P6 Trier une tâche de la Boîte | **1** (Projet : 2-3) | idem |
 | P7 Annuler le dernier geste | **1** | **1** |
 | P8 Convertir les à-faire d'Activités | **1** | **1** |
 | P9 Déplacer 5 tâches | Ctrl+clic ×5, `m`, projet = **7** | appui long, 4 taps, Déplacer, projet = **7** |
 
-Saisie à la chaîne : après Entrée le champ se vide et reste ouvert sur le même projet ; Échap ferme.
+Après Entrée, le champ se vide et reste ouvert sur le même projet (chaîne) ; Échap ferme.
 
 ## 2. Fonctions classées (origine entre parenthèses)
 
-- **E** : un champ de saisie partout — écrans Tâches, palette, `c t`, bouton + des écrans Tâches (Todoist) ; analyseur
-  déterministe FR + EN (Todoist, Things ; sans clé) ; jetons surlignés et annulables (Todoist) ; saisie à la chaîne
-  (OmniFocus) ; `#projet` et « Nouveau projet : X » (Things étendu ; demande du fondateur) ; jour, moment, heure (Things) ;
-  échéance distincte (Things) ; priorité ; collage N lignes avec aperçu (Todoist) ; titres « Groupe : » et retraits lus
-  sans IA (conception) ; rangement par l'IA dans une carte éditable, si clé (Todoist Extraire ; D-TCH-4) ; doublons
-  signalés (Linear) ; annuler le lot et toast unique (Todoist) ; Boîte et tri en un geste (Things, OmniFocus) ;
-  sélecteur de projet avec recherche et création (Things « Déplacer ») ; liste de contrôle (Things) ; notes en texte à
-  liens cliquables ; « un jour » (Things) ; recherche et filtres rapides ; glisser-déposer au bureau ; conversion des
-  à-faire d'Activités (socle §1).
-- **A** : section `/`, étiquette `%`, durée, récurrence et rappel par la phrase (Todoist, Marvin) ; projet suggéré sans
-  IA ; tri une par une (Linear Triage) ; couleur automatique, icône (Todoist) ; sous-tâches à un niveau via « Découper »
-  (Things) ; en attente de ; confidentiel (socle §2.7) ; estimation (OmniFocus) ; récurrence calendrier / après fait,
-  sauter, terminer en avance (Todoist, Things 3.23) ; premier / dernier jour de semaine du mois ; jetons dans la
-  recherche, tri, groupe, vues enregistrées privées (Todoist, OmniFocus) ; supprimées récemment, derniers gestes ;
-  sélection multiple ; glisser-déposer sur iPhone ; file hors ligne (deux fichiers étrangers) ; dictée bureau
-  `ui/DictationButton.jsx` (sur iPhone le clavier dicte : DictationButton.jsx:22-23).
-- **X** : Markdown (la liste de contrôle couvre les listes ; rendu et injection) ; sous-tâches sur 4 niveaux (Todoist) ;
-  exceptions « sauf » (« sauter » suffit) ; langage ET/OU/NON (les puces combinées suffisent) ; `uxviews.SavedView`
-  (partageable, §3.6) ; capture par e-mail (canal neuf ; Siri et partage : L3 iPhone) ; bouton flottant sur tout l'ERP
-  (LeadsPage, MaJourneePage, NumeriserPage ont le leur ; palette et `c t` couvrent) ; rétablir.
+- **E** : un champ partout — écrans Tâches, palette, `c t`, bouton + (Todoist) ; analyseur FR + EN sans clé (Todoist,
+  Things) ; jetons surlignés, annulables (Todoist) ; chaîne (OmniFocus) ; `#projet`, « Nouveau projet : X » (Things
+  étendu ; demande du fondateur) ; jour, moment, heure, échéance distincte (Things) ; priorité ; collage avec aperçu
+  (Todoist) ; groupes et retraits lus sans IA ; rangement IA en carte éditable, si clé (Todoist Extraire ; D-TCH-4) ;
+  doublons (Linear) ; toast « Annuler », lot compris (Todoist) ; Boîte, tri en un geste (Things, OmniFocus) ; sélecteur
+  de projet (Things « Déplacer ») ; liste de contrôle (Things) ; notes à liens ; « un jour » ; recherche, filtres
+  rapides ; glisser-déposer au bureau ; conversion des à-faire (socle §1).
+- **A** : section, étiquette, durée, récurrence, rappel par la phrase (Todoist, Marvin) ; projet suggéré ; tri une par
+  une (Linear Triage) ; couleur, icône (Todoist) ; sous-tâches via « Découper » (Things) ; en attente de ; confidentiel
+  (socle §2.7) ; estimation (OmniFocus) ; récurrence complète (Todoist, Things 3.23) ; jetons en recherche, tri, groupe,
+  vues privées (Todoist, OmniFocus) ; supprimées, derniers gestes ; sélection multiple ; glisser-déposer iPhone ; file
+  hors ligne ; dictée bureau `ui/DictationButton.jsx` (iPhone : le clavier dicte, DictationButton.jsx:22-23).
+- **X** : Markdown (la liste de contrôle suffit ; risque d'injection) ; 4 niveaux de sous-tâches (Todoist) ; « sauf »
+  (« sauter » suffit) ; langage ET/OU/NON (puces suffisent) ; `uxviews.SavedView` (partageable, §3.6) ; capture par
+  e-mail (canal neuf) ; bouton flottant global (LeadsPage, MaJourneePage, NumeriserPage ont le leur) ; rétablir.
 
 ## 3. Règles exactes
 
@@ -72,12 +66,12 @@ Saisie à la chaîne : après Entrée le champ se vide et reste ouvert sur le m�
 | section | `/mot` après `#projet` | | existante, sinon créée |
 | priorité | `!!` = 2, `!!!` = 3 ; `p1` = 3, `p2` = 2, `p3` = 1 | | `!` seul jamais (« Karim ! ») |
 | étiquette | `%mot` | | existante, sinon créée |
-| durée | N min, N mn, ~Nm, ~Nh, pendant / durée / pour + Nh ; `Nh`, `NhMM` nus si N ≤ 6 | N min, ~30m, for 2h | `estimation_minutes` 5-960 |
+| durée | N min, N mn, ~Nm, ~Nh ; `Nh`, `NhMM` nus si N ≤ 6 ; ces formes après pendant / durée / pour | N min, ~30m, for 2h | `estimation_minutes` 5-960 |
 | récurrence | tous les [N] jours, chaque lundi, tous les lundis [et jeudis], toutes les N semaines, chaque jour ouvré, en semaine, chaque mois [le J], chaque fin de mois, chaque premier / dernier vendredi, chaque année ; suffixe « après fait » | every [N] day(s), every monday, every weekday, every N weeks, every month [on the J], every year ; `every!` | `RegleRecurrence` (§3.5) ; 1re occurrence → `jour_prevu` |
 | rappel | rappel [date] heure, rappelle-moi [date] à heure | remind [me] [date] at time | `rappel_le` ; jour par défaut : jour prévu, sinon J |
 
-Ambiguïtés : « 5/6 » = 5 juin, affiché « sam. 5 juin 2027 » ; « 2h » = durée, « à 2h » = heure ; « for » + date =
-échéance, + durée = durée ; « lundi prochain » dit un lundi = J+7 ; date passée avec année gardée (alerte `date_passee`).
+Ambiguïtés : « 5/6 » = 5 juin, affiché « sam. 5 juin 2027 » ; « 2h » = durée, « à 2h » = heure ; « pour / for » +
+durée = durée, + date ou heure = échéance (« pour 15h » = J 15:00) ; « lundi prochain » dit un lundi = J+7 ; date passée avec année gardée (alerte `date_passee`).
 
 ### 3.2 Projet par la saisie, « Nouveau projet »
 - Comparaison sans casse, accents (`core/recherche_fts.py:62 sans_accents`), espaces, `-`, `_`, sur les projets
@@ -124,13 +118,13 @@ Pure, stdlib. `est_ouvre` injecté ; en production `notifications.calendar_utils
 
 ### 3.6 Recherche, filtres, vues
 - `q` : chaque mot (ET) en `icontains` sans accents (`translate()` avec `ACCENTS`/`SANS_ACCENTS`,
-  recherche_fts.py:53-58) sur titre, notes, projet, étiquettes. Le plein texte est écarté : son registre `ENTITES`
-  (recherche_fts.py:41-51) suit la recherche globale, fermée par le socle §2.4. Défaut : ouvertes ; puce « Faites aussi ».
+  recherche_fts.py:53-58) sur titre, notes, projet, étiquettes ; plein texte écarté (`ENTITES`, recherche_fts.py:41-51,
+  suit la recherche globale, fermée par le socle §2.4). Défaut : ouvertes ; puce « Faites aussi ».
 - Filtres rapides (ET entre puces, OU dans une liste) : Aujourd'hui, En retard, 7 jours, Sans date, Priorité haute,
   En attente, Un jour, Avec échéance, Projet ▾, Étiquette ▾. Les jetons `#` `%` `!!!` `p1` tapés en recherche valent ces filtres.
 - Tri : manuel, priorité, échéance, jour, création, puis `id`. Groupe : section, projet, priorité, jour, aucun.
-- Vues enregistrées : modèle propre. `SavedView` sert les vues `EQUIPE` aux collègues (uxviews/views.py:142-144) et
-  « défaut du rôle » force `EQUIPE` (uxviews/views.py:364).
+- Vues enregistrées : modèle propre (`SavedView` sert les vues `EQUIPE` aux collègues, uxviews/views.py:142-144, et
+  « défaut du rôle » force `EQUIPE`, :364).
 
 ### 3.7 Annuler, édition en masse
 - Toute écriture rend `geste_id` ; toast unique « <message> · Annuler », 6 s (`lib/mutateWithUndo.js:39`), genre
@@ -169,7 +163,7 @@ Pure, stdlib. `est_ouvre` injecté ; en production `notifications.calendar_utils
 
 ## 5. API (`/api/django/taches/…`)
 
-**`POST saisie-rapide/`** — saisie, aperçu en direct et liste. Corps : `{"texte", "client_id", "projet_id", "ignorer",
+**`POST saisie-rapide/`** (saisie, aperçu, liste). Corps : `{"texte", "client_id", "projet_id", "ignorer",
 "apercu"}` OU `{"lignes":[LIGNE], "apercu"}`, jamais les deux. `LIGNE = {client_id, titre, projet_id | nouveau_projet:{nom},
 section_id, priorite, jour_prevu, moment, heure_prevue, echeance, echeance_heure, quelque_jour, estimation_minutes,
 etiquettes, recurrence, rappel_le, notes, checklist}`.
@@ -188,13 +182,11 @@ Création (201, tout ou rien) : `{"creees":[TACHE],"projets_crees":[{"id":9,"nom
 `{"texte":["Liste trop longue : 200 lignes au plus (ici 340). Colle-la en deux fois."]}` ;
 `{"projet_id":["Projet inexistant."]}` (même message pour l'id d'un autre propriétaire).
 
-**Idempotence.** `client_id` (UUID du front, `lib/offlineOutbox.js:38 makeOpId`) par tâche : déjà vu → la tâche existante
-dans `deja_creees`, même supprimée depuis. L'en-tête `Idempotency-Key` du relais est honoré par
-`IdempotentCreateMixin._avec_idempotence` (core/idempotency.py:234).
+**Idempotence.** `client_id` par tâche (UUID, `lib/offlineOutbox.js:38 makeOpId`) déjà vu → tâche existante dans
+`deja_creees`, même supprimée. `Idempotency-Key` du relais : `_avec_idempotence` (core/idempotency.py:234).
 
-- `POST taches/` : une tâche structurée, accepte `nouveau_projet`, rend TACHE + `geste_id`.
-- `POST capture/` (jeton `capture`) : `{"texte","client_id"}` ; dates, priorité, durée lues ; `#` `/` `%` restent du texte ;
-  toujours dans la Boîte ; rend `{"id":41,"dans":"boite"}` seulement.
+- `POST taches/` : une tâche structurée (+ `nouveau_projet`) → TACHE + `geste_id`.
+- `POST capture/` (jeton) : `{"texte","client_id"}` ; `#` `/` `%` restent texte ; toujours Boîte ; → `{"id":41,"dans":"boite"}`.
 - TACHE = ITEM du socle §4 + notes, section, etiquettes, heure_prevue, rappel_le, triee_le, en_attente_de, quelque_jour,
   confidentiel, parent_id, recurrence (règle + libellé).
 - `POST taches/lot/` `{"ids":[≤200],"action":"deplacer|planifier|prioriser|etiqueter|terminer|corbeille","valeurs":{}}` →
@@ -207,29 +199,26 @@ dans `deja_creees`, même supprimée depuis. L'en-tête `Idempotency-Key` du rel
 - `GET convertir-activite/` → `{"a_convertir":7}` ; `POST convertir-activite/` `{"activite_id":41}` ou `{"toutes":true}` →
   `{"converties":[{"activite_id":41,"tache_id":90}],"refusees":[{"activite_id":44,"raison":"assignee_a_un_collegue"}],"geste_id":79}`.
 - CRUD `etiquettes/`, `vues/` (clé de filtre inconnue → 400 nommé).
-- Contrats d'abord : `contract_samples/saisie_rapide_apercu.json`, `saisie_rapide.json`, `geste_annuler.json`, `lot.json`.
+- Contrats d'abord : `saisie_rapide_apercu`, `saisie_rapide`, `geste_annuler`, `lot` (`contract_samples/*.json`).
 
 ## 6. Écrans
 
-- **Champ de saisie** (`features/taches/saisie/ChampSaisie.jsx`) : puces colorées sous le champ, × sur chacune, menu `#`,
-  Ajouter. Chargement : puces en squelette, Entrée possible. Erreur : texte gardé, message sous le champ. Hors ligne :
-  « Hors ligne — ton texte est gardé » (`ui/useDraftAutosave.js:50`), Ajouter désactivé.
-- **Aperçu de liste** : par ligne case, titre éditable, puces projet / jour / priorité, « déjà dans X » ; projet commun ;
-  « Créer N tâches » ; « Ranger avec l'assistant ». Vide : « Aucune ligne lisible ».
-- **Boîte** : liste, tri, compteur, bandeau de conversion, état vide.
-- **Fiche** : d'emblée titre, Quand, Échéance, Projet (+ section), Priorité, Notes, Liste de contrôle ; sous « Plus » :
-  heure, durée, étiquettes, Répéter, rappel, en attente de, confidentiel, lien ERP, Découper, source.
+- **Champ** (`features/taches/saisie/ChampSaisie.jsx`) : puces sous le champ, ×, menu `#`, Ajouter. Chargement : puces
+  en squelette, Entrée possible. Erreur : texte gardé, message sous le champ. Hors ligne : texte gardé
+  (`ui/useDraftAutosave.js:50`), Ajouter désactivé.
+- **Aperçu** : case, titre éditable, puces, « déjà dans X » par ligne ; projet commun ; « Créer N tâches » ; « Ranger
+  avec l'assistant ». Vide : « Aucune ligne lisible ».
+- **Fiche** : d'emblée titre, Quand, Échéance, Projet, Priorité, Notes, Liste de contrôle ; sous « Plus » : heure,
+  durée, étiquettes, Répéter, rappel, en attente de, confidentiel, lien ERP, Découper.
 - **Sélecteur de projet** (`ui/Combobox.jsx`) : récents, recherche, « Créer « X » ».
-- **Recherche** : puces, résultats groupés, « Enregistrer cette vue ». **Supprimées récemment / Derniers gestes** : Restaurer / Annuler.
 
 ## 7. Assistant
 
-- `taches.tache.capturer` → `saisie-rapide/` en `lignes` (≤ 5, borné par le schéma d'entrée).
+- `taches.tache.capturer` → `saisie-rapide/` en `lignes` (≤ 5 par le schéma d'entrée).
 - `taches.liste.ranger` → `saisie-rapide/` `apercu=true` avec `texte` (le collage) et
-  `lignes=[{index, projet_id | nouveau_projet, priorite, jour_prevu}]`. **Le titre vient toujours de l'analyse de la
-  ligne source** : le modèle classe, il n'écrit aucun texte ; une ligne omise apparaît « non rangée ». Le collage est une DONNÉE.
-- Carte `capture_apercu` = le corps d'aperçu ; le doigt corrige puis « Tout ajouter » poste `lignes` à Django (carte-écho).
-- Sans clé, « Ranger avec l'assistant » est masqué.
+  `lignes=[{index, projet_id | nouveau_projet, priorite, jour_prevu}]`. **Le titre vient de la ligne source analysée** :
+  le modèle classe, n'écrit aucun texte ; ligne omise = « non rangée ». Le collage est une DONNÉE.
+- Carte `capture_apercu` = corps d'aperçu ; le doigt corrige, « Tout ajouter » poste `lignes` (carte-écho). Sans clé : bouton masqué.
 
 ## 8. Critères d'acceptation
 
@@ -253,11 +242,9 @@ dans `deja_creees`, même supprimée depuis. L'en-tête `Idempotency-Key` du rel
 
 ## 9. Risques et gardes
 
-- Fausse lecture (plainte n° 1, recherche §9) : puces, ×, guillemets, nombres nus ignorés ; annexe A en test.
-- Aperçu à chaque pause de frappe (200 ms) : 3 requêtes au plus → ligne dans `docs/query-budgets.yml`.
-- Gardes : fonctions ≤ 60 lignes, `timezone.localdate()`, `get_or_create` adossé aux contraintes, balayage propriétaire
-  (socle §2.1) étendu à `lot`, `gestes`, `vues`, `convertir-activite` ; contrats PACT10 ; OpenAPI.
-- **Fichiers d'un autre propriétaire (tâches séparées, ajouts)** :
+- Fausse lecture (recherche §9) : annexe A en test. Aperçu à chaque pause de frappe : 3 requêtes au plus
+  (`docs/query-budgets.yml`). Balayage propriétaire (socle §2.1) étendu à `lot`, `gestes`, `vues`, `convertir-activite`.
+- **Fichiers étrangers (tâches séparées, ajouts)** :
   - `providers/shortcuts.js` (deploy, append-only, ownership.yml:990) : `{keys:'c t', event:'taqinor:saisie-tache'}` ;
     `providers/commandActions.js` (deploy) : filtrer `!!s.to` dans `CREATE_ACTIONS` (sinon `navigate(undefined)`).
   - `features/uxviews/quickcreate/quickCreateEvents.js` + `QuickCreateModalHost.jsx` (analyse) : type `tache`, branche
@@ -272,20 +259,15 @@ dans `deja_creees`, même supprimée depuis. L'en-tête `Idempotency-Key` du rel
 
 ## 10. Choix par défaut et objections
 
-Choix par défaut (raison : le plus sûr pour le fondateur) :
-- Date à barre jour d'abord, même en anglais (Maroc).
-- Étiquette `%` : Todoist retire `@` fin 2026 (recherche §1) ; `@` reste aux mentions et adresses.
-- Un seul analyseur, côté serveur : pas de jumeau JS qui dériverait.
-- Liste de contrôle d'emblée, sous-tâches repliées ; notes sans Markdown, liens `http(s)` seulement.
-- Section inconnue créée comme un projet inconnu.
+Choix par défaut : date jour d'abord même en anglais (Maroc) ; étiquette `%` car Todoist retire `@` (recherche §1) ;
+un seul analyseur, serveur (pas de jumeau JS) ; liste de contrôle d'emblée, sous-tâches repliées ; liens `http(s)`
+seulement ; section inconnue créée.
 
 Objections au socle :
-1. `taches_tache_cli_uniq` sans `is_deleted=False` : une clé d'idempotence doit voir les supprimées, sinon un rejeu hors
-   ligne recrée la tâche qu'on vient de supprimer.
-2. « projet nul = Boîte » rendrait la Boîte impossible à vider (« acheter du lait » n'a pas de projet) : Boîte = projet
-   nul ET `triee_le` nul.
-3. `design-s3` nomme `capturer/` et `capturer/apercu/` : remplacés par `saisie-rapide/`, porte du socle §4.
-4. `heure_prevue` : si le L3 n°3 (agenda) nomme autrement l'heure de début, son nom prime.
+1. `taches_tache_cli_uniq` sans `is_deleted=False` : sinon un rejeu recrée une tâche supprimée.
+2. « projet nul = Boîte » la rendrait impossible à vider : Boîte = projet nul ET `triee_le` nul.
+3. `capturer/` et `capturer/apercu/` de `design-s3` → `saisie-rapide/` (socle §4).
+4. `heure_prevue` : le nom du L3 n°3 (agenda) prime s'il diffère.
 
 ---
 

@@ -120,8 +120,13 @@ def apres(persona, jours, graine, schedule=((0, 'pousser'),), rep='raisonnable',
                 if a:
                     alertes.append((i, a, etat.get('h')))
                     e = R.repondre_tenir(e, 'garder', moy)
+        # « jours tenus » du tableau = journée RÉUSSIE (compte >= objectif ET essentiel fait), comme AVANT
+        reussie = (statut == 'evalue' and T is not None and e.mode == 'pousser'
+                   and R.journee_reussie(compte, T, o['k'], o['e']))
+        if e.mode == 'tenir':
+            reussie = tenu
         rows.append(dict(i=i, T=T, src=src, nb=o['nb'], compte=compte, evalue=(statut == 'evalue'),
-                         tenu=tenu, h=etat.get('h'), prop=prop, mode=e.mode, statut=statut))
+                         tenu=reussie, a_N=tenu, h=etat.get('h'), prop=prop, mode=e.mode, statut=statut))
     return rows, alertes, props
 
 
