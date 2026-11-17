@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
-import {
-  annulerGeste, lireAgenda, modifierTache, planifierTache, rouvrirTache, terminerTache,
-} from '../../api/tachesApi'
+import { annulerGeste, lireAgenda, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import PlanifierSemaine from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
@@ -567,6 +565,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     const requete = { du: periode.du, au: periode.au }
     if (vueLue === 'semaine') requete.vue = 'semaine'
     if (projet) requete.projet = projet
+    // parametres-requete: du, au, vue, projet
     lireAgenda(requete).then((reponse) => {
       if (rang !== derniere.current) return
       setDonnees(reponse.data)
