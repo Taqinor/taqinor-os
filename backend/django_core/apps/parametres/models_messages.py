@@ -1679,6 +1679,21 @@ CLE_APPEL_PAR_CLE_REVEIL = {
 }
 
 
+# ACVI51 (C-ACVI-069) — le texte annoncé par CAD54 pour la passation, et le
+# script du rappel après réponse : placeholders rendables seulement, darija en
+# repli français (`get_corps`).
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'passation': (
+        "Bonjour {prenom}, c'est {conseiller} de {marque}. Je reprends "
+        "votre dossier à partir d'aujourd'hui : n'hésitez pas à m'écrire ici "
+        "pour toute question."
+    ),
+    'appel_apres_reponse': (
+        "Bonjour {prenom}, c'est {conseiller} de {marque}. Vous m'avez "
+        "répondu, je vous appelle pour faire le point sur votre projet."
+    ),
+})
+
 # ── CADV34 (02/11/2026, D-CADV-1) — la porte de sortie sur TOUT message écrit ─
 #
 # Loi 09-08 art. 10 al. 5 : l'opposition doit être possible « chaque fois
@@ -1698,14 +1713,31 @@ CLES_PORTE_DE_SORTIE_CADV34 = (
     'valeur_j1', 'vocal_j3', 'j1_pdf', 'j4_preuve', 'j6_garanties',
     'j9_validite', 'dimanche_famille', 'deuxieme_affaire',
     'visite_confirmation', 'relance_pieces', 'message_creneau',
+    # 17/11/2026 — messages ÉCRITS (WhatsApp) qui n'avaient pas la porte : la visite
+    # proposée / de relevé du point d'eau, les deux dossiers institutionnels et la
+    # passation (`appel_apres_reponse`, lui, est un script d'APPEL : jamais de STOP).
+    'visite_proposition', 'visite_releve_point_eau', 'dossier_8221',
+    'dossier_fda', 'passation',
 )
+
+
+#: 17/11/2026 — la signature finale des messages de visite. La phrase STOP se
+#: pose AVANT elle : derrière, elle donnait « — Meryem Répondez STOP… » et
+#: partageait le fragment de la signature, que le rendu retire en entier
+#: (`_omettre_phrases_incompletes`) quand le responsable n'a pas de prénom.
+SIGNATURE_FINALE = ' — {conseiller}'
 
 
 def _poser_porte_de_sortie(table, phrase):
     for cle in CLES_PORTE_DE_SORTIE_CADV34:
         texte = table.get(cle)
-        if texte and not texte.endswith(phrase):
-            table[cle] = f'{texte} {phrase}'
+        if not texte:
+            continue
+        corps, signature = texte, ''
+        if texte.endswith(SIGNATURE_FINALE):
+            corps, signature = texte[:-len(SIGNATURE_FINALE)], SIGNATURE_FINALE
+        if not corps.endswith(phrase):
+            table[cle] = f'{corps} {phrase}{signature}'
 
 
 _poser_porte_de_sortie(MESSAGE_TEMPLATE_DEFAULTS, PORTE_DE_SORTIE_FR)
@@ -1715,18 +1747,3 @@ for _table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.values():
 for _table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA.values():
     _poser_porte_de_sortie(_table, PORTE_DE_SORTIE_DARIJA)
 del _table
-
-# ACVI51 (C-ACVI-069) — le texte annoncé par CAD54 pour la passation, et le
-# script du rappel après réponse : placeholders rendables seulement, darija en
-# repli français (`get_corps`).
-MESSAGE_TEMPLATE_DEFAULTS.update({
-    'passation': (
-        "Bonjour {prenom}, c'est {conseiller} de {marque}. Je reprends "
-        "votre dossier à partir d'aujourd'hui : n'hésitez pas à m'écrire ici "
-        "pour toute question."
-    ),
-    'appel_apres_reponse': (
-        "Bonjour {prenom}, c'est {conseiller} de {marque}. Vous m'avez "
-        "répondu, je vous appelle pour faire le point sur votre projet."
-    ),
-})

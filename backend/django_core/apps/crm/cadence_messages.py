@@ -171,7 +171,15 @@ def _omettre_phrases_incompletes(texte, manquants):
                   if not any(trou in m for trou in trous)]
         if gardes:
             recolle = '. '.join(gardes)
-            if ligne.rstrip().endswith('.') and not recolle.endswith('.'):
+            # 17/11/2026 — une signature finale (« — {conseiller} ») retirée
+            # faute de prénom emportait avec elle le point de la phrase qui la
+            # précédait (le découpage consomme « . ») : sans lui, la phrase
+            # « Répondez STOP… » ou « …le passage » finissait sans point.
+            signature_retiree = (
+                len(morceaux) > 1 and morceaux[-1].lstrip().startswith('—')
+                and any(trou in morceaux[-1] for trou in trous))
+            if ((ligne.rstrip().endswith('.') or signature_retiree)
+                    and not recolle.endswith('.')):
                 recolle += '.'
             lignes_gardees.append(recolle)
     return '\n'.join(lignes_gardees).strip()
