@@ -238,8 +238,9 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const nouveauProjet = async (nom) => {
     try {
       const { data } = await creerProjet({ nom })
-      setProjets((liste) => (liste ? [...liste, data] : liste))
-      choisirProjet(data.id)
+      const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
+      setProjets((liste) => (liste ? [...liste, cree] : liste))
+      choisirProjet(cree.id)
     } catch (err) {
       erreur('projet', erreursParChamp(classerErreur(err).champs).projet || classerErreur(err).champs?.nom?.[0] || frenchError(err))
     }

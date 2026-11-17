@@ -130,6 +130,37 @@ describe('TCH87 — Recherche', () => {
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
   })
 
+  it('Raccord F2 — « Aujourd\'hui » et « 7 jours » passent par `periode` du serveur, le tri servi suit', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
+    await user.click(screen.getByRole('checkbox', { name: '7 jours' }))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', periode: 'semaine' })))
+    await user.click(screen.getByRole('checkbox', { name: "Aujourd'hui" }))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui' })))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Tri' }), 'echeance')
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui', tri: 'echeance' })))
+  })
+
+  it('Raccord F2 — étiquettes pas encore servies (501) : ni erreur ni filtre Étiquette', async () => {
+    const user = userEvent.setup()
+    api.listerToutesLesEtiquettes.mockRejectedValue(erreurHttp({ detail: 'Pas encore.' }, 501))
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
+    await waitFor(() => expect(api.listerToutesLesEtiquettes).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('combobox', { name: 'Étiquette' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('Raccord F2 — une tâche abandonnée (statut `annule`) n\'est pas rangée dans Ouvertes', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [item(20, 'Devis Settat'), item(30, 'Devis abandonné', { statut: 'annule' })] } })
+    monter()
+    expect(await screen.findByRole('region', { name: 'Ouvertes (1)' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Ouvertes (1)' })).queryByText('Devis abandonné')).toBeNull()
+  })
+
   it('tri par priorité : la plus haute d\'abord', async () => {
     const user = userEvent.setup()
     monter()

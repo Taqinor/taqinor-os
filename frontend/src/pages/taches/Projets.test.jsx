@@ -161,8 +161,9 @@ describe('TCH92 — Projets : Supprimer depuis la ligne', () => {
 })
 
 describe('TCH88 — Projets : Nouveau projet et navigation', () => {
-  it('« Créer » ouvre aussitôt Planifier le projet', async () => {
-    api.creerProjet.mockResolvedValue({ data: { ...projets().results[0], id: 9, nom: 'Salon' } })
+  it('« Créer » ouvre aussitôt Planifier le projet (réponse `projet_ecrit` : { projet, … })', async () => {
+    const ecrit = exempleContrat('taches', 'projet_ecrit')
+    api.creerProjet.mockResolvedValue({ data: { ...ecrit, projet: { ...ecrit.projet, id: 9, nom: 'Salon', statut: 'actif' } } })
     monter()
     const user = userEvent.setup()
     await screen.findByRole('button', { name: 'Ventes' })

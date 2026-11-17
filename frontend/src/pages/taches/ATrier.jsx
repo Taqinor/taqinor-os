@@ -145,8 +145,9 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   const nouveauProjet = async (tache, nom) => {
     try {
       const { data } = await creerProjet({ nom })
-      setProjets((liste) => [...liste, data])
-      await appliquer(tache, 'deplacer', { projet_id: data.id }, `Déplacée dans « ${data.nom} »`)
+      const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
+      setProjets((liste) => [...liste, cree])
+      await appliquer(tache, 'deplacer', { projet_id: cree.id }, `Déplacée dans « ${cree.nom} »`)
     } catch (err) {
       setErreur(frenchError(err))
     }

@@ -32,7 +32,18 @@ const PUCES_JOUR = [
   ['en_attente', 'En attente'], ['avec_echeance', 'Avec échéance'],
 ]
 
-const ouverte = (t) => t.statut !== 'fait' && t.statut !== 'abandonne'
+// StatutTache : a_faire · en_attente · fait · annule (« abandonnée » à l'écran)
+const ouverte = (t) => t.statut !== 'fait' && t.statut !== 'annule'
+
+/** Puces servies par `GET taches/?periode=` (aujourdhui : jour prévu = J ; semaine : J à J+6) ; ET entre les deux = J. */
+function periodeServie(puces) {
+  if (puces.includes('aujourdhui')) return 'aujourdhui'
+  if (puces.includes('sept_jours')) return 'semaine'
+  return null
+}
+
+/** Tris servis par `GET taches/?tri=` (rang par défaut) ; « Jour » et « Création » restent triés ici. */
+const TRI_SERVI = { priorite: 'priorite', echeance: 'echeance' }
 
 /** Les puces de jour, lues sur la ligne et le jour de l'appareil (ET entre puces). */
 function correspond(tache, puce, aujourdhui) {
@@ -103,7 +114,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     return () => clearTimeout(minuteur)
   }, [saisie, q, setParams])
 
-  const serveur = faites || haute || reserve || projetId != null || etiquetteId != null
+  const periode = periodeServie(puces)
+  const triServi = TRI_SERVI[tri]
+  const serveur = faites || haute || reserve || projetId != null || etiquetteId != null || periode != null
   const mots = q.trim()
 
   useEffect(() => {
@@ -117,20 +130,29 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         priorite_min: haute ? 3 : undefined,
         inclure_faites: faites ? true : undefined,
         vue: reserve ? 'quelque_jour' : undefined,
+        periode: periode ?? undefined,
+        tri: triServi,
       }).then((r) => ({ projets: [], taches: r.data?.results ?? [] }))
       : rechercher({ q: mots, limite: 25 }).then((r) => ({ projets: r.data?.projets ?? [], taches: r.data?.taches ?? [] }))
     lecture
       .then((suite) => { if (courant) { setResultat(suite); setLu(true); setErreur('') } })
       .catch((err) => { if (courant) setErreur(frenchError(err)) })
     return () => { courant = false }
-  }, [mots, serveur, faites, haute, reserve, projetId, etiquetteId])
+  }, [mots, serveur, faites, haute, reserve, projetId, etiquetteId, periode, triServi])
 
   const chargerProjets = useCallback(() => {
     if (projets.length === 0) listerTousLesProjets().then(setProjets).catch((err) => setErreur(frenchError(err)))
   }, [projets.length])
+  // Les étiquettes (`etiquettes/`) ne sont servies qu'en F4 (TCH166, 501 d'ici là) : sans liste lue, le filtre
+  // « Étiquette » n'apparaît pas — ce n'est pas une erreur de l'écran, rien n'est affiché.
+  const [etiquettesLues, setEtiquettesLues] = useState(false)
   useEffect(() => {
-    if (replie && etiquettes.length === 0) listerToutesLesEtiquettes().then(setEtiquettes).catch((err) => setErreur(frenchError(err)))
-  }, [replie, etiquettes.length])
+    if (!replie || etiquettesLues) return
+    listerToutesLesEtiquettes()
+      .then(setEtiquettes)
+      .catch(() => setEtiquettes([]))
+      .finally(() => setEtiquettesLues(true))
+  }, [replie, etiquettesLues])
 
   const actif = serveur || Boolean(mots)
   const lignes = useMemo(() => (actif ? resultat.taches : [])
@@ -221,13 +243,15 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
             ))}
             <button type="button" className="puce" role="checkbox" aria-checked={reserve} onClick={() => setReserve((v) => !v)}>En réserve</button>
           </div>
-          <label className="champ-etiquette">
-            <span>Étiquette</span>
-            <select className="champ" value={etiquetteId ?? ''} onChange={(e) => setEtiquetteId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Toutes</option>
-              {etiquettes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-            </select>
-          </label>
+          {etiquettes.length > 0 ? (
+            <label className="champ-etiquette">
+              <span>Étiquette</span>
+              <select className="champ" value={etiquetteId ?? ''} onChange={(e) => setEtiquetteId(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Toutes</option>
+                {etiquettes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label className="champ-etiquette">
             <span>Tri</span>
             <select className="champ" value={tri} onChange={(e) => setTri(e.target.value)}>

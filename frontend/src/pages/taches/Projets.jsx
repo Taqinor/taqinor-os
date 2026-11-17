@@ -201,8 +201,9 @@ export default function Projets() {
 
   const creer = async (nom) => {
     const { data } = await creerProjet({ nom })
+    const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
     setNouveau(false)
-    navigate(`/taches/projets/${data.id}?planifier=1`)
+    navigate(`/taches/projets/${cree.id}?planifier=1`)
   }
 
   const ouvrir = (projet) => navigate(`/taches/projets/${projet.id}`)

@@ -150,7 +150,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
 
 const OUVERTES = [
   ['boite', 'Les remettre dans À trier'],
-  ['abandonner', 'Les abandonner'],
+  ['annuler', 'Les abandonner'], // `taches_ouvertes` ∈ boite · annuler · deplacer (TerminerSerializer)
   ['deplacer', 'Les déplacer vers…'],
 ]
 

@@ -130,6 +130,16 @@ describe('TCH92 — Terminer le projet', () => {
     expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'atteint', bilan: '', taches_ouvertes: 'deplacer', projet_cible_id: 5 })
   })
 
+  it('Raccord F2 — « Les abandonner » envoie `taches_ouvertes: annuler`, la valeur que le serveur accepte', async () => {
+    api.terminerProjet.mockResolvedValue(reponseContrat('taches', 'projet_ecrit'))
+    render(<DialogueTerminer projet={projet()} onFait={() => {}} onFermer={() => {}} />)
+    const user = utilisateur()
+    await user.click(screen.getByRole('radio', { name: 'Abandonné' }))
+    await user.click(screen.getByRole('radio', { name: 'Les abandonner' }))
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'abandonne', bilan: '', taches_ouvertes: 'annuler', projet_cible_id: null })
+  })
+
   it('un projet sans tâche ouverte ne pose pas la question des tâches ouvertes', () => {
     render(<DialogueTerminer projet={projet({ compteurs: { ouvertes: 0, faites: 12 } })} onFait={() => {}} onFermer={() => {}} />)
     expect(screen.queryByText(/encore ouvertes/)).toBeNull()
