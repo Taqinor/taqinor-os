@@ -2263,7 +2263,25 @@ jobs:
           # `demo_admin` (compte sans rôle fin) reçoit 403 sur `tout-effacer/` et sur toute route Tâches. Lane 2
           # seulement (elle seule joue les specs taches-*), base jetable : superutilisateur, comme un propriétaire.
           if [ "${{ matrix.shard }}" = "2" ]; then
-            python manage.py shell -c "from authentication.models import CustomUser; CustomUser.objects.filter(username='demo_admin').update(is_superuser=True)"
+            # Superutilisateur ne suffit PAS : `/auth/me/` rend `role.permissions` seules, et la garde de route
+            # du front exige `taches_voir` dedans (sans rôle fin → l'écran ne se monte jamais). On donne donc
+            # aussi à `demo_admin` un rôle « Administrateur » de sa société portant toutes les permissions.
+            python manage.py shell <<'PY'
+          from authentication.models import CustomUser
+          from apps.roles.models import Role
+          from apps.roles.permissions_registre import ALL_PERMISSIONS, SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF
+          u = CustomUser.objects.get(username='demo_admin')
+          perms = [p for p in ALL_PERMISSIONS if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF)]
+          if 'taches_voir' not in perms:
+              perms.append('taches_voir')
+          role, _ = Role.objects.get_or_create(company=u.company, nom='Administrateur')
+          role.permissions = perms
+          role.save(update_fields=['permissions'])
+          u.is_superuser = True
+          u.role = role
+          u.save(update_fields=['is_superuser', 'role'])
+          print('demo_admin role', role.pk, 'taches_voir' in role.permissions)
+          PY
           fi
           # SOLMVP (21/09/2026) — plus de `seed_ao_demo` : l'app AO est une coquille.
       - name: Install frontend dependencies
