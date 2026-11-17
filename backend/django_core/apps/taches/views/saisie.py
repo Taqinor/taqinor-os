@@ -15,9 +15,10 @@ from rest_framework.views import APIView
 from apps.taches.choix import Source
 from apps.taches.serializers.saisie import (
     CHAMPS_LIGNE, SaisieEntreeSerializer, apercu_ids, apercu_saisie, reponse_creation, valider_lignes,
-    verifier_lien, verifier_proprietaire,
+    verifier_proprietaire,
 )
 from apps.taches.services.creation import creer_taches
+from apps.taches.services.taches import verifier_lien
 from apps.taches.views.base import (
     AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, PasEncore, corps, est_assistant,
     forme_echantillon, parametre, reponses,

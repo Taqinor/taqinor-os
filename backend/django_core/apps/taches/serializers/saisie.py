@@ -18,7 +18,7 @@ from django.utils import timezone
 from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers
 
-from apps.taches.choix import CibleLiable, StatutTache
+from apps.taches.choix import StatutTache
 from apps.taches.saisie.analyseur import analyser
 from apps.taches.saisie.collage import (
     MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, decouper_collage, erreurs_limites, marquer_doublons,
@@ -27,10 +27,10 @@ from apps.taches.saisie.grammaire import ProjetConnu
 from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, jours_travailles_de, projets_de, sections_de, taches_de,
 )
-from apps.taches.selectors.liens import cible_visible
 from apps.taches.serializers.formes import (
-    TacheSerializer, charger_taches, contexte, projet_court,
+    TacheEcriteSerializer, TacheSerializer, charger_taches, contexte, projet_court, tache_ecrite,
 )
+from apps.taches.services.taches import verifier_lien
 from core.conflit_etat import ConflitEtat
 
 OUVERTES = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
@@ -40,8 +40,6 @@ HORIZON_OUVRES = 400
 MESSAGE_AUTRE_COMPTE = "Une action d'un autre compte a été retirée de la file."
 MESSAGE_TROP_DE_CARACTERES_ASSISTANT = '2 000 caractères au plus.'
 MESSAGE_PROJET_INEXISTANT = 'Projet inexistant.'
-MESSAGE_LIEN_INTROUVABLE = 'Élément introuvable ou hors de ta portée.'
-MESSAGE_LIEN_TYPE = "Ce type d'élément ne peut pas être lié à une tâche."
 MESSAGE_REQUIS = 'Requis.'
 CLES_APERCU = ('index', 'collage', 'tache_id', 'titre', 'cochee', 'doublon_de', 'etape_de', 'alertes',
                'jetons', 'champs')
@@ -152,14 +150,6 @@ def projet_choisi(user, projet_id, *, assistant=False):
     if projet is None or (assistant and projet.confidentiel):
         raise serializers.ValidationError({'projet_id': [MESSAGE_PROJET_INEXISTANT]})
     return {'id': projet.pk, 'nom': projet.nom, 'nouveau': False}
-
-
-def verifier_lien(user, lien):
-    """400 sur `lien` si la cible n'est pas liable ou pas visible (refus = introuvable)."""
-    if lien.get('cible') not in CibleLiable.values:
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_TYPE]})
-    if not cible_visible(user, lien['cible'], lien.get('id')):
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
 
 
 # --- Aperçu ------------------------------------------------------------------------------------
@@ -311,3 +301,71 @@ def reponse_creation(user, resultat, *, assistant=False):
         'deja_creees': list(resultat.deja_creees),
         'geste_id': resultat.geste.pk if resultat.geste is not None else None,
     }
+
+
+# --- Tâches : création d'une LIGNE, PATCH, TACHE_ECRITE --------------------------------------------
+
+#: `POST taches/` : une LIGNE (+ `parent_id`, `proprietaire_attendu`).
+TacheCreationSerializer = type('TacheCreationSerializer', (serializers.Serializer,), {
+    **CHAMPS_LIGNE,
+    'parent_id': serializers.IntegerField(required=False, allow_null=True),
+    'proprietaire_attendu': serializers.IntegerField(required=False),
+})
+
+#: Champs que le PATCH renvoie vers « Quand » (`planifier()` est le seul chemin du jour : invariant 15).
+CHAMPS_PLANIFICATION = ('jour_prevu', 'moment', 'heure_debut', 'quelque_jour')
+MESSAGE_PASSE_PAR_QUAND = 'Passe par « Quand ».'
+MESSAGE_NON_MODIFIABLE = 'Non modifiable ici.'
+
+
+class TachePatchSerializer(serializers.Serializer):
+    """Corps de `PATCH taches/{id}/` : tout champ est facultatif SAUF `lock_version`."""
+
+    titre = serializers.CharField(required=False, allow_blank=True, max_length=280,
+                                  error_messages={'max_length': '280 caractères au plus.'})
+    notes = serializers.CharField(required=False, allow_blank=True)
+    priorite = serializers.IntegerField(required=False)
+    echeance = serializers.DateField(required=False, allow_null=True)
+    echeance_heure = serializers.TimeField(required=False, allow_null=True)
+    estimation_minutes = serializers.IntegerField(required=False, allow_null=True)
+    duree_reelle_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    projet_id = serializers.IntegerField(required=False, allow_null=True)
+    section_id = serializers.IntegerField(required=False, allow_null=True)
+    jalon = serializers.BooleanField(required=False)
+    bloquee_par_id = serializers.IntegerField(required=False, allow_null=True)
+    confidentiel = serializers.BooleanField(required=False)
+    etiquettes = serializers.ListField(required=False, child=serializers.IntegerField(), max_length=50)
+    recurrence = serializers.JSONField(required=False, allow_null=True)
+    lien = serializers.DictField(required=False, allow_null=True)
+    lock_version = serializers.IntegerField(min_value=0, error_messages={'required': MESSAGE_REQUIS})
+
+
+def valider_patch(donnees):
+    """Le PATCH validé ; sinon 400 nommé : `lock_version` requis, un champ du jour renvoyé vers « Quand »,
+    tout autre champ inconnu « Non modifiable ici. »."""
+    if not isinstance(donnees, dict):
+        raise serializers.ValidationError({'detail': ['Corps attendu : un objet.']})
+    entree = TachePatchSerializer(data=donnees)
+    entree.is_valid()
+    erreurs = dict(entree.errors)
+    for cle in donnees:
+        if cle in CHAMPS_PLANIFICATION:
+            erreurs[cle] = [MESSAGE_PASSE_PAR_QUAND]
+        elif cle not in entree.fields:
+            erreurs[cle] = [MESSAGE_NON_MODIFIABLE]
+    if erreurs:
+        raise serializers.ValidationError(erreurs)
+    return dict(entree.validated_data)
+
+
+def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, projet_cree=None,
+                   rappel=None, question_titres=False, avertissements=()):
+    """La TACHE_ECRITE d'une écriture : `tache` relue et chargée (aucune requête par ligne), + `suivante`
+    (occurrence née), `rappel` posé, `geste_id`."""
+    pks = [tache.pk] + ([suivante.pk] if suivante is not None else [])
+    chargees = {t.pk: t for t in taches_chargees(user, pks)}
+    instance = tache_ecrite(
+        chargees[tache.pk], suivante=chargees.get(suivante.pk) if suivante is not None else None,
+        projet_cree=projet_cree, rappel=rappel, question_titres=question_titres,
+        avertissements=avertissements, geste_id=geste.pk if geste is not None else None)
+    return TacheEcriteSerializer(instance, context=contexte(assistant=assistant)).data

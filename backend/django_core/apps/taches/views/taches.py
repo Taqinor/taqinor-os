@@ -6,21 +6,38 @@ Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche d
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon une forme partagée
 (`serializers/formes.py`) ; `GESTE`, `CONFLIT_TACHE` et `REORDONNER` sont déclarés ici une fois.
 """
+from django.db import transaction
+from django.http import Http404
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.taches.choix import Source
+from apps.taches.confidentialite import ASSISTANT, ECRAN
+from apps.taches.selectors.base import taches_de
 from apps.taches.serializers.formes import (
-    ItemSerializer, TacheEcriteSerializer, TacheSerializer,
+    ItemSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
+)
+from apps.taches.serializers.saisie import (
+    TacheCreationSerializer, reponse_ecrite, taches_chargees, valider_patch, verifier_proprietaire,
+)
+from apps.taches.services.creation import creer_taches
+from apps.taches.services.taches import (
+    avertissements_du_jour, liste_taches, modifier_tache, rappel_a_la_creation, reverifier_lien,
+    supprimer_tache,
 )
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, forme_echantillon, page_de, parametre,
-    reponses,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, page_de,
+    parametre, reponses,
 )
 from apps.taches.views.saisie import CHAMPS_LIGNE
 from core.idempotency import IdempotentCreateMixin
 from core.openapi_operations import mots_operation
+from core.pagination import StandardPagination
+from core.verrou_optimiste import ConflitVersion
 
 #: Réponse d'une écriture qui ne rend que son geste annulable (`{"geste_id"}`).
 GESTE = inline_serializer('TachesGeste', {'geste_id': serializers.IntegerField(allow_null=True)})
@@ -89,7 +106,13 @@ class TachesVue(IdempotentCreateMixin, APIView):
 
     @extend_schema(parameters=FILTRES_LISTE, responses=reponses(page_de('Items', ItemSerializer()), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        assistant = est_assistant(request)
+        paginateur = StandardPagination()
+        page = paginateur.paginate_queryset(
+            charger_items(liste_taches(request.user, request.query_params, assistant=assistant)),
+            request, view=self)
+        donnees = ItemSerializer(page, many=True, context=contexte(assistant=assistant)).data
+        return paginateur.get_paginated_response(donnees)
 
     @extend_schema(request=inline_serializer('TachesCorpsTache', {
         **CHAMPS_LIGNE,
@@ -97,7 +120,34 @@ class TachesVue(IdempotentCreateMixin, APIView):
         'proprietaire_attendu': serializers.IntegerField(required=False),
     }), responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400,), conflit=ERREUR_CODE))
     def post(self, request):
-        raise PasEncore()
+        entree = TacheCreationSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        donnees = dict(entree.validated_data)
+        verifier_proprietaire(request.user, donnees.pop('proprietaire_attendu', None))
+        parent_id = donnees.pop('parent_id', None)
+        return self._avec_idempotence(
+            request, lambda: self._creer(request, donnees, parent_id), suffixe=f'u{request.user.pk}')
+
+    def _creer(self, request, ligne, parent_id):
+        """Une LIGNE → 201 `tache_ecrite.json` ; un rejeu du même `client_id` rend la tâche déjà créée (200)."""
+        user, assistant = request.user, est_assistant(request)
+        with transaction.atomic():
+            resultat = creer_taches(
+                user, [ligne], source=Source.ASSISTANT if assistant else Source.MANUEL,
+                porte='assistant' if assistant else 'ecran', parent=parent_id)
+        if not resultat.creees:
+            existante = taches_de(user).filter(client_id=ligne.get('client_id')).first()
+            if existante is None:
+                raise Http404('Introuvable.')
+            return Response(reponse_ecrite(user, existante, assistant=assistant))
+        tache = resultat.creees[0]
+        rappel, question = rappel_a_la_creation(user, tache)
+        donnees = reponse_ecrite(
+            user, tache, assistant=assistant, geste=resultat.geste,
+            projet_cree=resultat.projets_crees[0] if resultat.projets_crees else None,
+            rappel=rappel, question_titres=question,
+            avertissements=avertissements_du_jour(user, tache, timezone.localdate()))
+        return Response(donnees, status=201)
 
 
 class TacheVue(APIView):
@@ -107,7 +157,11 @@ class TacheVue(APIView):
 
     @extend_schema(responses=reponses(TacheSerializer, erreurs=(404,)))
     def get(self, request, id):
-        raise PasEncore()
+        trouvees = taches_chargees(request.user, [id])
+        if not trouvees:
+            raise Http404('Introuvable.')
+        tache = reverifier_lien(request.user, trouvees[0])
+        return Response(TacheSerializer(tache, context=contexte(assistant=est_assistant(request))).data)
 
     @extend_schema(request=inline_serializer('TachesCorpsTachePatch', {
         'titre': serializers.CharField(required=False, max_length=280),
@@ -128,11 +182,24 @@ class TacheVue(APIView):
         'lock_version': serializers.IntegerField(),
     }), responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = valider_patch(request.data)
+        assistant = est_assistant(request)
+        version = donnees.pop('lock_version')
+        try:
+            resultat = modifier_tache(request.user, id, donnees, version=version,
+                                      usage=ASSISTANT if assistant else ECRAN)
+        except ConflitVersion as exc:
+            exc.detail['actuel'] = TacheSerializer(
+                taches_chargees(request.user, [id])[0], context=contexte(assistant=assistant)).data
+            raise
+        return Response(reponse_ecrite(
+            request.user, resultat.tache, assistant=assistant, geste=resultat.geste,
+            avertissements=resultat.avertissements))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        geste = supprimer_tache(request.user, id)
+        return Response({'geste_id': geste.pk})
 
 
 class TachePlanifierVue(APIView):
