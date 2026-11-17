@@ -76,6 +76,18 @@ describe('ADRG141 — badges selon le palier', () => {
     expect(kpiBadgesMock).not.toHaveBeenCalled()
   })
 
+  it('Commercial terrain : aucun appel (responsable sans code reporting_*)', async () => {
+    monter({ role: 'responsable', role_nom: 'Commercial terrain', permissions: ['ventes_voir', 'devis_gerer', 'crm_gerer'] })
+    await Promise.resolve()
+    expect(kpiBadgesMock).not.toHaveBeenCalled()
+  })
+
+  it('responsable avec un code reporting_* : badges lus', async () => {
+    monter({ role: 'responsable', role_nom: 'Responsable', permissions: ['devis_gerer', 'reporting_voir'] })
+    await Promise.resolve()
+    expect(kpiBadgesMock).toHaveBeenCalledTimes(1)
+  })
+
   it('Directeur : badges lus', async () => {
     monter({ role: 'admin', role_nom: 'Directeur', permissions: ['ventes_voir'] })
     await Promise.resolve()

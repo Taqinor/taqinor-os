@@ -355,12 +355,28 @@ describe('AgentChat — progression du tour (AIC91)', () => {
     render(<Provider store={store}><AgentChat /></Provider>)
     store.dispatch(queryAgent('Prépare ma relance'))
     // Premier sondage à PROGRESSION_MS (1,5 s) : marge large sous charge CI.
-    const etape = await screen.findByTestId('etape-en-cours', {}, { timeout: 6000 })
+    const etapes = await screen.findAllByTestId('etape-en-cours', {}, { timeout: 6000 })
     const derniere = REPONSE.progression.exemple.etapes.at(-1).libelle
-    expect(etape).toHaveTextContent(derniere)
+    expect(etapes.at(-1)).toHaveTextContent(derniere)
     const progressionId = iaApi.queryAgent.mock.calls.at(-1)[2]
     expect(progressionId).toMatch(/^[A-Za-z0-9_-]{8,64}$/)
     expect(iaApi.getProgression).toHaveBeenCalledWith(progressionId)
+    repondre({ data: { answer: 'Voici.' } })
+    await waitFor(() => expect(screen.queryByTestId('etape-en-cours')).not.toBeInTheDocument())
+  }, 10000)
+
+  it("trois étapes publiées entre deux sondages s'affichent toutes, dans l'ordre", async () => {
+    let repondre
+    iaApi.queryAgent.mockImplementationOnce(() => new Promise((r) => { repondre = r }))
+    iaApi.getProgression.mockReset()
+    iaApi.getProgression
+      .mockResolvedValueOnce({ data: { etapes: [{ libelle: 'e1' }], fini: false } })
+      .mockResolvedValue({ data: { etapes: [{ libelle: 'e1' }, { libelle: 'e2' }, { libelle: 'e3' }], fini: false } })
+    const store = makeStore([])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    store.dispatch(queryAgent('Prépare ma relance'))
+    await waitFor(() => expect(screen.getAllByTestId('etape-en-cours')).toHaveLength(3), { timeout: 6000 })
+    expect(screen.getAllByTestId('etape-en-cours').map((n) => n.textContent)).toEqual(['e1', 'e2', 'e3'])
     repondre({ data: { answer: 'Voici.' } })
     await waitFor(() => expect(screen.queryByTestId('etape-en-cours')).not.toBeInTheDocument())
   }, 10000)

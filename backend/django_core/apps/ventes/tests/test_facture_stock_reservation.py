@@ -229,3 +229,62 @@ class U9StockReservationTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(self._sorties(self.panneau).count(), 1)
         self.assertEqual(self._sorties(self.onduleur).count(), 1)
+
+    # ── ASTK250 (D-ASTK-VER-1 = a) — quarantaine tracée, jamais bloquante ──
+    def _devis_rappele(self, ref, *, quantite=12, bloquees=10):
+        from apps.stock.services import mettre_en_quarantaine
+        rappele = Produit.objects.create(
+            company=self.company, nom='Micro-onduleur rappelé',
+            sku='MO-RAPPEL', prix_vente=Decimal('900'), quantite_stock=15,
+            tva=Decimal('20.00'))
+        mettre_en_quarantaine(company=self.company, produit=rappele,
+                              quantite=bloquees, user=self.user,
+                              motif='Rappel fabricant')
+        devis = Devis.objects.create(
+            company=self.company, reference=ref, client=self.cl,
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20.00'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=rappele, designation='Micro-onduleur',
+            quantite=Decimal(quantite), prix_unitaire=Decimal('900'),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        return devis, rappele
+
+    def _notes_quarantaine(self, devis):
+        return list(devis.activites.filter(
+            kind='note', body__contains='en quarantaine sorties')
+            .values_list('body', flat=True))
+
+    def test_quarantaine_a_la_facture(self):
+        devis, rappele = self._devis_rappele(f'DEV-{MONTH}-9131')
+        r = self._gen(devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(devis.factures.count(), 1)
+        rappele.refresh_from_db()
+        self.assertEqual(rappele.quantite_stock, 3)
+        self.assertEqual(self._sorties(rappele).get().quantite, 12)
+        self.assertEqual(self._notes_quarantaine(devis), [
+            'MO-RAPPEL : 7 unité(s) en quarantaine sorties (rappel ou '
+            'réception non conforme).'])
+
+    def test_quarantaine_sortie_couverte_hors_quarantaine_sans_note(self):
+        devis, rappele = self._devis_rappele(f'DEV-{MONTH}-9132', quantite=5)
+        self.assertEqual(self._gen(devis).status_code, 201)
+        rappele.refresh_from_db()
+        self.assertEqual(rappele.quantite_stock, 10)
+        self.assertEqual(self._notes_quarantaine(devis), [])
+
+    def test_quarantaine_a_la_livraison_bc(self):
+        devis, rappele = self._devis_rappele(f'DEV-{MONTH}-9133')
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-{MONTH}-9133',
+            devis=devis, client=self.cl, statut=BonCommande.Statut.CONFIRME)
+        r = self.api.post(
+            f'/api/django/ventes/bons-commande/{bc.id}/marquer-livre/',
+            {}, format='multipart')
+        self.assertEqual(r.status_code, 200, r.content)
+        rappele.refresh_from_db()
+        self.assertEqual(rappele.quantite_stock, 3)
+        self.assertEqual(len(self._notes_quarantaine(devis)), 1)
+        self.assertIn('MO-RAPPEL : 7 unité(s)',
+                      self._notes_quarantaine(devis)[0])

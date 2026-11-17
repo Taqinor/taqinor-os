@@ -2,7 +2,7 @@
 // la liste, jamais une invention de paramètre), et le renvoi exige un motif
 // (garde UI, en plus de la garde serveur).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Toaster } from 'sonner'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
@@ -432,5 +432,31 @@ describe('VisiteBureauEtudesPage — CSV14 (devis révisé après visite C&I)', 
       await screen.findByTestId('visite-qualification-resume')
       expect(screen.queryByRole('button', { name: 'Préparer le devis révisé' })).not.toBeInTheDocument()
     }
+  })
+})
+
+describe('VisiteBureauEtudesPage — AERR112 (ouvrir A puis B)', () => {
+  const visite = (id, nom) => ({
+    data: {
+      id, lead: 10 + id, statut: 'terminee',
+      checklist: [{ categorie: 'toiture', libelle: 'Toiture', slots: [{ code: 's1', libelle: 'Vue', requis: true, etat: 'ok', photos: [] }] }],
+      mesures: { toiture: { longueur_m: 12, largeur_m: 8, pente_deg: 15, orientation: 'sud' } },
+      client_panel: { lead_nom: nom },
+    },
+  })
+
+  it('ouvrir A (réponse lente) puis B : seule B s’affiche', async () => {
+    let finA
+    getVisite.mockImplementation((id) => (id === 1
+      ? new Promise((r) => { finA = () => r(visite(1, 'Lead A')) })
+      : Promise.resolve(visite(2, 'Lead B'))))
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    await user.click(await screen.findByText('Lead B'))
+    await act(async () => { finA() })
+    expect(await screen.findByTestId('visite-qualification-resume')).toBeInTheDocument()
+    expect(getVisite).toHaveBeenCalledWith(2)
+    expect(screen.queryByText('Lead A')).not.toBeInTheDocument()
   })
 })

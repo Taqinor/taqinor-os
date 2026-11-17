@@ -42,7 +42,16 @@ def monde():
     finally:
         for k, v in sauve.items():
             sys.modules.pop(k, None) if v is None else sys.modules.__setitem__(k, v)
-    g["enregistrer_registre_modules"](reg["PERMISSION_MODULE"], octrois_lecture=reg["OCTROIS_LECTURE"])
+    # ATST13 : le registre (modules + codes connus) s'enregistre sur le VRAI module authentication.permissions ; hors Django
+    # (hôte), ce module est exposé sous son nom d'import pour que le vrai corps de _role_grants_write le trouve.
+    g["enregistrer_registre_modules"](reg["PERMISSION_MODULE"], octrois_lecture=reg["OCTROIS_LECTURE"],
+                                      toutes_permissions=reg["ALL_PERMISSIONS"])
+    try:
+        import authentication.permissions  # pile Django (conteneur) : le registre est déjà posé par RolesConfig.ready()
+    except ImportError:
+        pk, pm = types.ModuleType("authentication"), types.ModuleType("authentication.permissions")
+        pk.__path__ = []; pm.__dict__.update(g); pk.permissions = pm
+        sys.modules["authentication"], sys.modules["authentication.permissions"] = pk, pm
     M = "authentication/models.py"
     rgw, adm, resp, hep = (fonction(M, n, "CustomUser") for n in
                            ("_role_grants_write", "is_admin_role", "is_responsable", "has_erp_permission"))
@@ -93,12 +102,13 @@ def attribut_classe(chemin, nom, attr):
 
 class Q:
     def __init__(s, **k): s.k = k
-    def __or__(s, o): return "|".join(sorted(list(s.k) + list(o.k)))
+    def __or__(s, o): return Q(**{**s.k, **o.k})
+    label = property(lambda s: "|".join(sorted(s.k)))
 
 
 class Lignes:
     def __init__(s): s.filtre = None
-    def filter(s, q): r = Lignes(); r.filtre = q; return r
+    def filter(s, q): r = Lignes(); r.filtre = getattr(q, "label", q); return r
 
 
 def sonde(ctx=None):
@@ -107,8 +117,18 @@ def sonde(ctx=None):
     etat = {"on": False}
     ns = {"Q": Q, "vue_restreinte_au_responsable": lambda company: etat["on"], "CAL_APPROUVER": constante(PM, "CAL_APPROUVER")}
     ns["_user_has_or_legacy"] = fonction("core/permissions.py", "_user_has_or_legacy", None, {})
+    # ALEC29 : restreindre_aux_siens appelle aussi core.scoping.visible_user_ids / scope_client_queryset et les sélecteurs CRM
+    # (ORM, hors hôte). record_scope_for est le VRAI corps (registre lu par import_module) ; les ids visibles et les querysets
+    # CRM sont des bouchons (seul compte ici : la portée est-elle appliquée, et sur quels champs).
+    rec = fonction("core/scoping.py", "record_scope_for", None, {"import_module": lambda n: types.SimpleNamespace(**reg)})
+    ns["visible_user_ids"] = lambda u: None if rec(u) == "all" else {u.id}
+    ns["scope_client_queryset"] = lambda qs, u: qs
+    ns["client_base_qs"] = lambda company: "clients"
+    ns["leads_visibles"] = lambda u, company: types.SimpleNamespace(values=lambda *a: "ids_leads")
     f = next(n for n in ast.parse((DJ / S).read_text(encoding="utf-8")).body if isinstance(n, ast.FunctionDef) and n.name == "restreindre_aux_siens")
-    f.body = [n for n in f.body if not isinstance(n, ast.ImportFrom)]       # imports locaux remplacés par les bouchons de ns
+    class SansImports(ast.NodeTransformer):                                  # imports locaux (même imbriqués) remplacés par les bouchons de ns
+        def visit_ImportFrom(self, n): return ast.Pass()
+    f = ast.fix_missing_locations(SansImports().visit(f))
     exec(compile(ast.Module([f], []), S, "exec"), ns)
     lisent = [n for n, u in roles.items() if u.has_erp_permission(constante(PM, "CAL_VOIR"))]   # read_permission de la vue (ScopedPermission)
     scope = {reg["SCOPE_SELF"], reg["SCOPE_SUBTREE"], reg["SCOPE_TEAM"]}

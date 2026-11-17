@@ -319,7 +319,7 @@
 - frontend/src/api/notificationsApi.js :: accuserLectureAnnonce -> /api/django/notifications/annonces/<>/accuser-lecture
     lu:booleen
 - frontend/src/api/notificationsApi.js :: attentionSummary -> /api/django/notifications/attention-summary
-    actions_dues:inconnu, approbations:inconnu, aujourdhui:inconnu, en_retard:inconnu, mentions_non_lues:inconnu
+    approbations:inconnu
 - frontend/src/api/notificationsApi.js :: calendarCheck -> /api/django/notifications/calendar/check
     date:texte, detail:texte, is_jour_ouvre:inconnu, prochain_jour_ouvre:texte
 - frontend/src/api/notificationsApi.js :: getVapidPublicKey -> /api/django/notifications/push/vapid-public-key

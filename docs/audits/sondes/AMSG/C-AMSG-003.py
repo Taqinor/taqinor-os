@@ -53,6 +53,7 @@ class QS(list):
     def filter(s, *q, **kw): return QS(s.depot, [o for o in s if Q(*q, **kw).ok(o)])
     def exclude(s, *q, **kw): return QS(s.depot, [o for o in s if not Q(*q, **kw).ok(o)])
     def exists(s): return bool(s)
+    def first(s): return s[0] if s else None
     def values_list(s, *f, flat=False): return [getattr(o, f[0]) for o in s] if flat else [tuple(getattr(o, x) for x in f) for o in s]
     def update(s, **kw): [o.__dict__.update(kw) for o in s]; return len(s)
     def delete(s): [s.depot.remove(o) for o in list(s)]
@@ -70,23 +71,29 @@ def sonde(ctx=None):
     sauve, pyc = dict(sys.modules), sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
-        LEADS, EMPREINTES = [], []
+        LEADS, EMPREINTES, ENBASE = [], [], []  # ENBASE = la ligne telle qu'écrite en base (copie à chaque save)
         Empreinte.objects = NS(filter=lambda *q, **kw: QS(EMPREINTES).filter(*q, **kw), bulk_create=lambda o, **k: QS(EMPREINTES).bulk_create(o))
         mod("django.conf", settings=NS(SECRET_KEY="cle-de-sonde")); mod("django.db.models", Q=Q)
         class Base:
             def save(s, *a, **k):
                 if s not in LEADS: LEADS.append(s)
+                ENBASE[:] = [e for e in ENBASE if e.pk != s.pk] + [copy.copy(s)]
                 s._state.adding = False
         g = {"__name__": "apps.crm.models", "__package__": "apps.crm", "Base": Base}
         exec("class Lead(Base):\n" + textwrap.indent(ast.unparse(noeud("apps/crm/models.py", "save", "Lead")), "    "), g)
         Lead = g["Lead"]; Lead.objects = NS(filter=lambda *q, **kw: QS(LEADS).filter(*q, **kw), all=lambda: QS(LEADS))
+        Lead.all_objects = NS(filter=lambda *q, **kw: QS(ENBASE).filter(*q, **kw))  # relire_opposition : la fiche a-t-elle changé de contact ?
         mod("apps.crm.models", Lead=Lead, EmpreinteOpposition=Empreinte)
-        charge("apps.crm.leads_doublons", "apps/crm/leads_doublons.py")
+        mod("apps.crm.activity", log_changes=lambda *a, **k: None)  # leads_doublons : `from . import activity` (chatter, bouchonné)
+        doublons = charge("apps.crm.leads_doublons", "apps/crm/leads_doublons.py")
         peut_contacter = charge("apps.crm.portee_selectors", "apps/crm/portee_selectors.py").peut_contacter
         cr = {"__name__": "apps.crm.cadence_reponses", "__package__": "apps.crm", "copy": copy, "BASE_LEGALE_OPPOSITION": "art. 9 loi 09-08",
               "activity": NS(log_changes=lambda *a, **k: None), "_ecrire_registre_contact": lambda *a, **k: None, "logger": NS(warning=print)}
-        for f in ("_marquer_lead_ne_plus_contacter", "tracer_opposition_registre"):
-            exec(compile(ast.Module(body=[noeud("apps/crm/cadence_reponses.py", f)], type_ignores=[]), "cadence_reponses.py", "exec"), cr)
+        if hasattr(doublons, "_marquer_lead_ne_plus_contacter"):  # AMSG3 : déplacé dans leads_doublons (VRAI code) ; avant, dans cadence_reponses
+            cr["_marquer_lead_ne_plus_contacter"] = doublons._marquer_lead_ne_plus_contacter
+        else:
+            exec(compile(ast.Module(body=[noeud("apps/crm/cadence_reponses.py", "_marquer_lead_ne_plus_contacter")], type_ignores=[]), "cadence_reponses.py", "exec"), cr)
+        exec(compile(ast.Module(body=[noeud("apps/crm/cadence_reponses.py", "tracer_opposition_registre")], type_ignores=[]), "cadence_reponses.py", "exec"), cr)
         societe, ids = NS(pk=1, id=1), iter(range(1, 99))
 
         def fiche(nom, tel):

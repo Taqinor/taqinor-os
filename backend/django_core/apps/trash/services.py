@@ -65,6 +65,17 @@ def journaliser_suppression(*, instance, company, user=None, type_libelle='',
         **valeurs)
 
 
+def caviarder_lead_anonymise(*, company, crm_lead_id):
+    """ASUP67 — un lead anonymisé (``lead_erased``) ne garde ni nom ni téléphone dans son entrée ACTIVE de
+    corbeille (loi 09-08) ; l'entrée reste restaurable. Content type ``crm.lead`` par libellé, sans import crm."""
+    if company is None or not crm_lead_id:
+        return 0
+    return ElementSupprime.objects.filter(
+        company=company, content_type__app_label='crm', content_type__model='lead',
+        object_id=crm_lead_id, restaure_le__isnull=True,
+    ).update(libelle_snapshot='Lead anonymisé', donnees_snapshot={}, updated_at=timezone.now())
+
+
 def _restauration_generique(element):
     """Repli : bascule le drapeau de soft-delete de la cible, résolue par
     `content_type` (aucun import de modèle étranger).

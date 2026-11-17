@@ -41,7 +41,16 @@ def monde():
     finally:
         for k, v in sauve.items():
             sys.modules.pop(k, None) if v is None else sys.modules.__setitem__(k, v)
-    g["enregistrer_registre_modules"](reg["PERMISSION_MODULE"], octrois_lecture=reg["OCTROIS_LECTURE"])
+    # ATST13 : le registre (modules + codes connus) s'enregistre sur le VRAI module authentication.permissions ; hors Django
+    # (hôte), ce module est exposé sous son nom d'import pour que le vrai corps de _role_grants_write le trouve.
+    g["enregistrer_registre_modules"](reg["PERMISSION_MODULE"], octrois_lecture=reg["OCTROIS_LECTURE"],
+                                      toutes_permissions=reg["ALL_PERMISSIONS"])
+    try:
+        import authentication.permissions  # pile Django (conteneur) : le registre est déjà posé par RolesConfig.ready()
+    except ImportError:
+        pk, pm = types.ModuleType("authentication"), types.ModuleType("authentication.permissions")
+        pk.__path__ = []; pm.__dict__.update(g); pk.permissions = pm
+        sys.modules["authentication"], sys.modules["authentication.permissions"] = pk, pm
     M = "authentication/models.py"
     rgw, adm, resp, hep = (fonction(M, n, "CustomUser") for n in
                            ("_role_grants_write", "is_admin_role", "is_responsable", "has_erp_permission"))
@@ -76,7 +85,7 @@ def sonde(ctx=None):
     ns = {"READ_ACTIONS": constante(V, "READ_ACTIONS"), "GED_GERER": constante(V, "GED_GERER"),
           "GED_GOUVERNANCE": constante(V, "GED_GOUVERNANCE"), "GOUVERNANCE_ACTIONS": constante(V, "GOUVERNANCE_ACTIONS"),
           "Mapping": dict, "IsAnyRole": g["IsAnyRole"], "HasPermissionOrLegacy": g["HasPermissionOrLegacy"],
-          "IsResponsableOrAdmin": g["IsResponsableOrAdmin"]}
+          "IsResponsableOrAdmin": g["IsResponsableOrAdmin"], "LectureDuModule": g["LectureDuModule"]}
     gp_doc = fonction(V, "get_permissions", "DocumentViewSet", dict(ns))
     gp_depot = fonction(V, "get_permissions", "DepotPublicViewSet", dict(ns))
     vue_doc = type("DocumentViewSet", (), {"__module__": "apps.ged.views"})()

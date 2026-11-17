@@ -46,6 +46,8 @@ class RappelRdvTests(TestCase):
             type_intervention='pose', technicien=self.tech,
             date_prevue=tasks.casablanca_today() + datetime.timedelta(days=1),
             rdv_confirme=False)
+        from apps.installations.tests_xfsm6_rappel_rdv import ouvrir_la_fenetre
+        ouvrir_la_fenetre(self)  # AMSG72 — fenêtre des messages figée ouverte (toute heure de la CI)
 
     def test_email_sans_phrase_orpheline(self):
         mail.outbox.clear()

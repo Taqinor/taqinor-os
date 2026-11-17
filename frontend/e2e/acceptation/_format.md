@@ -65,9 +65,11 @@ tâches qu'elle prouve, se déclare en 4ᵉ argument :
 l'orchestrateur, jamais un réflexe. Effets : `base_verdict: FAIL` (l'étape échouait déjà à la
 base, avant les tâches), ses tâches vont dans `couvre_avec_ecart` (et restent dans `couvre`), la
 raison (le défaut, son fichier, pourquoi il est hors périmètre) ouvre les `notes`. Le test reste
-vert si seuls les ORACLES échouent ; une assertion du corps qui échoue le fait toujours tomber.
-L'enregistrement reste PASS — même règle que la garde : chaque étape PASS, ou FAIL avec
-`base_verdict: FAIL` et toutes ses tâches dans `couvre_avec_ecart`. Le défaut est classé chez
+vert si seuls les ORACLES échouent ; une assertion du corps qui échoue le fait toujours tomber,
+l'étape porte alors `corps: FAIL` et l'enregistrement est FAIL (ASUP65 : un PASS ne sort jamais
+d'un run rouge). L'enregistrement reste PASS — même règle que la garde : chaque étape PASS, ou
+FAIL avec `base_verdict: FAIL`, `corps` différent de `FAIL` et toutes ses tâches dans
+`couvre_avec_ecart`. Le défaut est classé chez
 son propriétaire (plan d'audit), l'écart disparaît quand il est corrigé.
 
 ## L'enregistrement (contrat AMET88 — docstring de `scripts/check_acceptation.py`)
@@ -75,7 +77,8 @@ son propriétaire (plan d'audit), l'écart disparaît quand il est corrigé.
 `_enregistrement.js` écrit en `afterAll` :
 `docs/audits/acceptation/<G>/<AAAA-MM-JJ>-<sha9>.results.json` (FAIT FOI : `sha`, `date`,
 `groupe`, `verdict`, `couvre`, `couvre_avec_ecart`, `etapes[{id, taches, verdict, base_verdict,
-trace, oracles{"1".."10"}, notes}]`) et le `.md` frère (en-tête YAML identique + tableau
+corps, trace, oracles{"1".."10"}, notes}]` — `corps` = PASS/FAIL du corps de l'étape, absent dans
+les enregistrements antérieurs à ASUP65, toléré) et le `.md` frère (en-tête YAML identique + tableau
 lisible). `sha` = `git rev-parse HEAD` (ou `ACCEPTATION_SHA`), `date` = jour local,
 `trace` = capture `docs/qa-explorer/captures/<date>/ACCEPTATION-<G>-<étape>.jpg` (la trace
 Playwright complète reste dans le rapport). Verdict PASS seulement si toutes les étapes sont PASS.

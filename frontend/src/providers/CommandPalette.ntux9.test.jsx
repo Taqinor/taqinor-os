@@ -101,7 +101,7 @@ describe('NTUX9 — actions contextuelles par écran', () => {
     expect(message).toBe('Karim B. → Devis envoyé')
     expect(toastSuccess).not.toHaveBeenCalled()
     await onUndo()
-    expect(updateLead).toHaveBeenLastCalledWith('5', { stage: 'CONTACTED' })
+    expect(updateLead).toHaveBeenLastCalledWith('5', { stage: 'CONTACTED', undo: true })
     cleanup(); vi.clearAllMocks()
 
     getLead.mockResolvedValueOnce({ data: { stage: 'FOLLOW_UP', nom: 'Karim B.' } })

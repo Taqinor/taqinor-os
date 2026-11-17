@@ -7,6 +7,7 @@ import {
 } from '../../../features/stock/api/erreurs'
 import { Section, Vide } from './ElementsEcran'
 import useGesteEcran from './useGesteEcran'
+import { useCanLireInterventions } from '../../../hooks/useHasPermission'
 import usePeutEcrireStock from '../usePeutEcrireStock'
 import { SELECT_CLS, enListe, champDe } from './constantesEcran'
 
@@ -37,6 +38,7 @@ const VIDE_LIGNE = { produit: '', quantite: '' }
 export default function ExpeditionsPage() {
   // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
   const peutMouvement = usePeutEcrireStock('stock_mouvement')
+  const peutLireCasiers = useCanLireInterventions()  // ALEC48 — `installations/bin-locations/` exige le module chantiers
   const [unites, setUnites] = useState([])
   const [plans, setPlans] = useState([])
   const [expeditions, setExpeditions] = useState([])
@@ -74,9 +76,9 @@ export default function ExpeditionsPage() {
   useEffect(() => {
     Promise.resolve().then(charger)
     expeditionsApi.listProduits().then((r) => setProduits(enListe(r.data))).catch(() => {})
-    expeditionsApi.listCasiers().then((r) => setCasiers(enListe(r.data))).catch(() => {})
+    if (peutLireCasiers) expeditionsApi.listCasiers().then((r) => setCasiers(enListe(r.data))).catch(() => {})
     expeditionsApi.listClients().then((r) => setClients(enListe(r.data))).catch(() => {})
-  }, [charger])
+  }, [charger, peutLireCasiers])
 
   const nomProduit = (id) => produits.find((p) => p.id === id)?.nom ?? `Produit #${id}`
 

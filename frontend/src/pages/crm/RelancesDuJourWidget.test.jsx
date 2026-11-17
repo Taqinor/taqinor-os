@@ -323,7 +323,7 @@ describe('Déléguer mes dossiers (17/11/2026)', () => {
 
   it('un refus du serveur s’affiche sous le champ, sans toast', async () => {
     crmApi.deleguerDossiers.mockRejectedValue({
-      response: { status: 400, data: exempleContrat('crm', 'lead_deleguer', 'exemple_refus') },
+      response: { status: 409, data: exempleContrat('crm', 'lead_deleguer', 'exemple_refus') },
     })
     mount()
     await ouvrirEtChoisir()

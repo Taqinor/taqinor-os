@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import { ThemeProvider } from '../design/ThemeProvider'
-import { Toaster } from './Toaster'
+import { Toaster, toast } from './Toaster'
 import { toastError, toastSuccess, toastInfo, toastWarning } from '../lib/toast'
 
 describe('Toaster (VX196 — announceur assertif des erreurs)', () => {
@@ -90,4 +90,31 @@ describe('VX130 — Toaster : 4 variantes de type dérivées des tokens (parité
     })
   })
 
+})
+
+// AERR179 — toast à action « Annuler » cliquable sous une modale (Radix pose
+// pointer-events: none sur le body) ; le test jsdom ne calcule pas le style, il
+// vérifie la couche posée et que l'action est appelée une fois.
+describe('AERR179 — toast cliquable sous une modale', () => {
+  it('le toast pose pointer-events:auto et l’action « Annuler » reçoit le clic', async () => {
+    const onClick = vi.fn()
+    document.body.style.pointerEvents = 'none'
+    render(
+      <ThemeProvider>
+        <Toaster />
+      </ThemeProvider>,
+    )
+    await act(async () => {
+      toast('Karim B. → Devis envoyé', { action: { label: 'Annuler', onClick } })
+    })
+    const li = await waitFor(() => {
+      const el = document.querySelector('[data-sonner-toast]')
+      expect(el).not.toBeNull()
+      return el
+    })
+    expect(li.style.pointerEvents).toBe('auto')
+    fireEvent.click(screen.getByText('Annuler'))
+    expect(onClick).toHaveBeenCalledTimes(1)
+    document.body.style.pointerEvents = ''
+  })
 })

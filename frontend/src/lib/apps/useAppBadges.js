@@ -69,7 +69,11 @@ export function useAppBadges() {
   // ADRG141 — `kpi-federes` est IsResponsableOrAdmin : un Viewer prendrait 403 à
   // chaque arrivée sur l'accueil. Store lu par son contexte (rendu sans store : on appelle).
   const auth = useContext(ReactReduxContext)?.store?.getState().auth
-  const autorise = !auth || estResponsable(auth.role, auth.role_nom, auth.permissions || [])
+  const codes = auth?.permissions || []
+  // ADRG144 — un rôle fin non admin exige aussi un code `reporting_*` (peut_lire_module).
+  const roleFin = auth && auth.role !== 'admin' && (auth.role_nom || codes.length > 0)
+  const autorise = !auth || (estResponsable(auth.role, auth.role_nom, codes)
+    && (!roleFin || codes.some((c) => typeof c === 'string' && c.startsWith('reporting_'))))
 
   useEffect(() => {
     if (!autorise) return undefined

@@ -24,7 +24,8 @@ from .cadence_reponses import reattribuer_lead
 
 class DelegationRefusee(Exception):
     """Refus NOMMÉ : ``champ`` dit sous quel champ l'écran l'affiche,
-    ``statut`` le code HTTP (400 par défaut, 403 hors portée)."""
+    ``statut`` le code HTTP : 400 valeur mal formée, 403 hors portée, 404 collègue
+    introuvable, 409 état (compte désactivé, même personne) — ENF11."""
 
     def __init__(self, champ, message, statut=400):
         super().__init__(message)
@@ -44,11 +45,12 @@ def _utilisateur_de_la_societe(company, valeur, champ):
         raise DelegationRefusee(champ, 'Collègue invalide.') from None
     cible = CustomUser.objects.filter(pk=pk, company=company).first()
     if cible is None:
-        raise DelegationRefusee(champ, 'Collègue introuvable dans cette société.')
+        raise DelegationRefusee(
+            champ, 'Collègue introuvable dans cette société.', statut=404)
     return cible
 
 
-def resoudre_delegation(user, corps):
+def resoudre_delegation(user, corps, *, exiger_vers=True):
     """``(de, vers)`` validés : société, portée, cible active, ``de`` ≠ ``vers``.
 
     ``de`` absent = l'appelant. ``de`` ≠ appelant exige que ``de`` soit dans la
@@ -57,17 +59,22 @@ def resoudre_delegation(user, corps):
     from core.scoping import visible_user_ids
 
     company = user.company
-    vers = _utilisateur_de_la_societe(company, corps.get('vers'), 'vers')
+    brut_vers = corps.get('vers')
+    # Aperçu sans cible (GET nu) : les chiffres de ce qui partirait.
+    vers = (None if not exiger_vers and brut_vers in (None, '', 'null')
+            else _utilisateur_de_la_societe(company, brut_vers, 'vers'))
     brut_de = corps.get('de')
     de = (user if brut_de in (None, '', 'null')
           else _utilisateur_de_la_societe(company, brut_de, 'de'))
-    if not vers.is_active:
+    # ENF11 — un ÉTAT (compte désactivé, même personne) est un 409, jamais un 400.
+    if vers is not None and not vers.is_active:
         raise DelegationRefusee(
-            'vers', 'Ce collègue est désactivé : choisissez un compte actif.')
-    if de.pk == vers.pk:
+            'vers', 'Ce collègue est désactivé : choisissez un compte actif.',
+            statut=409)
+    if vers is not None and de.pk == vers.pk:
         raise DelegationRefusee(
             'vers', 'Ces dossiers appartiennent déjà à cette personne : '
-                    'choisissez un autre collègue.')
+                    'choisissez un autre collègue.', statut=409)
     if de.pk != user.pk:
         visibles = visible_user_ids(user)
         if visibles is not None and de.pk not in visibles:

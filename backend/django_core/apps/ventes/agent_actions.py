@@ -190,8 +190,8 @@ LIGNE_AJOUTER = AgentAction(
 # /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). L'id est celui de la
 # LIGNE (aucune action ne liste les lignes d'un devis : l'agent le demande s'il
 # ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
-# proposition à confirmer — un prix de ligne n'est vu par AUCUN garde-fou de
-# remise du serveur (``profondeur_remise_effective`` le prend pour la base).
+# proposition à confirmer — AIC98 : une baisse de prix de ligne (prix tapé) compte
+# comme une remise pour le seuil d'approbation T17 (``profondeur_remise_effective``).
 LIGNE_MODIFIER = AgentAction(
     key='ventes.devis.ligne_modifier',
     label='Modifier une ligne de devis',

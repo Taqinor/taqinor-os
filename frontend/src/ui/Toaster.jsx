@@ -48,7 +48,11 @@ export function Toaster(props) {
           warning: <AlertTriangle className="size-4" aria-hidden="true" />,
           info: <Info className="size-4" aria-hidden="true" />,
         }}
+        style={{ zIndex: 'var(--z-popover)' }}
         toastOptions={{
+          // AERR179 — Radix pose `pointer-events: none` sur le body sous une modale :
+          // le toast (hors modale) doit rester cliquable (« Annuler »).
+          style: { pointerEvents: 'auto' },
           classNames: {
             toast:
               'rounded-lg border border-border bg-card text-card-foreground shadow-ui-lg font-brand',

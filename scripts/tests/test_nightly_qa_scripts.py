@@ -600,12 +600,36 @@ class GcWorkspaceTests(unittest.TestCase):
 
     def test_branche_worktree_agent_fusionnee_supprimee(self):
         sortie = self._lancer()
+        # Sans remote : repli sur la main LOCALE, dit à l'écran (ADCG118).
+        self.assertIn("remote origin injoignable", sortie)
         self.assertIn("delete merged branch worktree-agent-x", sortie)
         self.assertNotIn("delete merged branch worktree-agent-y", sortie)
         garde = sortie[sortie.index("KEEP (non fusionn"):]
         self.assertIn("- worktree-agent-y", garde)
         branches = _git(self.depot, "branch", "--format=%(refname:short)").split()
         self.assertEqual(sorted(branches), ["main", "worktree-agent-x", "worktree-agent-y"])
+
+    def test_main_locale_en_retard_branche_fusionnee_dans_origin_main_listee(self):
+        # ADCG118 : le checkout principal du fondateur a une `main` figée (14/10) ; une
+        # branche fusionnée dans origin/main doit être listée après le fetch du script.
+        amont = self.depot.parent / (self.depot.name + "-amont")
+        self.addCleanup(shutil.rmtree, amont, ignore_errors=True)
+        _git(self.depot.parent, "clone", "-q", str(self.depot), str(amont))
+        _git(self.depot, "remote", "add", "origin", str(amont))
+        _git(self.depot, "fetch", "-q", "origin")
+        _git(amont, "checkout", "-q", "-b", "worktree-agent-z")
+        (amont / "z.txt").write_text("z\n", encoding="utf-8")
+        _git(amont, "add", "z.txt")
+        _git(amont, "commit", "-q", "-m", "z")
+        _git(amont, "checkout", "-q", "main")
+        _git(amont, "merge", "-q", "--no-ff", "-m", "merge z", "worktree-agent-z")
+        _git(self.depot, "fetch", "-q", "origin", "worktree-agent-z:worktree-agent-z")
+        self.assertNotIn("worktree-agent-z", _git(self.depot, "branch", "--merged", "main"))
+        sortie = self._lancer()
+        self.assertIn("contre origin/main (fetch fait)", sortie)
+        self.assertIn("delete merged branch worktree-agent-z", sortie)
+        self.assertNotIn("delete merged branch worktree-agent-y", sortie)
+        self.assertIn("worktree-agent-z", _git(self.depot, "branch", "--format=%(refname:short)"))
 
     def test_whatif_ne_prune_aucun_worktree(self):
         # ERR-GC-WORKSPACE-WHATIF-PRUNE : -WhatIf ne lance aucune commande git destructive.

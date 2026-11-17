@@ -99,7 +99,7 @@ def comptes(groupe: str, toutes: list, ledger: dict) -> tuple:
 
 
 def derniere_verifie(mot: str, groupe: str):
-    """Dernier dossier `<date>-<mot>-verifie.md` : {fichier, date, pct, ecarts} ou None.
+    """Dernier dossier `<date>-<mot>-verifie.md` : {fichier, date, pct, ecarts, faits} ou None.
 
     ADCG103 — nom ENTIER (`sav` n'attrape pas `chantier-sav`) ; un marqueur
     d'un AUTRE `groupe:` écarte le fichier ; sans marqueur, le nom seul décide."""
@@ -110,6 +110,7 @@ def derniere_verifie(mot: str, groupe: str):
         texte = chemin.read_text(encoding="utf-8", errors="replace")
         pct = None
         ecarts = None
+        faits = None
         m = _MARQUEUR.search(texte)
         if m:
             corps = m.group("corps")
@@ -120,10 +121,12 @@ def derniere_verifie(mot: str, groupe: str):
             e = re.search(r"ecarts_s1_s2:\s*(\d+)", corps)
             pct = int(p.group(1)) if p else None
             ecarts = int(e.group(1)) if e else None
+            f = re.search(r"faits:\s*(\d+)", corps)  # ACEL101 — cochées au compte rendu
+            faits = int(f.group(1)) if f else None
         if ecarts is None:
             ecarts = len(_ECART.findall(texte))
         return {"fichier": chemin.name, "date": chemin.name[:10], "pct": pct,
-                "ecarts": ecarts}
+                "ecarts": ecarts, "faits": faits}
     return None
 
 
@@ -247,7 +250,8 @@ def cmd_du() -> int:
         v = u["verifie"]
         if u["pct"] >= SEUIL_CONSTRUIT and not (v and (v["pct"] or 0) >= SEUIL_CONSTRUIT):
             seuil = f"clôture (≥ {SEUIL_CONSTRUIT} %), pas vérifié depuis"
-        elif u["pct"] >= SEUIL_CONSTRUIT and v and v["ecarts"] and ecarts_tous_coches(u["groupe"], v["date"]):
+        elif (u["pct"] >= SEUIL_CONSTRUIT and v and v["ecarts"] and ecarts_tous_coches(u["groupe"], v["date"])
+              and (v["faits"] is None or u["faits"] > v["faits"])):  # ACEL101 — une coche nouvelle
             seuil = f"contre-visite des correctifs (écarts S1-S2 du {v['date']} tous cochés)"
         elif u["pct"] >= SEUIL_MI_PARCOURS and not v:
             seuil = f"mi-parcours (≥ {SEUIL_MI_PARCOURS} %), jamais vérifié"

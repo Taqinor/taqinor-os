@@ -22,7 +22,9 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { assurerSessionPage, uiLoginJusquAuxApps, lireJson, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ACNC', ['ACNC25', 'ACNC26', 'ACNC27', 'ACNC33', 'ACNC35', 'ACNC41', 'ACNC42', 'ACNC44', 'ACNC45',
+// ACNC2_SEULS (ids séparés par des virgules) : rejeu isolé de quelques tâches — `couvre` ne nomme alors que celles-là
+// (sinon les ids sans étape jouée feraient tomber le verdict du groupe), à combiner avec `--grep`.
+const etape = groupe('ACNC', process.env.ACNC2_SEULS ? process.env.ACNC2_SEULS.split(',') : ['ACNC25', 'ACNC26', 'ACNC27', 'ACNC33', 'ACNC35', 'ACNC41', 'ACNC42', 'ACNC44', 'ACNC45',
   'ACNC46', 'ACNC47', 'ACNC49', 'ACNC52', 'ACNC53', 'ACNC55'])
 fermerDjangoApresTout()
 const API = '/api/django'

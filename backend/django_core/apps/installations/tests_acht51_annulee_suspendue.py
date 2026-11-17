@@ -70,6 +70,8 @@ class AnnuleeSuspendueTests(TestCase):
                        EMAIL_BACKEND='django.core.mail.backends.locmem.'
                                      'EmailBackend')
     def test_rappel_ni_annulee_ni_suspendue(self):
+        from apps.installations.tests_xfsm6_rappel_rdv import ouvrir_la_fenetre
+        ouvrir_la_fenetre(self)  # AMSG72 — fenêtre des messages figée ouverte (toute heure de la CI)
         mail.outbox.clear()
         res = tasks.rappel_rdv_j1()
         destinataires = [m.to[0] for m in mail.outbox]

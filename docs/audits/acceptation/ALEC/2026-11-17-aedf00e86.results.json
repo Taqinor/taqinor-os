@@ -1,0 +1,57 @@
+{
+  "sha": "aedf00e86fc6aa13f45205c3d9641e37b2c01ef9",
+  "date": "2026-11-17",
+  "groupe": "ALEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEC45",
+    "ALEC46"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF6-ALEC45-cle-telephone-meta",
+      "taches": [
+        "ALEC45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC45-cle-telephone-meta.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC46-miroirs-publicitaires",
+      "taches": [
+        "ALEC46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC46-miroirs-publicitaires.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

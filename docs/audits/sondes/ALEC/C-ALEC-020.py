@@ -41,7 +41,16 @@ def monde():
     finally:
         for k, v in sauve.items():
             sys.modules.pop(k, None) if v is None else sys.modules.__setitem__(k, v)
-    g["enregistrer_registre_modules"](reg["PERMISSION_MODULE"], octrois_lecture=reg["OCTROIS_LECTURE"])
+    # ATST13 : le registre (modules + codes connus) s'enregistre sur le VRAI module authentication.permissions ; hors Django
+    # (hôte), ce module est exposé sous son nom d'import pour que le vrai corps de _role_grants_write le trouve.
+    g["enregistrer_registre_modules"](reg["PERMISSION_MODULE"], octrois_lecture=reg["OCTROIS_LECTURE"],
+                                      toutes_permissions=reg["ALL_PERMISSIONS"])
+    try:
+        import authentication.permissions  # pile Django (conteneur) : le registre est déjà posé par RolesConfig.ready()
+    except ImportError:
+        pk, pm = types.ModuleType("authentication"), types.ModuleType("authentication.permissions")
+        pk.__path__ = []; pm.__dict__.update(g); pk.permissions = pm
+        sys.modules["authentication"], sys.modules["authentication.permissions"] = pk, pm
     M = "authentication/models.py"
     rgw, adm, resp, hep = (fonction(M, n, "CustomUser") for n in
                            ("_role_grants_write", "is_admin_role", "is_responsable", "has_erp_permission"))
@@ -85,7 +94,30 @@ def mots_de_portee(*fns):
 def decorateur_permissions(f):
     for d in f.decorator_list:
         if isinstance(d, ast.Call) and getattr(d.func, "id", "") == "permission_classes":
-            return [e.id for e in d.args[0].elts]
+            return list(d.args[0].elts)
+
+
+def noms(elts):
+    return [e.id if isinstance(e, ast.Name) else ast.unparse(e) for e in elts]
+
+
+def gardes_de(elts, g):
+    """Instancie les VRAIES gardes d'un @permission_classes([...]) : Nom -> classe de authentication.permissions ;
+    lecture_source('m') -> classe LectureDuModule à module_fige (corps lu dans reporting/gardes_lecture.py) ;
+    DroitDeLaGrille(...) -> VRAIE fonction apps/roles/permissions.py, sans ?export= donc passante (la garde n'est jouée
+    que pour l'export xlsx : la lecture JSON, seule servie ici, reste ouverte)."""
+    out = []
+    for e in elts:
+        if isinstance(e, ast.Name):
+            out.append(g[e.id]())
+        elif e.func.id == "lecture_source":
+            out.append(type("LectureSource", (g["LectureDuModule"],), {"module_fige": e.args[0].value})())
+        else:
+            ns = {"_GESTE_PAR_SUFFIXE": constante("apps/roles/permissions.py", "_GESTE_PAR_SUFFIXE"),
+                  "CODE_DROIT_MANQUANT": "droit_manquant", "_corps": lambda r: {}, "corps_change_le_champ": lambda *a: False}
+            F = fonction("apps/roles/permissions.py", "DroitDeLaGrille", None, ns)
+            out.append(F(e.args[0].value, export=tuple(ast.literal_eval(e.keywords[0].value)))())
+    return out
 
 
 def sonde(ctx=None):
@@ -96,15 +128,15 @@ def sonde(ctx=None):
     obs = {}
     # 1. reporting/views.py::dashboard — @permission_classes([IsResponsableOrAdmin])
     f1 = corps("apps/reporting/views.py", "dashboard")
-    d1 = decorateur_permissions(f1)
-    ok1 = passent([g[x]() for x in d1], roles, vue("apps.reporting.views", "dashboard"))
+    d1 = noms(decorateur_permissions(f1))
+    ok1 = passent(gardes_de(decorateur_permissions(f1), g), roles, vue("apps.reporting.views", "dashboard"))
     obs["reporting.dashboard"] = {"garde": d1, "portee_dans_le_corps": mots_de_portee(f1), "passent": ok1}
     # 2. ventes/dashboard_view.py::dashboard_quote_to_cash — LectureFactures(LectureVentes(LectureDuModule), module_fige='ventes')
     G = "apps/ventes/gardes_lecture.py"
     cls = {n.name: n for n in ast.parse((DJ / G).read_text(encoding="utf-8")).body if isinstance(n, ast.ClassDef)}
     fige = next(s.value.value for s in cls["LectureVentes"].body if isinstance(s, ast.Assign) and s.targets[0].id == "module_fige")
     f2 = corps("apps/ventes/dashboard_view.py", "dashboard_quote_to_cash")
-    d2 = decorateur_permissions(f2)
+    d2 = noms(decorateur_permissions(f2))
     chaine = (d2 == ["LectureFactures"] and cls["LectureFactures"].bases[0].id == "LectureVentes"
               and cls["LectureVentes"].bases[0].id == "LectureDuModule")
     LF = type("LectureFactures", (g["LectureDuModule"],), {"module_fige": fige})

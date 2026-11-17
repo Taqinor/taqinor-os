@@ -37,7 +37,8 @@ const etapeComplete = (e) => !!(e && e.id && e.taches?.length && ['PASS', 'FAIL'
 /** Construit {res, md} : results.json (fait foi) + vue humaine à en-tête YAML.
  *  Verdict = règle EXACTE de `check_acceptation.py::_verifier_etape` : PASS ssi
  *  chaque étape est complète et PASS, ou FAIL en ÉCART ACCEPTÉ (`base_verdict:
- *  FAIL` ET toutes ses tâches dans `couvre_avec_ecart`) ; couvre_avec_ecart ⊆ couvre. */
+ *  FAIL` ET toutes ses tâches dans `couvre_avec_ecart`, corps non FAIL — ASUP65) ;
+ *  couvre_avec_ecart ⊆ couvre. `corps` absent (ancien format) = toléré. */
 export function composer({ groupe, sha, date, couvre, couvreAvecEcart = [], etapes }) {
   const vues = new Set(etapes.flatMap((e) => e.taches || []))
   const sansEtape = couvre.filter((t) => !vues.has(t))
@@ -46,7 +47,7 @@ export function composer({ groupe, sha, date, couvre, couvreAvecEcart = [], etap
   const couvert = couvre.filter((t) => vues.has(t))
   const ecart = new Set(couvreAvecEcart.filter((t) => couvert.includes(t)))
   const admise = (e) => etapeComplete(e) && (e.verdict === 'PASS'
-    || (e.base_verdict === 'FAIL' && e.taches.every((t) => ecart.has(t))))
+    || (e.base_verdict === 'FAIL' && e.corps !== 'FAIL' && e.taches.every((t) => ecart.has(t))))
   const ok = etapes.length > 0 && sansEtape.length === 0 && etapes.every(admise)
   const res = {
     sha, date, groupe, verdict: ok ? 'PASS' : 'FAIL',

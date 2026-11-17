@@ -34,8 +34,9 @@ function sonderProgression(id, dispatch) {
       const res = await iaApi.getProgression(id)
       echecsDeSuite = 0
       const etapes = res?.data?.etapes
-      const derniere = Array.isArray(etapes) ? etapes[etapes.length - 1]?.libelle : null
-      if (derniere) dispatch({ type: 'ia/etapeRecue', payload: String(derniere) })
+      // AIC101 — toutes les étapes publiées (ordre serveur), pas la seule dernière.
+      const libelles = Array.isArray(etapes) ? etapes.map((e) => e?.libelle).filter(Boolean).map(String) : []
+      if (libelles.length) dispatch({ type: 'ia/etapeRecue', payload: libelles })
     } catch {
       // Sondage best-effort (la réponse du tour arrive de toute façon) : trois
       // échecs de suite ⇒ on cesse de sonder plutôt que de marteler la route.
@@ -192,7 +193,7 @@ const iaSlice = createSlice({
     agentLoading: false,
     agentError: null,
     // AIC91 — dernière étape du tour en cours (libellé du registre), ou null.
-    etapeEnCours: null,
+    etapes: [],
     // OCR
     ocrResult: null,
     ocrLoading: false,
@@ -218,7 +219,7 @@ const iaSlice = createSlice({
     toggleCopilot(state) { state.copilotOpen = !state.copilotOpen },
     clearMessages(state) { state.messages = [] },
     // AIC91 — une étape lue par le sondage ; ignorée hors attente (réponse arrivée).
-    etapeRecue(state, action) { if (state.agentLoading) state.etapeEnCours = action.payload },
+    etapeRecue(state, action) { if (state.agentLoading) state.etapes = action.payload },
     historyLoaded(state, action) { state.messages = messagesDeLHistorique(action.payload) },
     // AG3/COP-F1 — « Annuler » sur UNE carte proposition : sans appel API (le
     // jeton expire seul côté Redis, usage unique). La carte reste, « annulée ».
@@ -274,12 +275,12 @@ const iaSlice = createSlice({
       .addCase(queryAgent.pending, (state, action) => {
         state.agentLoading = true
         state.agentError = null
-        state.etapeEnCours = null
+        state.etapes = []
         state.messages.push({ role: 'user', content: questionDe(action.meta.arg) })
       })
       .addCase(queryAgent.fulfilled, (state, action) => {
         state.agentLoading = false
-        state.etapeEnCours = null
+        state.etapes = []
         // AG3 — buildAgentMessage rend une carte proposition / résultat quand le
         // payload structuré AG2 est présent ; sinon un message texte (N86).
         // L'événement journalisé (AIC6, note AIC8) et le moteur sont conservés.
@@ -293,7 +294,7 @@ const iaSlice = createSlice({
       })
       .addCase(queryAgent.rejected, (state, action) => {
         state.agentLoading = false
-        state.etapeEnCours = null
+        state.etapes = []
         state.agentError = action.payload
       })
 

@@ -1,5 +1,5 @@
 # Audit PF9 « doubles clics, gestes rejoués, courses » — 2026-11-11 — L2
-<!-- dossier-v3 | groupe: ACNC | base: 3acfee4 | fraicheur: 93f8626 | constats: 33 | taches: 48 | decisions: 2 -->
+<!-- dossier-v3 | groupe: ACNC | base: 3acfee4 | fraicheur: 93f8626 | constats: 33 | taches: 49 | decisions: 2 -->
 
 ## 1. Charte
 | Champ | Valeur |
