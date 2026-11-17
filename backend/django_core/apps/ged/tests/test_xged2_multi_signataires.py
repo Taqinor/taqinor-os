@@ -334,9 +334,19 @@ class RelancesTests(XGed2Base):
         """AMSG73 (D-AMSG-1) — balayage de 07:45 (fenêtre des messages
         fermée, idem un dimanche) : 0 relance, l'expiration reste immédiate,
         la relance est reprise à `prochaine_ouverture` ; à l'ouverture : 1."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from freezegun import freeze_time
+
         from apps.ged import tasks
         from apps.ged.models import DemandeSignatureDocument
         from apps.notifications.selectors import FenetreNotifications
+        # AMSG106 — horloge figée à 07:45 : l'ouverture (+45 min) tombe le jour même
+        # quelle que soit l'heure du run (rouge de 23:15 à minuit sur l'horloge réelle).
+        gel = freeze_time(datetime(2027, 2, 17, 7, 45, tzinfo=ZoneInfo('Africa/Casablanca')))
+        gel.start()
+        self.addCleanup(gel.stop)
         demande = services.creer_demande_multi_signataires(
             self.doc_a, destinataires=self._destinataires(),
             company=self.co_a, relance_cadence_jours=3)
