@@ -680,6 +680,10 @@ en v1 une micro-tâche compte 1 et `micro_non_comptees` vaut 0.
 
 ### 6.2 La journée évaluée (`statut_jour(ouvre, conge, compte, plan, app)`)
 
+Écran Mon rythme (rév. 3.1) : la série montrée (`RYTHME.serie`) est la fenêtre de la proposition, les 10 derniers
+jours TRAVAILLÉS ; un jour férié ou en congé n'y a pas de barre (il est nommé sous la trace) ; un jour `sans_donnees`
+a une barre vide.
+
 `conge` · `non_ouvre` (non travaillé pour lui) · `sans_donnees` (travaillé, 0 compté, aucun plan validé, app non
 ouverte) · `evalue`. Seul `evalue` entre dans un bloc, une référence ou un constat. Un samedi travaillé va dans les
 totaux, jamais dans un bloc. Statut posé par la tâche nocturne sur le `PlanJour` de la veille.
@@ -1145,6 +1149,10 @@ Repris par la révision 3 : bilan `?ouvrir=bilan`, valeur `pause` de `CarteDuMom
 Pastille gardées seules ; `carte_du_moment` ; Proposé N = objectif − faites − gardées, replié après Alléger ; Toute la
 journée ; bilan « Tout reporter » ; décision `garder` ; `palier` seule source, premier objectif proposé ;
 `projets_communs[]` ; hors ligne et conflit ; question du premier rappel ; recalculs 65/65, 25/25, 300/300.
+
+## Révision 3.1
+
+Mon rythme montre les 10 derniers jours travaillés (§6.2) ; textes des maquettes unifiées repris dans `textes.md`.
 
 ## Révision 3 : ce qui a changé
 
