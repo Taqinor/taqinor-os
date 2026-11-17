@@ -6,6 +6,7 @@ import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { configurerGestes } from '../../features/taches/lib/gestes'
 import ListeRubriques, { Avance, MesDonnees } from '../../features/taches/reglages/Rubriques'
 import ViePrivee from '../../features/taches/reglages/ViePrivee'
+import MonIphone from '../../features/taches/iphone/MonIphone'
 
 /* ============================================================================
    TCH108 — Écran « Réglages » (routes /taches/reglages et /taches/reglages/:rubrique ; atteignable
@@ -22,6 +23,7 @@ const messageDe = (err, champ) => {
 }
 
 function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
+  if (rubrique === 'iphone') return <MonIphone reglages={reglages} onReglage={basculer} erreur={erreur} />
   if (rubrique === 'vie-privee') {
     return (
       <ViePrivee
