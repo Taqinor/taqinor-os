@@ -197,3 +197,30 @@
 .tch .ag-duree-haut small { display: block; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ag-duree .segmente { margin: 8px 0 0; grid-template-columns: repeat(3, 1fr); }
 .tch .ag-duree .raccourci { margin: 8px 0 0; }
+
+/* ── TCH106 — Planifier ma semaine : sept lignes de jour + le volet ─────── */
+.tch .ag-vues .bouton.second { flex: none; height: 44px; }
+.tch .ag-planifier-tete {
+  display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 4px var(--tch-gouttiere) 0;
+}
+.tch .ag-terminer { min-height: 44px; font-weight: 650; }
+.tch .ag-jours { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px 0; }
+.tch .ag-pj {
+  position: relative; display: grid; grid-template-columns: 72px 1fr; align-items: center; column-gap: 10px;
+  min-height: 50px; width: 100%; padding: 4px 12px; border-radius: 12px; text-align: left;
+  background: var(--tch-panneau);
+}
+.tch .ag-pj .j { font-size: 0.9375rem; font-weight: 650; }
+.tch .ag-pj .n { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ag-pj.auj .j { color: var(--tch-accent); }
+.tch .ag-pj.passe { background: transparent; cursor: default; }
+.tch .ag-pj.passe .j { color: var(--tch-texte-doux); font-weight: 500; }
+.tch .ag-pj.repos { background: var(--ag-repos); }
+.tch .ag-pj.nouveau { background: var(--ag-cible); }
+.tch .ag-pj:focus-visible { outline: 2px solid var(--tch-accent); outline-offset: 2px; }
+@media (hover: hover) {
+  .tch .ag-pj:not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
+}
+.tch .ag-pj-ajout {
+  grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; padding: 0 0 6px; font-size: 0.9375rem; font-weight: 600;
+}

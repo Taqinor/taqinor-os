@@ -52,8 +52,8 @@ function Groupe({ titre, items, ...props }) {
   )
 }
 
-function MesProjets({ groupes, ...props }) {
-  const [ouvert, setOuvert] = useState(false)
+function MesProjets({ groupes, ouvertAuDepart, ...props }) {
+  const [ouvert, setOuvert] = useState(ouvertAuDepart)
   const total = groupes.reduce((n, g) => n + g.items.length, 0)
   if (!total) return null
   return (
@@ -79,7 +79,7 @@ function MesProjets({ groupes, ...props }) {
  * tâche choisie (ou nul) ; `aide` : la phrase du pied (Jour : glisser sur un créneau).
  */
 export default function VoletAPlacer({
-  aPlacer = [], mesProjets = [], choisie = null, aujourdhui, onChoisir,
+  aPlacer = [], mesProjets = [], choisie = null, aujourdhui, onChoisir, projetsOuverts = false,
   consigne = (titre) => `Touche un créneau pour ${titre}`,
   aide = 'Glisse une tâche sur un créneau pour lui donner une heure.',
 }) {
@@ -104,7 +104,7 @@ export default function VoletAPlacer({
       {total === 0 ? <p className="ag-av-vide">Tout est placé</p> : null}
       <Groupe titre="Aujourd'hui" items={jour} {...props} />
       <Groupe titre="À revoir" items={revoir} {...props} />
-      <MesProjets groupes={mesProjets} {...props} />
+      <MesProjets groupes={mesProjets} ouvertAuDepart={projetsOuverts} {...props} />
       {total > 0 ? <p className="ag-aside-pied">{aide}</p> : null}
     </aside>
   )

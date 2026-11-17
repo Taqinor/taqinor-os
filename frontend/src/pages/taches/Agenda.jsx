@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 import {
   annulerGeste, lireAgenda, modifierTache, planifierTache, rouvrirTache, terminerTache,
 } from '../../api/tachesApi'
+import PlanifierSemaine from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -433,6 +434,7 @@ const DUREES_RAPIDES = [30, 60, 120]
 function usePlacement(setDonnees, setErreur, aujourdhui) {
   const [choisie, setChoisie] = useState(null)
   const [posee, setPosee] = useState(null)
+  const [posees, setPosees] = useState({})
   const annulerPose = useRef(null)
 
   /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable. */
@@ -454,11 +456,13 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     reconcilier(setDonnees, reponse?.data?.tache)
     const placee = { ...item, ...(reponse?.data?.tache ?? {}), jour_prevu: jour, heure_debut: heureDebut }
     if (heureDebut) setPosee(placee)
+    else setPosees((p) => ({ ...p, [jour]: placee }))
     const gesteId = reponse?.data?.geste_id
     const annuler = async () => {
       if (gesteId) await annulerGeste(gesteId)
       setDonnees(precedent)
       setPosee(null)
+      setPosees((p) => Object.fromEntries(Object.entries(p).filter(([, t]) => t.id !== item.id)))
     }
     annulerPose.current = annuler
     proposerAnnuler({
@@ -508,7 +512,7 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     annuler?.().catch((err) => setErreur(frenchError(err, "L'annulation a échoué. Réessayez.")))
   }, [setErreur])
 
-  return { choisie, setChoisie, posee, setPosee, poser, changerDuree, annulerLaPose }
+  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose }
 }
 
 function DureePosee({ posee, onDuree, onAnnuler }) {
@@ -544,7 +548,9 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const vue = VUES.some(([cle]) => cle === params.get('vue')) ? params.get('vue') : 'jour'
   const jour = estIso(params.get('jour')) ? params.get('jour') : aujourdhui
   const projet = params.get('projet')
-  const periode = useMemo(() => periodeDe(vue, jour, aujourdhui), [vue, jour, aujourdhui])
+  const planifier = params.get('placer') === '1'
+  const vueLue = planifier ? 'semaine' : vue
+  const periode = useMemo(() => periodeDe(vueLue, jour, aujourdhui), [vueLue, jour, aujourdhui])
   const [donnees, setDonnees] = useState(null)
   const [echec, setEchec] = useState(null)
   const [maj, setMaj] = useState('')
@@ -559,7 +565,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     derniere.current += 1
     const rang = derniere.current
     const requete = { du: periode.du, au: periode.au }
-    if (vue === 'semaine') requete.vue = 'semaine'
+    if (vueLue === 'semaine') requete.vue = 'semaine'
     if (projet) requete.projet = projet
     lireAgenda(requete).then((reponse) => {
       if (rang !== derniere.current) return
@@ -569,7 +575,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     }).catch((err) => {
       if (rang === derniere.current) setEchec(frenchError(err, "L'agenda n'a pas pu être lu."))
     })
-  }, [periode.du, periode.au, vue, projet, relire])
+  }, [periode.du, periode.au, vueLue, projet, relire])
 
   const changer = useCallback((modifs) => {
     setParams((actuels) => {
@@ -600,19 +606,51 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     />
   )
 
+  const etats = (
+    <>
+      {echec ? <BandeauPasAJour maj={maj} message={echec} onReessayer={() => setRelire((n) => n + 1)} /> : null}
+      {erreurGeste ? <p className="ag-erreur" role="alert">{erreurGeste}</p> : null}
+      {!donnees && !echec ? <p className="ag-chargement" role="status">Chargement</p> : null}
+    </>
+  )
+
+  if (planifier) {
+    return (
+      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" sousTitre={titrePeriode('semaine', jour, periode)}>
+        <Navigation
+          vue="semaine" titre={titrePeriode('semaine', jour, periode)}
+          onPas={(sens) => changer({ jour: pas('semaine', jour, sens) })}
+          onAujourdhui={() => changer({ jour: null })}
+        />
+        {etats}
+        <PlanifierSemaine
+          jours={jours} aujourdhui={aujourdhui} aPlacer={donnees?.a_placer ?? []}
+          mesProjets={donnees?.mes_projets ?? []} choisie={choisie} posees={placement.posees}
+          onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+          onPoser={(item, iso) => placement.poser(item, iso, null)}
+          onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
+          onTerminer={() => changer({ placer: null, vue: 'semaine' })}
+        />
+      </CoquilleTaches>
+    )
+  }
+
   return (
     <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}>
       <div className="ag-vues">
         <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
+        {vue === 'semaine' ? (
+          <button type="button" className="bouton second" onClick={() => changer({ placer: '1' })}>
+            Planifier ma semaine
+          </button>
+        ) : null}
       </div>
       <Navigation
         vue={vue} titre={titrePeriode(vue, jour, periode)}
         onPas={(sens) => changer({ jour: pas(vue, jour, sens) })}
         onAujourdhui={() => changer({ jour: null })}
       />
-      {echec ? <BandeauPasAJour maj={maj} message={echec} onReessayer={() => setRelire((n) => n + 1)} /> : null}
-      {erreurGeste ? <p className="ag-erreur" role="alert">{erreurGeste}</p> : null}
-      {!donnees && !echec ? <p className="ag-chargement" role="status">Chargement</p> : null}
+      {etats}
       {vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
