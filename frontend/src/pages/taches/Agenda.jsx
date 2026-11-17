@@ -2,13 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
-import { lireAgenda, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import {
+  annulerGeste, lireAgenda, modifierTache, planifierTache, rouvrirTache, terminerTache,
+} from '../../api/tachesApi'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
-import { ABR_JOURS, ABR_MOIS, aujourdhuiIso, jourLong } from '../../features/taches/lib/textes'
+import {
+  ABR_JOURS, ABR_MOIS, aujourdhuiIso, duree as dureeTexte, jourLong, jourNomme,
+} from '../../features/taches/lib/textes'
 import GrilleAgenda from '../../features/taches/ui/GrilleAgenda'
 import LigneTache from '../../features/taches/ui/LigneTache'
+import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
 import { frenchError } from '../../lib/frenchError'
 
 /* ============================================================================
@@ -22,6 +27,11 @@ import { frenchError } from '../../lib/frenchError'
    Lecture : `GET agenda/?du=&au=` (42 jours au plus) ; une lecture en échec ne vide JAMAIS
    l'écran (bandeau « Pas à jour · {HH:MM} » [Réessayer]) ; cocher met à jour la ligne seule
    (optimiste, « Faite · Annuler »), jamais en relisant tout l'agenda.
+
+   TCH105 — vue Jour : volet « À placer » (VoletAPlacer) ; toucher une tâche puis un créneau
+   « Placer à {HH:MM} » (ou la glisser dessus) la pose par `taches/{id}/planifier/`, optimiste et
+   réconciliée, « Placée à {HH:MM} · Annuler » ; sa durée se règle par pas de 15 min (Maj+↓ /
+   Maj+↑) ou 30 min · 1 h · 2 h (`PATCH taches/{id}/`).
    ========================================================================== */
 
 const VUES = [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['a-venir', 'À venir']]
@@ -103,6 +113,33 @@ function avecItem(donnees, id, changer) {
     a_placer: remplacer(donnees.a_placer),
     mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: remplacer(g.items) })),
   }
+}
+
+/** TCH105/TCH106 — la tâche quitte « À placer » (et toute autre place) pour le jour `jour`, à
+ * `heureDebut` (bloc) ou sans heure ; le jour absent de l'agenda chargé y est ajouté. */
+function deplacerVers(donnees, item, jour, heureDebut) {
+  if (!donnees) return donnees
+  const posee = { ...item, jour_prevu: jour, heure_debut: heureDebut, quelque_jour: false }
+  const sans = (items) => (items ?? []).filter((it) => !(it.type === 'tache' && it.id === item.id))
+  const jours = (donnees.jours ?? []).map((j) => ({ ...j, blocs: sans(j.blocs), sans_heure: sans(j.sans_heure) }))
+  if (!jours.some((j) => j.jour === jour)) jours.push(jourVide(jour))
+  const cible = heureDebut ? 'blocs' : 'sans_heure'
+  return {
+    ...donnees,
+    jours: jours.map((j) => (j.jour === jour ? { ...j, [cible]: [...j[cible], posee] } : j)),
+    a_placer: sans(donnees.a_placer),
+    mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
+  }
+}
+
+const CHAMPS_ECRITS = ['lock_version', 'jour_prevu', 'heure_debut', 'moment', 'statut', 'estimation_minutes']
+
+/** Réconcilie la ligne avec la TACHE_ECRITE rendue par le serveur (version, jour, heure…). */
+const reconcilier = (setDonnees, tache) => {
+  if (!tache?.id) return
+  setDonnees((d) => avecItem(d, tache.id, (it) => ({
+    ...it, ...Object.fromEntries(CHAMPS_ECRITS.filter((c) => c in tache).map((c) => [c, tache[c]])),
+  })))
 }
 
 function heureMaj(date = new Date()) {
@@ -238,7 +275,19 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
   )
 }
 
-function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onChoisir }) {
+function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, volet, onChoisir }) {
+  return (
+    <div className="ag-corps">
+      <div className="ag-principal">
+        <VueJourGrille jour={jour} dates={dates} parJour={parJour} aujourdhui={aujourdhui} maintenant={maintenant}
+          gestes={gestes} placement={placement} choisi={choisi} onChoisir={onChoisir} />
+      </div>
+      {volet}
+    </div>
+  )
+}
+
+function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, onChoisir }) {
   return (
     <>
       <BandeJours dates={dates} parJour={parJour} jour={jour.jour} aujourdhui={aujourdhui} onChoisir={onChoisir} />
@@ -255,7 +304,7 @@ function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placeme
         </section>
       ) : null}
       <GrilleAgenda
-        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement}
+        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} choisi={choisi}
         onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
       />
     </>
@@ -374,6 +423,120 @@ function useGestes(setDonnees, setParams) {
   return { basculer, ouvrir, ajouter, poserStatut }
 }
 
+// --- TCH105 — Placer à une heure (et TCH106 : sur un jour) ------------------------------------
+
+const PAS_DUREE = 15
+const DUREE_MIN = 15
+const DUREE_MAX = 960
+const DUREES_RAPIDES = [30, 60, 120]
+
+function usePlacement(setDonnees, setErreur, aujourdhui) {
+  const [choisie, setChoisie] = useState(null)
+  const [posee, setPosee] = useState(null)
+  const annulerPose = useRef(null)
+
+  /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable. */
+  const poser = useCallback(async (item, jour, heureDebut = null) => {
+    let precedent = null
+    setChoisie(null)
+    setErreur('')
+    setDonnees((d) => { precedent = d; return deplacerVers(d, item, jour, heureDebut) })
+    const corps = { jour_prevu: jour, heure_debut: heureDebut, moment: '', quelque_jour: false }
+    if (item.lock_version != null) corps.lock_version = item.lock_version
+    let reponse
+    try {
+      reponse = await planifierTache(item.id, corps)
+    } catch (err) {
+      setDonnees(precedent)
+      setErreur(frenchError(err, "La tâche n'a pas pu être placée."))
+      return
+    }
+    reconcilier(setDonnees, reponse?.data?.tache)
+    const placee = { ...item, ...(reponse?.data?.tache ?? {}), jour_prevu: jour, heure_debut: heureDebut }
+    if (heureDebut) setPosee(placee)
+    const gesteId = reponse?.data?.geste_id
+    const annuler = async () => {
+      if (gesteId) await annulerGeste(gesteId)
+      setDonnees(precedent)
+      setPosee(null)
+    }
+    annulerPose.current = annuler
+    proposerAnnuler({
+      message: heureDebut ? `Placée à ${heureDebut}` : `Placée ${jourNomme(jour, aujourdhui)}`,
+      onAnnuler: annuler,
+    })
+  }, [setDonnees, setErreur, aujourdhui])
+
+  /** Durée de la tâche posée, par pas de 15 min (Maj+↓ / Maj+↑, ou 30 min · 1 h · 2 h). */
+  const changerDuree = useCallback(async (minutes) => {
+    if (!posee) return
+    const valeur = Math.min(DUREE_MAX, Math.max(DUREE_MIN, minutes))
+    const avant = posee.estimation_minutes
+    setPosee((p) => (p ? { ...p, estimation_minutes: valeur } : p))
+    setDonnees((d) => avecItem(d, posee.id, (it) => ({ ...it, estimation_minutes: valeur })))
+    try {
+      const corps = { estimation_minutes: valeur }
+      if (posee.lock_version != null) corps.lock_version = posee.lock_version
+      const reponse = await modifierTache(posee.id, corps)
+      reconcilier(setDonnees, reponse?.data?.tache)
+      const version = reponse?.data?.tache?.lock_version
+      if (version != null) setPosee((p) => (p ? { ...p, lock_version: version } : p))
+    } catch (err) {
+      setPosee((p) => (p ? { ...p, estimation_minutes: avant } : p))
+      setDonnees((d) => avecItem(d, posee.id, (it) => ({ ...it, estimation_minutes: avant })))
+      setErreur(frenchError(err, "La durée n'a pas pu être changée."))
+    }
+  }, [posee, setDonnees, setErreur])
+
+  useEffect(() => {
+    if (!posee) return undefined
+    const surTouche = (e) => {
+      if (!e.shiftKey || !['ArrowDown', 'ArrowUp'].includes(e.key)) return
+      if (e.target?.closest?.('input, textarea, [contenteditable="true"]')) return
+      e.preventDefault()
+      const actuelle = posee.estimation_minutes || 30
+      changerDuree(actuelle + (e.key === 'ArrowDown' ? PAS_DUREE : -PAS_DUREE))
+    }
+    window.addEventListener('keydown', surTouche)
+    return () => window.removeEventListener('keydown', surTouche)
+  }, [posee, changerDuree])
+
+  const annulerLaPose = useCallback(() => {
+    const annuler = annulerPose.current
+    annulerPose.current = null
+    setPosee(null)
+    annuler?.().catch((err) => setErreur(frenchError(err, "L'annulation a échoué. Réessayez.")))
+  }, [setErreur])
+
+  return { choisie, setChoisie, posee, setPosee, poser, changerDuree, annulerLaPose }
+}
+
+function DureePosee({ posee, onDuree, onAnnuler }) {
+  const actuelle = posee.estimation_minutes || 30
+  return (
+    <div className="ag-duree" role="group" aria-label={`Durée de ${posee.titre}`}>
+      <div className="ag-duree-haut">
+        <div>
+          <b>{`Placée à ${posee.heure_debut}`}</b>
+          <small>{posee.titre}</small>
+        </div>
+        <button type="button" className="bouton lien" onClick={onAnnuler}>Annuler</button>
+      </div>
+      <div className="segmente" role="radiogroup" aria-label="Durée">
+        {DUREES_RAPIDES.map((m) => (
+          <button key={m} type="button" role="radio" aria-checked={actuelle === m} onClick={() => onDuree(m)}>
+            {dureeTexte(m)}
+          </button>
+        ))}
+      </div>
+      <p className="raccourci">
+        <span className="chiffres">{dureeTexte(actuelle)}</span>
+        <kbd>Maj</kbd>+<kbd>↓</kbd> ajoute 15 min
+      </p>
+    </div>
+  )
+}
+
 // --- La page ----------------------------------------------------------------------------------
 
 export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null }) {
@@ -389,6 +552,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const [erreurGeste, setErreurGeste] = useState('')
   const derniere = useRef(0)
   const gestes = useGestes(setDonnees, setParams)
+  const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
 
   useEffect(() => {
@@ -426,6 +590,15 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     },
   }
   const choisirJour = (iso) => changer({ vue: 'jour', jour: iso })
+  const tousAPlacer = [...(donnees?.a_placer ?? []), ...(donnees?.mes_projets ?? []).flatMap((g) => g.items)]
+  const choisie = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
+  const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
+  const volet = (
+    <VoletAPlacer
+      aPlacer={donnees?.a_placer ?? []} mesProjets={donnees?.mes_projets ?? []} aujourdhui={aujourdhui}
+      choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+    />
+  )
 
   return (
     <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}>
@@ -443,7 +616,11 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       {vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
+          placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet}
           onChoisir={(iso) => changer({ jour: iso })} />
+      ) : null}
+      {vue === 'jour' && placement.posee ? (
+        <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
       ) : null}
       {vue === 'semaine' ? (
         <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}

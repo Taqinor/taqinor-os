@@ -85,13 +85,14 @@ function position(ev, debutGrille, finGrille) {
   return style
 }
 
-function BlocTache({ ev, style, onCocher, onOuvrir }) {
+function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
   const { item } = ev
   const fait = item.statut === 'fait'
   const plage = ev.sansDuree
     ? `${heure(item.heure_debut)} · durée non estimée`
     : `${enHeure(ev.debut)} – ${enHeure(ev.fin)}`
-  const classes = ['bloc', ev.fin - ev.debut <= COURT ? 'court' : '', fait ? 'fait-bloc' : ''].filter(Boolean).join(' ')
+  const classes = ['bloc', ev.fin - ev.debut <= COURT ? 'court' : '', fait ? 'fait-bloc' : '', choisi ? 'choisi' : '']
+    .filter(Boolean).join(' ')
   return (
     <div className={classes} data-p={item.projet?.couleur || undefined} style={style} data-bloc={item.id}>
       <button
@@ -159,6 +160,8 @@ function Creneaux({ jour, debut, fin, pas, plusieurs, placement, onCreneau }) {
         }}
         aria-label={plusieurs ? `${libelle} · ${plusieurs}` : libelle}
         onClick={() => (placement ? placement.onPoser(jour.jour, h) : onCreneau?.(jour.jour, h))}
+        onDragOver={placement ? (e) => e.preventDefault() : undefined}
+        onDrop={placement ? (e) => { e.preventDefault(); placement.onPoser(jour.jour, h) } : undefined}
       >
         <span>{libelle}</span>
       </button>
@@ -178,7 +181,7 @@ function Maintenant({ maintenant, debut, fin }) {
 }
 
 function Colonne({ jour, nomJour, props }) {
-  const { aujourdhui, maintenant, debut, fin, pas, placement, onCreneau, onCocher, onOuvrir } = props
+  const { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir } = props
   const [ouvert, setOuvert] = useState(null)
   const repos = !jour.ouvre || jour.ferie
   return (
@@ -201,7 +204,10 @@ function Colonne({ jour, nomJour, props }) {
             />
           )
         }
-        return <BlocTache key={ev.cle} ev={ev} style={style} onCocher={onCocher} onOuvrir={onOuvrir} />
+        return (
+          <BlocTache key={ev.cle} ev={ev} style={style} choisi={choisi === ev.item.id}
+            onCocher={onCocher} onOuvrir={onOuvrir} />
+        )
       })}
       {jour.jour === aujourdhui ? <Maintenant maintenant={maintenant} debut={debut} fin={fin} /> : null}
     </div>
@@ -220,12 +226,12 @@ function TeteJour({ nom }) {
  */
 export default function GrilleAgenda({
   jours, aujourdhui, maintenant = null, debut = 7, fin = 21, pas = 30, nomsJours = {},
-  placement = null, onCreneau, onCocher, onOuvrir,
+  placement = null, choisi = null, onCreneau, onCocher, onOuvrir,
 }) {
   const plusieurs = jours.length > 1
   const heures = []
   for (let h = debut; h < fin; h += 1) heures.push(h)
-  const props = { aujourdhui, maintenant, debut, fin, pas, placement, onCreneau, onCocher, onOuvrir, plusieurs }
+  const props = { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir, plusieurs }
   return (
     <div className={plusieurs ? 'semaine grille-agenda chiffres' : 'agenda grille-agenda chiffres'}>
       {plusieurs ? (
