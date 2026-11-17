@@ -66,7 +66,7 @@ function PuceJeton({ jeton, onIgnorer }) {
   )
 }
 
-function PrioriteProjet({ nom, valeur, onChoisir }) {
+export function PrioriteProjet({ nom, valeur, onChoisir }) {
   return (
     <div className="segmente" role="radiogroup" aria-label={`Priorité du projet ${nom}`}>
       {PRIORITES_PROJET.map(([libelle, niveau]) => (

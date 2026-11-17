@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -149,6 +149,28 @@ describe('TCH82 — feuille de saisie', () => {
     await waitFor(() => expect(onFermer).toHaveBeenCalled())
     const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
     expect(envoi.lignes[0]).toMatchObject({ quelque_jour: true, jour_prevu: null })
+  })
+
+  it('TCH83 — une liste collée ouvre l\'aperçu de la liste ; « Créer 2 tâches » envoie les deux lignes cochées', async () => {
+    const liste = {
+      projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+      lignes: ['lait', 'pain'].map((titre, index) => ({
+        ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Courses', priorite: 2 } },
+      })),
+      projets_nouveaux: [{ nom: 'Courses', priorite: 2 }],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    const { onFermer } = monter()
+    fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
+    expect(await screen.findByText('Aperçu de ta liste', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText('Nouveau projet : Courses')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Créer 2 tâches' }))
+    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+    const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
+    expect(envoi.lignes.map((l) => l.titre)).toEqual(['lait', 'pain'])
+    expect(envoi.lignes[0].nouveau_projet).toEqual({ nom: 'Courses', priorite: 2 })
+    expect(lireBrouillon(7, 42)).toBeNull()
   })
 
   it('messageChamps lit le champ fautif, par ligne ou non', () => {

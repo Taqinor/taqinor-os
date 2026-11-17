@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Calendar, X } from 'lucide-react'
 import { ReactReduxContext } from 'react-redux'
 
@@ -11,6 +11,7 @@ import { jourCourt } from '../lib/textes'
 import ChampSaisie from '../ui/ChampSaisie'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurQuand from '../ui/SelecteurQuand'
+import ColleListes, { construireLigne } from './ColleListes'
 
 /* ============================================================================
    TCH82 — Feuille de saisie : « ajouter une tâche en une phrase ». La coquille l'ouvre (bouton
@@ -21,19 +22,24 @@ import SelecteurQuand from '../ui/SelecteurQuand'
    BROUILLON : la phrase est gardée dans le navigateur sous `taches:brouillon:<société>:<compte>`
    (fermer la feuille ne la perd pas ; la carte « Reprendre » d'Aujourd'hui, TCH77, et TCH91 la
    relisent par `lireBrouillon`). Il est vidé à la déconnexion (`taqinor:auth-logout`).
-   Maquettes : ecran-saisie.html, ecran-saisie-nouveau.html, etat-erreur-champ.html.
+   TCH83 — plus d'une ligne collée (ou « Coller encore ») : la feuille montre l'aperçu de la liste
+   (`ColleListes`) au lieu des puces d'une phrase ; l'événement `taqinor:taches:saisir` avec
+   `detail.liste` ouvre directement ce mode (« Coller mes listes » de l'état vide d'Aujourd'hui).
+   Maquettes : ecran-saisie.html, ecran-saisie-nouveau.html, etat-erreur-champ.html,
+   ecran-saisie-liste.html.
    ========================================================================== */
 
 export const PREFIXE_BROUILLON = 'taches:brouillon:'
 export const EVENEMENT_DECONNEXION = 'taqinor:auth-logout'
 /** Annoncé après une création réussie : les listes ouvertes se rafraîchissent d'elles-mêmes. */
 export const EVENEMENT_CREEES = 'taqinor:taches:creees'
+const EVENEMENT_SAISIR = 'taqinor:taches:saisir'
 const DELAI_APERCU_MS = 300
 
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, relu par TCH77/TCH91 et testé directement (D-ENF22)
 export const cleBrouillon = (societe, compte) => `${PREFIXE_BROUILLON}${societe ?? '0'}:${compte ?? '0'}`
 
-/** Le brouillon `{ texte, quand }` de ce compte, ou `null` (stockage absent, illisible, vide). */
+/** Le brouillon `{ texte, quand, collages?, courant? }` de ce compte, ou `null` (stockage absent, illisible, vide). */
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, relu par TCH77/TCH91 et testé directement (D-ENF22)
 export function lireBrouillon(societe, compte) {
   try {
@@ -102,55 +108,55 @@ export function messageChamps(champs) {
   return ''
 }
 
-/** La ligne à créer : les champs lus, puis ce que la personne a posé à la main (Quand, priorité du projet). */
-// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, relu par TCH77/TCH91 et testé directement (D-ENF22)
-export function construireLigne(ligne, { cid, quand, priorites }) {
-  const champs = { ...(ligne.champs ?? {}) }
-  if (champs.nouveau_projet) {
-    const nom = champs.nouveau_projet.nom
-    champs.nouveau_projet = { ...champs.nouveau_projet, priorite: priorites?.[nom] ?? champs.nouveau_projet.priorite }
-  }
-  return {
-    index: ligne.index,
-    collage: ligne.collage,
-    client_id: `${cid}:${ligne.index}`,
-    titre: ligne.titre,
-    ...champs,
-    ...(quand ?? {}),
-  }
-}
-
-function libelleQuand(quand, aujourdhui) {
+function libelleQuand(quand) {
   if (!quand) return 'Quand'
   if (quand.quelque_jour) return 'En réserve'
   if (!quand.jour_prevu) return 'Sans jour'
-  const jour = quand.moment === 'soir' ? 'ce soir' : jourCourt(quand.jour_prevu, aujourdhui)
+  const jour = quand.moment === 'soir' ? 'ce soir' : jourCourt(quand.jour_prevu)
   return quand.heure_debut ? `${jour} · ${quand.heure_debut.slice(0, 5)}` : jour
+}
+
+/** Corps de l'aperçu : un seul texte, ou plusieurs collages (`textes`) quand on a collé encore. */
+function corpsApercu(collages, texte, ignorer) {
+  const textes = [...collages, ...(texte.trim() ? [texte] : [])]
+  return textes.length > 1 ? { textes, ignorer, apercu: true } : { texte: textes[0] ?? '', ignorer, apercu: true }
+}
+
+function phraseErreur(err) {
+  const classee = classerErreur(err)
+  if (classee.code === 'validation') return messageChamps(classee.champs) || frenchError(err)
+  if (classee.code === 'reseau') return 'Pas de réseau : ta saisie est gardée, réessaie.'
+  if (classee.code === 'autre_compte') return "Une action d'un autre compte a été retirée de la file."
+  return frenchError(err)
 }
 
 export default function FeuilleSaisie({ ouverte, onFermer }) {
   const { societe, compte } = useCompte()
   const cle = cleBrouillon(societe, compte)
-  const [texte, setTexte] = useState(() => lireBrouillon(societe, compte)?.texte ?? '')
-  const [quand, setQuand] = useState(() => lireBrouillon(societe, compte)?.quand ?? null)
+  const [initial] = useState(() => lireBrouillon(societe, compte))
+  const [texte, setTexte] = useState(() => (Array.isArray(initial?.collages) ? initial.courant ?? '' : initial?.texte ?? ''))
+  const [collages, setCollages] = useState(() => (Array.isArray(initial?.collages) ? initial.collages : []))
+  const [quand, setQuand] = useState(() => initial?.quand ?? null)
   const [quandOuvert, setQuandOuvert] = useState(false)
+  const [champOuvert, setChampOuvert] = useState(false)
   const [ignorer, setIgnorer] = useState([])
   const [priorites, setPriorites] = useState({})
   const [apercu, setApercu] = useState(null)
   const [erreur, setErreur] = useState('')
   const [envoi, setEnvoi] = useState(false)
-  const cid = useRef(nouvelleCle())
+  const [cid, setCid] = useState(() => nouvelleCle())
 
   useEffect(() => { if (compte != null) definirProprietaire(compte) }, [compte])
 
   // le brouillon suit la frappe ; une phrase vide l'efface
   useEffect(() => {
-    ecrireBrouillon(cle, texte.trim() ? { texte, quand } : null)
-  }, [cle, texte, quand])
+    const tout = [...collages, texte].filter((t) => t.trim()).join('\n\n')
+    ecrireBrouillon(cle, tout ? { texte: tout, quand, collages, courant: texte } : null)
+  }, [cle, texte, collages, quand])
 
   const remettreAZero = useCallback(() => {
-    setTexte(''); setQuand(null); setQuandOuvert(false); setIgnorer([]); setPriorites({})
-    setApercu(null); setErreur(''); cid.current = nouvelleCle()
+    setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampOuvert(false); setIgnorer([])
+    setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle())
   }, [])
 
   // déconnexion : plus aucune trace de la phrase (écran, stockage)
@@ -159,6 +165,17 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
     window.addEventListener(EVENEMENT_DECONNEXION, surDeconnexion)
     return () => window.removeEventListener(EVENEMENT_DECONNEXION, surDeconnexion)
   }, [remettreAZero])
+
+  // « Coller mes listes » (état vide d'Aujourd'hui) : l'événement de la coquille peut porter `liste` ou `texte`
+  useEffect(() => {
+    const surSaisir = (e) => {
+      const detail = e?.detail ?? {}
+      if (typeof detail.texte === 'string') setTexte(detail.texte)
+      if (detail.liste) setChampOuvert(true)
+    }
+    window.addEventListener(EVENEMENT_SAISIR, surSaisir)
+    return () => window.removeEventListener(EVENEMENT_SAISIR, surSaisir)
+  }, [])
 
   // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste)
   useEffect(() => {
@@ -170,22 +187,24 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   // l'analyse : une puce par jeton lu. Jamais bloquante : sans réseau, la phrase part quand même.
   useEffect(() => {
-    if (!ouverte || !texte.trim()) return undefined
+    if (!ouverte || ![...collages, texte].some((t) => t.trim())) return undefined
     let vivant = true
     const minuteur = setTimeout(() => {
-      saisieRapide({ texte, ignorer, apercu: true }, { cle: null })
-        .then((r) => { if (vivant) setApercu({ texte, ignorer, donnees: r.data }) })
+      saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })
+        .then((r) => { if (vivant) setApercu({ texte, collages, ignorer, donnees: r.data }) })
         .catch((err) => {
           if (!vivant) return
-          const classee = classerErreur(err)
           setApercu(null)
-          if (classee.code === 'validation') setErreur(messageChamps(classee.champs))
+          if (classerErreur(err).code === 'validation') setErreur(phraseErreur(err))
         })
     }, DELAI_APERCU_MS)
     return () => { vivant = false; clearTimeout(minuteur) }
-  }, [ouverte, texte, ignorer])
+  }, [ouverte, texte, collages, ignorer])
 
-  const frais = apercu && apercu.texte === texte && apercu.ignorer === ignorer ? apercu.donnees : null
+  const frais = apercu && apercu.texte === texte && apercu.collages === collages && apercu.ignorer === ignorer
+    ? apercu.donnees : null
+  const donneesListe = frais ?? apercu?.donnees ?? null
+  const modeListe =collages.length > 0 || texte.includes('\n') || (frais?.lignes?.length ?? 0) > 1
   const ligne = frais?.lignes?.[0] ?? null
   const nouveauxProjets = useMemo(
     () => (frais?.projets_nouveaux ?? []).map((p) => ({ nom: p.nom, priorite: priorites[p.nom] ?? p.priorite })),
@@ -194,17 +213,17 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   const surTexte = (valeur) => { setTexte(valeur); setErreur('') }
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
+  const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
+  const collerEncore = () => {
+    if (texte.trim()) setCollages((liste) => [...liste, texte])
+    setTexte(''); setChampOuvert(true); setErreur('')
+  }
 
-  const envoyer = async () => {
-    if (!texte.trim() || envoi) return
+  const creer = async (lignes) => {
     setEnvoi(true)
     setErreur('')
     try {
-      const donnees = frais ?? (await saisieRapide({ texte, ignorer, apercu: true }, { cle: null })).data
-      const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false)
-        .map((l) => construireLigne(l, { cid: cid.current, quand, priorites }))
-      if (lignes.length === 0) { setErreur('Aucune ligne lisible.'); return }
-      const { data } = await saisieRapide({ lignes, apercu: false }, { cle: cid.current })
+      const { data } = await saisieRapide({ lignes, apercu: false }, { cle: cid })
       const n = data?.creees?.length ?? lignes.length
       const geste = data?.geste_id
       remettreAZero()
@@ -215,59 +234,93 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
         onAnnuler: geste ? () => annulerGeste(geste) : undefined,
       })
     } catch (err) {
-      const classee = classerErreur(err)
-      if (classee.code === 'validation') setErreur(messageChamps(classee.champs) || frenchError(err))
-      else if (classee.code === 'reseau') setErreur('Pas de réseau : ta saisie est gardée, réessaie.')
-      else if (classee.code === 'autre_compte') setErreur("Une action d'un autre compte a été retirée de la file.")
-      else setErreur(frenchError(err))
+      setErreur(phraseErreur(err))
     } finally {
       setEnvoi(false)
     }
   }
 
+  const envoyer = async () => {
+    if (!texte.trim() || envoi) return
+    setEnvoi(true)
+    setErreur('')
+    let donnees = frais
+    try {
+      donnees = donnees ?? (await saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })).data
+    } catch (err) {
+      setErreur(phraseErreur(err))
+      setEnvoi(false)
+      return
+    }
+    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false)
+      .map((l) => construireLigne(l, { cid, quand, priorites }))
+    if (lignes.length === 0) {
+      setErreur('Aucune ligne lisible.')
+      setEnvoi(false)
+      return
+    }
+    await creer(lignes)
+  }
+
   return (
-    <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial="50">
+    <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial={modeListe ? '85' : '50'}>
       <div className="feuille-saisie">
-        <ChampSaisie
-          valeur={texte}
-          onChange={surTexte}
-          jetons={ligne?.jetons ?? []}
-          alertes={ligne?.alertes ?? []}
-          nouveauxProjets={nouveauxProjets}
-          onPrioriteProjet={(nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))}
-          onIgnorer={surIgnorer}
-          onSoumettre={envoyer}
-          erreur={erreur}
-        />
-        {quandOuvert ? (
-          <SelecteurQuand valeur={quand ?? undefined} onChoisir={setQuand} />
+        {!(modeListe && donneesListe) || champOuvert ? (
+          <ChampSaisie
+            valeur={texte}
+            onChange={surTexte}
+            jetons={modeListe ? [] : ligne?.jetons ?? []}
+            alertes={modeListe ? [] : ligne?.alertes ?? []}
+            nouveauxProjets={modeListe ? [] : nouveauxProjets}
+            onPrioriteProjet={surPriorite}
+            onIgnorer={surIgnorer}
+            onSoumettre={envoyer}
+            erreur={modeListe ? '' : erreur}
+          />
         ) : null}
-        <div className="saisie-pied">
-          <span className="puces">
-            <button
-              type="button"
-              className={quand ? 'puce lue' : 'puce vide'}
-              aria-expanded={quandOuvert}
-              onClick={() => setQuandOuvert((v) => !v)}
-            >
-              <Calendar className="i i-16" aria-hidden="true" />
-              <span className="chiffres">{libelleQuand(quand)}</span>
-            </button>
-            {quand ? (
-              <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { setQuand(null); setQuandOuvert(false) }}>
-                <X className="i i-14" aria-hidden="true" />
+        {modeListe && donneesListe ? (
+          <ColleListes
+            apercu={donneesListe}
+            cid={cid}
+            priorites={priorites}
+            onPriorite={surPriorite}
+            onCreer={creer}
+            onCollerEncore={collerEncore}
+            envoi={envoi}
+            erreur={erreur}
+          />
+        ) : null}
+        {modeListe ? null : (
+          <>
+            {quandOuvert ? <SelecteurQuand valeur={quand ?? undefined} onChoisir={setQuand} /> : null}
+            <div className="saisie-pied">
+              <span className="puces">
+                <button
+                  type="button"
+                  className={quand ? 'puce lue' : 'puce vide'}
+                  aria-expanded={quandOuvert}
+                  onClick={() => setQuandOuvert((v) => !v)}
+                >
+                  <Calendar className="i i-16" aria-hidden="true" />
+                  <span className="chiffres">{libelleQuand(quand)}</span>
+                </button>
+                {quand ? (
+                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { setQuand(null); setQuandOuvert(false) }}>
+                    <X className="i i-14" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                className="bouton plein"
+                aria-disabled={!texte.trim() || envoi || undefined}
+                onClick={envoyer}
+              >
+                Ajouter
               </button>
-            ) : null}
-          </span>
-          <button
-            type="button"
-            className="bouton plein"
-            aria-disabled={!texte.trim() || envoi || undefined}
-            onClick={envoyer}
-          >
-            Ajouter
-          </button>
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </FeuilleACrans>
   )
