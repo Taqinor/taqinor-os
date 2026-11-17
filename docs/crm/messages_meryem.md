@@ -100,8 +100,9 @@ CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique doit i
 caractère commercial de l'intervention (sanctionné par l'art. 180) ; loi 09-08 art. 5 §3 + décret 2-09-165 art. 34 :
 pour des données non collectées auprès de la personne (Meta, Odoo), l'information sur leur origine peut être donnée
 oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51 est déjà assurée par le devis envoyé.
-FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
-DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
+17/11/2026 — décision du fondateur : « c'est un appel commercial » retiré de CE script (le client a rempli notre formulaire, il a demandé à être appelé et l'a accepté) ; la mention reste sur les autres ouvertures d'appel (par origine, client signé) et sur les réveils.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
 
 ### repondeur — appels 2 et 4, message sur répondeur (R1)
 17/11/2026 — approuvé par le fondateur : « Je vous envoie un message WhatsApp » devient « Je vous ai envoyé un message WhatsApp » (FR). Darija RETIRÉE le 17/11/2026 (elle disait « je vais vous envoyer », le FR dit « je vous ai envoyé ») : le français sert jusqu'à ce qu'un locuteur natif la reformule (`CLES_FR_SEULEMENT`). L'ancienne darija est gardée ci-dessous, hors du parseur.

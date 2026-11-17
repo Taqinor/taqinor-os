@@ -73,8 +73,11 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51
     # est déjà assurée par le devis envoyé — une phrase courte suffit ici,
     # pas un pavé dans le WhatsApp.
+    # 17/11/2026 (fondateur) — un prospect qui a rempli le formulaire a demandé à
+    # être appelé : la mention « c'est un appel commercial » est retirée de CETTE
+    # origine seulement ; elle reste sur toutes les autres ouvertures d'appel.
     'appel_ouverture':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Vous venez de remplir "
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Vous venez de remplir "
         "notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je "
         "vous dérange deux minutes ?",
     'repondeur':
@@ -344,7 +347,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. "
         "غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'appel_ouverture':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على "
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عمرتو دابا الفورم ديالنا على "
         "الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
     # 17/11/2026 — `repondeur` n'a plus de darija : son français dit « je vous ai
     # envoyé un message WhatsApp », l'ancienne darija « je vais vous envoyer »
