@@ -930,12 +930,14 @@ _SECRET_COLUMNS = (
     "totp_secret",         # graine 2FA (chiffree au repos, dechiffree par l'ORM)
     "totp_recovery_codes",
     "phone_key",           # ALEC45 : numero du lead Meta en clair (adsengine_metaleadmirror)
+    "lien_client_token", "lien_rapport_token",  # ALEC53 : liens publics (installations_intervention)
 )
 
 # Tables dont une projection LIGNE ENTIERE exposerait un secret de compte.
 _SECRET_TABLES = ("authentication_customuser",)
 # ALEC45 — ligne entiere refusee aussi (porte `phone_key`), table restant GRANTee (COUNT).
-_TABLES_LIGNE_SECRETE = ("adsengine_metaleadmirror",)
+_TABLES_LIGNE_SECRETE = ("adsengine_metaleadmirror",
+                         "installations_intervention")  # ALEC53 : jetons des liens publics
 
 _FORBIDDEN_COLUMNS = (
     "prix_achat",
@@ -960,7 +962,8 @@ _PRICE_ONLY_TABLES = frozenset({"ia_ocr_document"})
 # ALEC15 — colonnes personnelles de `crm_client`, refusees sans `client_pii_voir`
 # (`allow_pii`), comme la projection ligne entiere de la table.
 _PII_TABLE = "crm_client"
-_PII_COLUMNS = ("email", "telephone", "adresse", "cin")
+_PII_COLUMNS = ("email", "telephone", "adresse", "cin",
+                "adresse_siege")  # ALEC53 (masquee a l'ecran par ALEC31)
 
 # Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
 # le LLM la verbalise alors proprement, sans jamais voir la donnee.
