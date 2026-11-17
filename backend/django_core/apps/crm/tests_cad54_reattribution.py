@@ -311,10 +311,15 @@ class DelegationDesDossiersTests(_Base):
             role=Role.objects.create(
                 company=self.company, nom='Commercial cible',
                 permissions=list(COMMERCIAL_PERMISSIONS)))
-        self.assertFalse(ouvertes & vues(cible))
-        self.api.post(self.URL, {'vers': cible.pk}, format='json')
-        self.assertTrue(ouvertes <= vues(cible))
-        self.assertFalse(ouvertes & vues(self.moi))
+        # La file ne montre que les touches DUES (aujourd'hui + retard) : on
+        # suit celles que le propriétaire voit avant de déléguer.
+        dues = ouvertes & vues(self.moi)
+        self.assertTrue(dues)
+        self.assertFalse(dues & vues(cible))
+        res = self.api.post(self.URL, {'vers': cible.pk}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertTrue(dues <= vues(cible))
+        self.assertFalse(dues & vues(self.moi))
 
     def test_passation_posee_par_defaut_sautee_sans_prevenir(self):
         suivi, _f, _r, _a = self._jeu()
