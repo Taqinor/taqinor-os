@@ -2426,6 +2426,12 @@ jobs:
               devis-ci-commercial.spec.js devis-ci-industriel.spec.js
             npx playwright test --project=chromium --project=mobile-safari --workers 2 \
               health.spec.js mobile.spec.js figures-parite.spec.js
+            # TCH133/TCH134 — Tâches, bout en bout du cœur (journée, saisie, À trier, fiche, conflit, projets,
+            # revue, agenda, réglages, accessibilité mesurée). UNE invocation, `workers: 1` du playwright.config.js :
+            # ces specs EFFACENT puis recréent les données Tâches du même compte `demo_admin` (`tout-effacer/`), elles
+            # ne tournent donc jamais de front entre elles ni avec une autre lane qui toucherait ce compte.
+            npx playwright test --project=chromium taches-journee.spec.js taches-saisie.spec.js \
+              taches-projets.spec.js taches-a11y.spec.js
           fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
