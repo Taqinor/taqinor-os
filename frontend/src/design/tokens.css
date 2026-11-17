@@ -401,6 +401,84 @@
      les 3 autres ci-dessous. */
   --motion-pulse: 350ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── TCH41 — Langage visuel de l'app Tâches (spec-8 §8) ──────────────────────
+     Jetons --tch-* versés EN FIN du bloc clair ; la feuille qui les consomme est
+     styles/taches/base.css, TOUJOURS sous la classe racine `.tch`. Les couleurs de
+     l'ERP ne viennent QUE de leurs variables ; seuls --tch-inverse-accent et
+     --tch-voile portent un littéral (spec-8 §8). Valeurs bureau (≥ 768 px) : base.css. */
+  --tch-piste: color-mix(in srgb, var(--muted-foreground) 22%, transparent);
+  --tch-font-titre: 'Archivo', 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --tch-font-texte: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+
+  /* Typographie (iPhone) */
+  --tch-titre-page: 1.75rem;
+  --tch-section: 1.0625rem;
+  --tch-tache: 1.0625rem;
+  --tch-tache-lh: 1.4375rem;
+  --tch-meta: 0.875rem;
+  --tch-meta-lh: 1.25rem;
+  --tch-chiffre: 0.8125rem;
+
+  /* Gabarits et rayons */
+  --tch-ligne-h: 52px;
+  --tch-cible: 44px;
+  --tch-case: 22px;
+  --tch-gouttiere: 16px;
+  --tch-rayon-bloc: 8px;
+  --tch-rayon-champ: 12px;
+  --tch-rayon-carte: 16px;
+  --tch-rayon-feuille: 20px;
+  --tch-rayon-puce: 999px;
+  --tch-heure-h: 88px;
+  --tch-onglets-h: 52px;
+
+  /* Mouvement : deux courbes ; les durées restent --motion-* (0 ms en mouvement réduit) */
+  --tch-ease-entree: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --tch-ease-sortie: cubic-bezier(0.3, 0, 0.8, 0.15);
+
+  /* Palette de projet : L et C fixes par rôle, seule la teinte change */
+  --tch-point-l: 61%;  --tch-point-c: 0.105;
+  --tch-fond-l: 95.5%; --tch-fond-c: 0.02;
+  --tch-texte-l: 46%;  --tch-texte-c: 0.08;
+  --tch-teinte-terre: 55;  --tch-teinte-ambre: 85;   --tch-teinte-olive: 115;
+  --tch-teinte-vert: 150;  --tch-teinte-menthe: 180; --tch-teinte-ciel: 215;
+  --tch-teinte-bleu: 250;  --tch-teinte-indigo: 285; --tch-teinte-prune: 320;
+  --tch-teinte-rose: 355;
+
+  /* Rôles de couleur : alias de jetons existants */
+  --tch-surface: var(--card);
+  --tch-surface-haute: var(--popover);
+  --tch-panneau: var(--muted);
+  --tch-texte: var(--foreground);
+  --tch-texte-doux: var(--muted-foreground);
+  --tch-accent: var(--info);
+  --tch-accent-texte: var(--info-foreground);
+  --tch-fait: var(--success);
+  --tch-fait-texte: var(--success-foreground);
+  --tch-etoile: var(--primary-text);
+  --tch-etoile-fond: var(--primary);
+  --tch-segment-actif: var(--card);
+  --tch-bloc-erp: color-mix(in oklch, var(--muted-foreground) 13%, var(--card));
+  --tch-alerte: var(--destructive);
+  --tch-surveiller: color-mix(in oklch, var(--warning-text) 86%, var(--foreground));
+  /* mélanges vers `transparent` en sRGB : en OKLCH la teinte « vide » tire vers le rose */
+  --tch-survol: color-mix(in srgb, var(--muted) 70%, transparent);
+  --tch-presse: var(--muted);
+  --tch-trait-grille: color-mix(in srgb, var(--border) 70%, transparent);
+  --tch-selection: color-mix(in oklch, var(--info) 10%, var(--card));
+  --tch-accent-doux: color-mix(in oklch, var(--info) 12%, var(--card));
+  --tch-jeton: color-mix(in oklch, var(--info) 16%, var(--card));
+  --tch-trait: var(--border);
+  --tch-barre-fond: color-mix(in srgb, var(--card) 94%, transparent);
+  --tch-segment-vide: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+  --tch-fond-colonne: var(--tch-surface);
+
+  /* Les deux seuls littéraux */
+  --tch-inverse-fond: var(--foreground);
+  --tch-inverse-texte: var(--background);
+  --tch-inverse-accent: oklch(80% 0.09 268);
+  --tch-voile: color-mix(in srgb, var(--foreground) 32%, transparent);
 }
 
 .dark {
@@ -499,6 +577,19 @@
   --shadow-sm: 0 1px 3px 0 rgb(3 5 12 / 0.55), 0 1px 2px -1px rgb(3 5 12 / 0.45);
   --shadow-md: 0 4px 12px -2px rgb(3 5 12 / 0.6), 0 2px 6px -2px rgb(3 5 12 / 0.5);
   --shadow-lg: 0 12px 28px -6px rgb(3 5 12 / 0.7), 0 6px 12px -6px rgb(3 5 12 / 0.55);
+
+  /* ── TCH41 — jetons --tch-* de l'app Tâches, variantes sombres (EN FIN du bloc) ── */
+  --tch-point-l: 72%;  --tch-point-c: 0.115;
+  --tch-fond-l: 28%;   --tch-fond-c: 0.045;
+  --tch-texte-l: 83%;  --tch-texte-c: 0.085;
+  --tch-selection: color-mix(in oklch, var(--info) 16%, var(--card));
+  --tch-accent-doux: color-mix(in oklch, var(--info) 18%, var(--card));
+  --tch-jeton: color-mix(in oklch, var(--info) 26%, var(--card));
+  --tch-inverse-accent: oklch(43% 0.17 266);
+  --tch-voile: oklch(8% 0.02 270 / 0.6);
+  --tch-survol: color-mix(in srgb, var(--muted) 80%, transparent);
+  --tch-trait-grille: color-mix(in srgb, var(--border) 55%, transparent);
+  --tch-segment-actif: color-mix(in oklch, var(--muted) 82%, var(--foreground) 18%);
 }
 
 /* ── Map sémantique → utilitaires Tailwind v4 (inline = thémable runtime) ── */
