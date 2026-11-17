@@ -337,11 +337,15 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     expect(raisonsDuSegment([{ valeur: 'x' }], 'agricole')).toEqual([{ valeur: 'x' }])
   })
 
-  it('« Pièce reçue » : masqué sur le suivi après devis et les tâches qui ne l’attendent pas', () => {
-    for (const id of ['suivi_appel', 'suivi_message', 'question_prix', 'devis_modifie', 'decider_suite']) {
+  it('« Pièce reçue » : masqué sur le suivi après devis, la visite, les réveils, le générique et les tâches qui ne l’attendent pas', () => {
+    // 17/11/2026 — aussi confirmation, débrief, planifier, réveils, générique, et
+    // « Relancer le client pour ses pièces » (sa réponse « Oui — pièce reçue » le fait déjà).
+    for (const id of ['suivi_appel', 'suivi_message', 'question_prix', 'devis_modifie', 'decider_suite',
+      'confirmation', 'debrief', 'planifier', 'reveil_appel', 'reveil_message', 'generique', 'pieces_recues']) {
       expect(gesteVisible('piece_recue', type(id)), id).toBe(false)
     }
-    for (const id of ['contact_appel', 'devis', 'planifier', 'pieces_recues', 'generique']) {
+    for (const id of ['contact_appel', 'contact_message', 'devis', 'appel_apres_reponse', 'message_creneau',
+      'dernier_appel', 'rappel_convenu']) {
       expect(gesteVisible('piece_recue', type(id)), id).toBe(true)
     }
     expect(gesteVisible('sauter', type('suivi_appel'))).toBe(true)

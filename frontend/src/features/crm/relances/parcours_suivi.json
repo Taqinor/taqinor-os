@@ -139,7 +139,9 @@
     },
     {
       "id": "piece_recue", "label": "Pièce reçue",
-      "masque_sur": ["suivi_appel", "suivi_message", "question_prix", "devis_modifie", "decider_suite"],
+      "masque_sur": ["suivi_appel", "suivi_message", "question_prix", "devis_modifie", "decider_suite",
+                     "confirmation", "debrief", "planifier", "reveil_appel", "reveil_message", "generique",
+                     "pieces_recues"],
       "effet": "Le client a envoyé sa facture, son adresse ou sa localisation : la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée.",
       "variantes_segment": {
         "commercial": {
