@@ -14,11 +14,13 @@ from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, Sta
 from apps.taches.confidentialite import nom_pour
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
+from apps.taches.selectors import journee as journee_lue
 from apps.taches.selectors import projets as lecture
 from apps.taches.selectors.base import sections_de, taches_de
 from apps.taches.serializers.formes import (
     AFFICHAGE_DEFAUT, ItemSerializer, ProjetSerializer, TacheSerializer, charger_items, charger_taches, contexte,
 )
+from apps.taches.serializers.journee import nom_du_projet, texte_explication
 
 REQUIS = 'Requis.'
 VALEUR_INCONNUE = 'Valeur inconnue.'
@@ -280,24 +282,50 @@ def decalage_rendu(changements, geste):
     return {'changements': changements, 'geste_id': geste.pk if geste is not None else None}
 
 
-def _item(user, pk, ctx, chargees):
-    """L'ITEM de la tâche `pk` (déjà chargée, sinon lue) ou `None`."""
+def poser_calculs_d_items(user, taches, etat, ctx):
+    """`explication`, `essentielle`, `prevue_au_plan` des ITEM de `taches` servis hors de la journée
+    (vue d'un projet, revue) : le MÊME calcul que la journée (`texte_explication` sur l'`ItemPur`, jours
+    travaillés et projets « de la semaine » lus par `etat_projets`), et les lignes du plan de J lues en UNE
+    requête. Écrit dans `ctx['calculs']` ; les calculs déjà posés (santé du projet) sont gardés."""
+    usage = 'assistant' if ctx['assistant'] else 'ecran'
+    lignes = journee_lue.lignes_de_taches_du_jour(user, etat.jour)
+    for tache in taches:
+        ligne = lignes.get(tache.pk)
+        item = journee_lue.item_de_tache(tache, etat.focus)
+        ctx['calculs'][('tache', tache.pk)] = {
+            **ctx['calculs'].get(('tache', tache.pk), {}),
+            'explication': texte_explication(item, tache, nom_du_projet(tache, usage, ctx['reglages']), etat.jour,
+                                             etat.travailles_journee),
+            'essentielle': bool(ligne and ligne.essentielle),
+            'prevue_au_plan': bool(ligne and ligne.prevue_au_plan)}
+
+
+def _item(user, pk, ctx, chargees, etat):
+    """L'ITEM de la tâche `pk` (déjà chargée, sinon lue avec ses calculs) ou `None`."""
     if pk is None:
         return None
-    tache = chargees.get(pk) or charger_items(taches_de(user).filter(pk=pk)).first()
+    tache = chargees.get(pk)
+    if tache is None:
+        tache = charger_items(taches_de(user).filter(pk=pk)).first()
+        if tache is not None:
+            poser_calculs_d_items(user, [tache], etat, ctx)
     return ItemSerializer(tache, context=ctx).data if tache is not None else None
 
 
-def _sections_de_la_vue(user, projet, taches, ctx):
-    """Les étapes du projet (avec leurs ITEM) et les ITEM « sans étape »."""
+def _sections_de_la_vue(user, projet, taches, ctx, pures):
+    """Les étapes du projet (avec leurs ITEM et leur compte `{ouvertes, faites}`, calculé de TOUTES ses
+    tâches même quand les faites ne sont pas servies) et les ITEM « sans étape »."""
     par_etape = {}
     for tache in taches:
         par_etape.setdefault(tache.section_id, []).append(tache)
+    comptes = lecture.compteurs_par_etape(pures)
     etapes = [{'id': s.pk, 'nom': s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
                'date_fin': _iso(s.date_fin),
-               'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data}
+               'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data,
+               'compteurs': comptes.get(s.pk, {'ouvertes': 0, 'faites': 0})}
               for s in sections_de(user).filter(projet=projet).order_by('rang', 'id')]
-    return etapes, ItemSerializer(par_etape.get(None, []), many=True, context=ctx).data
+    sans = comptes.get(None, {'ouvertes': 0, 'faites': 0})
+    return etapes, ItemSerializer(par_etape.get(None, []), many=True, context=ctx).data, sans
 
 
 def vue_du_projet(user, projet, etat, ctx, jour):
@@ -309,13 +337,14 @@ def vue_du_projet(user, projet, etat, ctx, jour):
     taches = list(charger_items(taches_de(user).filter(projet=projet, parent__isnull=True, statut__in=statuts)
                                 .order_by(F('rang_projet').asc(nulls_last=True), 'id')))
     chargees = {t.pk: t for t in taches}
-    etapes, sans_etape = _sections_de_la_vue(user, projet, taches, ctx)
+    poser_calculs_d_items(user, taches, etat, ctx)
+    etapes, sans_etape, sans_compteurs = _sections_de_la_vue(user, projet, taches, ctx, pures)
     points, legende = lecture.burnup_de(pures, jour)
     return {
         'projet': forme_projet(projet, ctx), 'avancement': lecture.avancement_de(pures),
-        'prochain_jalon': _item(user, lecture.prochain_jalon_id(pures), ctx, chargees),
-        'prochaine_action': _item(user, lecture.prochaine_action_id(pures), ctx, chargees),
-        'sections': etapes, 'sans_section': sans_etape,
+        'prochain_jalon': _item(user, lecture.prochain_jalon_id(pures), ctx, chargees, etat),
+        'prochaine_action': _item(user, lecture.prochaine_action_id(pures), ctx, chargees, etat),
+        'sections': etapes, 'sans_section': sans_etape, 'sans_section_compteurs': sans_compteurs,
         'faites_nb': etat.calculs[('projet', projet.pk)]['compteurs']['faites'],
         'burnup': points, 'burnup_legende': legende,
     }
@@ -350,6 +379,7 @@ def revue_des_projets(user, etat, ctx, lundi):
     cartes = lecture.cartes_de_revue(user, etat, lundi)
     ids = [c.prochaine_id for c in cartes if c.prochaine_id is not None]
     prochaines = {t.pk: t for t in charger_items(taches_de(user).filter(pk__in=ids))}
+    poser_calculs_d_items(user, list(prochaines.values()), etat, ctx)
     mode = etat.reglages.mode if etat.reglages else 'pousser'
     courte, bilan = lecture.bilan_de_semaine(user, lundi, mode)
     focus = next((c.projet.pk for c in cartes if c.revue is not None and c.revue.focus), None)

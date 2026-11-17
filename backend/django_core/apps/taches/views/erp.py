@@ -4,6 +4,7 @@ dans l'ERP », lier et convertir une activité, suggestions.
 Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
 schéma OpenAPI est celui de leur échantillon de `contract_samples/`.
 """
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -11,6 +12,7 @@ from rest_framework.views import APIView
 
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.selectors.base import taches_de
+from apps.taches.selectors.journee import progression_courante
 from apps.taches.serializers.formes import TacheEcriteSerializer, charger_taches, contexte, tache_ecrite
 from apps.taches.services.erp import PLAFOND_CONVERSION, convertir_activites, lier_activite
 from apps.taches.views.base import (
@@ -48,7 +50,8 @@ def _tache_ecrite(request, tache_id, geste):
     user = request.user
     tache = charger_taches(taches_de(user).filter(pk=tache_id)).get()
     reglages = ReglagesRythme.objects.filter(company_id=user.company_id, proprietaire=user).first()
-    instance = tache_ecrite(tache, geste_id=geste.pk if geste is not None else None)
+    instance = tache_ecrite(tache, progression=progression_courante(user, timezone.localdate()),
+                            geste_id=geste.pk if geste is not None else None)
     return TacheEcriteSerializer(
         instance, context=contexte(assistant=est_assistant(request), reglages=reglages)).data
 

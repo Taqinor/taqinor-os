@@ -166,22 +166,19 @@
       }
     },
     "nom_pris": {
-      "detail": "Ce nom est déjà pris.",
-      "code": "nom_pris",
-      "nom": [
-        "Un projet actif porte déjà ce nom."
-      ]
+      "detail": "Un projet actif porte déjà ce nom.",
+      "code": "nom_pris"
     },
     "proposition_expiree": {
-      "detail": "Proposition expirée.",
+      "detail": "Cette proposition a expiré.",
       "code": "proposition_expiree"
     },
     "autre_compte": {
-      "detail": "Envoi d'un autre compte.",
+      "detail": "Une action d'un autre compte a été retirée de la file.",
       "code": "autre_compte"
     },
     "deja_lie": {
-      "detail": "Une tâche est déjà liée à cette activité.",
+      "detail": "Cette activité a déjà sa tâche.",
       "code": "deja_lie"
     }
   }

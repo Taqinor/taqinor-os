@@ -187,7 +187,11 @@
             "peut_cloturer": true,
             "lock_version": 4
           }
-        ]
+        ],
+        "compteurs": {
+          "ouvertes": 1,
+          "faites": 4
+        }
       }
     ],
     "sans_section": [
@@ -230,6 +234,10 @@
         "lock_version": 1
       }
     ],
+    "sans_section_compteurs": {
+      "ouvertes": 7,
+      "faites": 8
+    },
     "faites_nb": 12,
     "burnup": [
       {

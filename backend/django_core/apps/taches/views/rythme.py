@@ -20,7 +20,7 @@ from apps.taches.views.base import (
 RYTHME = forme_echantillon('rythme')
 INTROUVABLE = 'Introuvable.'
 #: 409 d'une carte qui n'est plus ouverte (contract_samples/erreurs.json `proposition_expiree`).
-DETAIL_EXPIREE = 'Proposition expirée.'
+DETAIL_EXPIREE = 'Cette proposition a expiré.'  # textes.md §2.16
 CODE_EXPIREE = 'proposition_expiree'
 
 
@@ -44,14 +44,12 @@ class RythmeVue(APIView):
         'mode': serializers.CharField(),
         'objectif': serializers.IntegerField(required=False),
         'sens': serializers.CharField(required=False),
-    }), responses=reponses(RYTHME, erreurs=(400, 404)))
+    }), responses=reponses(RYTHME, erreurs=(400,)))
     def post(self, request):
         try:
             _reglages, geste = service.regler_rythme(request.user, request.data, service.aujourdhui())
         except service.ErreursRythme as exc:
             return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
-        except service.SansReglages:
-            raise NotFound(INTROUVABLE)
         return Response(rythme_de(request, geste=geste))
 
 

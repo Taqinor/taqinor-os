@@ -12,15 +12,13 @@
 Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py`) ; les suggestions
 arrivent avec TCH71-TCH72.
 """
-import datetime
-
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404
 from django.utils import timezone
 
-from apps.records.selectors import a_faire_personnels_de, activites_ouvertes_pour
+from apps.records.selectors import a_faire_personnels_de, activite_ouverte_de
 from apps.records.services import cloturer_a_faire_personnel
 from apps.taches.choix import CibleLiable, LienEtat, Source, StatutTache
 from apps.taches.models.taches import Tache
@@ -64,19 +62,17 @@ def _lien_de_l_activite(user, activite):
 def lier_activite(user, *, activite_id, titre='', jour_prevu=None):
     """Crée la tâche liée à l'activité `activite_id` (ouverte, assignée à `user`) → `ResultatCreation`.
 
-    `Http404` si l'activité n'est pas une activité ouverte de `user` (refus = introuvable) ;
+    `Http404` si l'activité n'est pas une activité ouverte de `user` (refus = introuvable) — toute
+    activité ouverte, sans échéance ou reportée comprises (`records.selectors.activite_ouverte_de`) ;
     `ConflitEtat` 409 `deja_lie` si une tâche vivante la porte déjà. L'activité reste ouverte."""
-    activite = activites_ouvertes_pour(user, jusquau=datetime.date.max).filter(pk=activite_id).first()
+    activite = activite_ouverte_de(user, activite_id)
     if activite is None:
         raise Http404('Introuvable.')
-    lien, libelle = _lien_de_l_activite(user, activite)
+    lien, _libelle = _lien_de_l_activite(user, activite)
     ligne = {'titre': (titre or '').strip() or (activite.summary or '').strip(), 'jour_prevu': jour_prevu}
-    with transaction.atomic():
-        resultat = creer_taches(user, [ligne], source=Source.ACTIVITE, porte='lien_activite',
-                                lien=lien, activite=activite)
-        if libelle and resultat.creees:
-            Tache.objects.filter(pk=resultat.creees[0].pk).update(lien_libelle=libelle)
-    return resultat
+    # `creer_taches` pose le libellé du lien à la liaison (même porte `selectors/liens`).
+    return creer_taches(user, [ligne], source=Source.ACTIVITE, porte='lien_activite', lien=lien,
+                        activite=activite)
 
 
 # --- Convertir les à-faire personnels ---------------------------------------------------------

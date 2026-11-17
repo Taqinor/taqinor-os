@@ -83,6 +83,12 @@ class AgendaTests(TestCase):
         self.assertEqual([i['id'] for i in jour['sans_heure']], [sans.pk])
         self.assertEqual([i['id'] for i in self.le_jour(rendu, self.jour(2))['echeances']], [echeance.pk])
 
+    def test_capacite_du_jour_servie(self):
+        self.assertEqual(self.periode()['capacite'], {'minutes': 240, 'source': 'defaut'})
+        self.client_.post('/api/django/taches/preferences/', {'cle': 'capacite_jour_min', 'valeur': 300},
+                          format='json')
+        self.assertEqual(self.periode()['capacite']['minutes'], 300)
+
     def test_42_jours_au_plus(self):
         self.periode(au=self.jour(41).isoformat())
         rendu = self.periode(statut=400, au=self.jour(42).isoformat())

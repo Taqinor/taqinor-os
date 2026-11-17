@@ -83,7 +83,8 @@ class NocturneTests(TestCase):
 
 
 class TachePlanifieeNocturneTests(TestCase):
-    """TCH99 — `taches.nocturne` (sweeps.py) : sociétés actives, module actif, coupe-circuit respecté."""
+    """TCH99 — `taches.nocturne` (sweeps.py) : sociétés actives, module actif ; le coupe-circuit ne coupe
+    que l'ENVOI (`societes_a_balayer`, `taches.balayer`), jamais la nuit (décision de la fusion 2)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -99,14 +100,25 @@ class TachePlanifieeNocturneTests(TestCase):
             with self.subTest(societe=exclue.slug):
                 self.assertNotIn(exclue.pk, ids)
 
-    def test_une_nuit_par_societe_balayable_au_jour_local(self):
+    def test_une_nuit_par_societe_du_module_au_jour_local(self):
         with mock.patch('apps.taches.sweeps.timezone.localdate', return_value=JOUR), \
                 mock.patch.object(nocturne, 'executer') as executer:
             rendu = sweeps.nocturne_quotidienne()
         appels = [c.args for c in executer.call_args_list]
         self.assertIn((self.a.pk, JOUR), appels)
-        self.assertFalse({self.b.pk, self.c.pk, self.d.pk} & {company_id for company_id, _jour in appels})
+        self.assertIn((self.b.pk, JOUR), appels)  # coupe-circuit : la nuit tourne quand même
+        self.assertFalse({self.c.pk, self.d.pk} & {company_id for company_id, _jour in appels})
         self.assertEqual(rendu, {'societes': len(appels), 'jour': JOUR.isoformat()})
+
+    def test_coupe_circuit_la_cloture_d_hier_tourne_quand_meme(self):
+        from apps.taches.models.journee import PlanJour
+        compte = fabriques.compte(self.b, nom='u1')
+        fabriques.reglages(compte)
+        with mock.patch('apps.taches.sweeps.timezone.localdate', return_value=JOUR):
+            sweeps.nocturne_quotidienne()
+        hier = PlanJour.objects.get(company=self.b, proprietaire=compte, jour=JOUR - datetime.timedelta(days=1))
+        self.assertNotEqual(hier.statut_jour, '')
+        self.assertFalse(PlanJour.objects.filter(company__in=[self.c, self.d]).exists())
 
     def test_planifiee_a_3_h_sur_la_file_scheduled(self):
         from django.conf import settings

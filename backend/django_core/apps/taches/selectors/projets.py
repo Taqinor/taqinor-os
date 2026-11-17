@@ -23,15 +23,18 @@ from apps.taches.moteur.classement import ItemPur, prochaine_action
 from apps.taches.moteur.gabarits import texte as gabarit_texte
 from apps.taches.moteur.rythme import journee_reussie, semaine_courte
 from apps.taches.selectors.base import jours_travailles_de, projets_de, sections_de, taches_de
+from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
 #: Fenêtre maximale (jours) lue pour les jours travaillés : au-delà, rien ne change le verdict.
 HORIZON_JOURS = 800
+#: Fenêtre de la journée autour de J (la même que celle d'`aujourdhui/`).
+JOURNEE_AVANT, JOURNEE_APRES = JOURS_AVANT, JOURS_APRES
 CHAMPS_TACHE = (
     'id', 'projet_id', 'parent_id', 'statut', 'quelque_jour', 'jour_prevu', 'echeance', 'fait_le',
     'created_at', 'annule_le', 'bloquee_par_id', 'bloquee_par__statut', 'bloquee_par__is_deleted',
-    'rang_projet', 'jalon')
+    'rang_projet', 'jalon', 'section_id')
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,7 @@ class TachePure:
     annule_le: datetime.date | None
     rang_projet: int | None = None
     jalon: bool = False
+    section_id: int | None = None
 
 
 @dataclass
@@ -63,6 +67,10 @@ class EtatProjets:
     reglages: object = None
     calculs: dict = field(default_factory=dict)
     constat: dict = field(default_factory=dict)
+    #: Jours travaillés de la fenêtre de la journée et projets « de la semaine » : ce que lit
+    #: l'explication d'un ITEM servi par la vue d'un projet ou la revue (même calcul que la journée).
+    travailles_journee: frozenset = frozenset()
+    focus: frozenset = frozenset()
 
     def taches_de(self, projet_id):
         return self.taches.get(projet_id, [])
@@ -90,7 +98,7 @@ def _tache_pure(ligne):
         quelque_jour=ligne['quelque_jour'], bloquee_par=ligne['bloquee_par_id'] if ouvert else None,
         jour_prevu=ligne['jour_prevu'], echeance=ligne['echeance'], fait_le=_local(ligne['fait_le']),
         created_at=_local(ligne['created_at']), annule_le=_local(ligne['annule_le']),
-        rang_projet=ligne['rang_projet'], jalon=ligne['jalon'])
+        rang_projet=ligne['rang_projet'], jalon=ligne['jalon'], section_id=ligne['section_id'])
 
 
 def _taches_par_projet(user):
@@ -169,6 +177,15 @@ def _compteurs(taches):
             'faites': sum(1 for t in comptees if t.statut == StatutTache.FAIT)}
 
 
+def compteurs_par_etape(taches):
+    """`{section_id: {ouvertes, faites}}` des tâches d'un projet (même compte que le projet entier ;
+    `None` = « Sans étape »)."""
+    par_etape = {}
+    for tache in taches:
+        par_etape.setdefault(tache.section_id, []).append(tache)
+    return {section_id: _compteurs(liste) for section_id, liste in par_etape.items()}
+
+
 def _focus(user, jour):
     """Ids des projets « de la semaine » (un seul, invariant 25) pour la semaine de `jour`."""
     return set(RevueProjet.objects.filter(
@@ -202,8 +219,14 @@ def etat_projets(user, jour, *, usage='ecran'):
     etat = EtatProjets(jour=jour, projets=list(projets_de(user).order_by('rang', 'id')))
     etat.taches, etat.sections, etat.reglages = _taches_par_projet(user), _sections_par_projet(user), reglages_de(user)
     du, au = _fenetre_travaillee(etat)
-    travailles = jours_travailles_de(user, du, au)
+    # Une seule lecture couvre aussi la fenêtre de la journée (J − 28, J + 60) dont les ITEM ont besoin
+    # pour leur explication ; la santé ne voit que sa propre fenêtre, comme avant.
+    debut_j, fin_j = jour - datetime.timedelta(days=JOURNEE_AVANT), jour + datetime.timedelta(days=JOURNEE_APRES)
+    lus = jours_travailles_de(user, min(du, debut_j), max(au, fin_j))
+    travailles = {d for d in lus if du <= d <= au}
     negliges, focus = _negliges(etat, usage), _focus(user, jour)
+    etat.travailles_journee = frozenset(d for d in lus if debut_j <= d <= fin_j)
+    etat.focus = frozenset(focus)
     for projet in etat.projets:
         etat.calculs[('projet', projet.pk)] = _calcul_projet(projet, etat, travailles, negliges, focus, usage)
     etat.constat = _constat(etat)

@@ -322,6 +322,22 @@ tâches » · Restaurer ; vide « Rien de supprimé » ; « Derniers gestes » (
 (ou « Déjà annulé »). Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
 Restaurée dans À trier · Annuler ».
 
+Messages servis par le serveur (`GesteAnnulable.message`, raccord F2 : posés par les lanes, validés et inscrits ici ;
+jamais un titre de tâche ni un nom de projet — la liste part aussi vers l'assistant) :
+
+| Geste | Message |
+|---|---|
+| Tâche | « Faite » (récurrente : « Faite · prochaine {jour} ») · « Sautée » · « Rouverte » · « Reçue » · « En attente de : {qui} » · « Modifiée » · « Supprimée » · « Restaurée » (« Restaurée dans À trier ») · « Abandonnée » · « Sans jour » · « Essentielle » |
+| Check-list | « Ajoutée » · « Modifiée » · « Retirée » |
+| Lot (`n` = 1 : singulier) | « {n} déplacées » · « {n} priorisées » · « {n} étiquetées » · « {n} faites » · « {n} supprimées » · « {n} gardées sans projet » · « {n} prévues {jour} » · « {n} en réserve » |
+| Projet | « Projet créé » · « Projet supprimé » · « Projet terminé » · « Projet rouvert » · « Dates décalées » · « Revue enregistrée » · « Étape ajoutée » · « Étape modifiée » · « Étape supprimée » |
+| Rappel | « Rappel retiré » |
+| Préférence | « Noté : {phrase} » (la phrase de l'en-tête du Copilote, §5.7 ; une note libre : « notes libres ») · « Retirée : {libellé} » |
+
+Libellés des préférences (`ClePreference`, phrases du Copilote et messages ci-dessus) : « Capacité du jour (minutes) »
+· « Jours travaillés » · « Jours courts » · « Congés » · « Heure du plan du matin » · « Heure de la relance » · « Heure du
+bilan du soir » · « Heure limite » · « Jour de la revue de semaine » · « Choisir l'essentiel le matin » · « Notes libres ».
+
 ### 2.14 Réglages
 
 Rubriques et leur résumé (liste de Réglages) : Notifications « Plan du matin, message de 15 h, bilan du soir » · Mon
@@ -378,7 +394,16 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `bloquee_par_id` | « Boucle : « {B} » attend déjà « {T} ». » |
 | `en_attente_de` | « Dis de qui ou de quoi tu attends. » |
 | `essentielles` / `essentielle` | « 3 au plus. » |
-| `delta_jours` | « {n} tâches passeraient avant aujourd'hui. » |
+| `delta_jours` | « {n} tâches passeraient avant aujourd'hui. » (une : « 1 tâche passerait avant aujourd'hui. ») |
+| `echeance_heure` | « Une heure demande une échéance. » |
+| `recurrence` (sauter une occurrence) | « Cette tâche ne se répète pas. » |
+| `ids` (lot) · `libelle` (check-list) · `en_attente_de` | « 200 au plus. » · « Requis. » / « 255 caractères au plus. » · « 200 caractères au plus. » |
+| tout choix fermé (`periode`, `tri`, `groupe`, `liste`, `quand`, `taches_ouvertes`, `vue`…) | « Valeur inconnue. » |
+| `nom` (étape) | « Une étape « {nom} » existe déjà. » |
+| 403 (assistant, Planifier le projet) | « Ce projet est confidentiel : l'assistant ne lit pas sa liste. » |
+| champ obligatoire absent | « Requis. » |
+| `jour` (bilan) | « Le bilan d'hier n'est plus modifiable après midi. » |
+| `jour` · `du` (date) | « Date attendue (AAAA-MM-JJ). » |
 | `focus` | « Déjà « {projet} » cette semaine. » |
 | `au` · `q` | « 42 jours au plus. » · « Requis. » |
 | `estimation_minutes` · `objectif` · `mode` | « Entre 5 et 960 minutes. » · « Entre 1 et 12. » · « Valeur inconnue. » |

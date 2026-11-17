@@ -20,6 +20,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
+from apps.taches.confidentialite import nom_pour
 from apps.taches.models.projets import Projet, RevueProjet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.decalage import decaler
@@ -508,10 +509,40 @@ def _appliquer_decalage(user, projet, sections, taches, changements):
     return ops
 
 
-def decaler_projet(user, projet_id, delta, *, apercu=True):
+class DecalageRefuse(Exception):
+    """400 de `decaler/` : `refus` (sous `delta_jours`), l'aperçu titré qu'il AURAIT appliqué
+    (`changements`) et les ids des tâches qui passeraient avant aujourd'hui (`avant_aujourdhui`)."""
+
+    def __init__(self, refus, changements, avant_aujourdhui):
+        super().__init__(refus)
+        self.refus, self.changements, self.avant_aujourdhui = refus, changements, list(avant_aujourdhui)
+
+
+def titrer_changements(changements, projet, sections, taches, usage):
+    """Chaque ligne de `decalage` reçoit le `titre` de son objet par `nom_pour` (confidentialité
+    respectée ; le nom d'une étape d'un projet confidentiel devient « Étape » hors de l'écran, comme
+    dans la santé). Les tâches du projet sont déjà lues : projet et parent posés en mémoire, sans requête."""
+    par_id = {t.pk: t for t in taches}
+    for tache in taches:
+        tache.projet = projet
+        if tache.parent_id in par_id:
+            tache.parent = par_id[tache.parent_id]
+    etapes = {s.pk: s for s in sections}
+    masquer = usage != 'ecran' and projet.confidentiel
+
+    def titre(ligne):
+        if ligne['objet'] == 'tache':
+            return nom_pour(par_id[ligne['id']], usage)
+        if ligne['objet'] == 'section':
+            return 'Étape' if masquer else etapes[ligne['id']].nom
+        return nom_pour(projet, usage)
+    return [{**ligne, 'titre': titre(ligne)} for ligne in changements]
+
+
+def decaler_projet(user, projet_id, delta, *, apercu=True, usage='ecran'):
     """Décale de `delta` jours les dates du projet, de ses étapes et de ses tâches ouvertes. `apercu` : rien
-    n'est écrit. Refus (une tâche passerait avant aujourd'hui) → 400 sur `delta_jours`. Rend
-    `(changements, geste ou None)`."""
+    n'est écrit. Refus (une tâche passerait avant aujourd'hui) → `DecalageRefuse` (400, aperçu compris).
+    Rend `(changements titrés, geste ou None)`."""
     jour = timezone.localdate()
     with transaction.atomic():
         projet = _verrouiller_projet(user, projet_id)
@@ -522,8 +553,9 @@ def decaler_projet(user, projet_id, delta, *, apercu=True):
             return [], None
         resultat = decaler(delta, jour, projet, sections, taches, _prochain_ouvre(user, dates, delta))
         if resultat.refus:
-            raise serializers.ValidationError({'delta_jours': [resultat.refus]})
-        changements = list(resultat.changements)
+            raise DecalageRefuse(resultat.refus, titrer_changements(resultat.apercu, projet, sections, taches,
+                                                                    usage), resultat.avant_aujourdhui)
+        changements = titrer_changements(resultat.changements, projet, sections, taches, usage)
         if apercu or not changements:
             return changements, None
         ops = _appliquer_decalage(user, projet, sections, taches, changements)

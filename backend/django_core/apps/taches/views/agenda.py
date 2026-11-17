@@ -140,10 +140,14 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
             cles_jour=cles, toute_la_journee=obligations.lignes if jour == J else (),
             externes=[r for r in rendez_vous if sel.touche_le_jour(r, jour)]))
     semaine = vue == VUE_SEMAINE
+    minutes, source = sel.capacite_du_jour(user, J, reglages, sel.preferences_de(user), journee.travailles)
     return {
         'du': du.isoformat(), 'au': au.isoformat(), 'jours': jours,
         'a_placer': rendu.items(a_placer(journee, projet_id)),
         'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if semaine else [],
+        # La capacité d'un jour travaillé (« {h} pour {cap} ») : celle d'aujourd'hui, même calcul que la
+        # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240).
+        'capacite': {'minutes': minutes, 'source': source},
     }
 
 
