@@ -285,6 +285,27 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     }
   })
 
+  it('17/11/2026 — débrief sans devis envoyé : réponses de devis retirées, « Client refuse »', () => {
+    const debrief = type('debrief')
+    expect(debrief.question).toBe('La visite est passée — avez-vous eu le client ?')
+    const DE_DEVIS = ['question_prix', 'devis_modifie', 'decision_famille', 'decision_proprietaire']
+    const lire = (lead_devis_envoye) => reponsesDeLEtape(debrief, {
+      ...DEBRIEF, canal: 'appel', visite_prevue_le: null, lead_devis_envoye })
+    const sans = lire(false)
+    for (const id of DE_DEVIS) expect(sans.some((r) => r.id === id), id).toBe(false)
+    expect(sans.find((r) => r.id === 'refus').label).toBe('Client refuse')
+    expect(sans.find((r) => r.id === 'refus').outcome).toBe('refuse')
+    // Un devis envoyé — ou l'information absente (ancien serveur) : tout reste.
+    for (const valeur of [true, undefined]) {
+      const avec = lire(valeur)
+      for (const id of DE_DEVIS) expect(avec.some((r) => r.id === id), `${id}/${valeur}`).toBe(true)
+      expect(avec.find((r) => r.id === 'refus').label).toBe('Refuse la proposition')
+    }
+    expect(sans).toHaveLength(lire(true).length - DE_DEVIS.length)
+    // Le contrat de la touche porte la clé servie.
+    expect(DEBRIEF).toHaveProperty('lead_devis_envoye')
+  })
+
   it('raisons d’attente : résidentiel (ou sans segment) = financement seul ; pros = les six', () => {
     const raisons = (lead_segment) => reponsesDeLEtape(type('contact_appel'), { ...TOUCHE, canal: 'appel', lead_segment })
       .find((r) => r.id === 'attente_accord').raisons.map((r) => r.valeur)

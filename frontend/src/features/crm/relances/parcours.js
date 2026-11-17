@@ -89,6 +89,25 @@ export const CONTEXTES_MASQUANTS = {
   // (« Numéro invalide / pas sur WhatsApp » de l'étape générique, que ses
   // `reponses_appel` proposent déjà sur un appel) se retire.
   touche_appel: (etape) => familleCanal(etape?.canal) === 'appel',
+  // 17/11/2026 — le lead n'a JAMAIS reçu de devis (`lead_devis_envoye`, servi
+  // par le serveur ; absent = inconnu = rien n'est retiré) : sur le débrief
+  // d'une visite faite avant tout devis, les réponses de devis se retirent.
+  sans_devis: (etape) => etape?.lead_devis_envoye === false,
+}
+
+/** 17/11/2026 — `variantes_contexte` d'une réponse : `{contexte: {label…}}`, le
+ *  contexte étant une clé de `CONTEXTES_MASQUANTS`. Comme une variante de
+ *  segment, seule la LECTURE change (`CLES_VARIANTE_SEGMENT`), jamais la clé
+ *  serveur ni la suite. */
+function appliquerVariantesContexte(reponse, etape) {
+  let lecture = reponse
+  for (const [contexte, variante] of Object.entries(reponse.variantes_contexte || {})) {
+    if (!CONTEXTES_MASQUANTS[contexte]?.(etape)) continue
+    for (const cle of CLES_VARIANTE_SEGMENT) {
+      if (variante[cle] !== undefined) lecture = { ...lecture, [cle]: variante[cle] }
+    }
+  }
+  return lecture
 }
 
 /** Le segment par défaut d'un lead sans segment : résidentiel. */
@@ -122,6 +141,7 @@ export function reponsesDeLEtape(type, etape) {
   }
   return reponses
     .filter((r) => !(r.masquee_si && CONTEXTES_MASQUANTS[r.masquee_si]?.(etape)))
+    .map((r) => appliquerVariantesContexte(r, etape))
     .map((r) => (r.raisons ? { ...r, raisons: raisonsDuSegment(r.raisons, segment) } : r))
 }
 

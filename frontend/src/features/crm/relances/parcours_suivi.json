@@ -515,7 +515,7 @@
       "famille": "Visite technique",
       "nom": "Débrief visite — rappeler le client",
       "reconnaissance": { "cles": ["debrief"], "libelles": ["Débrief visite — rappeler le client"] },
-      "question": "La visite a eu lieu — le client est-il joint ?",
+      "question": "La visite est passée — avez-vous eu le client ?",
       "reponses": [
         { "modele": "joint", "label": "Oui, client joint après la visite", "effet": "Le suivi de proposition reprend à sa touche suivante s’il était pendant ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
         { "modele": "sans_reponse", "effet": "Si un suivi de proposition est pendant, il continue ; sinon étape « Rappeler — dernier essai avant de chiffrer », demain. Jamais au Froid.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
@@ -525,11 +525,11 @@
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "replanifier", "label": "La visite n’a pas eu lieu — nouvelle date", "effet": "La planification s’ouvre : la visite est déplacée, la confirmation et le débrief suivent.", "suite": { "type": "visite_planifiee" } },
         { "modele": "visite_abandonnee", "label": "La visite n’aura pas lieu", "effet": "La visite n’a pas eu lieu : le rendez-vous passé garde sa date dans l’historique, les étapes de la visite sont retirées et le suivi continue sans visite.", "suite": { "type": "reprise" } },
-        { "modele": "question_prix", "effet": "Étape « Question de prix — préparer l’appel du fondateur » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
-        { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
-        { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
-        { "modele": "decision_proprietaire", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
-        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "question_prix", "masquee_si": "sans_devis", "effet": "Étape « Question de prix — préparer l’appel du fondateur » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
+        { "modele": "devis_modifie", "masquee_si": "sans_devis", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
+        { "modele": "decision_famille", "masquee_si": "sans_devis", "effet": "Étiquette « Décision à plusieurs » ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
+        { "modele": "decision_proprietaire", "masquee_si": "sans_devis", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
+        { "modele": "refus", "label": "Refuse la proposition", "variantes_contexte": { "sans_devis": { "label": "Client refuse" } }, "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
     },

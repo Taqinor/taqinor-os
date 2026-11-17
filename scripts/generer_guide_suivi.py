@@ -936,6 +936,24 @@ MASQUEE_SI = {
 }
 
 
+#: Les contextes de ``variantes_contexte`` dits en clair (le libellé change, rien d'autre).
+QUAND_CONTEXTE = {
+    'sans_devis': 'Si aucun devis n’a été envoyé',
+    'visite_prevue': 'Si une visite est déjà prévue',
+    'touche_appel': 'Sur un appel',
+}
+
+
+def mention_contextes(r: dict) -> str:
+    """17/11/2026 — les variantes de CONTEXTE d'une réponse (``variantes_contexte`` :
+    seul le libellé lu change), en une ligne sous la cellule."""
+    morceaux = [f'{QUAND_CONTEXTE.get(c, c)} : « {v.get("label", r.get("label", ""))} »'
+                for c, v in (r.get('variantes_contexte') or {}).items()]
+    if not morceaux:
+        return ''
+    return '<br><span class="note">' + esc_ecran(' · '.join(morceaux)) + '</span>'
+
+
 def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
     """Une ligne « Ta réponse / Ce qui se passe ensuite » du guide."""
     pastilles = ''
@@ -963,7 +981,8 @@ def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
         avertissement = f'<br><span class="note">{esc_ecran(texte_avertissement)}</span>'
     classe = ' class="membre"' if membre else ''
     return (f'<tr><td{classe}><strong>{esc(r["label"])}</strong>{pastilles}</td>'
-            f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}{mention_raisons(r)}{avertissement}</td></tr>')
+            f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}{mention_contextes(r)}'
+            f'{mention_raisons(r)}{avertissement}</td></tr>')
 
 
 def ligne_groupe(nom: str, explication: str, nombre: int) -> str:
