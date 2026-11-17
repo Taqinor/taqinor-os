@@ -104,7 +104,7 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `56e527e7b` (5 tours de corrections CI pliés ; tout est vert SAUF `e2e-shard (2)`, en cours de correction). **63 des 64 tâches de la fusion 2 sont
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `e90a5167e` (6 tours de corrections CI pliés ; au run d'avant tout était vert SAUF `e2e-shard (2)` : 43 specs passées, 15 échouées, toutes traitées au tour 6 — résultat à lire sur le run de `e90a5167e`). **63 des 64 tâches de la fusion 2 sont
   pliées et cochées** (115 tâches cochées sur 174 au total). Tout le code de la fusion 2 y est : serveur, écrans,
   raccords des deux côtés, semis, sécurité, plafonds, activation Administrateur seul, bout en bout Playwright.
 - Aucune lane en cours, aucune branche de lane non pliée. Rien d'important ne vit seulement sur le portable.
@@ -147,7 +147,13 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 - **À vérifier avant le merge** : `taches.nocturne` (03:00) parcourt TOUTES les sociétés actives où le module est
   actif, donc toutes dès le premier soir ; s'assurer qu'elle n'écrit RIEN (ni `PlanJour`, ni carte, ni
   `ReglagesRythme`) pour un compte qui n'a jamais utilisé le module (test à ajouter dans `tests/test_nocturne.py`).
-- **E2E restant rouge après le tour 5** (58 tests ; les écrans se montent) : (1) `taches-journee.spec.js` : « Garder
+- **E2E, tour 6 (plié)** : les specs journée lisent l'état réel du compte (`etatJournee` dans `taches-aides.js`) au
+  lieu de coder « 4 » et « 0 sur 5 » (`demo_admin` a 3 activités ERP closes du jour) ; vrais écarts d'écran
+  corrigés : feuille plus haute que la fenêtre au bureau (`max-height` sur `.feuille.dialogue-bureau`), créneaux de
+  l'agenda du bureau à 28 px (retour à 88 px par heure : densité à revoir à l'œil), segments de l'agenda à 390 px,
+  nom accessible de « Planifier ma semaine ». Si le run suivant est vert : la fusion 2 n'attend plus que les
+  acceptations en direct.
+- **(historique) E2E restant rouge après le tour 5** (58 tests ; les écrans se montent) : (1) `taches-journee.spec.js` : « Garder
   ces 4 » et « 0 sur 5 faites » introuvables — hypothèse : le compte `demo_admin` a déjà des activités ERP closes
   du jour qui comptent dans « faites » (`selectors/journee.py`, `compte_faites`) et `tout-effacer` ne les touche
   pas → rendre les specs indépendantes du compteur initial (lire N dans `aujourdhui/`) ; (2) `taches-saisie` :
