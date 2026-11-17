@@ -1,5 +1,5 @@
 {
-  "sha": "6a9523a26518a94619076f3fe3d013d2e1c9ff8c",
+  "sha": "00d1e8a370533f7016904c8d88eb1173d4b64371",
   "date": "2026-11-17",
   "groupe": "ASUP",
   "verdict": "PASS",
@@ -362,7 +362,7 @@
       "taches": [
         "ASUP62"
       ],
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "base_verdict": "FAIL",
       "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ASUP-PF10.4-ASUP62.jpg",
       "oracles": {
@@ -377,7 +377,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "écart accepté (base FAIL) : libellé de la corbeille commune : `ElementSupprime.libelle_snapshot` (apps/trash) garde le nom d'origine du lead pris à la suppression, jamais réécrit par « Anonymiser (RGPD) » — défaut antérieur, hors des Files d'ASUP62 ; le « fini quand » (lead anonymisé et toujours en corbeille) est tenu ; erreur : corbeille commune : le nom d'origine du lead n'apparaît plus"
+      "notes": "écart accepté (base FAIL) : libelle_snapshot de la corbeille garde le nom (apps/trash/services.py:47), défaut antérieur hors Files : `ElementSupprime.libelle_snapshot` garde le nom d'origine du lead pris à la suppression, jamais réécrit par « Anonymiser (RGPD) » — défaut antérieur, hors des Files d'ASUP62 ; le « fini quand » (lead anonymisé et toujours en corbeille) est tenu"
     }
   ]
 }
