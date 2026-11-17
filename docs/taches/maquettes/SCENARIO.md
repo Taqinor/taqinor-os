@@ -71,7 +71,7 @@ travaillés, il en reste 8 ».
 **Recrutement technicien — 9 tâches** · 4 sur 9 le ven. 20 et le 24 (5 ouvertes, inchangé de la journée).
 Faites : Valider le budget du poste (✓ mar. 10) · Choisir les sites d'annonce (✓ jeu. 12) · Définir le profil
 recherché (✓ lun. 16) · Publier l'annonce (✓ jeu. 19). Ouvertes : Trier les CV reçus (mer. 25 · 14:00, 1 h ; la
-« prochaine action ») · Rédiger la fiche de poste (sans jour jusqu'à 11:05 ; gardée à 11:05 depuis « Voir tout » ;
+« prochaine action ») · Rédiger la fiche de poste (sans jour, proposée puis gardée à 08:31 ;
 14:10 Choisir un jour → jeu. 26, 1 h — ligne estampillée « → jeu. 26 ») · Planifier les entretiens (attend : Trier les
 CV reçus, 30 min) · Préparer les questions d'entretien (sans jour, 45 min) · Appeler les candidats retenus (attend :
 Planifier les entretiens, 30 min).
@@ -92,15 +92,17 @@ Choisir l'hébergeur (1 h) · Rédiger la page d'accueil (2 h) · Photographier 
 - **08:30 — le matin** : **0 sur 5 · essentiel 0/2**. Essentiel : « Envoyer le devis révisé » (09:00, échéance mer.
   25) · « Confirmer la réservation du stand » (échéance aujourd'hui). Toute la journée : la visite. Prévu : « Rappeler
   pour le devis » 10:30 · « Suivi des relances : 5 ». Proposé = objectif − faites − gardées ouvertes = 5 − 0 − 2 = **3**,
-  SANS heure : « Appeler le fournisseur » (Salon, priorité haute) · « Commander les rails de fixation » (Benali) ·
-  « Relire le contrat de maintenance » (Administratif, ce soir). Carte du moment « 3 tâches proposées pour atteindre 5 ·
+  SANS heure, dans l'ordre de la règle (prochaine action de chaque projet, priorité du projet puis rang) :
+  « Commander les rails de fixation » (Benali, Haute) · « Appeler le fournisseur » (Salon, Haute, priorité haute de la
+  tâche) · « Rédiger la fiche de poste » (Recrutement, Moyenne). « Relire le contrat de maintenance »
+  (Administratif, Basse) n'est PAS proposé : Reda l'ajoute à la main à 09:10 pour ce soir. Carte du moment « 3 tâches proposées pour atteindre 5 ·
   Garder ces 3 ». Repliés : À revoir 2 · En attente 1. Agenda du bureau : devis 09:00–11:00, Rappeler 10:30.
-- **08:31** Garder ces 3 ; dans l'Agenda : rails à 08:30, fournisseur à 10:00. **08:52** rails faits.
+- **08:31** Garder ces 3 ; dans l'Agenda : rails à 08:30, fournisseur à 10:00 ; la fiche de poste reste sans jour. **08:52** rails faits. **09:10** Reda ajoute à la main
+  « Relire le contrat de maintenance » pour ce soir (45 min).
 - **09:41** (Agenda, tuile) : **1 sur 5 · essentiel 0/2**. Heure pleine masquée à moins de 20 min du trait : 10:00
   n'est pas écrite dans la gouttière.
 - **10:00** rappel du fournisseur (`rappel-ouvert`). **10:20** fournisseur fait. **10:40** « Rappeler pour le devis »
-  close. **10:45** conflit (`etat-conflit`). **10:50** devis envoyé. **11:05** « Rédiger la fiche de poste » gardée.
-  **11:30** 3 relances faites. **14:10** fiche de poste → jeu. 26 ; toast « Prévue jeu. 26 · Annuler » (Choisir un
+  close. **10:45** conflit (`etat-conflit`). **10:50** devis envoyé. **11:30** 3 relances faites. **14:10** fiche de poste → jeu. 26 ; toast « Prévue jeu. 26 · Annuler » (Choisir un
   jour, `textes.md` §2.15 ; un REPORT dirait « Reportée à mer. 25 · Annuler », le jour réel).
 - **15:00** : **3 sur 5 · essentiel 1/2**. Essentiel : devis 09:00 (fait, barré) · stand. Prévu, dans l'ordre :
   rails 08:30 (fait) · fournisseur 10:00 (fait) · Rappeler 10:30 (fait, activité ERP) · fiche de poste « → jeu. 26 » ·
@@ -112,21 +114,21 @@ Choisir l'hébergeur (1 h) · Rédiger la page d'accueil (2 h) · Photographier 
   stand. Reste 1 : « Relire le contrat de maintenance » → « Reporter à mer. 25 » ; lot « Tout reporter à mer. 25 ». Un
   constat : « Tu finis plus souvent ton essentiel quand il est placé avant midi. »
 - La tuile (maj 09:41) dit 1 sur 5 : c'est l'état de 9 h 41. Lignes dans l'ordre d'Aujourd'hui : devis 09:00 · stand ·
-  visite (Toute la journée) · fournisseur 10:00 · Rappeler 10:30 · contrat (soir) ; pied : « Valider le plan de
+  visite (Toute la journée) · fiche de poste · fournisseur 10:00 · Rappeler 10:30 · contrat (soir) ; pied : « Valider le plan de
   calepinage · échéance jeu. 26 ».
 
 ## 4. La semaine du 23 au 29 (vue à 09:41 le mardi)
 | Jour | Prévu (heure · durée) | Charge |
 |---|---|---|
 | lun. 23 (passé) | ✓ Commander les onduleurs 09:00 · ✓ Commander les 16 panneaux 11:00 · ✓ Valider le texte des brochures 14:00 · ✓ Rappeler le comptable 16:00 (sans projet). Non faites → À revoir : planning des poses, bureau de contrôle | 4 faites |
-| mar. 24 | rails 08:30 (30 min) · devis 09:00 (2 h) · fournisseur 10:00 (30 min) · stand sans heure (30 min) · contrat ce soir (45 min) ; ERP : visite (Toute la journée), Rappeler 10:30 | 5 tâches · 4 h 15 pour 4 h |
+| mar. 24 | rails 08:30 (30 min) · devis 09:00 (2 h) · fournisseur 10:00 (30 min) · stand sans heure (30 min) · fiche de poste sans heure (1 h, jusqu'à son report de 14:10) · contrat ce soir (45 min) ; ERP : visite (Toute la journée), Rappeler 10:30 | 6 tâches · 5 h 15 pour 4 h |
 | mer. 25 | Valider le plan de calepinage 09:00 (1 h) · Imprimer les kakémonos 11:00 (30 min) · Trier les CV reçus 14:00 (1 h) | 3 tâches · 2 h 30 pour 4 h |
 | jeu. 26 | Réceptionner les 16 panneaux 09:00 (1 h) · Préparer le matériel du stand 14:00 (1 h) ; + démo onduleur (2 h) une fois posée | 2 tâches · 2 h pour 4 h (posée : 3 · 4 h pour 4 h) |
 | ven. 27 | Préparer la déclaration de TVA 10:00 (1 h) · Imprimer les badges de l'équipe 11:30 (30 min) · Payer l'assurance du camion 15:00 (30 min) | 3 tâches · 2 h pour 4 h |
 | sam. 28, dim. 29 | non travaillés | — |
 « Toute la journée » ne porte QUE les éléments de l'ERP sans heure (visites, poses). Une tâche du jour sans heure vit
-dans « À placer ». **À placer · 12** (Jour et Semaine, 09:41) : Aujourd'hui 2 (stand 30 min, contrat ce soir 45 min) ·
-À revoir 2 · Mes projets 8 (Salon : démo onduleur 2 h, hôtel 30 min ; Recrutement : fiche de poste 1 h, questions
+dans « À placer ». **À placer · 12** (Jour et Semaine, 09:41) : Aujourd'hui 3 (stand 30 min, fiche de poste 1 h, contrat ce soir 45 min) ·
+À revoir 2 · Mes projets 7 (Salon : démo onduleur 2 h, hôtel 30 min ; Recrutement : questions
 d'entretien 45 min ; Site web : pages 1 h, hébergeur 1 h, page d'accueil 2 h, photos 1 h). Ni une tâche en attente, ni
 une tâche En réserve n'est à placer.
 Plus loin (À venir, Mois) : lun. 30 nov. « Pose — Chantier Benali 9 kWc » (ERP, Toute la journée) · mer. 2 déc.

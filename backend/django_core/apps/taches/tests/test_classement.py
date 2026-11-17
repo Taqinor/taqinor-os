@@ -375,18 +375,17 @@ class ProposeTests(unittest.TestCase):
         self.assertEqual(prochaine_action(projet).id, 4)
         self.assertIsNone(prochaine_action(projet[:4]))
 
-    @unittest.expectedFailure
     def test_scenario_du_24_11_les_3_proposees_du_matin(self):
-        """CONSTAT (rapport de la lane) : SCENARIO.md §3 « 08:30 » attend fournisseur, rails, contrat ;
-        la règle de §3.4 rend rails, fournisseur, « Rédiger la fiche de poste » (Recrutement, Moyenne,
-        passe avant Administratif, Basse). Le jeu est encodé tel que le scénario le dit."""
+        """SCENARIO.md §3 « 08:30 » : prochaine action de chaque projet, dans l'ordre de priorité des
+        projets puis de leur rang : rails (Benali, Haute), fournisseur (Salon, Haute), fiche de poste
+        (Recrutement, Moyenne) ; le contrat (Administratif, Basse) vient après et n'est pas proposé."""
         from apps.taches.moteur.classement import proposer_plan
         jour = date(2026, 11, 24)
         items, titres = scenario_24_11()
         plan = proposer_plan(items, jour, TRAVAILLES, 5, 0, 2)
         self.assertEqual([titres[i.id] for i, _ in plan.pour_objectif],
-                         ['Appeler le fournisseur', 'Commander les rails de fixation',
-                          'Relire le contrat de maintenance'])
+                         ['Commander les rails de fixation', 'Appeler le fournisseur',
+                          'Rédiger la fiche de poste'])
 
 
 def scenario_24_11():
