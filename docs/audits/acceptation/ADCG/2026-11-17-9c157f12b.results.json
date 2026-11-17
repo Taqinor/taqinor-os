@@ -4,14 +4,16 @@
   "groupe": "ADCG",
   "verdict": "PASS",
   "couvre": [
-    "ADCG14"
+    "ADCG14",
+    "ADCG119"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
     {
       "id": "PF3.compose.ADCG14",
       "taches": [
-        "ADCG14"
+        "ADCG14",
+        "ADCG119"
       ],
       "verdict": "PASS",
       "base_verdict": null,
