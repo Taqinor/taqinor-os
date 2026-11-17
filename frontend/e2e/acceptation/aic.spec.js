@@ -227,4 +227,10 @@ sortie(1)`).catch(() => null)
     await api.dispose().catch(() => undefined)
     await nettoyerLead(lead.id)
   }
+}, {
+  ecart: {
+    base: 'FAIL',
+    raison: 'aucune heure servie : VisiteTerrain.date_prevue est un DateField, contrat figé par AIC95 (antérieur, hors Files) ; '
+      + 'la Preuve P8.2 ne cite pas l\'heure',
+  },
 })

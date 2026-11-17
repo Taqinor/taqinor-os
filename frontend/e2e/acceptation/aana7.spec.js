@@ -111,6 +111,10 @@ etape('PA4-AANA81-montant-devis', ['AANA81'], async ({ page }) => {
     const somme = agent.filter((s) => /ventes_lignedevis/i.test(s) && /quantite\s*\)?\s*\*\s*\(?\s*("?\w+"?\.)?"?prix_unitaire|prix_unitaire\s*\)?\s*\*\s*\(?\s*("?\w+"?\.)?"?quantite/i.test(s))
     expect(somme, 'aucune somme quantite × prix_unitaire des lignes de devis exécutée').toEqual([])
     expect(agent.filter((s) => /sum\s*\(/i.test(s) && /ventes_lignedevis/i.test(s)), 'aucune SUM sur ventes_lignedevis').toEqual([])
+    const plat = String(corps.answer || '').replace(/[\s\u00a0\u202f]/g, '')
+    expect(plat, 'la réponse ne donne pas la somme HT des lignes (2 500)').not.toContain('2500')
+    expect(plat, 'la réponse ne donne pas la somme TTC des lignes (3 000)').not.toContain('3000')
+    expect(corps.answer || '', 'la réponse renvoie à la fiche du devis').toMatch(/fiche|\/ventes\/devis/i)
   } finally {
     await r.delete(`${API}/ventes/devis/${d.id}/`, T).catch(() => null)
     await r.delete(`${API}/crm/leads/${lead.id}/`, T).catch(() => null)

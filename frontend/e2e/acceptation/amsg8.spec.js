@@ -170,4 +170,11 @@ etape('PF8.1-AMSG6-assistant-reel', ['AMSG6'], async ({ page, testInfo }) => {
     await r.delete(`${API}/crm/leads/${lead.id}/`, T).catch(() => null)
     await attendre(10)
   }
+}, {
+  ecart: {
+    base: 'FAIL',
+    raison: "sonde C-AMSG-007 périmée : NameError _valider_valeur, fonction ajoutée par COP-A2 830794c10 (13/11), "
+      + "postérieure à AMSG6 et hors Files ; repro False déjà asserté dans docs/audits/acceptation/AMSG/2026-11-13-f409ca823 "
+      + "(PF8.1.assistant_apercu_whatsapp) ; ce rejeu ajoute l'assistant réel",
+  },
 })
