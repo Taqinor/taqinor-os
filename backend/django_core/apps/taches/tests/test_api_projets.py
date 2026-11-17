@@ -602,6 +602,26 @@ class VueEtEtapesTests(_Base):
         self.assertEqual(corps['prochain_jalon']['id'], proche.pk)
         self.assertEqual(corps['prochaine_action']['id'], action.pk)
 
+    def test_les_item_portent_explication_essentielle_et_plan_comme_la_journee(self):
+        from apps.taches.models.journee import LignePlanJour
+        from apps.taches.selectors import journee as sel
+        from apps.taches.serializers.formes import charger_items
+        from apps.taches.serializers.journee import Rendu
+        jour = timezone.localdate()
+        projet = fabriques.projet(self.u1, nom='Ventes')
+        etoilee = fabriques.tache(self.u1, projet=projet, jour_prevu=jour)
+        simple = fabriques.tache(self.u1, projet=projet)
+        plan = fabriques.plan(self.u1, jour)
+        LignePlanJour.objects.create(company=self.a, plan=plan, tache=etoilee, prevue_au_plan=True, essentielle=True)
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        items = {t['id']: t for t in corps['sans_section']}
+        self.assertEqual((items[etoilee.pk]['essentielle'], items[etoilee.pk]['prevue_au_plan']), (True, True))
+        self.assertEqual((items[simple.pk]['essentielle'], items[simple.pk]['prevue_au_plan']), (False, False))
+        attendu = Rendu(sel.lire_journee(self.u1, jour, charger=charger_items)).calcul(('tache', etoilee.pk))
+        self.assertTrue(attendu['explication'])
+        self.assertEqual(items[etoilee.pk]['explication'], attendu['explication'])
+        self.assertEqual(corps['prochaine_action']['explication'], attendu['explication'])
+
     def test_sans_jalon_ni_action_les_deux_sont_nuls(self):
         projet = fabriques.projet(self.u1)
         corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
