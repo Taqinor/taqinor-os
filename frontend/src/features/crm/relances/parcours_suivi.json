@@ -47,8 +47,8 @@
       "precision": "Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer. La troisième fois : Froid (sauf une date du trimestre en cours)."
     },
     "attente_accord": {
-      "label": "En attente d'un accord (DPA / banque)", "reponse": "attente_accord", "date": true, "groupe": "plus_tard",
-      "precision": "La date convenue et la raison de l’attente sont obligatoires. L’étiquette de la raison est posée (« Attend un accord (DPA / banque) » pour l’administration) ; aucun message n’est proposé.",
+      "label": "En attente d'un accord (banque)", "reponse": "attente_accord", "date": true, "groupe": "plus_tard",
+      "precision": "La date convenue est obligatoire ; la raison de l’attente (la banque ou l’organisme de financement) est déjà choisie et son étiquette est posée. Aucun message n’est proposé.",
       "raison": true,
       "raisons": [
         { "valeur": "direction", "libelle": "La direction / le comité", "segments": ["commercial", "industriel"] },
@@ -59,6 +59,10 @@
         { "valeur": "administration", "libelle": "L'administration (DPA, dossier FDA)", "segments": ["agricole", "commercial", "industriel"] }
       ],
       "variantes_segment": {
+        "agricole": {
+          "label": "En attente d'un accord (DPA / banque)",
+          "precision": "La date convenue et la raison de l’attente sont obligatoires. L’étiquette de la raison est posée (« Attend un accord (DPA / banque) » pour l’administration) ; aucun message n’est proposé."
+        },
         "commercial": {
           "label": "En attente d'un accord",
           "precision": "La date convenue et la raison de l’attente sont obligatoires. Une étiquette dit ce qu’on attend (direction, banque, bailleur des murs…) ; un accusé vous est proposé juste après.",

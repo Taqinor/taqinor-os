@@ -217,7 +217,7 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label)).toEqual([
       'Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
     expect(items.find((i) => i.cle === 'plus_tard').membres.map((m) => m.reponse.label)).toEqual([
-      'À rappeler le…', 'Plus tard — pas maintenant', "En attente d'un accord (DPA / banque)"])
+      'À rappeler le…', 'Plus tard — pas maintenant', "En attente d'un accord (banque)"])
     expect(items.find((i) => i.genre === 'autre').membres.map((m) => m.reponse.label))
       .toEqual(['Ne plus me contacter'])
   })
@@ -444,9 +444,14 @@ describe('CIQ509 — libellés pros de la table du parcours', () => {
       const etape = { ...touche, canal: 'appel', lead_segment }
       expect(trouver(etape, 'decision_famille').label).toBe('Décision à plusieurs — en famille')
       expect(trouver(etape, 'decision_proprietaire').label).toBe('Décision à plusieurs — le propriétaire')
-      expect(trouver(etape, 'attente_accord').label).toBe("En attente d'un accord (DPA / banque)")
+      // 17/11/2026 — la banque seule pour un particulier (ou un lead sans segment).
+      expect(trouver(etape, 'attente_accord').label).toBe("En attente d'un accord (banque)")
       expect(trouver(etape, 'attente_accord').message).toBeUndefined()
     }
+    // L'agricole garde « (DPA / banque) » : la DPA et le dossier FDA comptent pour lui.
+    const agricole = trouver({ ...touche, canal: 'appel', lead_segment: 'agricole' }, 'attente_accord')
+    expect(agricole.label).toBe("En attente d'un accord (DPA / banque)")
+    expect(agricole.reponse).toBe('attente_accord')
   })
 
   it('« En attente d’un accord » pro : libellé neutre, accusé proposé, raisons de la table', () => {

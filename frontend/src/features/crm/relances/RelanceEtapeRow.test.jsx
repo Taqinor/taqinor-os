@@ -827,7 +827,7 @@ describe('Groupes « Pas joint » et « Plus tard… » — première réponse d
   it.each([
     ['À rappeler le…', { outcome: 'rappel', rappel_le: DATE }],
     ['Plus tard — pas maintenant', { reponse: 'plus_tard', rappel_le: DATE }],
-    ["En attente d'un accord (DPA / banque)",
+    ["En attente d'un accord (banque)",
       { reponse: 'attente_accord', rappel_le: DATE, raison_attente: 'financement' }],
   ])('« Plus tard… » → « %s » envoie le même corps qu’avant', async (nom, corps) => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
