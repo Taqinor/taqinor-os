@@ -10,7 +10,7 @@
 // qu'écrirait l'autre navigateur.
 import { test, expect } from '@playwright/test'
 import {
-  API, attendreAujourdhui, chercherTaches, creerProjet, creerTaches, jourServeur, ligne, listerProjets,
+  API, attendreAujourdhui, boutonGarder, chercherTaches, creerProjet, creerTaches, etatJournee, jourServeur, ligne, listerProjets,
   lireTache, ouvrirEcran, reinitialiser, suffixe, titreUnique, toast,
 } from './taches-aides'
 
@@ -112,7 +112,7 @@ test.describe('Tâches — saisie', () => {
     await expect(feuilleSaisie(page)).toHaveCount(0)
     await expect(toast(page)).toContainText('12 tâches créées')
 
-    // le serveur : 4 projets (les noms collés) et 12 tâches ; Proposé est rempli aussitôt (5 = l'objectif)
+    // le serveur : 4 projets (les noms collés) et 12 tâches ; Proposé est rempli aussitôt (objectif − déjà faites, lu sur le serveur)
     const projets = await listerProjets(page)
     expect(projets.map((p) => p.nom).sort()).toEqual(listes.map(([nom]) => nom).sort())
     for (const [, ...titres] of listes) {
@@ -121,7 +121,9 @@ test.describe('Tâches — saisie', () => {
         expect(trouvees.filter((t) => t.titre === titre), `« ${titre} » créée une fois`).toHaveLength(1)
       }
     }
-    await expect(page.getByRole('button', { name: 'Garder ces 5', exact: true }).first()).toBeVisible()
+    const etat = await etatJournee(page)
+    expect(etat.lignes, 'le serveur propose au moins une tâche').toBeGreaterThan(0)
+    await expect(boutonGarder(page, etat.lignes)).toBeVisible()
   })
 
   test('brouillon : fermer la saisie en cours de frappe, la rouvrir, tout est repris', async ({ page }) => {
