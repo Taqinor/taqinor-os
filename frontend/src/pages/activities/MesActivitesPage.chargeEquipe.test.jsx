@@ -106,6 +106,24 @@ describe('AMSG103 — lien des tâches de chantier', () => {
   })
 })
 
+describe('AMSG104 — type absent', () => {
+  it('affiche « — » sans « null », et garde l’icône et le nom d’une tâche typée', async () => {
+    mine.value = {
+      en_retard: [],
+      a_venir: [],
+      aujourdhui: [
+        { id: 1, summary: 'Sans type', activity_type_icone: null, activity_type_nom: null },
+        { id: 2, summary: 'Typée', activity_type_icone: '📞', activity_type_nom: 'Appel' },
+      ],
+    }
+    rendre()
+    await screen.findByText('Sans type')
+    expect(document.body.textContent).not.toMatch(/null|undefined/)
+    expect(screen.getByText('📞 Appel')).toBeTruthy()
+    expect(screen.getByText('Sans type').closest('tr')).toHaveTextContent('—')
+  })
+})
+
 describe('ALEA20 — Charge de l’équipe sur toutes les activités ouvertes', () => {
   it('somme 70 (et non 50) sur 2 responsables', async () => {
     const store = configureStore({

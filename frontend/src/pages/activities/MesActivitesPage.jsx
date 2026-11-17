@@ -581,7 +581,7 @@ export default function MesActivitesPage() {
                     aria-label={label}
                     getRowKey={(a) => a.id}
                     columns={[
-                      { key: 'type', header: 'Type', cell: (a) => `${a.activity_type_icone} ${a.activity_type_nom}` },
+                      { key: 'type', header: 'Type', cell: (a) => [a.activity_type_icone, a.activity_type_nom].filter(Boolean).join(' ') || '—' },
                       { key: 'summary', header: 'Résumé', cell: (a) => a.summary || '—' },
                       { key: 'due_date', header: 'Échéance', cellClassName: 'tabular-nums', cell: (a) => a.due_date || '—' },
                       {
