@@ -13,8 +13,8 @@ import { Navigate } from 'react-router-dom'
 
    Table des routes : docs/taches/reference/api.md §7 (13 routes). `/taches/projets/archive`
    et `/taches/projets/modeles` sont statiques : elles passent avant `/taches/projets/:id`.
-   Gating : `taches_voir` (activation par étapes, donnees.md inv. 28) avec repli sur le
-   palier tant que la permission n'est pas posée sur tous les rôles (WIR171).
+   Gating STRICT : palier ET `taches_voir` (activation par étapes, donnees.md inv. 28) —
+   jamais le repli WIR171 des comptes sans rôle fin, que le serveur refuse aussi.
    ========================================================================== */
 
 const Aujourdhui = lazy(() => import('../../pages/taches/Aujourdhui'))
@@ -36,7 +36,7 @@ function AllerAAujourdhui() {
 }
 
 const ROLES = ['normal', 'responsable', 'admin']
-const GARDE = { roles: ROLES, perm: 'taches_voir', permRepliPalier: true }
+const GARDE = { roles: ROLES, perm: 'taches_voir' }
 
 const config = {
   key: 'taches',

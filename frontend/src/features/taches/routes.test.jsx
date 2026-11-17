@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MANIFESTES } from '../../lib/apps/appSkus'
 import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
+import { estAutoriseEntree } from '../../router/moduleGating'
 import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
 import config from './module.config'
 import { useEnLigne } from './lib/enLigne'
@@ -74,6 +75,17 @@ describe('TCH43 — routes du module', () => {
     expect(MANIFESTES.taches).toMatchObject({ sku: 'generic', installable: false })
     const apps = buildInstalledApps(moduleConfigs, { role: 'admin' })
     expect(apps.some((a) => a.key === 'taches')).toBe(false)
+  })
+
+  it('garde STRICTE : un compte hérité sans rôle n\'entre pas, `taches_voir` entre', () => {
+    for (const route of config.routes) {
+      expect(route.permRepliPalier, route.path).toBeUndefined()
+      expect(estAutoriseEntree(route, 'admin', []), route.path).toBe(false)
+      expect(estAutoriseEntree(route, 'responsable', []), route.path).toBe(false)
+      expect(estAutoriseEntree(route, 'admin', ['taches_voir']), route.path).toBe(true)
+      expect(estAutoriseEntree(route, 'normal', ['taches_voir']), route.path).toBe(true)
+      expect(estAutoriseEntree(route, 'normal', ['crm_voir']), route.path).toBe(false)
+    }
   })
 
   it('chaque route porte son marqueur « contextuelle » (garde écran sans nav)', () => {
