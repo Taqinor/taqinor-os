@@ -6,6 +6,7 @@ permission STRICTE ; `est_assistant`, la permission et le bouchon des routes à 
 Avec base (TestCase, CI) : 403 sans `taches_voir` pour tout compte (y compris un compte hérité
 « responsable » sans rôle fin), 501 avec, 401 neutre sur capture, flux et tuile.
 """
+import inspect
 import json
 import re
 from pathlib import Path
@@ -152,6 +153,13 @@ def concret(chemin):
     return PREFIXE + chemin
 
 
+def est_construite(methode, chemin):
+    """Vrai quand la méthode de la vue n'est plus le bouchon `raise PasEncore()` (route construite par sa
+    tâche) : les tests « pas encore » ne regardent que les routes qui restent à construire."""
+    vue = resolve(concret(chemin)).func.view_class
+    return 'raise PasEncore()' not in inspect.getsource(getattr(vue, methode.lower()))
+
+
 def methodes_par_chemin():
     par_chemin = {}
     for methode, chemin in ROUTES:
@@ -206,6 +214,8 @@ class RoutesSansBaseTests(SimpleTestCase):
 
     def test_chaque_vue_leve_pas_encore(self):
         for methode, chemin in ROUTES:
+            if est_construite(methode, chemin):
+                continue
             with self.subTest(methode=methode, chemin=chemin):
                 correspondance = resolve(concret(chemin))
                 vue = correspondance.func.view_class()
@@ -388,7 +398,7 @@ class AccesTests(TestCase):
     def test_avec_le_droit_501(self):
         client_voir, client_admin = self._client(self.voir), self._client(self.admin)
         for methode, chemin in ROUTES:
-            if (methode, chemin) in ROUTES_A_JETON:
+            if (methode, chemin) in ROUTES_A_JETON or est_construite(methode, chemin):
                 continue
             client = client_admin if (methode, chemin) in ROUTES_ADMIN else client_voir
             with self.subTest(methode=methode, chemin=chemin):
