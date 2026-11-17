@@ -225,3 +225,67 @@ class ChargementTests(TestCase):
 
     def test_aucune_requete_par_ligne(self):
         self.assertEqual(self._requetes(1), self._requetes(4))
+
+
+#: Chaque texte d'une tâche et d'un projet confidentiels (regles.md §8, test canari des formes).
+CANARIS = ('Canari-titre', 'Canari-notes', 'Canari-attente', 'Canari-lien', 'Canari-étape',
+           'Canari-point', 'Canari-étiq', 'Canari-enfant', 'Canari-sous-attente', 'Canari-projet',
+           'Canari-objectif', 'Canari-dom', 'Canari-iss', 'Canari-bilan')
+
+
+class CanariFormesTests(TestCase):
+    """M1 — tâche et projet confidentiels portant « Canari » dans tout leur contenu, chargés par
+    `charger_taches` : sous l'en-tête assistant, aucune forme n'en sert un mot ; à l'écran, chacun
+    est servi (preuve que le canari est vivant)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.compte = fabriques.compte(fabriques.societe('canari'))
+        projet = fabriques.projet(
+            cls.compte, nom='Canari-projet', objectif='Canari-objectif', domaine='Canari-dom',
+            issue='Canari-iss', bilan='Canari-bilan', confidentiel=True)
+        tache = fabriques.tache(
+            cls.compte, projet=projet, section=fabriques.section(projet, nom='Canari-étape'),
+            titre='Canari-titre', notes='Canari-notes', en_attente_de='Canari-attente',
+            content_type=ContentType.objects.get_by_natural_key('ventes', 'devis'), object_id=512,
+            lien_libelle='Canari-lien', lien_etat='ok')
+        fabriques.tache(cls.compte, projet=projet, parent=tache, titre='Canari-enfant',
+                        en_attente_de='Canari-sous-attente')
+        ElementChecklist.objects.create(company=tache.company, tache=tache, libelle='Canari-point')
+        etiquette = Etiquette.objects.create(company=tache.company, proprietaire=cls.compte, nom='Canari-étiq')
+        EtiquetteTache.objects.create(company=tache.company, tache=tache, etiquette=etiquette)
+        cls.tache_id = tache.pk
+
+    def _rendus(self, assistant):
+        tache = formes.charger_taches(taches_de(self.compte).filter(pk=self.tache_id)).get()
+        contexte = formes.contexte(assistant=assistant)
+        return {
+            'tache': formes.TacheSerializer(tache, context=contexte).data,
+            'item': formes.ItemSerializer(tache, context=contexte).data,
+            'tache_ecrite': formes.TacheEcriteSerializer(formes.tache_ecrite(tache), context=contexte).data,
+            'projet': formes.ProjetSerializer(tache.projet, context=contexte).data,
+        }
+
+    def test_assistant_aucun_canari(self):
+        texte = json.dumps(self._rendus(True), ensure_ascii=False).lower()
+        self.assertNotIn('canari', texte)
+
+    def test_ecran_sert_chaque_canari(self):
+        texte = json.dumps(self._rendus(False), ensure_ascii=False)
+        for canari in CANARIS:
+            self.assertIn(canari, texte)
+
+    def test_assistant_garde_les_champs_declares(self):
+        rendus = self._rendus(True)
+        tache = rendus['tache']
+        self.assertEqual(list(tache), list(formes.TacheSerializer().fields))
+        self.assertEqual(list(rendus['projet']), list(formes.ProjetSerializer().fields))
+        self.assertEqual(tache['elements_checklist'], [])
+        self.assertEqual(tache['checklist'], {'faits': 0, 'total': 1})
+        self.assertEqual(tache['etiquettes'], [])
+        self.assertIsNone(tache['lien'])
+        self.assertEqual(tache['section']['nom'], '')
+        self.assertEqual(tache['en_attente_de'], '')
+        self.assertEqual(tache['enfants'][0]['en_attente_de'], '')
+        for champ in formes.TEXTES_PROJET:
+            self.assertEqual(rendus['projet'][champ], '')
