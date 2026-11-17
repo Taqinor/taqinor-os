@@ -173,3 +173,16 @@ describe('TCH89 — Un projet : priorité', () => {
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » en pause')
   })
 })
+
+describe('TCH91 — Un projet : ?planifier=1 ouvre Planifier le projet', () => {
+  it('le rituel remplace la liste ; Passer revient à la liste sans rien écrire', async () => {
+    monter('/taches/projets/3?planifier=1')
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    expect(await screen.findByRole('region', { name: 'Planifier le projet' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Études' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Passer' }))
+    expect(await screen.findByRole('region', { name: 'Études' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Planifier le projet' })).toBeNull()
+    expect(api.modifierProjet).not.toHaveBeenCalled()
+  })
+})

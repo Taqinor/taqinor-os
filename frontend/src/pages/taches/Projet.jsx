@@ -8,6 +8,7 @@ import {
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
+import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
@@ -76,7 +77,8 @@ function Entete({ vue, aujourdhui, onPriorite }) {
 export default function Projet() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [, setParams] = useSearchParams()
+  const [params, setParams] = useSearchParams()
+  const planifier = params.get('planifier') === '1'
   const aujourdhui = useMemo(() => aujourdhuiIso(), [])
   const [vue, setVue] = useState(null)
   const [erreur, setErreur] = useState('')
@@ -182,6 +184,13 @@ export default function Projet() {
     }
   }
 
+  const fermerPlanification = () => setParams((p) => { const s = new URLSearchParams(p); s.delete('planifier'); return s }, { replace: true })
+  const planifie = async () => {
+    fermerPlanification()
+    annoncer('Projet planifié')
+    await charger() // une fois, après le rituel : il a créé des étapes et des tâches
+  }
+
   const projet = vue?.projet
   const actionsEcran = projet ? [
     { libelle: 'Planifier le projet', onSelect: () => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s }) },
@@ -198,7 +207,10 @@ export default function Projet() {
       </div>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {introuvable ? <p className="ep-alerte-ligne" role="alert">Ce projet n'existe plus.</p> : null}
-      {vue ? (
+      {vue && planifier ? (
+        <PlanifierProjet projet={projet} aujourdhui={aujourdhui} onTermine={planifie} onPasser={fermerPlanification} />
+      ) : null}
+      {vue && !planifier ? (
         <>
           {projet.statut === 'en_pause' ? <p className="ep-constat">En pause</p> : null}
           <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} />

@@ -59,3 +59,23 @@
 @media (hover: hover) {
   .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
 }
+
+/* ── Planifier le projet (TCH91) ─────────────────────────────────────────── */
+.tch .ep-planifier { padding: 4px var(--tch-gouttiere) 16px; display: flex; flex-direction: column; gap: 16px; }
+.tch .ep-planifier-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tch .ep-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
+.tch .ep-sous { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-groupe { display: flex; flex-direction: column; gap: 8px; }
+.tch .ep-choix { display: flex; flex-direction: column; gap: 6px; }
+.tch .ep-choix-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 14px; text-align: left;
+  border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
+.tch .ep-choix-ligne span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ep-choix-ligne[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--tch-accent); background: var(--tch-selection); }
+.tch .ep-action { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+.tch .ep-action-titre { font-size: 1rem; font-weight: 600; }
+.tch .ep-ajout-action { display: flex; gap: 8px; align-items: center; }
+.tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
+.tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
+.tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
+.tch .ep-planifier-pied { margin-top: 4px; }
+.tch .puce[aria-checked="true"] { background: var(--tch-selection); box-shadow: inset 0 0 0 2px var(--tch-accent); }
