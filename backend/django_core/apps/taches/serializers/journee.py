@@ -12,7 +12,8 @@ from apps.taches.choix import RaisonPropose, SectionJournee
 from apps.taches.confidentialite import ASSISTANT, ECRAN, nom_pour
 from apps.taches.moteur import classement
 from apps.taches.moteur.gabarits import CONSTANTES, format_jour
-from apps.taches.serializers.formes import ItemSerializer, PropositionSerializer, contexte, projet_court
+from apps.taches.serializers.formes import (
+    ItemSerializer, PropositionSerializer, RendezVousSerializer, contexte, projet_court)
 
 TACHE = classement.TACHE
 ACTIVITE = classement.ACTIVITE
@@ -200,3 +201,36 @@ def proposition_forme(incitation, texte, boutons):
     """Forme PROPOSITION d'une `IncitationCoach` (texte et boutons rendus par l'appelant)."""
     calculs = {('proposition', incitation.pk): {'texte': texte, 'boutons': boutons}}
     return dict(PropositionSerializer(incitation, context=contexte(calculs=calculs)).data)
+
+
+# --- L'agenda (api.md §3.1, §4 `agenda/`, TCH59) --------------------------------------------------
+
+def jour_d_agenda(rendu, jour, *, ouvre, ferie, cles_jour, toute_la_journee=(), externes=()):
+    """Un jour de l'agenda : Toute la journée (ERP), sans heure, blocs (à leur heure), échéances,
+    rendez-vous externes (lecture seule, horodatés)."""
+    items = rendu.journee.items
+    au_jour = [cle for cle in cles_jour if items[cle].jour_prevu == jour]
+    blocs = sorted((cle for cle in au_jour if items[cle].heure_debut is not None),
+                   key=lambda cle: (items[cle].heure_debut, cle[1]))
+    sans_heure = [cle for cle in au_jour if items[cle].heure_debut is None]
+    echeances = [cle for cle in cles_jour if items[cle].echeance == jour and items[cle].jour_prevu != jour]
+    return {
+        'jour': jour.isoformat(), 'ouvre': ouvre, 'ferie': ferie,
+        'toute_la_journee': list(toute_la_journee),
+        'sans_heure': rendu.items(sans_heure), 'blocs': rendu.items(blocs), 'echeances': rendu.items(echeances),
+        'externes': list(RendezVousSerializer(list(externes), many=True, context=rendu.contexte()).data),
+    }
+
+
+def mes_projets(rendu, candidates):
+    """« Mes projets » de Planifier ma semaine : le tour complet (sans N), groupé par projet, chaque
+    tâche avec sa raison (prochaine action, puis suite)."""
+    groupes = []
+    for _projet_id, file in classement.files_par_projet(candidates):
+        cles = [(TACHE, item.id) for item in file]
+        raisons = {cle: TOUR[0] if rang == 0 else TOUR[1] for rang, cle in enumerate(cles)}
+        premier = rendu.journee.objets.get(cles[0])
+        projet = premier.projet if premier is not None and premier.projet_id else None
+        groupes.append({'projet': projet_court(projet, assistant=rendu.assistant, reglages=rendu.journee.reglages),
+                        'items': rendu.items(cles, raisons)})
+    return groupes
