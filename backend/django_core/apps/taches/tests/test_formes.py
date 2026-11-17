@@ -138,7 +138,7 @@ class TachesChargeesContreEchantillonsTests(TestCase):
     def test_tache_ecrite_rend_exactement_tache_ecrite_json(self):
         instance = formes.tache_ecrite(
             self._tache(), avertissements=[{'code': 'prevue_apres_echeance', 'message': "Prévue après l'échéance."}],
-            geste_id=77)
+            progression=exemple('tache_ecrite')['progression'], geste_id=77)
         rendu = formes.TacheEcriteSerializer(instance, context=self.contexte).data
         self.assertEqual(list(rendu), list(exemple('tache_ecrite')))
         self.assertEqual(rendu_json(rendu), heure_murale(exemple('tache_ecrite')))

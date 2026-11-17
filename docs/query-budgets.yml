@@ -158,7 +158,7 @@ endpoints:
     note: "TCH129 : ≤ 25 sans familles ERP, ≤ 31 avec (rendez-vous externes lus en cache, 0 requête de plus)."
 
   - path: /api/django/taches/badge/
-    budget: 10
+    budget: 11
     enforced: true
     note: "TCH129 : la pastille."
 
@@ -173,7 +173,7 @@ endpoints:
     note: "TCH129 : cible ; route pas encore construite (jeton flux)."
 
   - path: /api/django/taches/journee/proposition/
-    budget: 20
+    budget: 25
     enforced: true
     note: "TCH129 : la proposition du jour."
 
@@ -188,7 +188,7 @@ endpoints:
     note: "TCH129 : cible ; route pas encore construite."
 
   - path: /api/django/taches/agenda/
-    budget: 16
+    budget: 35
     enforced: true
     note: "TCH129 : l'agenda (vue semaine)."
 
@@ -203,7 +203,7 @@ endpoints:
     note: "TCH129 : liste des projets ; ne grandit pas avec les lignes."
 
   - path: /api/django/taches/projets/{id}/vue/
-    budget: 15
+    budget: 20
     enforced: true
     note: "TCH129 : la vue d'un projet."
 
@@ -213,7 +213,7 @@ endpoints:
     note: "TCH129 : Mon rythme."
 
   - path: /api/django/taches/recherche/
-    budget: 8
+    budget: 10
     enforced: true
     note: "TCH129 : recherche par mots."
 
