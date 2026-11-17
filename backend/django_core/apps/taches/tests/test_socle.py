@@ -1,4 +1,4 @@
-"""TCH4 — socle de l'app `taches` : manifeste collecté, non installable, sans base ; TCH5 — `taches_voir`
+"""TCH4 — socle de l'app `taches` : manifeste collecté (installable depuis TCH131), sans base ; TCH5 — `taches_voir`
 porté par aucun rôle système (catalogue, et en base après `init_roles`) ; TCH130 — activation : porté par
 le SEUL rôle système « Administrateur »."""
 from django.conf import settings
@@ -13,10 +13,11 @@ class SocleTachesTests(SimpleTestCase):
     def test_app_installee(self):
         self.assertIn('apps.taches', settings.INSTALLED_APPS)
 
-    def test_manifeste_collecte_non_installable(self):
+    def test_manifeste_collecte_installable_a_l_activation(self):
+        # TCH131 — activation : le module devient installable (il ne l'était pas avant, TCH4).
         manifeste = collect_manifests().get('taches')
         self.assertIsNotNone(manifeste, 'manifeste « taches » non collecté')
-        self.assertFalse(manifeste['installable'])
+        self.assertTrue(manifeste['installable'])
         self.assertEqual(manifeste['app_label'], 'taches')
 
     def test_reglage_siri_declare(self):
