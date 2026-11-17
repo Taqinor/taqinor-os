@@ -429,6 +429,32 @@ class RecurrenceEntreeSerializer(serializers.Serializer):
     appliquer_a_l_ouverte = serializers.BooleanField(required=False)
 
 
+class LotEntreeSerializer(serializers.Serializer):
+    """Corps de `taches/lot/` : `ids` (≤ 200, bornés par le service), `action`, `valeurs` selon l'action."""
+
+    ids = serializers.ListField(child=serializers.IntegerField(), error_messages={'required': MESSAGE_REQUIS})
+    action = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
+    valeurs = serializers.DictField(required=False)
+
+
+class ChecklistEntreeSerializer(serializers.Serializer):
+    tache_id = serializers.IntegerField(error_messages={'required': MESSAGE_REQUIS})
+    libelle = serializers.CharField(allow_blank=True, error_messages={'required': MESSAGE_REQUIS})
+
+
+class ElementChecklistEntreeSerializer(serializers.Serializer):
+    libelle = serializers.CharField(required=False, allow_blank=True)
+    fait = serializers.BooleanField(required=False)
+
+
+class ReordonnerElementEntreeSerializer(serializers.Serializer):
+    """Corps de `checklist/{id}/reordonner/` : les voisins (`liste` est sans objet ici)."""
+
+    liste = serializers.CharField(required=False)
+    avant_id = serializers.IntegerField(required=False, allow_null=True)
+    apres_id = serializers.IntegerField(required=False, allow_null=True)
+
+
 def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, projet_cree=None,
                    rappel=None, question_titres=False, avertissements=()):
     """La TACHE_ECRITE d'une écriture : `tache` relue et chargée (aucune requête par ligne), + `suivante`

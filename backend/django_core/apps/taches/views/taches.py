@@ -22,19 +22,20 @@ from apps.taches.serializers.formes import (
     ItemSerializer, RappelEcritSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
 )
 from apps.taches.serializers.saisie import (
-    AttendreEntreeSerializer, ChangementEntreeSerializer, PlanifierEntreeSerializer,
+    AttendreEntreeSerializer, ChangementEntreeSerializer, ChecklistEntreeSerializer,
+    ElementChecklistEntreeSerializer, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
     ProprietaireEntreeSerializer, RappelEntreeSerializer, RecurrenceEntreeSerializer,
-    ReordonnerEntreeSerializer, RepeterEntreeSerializer, TacheCreationSerializer, TrancherEntreeSerializer,
-    lire_corps, reponse_ecrite, taches_chargees, valider_patch, verifier_proprietaire,
+    ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, reponse_ecrite,
+    TacheCreationSerializer, taches_chargees, TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
 )
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
 from apps.taches.services.taches import (
-    apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour, liste_taches,
-    modifier_regle, modifier_tache, rappel_a_la_creation, recevoir_tache, reordonner_tache, restaurer_tache,
-    reverifier_lien, rouvrir_tache, sauter_occurrence, supprimer_tache, tache_du_compte, terminer_tache,
-    trancher_tache,
+    ajouter_element, apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour,
+    liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache, rappel_a_la_creation,
+    recevoir_tache, reordonner_element, reordonner_tache, restaurer_tache, retirer_element, reverifier_lien,
+    rouvrir_tache, sauter_occurrence, supprimer_tache, tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
     ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, page_de,
@@ -390,7 +391,11 @@ class LotVue(IdempotentCreateMixin, APIView):
         'valeurs': serializers.DictField(required=False),
     }), responses=reponses(forme_echantillon('lot'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = lire_corps(LotEntreeSerializer, request.data)
+        return self._avec_idempotence(
+            request, lambda: Response(lot_taches(request.user, donnees['ids'], donnees['action'],
+                                                 donnees.get('valeurs'))),
+            suffixe=f'u{request.user.pk}')
 
 
 class RappelVue(APIView):
@@ -453,7 +458,11 @@ class ChecklistVue(APIView):
     @extend_schema(request=corps('Checklist', {'tache_id': 20, 'libelle': 'Prix'}, requis=('tache_id', 'libelle')),
                    responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404)))
     def post(self, request):
-        raise PasEncore()
+        donnees = lire_corps(ChecklistEntreeSerializer, request.data)
+        resultat = ajouter_element(request.user, donnees['tache_id'], donnees['libelle'])
+        reponse = _reponse(request, resultat)
+        reponse.status_code = 201
+        return reponse
 
 
 class ElementChecklistVue(APIView):
@@ -463,11 +472,12 @@ class ElementChecklistVue(APIView):
 
     @extend_schema(request=corps('ChecklistElement', {'libelle': 'Prix TTC', 'fait': True}), responses=ECRITE)
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ElementChecklistEntreeSerializer, request.data)
+        return _reponse(request, modifier_element(request.user, id, donnees))
 
     @extend_schema(request=None, responses=reponses(TacheEcriteSerializer, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        return _reponse(request, retirer_element(request.user, id))
 
 
 class ElementChecklistReordonnerVue(APIView):
@@ -477,7 +487,9 @@ class ElementChecklistReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=reponses(None, statut=204, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ReordonnerElementEntreeSerializer, request.data)
+        reordonner_element(request.user, id, donnees.get('avant_id'), donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class EtiquettesVue(APIView):

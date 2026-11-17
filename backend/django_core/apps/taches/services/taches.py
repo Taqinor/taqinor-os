@@ -470,13 +470,17 @@ def supprimer_tache(user, pk):
     (`soft_delete(record=False)`) ; leurs rappels en attente sont annulés (invariant 19)."""
     with transaction.atomic():
         tache = tache_du_compte(user, pk, verrou=True)
-        concernees = [tache, *taches_de(user).select_for_update().filter(parent=tache)]
         ops = []
-        for t in concernees:
-            annuler_rappels(t, collecte=ops)
-            t.soft_delete(user, record=False)
-            ops.append(op_suppression_douce('tache', t))
+        _supprimer_dans(user, tache, ops)
         return enregistrer_geste(user, 'suppression', 'Supprimée', ops)
+
+
+def _supprimer_dans(user, tache, ops):
+    """Supprime `tache` et ses sous-tâches vivantes ; leurs rappels en attente sont annulés."""
+    for t in [tache, *taches_de(user).select_for_update().filter(parent=tache)]:
+        annuler_rappels(t, collecte=ops)
+        t.soft_delete(user, record=False)
+        ops.append(op_suppression_douce('tache', t))
 
 
 # --- Actions d'état : terminer, rouvrir, sauter, trancher, attendre, reçu, restaurer ---------------
@@ -570,13 +574,18 @@ def terminer_tache(user, pk, *, maintenant=None, aujourdhui=None):
         if t.statut == StatutTache.FAIT:
             return ResultatEcriture(t)
         ops = []
-        _clore(user, t, StatutTache.FAIT, maintenant, ops, enfants=True)
-        suivante = _fin_de_serie(user, t, maintenant, aujourdhui, ops, apres_fait=True)
+        suivante = _terminer_dans(user, t, maintenant, aujourdhui, ops)
         message = 'Faite'
         if suivante is not None:
             message += f' · prochaine {format_jour(suivante.jour_prevu, aujourdhui)}'
         geste = enregistrer_geste(user, 'terminaison', message, ops)
     return ResultatEcriture(t, geste, suivante=suivante)
+
+
+def _terminer_dans(user, t, maintenant, aujourdhui, ops):
+    """Ferme `t` comme fait (sous-tâches ouvertes comprises) et rend l'occurrence suivante née, ou `None`."""
+    _clore(user, t, StatutTache.FAIT, maintenant, ops, enfants=True)
+    return _fin_de_serie(user, t, maintenant, aujourdhui, ops, apres_fait=True)
 
 
 def sauter_occurrence(user, pk, *, maintenant=None, aujourdhui=None):
@@ -952,3 +961,284 @@ def _regle_de_la_tache(edition, spec, aujourdhui):
         regle, debut - datetime.timedelta(days=1), debut - datetime.timedelta(days=1),
         est_ouvre=est_ouvre_de(user, aujourdhui))
     edition.ecrire |= {'recurrence', 'occurrence_du'}
+
+
+# --- Lot : une action sur une sélection -------------------------------------------------------------
+
+ACTIONS_LOT = ('deplacer', 'planifier', 'prioriser', 'etiqueter', 'terminer', 'supprimer', 'garder_sans_projet')
+MAX_LOT = 200
+MESSAGE_LOT_LONG = '200 au plus.'
+RAISON_INTROUVABLE = 'introuvable'
+RAISON_SOUS_TACHE = 'sous_tache'
+RAISON_CLOSE = 'close'
+#: Le message du geste d'un lot : (singulier, pluriel) du participe, `{n}` devant.
+MOTS_LOT = {
+    'deplacer': ('déplacée', 'déplacées'), 'prioriser': ('priorisée', 'priorisées'),
+    'etiqueter': ('étiquetée', 'étiquetées'), 'terminer': ('faite', 'faites'),
+    'supprimer': ('supprimée', 'supprimées'), 'garder_sans_projet': ('gardée sans projet', 'gardées sans projet'),
+}
+
+
+def _cible_de_deplacement(user, valeurs):
+    """`(valeurs communes, par tâche)` d'un `deplacer`, projets REVÉRIFIÉS (400 « Projet inexistant. »
+    sous `valeurs`) ; une étape ne se vérifie qu'avec son projet, tâche par tâche."""
+    commun = {cle: valeurs[cle] for cle in ('projet_id', 'section_id') if cle in valeurs}
+    if 'projet_id' not in commun and 'par_tache' not in valeurs:
+        raise serializers.ValidationError({'valeurs': {'projet_id': [MESSAGE_REQUIS]}})
+    par_tache = {}
+    for cle, cible in (valeurs.get('par_tache') or {}).items():
+        try:
+            par_tache[int(cle)] = {c: cible[c] for c in ('projet_id', 'section_id') if c in cible}
+        except (TypeError, ValueError, AttributeError):
+            raise serializers.ValidationError({'valeurs': {'par_tache': [MESSAGE_VALEUR_INCONNUE]}})
+    try:
+        for projet_id in {c['projet_id'] for c in (commun, *par_tache.values()) if c.get('projet_id') is not None}:
+            _projet(user, projet_id)
+    except serializers.ValidationError as exc:
+        raise serializers.ValidationError({'valeurs': exc.detail})
+    return {'commun': commun, 'par_tache': par_tache}
+
+
+def _ids_etiquettes(user, valeurs, cle):
+    ids = valeurs.get(cle) or []
+    if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+        raise serializers.ValidationError({'valeurs': {cle: [MESSAGE_VALEUR_INCONNUE]}})
+    if set(ids) != set(etiquettes_de(user).filter(pk__in=ids).values_list('pk', flat=True)):
+        raise Http404('Introuvable.')
+    return set(ids)
+
+
+def _valeurs_du_lot(user, action, valeurs):
+    """Les `valeurs` d'une action, revérifiées une fois pour toute la sélection."""
+    if action == 'deplacer':
+        return _cible_de_deplacement(user, valeurs)
+    if action == 'planifier':
+        if not valeurs.get('quelque_jour') and valeurs.get('jour_prevu') is None:
+            raise serializers.ValidationError({'valeurs': {'jour_prevu': [MESSAGE_REQUIS]}})
+        try:
+            jour = _date_de_regle(valeurs.get('jour_prevu'))
+        except ValueError as exc:
+            raise serializers.ValidationError({'valeurs': {'jour_prevu': [str(exc)]}})
+        return {'jour_prevu': jour, 'quelque_jour': bool(valeurs.get('quelque_jour'))}
+    if action == 'prioriser':
+        if valeurs.get('priorite') not in Priorite.values:
+            raise serializers.ValidationError({'valeurs': {'priorite': [MESSAGE_VALEUR_INCONNUE]}})
+        return {'priorite': valeurs['priorite']}
+    if action == 'etiqueter':
+        return {'ajouter': _ids_etiquettes(user, valeurs, 'ajouter'),
+                'retirer': _ids_etiquettes(user, valeurs, 'retirer')}
+    return {}
+
+
+def _enregistrer(edition):
+    if edition.ecrire:
+        edition.tache.save(update_fields=_colonnes(edition.ecrire))
+    return edition.operations()
+
+
+def _lot_deplacer(user, t, v, ctx, ops):
+    if t.parent_id is not None:
+        return RAISON_SOUS_TACHE
+    edition = _Edition(user, t)
+    try:
+        _projet_et_section(edition, v['par_tache'].get(t.pk) or v['commun'])
+    except Http404:
+        return RAISON_INTROUVABLE
+    ops.extend(_enregistrer(edition))
+    return None
+
+
+def _lot_planifier(user, t, v, ctx, ops):
+    if t.parent_id is not None:
+        return RAISON_SOUS_TACHE
+    if t.statut not in OUVERTES:
+        return RAISON_CLOSE
+    planifier(t, acteur=user, jour_prevu=v['jour_prevu'], quelque_jour=v['quelque_jour'], collecte=ops)
+    return None
+
+
+def _lot_prioriser(user, t, v, ctx, ops):
+    edition = _Edition(user, t)
+    edition.poser('priorite', v['priorite'])
+    ops.extend(_enregistrer(edition))
+    return None
+
+
+def _lot_etiqueter(user, t, v, ctx, ops):
+    edition = _Edition(user, t)
+    actuelles = {lien.etiquette_id: lien for lien in EtiquetteTache.objects.filter(tache=t)}
+    for pk in sorted(v['ajouter'] - set(actuelles)):
+        lien = EtiquetteTache.objects.create(company_id=user.company_id, tache=t, etiquette_id=pk)
+        edition.ops.append(op_creation('etiquette_tache', lien))
+    for pk in sorted(v['retirer'] & set(actuelles)):
+        edition.ops.append(op_suppression_dure('etiquette_tache', actuelles[pk], {'tache': t.pk, 'etiquette': pk}))
+        actuelles[pk].delete()
+    ops.extend(edition.ops)
+    return None
+
+
+def _lot_terminer(user, t, v, ctx, ops):
+    if t.statut != StatutTache.FAIT:
+        _terminer_dans(user, t, ctx['maintenant'], ctx['aujourdhui'], ops)
+    return None
+
+
+def _lot_supprimer(user, t, v, ctx, ops):
+    _supprimer_dans(user, t, ops)
+    return None
+
+
+def _lot_garder_sans_projet(user, t, v, ctx, ops):
+    edition = _Edition(user, t)
+    edition.poser('triee_le', ctx['maintenant'])
+    ops.extend(_enregistrer(edition))
+    return None
+
+
+TRAITEMENTS_LOT = {
+    'deplacer': _lot_deplacer, 'planifier': _lot_planifier, 'prioriser': _lot_prioriser,
+    'etiqueter': _lot_etiqueter, 'terminer': _lot_terminer, 'supprimer': _lot_supprimer,
+    'garder_sans_projet': _lot_garder_sans_projet,
+}
+
+
+def _message_lot(action, n, valeurs, aujourdhui):
+    if action == 'planifier':
+        if valeurs['quelque_jour']:
+            return f'{n} en réserve'
+        return f'{n} prévue{"s" if n > 1 else ""} {format_jour(valeurs["jour_prevu"], aujourdhui)}'
+    singulier, pluriel = MOTS_LOT[action]
+    return f'{n} {pluriel if n > 1 else singulier}'
+
+
+def _ids_du_lot(ids):
+    ids = list(dict.fromkeys(ids or ()))
+    if not ids:
+        raise serializers.ValidationError({'ids': [MESSAGE_REQUIS]})
+    if len(ids) > MAX_LOT:
+        raise serializers.ValidationError({'ids': [MESSAGE_LOT_LONG]})
+    return ids
+
+
+def _traiter_le_lot(user, action, ids, valeurs, ctx):
+    """`(appliquées, refusées, opérations)` : chaque tâche relue sous verrou, puis refusée avec sa raison
+    (`introuvable` : inconnue ou d'un autre compte ; `sous_tache` ; `close`) ou appliquée."""
+    par_id = {t.pk: t for t in taches_de(user).select_for_update().filter(pk__in=ids)}
+    ops, appliquees, refusees = [], [], []
+    for pk in ids:
+        t = par_id.get(pk)
+        if t is not None:
+            t.refresh_from_db()
+        raison = RAISON_INTROUVABLE if t is None else (
+            None if t.is_deleted else TRAITEMENTS_LOT[action](user, t, valeurs, ctx, ops))
+        if raison is None:
+            appliquees.append(pk)
+        else:
+            refusees.append({'id': pk, 'raison': raison})
+    return appliquees, refusees, ops
+
+
+def lot_taches(user, ids, action, valeurs=None, *, maintenant=None, aujourdhui=None):
+    """`POST taches/lot/` : applique `action` à `ids` (≤ 200) en UN geste → `{"appliquees", "refusees",
+    "geste_id"}` (`lot.json`). Un id étranger est refusé `introuvable` ; une tâche refusée ne bloque pas
+    les autres. Les arguments sont revérifiés AVANT d'écrire quoi que ce soit."""
+    if action not in ACTIONS_LOT:
+        raise serializers.ValidationError({'action': [MESSAGE_VALEUR_INCONNUE]})
+    ids = _ids_du_lot(ids)
+    valeurs = _valeurs_du_lot(user, action, valeurs or {})
+    ctx = {'maintenant': maintenant or timezone.now(), 'aujourdhui': aujourdhui or timezone.localdate()}
+    with transaction.atomic():
+        appliquees, refusees, ops = _traiter_le_lot(user, action, ids, valeurs, ctx)
+        geste = None
+        if appliquees and ops:
+            message = _message_lot(action, len(appliquees), valeurs, ctx['aujourdhui'])
+            geste = enregistrer_geste(user, 'lot', message, ops)
+    return {'appliquees': appliquees, 'refusees': refusees, 'geste_id': geste.pk if geste is not None else None}
+
+
+# --- Check-list --------------------------------------------------------------------------------------
+
+MESSAGE_LIBELLE_VIDE = 'Requis.'
+MESSAGE_LIBELLE_LONG = '255 caractères au plus.'
+
+
+def _libelle(valeur):
+    texte = str(valeur or '').strip()
+    if not texte:
+        raise serializers.ValidationError({'libelle': [MESSAGE_LIBELLE_VIDE]})
+    if len(texte) > 255:
+        raise serializers.ValidationError({'libelle': [MESSAGE_LIBELLE_LONG]})
+    return texte
+
+
+def _element_du_compte(user, pk, *, verrou=False):
+    qs = ElementChecklist.objects.filter(
+        company_id=user.company_id, tache__proprietaire=user, tache__is_deleted=False, pk=pk)
+    element = (qs.select_for_update() if verrou else qs).select_related('tache').first()
+    if element is None:
+        raise Http404('Introuvable.')
+    return element
+
+
+def ajouter_element(user, tache_id, libelle):
+    """`POST checklist/` : un point en fin de liste (rang + 1 024) ; la tâche doit être au compte (404)."""
+    texte = _libelle(libelle)
+    with transaction.atomic():
+        tache = tache_du_compte(user, tache_id, verrou=True)
+        dernier = ElementChecklist.objects.filter(tache=tache).aggregate(m=Max('rang'))['m']
+        element = ElementChecklist.objects.create(
+            company_id=user.company_id, tache=tache, libelle=texte, rang=(dernier or 0) + PAS_RANG)
+        geste = enregistrer_geste(user, 'modification', 'Ajoutée', [op_creation('element_checklist', element)])
+    return ResultatEcriture(tache, geste)
+
+
+def modifier_element(user, pk, donnees, *, maintenant=None):
+    """`PATCH checklist/{id}/ {"libelle"?, "fait"?}` : `fait_le` suit `fait`."""
+    maintenant = maintenant or timezone.now()
+    with transaction.atomic():
+        element = _element_du_compte(user, pk, verrou=True)
+        avant = {champ: getattr(element, champ) for champ in ('libelle', 'fait', 'fait_le')}
+        if 'libelle' in donnees:
+            element.libelle = _libelle(donnees['libelle'])
+        if donnees.get('fait') is not None and donnees['fait'] != element.fait:
+            element.fait, element.fait_le = donnees['fait'], maintenant if donnees['fait'] else None
+        ops = [op_champ('element_checklist', element, champ, valeur) for champ, valeur in avant.items()
+               if getattr(element, champ) != valeur]
+        geste = None
+        if ops:
+            element.save(update_fields=['libelle', 'fait', 'fait_le', 'updated_at'])
+            geste = enregistrer_geste(user, 'modification', 'Modifiée', ops)
+    return ResultatEcriture(element.tache, geste)
+
+
+def retirer_element(user, pk):
+    """`DELETE checklist/{id}/` : suppression dure, annulable (le point revient au même rang)."""
+    with transaction.atomic():
+        element = _element_du_compte(user, pk, verrou=True)
+        valeurs = {'tache': element.tache_id, 'libelle': element.libelle, 'fait': element.fait,
+                   'fait_le': element.fait_le, 'rang': element.rang}
+        op = op_suppression_dure('element_checklist', element, valeurs)
+        tache = element.tache
+        element.delete()
+        geste = enregistrer_geste(user, 'modification', 'Retirée', [op])
+    return ResultatEcriture(tache, geste)
+
+
+def reordonner_element(user, pk, avant_id=None, apres_id=None):
+    """`POST checklist/{id}/reordonner/` : le point se place entre ses voisins (`avant_id` le précède,
+    `apres_id` le suit) et la check-list est NUMÉROTÉE par pas de 1 024 ; aucun geste."""
+    if avant_id is None and apres_id is None:
+        raise serializers.ValidationError({'avant_id': [MESSAGE_REQUIS]})
+    with transaction.atomic():
+        element = _element_du_compte(user, pk, verrou=True)
+        par_id = {e.pk: e for e in ElementChecklist.objects.select_for_update().filter(tache=element.tache)}
+        ids = [e.pk for e in sorted(par_id.values(), key=lambda e: (e.rang, e.pk)) if e.pk != element.pk]
+        for nom, voisin in (('avant_id', avant_id), ('apres_id', apres_id)):
+            if voisin is not None:
+                _element_du_compte(user, voisin)  # d'un autre compte : 404
+                if voisin not in ids:
+                    raise serializers.ValidationError({nom: [MESSAGE_VALEUR_INCONNUE]})
+        ids.insert(ids.index(avant_id) + 1 if avant_id is not None else ids.index(apres_id), element.pk)
+        for rang, identifiant in enumerate(ids, start=1):
+            par_id[identifiant].rang = rang * PAS_RANG
+        ElementChecklist.objects.bulk_update(list(par_id.values()), ['rang'])
