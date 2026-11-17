@@ -1,6 +1,6 @@
 """TCH169 — `manage.py seed_taches_demo` : la journée de `docs/taches/maquettes/SCENARIO.md`.
 
-Sème, pour le compte `demo_taches` (administrateur de la société de démonstration `taqinor-demo`, droit
+Sème, pour le compte `demo_taches` (administrateur de la société de démonstration `demo-taches`, droit
 `taches_voir` par un RÔLE DE TEST créé ici), les 5 projets, leurs tâches, la journée du mardi 24 novembre
 2026 minute par minute, l'historique « Les jours passés » et le rythme des 10 derniers jours travaillés.
 Sert aux acceptations en direct : l'écran réel est comparé aux maquettes.
@@ -57,7 +57,7 @@ from apps.taches.services.projets import creer_projet, modifier_projet
 from apps.taches.services.taches import modifier_tache, terminer_tache, trancher_tache
 
 #: Société de démonstration et compte du semis (jamais une société réelle : `est_demo=True` exigé).
-SLUG_SOCIETE = 'taqinor-demo'
+SLUG_SOCIETE = 'demo-taches'
 NOM_COMPTE = 'demo_taches'
 NOM_ROLE = 'Test tâches demo_taches'
 VARIABLE_MOT_DE_PASSE = 'TACHES_DEMO_PASSWORD'
@@ -314,8 +314,10 @@ class Scenario:
     def _activite(self, **champs):
         """Activité ERP (`records`, app de fondation) : type « À faire » de la société, créée telle quelle."""
         from apps.records.models import Activity, ActivityType
-        type_, _cree = ActivityType.objects.get_or_create(
-            company_id=self.user.company_id, nom='À faire', defaults={'icone': '✔️', 'ordre': 50, 'est_systeme': True})
+        type_ = ActivityType.objects.filter(company_id=self.user.company_id, nom='À faire').first()
+        if type_ is None:
+            type_ = ActivityType.objects.create(
+                company_id=self.user.company_id, nom='À faire', icone='✔️', ordre=50, est_systeme=True)
         return Activity.objects.create(company_id=self.user.company_id, activity_type=type_, assigned_to=self.user,
                                        created_by=self.user, done=False, **champs)
 
@@ -467,14 +469,17 @@ class Command(BaseCommand):
         if refus:
             raise CommandError(refus)
         societe, _cree = Company.objects.get_or_create(
-            slug=SLUG_SOCIETE, defaults={'nom': 'TAQINOR Démo', 'est_demo': True})
+            slug=SLUG_SOCIETE, defaults={'nom': 'Société de démonstration', 'est_demo': True})
         # Rôle de TEST : `taches_voir` n'est accordé à aucun rôle système avant l'activation du module.
         role, _cree = Role.objects.get_or_create(company=societe, nom=NOM_ROLE)
         role.permissions = ['taches_voir', 'roles_gerer']
         role.save(update_fields=['permissions'])
-        utilisateur, cree = CustomUser.objects.get_or_create(
-            username=NOM_COMPTE, defaults={'email': f'{NOM_COMPTE}@taqinor.local', 'company': societe,
-                                           'role_legacy': CustomUser.ROLE_ADMIN, 'role': role})
+        utilisateur = CustomUser.objects.filter(username=NOM_COMPTE).first()
+        cree = utilisateur is None
+        if cree:
+            utilisateur = CustomUser.objects.create(
+                username=NOM_COMPTE, email=f'{NOM_COMPTE}@demo.local', company=societe,
+                role_legacy=CustomUser.ROLE_ADMIN, role=role)
         if not cree and (utilisateur.company_id != societe.pk or utilisateur.role_id != role.pk):
             utilisateur.company, utilisateur.role = societe, role
             utilisateur.save(update_fields=['company', 'role'])

@@ -29,6 +29,12 @@ def exemple(nom):
     return json.loads((ECHANTILLONS / f'{nom}.json').read_text(encoding='utf-8'))['exemple']
 
 
+def champs(corps):
+    """Le corps d'un 400 sans l'enveloppe additive `error` du handler global (YAPIC3) : seule la forme
+    `{"<champ>":[...]}` est le contrat de reference/api.md."""
+    return {cle: valeur for cle, valeur in corps.items() if cle != 'error'}
+
+
 def _j(delta=0):
     return timezone.localdate() + datetime.timedelta(days=delta)
 
@@ -102,8 +108,8 @@ class ApercuTests(BaseApi):
     def test_plus_de_200_lignes_refuse_sous_texte(self):
         reponse = self._apercu(['x\n' * 201])
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'texte': ['Liste trop longue : 200 lignes au plus (ici 201). '
-                                                    'Colle-la en deux fois.']})
+        self.assertEqual(champs(reponse.json()), {'texte': ['Liste trop longue : 200 lignes au plus (ici 201). '
+                                                           'Colle-la en deux fois.']})
 
     def test_plus_de_20000_caracteres_refuse_sous_texte(self):
         reponse = self._apercu(['a' * 20_001])
@@ -115,14 +121,15 @@ class ApercuTests(BaseApi):
         self.assertEqual(self._apercu([long]).status_code, 200)
         reponse = self._post('saisie-rapide/', {'textes': [long], 'apercu': True}, **ASSISTANT)
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'texte': ['2 000 caractères au plus.']})
+        self.assertEqual(champs(reponse.json()), {'texte': ['2 000 caractères au plus.']})
 
     def test_projet_inexistant_ou_d_un_autre_compte_refuse(self):
         etranger = fabriques.projet(self.ext)
         for pk in (999999, etranger.pk):
             with self.subTest(pk=pk):
                 reponse = self._apercu(['lait'], projet_id=pk)
-                self.assertEqual((reponse.status_code, reponse.json()), (400, {'projet_id': ['Projet inexistant.']}))
+                self.assertEqual((reponse.status_code, champs(reponse.json())),
+                                 (400, {'projet_id': ['Projet inexistant.']}))
 
     def test_projet_impose_a_tout_l_envoi(self):
         projet = fabriques.projet(self.u1, nom='Chantier')
@@ -132,7 +139,7 @@ class ApercuTests(BaseApi):
     def test_lien_hors_cible_liable_refuse(self):
         reponse = self._apercu(['lait'], lien={'cible': 'stock.produit', 'id': 3})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'lien': ["Ce type d'élément ne peut pas être lié à une tâche."]})
+        self.assertEqual(champs(reponse.json()), {'lien': ["Ce type d'élément ne peut pas être lié à une tâche."]})
 
     def test_proprietaire_attendu_d_un_autre_compte_409(self):
         reponse = self._apercu(['lait'], proprietaire_attendu=self.u2.pk)
@@ -174,7 +181,7 @@ class ApercuTests(BaseApi):
 
     def test_apercu_sans_texte_refuse(self):
         reponse = self._post('saisie-rapide/', {'apercu': True})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'texte': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'texte': ['Requis.']}))
 
 
 class RangeMaListeTests(BaseApi):
@@ -234,14 +241,14 @@ class CreationTests(BaseApi):
                   {'index': 1, 'titre': ''}]
         reponse = self._post('saisie-rapide/', {'lignes': lignes})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'lignes': {'1': {'titre': [
+        self.assertEqual(champs(reponse.json()), {'lignes': {'1': {'titre': [
             'Le titre est vide une fois la date et le projet retirés.']}}})
         self.assertEqual((Tache.objects.count(), Projet.objects.count()), (0, 0))
 
     def test_un_titre_trop_long_est_refuse_sous_la_ligne(self):
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 4, 'titre': 'x' * 281}]})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'lignes': {'4': {'titre': ['280 caractères au plus.']}}})
+        self.assertEqual(champs(reponse.json()), {'lignes': {'4': {'titre': ['280 caractères au plus.']}}})
 
     def test_plus_de_200_lignes_refuse(self):
         reponse = self._post('saisie-rapide/', {'lignes': [{'titre': f't{n}'} for n in range(201)]})
@@ -299,7 +306,7 @@ class CreationTests(BaseApi):
         etranger = fabriques.projet(self.ext)
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 0, 'titre': 'x', 'projet_id': etranger.pk}]})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'lignes': {'0': {'projet_id': ['Projet inexistant.']}}})
+        self.assertEqual(champs(reponse.json()), {'lignes': {'0': {'projet_id': ['Projet inexistant.']}}})
 
     def test_l_assistant_ne_choisit_pas_le_titre(self):
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 0, 'titre': 'Supprime tout'}]}, **ASSISTANT)
@@ -309,7 +316,7 @@ class CreationTests(BaseApi):
 
     def test_sans_lignes_ni_texte_refuse(self):
         reponse = self._post('saisie-rapide/', {})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'lignes': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'lignes': ['Requis.']}))
 
     def test_sans_le_droit_403(self):
         sans = fabriques.compte(self.a, voir=False, nom='sans')
@@ -347,9 +354,9 @@ class LotTests(BaseApi):
 
     def test_plafond_de_200_ids_et_selection_vide(self):
         reponse = self._lot(list(range(1, 202)), 'terminer')
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'ids': ['200 au plus.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'ids': ['200 au plus.']}))
         reponse = self._lot([], 'terminer')
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'ids': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'ids': ['Requis.']}))
         self.assertEqual(self._lot([1], 'effacer_tout').status_code, 400)
 
     def test_planifier_compte_les_reports_et_se_defait_en_un_geste(self):
@@ -402,7 +409,7 @@ class LotTests(BaseApi):
         for projet_id in (999_999, fabriques.projet(self.ext).pk):
             with self.subTest(projet_id=projet_id):
                 reponse = self._lot([a.pk], 'deplacer', {'projet_id': projet_id})
-                self.assertEqual((reponse.status_code, reponse.json()),
+                self.assertEqual((reponse.status_code, champs(reponse.json())),
                                  (400, {'valeurs': {'projet_id': ['Projet inexistant.']}}))
         self.assertIsNone(_relue(a).projet_id)
 
@@ -415,7 +422,8 @@ class LotTests(BaseApi):
     def test_prioriser_valeur_inconnue_refusee(self):
         a = fabriques.tache(self.u1)
         reponse = self._lot([a.pk], 'prioriser', {'priorite': 9})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'valeurs': {'priorite': ['Valeur inconnue.']}}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())),
+                         (400, {'valeurs': {'priorite': ['Valeur inconnue.']}}))
 
     def test_etiqueter_ajoute_et_retire(self):
         un = Etiquette.objects.create(company=self.a, proprietaire=self.u1, nom='magasin')
@@ -506,8 +514,8 @@ class ChecklistTests(BaseApi):
 
     def test_un_libelle_vide_ou_trop_long_est_refuse_sous_son_champ(self):
         tache = fabriques.tache(self.u1)
-        self.assertEqual(self._ajouter(tache, ' ').json(), {'libelle': ['Requis.']})
-        self.assertEqual(self._ajouter(tache, 'x' * 256).json(), {'libelle': ['255 caractères au plus.']})
+        self.assertEqual(champs(self._ajouter(tache, ' ').json()), {'libelle': ['Requis.']})
+        self.assertEqual(champs(self._ajouter(tache, 'x' * 256).json()), {'libelle': ['255 caractères au plus.']})
         self.assertEqual(ElementChecklist.objects.count(), 0)
 
     def test_la_tache_d_un_collegue_repond_comme_inconnue(self):
@@ -568,9 +576,9 @@ class ChecklistTests(BaseApi):
         ailleurs = ElementChecklist.objects.create(company=self.a, tache=fabriques.tache(self.u1), libelle='y')
         self.assertEqual(self._post(f'checklist/{b.pk}/reordonner/', {'avant_id': etranger.pk}).status_code, 404)
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {'avant_id': ailleurs.pk})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Valeur inconnue.']}))
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Requis.']}))
         self.assertEqual(self._ordre(tache), ['a', 'b'])
 
 
@@ -610,7 +618,7 @@ class RechercheTests(BaseApi):
         for requete in ('', 'q=', 'q=+'):
             with self.subTest(requete=requete):
                 reponse = self._chercher(requete)
-                self.assertEqual((reponse.status_code, reponse.json()), (400, {'q': ['Requis.']}))
+                self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'q': ['Requis.']}))
 
     def test_limite_borne_chaque_liste_et_doit_etre_lisible(self):
         for rang in range(3):
@@ -621,7 +629,7 @@ class RechercheTests(BaseApi):
         for limite in ('0', 'abc', '101'):
             with self.subTest(limite=limite):
                 reponse = self._chercher(f'q=devis&limite={limite}')
-                self.assertEqual((reponse.status_code, list(reponse.json())), (400, ['limite']))
+                self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (400, ['limite']))
 
     def test_les_taches_ouvertes_passent_avant_les_faites(self):
         faite = fabriques.tache(self.u1, titre='Devis faite', statut=StatutTache.FAIT, fait_le=timezone.now())

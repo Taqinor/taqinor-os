@@ -12,6 +12,7 @@ from apps.taches.choix import MotifRevoir, SectionJournee as S, StatutProjet, St
 from apps.taches.models.journee import LignePlanJour
 from apps.taches.selectors import journee as sel
 from apps.taches.tests import fabriques
+from apps.taches.tests.test_api_saisie import champs
 
 J = datetime.date(2026, 11, 17)
 
@@ -693,12 +694,12 @@ class PlanifierJourneeTests(_Base):
     def test_4e_essentielle_400(self):
         taches = [self.tache(jour_prevu=J) for _ in range(4)]
         rendu = self.poster(self.corps(essentielles=taches), statut=400)
-        self.assertEqual(rendu, {'essentielles': ['3 au plus.']})
+        self.assertEqual(champs(rendu), {'essentielles': ['3 au plus.']})
 
     def test_mode_inconnu_400(self):
         corps = self.corps(self.tache())
         corps['mode'] = 'complet'
-        self.assertEqual(self.poster(corps, statut=400), {'mode': ['Valeur inconnue.']})
+        self.assertEqual(champs(self.poster(corps, statut=400)), {'mode': ['Valeur inconnue.']})
 
     def test_id_etranger_404_rien_ecrit(self):
         from apps.taches.models.journee import PlanJour
@@ -760,7 +761,7 @@ class EssentielTests(_Base):
         for _ in range(3):
             self.etoile(self.tache(jour_prevu=self.jour))
         rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=400)
-        self.assertEqual(rendu, {'essentielle': ['3 au plus.']})
+        self.assertEqual(champs(rendu), {'essentielle': ['3 au plus.']})
 
     def test_tache_d_un_autre_404(self):
         autre = fabriques.compte(self.societe, nom='u2')

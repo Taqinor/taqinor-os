@@ -10,6 +10,7 @@ import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { useGeste } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
 import MesJours from '../../features/taches/rythme/MesJours'
+import InterrupteurRythme from '../../features/taches/ui/InterrupteurRythme'
 
 /* ============================================================================
    TCH107 — Écran « Mon rythme » (route /taches/rythme, atteignable par la ligne de progression
@@ -309,14 +310,7 @@ function Comprendre({ allume, onBasculer, erreur }) {
   return (
     <div className="es-reglage">
       <span className="txt"><b>Comprendre mon rythme</b><small>{COMPRENDRE}</small></span>
-      <button
-        type="button"
-        className="interrupteur"
-        role="switch"
-        aria-checked={allume}
-        aria-label="Comprendre mon rythme"
-        onClick={() => onBasculer(!allume)}
-      />
+      <InterrupteurRythme allume={allume} onBasculer={onBasculer} />
       {erreur ? <p className="es-erreur" role="alert">{erreur}</p> : null}
     </div>
   )

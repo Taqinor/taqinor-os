@@ -22,7 +22,7 @@ export function ajouterJours(iso, n) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''))
   if (!m) return null
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + n))
-  return d.toISOString().slice(0, 10)
+  return d.toISOString().split('T')[0]
 }
 
 function tuileCourante(valeur, { aujourdhui, demain, reporterA }) {

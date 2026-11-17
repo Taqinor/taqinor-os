@@ -6,9 +6,8 @@ import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import TrierUneParUne from '../../features/taches/atrier/TrierUneParUne'
 import { frenchError } from '../../lib/frenchError'
 import {
-  annulerGeste, classerErreur, convertirActivites, creerProjet, lireAujourdhui, listerToutesLesTaches,
-  listerTousLesProjets, saisieRapide, traiterLot,
-} from '../../api/tachesApi'
+  annulerGeste, classerErreur, convertirActivites, creerProjet, listerToutesLesTaches,
+  listerTousLesProjets, saisieRapide, traiterLot, lireAujourdhui } from '../../api/tachesApi'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../ui/DropdownMenu'
