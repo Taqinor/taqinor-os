@@ -3,7 +3,8 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
   PARCOURS, typeEtape, reponsesDeLEtape, reponseComplete, estTache, estTacheSansAppel,
-  familleCanal, gestes,
+  familleCanal, gestes, organiserReponses, raisonsDuSegment, gesteVisible,
+  proposerDarija, confirmationMessageExigee,
 } from './parcours'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
@@ -84,6 +85,55 @@ describe('parcours.js — la table est saine', () => {
     }
   })
 
+  it('groupes et « Autre réponse » : déclarés UNE fois dans la table, jamais ailleurs', () => {
+    expect(Object.keys(PARCOURS.groupes)).toEqual(['pas_joint', 'plus_tard'])
+    expect(PARCOURS.groupes.pas_joint).toMatchObject({ label: 'Pas joint', titre: 'Précision (facultatif)' })
+    expect(PARCOURS.groupes.plus_tard.label).toBe('Plus tard…')
+    expect(PARCOURS.autre_reponse.label).toBe('Autre réponse')
+    const parGroupe = {}
+    const autres = []
+    for (const [id, modele] of Object.entries(PARCOURS.modeles)) {
+      if (modele.groupe) {
+        expect(PARCOURS.groupes, `${id}.groupe`).toHaveProperty(modele.groupe)
+        if (!parGroupe[modele.groupe]) parGroupe[modele.groupe] = []
+        parGroupe[modele.groupe].push(id)
+      }
+      if (modele.rang) {
+        expect(modele.rang, `${id}.rang`).toBe('autre')
+        autres.push(id)
+      }
+      // Jamais à la fois dans un groupe ET derrière « Autre réponse ».
+      expect(Boolean(modele.groupe && modele.rang), id).toBe(false)
+    }
+    expect(parGroupe.pas_joint).toEqual([
+      'pas_de_reponse', 'sans_reponse', 'repondeur', 'occupe', 'numero_invalide', 'bloque'])
+    expect(parGroupe.plus_tard).toEqual(['rappel', 'plus_tard', 'attente_accord'])
+    expect(autres).toEqual([
+      'ne_plus_contacter', 'question_prix', 'devis_modifie', 'decision_famille', 'decision_proprietaire'])
+  })
+
+  it('un seul libellé « Pas de réponse » pour pas_de_reponse ET sans_reponse (même issue serveur)', () => {
+    expect(PARCOURS.modeles.pas_de_reponse.label).toBe('Pas de réponse')
+    expect(PARCOURS.modeles.sans_reponse.label).toBe('Pas de réponse')
+    expect(PARCOURS.modeles.pas_de_reponse.outcome).toBe('non_joint')
+    expect(PARCOURS.modeles.sans_reponse.outcome).toBe('non_joint')
+  })
+
+  it('chaque raison d’attente déclare les segments où elle vaut', () => {
+    const segments = new Set(['residentiel', 'agricole', 'commercial', 'industriel'])
+    const raisons = PARCOURS.modeles.attente_accord.raisons
+    for (const r of raisons) {
+      expect(r.segments?.length, r.valeur).toBeGreaterThan(0)
+      for (const s of r.segments) expect(segments.has(s), `${r.valeur}/${s}`).toBe(true)
+    }
+    const de = (valeur) => raisons.find((r) => r.valeur === valeur).segments
+    for (const v of ['direction', 'bailleur_murs', 'budget_exercice', 'consultation']) {
+      expect(de(v), v).toEqual(['commercial', 'industriel'])
+    }
+    expect(de('administration')).toEqual(['agricole', 'commercial', 'industriel'])
+    expect([...de('financement')].sort()).toEqual(['agricole', 'commercial', 'industriel', 'residentiel'])
+  })
+
   it('chaque type est reconnu depuis une touche représentative, et un seul type par touche', () => {
     for (const type of PARCOURS.etapes) {
       expect(typeEtape(toucheDuType(type)).id, type.id).toBe(type.id)
@@ -120,10 +170,23 @@ describe('RelanceEtapeRow — l’écran propose exactement les réponses de la 
         <RelanceEtapeRow etape={etape} onFait={noop} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
       )
       fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-      const attendues = reponsesDeLEtape(type, etape).map((r) => r.label)
+      const reponses = reponsesDeLEtape(type, etape)
+      const items = organiserReponses(reponses)
+      const attendues = items.map((it) => (it.genre === 'reponse' ? it.reponse.label : it.label))
       const groupe = screen.getByRole('group', { name: type.question })
       const affichees = [...groupe.querySelectorAll('button')].map((b) => b.textContent)
       expect(affichees).toEqual(attendues)
+      // Chaque réponse de la table reste ATTEIGNABLE : à plat, ou dans la seconde
+      // rangée de son groupe (« Pas joint », « Plus tard… », « Autre réponse »).
+      let atteignables = items.filter((it) => it.genre === 'reponse').length
+      for (const it of items.filter((i) => i.genre !== 'reponse')) {
+        fireEvent.click(screen.getByRole('button', { name: it.label }))
+        const sous = screen.getByTestId(`sous-reponses-${it.cle}`)
+        expect([...sous.querySelectorAll('button')].map((b) => b.textContent))
+          .toEqual(it.membres.map((m) => m.reponse.label))
+        atteignables += it.membres.length
+      }
+      expect(atteignables).toBe(reponses.length)
       // Une tâche ne se « saute » pas ; une touche ordinaire, si.
       const sauter = screen.queryByRole('button', { name: /Sauter/ })
       if (estTache(type)) expect(sauter).toBeNull()
@@ -136,6 +199,114 @@ describe('RelanceEtapeRow — l’écran propose exactement les réponses de la 
     const message = { ...toucheDuType(generique), canal: 'whatsapp' }
     expect(reponsesDeLEtape(generique, appel).map((r) => r.label)).toContain('Répondeur')
     expect(reponsesDeLEtape(generique, message).map((r) => r.label)).not.toContain('Répondeur')
+  })
+})
+
+/* SIMPLIFICATION DES RÉPONSES (17/11/2026) — comment l'écran PROPOSE les
+   réponses : groupes, « Autre réponse », filtres de contexte. Présentation
+   seulement : chaque réponse garde sa clé serveur. */
+describe('organiserReponses — pastilles, groupes et « Autre réponse »', () => {
+  const type = (id) => PARCOURS.etapes.find((t) => t.id === id)
+  const sur = (id, etape = {}) => organiserReponses(reponsesDeLEtape(type(id), { ...TOUCHE, ...etape }))
+  const etiquettes = (items) => items.map((it) => (it.genre === 'reponse' ? it.reponse.label : it.label))
+
+  it('premier contact (appel) : 6 pastilles dont « Pas joint » (5), « Plus tard… » (3) et « Autre réponse » (1)', () => {
+    const items = sur('contact_appel', { canal: 'appel' })
+    expect(etiquettes(items)).toEqual([
+      'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Refus', 'Autre réponse'])
+    expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label)).toEqual([
+      'Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
+    expect(items.find((i) => i.cle === 'plus_tard').membres.map((m) => m.reponse.label)).toEqual([
+      'À rappeler le…', 'Plus tard — pas maintenant', "En attente d'un accord (DPA / banque)"])
+    expect(items.find((i) => i.genre === 'autre').membres.map((m) => m.reponse.label))
+      .toEqual(['Ne plus me contacter'])
+  })
+
+  it('après devis (appel) : 6 pastilles ; Numéro invalide et A bloqué n’y sont plus', () => {
+    const items = sur('suivi_appel', { canal: 'appel' })
+    expect(etiquettes(items)).toEqual([
+      'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Refuse la proposition', 'Autre réponse'])
+    expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label))
+      .toEqual(['Pas de réponse', 'Répondeur', 'Occupé'])
+    expect(items.find((i) => i.genre === 'autre').membres).toHaveLength(5)
+    const ids = reponsesDeLEtape(type('suivi_appel'), TOUCHE).map((r) => r.id)
+    expect(ids).not.toContain('numero_invalide')
+    expect(ids).not.toContain('bloque')
+  })
+
+  it('un groupe d’un seul membre n’est pas groupé : pastille ordinaire, libellé propre', () => {
+    const items = sur('devis', { canal: 'appel' })
+    expect(etiquettes(items)).toEqual([
+      'Devis envoyé — passer à la suite', 'Visite d’abord', 'Pas encore — à rappeler le…',
+      'Client refuse', 'Autre réponse'])
+    expect(items.some((i) => i.genre === 'groupe')).toBe(false)
+    // « Autre réponse » même avec UNE seule réponse derrière.
+    expect(items.find((i) => i.genre === 'autre').membres).toHaveLength(1)
+    expect(etiquettes(sur('planifier', { canal: 'appel' }))).toContain('Pas de réponse')
+  })
+
+  it('le premier membre d’un groupe est celui de la table (présélection de l’écran)', () => {
+    const items = sur('contact_appel', { canal: 'appel' })
+    for (const g of items.filter((i) => i.genre === 'groupe')) {
+      expect(g.membres[0].reponse.id).toBe(g.cle === 'pas_joint' ? 'pas_de_reponse' : 'rappel')
+    }
+  })
+
+  it('« Visite acceptée » / « Visite d’abord » disparaissent quand une visite est déjà prévue', () => {
+    for (const id of ['contact_appel', 'devis', 'suivi_appel']) {
+      const sans = reponsesDeLEtape(type(id), { ...TOUCHE, canal: 'appel', visite_prevue_le: null })
+      const avec = reponsesDeLEtape(type(id), { ...TOUCHE, canal: 'appel', visite_prevue_le: '2099-01-05' })
+      expect(sans.some((r) => r.id === 'visite'), id).toBe(true)
+      expect(avec.some((r) => r.id === 'visite'), id).toBe(false)
+      expect(avec).toHaveLength(sans.length - 1)
+    }
+  })
+
+  it('raisons d’attente : résidentiel (ou sans segment) = financement seul ; pros = les six', () => {
+    const raisons = (lead_segment) => reponsesDeLEtape(type('contact_appel'), { ...TOUCHE, canal: 'appel', lead_segment })
+      .find((r) => r.id === 'attente_accord').raisons.map((r) => r.valeur)
+    expect(raisons('')).toEqual(['financement'])
+    expect(raisons(undefined)).toEqual(['financement'])
+    expect(raisons('residentiel')).toEqual(['financement'])
+    expect(raisons('agricole')).toEqual(['financement', 'administration'])
+    for (const s of ['commercial', 'industriel']) {
+      expect(raisons(s)).toEqual([
+        'direction', 'financement', 'bailleur_murs', 'budget_exercice', 'consultation', 'administration'])
+    }
+    expect(raisonsDuSegment([{ valeur: 'x' }], 'agricole')).toEqual([{ valeur: 'x' }])
+  })
+
+  it('« Pièce reçue » : masqué sur le suivi après devis et les tâches qui ne l’attendent pas', () => {
+    for (const id of ['suivi_appel', 'suivi_message', 'question_prix', 'devis_modifie', 'decider_suite']) {
+      expect(gesteVisible('piece_recue', type(id)), id).toBe(false)
+    }
+    for (const id of ['contact_appel', 'devis', 'planifier', 'pieces_recues', 'generique']) {
+      expect(gesteVisible('piece_recue', type(id)), id).toBe(true)
+    }
+    expect(gesteVisible('sauter', type('suivi_appel'))).toBe(true)
+  })
+
+  it('darija : seulement une réponse « client joint », jamais sur une tâche', () => {
+    const rep = (id) => reponseComplete({ modele: id })
+    for (const id of ['joint', 'a_repondu', 'joint_telephone', 'visite']) {
+      expect(proposerDarija(type('contact_appel'), rep(id)), id).toBe(true)
+    }
+    for (const id of ['pas_de_reponse', 'refus', 'rappel', 'ne_plus_contacter']) {
+      expect(proposerDarija(type('contact_appel'), rep(id)), id).toBe(false)
+    }
+    expect(proposerDarija(type('devis'), rep('visite'))).toBe(false)
+    expect(proposerDarija(type('contact_appel'), null)).toBe(false)
+  })
+
+  it('« message non ouvert » n’est pas exigé pour un refus, « Ne plus me contacter », le téléphone, la pièce', () => {
+    const rep = (id) => reponseComplete({ modele: id })
+    for (const id of ['refus', 'ne_plus_contacter', 'joint_telephone', 'piece']) {
+      expect(confirmationMessageExigee(rep(id)), id).toBe(false)
+    }
+    for (const id of ['a_repondu', 'pas_de_reponse', 'rappel', 'plus_tard']) {
+      expect(confirmationMessageExigee(rep(id)), id).toBe(true)
+    }
+    expect(confirmationMessageExigee(null)).toBe(true)
   })
 })
 
