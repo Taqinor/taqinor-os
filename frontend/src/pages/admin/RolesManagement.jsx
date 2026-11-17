@@ -163,6 +163,14 @@ const PERMISSION_GROUPS = [
       { code: 'ux_edition_masse_executer', label: 'Exécuter une édition en masse' },
     ],
   },
+  {
+    // TCH130 — module personnel `taches` : la case que nomme l'aide d'activation
+    // (« dans l'éditeur des rôles, coche « Tâches » », reference/textes.md §2.21).
+    label: 'Tâches',
+    codes: [
+      { code: 'taches_voir', label: 'Tâches' },
+    ],
+  },
 ]
 
 const EMPTY_FORM = { nom: '', permissions: [] }

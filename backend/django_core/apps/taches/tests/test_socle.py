@@ -1,5 +1,6 @@
 """TCH4 — socle de l'app `taches` : manifeste collecté, non installable, sans base ; TCH5 — `taches_voir`
-porté par aucun rôle système (catalogue, et en base après `init_roles`)."""
+porté par aucun rôle système (catalogue, et en base après `init_roles`) ; TCH130 — activation : porté par
+le SEUL rôle système « Administrateur »."""
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -36,25 +37,25 @@ class SocleTachesTests(SimpleTestCase):
 
 
 class DroitTachesVoirTests(SimpleTestCase):
-    """TCH5 — `taches_voir` déclaré, porté par AUCUN rôle système (invariant 28)."""
+    """TCH5 — `taches_voir` déclaré ; TCH130 — porté par le SEUL rôle système Administrateur (invariant 28)."""
 
     def test_droit_declare_en_fin_de_catalogue(self):
         from apps.roles.permissions_registre import ALL_PERMISSIONS, PERMISSION_MODULE
         self.assertEqual(ALL_PERMISSIONS.count('taches_voir'), 1)
         self.assertEqual(PERMISSION_MODULE.get('taches_voir'), 'taches')
 
-    def test_aucun_role_systeme_ne_le_porte(self):
+    def test_seul_l_administrateur_le_porte(self):
         from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
         porteurs = [nom for nom, permissions in CANONICAL_SYSTEM_ROLES
                     if 'taches_voir' in permissions]
-        self.assertEqual(porteurs, [])
+        self.assertEqual(porteurs, ['Administrateur'])
 
 
-class InitRolesSansTachesVoirTests(TestCase):
-    """Mineur 2 de la revue F1 — après `init_roles` (rôles système semés, comptes hérités et
-    superutilisateur rattachés), AUCUNE ligne `Role` en base ne porte `taches_voir`."""
+class InitRolesTachesVoirTests(TestCase):
+    """Mineur 2 de la revue F1, mis à jour par TCH130 — après `init_roles` (rôles système semés, comptes
+    hérités et superutilisateur rattachés), SEULE la ligne `Role` « Administrateur » porte `taches_voir`."""
 
-    def test_aucun_role_en_base_ne_le_porte(self):
+    def test_seul_le_role_administrateur_en_base_le_porte(self):
         from apps.roles.models import Role
         from authentication.models import Company
         societe = Company.objects.create(nom='Init rôles tâches', slug='taches-init-roles')
@@ -66,4 +67,4 @@ class InitRolesSansTachesVoirTests(TestCase):
         call_command('init_roles', verbosity=0)
         roles = list(Role.objects.filter(company=societe))
         self.assertTrue(roles, 'init_roles n\'a semé aucun rôle')
-        self.assertEqual([r.nom for r in roles if 'taches_voir' in (r.permissions or [])], [])
+        self.assertEqual([r.nom for r in roles if 'taches_voir' in (r.permissions or [])], ['Administrateur'])

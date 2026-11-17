@@ -220,3 +220,26 @@ describe('RolesManagement — axe « Applications visibles » (ODY26)', () => {
     expect(casesApps().length).toBe(total - 1)
   })
 })
+
+/* TCH130 — la case `taches_voir` a son libellé et son groupe « Tâches » (le texte
+   d'activation dit « dans l'éditeur des rôles, coche « Tâches » ») : jamais son
+   code brut dans le groupe « Autres ». */
+describe('RolesManagement — case « Tâches » (TCH130)', () => {
+  it('range `taches_voir` dans le groupe « Tâches », libellé « Tâches »', async () => {
+    rolesApiMock.getRoles.mockResolvedValue({ data: ROLES })
+    rolesApiMock.getPermissionsDisponibles.mockResolvedValueOnce({
+      data: { permissions: ['crm_voir', 'taches_voir'], modules: { taches_voir: 'taches' } },
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Commercial')
+    await user.click(screen.getByRole('button', { name: /Nouveau rôle/ }))
+
+    const titre = await screen.findByText('Tâches', { selector: '[class*="uppercase"]' })
+    const carte = titre.closest('.shadow-none')
+    expect(within(carte).getByRole('checkbox')).toBeInTheDocument()
+    expect(within(carte).getByText('Tâches', { selector: 'label' })).toBeInTheDocument()
+    expect(screen.queryByText('Autres')).toBeNull()
+    expect(screen.queryByText('taches_voir')).toBeNull()
+  })
+})

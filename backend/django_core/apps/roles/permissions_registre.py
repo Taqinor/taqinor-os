@@ -656,6 +656,7 @@ ALL_PERMISSIONS = [
     # ── TCH5 — tâches et agenda personnels (module `taches`) : déclaré, accordé
     # à AUCUN rôle tant que le module n'est pas activé (exclu du Directeur
     # ci-dessous, donc de l'Administrateur qui en dérive).
+    # TCH130 — activé : l'Administrateur SEUL le reçoit, explicitement.
     'taches_voir',
 ]
 
@@ -991,6 +992,11 @@ DIRECTEUR_PERMISSIONS = [
 ADMIN_PERMISSIONS = [
     p for p in DIRECTEUR_PERMISSIONS
     if p not in ('journal_activite_voir', 'stock_creer')
+] + [
+    # TCH130 — activation de `taches` (fin de F2, donnees.md inv. 28) : accordé
+    # EXPLICITEMENT à l'Administrateur SEUL ; le Directeur reste exclu (tuple
+    # ci-dessus) jusqu'à la décision de Reda (F4).
+    'taches_voir',
 ]
 
 # Commercial responsable : CRM/Ventes/SAV complets, peut réassigner leads/
