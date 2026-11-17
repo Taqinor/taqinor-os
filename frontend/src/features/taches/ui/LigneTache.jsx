@@ -91,13 +91,16 @@ function MetaProjet({ projet }) {
 }
 
 /** Les puces de méta d'une ligne, dans l'ordre des maquettes. */
-function metaDe(item, { contexte, aujourdhui }) {
+function metaDe(item, { contexte, aujourdhui, propose }) {
   const puces = []
   if (item.type === 'activite') puces.push(<span key="erp">Activité ERP</span>)
   if (contexte === 'projet' && item.jour_prevu) {
     puces.push(<span key="jour" className="fort chiffres">{jourCourt(item.jour_prevu, aujourdhui)}</span>)
   }
-  const ech = item.echeance ? echeanceTexte(item.echeance, aujourdhui) : null
+  // TCH78 — une ligne proposée DIT sa raison (« échéance jeudi », « prévue hier ») ; elle remplace la puce d'échéance
+  const raison = propose ? item.raison?.texte : ''
+  if (raison) puces.push(<span key="raison" className="explique">{raison}</span>)
+  const ech = item.echeance && !raison ? echeanceTexte(item.echeance, aujourdhui) : null
   if (ech) puces.push(<span key="ech" className={ech.ton === 'alerte' ? 'alerte chiffres' : 'fort chiffres'}>{ech.texte}</span>)
   const d = duree(item.estimation_minutes)
   if (d && item.heure_debut) puces.push(<span key="duree" className="chiffres">{d}</span>)
@@ -171,7 +174,7 @@ export default function LigneTache({
   if (balayage.ouvert === 'droite') classes.push('glisse-droite')
   const style = balayage.glisse ? { transform: `translateX(${balayage.dx}px)`, transition: 'none' } : undefined
 
-  const meta = metaDe(item, { contexte, aujourdhui })
+  const meta = metaDe(item, { contexte, aujourdhui, propose })
   const aRevelation = balayage.glisse || balayage.ouvert
 
   return (

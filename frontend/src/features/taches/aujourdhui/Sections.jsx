@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, ClipboardPaste, CalendarDays, MapPin, Mic, Phone, RefreshCw } from 'lucide-react'
 import LigneTache from '../ui/LigneTache'
 import { accord, heure, jourNomme } from '../lib/textes'
@@ -133,12 +133,15 @@ function entreesPrevu(donnees) {
 /** « Prévu » : blocs à leur heure, tâches et activités ERP mêlées ; plus de 3 activités sans heure : une ligne repliable. */
 export function Prevu({ donnees, contexte, geste }) {
   const [depliee, setDepliee] = useState(false)
+  const section = useRef(null)
+  // TCH78 — après « Garder ces N », le focus va sur « Prévu » (critère 8 de spec-7 §6)
+  useEffect(() => { if (contexte.focusPrevu) section.current?.focus() }, [contexte.focusPrevu])
   const relances = (donnees.obligations ?? []).find((o) => o.famille === 'touches')
   const { avecHeure, sansHeure } = entreesPrevu(donnees)
   const activites = sansHeure.filter((e) => e.item.type === 'activite')
   const replier = activites.length > SEUIL_ACTIVITES_REPLIEES
   const visibles = sansHeure.filter((e) => depliee || !replier || e.item.type !== 'activite')
-  if (avecHeure.length + sansHeure.length === 0 && !relances) return null
+  if (avecHeure.length + sansHeure.length === 0 && !relances && !contexte.invite) return null
   const rendre = (e) => (e.rdv
     ? <LigneRendezVous key={e.cle} rdv={e.rdv} />
     : (
@@ -146,7 +149,7 @@ export function Prevu({ donnees, contexte, geste }) {
         extra={contexte.gardee && e.item.type === 'tache' ? { onEssentiel: geste.essentiel } : {}} />
     ))
   return (
-    <Section titre="Prévu">
+    <Section titre="Prévu" sous={contexte.invite ? 'Touche ★ pour ton essentiel' : null} ref={section} tabIndex={-1}>
       {avecHeure.map(rendre)}
       {replier ? (
         <button

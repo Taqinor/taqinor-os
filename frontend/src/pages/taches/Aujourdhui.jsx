@@ -4,6 +4,7 @@ import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
 } from '../../features/taches/aujourdhui/Sections'
+import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -66,6 +67,7 @@ function useAujourdhui(tout) {
   const enLigne = useEnLigne()
   const vivant = useRef(true)
   const presentes = useRef(false)
+  const vuFait = useRef(false)
 
   const charger = useCallback(async () => {
     const minuteur = presentes.current ? null : setTimeout(() => setSquelette(true), DELAI_SQUELETTE_MS)
@@ -87,7 +89,8 @@ function useAujourdhui(tout) {
   useEffect(() => {
     vivant.current = true
     // « vu » d'abord : il crée la carte `retour` que la lecture suivante porte (api.md §4 `vu/`) ; un échec ne bloque pas la lecture
-    const vu = navigator.onLine === false ? Promise.resolve() : Promise.resolve(client.marquerVu({ ecran: 'aujourdhui' }))
+    const vu = vuFait.current || navigator.onLine === false ? Promise.resolve() : Promise.resolve(client.marquerVu({ ecran: 'aujourdhui' }))
+    vuFait.current = true
     vu.then(charger, charger)
     return () => { vivant.current = false }
   }, [charger])
@@ -156,6 +159,8 @@ export default function Aujourdhui() {
   const [estampilles, setEstampilles] = useState({})
   const [feuille, setFeuille] = useState(null)
   const [conflit, setConflit] = useState(null)
+  const [invite, setInvite] = useState(false)
+  const [focusPrevu, setFocusPrevu] = useState(0)
 
   const garde = useCallback(() => {
     if (enLigne) return
@@ -286,6 +291,8 @@ export default function Aujourdhui() {
       const lignes = items.map((it) => ({ type: it.type, id: it.id }))
       const { data } = await client.garderJournee({ jour: donnees.jour, mode: 'express', lignes, essentielles: [], triage: [] })
       setDonnees(data.aujourdhui)
+      setInvite(true)
+      setFocusPrevu((v) => v + 1)
       proposerAnnuler({
         message: `${accord(items.length, 'gardée')}`,
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
@@ -332,18 +339,30 @@ export default function Aujourdhui() {
       else if (code === 'supprimer') setFeuille({ type: 'supprimer', item })
       else ouvrirFiche(item.id)
     },
-    essentiel: basculerEssentiel,
+    essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
+    garder,
+    voirTout: (ouvert) => setParams((actuels) => {
+      const suite = new URLSearchParams(actuels)
+      if (ouvert) suite.set('tout', '1')
+      else suite.delete('tout')
+      return suite
+    }, { replace: true }),
+    copilote: (question) => {
+      if (enLigne) window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, { detail: { ecran: '/taches/aujourdhui', question, envoyer: true } }))
+    },
     refusEssentiel: () => annoncer('3 au plus.'),
     annoncer,
     naviguer: (url) => navigate(url),
-  }), [terminer, reporter, basculerEssentiel, navigate, ouvrirFiche])
+  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams])
 
   const contexte = useMemo(() => ({
     donnees,
     estampilles,
     nbEssentielles: donnees?.essentiel?.length ?? 0,
     gardee: Boolean(donnees?.plan?.planifie_le),
-  }), [donnees, estampilles])
+    invite,
+    focusPrevu,
+  }), [donnees, estampilles, invite, focusPrevu])
 
   const ouvrirSaisie = useCallback((detail) => {
     window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail }))
@@ -401,7 +420,7 @@ export default function Aujourdhui() {
           onAlleger={() => ouvrirFeuille('alleger')}
           onBilan={(jourBilan) => ouvrirFeuille('bilan', { jour: jourBilan })}
           onNaviguer={navigate}
-          onCopilote={(question) => window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, { detail: { ecran: '/taches/aujourdhui', question, envoyer: true } }))}
+          onCopilote={geste.copilote}
         />
       ) : null}
       {donnees && journeeVide(donnees) ? (
@@ -413,7 +432,21 @@ export default function Aujourdhui() {
         />
       ) : null}
       {donnees && !journeeVide(donnees) ? (
-        <Sections donnees={donnees} contexte={contexte} geste={geste} />
+        <Sections
+          donnees={donnees}
+          contexte={contexte}
+          geste={geste}
+          propose={(
+            <Propose
+              donnees={donnees}
+              contexte={contexte}
+              geste={geste}
+              enLigne={enLigne}
+              tout={tout}
+              carteGarder={donnees.carte_du_moment?.type === 'garder'}
+            />
+          )}
+        />
       ) : null}
     </CoquilleTaches>
   )
