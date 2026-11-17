@@ -95,10 +95,18 @@ class SemisTests(TestCase):
         self.assertEqual(len(forme['propose']['pour_objectif']), 3)
         self.assertEqual(forme['a_trier']['boite_reception'], 5)
 
+    def test_une_tache_en_attente_et_des_reserves_aux_vrais_titres(self):
+        attente = list(Tache.objects.filter(proprietaire=self.user, statut=StatutTache.EN_ATTENTE))
+        self.assertEqual([(t.titre, t.en_attente_de) for t in attente],
+                         [('Poser la structure', 'Réceptionner les 16 panneaux')])
+        reserve = Tache.objects.filter(proprietaire=self.user, quelque_jour=True)
+        self.assertEqual(reserve.count(), commande.TAILLE_RESERVE)
+        self.assertFalse(reserve.filter(titre__startswith='Tâche en réserve').exists())
+
     def test_les_projets_ont_leurs_comptes_du_matin(self):
         ouvertes = {p.nom: Tache.objects.filter(projet=p, statut=StatutTache.A_FAIRE).count()
                     for p in Projet.objects.filter(proprietaire=self.user)}
-        self.assertEqual(ouvertes, {commande.BENALI: 6, commande.SALON: 8, commande.RECRUTEMENT: 5,
+        self.assertEqual(ouvertes, {commande.BENALI: 5, commande.SALON: 8, commande.RECRUTEMENT: 5,
                                     commande.ADMIN: 3, commande.SITE: 4})
 
     def test_le_rythme_des_dix_derniers_jours_travailles(self):
@@ -110,10 +118,10 @@ class SemisTests(TestCase):
         _semer('--reinitialiser', '--heure', '15:00')
         self.user = get_user_model().objects.get(username=commande.NOM_COMPTE)
         progression = self._aujourdhui('15:00')['progression']
-        # regles.md §6.1 : l'activité ERP « Rappeler pour le devis » close à 10:40 compte 1 (invariant 13) en
-        # plus des 3 tâches (rails, fournisseur, devis) ; SCENARIO.md §3 dit « 3 sur 5 » sans la compter.
+        # regles.md §6.1 : l'activité ERP « Rappeler pour le devis » close à 10:40 porte la tâche du devis
+        # (rails, fournisseur, devis = 3 tâches) : portée par une tâche, elle ne compte pas une 2e fois.
         self.assertEqual((progression['faites'], progression['detail']['activites_closes'],
-                          progression['essentiel_faites'], progression['essentiel_prevues']), (4, 1, 1, 2))
+                          progression['essentiel_faites'], progression['essentiel_prevues']), (3, 0, 1, 2))
 
     def test_vide_ne_laisse_aucune_tache(self):
         _semer('--reinitialiser', '--vide')
