@@ -93,3 +93,14 @@
 .tch .ep-recherche { margin: 4px var(--tch-gouttiere) 8px; }
 .tch .ep-archive-ligne .meta .issue { font-weight: 600; }
 .tch .ep-bilan { margin: 4px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+/* ── Revue de la semaine (TCH93) ─────────────────────────────────────────── */
+.tch .ep-carte-revue { margin: 8px var(--tch-gouttiere) 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.tch .ep-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tch .ep-carte-tete .ep-titre { display: flex; align-items: center; gap: 8px; }
+.tch .ep-rang { color: var(--tch-texte-doux); font-size: 0.875rem; }
+.tch .ep-revue-ligne { margin: 0; font-size: 0.9375rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tch .ep-case { display: flex; align-items: center; gap: 10px; min-height: var(--tch-cible); font-size: 0.9375rem; font-weight: 600; }
+.tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
+.tch .ep-revue-boutons { flex-wrap: wrap; }
+.tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }
