@@ -313,16 +313,20 @@ def _item(user, pk, ctx, chargees, etat):
     return ItemSerializer(tache, context=ctx).data if tache is not None else None
 
 
-def _sections_de_la_vue(user, projet, taches, ctx):
-    """Les étapes du projet (avec leurs ITEM) et les ITEM « sans étape »."""
+def _sections_de_la_vue(user, projet, taches, ctx, pures):
+    """Les étapes du projet (avec leurs ITEM et leur compte `{ouvertes, faites}`, calculé de TOUTES ses
+    tâches même quand les faites ne sont pas servies) et les ITEM « sans étape »."""
     par_etape = {}
     for tache in taches:
         par_etape.setdefault(tache.section_id, []).append(tache)
+    comptes = lecture.compteurs_par_etape(pures)
     etapes = [{'id': s.pk, 'nom': s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
                'date_fin': _iso(s.date_fin),
-               'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data}
+               'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data,
+               'compteurs': comptes.get(s.pk, {'ouvertes': 0, 'faites': 0})}
               for s in sections_de(user).filter(projet=projet).order_by('rang', 'id')]
-    return etapes, ItemSerializer(par_etape.get(None, []), many=True, context=ctx).data
+    sans = comptes.get(None, {'ouvertes': 0, 'faites': 0})
+    return etapes, ItemSerializer(par_etape.get(None, []), many=True, context=ctx).data, sans
 
 
 def vue_du_projet(user, projet, etat, ctx, jour):
@@ -335,13 +339,13 @@ def vue_du_projet(user, projet, etat, ctx, jour):
                                 .order_by(F('rang_projet').asc(nulls_last=True), 'id')))
     chargees = {t.pk: t for t in taches}
     poser_calculs_d_items(user, taches, etat, ctx)
-    etapes, sans_etape = _sections_de_la_vue(user, projet, taches, ctx)
+    etapes, sans_etape, sans_compteurs = _sections_de_la_vue(user, projet, taches, ctx, pures)
     points, legende = lecture.burnup_de(pures, jour)
     return {
         'projet': forme_projet(projet, ctx), 'avancement': lecture.avancement_de(pures),
         'prochain_jalon': _item(user, lecture.prochain_jalon_id(pures), ctx, chargees, etat),
         'prochaine_action': _item(user, lecture.prochaine_action_id(pures), ctx, chargees, etat),
-        'sections': etapes, 'sans_section': sans_etape,
+        'sections': etapes, 'sans_section': sans_etape, 'sans_section_compteurs': sans_compteurs,
         'faites_nb': etat.calculs[('projet', projet.pk)]['compteurs']['faites'],
         'burnup': points, 'burnup_legende': legende,
     }

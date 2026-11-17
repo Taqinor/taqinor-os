@@ -8,7 +8,8 @@
         "id": 41,
         "champ": "jour_prevu",
         "avant": "2026-11-20",
-        "apres": "2026-11-27"
+        "apres": "2026-11-27",
+        "titre": "Devis Settat"
       }
     ],
     "geste_id": null

@@ -94,6 +94,24 @@ class ApercuTests(BaseApi):
         ligne = self._apercu(['lait']).json()['lignes'][0]
         self.assertEqual((ligne['doublon_de'], ligne['cochee']), (existante.pk, False))
 
+    def test_un_doublon_dit_son_projet_confidentialite_comprise(self):
+        secret = fabriques.projet(self.u1, nom='Rachat Dupont', confidentiel=True)
+        fabriques.tache(self.u1, titre='lait', projet=fabriques.projet(self.u1, nom='Courses'))
+        fabriques.tache(self.u1, titre='pain')
+        fabriques.tache(self.u1, titre='notaire', projet=secret)
+        lignes = self._apercu(['- lait\n- pain\n- notaire']).json()['lignes']
+        self.assertEqual([(lg['titre'], lg['doublon_projet']) for lg in lignes],
+                         [('lait', 'Courses'), ('pain', None), ('notaire', 'Rachat Dupont')])
+        lignes = self._post('saisie-rapide/', {'textes': ['- lait\n- notaire'], 'apercu': True},
+                            **ASSISTANT).json()['lignes']
+        self.assertEqual(lignes[0]['doublon_projet'], 'Courses')
+        self.assertIsNone(lignes[1]['doublon_de'])  # une confidentielle n'est jamais un doublon vu de l'assistant
+
+    def test_une_ligne_cochee_a_l_origine_garde_deja_faite(self):
+        lignes = self._apercu(['[x] lait\n[ ] pain']).json()['lignes']
+        self.assertEqual([(lg['titre'], lg['deja_faite'], lg['cochee']) for lg in lignes],
+                         [('lait', True, False), ('pain', False, True)])
+
     def test_une_tache_d_un_collegue_n_est_pas_un_doublon(self):
         fabriques.tache(self.u2, titre='lait')
         ligne = self._apercu(['lait']).json()['lignes'][0]
@@ -228,6 +246,20 @@ class CreationTests(BaseApi):
         self.assertEqual(corps['projets_crees'][0]['nom'], 'SiteWeb')
         self.assertIsNotNone(corps['geste_id'])
         self.assertEqual(corps['deja_creees'], [])
+
+    def test_en_faire_des_sous_taches_parent_commun_verifie(self):
+        projet = fabriques.projet(self.u1)
+        parent = fabriques.tache(self.u1, titre='Courses', projet=projet)
+        lignes = [{'index': 0, 'titre': 'lait'}, {'index': 1, 'titre': 'pain'}]
+        reponse = self._post('saisie-rapide/', {'lignes': lignes, 'parent_id': parent.pk})
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        enfants = Tache.objects.filter(parent=parent)
+        self.assertEqual(sorted(enfants.values_list('titre', flat=True)), ['lait', 'pain'])
+        self.assertEqual(set(enfants.values_list('projet_id', flat=True)), {projet.pk})
+        d_un_collegue = fabriques.tache(self.u2, titre='À u2')
+        refus = self._post('saisie-rapide/', {'lignes': lignes, 'parent_id': d_un_collegue.pk})
+        self.assertEqual(refus.status_code, 404)
+        self.assertFalse(Tache.objects.filter(parent=d_un_collegue).exists())
 
     def test_tout_ou_rien_une_ligne_refusee_n_ecrit_aucune(self):
         lignes = [{'index': 0, 'titre': 'bonne', 'nouveau_projet': {'nom': 'Neuf'}},

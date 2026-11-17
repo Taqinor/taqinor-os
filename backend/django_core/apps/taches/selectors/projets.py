@@ -34,7 +34,7 @@ JOURNEE_AVANT, JOURNEE_APRES = JOURS_AVANT, JOURS_APRES
 CHAMPS_TACHE = (
     'id', 'projet_id', 'parent_id', 'statut', 'quelque_jour', 'jour_prevu', 'echeance', 'fait_le',
     'created_at', 'annule_le', 'bloquee_par_id', 'bloquee_par__statut', 'bloquee_par__is_deleted',
-    'rang_projet', 'jalon')
+    'rang_projet', 'jalon', 'section_id')
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,7 @@ class TachePure:
     annule_le: datetime.date | None
     rang_projet: int | None = None
     jalon: bool = False
+    section_id: int | None = None
 
 
 @dataclass
@@ -97,7 +98,7 @@ def _tache_pure(ligne):
         quelque_jour=ligne['quelque_jour'], bloquee_par=ligne['bloquee_par_id'] if ouvert else None,
         jour_prevu=ligne['jour_prevu'], echeance=ligne['echeance'], fait_le=_local(ligne['fait_le']),
         created_at=_local(ligne['created_at']), annule_le=_local(ligne['annule_le']),
-        rang_projet=ligne['rang_projet'], jalon=ligne['jalon'])
+        rang_projet=ligne['rang_projet'], jalon=ligne['jalon'], section_id=ligne['section_id'])
 
 
 def _taches_par_projet(user):
@@ -174,6 +175,15 @@ def _compteurs(taches):
     comptees = [t for t in taches if t.parent_id is None and t.statut != StatutTache.ANNULE]
     return {'ouvertes': sum(1 for t in comptees if t.statut in OUVERTS),
             'faites': sum(1 for t in comptees if t.statut == StatutTache.FAIT)}
+
+
+def compteurs_par_etape(taches):
+    """`{section_id: {ouvertes, faites}}` des tâches d'un projet (même compte que le projet entier ;
+    `None` = « Sans étape »)."""
+    par_etape = {}
+    for tache in taches:
+        par_etape.setdefault(tache.section_id, []).append(tache)
+    return {section_id: _compteurs(liste) for section_id, liste in par_etape.items()}
 
 
 def _focus(user, jour):

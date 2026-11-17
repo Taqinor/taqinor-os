@@ -70,6 +70,10 @@ class DecalerTests(unittest.TestCase):
         self.assertEqual(r.refus, "2 tâches passeraient avant aujourd'hui.")
         self.assertEqual(r.nb_avant, 2)
         self.assertEqual(r.changements, ())
+        # Refusé, l'aperçu dit ce qui AURAIT bougé et quelles tâches passeraient avant J.
+        self.assertEqual(r.avant_aujourdhui, (1, 2))
+        self.assertEqual([(c['id'], c['apres']) for c in r.apercu],
+                         [(1, '2026-11-16'), (2, '2026-11-16')])  # sam. 28/11 → lun. 30/11 : la 3 ne bouge pas
 
     def test_refus_singulier(self):
         r = decaler(-2, J, P(), [], [T(1, jour_prevu=date(2026, 11, 18))], ouvre)

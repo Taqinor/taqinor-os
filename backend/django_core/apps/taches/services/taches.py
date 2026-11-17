@@ -54,7 +54,8 @@ MAX_MAILLONS = 50
 HORIZON_OUVRES = 400
 VUES = ('boite', 'quelque_jour')
 PERIODES = ('aujourdhui', 'semaine', 'retard')
-TRIS = ('rang', 'echeance', 'priorite')
+#: `fait_le` : la plus récemment faite d'abord (« Faites (n) » d'un projet : `?projet=&statut=fait&tri=fait_le`).
+TRIS = ('rang', 'echeance', 'priorite', 'fait_le')
 GROUPES = ('projet',)
 
 MESSAGE_TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
@@ -156,7 +157,8 @@ def _ordre(qs, params):
     tri = _choix(params, 'tri', TRIS) or 'rang'
     groupe = _choix(params, 'groupe', GROUPES)
     ordre = {'rang': ('rang_projet', 'id'), 'priorite': ('-priorite', 'id'),
-             'echeance': (F('echeance').asc(nulls_last=True), 'id')}[tri]
+             'echeance': (F('echeance').asc(nulls_last=True), 'id'),
+             'fait_le': (F('fait_le').desc(nulls_last=True), '-id')}[tri]
     return qs.order_by('projet__rang', *ordre) if groupe == 'projet' else qs.order_by(*ordre)
 
 
