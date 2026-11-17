@@ -2,7 +2,8 @@
 
 Les CIBLES d'api.md §10 (A15, R13) sont les plafonds `assertMaxQueries` ci-dessous ; la CI mesure (un
 dépassement donne le compte réel et la liste des requêtes), et la cible devient la mesure au premier
-vert (17/11 : badge 11, proposition 25, agenda 35, vue d'un projet 20, recherche 10 ; les listes restent O(1)). Authentification par le cookie `access_token` : le chemin du navigateur, requêtes
+vert (17/11 : badge 11, proposition 25, agenda 35, vue d'un projet 20, recherche 10 ; les listes
+restent O(1)). Authentification par le cookie `access_token` : le chemin du navigateur, requêtes
 d'authentification comprises, jamais l'en-tête de l'assistant. Chaque route est appelée une fois avant
 la mesure (caches du processus chauds : types de contenu, calendrier) : on mesure le régime permanent.
 Les listes ne grandissent pas avec leurs lignes (motif 10 → 25 du manifeste) ; l'aperçu de la saisie

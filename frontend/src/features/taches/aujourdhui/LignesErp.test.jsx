@@ -136,7 +136,7 @@ describe('TCH81 — Lier une tâche', () => {
     await ouvrirActions('Rappeler Benali')
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Lier une tâche' }))
     await userEvent.click(within(await screen.findByRole('dialog', { name: 'Lier une tâche' })).getByRole('button', { name: 'Lier une tâche' }))
-    await waitFor(() => expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Une tâche est déjà liée à cette activité.'))).toBe(true))
+    await waitFor(() => expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Cette activité a déjà sa tâche.'))).toBe(true))
     expect(screen.queryByText("Préparer l'appel Benali")).toBeNull()
   })
 })
