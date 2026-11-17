@@ -254,9 +254,11 @@ def _ranger(journee):
         journee.sections[section] = [(item.type, item.id) for item in items]
 
 
-def lire_journee(user, jour, *, charger=None, reglages=None, travailles=None):
+def lire_journee(user, jour, *, charger=None, reglages=None, travailles=None, taches=None, focus=None):
     """La journée de `user` au jour `jour`. `charger(qs)` charge les tâches (par défaut : les
-    relations que lit un `ItemPur`) ; la forme ITEM passe `serializers.formes.charger_items`."""
+    relations que lit un `ItemPur`) ; la forme ITEM passe `serializers.formes.charger_items`.
+    `taches` : les tâches du préfiltre DÉJÀ chargées par l'appelant (l'agenda les lit d'un seul
+    tenant avec celles de sa période) ; `focus` : `projets_de_la_semaine` déjà lu."""
     reglages = reglages if reglages is not None else reglages_de(user)
     plan = plan_du_jour(user, jour)
     lignes = lignes_du_plan(plan)
@@ -264,11 +266,13 @@ def lire_journee(user, jour, *, charger=None, reglages=None, travailles=None):
                       plan_pur=plan_pur(plan, lignes),
                       travailles=travailles if travailles is not None else travailles_autour(user, jour),
                       erp=reglages is None or reglages.erp_dans_journee)
-    focus = projets_de_la_semaine(user, jour)
-    qs = taches_de_la_journee(user, jour)
-    qs = charger(qs) if charger is not None else qs.select_related(
-        'projet', 'recurrence', 'parent', 'parent__projet', 'bloquee_par')
-    for tache in qs:
+    if focus is None:
+        focus = projets_de_la_semaine(user, jour)
+    if taches is None:
+        qs = taches_de_la_journee(user, jour)
+        taches = charger(qs) if charger is not None else qs.select_related(
+            'projet', 'recurrence', 'parent', 'parent__projet', 'bloquee_par')
+    for tache in taches:
         journee.items[(TACHE, tache.pk)] = item_de_tache(tache, focus)
         journee.objets[(TACHE, tache.pk)] = tache
     for activite in activites_de_la_journee(user, jour, reglages):
