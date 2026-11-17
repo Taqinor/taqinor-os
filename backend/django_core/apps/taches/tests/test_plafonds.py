@@ -9,9 +9,12 @@ la mesure (caches du processus chauds : types de contenu, calendrier) : on mesur
 Les listes ne grandissent pas avec leurs lignes (motif 10 → 25 du manifeste) ; l'aperçu de la saisie
 rapide est constant en lignes (§10).
 
-Routes de §10 pas encore construites (`tuile/`, `flux/`, `journee/priorites/`, `journee/point/`,
-`suggestions/`) : déclarées `enforced: false` dans le manifeste, sans test ici. `saisie-rapide/` est un
-POST : le manifeste ne garde que des routes GET (`check_query_budgets._routes_get`), son plafond vit ici.
+Routes de §10 pas encore construites (`journee/priorites/`, `journee/point/`, `suggestions/`) :
+déclarées `enforced: false` dans le manifeste, sans test ici. `tuile/` et `flux/` (TCH97) sont mesurées
+par LEUR jeton, authentification comprise ; leurs plafonds sont une estimation (≈ badge mesuré + ce que
+lit la route de plus) au-dessus des cibles de §10 (10 et 8), à ramener à la mesure au premier vert.
+`saisie-rapide/` est un POST : le manifeste ne garde que des routes GET (`check_query_budgets._routes_get`),
+son plafond vit ici.
 """
 import datetime
 
@@ -37,6 +40,15 @@ URL_VUE_PROJET = '/api/django/taches/projets/{id}/vue/'
 URL_SAISIE = '/api/django/taches/saisie-rapide/'
 URL_RYTHME = '/api/django/taches/rythme/'
 URL_RECHERCHE = '/api/django/taches/recherche/'
+URL_TUILE = '/api/django/taches/tuile/'
+URL_FLUX = '/api/django/taches/flux/{jeton}.ics'
+
+
+def _porteur(clair):
+    """Client du jeton `tuile` (en-tête), comme Scriptable ; le flux porte le sien dans l'adresse."""
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {clair}')
+    return api
 
 
 def _peupler(compte, projets, etiquette, jour, nombre, depart=0):
@@ -158,6 +170,20 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
         with self.assertMaxQueries(12):
             self._lire(url)
 
+    def test_tuile(self):
+        """TCH97 — jeton `tuile` (authentification comprise) ; cible d'api.md §10 : 10."""
+        porteur = _porteur(fabriques.jeton(self.compte, 'tuile')[1])
+        self.assertEqual(porteur.get(URL_TUILE).status_code, 200)
+        with self.assertMaxQueries(14):
+            self.assertEqual(porteur.get(URL_TUILE).status_code, 200)
+
+    def test_flux(self):
+        """TCH97 — jeton `flux` dans l'adresse (authentification comprise) ; cible d'api.md §10 : 8."""
+        url = URL_FLUX.format(jeton=fabriques.jeton(self.compte, 'flux')[1])
+        self.assertEqual(APIClient().get(url).status_code, 200)
+        with self.assertMaxQueries(10):
+            self.assertEqual(APIClient().get(url).status_code, 200)
+
 
 class PlafondsConstantsTests(TestCase):
     """Le nombre de requêtes ne grandit pas avec les lignes (O(1)) : listes et aperçu de la saisie."""
@@ -194,6 +220,17 @@ class PlafondsConstantsTests(TestCase):
             projet = fabriques.projet(self.compte, priorite=priorite)
             _peupler(self.compte, [projet], self.etiquette, self.jour, 1, depart=200 + priorite)
         self.assertEqual(self._compter(lambda: self.api.get(URL_PROJETS)), avant)
+
+    def test_la_tuile_et_le_flux_ne_grandissent_pas_avec_les_taches(self):
+        """TCH97 — une lecture préchargée : 4 ou 12 tâches du jour (et de J + 3), même compte."""
+        tuile = _porteur(fabriques.jeton(self.compte, 'tuile')[1])
+        flux = URL_FLUX.format(jeton=fabriques.jeton(self.compte, 'flux')[1])
+        avant_tuile = self._compter(lambda: tuile.get(URL_TUILE))
+        avant_flux = self._compter(lambda: APIClient().get(flux))
+        _peupler(self.compte, self.projets, self.etiquette, self.jour, 8, depart=300)
+        _peupler(self.compte, self.projets, self.etiquette, self.jour + datetime.timedelta(days=3), 4, depart=400)
+        self.assertEqual(self._compter(lambda: tuile.get(URL_TUILE)), avant_tuile)
+        self.assertEqual(self._compter(lambda: APIClient().get(flux)), avant_flux)
 
     def test_l_apercu_de_la_saisie_est_constant_en_lignes(self):
         def apercu(lignes):

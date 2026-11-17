@@ -331,6 +331,8 @@ SANS_ID = {
     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
     ('GET', 'jetons/'): lambda m: ('jetons/', None),
     ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
+    ('GET', 'tuile/'): lambda m: ('tuile/', None),  # compte forcé (`force_authenticate`) : celui du jeton
+    ('GET', 'flux/{jeton}.ics'): lambda m: ('flux/tqf_force.ics', None),  # idem : le jeton de l'adresse n'est pas lu
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
