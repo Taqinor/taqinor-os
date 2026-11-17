@@ -189,3 +189,18 @@ describe('WIR70 GedDocumentInsights', () => {
     await waitFor(() => expect(H.getComments).toHaveBeenCalledWith('ged.document', 42))
   })
 })
+
+describe('ADRG143 — listes de l\'éditeur selon ged_gouvernance', () => {
+  it('Commercial (sans ged_gouvernance) : aucun appel users/ ni roles/', async () => {
+    renderPanel({ role: 'responsable', role_nom: 'Commercial', permissions: ['ged_voir', 'ged_gerer'] })
+    await waitFor(() => expect(H.getTimeline).toHaveBeenCalledWith(42))
+    expect(H.getUsers).not.toHaveBeenCalled()
+    expect(H.getRoles).not.toHaveBeenCalled()
+  })
+
+  it('Directeur (ged_gouvernance) : utilisateurs et rôles chargés', async () => {
+    renderPanel({ role: 'responsable', role_nom: 'Directeur', permissions: ['ged_voir', 'ged_gerer', 'ged_gouvernance'] })
+    await waitFor(() => expect(H.getUsers).toHaveBeenCalled())
+    await waitFor(() => expect(H.getRoles).toHaveBeenCalled())
+  })
+})
