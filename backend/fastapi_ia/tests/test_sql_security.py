@@ -776,55 +776,98 @@ class CombinedGuardTests(unittest.TestCase):
 
 @unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
 class TenantGucTests(unittest.TestCase):
-    """NTPLT4 — GUC app.current_company pose sur le moteur du SQL-agent.
+    """NTPLT4 / ALEC52 — GUC app.current_company pose a chaque transaction du
+    moteur du SQL-agent, que POSTGRES_RLS_ENABLED soit pose ou non (prod : RLS
+    FORCE sur ventes_devis/facture/paiement, flag Django vide => 0 ligne)."""
 
-    Defense en profondeur : meme une requete ecrite par le LLM ne peut pas lire
-    un autre tenant. No-op sans POSTGRES_RLS_ENABLED (defaut).
-    """
+    @staticmethod
+    def _moteur(dialecte="postgresql"):
+        return type("Moteur", (), {"dialect": type("D", (), {"name": dialecte})()})()
 
-    class _FakeEngine:
-        """Enregistre les listeners `connect` poses via sqlalchemy.event."""
+    def _poser(self, cible, company_id, env=None):
+        """Appelle _apply_tenant_guc et rend les listeners captures."""
+        poses = []
 
-    def _fake_db(self):
-        db = type("FakeDB", (), {})()
-        db._engine = self._FakeEngine()
-        return db
+        def listens_for(target, nom):
+            return lambda fn: poses.append((target, nom, fn)) or fn
+        env = {k: v for k, v in os.environ.items() if k != "POSTGRES_RLS_ENABLED"} if env is None else env
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch("sqlalchemy.event.listens_for", listens_for):
+            svc._apply_tenant_guc(cible, company_id)
+        return poses
 
-    def test_rls_flag_off_by_default(self):
-        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "0"}):
-            self.assertFalse(svc._rls_enabled())
+    @staticmethod
+    def _transaction(fn):
+        """Joue le listener `begin` sur une connexion factice ; rend les SQL."""
+        executes = []
+        curseur = mock.MagicMock()
+        curseur.execute.side_effect = lambda sql, params: executes.append((sql, params))
+        conn = mock.MagicMock()
+        conn.connection.dbapi_connection.cursor.return_value = curseur
+        fn(conn)
+        curseur.close.assert_called_once()
+        return executes
 
-    def test_rls_flag_on(self):
-        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "1"}):
-            self.assertTrue(svc._rls_enabled())
+    def test_guc_pose_sans_postgres_rls_enabled(self):
+        moteur = self._moteur()
+        poses = self._poser(moteur, 7)  # variable retiree de l'environnement
+        self.assertEqual([(t, n) for t, n, _ in poses], [(moteur, "begin")])
+        self.assertEqual(
+            self._transaction(poses[0][2]),
+            [("SELECT set_config('app.current_company', %s, true)", ("7",))])
+        # Flag a "0" (defaut prod) : meme chose.
+        self.assertEqual(len(self._poser(moteur, 7, {"POSTGRES_RLS_ENABLED": "0"})), 1)
 
-    def test_apply_guc_noop_when_flag_off(self):
-        # Flag OFF : aucun listener n'est enregistre (event.listens_for pas
-        # appele du tout).
-        db = self._fake_db()
-        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "0"}):
-            with mock.patch("sqlalchemy.event.listens_for") as m_listen:
-                svc._apply_tenant_guc(db, 7)
-                m_listen.assert_not_called()
+    def test_guc_borne_a_chaque_transaction(self):
+        # `true` = local a la transaction (rien ne survit au retour au pool) ;
+        # le listener `begin` le repose a CHAQUE transaction, jamais une fois.
+        poses = self._poser(self._moteur(), 7)
+        fn = poses[0][2]
+        for _ in range(2):
+            sql, params = self._transaction(fn)[0]
+            self.assertTrue(sql.endswith(", true)"))
+            self.assertEqual(params, ("7",))
+        self.assertNotIn("connect", [n for _, n, _ in poses])
 
-    def test_apply_guc_noop_when_company_missing(self):
-        db = self._fake_db()
-        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "1"}):
-            with mock.patch("sqlalchemy.event.listens_for") as m_listen:
-                svc._apply_tenant_guc(db, 0)
-                m_listen.assert_not_called()
+    def test_guc_societe_de_l_appelant_jamais_du_modele(self):
+        # Le SQL du modele qui pose le GUC est refuse (liste blanche AANA3) ;
+        # la valeur posee est l'entier de l'appelant, en parametre lie.
+        with self.assertRaises(svc.SQLSecurityError):
+            svc._validate_and_secure(
+                "SELECT set_config('app.current_company','8',true) "
+                "FROM ventes_facture WHERE company_id = 7", 7)
+        with self.assertRaises(ValueError):
+            self._poser(self._moteur(), "7 OR 1=1")
+        poses = self._poser(self._moteur(), 12)
+        self.assertEqual(self._transaction(poses[0][2])[0][1], ("12",))
 
-    def test_apply_guc_registers_connect_listener_when_on(self):
-        db = self._fake_db()
-        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "1"}):
-            with mock.patch("sqlalchemy.event.listens_for") as m_listen:
-                # listens_for renvoie un decorateur ; on l'imite.
-                m_listen.return_value = lambda fn: fn
-                svc._apply_tenant_guc(db, 7)
-                m_listen.assert_called_once()
-                # Le 2e argument positionnel est l'evenement "connect".
-                args, _ = m_listen.call_args
-                self.assertEqual(args[1], "connect")
+    def test_guc_noop_hors_postgres_ou_sans_societe(self):
+        # Chemin SQLite des tests et MagicMock : aucun listener.
+        self.assertEqual(self._poser(self._moteur("sqlite"), 7), [])
+        self.assertEqual(self._poser(mock.MagicMock(), 7), [])
+        self.assertEqual(self._poser(self._moteur(), 0), [])
+        self.assertEqual(self._poser(None, 7), [])
+        db = type("FakeDB", (), {"_engine": self._moteur()})()
+        self.assertEqual(len(self._poser(db, 7)), 1)
+
+    def test_base_sql_pose_le_guc_avant_toute_connexion(self):
+        # L'inspection des tables ouvre une connexion : le listener doit
+        # exister AVANT, sinon la 1re transaction part sans societe.
+        from app.core import database as _database
+        ordre, moteur = [], object()
+        service = svc.SQLAgentService.__new__(svc.SQLAgentService)
+        service._get_relevant_tables = lambda q: ["ventes_facture"]
+        inspecteur = mock.MagicMock()
+        inspecteur.get_table_names.return_value = ["ventes_facture"]
+        with mock.patch.object(_database, "create_sql_agent_engine", lambda: moteur), \
+                mock.patch.object(svc, "_apply_tenant_guc",
+                                  lambda cible, cid: ordre.append(("guc", cible, cid))), \
+                mock.patch("sqlalchemy.inspect",
+                           lambda e: ordre.append(("inspect", e)) or inspecteur), \
+                mock.patch("langchain_community.utilities.SQLDatabase",
+                           lambda e, **kw: ordre.append(("db", e)) or mock.MagicMock()):
+            service._base_sql("mes factures", 7)
+        self.assertEqual(ordre, [("guc", moteur, 7), ("inspect", moteur), ("db", moteur)])
 
 
 if __name__ == "__main__":

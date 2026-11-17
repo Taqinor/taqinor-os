@@ -1,0 +1,58 @@
+{
+  "sha": "9c157f12bab27d858f69e30e3f007f5960a3fabe",
+  "date": "2026-11-17",
+  "groupe": "ASTK",
+  "verdict": "PASS",
+  "couvre": [
+    "ASTK250"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.1-ASTK250-facture-directe",
+      "taches": [
+        "ASTK250"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ASTK-P5.1-ASTK250-facture-directe.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.2-ASTK250-livrer-bc",
+      "taches": [
+        "ASTK250"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ASTK-P5.2-ASTK250-livrer-bc.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

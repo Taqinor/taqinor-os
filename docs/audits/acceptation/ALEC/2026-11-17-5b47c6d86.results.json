@@ -1,0 +1,155 @@
+{
+  "sha": "5b47c6d866e4980285d19a6eab2e20a9ae9aba28",
+  "date": "2026-11-17",
+  "groupe": "ALEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEC48",
+    "ALEC49",
+    "ALEC5",
+    "ALEC41",
+    "ALEC51",
+    "ALEC46"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF6.1-ALEC48-casiers-expeditions-qualite",
+      "taches": [
+        "ALEC48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.1-ALEC48-casiers-expeditions-qualite.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.4-ALEC49-avance-sections-chantiers",
+      "taches": [
+        "ALEC49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.4-ALEC49-avance-sections-chantiers.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.1-ALEC5-tarifs-expedition",
+      "taches": [
+        "ALEC5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.1-ALEC5-tarifs-expedition.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC41-lignes-factures",
+      "taches": [
+        "ALEC41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC41-lignes-factures.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC51-raison-du-refus",
+      "taches": [
+        "ALEC51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC51-raison-du-refus.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC46-miroirs-publicitaires",
+      "taches": [
+        "ALEC46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6-ALEC46-miroirs-publicitaires.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
