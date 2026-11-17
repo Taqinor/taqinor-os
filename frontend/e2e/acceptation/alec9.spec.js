@@ -149,7 +149,7 @@ sortie(1)`).catch(() => null)
   }
 })
 const REFUS = /refus|pas autoris|non autoris|ne (peux|pouvez|suis) pas|impossible|n['’]ai pas (acc[eè]s|le droit)|restreint|interdit|pas (le droit|accès|accessible|disponible)|confidenti|s[ée]curit[ée]|prot[ée]g|droit du module|permission/i
-// Texte cité par la clause d'ALEC41 (« utilisez l'écran »), sur la réponse UTILISATEUR.
+// Renvoi à l'écran dans une réponse UTILISATEUR (le Directeur, accepté, ne doit pas en recevoir).
 const UTILISEZ_ECRAN = /utilise[zr]?\s+(plut[ôo]t\s+|directement\s+|donc\s+)?l['’]\s?[ée]cran/i
 const QUESTION_LIGNES = 'Liste les lignes de mes factures.'
 const motifPortee = (ia) => ia.filter((l) => REFUS_DROIT.test(l) && /Portee restreinte/.test(l))
@@ -191,9 +191,16 @@ etape('PF6-ALEC41-lignes-factures', ['ALEC41'], async ({ page, context, suivi, t
   expect(lectures(c.instr, 'ventes_lignefacture'), 'Commercial : aucune requête exécutée sur ventes_lignefacture').toEqual([])
   expect(sansEspace(c.corps.answer), 'Commercial : aucune ligne de facture servie').not.toContain(sansEspace(produit.nom))
   expect(J(c.corps.data || null), 'Commercial : aucune donnée servie').not.toContain(produit.nom)
-  expect(motifPortee(c.ia).length, 'Commercial : la garde a refusé la lecture « Portee restreinte »').toBeGreaterThan(0)
+  // Le refus « utilisez l'écran » cité par la clause est le texte de la GARDE (`_verifier_module_et_portee`) : affirmé mot
+  // pour mot sur la réponse de l'outil reçue par le modèle (journal IA, ALEC51). La réponse UTILISATEUR, rédigée par un
+  // modèle non déterministe (1er run : « l'accès est réservé à l'écran », « consultez à l'écran Ventes → Factures »), doit
+  // en tenir l'invariant : un refus qui renvoie à l'écran, jamais un refus sans raison.
+  const motifs = motifPortee(c.ia)
+  expect(motifs.length, 'Commercial : la garde a refusé la lecture « Portee restreinte »').toBeGreaterThan(0)
+  expect(motifs.every((l) => /\(utilisez l'ecran\)/.test(l)), 'Commercial : refus « utilisez l\'écran » rendu au modèle (texte cité par la clause)').toBe(true)
   expect(c.corps.answer || '', 'Commercial : refus').toMatch(REFUS)
-  expect(c.corps.answer || '', 'Commercial : refus « utilisez l\'écran » (texte cité par la clause)').toMatch(UTILISEZ_ECRAN)
+  expect(c.corps.answer || '', 'Commercial : la réponse utilisateur renvoie à l\'écran').toMatch(/[ée]cran/i)
+  expect(c.corps.answer || '', 'Commercial : jamais un refus sans raison').not.toMatch(/je ne sais pas pourquoi|sans savoir pourquoi|raison inconnue/i)
   await temoinDirecteur(context, suivi, testInfo, 'alec41d', societe)
 })
 
