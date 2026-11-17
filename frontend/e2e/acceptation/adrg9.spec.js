@@ -541,6 +541,8 @@ sortie(dict(id=inst.pk, ref=inst.reference))`)
   // Given complet : relevé, nettoyage, garantie, abonnement, certificat carbone et alerte de sous-performance ouverte
   // sur ce système (API demo_admin, service et ORM pour le certificat et l'alerte).
   const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  const [aa, mm, jj] = hier.split('-')
+  const dateHier = new RegExp(`${hier}|${jj}/${mm}/${aa}|${Number(jj)}/${Number(mm)}/${aa}`)
   await lireJson(await admin.post(`${API}/monitoring/readings/`, { ...T, data: { installation: inst.id, date: hier, energy_kwh: '12.50', period_days: 1 } }), 'relevé')
   await lireJson(await admin.post(`${API}/monitoring/cleanings/`, { ...T, data: { installation: inst.id, date: hier } }), 'nettoyage')
   await lireJson(await admin.post(`${API}/monitoring/warranties/`, { ...T, data: { installation: inst.id, guaranteed_year1_kwh: '5000', degradation_pct_per_year: '0.5', start_year: new Date().getFullYear(), tolerance_pct: '5', compensation_mad_per_kwh: '1' } }), 'garantie')
@@ -559,17 +561,26 @@ sortie(1)`)
     await expect(s, 'sélecteur de système').toBeVisible(V)
     await s.click()
     await p.getByRole('option', { name: choix }).first().click()
+    // Le menu Radix masque le reste de la page aux rôles ARIA tant qu'il est ouvert : attendre sa fermeture, sans
+    // quoi un comptage par rôle lirait 0 à tort.
+    await expect(p.getByRole('listbox'), 'menu des systèmes refermé').toHaveCount(0)
+    await expect(s, 'système choisi').toHaveAttribute('aria-expanded', 'false')
   }
   const calmeP = (p) => p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined)
-  /** Les 8 écrans du Then ; renvoie [écran, geste, nombre de boutons offerts]. `ferme` : /sav/monitoring refusé. */
-  async function supervision(p, c, passeRe) {
+  /** Les 8 écrans du Then ; renvoie [écran, geste, nombre de boutons offerts]. `ferme` : /sav/monitoring refusé.
+   *  `attendu` (témoin porteur de sav_gerer) : chaque geste est attendu visible avant d'être compté. */
+  async function supervision(p, c, passeRe, attendu = false) {
     const vus = []
-    const compte = async (ecranNom, geste, loc) => vus.push([ecranNom, geste, await loc.count()])
+    const compte = async (ecranNom, geste, loc) => {
+      if (attendu) await loc.first().waitFor({ state: 'visible', timeout: 30_000 }).catch(() => undefined)
+      vus.push([ecranNom, geste, await loc.count()])
+    }
     // Production : synchroniser, saisir un relevé, supprimer un relevé, fournisseur / activation (enregistrer).
     await ouvrir(p, '/production', /\/installations\/chantiers\/?$/)
     await systeme(p)
     await expect(p.getByText('Supervision automatique').first(), `${passeRe}${c.nomRole} : Production lisible`).toBeVisible(V)
     await calmeP(p)
+    await expect(p.getByRole('row').filter({ hasText: dateHier }).first(), `${passeRe}${c.nomRole} : Production, relevé du système listé`).toBeVisible(V)
     await compte('Production', 'Synchroniser maintenant', bouton(p, /Synchroniser maintenant/))
     await compte('Production', 'Saisir un relevé', p.getByText('Saisir un relevé', { exact: true }))
     await compte('Production', 'Supprimer (relevé)', bouton(p, 'Supprimer'))
@@ -578,11 +589,13 @@ sortie(1)`)
     await ouvrir(p, '/production/nettoyages', /\/monitoring\/configs\/?$/)
     await systeme(p)
     await calmeP(p)
+    await expect(p.getByRole('row').filter({ hasText: dateHier }).first(), `${passeRe}${c.nomRole} : Nettoyages, nettoyage du système listé`).toBeVisible(V)
     await compte('Nettoyages', 'Enregistrer un nettoyage', p.getByText('Enregistrer un nettoyage', { exact: true }))
     await compte('Nettoyages', 'Supprimer (nettoyage)', bouton(p, 'Supprimer'))
     // Garanties : ajouter, modifier, supprimer.
     await ouvrir(p, '/production/garanties', /\/monitoring\/warranties\/?$/)
     await calmeP(p)
+    await expect(p.getByRole('row').nth(1), `${passeRe}${c.nomRole} : Garanties, garanties listées`).toBeVisible(V)
     await compte('Garanties', 'Nouvelle garantie', bouton(p, /Nouvelle garantie/))
     await compte('Garanties', 'Modifier (garantie)', bouton(p, 'Modifier'))
     await compte('Garanties', 'Supprimer (garantie)', bouton(p, 'Supprimer'))
@@ -622,7 +635,7 @@ sortie(1)`)
     expect(ferme, `${passeRe}Commercial : SAV → Monitoring (Abonnements, SLA, Certificats) refusé`).toBe(true)
     await expect(pc.getByRole('button', { name: /Créer l'abonnement|Résilier|Enregistrer le SLA|Émettre le certificat/ }), `${passeRe}Commercial : aucun geste SAV → Monitoring`).toHaveCount(0)
   }
-  const { vus: vusD, ferme: fermeD } = await supervision(await ecranDe(page, suivi, testInfo, di), di, '')
+  const { vus: vusD, ferme: fermeD } = await supervision(await ecranDe(page, suivi, testInfo, di), di, '', true)
   expect(fermeD, 'Directeur : SAV → Monitoring rendu').toBe(false)
   expect(vusD.length, 'Directeur : les gestes des 8 écrans relevés').toBe(16)
   for (const [e, g, k] of vusD) expect(k, `Directeur : ${e} — « ${g} » présent`).toBeGreaterThan(0)
