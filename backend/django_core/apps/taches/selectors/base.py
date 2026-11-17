@@ -122,16 +122,16 @@ def _sans_accents(expression):
     return Func(expression, function='public.f_unaccent', output_field=TextField())
 
 
-def _normalise(expression, sans_accents):
+def normalise_sql(expression, sans_accents):
     return _sans_accents(expression) if sans_accents else expression
 
 
 def _condition_terme(terme, alias, sans_accents):
-    cible = _normalise(Value(terme.lower()), sans_accents)
+    cible = normalise_sql(Value(terme.lower()), sans_accents)
     par_champ = reduce(operator.or_, [Q(**{f'{nom}__contains': cible}) for nom in alias])
     etiquettes = (EtiquetteTache.objects
                   .filter(tache=OuterRef('pk'))
-                  .alias(_nom_q=_normalise(Lower('etiquette__nom'), sans_accents))
+                  .alias(_nom_q=normalise_sql(Lower('etiquette__nom'), sans_accents))
                   .filter(_nom_q__contains=cible))
     return par_champ | Exists(etiquettes)
 
@@ -146,6 +146,6 @@ def filtrer_q(qs, q, *, assistant=False):
     from apps.stock.selectors import recherche_sans_accents_disponible
     sans_accents = recherche_sans_accents_disponible()
     champs = CHAMPS_RECHERCHE_ASSISTANT if assistant else CHAMPS_RECHERCHE
-    alias = {f'_q_{rang}': _normalise(Lower(champ), sans_accents) for rang, champ in enumerate(champs)}
+    alias = {f'_q_{rang}': normalise_sql(Lower(champ), sans_accents) for rang, champ in enumerate(champs)}
     qs = qs.alias(**alias).filter(*[_condition_terme(terme, alias, sans_accents) for terme in termes])
     return qs.exclude(TACHE_CONFIDENTIELLE) if assistant else qs

@@ -183,7 +183,7 @@ def objectif_affiche(etat):
     return etat.palier, etat.palier_source or SourceObjectif.CALCULE, None
 
 
-def _maj(etat, **changes):
+def mettre_a_jour(etat, **changes):
     """`replace` puis recalcul de `objectif` (en vigueur)."""
     neuf = replace(etat, **changes)
     return replace(neuf, objectif=objectif_affiche(neuf)[0])
@@ -262,7 +262,7 @@ def evaluer_bloc(etat, jour):
     return None
 
 
-def _apres_decision(etat, jour, decision, reponse):
+def apres_decision(etat, jour, decision, reponse):
     """Champs changés par la réponse à la proposition du bloc."""
     n = _palier(etat)
     if decision == DECISION_MONTER and reponse == ReponseIncitation.OUI:
@@ -295,8 +295,8 @@ def clore_bloc(etat, jour, decision, reponse):
         champs['meilleur_tenu'] = max(etat.meilleur_tenu or 0, n)
     champs.update(blocs_a_sauter=max(0, etat.blocs_a_sauter - 1), baisse_refusee=False,
                   essai_restant=False, comptes_bloc=(), bloc_debut=jour + timedelta(days=1))
-    champs.update(_apres_decision(etat, jour, decision, reponse))
-    return _maj(etat, **champs)
+    champs.update(apres_decision(etat, jour, decision, reponse))
+    return mettre_a_jour(etat, **champs)
 
 
 def objectif_dit(etat, nombre=None, sens=None, jour=None):
@@ -321,13 +321,13 @@ def objectif_dit(etat, nombre=None, sens=None, jour=None):
               'essai_restant': False, 'comptes_bloc': ()}
     if jour is not None and etat.bloc_debut is not None:
         champs['bloc_debut'] = jour + timedelta(days=1)
-    return _maj(etat, **champs)
+    return mettre_a_jour(etat, **champs)
 
 
 def repondre_premier(etat, journee_type, choix):
     """Réponse à la carte `premier` : `oui` -> palier = type ; `garder` -> palier 5."""
     palier = journee_type if choix == ReponseIncitation.OUI else PALIER_DEFAUT
-    return _maj(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE)
+    return mettre_a_jour(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE)
 
 
 # --- TCH27 : « Garder ce rythme » et bascules (TENIR, §6.6-§6.7) ------------
@@ -340,7 +340,7 @@ DERIVE_SOUS = 'sous'
 DERIVE_AU_DESSUS = 'au_dessus'
 
 
-def _moyenne_plafonnee(comptes):
+def moyenne_plafonnee(comptes):
     plafonnes = plafonner_jours(comptes)
     return sum(plafonnes) / len(plafonnes)
 
@@ -350,7 +350,7 @@ def reference_tenir(comptes):
     derniers = list(comptes)[-JOURS_REFERENCE:]
     if len(derniers) < JOURS_REFERENCE:
         return None
-    return round(_moyenne_plafonnee(derniers), DECIMALES_REFERENCE)
+    return round(moyenne_plafonnee(derniers), DECIMALES_REFERENCE)
 
 
 def bande_tenir(reference):
@@ -369,7 +369,7 @@ def derive_tenir(reference, comptes, jour, silence):
     derniers = list(comptes)[-JOURS_REFERENCE:]
     if len(derniers) < JOURS_REFERENCE:
         return None
-    moyenne = _moyenne_plafonnee(derniers)
+    moyenne = moyenne_plafonnee(derniers)
     bas, haut = _bande(float(reference))
     if moyenne < bas:
         return DERIVE_SOUS
@@ -417,7 +417,7 @@ def basculer(etat, mode, jour):
         champs.update(_vers_tenir(etat, jour))
     elif mode == ModeRythme.POUSSER:
         champs.update(_vers_pousser(etat, jour))
-    return _maj(etat, **champs)
+    return mettre_a_jour(etat, **champs)
 
 
 # --- TCH28 : constats, retour d'absence, semaine courte, repère (§6.9, §4.8) -
@@ -502,13 +502,13 @@ def _pct(ok, total):
     return POURCENT * ok / total
 
 
-def _lignes_fenetre(d):
+def lignes_fenetre(d):
     return [x for x in d.lignes if _fenetre_ok(d.jour, x.jour, FENETRE_CONSTATS_JOURS)]
 
 
 def _constat_c1(d):
     groupes = {}
-    for ligne in _lignes_fenetre(d):
+    for ligne in lignes_fenetre(d):
         if ligne.creneau:
             groupes.setdefault(ligne.creneau, []).append(ligne.faite)
     taux = {c: _pct(sum(v), len(v)) for c, v in groupes.items() if len(v) >= C1_MIN_LIGNES}
@@ -518,7 +518,7 @@ def _constat_c1(d):
     return Constat('C1', {'taux': taux, 'meilleur': meilleur}, ACTION_ESSENTIEL_MATIN)
 
 
-def _essentiels_classes(lignes):
+def essentiels_classes(lignes):
     """Lignes essentielles `(jour, faite)` : en tête du plan (rang minimal du jour) / ailleurs."""
     rang_min = {}
     for ligne in lignes:
@@ -533,7 +533,7 @@ def _essentiels_classes(lignes):
 
 
 def _constat_c2(d):
-    en_tete, ailleurs = _essentiels_classes(_lignes_fenetre(d))
+    en_tete, ailleurs = essentiels_classes(lignes_fenetre(d))
     # 15 jours chacun (un jour compte dans les deux familles s'il a deux essentiels).
     if len({j for j, _ in en_tete}) < C2_MIN_JOURS or len({j for j, _ in ailleurs}) < C2_MIN_JOURS:
         return None

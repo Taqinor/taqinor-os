@@ -352,7 +352,7 @@ def _palier(etat, carte, reponse, jour):
             return etat
         return moteur.repondre_premier(etat, (carte.donnees or {}).get('type'), reponse)
     # La nuit a clos le bloc (`clore_bloc` sans réponse) ; la réponse applique la décision du bloc.
-    return moteur._maj(etat, **moteur._apres_decision(etat, jour, carte.cle, reponse))
+    return moteur.mettre_a_jour(etat, **moteur.apres_decision(etat, jour, carte.cle, reponse))
 
 
 def _rythme_repondu(user, reglages, carte, reponse, jour):
@@ -858,7 +858,7 @@ def _derive(user, etat, plans, jour):
     sens = moteur.derive_tenir(etat.tenir_reference, comptes, jour, etat.tenir_silence_jusquau)
     if sens is None:
         return etat
-    moyenne = moteur._moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
+    moyenne = moteur.moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
     bas, haut = moteur.bande_tenir(float(etat.tenir_reference))
     creer_carte(user, TypeIncitationEcran.DERIVE_TENIR, sens, jour, {
         'moyenne': round(moyenne, 4), 'R': float(etat.tenir_reference), 'bas': bas, 'haut': haut,
@@ -925,7 +925,7 @@ def donnees_constats(user, plans, jour):
 
 
 def _nombres_c2(d):
-    en_tete, ailleurs = moteur._essentiels_classes(moteur._lignes_fenetre(d))
+    en_tete, ailleurs = moteur.essentiels_classes(moteur.lignes_fenetre(d))
     return {'a': sum(f for _j, f in en_tete), 'na': len(en_tete), 'b': sum(f for _j, f in ailleurs),
             'nb': len(ailleurs)}
 
