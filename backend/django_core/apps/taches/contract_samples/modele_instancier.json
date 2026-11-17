@@ -1,0 +1,24 @@
+{
+  "endpoint": "POST /api/django/taches/modeles/{id}/instancier/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST modeles/{id}/instancier/ · consommateurs : Depuis un modèle ». Source : docs/taches/reference/api.md annexe A (`modele_instancier.json`), recopié mot pour mot.",
+  "exemple": {
+    "projet": {
+      "nom": "Salon"
+    },
+    "sections": [
+      {
+        "nom": "Préparation",
+        "date_debut": "2026-11-23",
+        "date_fin": "2026-12-07"
+      }
+    ],
+    "taches": [
+      {
+        "titre": "Réserver le stand",
+        "jour_prevu": "2026-11-23",
+        "echeance": "2026-11-30"
+      }
+    ],
+    "geste_id": null
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "endpoint": "POST /api/django/taches/agendas-externes/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST/PATCH agendas-externes/, POST …/rafraichir/ · consommateurs : Réglages ». Source : docs/taches/reference/api.md annexe A (`agenda_externe.json`), recopié mot pour mot.",
+  "exemple": {
+    "id": 2,
+    "hote": "outlook.office365.com",
+    "libelle": "Microsoft 365",
+    "actif": true,
+    "rang": 1024,
+    "dernier_chargement_le": "2026-11-17T09:05:00+01:00",
+    "dernier_etat": "ok"
+  }
+}

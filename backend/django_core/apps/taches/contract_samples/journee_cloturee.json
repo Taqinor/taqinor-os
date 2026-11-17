@@ -1,0 +1,11 @@
+{
+  "endpoint": "POST /api/django/taches/journee/cloturer/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST journee/cloturer/ · consommateurs : Bilan du soir ». Source : docs/taches/reference/api.md annexe A (`journee_cloturee.json`), recopié mot pour mot.",
+  "exemple": {
+    "plan": {
+      "jour": "2026-11-17",
+      "cloture_le": "2026-11-17T18:20:00+01:00"
+    },
+    "geste_id": 83
+  }
+}

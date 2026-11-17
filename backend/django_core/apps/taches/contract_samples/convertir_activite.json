@@ -1,0 +1,19 @@
+{
+  "endpoint": "POST /api/django/taches/convertir-activite/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST convertir-activite/ · consommateurs : bandeau d'À trier ». Source : docs/taches/reference/api.md annexe A (`convertir_activite.json`), recopié mot pour mot.",
+  "exemple": {
+    "converties": [
+      {
+        "activite_id": 41,
+        "tache_id": 90
+      }
+    ],
+    "refusees": [
+      {
+        "activite_id": 44,
+        "raison": "assignee_a_un_collegue"
+      }
+    ],
+    "geste_id": 79
+  }
+}
