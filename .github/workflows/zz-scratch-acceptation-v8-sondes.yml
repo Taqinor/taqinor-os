@@ -1,0 +1,228 @@
+name: zz scratch - acceptation v8 sondes (essai runner, TEMPORAIRE)
+
+# ESSAI (17/11/2026) : rejouer sur un runner GitHub, dans la pile docker compose (conteneur django_core),
+# les preuves en direct des reparations de sondes de la vague 7 : ASUP66, ALEC50, AMSG105, ACNC77, AERR180, APUB75.
+# `python scripts/sonde.py --toutes <G>` (ACNC : la sonde C-ACNC-006 seule) ; on exige `repro: false` des sondes
+# nommees par chaque tache, base inchangee, aucune erreur. ACNC77 : mutant (retrait de l'atomic de la vue) => repro vrai.
+# Jamais la production. Declenche seulement par un push sur la branche d'essai ; supprime au dernier commit.
+on:
+  push:
+    branches: [acceptation-v8-sondes]
+
+concurrency:
+  group: zz-scratch-acceptation-v8-sondes
+  cancel-in-progress: true
+
+jobs:
+  sondes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Liberer de la place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+      - name: .env de la pile = copie de .env.example
+        run: cp .env.example .env
+      - name: Construire l'image django_core (journal en fichier)
+        run: |
+          set -o pipefail
+          if ! docker compose build django_core > /tmp/compose-build.log 2>&1; then tail -n 150 /tmp/compose-build.log; exit 1; fi
+          tail -n 10 /tmp/compose-build.log
+      - name: Base deja migree - dump pre-migre du cache WOW8
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+            /tmp/testdb.manifest
+          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          restore-keys: |
+            testdb-v1-
+      - name: Demarrer db puis y restaurer le dump (accelerateur, hors preuve)
+        run: |
+          set -euo pipefail
+          docker compose up -d db
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U erp_user && break; sleep 2; done
+          if [ -f /tmp/testdb.dump ]; then
+            id=$(docker compose ps -q db)
+            docker cp /tmp/testdb.dump "$id":/tmp/testdb.dump
+            docker compose exec -T db pg_restore -U erp_user -d erp_db --no-owner -j 4 /tmp/testdb.dump || echo "pg_restore : avertissements (non bloquant)"
+            docker compose exec -T db rm -f /tmp/testdb.dump
+            echo "dump restaure"
+          else
+            echo "aucun dump en cache : migrate a froid"
+          fi
+      - name: Monter django_core, migrer, amorcer la demo
+        run: |
+          set -uo pipefail
+          docker compose up -d django_core
+          C=$(docker compose ps -q django_core)
+          echo "conteneur django_core : $C ($(docker inspect -f '{{.Name}}' "$C"))"
+          for i in $(seq 1 60); do docker exec "$C" python manage.py check >/dev/null 2>&1 && break; sleep 3; done
+          docker exec "$C" python manage.py migrate --noinput > /tmp/migrate.log 2>&1 || { tail -n 60 /tmp/migrate.log; exit 1; }
+          tail -n 3 /tmp/migrate.log
+          docker exec "$C" python manage.py seed_catalogue > /tmp/seed1.log 2>&1 || tail -n 20 /tmp/seed1.log
+          docker exec "$C" python manage.py seed_demo > /tmp/seed2.log 2>&1 || tail -n 20 /tmp/seed2.log
+          echo "$C" > /tmp/conteneur.txt
+      - name: Rejouer les sondes comme les clauses le disent
+        run: |
+          set -uo pipefail
+          C=$(cat /tmp/conteneur.txt)
+          D="$(date -u +%F)"
+          jouer() { # $1 = trace, reste = arguments de sonde.py
+            local T="$1"; shift
+            mkdir -p "$(dirname "$T")"
+            { echo "# rejeu sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}, conteneur $C (pile compose, .env = .env.example)"
+              echo "# commande : python scripts/sonde.py $* --conteneur <django_core>"; echo; } > "$T"
+            python3 scripts/sonde.py "$@" --conteneur "$C" >> "$T" 2>&1; rc=$?
+            if [ "$rc" = 3 ]; then
+              echo "# fraicheur refusee (code 3) : rejeu avec --sans-fraicheur" >> "$T"
+              python3 scripts/sonde.py "$@" --conteneur "$C" --sans-fraicheur >> "$T" 2>&1; rc=$?
+            fi
+            echo "# code de sortie de sonde.py : $rc (1 est attendu quand repro est faux : verdict ECART)" >> "$T"
+          }
+          for G in ASUP ALEC AMSG AERR APUB; do
+            jouer "docs/audits/acceptation/$G/traces/$D/$G-sondes.txt" --toutes "$G"
+          done
+          jouer "docs/audits/acceptation/ACNC/traces/$D/ACNC-sonde-006.txt" ACNC/C-ACNC-006
+          # Mutant ACNC77 : retrait de l'atomic de la vue ProduitViewSet.bulk
+          F=backend/django_core/apps/stock/views/produit.py
+          grep -c 'transaction.atomic(apply_product_bulk)(' "$F"
+          sed -i 's/transaction\.atomic(apply_product_bulk)(/(apply_product_bulk)(/' "$F"
+          git diff --stat
+          jouer "docs/audits/acceptation/ACNC/traces/$D/ACNC-sonde-006-mutant.txt" ACNC/C-ACNC-006 --sans-fraicheur
+          git diff "$F" > "docs/audits/acceptation/ACNC/traces/$D/ACNC-mutant.diff"
+          git checkout -- "$F"
+          git status --short | head
+          echo "D=$D" >> "$GITHUB_ENV"
+      - name: Ecrire les enregistrements (a la main, par le job)
+        run: |
+          cat > /tmp/enreg.py <<'PY'
+          import json, os, re, sys, datetime
+          date, sha = sys.argv[1], sys.argv[2]
+          TACHES = {
+              'ASUP': {'ASUP66': ['C-ASUP-003', 'C-ASUP-022']},
+              'ALEC': {'ALEC50': ['C-ALEC-016', 'C-ALEC-020', 'C-ALEC-024', 'C-ALEC-025', 'C-ALEC-VER1-102']},
+              'AMSG': {'AMSG105': ['C-AMSG-003', 'C-AMSG-007', 'C-AMSG-009']},
+              'ACNC': {'ACNC77': ['C-ACNC-006']},
+              'AERR': {'AERR180': ['C-AERR-001', 'C-AERR-044']},
+              'APUB': {'APUB75': ['C-APUB-004', 'C-APUB-007']},
+          }
+
+          def blocs(chemin):
+              out, cur = {}, None
+              if not os.path.exists(chemin):
+                  return out
+              for ligne in open(chemin, encoding='utf-8', errors='replace').read().splitlines():
+                  m = re.match(r'== (C-[A-Z0-9-]+) \(sha', ligne)
+                  if m:
+                      cur = m.group(1); out[cur] = []
+                  elif ligne.startswith('== bilan'):
+                      cur = None
+                  elif cur:
+                      out[cur].append(ligne)
+              return out
+
+          def juger(lignes):
+              texte = '\n'.join(lignes)
+              m = re.search(r'^verdict : (\S+)', texte, re.M)
+              verdict = m.group(1) if m else None
+              obs = texte.split('observé : ', 1)[-1].split('\nverdict :', 1)[0] if 'observé : ' in texte else ''
+              erreur = bool(re.search(r'ERREUR :|AUCUN RÉSULTAT|REFUSÉE', texte)) or verdict is None
+              repro = None
+              for l in obs.splitlines():
+                  l = l.strip()
+                  try:
+                      d = json.loads(l)
+                  except ValueError:
+                      continue
+                  if isinstance(d, dict) and 'repro' in d:
+                      repro = d['repro']; break
+              if repro is None:
+                  m2 = re.search(r'"repro": (true|false)', obs)
+                  repro = {'true': True, 'false': False}.get(m2.group(1)) if m2 else None
+              base = 'base inchangée : oui' in texte
+              return {'verdict': verdict, 'erreur': erreur, 'repro': repro, 'base': base,
+                      'extrait': re.sub(r'\s+', ' ', obs)[:220]}
+
+          for G, taches in TACHES.items():
+              dossier = f'docs/audits/acceptation/{G}'
+              trace = f'{dossier}/traces/{date}/' + ('ACNC-sonde-006.txt' if G == 'ACNC' else f'{G}-sondes.txt')
+              b = blocs(trace)
+              tous = {k: juger(v) for k, v in b.items()}
+              etapes, couvre, tout_pass = [], [], True
+              hors = [k for k, v in tous.items() if v['erreur'] or v['repro'] is not False]
+              for tache, sondes in taches.items():
+                  couvre.append(tache)
+                  details, ok = [], True
+                  for s in sondes:
+                      r = tous.get(s)
+                      bon = bool(r) and not r['erreur'] and r['repro'] is False and r['base'] and r['verdict'] in ('ÉCART', 'ECART')
+                      ok = ok and bon
+                      details.append(f"{s} : " + ('absente du rejeu' if not r else
+                          f"verdict {r['verdict']}, repro {r['repro']}, erreur {'oui' if r['erreur'] else 'non'}, base inchangée {'oui' if r['base'] else 'non'}"
+                          + ('' if bon else ' [REFUS]')))
+                  note_mut = ''
+                  if G == 'ACNC':
+                      mt = blocs(f'{dossier}/traces/{date}/ACNC-sonde-006-mutant.txt')
+                      rm = juger(mt.get('C-ACNC-006', [])) if mt else None
+                      mut_ok = bool(rm) and not rm['erreur'] and rm['repro'] is True
+                      ok = ok and mut_ok
+                      note_mut = (f" ; mutant (retrait de `transaction.atomic(...)` dans `ProduitViewSet.bulk`, diff traces/{date}/ACNC-mutant.diff,"
+                                  f" trace traces/{date}/ACNC-sonde-006-mutant.txt) : repro {rm['repro'] if rm else 'illisible'}, erreur {'oui' if rm and rm['erreur'] else 'non'}"
+                                  f" => {'repro devient vrai' if mut_ok else 'REFUS : repro ne change pas'}")
+                  tout_pass = tout_pass and ok
+                  notes = ('runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_catalogue + seed_demo) ; '
+                           + ('python scripts/sonde.py ACNC/C-ACNC-006' if G == 'ACNC' else f'python scripts/sonde.py --toutes {G}')
+                           + ' ; sortie 1 de sonde.py attendue quand repro est faux (verdict ÉCART) ; ' + ' ; '.join(details) + note_mut
+                           + ('' if G == 'ACNC' else f" ; autres sondes du groupe non nommées par la tâche, sans erreur et repro faux : "
+                              f"{len(tous) - len(hors)}/{len(tous)}" + (f" ; à lire (erreur ou repro non faux) : {', '.join(h for h in hors if h not in sondes)}" if [h for h in hors if h not in sondes] else '')))
+                  etapes.append({'id': f'SONDES.rejeu.{tache}', 'taches': [tache], 'verdict': 'PASS' if ok else 'FAIL', 'base_verdict': None,
+                                 'trace': trace, 'oracles': {str(i): 'NA' for i in range(1, 11)}, 'notes': notes})
+              verdict = 'PASS' if tout_pass else 'FAIL'
+              res = {'sha': sha, 'date': date, 'groupe': G, 'verdict': verdict, 'couvre': couvre, 'couvre_avec_ecart': [], 'etapes': etapes}
+              base = f'{dossier}/{date}-{sha[:9]}'
+              json.dump(res, open(base + '.results.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+              md = ['---', f'sha: {sha}', f'date: {date}', f'groupe: {G}', f'couvre: [{", ".join(couvre)}]', 'couvre_avec_ecart: []', f'verdict: {verdict}', 'etapes:']
+              for e in etapes:
+                  md += [f"  - id: {e['id']}", f"    tache: [{', '.join(e['taches'])}]", f"    verdict: {e['verdict']}"]
+              md += ['---', '', f'# Acceptation {G} — {date} ({sha[:9]})', '',
+                     "Écrit à la main par le job d'acceptation (preuves hors navigateur : `scripts/sonde.py` rejoué sur runner GitHub dans la pile compose) ; le",
+                     '`.results.json` frère fait foi ; relu par `python scripts/check_acceptation.py`. Oracles = qa-explorer 1-10 (`_format.md`), tous NA (aucun écran).', '',
+                     '| Étape | Tâches | Verdict | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | Trace |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
+              for e in etapes:
+                  md.append(f"| {e['id']} | {', '.join(e['taches'])} | {e['verdict']} | " + ' | '.join(['NA'] * 10) + f" | {e['trace']} |")
+              md.append('')
+              for e in etapes:
+                  md.append(f"- {e['id']} : {e['notes']}")
+              md += ['', f"Run du workflow temporaire `zz-scratch-acceptation-v8-sondes.yml` : https://github.com/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}", '']
+              open(base + '.md', 'w', encoding='utf-8').write('\n'.join(md))
+              print(G, verdict)
+          PY
+          python3 /tmp/enreg.py "$D" "$GITHUB_SHA"
+          for f in docs/audits/acceptation/*/${D}-*.md; do echo "=== $f"; cat "$f"; done
+          python3 scripts/check_acceptation.py || echo "check_acceptation : voir ci-dessus (diagnostic)"
+      - name: Afficher les traces
+        if: ${{ !cancelled() }}
+        run: |
+          for f in docs/audits/acceptation/*/traces/${D}/*sonde*.txt; do echo "##### $f"; cat "$f"; done
+      - name: Upload
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-v8-sondes
+          path: |
+            docs/audits/acceptation/ASUP/
+            docs/audits/acceptation/ALEC/
+            docs/audits/acceptation/AMSG/
+            docs/audits/acceptation/ACNC/
+            docs/audits/acceptation/AERR/
+            docs/audits/acceptation/APUB/
+          retention-days: 7
+          if-no-files-found: warn
