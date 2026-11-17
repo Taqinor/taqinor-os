@@ -278,12 +278,17 @@ def _carte_du_moment(ctx, propose):
 
 # --- `aujourdhui/` ---------------------------------------------------------------------------------
 
+def _boite_a_trier(user):
+    """La boîte de réception (invariant 1) : ouvertes, sans parent, sans projet, jamais triées."""
+    return taches_de(user).filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
+                                  statut__in=sel.OUVERTS).count()
+
+
 def a_trier(user, jour):
     """Compteurs de « À trier » : boîte (invariant 1), bloquées, suggestions visibles (7 jours), à
     convertir (`records.selectors.nb_a_faire_personnels`)."""
     from apps.records.selectors import nb_a_faire_personnels
-    boite = taches_de(user).filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
-                                   statut__in=sel.OUVERTS).count()
+    boite = _boite_a_trier(user)
     bloquees = taches_de(user).filter(statut=StatutTache.A_FAIRE).filter(sel.BLOQUEE).count()
     depuis, _ = sel.bornes_du_jour(jour - DUREE_SUGGESTION)
     suggestions = SuggestionTache.objects.filter(company_id=user.company_id, proprietaire=user,
@@ -370,8 +375,10 @@ def aujourdhui(user, jour, maintenant, *, tout=False, assistant=False):
 
 
 def badge(user, jour):
-    """GET badge/ : `{n, jour}` — `compter_journee`, la seule définition (invariant 11)."""
-    return {'n': sel.compter_journee(user, jour), 'jour': jour.isoformat()}
+    """GET badge/ : `{n, jour, a_trier}` — `n` par `compter_journee`, la seule définition (invariant 11) ;
+    `a_trier` = `a_trier.boite_reception` d'`aujourdhui/` (une requête de plus : la pastille de l'onglet
+    « À trier » n'a plus à lire toute la journée)."""
+    return {'n': sel.compter_journee(user, jour), 'jour': jour.isoformat(), 'a_trier': _boite_a_trier(user)}
 
 
 # --- « Ailleurs dans l'ERP » -----------------------------------------------------------------------

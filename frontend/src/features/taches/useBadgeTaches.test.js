@@ -44,6 +44,21 @@ describe('TCH101 — useBadgeTaches', () => {
     expect(navigator.clearAppBadge).not.toHaveBeenCalled()
   })
 
+  it('F3 — badge/ porte a_trier : une seule requête, aujourdhui/ n\'est pas lu', async () => {
+    servir({ badge: { n: 2, jour: '2026-11-17', a_trier: 4 } })
+    const { result } = renderHook(() => useBadgeTaches())
+    await waitFor(() => expect(result.current.n).toBe(2))
+    expect(result.current.aTrier).toBe(4)
+    expect(api.get.mock.calls.map(([url]) => url)).toEqual(['/taches/badge/'])
+  })
+
+  it('F3 — sans a_trier dans badge/ (serveur plus ancien), repli sur aujourdhui/', async () => {
+    servir({ badge: { n: 2, jour: '2026-11-17' } })
+    const { result } = renderHook(() => useBadgeTaches())
+    await waitFor(() => expect(result.current.aTrier).toBe(contrat('aujourdhui').a_trier.boite_reception))
+    expect(api.get.mock.calls.map(([url]) => url).sort()).toEqual(['/taches/aujourdhui/', '/taches/badge/'])
+  })
+
   it('n = 0 efface la pastille de l\'icône (clearAppBadge)', async () => {
     servir({ badge: { n: 0, jour: '2026-11-17' } })
     const { result } = renderHook(() => useBadgeTaches())

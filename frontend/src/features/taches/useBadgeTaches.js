@@ -7,7 +7,8 @@ import { lireAujourdhui, lireBadge } from '../../api/tachesApi'
        (Essentiel, Prévu, Ce soir), jamais Proposé (A16-N5) ; peut valoir 0. C'est le chiffre
        posé sur l'icône de l'app installée : `navigator.setAppBadge(n)` s'il existe, sinon rien ;
        0 → `clearAppBadge()` (donnees.md inv. 11).
-     · `aTrier` (`a_trier.boite_reception` d'Aujourd'hui) = la pastille de l'onglet « À trier »
+     · `aTrier` (`a_trier` de `badge/`, F3 ; à défaut `a_trier.boite_reception` d'Aujourd'hui, une
+       seconde requête) = la pastille de l'onglet « À trier »
        (masquée à 0) ; ses appelants : TCH124 (barre d'onglets) et la navigation de TCH131.
    Un cache de module partagé (60 s, une seule requête en vol) : plusieurs montages ne frappent
    pas deux fois le serveur. Un échec garde les derniers nombres connus (une pastille est un
@@ -46,13 +47,19 @@ export async function poserBadgeApp(n, nav = typeof navigator === 'undefined' ? 
 export function chargerBadgeTaches({ force = false } = {}) {
   if (!force && cache && cache.expire > Date.now()) return Promise.resolve(cache)
   if (enVol) return enVol
-  enVol = Promise.all([lireBadge(), lireAujourdhui()])
-    .then(([badge, journee]) => {
+  // une seule requête quand `badge/` porte `a_trier` ; sinon (serveur plus ancien) l'ancien chemin
+  enVol = lireBadge()
+    .then(async (badge) => {
+      const direct = badge.data?.a_trier
+      const journee = Number.isInteger(direct) ? null : await lireAujourdhui()
+      return [badge, journee, direct]
+    })
+    .then(([badge, journee, direct]) => {
       cache = {
         expire: Date.now() + TTL_MS,
         n: badge.data?.n ?? 0,
         jour: badge.data?.jour ?? null,
-        aTrier: journee.data?.a_trier?.boite_reception ?? 0,
+        aTrier: journee ? (journee.data?.a_trier?.boite_reception ?? 0) : direct,
         erreur: false,
       }
       poserBadgeApp(cache.n)
