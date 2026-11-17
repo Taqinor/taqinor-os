@@ -14,7 +14,7 @@
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique, listeDe, STAGE_LABELS, uniq } from '../helpers.js'
+import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique, STAGE_LABELS } from '../helpers.js'
 
 const etape = groupe('AERR', ['AERR69', 'AERR114'])
 fermerDjangoApresTout()
@@ -32,7 +32,7 @@ test.afterEach(async () => {
 })
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const pad = (n) => String(n).padStart(2, '0')
-const isoJour = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const _isoJour = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const toast = (p, texte) => p.locator('[data-sonner-toast]').filter({ hasText: texte })
 
 /** Compte d'essai du rôle LIVRÉ `nomRole` de la société démo ; renvoie son id. */
@@ -70,7 +70,7 @@ async function ecran(page, suivi, testInfo, nom) {
 }
 
 /** Route tenue : chaque requête qui passe attend `lacher()`, puis `issue(route)` (abort par défaut). */
-function porte() {
+function _porte() {
   let lacher
   let signaler
   const ouverte = new Promise((r) => { lacher = r })

@@ -28,7 +28,7 @@ test.beforeEach(async ({ page }) => {
 const T = { timeout: 180_000 }
 const J = JSON.stringify
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`.toUpperCase()
-const chiffres = (s) => String(s).replace(/[\s  ]/g, '')
+const chiffres = (s) => String(s).replace(/[\s\u00a0\u202f]/g, '')
 const webBase = () => {
   const w = process.env.E2E_WEB_BASE
   expect(w, 'E2E_WEB_BASE absent : apps/web (page publique) non servie').toBeTruthy()

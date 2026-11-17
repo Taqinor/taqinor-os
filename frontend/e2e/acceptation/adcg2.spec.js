@@ -24,7 +24,7 @@ function ecouter(serveur) {
   return new Promise((ok) => serveur.listen(0, '127.0.0.1', () => ok(serveur.address().port)))
 }
 
-etape('PF3.web.ADCG55-embed-site-reel', ['ADCG55'], async ({ page, context }) => {
+etape('PF3.web.ADCG55-embed-site-reel', ['ADCG55'], async ({ page }) => {
   // Certificat auto-signé pour la page « partenaire » HTTPS locale.
   const dossier = mkdtempSync(join(tmpdir(), 'adcg55-'))
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(dossier, 'k.pem'), '-out', join(dossier, 'c.pem'),

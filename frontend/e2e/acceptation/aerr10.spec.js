@@ -46,7 +46,7 @@ const ECART_AERR1 = 'sonde C-AERR-001 périmée : son détecteur (`docs/audits/s
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const pad = (n) => String(n).padStart(2, '0')
 const isoJour = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-const toast = (p, texte) => p.locator('[data-sonner-toast]').filter({ hasText: texte })
+const _toast = (p, texte) => p.locator('[data-sonner-toast]').filter({ hasText: texte })
 
 /** Compte d'essai du rôle LIVRÉ `nomRole` de la société démo ; renvoie son id. */
 const compteRole = (nom, nomRole) => py(`from apps.roles.models import Role
@@ -122,7 +122,7 @@ except Exception as exc:
 for pk in ${J(pks)}:
     try: Lead.all_objects.filter(pk=pk).delete()
     except Exception as exc: print('nettoyage', pk, exc)`)
-const etapeLead = (lead) => py(`from apps.crm.models import Lead
+const _etapeLead = (lead) => py(`from apps.crm.models import Lead
 sortie(Lead.objects.get(pk=${lead}).stage)`)
 
 // ═══ AERR132 — fiche produit à stock négatif : changer le prix s'enregistre, rien sous « Quantité en stock » ═══

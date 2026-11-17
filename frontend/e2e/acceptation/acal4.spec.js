@@ -53,7 +53,6 @@ async function cleCartePublique() {
 
 etape('PA6.atelier_style_imagerie_refuse', ['ACAL377'], async ({ page, context, suivi }) => {
   const cal = await calepinageDeDemo()
-  const r = page.request
   const lireLayout = (id) => py(`from apps.calepinage.models import Calepinage
 sortie({'layout': Calepinage.objects.get(pk=${Number(id)}).roof_layout})`)
   const avant = await lireLayout(cal.id)

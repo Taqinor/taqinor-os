@@ -67,7 +67,7 @@ const lignesPayload = (bcf) => bcf.lignes.map((l) => ({ id: l.id, produit: l.pro
 // ════════════════════════════════════════════════════════════════════════════════════════════
 // ACNC21 — jeton de version du BCF : le second enregistrement est refusé et ne supprime pas la ligne du premier
 // ════════════════════════════════════════════════════════════════════════════════════════════
-etape('PF9.4-ACNC21-api', ['ACNC21'], async ({ page, testInfo }) => {
+etape('PF9.4-ACNC21-api', ['ACNC21'], async ({ testInfo }) => {
   const { ctx } = await acteur(testInfo, 'acnc21a', 'Directeur')
   const m = marque()
   const x = await preparer(m, { statut: 'brouillon', qte: 5, lignes2: true })
@@ -437,7 +437,7 @@ try: Produit.objects.filter(nom__contains='ACNC24 ').filter(nom__endswith='${m}'
 except Exception as exc: print('nettoyage', exc)
 sortie(True)`)
 
-etape('PF9.4-ACNC24-api', ['ACNC24'], async ({ page, testInfo }) => {
+etape('PF9.4-ACNC24-api', ['ACNC24'], async ({ testInfo }) => {
   const { ctx } = await acteur(testInfo, 'acnc24a', 'Directeur')
   const m = marque()
   const x = await deuxProduits(m)

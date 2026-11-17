@@ -1530,7 +1530,8 @@ LIVECHAT_PUBLIC_ENABLED = os.environ.get('LIVECHAT_PUBLIC_ENABLED', '0') == '1'
 
 # COP-G1 — interrupteur du copilote commercial : `aucun` | `admins` (défaut) | `tous` ; toute autre valeur = `aucun`.
 ASSISTANT_COPILOTE = os.environ.get('ASSISTANT_COPILOTE', 'admins')
-# AIC90 (D-COP-1) — plafond de dépense par jour et par commercial (USD) ; au-delà, repli Groq sans arrêt ; vide = aucune borne.
+# AIC90 (D-COP-1) — plafond de dépense par jour et par commercial (USD) ;
+# au-delà, repli Groq sans arrêt ; vide = aucune borne.
 ASSISTANT_PLAFOND_JOUR_USD = os.environ.get('ASSISTANT_PLAFOND_JOUR_USD', '').strip()
 ASSISTANT_EXPORT_TOKEN = os.environ.get('ASSISTANT_EXPORT_TOKEN', '').strip()  # AIC92 — tri nocturne ; vide = fermé
 ASSISTANT_EXPORT_SOCIETE = os.environ.get('ASSISTANT_EXPORT_SOCIETE', '').strip()  # AIC92 — id de SA société
