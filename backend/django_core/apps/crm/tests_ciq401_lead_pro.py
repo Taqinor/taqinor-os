@@ -243,6 +243,18 @@ class SaisieParLApi(TestCase):
             self.assertEqual(resp.status_code, 400, (valeur, resp.data))
             self.assertIn('cos_phi', resp.data)
 
+    def test_puissance_souscrite_strictement_positive_ou_vide(self):
+        # Lead « CPE Go Plus » (17/11/2026) : « -12 » passait sans un mot.
+        for valeur in ('60', 60, '0.01', None):
+            resp = self._patch({'compteur_puissance_kva': valeur})
+            self.assertEqual(resp.status_code, 200, (valeur, resp.data))
+        for valeur in ('-12', -12, '0', 0, '-0.5'):
+            resp = self._patch({'compteur_puissance_kva': valeur})
+            self.assertEqual(resp.status_code, 400, (valeur, resp.data))
+            self.assertIn('compteur_puissance_kva', resp.data)
+            self.assertIn('supérieur à 0',
+                          str(resp.data['compteur_puissance_kva'][0]))
+
     def test_un_decimal_vide_n_est_plus_lu_comme_null(self):
         # Le formulaire envoie ``null`` (jamais ``""``) pour un décimal vidé.
         self.assertEqual(self._patch({'facture_hiver': None}).status_code, 200)

@@ -629,6 +629,12 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     :func:`_monter_banque` (D-CI-BATTERIE-NON-RENTABLE, niveau 5)."""
     if not pmax_wc or not kwc_depart:
         return _sans_option('module sans puissance publiée : option batterie non calculée')
+    # La MÊME lecture que la taille (``taille.dimensionner_ci``) : une
+    # puissance souscrite nulle ou négative est une saisie fautive, donc « non
+    # déclarée » — jamais une borne (lue telle quelle, −12 kVA refusait toute
+    # combinaison d'hybrides : « aucune combinaison … ne porte le champ »).
+    from apps.ventes.moteur_ci.taille import _pos
+    ps_kva = _pos(ps_kva)
     # R1 (P2) — ``production_de(kwc)`` : la production de la pose qui loge
     # ce champ (30° tant qu'il tient, rasante au-delà) ; absent : ``production``.
     prod = production_de if production_de is not None else (lambda _kwc: production)

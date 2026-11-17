@@ -364,6 +364,8 @@ perte ⇒ 5) ; à égalité l'argent puis la sortie client d'abord. Les statuts 
    crm → lead, générateur → devis, 111 tâches TRANSVERSE déplacées verbatim, 43 scindées), PR dédiée.
    Exception étroite (16/11/2026) : un `vérifie` qui PROUVE par sonde qu'une tâche ouverte de SON groupe est inconstructible
    (cycle `@after` avec une tâche bloquée sur sa preuve) ou contredit l'écran l'amende sur place, dans sa PR, motif au record.
+   Le marqueur d'un compte rendu `vérifie` porte aussi `faits: N` (tâches cochées du groupe à la passe) : la contre-visite des
+   correctifs n'est due qu'après une coche nouvelle (ACEL101).
 8. **Ordre correctifs-d'abord** : sur un fichier-dieu, les correctifs ouverts précèdent le bloc golden + déplacements SPL
    (`@after` posés sur SPL1 / SPL70) ; tout ce qui est écrit après la migration passe après le dernier déplacement.
 Gabarit d'un `PLAN_AUDIT_<UNITE>.md` : contrat de propriété (écrit seulement dans ses chemins ; lecture étrangère par

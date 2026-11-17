@@ -497,6 +497,11 @@ def incoherence_segment(type_lead, devis):
 
 
 _MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)."
+#: Lead « CPE Go Plus » (17/11/2026) — « −12 » enregistré sans un mot, puis lu
+#: comme une borne par le moteur C&I (option batterie refusée).
+_MSG_PUISSANCE_SOUSCRITE = (
+    'Puissance souscrite : un nombre de kVA supérieur à 0 (ex. 60). '
+    "Laissez le champ vide si elle n'est pas connue.")
 
 
 class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
@@ -1324,6 +1329,14 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'consent_timestamp', 'date_creation_origine',
             'contact_preference_set_at',
         ]
+        # Borne PUBLIÉE (le schéma de requête la suit : chaîne sans signe ni
+        # zéro, nombre ≥ 0,01) et refus qui nomme le champ ; ``null`` reste
+        # « pas encore posée ».
+        extra_kwargs = {
+            'compteur_puissance_kva': {
+                'min_value': Decimal('0.01'),
+                'error_messages': {'min_value': _MSG_PUISSANCE_SOUSCRITE}},
+        }
 
     def champs_a_marquer(self, validated_data):
         """AMET23 — SOURCE UNIQUE des champs qu'un PATCH/PUT de la fiche marque

@@ -585,6 +585,14 @@ class Qjr595PromotionProCoupleTests(TestCase):
         self.assertIsNone(lead.compteur_puissance_kva)
         self.assertEqual(lead.web_questionnaire['puissance_kva'], 100000.0)
 
+    def test_puissance_nulle_jamais_posee_sur_la_colonne(self):
+        # La fiche refuse 0 kVA (« non déclarée » = vide) : posé par le site,
+        # il bloquerait ensuite chaque enregistrement de la fiche.
+        res = self.post(payload_site(mode='professionnel', puissanceKva=0))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.compteur_puissance_kva)
+
 
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
 class Agr402PromotionPompageTests(TestCase):
