@@ -17,7 +17,7 @@ from apps.taches.moteur.recurrence import prochaine_occurrence
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.taches import VERSION_OCCURRENCE_NEUVE
 from apps.taches.tests import fabriques
-from apps.taches.tests.test_api_saisie import ASSISTANT, URL, BaseApi, exemple
+from apps.taches.tests.test_api_saisie import ASSISTANT, URL, BaseApi, champs, exemple
 
 TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
 
@@ -101,7 +101,7 @@ class ListeTests(BaseApi):
             with self.subTest(requete=requete):
                 reponse = self._liste(requete)
                 self.assertEqual(reponse.status_code, 400)
-                self.assertEqual(list(reponse.json()), [champ])
+                self.assertEqual(list(champs(reponse.json())), [champ])
 
     def test_pagination(self):
         for _ in range(3):
@@ -135,7 +135,7 @@ class CreationTachesTests(BaseApi):
     def test_un_titre_vide_est_refuse_sous_le_champ(self):
         reponse = self._post('taches/', {'titre': ''})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'titre': ['Le titre est vide une fois la date et le projet retirés.']})
+        self.assertEqual(champs(reponse.json()), {'titre': [TITRE_VIDE]})
         self.assertEqual(Tache.objects.count(), 0)
 
     def test_un_rejeu_du_meme_client_id_rend_la_tache_deja_creee(self):
@@ -244,7 +244,7 @@ class ModifierTests(BaseApi):
     def test_lock_version_est_requis(self):
         tache = fabriques.tache(self.u1)
         reponse = self._api().patch(f'{URL}taches/{tache.pk}/', {'titre': 'x'}, format='json')
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'lock_version': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'lock_version': ['Requis.']}))
 
     def test_une_version_perimee_409_avec_la_tache_complete_et_rien_d_ecrit(self):
         tache = fabriques.tache(self.u1, titre='Avant')
@@ -264,7 +264,8 @@ class ModifierTests(BaseApi):
                               ('quelque_jour', True)):
             with self.subTest(champ=champ):
                 reponse = self._patch(tache, {champ: valeur})
-                self.assertEqual((reponse.status_code, reponse.json()), (400, {champ: ['Passe par « Quand ».']}))
+                self.assertEqual((reponse.status_code, champs(reponse.json())),
+                                 (400, {champ: ['Passe par « Quand ».']}))
         self.assertIsNone(_relue(tache).jour_prevu)
 
     def test_un_champ_inconnu_ou_interdit_est_refuse(self):
@@ -272,7 +273,7 @@ class ModifierTests(BaseApi):
         for champ in ('statut', 'proprietaire', 'company', 'reports', 'client_id'):
             with self.subTest(champ=champ):
                 reponse = self._patch(tache, {champ: 1})
-                self.assertEqual((reponse.status_code, reponse.json()), (400, {champ: ['Non modifiable ici.']}))
+                self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {champ: ['Non modifiable ici.']}))
 
     def test_la_tache_d_un_collegue_repond_comme_inconnue(self):
         autre = fabriques.tache(self.u2, titre='Avant')
@@ -289,7 +290,7 @@ class ModifierTests(BaseApi):
                                ({'echeance_heure': '10:00'}, {'echeance_heure': ['Une heure demande une échéance.']})):
             with self.subTest(corps=corps):
                 reponse = self._patch(tache, corps)
-                self.assertEqual((reponse.status_code, reponse.json()), (400, attendu))
+                self.assertEqual((reponse.status_code, champs(reponse.json())), (400, attendu))
 
     def test_une_echeance_et_son_heure(self):
         tache = fabriques.tache(self.u1)
@@ -326,7 +327,7 @@ class ModifierTests(BaseApi):
         devis = fabriques.tache(self.u1, titre='Devis', bloquee_par=visite)
         reponse = self._patch(visite, {'bloquee_par_id': devis.pk})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'bloquee_par_id': ['Boucle : « Devis » attend déjà « Visite ».']})
+        self.assertEqual(champs(reponse.json()), {'bloquee_par_id': ['Boucle : « Devis » attend déjà « Visite ».']})
 
     def test_jamais_soi_meme(self):
         tache = fabriques.tache(self.u1)
@@ -350,7 +351,7 @@ class ModifierTests(BaseApi):
     def test_un_projet_d_un_autre_compte_est_inexistant(self):
         tache = fabriques.tache(self.u1)
         reponse = self._patch(tache, {'projet_id': fabriques.projet(self.ext).pk})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'projet_id': ['Projet inexistant.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'projet_id': ['Projet inexistant.']}))
 
     def test_deplacer_dans_un_projet_trie_et_range_la_tache_et_ses_sous_taches(self):
         projet = fabriques.projet(self.u1)
@@ -382,7 +383,7 @@ class ModifierTests(BaseApi):
         parent = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
         enfant = fabriques.tache(self.u1, parent=parent, projet=parent.projet)
         reponse = self._patch(enfant, {'projet_id': None})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'projet_id': ['Non modifiable ici.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'projet_id': ['Non modifiable ici.']}))
 
     def test_les_etiquettes_sont_remplacees(self):
         tache = fabriques.tache(self.u1)
@@ -404,7 +405,7 @@ class ModifierTests(BaseApi):
         tache = fabriques.tache(self.u1)
         reponse = self._patch(tache, {'lien': {'cible': 'stock.produit', 'id': 3}})
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(reponse.json(), {'lien': ["Ce type d'élément ne peut pas être lié à une tâche."]})
+        self.assertEqual(champs(reponse.json()), {'lien': ["Ce type d'élément ne peut pas être lié à une tâche."]})
 
     def test_retirer_le_lien(self):
         cible = ContentType.objects.get_by_natural_key('crm', 'lead')
@@ -498,7 +499,7 @@ class PlanifierActionTests(BaseApi):
     def test_lock_version_est_requis(self):
         tache = fabriques.tache(self.u1)
         reponse = self._post(f'taches/{tache.pk}/planifier/', {'jour_prevu': _j(1).isoformat()})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'lock_version': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'lock_version': ['Requis.']}))
 
     def test_une_version_perimee_409_avec_la_tache_complete(self):
         tache = fabriques.tache(self.u1)
@@ -515,7 +516,7 @@ class PlanifierActionTests(BaseApi):
     def test_une_heure_sans_jour_est_refusee_sous_son_champ(self):
         tache = fabriques.tache(self.u1)
         reponse = self._planifier(tache, {'heure_debut': '10:00'})
-        self.assertEqual((reponse.status_code, reponse.json()),
+        self.assertEqual((reponse.status_code, champs(reponse.json())),
                          (400, {'heure_debut': ['Une heure demande un jour prévu.']}))
 
     def test_un_report_est_compte_seulement_selon_l_invariant_4(self):
@@ -560,6 +561,31 @@ class TerminerTests(BaseApi):
         self.assertIsNotNone(relue.fait_le)
         self.assertIsNone(reponse.json()['suivante'])
         self.assertEqual(GesteAnnulable.objects.get(pk=reponse.json()['geste_id']).message, 'Faite')
+
+    def test_cocher_rend_la_progression_du_jour(self):
+        """La TACHE_ECRITE porte la PROGRESSION d'`aujourdhui/` (plus jamais `null`)."""
+        projet = fabriques.projet(self.u1)
+        tache = fabriques.tache(self.u1, projet=projet, jour_prevu=_j())
+        fabriques.tache(self.u1, projet=projet, jour_prevu=_j())
+        progression = self._terminer(tache).json()['progression']
+        self.assertEqual(list(progression), list(exemple('tache_ecrite')['progression']))
+        self.assertEqual((progression['faites'], progression['prevues']), (1, 2))
+        self.assertFalse(progression['reprise'])
+
+    def test_la_progression_ne_coute_pas_une_requete_par_tache(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        projet = fabriques.projet(self.u1)
+        premiere, deuxieme, troisieme = (fabriques.tache(self.u1, projet=projet, jour_prevu=_j()) for _ in range(3))
+        self._terminer(premiere)  # chauffe les caches (agendas externes, fenêtre de travail)
+        with CaptureQueriesContext(connection) as peu:
+            self._terminer(deuxieme)
+        autre = fabriques.projet(self.u1)
+        for _ in range(10):
+            fabriques.tache(self.u1, projet=autre, jour_prevu=_j(), estimation_minutes=30)
+        with CaptureQueriesContext(connection) as beaucoup:
+            self._terminer(troisieme)
+        self.assertEqual(len(beaucoup), len(peu))
 
     def test_cocher_deux_fois_ne_change_rien(self):
         tache = fabriques.tache(self.u1)
@@ -728,7 +754,7 @@ class SauterTests(BaseApi):
         tache = fabriques.tache(self.u1)
         reponse = self._post(f'taches/{tache.pk}/sauter/')
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(list(reponse.json()), ['recurrence'])
+        self.assertEqual(list(champs(reponse.json())), ['recurrence'])
         self.assertEqual(_relue(tache).statut, StatutTache.A_FAIRE)
 
 
@@ -763,7 +789,7 @@ class TrancherTests(BaseApi):
     def test_jour_est_requis_pour_choisir_un_jour(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(0))
         reponse = self._trancher(tache, {'choix': 'jour'})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'jour': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'jour': ['Requis.']}))
 
     def test_un_jour_met_en_reserve(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(0))
@@ -806,7 +832,7 @@ class AttendreEtRecuTests(BaseApi):
         for corps in ({}, {'en_attente_de': '  '}):
             with self.subTest(corps=corps):
                 reponse = self._post(f'taches/{tache.pk}/attendre/', corps)
-                self.assertEqual((reponse.status_code, reponse.json()),
+                self.assertEqual((reponse.status_code, champs(reponse.json())),
                                  (400, {'en_attente_de': ['Dis de qui ou de quoi tu attends.']}))
         self.assertEqual(_relue(tache).statut, StatutTache.A_FAIRE)
 
@@ -909,7 +935,7 @@ class ReordonnerTests(BaseApi):
         tache = fabriques.tache(self.u1)
         voisin = fabriques.tache(self.u1)
         reponse = self._reordonner(tache, {'liste': 'jour', 'apres_id': voisin.pk})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'liste': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'liste': ['Valeur inconnue.']}))
 
     def test_un_voisin_d_un_collegue_repond_comme_inconnu(self):
         projet, (a, b, c) = self._trois()
@@ -921,13 +947,13 @@ class ReordonnerTests(BaseApi):
         projet, (a, b, c) = self._trois()
         ailleurs = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
         reponse = self._reordonner(c, {'liste': 'projet', 'avant_id': ailleurs.pk})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Valeur inconnue.']}))
 
     def test_liste_inconnue_ou_sans_voisin_refusees(self):
         projet, (a, b, c) = self._trois()
         self.assertEqual(self._reordonner(c, {'liste': 'agenda', 'avant_id': a.pk}).status_code, 400)
         reponse = self._reordonner(c, {'liste': 'projet'})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Requis.']}))
 
     def test_la_tache_d_un_collegue_repond_comme_inconnue(self):
         autre = fabriques.tache(self.u2)
@@ -962,7 +988,7 @@ class ChangementApercuTests(BaseApi):
         tache = fabriques.tache(self.u1)
         self.assertEqual(self._apercu(tache, {'geste': 'effacer'}).status_code, 400)
         reponse = self._apercu(tache, {'geste': 'renommer', 'titre': ' '})
-        self.assertEqual((reponse.status_code, list(reponse.json())), (400, ['titre']))
+        self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (400, ['titre']))
 
     def test_l_assistant_ne_lit_pas_un_titre_confidentiel(self):
         tache = fabriques.tache(self.u1, titre='Secret', confidentiel=True)
@@ -1007,7 +1033,7 @@ class RappelsTests(BaseApi):
     def test_une_ancre_sans_date_est_refusee(self):
         tache = fabriques.tache(self.u1)
         reponse = self._poser(tache, {'ancre': 'echeance', 'decalage_jours': -1, 'heure': '18:00'})
-        self.assertEqual((reponse.status_code, list(reponse.json())), (400, ['ancre']))
+        self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (400, ['ancre']))
 
     def test_cinq_rappels_au_plus_par_tache(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
@@ -1015,13 +1041,14 @@ class RappelsTests(BaseApi):
             reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': f'{heure:02d}:00'})
             self.assertEqual(reponse.status_code, 200)
         reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '14:00'})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'rappel': ['5 rappels au plus par tâche.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())),
+                         (400, {'rappel': ['5 rappels au plus par tâche.']}))
 
     def test_heure_requise_et_lisible(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
-        self.assertEqual(self._poser(tache, {'jour': _j(1).isoformat()}).json(), {'heure': ['Requis.']})
+        self.assertEqual(champs(self._poser(tache, {'jour': _j(1).isoformat()}).json()), {'heure': ['Requis.']})
         reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': 'midi'})
-        self.assertEqual(reponse.json(), {'heure': ['Heure attendue (HH:MM).']})
+        self.assertEqual(champs(reponse.json()), {'heure': ['Heure attendue (HH:MM).']})
 
     def test_une_tache_close_ou_d_un_collegue_est_refusee(self):
         close = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
@@ -1090,7 +1117,7 @@ class RappelRetirerEtRepeterTests(BaseApi):
     def test_repeter_sans_rien_est_refuse(self):
         rappel = self._rappel()
         reponse = self._post(f'rappels/{rappel.pk}/repeter/', {})
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'dans_minutes': ['Requis.']}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'dans_minutes': ['Requis.']}))
 
 
 class RegleDeRecurrenceTests(BaseApi):
@@ -1144,12 +1171,12 @@ class RegleDeRecurrenceTests(BaseApi):
                              ({'jour_du_mois': 40}, 'jour_du_mois')):
             with self.subTest(corps=corps):
                 reponse = self._patch(regle, corps)
-                self.assertEqual((reponse.status_code, list(reponse.json())), (400, [champ]))
+                self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (400, [champ]))
 
     def test_la_fin_ne_precede_pas_le_debut(self):
         regle, _tache = self._regle()
         reponse = self._patch(regle, {'date_fin': (regle.date_debut - datetime.timedelta(days=1)).isoformat()})
-        self.assertEqual((reponse.status_code, reponse.json()),
+        self.assertEqual((reponse.status_code, champs(reponse.json())),
                          (400, {'date_fin': ['La date de fin précède la date de début.']}))
 
     def test_la_regle_d_un_collegue_repond_comme_inconnue(self):
@@ -1181,7 +1208,8 @@ class RegleDeRecurrenceTests(BaseApi):
         tache = fabriques.tache(self.u1, jour_prevu=_j(2))
         corps = {'recurrence': {'intervalle': 2}, 'lock_version': _relue(tache).lock_version}
         reponse = self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'recurrence': {'frequence': ['Requis.']}}))
+        self.assertEqual((reponse.status_code, champs(reponse.json())),
+                         (400, {'recurrence': {'frequence': ['Requis.']}}))
         regle, serie = self._regle()
         self._api().patch(f'{URL}taches/{serie.pk}/', {'recurrence': None, 'lock_version': _relue(serie).lock_version},
                           format='json')

@@ -40,9 +40,9 @@
           "motif": null,
           "raison": {
             "code": "echeance_proche",
-            "texte": "échéance jeudi"
+            "texte": "échéance jeu. 19"
           },
-          "explication": "échéance jeudi",
+          "explication": "",
           "rappel": null,
           "lien": null,
           "checklist": null,
@@ -91,7 +91,7 @@
             "code": "prochaine_action",
             "texte": "prochaine action de Équipe"
           },
-          "explication": "prochaine action de Équipe",
+          "explication": "",
           "rappel": null,
           "lien": null,
           "checklist": null,

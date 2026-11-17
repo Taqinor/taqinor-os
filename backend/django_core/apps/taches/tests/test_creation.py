@@ -151,6 +151,14 @@ class CreationTests(TestCase):
             self._creer(_ligne(), lien={'cible': 'stock.produit', 'id': 1}, porte='ecran', source='manuel')
         self.assertEqual(ctx.exception.detail, {'lien': ["Ce type d'élément ne peut pas être lié à une tâche."]})
 
+    def test_le_libelle_du_lien_est_pose_a_la_liaison(self):
+        with mock.patch('apps.taches.selectors.liens._par_la_porte',
+                        side_effect=lambda user, app, cle, pk: {cle: 'Benali Karim'}):
+            tache = self._creer(_ligne(), lien={'cible': 'crm.lead', 'id': 1637}, porte='ecran',
+                                source='manuel').creees[0]
+        relue = Tache.objects.get(pk=tache.pk)
+        self.assertEqual((relue.object_id, relue.lien_etat, relue.lien_libelle), (1637, 'ok', 'Benali Karim'))
+
     def test_lien_introuvable_refuse(self):
         # Porte unique de visibilité : selectors/liens.cible_visible (TCH13, même fusion F1).
         with self.assertRaises(serializers.ValidationError) as ctx:

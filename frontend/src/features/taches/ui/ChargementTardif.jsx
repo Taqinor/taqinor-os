@@ -9,6 +9,20 @@ import { useEffect, useState } from 'react'
 const DELAI_MS = 1000
 const LIGNES = [['72%', '44%'], ['84%', '38%'], ['64%', '']]
 
+/** Une ligne « os » du squelette (case, une ou deux barres) — partagée avec le squelette d'Aujourd'hui. */
+export function LigneOs({ l1, l2 = '' }) {
+  return (
+    <div className="ligne" aria-hidden="true">
+      <span className="case"><span className="os cercle" /></span>
+      <div className="ligne-corps">
+        <span className="os l1" style={{ width: l1 }} />
+        {l2 ? <span className="os l2" style={{ width: l2 }} /> : null}
+      </div>
+      <div className="ligne-fin" />
+    </div>
+  )
+}
+
 export default function ChargementTardif({ actif = true }) {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
@@ -19,16 +33,7 @@ export default function ChargementTardif({ actif = true }) {
   if (!actif || !visible) return null
   return (
     <div className="squelette" role="status" aria-label="Chargement">
-      {LIGNES.map(([l1, l2], rang) => (
-        <div key={rang} className="ligne" aria-hidden="true">
-          <span className="case"><span className="os cercle" /></span>
-          <div className="ligne-corps">
-            <span className="os l1" style={{ width: l1 }} />
-            {l2 ? <span className="os l2" style={{ width: l2 }} /> : null}
-          </div>
-          <div className="ligne-fin" />
-        </div>
-      ))}
+      {LIGNES.map(([l1, l2], rang) => <LigneOs key={rang} l1={l1} l2={l2} />)}
     </div>
   )
 }

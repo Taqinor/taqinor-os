@@ -9,7 +9,7 @@ import Recherche from './Recherche'
 import Supprimees from './Supprimees'
 
 const api = vi.hoisted(() => ({
-  rechercher: vi.fn(), listerToutesLesTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(),
+  rechercher: vi.fn(), listerTaches: vi.fn(), listerToutesLesTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(),
   listerSupprimees: vi.fn(), listerGestes: vi.fn(), restaurerProjet: vi.fn(), restaurerTache: vi.fn(), annulerGeste: vi.fn(),
   terminerTache: vi.fn(), rouvrirTache: vi.fn(), supprimerTache: vi.fn(),
 }))
@@ -43,6 +43,7 @@ const monter = (url = '/taches/recherche?q=devis') => render(
 
 beforeEach(() => {
   api.rechercher.mockResolvedValue({ data: MIXTE })
+  api.listerTaches.mockResolvedValue({ data: { results: MIXTE.taches, count: 3, next: null } })
   api.listerToutesLesTaches.mockResolvedValue(MIXTE.taches)
   api.listerTousLesProjets.mockResolvedValue(projetsListe.results)
   api.listerToutesLesEtiquettes.mockResolvedValue(etiquettes.results)
@@ -80,7 +81,7 @@ describe('TCH87 — Recherche', () => {
     monter('/taches/recherche')
     await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
     expect(api.rechercher).not.toHaveBeenCalled()
-    expect(api.listerToutesLesTaches).not.toHaveBeenCalled()
+    expect(api.listerTaches).not.toHaveBeenCalled()
   })
 
   it('taper garde le texte tel quel et relance la recherche après la pause', async () => {
@@ -98,7 +99,7 @@ describe('TCH87 — Recherche', () => {
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
     await user.click(screen.getByRole('checkbox', { name: 'Faites aussi' }))
     await user.click(screen.getByRole('checkbox', { name: 'Priorité haute' }))
-    await waitFor(() => expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', inclure_faites: true, priorite_min: 3 })))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', inclure_faites: true, priorite_min: 3 })))
     expect(await screen.findByRole('region', { name: 'Faites (1)' })).toBeInTheDocument()
   })
 
@@ -108,7 +109,7 @@ describe('TCH87 — Recherche', () => {
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
     await user.click(screen.getByRole('button', { name: 'Projet ▾' }))
     await user.click(await screen.findByRole('option', { name: 'Ventes' }))
-    await waitFor(() => expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith(expect.objectContaining({ projet: 3 })))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ projet: 3 })))
     expect(await screen.findByRole('button', { name: 'Projet : Ventes ×' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Projet : Ventes ×' }))
     expect(await screen.findByRole('button', { name: 'Projet ▾' })).toBeInTheDocument()
@@ -127,7 +128,7 @@ describe('TCH87 — Recherche', () => {
     expect(screen.getByRole('combobox', { name: 'Tri' })).toHaveValue('manuel')
     // « En réserve » est une vue du serveur
     await user.click(screen.getByRole('checkbox', { name: 'En réserve' }))
-    await waitFor(() => expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
   })
 
   it('Raccord F2 — « Aujourd\'hui » et « 7 jours » passent par `periode` du serveur, le tri servi suit', async () => {
@@ -136,11 +137,11 @@ describe('TCH87 — Recherche', () => {
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
     await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
     await user.click(screen.getByRole('checkbox', { name: '7 jours' }))
-    await waitFor(() => expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', periode: 'semaine' })))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', periode: 'semaine' })))
     await user.click(screen.getByRole('checkbox', { name: "Aujourd'hui" }))
-    await waitFor(() => expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui' })))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui' })))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Tri' }), 'echeance')
-    await waitFor(() => expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui', tri: 'echeance' })))
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui', tri: 'echeance' })))
   })
 
   it('Raccord F2 — étiquettes pas encore servies (501) : ni erreur ni filtre Étiquette', async () => {

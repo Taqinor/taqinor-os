@@ -22,11 +22,12 @@ class TachesConfig(AppConfig):
         # d'un tenant) / vertical_<x> (sorti du build de l'édition solaire —
         # à inscrire AUSSI dans erp_agentique/settings/editions.py).
         'sku': 'generic',
-        'label': 'Taches',
+        'label': 'Tâches',
         'icone': '',
         'depends': [],
-        'installable': False,
-        'description': 'Module taches (à décrire).',
+        # TCH131 — activation (fin de F2, donnees.md inv. 28) : le module devient installable.
+        'installable': True,
+        'description': 'Tes tâches, tes projets et ton agenda, avec le Copilote.',
         # Ventes/Finance/RH/Stock/Services/Marketing/Technique/Commercial.
         'categorie': 'Technique',
     }

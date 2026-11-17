@@ -6,6 +6,7 @@ import { Suspense } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { appNavItems } from '../../lib/apps/ActiveAppContext'
 import { MANIFESTES } from '../../lib/apps/appSkus'
 import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
 import { estAutoriseEntree } from '../../router/moduleGating'
@@ -14,7 +15,8 @@ import config from './module.config'
 import { useEnLigne } from './lib/enLigne'
 
 /* TCH43 — les 13 routes de api.md §7 rendent leur page DANS la coquille ; `/taches` mène
-   à Aujourd'hui ; le module n'a aucune navigation ; `useEnLigne()` suit `offline`. */
+   à Aujourd'hui ; `useEnLigne()` suit `offline`. TCH131 — activation : 4 onglets gardés par
+   `taches_voir`, le module n'apparaît qu'à un compte qui porte le droit. */
 
 // route → titre de page
 const ATTENDU = {
@@ -65,16 +67,46 @@ describe('TCH43 — routes du module', () => {
     }
   })
 
-  it('n\'a AUCUNE navigation ni tuile d\'app : module invisible', () => {
+  it('TCH131 — 4 onglets dans l\'ordre de spec-7 §2, libellés traduits, glyphe d\'app propre', () => {
     expect(config.key).toBe('taches')
-    expect(config.nav).toBeUndefined()
-    expect(moduleNavSections.some((s) => s.key === 'taches')).toBe(false)
+    expect(config.nav).toMatchObject({ label: 'Tâches', labelKey: 'nav.section.taches' })
+    expect(config.nav.icon).toBeTruthy()
+    expect(config.nav.items.map((it) => [it.to, it.label, it.k])).toEqual([
+      ['/taches/aujourdhui', "Aujourd'hui", 'nav.taches_aujourdhui'],
+      ['/taches/a-trier', 'À trier', 'nav.taches_a_trier'],
+      ['/taches/projets', 'Projets', 'nav.taches_projets'],
+      ['/taches/agenda', 'Agenda', 'nav.taches_agenda'],
+    ])
+    expect(moduleNavSections.filter((s) => s.key === 'taches')).toHaveLength(1)
   })
 
-  it('reste invisible malgré sa ligne du miroir des manifestes (non installable, aucune tuile)', () => {
-    expect(MANIFESTES.taches).toMatchObject({ sku: 'generic', installable: false })
-    const apps = buildInstalledApps(moduleConfigs, { role: 'admin' })
-    expect(apps.some((a) => a.key === 'taches')).toBe(false)
+  it('TCH131 — chaque onglet est gardé STRICTEMENT par `taches_voir`, comme les routes', () => {
+    for (const item of config.nav.items) {
+      expect(item.perm, item.to).toBe('taches_voir')
+      expect(item.permRepliPalier, item.to).toBeUndefined()
+      expect(estAutoriseEntree(item, 'admin', []), item.to).toBe(false)
+      expect(estAutoriseEntree(item, 'admin', ['crm_voir']), item.to).toBe(false)
+      expect(estAutoriseEntree(item, 'admin', ['taches_voir']), item.to).toBe(true)
+    }
+  })
+
+  it('TCH131 — installable ; tuile, barre latérale et épinglés SEULEMENT pour un compte qui a `taches_voir`', () => {
+    expect(MANIFESTES.taches).toMatchObject({ sku: 'generic', installable: true })
+    // lanceur, épinglés, Menu d'accueil : tous lisent `buildInstalledApps`
+    const visible = (role, permissions) => buildInstalledApps(moduleConfigs, { role, permissions })
+      .some((a) => a.key === 'taches')
+    expect(visible('admin', [])).toBe(false) // compte hérité sans rôle fin
+    expect(visible('responsable', [])).toBe(false)
+    expect(visible('admin', ['crm_voir', 'roles_gerer'])).toBe(false) // rôle fin sans le droit (Directeur)
+    const avec = buildInstalledApps(moduleConfigs, { role: 'admin', permissions: ['taches_voir'] })
+      .find((a) => a.key === 'taches')
+    expect(avec).toMatchObject({ key: 'taches', to: '/taches/aujourdhui', icon: config.nav.icon })
+    // barre latérale et barre d'onglets : `appNavItems` (ActiveAppContext)
+    expect(appNavItems(config, 'admin', [])).toEqual([])
+    expect(appNavItems(config, 'normal', ['crm_voir'])).toEqual([])
+    expect(appNavItems(config, 'admin', ['taches_voir']).map((it) => it.to)).toEqual([
+      '/taches/aujourdhui', '/taches/a-trier', '/taches/projets', '/taches/agenda',
+    ])
   })
 
   it('garde STRICTE : un compte hérité sans rôle n\'entre pas, `taches_voir` entre', () => {
@@ -86,14 +118,6 @@ describe('TCH43 — routes du module', () => {
       expect(estAutoriseEntree(route, 'normal', ['taches_voir']), route.path).toBe(true)
       expect(estAutoriseEntree(route, 'normal', ['crm_voir']), route.path).toBe(false)
     }
-  })
-
-  it('chaque route porte son marqueur « contextuelle » (garde écran sans nav)', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src', 'features', 'taches', 'module.config.jsx'), 'utf8')
-    const lignes = source.split(/\r?\n/)
-    const indices = lignes.map((l, i) => (l.trimStart().startsWith('{ path:') ? i : -1)).filter((i) => i >= 0)
-    expect(indices).toHaveLength(13)
-    for (const i of indices) expect(lignes[i - 1]).toMatch(/contextuelle: module invisible jusqu'à TCH131/)
   })
 
   it.each(Object.entries(ATTENDU))('%s rend « %s » dans la coquille', async (url, titre) => {

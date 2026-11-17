@@ -602,6 +602,41 @@ class VueEtEtapesTests(_Base):
         self.assertEqual(corps['prochain_jalon']['id'], proche.pk)
         self.assertEqual(corps['prochaine_action']['id'], action.pk)
 
+    def test_compte_par_etape_et_faites_du_projet(self):
+        projet = fabriques.projet(self.u1)
+        etape = fabriques.section(projet)
+        fabriques.tache(self.u1, projet=projet, section=etape)
+        ancienne = self._fait(self.u1, projet, section=etape)
+        Tache.objects.filter(pk=ancienne.pk).update(fait_le=timezone.now() - datetime.timedelta(days=2))
+        recente = self._fait(self.u1, projet)
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        self.assertEqual(corps['sections'][0]['compteurs'], {'ouvertes': 1, 'faites': 1})
+        self.assertEqual(corps['sans_section_compteurs'], {'ouvertes': 0, 'faites': 1})
+        # « Faites (n) » : la liste paginée des tâches, la plus récemment faite d'abord.
+        faites = self._api(self.u1).get(_url(f'taches/?projet={projet.pk}&statut=fait&tri=fait_le')).json()
+        self.assertEqual([t['id'] for t in faites['results']], [recente.pk, ancienne.pk])
+        self.assertEqual(faites['count'], 2)
+
+    def test_les_item_portent_explication_essentielle_et_plan_comme_la_journee(self):
+        from apps.taches.models.journee import LignePlanJour
+        from apps.taches.selectors import journee as sel
+        from apps.taches.serializers.formes import charger_items
+        from apps.taches.serializers.journee import Rendu
+        jour = timezone.localdate()
+        projet = fabriques.projet(self.u1, nom='Ventes')
+        etoilee = fabriques.tache(self.u1, projet=projet, jour_prevu=jour)
+        simple = fabriques.tache(self.u1, projet=projet)
+        plan = fabriques.plan(self.u1, jour)
+        LignePlanJour.objects.create(company=self.a, plan=plan, tache=etoilee, prevue_au_plan=True, essentielle=True)
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        items = {t['id']: t for t in corps['sans_section']}
+        self.assertEqual((items[etoilee.pk]['essentielle'], items[etoilee.pk]['prevue_au_plan']), (True, True))
+        self.assertEqual((items[simple.pk]['essentielle'], items[simple.pk]['prevue_au_plan']), (False, False))
+        attendu = Rendu(sel.lire_journee(self.u1, jour, charger=charger_items)).calcul(('tache', etoilee.pk))
+        self.assertTrue(attendu['explication'])
+        self.assertEqual(items[etoilee.pk]['explication'], attendu['explication'])
+        self.assertEqual(corps['prochaine_action']['explication'], attendu['explication'])
+
     def test_sans_jalon_ni_action_les_deux_sont_nuls(self):
         projet = fabriques.projet(self.u1)
         corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
@@ -867,6 +902,32 @@ class DecalerTests(_Base):
                                           {'delta_jours': -3, 'apercu': False}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(reponse.json()['delta_jours'], ["1 tâche passerait avant aujourd'hui."])
+
+    def test_le_refus_rend_l_apercu_titre(self):
+        projet = fabriques.projet(self.u1)
+        tache = fabriques.tache(self.u1, projet=projet, jour_prevu=_j(0), titre='Signer Settat')
+        corps = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'),
+                                        {'delta_jours': -3, 'apercu': False}, format='json').json()
+        self.assertEqual(corps['avant_aujourdhui'], [tache.pk])
+        self.assertEqual([(c['objet'], c['id'], c['champ'], c['titre']) for c in corps['changements']],
+                         [('tache', tache.pk, 'jour_prevu', 'Signer Settat')])
+        self.assertEqual(Tache.objects.get(pk=tache.pk).jour_prevu, _j(0))  # rien n'est écrit
+
+    def test_les_lignes_portent_leur_titre_confidentialite_comprise(self):
+        projet, section, tache, _ = self._projet_date()
+        corps = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'), {'delta_jours': 7},
+                                        format='json').json()
+        titres = {(c['objet'], c['id']): c['titre'] for c in corps['changements']}
+        self.assertEqual(titres[('tache', tache.pk)], tache.titre)
+        self.assertEqual(titres[('section', section.pk)], section.nom)
+        self.assertEqual(titres[('projet', projet.pk)], projet.nom)
+        Projet.objects.filter(pk=projet.pk).update(confidentiel=True)
+        corps = self._api(self.u1, assistant=True).post(_url(f'projets/{projet.pk}/decaler/'), {'delta_jours': 7},
+                                                        format='json').json()
+        titres = {(c['objet'], c['id']): c['titre'] for c in corps['changements']}
+        self.assertEqual(titres[('tache', tache.pk)], 'Tâche confidentielle')
+        self.assertEqual(titres[('section', section.pk)], 'Étape')
+        self.assertEqual(titres[('projet', projet.pk)], 'Projet confidentiel')
 
     def test_le_geste_annule_le_decalage(self):
         projet, section, tache, _ = self._projet_date()

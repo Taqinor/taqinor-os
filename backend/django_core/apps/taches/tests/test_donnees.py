@@ -170,8 +170,11 @@ class MesDonneesTests(_Base):
     def test_lignes_brutes_et_instant_injecte(self):
         fabriques.plan(self.u1, JOUR, reflexion='Bonne journée')
         fabriques.reglages(self.u1)
-        rendu = exporter(self.u1, maintenant=datetime.datetime(2026, 11, 17, 9, 0, tzinfo=datetime.timezone.utc))
-        self.assertEqual(rendu['exporte_le'], '2026-11-17T10:00:00+01:00')
+        with timezone.override('Africa/Casablanca'):
+            rendu = exporter(self.u1, maintenant=datetime.datetime(2026, 11, 17, 9, 0, tzinfo=datetime.timezone.utc))
+        # Le Maroc est à UTC+0 (tzdata épinglé) : on compare l'INSTANT, pas son écriture murale.
+        self.assertEqual(datetime.datetime.fromisoformat(rendu['exporte_le']),
+                         datetime.datetime(2026, 11, 17, 9, 0, tzinfo=datetime.timezone.utc))
         self.assertEqual([(p['jour'], p['reflexion']) for p in rendu['plan_jour']], [('2026-11-17', 'Bonne journée')])
         for cle, lignes in rendu.items():
             for ligne in lignes if isinstance(lignes, list) else ():

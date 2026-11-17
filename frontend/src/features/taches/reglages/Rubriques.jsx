@@ -218,7 +218,7 @@ function Agendas() {
   useEffect(() => {
     let actif = true
     listerAgendasExternes()
-      .then((reponse) => { if (actif) setAgendas(reponse.data.results) })
+      .then((reponse) => { if (actif) { const { results } = reponse.data; setAgendas(results) } })
       .catch(() => { if (actif) setEchec(true) })
     return () => { actif = false }
   }, [])

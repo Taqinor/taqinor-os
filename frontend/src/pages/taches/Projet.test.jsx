@@ -122,10 +122,19 @@ describe('TCH89 — Un projet : étapes', () => {
 })
 
 describe('Raccord F2 — Un projet : chiffres servis seulement', () => {
-  it('sans compte servi, une étape n\'affiche aucun « n sur m » ; « Faites (12) » est un compte qu\'on déplie', async () => {
-    monter()
+  it('compteurs servis par le contrat : « 4 sur 5 » (Études), « 8 sur 15 » (Sans étape) ; sans compteurs, aucun « n sur m »', async () => {
+    const { unmount } = monter()
     const etape = await screen.findByRole('region', { name: 'Études' })
-    expect(within(etape).queryByText(/ sur /)).toBeNull()
+    expect(within(etape).getByText('4 sur 5')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Sans étape' })).getByText('8 sur 15')).toBeInTheDocument()
+    unmount()
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.forEach((s) => { delete s.compteurs })
+    delete vue.sans_section_compteurs
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    monter()
+    const nue = await screen.findByRole('region', { name: 'Études' })
+    expect(within(nue).queryByText(/ sur /)).toBeNull()
     expect(screen.getByRole('button', { name: /^Faites/ })).toHaveTextContent('12')
   })
 

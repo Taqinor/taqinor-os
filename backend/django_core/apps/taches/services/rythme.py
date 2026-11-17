@@ -41,6 +41,7 @@ from apps.taches.moteur.gabarits import CONSTANTES, texte
 from apps.taches.moteur.sante import NEGLIGE_JOURS, ProjetSante, neglige
 from apps.taches.moteur.sollicitations import ETAT_PAUSE, HEURE_RELANCE_DEFAUT, etat_decroissance
 from apps.taches.selectors.base import _du_compte, projets_de, taches_de
+from apps.taches.selectors.journee import activites_closes_du_jour
 from apps.taches.selectors.rythme import (
     TYPES_PROPOSITION,
     bornes_du_jour,
@@ -235,17 +236,25 @@ def _nouvel_etat(etat, mode, objectif, sens, jour):
     return moteur.basculer(etat, mode, jour)
 
 
+def reglages_a_ecrire(user):
+    """La `ReglagesRythme` de `user`, VERROUILLÉE, créée au premier geste qui l'ÉCRIT (`POST rythme/`,
+    `PATCH reglages/`) : un compte neuf dit son objectif ou règle ses interrupteurs avant sa première
+    tâche. Une LECTURE n'en crée jamais (`reglages_ou_defauts`). Dans une transaction de l'appelant ;
+    la clé (société, propriétaire) est celle de `taches_reglages_uniq`."""
+    ReglagesRythme.objects.get_or_create(company_id=user.company_id, proprietaire=user)
+    return reglages_de(user, verrou=True)
+
+
 def regler_rythme(user, donnees, jour):
     """`POST rythme/` `{"mode","objectif"?,"sens"?}` → (réglages relus, geste ou `None`).
 
     Le nombre dit (1-12) ou « plus »/« moins » passe par `moteur.objectif_dit` (le mode devient
-    `pousser`) ; un autre mode par `moteur.basculer`. Lève `ErreursRythme` (400), `SansReglages` (404).
+    `pousser`) ; un autre mode par `moteur.basculer`. Lève `ErreursRythme` (400). Un compte sans
+    réglages les reçoit ici (`reglages_a_ecrire`).
     """
     mode, objectif, sens = _lire_corps(donnees)
     with transaction.atomic():
-        reglages = reglages_de(user, verrou=True)
-        if reglages is None:
-            raise SansReglages()
+        reglages = reglages_a_ecrire(user)
         etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
         neuf = _nouvel_etat(etat, mode, objectif, sens, jour)
         operations = ecrire_etat(reglages, neuf)
@@ -343,7 +352,7 @@ def _palier(etat, carte, reponse, jour):
             return etat
         return moteur.repondre_premier(etat, (carte.donnees or {}).get('type'), reponse)
     # La nuit a clos le bloc (`clore_bloc` sans réponse) ; la réponse applique la décision du bloc.
-    return moteur._maj(etat, **moteur._apres_decision(etat, jour, carte.cle, reponse))
+    return moteur.mettre_a_jour(etat, **moteur.apres_decision(etat, jour, carte.cle, reponse))
 
 
 def _rythme_repondu(user, reglages, carte, reponse, jour):
@@ -575,7 +584,15 @@ def poser_preference(user, cle, valeur, source):
         operations = ecrire_preference(user, cle, valeur, source)
         if not operations:
             return None
-        return enregistrer_geste(user, 'preference', ClePreference(cle).label, operations)
+        return enregistrer_geste(user, 'preference', f'Noté : {phrase_preference(cle, valeur)}', operations)
+
+
+def phrase_preference(cle, valeur):
+    """La phrase d'une préférence dite (toast « Noté : {phrase} · Annuler », textes.md §2.15) : celle de
+    l'en-tête du Copilote ; une note libre n'est jamais recopiée (son seul libellé)."""
+    if cle == ClePreference.NOTE_LIBRE:
+        return ClePreference(cle).label.lower()
+    return _dite(cle, valeur)
 
 
 def retirer_preference(user, cle):
@@ -590,17 +607,18 @@ def retirer_preference(user, cle):
         operation = op_suppression_dure('preference', preference, {
             'cle': preference.cle, 'valeur': preference.valeur, 'source': preference.source})
         preference.delete()
-        return enregistrer_geste(user, 'preference', ClePreference(cle).label, [operation])
+        return enregistrer_geste(user, 'preference', f'Retirée : {ClePreference(cle).label.lower()}', [operation])
 
 
 def faites_aujourdhui(user, jour):
-    """Le compte du rythme du `jour` (tâches) : `moteur.compte_du_jour` sur les tâches faites ce
-    jour, une routine (quotidienne ou jours ouvrés, intervalle 1) comptée 0."""
+    """Le compte du rythme du `jour` : `moteur.compte_du_jour` sur les tâches faites ce jour (une
+    routine — quotidienne ou jours ouvrés, intervalle 1 — comptée 0) et les activités ERP closes par
+    lui ce jour (`selectors.journee.activites_closes_du_jour`, le même compte qu'`aujourdhui/`)."""
     taches = [SimpleNamespace(statut=t.statut, parent_id=t.parent_id, estimation_minutes=t.estimation_minutes,
                               routine=bool(t.recurrence_id and t.recurrence.frequence in FREQUENCES_ROUTINE
                                            and t.recurrence.intervalle == 1))
               for t in taches_faites_le(user, jour)]
-    return moteur.compte_du_jour(taches, ())[0]
+    return moteur.compte_du_jour(taches, activites_closes_du_jour(user, jour))[0]
 
 
 #: En-tête de tour (textes.md « Boutons des cartes ») : deux lignes, 300 caractères au plus.
@@ -738,13 +756,12 @@ def effacer_profil(user, reglages):
 def modifier_reglages(user, donnees, *, est_admin):
     """`PATCH reglages/` (liste blanche, sans geste) → réglages relus. `titres_notifications` pose
     `titres_notifications_demande_le` (question du 1er rappel, A17-T4). Lève `ErreursRythme` (400),
-    `ReserveAdministrateur` (403), `SansReglages` (404)."""
+    `ReserveAdministrateur` (403). Un compte sans réglages les reçoit ici (`reglages_a_ecrire`) ; un
+    corps refusé lève dans la transaction, qui défait la création."""
     if not hasattr(donnees, 'items'):
         raise ErreursRythme({'non_field_errors': [VALEUR_INCONNUE]})
     with transaction.atomic():
-        reglages = reglages_de(user, verrou=True)
-        if reglages is None:
-            raise SansReglages()
+        reglages = reglages_a_ecrire(user)
         valeurs = _valeurs_reglages(dict(donnees.items()), reglages, est_admin)
         coupe = reglages.comprendre_mon_rythme and valeurs.get('comprendre_mon_rythme') is False
         for champ, valeur in valeurs.items():
@@ -841,7 +858,7 @@ def _derive(user, etat, plans, jour):
     sens = moteur.derive_tenir(etat.tenir_reference, comptes, jour, etat.tenir_silence_jusquau)
     if sens is None:
         return etat
-    moyenne = moteur._moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
+    moyenne = moteur.moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
     bas, haut = moteur.bande_tenir(float(etat.tenir_reference))
     creer_carte(user, TypeIncitationEcran.DERIVE_TENIR, sens, jour, {
         'moyenne': round(moyenne, 4), 'R': float(etat.tenir_reference), 'bas': bas, 'haut': haut,
@@ -908,7 +925,7 @@ def donnees_constats(user, plans, jour):
 
 
 def _nombres_c2(d):
-    en_tete, ailleurs = moteur._essentiels_classes(moteur._lignes_fenetre(d))
+    en_tete, ailleurs = moteur.essentiels_classes(moteur.lignes_fenetre(d))
     return {'a': sum(f for _j, f in en_tete), 'na': len(en_tete), 'b': sum(f for _j, f in ailleurs),
             'nb': len(ailleurs)}
 

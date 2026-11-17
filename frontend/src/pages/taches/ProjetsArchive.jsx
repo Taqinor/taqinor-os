@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ChevronLeft } from 'lucide-react'
-import { listerProjets, rouvrirProjet } from '../../api/tachesApi'
+import { listerProjets, listerTousLesProjets, rouvrirProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
+import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { avancementDe } from '../../features/taches/projets/LigneProjet'
 import { annoncer } from '../../features/taches/lib/gestes'
@@ -19,7 +18,6 @@ const sansAccents = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, 
 const ISSUES = { atteint: 'Atteint', abandonne: 'Abandonné' }
 
 export default function ProjetsArchive() {
-  const navigate = useNavigate()
   const aujourdhui = useMemo(() => aujourdhuiIso(), [])
   const [projets, setProjets] = useState([])
   const [charge, setCharge] = useState(false)
@@ -28,7 +26,9 @@ export default function ProjetsArchive() {
 
   const lire = useCallback(async () => {
     try {
-      const { data } = await listerProjets({ statut: 'archive' })
+      // Liste paginée (50) : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0).
+      const premiere = await listerProjets({ statut: 'archive' })
+      const data = premiere.data?.next ? await listerTousLesProjets({ statut: 'archive' }) : premiere.data
       setProjets(Array.isArray(data) ? data : (data?.results ?? []))
       setErreur('')
     } catch (err) {
@@ -56,11 +56,7 @@ export default function ProjetsArchive() {
   const visibles = projets.filter((p) => !cherche || sansAccents(p.nom).includes(cherche))
   return (
     <CoquilleTaches ecran="projets-archive" titre="Archive">
-      <div className="ep-barre">
-        <button type="button" className="ep-retour" onClick={() => navigate('/taches/projets')}>
-          <ChevronLeft className="i" aria-hidden="true" />Projets
-        </button>
-      </div>
+      <BarreRetourProjets />
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {projets.length > 0 ? (
         <div className="ep-recherche">

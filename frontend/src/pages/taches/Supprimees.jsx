@@ -32,7 +32,7 @@ export default function Supprimees() {
     .then(([supprimees, derniers]) => {
       setProjets(supprimees.data?.projets ?? [])
       setTaches(supprimees.data?.taches ?? [])
-      setGestes(derniers.data?.results ?? [])
+      setGestes((derniers.data ?? {}).results ?? [])
       setErreur('')
       setCharge(true)
     })

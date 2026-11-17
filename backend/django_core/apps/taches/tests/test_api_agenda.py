@@ -12,6 +12,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.tests import fabriques
+from apps.taches.tests.test_api_saisie import champs
 
 URL = '/api/django/taches/agenda/'
 
@@ -82,10 +83,16 @@ class AgendaTests(TestCase):
         self.assertEqual([i['id'] for i in jour['sans_heure']], [sans.pk])
         self.assertEqual([i['id'] for i in self.le_jour(rendu, self.jour(2))['echeances']], [echeance.pk])
 
+    def test_capacite_du_jour_servie(self):
+        self.assertEqual(self.periode()['capacite'], {'minutes': 240, 'source': 'defaut'})
+        self.client_.post('/api/django/taches/preferences/', {'cle': 'capacite_jour_min', 'valeur': 300},
+                          format='json')
+        self.assertEqual(self.periode()['capacite']['minutes'], 300)
+
     def test_42_jours_au_plus(self):
         self.periode(au=self.jour(41).isoformat())
         rendu = self.periode(statut=400, au=self.jour(42).isoformat())
-        self.assertEqual(rendu, {'au': ['42 jours au plus.']})
+        self.assertEqual(champs(rendu), {'au': ['42 jours au plus.']})
 
     def test_vue_inconnue_400(self):
         self.assertIn('vue', self.get(statut=400, vue='annee'))

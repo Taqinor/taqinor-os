@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from apps.taches import nocturne
 from apps.taches.choix import (
-    CanalIncitation, ModeRythme, SourceObjectif, StatutJour, TypeIncitationEcran,
+    CanalIncitation, ModeRythme, SourceObjectif, StatutJour, StatutTache, TypeIncitationEcran,
 )
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.services import revelations, rythme
@@ -200,6 +200,10 @@ class NuitRythmeTests(TestCase):
     def test_par_la_nuit_orchestree(self):
         fabriques.reglages(self.u1, palier=5, bloc_debut=J - datetime.timedelta(days=10))
         jours(self.u1, [5, 6, 5, 4, 7, 5, 3, 6, 5, 4])
+        # La nuit clôt la veille : son compte est RECALCULÉ des tâches faites (4), pas lu du plan posé.
+        for _ in range(4):
+            fabriques.tache(self.u1, statut=StatutTache.FAIT, estimation_minutes=30,
+                            fait_le=timezone.make_aware(datetime.datetime(2026, 11, 17, 12, 0)))
         self.assertTrue(nocturne.executer(self.a.pk, J)['etapes_nocturnes'])
         self.assertEqual(len(cartes(self.u1, type=TypeIncitationEcran.PROPOSITION_PALIER)), 1)
 

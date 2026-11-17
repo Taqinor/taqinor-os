@@ -57,9 +57,15 @@ principal (variable `PLAYWRIGHT_DIR` pour pointer ailleurs). Depuis la racine du
 1. Lancer la pile locale (`docker compose up`, voir le fichier `CLAUDE.md` à la racine).
 2. Charger la journée d'exemple : `python manage.py seed_taches_demo` (commande créée par la tâche `TCH169`, absente
    avant F2) ; elle crée le compte de démonstration `demo_taches`.
-3. Se connecter avec un compte au rôle **Administrateur** (ou `demo_taches`) et ouvrir `/taches/aujourdhui`.
+3. Se connecter avec un compte au rôle **Administrateur** (ou `demo_taches`) : la tuile **Tâches** apparaît dans le
+   menu Applications (⊞) ; elle ouvre Aujourd'hui, avec les quatre onglets Aujourd'hui · À trier · Projets · Agenda.
+   On peut aussi taper `/taches/aujourdhui` dans la barre d'adresse.
+4. Après un déploiement sur un serveur existant, `python manage.py init_roles` (lancé par le déploiement) donne le
+   droit au rôle Administrateur de chaque société.
 
-Avant F2 seuls un superutilisateur et `demo_taches` atteignent l'app ; après, l'Administrateur.
+Avant F2 seuls un superutilisateur et `demo_taches` atteignent l'app ; après, l'Administrateur. Le Directeur et les
+autres rôles ne voient ni la tuile ni les onglets : pour ouvrir Tâches à un autre rôle, Paramètres → Rôles, cocher la
+case « Tâches » (décision de F4, sur votre parole).
 
 ## À essayer par Reda sur son iPhone
 

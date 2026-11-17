@@ -34,7 +34,7 @@ from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, filtrer_q, gestes_de, jours_travailles_de, projets_de, rappels_de,
     sections_de, taches_de,
 )
-from apps.taches.selectors.base import _normalise as normalise_sql
+from apps.taches.selectors.base import normalise_sql
 from apps.taches.selectors.liens import cible_visible, libelle_de_cible
 from apps.taches.serializers.formes import charger_items
 from apps.taches.services.creation import creer_taches
@@ -42,9 +42,9 @@ from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
 )
 from apps.taches.services.planification import (
-    MESSAGE_CONFLIT, planifier, _actuel as etat_minimal, _avertissements as avertissements_du_jour,
+    MESSAGE_CONFLIT, planifier, etat_minimal, avertissements_du_jour,
 )
-from apps.taches.services.rappels import _hors_fenetre as hors_fenetre
+from apps.taches.services.rappels import est_hors_fenetre
 from apps.taches.services.rappels import annuler_rappels, recalculer_ancres
 from core.verrou_optimiste import CHAMP_VERSION, CODE_CONFLIT_VERSION, ConflitVersion
 
@@ -54,7 +54,8 @@ MAX_MAILLONS = 50
 HORIZON_OUVRES = 400
 VUES = ('boite', 'quelque_jour')
 PERIODES = ('aujourdhui', 'semaine', 'retard')
-TRIS = ('rang', 'echeance', 'priorite')
+#: `fait_le` : la plus récemment faite d'abord (« Faites (n) » d'un projet : `?projet=&statut=fait&tri=fait_le`).
+TRIS = ('rang', 'echeance', 'priorite', 'fait_le')
 GROUPES = ('projet',)
 
 MESSAGE_TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
@@ -156,7 +157,8 @@ def _ordre(qs, params):
     tri = _choix(params, 'tri', TRIS) or 'rang'
     groupe = _choix(params, 'groupe', GROUPES)
     ordre = {'rang': ('rang_projet', 'id'), 'priorite': ('-priorite', 'id'),
-             'echeance': (F('echeance').asc(nulls_last=True), 'id')}[tri]
+             'echeance': (F('echeance').asc(nulls_last=True), 'id'),
+             'fait_le': (F('fait_le').desc(nulls_last=True), '-id')}[tri]
     return qs.order_by('projet__rang', *ordre) if groupe == 'projet' else qs.order_by(*ordre)
 
 
@@ -462,7 +464,7 @@ def rappel_a_la_creation(user, tache):
               .order_by('jour', 'heure', 'pk').first())
     if rappel is None:
         return None, False
-    rappel.hors_fenetre = hors_fenetre(user.company, rappel.jour, rappel.heure)
+    rappel.hors_fenetre = est_hors_fenetre(user.company, rappel.jour, rappel.heure)
     reglages = ReglagesRythme.objects.filter(company_id=user.company_id, proprietaire=user).first()
     return rappel, reglages is None or reglages.titres_notifications_demande_le is None
 

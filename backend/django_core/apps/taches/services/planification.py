@@ -82,7 +82,7 @@ def _normaliser(jour_prevu, moment, heure_debut, quelque_jour):
     return jour, (moment if jour is not None else ''), None
 
 
-def _actuel(tache):
+def etat_minimal(tache):
     """État courant MINIMAL servi dans le 409 (sans titre ni notes) ; la vue le remplace par la
     forme TACHE complète (`exc.tache` porte l'instance relue)."""
     def iso(v):
@@ -103,7 +103,7 @@ def _verrouiller(acteur, tache, version):
         raise Http404('Introuvable.')
     if version is not None and t.lock_version != int(version):
         exc = ConflitVersion({'detail': MESSAGE_CONFLIT, 'code': CODE_CONFLIT_VERSION,
-                              CHAMP_VERSION: t.lock_version, 'actuel': _actuel(t)})
+                              CHAMP_VERSION: t.lock_version, 'actuel': etat_minimal(t)})
         exc.tache = t
         raise exc
     return t
@@ -150,7 +150,7 @@ def _message(t, avant, aujourdhui, report):
     return f'Reportée à {jour}' if report else f'Prévue {jour}'
 
 
-def _avertissements(acteur, t, aujourdhui):
+def avertissements_du_jour(acteur, t, aujourdhui):
     sortie = []
     if t.jour_prevu is None:
         return sortie
@@ -183,4 +183,4 @@ def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque
             collecte.extend(ops)
         elif ops:
             geste = enregistrer_geste(acteur, 'planification', _message(t, avant, aujourdhui, report), ops)
-    return ResultatPlanification(t, _avertissements(acteur, t, aujourdhui), geste)
+    return ResultatPlanification(t, avertissements_du_jour(acteur, t, aujourdhui), geste)

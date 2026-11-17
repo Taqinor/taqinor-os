@@ -115,6 +115,11 @@
   "nav.partenaires": "Partenaires",
   "nav.concurrents_perte": "Concurrents (perdus)",
   "nav.defis": "Défis",
+  "nav.section.taches": "Tâches",
+  "nav.taches_aujourdhui": "Aujourd'hui",
+  "nav.taches_a_trier": "À trier",
+  "nav.taches_projets": "Projets",
+  "nav.taches_agenda": "Agenda",
 
   "title.dashboard": "Tableau de bord",
   "title.stock.bons_commande_fournisseur": "Bons de commande fournisseur",

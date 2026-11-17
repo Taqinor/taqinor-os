@@ -123,7 +123,7 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     await waitFor(() => expect(planifierTache).toHaveBeenCalledWith(30, {
       jour_prevu: '2026-11-19', heure_debut: null, moment: '', quelque_jour: false, lock_version: 2,
     }))
-    const jeudi = await screen.findByRole('button', { name: /^jeu\. 19 · 1 tâche · 45 min$/ })
+    const jeudi = await screen.findByRole('button', { name: /^jeu\. 19 · 1 tâche · 45 min pour 4 h$/ })
     expect(jeudi).toHaveClass('nouveau')
     // la puce de la pose (iPhone) et la carte de la colonne (bureau, Raccord F2) portent la tâche posée
     expect(jeudi.querySelector('.ag-pj-ajout')).toHaveTextContent('Préparer formation')

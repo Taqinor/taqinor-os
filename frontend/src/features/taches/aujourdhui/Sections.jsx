@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp, ClipboardPaste, CalendarDays, MapPin, Mic, Phone, RefreshCw } from 'lucide-react'
 import LigneTache from '../ui/LigneTache'
+import { LigneOs } from '../ui/ChargementTardif'
 import { accord, heure, jourNomme } from '../lib/textes'
 
 /* ============================================================================
@@ -220,16 +221,7 @@ export function Squelette() {
   const bloc = (largeurs, titre = '') => (
     <div className="squelette-bloc">
       <span className="os titre-section" style={titre ? { width: titre } : undefined} />
-      {largeurs.map(([l1, l2], rang) => (
-        <div key={rang} className="ligne" aria-hidden="true">
-          <span className="case"><span className="os cercle" /></span>
-          <div className="ligne-corps">
-            <span className="os l1" style={{ width: l1 }} />
-            {l2 ? <span className="os l2" style={{ width: l2 }} /> : null}
-          </div>
-          <div className="ligne-fin" />
-        </div>
-      ))}
+      {largeurs.map(([l1, l2], rang) => <LigneOs key={rang} l1={l1} l2={l2} />)}
     </div>
   )
   return (

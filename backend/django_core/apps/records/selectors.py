@@ -73,6 +73,33 @@ def peut_cloturer_activites(user):
     return all(p.has_permission(requete, vue) for p in vue.get_permissions())
 
 
+def activite_ouverte_de(user, activite_id):
+    """Raccord F2 (Tâches) — l'activité OUVERTE ``activite_id`` de ``user``
+    (assignée à lui, ou à-faire sans assigné qu'il a créé), QUELLE QUE SOIT
+    son échéance (sans date comprise) ou son report : « Lier une tâche » se
+    pose sur toute activité ouverte du compte. Cible archivée exclue (comme
+    ``mine``), à-faire personnel d'un autre créateur exclu (XKB4). ``None``
+    sinon."""
+    from .views import sans_cibles_archivees
+
+    qs = _activites_de(user).select_related('activity_type', 'content_type').filter(
+        models.Q(assigned_to_id=user.pk)
+        | models.Q(assigned_to__isnull=True, created_by_id=user.pk),
+        pk=activite_id, done=False).exclude(
+        models.Q(personnelle=True) & ~models.Q(created_by_id=user.pk))
+    return sans_cibles_archivees(qs).first()
+
+
+def activites_closes_par(user, debut, fin):
+    """Raccord F2 (Tâches) — activités de la société de ``user`` qu'IL a
+    closes (``done_by``) dans ``[debut, fin)`` (instants) : « activité ERP
+    close par lui ce jour » compte comme faite dans l'app Tâches. Jamais
+    l'à-faire personnel d'un autre créateur (XKB4). Rend un ``QuerySet``."""
+    return _activites_de(user).filter(
+        done=True, done_by_id=user.pk, done_at__gte=debut, done_at__lt=fin).exclude(
+        models.Q(personnelle=True) & ~models.Q(created_by_id=user.pk))
+
+
 def a_faire_personnels_de(user, ids=None):
     """TCH73 — à-faire personnels CRÉÉS par ``user`` dans sa société, dans
     TOUS leurs états (faits, assignés à un collègue compris) : la conversion

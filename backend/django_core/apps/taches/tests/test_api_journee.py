@@ -12,6 +12,7 @@ from apps.taches.choix import MotifRevoir, SectionJournee as S, StatutProjet, St
 from apps.taches.models.journee import LignePlanJour
 from apps.taches.selectors import journee as sel
 from apps.taches.tests import fabriques
+from apps.taches.tests.test_api_saisie import champs
 
 J = datetime.date(2026, 11, 17)
 
@@ -514,6 +515,23 @@ class CarteDuMomentTests(_Base):
         self.assertEqual(self.carte(15, 30), {'type': 'alleger', 'proposition': None,
                                               'donnees': {'faites': 0, 'prevues': 1}})
 
+    def test_revelation_en_dernier_rendue_par_ses_textes(self):
+        from apps.taches.models.rythme import IncitationCoach
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=J, type='revelation',
+                                       cle='ranger_copilote', canal='ecran', donnees={'n': 5}, expire_le=jours(7))
+        carte = self.carte()
+        self.assertEqual(carte['type'], 'revelation')
+        self.assertEqual(carte['proposition']['texte'],
+                         '5 tâches à trier : le Copilote peut les ranger dans tes projets.')
+        self.assertEqual(carte['proposition']['boutons'], [{'reponse': 'ok', 'libelle': 'OK'}])
+        # Une seule carte du moment : une proposition du rythme passe devant la révélation.
+        IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=J, type='proposition_palier',
+                                       cle='monter', canal='ecran', donnees={'N': 5, 'N1': 6, 'tenus': 7},
+                                       expire_le=jours(7))
+        self.assertEqual(self.carte()['type'], 'rythme')
+
 
 class BadgeEtVuTests(_Base):
     def test_badge(self):
@@ -552,6 +570,22 @@ class BadgeEtVuTests(_Base):
         from apps.taches.models.rythme import IncitationCoach
         self.assertEqual(IncitationCoach.objects.filter(proprietaire=self.u, type='retour').count(), 1)
         self.assertTrue(services.aujourdhui(self.u, J, maintenant_a(10))['progression']['reprise'])
+
+    def test_remettre_dans_propose_lit_les_ids_de_la_carte(self):
+        from apps.taches.models.rythme import IncitationCoach
+        from apps.taches.models.taches import Tache
+        from apps.taches.services import journee as services
+        from apps.taches.services.rythme import repondre_carte
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, jours(-10), app_ouverte_le=a(jours(-10), 9))
+        une, deux = self.tache(jour_prevu=jours(-5)), self.tache(jour_prevu=jours(-2))
+        services.vu(self.u, J, maintenant_a(9))
+        carte = IncitationCoach.objects.get(proprietaire=self.u, type='retour')
+        self.assertEqual(carte.donnees['ids'], sorted([une.pk, deux.pk]))
+        repondre_carte(self.u, carte.pk, 'remettre_dans_propose', J)
+        remises = Tache.objects.filter(pk__in=[une.pk, deux.pk])
+        self.assertEqual(set(remises.values_list('jour_prevu', flat=True)), {None})
+        self.assertEqual(set(remises.values_list('reports', flat=True)), {0})
 
     def test_pas_de_retour_apres_un_jour(self):
         from apps.taches.services import journee as services
@@ -693,12 +727,12 @@ class PlanifierJourneeTests(_Base):
     def test_4e_essentielle_400(self):
         taches = [self.tache(jour_prevu=J) for _ in range(4)]
         rendu = self.poster(self.corps(essentielles=taches), statut=400)
-        self.assertEqual(rendu, {'essentielles': ['3 au plus.']})
+        self.assertEqual(champs(rendu), {'essentielles': ['3 au plus.']})
 
     def test_mode_inconnu_400(self):
         corps = self.corps(self.tache())
         corps['mode'] = 'complet'
-        self.assertEqual(self.poster(corps, statut=400), {'mode': ['Valeur inconnue.']})
+        self.assertEqual(champs(self.poster(corps, statut=400)), {'mode': ['Valeur inconnue.']})
 
     def test_id_etranger_404_rien_ecrit(self):
         from apps.taches.models.journee import PlanJour
@@ -760,7 +794,7 @@ class EssentielTests(_Base):
         for _ in range(3):
             self.etoile(self.tache(jour_prevu=self.jour))
         rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=400)
-        self.assertEqual(rendu, {'essentielle': ['3 au plus.']})
+        self.assertEqual(champs(rendu), {'essentielle': ['3 au plus.']})
 
     def test_tache_d_un_autre_404(self):
         autre = fabriques.compte(self.societe, nom='u2')

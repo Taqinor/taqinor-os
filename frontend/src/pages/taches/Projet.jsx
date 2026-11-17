@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronLeft, Diamond, TriangleAlert } from 'lucide-react'
-import { annulerGeste, classerErreur, lireVueProjet, modifierProjet, restaurerProjet, rouvrirProjet, rouvrirTache, terminerTache, listerToutesLesTaches } from '../../api/tachesApi'
+import { ChevronDown, Diamond, TriangleAlert } from 'lucide-react'
+import {
+  annulerGeste, classerErreur, modifierProjet, restaurerProjet, rouvrirProjet,
+  rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
+import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
@@ -257,11 +260,7 @@ export default function Projet() {
   return (
     <CoquilleTaches ecran="projet" titre={projet?.nom ?? 'Projet'} actionsEcran={actionsEcran}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit} contexteSaisie={contexteSaisie}>
-      <div className="ep-barre">
-        <button type="button" className="ep-retour" onClick={() => navigate('/taches/projets')}>
-          <ChevronLeft className="i" aria-hidden="true" />Projets
-        </button>
-      </div>
+      <BarreRetourProjets />
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {introuvable ? <p className="ep-alerte-ligne" role="alert">Ce projet n'existe plus.</p> : null}
       <ChargementTardif actif={!vue && !erreur && !introuvable} />

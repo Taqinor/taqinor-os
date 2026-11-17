@@ -26,6 +26,7 @@ from apps.taches.saisie.grammaire import ProjetConnu
 from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, projets_de, sections_de, taches_de,
 )
+from apps.taches.selectors.journee import progression_courante
 from apps.taches.serializers.formes import (
     ItemSerializer, ProjetSerializer, TacheEcriteSerializer, TacheSerializer, charger_taches, contexte,
     projet_court, tache_ecrite,
@@ -40,8 +41,10 @@ MESSAGE_AUTRE_COMPTE = "Une action d'un autre compte a été retirée de la file
 MESSAGE_TROP_DE_CARACTERES_ASSISTANT = '2 000 caractères au plus.'
 MESSAGE_PROJET_INEXISTANT = 'Projet inexistant.'
 MESSAGE_REQUIS = 'Requis.'
-CLES_APERCU = ('index', 'collage', 'tache_id', 'titre', 'cochee', 'doublon_de', 'etape_de', 'alertes',
-               'jetons', 'champs')
+#: `deja_faite` : la ligne était cochée « ✓ » / « [x] » à l'origine (décochée d'office) ; `doublon_projet` :
+#: le nom du projet de la tâche dont la ligne est le doublon (« Déjà dans « {projet} » »), par `nom_pour`.
+CLES_APERCU = ('index', 'collage', 'tache_id', 'titre', 'cochee', 'deja_faite', 'doublon_de', 'doublon_projet',
+               'etape_de', 'alertes', 'jetons', 'champs')
 #: Clés de la sortie de `saisie/` ajoutées à la ligne SEULEMENT quand elles portent quelque chose.
 CLES_APERCU_FACULTATIVES = ('doublon_de_ligne', 'projet_suggere', 'erreurs')
 
@@ -210,9 +213,22 @@ def _relire_ignorees(lignes, ignorer, base):
             ligne['erreurs'], ligne['cochee'] = lecture.erreurs, False
 
 
-def _forme_ligne(ligne):
+def _projets_des_doublons(user, lignes, assistant):
+    """`{tache_id: nom du projet ou None}` des tâches dont une ligne est le doublon (UNE requête) ; le
+    nom passe par `nom_pour` (« Projet confidentiel » pour l'assistant)."""
+    ids = {ligne['doublon_de'] for ligne in lignes if ligne.get('doublon_de') is not None}
+    if not ids:
+        return {}
+    usage = ASSISTANT if assistant else ECRAN
+    return {t.pk: (nom_pour(t.projet, usage) if t.projet_id else None)
+            for t in taches_de(user).filter(pk__in=ids).select_related('projet')}
+
+
+def _forme_ligne(ligne, doublons):
     """La ligne de `saisie_apercu.json` : ses clés, dans l'ordre, + celles de `saisie/` qui portent
     quelque chose (doublon de ligne, projet suggéré, erreurs)."""
+    ligne = {**ligne, 'deja_faite': bool(ligne.get('deja_faite')),
+             'doublon_projet': doublons.get(ligne.get('doublon_de'))}
     forme = {cle: ligne[cle] for cle in CLES_APERCU}
     forme.update({cle: ligne[cle] for cle in CLES_APERCU_FACULTATIVES
                   if ligne.get(cle) is not None and ligne[cle] != {}})
@@ -242,8 +258,9 @@ def apercu_saisie(user, donnees, *, assistant=False, aujourdhui=None, maintenant
         base = {'aujourdhui': aujourdhui, 'maintenant': maintenant, 'projets': connus['projets'],
                 'sections': connus['sections'], 'etiquettes': connus['etiquettes'], 'est_ouvre': est_ouvre}
         _relire_ignorees(apercu['lignes'], donnees['ignorer'], base)
+    doublons = _projets_des_doublons(user, apercu['lignes'], assistant)
     return {'projets_communs': apercu['projets_communs'],
-            'lignes': [_forme_ligne(ligne) for ligne in apercu['lignes']],
+            'lignes': [_forme_ligne(ligne, doublons) for ligne in apercu['lignes']],
             'projets_nouveaux': apercu['projets_nouveaux']}
 
 
@@ -260,8 +277,8 @@ def apercu_ids(user, ids, *, assistant=False):
         raise Http404('Introuvable.')
     projets = _connus(user, assistant)['projets']
     lignes = [{'index': rang, 'collage': 0, 'tache_id': pk, 'titre': par_id[pk].titre, 'cochee': True,
-               'doublon_de': None, 'etape_de': None, 'alertes': [], 'jetons': [], 'champs': {},
-               'projet_suggere': None} for rang, pk in enumerate(demandes)]
+               'deja_faite': False, 'doublon_de': None, 'doublon_projet': None, 'etape_de': None, 'alertes': [],
+               'jetons': [], 'champs': {}, 'projet_suggere': None} for rang, pk in enumerate(demandes)]
     marquer_doublons(lignes, (), projets)
     for ligne in lignes:
         suggere = ligne['projet_suggere']
@@ -460,13 +477,15 @@ class ReordonnerElementEntreeSerializer(serializers.Serializer):
 def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, projet_cree=None,
                    rappel=None, question_titres=False, avertissements=()):
     """La TACHE_ECRITE d'une écriture : `tache` relue et chargée (aucune requête par ligne), + `suivante`
-    (occurrence née), `rappel` posé, `geste_id`."""
+    (occurrence née), `rappel` posé, `progression` du jour (`selectors.journee.progression_courante`),
+    `geste_id`."""
     pks = [tache.pk] + ([suivante.pk] if suivante is not None else [])
     chargees = {t.pk: t for t in taches_chargees(user, pks)}
     instance = tache_ecrite(
         chargees[tache.pk], suivante=chargees.get(suivante.pk) if suivante is not None else None,
         projet_cree=projet_cree, rappel=rappel, question_titres=question_titres,
-        avertissements=avertissements, geste_id=geste.pk if geste is not None else None)
+        avertissements=avertissements, progression=progression_courante(user, timezone.localdate()),
+        geste_id=geste.pk if geste is not None else None)
     return TacheEcriteSerializer(instance, context=contexte(assistant=assistant)).data
 
 

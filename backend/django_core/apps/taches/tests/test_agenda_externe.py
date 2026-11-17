@@ -20,6 +20,7 @@ from apps.publicapi.validators import UnsafeWebhookURL
 from apps.taches import agenda_externe as lecteur
 from apps.taches.choix import EtatAgendaExterne as Etat
 from apps.taches.tests import fabriques
+from apps.taches.tests.test_api_saisie import champs
 
 PUBLIQUE = '93.184.216.34'
 ICS = ('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:a1\r\nDTSTART:20261117T100000Z\r\n'
@@ -213,16 +214,16 @@ class RoutesAgendasExternesTests(TestCase):
         for n in range(3):
             fabriques.agenda_externe(self.u, url=f'https://agenda.example/{n}.ics')
         rendu = self.ajouter('https://agenda.example/4.ics', statut=400).json()
-        self.assertEqual(rendu, {'url': ['3 agendas au plus.']})
+        self.assertEqual(champs(rendu), {'url': ['3 agendas au plus.']})
 
     def test_doublon_400(self):
         fabriques.agenda_externe(self.u, url='https://agenda.example/a.ics')
-        self.assertEqual(self.ajouter('https://agenda.example/a.ics', statut=400).json(),
+        self.assertEqual(champs(self.ajouter('https://agenda.example/a.ics', statut=400).json()),
                          {'url': ['Cet agenda est déjà ajouté.']})
 
     def test_adresse_non_publique_400(self):
         self.verifier.side_effect = UnsafeWebhookURL('interne')
-        self.assertEqual(self.ajouter('https://intranet.local/a.ics', statut=400).json(),
+        self.assertEqual(champs(self.ajouter('https://intranet.local/a.ics', statut=400).json()),
                          {'url': ['Adresse https publique attendue.']})
 
     def test_liste(self):

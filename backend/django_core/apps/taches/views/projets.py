@@ -278,10 +278,16 @@ class DecalerVue(IdempotentCreateMixin, APIView):
                    responses=reponses(forme_echantillon('decalage'), erreurs=(400, 404)))
     def post(self, request, id):
         donnees = _valider(formes_projets.DecalerSerializer, request.data)
+        usage = 'assistant' if est_assistant(request) else 'ecran'
 
         def decaler():
-            changements, geste = ecriture.decaler_projet(
-                request.user, id, donnees['delta_jours'], apercu=donnees['apercu'])
+            try:
+                changements, geste = ecriture.decaler_projet(
+                    request.user, id, donnees['delta_jours'], apercu=donnees['apercu'], usage=usage)
+            except ecriture.DecalageRefuse as refus:
+                # Le refus rend l'aperçu : ce qui AURAIT bougé, et les tâches qui passeraient avant aujourd'hui.
+                return Response(_json({'delta_jours': [refus.refus], 'changements': refus.changements,
+                                       'avant_aujourdhui': refus.avant_aujourdhui}), status=400)
             return Response(_json(formes_projets.decalage_rendu(changements, geste)))
         return self._avec_idempotence(request, decaler, suffixe=f'u{request.user.pk}')
 

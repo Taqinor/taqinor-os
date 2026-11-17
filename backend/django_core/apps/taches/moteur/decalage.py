@@ -15,10 +15,14 @@ VERSION_MODELE = 1
 
 @dataclass(frozen=True)
 class Decalage:
-    """`changements` : [{objet, id, champ, avant, apres}] ; `refus` : message de `delta_jours` ou None."""
+    """`changements` : [{objet, id, champ, avant, apres}] ; `refus` : message de `delta_jours` ou None.
+    Refusé, `apercu` garde les changements qu'il AURAIT faits et `avant_aujourdhui` les ids des tâches
+    qui passeraient avant J (l'écran les montre ; rien n'est écrit)."""
     changements: tuple
     refus: str = None
     nb_avant: int = 0
+    apercu: tuple = ()
+    avant_aujourdhui: tuple = ()
 
 
 def _iso(d):
@@ -63,14 +67,15 @@ def decaler(delta, J, projet, sections, taches, prochain_ouvre):
     Les tâches faites ou abandonnées restent intactes.
     """
     ouvertes = [t for t in taches if t.statut in OUVERTES]
-    nb = sum(1 for t in ouvertes if _passe_avant_aujourdhui(t, delta, J, prochain_ouvre))
-    if nb:
-        return Decalage(changements=(), refus=_phrase_refus(nb), nb_avant=nb)
+    avant = tuple(t.id for t in ouvertes if _passe_avant_aujourdhui(t, delta, J, prochain_ouvre))
     changements = _changements_champs('projet', projet, ('date_debut', 'echeance'), delta, prochain_ouvre)
     for s in sections:
         changements += _changements_champs('section', s, ('date_debut', 'date_fin'), delta, prochain_ouvre)
     for t in ouvertes:
         changements += _changements_champs('tache', t, ('jour_prevu', 'echeance'), delta, prochain_ouvre)
+    if avant:
+        return Decalage(changements=(), refus=_phrase_refus(len(avant)), nb_avant=len(avant),
+                        apercu=tuple(changements), avant_aujourdhui=avant)
     return Decalage(changements=tuple(changements))
 
 

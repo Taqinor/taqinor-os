@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronDown, FolderPlus } from 'lucide-react'
-import { creerProjet, listerProjets, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite } from '../../api/tachesApi'
+import {
+  creerProjet, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite, listerProjets, listerTousLesProjets } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { DialogueSupprimer } from '../../features/taches/projets/Dialogues'
@@ -90,8 +91,14 @@ export default function Projets() {
   const [asupprimer, setAsupprimer] = useState(null)
 
   const lire = useCallback(async () => {
+    // Liste paginée (50) : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0).
+    const lireStatut = async (statut) => {
+      const premiere = await listerProjets({ statut })
+      if (!premiere?.data?.next) return premiere
+      return { data: { ...premiere.data, results: await listerTousLesProjets({ statut }) } }
+    }
     try {
-      const [a, p] = await Promise.all([listerProjets({ statut: 'actif' }), listerProjets({ statut: 'en_pause' })])
+      const [a, p] = await Promise.all([lireStatut('actif'), lireStatut('en_pause')])
       setActifs(lignes(a))
       setConstat(a?.data?.constat ?? null)
       setEnPause(lignes(p))

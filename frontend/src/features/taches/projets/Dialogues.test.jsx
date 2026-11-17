@@ -71,7 +71,7 @@ describe('TCH92 — Décaler les dates', () => {
     await user.click(screen.getByRole('radio', { name: '+1 semaine' }))
     expect(api.decalerProjet).toHaveBeenCalledWith(3, { delta_jours: 7, apercu: true })
     expect(await screen.findByText('1 date change.')).toBeInTheDocument()
-    const ligne = screen.getByText('Poser la structure').closest('li')
+    const ligne = screen.getByText('Devis Settat').closest('li') // `changements[].titre` servi par decalage.json
     expect(ligne).toHaveTextContent('ven. 20')
     expect(ligne).toHaveTextContent('ven. 27')
     expect(onFait).not.toHaveBeenCalled()

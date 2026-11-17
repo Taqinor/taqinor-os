@@ -58,7 +58,7 @@ afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); reinitialiserGestes() 
 describe('TCH93 — Revue : en tête et carte', () => {
   it('le bilan du serveur, puis la carte du projet avec faites, attente, prochaine action et santé', async () => {
     monter()
-    expect(await screen.findByText('Du 16 au 20/11 : 26 tâches en 5 jours (précédente : 23).')).toBeInTheDocument()
+    expect(await screen.findByText('Du lun. 16 au ven. 20 : 26 tâches en 5 jours (précédente : 23). Objectif atteint 4 jours sur 5 · essentiel 4 sur 5 · 20 des 24 gardées.')).toBeInTheDocument()
     const carte = screen.getByRole('region', { name: 'Ventes' })
     expect(within(carte).getByText('Faites cette semaine : Dossier subvention')).toBeInTheDocument()
     expect(within(carte).getByText('« Pose » attend « Livraison »')).toBeInTheDocument()

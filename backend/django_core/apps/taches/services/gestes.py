@@ -447,6 +447,28 @@ _DEFAIRE = {
 }
 
 
+def rouvrir_sources_converties(user, operations, bilan):
+    """Annuler une conversion (« conversion » d'à-faire ERP en tâches) rouvre l'à-faire SOURCE de chaque
+    tâche dont la création vient d'être défaite, par `records.services.rouvrir_a_faire_personnel` (lu par
+    `records.selectors.a_faire_personnels_de` : jamais l'à-faire d'un autre créateur). Une tâche restée en
+    place (conflit) garde sa source close ; un à-faire que `records` refuse de rouvrir va dans `conflits`
+    (`objet` = `activite`)."""
+    from apps.records.selectors import a_faire_personnels_de
+    from apps.records.services import rouvrir_a_faire_personnel
+
+    retirees = {r['id'] for r in bilan.restaurees if r['objet'] == 'tache'}
+    creees = [op.get('id') for op in operations if isinstance(op, dict) and op.get('op') == 'creation'
+              and op.get('objet') == 'tache' and op.get('id') in retirees]
+    sources = list(Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=creees,
+                                            is_deleted=True, activite_origine_id__isnull=False)
+                   .values_list('activite_origine_id', flat=True))
+    for activite in a_faire_personnels_de(user, ids=sources):
+        try:
+            rouvrir_a_faire_personnel(activite, user)
+        except activite.DoesNotExist:
+            bilan.conflit('activite', activite.pk, CONFLIT_INTROUVABLE)
+
+
 def annuler_geste(user, geste_id):
     """Défait le geste `geste_id` de `user` → `{"restaurees", "conflits", "deja"}`
     (`geste_annuler.json`). `Http404` hors propriétaire, inconnu ou de plus de 7 jours."""
@@ -467,6 +489,8 @@ def annuler_geste(user, geste_id):
             defaire = _DEFAIRE.get(etape.get('op'))
             if defaire is not None:
                 defaire(user, etape, bilan)
+        if geste.type == 'conversion':
+            rouvrir_sources_converties(user, geste.operations, bilan)
         geste.annule_le = timezone.now()
         geste.save(update_fields=['annule_le', 'updated_at'])
     return bilan.rendu()

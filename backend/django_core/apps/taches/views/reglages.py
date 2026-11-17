@@ -1,7 +1,7 @@
 """Réglages de l'utilisateur et coupe-circuit de la société (reference/api.md §3.4, §4).
 
-`reglages/` : réglages de `request.user` (sa `ReglagesRythme`, ou ses défauts tant qu'il n'a créé
-aucune tâche), heures des sollicitations DITES (`Preference`), fenêtre de la société, adresse du
+`reglages/` : réglages de `request.user` (sa `ReglagesRythme`, ou ses défauts tant qu'il n'a rien
+écrit ; le premier `PATCH` la crée), heures des sollicitations DITES (`Preference`), fenêtre de la société, adresse du
 raccourci Siri (réglage déclaré par TCH4), `est_admin` = `IsAdminRole`. Une route pas encore
 construite lève `PasEncore` (501) ; le schéma OpenAPI de chacune est celui de son échantillon.
 `reglages-societe/` est réservé à un administrateur (`IsAdminRole`, A18-M8).
@@ -11,7 +11,6 @@ import datetime
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
-from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,7 +24,6 @@ from authentication.permissions import IsAdminRole
 
 REGLAGES = forme_echantillon('reglages')
 REGLAGES_SOCIETE = forme_echantillon('reglages_societe')
-INTROUVABLE = 'Introuvable.'
 #: Jours cherchés pour la prochaine fenêtre ouverte de la société (un férié, un week-end).
 FENETRE_HORIZON_JOURS = 7
 #: Heures des sollicitations tant que rien n'est dit (reference/donnees.md §2.11).
@@ -89,7 +87,7 @@ class ReglagesVue(APIView):
         'erp_dans_journee': serializers.BooleanField(required=False),
         'comprendre_mon_rythme': serializers.BooleanField(required=False),
         'pauses_sollicitations': serializers.ListField(required=False, child=serializers.DictField()),
-    }), responses=reponses(REGLAGES, erreurs=(400, 404)))
+    }), responses=reponses(REGLAGES, erreurs=(400,)))
     def patch(self, request):
         est_admin = IsAdminRole().has_permission(request, self)
         try:
@@ -98,8 +96,6 @@ class ReglagesVue(APIView):
             return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
         except service.ReserveAdministrateur:
             return Response({'suggestions_societe': [service.RESERVE_ADMIN]}, status=status.HTTP_403_FORBIDDEN)
-        except service.SansReglages:
-            raise NotFound(INTROUVABLE)
         return Response(forme_reglages(request, reglages))
 
 

@@ -67,7 +67,7 @@ MESSAGE_TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
 MESSAGE_PROJET_INEXISTANT = 'Projet inexistant.'
 MESSAGE_LIEN_INTROUVABLE = 'Élément introuvable ou hors de ta portée.'
 MESSAGE_LIEN_TYPE = "Ce type d'élément ne peut pas être lié à une tâche."
-MESSAGE_DEJA_LIE = 'Une tâche est déjà liée à cette activité.'
+MESSAGE_DEJA_LIE = 'Cette activité a déjà sa tâche.'  # textes.md §2.16, 409 `deja_lie`
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,7 @@ class _Contexte:
     parent: object = None
     activite: object = None
     lien: object = None
+    par_ligne: bool = False
     creees: list = field(default_factory=list)
     projets_crees: list = field(default_factory=list)
     deja_creees: list = field(default_factory=list)
@@ -221,19 +222,21 @@ def _activite_verifiee(user, activite, nombre):
 
 
 def _lien_verifie(user, lien):
-    """(ContentType, id) d'une cible ∈ `CibleLiable` VISIBLE par `user` (invariant 23), par la porte
-    unique `selectors/liens.cible_visible` ; refus = introuvable."""
+    """(ContentType, id, libellé) d'une cible ∈ `CibleLiable` VISIBLE par `user` (invariant 23), par la
+    porte unique `selectors/liens` (`cible_visible` = un libellé existe) ; refus = introuvable. Le libellé
+    est posé à la liaison (comme `lier_activite`), la nuit le revérifie ensuite."""
     if not isinstance(lien, dict) or lien.get('cible') not in CibleLiable.values:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_TYPE]})
     try:
         objet_id = int(lien.get('id'))
     except (TypeError, ValueError):
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
-    from apps.taches.selectors.liens import cible_visible
-    if not cible_visible(user, lien['cible'], objet_id):
+    from apps.taches.selectors.liens import libelle_de_cible
+    libelle = libelle_de_cible(user, lien['cible'], objet_id)
+    if libelle is None:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     app_label, modele = lien['cible'].split('.', 1)
-    return ContentType.objects.get_by_natural_key(app_label, modele), objet_id
+    return ContentType.objects.get_by_natural_key(app_label, modele), objet_id, libelle
 
 
 def _projet_existant(user, projet_id):
@@ -385,7 +388,7 @@ def _construire(ctx, ligne, cid, projet, section):
         recurrence=regle, occurrence_du=occurrence if regle is not None else None,
         **_champs_simples(ligne))
     if lien is not None:
-        tache.content_type, tache.object_id = lien
+        tache.content_type, tache.object_id, tache.lien_libelle = lien
         tache.lien_etat, tache.lien_verifie_le = 'ok', ctx.maintenant
     return tache, jour
 
@@ -473,7 +476,7 @@ def _par_ligne(ctx, rang, ligne, cid):
     try:
         _creer_ligne(ctx, ligne, cid)
     except serializers.ValidationError as exc:
-        if ctx.porte != 'saisie':
+        if ctx.porte != 'saisie' and not ctx.par_ligne:
             raise
         raise serializers.ValidationError({'lignes': {str(ligne.get('index', rang)): exc.detail}})
 
@@ -494,14 +497,15 @@ def _geste(ctx):
                              ctx.ops_contenants + ctx.ops_taches)
 
 
-def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None):
+def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None,
+                 par_ligne=False):
     """Crée les tâches de `lignes` pour `user` (une transaction, tout ou rien) → `ResultatCreation`
     (`creees`, `projets_crees`, `deja_creees` = `client_id` déjà vus, `geste`)."""
     if porte not in PORTES or source not in Source.values:
         raise ValueError(f'creer_taches : porte {porte!r} ou source {source!r} inconnue')
     lignes = list(lignes or ())
     ctx = _Contexte(user=user, source=source, porte=porte, maintenant=timezone.now(),
-                    aujourdhui=timezone.localdate())
+                    aujourdhui=timezone.localdate(), par_ligne=par_ligne)
     with transaction.atomic():
         ctx.parent = _parent_verifie(user, parent)
         ctx.activite = _activite_verifiee(user, activite, len(lignes))

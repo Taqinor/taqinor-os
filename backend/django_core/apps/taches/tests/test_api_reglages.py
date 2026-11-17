@@ -147,7 +147,15 @@ class ReglagesTests(TestCase):
         self.assertEqual((plan.statut_jour, plan.compte_rythme, plan.plan_prevues), ('', 0, 4))
         self.assertEqual(list(IncitationCoach.objects.values_list('pk', flat=True)), [gardee.pk])
 
-    def test_sans_reglages_404(self):
-        self.assertEqual(self.patch({'titres_tuile': False}).status_code, 404)
-        self.assertFalse(ReglagesRythme.objects.exists())
+    def test_compte_neuf_le_premier_patch_cree_les_reglages(self):
+        reponse = self.patch({'titres_tuile': False})
+        self.assertEqual(reponse.status_code, 200)
+        self.assertFalse(reponse.json()['titres_tuile'])
+        reglages = ReglagesRythme.objects.get(company=self.a, proprietaire=self.u1)
+        self.assertFalse(reglages.titres_tuile)
         self.assertFalse(PlanJour.objects.exists())
+
+    def test_compte_neuf_corps_refuse_ne_cree_rien(self):
+        self.assertEqual(self.patch({'projet_arret_jours': 99}).status_code, 400)
+        self.assertEqual(self.patch({'suggestions_societe': True}).status_code, 403)
+        self.assertFalse(ReglagesRythme.objects.exists())
