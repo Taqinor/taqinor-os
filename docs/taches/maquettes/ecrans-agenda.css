@@ -268,7 +268,7 @@
 /* ── Bureau ──────────────────────────────────────────────────────────────── */
 @media (min-width: 768px) {
   .ag.ecran { background: var(--tch-surface); }
-  .ag-bureau { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
+  .ag-bureau { display: grid; grid-template-columns: 256px minmax(0, 1fr); grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
   .ag-bureau > .barre-laterale { grid-row: 1 / span 2; box-shadow: inset -1px 0 0 var(--tch-trait); overflow: hidden; }
   .ag-bureau > .ag-btete, .ag-bureau > .ag-bcorps { grid-column: 2; }
   .ag-btete { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 14px; }
@@ -501,3 +501,56 @@
 }
 .ag-volet::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px; background: var(--tch-surface-haute); }
 @media (max-width: 767px) { .ag-tj-item::after { top: -5px; bottom: -5px; } }
+
+/* ══ Tour 4 (unification : un seul jeu de données, une seule coque) ═══════════ */
+.ag-aside-tete h2 span { font-weight: 500; color: var(--tch-texte-doux); }
+.ag-barre-titre { flex-direction: row; align-items: baseline; gap: 5px; white-space: nowrap; font-size: 0.8125rem; }
+.ag-barre-titre span { font-size: 0.8125rem; }
+.ag-puce:not([data-p]) .point, .ag-mc-l > .point:not([data-p]) { background: var(--tch-texte-doux); }
+.ag-mj .pts i.sp { background: none; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); }
+.ag-terminer { margin-right: 0; font-weight: 650; }
+.ag-plan-entete .entete-haut { align-items: flex-end; }
+@media (min-width: 768px) {
+  /* le titre de page tombe à y = 76 comme dans les écrans cœur : la date du jour est réservée au-dessus */
+  .ag-btete { padding: 24px 24px 14px; }
+  .ag-btete-g { align-items: center; }
+  .ag-ttl { margin-right: 16px; }
+  .ag-btete .entete-titre { margin-right: 0; }
+  .ag-btete .entete-date { line-height: 1.4; }
+  /* Semaine : « Toute la journée » décollé du rail ; trait « maintenant » sur toute la colonne du jour, sous les blocs */
+  .ag-semtj .ag-tj-label { padding-left: 12px; }
+  .ag-semcol.auj { background-color: color-mix(in srgb, var(--tch-accent) 5%, transparent); }
+  .ag-semcol .maintenant { z-index: auto; left: 0; right: 0; }
+  .ag-semcol .maintenant::before { left: -4px; z-index: 2; }
+}
+/* J1 (tour 4) : moins de hauteur au-dessus de la grille → plus de 5,5 h visibles sur iPhone */
+@media (max-width: 767px) {
+  .ag { --ag-h: 84px; --ag-barre-h: 58px; }
+  .ag-entete { padding-top: 0; }
+  .ag-vues { margin-top: 2px; }
+  .ag-bande { margin-top: 0; }
+  .ag .bande-jours button, .ag .ag-fleche { height: 46px; }
+  .ag .bande-jours b { width: 30px; height: 30px; }
+  .ag-tj { min-height: 42px; padding-block: 4px; }
+  .ag-barre-pile { padding-top: 0; }
+}
+@media (min-width: 768px) {
+  /* Semaine : 64 px/h et titres sur 2 lignes → plus aucun titre coupé, même sur 30 min ; gouttière assez large pour « Toute la journée » */
+  .ag-semfen { --ag-h: 64px; }
+  .ag-semgrille { --ag-gout: 68px; }
+  .ag-semcol .bloc.court:not(.etroit) { padding: 0 6px 0 9px; }
+  .ag-semcol .bloc.court:not(.etroit) .ag-bt { display: block; }
+  .ag-semcol .bloc.court:not(.etroit) b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal;
+    font-size: 0.75rem; line-height: 0.8125rem; text-overflow: clip; }
+  /* Mois : un titre long passe sur 2 lignes au lieu d'être coupé */
+  .ag-mc-l { align-items: flex-start; line-height: 1rem; }
+  .ag-mc-l .point { margin-top: 5px; }
+  .ag-mc-l svg { margin-top: 1px; }
+  .ag-mc-l span:last-child { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-overflow: clip; }
+  .ag-mc > b { width: 24px; height: 24px; }
+}
+@media (max-width: 767px) {
+  .ag-creneau { top: calc((var(--t) - var(--ag-debut)) * var(--ag-h) + 1px); height: calc(0.5 * var(--ag-h) - 2px); }
+}
+.ag-carte .m > .point:not([data-p]) { background: var(--tch-texte-doux); }
+.ag-terminer { padding: 0 14px; }

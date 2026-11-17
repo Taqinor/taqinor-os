@@ -1,218 +1,1263 @@
-# Référence de l'API — `apps/taches` (révision 2)
+# Référence de l'API — `apps/taches` (révision 3)
 
 Référence UNIQUE des routes, corps et contrats. Noms des champs et des valeurs : `donnees.md` ; algorithmes :
-`regles.md` ; mots : `textes.md`. Primauté : socle §0/§8 → A1-A17 → spec-7 révision 3 (mots, routes du front) →
-`verif-reference.md` et les autres vérifications → specs → design-s1.
+`regles.md` ; mots : `textes.md` ; ordre de construction : `docs/plans/PLAN_TACHES.md`. Primauté : socle §0/§8 →
+A1-A18 → spec-7 révision 3 (mots, routes du front) → `critique-finale.md`, `verif-plan-a-blanc.md`,
+`verif-reference.md` et les autres vérifications → specs → design-s1. Les exemples de réponse COMPLETS, recopiables
+mot pour mot dans `apps/taches/contract_samples/*.json`, sont dans l'**annexe A** (générés par un seul script, sans
+aucun marqueur).
 
 ## 0. Conventions
 
-- **Préfixe unique** (C26) : `path('taches/', include('apps.taches.urls'))` dans `_APP_URLS` (`erp_agentique/urls.py:28`,
-  monté sous `api/django/`). Chaque chemin est écrit EN ENTIER ; les actions d'une tâche vivent sous le viewset
-  (`/api/django/taches/taches/{id}/…`). Routes étrangères consommées telles quelles : `POST
-  /api/django/records/activities/{id}/done/` et `POST /api/django/auth/mobile-home-route/` (`authentication/urls.py:52`).
-- **Authentification** : « S » = authentification par défaut (cookie JWT) + `taches_voir` (`read_permission =
-  write_permission = 'taches_voir'`, accordé à AUCUN rôle avant la dernière vague, `donnees.md` inv. 28). « J:x » =
-  `JetonAccesAuthentication(x)` SEULE + `IsAuthenticatedInterne` (`authentication/permissions.py:4`) : jeton actif de
-  cet usage, compte actif interne, `user_can_operate(user, jeton.company_id)` (`authentication/active_company.py:76`),
-  `taches_voir`, module actif, puis `user.company = jeton.company` en mémoire (MAJ-4). Échec : 401 neutre (404 pour
-  le flux), corps `text/plain` lisible si `?reponse=texte` (`textes.md` §7). Débits : `throttles.py` (capture 60/h et
-  200/j, flux 60/h, tuile 120/h ; 429).
+- **Préfixe unique** (C26) : `path('taches/', include('apps.taches.urls'))` AJOUTÉ EN FIN de la liste `_APP_URLS`
+  (`erp_agentique/urls.py:28`, montée sous `api/django/`), jamais dans `urlpatterns`. Chaque chemin est écrit EN
+  ENTIER ; les actions d'une tâche vivent sous le viewset (`/api/django/taches/taches/{id}/…`). Routes étrangères
+  consommées telles quelles : `POST /api/django/records/activities/{id}/done/` et
+  `POST /api/django/auth/mobile-home-route/` (`authentication/urls.py:52`).
+- **Authentification** : « S » = authentification par défaut (cookie JWT, ou JWT relayé en `Authorization: Bearer`) +
+  `taches_voir` (`read_permission = write_permission = 'taches_voir'`, activation par étapes : `donnees.md` inv. 28).
+  « J:x » = `JetonAccesAuthentication(x)` SEULE + `IsAuthenticatedInterne` (`authentication/permissions.py:4`) : jeton
+  actif de cet usage, compte actif interne, `user_can_operate(user, jeton.company_id)`
+  (`authentication/active_company.py:76`), `taches_voir`, module actif, puis `user.company = jeton.company` en mémoire.
+  Échec : 401 neutre (404 pour le flux) ; l'authentificateur définit `authenticate_header` (sinon DRF rendrait 403) ;
+  tant que `JetonAccesAuthentication` n'est pas livrée, les trois vues à jeton portent un BOUCHON qui refuse tout en
+  401 avec `authenticate_header`. `?reponse=texte` → corps `text/plain` (`textes.md` §7). Débits : `throttles.py`
+  (capture 60/h et 200/j, flux 60/h, tuile 120/h ; 429).
 - **Verrou 409** (colonne « 409 » = oui) : `lock_version` obligatoire (absent → 400 `{"lock_version":["Requis."]}`) ;
-  périmé → 409 `{"detail":"…","code":"conflit_version","lock_version":5,"actuel":TACHE}`. Routes d'action : comparaison
+  périmé → 409 forme `erreurs.json`.`conflit_version` (`actuel` = TACHE complète). Routes d'action : comparaison
   `version_envoyee()` sous `select_for_update()` dans `planifier(version=…)`. Le front garde la saisie en cours et
   propose « Garder la mienne » (renvoi avec `actuel.lock_version`) ou « Prendre l'autre » (A16-N8). Services partagés
   (lot, rituels, alléger, retour) : `select_for_update()` sans version.
-- **Autres 409** (toujours un `code`) : `nom_pris` (projet), `proposition_expiree`, `autre_compte` (hors ligne),
-  `deja_lie` (activité déjà liée).
-- **Idempotence** : `client_id` (par tâche, `:<n>` par ligne d'un texte multi-lignes) ; `Idempotency-Key` par
-  `_avec_idempotence(request, creer, suffixe=f'u{user.pk}')` (`core/idempotency.py:234`) sur TOUTE route `taches` qui la
-  porte, sinon deux collègues rejoueraient la réponse de l'autre ; « N » = naturelle.
-- **`geste_id`** rendu par toute écriture SAUF : jetons, `vu/`, `tout-effacer/`, `PATCH reglages/`, `agenda-externe/`,
-  `reordonner/`, `projets/trier-par-priorite/`.
+- **Autres 409** (toujours un `code`) : `nom_pris`, `proposition_expiree`, `autre_compte`, `deja_lie` (`erreurs.json`).
+- **Idempotence** : `client_id` (par tâche, `:<n>` par ligne d'un texte multi-lignes) ; `Idempotency-Key` : chaque vue
+  qui la porte MÉLANGE `IdempotentCreateMixin` (`core/idempotency.py:202`) et appelle sa méthode
+  `_avec_idempotence(request, creer, suffixe=f'u{user.pk}')` (`:234`), sinon deux collègues rejoueraient la réponse de
+  l'autre ; « N » = naturelle.
+- **`geste_id`** rendu par toute écriture SAUF : jetons, `vu/`, `tout-effacer/`, `PATCH reglages/`,
+  `reglages-societe/`, `agendas-externes/`, `reordonner/`, `projets/trier-par-priorite/`.
 - **Erreurs** (une forme, tutoiement, A17) : 400 `{"<champ>":["message"]}` ; par ligne ou id
   `{"lignes":{"3":{"titre":["…"]}}}`, `{"choix":{"53":["…"]}}` ; 401/404/429 `{"detail":"…"}`. L'id d'un autre
-  propriétaire répond comme un id inconnu. Textes : `textes.md` §2.16.
-- **`X-Taqinor-Assistant: 1`** (posé par `internal_headers()` du relais) : titres par `nom_pour(…,'assistant')`, `notes`
-  jamais servies, `filtrer_q(assistant=True)`, 403 sur `reglages/`, `jetons/`, `mes-donnees/`, `tout-effacer/`,
-  `agenda-externe/` et sur `planification/apercu/` d'un projet confidentiel.
+  propriétaire répond comme un id inconnu. Textes : `textes.md` §2.16. Échantillon : `erreurs.json`.
+- **Requête « assistant » — échec FERMÉ (A18, verif-plan B9)**. QUI pose l'en-tête : le relais du service IA,
+  `backend/fastapi_ia/app/services/action_tools.py` `_django_call(…, headers={"X-Taqinor-Assistant": "1"})` (paramètre
+  `headers=` de la fonction, `:151`) pour TOUT appel d'une action `taches.*` ; `internal_headers()` reste inchangé ; un
+  test côté `fastapi_ia` le garde. CE QUE FAIT DJANGO : une requête `taches` est traitée comme « assistant » si elle
+  porte l'en-tête OU si elle est authentifiée par `Authorization: Bearer <JWT>` (le relais relaie toujours le JWT ainsi,
+  `action_tools.py:173-178` ; le navigateur n'envoie que le cookie). En mode assistant : titres et noms par
+  `nom_pour(…,'assistant')`, `notes` jamais servies, `filtrer_q(assistant=True)`, rendez-vous externes titrés
+  « Rendez-vous », 403 sur `reglages/`, `reglages-societe/`, `jetons/`, `mes-donnees/`, `tout-effacer/`,
+  `agendas-externes/` et sur `planification/apercu/` d'un projet confidentiel. Un en-tête absent ne sert donc jamais
+  du clair au relais.
 - **OpenAPI** : `@extend_schema(request=, responses=, parameters=)` partout ; paramètres de requête déclarés ; types
   `text/calendar` (flux) et `text/plain` (capture) déclarés.
-- **Pagination** (MAJ-8) : `StandardPagination` (50, enveloppe `{"count","next","previous","results"}`, le front lit
-  avec `fetchAllPages`) pour `taches/`, `projets/`, `etiquettes/`, `modeles/` ; `pagination_class = None` + plafond pour
-  `suggestions/` (≤ 20), `vues/` (≤ 30), `gestes/` (7 jours, ≤ 200 plus récents), `jetons/` (≤ 20 plus récents).
-  L'enveloppe figure dans chaque échantillon.
+- **Pagination** : `StandardPagination` (50, enveloppe `{"count","next","previous","results"}`, lue avec
+  `fetchAllPages`) pour `taches/`, `projets/`, `etiquettes/`, `modeles/`. Les listes à plafond renvoient un OBJET
+  `{"results":[…]}` non paginé (`pagination_class = None`) : `suggestions/` (≤ 20), `vues/` (≤ 30), `gestes/` (7
+  jours, ≤ 200), `jetons/` (≤ 20), `agendas-externes/` (≤ 3). Aucune route ne renvoie un tableau nu
+  (`check_api_shapes.py:1162` exige un objet).
+- **Réglages déclarés dès l'échafaudage de l'app** (`settings/base.py`, même tâche que `INSTALLED_APPS`) :
+  `TACHES_RACCOURCI_SIRI_URL = os.environ.get('TACHES_RACCOURCI_SIRI_URL', '')` ; le coupe-circuit est une donnée
+  (`ReglagesSociete.balayage_actif`, `donnees.md` §2.21), pas un réglage d'environnement.
 
-## 1. Formes partagées (une seule chacune)
+## 1. Formes partagées (une seule chacune ; échantillons complets en annexe A)
 
-**ITEM** — une ligne de liste ; une activité ERP a la même forme (`type:"activite"`, champs sans objet nuls/faux,
-`lock_version:null`).
+**ITEM**
 ```json
-{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire",
- "projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":{"id":8,"nom":"Relances"},"parent_id":null,
- "priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19",
- "echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":2048,"motif":null,
- "explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
- "rappel":{"jour":"2026-11-17","heure":"09:45"},
- "lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},
- "checklist":{"faits":1,"total":3},"sous_taches":{"faites":0,"total":2},"recurrente":false,"routine":false,
- "jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,
- "confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}
+{
+ "type": "tache",
+ "id": 20,
+ "titre": "Devis Settat",
+ "statut": "a_faire",
+ "projet": {
+  "id": 3,
+  "nom": "Ventes",
+  "couleur": "vert",
+  "priorite": 3
+ },
+ "section": null,
+ "parent_id": null,
+ "priorite": 2,
+ "jour_prevu": "2026-11-17",
+ "moment": "matin",
+ "heure_debut": "10:00",
+ "echeance": "2026-11-19",
+ "echeance_heure": null,
+ "quelque_jour": false,
+ "estimation_minutes": 60,
+ "reports": 0,
+ "rang": 1024,
+ "motif": null,
+ "raison": null,
+ "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+ "rappel": null,
+ "lien": null,
+ "checklist": null,
+ "sous_taches": null,
+ "recurrente": false,
+ "routine": false,
+ "jalon": false,
+ "bloquee_par": null,
+ "en_attente_de": "",
+ "essentielle": true,
+ "prevue_au_plan": true,
+ "confidentiel": false,
+ "confidentielle": false,
+ "source": "rapide",
+ "peut_cloturer": true,
+ "lock_version": 4
+}
 ```
-`rang` = `rang_jour` dans une section du jour, `rang_projet` dans un projet (ordre : `donnees.md` inv. 32) ;
-`confidentiel` = drapeau propre (écrit par PATCH), `confidentielle` = effectif hérité (min-9) ; `bloquee_par`
-`{"id","titre"}` (titre par `nom_pour`).
 
-**TACHE** — la fiche = ITEM + :
+**TACHE**
 ```json
-{"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],
- "elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[ITEM],
- "recurrence":{"id":9,"frequence":"hebdo","intervalle":1,"jours_semaine":"1000000","jour_du_mois":null,
-   "rang_dans_mois":null,"mode":"calendrier","date_debut":"2026-11-17","date_fin":null,"actif":true,"libelle":"chaque lundi"},
- "rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],
- "triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,
- "duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,
- "lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00",
- "updated_at":"2026-11-17T10:42:00+01:00"}
+{
+ "type": "tache",
+ "id": 20,
+ "titre": "Devis Settat",
+ "statut": "a_faire",
+ "projet": {
+  "id": 3,
+  "nom": "Ventes",
+  "couleur": "vert",
+  "priorite": 3
+ },
+ "section": null,
+ "parent_id": null,
+ "priorite": 2,
+ "jour_prevu": "2026-11-17",
+ "moment": "matin",
+ "heure_debut": "10:00",
+ "echeance": "2026-11-19",
+ "echeance_heure": null,
+ "quelque_jour": false,
+ "estimation_minutes": 60,
+ "reports": 0,
+ "rang": 1024,
+ "motif": null,
+ "raison": null,
+ "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+ "rappel": {
+  "jour": "2026-11-17",
+  "heure": "09:45"
+ },
+ "lien": {
+  "cible": "ventes.devis",
+  "id": 512,
+  "libelle": "DEV-2026-11-0042",
+  "url": "/ventes/devis?devis=512",
+  "etat": "ok"
+ },
+ "checklist": {
+  "faits": 1,
+  "total": 1
+ },
+ "sous_taches": {
+  "faites": 0,
+  "total": 1
+ },
+ "recurrente": false,
+ "routine": false,
+ "jalon": false,
+ "bloquee_par": null,
+ "en_attente_de": "",
+ "essentielle": true,
+ "prevue_au_plan": true,
+ "confidentiel": false,
+ "confidentielle": false,
+ "source": "rapide",
+ "peut_cloturer": true,
+ "lock_version": 4,
+ "notes": "Appeler avant 11 h.",
+ "etiquettes": [
+  {
+   "id": 2,
+   "nom": "magasin",
+   "couleur": "ciel"
+  }
+ ],
+ "elements_checklist": [
+  {
+   "id": 71,
+   "libelle": "Prix",
+   "fait": true,
+   "rang": 1024
+  }
+ ],
+ "enfants": [
+  {
+   "type": "tache",
+   "id": 22,
+   "titre": "Relire les quantités",
+   "statut": "a_faire",
+   "projet": {
+    "id": 3,
+    "nom": "Ventes",
+    "couleur": "vert",
+    "priorite": 3
+   },
+   "section": null,
+   "parent_id": 20,
+   "priorite": 0,
+   "jour_prevu": null,
+   "moment": "",
+   "heure_debut": null,
+   "echeance": null,
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": null,
+   "reports": 0,
+   "rang": 1024,
+   "motif": null,
+   "raison": null,
+   "explication": "dans Ventes",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": false,
+   "prevue_au_plan": false,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "rapide",
+   "peut_cloturer": true,
+   "lock_version": 0
+  }
+ ],
+ "recurrence": null,
+ "rappels": [
+  {
+   "id": 31,
+   "jour": "2026-11-17",
+   "heure": "09:45",
+   "ancre": "",
+   "decalage_jours": 0,
+   "statut": "en_attente"
+  }
+ ],
+ "triee_le": "2026-11-16T18:02:00+01:00",
+ "premier_jour_prevu": "2026-11-17",
+ "reports_tranches": 0,
+ "duree_reelle_minutes": null,
+ "fait_le": null,
+ "annule_le": null,
+ "occurrence_du": null,
+ "activite_origine_id": null,
+ "lien_verifie_le": "2026-11-17T09:12:00+01:00",
+ "created_at": "2026-11-16T18:02:00+01:00",
+ "updated_at": "2026-11-17T10:42:00+01:00"
+}
 ```
-`updated_at` sert le bandeau de conflit (« Modifiée sur ton autre appareil à 10:42 »).
 
-**TACHE_ECRITE** — réponse de toute écriture sur une tâche (carte `tache`) :
+**TACHE_ECRITE**
 ```json
-{"tache":TACHE,"suivante":null,"projet_cree":null,"rappel":null,"question_titres":false,
- "avertissements":[{"code":"prevue_apres_echeance","message":"Prévue après l'échéance."}],
- "progression":null,"geste_id":77}
+{
+ "tache": {
+  "type": "tache",
+  "id": 20,
+  "titre": "Devis Settat",
+  "statut": "a_faire",
+  "projet": {
+   "id": 3,
+   "nom": "Ventes",
+   "couleur": "vert",
+   "priorite": 3
+  },
+  "section": null,
+  "parent_id": null,
+  "priorite": 2,
+  "jour_prevu": "2026-11-17",
+  "moment": "matin",
+  "heure_debut": "10:00",
+  "echeance": "2026-11-19",
+  "echeance_heure": null,
+  "quelque_jour": false,
+  "estimation_minutes": 60,
+  "reports": 0,
+  "rang": 1024,
+  "motif": null,
+  "raison": null,
+  "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+  "rappel": {
+   "jour": "2026-11-17",
+   "heure": "09:45"
+  },
+  "lien": {
+   "cible": "ventes.devis",
+   "id": 512,
+   "libelle": "DEV-2026-11-0042",
+   "url": "/ventes/devis?devis=512",
+   "etat": "ok"
+  },
+  "checklist": {
+   "faits": 1,
+   "total": 1
+  },
+  "sous_taches": {
+   "faites": 0,
+   "total": 1
+  },
+  "recurrente": false,
+  "routine": false,
+  "jalon": false,
+  "bloquee_par": null,
+  "en_attente_de": "",
+  "essentielle": true,
+  "prevue_au_plan": true,
+  "confidentiel": false,
+  "confidentielle": false,
+  "source": "rapide",
+  "peut_cloturer": true,
+  "lock_version": 4,
+  "notes": "Appeler avant 11 h.",
+  "etiquettes": [
+   {
+    "id": 2,
+    "nom": "magasin",
+    "couleur": "ciel"
+   }
+  ],
+  "elements_checklist": [
+   {
+    "id": 71,
+    "libelle": "Prix",
+    "fait": true,
+    "rang": 1024
+   }
+  ],
+  "enfants": [
+   {
+    "type": "tache",
+    "id": 22,
+    "titre": "Relire les quantités",
+    "statut": "a_faire",
+    "projet": {
+     "id": 3,
+     "nom": "Ventes",
+     "couleur": "vert",
+     "priorite": 3
+    },
+    "section": null,
+    "parent_id": 20,
+    "priorite": 0,
+    "jour_prevu": null,
+    "moment": "",
+    "heure_debut": null,
+    "echeance": null,
+    "echeance_heure": null,
+    "quelque_jour": false,
+    "estimation_minutes": null,
+    "reports": 0,
+    "rang": 1024,
+    "motif": null,
+    "raison": null,
+    "explication": "dans Ventes",
+    "rappel": null,
+    "lien": null,
+    "checklist": null,
+    "sous_taches": null,
+    "recurrente": false,
+    "routine": false,
+    "jalon": false,
+    "bloquee_par": null,
+    "en_attente_de": "",
+    "essentielle": false,
+    "prevue_au_plan": false,
+    "confidentiel": false,
+    "confidentielle": false,
+    "source": "rapide",
+    "peut_cloturer": true,
+    "lock_version": 0
+   }
+  ],
+  "recurrence": null,
+  "rappels": [
+   {
+    "id": 31,
+    "jour": "2026-11-17",
+    "heure": "09:45",
+    "ancre": "",
+    "decalage_jours": 0,
+    "statut": "en_attente"
+   }
+  ],
+  "triee_le": "2026-11-16T18:02:00+01:00",
+  "premier_jour_prevu": "2026-11-17",
+  "reports_tranches": 0,
+  "duree_reelle_minutes": null,
+  "fait_le": null,
+  "annule_le": null,
+  "occurrence_du": null,
+  "activite_origine_id": null,
+  "lien_verifie_le": "2026-11-17T09:12:00+01:00",
+  "created_at": "2026-11-16T18:02:00+01:00",
+  "updated_at": "2026-11-17T10:42:00+01:00"
+ },
+ "suivante": null,
+ "projet_cree": null,
+ "rappel": null,
+ "question_titres": false,
+ "avertissements": [
+  {
+   "code": "prevue_apres_echeance",
+   "message": "Prévue après l'échéance."
+  }
+ ],
+ "progression": null,
+ "geste_id": 77
+}
 ```
-`suivante` : occurrence née (terminer, sauter ; toast « Fait · prochaine jeu. 19 ») ; `progression` : terminer,
-rouvrir ; `question_titres` : `true` au premier rappel posé tant que `titres_notifications_demande_le` est nul
-(A17-T4 ; réponse par `PATCH reglages/`) ; avertissements : `prevue_apres_echeance`, `jour_non_travaille`, `hors_fenetre`.
 
 **PROJET**
 ```json
-{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,
- "statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15",
- "termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,
- "confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},
- "a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},
- "sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],
- "focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4}
+{
+ "id": 3,
+ "nom": "Ventes",
+ "objectif": "Fini quand les 4 devis sont signés",
+ "icone": "",
+ "couleur": "vert",
+ "priorite": 3,
+ "statut": "actif",
+ "statut_depuis": "2026-10-01T09:00:00+01:00",
+ "domaine": "",
+ "date_debut": null,
+ "echeance": "2026-12-15",
+ "termine_le": null,
+ "issue": "",
+ "bilan": "",
+ "planification_le": "2026-10-01T09:05:00+01:00",
+ "rang": 2048,
+ "confidentiel": false,
+ "affichage": {
+  "vue": "liste",
+  "tri": "manuel",
+  "groupe": "section",
+  "montrer_faites": false
+ },
+ "a_planifier": false,
+ "compteurs": {
+  "ouvertes": 8,
+  "faites": 12
+ },
+ "sante": [
+  {
+   "code": "a_l_arret",
+   "phrase": "Rien de fait depuis 10 jours travaillés.",
+   "donnees": {
+    "jours": 10,
+    "depuis": "2026-11-03"
+   }
+  }
+ ],
+ "focus_semaine": false,
+ "updated_at": "2026-11-16T18:00:00+01:00",
+ "lock_version": 4
+}
 ```
 
-**PROPOSITION** — toute carte à réponse :
+**PROPOSITION**
 ```json
-{"id":41,"type":"proposition_palier","cle":"monter",
- "texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
- "donnees":{"N":5,"N1":6,"tenus":7},
- "boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],
- "expire_le":"2026-11-24"}
+{
+ "id": 41,
+ "type": "proposition_palier",
+ "cle": "monter",
+ "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+ "donnees": {
+  "N": 5,
+  "N1": 6,
+  "tenus": 7
+ },
+ "boutons": [
+  {
+   "reponse": "oui",
+   "libelle": "Oui, 6"
+  },
+  {
+   "reponse": "pas_maintenant",
+   "libelle": "Pas maintenant"
+  }
+ ],
+ "expire_le": "2026-11-24"
+}
 ```
-**CARTE_DU_MOMENT** — une seule, choisie par le serveur (ordre `donnees.md` §1 `CarteDuMoment` ; le navigateur insère
-le brouillon devant et l'astuce derrière) :
+
+**CARTE_DU_MOMENT**
 ```json
-{"type":"garder","proposition":null,"donnees":{"n":5,"objectif":5}}
+{
+ "type": "rythme",
+ "proposition": {
+  "id": 41,
+  "type": "proposition_palier",
+  "cle": "monter",
+  "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+  "donnees": {
+   "N": 5,
+   "N1": 6,
+   "tenus": 7
+  },
+  "boutons": [
+   {
+    "reponse": "oui",
+    "libelle": "Oui, 6"
+   },
+   {
+    "reponse": "pas_maintenant",
+    "libelle": "Pas maintenant"
+   }
+  ],
+  "expire_le": "2026-11-24"
+ },
+ "donnees": {}
+}
 ```
-`retour`, `rythme`, `pause`, `revelation` portent une PROPOSITION ; `bilan_hier` `{"jour"}` ; `garder` `{"n","objectif"}` ;
-`alleger` `{"faites","prevues"}` ; `faire_bilan` `{}`.
-**OBJECTIF** `{"nb":5,"source":"accepte","mode":"pousser","zone":null}` (`zone` `[4,6]` en `tenir` ; `nb:null` en `libre`).
+
+**OBJECTIF**
+```json
+{
+ "nb": 5,
+ "source": "accepte",
+ "mode": "pousser",
+ "zone": null
+}
+```
+
 **PROGRESSION**
 ```json
-{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,
- "essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,
- "sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","activites_closes":0,"activites":1,"reprise":false}
+{
+ "faites": 1,
+ "detail": {
+  "etapes": 0,
+  "routines": 0,
+  "micro_non_comptees": 0,
+  "activites_closes": 0
+ },
+ "prevues": 4,
+ "essentiel_faites": 0,
+ "essentiel_prevues": 1,
+ "plan_tenues": 1,
+ "plan_lignes": 4,
+ "minutes_prevues": 75,
+ "sans_estimation": 1,
+ "capacite_minutes": 240,
+ "capacite_source": "defaut",
+ "rendez_vous_minutes": 60,
+ "disponible_minutes": 180,
+ "activites_closes": 0,
+ "activites": 1,
+ "reprise": false
+}
 ```
-L'écran montre « faites sur OBJECTIF » ; « gardées faites » (`plan_tenues`/`plan_lignes`) est une seconde donnée ;
-`reprise` vrai le jour d'une carte `retour` (« Reprise » au lieu de « 0 sur 5 »).
-**LIEN** `{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"}`.
+
+**LIEN**
+```json
+{
+ "cible": "crm.lead",
+ "id": 1637,
+ "libelle": "Karim Benali",
+ "url": "/crm/leads?lead=1637",
+ "etat": "ok"
+}
+```
+
+**RENDEZ_VOUS**
+```json
+{
+ "cle": "2-9f2c1a7b",
+ "agenda_id": 2,
+ "agenda": "Microsoft 365",
+ "titre": "Réunion banque",
+ "debut": "2026-11-17T11:00:00+01:00",
+ "fin": "2026-11-17T12:00:00+01:00",
+ "journee_entiere": false
+}
+```
+
 **RYTHME**
 ```json
-{"mode":"pousser","comprendre_mon_rythme":true,"objectif":OBJECTIF,"trace":"5 faites ou plus 7 jours sur 10",
- "bloc":{"jours":7,"tenus":5,"sur":10},"tenir":null,"proposition":PROPOSITION,
- "serie":[{"jour":"2026-11-16","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,
-   "essentiel_prevues":1,"plan_tenues":4,"plan_lignes":5}],
- "constats":[PROPOSITION],"repere":{"p60":5.5,"jours":9},
- "preferences":[{"cle":"heure_limite","valeur":"19:00","source":"copilote","dite_le":"2026-11-17T09:00:00+01:00"}],
- "geste_id":null}
+{
+ "mode": "pousser",
+ "comprendre_mon_rythme": true,
+ "objectif": {
+  "nb": 5,
+  "source": "accepte",
+  "mode": "pousser",
+  "zone": null
+ },
+ "trace": "5 faites ou plus 7 jours sur 10",
+ "bloc": {
+  "jours": 7,
+  "tenus": 5,
+  "sur": 10
+ },
+ "tenir": null,
+ "proposition": {
+  "id": 41,
+  "type": "proposition_palier",
+  "cle": "monter",
+  "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+  "donnees": {
+   "N": 5,
+   "N1": 6,
+   "tenus": 7
+  },
+  "boutons": [
+   {
+    "reponse": "oui",
+    "libelle": "Oui, 6"
+   },
+   {
+    "reponse": "pas_maintenant",
+    "libelle": "Pas maintenant"
+   }
+  ],
+  "expire_le": "2026-11-24"
+ },
+ "serie": [
+  {
+   "jour": "2026-11-16",
+   "statut_jour": "evalue",
+   "faites": 5,
+   "objectif": 5,
+   "essentiel_faites": 1,
+   "essentiel_prevues": 1,
+   "plan_tenues": 4,
+   "plan_lignes": 5
+  }
+ ],
+ "constats": [
+  {
+   "id": 44,
+   "type": "constat",
+   "cle": "C3",
+   "texte": "Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.",
+   "donnees": {
+    "jour": 4,
+    "m1": 3.1,
+    "m2": 5.2
+   },
+   "boutons": [
+    {
+     "reponse": "oui",
+     "libelle": "Oui"
+    },
+    {
+     "reponse": "pas_maintenant",
+     "libelle": "Pas maintenant"
+    }
+   ],
+   "expire_le": "2026-11-24"
+  }
+ ],
+ "repere": {
+  "p60": 5.5,
+  "jours": 9
+ },
+ "preferences": [
+  {
+   "cle": "heure_limite",
+   "valeur": "19:00",
+   "source": "copilote",
+   "dite_le": "2026-11-17T09:00:00+01:00"
+  }
+ ],
+ "geste_id": null
+}
 ```
 
-## 2. `GET /api/django/taches/aujourdhui/?jour=` — LE contrat de la journée
+
+Notes : `ITEM.rang` = `rang_jour` dans une section du jour, `rang_projet` dans un projet (`donnees.md` inv. 32) ;
+`confidentiel` = drapeau propre (écrit par PATCH), `confidentielle` = effectif hérité ; `bloquee_par` `{"id","titre"}`
+(titre par `nom_pour`) ; `motif` (À revoir) et `raison` `{"code","texte"}` (Proposé, `RaisonPropose`) sont nuls hors
+de leur section ; une activité ERP a la même forme (`type:"activite"`, champs sans objet nuls/faux,
+`lock_version:null`). TACHE = ITEM + champs de fiche (`updated_at` sert le bandeau de conflit). TACHE_ECRITE :
+`suivante` = occurrence née (terminer, sauter) ; `progression` posée par terminer/rouvrir ; `question_titres` vrai au
+premier rappel tant que `titres_notifications_demande_le` est nul (A17-T4) ; avertissements `prevue_apres_echeance`,
+`jour_non_travaille`, `hors_fenetre`. CARTE_DU_MOMENT : une seule, choisie par le serveur (`retour`, `rythme`, `pause`,
+`revelation` portent une PROPOSITION ; `bilan_hier` `{"jour"}` ; `garder` `{"n","objectif"}` ; `alleger` `{"faites",
+"prevues"}` ; `faire_bilan` `{}`). OBJECTIF : `zone` `[bas, haut]` en `tenir`, `nb:null` en `libre`. PROGRESSION :
+l'écran montre « faites sur OBJECTIF », les gardées faites (`plan_tenues`/`plan_lignes`) en seconde donnée ;
+`disponible_minutes` = `capacite_minutes` − `rendez_vous_minutes` (inv. 35) ; `reprise` vrai le jour d'une carte
+`retour`. RENDEZ_VOUS : un événement d'agenda externe, lecture seule, JAMAIS une tâche (`cle` stable, hachée).
+
+## 2. `GET /api/django/taches/aujourdhui/?jour=&tout=` — LE contrat de la journée
 
 Clés dans l'ORDRE VERTICAL (spec-7 r3 §4) : `progression` ; `carte_du_moment` ; `essentiel` ; `obligations` (bande
-« Toute la journée » : visites, poses, interventions, sans heure) puis `journee` (« Prévu » : blocs à leur heure,
-tâches et activités ERP, ligne « Suivi des relances ») ; `ce_soir` ; `propose` ; repliés `a_decider` (« À revoir »),
-`en_attente`, `faites`, « Ailleurs dans l'ERP » (route paresseuse). `jour` défaut J ; plafond 200 lignes (`tronque`).
+« Toute la journée » : visites, poses, interventions, sans heure ; ligne « Suivi des relances ») ; `rendez_vous`
+(agendas externes, à leur heure, lecture seule) mêlés par le front à `journee` (« Prévu ») ; `ce_soir` ; `propose` ;
+repliés `a_decider` (« À revoir »), `en_attente`, `faites`, « Ailleurs dans l'ERP » (route paresseuse). `jour` défaut
+J ; `tout=1` remplit `propose.suite_par_projet` (« Voir toutes les tâches de mes projets », groupé par projet) ;
+plafond 200 lignes (`tronque`). Exemple complet (le même que `aujourdhui.json` de l'annexe A, `suite_par_projet` nul
+sans `tout=1`) :
 ```json
-{"jour":"2026-11-17","maintenant":"2026-11-17T09:12:00+01:00","jour_ouvre":true,
- "prochain_jour_ouvre":"2026-11-19","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},
- "progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},
-   "prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,
-   "sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","activites_closes":0,"activites":1,"reprise":false},
- "plan":{"planifie_le":"2026-11-17T08:40:00+01:00","cloture_le":null,"allege_le":null},
- "carte_du_moment":{"type":"rythme","proposition":{"id":41,"type":"proposition_palier","cle":"monter",
-   "texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},
-   "boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],
-   "expire_le":"2026-11-24"},"donnees":{}},
- "essentiel":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},
-   "section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00",
-   "echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,
-   "motif":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,
-   "checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,
-   "en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,
-   "source":"rapide","peut_cloturer":true,"lock_version":4}],
- "obligations":[{"famille":"visite","id":88,"titre":"Visite — Karim Benali","jour":"2026-11-17","url":"/visites"},
-  {"famille":"pose","id":42,"titre":"Pose — INS-0042","jour":"2026-11-17","url":"/chantiers?id=42"},
-  {"famille":"touches","nb":5,"en_retard":2,"url":"/crm/relances"}],
- "journee":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,
-   "priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,
-   "quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"explication":"prévue aujourd'hui",
-   "rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,
-   "bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,
-   "confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1},
-  {"type":"activite","id":101,"titre":"Rappeler Benali","statut":"a_faire","projet":null,"section":null,"parent_id":null,
-   "priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,
-   "quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"explication":"activité ERP du jour",
-   "rappel":null,"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},
-   "checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,
-   "en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,
-   "source":null,"peut_cloturer":false,"lock_version":null}],
- "ce_soir":[{"type":"tache","id":60,"titre":"Préparer offre","statut":"a_faire","projet":{"id":5,"nom":"Maison","couleur":"ambre","priorite":2},
-   "section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"soir","heure_debut":null,
-   "echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,
-   "motif":null,"explication":"prévue ce soir","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
-   "recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,
-   "prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],
- "propose":{"replie":false,"pour_objectif":[{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire",
-   "projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,
-   "moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,
-   "reports":0,"rang":null,"motif":null,"explication":"projet prioritaire Équipe","rappel":null,"lien":null,
-   "checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,
-   "en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,
-   "source":"manuel","peut_cloturer":true,"lock_version":2}],"reste_nb":6,
-   "charge":{"minutes_estimees":120,"capacite_minutes":240,"surcharge":false}},
- "a_decider":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},
-   "section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,
-   "echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,
-   "motif":"reportee_3_fois","explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,
-   "sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"",
-   "essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide",
-   "peut_cloturer":true,"lock_version":6}],
- "en_attente":[{"type":"tache","id":51,"titre":"Retour Lydec","statut":"en_attente","projet":null,"section":null,
-   "parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,
-   "echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,
-   "explication":"en attente de : Lydec","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
-   "recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"Lydec","essentielle":false,
-   "prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3}],
- "faites":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},
-   "section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,
-   "echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,
-   "motif":null,"explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
-   "recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,
-   "prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],
- "a_trier":{"boite_reception":3,"bloquees":1,"suggestions":2,"a_convertir":7},
- "tronque":false}
+{
+ "jour": "2026-11-17",
+ "maintenant": "2026-11-17T09:12:00+01:00",
+ "jour_ouvre": true,
+ "prochain_jour_ouvre": "2026-11-19",
+ "objectif": {
+  "nb": 5,
+  "source": "accepte",
+  "mode": "pousser",
+  "zone": null
+ },
+ "progression": {
+  "faites": 1,
+  "detail": {
+   "etapes": 0,
+   "routines": 0,
+   "micro_non_comptees": 0,
+   "activites_closes": 0
+  },
+  "prevues": 4,
+  "essentiel_faites": 0,
+  "essentiel_prevues": 1,
+  "plan_tenues": 1,
+  "plan_lignes": 4,
+  "minutes_prevues": 75,
+  "sans_estimation": 1,
+  "capacite_minutes": 240,
+  "capacite_source": "defaut",
+  "rendez_vous_minutes": 60,
+  "disponible_minutes": 180,
+  "activites_closes": 0,
+  "activites": 1,
+  "reprise": false
+ },
+ "plan": {
+  "planifie_le": "2026-11-17T08:40:00+01:00",
+  "cloture_le": null,
+  "allege_le": null
+ },
+ "carte_du_moment": {
+  "type": "rythme",
+  "proposition": {
+   "id": 41,
+   "type": "proposition_palier",
+   "cle": "monter",
+   "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+   "donnees": {
+    "N": 5,
+    "N1": 6,
+    "tenus": 7
+   },
+   "boutons": [
+    {
+     "reponse": "oui",
+     "libelle": "Oui, 6"
+    },
+    {
+     "reponse": "pas_maintenant",
+     "libelle": "Pas maintenant"
+    }
+   ],
+   "expire_le": "2026-11-24"
+  },
+  "donnees": {}
+ },
+ "essentiel": [
+  {
+   "type": "tache",
+   "id": 20,
+   "titre": "Devis Settat",
+   "statut": "a_faire",
+   "projet": {
+    "id": 3,
+    "nom": "Ventes",
+    "couleur": "vert",
+    "priorite": 3
+   },
+   "section": null,
+   "parent_id": null,
+   "priorite": 2,
+   "jour_prevu": "2026-11-17",
+   "moment": "matin",
+   "heure_debut": "10:00",
+   "echeance": "2026-11-19",
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": 60,
+   "reports": 0,
+   "rang": 1024,
+   "motif": null,
+   "raison": null,
+   "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": true,
+   "prevue_au_plan": true,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "rapide",
+   "peut_cloturer": true,
+   "lock_version": 4
+  }
+ ],
+ "obligations": [
+  {
+   "famille": "visite",
+   "id": 88,
+   "titre": "Visite — Karim Benali",
+   "jour": "2026-11-17",
+   "url": "/visites"
+  },
+  {
+   "famille": "pose",
+   "id": 42,
+   "titre": "Pose — INS-0042",
+   "jour": "2026-11-17",
+   "url": "/chantiers?id=42"
+  },
+  {
+   "famille": "touches",
+   "id": null,
+   "titre": "Suivi des relances",
+   "jour": "2026-11-17",
+   "nb": 5,
+   "en_retard": 2,
+   "url": "/crm/relances"
+  }
+ ],
+ "rendez_vous": [
+  {
+   "cle": "2-9f2c1a7b",
+   "agenda_id": 2,
+   "agenda": "Microsoft 365",
+   "titre": "Réunion banque",
+   "debut": "2026-11-17T11:00:00+01:00",
+   "fin": "2026-11-17T12:00:00+01:00",
+   "journee_entiere": false
+  }
+ ],
+ "journee": [
+  {
+   "type": "tache",
+   "id": 42,
+   "titre": "Timbres",
+   "statut": "a_faire",
+   "projet": null,
+   "section": null,
+   "parent_id": null,
+   "priorite": 0,
+   "jour_prevu": "2026-11-17",
+   "moment": "",
+   "heure_debut": null,
+   "echeance": null,
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": 15,
+   "reports": 0,
+   "rang": null,
+   "motif": null,
+   "raison": null,
+   "explication": "prévue aujourd'hui",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": false,
+   "prevue_au_plan": true,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "manuel",
+   "peut_cloturer": true,
+   "lock_version": 1
+  },
+  {
+   "type": "activite",
+   "id": 101,
+   "titre": "Rappeler Benali",
+   "statut": "a_faire",
+   "projet": null,
+   "section": null,
+   "parent_id": null,
+   "priorite": 0,
+   "jour_prevu": "2026-11-17",
+   "moment": "",
+   "heure_debut": null,
+   "echeance": null,
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": null,
+   "reports": 0,
+   "rang": null,
+   "motif": null,
+   "raison": null,
+   "explication": "activité ERP du jour",
+   "rappel": null,
+   "lien": {
+    "cible": "crm.lead",
+    "id": 1637,
+    "libelle": "Karim Benali",
+    "url": "/crm/leads?lead=1637",
+    "etat": "ok"
+   },
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": false,
+   "prevue_au_plan": true,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": null,
+   "peut_cloturer": false,
+   "lock_version": null
+  }
+ ],
+ "ce_soir": [
+  {
+   "type": "tache",
+   "id": 60,
+   "titre": "Préparer offre",
+   "statut": "a_faire",
+   "projet": {
+    "id": 5,
+    "nom": "Maison",
+    "couleur": "ambre",
+    "priorite": 2
+   },
+   "section": null,
+   "parent_id": null,
+   "priorite": 0,
+   "jour_prevu": "2026-11-17",
+   "moment": "soir",
+   "heure_debut": null,
+   "echeance": null,
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": null,
+   "reports": 0,
+   "rang": null,
+   "motif": null,
+   "raison": null,
+   "explication": "prévue ce soir",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": false,
+   "prevue_au_plan": false,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "rapide",
+   "peut_cloturer": true,
+   "lock_version": 0
+  }
+ ],
+ "propose": {
+  "replie": false,
+  "pour_objectif": [
+   {
+    "type": "tache",
+    "id": 21,
+    "titre": "Déclaration TVA",
+    "statut": "a_faire",
+    "projet": {
+     "id": 4,
+     "nom": "Admin",
+     "couleur": "prune",
+     "priorite": 1
+    },
+    "section": null,
+    "parent_id": null,
+    "priorite": 3,
+    "jour_prevu": null,
+    "moment": "",
+    "heure_debut": null,
+    "echeance": "2026-11-19",
+    "echeance_heure": null,
+    "quelque_jour": false,
+    "estimation_minutes": 30,
+    "reports": 0,
+    "rang": null,
+    "motif": null,
+    "raison": {
+     "code": "echeance_proche",
+     "texte": "échéance jeudi"
+    },
+    "explication": "échéance jeudi",
+    "rappel": null,
+    "lien": null,
+    "checklist": null,
+    "sous_taches": null,
+    "recurrente": false,
+    "routine": false,
+    "jalon": false,
+    "bloquee_par": null,
+    "en_attente_de": "",
+    "essentielle": false,
+    "prevue_au_plan": false,
+    "confidentiel": false,
+    "confidentielle": false,
+    "source": "rapide",
+    "peut_cloturer": true,
+    "lock_version": 2
+   },
+   {
+    "type": "tache",
+    "id": 41,
+    "titre": "Ranger le bureau",
+    "statut": "a_faire",
+    "projet": null,
+    "section": null,
+    "parent_id": null,
+    "priorite": 0,
+    "jour_prevu": "2026-11-16",
+    "moment": "",
+    "heure_debut": null,
+    "echeance": null,
+    "echeance_heure": null,
+    "quelque_jour": false,
+    "estimation_minutes": null,
+    "reports": 0,
+    "rang": null,
+    "motif": null,
+    "raison": {
+     "code": "retard",
+     "texte": "prévue hier"
+    },
+    "explication": "prévue hier",
+    "rappel": null,
+    "lien": null,
+    "checklist": null,
+    "sous_taches": null,
+    "recurrente": false,
+    "routine": false,
+    "jalon": false,
+    "bloquee_par": null,
+    "en_attente_de": "",
+    "essentielle": false,
+    "prevue_au_plan": false,
+    "confidentiel": false,
+    "confidentielle": false,
+    "source": "manuel",
+    "peut_cloturer": true,
+    "lock_version": 3
+   },
+   {
+    "type": "tache",
+    "id": 30,
+    "titre": "Préparer formation",
+    "statut": "a_faire",
+    "projet": {
+     "id": 7,
+     "nom": "Équipe",
+     "couleur": "bleu",
+     "priorite": 3
+    },
+    "section": null,
+    "parent_id": null,
+    "priorite": 0,
+    "jour_prevu": null,
+    "moment": "",
+    "heure_debut": null,
+    "echeance": null,
+    "echeance_heure": null,
+    "quelque_jour": false,
+    "estimation_minutes": 45,
+    "reports": 0,
+    "rang": null,
+    "motif": null,
+    "raison": {
+     "code": "prochaine_action",
+     "texte": "prochaine action de Équipe"
+    },
+    "explication": "prochaine action de Équipe",
+    "rappel": null,
+    "lien": null,
+    "checklist": null,
+    "sous_taches": null,
+    "recurrente": false,
+    "routine": false,
+    "jalon": false,
+    "bloquee_par": null,
+    "en_attente_de": "",
+    "essentielle": false,
+    "prevue_au_plan": false,
+    "confidentiel": false,
+    "confidentielle": false,
+    "source": "manuel",
+    "peut_cloturer": true,
+    "lock_version": 2
+   }
+  ],
+  "reste_nb": 6,
+  "charge": {
+   "minutes_estimees": 150,
+   "disponible_minutes": 180,
+   "surcharge": false
+  },
+  "suite_par_projet": null
+ },
+ "a_decider": [
+  {
+   "type": "tache",
+   "id": 50,
+   "titre": "Site web",
+   "statut": "a_faire",
+   "projet": {
+    "id": 9,
+    "nom": "SiteWeb",
+    "couleur": "indigo",
+    "priorite": 2
+   },
+   "section": null,
+   "parent_id": null,
+   "priorite": 1,
+   "jour_prevu": "2026-11-13",
+   "moment": "",
+   "heure_debut": null,
+   "echeance": null,
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": null,
+   "reports": 3,
+   "rang": null,
+   "motif": "reportee_3_fois",
+   "raison": null,
+   "explication": "reportée 3 fois",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": false,
+   "prevue_au_plan": false,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "rapide",
+   "peut_cloturer": true,
+   "lock_version": 6
+  }
+ ],
+ "en_attente": [
+  {
+   "type": "tache",
+   "id": 51,
+   "titre": "Retour Lydec",
+   "statut": "en_attente",
+   "projet": null,
+   "section": null,
+   "parent_id": null,
+   "priorite": 0,
+   "jour_prevu": "2026-11-17",
+   "moment": "",
+   "heure_debut": null,
+   "echeance": null,
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": null,
+   "reports": 0,
+   "rang": null,
+   "motif": null,
+   "raison": null,
+   "explication": "en attente de : Lydec",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "Lydec",
+   "essentielle": false,
+   "prevue_au_plan": false,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "manuel",
+   "peut_cloturer": true,
+   "lock_version": 3
+  }
+ ],
+ "faites": [
+  {
+   "type": "tache",
+   "id": 12,
+   "titre": "Dossier subvention",
+   "statut": "fait",
+   "projet": {
+    "id": 4,
+    "nom": "Admin",
+    "couleur": "prune",
+    "priorite": 1
+   },
+   "section": null,
+   "parent_id": null,
+   "priorite": 1,
+   "jour_prevu": "2026-11-17",
+   "moment": "",
+   "heure_debut": null,
+   "echeance": "2026-11-17",
+   "echeance_heure": null,
+   "quelque_jour": false,
+   "estimation_minutes": 30,
+   "reports": 0,
+   "rang": null,
+   "motif": null,
+   "raison": null,
+   "explication": "échéance aujourd'hui",
+   "rappel": null,
+   "lien": null,
+   "checklist": null,
+   "sous_taches": null,
+   "recurrente": false,
+   "routine": false,
+   "jalon": false,
+   "bloquee_par": null,
+   "en_attente_de": "",
+   "essentielle": false,
+   "prevue_au_plan": true,
+   "confidentiel": false,
+   "confidentielle": false,
+   "source": "rapide",
+   "peut_cloturer": true,
+   "lock_version": 5
+  }
+ ],
+ "a_trier": {
+  "boite_reception": 3,
+  "bloquees": 1,
+  "suggestions": 2,
+  "a_convertir": 7
+ },
+ "tronque": false
+}
 ```
-Placement : `donnees.md` inv. 2, 3, 10 et `regles.md` §4.2. `propose` (A11, `regles.md` §3.4) : ce qu'il faut pour
-atteindre l'objectif ; `replie:true` et `pour_objectif:[]` le jour où `plan.allege_le` est posé (A16-N6) ; « Voir tout »
-= `journee/proposition/?tout=1`. **Pastille** (`badge/`) = ouverts GARDÉS d'`essentiel` + `journee` + `ce_soir`
-(ici 3), jamais Proposé (A16-N5). Ici `prevues` = 1 faite + 3 ouverts gardés = 4.
+Placement : `donnees.md` inv. 2, 3, 10, 34 et `regles.md` §4.2. `propose.pour_objectif` (A18-M1/M2) : d'abord ce qui
+presse (ici « Déclaration TVA », `echeance_proche` ; « Ranger le bureau », `retard`), puis la prochaine action de
+chaque projet (« Préparer formation »), puis les actions suivantes, jusqu'à objectif − faites − gardées ouvertes ;
+`replie:true` et `pour_objectif:[]` le jour où `plan.allege_le` est posé (A16-N6). **Pastille** (`badge/`) = ouverts
+GARDÉS d'`essentiel` + `journee` + `ce_soir` (ici 3), jamais Proposé (A16-N5) ; `prevues` = 1 faite + 3 ouverts
+gardés = 4 ; `disponible_minutes` = 240 − 60 = 180.
 
 ## 3. Toutes les routes
 
@@ -227,6 +1272,8 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | GET | `/api/django/taches/badge/` | `{"n":3,"jour":"2026-11-17"}` | S | — | — | pastille | s6b, A16-N5 |
 | POST | `/api/django/taches/vu/` | ouverture du jour ; carte de retour | S | — | N | toute page Tâches | T12, A14-B1 |
 | GET | `/api/django/taches/journee/proposition/?jour=&exclure=&inclure=&tout=` | proposition, sans écriture | S | — | — | « Voir tout », carte `plan_propose` | s3, C37, A11 |
+| GET | `/api/django/taches/journee/priorites/?jour=` | « Aide-moi à prioriser » : toutes les ouvertes classées, raison, gestes | S | — | — | carte `priorites`, Copilote | A18-M3 |
+| GET | `/api/django/taches/journee/point/` | « Où j'en suis ? » | S | — | — | carte `point`, Copilote | A18-M3 |
 | POST | `/api/django/taches/journee/planifier/` | « Garder ces N » (seul mode : `express`) | S | — | K | Proposé, carte du moment, carte `plan_propose` | A11, A14-M1, A17-T2 |
 | POST | `/api/django/taches/journee/essentiel/` | ★ | S | — | N | ★, appui long | s3 |
 | POST | `/api/django/taches/journee/alleger/` | garder k, le reste aux projets sans report | S | — | K | carte de 15 h, ⋯ | A14-M7, A16-N6 |
@@ -325,6 +1372,8 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | DELETE | `/api/django/taches/preferences/{cle}/` | retirer → RYTHME | S | — | N | carte `rythme` « Retirer » | T1 |
 | GET | `/api/django/taches/reglages/` | réglages | S | — | — | Réglages, Mon iPhone | T1, A14-M5 |
 | PATCH | `/api/django/taches/reglages/` | liste blanche | S | — | — | Réglages, question du 1er rappel | MAJ-6, A17-T4 |
+| GET | `/api/django/taches/reglages-societe/` | coupe-circuit (administrateur, `IsAdminRole`) | S + admin | — | — | Réglages → Avancé | A18-M8 |
+| PATCH | `/api/django/taches/reglages-societe/` | `{"balayage_actif":false}` | S + admin | — | — | Réglages → Avancé | A18-M8 |
 | GET | `/api/django/taches/jetons/` | lister (sans empreinte) | S | — | — | Mon iPhone | s6b §1 |
 | POST | `/api/django/taches/jetons/` | créer `{usage}` (clair rendu UNE fois ; révoque l'ancien) | S | — | — | Mon iPhone | s6b |
 | POST | `/api/django/taches/jetons/{id}/revoquer/` | révoquer | S | — | N | Mon iPhone | s6b |
@@ -334,230 +1383,129 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | GET | `/api/django/taches/coach/entete/` | 2 lignes ≤ 300 car. | S | — | — | relais du Copilote | s5b §5 |
 | GET | `/api/django/taches/mes-donnees/` | export JSON des 20 modèles | S | — | — | Réglages → Mes données | s6a, socle §8 |
 | POST | `/api/django/taches/tout-effacer/` | `{"confirmation":"EFFACER"}` suppression DURE | S | — | N | Réglages → Mes données | s6a |
-| GET | `/api/django/taches/agenda-externe/` | `{"hote","libelle","actif","dernier_etat"}` ou 404 | S | — | — | Réglages → Avancé | A14-M8 |
-| POST | `/api/django/taches/agenda-externe/` | poser l'adresse ICS | S | — | N | idem | A14-M8 |
-| DELETE | `/api/django/taches/agenda-externe/` | retirer | S | — | N | idem | A14-M8 |
+| GET | `/api/django/taches/agendas-externes/` | `{"results":[…]}` (≤ 3) | S | — | — | Réglages → Mon iPhone étape 2, Agenda | A18-M4 |
+| POST | `/api/django/taches/agendas-externes/` | ajouter une adresse ICS (lue aussitôt) | S | — | K | idem | A18-M4 |
+| PATCH | `/api/django/taches/agendas-externes/{id}/` | libellé, actif, rang | S | — | — | idem | A18-M4 |
+| DELETE | `/api/django/taches/agendas-externes/{id}/` | retirer | S | — | N | idem | A18-M4 |
+| POST | `/api/django/taches/agendas-externes/{id}/rafraichir/` | relire maintenant (ignore le cache) | S | — | N | idem | A18-M4 |
 
-Comptés par script (lignes `| … `/api/django/…` |` de ce §3, méthodes séparées par « · ») : **100** couples
-méthode × chemin propres à `taches`, tous distincts, + 2 routes étrangères consommées ; les 16 actions du §8 existent
-toutes ici avec la même méthode.
+Comptés par script (lignes de tableau de ce §3, méthodes séparées par « · ») : **106** couples méthode × chemin
+propres à `taches`, tous distincts, + 2 routes étrangères consommées.
 
-## 4. Corps et réponses
+## 4. Corps de requête et erreurs (réponses : annexe A)
 
-**`saisie-rapide/`** — `{"textes":["…","…"](≤ 10 collages)|"texte","client_id","projet_id","lien","parent_id",
-"proprietaire_attendu","ignorer":[{"type","source"}],"apercu":true}` OU `{"lignes":[LIGNE],"proprietaire_attendu",
-"apercu":false}` ; plafonds 200 lignes, 20 000 car. (2 000 via le Copilote). `ids:[…]` (aperçu) propose un projet
-pour des tâches existantes, appliqué par `lot/` `deplacer` `valeurs.par_tache`.
-LIGNE = `{"index","collage","client_id","titre","projet_id"|"nouveau_projet":{"nom","priorite"},"section_id"|
-"nouvelle_section":{"nom"},"priorite","jour_prevu","moment","heure_debut","echeance","echeance_heure","quelque_jour",
-"estimation_minutes","etiquettes":[2,{"nom":"magasin"}],"recurrence":{…sans id},"rappel":{"jour","heure"}|{"ancre",
-"decalage_jours","heure"},"notes","checklist":["…"],"lien":{"cible","id"}}`. Venant de l'assistant, `titre` est
-ignoré (ligne source analysée).
-Aperçu (200, rien d'écrit) :
-```json
-{"projets_communs":[{"collage":0,"id":null,"nom":"Courses","nouveau":true,"priorite":2,"source":"premiere_ligne"}],
- "lignes":[{"index":0,"collage":0,"titre":"Appeler Karim","cochee":true,"doublon_de":null,"etape_de":null,"alertes":[],
-   "jetons":[{"type":"jour","source":"demain","debut":14,"fin":20,"valeur":"2026-11-18","libelle":"mer. 18 nov."},
-             {"type":"projet","source":"#SiteWeb","debut":21,"fin":29,"valeur":{"id":null,"nom":"SiteWeb","nouveau":true,"priorite":2},"libelle":"Nouveau projet : SiteWeb"}],
-   "champs":{"jour_prevu":"2026-11-18","nouveau_projet":{"nom":"SiteWeb","priorite":2},"priorite":0}}],
- "projets_nouveaux":[{"nom":"SiteWeb","priorite":2}]}
-```
-Chaque « Nouveau projet » porte sa puce de priorité, Moyenne (2) par défaut (A17-M3). Création (201, tout ou rien) :
-`{"creees":[TACHE],"projets_crees":[{"id":9,"nom":"SiteWeb","couleur":"menthe","priorite":2}],"deja_creees":["c1f4…:0"],"geste_id":77}`.
-Erreurs : `{"lignes":{"3":{"titre":["Le titre est vide une fois la date et le projet retirés."]}}}` ·
-`{"texte":["Liste trop longue : 200 lignes au plus (ici 340). Colle-la en deux fois."]}` ·
-`{"projet_id":["Projet inexistant."]}` · `{"lien":["Élément introuvable ou hors de ta portée."]}` ·
-`{"lien":["Ce type d'élément ne peut pas être lié à une tâche."]}` · 409 `{"detail":"…","code":"autre_compte"}`.
+**`saisie-rapide/`** — aperçu : `{"textes":["Courses\nlait\npain","Appeler Karim demain #SiteWeb"],"client_id":"c1f4b2a0-5d1e-4b9a-9a51-2b7f0c3e8d11","projet_id":null,"lien":null,"parent_id":null,"proprietaire_attendu":7,"ignorer":[],"apercu":true}`
+(ou `"texte":"…"` pour un seul collage ; ou `"ids":[41,42]` pour proposer un projet à des tâches existantes, appliqué
+par `lot/` `deplacer` `valeurs.par_tache`) ; création : `{"lignes":[{"index":0,"collage":0,"client_id":"c1f4b2a0-5d1e-4b9a-9a51-2b7f0c3e8d11:0","titre":"Appeler Karim","projet_id":null,"nouveau_projet":{"nom":"SiteWeb","priorite":2},"section_id":null,"nouvelle_section":null,"priorite":0,"jour_prevu":"2026-11-18","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"etiquettes":[2,{"nom":"magasin"}],"recurrence":null,"rappel":{"jour":"2026-11-18","heure":"09:00"},"notes":"","checklist":["Numéro"],"lien":{"cible":"crm.lead","id":1637}}],"proprietaire_attendu":7,"apercu":false}` ; LIGNE = un élément de `lignes`, forme ci-contre.
+(`projet_id` et `nouveau_projet` exclusifs ; `section_id` et `nouvelle_section` exclusifs ; `rappel` absolu ou
+`{"ancre":"echeance","decalage_jours":-1,"heure":"18:00"}`). Plafonds 200 lignes, 20 000 car. (2 000 via le Copilote).
+Venant de l'assistant, `titre` est ignoré (ligne source). Chaque « Nouveau projet » de l'aperçu porte sa priorité,
+Moyenne (2) par défaut. Erreurs : `{"lignes":{"3":{"titre":["Le titre est vide une fois la date et le projet retirés."]}}}` ·
+`{"texte":["Liste trop longue : 200 lignes au plus (ici 340). Colle-la en deux fois."]}` · `{"projet_id":["Projet inexistant."]}` ·
+`{"lien":["Élément introuvable ou hors de ta portée."]}` · `{"lien":["Ce type d'élément ne peut pas être lié à une tâche."]}` ·
+409 `autre_compte`. Réponses : `saisie_apercu.json`, `saisie_rapide.json`.
 
-**`capture/`** (Bearer `tqc_…`) — `{"titre":"appeler le fournisseur demain 10 h","notes":"","client_id":"…"}` (titre ≤
-280, notes ≤ 2 000, client_id ≤ 64) → 201 `{"id":42,"dans":"journee","message":"Ajouté pour demain 10 h : appeler le
-fournisseur","deja":false}` ; `dans` ∈ `journee` (un jour posé, quel qu'il soit), `projet` (projet sans jour),
-`a_trier` (rien, ou une échéance seule) ; rejeu 200 `"deja":true` ; `?reponse=texte` → `text/plain` (message, ou texte
-d'erreur 400/401/429 de `textes.md` §7). 400 `{"titre":["Dis-moi quoi noter."]}`.
+**`capture/`** (Bearer `tqc_…`) — `{"titre":"appeler le fournisseur demain 10 h","notes":"","client_id":"7d2e0a11"}`
+(titre ≤ 280, notes ≤ 2 000, client_id ≤ 64) → 201 `capture.json` ; `dans` ∈ `journee` (un jour posé), `projet`
+(projet sans jour), `a_trier` (rien, ou une échéance seule) ; nom de projet dit par `nom_pour(projet,'siri')`
+(« un projet » si confidentiel, inv. 38) ; rejeu 200 `"deja":true` ; `?reponse=texte` → `text/plain`. 400
+`{"titre":["Dis-moi quoi noter."]}`.
 
-**`taches/`** POST — une LIGNE (+ `parent_id`) → 201 TACHE_ECRITE.
-**`taches/{id}/`** PATCH — `{"titre","notes","priorite","echeance","echeance_heure","estimation_minutes",
-"duree_reelle_minutes","projet_id","section_id","jalon","bloquee_par_id","confidentiel","etiquettes":[ids],
-"recurrence":{…}|null,"lien":{…}|null,"lock_version":5}` → TACHE_ECRITE ; 400 `{"bloquee_par_id":["Boucle : « B »
-attend déjà « T »."]}`, `{"jour_prevu":["Passe par « Quand »."]}`.
-**`planifier/`** `{"jour_prevu":"2026-11-19","moment":"","heure_debut":"10:00","quelque_jour":false,"lock_version":4,
-"proprietaire_attendu":7}` → TACHE_ECRITE ; 400 `{"heure_debut":["Une heure demande un jour prévu."]}`.
-**`terminer/`** (corps facultatif `{"proprietaire_attendu"}`) → TACHE_ECRITE avec `progression` (+ `suivante`).
-**`trancher/`** `{"choix":"garder"}` · `{"choix":"jour","jour":"2026-11-19"}`.
-**`attendre/`** `{"en_attente_de":"Lydec"}` (400 `{"en_attente_de":["Dis de qui ou de quoi tu attends."]}`) ; le
-second choix de la même entrée « En attente de… » (« une tâche », spec-7 r3) passe par `PATCH taches/{id}/`
-`{"bloquee_par_id":43}` (le statut reste `a_faire`).
-**`rappels/`** `{"jour","heure"}` ou `{"ancre":"echeance","decalage_jours":-1,"heure":"18:00"}` → TACHE_ECRITE avec
-`"rappel":{"id":31,"jour":"2026-11-19","heure":"18:00","hors_fenetre":true}` et `question_titres`.
-**`rappels/{id}/repeter/`** `{"dans_minutes":10|60}` ou `{"jour","heure"}` → `{"rappel":{…},"geste_id":90}`.
-**`changement/apercu/`** `{"geste":"renommer","titre":"Appeler Karim"}` → `{"tache":ITEM,"proposition":{"geste":"renommer","avant":"Appeler K.","apres":"Appeler Karim"}}`.
-**`lot/`** `{"ids":[41,42],"action":"planifier","valeurs":{"jour_prevu":"2026-11-19"}}` (`deplacer`
-`{"projet_id","section_id"}` ou `{"par_tache":{"41":{"projet_id":3}}}` ; `planifier` `{"jour_prevu"}` ou
-`{"quelque_jour":true}` ; `prioriser` `{"priorite"}` ; `etiqueter` `{"ajouter":[],"retirer":[]}`) →
-`{"appliquees":[41],"refusees":[{"id":42,"raison":"introuvable"}],"geste_id":78}`.
-**`lier-activite/`** `{"activite_id":101,"titre"?,"jour_prevu"?}` (activité vérifiée par `activites_ouvertes_pour`) →
-201 TACHE_ECRITE (`activite_origine_id:101`, `lien` = cible de l'activité si liable, `source:"activite"`) ; 409
-`{"code":"deja_lie"}`.
-**`convertir-activite/`** `{"activite_ids":[41,44]}` ou `{"toutes":true}` → `{"converties":[{"activite_id":41,
-"tache_id":90}],"refusees":[{"activite_id":44,"raison":"assignee_a_un_collegue"}],"geste_id":79}` (raisons
-`introuvable`, `assignee_a_un_collegue`, `deja_convertie`, `close` ; source close par
-`records.services.cloturer_a_faire_personnel`). Le compte est `a_trier.a_convertir`.
-**`supprimees/`** → `{"projets":[{"projet":PROJET,"taches_nb":25,"deleted_at":"…"}],"taches":[{"item":ITEM,"deleted_at":"…"}]}`
-(tâches supprimées avec leur projet : dans la ligne du projet seulement).
-**`gestes/`** → `[{"id","type","message","created_at","annule_le","annulable"}]` ; **`annuler/`** →
-`{"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false}`.
-**`suggestions/`** → `[{"id":5,"famille":"devis_accepte","titre":"Préparer le chantier du devis accepté","lien":LIEN,"created_at":"…"}]` ;
-`accepter/` `{"titre"?,"jour_prevu"?}` → 201 TACHE_ECRITE ; `refuser/` → `{"id":5,"statut":"refusee","geste_id":80}`.
-**`aujourdhui/ailleurs/`** → `{"chantiers":1,"tickets":0,"da_a_commander":0,"leads_chauds":3,"rappels":0,"devis_expirant":1,"relances":2,"approbations":2,"mentions":1,"lien":"/activites"}`.
-**`vu/`** `{"ecran":"aujourdhui"}` → 200 `{"carte_du_moment":CARTE_DU_MOMENT|null}` : pose `PlanJour.app_ouverte_le`,
-`ouvert_le` des push du jour, crée la carte `retour` (fin de congé ou ≥ 3 jours travaillés sans ouverture) ; rien du
-tout si le compte n'a jamais créé de tâche.
+**`taches/`** POST — une LIGNE (+ `parent_id`) → 201 `tache_ecrite.json`. **PATCH `taches/{id}/`** —
+`{"titre":"Devis Settat — relance","notes":"","priorite":3,"echeance":"2026-11-20","echeance_heure":null,"estimation_minutes":60,"duree_reelle_minutes":null,"projet_id":3,"section_id":null,"jalon":false,"bloquee_par_id":null,"confidentiel":false,"etiquettes":[2],"recurrence":null,"lien":null,"lock_version":4}`
+(tout champ facultatif sauf `lock_version`) → `tache_ecrite.json` ; 400 `{"bloquee_par_id":["Boucle : « B » attend déjà « T »."]}`,
+`{"jour_prevu":["Passe par « Quand »."]}`.
+**`planifier/`** `{"jour_prevu":"2026-11-19","moment":"","heure_debut":"10:00","quelque_jour":false,"lock_version":4,"proprietaire_attendu":7}`
+→ `tache_ecrite.json` ; 400 `{"heure_debut":["Une heure demande un jour prévu."]}`. **`terminer/`** (corps facultatif
+`{"proprietaire_attendu":7}`) → `tache_ecrite.json` (`tache_recurrente_ecrite.json` si récurrente).
+**`trancher/`** `{"choix":"garder"}` ou `{"choix":"jour","jour":"2026-11-19"}`. **`attendre/`**
+`{"en_attente_de":"Lydec"}` (400 `{"en_attente_de":["Dis de qui ou de quoi tu attends."]}`) ; l'attente d'une tâche passe
+par `PATCH` `{"bloquee_par_id":43}` (statut `a_faire` gardé). **`rappels/`** `{"jour":"2026-11-17","heure":"15:00"}` ou
+`{"ancre":"echeance","decalage_jours":-1,"heure":"18:00"}` → `tache_ecrite.json` avec `rappel`. **`rappels/{id}/repeter/`**
+`{"dans_minutes":60}` ou `{"jour":"2026-11-18","heure":"09:00"}` → `rappel_repeter.json`. **`changement/apercu/`**
+`{"geste":"renommer","titre":"Devis Settat — relance"}` → `tache_changement.json`. **`lot/`**
+`{"ids":[41,42],"action":"planifier","valeurs":{"jour_prevu":"2026-11-19"}}` (`deplacer` `{"projet_id":3,"section_id":null}`
+ou `{"par_tache":{"41":{"projet_id":3}}}` ; `planifier` `{"quelque_jour":true}` ; `prioriser` `{"priorite":3}` ;
+`etiqueter` `{"ajouter":[2],"retirer":[]}`) → `lot.json`. **`lier-activite/`** `{"activite_id":101,"titre":"Préparer l'appel Benali","jour_prevu":null}`
+→ 201 `lier_activite.json` ; 409 `deja_lie`. **`convertir-activite/`** `{"activite_ids":[41,44]}` ou `{"toutes":true}`
+→ `convertir_activite.json` (raisons `introuvable`, `assignee_a_un_collegue`, `deja_convertie`, `close` ; source close
+par `records.services.cloturer_a_faire_personnel`). **`suggestions/{id}/accepter/`** `{"titre":"Préparer le chantier","jour_prevu":"2026-11-18"}`
+(champs facultatifs) → 201 `tache_ecrite.json`.
+**`vu/`** `{"ecran":"aujourdhui"}` → `vu.json` (ou `{"carte_du_moment":null}`) : pose `PlanJour.app_ouverte_le`,
+`ouvert_le` des push du jour, crée la carte `retour` ; rien si le compte n'a jamais créé de tâche.
+**`journee/proposition/`** `?jour=2026-11-17&exclure=41&inclure=30&tout=1` (un id étranger est ignoré) →
+`journee_proposition.json`. **`journee/planifier/`** `{"jour":"2026-11-17","mode":"express","lignes":[{"type":"tache","id":30},{"type":"activite","id":101}],"essentielles":[20],"triage":[]}`
+(`triage` facultatif, jamais exigé, A17-T2) → `journee_ecrite.json` ; 400 `{"essentielles":["3 au plus."]}`.
+**`journee/essentiel/`** `{"tache_id":20,"essentielle":true}` → `tache_ecrite.json`. **`journee/alleger/`**
+`{"jour":"2026-11-17","garder":[20,42]}` → `journee_ecrite.json` (`renvoyees` rempli ; `allege_le` posé, sans report).
+**`journee/priorites/`** `?jour=2026-11-17` → `priorites.json` : TOUTES les tâches ouvertes du préfiltre, classées
+comme Proposé (inv. 34 étendu au pool entier), chacune avec `raison` ; gestes de la carte : Essentiel →
+`journee/essentiel/`, Aujourd'hui → `planifier/` (J), Plus tard dans la semaine → `planifier/` (`plus_tard`), « Garder
+ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/point/`** → `point.json`.
+**`journee/cloture/`** `?jour=2026-11-17` (J−1 admis jusqu'à 12 h) → `journee_cloture.json` (UN constat au plus ;
+`a_trancher` = reportées 3 fois, marquées, jamais refusées). **`journee/cloturer/`**
+`{"jour":"2026-11-17","choix":[{"id":52,"choix":"jour","jour":"2026-11-23"}],"le_reste":true,"reflexion":""}` (`choix` ∈
+`prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter ») → `journee_cloturee.json`.
+**`agenda/`** `?du=2026-11-16&au=2026-11-22&vue=semaine&projet=3` → `agenda.json` ; 400 `{"au":["42 jours au plus."]}` ;
+`mes_projets` seulement en `vue=semaine` ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
+RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
 
-**`journee/proposition/`** →
-```json
-{"jour":"2026-11-17","objectif":OBJECTIF,"capacite":{"minutes":240,"source":"defaut"},"a_decider":[ITEM],
- "proposition":[{"item":ITEM,"deja_prevue":false,"cochee":true}],
- "charge":{"minutes_estimees":190,"sans_estimation":2,"surcharge":false,"non_calculable":false},
- "rythme":PROPOSITION,"suite_par_projet":[{"projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"items":[ITEM]}]}
-```
-(`suite_par_projet` avec `tout=1` ; un id étranger dans `exclure`/`inclure` est ignoré.)
-**`journee/planifier/`** `{"jour":"2026-11-17","mode":"express","lignes":[{"type":"tache","id":30},{"type":"activite","id":101}],
-"essentielles":[20],"triage":[{"id":41,"choix":"jour","jour":"2026-11-19"}]}` (`triage` facultatif, jamais exigé,
-A17-T2) → `{"aujourdhui":AUJOURDHUI,"geste_id":81}` ; 400 `{"essentielles":["3 au plus."]}`.
-**`journee/essentiel/`** `{"tache_id":20,"essentielle":true}` → TACHE_ECRITE ; 400 `{"essentielle":["3 au plus."]}`.
-**`journee/alleger/`** `{"jour":"2026-11-17","garder":[20,42]}` → `{"renvoyees":[60],"aujourdhui":AUJOURDHUI,"geste_id":82}`
-(pose `allege_le`, `compter_report=False`, lignes retirées ; activités, obligations, échéances ≤ J intactes).
-**`journee/cloture/`** →
-```json
-{"jour":"2026-11-17","faites":[ITEM],"restes":[ITEM],"a_trancher":[ITEM],"prochain_jour_ouvre":"2026-11-19",
- "bilan":{"faites":4,"objectif":5,"objectif_atteint":false,"essentiel_faites":1,"essentiel_prevues":2,"plan_tenues":4,"plan_lignes":5,"texte":"4 sur 5 · essentiel 1 sur 2","texte_gardees":"4 des 5 gardées"},
- "constat":PROPOSITION,"activites_a_clore":[ITEM],"possible_jusqua":"2026-11-18T12:00:00+01:00"}
-```
-`texte` = 1re ligne « N sur OBJECTIF », `texte_gardees` = 2e ligne (`textes.md` §4.3) ; `constat` : un au plus
-(A14-M4), sinon `null` ; `a_trancher` = restes `reportee_3_fois` (marqués, jamais refusés).
-**`journee/cloturer/`** `{"jour","choix":[{"id":52,"choix":"jour","jour":"2026-11-23"}],"le_reste":true,"reflexion":""}`
-(`choix` ∈ `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter » au prochain jour
-travaillé ; les `a_trancher` non nommés restent en place) → `{"plan":{"cloture_le":"…"},"geste_id":83}`.
-**`agenda/`** →
-```json
-{"du":"2026-11-16","au":"2026-11-22","jours":[{"jour":"2026-11-18","ouvre":false,"ferie":true,"toute_la_journee":[
- {"famille":"visite","titre":"Visite — Karim Benali","url":"/visites"}],"sans_heure":[ITEM],"blocs":[ITEM],"echeances":[ITEM],
- "externes":[]}],"a_placer":[ITEM],"mes_projets":[{"projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"items":[ITEM]}]}
-```
-400 `{"au":["42 jours au plus."]}` ; `mes_projets` seulement pour `vue=semaine` (pool de Proposé, même classement,
-A16-N3) ; poser une tâche sur un jour = `taches/{id}/planifier/` (un seul chemin, socle §4) ; `externes` vide tant que
-l'agenda externe n'est pas construit ; `projet` filtre (même propriétaire).
-**`recherche/`** → `{"projets":[{"id","nom","couleur","statut","priorite"}],"taches":[ITEM]}` ; 400 `{"q":["Requis."]}`.
-
-**`projets/`** → `{"count":7,"next":null,"previous":null,"results":[PROJET],"constat":{"actifs":7,"avances_7j":3}}` ;
-POST `{"nom","priorite"?,"couleur"?,"icone"?,"objectif"?,"domaine"?}` ; doublon → 400 `{"nom":["Un projet « Chantier X »
-existe déjà."]}`. **PATCH** `{"nom","objectif","icone","couleur","priorite","statut"∈actif|en_pause|archive,
-"date_debut","echeance","domaine","confidentiel","affichage","risque","lock_version"}` ; `statut=termine` → 400
-`{"statut":["Passe par « Terminer »."]}`. **DELETE** → `{"supprimees":25,"geste_id":84}`.
-**`projets/{id}/vue/`** → `{"projet":PROJET,"avancement":{"faites":12,"total":20,"derniere_faite_le":"2026-11-03"},
-"prochain_jalon":ITEM,"sections":[{"id":8,"nom":"Études","rang":1024,"date_debut":null,"date_fin":"2026-11-30","taches":[ITEM]}],
-"sans_section":[ITEM],"faites_nb":12,"burnup":[{"semaine":"2026-11-09","total":18,"faites":10}],
-"burnup_legende":"reconstruit depuis les dates actuelles"}`.
-**`planification/apercu/`** `{"texte":"Études :\nVisite\n- photos\n◆ Mise en service"}` → `{"sections":[{"nom":"Études",
-"taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]},{"titre":"Mise en service","jalon":true,"sous_taches":[]}]}]}`.
-**`planification/`** `{"priorite":3,"objectif":"…","echeance":"2026-12-29","risque":"","sections":[…],"actions":[{"titre":"Réserver le stand","quand":"aujourdhui"}],"lock_version":4}`
-→ `{"projet":PROJET,"creees":[TACHE],"geste_id":85}` (`quand` ∈ `aujourdhui`, `demain`, `''`).
-**`decaler/`** `{"delta_jours":7,"apercu":true}` → `{"changements":[{"objet":"tache","id":41,"champ":"jour_prevu","avant":"2026-11-20","apres":"2026-11-27"}]}`
-(`apercu:false` : + `geste_id`) ; 400 `{"delta_jours":["2 tâches passeraient avant aujourd'hui."]}`.
-**`terminer/`** (projet) `{"issue":"atteint","bilan":"","taches_ouvertes":"boite"|"annuler"|"deplacer","projet_cible_id":null}`
-→ `{"projet":PROJET,"deplacees":3,"geste_id":86}` ; 400 `{"issue":["Atteint ou abandonné ?"]}`.
-**`restaurer/`** (projet) → `{"projet":PROJET,"restaurees":25,"geste_id":87}` ; nom repris → `atomic()` + 409
-`{"detail":"…","code":"nom_pris","nom":["Un projet actif porte déjà ce nom."]}`.
-**`modeles/{id}/instancier/`** `{"nom","date_lancement":"2026-11-23","apercu":true}` → `{"projet":{"nom":"Salon"},"sections":[…],
-"taches":[{"titre":"…","jour_prevu":"2026-11-30","echeance":null}]}` ; `apercu:false` → 201 `{"projet":PROJET,"geste_id":88}`.
-**`revue/projets/`** →
-```json
-{"semaine":"2026-11-16","semaine_courte":false,
- "bilan_semaine":{"texte":"Du 16 au 20/11 : 26 tâches en 5 jours (précédente : 23). …","donnees":{"faites":26,"jours":5,"prec":23}},
- "focus_projet_id":3,"cartes":[{"projet":PROJET,"faites_semaine":[{"id":12,"titre":"Dossier subvention"}],"faites_nb":4,
- "bloquees":[{"id":44,"titre":"Pose","attend":{"id":43,"titre":"Livraison"}}],"prochaine_action":ITEM,
- "revue":{"intention":"","decision":"","focus":false}}]}
-```
-`semaine_courte` (≥ 3 jours `sans_donnees`) : `bilan_semaine:null` (« Semaine courte, on reprend lundi »).
-**`PUT revue/projets/{projet_id}/`** `{"semaine","intention","prochaine_action_id","decision","focus","issue"?}` →
-`{"revue":{…},"projet":PROJET,"geste_id":89}` (`pause` : en pause ; `terminer` exige `issue`, même service que
-`projets/{id}/terminer/` avec `boite`) ; 400 `{"focus":["Déjà « A » cette semaine."]}`.
-**`rythme/`** POST `{"mode":"pousser","objectif":7}` ou `{"mode":"pousser","sens":"plus"}` → RYTHME + `geste_id` ;
-400 `{"mode":["Valeur inconnue."]}`, `{"objectif":["Entre 1 et 12."]}`.
-**`propositions/{id}/repondre/`** `{"reponse":"oui"}` → `{"proposition":PROPOSITION,"rythme":RYTHME,"geste_id":91}` ;
-409 `{"detail":"…","code":"proposition_expiree"}` ; réponse hors liste → 400 `{"reponse":["Réponse inconnue."]}`.
-**`preferences/`** `{"cle":"heure_limite","valeur":"19:00"}` → RYTHME + `geste_id` ; 400 `{"valeur":["Heure attendue
-(HH:MM)."]}`, `{"cle":["Clé inconnue."]}`.
-**`reglages/`** GET →
-```json
-{"titres_notifications":false,"titres_notifications_demande":false,"titres_calendrier":true,"titres_tuile":true,
- "messages_sans_delai":false,"rappel_avant_bloc_min":null,"projet_arret_jours":10,
- "familles_suggestions":["devis_accepte","chantier_receptionne","chantier_annule"],"suggestions_societe":false,
- "erp_dans_journee":true,"comprendre_mon_rythme":true,"pauses_sollicitations":[{"type":"plan_matin","ignorees":14}],
- "sollicitations":{"heure_matin":"08:30","relance_jour":"15:00","heure_soir":"18:00","heure_limite":"20:00","revue_semaine":"auto"},
- "fenetre_societe":{"debut":"08:30","fin":"19:00"},"raccourci_siri_url":null,"est_admin":false}
-```
-PATCH, liste blanche seule (MAJ-6) : `titres_notifications` (pose aussi `titres_notifications_demande_le`),
+**`projets/`** POST `{"nom":"Chantier X","priorite":2,"couleur":"vert","icone":"","objectif":"","domaine":""}` ; doublon
+→ 400 `{"nom":["Un projet « Chantier X » existe déjà."]}`. **PATCH** `{"nom":"Ventes","objectif":"","icone":"","couleur":"vert","priorite":3,"statut":"en_pause","date_debut":null,"echeance":"2026-12-15","domaine":"","confidentiel":false,"affichage":{"vue":"tableau","tri":"manuel","groupe":"section","montrer_faites":false},"risque":"","lock_version":4}`
+→ `projet.json` ; `statut=termine` → 400 `{"statut":["Passe par « Terminer »."]}`. **DELETE**, **`terminer/`**
+`{"issue":"atteint","bilan":"","taches_ouvertes":"boite","projet_cible_id":null}` (400 `{"issue":["Atteint ou abandonné ?"]}`),
+**`restaurer/`** (409 `nom_pris`) → `projet_ecrit.json`. **`planification/apercu/`**
+`{"texte":"Études :\nVisite\n- photos\n◆ Mise en service"}` → `planification_apercu.json`. **`planification/`**
+`{"priorite":3,"objectif":"Stand monté","echeance":"2026-12-29","risque":"","sections":[{"nom":"Études","taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]}]}],"actions":[{"titre":"Réserver le stand","quand":"aujourdhui"}],"lock_version":4}`
+→ `planification.json`. **`decaler/`** `{"delta_jours":7,"apercu":true}` → `decalage.json` ; 400
+`{"delta_jours":["2 tâches passeraient avant aujourd'hui."]}`. **`dupliquer/`** `{"nom":"Salon 2027","date_debut":"2027-03-01","apercu":true}`
+→ `modele_instancier.json`. **`enregistrer-modele/`** `{"nom":"Salon","inclure_notes":false}` → `modele.json`.
+**`modeles/{id}/instancier/`** `{"nom":"Salon","date_lancement":"2026-11-23","apercu":true}` → `modele_instancier.json`
+(`apercu:false` → 201 `projet_ecrit.json`). **`sections/`** POST `{"projet_id":3,"nom":"Études","date_debut":null,"date_fin":null}`.
+**`checklist/`** POST `{"tache_id":20,"libelle":"Prix"}`, PATCH `{"libelle":"Prix TTC","fait":true}`.
+**`revue/projets/{projet_id}/`** PUT `{"semaine":"2026-11-16","intention":"Signer Settat","prochaine_action_id":20,"decision":"garder","focus":true,"issue":null}`
+(`terminer` exige `issue`) → `revue_decision.json` ; 400 `{"focus":["Déjà « A » cette semaine."]}`.
+**`rythme/`** POST `{"mode":"pousser","objectif":7}` ou `{"mode":"pousser","sens":"plus"}` → `rythme.json` ; 400
+`{"mode":["Valeur inconnue."]}`, `{"objectif":["Entre 1 et 12."]}`. **`propositions/{id}/repondre/`** `{"reponse":"oui"}`
+→ `proposition_repondue.json` ; 409 `proposition_expiree` ; 400 `{"reponse":["Réponse inconnue."]}`. **`preferences/`**
+`{"cle":"heure_limite","valeur":"19:00"}` → `rythme.json` ; 400 `{"valeur":["Heure attendue (HH:MM)."]}`,
+`{"cle":["Clé inconnue."]}`.
+**`reglages/`** PATCH, liste blanche seule : `titres_notifications` (pose `titres_notifications_demande_le`),
 `titres_calendrier`, `titres_tuile`, `messages_sans_delai`, `rappel_avant_bloc_min`, `projet_arret_jours`,
-`familles_suggestions`, `suggestions_societe` (admin), `erp_dans_journee`, `comprendre_mon_rythme`,
-`pauses_sollicitations` (liste de types, retirer = réactiver) ; tout autre champ → 400 `{"<champ>":["Non modifiable
-ici."]}`. `raccourci_siri_url` = `settings.TACHES_RACCOURCI_SIRI_URL` (vide → `null`).
-**`jetons/`** POST `{"usage":"flux"}` → 201 `{"id":3,"usage":"flux","prefixe":"tqf_Ab12","libelle":"","created_at":"…",
-"dernier_usage_le":null,"revoque_le":null,"jeton":"tqf_…","url":"https://<hôte>/api/django/taches/flux/tqf_….ics","webcal":"webcal://<hôte>/…"}`.
-**`tuile/`** → `{"jour":"2026-11-17","maj":"2026-11-17T09:41:00+01:00","faites":1,"prevues":4,"objectif":5,
-"essentiel":{"faites":0,"prevues":1},"top":[{"id":20,"titre":"Devis Settat","heure":"10:00","priorite":2}],"reste":1,
-"prochaine_echeance":{"titre":"Devis Settat","jour":"2026-11-19","heure":null},"lien":"https://<hôte>/taches/aujourdhui"}`.
-**`coach/entete/`** → `{"lignes":["Rythme : mode pousser · objectif 5 (accepté) · 1 faite sur 5","Préférences dites : sollicitations jusqu'à 19:00 · jour court : vendredi"]}`.
-**`tout-effacer/`** 400 `{"confirmation":["Tape EFFACER pour confirmer."]}` ; 200 `{"effacees":{"tache":40,"projet":3}}`.
-**`agenda-externe/`** POST `{"url":"https://…/basic.ics","libelle":"Perso"}` → `{"hote":"calendar.example","libelle":"Perso",
-"actif":true,"dernier_etat":""}` ; 400 `{"url":["Adresse https publique attendue."]}`.
+`familles_suggestions`, `suggestions_societe` (non-admin → 403 `{"suggestions_societe":["Réservé à un
+administrateur."]}`), `erp_dans_journee`, `comprendre_mon_rythme`, `pauses_sollicitations` ; tout autre champ → 400
+`{"<champ>":["Non modifiable ici."]}`. `fenetre_societe` = `notifications.selectors.fenetre_notifications(company, now)`
+(`notifications/selectors.py:91`) ; `est_admin` = `IsAdminRole` ; `raccourci_siri_url` = `TACHES_RACCOURCI_SIRI_URL`
+(vide → `null`). **`reglages-societe/`** (`IsAdminRole`) PATCH `{"balayage_actif":false}` → `reglages_societe.json`.
+**`jetons/`** POST `{"usage":"flux","libelle":""}` → 201 `jeton.json` (clair rendu une seule fois).
+**`agendas-externes/`** POST `{"url":"https://outlook.office365.com/owa/calendar/abc/reachcalendar.ics","libelle":"Microsoft 365"}`
+→ 201 `agenda_externe.json` (lecture immédiate) ; PATCH `{"libelle":"Bureau","actif":false,"rang":2048}` ; POST
+`…/{id}/rafraichir/` (ignore le cache). 400 `{"url":["Adresse https publique attendue."]}`, `{"url":["3 agendas au plus."]}`,
+`{"url":["Cet agenda est déjà ajouté."]}` ; l'hôte est validé par `apps/publicapi/validators.py` à l'ajout puis
+revérifié à chaque lecture (`donnees.md` inv. 33). **`tout-effacer/`** `{"confirmation":"EFFACER"}` (400
+`{"confirmation":["Tape EFFACER pour confirmer."]}`) → `tout_effacer.json`.
 
-**Listes simples** (échantillons de la rév. 2.1) :
-- `GET etiquettes/` → `{"count":2,"next":null,"previous":null,"results":[{"id":2,"nom":"magasin","couleur":"ciel"},{"id":3,"nom":"appels","couleur":"ambre"}]}`.
-- `GET vues/` → `[{"id":4,"nom":"Haute cette semaine","rang":1024,"filtres":{"priorite_min":3,"projets":[3],"inclure_faites":false}}]`.
-- `GET modeles/` → `{"count":1,"next":null,"previous":null,"results":[{"id":2,"nom":"Salon","created_at":"2026-11-10T09:00:00+01:00","nb_taches":12,"nb_sections":3}]}`.
-- `GET jetons/` → `[{"id":3,"usage":"flux","prefixe":"tqf_Ab12","libelle":"","created_at":"2026-11-17T09:00:00+01:00","dernier_usage_le":"2026-11-17T09:41:00+01:00","revoque_le":null}]` (jamais `jeton` ni `jeton_hash`).
-- `GET mes-donnees/` → `{"exporte_le":"2026-11-17T10:00:00+01:00","projet":[{…}],"section":[],"tache":[{…}],"element_checklist":[],"etiquette":[],"etiquette_tache":[],"regle_recurrence":[],"plan_jour":[],"ligne_plan_jour":[],"reglages_rythme":[{…}],"preference":[],"incitation_coach":[],"rappel":[],"jeton_acces":[{"id":3,"usage":"flux","prefixe":"tqf_Ab12","revoque_le":null}],"geste_annulable":[],"vue_enregistree":[],"modele_projet":[],"revue_projet":[],"suggestion_tache":[],"agenda_externe":[]}`
-  (une clé par modèle, les 20 ; supprimées non purgées comprises ; jetons sans empreinte ; chaque objet = ses champs de `donnees.md` §2).
+## 5. Hors ligne et brouillon (A16-N11)
 
-## 5. Hors ligne (A16-N11 ; MAJ-9)
+`features/taches/captureQueue.js` = `Outbox` du module (classe `Outbox`, `lib/offlineOutbox.js:304`) sur
+`createModuleOutboxStore('taches')` (`lib/offlineStore.js:137`) ; `OFFLINE_MODULES` et `offlinesync` intacts. Trois ops :
+ajouter (`saisie-rapide/`, `client_id`), cocher (`terminer/`), reporter (`planifier/`, `lock_version` du cache). Chaque
+op porte `(company_id, user_id)` ; `proprietaire_attendu` envoyé ; 409 `autre_compte` → op jetée ; 409
+`conflit_version` → bandeau de conflit. Cache de lecture `taches:aujourdhui:<user_id>:<jour>`. Brouillon de saisie :
+`useDraftAutosave` sous la clé `taches:brouillon:<user_id>`, relu par la carte « Reprendre » et la feuille de saisie.
+Tout (file, cache, brouillon) vidé sur `taqinor:auth-logout` (`providers/session-bridge.js:74`).
 
-`features/taches/captureQueue.js` = `Outbox` du module (`lib/offlineOutbox.js:304`, `createModuleOutboxStore('taches')`),
-`OFFLINE_MODULES` et `offlinesync` intacts. Trois ops : ajouter (`saisie-rapide/`, `client_id`), cocher
-(`terminer/`), reporter (`planifier/`, `lock_version` du cache). Chaque op porte `(company_id, user_id)` ;
-`proprietaire_attendu` envoyé ; 409 `autre_compte` → op jetée ; 409 `conflit_version` → bandeau de conflit. Cache de
-lecture `taches:aujourdhui:<user>:<jour>` ; tout vidé sur `taqinor:auth-logout` (`providers/session-bridge.js:74`).
+## 6. Contrats d'abord (`apps/taches/contract_samples/*.json`)
 
-## 6. Contrats d'abord (`apps/taches/contract_samples/*.json`, exportés dans `contractSamples.js`)
-
-| Fichier | Route / forme | Consommateurs |
-|---|---|---|
-| `aujourdhui.json` · `carte_du_moment.json` | `aujourdhui/` · CARTE_DU_MOMENT | Aujourd'hui, cockpit, carte `ma_journee`, cache hors ligne · Aujourd'hui, `vu/` |
-| `ailleurs.json` · `badge.json` · `vu.json` | idem | repli · pastille · Aujourd'hui |
-| `item.json` · `tache.json` · `tache_ecrite.json` · `tache_changement.json` | formes | toutes les listes · Fiche · carte `tache`, toasts, conflit · écho |
-| `saisie_apercu.json` · `saisie_rapide.json` · `capture.json` | saisie | Saisie, collage, carte `capture_apercu`, file · Siri |
-| `lot.json` · `lier_activite.json` · `geste_annuler.json` · `gestes.json` · `supprimees.json` | gestes | sélection, À trier · appui long · toast · Derniers gestes · Supprimées |
-| `journee_proposition.json` · `journee_cloture.json` | plan · bilan | « Voir tout », carte `plan_propose` · Bilan |
-| `agenda.json` · `recherche.json` | idem | Agenda, Planifier ma semaine · Recherche, palette, `liste_taches` |
-| `projets_liste.json` · `projet_vue.json` | projets | Projets · Un projet, carte `projet` |
-| `projet_ecrit.json` | réponses d'écriture de projet : `terminer/`, `restaurer/`, `DELETE projets/{id}/` | Un projet ⋯, Archive, Supprimées récemment |
-| `revue_decision.json` | `PUT revue/projets/{projet_id}/` | Revue |
-| `rappel_repeter.json` | `rappels/{id}/repeter/` | fiche ouverte par le rappel |
-| `etiquettes.json` · `vues.json` | `GET etiquettes/` (paginé) · `GET vues/` (non paginé) | Fiche → Plus, filtres · Recherche |
-| `modeles_liste.json` · `jetons_liste.json` | `GET modeles/` (paginé) · `GET jetons/` (non paginé) | Modèles, Nouveau projet → Depuis un modèle · Mon iPhone |
-| `agenda_externe.json` | `GET`/`POST agenda-externe/` | Réglages → Avancé |
-| `mes_donnees.json` · `tout_effacer.json` | `GET mes-donnees/` · `POST tout-effacer/` | Réglages → Mes données |
-| `planification_apercu.json` · `decalage.json` · `modele_instancier.json` · `revue_projets.json` | s4 | Planifier · Décaler · Modèles · Revue, `revue_semaine` |
-| `rythme.json` · `proposition.json` | rythme | Mon rythme, carte `rythme` · cartes, bilan, plan |
-| `reglages.json` · `jeton.json` · `tuile.json` | réglages | Réglages, Mon iPhone · `scriptTuile.js` |
-| `suggestions.json` · `convertir_activite.json` · `coach_entete.json` · `liens_cibles.json` · `erreurs.json` | divers | À trier · relais · `url_de_cible`, `cibleEcran.js` · client API |
+Un fichier par échantillon de l'annexe A (même nom, contenu recopié mot pour mot ; `exemple` est toujours un OBJET).
+L'export dans `frontend/src/test/fixtures/contractSamples.js` suit le plan (`docs/plans/PLAN_TACHES.md`).
 
 ## 7. Routes du FRONT (une seule table — spec-7 r3 §2)
 
 | Route | Écran | Paramètres |
 |---|---|---|
 | `/taches` | mène à `/taches/aujourdhui` | — |
-| `/taches/aujourdhui` | Aujourd'hui (accueil : `MOBILE_HOME_ALLOWED_ROUTES` + `setLandingModule('taches')`) | `tache=<id>`, `ouvrir=bilan` (ouvre le bilan du soir ; `ouvrir=plan` n'existe pas : le plan est la carte du moment) |
+| `/taches/aujourdhui` | Aujourd'hui (accueil : `MOBILE_HOME_ALLOWED_ROUTES` + `setLandingModule('taches')`) | `tache=<id>`, `ouvrir=bilan` (ouvre le bilan du soir ; `ouvrir=plan` n'existe pas : le plan est la carte du moment), `tout=1` |
 | `/taches/a-trier` | À trier (pastille d'onglet = `a_trier.boite_reception`) | `tache` |
 | `/taches/projets` · `/taches/projets/:id` | Projets · Un projet | `vue`, `planifier=1`, `tache` |
 | `/taches/projets/archive` · `/taches/projets/modeles` | Archive · Modèles | — |
@@ -565,16 +1513,25 @@ lecture `taches:aujourdhui:<user>:<jour>` ; tout vidé sur `taqinor:auth-logout`
 | `/taches/revue` · `/taches/rythme` · `/taches/recherche` · `/taches/supprimees` | Revue · Mon rythme · Recherche (`q`) · Supprimées | — |
 | `/taches/reglages[/:rubrique]` | Réglages | `notifications`, `iphone`, `vie-privee`, `suggestions`, `donnees`, `avance` |
 
-Notifications (A15, spec-7 r3 §2) : `plan_matin`, `relance` → `/taches/aujourdhui` sans paramètre (la carte du moment
-porte Garder ou Alléger) · `bilan_soir` → `/taches/aujourdhui?ouvrir=bilan` · `revue_semaine` → `/taches/revue` · rappel → `/taches/aujourdhui?tache=<id>`
-(« Encore 10 min · 1 h · Demain 9 h ») · test → `/taches/reglages/iphone`. Touches `g j`, `c t` →
-`taqinor:taches:saisir`. Navigation et `appSku` : dernière vague seulement.
+Notifications (A15, spec-7 r3 §2) : `plan_matin`, `relance` → `/taches/aujourdhui` sans paramètre · `bilan_soir` →
+`/taches/aujourdhui?ouvrir=bilan` · `revue_semaine` → `/taches/revue` · rappel → `/taches/aujourdhui?tache=<id>`
+(« Encore 10 min · 1 h · Demain 9 h ») · test → `/taches/reglages/iphone`. Touches : `g j` = ALLER à
+`/taches/aujourdhui` (`shortcut:'j'` du module) ; `c t` = événement `taqinor:taches:saisir` (feuille de saisie).
+Copilote : les quatre demandes prêtes appellent DIRECTEMENT les routes du §8 et rendent leur carte sans modèle de
+langage (A18-M3) ; sans clé d'IA, elles restent. Navigation et `appSku` : selon l'activation (`donnees.md` inv. 28).
 
-## 8. Actions de l'assistant (`agent_actions.py` ; `taches_voir`, `RISK_INTERNAL`, lot `copilote`)
+## 8. Assistant : demandes prêtes et actions (`agent_actions.py` ; `taches_voir`, `RISK_INTERNAL`, lot `copilote`)
+
+Demandes prêtes (A18-M3, déterministes, sans modèle) : « Planifie ma journée » → GET `journee/proposition/` (carte
+`plan_propose`, « Adopter » = « Garder ces N ») · « Aide-moi à prioriser » → GET `journee/priorites/` (carte
+`priorites`) · « Range ma liste » → POST `saisie-rapide/` `{"ids":[À trier],"apercu":true}` (carte `capture_apercu`,
+rangement par mots, sans modèle) · « Où j'en suis ? » → GET `journee/point/` (carte `point`).
 
 | Clé | Méthode + route | Carte | Note |
 |---|---|---|---|
 | `taches.journee.lire` | GET `/api/django/taches/aujourdhui/` | `ma_journee` | « Tout au prochain jour travaillé » → `taches/lot/` |
+| `taches.journee.prioriser` | GET `/api/django/taches/journee/priorites/` | `priorites` | « Aide-moi à prioriser » (A18-M3 b) |
+| `taches.journee.point` | GET `/api/django/taches/journee/point/` | `point` | « Où j'en suis ? » |
 | `taches.plan.proposer` | GET `/api/django/taches/journee/proposition/` | `plan_propose` | « Adopter » = « Garder ces N » → `journee/planifier/` express (A17-T2) |
 | `taches.tache.chercher` | GET `/api/django/taches/recherche/` | `liste_taches` | `filtrer_q(assistant=True)` |
 | `taches.profil.lire` | GET `/api/django/taches/rythme/` | `rythme` | `note_libre` sous enveloppe non fiable |
@@ -582,6 +1539,7 @@ porte Garder ou Alléger) · `bilan_soir` → `/taches/aujourdhui?ouvrir=bilan` 
 | `taches.revue.semaine` | GET `/api/django/taches/revue/projets/` | `revue_semaine` | |
 | `taches.tache.creer` ✎ | POST `/api/django/taches/taches/` | `tache` | `lien` du contexte ; `source='assistant'` |
 | `taches.tache.terminer` ✎ | POST `/api/django/taches/taches/{id}/terminer/` | `tache` | |
+| `taches.tache.modifier` ✎ | PATCH `/api/django/taches/taches/{id}/` | `tache` | priorité, échéance, projet ; `lock_version` requis ; annulable (A18-M3 c) |
 | `taches.tache.planifier` ✎ | POST `/api/django/taches/taches/{id}/planifier/` | `tache` | `lock_version` requis |
 | `taches.rappel.poser` ✎ | POST `/api/django/taches/taches/{id}/rappels/` | `tache` | hors fenêtre → carte-écho |
 | `taches.projet.creer` ✎ | POST `/api/django/taches/projets/` | `tache` | `priorite` admise |
@@ -592,116 +1550,449 @@ porte Garder ou Alléger) · `bilan_soir` → `/taches/aujourdhui?ouvrir=bilan` 
 | `taches.tache.proposer_changement` ⟲ | POST `/api/django/taches/taches/{id}/changement/apercu/` | `tache` | Renommer → PATCH ; Abandonner → `trancher/` ; Supprimer → DELETE ; Annuler → `gestes/{id}/annuler/` |
 
 ✎ écrit, ⟲ écho. ≤ 3 écritures par tour ; contenu non fiable dans le tour → toute ✎ devient une carte-écho portant
-le corps (A5). Carte `rythme` : « Retirer » → `DELETE preferences/{cle}/` ; « Passer à N » / « Garder N » →
-`rythme/propositions/{id}/repondre/`. Sous Groq, écran `/taches` : journee.lire, plan.proposer, tache.creer,
-tache.terminer, liste.ranger. Retirées : `taches.suggestions.lister`, `taches.capturer`, `taches.tache.capturer` (C12).
+le corps (A5). `taches.tache.modifier` : sur demande explicite ; annulable par `gestes/{id}/annuler/`. Carte
+`rythme` : « Retirer » → `DELETE preferences/{cle}/` ; « Passer à N » / « Garder N » → `rythme/propositions/{id}/repondre/`.
+Jeu réduit sous Groq (écran `/taches`), calculé en ÉTENDANT `catalogue_du_tour` (`relais_copilote.py:110`, pas de
+jumeau) : journee.lire, plan.proposer, journee.prioriser, tache.creer, tache.terminer, liste.ranger, rythme.regler.
+Retirées : `taches.suggestions.lister`, `taches.capturer`, `taches.tache.capturer` (C12). Les réglages d'IA de
+production (fournisseur, clé) sont un geste de Reda (A18-M3 d).
 
 ## 9. Tâches planifiées (`sweeps.py`, file `scheduled`) et événements
 
 | Nom | Cadence | Fait | Idempotence |
 |---|---|---|---|
-| `taches.balayer` | chaque minute, `_expire_dans(60)` | `active_company_ids()` à module actif, comptes actifs ayant une `ReglagesRythme` : rappels dus → `TACHES_RAPPEL` groupés par minute (retard > 2 h → `manque`) ; sollicitations dues dans [heure, heure + 15 min) selon `regles.md` §7 ; `notify(…, badge=compter_journee())` | rappel pris par `UPDATE … WHERE statut='en_attente'` puis `notify` dans la même transaction ; sollicitation : `get_or_create` du marqueur `IncitationCoach` + `notify` dans la même transaction |
+| `taches.balayer` | chaque minute, `_expire_dans(60)` | `active_company_ids()` à module actif ET `ReglagesSociete.balayage_actif` (relu à chaque passage), comptes actifs ayant une `ReglagesRythme` : rappels dus → `TACHES_RAPPEL` groupés par minute (retard > 2 h → `manque`) ; sollicitations dues dans [heure, heure + 15 min) selon `regles.md` §7 — après SON PROPRE contrôle de fenêtre, `notify(…, respect_quiet_hours=False, badge=compter_journee())` (sinon `notify()` DIFFÈRE, `notifications/services.py:631-633`) | rappel pris par `UPDATE … WHERE statut='en_attente'` puis `notify` dans la même transaction ; sollicitation : `get_or_create` du marqueur `IncitationCoach` + `notify` dans la même transaction |
 | `taches.nocturne` | 03:00 `Africa/Casablanca`, `_expire_dans(3600)` | clôt `PlanJour` d'hier ; rythme, cartes, constats (si « comprendre mon rythme ») ; révélation `revue` ; expire les cartes ; `ignoree` sur les push non ouverts en 3 h ; pauses ; revérifie les liens des tâches ouvertes ; purges `donnees.md` §8 | recalcul déterministe ; contrainte unique des cartes ; purges par date |
 
 Types (fin d'énum `notifications/types_evenements.py`, `module_map`/`module_gating` → `taches`, push + in-app seuls) :
 `TACHES_PLAN_DU_JOUR`, `TACHES_BILAN_SOIR`, `TACHES_RELANCE`, `TACHES_RAPPEL`. Rappels immédiats : `taches_rappel`
-ajouté au défaut de `NOTIFICATIONS_TOUJOURS_IMMEDIATES` (`settings/base.py`, édition comptée, A8) ET vérification du
-`.env` de prod qui peut le remplacer (geste de Reda, min-22).
+ajouté au défaut de `NOTIFICATIONS_TOUJOURS_IMMEDIATES` (`settings/base.py`) ET vérification du `.env` de prod qui peut
+le remplacer (geste de Reda). Coupe-circuit (A18-M8) : `PATCH reglages-societe/ {"balayage_actif":false}` par un
+administrateur ; effet au passage suivant, sans redéploiement.
 
 ## 10. Plafonds de requêtes visés (A15 : cibles, remplacées par la mesure)
 
-`aujourdhui/` ≤ 23 sans familles ERP, ≤ 29 avec (un seul jeu de tâches partitionné en Python) · `badge/` ≤ 10 · `tuile/`
-≤ 10 · `flux/` ≤ 8 · `journee/proposition/` ≤ 20 · `agenda/` ≤ 16 · `taches/` ≤ 12 · `projets/` ≤ 12 ·
-`projets/{id}/vue/` ≤ 15 · `saisie-rapide/` aperçu ≤ 10 (constant en lignes) · `rythme/` ≤ 10 · `recherche/` ≤ 8 ·
-`suggestions/` ≤ 6.
+`aujourdhui/` ≤ 25 sans familles ERP, ≤ 31 avec (rendez-vous externes lus en cache, 0 requête de plus) · `badge/` ≤ 10 ·
+`tuile/` ≤ 10 · `flux/` ≤ 8 · `journee/proposition/` ≤ 20 · `journee/priorites/` ≤ 20 · `journee/point/` ≤ 18 ·
+`agenda/` ≤ 16 · `taches/` ≤ 12 · `projets/` ≤ 12 · `projets/{id}/vue/` ≤ 15 · `saisie-rapide/` aperçu ≤ 10 (constant en
+lignes) · `rythme/` ≤ 10 · `recherche/` ≤ 8 · `suggestions/` ≤ 6.
 
-## 11. Fichiers d'un autre propriétaire (une tâche chacun, A8 ; la dernière vague pour l'octroi)
+## 11. Fichiers d'un autre propriétaire (une tâche chacun, A8)
 
-`erp_agentique/urls.py`, `settings/base.py` (`INSTALLED_APPS`, deux beats, `TACHES_RACCOURCI_SIRI_URL`,
-`NOTIFICATIONS_TOUJOURS_IMMEDIATES`), `celery.py` · `apps/roles/permissions_registre.py` (droit déclaré ; octroi en
-dernière vague) · `frontend/src/lib/apps/appSkus.js` (dernière vague) · `apps/notifications/*` (types, migration 0079,
-`badge` de `notify`) · `apps/records/selectors.py` + `services.py` · `authentication/selectors.py`
-(`MOBILE_HOME_ALLOWED_ROUTES`), `authentication/views.py` (traces) · `seed_registre_traitements.py` · `apps/agent/registry.py`
-+ `assistant_reponse.json` · `backend/fastapi_ia/*` · `frontend/src/features/ia/cartes/*` · `Layout.jsx`, `Header.jsx`,
-`BottomTabBar.jsx`, `sw.js`, `shortcuts.js`, `commandActions.js`, `entityRoutes.js`, `focusedRecordShortcuts.jsx` ·
-`docs/query-budgets.yml` · régénérés une fois par l'orchestrateur : `docs/openapi-schema.yml`,
-`docs/rbac-endpoint-inventory.md`, `contractSamples.js`, `docs/CODEMAP.md`.
+`erp_agentique/urls.py` (fin de `_APP_URLS`), `settings/base.py` (`INSTALLED_APPS`, `TACHES_RACCOURCI_SIRI_URL` dès
+l'échafaudage, deux beats, `NOTIFICATIONS_TOUJOURS_IMMEDIATES`), `celery.py` · `apps/roles/permissions_registre.py`
+(règle de `donnees.md` inv. 28 : exclusion explicite puis Administrateur seul) · `frontend/src/lib/apps/appSkus.js` ·
+`apps/notifications/*` (types, migration 0079, `badge` de `notify`) · `apps/records/selectors.py` + `services.py` ·
+`apps/crm/selectors.py` (`cibles_du_sujet`, effacement 09-08) · `authentication/selectors.py`
+(`MOBILE_HOME_ALLOWED_ROUTES`), `authentication/views.py` (traces) · `seed_registre_traitements.py` ·
+`apps/agent/registry.py` + `assistant_reponse.json` (cartes `priorites`, `point` en plus) ·
+`backend/fastapi_ia/app/services/action_tools.py` (en-tête par `headers=`), `relais_copilote.py` (`catalogue_du_tour`),
+`sql_agent_service.py` (test `_ALLOWED_TABLES`) · `frontend/src/features/ia/cartes/*` ·
+`frontend/src/pages/activities/MesActivitesPage.jsx` (« + À faire » ouvre `taqinor:taches:saisir`, critique m4) ·
+`Layout.jsx`, `Header.jsx`, `BottomTabBar.jsx`, `sw.js`, `shortcuts.js`, `commandActions.js`, `entityRoutes.js`,
+`focusedRecordShortcuts.jsx` · `docs/query-budgets.yml` · régénérés une fois par l'orchestrateur :
+`docs/openapi-schema.yml`, `docs/rbac-endpoint-inventory.md` (écrit par son test s'il manque), `contractSamples.js`,
+`docs/CODEMAP.md`.
 
 ## Décisions de l'intégrateur
 
-- **R1** Chemins complets, un seul `include`. **R2** `a-venir/` retiré (doublon d'`agenda/`).
+- **R1** Chemins complets, un seul `include` en fin de `_APP_URLS`. **R2** `a-venir/` retiré (doublon d'`agenda/`).
 - **R3** « Ailleurs » en route paresseuse. **R4** Une énum `Decision`, sous-ensembles par route.
-- **R5** `journee/planifier` et `alleger` rendent l'AUJOURDHUI complet.
-- **R6** (rév. 2) `journee/planifier` n'a plus qu'un mode, `express` ; le triage est facultatif partout (A17-T2).
-- **R7** « Alléger » route dédiée (pas de report, `allege_le`). **R8** Carte de retour créée par `vu/`.
+- **R5** `journee/planifier` et `alleger` rendent l'AUJOURDHUI complet. **R6** `journee/planifier` : mode `express` seul.
+- **R7** « Alléger » route dédiée. **R8** Carte de retour créée par `vu/`.
 - **R9** Toutes les cartes à réponse partagent `rythme/propositions/{id}/repondre/`.
-- **R10** `preferences/` POST + DELETE ; heures par `preferences/`, interrupteurs par `PATCH reglages/` (liste blanche).
+- **R10** `preferences/` POST + DELETE ; interrupteurs par `PATCH reglages/` (liste blanche).
 - **R11** `capture/` analyse `titre` (A1). **R12** `textes[]` et `projets_communs[]` : un projet par collage.
 - **R13** Budgets = cibles (A15). **R14** `TACHE.rappel` = `{jour, heure}`.
-- **R15** `projets/{id}/restaurer/` et `projets/trier-par-priorite/` ajoutés.
-- **R16** (rév. 2) `carte_du_moment` (objet unique, choisi par le serveur) remplace `cartes_coach`.
-- **R17** (rév. 2) GET redondants retirés (verif-reference §4) : `convertir-activite/` (compte dans `a_trier`),
-  `recurrences/{id}/` (dans TACHE), `preferences/` (dans RYTHME), `checklist/` (dans TACHE), `sections/[{id}/]` (dans la
-  vue) ; `vue=supprimees` remplacé par `GET supprimees/` (un projet = une ligne).
-- **R18** (rév. 2) « Planifier ma semaine » sans route nouvelle : `agenda/?vue=semaine` sert `mes_projets`, la pose
-  passe par `planifier/`.
-- **R19** (rév. 2) `lier-activite/` : seule route nouvelle demandée (A17) ; une tâche par activité
-  (`taches_tache_act_uniq`).
-- **R20** (rév. 2.1) Liens de notification : vers Aujourd'hui sans paramètre, sauf bilan (`?ouvrir=bilan`, tranché par
-  l'orchestrateur), revue et rappel (A15).
+- **R15** `projets/{id}/restaurer/` et `projets/trier-par-priorite/`. **R16** `carte_du_moment` remplace `cartes_coach`.
+- **R17** GET redondants retirés ; `GET supprimees/` (un projet = une ligne). **R18** Planifier ma semaine sans route
+  nouvelle. **R19** `lier-activite/`. **R20** (rév. 2.1) Liens de notification : bilan `?ouvrir=bilan`.
+- **R21** (rév. 3) Les quatre demandes prêtes : deux routes neuves seulement (`journee/priorites/`, `journee/point/`) ;
+  « Planifie ma journée » et « Range ma liste » réutilisent `journee/proposition/` et `saisie-rapide/`.
+- **R22** (rév. 3) « Assistant » reconnu aussi au `Bearer` JWT (échec fermé sans changer `internal_headers()`).
+- **R23** (rév. 3) Listes à plafond enveloppées `{"results":[…]}` ; échantillons générés par un script, sans marqueur.
+- **R24** (rév. 3) Agendas externes : 5 routes (liste, ajout, modification, suppression, rafraîchir) ; événements en
+  cache seulement, forme RENDEZ_VOUS distincte d'ITEM.
+- **R25** (rév. 3) Coupe-circuit en DONNÉE par société (`reglages-societe/`, administrateur), lu à chaque passage :
+  seule façon d'agir « sans redéploiement ».
 
 ## Ce que les specs demandaient et que je n'ai PAS repris
 
 - `saisie-rapide/apercu/`, `a-venir/`, `decaler/annuler/`, `annulations/{id}/appliquer/`, `accepter_palier`,
   `texte_dit`, `taches.suggestions.lister`, `taches.capturer`, `taches.tache.capturer` (C2, C11, C12, C13, A7, R2).
-- Clé `agenda` de `aujourdhui/` → `obligations` (C5) ; `a_trancher`, `en_retard`, `echeances_proches` → `a_decider` ;
-  `incitations`, `cartes_coach` → `carte_du_moment` ; `suggestions{nb}`, `a_convertir{nb}` → `a_trier` (C39).
+- Clé `agenda` de `aujourdhui/` → `obligations` (C5) ; `a_trancher`, `en_retard`, `echeances_proches` → `a_decider` puis
+  tête de Proposé (A18-M2) ; `incitations`, `cartes_coach` → `carte_du_moment` ; `suggestions{nb}`, `a_convertir{nb}` →
+  `a_trier` (C39).
 - Réponse capture `{"ok"}`, erreur `{"champ","detail"}` (s6b) → forme commune (C3) ; rejeu `200 deja` sur
   `saisie-rapide/` → `201 deja_creees` (C9).
 - Liens `?du=matin`, `/taches/bilan`, `?rituel=`, `/taches/boite`, `/taches/taches/<id>`, `?coach=1`, `?ouvrir=plan|alleger`.
 - Accueil `'/taches'` (s6a) → `/taches/aujourdhui` ; raccourci de manifeste « Mes tâches » → « Tâches ».
 - Beat toutes les 5 min (s6b), `taches.calculer_rythme` séparé (s5a) → minute + nocturne (C15) ; `TACHE_RAPPEL` (C14).
 - Tuile `fait`, `essentiel.total` → `faites`, `essentiel.prevues` (C35).
-- Pastille avec Proposé (spec-7 r2, ma rév. 1) → gardées seules (A16-N5) ; visites « à leur heure » → Toute la journée.
-- `mode:"complet"` de `journee/planifier` et triage obligatoire (s3 §3.10) → express seul (A17-T2).
-- Choix `demain` au bilan (s3, ma rév. 1) → « Reporter à lun. 23 » (spec-7 r3) ; 400 sur les reportées 3 fois → marquées.
-- Liens facture, chantier, ticket et 9 autres cibles (A3) ; `{"activite_id"}` singulier de `convertir-activite` (s6a) →
-  `activite_ids` (C20) ; valeur `corbeille` → `supprimer`.
-- Messages en « vous » (s6a) → tutoiement (A17).
+- Pastille avec Proposé → gardées seules (A16-N5) ; visites « à leur heure » → Toute la journée (A16-N4).
+- `mode:"complet"` et triage obligatoire (s3 §3.10) → express seul (A17-T2) ; choix `demain` au bilan ; 400 sur les
+  reportées 3 fois.
+- Liens facture, chantier, ticket et 9 autres cibles (A3) ; `{"activite_id"}` singulier (s6a) → `activite_ids` ;
+  `corbeille` → `supprimer` ; messages en « vous » → tutoiement.
+- Un seul agenda externe, route `agenda-externe/` au singulier, dernière vague (rév. 2) → 3 agendas, ESSENTIELS (A18-M4).
+- `X-Taqinor-Assistant` posé par `internal_headers()` (rév. 2) → par `headers=` de `_django_call` (verif-plan B9).
+- Réglage d'environnement `TACHES_SOLLICITATIONS` (critique M8) → donnée `ReglagesSociete.balayage_actif` (R25).
+- Créer `catalogue_pour_tour` (s5b) → étendre `catalogue_du_tour` (verif-plan M22).
 
-## Écarts avec regles.md / textes.md à corriger là-bas
+## À répercuter dans regles.md / textes.md
 
-- `regles.md` §4.1, §4.9 et `textes.md` §2.17 : `cartes_coach` → `carte_du_moment` (ordre spec-7 r3 §4) ; pastille sans
-  Proposé (A16-N5).
-- `regles.md` §4.4 : `journee/planifier` n'a qu'un mode ; triage facultatif.
-- `regles.md` §4.6 : choix `demain` retiré ; les `reportee_3_fois` ne provoquent plus de 400 (rendues dans
-  `a_trancher`).
-- `regles.md` manque 15 : `capture.dans` = `a_trier` pour une échéance seule.
-- `regles.md` §1.10 : `projet_commun` (un seul) → `projets_communs[]` (un par collage, champ `collage` sur chaque ligne).
-- `textes.md` §7 / §2.16 : textes `text/plain` de 401 et 429 de `capture/` attendus par cette référence.
-- `textes.md` §2.15 : toast 8 s et réglage « Messages sans délai » (`messages_sans_delai`).
+- `regles.md` §0 : TYPES d'entrée des modules purs (verif-plan M9) — `ItemPur` (dataclass gelée : les champs d'ITEM
+  utiles au calcul + `projet_priorite`, `projet_rang`, `rang_projet`, `created_at`), `PlanPur`, `EtatRythme` (dataclass
+  gelée, mêmes noms que les champs de `ReglagesRythme` §2.10 de `donnees.md` + `objectif_dit`), `JourCompte`
+  (`jour`, `statut_jour`, `compte`, `essentiels_choisis`, `essentiels_faits`, `plan_prevues`, `plan_faites`) ; signatures
+  de `cle_tri`, `placer`, `tuile_pure` sur ces types.
+- `regles.md` §3.4 : `proposer_plan` = ce qui presse (`retard` ≤ 7 j, `echeance_passee` ≤ 7 j, `echeance_proche`) puis
+  tour des projets par prochaine action (inv. 34 de `donnees.md`) ; `rang_projet` entre dans l'ordre ; nouveau jeu de
+  test (collage de listes « Moyenne » sans date : les projets alternent).
+- `regles.md` §4.1-§4.2 : À revoir = `reportee_3_fois`, `retard_ancien` (> 7 j), `activite_passee` seulement ; les
+  motifs `jour_passe`, `echeance_passee`, `echeance_proche` sortent de `MotifRevoir` et deviennent des `RaisonPropose`.
+- `regles.md` §3.6 : capacité − rendez-vous (inv. 35) ; `disponible_minutes`.
+- `regles.md` : règle de `classer_priorites` (carte « Aide-moi à prioriser ») et de `journee/point/` ; règle de
+  `plus_tard` (prochain jour travaillé de la même semaine, sinon le lundi suivant) ; règle de `repere.p60` (P60 des
+  comptes des 9 derniers jours évalués, socle §6) ou retrait de la clé (verif-plan M17).
+- `regles.md` §8 : usage `siri` de `nom_pour` ; paramètre `reglages` de `nom_pour` (verif-plan M10).
+- `regles.md` §9 : effacement 09-08 par DEUX portes — récepteur `lead_erased` ET fournisseur DSR `erase(company,
+  subject_identifier)` qui résout le sujet par `crm.selectors.cibles_du_sujet` (verif-plan M24).
+- `regles.md` §1.9 : couleur d'office = `services.creation.couleur_d_office(user)` (verif-plan M14).
+- `regles.md` §1 : lecteur ICS maison `moteur/ics.py` (VEVENT, DTSTART, DTEND, DURATION, SUMMARY, TZID ; RRULE non lu
+  en v1, limite dite) — aucune dépendance neuve (verif-plan M23).
+- `regles.md` / `textes.md` : liens de notification du bilan `?ouvrir=bilan` (critique m1) ; carte `pause` est une
+  valeur de `CarteDuMoment` (m2) ; Siri « Ajouté dans un projet » pour un projet confidentiel (m8) ; m5 (plafond des
+  micro-tâches, garde de taille, mémoire d'échec) et C6 hors de la première livraison (m6) : à dire dans `regles.md`
+  §6 (les champs de données restent).
+- `textes.md` : textes des états `EtatAgendaExterne` ; carte `priorites` (titre, raisons, gestes « Essentiel ·
+  Aujourd'hui · Plus tard dans la semaine », « Garder ces N ») ; carte `point` ; « Rendez-vous » sous l'en-tête
+  assistant ; texte du coupe-circuit (Réglages → Avancé, administrateur) ; les trois silences de Vie privée (A18).
 
 ## Révision 2 : ce qui a changé
 
-1. Primauté A1-A17, spec-7 r3 ; renvoi aux mots de `textes.md` et aux règles de `regles.md`.
-2. Pastille : gardées ouvertes seules ; exemple recalculé (3).
-3. `carte_du_moment` remplace `cartes_coach` ; `progression.reprise` ; `OBJECTIF.zone`.
-4. Proposé `replie` après Alléger ; `journee/planifier` express seul, triage facultatif (T2).
-5. Obligations sans heure (`visite`, `pose`, `intervention`, `touches`), bande « Toute la journée ».
-6. Agenda `vue=semaine` + `mes_projets` (Planifier ma semaine) ; pose par `planifier/`.
-7. `lier-activite/`, `supprimees/` ; DELETE projet en un geste, restauration en une ligne.
-8. Jetons : société du jeton après `user_can_operate` ; débits flux et tuile.
-9. 409 à codes ; `Idempotency-Key` suffixée par utilisateur ; `geste_id` : exceptions listées.
-10. Hors ligne : ajouter, cocher, reporter ; `proprietaire_attendu` ; cache par utilisateur, purge à la déconnexion.
-11. `PATCH reglages/` en liste blanche ; `mode` par `rythme/` seul ; question du 1er rappel (`question_titres`).
-12. ITEM : `rang`, `confidentiel` + `confidentielle` ; TACHE et PROJET : `updated_at`, champs de projet servis.
-13. Bilan : `a_trancher`, `constat`, « Tout reporter » ; décision `garder` ; objectif hors 1-12 → 400.
-14. GET redondants retirés ; pagination fixée par liste ; tutoiement des erreurs.
-15. Collage : `projets_communs[]`, priorité Moyenne par défaut des projets nouveaux.
-16. Module invisible jusqu'à la dernière vague ; fichiers étrangers listés ; budgets révisés.
-17. Comptes recalculés par script : 100 routes (la rév. 1 en avait 107 au compte de `verif-reference.md` ; écart
-    = GET redondants retirés, `lier-activite/` et `supprimees/` ajoutés), 16 actions.
+Primauté A17, spec-7 r3 ; pastille = gardées ; `carte_du_moment` ; Proposé replié après Alléger ; obligations sans
+heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : société du jeton ; 409 à codes ; hors ligne ;
+`PATCH reglages/` en liste blanche ; GET redondants retirés ; tutoiement ; comptes par script (100 routes).
 
 ## Révision 2.1
 
-`?ouvrir=bilan` rétabli (route du front, notification du bilan) ; `pause` ajouté à CARTE_DU_MOMENT ; bilan en « 4 sur 5 » + « 4 des 5 gardées » ; 10 échantillons ajoutés au §6 avec leurs exemples, doublon `supprimees.json` retiré.
+`?ouvrir=bilan` rétabli ; `pause` dans CARTE_DU_MOMENT ; bilan « 4 sur 5 » + « 4 des 5 gardées » ; 10 échantillons ajoutés.
+
+## Révision 3 : ce qui a changé
+
+1. Primauté A18, `critique-finale.md`, `verif-plan-a-blanc.md`.
+2. Agendas externes ESSENTIELS : 5 routes, RENDEZ_VOUS dans `aujourdhui/` et `agenda/`, temps disponible retranché.
+3. Proposé : `raison` par ligne, ce qui presse en tête, tour des projets ; `?tout=1` → `suite_par_projet`.
+4. Copilote : `journee/priorites/`, `journee/point/` ; actions `taches.tache.modifier`, `taches.journee.prioriser`,
+   `taches.journee.point` ; jeu Groq avec `rythme.regler` ; demandes prêtes sans modèle.
+5. Coupe-circuit `reglages-societe/` ; `respect_quiet_hours=False` après le contrôle propre.
+6. En-tête assistant : posé par `headers=` du relais ; Bearer JWT = assistant (échec fermé).
+7. Listes à plafond enveloppées ; échantillons COMPLETS générés en annexe A (aucun marqueur).
+8. `TACHES_RACCOURCI_SIRI_URL` déclaré à l'échafaudage ; `_APP_URLS` en fin ; bouchon 401 des routes à jeton.
+9. Brouillon `taches:brouillon:<user_id>` ; `IdempotentCreateMixin` ; `createModuleOutboxStore` relocalisé.
+10. `g j` = aller à Aujourd'hui ; `c t` = saisir ; « + À faire » des Activités → saisie Tâches.
+11. Comptes recalculés par script : 106 routes, 19 actions, 60 échantillons (tous des objets).
+
+## Annexe A — échantillons complets (recopiables mot pour mot ; générés par un seul script)
+
+**`agenda.json`** — GET agenda/ · consommateurs : Agenda, Planifier ma semaine
+```json
+{"du":"2026-11-16","au":"2026-11-22","jours":[{"jour":"2026-11-17","ouvre":true,"ferie":false,"toute_la_journee":[{"famille":"visite","id":88,"titre":"Visite — Karim Benali","jour":"2026-11-17","url":"/visites"}],"sans_heure":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1}],"blocs":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}],"echeances":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],"externes":[{"cle":"2-9f2c1a7b","agenda_id":2,"agenda":"Microsoft 365","titre":"Réunion banque","debut":"2026-11-17T11:00:00+01:00","fin":"2026-11-17T12:00:00+01:00","journee_entiere":false}]}],"a_placer":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,"motif":"reportee_3_fois","raison":null,"explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":6}],"mes_projets":[{"projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"items":[{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,"reports":0,"rang":null,"motif":null,"raison":{"code":"prochaine_action","texte":"prochaine action de Équipe"},"explication":"prochaine action de Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":2}]}]}
+```
+
+**`agenda_externe.json`** — POST/PATCH agendas-externes/, POST …/rafraichir/ · consommateurs : Réglages
+```json
+{"id":2,"hote":"outlook.office365.com","libelle":"Microsoft 365","actif":true,"rang":1024,"dernier_chargement_le":"2026-11-17T09:05:00+01:00","dernier_etat":"ok"}
+```
+
+**`agendas_externes.json`** — GET agendas-externes/ (non paginé, ≤ 3) · consommateurs : Réglages → Mon iPhone étape 2, Agenda
+```json
+{"results":[{"id":2,"hote":"outlook.office365.com","libelle":"Microsoft 365","actif":true,"rang":1024,"dernier_chargement_le":"2026-11-17T09:05:00+01:00","dernier_etat":"ok"}]}
+```
+
+**`ailleurs.json`** — GET aujourdhui/ailleurs/ · consommateurs : repli Ailleurs
+```json
+{"chantiers":1,"tickets":0,"da_a_commander":0,"leads_chauds":3,"rappels":0,"devis_expirant":1,"relances":2,"approbations":2,"mentions":1,"lien":"/activites"}
+```
+
+**`aujourdhui.json`** — GET aujourdhui/ (avec ?tout=1 : `propose.suite_par_projet` rempli) · consommateurs : Aujourd'hui, cockpit, carte `ma_journee`, cache hors ligne
+```json
+{"jour":"2026-11-17","maintenant":"2026-11-17T09:12:00+01:00","jour_ouvre":true,"prochain_jour_ouvre":"2026-11-19","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false},"plan":{"planifie_le":"2026-11-17T08:40:00+01:00","cloture_le":null,"allege_le":null},"carte_du_moment":{"type":"rythme","proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"donnees":{}},"essentiel":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}],"obligations":[{"famille":"visite","id":88,"titre":"Visite — Karim Benali","jour":"2026-11-17","url":"/visites"},{"famille":"pose","id":42,"titre":"Pose — INS-0042","jour":"2026-11-17","url":"/chantiers?id=42"},{"famille":"touches","id":null,"titre":"Suivi des relances","jour":"2026-11-17","nb":5,"en_retard":2,"url":"/crm/relances"}],"rendez_vous":[{"cle":"2-9f2c1a7b","agenda_id":2,"agenda":"Microsoft 365","titre":"Réunion banque","debut":"2026-11-17T11:00:00+01:00","fin":"2026-11-17T12:00:00+01:00","journee_entiere":false}],"journee":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1},{"type":"activite","id":101,"titre":"Rappeler Benali","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"activité ERP du jour","rappel":null,"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":null,"peut_cloturer":false,"lock_version":null}],"ce_soir":[{"type":"tache","id":60,"titre":"Préparer offre","statut":"a_faire","projet":{"id":5,"nom":"Maison","couleur":"ambre","priorite":2},"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"soir","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue ce soir","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"propose":{"replie":false,"pour_objectif":[{"type":"tache","id":21,"titre":"Déclaration TVA","statut":"a_faire","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":3,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":{"code":"echeance_proche","texte":"échéance jeudi"},"explication":"échéance jeudi","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":2},{"type":"tache","id":41,"titre":"Ranger le bureau","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-16","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":{"code":"retard","texte":"prévue hier"},"explication":"prévue hier","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3},{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,"reports":0,"rang":null,"motif":null,"raison":{"code":"prochaine_action","texte":"prochaine action de Équipe"},"explication":"prochaine action de Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":2}],"reste_nb":6,"charge":{"minutes_estimees":150,"disponible_minutes":180,"surcharge":false},"suite_par_projet":[{"projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"items":[{"type":"tache","id":31,"titre":"Réserver la salle","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":2048,"motif":null,"raison":{"code":"action_suivante","texte":"puis dans Équipe"},"explication":"puis dans Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":0}]}]},"a_decider":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,"motif":"reportee_3_fois","raison":null,"explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":6}],"en_attente":[{"type":"tache","id":51,"titre":"Retour Lydec","statut":"en_attente","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"en attente de : Lydec","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"Lydec","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3}],"faites":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],"a_trier":{"boite_reception":3,"bloquees":1,"suggestions":2,"a_convertir":7},"tronque":false}
+```
+
+**`badge.json`** — GET badge/ · consommateurs : pastille
+```json
+{"n":3,"jour":"2026-11-17"}
+```
+
+**`capture.json`** — POST capture/ · consommateurs : raccourci Siri
+```json
+{"id":42,"dans":"journee","message":"Ajouté pour demain 10 h : appeler le fournisseur","deja":false}
+```
+
+**`carte_du_moment.json`** — forme CARTE_DU_MOMENT · consommateurs : Aujourd'hui, `vu/`
+```json
+{"type":"rythme","proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"donnees":{}}
+```
+
+**`coach_entete.json`** — GET coach/entete/ · consommateurs : relais du Copilote
+```json
+{"lignes":["Rythme : mode pousser · objectif 5 (accepté) · 1 faite sur 5","Préférences dites : sollicitations jusqu'à 19:00 · jour court : vendredi"]}
+```
+
+**`convertir_activite.json`** — POST convertir-activite/ · consommateurs : bandeau d'À trier
+```json
+{"converties":[{"activite_id":41,"tache_id":90}],"refusees":[{"activite_id":44,"raison":"assignee_a_un_collegue"}],"geste_id":79}
+```
+
+**`decalage.json`** — POST projets/{id}/decaler/ · consommateurs : Décaler les dates
+```json
+{"changements":[{"objet":"tache","id":41,"champ":"jour_prevu","avant":"2026-11-20","apres":"2026-11-27"}],"geste_id":null}
+```
+
+**`erreurs.json`** — formes d'erreur (400, 400 par ligne, 404, 409) · consommateurs : client API du front
+```json
+{"champ":{"projet_id":["Projet inexistant."]},"par_ligne":{"lignes":{"3":{"titre":["Le titre est vide une fois la date et le projet retirés."]}}},"introuvable":{"detail":"Introuvable."},"conflit_version":{"detail":"Cet enregistrement a été modifié par quelqu'un d'autre depuis son ouverture.","code":"conflit_version","lock_version":5,"actuel":{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"}},"nom_pris":{"detail":"Ce nom est déjà pris.","code":"nom_pris","nom":["Un projet actif porte déjà ce nom."]},"proposition_expiree":{"detail":"Proposition expirée.","code":"proposition_expiree"},"autre_compte":{"detail":"Envoi d'un autre compte.","code":"autre_compte"},"deja_lie":{"detail":"Une tâche est déjà liée à cette activité.","code":"deja_lie"}}
+```
+
+**`etiquettes.json`** — GET etiquettes/ (paginé) · consommateurs : Fiche → Plus, filtres
+```json
+{"count":2,"next":null,"previous":null,"results":[{"id":2,"nom":"magasin","couleur":"ciel"},{"id":3,"nom":"appels","couleur":"ambre"}]}
+```
+
+**`geste_annuler.json`** — POST gestes/{id}/annuler/ · consommateurs : toast, cartes
+```json
+{"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false}
+```
+
+**`gestes.json`** — GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes
+```json
+{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true}]}
+```
+
+**`item.json`** — forme ITEM · consommateurs : toutes les listes
+```json
+{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}
+```
+
+**`jeton.json`** — POST jetons/ · consommateurs : Mon iPhone
+```json
+{"id":3,"usage":"flux","prefixe":"tqf_Ab12","libelle":"","created_at":"2026-11-17T09:00:00+01:00","dernier_usage_le":null,"revoque_le":null,"jeton":"tqf_Ab12xYz0123456789abcdefghijklmnopqrstuvw","url":"https://erp.example/api/django/taches/flux/tqf_Ab12xYz0123456789abcdefghijklmnopqrstuvw.ics","webcal":"webcal://erp.example/api/django/taches/flux/tqf_Ab12xYz0123456789abcdefghijklmnopqrstuvw.ics"}
+```
+
+**`jetons_liste.json`** — GET jetons/ (non paginé, ≤ 20) · consommateurs : Mon iPhone
+```json
+{"results":[{"id":3,"usage":"flux","prefixe":"tqf_Ab12","libelle":"","created_at":"2026-11-17T09:00:00+01:00","dernier_usage_le":"2026-11-17T09:41:00+01:00","revoque_le":null}]}
+```
+
+**`journee_cloture.json`** — GET journee/cloture/ · consommateurs : Bilan du soir
+```json
+{"jour":"2026-11-17","faites":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],"restes":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1}],"a_trancher":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,"motif":"reportee_3_fois","raison":null,"explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":6}],"prochain_jour_ouvre":"2026-11-19","bilan":{"faites":4,"objectif":5,"objectif_atteint":false,"essentiel_faites":1,"essentiel_prevues":2,"plan_tenues":4,"plan_lignes":5,"texte":"4 sur 5 · essentiel 1 sur 2","texte_gardees":"4 des 5 gardées"},"constat":{"id":44,"type":"constat","cle":"C3","texte":"Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.","donnees":{"jour":4,"m1":3.1,"m2":5.2},"boutons":[{"reponse":"oui","libelle":"Oui"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"activites_a_clore":[{"type":"activite","id":101,"titre":"Rappeler Benali","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"activité ERP du jour","rappel":null,"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":null,"peut_cloturer":false,"lock_version":null}],"possible_jusqua":"2026-11-18T12:00:00+01:00"}
+```
+
+**`journee_cloturee.json`** — POST journee/cloturer/ · consommateurs : Bilan du soir
+```json
+{"plan":{"jour":"2026-11-17","cloture_le":"2026-11-17T18:20:00+01:00"},"geste_id":83}
+```
+
+**`journee_ecrite.json`** — POST journee/planifier/ et journee/alleger/ · consommateurs : Proposé, carte du moment, Alléger
+```json
+{"aujourdhui":{"jour":"2026-11-17","maintenant":"2026-11-17T09:12:00+01:00","jour_ouvre":true,"prochain_jour_ouvre":"2026-11-19","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false},"plan":{"planifie_le":"2026-11-17T08:40:00+01:00","cloture_le":null,"allege_le":null},"carte_du_moment":{"type":"rythme","proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"donnees":{}},"essentiel":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}],"obligations":[{"famille":"visite","id":88,"titre":"Visite — Karim Benali","jour":"2026-11-17","url":"/visites"},{"famille":"pose","id":42,"titre":"Pose — INS-0042","jour":"2026-11-17","url":"/chantiers?id=42"},{"famille":"touches","id":null,"titre":"Suivi des relances","jour":"2026-11-17","nb":5,"en_retard":2,"url":"/crm/relances"}],"rendez_vous":[{"cle":"2-9f2c1a7b","agenda_id":2,"agenda":"Microsoft 365","titre":"Réunion banque","debut":"2026-11-17T11:00:00+01:00","fin":"2026-11-17T12:00:00+01:00","journee_entiere":false}],"journee":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1},{"type":"activite","id":101,"titre":"Rappeler Benali","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"activité ERP du jour","rappel":null,"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":null,"peut_cloturer":false,"lock_version":null}],"ce_soir":[{"type":"tache","id":60,"titre":"Préparer offre","statut":"a_faire","projet":{"id":5,"nom":"Maison","couleur":"ambre","priorite":2},"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"soir","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue ce soir","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"propose":{"replie":false,"pour_objectif":[{"type":"tache","id":21,"titre":"Déclaration TVA","statut":"a_faire","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":3,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":{"code":"echeance_proche","texte":"échéance jeudi"},"explication":"échéance jeudi","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":2},{"type":"tache","id":41,"titre":"Ranger le bureau","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-16","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":{"code":"retard","texte":"prévue hier"},"explication":"prévue hier","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3},{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,"reports":0,"rang":null,"motif":null,"raison":{"code":"prochaine_action","texte":"prochaine action de Équipe"},"explication":"prochaine action de Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":2}],"reste_nb":6,"charge":{"minutes_estimees":150,"disponible_minutes":180,"surcharge":false},"suite_par_projet":null},"a_decider":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,"motif":"reportee_3_fois","raison":null,"explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":6}],"en_attente":[{"type":"tache","id":51,"titre":"Retour Lydec","statut":"en_attente","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"en attente de : Lydec","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"Lydec","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3}],"faites":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],"a_trier":{"boite_reception":3,"bloquees":1,"suggestions":2,"a_convertir":7},"tronque":false},"renvoyees":[],"geste_id":81}
+```
+
+**`journee_proposition.json`** — GET journee/proposition/ · consommateurs : « Voir tout », carte `plan_propose`, « Planifie ma journée »
+```json
+{"jour":"2026-11-17","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"capacite":{"minutes":240,"source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180},"a_decider":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,"motif":"reportee_3_fois","raison":null,"explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":6}],"proposition":[{"item":{"type":"tache","id":21,"titre":"Déclaration TVA","statut":"a_faire","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":3,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":{"code":"echeance_proche","texte":"échéance jeudi"},"explication":"échéance jeudi","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":2},"deja_prevue":false,"cochee":true},{"item":{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,"reports":0,"rang":null,"motif":null,"raison":{"code":"prochaine_action","texte":"prochaine action de Équipe"},"explication":"prochaine action de Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":2},"deja_prevue":false,"cochee":true}],"charge":{"minutes_estimees":150,"sans_estimation":1,"surcharge":false,"non_calculable":false},"rythme":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"suite_par_projet":[{"projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"items":[{"type":"tache","id":31,"titre":"Réserver la salle","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":2048,"motif":null,"raison":{"code":"action_suivante","texte":"puis dans Équipe"},"explication":"puis dans Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":0}]}]}
+```
+
+**`liens_cibles.json`** — carte des URL de cibles (fichier, pas une route) · consommateurs : `selectors.url_de_cible`, `cibleEcran.js`
+```json
+{"crm.lead":"/crm/leads?lead={id}","crm.client":"/crm?id={id}","ventes.devis":"/ventes/devis?devis={id}"}
+```
+
+**`lier_activite.json`** — POST taches/lier-activite/ · consommateurs : appui long sur une activité
+```json
+{"tache":{"type":"tache","id":95,"titre":"Préparer l'appel Benali","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"activite","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":101,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"},"suivante":null,"projet_cree":null,"rappel":null,"question_titres":false,"avertissements":[],"progression":null,"geste_id":92}
+```
+
+**`lot.json`** — POST taches/lot/ · consommateurs : sélection, « Tout en réserve »
+```json
+{"appliquees":[41],"refusees":[{"id":42,"raison":"introuvable"}],"geste_id":78}
+```
+
+**`mes_donnees.json`** — GET mes-donnees/ · consommateurs : Réglages → Mes données
+```json
+{"exporte_le":"2026-11-17T10:00:00+01:00","projet":[{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4}],"section":[],"tache":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"}],"element_checklist":[],"etiquette":[],"etiquette_tache":[],"regle_recurrence":[],"plan_jour":[],"ligne_plan_jour":[],"reglages_rythme":[{"mode":"pousser","palier":5}],"preference":[],"incitation_coach":[],"rappel":[],"jeton_acces":[{"id":3,"usage":"flux","prefixe":"tqf_Ab12","revoque_le":null}],"geste_annulable":[],"vue_enregistree":[],"modele_projet":[],"revue_projet":[],"suggestion_tache":[],"agenda_externe":[{"id":2,"hote":"outlook.office365.com","libelle":"Microsoft 365"}],"reglages_societe":[]}
+```
+
+**`modele.json`** — GET modeles/{id}/ · consommateurs : Modèles
+```json
+{"id":2,"nom":"Salon","created_at":"2026-11-10T09:00:00+01:00","contenu":{"v":1,"objectif":"Stand monté","priorite":2,"sections":[{"nom":"Préparation","decalage_debut":0,"decalage_fin":14}],"taches":[{"titre":"Réserver le stand","section_index":0,"priorite":3,"jalon":false,"decalage_jour":0,"decalage_echeance":5,"parent_index":null,"bloquee_par_index":null,"checklist":[],"notes":""}]}}
+```
+
+**`modele_instancier.json`** — POST modeles/{id}/instancier/ · consommateurs : Depuis un modèle
+```json
+{"projet":{"nom":"Salon"},"sections":[{"nom":"Préparation","date_debut":"2026-11-23","date_fin":"2026-12-07"}],"taches":[{"titre":"Réserver le stand","jour_prevu":"2026-11-23","echeance":"2026-11-30"}],"geste_id":null}
+```
+
+**`modeles_liste.json`** — GET modeles/ (paginé) · consommateurs : Modèles, Depuis un modèle
+```json
+{"count":1,"next":null,"previous":null,"results":[{"id":2,"nom":"Salon","created_at":"2026-11-10T09:00:00+01:00","nb_taches":12,"nb_sections":3}]}
+```
+
+**`planification.json`** — POST projets/{id}/planification/ · consommateurs : Planifier le projet
+```json
+{"projet":{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4},"creees":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"}],"geste_id":85}
+```
+
+**`planification_apercu.json`** — POST projets/{id}/planification/apercu/ · consommateurs : Planifier le projet, carte `plan_projet`
+```json
+{"sections":[{"nom":"Études","taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]},{"titre":"Mise en service","jalon":true,"sous_taches":[]}]}]}
+```
+
+**`point.json`** — GET journee/point/ · consommateurs : carte `point` (« Où j'en suis ? »)
+```json
+{"jour":"2026-11-17","maintenant":"2026-11-17T15:00:00+01:00","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false},"essentiel_restant":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}],"prochaine":{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1},"restes_nb":3,"rendez_vous_restants":[],"carte_du_moment":{"type":"alleger","proposition":null,"donnees":{"faites":1,"prevues":4}}}
+```
+
+**`priorites.json`** — GET journee/priorites/ · consommateurs : carte `priorites` (« Aide-moi à prioriser »)
+```json
+{"jour":"2026-11-17","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"garder_n":2,"plus_tard":"2026-11-19","lignes":[{"rang":1,"item":{"type":"tache","id":21,"titre":"Déclaration TVA","statut":"a_faire","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},"section":null,"parent_id":null,"priorite":3,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,"motif":null,"raison":{"code":"echeance_proche","texte":"échéance jeudi"},"explication":"échéance jeudi","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":2}},{"rang":2,"item":{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire","projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,"reports":0,"rang":null,"motif":null,"raison":{"code":"prochaine_action","texte":"prochaine action de Équipe"},"explication":"prochaine action de Équipe","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":2}},{"rang":3,"item":{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},"section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,"motif":"reportee_3_fois","raison":null,"explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":6}}],"tronque":false}
+```
+
+**`projet.json`** — GET projets/{id}/ · consommateurs : Un projet (en-tête)
+```json
+{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4}
+```
+
+**`projet_ecrit.json`** — projets/{id}/terminer/, restaurer/, DELETE projets/{id}/, PATCH · consommateurs : Un projet ⋯, Archive, Supprimées
+```json
+{"projet":{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"termine","statut_depuis":"2026-11-17T17:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":"2026-11-17T17:00:00+01:00","issue":"atteint","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":5},"deplacees":3,"restaurees":0,"supprimees":0,"geste_id":86}
+```
+
+**`projet_vue.json`** — GET projets/{id}/vue/ · consommateurs : Un projet, carte `projet`
+```json
+{"projet":{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4},"avancement":{"faites":12,"total":20,"derniere_faite_le":"2026-11-03"},"prochain_jalon":{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":true,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4},"prochaine_action":{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4},"sections":[{"id":8,"nom":"Études","rang":1024,"date_debut":null,"date_fin":"2026-11-30","taches":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}]}],"sans_section":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1}],"faites_nb":12,"burnup":[{"semaine":"2026-11-09","total":18,"faites":10}],"burnup_legende":"reconstruit depuis les dates actuelles"}
+```
+
+**`projets_liste.json`** — GET projets/ (paginé) · consommateurs : Projets, sélecteur
+```json
+{"count":1,"next":null,"previous":null,"results":[{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4}],"constat":{"actifs":7,"avances_7j":3}}
+```
+
+**`proposition.json`** — forme PROPOSITION · consommateurs : cartes, bilan, plan
+```json
+{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"}
+```
+
+**`proposition_repondue.json`** — POST rythme/propositions/{id}/repondre/ · consommateurs : carte du moment, Mon rythme
+```json
+{"proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[],"expire_le":"2026-11-24"},"rythme":{"mode":"pousser","comprendre_mon_rythme":true,"objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"trace":"5 faites ou plus 7 jours sur 10","bloc":{"jours":7,"tenus":5,"sur":10},"tenir":null,"proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"serie":[{"jour":"2026-11-16","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":4,"plan_lignes":5}],"constats":[{"id":44,"type":"constat","cle":"C3","texte":"Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.","donnees":{"jour":4,"m1":3.1,"m2":5.2},"boutons":[{"reponse":"oui","libelle":"Oui"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"}],"repere":{"p60":5.5,"jours":9},"preferences":[{"cle":"heure_limite","valeur":"19:00","source":"copilote","dite_le":"2026-11-17T09:00:00+01:00"}],"geste_id":91},"geste_id":91}
+```
+
+**`rappel_repeter.json`** — POST rappels/{id}/repeter/ · consommateurs : fiche ouverte par le rappel
+```json
+{"rappel":{"id":32,"jour":"2026-11-17","heure":"16:00","ancre":"","decalage_jours":0,"statut":"en_attente","hors_fenetre":false},"geste_id":90}
+```
+
+**`recherche.json`** — GET recherche/ · consommateurs : Recherche, palette, carte `liste_taches`
+```json
+{"projets":[{"id":3,"nom":"Ventes","couleur":"vert","statut":"actif","priorite":3}],"taches":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}]}
+```
+
+**`reglages.json`** — GET/PATCH reglages/ · consommateurs : Réglages, Mon iPhone
+```json
+{"titres_notifications":false,"titres_notifications_demande":false,"titres_calendrier":true,"titres_tuile":true,"messages_sans_delai":false,"rappel_avant_bloc_min":null,"projet_arret_jours":10,"familles_suggestions":["devis_accepte","chantier_receptionne","chantier_annule"],"suggestions_societe":false,"erp_dans_journee":true,"comprendre_mon_rythme":true,"pauses_sollicitations":[{"type":"plan_matin","ignorees":14}],"sollicitations":{"heure_matin":"08:30","relance_jour":"15:00","heure_soir":"18:00","heure_limite":"20:00","revue_semaine":"auto"},"fenetre_societe":{"debut":"08:30","fin":"19:00"},"raccourci_siri_url":null,"est_admin":false}
+```
+
+**`reglages_societe.json`** — GET/PATCH reglages-societe/ (administrateur) · consommateurs : Réglages → Avancé (admin)
+```json
+{"balayage_actif":true,"modifie_par":null,"modifie_le":null}
+```
+
+**`rendez_vous.json`** — forme RENDEZ_VOUS (aujourdhui/, agenda/) · consommateurs : Aujourd'hui, Agenda
+```json
+{"results":[{"cle":"2-9f2c1a7b","agenda_id":2,"agenda":"Microsoft 365","titre":"Réunion banque","debut":"2026-11-17T11:00:00+01:00","fin":"2026-11-17T12:00:00+01:00","journee_entiere":false}]}
+```
+
+**`revue_decision.json`** — PUT revue/projets/{projet_id}/ · consommateurs : Revue
+```json
+{"revue":{"semaine":"2026-11-16","intention":"Signer Settat","decision":"garder","focus":true,"prochaine_action_id":20},"projet":{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4},"geste_id":89}
+```
+
+**`revue_projets.json`** — GET revue/projets/ · consommateurs : Revue, carte `revue_semaine`
+```json
+{"semaine":"2026-11-16","semaine_courte":false,"bilan_semaine":{"texte":"Du 16 au 20/11 : 26 tâches en 5 jours (précédente : 23).","donnees":{"faites":26,"jours":5,"prec":23}},"focus_projet_id":3,"cartes":[{"projet":{"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4},"faites_semaine":[{"id":12,"titre":"Dossier subvention"}],"faites_nb":4,"bloquees":[{"id":44,"titre":"Pose","attend":{"id":43,"titre":"Livraison"}}],"prochaine_action":{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4},"revue":{"intention":"","decision":"","focus":false}}]}
+```
+
+**`rythme.json`** — GET rythme/ (et réponses de rythme/, preferences/) · consommateurs : Mon rythme, carte `rythme`
+```json
+{"mode":"pousser","comprendre_mon_rythme":true,"objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"trace":"5 faites ou plus 7 jours sur 10","bloc":{"jours":7,"tenus":5,"sur":10},"tenir":null,"proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"serie":[{"jour":"2026-11-16","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":4,"plan_lignes":5}],"constats":[{"id":44,"type":"constat","cle":"C3","texte":"Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.","donnees":{"jour":4,"m1":3.1,"m2":5.2},"boutons":[{"reponse":"oui","libelle":"Oui"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"}],"repere":{"p60":5.5,"jours":9},"preferences":[{"cle":"heure_limite","valeur":"19:00","source":"copilote","dite_le":"2026-11-17T09:00:00+01:00"}],"geste_id":91}
+```
+
+**`saisie_apercu.json`** — POST saisie-rapide/ apercu:true · consommateurs : Saisie, collage, carte `capture_apercu`, « Range ma liste »
+```json
+{"projets_communs":[{"collage":0,"id":null,"nom":"Courses","nouveau":true,"priorite":2,"source":"premiere_ligne"}],"lignes":[{"index":0,"collage":0,"tache_id":null,"titre":"Appeler Karim","cochee":true,"doublon_de":null,"etape_de":null,"alertes":[],"jetons":[{"type":"jour","source":"demain","debut":14,"fin":20,"valeur":"2026-11-18","libelle":"mer. 18 nov."},{"type":"projet","source":"#SiteWeb","debut":21,"fin":29,"valeur":{"id":null,"nom":"SiteWeb","nouveau":true,"priorite":2},"libelle":"Nouveau projet : SiteWeb"}],"champs":{"jour_prevu":"2026-11-18","nouveau_projet":{"nom":"SiteWeb","priorite":2},"priorite":0}}],"projets_nouveaux":[{"nom":"SiteWeb","priorite":2}]}
+```
+
+**`saisie_rapide.json`** — POST saisie-rapide/ (création) · consommateurs : Saisie, file hors ligne
+```json
+{"creees":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"}],"projets_crees":[{"id":9,"nom":"SiteWeb","couleur":"menthe","priorite":2}],"deja_creees":["c1f4b2a0-5d1e-4b9a-9a51-2b7f0c3e8d11:0"],"geste_id":77}
+```
+
+**`suggestion_refusee.json`** — POST suggestions/{id}/refuser/ · consommateurs : À trier
+```json
+{"id":5,"statut":"refusee","geste_id":80}
+```
+
+**`suggestions.json`** — GET suggestions/ (non paginé, ≤ 20) · consommateurs : À trier « Suggéré par l'ERP »
+```json
+{"results":[{"id":5,"famille":"devis_accepte","titre":"Préparer le chantier du devis accepté","lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"created_at":"2026-11-17T08:00:00+01:00"}]}
+```
+
+**`supprimees.json`** — GET supprimees/ · consommateurs : Supprimées récemment
+```json
+{"projets":[{"projet":{"id":11,"nom":"Ancien salon","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,"statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15","termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,"confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},"a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},"sante":[],"focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4},"taches_nb":25,"deleted_at":"2026-11-15T10:00:00+01:00"}],"taches":[{"item":{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"raison":null,"explication":"prévue aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1},"deleted_at":"2026-11-16T11:00:00+01:00"}]}
+```
+
+**`tache.json`** — GET taches/{id}/ · consommateurs : Fiche
+```json
+{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"}
+```
+
+**`tache_changement.json`** — POST taches/{id}/changement/apercu/ · consommateurs : carte `tache` (écho)
+```json
+{"tache":{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4},"proposition":{"geste":"renommer","avant":"Devis Settat","apres":"Devis Settat — relance"}}
+```
+
+**`tache_ecrite.json`** — toute écriture d'une tâche · consommateurs : carte `tache`, toasts, conflit
+```json
+{"tache":{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"},"suivante":null,"projet_cree":null,"rappel":null,"question_titres":false,"avertissements":[{"code":"prevue_apres_echeance","message":"Prévue après l'échéance."}],"progression":null,"geste_id":77}
+```
+
+**`tache_recurrente_ecrite.json`** — POST taches/{id}/terminer/ (récurrente) · consommateurs : case, toast « Fait · prochaine »
+```json
+{"tache":{"type":"tache","id":20,"titre":"Devis Settat","statut":"fait","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":"2026-11-17T10:05:00+01:00","annule_le":null,"occurrence_du":null,"activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"},"suivante":{"type":"tache","id":23,"titre":"Rapport hebdo","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-23","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":true,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0,"notes":"Appeler avant 11 h.","etiquettes":[],"elements_checklist":[],"enfants":[],"recurrence":{"id":9,"frequence":"hebdo","intervalle":1,"jours_semaine":"1000000","jour_du_mois":null,"rang_dans_mois":null,"mode":"calendrier","date_debut":"2026-11-17","date_fin":null,"actif":true,"libelle":"chaque lundi"},"rappels":[],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":"2026-11-23","activite_origine_id":null,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"},"projet_cree":null,"rappel":null,"question_titres":false,"avertissements":[],"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false},"geste_id":93}
+```
+
+**`tout_effacer.json`** — POST tout-effacer/ · consommateurs : Réglages → Mes données
+```json
+{"effacees":{"tache":40,"projet":3,"plan_jour":12}}
+```
+
+**`tuile.json`** — GET tuile/ · consommateurs : `scriptTuile.js`
+```json
+{"jour":"2026-11-17","maj":"2026-11-17T09:41:00+01:00","faites":1,"prevues":4,"objectif":5,"essentiel":{"faites":0,"prevues":1},"top":[{"id":20,"titre":"Devis Settat","heure":"10:00","priorite":2}],"reste":1,"prochaine_echeance":{"titre":"Devis Settat","jour":"2026-11-19","heure":null},"lien":"https://erp.example/taches/aujourdhui"}
+```
+
+**`vu.json`** — POST vu/ · consommateurs : Aujourd'hui
+```json
+{"carte_du_moment":{"type":"retour","proposition":{"id":52,"type":"retour","cle":"","texte":"Tu reviens après 10 jours : 18 tâches attendaient.","donnees":{"jours":10,"taches":18},"boutons":[{"reponse":"remettre_dans_propose","libelle":"Les remettre dans Proposé"},{"reponse":"une_par_une","libelle":"Les voir une par une"}],"expire_le":"2026-11-24"},"donnees":{}}}
+```
+
+**`vues.json`** — GET vues/ (non paginé, ≤ 30) · consommateurs : Recherche
+```json
+{"results":[{"id":4,"nom":"Haute cette semaine","rang":1024,"filtres":{"priorite_min":3,"projets":[3],"inclure_faites":false}}]}
+```
+

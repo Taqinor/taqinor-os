@@ -1,9 +1,10 @@
-# Référence des DONNÉES — `apps/taches` (révision 2)
+# Référence des DONNÉES — `apps/taches` (révision 3)
 
 Référence UNIQUE du schéma. Une lane ne rouvre jamais les specs pour savoir comment une chose s'appelle : elle lit ce
-fichier et `api.md` ; les algorithmes sont dans `regles.md`, les mots montrés dans `textes.md`. Primauté appliquée :
-socle §0/§8 → arbitrages A1-A17 → spec-7 révision 3 (mots, routes du front) → `verif-reference.md`, `verif-spec-7*`
-et les autres vérifications (C1…C48, B/M) → specs → design-s1. Chemins relatifs à `backend/django_core/`.
+fichier et `api.md` ; les algorithmes sont dans `regles.md`, les mots montrés dans `textes.md`, l'ordre de
+construction dans `docs/plans/PLAN_TACHES.md`. Primauté appliquée : socle §0/§8 → arbitrages A1-A18 → spec-7
+révision 3 (mots, routes du front) → `critique-finale.md`, `verif-plan-a-blanc.md`, `verif-reference.md`, `verif-spec-7*` et les autres
+vérifications → specs → design-s1. Chemins relatifs à `backend/django_core/`.
 
 ## 0. Bases vérifiées dans le code
 
@@ -17,6 +18,9 @@ et les autres vérifications (C1…C48, B/M) → specs → design-s1. Chemins re
 | `authentication.active_company.user_can_operate` | `authentication/active_company.py:76` | l'utilisateur peut-il opérer dans cette société (routes à jeton) |
 | `core.dsr.register_dsr_provider` | `core/dsr.py:86` | fournisseur d'export et d'effacement 09-08 |
 | `core.pagination.StandardPagination` | `core/pagination.py:61` | pagination par défaut (50) |
+| `authentication.permissions.IsAdminRole` | `authentication/permissions.py:45` | réservé à l'administrateur (coupe-circuit) |
+| `apps.crm.selectors_libelles.libelles_crm(user, *, lead=None, touche=None, client=None)` · `apps.ventes.selectors_libelles.libelles_ventes(user, *, devis=None, facture=None)` | `crm/selectors_libelles.py:40`, `ventes/selectors_libelles.py:84` | portes PUBLIQUES de visibilité des cibles liables (A3) |
+| `apps.publicapi.validators` | `apps/publicapi/validators.py` | validation d'hôte d'une adresse externe (agendas externes) |
 
 Règles transverses (chaque modèle) :
 - `TenantModel` partout ; `Projet` et `Tache` = `TenantModel, SoftDeleteModel, VerrouOptimisteMixin`.
@@ -29,7 +33,9 @@ Règles transverses (chaque modèle) :
   défaut liste ou dict prend un appelable (`default=list`, `default=dict`).
 - `nom_cle` (Projet, Section, Etiquette) : calculé dans le seul `save()` du modèle par `cle_nom(nom)` du paquet
   `saisie/normalisation.py` (les modèles ne dépendent pas de l'analyseur) ;
-  `bulk_create` et `QuerySet.update(nom=…)` INTERDITS sur ces trois modèles (sinon `''` et collision).
+  `bulk_create` et `QuerySet.update(nom=…)` INTERDITS sur ces trois modèles (sinon `''` et collision) : leur manager
+  est bâti sur un `NomCleQuerySet` (`models/base.py`) dont `bulk_create()` lève `TypeError` et `update()` refuse la clé
+  `nom` ; pour Projet, `NomCleQuerySet` hérite de `SoftDeleteQuerySet` et le manager garde le filtre des vivants.
 - Jours = `timezone.localdate()` dans le fuseau de la société (`CELERY_TIMEZONE = 'Africa/Casablanca'`).
 - Ordre manuel : entiers espacés de 1 024 ; renumérotation de la seule liste concernée par `QuerySet.update()`.
 - Tout compteur lu puis réécrit (`reports`, `refus_montee`, `blocs_a_sauter`, `echec_n`…) et tout changement de
@@ -56,7 +62,8 @@ Règles transverses (chaque modèle) :
 | `CapaciteSource` | `defaut` · `historique` · `reglage` | s3 §3.4 |
 | `StatutJour` | `conge` · `non_ouvre` · `sans_donnees` · `evalue` | s5a §3.2 |
 | Sections de la journée | `essentiel` « Essentiel » · `journee` « Prévu » · `ce_soir` · `propose` « Proposé pour aujourd'hui » · `a_decider` « À revoir » · `en_attente` · `faites` | spec-7 r3 §4 |
-| `MotifRevoir` | `reportee_3_fois` · `jour_passe` · `echeance_passee` · `echeance_proche` · `activite_passee` (activité ERP due avant J) | s3 §3.1, A17 |
+| `MotifRevoir` (« À revoir » ne garde que ce qui demande une vraie décision) | `reportee_3_fois` · `retard_ancien` (jour prévu ou échéance passés depuis plus de 7 jours) · `activite_passee` (activité ERP due avant J) | A18-M2, A17 |
+| `RaisonPropose` (raison de chaque ligne de Proposé, dans cet ordre) | `retard` (jour prévu passé depuis 7 jours au plus : « prévue hier ») · `echeance_passee` (7 jours au plus) · `echeance_proche` (dans les 2 jours travaillés : « échéance jeudi ») · `prochaine_action` (« prochaine action de {projet} ») · `action_suivante` (2e, 3e… action d'un projet) | A18-M1, M2 |
 | `Decision` (sous-ensembles par route, api.md) | `aujourdhui` · `garder` (sa date si ≥ J, sinon J) · `prochain_jour_ouvre` « Reporter à lun. 23 » · `jour` (+ date) · `un_jour` « En réserve » · `abandonner` | s3, A17 (MAJ-5), spec-7 r3 |
 | `FamilleObligation` | `visite` · `pose` · `intervention` (date seule, bande « Toute la journée », N4) · `touches` (« Suivi des relances ») | s6a, A16-N4, min-21 |
 | `CarteDuMoment` (ordre de priorité) | `retour` · `bilan_hier` · `garder` · `alleger` · `faire_bilan` · `rythme` · `pause` (sollicitation mise en pause) · `revelation` (le brouillon et l'astuce de geste sont posés par le navigateur, spec-7 r3 §4) | spec-7 r3 §4, A17-M1 |
@@ -72,7 +79,8 @@ Règles transverses (chaque modèle) :
 | `FamilleSuggestion` / `StatutSuggestion` | `devis_accepte` · `chantier_receptionne` · `chantier_annule` (allumées) · `visite_validee` (éteinte) / `proposee` · `acceptee` · `refusee` · `retiree` | s6a, A4 |
 | `DecisionRevue` | `''` · `garder` · `pause` · `terminer` · `passe` « Suivant » | s4 §H |
 | `SourcePreference` | `ecran` · `copilote` · `carte` | s5b §5 |
-| `EtatAgendaExterne` | `''` · `ok` · `refusee` · `trop_grande` · `delai` · `illisible` | A14-M8 |
+| `ClePreference` | `capacite_jour_min` · `jours_travailles` · `jours_courts` · `conges` · `heure_matin` · `relance_jour` · `heure_soir` · `heure_limite` · `revue_semaine` · `essentiel_le_matin` · `note_libre` (valeurs : §2.11) | C4 |
+| `EtatAgendaExterne` (chacun a son texte lisible, `textes.md`) | `''` · `ok` · `pas_https` · `adresse_privee` (résolution ou redirection vers une adresse non publique) · `injoignable` · `trop_grande` · `delai` · `illisible` | A18-M4 |
 | `EventType` (app `notifications`, fin d'énum) | `TACHES_PLAN_DU_JOUR` · `TACHES_BILAN_SOIR` (bilan + revue) · `TACHES_RELANCE` · `TACHES_RAPPEL` (rappel posé + test) | s6b §3, C14 |
 
 `IncitationCoach.cle` : push `''` ; `proposition_palier` `monter` · `baisser` · `premier` · `journee_type` ;
@@ -86,10 +94,24 @@ pas_maintenant} (C5 : {ok}) · `pause` {reactiver, ok} · `retour` {remettre_dan
 
 ## 2. Modèles
 
-Comptés par script (lignes des tableaux « Champ ») : **20 modèles, 213 champs propres** (hors colonnes héritées),
+Comptés par script (lignes des tableaux « Champ ») : **21 modèles, 218 champs propres** (hors colonnes héritées),
 11 clés `Preference`. Colonnes héritées non répétées : `id`, `company`, `created_at`, `updated_at` (+ `is_deleted`,
 `deleted_at`, `deleted_by`, `lock_version` sur Projet et Tache). Colonne « Règle » : valeurs, bornes, `# on_delete:` (commentaire
 obligatoire, garde `check_on_delete`) et source.
+
+**Répartition dans le paquet `apps/taches/models/`** (une seule ; `models/__init__.py` importe tout, sans autre code) :
+
+| Fichier | Contenu |
+|---|---|
+| `models/base.py` | `StrNeutreMixin`, `NomCleQuerySet`, managers communs (aucun modèle concret) |
+| `models/projets.py` | `Projet`, `Section`, `ModeleProjet`, `RevueProjet` |
+| `models/taches.py` | `Tache`, `ElementChecklist`, `Etiquette`, `EtiquetteTache`, `RegleRecurrence`, `Rappel`, `VueEnregistree` |
+| `models/journee.py` | `PlanJour`, `LignePlanJour` |
+| `models/rythme.py` | `ReglagesRythme`, `Preference`, `IncitationCoach` |
+| `models/presence.py` | `JetonAcces`, `ReglagesSociete` |
+| `models/agenda.py` | `AgendaExterne` |
+| `models/erp.py` | `SuggestionTache` |
+| `models/gestes.py` | `GesteAnnulable` |
 
 ### 2.1 `Projet` (`TenantModel, SoftDeleteModel, VerrouOptimisteMixin`)
 
@@ -462,19 +484,33 @@ semaine) `condition=Q(focus=True)`.
 Contrainte `taches_sugg_cle_uniq` (company, proprietaire, cle). Index `taches_sugg_boite_idx` (company, proprietaire,
 statut, created_at). Titres : `textes.md` (gabarits de A4).
 
-### 2.20 `AgendaExterne` (`TenantModel`) — AVANCÉ, dernière vague, migration 0002
+### 2.20 `AgendaExterne` (`TenantModel`) — ESSENTIEL (A18-M4), dans `0001_initial`
 
 | Champ | Type Django | Nul / défaut | Règle · source |
 |---|---|---|---|
 | `proprietaire` | `FK(AUTH_USER_MODEL, CASCADE)` | — | `# on_delete: données personnelles` |
-| `url` | `CharField(500)` | — | https, hôte public ; jamais rendue en entier |
-| `libelle` | `CharField(60)` | `blank` | |
+| `url` | `CharField(500)` | — | `https://` seulement ; secret (vaut une clé) : jamais rendue en entier, jamais journalisée |
+| `hote` | `CharField(255, editable=False)` | — | hôte de l'URL, seul montré |
+| `libelle` | `CharField(60)` | `blank` | « Microsoft 365 », « Google », « iCloud »… |
 | `actif` | `BooleanField` | `True` | |
+| `rang` | `IntegerField` | 0 | ordre d'affichage |
 | `dernier_chargement_le` | `DateTimeField` | `null` | |
-| `dernier_etat` | `CharField(20, choices=EtatAgendaExterne)` | `''` | |
+| `dernier_etat` | `CharField(20, choices=EtatAgendaExterne)` | `''` | erreur lisible |
 
-Contrainte `taches_agext_uniq` (company, proprietaire). Événements jamais en base : cache borné. Ni flux, ni tuile,
-ni assistant.
+Contrainte `taches_agext_url_uniq` (company, proprietaire, url). Au plus 3 par utilisateur (service, 400 au champ
+`url`). Les événements ne sont JAMAIS en base : cache borné par adresse. Jamais au flux, à la tuile ni dans une
+notification ; sous l'en-tête assistant, titres remplacés par « Rendez-vous ». Garde de lecture : invariant 33.
+
+### 2.21 `ReglagesSociete` (`TenantModel`) — coupe-circuit (A18-M8)
+
+| Champ | Type Django | Nul / défaut | Règle · source |
+|---|---|---|---|
+| `balayage_actif` | `BooleanField` | `True` | `False` : `taches.balayer` n'émet plus RIEN pour la société (ni sollicitation ni rappel), sans redéploiement |
+| `modifie_par` | `FK(AUTH_USER_MODEL, SET_NULL, null, related_name='+')` | `null` | `# on_delete: trace gardée si le compte disparaît` |
+| `modifie_le` | `DateTimeField` | `null` | |
+
+Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulement (`IsAdminRole`,
+`authentication/permissions.py:45`). Absente = actif.
 
 ## 3. Invariants (chacun testable)
 
@@ -485,9 +521,10 @@ ni assistant.
    sans projet », terminer, abandonner, supprimer. Projet terminé avec `taches_ouvertes='boite'` : `projet` ET
    `triee_le` remis à nul (T14).
 2. Une tâche À trier n'est dans aucune section du jour ni dans Proposé ; elle compte dans `a_trier.boite_reception`.
-3. **À revoir** (`a_decider`), premier motif vrai : `reports ≥ reports_tranches + 3` ∧ `jour_prevu ≤ J` ;
-   `jour_prevu < J` ; `echeance < J` ; `echeance ∈ ]J, J + 2 jours travaillés]` ∧ (`jour_prevu` nul ∨ `jour_prevu >
-   echeance`) ; activité ERP due avant J → `activite_passee`.
+3. **À revoir** (`a_decider`, A18-M2) ne contient QUE : les tâches reportées (`reports ≥ reports_tranches + 3` ∧
+   `jour_prevu ≤ J`), les retards de plus de 7 jours (`jour_prevu` ou `echeance` < J − 7) → `retard_ancien`, et les
+   activités ERP dues avant J → `activite_passee`. Les retards de 7 jours au plus et les échéances dans les 2 jours
+   travaillés vont EN TÊTE de Proposé (invariant 34). Règle exacte : `regles.md` §4.2.
 4. **Report** : `reports += 1` ssi l'ancien `jour_prevu ≤ J` ET le nouveau est plus tard ou En réserve. Ne comptent
    JAMAIS : futur → futur, avancer, premier jour posé, `decaler`, `instancier`, Alléger (A14-M7), « Les remettre dans
    Proposé » (A14-B1), minuit. `trancher` `aujourdhui`, `garder` ou `jour` pose `reports_tranches = reports`.
@@ -536,8 +573,14 @@ ni assistant.
 26. Aucun objet `taches` dans la corbeille de l'ERP, la recherche globale, `record_targets`, `_traces_du_compte`.
 27. Supprimer un projet supprime ses tâches vivantes dans le même geste ; le restaurer les restaure ; une tâche
     restaurée seule dont le projet reste supprimé revient dans À trier (N7).
-28. **Module invisible** jusqu'à la dernière vague : `taches_voir` déclaré, accordé à AUCUN rôle ; aucune entrée de
-    navigation ni `appSku` (A17, MAJ-10).
+28. **Activation par étapes** (A17, A18-M5/M8). `taches_voir` est ajouté en fin d'`ALL_PERMISSIONS`
+    (`apps/roles/permissions_registre.py:69`) ; or `DIRECTEUR_PERMISSIONS` en dérive (`:976`) et `ADMIN_PERMISSIONS`
+    dérive du Directeur (`:985`) : la MÊME tâche ajoute `'taches_voir'` au tuple d'exclusion de `DIRECTEUR_PERMISSIONS`
+    (commentaire `# taches — retiré à l'activation`) ; aucun rôle ne le porte alors, ni navigation ni `appSku`. Fin de
+    F2, après acceptation en direct : `ADMIN_PERMISSIONS` reçoit `'taches_voir'` EXPLICITEMENT (le Directeur reste
+    exclu), navigation et `appSku` posés. F4, sur décision de Reda : l'exclusion du Directeur est retirée et les autres
+    rôles internes le reçoivent par l'éditeur de rôles ; jamais un rôle portail. Un test vérifie, à chaque étape, la
+    liste exacte des rôles système qui le portent.
 29. `ReglagesRythme` n'existe que pour un compte qui a créé au moins une tâche ; sans elle : aucune sollicitation,
     aucune suggestion (IR14), `vu/` n'écrit rien.
 30. Une activité ERP liée garde `activite_origine` et n'est PAS close ; seule la conversion d'un à-faire personnel
@@ -545,7 +588,30 @@ ni assistant.
 31. Hors ligne : toute op envoyée porte `proprietaire_attendu` ; une op d'un autre compte est refusée (409
     `autre_compte`) et jetée.
 32. **Ordre d'affichage d'une section** (M13) : `rang_jour` s'il est posé, sinon `cle_tri` ; `reordonner` numérote
-    toute la section. Dans un projet : `rang_projet` puis `id`.
+    toute la section. Dans un projet : `rang_projet` puis `id` ; `creer_taches()` pose `rang_projet` = dernier du
+    projet (ou d'« À trier ») + 1 024, jamais nul pour une tâche créée par la référence.
+33. **Agenda externe — garde de lecture** (A18-M4) : `https://` seulement ; l'hôte est résolu À CHAQUE lecture et
+    chaque adresse obtenue doit être publique (ni privée, ni locale, ni de lien, ni réservée) ; connexion faite vers
+    l'adresse vérifiée ; aucune redirection suivie vers une adresse non publique (chaque saut revérifié) ; corps et
+    durée bornés ; résultat mis en cache ; tout échec → `dernier_etat` (texte lisible), jamais d'exception à l'écran ;
+    lecture côté serveur seulement, jamais par le navigateur.
+34. **Proposé** (A18-M1/M2, règle exacte `regles.md` §3.4) : d'abord ce qui presse (`retard`, `echeance_passee`,
+    `echeance_proche`), puis la PROCHAINE ACTION de chaque projet actif (sa première tâche `a_faire`, non bloquée,
+    hors En réserve, `parent` nul, dans l'ordre `rang_projet`, `id`), projets pris par priorité décroissante puis
+    `rang`, puis la 2e action de chaque projet, et ainsi de suite, jusqu'à N = objectif − faites − gardées ouvertes.
+    Aucun projet ne prend deux places tant qu'un autre projet a une action non proposée. Chaque ligne porte sa
+    `raison` (`RaisonPropose`). Le dépliage « toutes les tâches de mes projets » est groupé par projet.
+35. **Temps disponible** du jour = capacité − durée des rendez-vous des agendas externes qui tombent ce jour-là
+    (fusionnés s'ils se chevauchent ; bornés aux heures de travail de la société), jamais négatif.
+36. Aucune table de `taches` dans `_ALLOWED_TABLES` de l'agent SQL (`backend/fastapi_ia/app/services/sql_agent_service.py:64`)
+    ; un test le garde.
+37. **En-tête de tour « Tâches » fermé par défaut** : le relais pose `X-Taqinor-Assistant: 1` sur TOUT appel vers Django
+    (`internal_headers()`, test côté `fastapi_ia`) ; le journal de l'assistant masque la question dès qu'un doute
+    existe (outil `taches.*`, écran `/taches…`, ou en-tête absent sur un appel `taches`).
+38. **Siri** : la réponse de `capture/` passe le nom de projet par `nom_pour(projet, 'siri')` : un projet confidentiel
+    est dit « un projet », jamais nommé.
+39. **Coupe-circuit** : `ReglagesSociete.balayage_actif = False` → `taches.balayer` n'émet rien pour la société, lu à
+    chaque passage (aucun redéploiement).
 
 ## 4. Opérations annulables et liste blanche
 
@@ -581,17 +647,53 @@ Jamais : `proprietaire`, `company`, `parent`, `content_type`/`object_id` bruts, 
 |---|---|---|
 | `taches_de(user)` (+ `projets_de`, `sections_de`, `etiquettes_de`, `rappels_de`, `gestes_de`…) | `selectors/base.py` | `company=user.company` ET `proprietaire=user` ; derrière TOUTE lecture |
 | `taches_de_la_journee(user, jour)` · `compter_journee(user, jour)` | `selectors/journee.py` | invariants 10, 11 ; `compter_journee` sert `badge/`, `aujourdhui/`, `notify(badge=n)` |
-| `est_confidentielle()` · `nom_pour(obj, usage)` | `confidentialite.py` | inv. 8 ; `usage ∈ {ecran, assistant, flux, tuile, notification}` (regles §8) |
-| `creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None)` | `services/creation.py` | seul créateur ; idempotence par lecture `all_objects` puis `IntegrityError` relue ; crée `ReglagesRythme` ; pose `triee_le` ; déclenche les révélations à leur événement (I14) ; rend `geste_id` |
-| `planifier(tache, *, jour_prevu, moment, heure_debut, quelque_jour, compter_report=True, version=None)` | `services/planification.py` | seul chemin d'un jour ; `select_for_update()` ; si `version` : `version_envoyee` comparée sous verrou, `ConflitVersion(actuel=TACHE)` ; `reports` par `F()` |
-| `enregistrer_geste()` · `annuler_geste()` | `services/gestes.py` | §4 |
+| `est_confidentielle()` · `nom_pour(obj, usage, reglages=None)` (`reglages` = la `ReglagesRythme` déjà lue par l'appelant, pour `titres_*` : aucune requête par appel) | `confidentialite.py` | inv. 8 ; `usage ∈ {ecran, assistant, flux, tuile, notification, siri}` (regles §8) ; `siri` : « un projet » / « une tâche » si confidentiel |
+| `prochaine_action(projet)` · `tour_des_projets(pool, n)` | `moteur/classement.py` | invariant 34 |
+| `lire_agenda_externe(agenda, du, au)` · `minutes_rendez_vous(evenements, jour, fenetre)` | `agenda_externe.py` (réseau, garde inv. 33) · `moteur/ics.py` (pur : lecture du texte ICS) | inv. 33, 35 |
+| `creer_taches(…)` (signature ci-dessous) | `services/creation.py` | seul créateur ; idempotence par lecture `all_objects` puis `IntegrityError` relue ; crée `ReglagesRythme` ; pose `triee_le` ; déclenche les révélations à leur événement (I14) ; rend `geste_id` |
+| `planifier(…)` (signature ci-dessous) | `services/planification.py` | seul chemin d'un jour ; `select_for_update()` ; si `version` : `version_envoyee` comparée sous verrou, `ConflitVersion(actuel=TACHE)` ; `reports` par `F()` |
+| `enregistrer_geste(…)` · `annuler_geste(…)` (signatures ci-dessous) | `services/gestes.py` | §4 |
 | `JetonAccesAuthentication(usage)` | `auth_jeton.py` | hache, trouve le jeton actif de CET usage, vérifie compte actif interne, `user_can_operate(user, jeton.company_id)`, `taches_voir`, module actif ; pose `user.company = jeton.company` en mémoire (MAJ-4) |
 | `ThrottleCapture` / `ThrottleFlux` / `ThrottleTuile` | `throttles.py` | patron `CalendrierIcsThrottle` (`reporting/calendar.py:77`) : 60/h + 200/j · 60/h · 120/h |
-| `jours_travailles_de(user, du, au)` · `prochain_jour_travaille(user, jour)` | `selectors/base.py` | `jours_ouvres_entre` ∩ `jours_travailles` − `conges` |
-| `filtrer_q(qs, q, *, assistant=False)` | `selectors/base.py` | mots ET, `icontains` sans accents sur titre, notes, projet, étiquettes ; `assistant=True` : ni notes, ni tâches confidentielles (min-12, IR17) |
-| `url_de_cible()` · `libelle_de_cible()` · `cible_visible(user, cible, id)` | `selectors/erp.py` | `liens_cibles.json` ; visibilité par `leads_visibles` (crm), `scope_client_queryset` (clients), `ventes/selectors_libelles.py:35-60` (devis) |
-| `fournisseur_dsr_taches` | `dsr.py` (`register_dsr_provider('taches', export=…, erase=…)` dans `apps.py`) | vide `lien_libelle`, pose `efface`, supprime les `SuggestionTache` du `lead_ref` ; export = `mes-donnees/` |
+| `jours_travailles_de(user, du, au)` · `prochain_jour_travaille(user, jour)` | `selectors/base.py` | `notifications.calendar_utils.jours_ouvres_entre` (`calendar_utils.py:164`) ∩ `jours_travailles` − `conges` |
+| `couleur_d_office(user) -> str` | `services/creation.py` | couleur d'un projet neuf (`regles.md` §1.9) ; réutilisée par `POST projets/` (pas de jumeau) |
+| `obligations_du_jour(user, jour)` | `selectors/journee.py` | `visite` = `visites.selectors.ma_journee_du_commercial(company, user, aujourdhui=J)` (si `visites_voir`) ; `pose` = `reporting.calendar.evenements_assignes(user, J, J)` (poses et mises en service) ; `intervention` = `installations.selectors.affectations_pour(user)` de `kind='intervention_du_jour'` ; `touches` = `crm.selectors.relance_etapes_dues(company, user, scope='today', owner=user)` (+ `scope='overdue'`) ; famille en échec = absente |
+| `filtrer_q(qs, q, *, assistant=False)` | `selectors/base.py` | mots ET, sans accents (patron `unaccent` de `stock/selectors.py`) sur titre, notes, projet, étiquettes ; `assistant=True` : ni notes, ni tâches confidentielles |
+| `url_de_cible()` · `libelle_de_cible()` · `cible_visible(user, cible, id)` | `selectors/liens.py` | `liens_cibles.json` ; visibilité et libellé par les SEULES portes publiques `libelles_crm(user, lead=, client=)` et `libelles_ventes(user, devis=)` (patron `agent/views.py:731-732`) ; refus = introuvable |
+| effacement 09-08 (deux portes) | `receivers.py` + `dsr.py` | (1) récepteur `lead_erased` (`company`, `crm_lead_id`) ; (2) `register_dsr_provider('taches', export=None, erase=effacer_sujet)` dans `apps.py` : `effacer_sujet(company, subject_identifier)` résout le sujet par `crm.selectors.cibles_du_sujet(company, subject_identifier) -> {"leads":[ids],"clients":[ids]}` (à créer chez `crm`, tâche étrangère) ; les deux vident `lien_libelle`, posent `efface` sur les tâches liées et suppriment les `SuggestionTache` du `lead_ref` ; `taches` ne détient aucune donnée du sujet à exporter |
 | `neglige(projets, faites_14j)` · `tout_fait(projet)` | `moteur/sante.py` | C18 ; `tout_fait` ⇔ 0 ouverte ∧ ≥ 1 faite |
+
+**Signatures fixées** (verif-plan M7, M8) :
+- `creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None) ->
+  ResultatCreation` — `lignes` : liste de dicts au format LIGNE d'`api.md` §4, déjà validés ; `porte` ∈ `{'ecran',
+  'saisie', 'capture', 'assistant', 'suggestion', 'conversion', 'recurrence', 'modele', 'lien_activite'}` ;
+  `ResultatCreation` = dataclass gelée `(creees: list[Tache], projets_crees: list[Projet], deja_creees: list[str],
+  geste: GesteAnnulable | None)` ; une transaction, tout ou rien.
+- `planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque_jour=False, compter_report=True,
+  version=None, collecte=None) -> ResultatPlanification` — `collecte` : `list` d'opérations à laquelle `planifier`
+  AJOUTE les siennes sans créer de geste (lot, rituels, alléger, retour, décaler, instancier) ; sans `collecte`, il
+  enregistre son propre geste. `ResultatPlanification` = dataclass gelée `(tache: Tache, avertissements: list[dict],
+  geste: GesteAnnulable | None)`.
+- `enregistrer_geste(user, type, message, operations) -> GesteAnnulable` ; aides du même fichier
+  (`services/gestes.py`) qui CONSTRUISENT une opération : `op_champ(objet, instance, champ, avant)` (lit `apres` sur
+  l'instance enregistrée), `op_creation(objet, instance)`, `op_suppression_douce(objet, instance)`,
+  `op_suppression_dure(objet, instance, valeurs)` ; `objet` = clé du §4 (`'tache'`, `'projet'`…).
+- `annuler_geste(user, geste_id) -> dict` (forme de `geste_annuler.json` d'`api.md`) ; `Http404` si le geste n'est pas
+  de `user` ou a plus de 7 jours ; idempotent (`deja: true`).
+- **Fabriques de test partagées** (`apps/taches/tests/fabriques.py`, écrites une fois avec la migration, lecture seule
+  ensuite ; une fabrique neuve va dans le module de test de la lane) : `societe(slug='a')` → `Company` (module
+  `taches` actif) ; deux slugs distincts `'a'` et `'b'` pour les tests d'isolement ; `compte(societe, *, voir=True,
+  admin=False, nom='u1')` → utilisateur interne actif, `voir=True` lui donne un rôle de test portant `taches_voir`
+  (aucun rôle système ne le porte avant l'activation), `admin=True` le rend administrateur (`IsAdminRole`) ;
+  `projet(compte, **champs)` → `Projet` (nom unique `'Projet <n>'`, priorité 0) ; `section(projet, **champs)` ;
+  `tache(compte, *, projet=None, **champs)` → `Tache` par l'ORM (pas par `creer_taches`), `triee_le` posé si projet ou
+  jour, `rang_projet` posé ; `reglages(compte, **champs)` → `ReglagesRythme` ; `plan(compte, jour, **champs)` →
+  `PlanJour` ; `jeton(compte, usage)` → `(JetonAcces, clair)` ; `activite(compte, **champs)` → `records.Activity`
+  assignée et ouverte ; `agenda_externe(compte, **champs)` → `AgendaExterne` (URL `https://agenda.example/a.ics`,
+  aucune lecture réseau).
+- Réglages déclarés dès l'échafaudage de l'app (`settings/base.py`, même tâche que `INSTALLED_APPS`) :
+  `TACHES_RACCOURCI_SIRI_URL = os.environ.get('TACHES_RACCOURCI_SIRI_URL', '')`. Le coupe-circuit est une DONNÉE
+  (`ReglagesSociete.balayage_actif`), créée par la migration `0001`.
 
 Abonnés (`receivers.py`, `@abonne_best_effort`, connectés dans `apps.py`) aux signaux existants `devis_accepted`,
 `devis_acceptation_annulee`, `chantier_receptionne`, `chantier_annule`, `visite_validee`, `lead_erased` : aucun signal
@@ -599,31 +701,21 @@ nouveau (`core/event_coverage.py`).
 Étrangers, tâches séparées (A8) : `records.selectors.activites_ouvertes_pour`, `nb_a_faire_personnels`,
 `peut_cloturer_activites` ; `records.services.cloturer_a_faire_personnel`, `rouvrir_a_faire_personnel` (securite).
 
-## 6. Migrations et découpage en lanes (MAJ-10, verif-reference §6)
+## 6. Migrations (le découpage en fusions et en lanes vit dans `docs/plans/PLAN_TACHES.md`, source unique)
 
-1. `0001_initial.py` — les 20 modèles moins `AgendaExterne` ; dépendances `authentication` (dernière),
-   `contenttypes 0002`, `records 0014_attachment_file_key_index` (reprendre la dernière au build).
-2. `0002_agendaexterne.py` — dernière vague. 3. Ajouts ultérieurs `0003+`, une lane à la fois.
-4. Étranger (parametres) : `notifications/migrations/0079_eventtype_taches.py` (3 `AlterField`, `max_length=40`).
+1. `0001_initial.py` — les **21 modèles** du §2 (`AgendaExterne` et `ReglagesSociete` compris, A18-M4/M8) ;
+   dépendances `authentication` (dernière), `contenttypes 0002`, `records 0014_attachment_file_key_index` (reprendre
+   la dernière au build). Générée sur l'hôte par `makemigrations` (A18-M6), jamais écrite à la main.
+2. Ajouts ultérieurs `0002+`, séquentiels, une lane à la fois.
+3. Étranger (parametres) : `notifications/migrations/0079_eventtype_taches.py` (3 `AlterField`, `max_length=40`).
 
-Paquets (les gardes lisent `models/`, `services/`, `views/`, `serializers/`) :
-- **L0 socle, seule, d'abord** : `models/{projets,taches,journee,rythme,presence,erp,gestes}.py` + 0001, `choix.py`,
-  `confidentialite.py`, `selectors/base.py`, `services/{planification,gestes}.py`, `serializers/formes.py` (ITEM,
-  TACHE, TACHE_ECRITE, PROJET, PROPOSITION, LIEN), `urls.py` complet, `views/*.py` vides (501), `apps.py`,
-  `platform.py` (manifeste, `agent_actions_module`, `record_targets: []`), `sweeps.py`, `contract_samples/` ; front
-  `module.config.jsx` SANS navigation + pages vides + `features/taches/api/client.js` + `ui/LigneTache.jsx`. Droit
-  déclaré dans `permissions_registre.py` (tâche étrangère), accordé à aucun rôle.
-- **L1 saisie** : paquet `saisie/` (sauf `normalisation.py` et `dates_pures.py`, livrés par L0), `moteur/recurrence.py`, `services/creation.py`, `views/saisie.py`, `serializers/saisie.py`.
-- **L2 journée** : `moteur/classement.py`, `selectors/journee.py`, `views/journee.py`, `views/agenda.py`.
-- **L3 projets** : `moteur/{sante,decalage}.py`, `views/projets.py`.
-- **L4 rythme** : `moteur/{rythme,sollicitations,gabarits}.py`, `nocturne.py`, `views/rythme.py`, `views/reglages.py`.
-- **L5 présence** (@after L2, L4) : `auth_jeton.py`, `throttles.py`, `moteur/flux.py`, `balayage.py`,
-  `views/presence.py` ; front `useBadgeTaches.js`, `captureQueue.js`, `iphone/*`.
-- **L6 ERP** (@after L1) : `selectors/erp.py`, `services/erp.py`, `receivers.py`, `dsr.py`, `views/erp.py` ; puis 0002.
-- **L7 assistant** (@after L1-L4) : `agent_actions.py`, `features/taches/cartes/*`.
-- **Dernière vague** : octroi de `taches_voir` aux rôles internes, navigation, `appSkus.js`. Régénérés UNE fois par
-  l'orchestrateur après le dernier fold : `docs/openapi-schema.yml`, `docs/rbac-endpoint-inventory.md`,
-  `frontend/src/test/fixtures/contractSamples.js`, `docs/CODEMAP.md`.
+Fusions (A18-M5, détail et ordre des tâches : le plan) : **F1 socle** (invisible : droit déclaré, accordé à aucun rôle)
+· **F2 cœur** complet et utilisable (saisie, À trier, fiche, projets et planification, Aujourd'hui, agenda avec agendas
+externes, bilan, revue, Mon rythme, Réglages, recherche, hors ligne ; activé pour le seul rôle Administrateur à la fin,
+après acceptation en direct) · **F3 iPhone + Copilote** · **F4 avancé** (modèles, tableau, chronologie, vues,
+étiquettes, suggestions de l'ERP…) puis ouverture aux autres rôles internes. Les gardes lisent les paquets `models/`,
+`services/`, `views/`, `serializers/`, `selectors/` ; fichiers régénérés une fois par l'orchestrateur :
+`docs/openapi-schema.yml`, `docs/rbac-endpoint-inventory.md`, `contractSamples.js`, `docs/CODEMAP.md`.
 
 ## 7. Modules de code PUR (algorithmes : `regles.md`)
 
@@ -631,7 +723,8 @@ Paquets (les gardes lisent `models/`, `services/`, `views/`, `serializers/`) :
 |---|---|
 | paquet `saisie/` (`normalisation.py` : `normaliser`, `cle_nom` ; `dates_pures.py` ; `grammaire.py`, `analyseur.py` ; `collage.py` ; `plan.py` ; `__init__.py` sans ré-export) | `analyser(texte, maintenant, projets, etiquettes, ignorer, porte)` (porte `capture` : jour, heure, moment, échéance, priorité, durée, projet EXISTANT, « projet <nom> » en tête), `decouper_collage(textes, …)` (projet par collage), `decouper_plan(texte)` |
 | `moteur/recurrence.py` | `premiere_occurrence`, `prochaine_occurrence`, `libelle_regle` |
-| `moteur/classement.py` | `placer`, `cle_tri`, `explication`, `capacite`, `proposer_plan` |
+| `moteur/classement.py` | `placer`, `cle_tri`, `explication`, `capacite` (− rendez-vous, inv. 35), `prochaine_action`, `tour_des_projets`, `proposer_plan` (inv. 34), `classer_priorites` (carte « Aide-moi à prioriser ») |
+| `moteur/ics.py` | `lire_evenements(texte, du, au)` (VEVENT, journée entière, fuseau ; répétitions : choix et éventuelle dépendance déclarés par la lane), `minutes_rendez_vous` |
 | `moteur/sante.py` | `avancement`, `burnup`, `sans_prochaine_action`, `a_l_arret`, `echeance_menacee`, `neglige`, `tout_fait`, `constat_projets` |
 | `moteur/decalage.py` | `decaler`, `instancier`, `figer_modele` |
 | `moteur/rythme.py` | `compte_du_jour`, `statut_jour`, `journee_reussie`, `palier_initial`, `plafonner_jours`, `evaluer_bloc`, `clore_bloc`, `objectif_dit`, `reference_tenir`, `bande_tenir`, `derive_tenir`, `objectif_affiche` (rend aussi la zone en `tenir`), `basculer`, `arrondir`, `constats`, `retour_absence`, `semaine_courte` |
@@ -646,7 +739,8 @@ Paquets (les gardes lisent `models/`, `services/`, `views/`, `serializers/`) :
 suppression dure · « Comprendre mon rythme » coupé : cartes `constat`, `proposition_palier`, `derive_tenir`,
 `garde_taille` supprimées ; `tenir_*`, `ref_taille_min`, `meilleur_tenu`, `echec_*` remis à nul ; champs de rythme de
 `PlanJour` (`statut_jour`, `compte_rythme`, `micro_comptees`, `taille_mediane_min`) effacés ; capacité habituelle et
-signal (d) d'échéance menacée tus. Export et « Tout effacer » couvrent les 20 modèles. Le texte de Réglages → Vie
+signal (d) d'échéance menacée tus. Événements d'agendas externes : cache seul, jamais en base. Export et « Tout
+effacer » couvrent les 21 modèles (l'export ne rend jamais l'URL complète d'un agenda externe). Le texte de Réglages → Vie
 privée (A9) est dans `textes.md` §6.
 
 ## Décisions de l'intégrateur
@@ -672,6 +766,16 @@ privée (A9) est dans `textes.md` §6.
   retirée (min-18, une source).
 - **I18** (rév. 2) Décision `demain` retirée de l'énum : spec-7 r3 « Demain, jamais un bouton de report » ; le bilan
   dit « Reporter à lun. 23 ».
+- **I19** (rév. 3) Agendas externes : `hote` stocké (seul montré), unicité par URL, 3 au plus ; événements en cache
+  seulement.
+- **I20** (rév. 3) Coupe-circuit en DONNÉE (`ReglagesSociete`, nouveau modèle) plutôt qu'en variable d'environnement :
+  seule façon d'agir « sans redéploiement » (A18-M8) et par société.
+- **I21** (rév. 3) Répartition des modèles par fichier et signatures des services fixées ici (verif-plan M6-M8) ;
+  `planifier(collecte=…)` permet un seul geste pour un lot.
+- **I22** (rév. 3) Activation : exclusion explicite du Directeur jusqu'à l'activation ; Administrateur reçu
+  explicitement à la fin de F2 (verif-plan B2, A18-M8).
+- **I23** (rév. 3) Requête « assistant » reconnue aussi au JWT `Bearer` (le relais le relaie toujours) : l'en-tête
+  absent ne sert jamais du clair (A18, échec fermé).
 
 ## Ce que les specs demandaient et que je n'ai PAS repris
 
@@ -695,19 +799,34 @@ privée (A9) est dans `textes.md` §6.
 - Pastille « + Proposé » (spec-7 r2, ma rév. 1) → gardées seules (A16-N5).
 - Visites et poses « à leur heure » (A14-M8) → bande « Toute la journée », date seule (A16-N4).
 - Gabarits de phrases (ma rév. 1 §8) → `textes.md` §3-§4, source unique des mots.
+- Migration `0002_agendaexterne`, un seul agenda, AVANCÉ (rév. 2) → `0001`, 3 agendas, ESSENTIEL (A18-M4).
+- Motifs `jour_passe`, `echeance_passee`, `echeance_proche` d'À revoir (rév. 2) → raisons de Proposé (A18-M2).
+- Découpage en lanes L0-L7 (rév. 2, §6) → renvoi au plan, source unique (A18-M5).
+- Réglage d'environnement `TACHES_SOLLICITATIONS` (critique M8) → `ReglagesSociete.balayage_actif` (I20).
 
-## Écarts avec regles.md / textes.md à corriger là-bas
+## À répercuter dans regles.md / textes.md (et dans le plan)
 
-- `regles.md` §4.1 et §4.9 : la pastille compte encore Proposé → gardées seules (A16-N5) ; la clé `cartes_coach` →
-  `carte_du_moment` (un objet, ordre spec-7 r3 §4 : retour > [brouillon] > bilan d'hier > garder > alléger > faire le
-  bilan > rythme > révélation > [astuce]).
-- `regles.md` §4.6 : choix `demain` et 400 sur les `reportee_3_fois` → `prochain_jour_ouvre` (« Tout reporter ») ; les
-  reportées 3 fois non nommées restent en place, rendues dans `a_trancher` (tour 3, mineur).
-- `regles.md` IR12, manque 14 : `Preference.objectif_dit` n'existe plus (I17) ; message d'erreur sur `objectif` seul.
-- `regles.md` manque 15 : une échéance seule laisse la capture dans À trier (`dans:"a_trier"`, invariant 1).
-- `regles.md` §1.10 : `projet_commun` → `projets_communs[]`, un par collage (api.md §4).
-- `textes.md` §4.2 : carte `premier` → boutons [Oui, {type}] (`oui`) [Garder 5] (`garder`).
-- `textes.md` §2.15 : toast 8 s (spec-7 r3 §6), pas 6 s ; §2.17 : ordre de la carte du moment de spec-7 r3 §4.
+- `regles.md` §0 : types d'entrée des modules purs (verif-plan M9) — `ItemPur`, `PlanPur`, `EtatRythme` (dataclass
+  gelée : les champs de `ReglagesRythme` §2.10 utiles au moteur, mêmes noms, + `objectif` en vigueur), `JourCompte`
+  (`jour`, `statut_jour`, `compte`, `essentiels_choisis`, `essentiels_faits`, `plan_prevues`, `plan_faites`) ; noms des
+  fonctions de `saisie/dates_pures.py`.
+- `regles.md` §3.4, §4.1-§4.2 : Proposé = ce qui presse puis tour des projets par prochaine action (inv. 34) ; À revoir
+  = `reportee_3_fois`, `retard_ancien`, `activite_passee` seulement (inv. 3) ; les anciens motifs `jour_passe`,
+  `echeance_passee`, `echeance_proche` deviennent des `RaisonPropose` ; `rang_projet` entre dans l'ordre.
+- `regles.md` §3.6 : temps disponible − rendez-vous (inv. 35) ; `regles.md` §1 : lecteur ICS maison `moteur/ics.py`
+  (VEVENT, DTSTART, DTEND, DURATION, SUMMARY, TZID ; RRULE non lu en v1, limite dite), aucune dépendance neuve.
+- `regles.md` §8 : usage `siri` et paramètre `reglages` de `nom_pour` ; §9 : les deux portes de l'effacement 09-08.
+- `regles.md` §1.9 : `couleur_d_office(user)` ; règles de `classer_priorites`, `journee/point/`, `plus_tard`, et de
+  `repere.p60` (ou retrait de la clé, verif-plan M17).
+- `regles.md` / `textes.md` : bilan `?ouvrir=bilan` (critique m1) ; `pause` = valeur de `CarteDuMoment` (m2) ; Siri
+  « un projet » pour un projet confidentiel (m8) ; micro-tâches plafonnées, garde de taille, mémoire d'échec et C6 hors
+  de la première livraison (m5, m6) — les champs restent dans le schéma.
+- `textes.md` : textes des 8 `EtatAgendaExterne`, des cartes `priorites` et `point`, des raisons de Proposé
+  (« prochaine action de {projet} », « prévue hier », « échéance jeudi »), du coupe-circuit (administrateur) et les trois
+  silences de Vie privée (A18).
+- Plan : `0001_initial` porte 21 modèles (`AgendaExterne` et `ReglagesSociete` compris, plus d'« AgendaExterne exclu ») ;
+  la tâche de `permissions_registre.py` applique la règle de l'invariant 28 ; `TACHES_RACCOURCI_SIRI_URL` déclaré à
+  l'échafaudage ; fabriques et signatures du §5.
 
 ## Révision 2 : ce qui a changé
 
@@ -729,3 +848,19 @@ privée (A9) est dans `textes.md` §6.
 ## Révision 2.1
 
 `CarteDuMoment` gagne `pause` (après `rythme`) ; `cle_nom` vit dans `saisie/normalisation.py`, `saisie` devient un paquet (plan-squelette §7).
+
+## Révision 3 : ce qui a changé
+
+1. Primauté A18 ; `critique-finale.md`, `verif-plan-a-blanc.md`.
+2. `AgendaExterne` ESSENTIEL dans `0001` (3 par utilisateur, `hote`, `rang`, 8 états lisibles) ; garde SSRF (inv. 33) ;
+   temps disponible − rendez-vous (inv. 35).
+3. `MotifRevoir` réduit (reportées 3 fois, retards > 7 jours) ; `RaisonPropose` ; Proposé = ce qui presse puis tour des
+   projets par prochaine action, `rang_projet` posé à la création (inv. 32, 34).
+4. `ReglagesSociete.balayage_actif` (coupe-circuit, administrateur) ; inv. 39.
+5. Vie privée : inv. 36 (`_ALLOWED_TABLES`), 37 (en-tête fermé), 38 (Siri) ; `nom_pour(…, reglages)`, usage `siri`.
+6. Activation : règle exacte de `permissions_registre.py` (Directeur exclu, Administrateur d'abord).
+7. Répartition des modèles par fichier ; `NomCleQuerySet` ; `ClePreference`.
+8. Signatures de `creer_taches`, `planifier`, `enregistrer_geste`/`annuler_geste` et des aides `op_*` ; fabriques.
+9. Portes de visibilité `libelles_crm`/`libelles_ventes` ; sources des obligations ; deux portes de l'effacement 09-08.
+10. §6 : migrations seules, découpage renvoyé au plan (4 fusions).
+11. Comptes par script : 21 modèles, 218 champs propres, 11 clés `Preference`.

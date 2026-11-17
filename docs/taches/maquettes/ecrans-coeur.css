@@ -144,8 +144,6 @@
 
 /* ── Bilan du soir ──────────────────────────────────────────────────────── */
 .bilan-tete { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
-.bilan-tete .anneau, .bilan-tete .anneau svg { width: 52px; height: 52px; }
-.bilan-tete .anneau .piste, .bilan-tete .anneau .avance { stroke-width: 5; }
 .bilan-compte { font-size: 1.375rem; font-weight: 700; line-height: 1.2; }
 .bilan-second { font-size: 0.9375rem; color: var(--tch-texte-doux); }
 .bilan-section { margin-top: 22px; }
@@ -258,7 +256,8 @@
 .dark .constat { background: color-mix(in oklch, var(--muted) 88%, var(--foreground)); }
 /* Bilan : « 4 sur 5 » + segments, une seule forme de progression */
 .bilan-tete { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; }
-.bilan-tete .bilan-second { grid-column: 1 / -1; }
+.bilan-tete .bilan-compte { grid-column: 1 / -1; }
+.bilan-essentiel { font-size: 1rem; font-weight: 500; color: var(--tch-texte-doux); }
 .restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .restes-tete .fiche-label { margin: 0; }
 .bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
@@ -295,3 +294,10 @@
 .entete-barre:has(.au-defilement) .titre-barre { flex: none; max-width: 220px; }
 .entete-barre:has(.au-defilement) .cale { justify-self: end; }
 .entete-barre:has(.au-defilement) > .bouton { justify-self: start; }
+
+/* Colonne Agenda : « Toute la journée » sur deux lignes dans la gouttière de 48 px */
+.agenda-journee small { font-size: 0.6875rem; padding-right: 6px; }
+/* iPhone : la fin d'une ligne que le bouton flottant recouvrirait se décale à sa gauche (rien dessous) */
+@media (max-width: 767px) { .ligne.libere-fab .ligne-fin { margin-right: 64px; } }
+/* Bilan : « Passer » aligné sur la colonne du titre (le texte, pas la boîte de 44 px) */
+.entete-barre > .bouton.discret:first-child { margin-left: -8px; }

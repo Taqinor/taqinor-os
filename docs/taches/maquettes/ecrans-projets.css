@@ -61,7 +61,6 @@
 /* ── Bureau : barre latérale · projets · projet ouvert (ou barre latérale · projet) ── */
 @media (min-width: 768px) {
   .ep-projet-col { position: relative; }
-  .ep-projet-col .ep-entre { padding: 0 8px 0 24px; min-height: 44px; }
   .page.trois.deux .col-liste.ep-vue-large > * { max-width: none; }
   .ep-panneau-projet .col-agenda { padding: 20px 8px 24px; background: var(--tch-surface); box-shadow: inset 1px 0 0 var(--tch-trait); }
   .ep-panneau-projet .col-liste .ep-nouveau { display: none; }
@@ -263,8 +262,6 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 .ep-retirer svg { width: 18px; height: 18px; stroke-width: 2; }
 
 /* ── Mon rythme ──────────────────────────────────────────────────────────── */
-.segments.ep-plein { display: flex; width: 100%; gap: 5px; }
-.segments.ep-plein i { flex: 1; width: auto; height: 10px; }
 .ep-jour { padding: 10px var(--tch-gouttiere) 0; }
 .ep-jour-ligne { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .ep-jour-chiffre { font-size: 1.75rem; font-weight: 700; line-height: 1.1; }
@@ -425,8 +422,8 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 .ep-tuile.grande .ep-t-gros b { font-size: 2.5rem; }
 .ep-t-gros span { font-size: 1rem; font-weight: 600; color: var(--tch-texte-doux); }
 .segments.ep-t i { width: 20px; }
-.segments.ep-t.ep-plein { margin-top: 10px; }
-.segments.ep-t.ep-plein i { height: 6px; }
+.segments.ep-t.plein { margin-top: 10px; }
+.segments.ep-t.plein i { height: 6px; }
 .ep-t-liste { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
 .ep-tuile.grande .ep-t-liste { flex: 1; justify-content: space-between; margin-top: 12px; }
 .ep-t-liste li { display: grid; grid-template-columns: 8px 1fr auto; column-gap: 10px; align-items: center; min-height: 23px; font-size: 0.875rem; line-height: 1.25; }
@@ -482,7 +479,7 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 .ep-carte-ombre b { display: block; font-size: 1rem; font-weight: 650; margin-bottom: 12px; color: var(--tch-texte-doux); }
 .ep-carte-ombre .os { margin-top: 10px; }
 @media (min-width: 768px) {
-  .ep-cockpit { max-width: 1200px; margin: 0 auto; padding: 28px 40px; }
+  .ep-cockpit { max-width: 1200px; margin: 0 auto; padding: 20px 40px 28px; }
   .ep-cockpit-grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
   .ep-cockpit-grille > * { margin-top: 0; }
 }
@@ -530,7 +527,6 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
   .ep-col { flex: 1 1 0; min-width: 0; }
   .ep-col .ligne { grid-template-columns: 34px 1fr auto; column-gap: 2px; padding-left: 0; }
   .ep-col .titre { font-size: 0.9375rem; }
-  .ep-col.bureau-seul { flex: 0 0 180px; }
 }
 
 /* Cockpit : méta sur une ligne */
@@ -548,3 +544,38 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 .ep-projets .meta, .ep-cp-ligne { column-gap: 8px; }
 .ep-projets .meta > span + span::before, .ep-cp-ligne > span + span::before { margin: 0 8px 0 0; }
 .ep-projets .meta > .ep-sante::before, .ep-projets .meta > .ep-aplanifier::before, .ep-cp-ligne > .ep-sante::before, .ep-cp-ligne > .ep-aplanifier::before { content: none; }
+
+/* ══ Tour 6 (unification) ═══════════════════════════════════════════════════ */
+.ep-ok { color: var(--tch-fait); margin-right: 4px; vertical-align: -2px; }
+.ep-sante-ligne span { text-wrap: balance; }
+@media (min-width: 768px) {
+  /* Un projet : deux colonnes (barre latérale · projet), pas de troisième colonne vide ; le Tableau prend toute la largeur */
+  .page.trois.deux.ep-deux { grid-template-columns: 256px minmax(0, 1fr); }
+  /* Ligne du dessus (le nom de l'écran parent, 14 px 500 doux) puis le titre : bas du titre à y = 76 comme les écrans cœur ;
+     vues et ⋯ sortent du flux, centrés sur ce bloc d'en-tête */
+  .ep-projet-col .ep-tete { padding-top: 6px; }
+  .ep-projet-col .ep-tete .ep-titre { margin: 0; }
+  .ep-projet-col .ep-projet-nom .point { margin-top: 11px; }
+  .ep-projet-col .ep-entre { position: absolute; top: 26px; left: 0; z-index: 2; display: flex; justify-content: flex-end;
+    width: min(100%, 860px); height: 52px; padding: 0 8px 0 24px; }
+  .ep-projet-col.ep-vue-large .ep-entre { width: 100%; max-width: none; }
+  .ep-projet-col .ep-reserve { visibility: hidden; }
+  .ep-menu { left: calc(min(100%, 860px) - 288px); }
+  /* panneau droit de la liste des projets : trop étroit pour vues + titre côte à côte, les vues passent au-dessus */
+  .ep-panneau-projet .ep-projet-col .ep-entre { position: static; width: auto; height: 44px; padding: 0; }
+  .ep-panneau-projet .ep-projet-col .ep-tete { padding-top: 0; }
+  .ep-tableau { padding: 16px 16px 0; }
+}
+/* Planifier le projet : champ vide (invite), durée à côté du titre */
+.ep-ph { color: var(--tch-texte-doux); }
+.ep-duree { margin-left: 8px; font-size: var(--tch-meta); font-weight: 400; color: var(--tch-texte-doux); }
+/* Écrans poussés (Mon rythme, Mon iPhone) : Copilote décollé du bord (16 px), le titre garde la ligne de base commune */
+.ep-barre-copilote .ep-barre-droite { padding-right: 10px; }
+@media (min-width: 768px) { .ep-pousse .ep-grille-rythme { max-width: 1100px; } }
+@media (min-width: 768px) { .ep-pousse .ep-progres-etapes { max-width: calc(860px - 2 * var(--tch-gouttiere)); } }
+/* Tuile : « Visite technique à Témara · Toute la journée » tient entier */
+.ep-tuile.grande .ep-t-liste li { font-size: 0.875rem; column-gap: 8px; }
+.ep-tuile.grande .ep-t-liste li .h { font-size: 0.75rem; }
+/* Alias transitoire : les écrans d'un autre lot peuvent encore porter .ep-plein (remplacé par .segments.plein) */
+.segments.ep-plein { display: flex; width: 100%; gap: 5px; }
+.segments.ep-plein i { flex: 1; width: auto; height: 10px; }
