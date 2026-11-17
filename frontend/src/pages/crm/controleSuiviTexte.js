@@ -342,7 +342,7 @@ export const LIBELLES_ISSUE = {
   non_joint: 'Pas de réponse',
   joint: 'Client joint',
   rappel: 'À rappeler',
-  refuse: 'Refus',
+  refuse: 'Client refuse',
   visite_acceptee: 'Visite acceptée',
   sans_issue: 'Fait',
 }
