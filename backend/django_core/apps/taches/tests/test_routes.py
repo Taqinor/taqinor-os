@@ -219,7 +219,8 @@ class RoutesSansBaseTests(SimpleTestCase):
 
 
 #: Modules de vues dont chaque opération porte son schéma complet (TCH145-TCH147).
-MODULES_SCHEMATISES = ('journee', 'agenda', 'saisie', 'taches', 'erp', 'projets')
+MODULES_SCHEMATISES = ('journee', 'agenda', 'saisie', 'taches', 'erp', 'projets', 'rythme', 'reglages',
+                       'presence', 'donnees', 'agenda_externe')
 #: Échantillons qui ne sont la réponse ENTIÈRE d'aucune route : sous-objet d'une autre réponse
 #: (ITEM d'une liste paginée, carte du moment, rendez-vous, proposition), formes d'erreur, ou
 #: carte de fichier (gabarits des liens).
@@ -282,7 +283,13 @@ class SchemaTests(SimpleTestCase):
                 succes = [c for c in self._operation(methode, chemin)['responses'] if c.startswith('2')]
                 self.assertTrue(succes)
 
+    def test_aucun_avertissement_du_tout(self):
+        """Les 106 opérations sont schématisées : le générateur ne dit plus RIEN (mode strict)."""
+        self.assertEqual(set(MODULES_SCHEMATISES), {module_de(c) for _, c in ROUTES})
+        self.assertEqual(self.messages, [])
+
     def test_chaque_echantillon_est_la_forme_de_sa_route(self):
+        verifies = set()
         for fichier in sorted(ECHANTILLONS.glob('*.json')):
             if fichier.stem in ECHANTILLONS_PARTIELS:
                 continue
@@ -296,6 +303,9 @@ class SchemaTests(SimpleTestCase):
                       for contenu in r.get('content', {}).values()]
             with self.subTest(echantillon=fichier.stem):
                 self.assertIn(set(document['exemple']), formes)
+            verifies.add(fichier.stem)
+        tous = {f.stem for f in ECHANTILLONS.glob('*.json')} - ECHANTILLONS_PARTIELS
+        self.assertEqual(tous - verifies, set(), 'échantillon dont la route est introuvable')
 
 
 class PermissionSansBaseTests(SimpleTestCase):

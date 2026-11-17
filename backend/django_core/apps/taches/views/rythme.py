@@ -1,10 +1,15 @@
 """Rythme, cartes à réponse, préférences dites et en-tête du Copilote (reference/api.md §3.4, §4).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction.
+Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
+schéma OpenAPI est celui de leur échantillon de `contract_samples/`.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.views import APIView
 
-from apps.taches.views.base import PERMISSIONS, PasEncore
+from apps.taches.views.base import ERREUR_CODE, PERMISSIONS, PasEncore, corps, forme_echantillon, reponses
+
+RYTHME = forme_echantillon('rythme')
 
 
 class RythmeVue(APIView):
@@ -12,9 +17,15 @@ class RythmeVue(APIView):
 
     permission_classes = PERMISSIONS
 
+    @extend_schema(responses=reponses(RYTHME))
     def get(self, request):
         raise PasEncore()
 
+    @extend_schema(request=inline_serializer('TachesCorpsRythme', {
+        'mode': serializers.CharField(),
+        'objectif': serializers.IntegerField(required=False),
+        'sens': serializers.CharField(required=False),
+    }), responses=reponses(RYTHME, erreurs=(400,)))
     def post(self, request):
         raise PasEncore()
 
@@ -24,6 +35,9 @@ class RepondrePropositionVue(APIView):
 
     permission_classes = PERMISSIONS
 
+    @extend_schema(request=corps('RepondreProposition', {'reponse': 'oui'}, requis=('reponse',)),
+                   responses=reponses(forme_echantillon('proposition_repondue'), erreurs=(400, 404),
+                                      conflit=ERREUR_CODE))
     def post(self, request, id):
         raise PasEncore()
 
@@ -33,6 +47,10 @@ class PreferencesVue(APIView):
 
     permission_classes = PERMISSIONS
 
+    @extend_schema(request=inline_serializer('TachesCorpsPreference', {
+        'cle': serializers.CharField(),
+        'valeur': serializers.JSONField(),
+    }), responses=reponses(RYTHME, erreurs=(400,)))
     def post(self, request):
         raise PasEncore()
 
@@ -42,6 +60,7 @@ class PreferenceVue(APIView):
 
     permission_classes = PERMISSIONS
 
+    @extend_schema(request=None, responses=reponses(RYTHME, erreurs=(404,)))
     def delete(self, request, cle):
         raise PasEncore()
 
@@ -51,5 +70,6 @@ class CoachEnteteVue(APIView):
 
     permission_classes = PERMISSIONS
 
+    @extend_schema(responses=reponses(forme_echantillon('coach_entete')))
     def get(self, request):
         raise PasEncore()
