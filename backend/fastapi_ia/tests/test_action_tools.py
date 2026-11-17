@@ -1750,5 +1750,78 @@ class SortiesBorneesCop6Tests(unittest.TestCase):
         self.assertTrue(sortie["data_extrait"])
 
 
+# ── TCH114 — jeu Groq sur /taches, en-tête assistant, lien du contexte ─────────
+
+_CLES_TACHES = (
+    "taches.journee.lire", "taches.journee.prioriser", "taches.journee.point", "taches.plan.proposer",
+    "taches.tache.chercher", "taches.profil.lire", "taches.projet.lire", "taches.revue.semaine",
+    "taches.tache.creer", "taches.tache.terminer", "taches.tache.modifier", "taches.tache.planifier",
+    "taches.rappel.poser", "taches.projet.creer", "taches.rythme.regler", "taches.preference.noter",
+    "taches.liste.ranger", "taches.projet.planifier_apercu", "taches.tache.proposer_changement")
+
+
+def _cat_taches(methode="GET"):
+    return [{"key": k, "label": k, "endpoint": "/api/django/taches/x/", "method": methode,
+             "risk": "internal", "lot": "copilote",
+             "inputs": {"type": "object", "properties": {"titre": {"type": "string"}}}}
+            for k in _CLES_TACHES] + [_CAT_LEAD_LIST]
+
+
+class CatalogueTachesTch114Tests(unittest.TestCase):
+    def _cles(self, fournisseur, ecran):
+        from app.services import relais_copilote as relais
+        with mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000"), _patch_catalogue(_cat_taches()):
+            return [a["key"] for a in relais.catalogue_du_tour(_ctx(role="admin"), {"ecran": ecran}, fournisseur)]
+
+    def test_sept_actions_sous_groq_sur_taches(self):
+        from app.services import relais_copilote as relais
+        for ecran in ("/taches", "/taches/aujourdhui", "/taches/projets/7"):
+            cles = self._cles("groq", ecran)
+            self.assertEqual(len(cles), 7, ecran)
+            self.assertEqual(set(cles), set(relais.JEU_GROQ_TACHES))
+
+    def test_aucune_action_taches_hors_taches_sous_groq(self):
+        for ecran in ("/crm/relances", "/tachesX", None):
+            cles = self._cles("groq", ecran)
+            self.assertEqual([c for c in cles if c.startswith("taches.")], [], ecran)
+            self.assertIn("crm.lead.list", cles)
+
+    def test_claude_garde_le_catalogue_entier(self):
+        self.assertEqual(set(self._cles("claude", "/taches/aujourdhui")), {*_CLES_TACHES, "crm.lead.list"})
+
+    def test_chaque_appel_taches_porte_l_entete_assistant(self):
+        appels = []
+
+        def faux(ctx, path, method="POST", payload=None, idempotency_key=None, **extra):
+            appels.append(extra.get("headers"))
+            return {"ok": True, "status": 200, "data": {}}
+
+        with mock.patch.object(at, "_django_call", faux):
+            for methode in ("GET", "POST"):
+                for action in _cat_taches(methode):
+                    at.run_catalogue_action(_ctx(role="admin"), action, {})
+        self.assertEqual(appels[:19] + appels[20:39], [{"X-Taqinor-Assistant": "1"}] * 38)
+        self.assertEqual((appels[19], appels[39]), (None, None))  # crm.lead.list : en-têtes inchangés
+        self.assertNotIn("X-Taqinor-Assistant", at.internal_headers())
+
+    def test_lien_de_la_tache_creee_pris_du_contexte(self):
+        creer = next(a for a in _cat_taches("POST") if a["key"] == "taches.tache.creer")
+        corps = []
+
+        def faux(ctx, path, method="POST", payload=None, idempotency_key=None, **extra):
+            corps.append(payload)
+            return {"ok": True, "status": 201, "data": {}}
+
+        for contexte in ({"lead_id": 1489}, {"lead_id": 1489, "devis_id": 45}, {}, {"lead_id": True}):
+            ctx = _ctx(role="admin")
+            ctx.contexte_tour = contexte
+            with mock.patch.object(at, "_django_call", faux):
+                at.run_catalogue_action(ctx, creer, {"titre": "Rappeler"})
+        self.assertEqual([c.get("lien") for c in corps], [
+            {"cible": "crm.lead", "id": 1489}, {"cible": "ventes.devis", "id": 45}, None, None])
+        self.assertIn("Entrees non autorisees", at.run_catalogue_action(
+            _ctx(role="admin"), creer, {"titre": "x", "lien": {"cible": "crm.lead", "id": 1}}))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1839,7 +1839,7 @@ class SQLAgentService:
         try:
             # COP-B3 — le copilote est allume pour ce compte quand le
             # catalogue recu de Django porte une action du lot `copilote`.
-            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx)
+            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
