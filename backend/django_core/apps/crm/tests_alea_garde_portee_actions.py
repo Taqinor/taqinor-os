@@ -61,6 +61,8 @@ SONDES_LEAD = {
     'doublons': [('get', 'leads/doublons/', {})],
     # Aperçu de délégation : des compteurs sur SES dossiers, jamais un lead.
     'deleguer': [('get', 'leads/deleguer/', {})],
+    # Liste froide : les compteurs de SES dossiers au Froid, jamais un lead d'autrui.
+    'liste_froide': [('get', 'leads/liste-froide/', {})],
     'relances': [('get', 'leads/relances/', {'scope': 'today'}),
                  ('get', 'leads/relances/', {'scope': 'overdue'}),
                  ('get', 'leads/relances/', {'scope': 'all'})],
