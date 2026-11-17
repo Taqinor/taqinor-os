@@ -56,7 +56,6 @@ from core.electrique.cables import (
 )
 from core.electrique.protections import calibre_disjoncteur, courant_emploi_ac
 from core.pricing_paliers import MODE_VOLUME, calculer_prix_paliers
-from core.product_roles import SOCLES_PAR_PANNEAU
 
 #: Prestations C&I réglées par société (``CompanyProfile.forfaits_ci``).
 PRESTATIONS_CI = (
@@ -130,6 +129,9 @@ TYPE_POSE_DEFAUT = 'toit_plat_leste'
 #: D-SOC-1 (17/11/2026) — la seule pose qui porte des socles de lestage, et le
 #: rôle de LIGNE de ces socles (l'article, lui, n'a aucun rôle C&I).
 POSE_AVEC_SOCLES = 'toit_plat_leste'
+#: Même règle que le résidentiel (``domain.catalogue.SOCLES_PAR_PANNEAU``) : ce
+#: noyau pur ne peut pas importer ``apps.*`` ; un test tient les deux égales.
+SOCLES_PAR_PANNEAU = 2
 ROLE_SOCLE_CI = 'socle_ci'
 MOTIF_PRELIMINAIRE = 'estimation préliminaire (%s) : ajustée après la visite'
 

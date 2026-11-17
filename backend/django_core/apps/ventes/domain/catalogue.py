@@ -37,7 +37,6 @@ import unicodedata
 # ni Django, ni modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_classification as _sc
 from core.product_roles import ROLES_CI_BAREME_COFFRET, est_panneau as _est_panneau
-from core.product_roles import SOCLES_PAR_PANNEAU  # noqa: F401 — ré-export (services, resynchronisation)
 import logging
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
@@ -340,8 +339,7 @@ def _est_au_metre(name: str) -> bool:
 # un mot-clé de plus : inventer une seconde classification ici ferait diverger
 # « ce qu'on resynchronise » de « ce que le PDF montre ».
 STRUCTURES_PAR_PANNEAU = 1
-# ``SOCLES_PAR_PANNEAU`` (2) : défini dans ``core.product_roles`` (importé en
-# tête), lu aussi par le moteur C&I pur (D-SOC-1, 17/11/2026).
+SOCLES_PAR_PANNEAU = 2
 
 
 def _is_structure(name: str) -> bool:

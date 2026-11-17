@@ -130,6 +130,13 @@ class CompositionTests(TestCase):
         self.assertTrue(ac['a_confirmer_visite'])
         self.assertFalse(ac.get('a_chiffrer_visite'))
 
+    def test_socles_par_panneau_meme_regle_que_le_residentiel(self):
+        # D-SOC-1 — le noyau pur ne peut pas importer ``apps.*`` : sa
+        # constante doit rester ÉGALE à celle du résidentiel.
+        from apps.ventes.domain.catalogue import SOCLES_PAR_PANNEAU
+        from apps.ventes.moteur_ci import composition
+        self.assertEqual(composition.SOCLES_PAR_PANNEAU, SOCLES_PAR_PANNEAU)
+
     def test_cable_ac_jamais_sous_10_mm2(self):
         # Fondateur 17/11/2026 — « je n'utilise que du 10 mm² » derrière un
         # onduleur de 5, 10 ou 15 kW : plancher commercial, que le calcul
