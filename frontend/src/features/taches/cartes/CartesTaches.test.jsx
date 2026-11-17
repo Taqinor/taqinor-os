@@ -116,3 +116,127 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(container).toHaveTextContent('')
   })
 })
+
+describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
+  it('priorites : raisons, sous-titre, repli après les N premières, Garder ces 2', async () => {
+    monter('priorites', contrat('priorites'))
+    const carte = screen.getByRole('group', { name: 'Tes priorités' })
+    expect(within(carte).getByText('2 pour atteindre ton objectif de 5')).toBeInTheDocument()
+    expect(within(carte).getByText('échéance jeu. 19')).toBeInTheDocument()
+    expect(within(carte).queryByText('Site web')).not.toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Voir les 1 suivantes' }))
+    expect(within(carte).getByText('Site web')).toBeInTheDocument()
+    expect(within(carte).getByText('reportée 3 fois')).toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Garder ces 2' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/taches/journee/planifier/',
+      expect.objectContaining({ lignes: [{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }] }),
+      expect.anything(),
+    ))
+  })
+
+  it('priorites : Essentiel, Aujourd’hui et Plus tard dans la semaine ont chacun leur route', async () => {
+    monter('priorites', contrat('priorites'))
+    const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Essentiel' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 21, essentielle: true }))
+    expect(await within(ligne).findByText(/Essentielle/)).toBeInTheDocument()
+    await userEvent.click(within(ligne).getByRole('button', { name: /Plus tard dans la semaine/ }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/taches/taches/21/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: 2 }),
+    ))
+  })
+
+  it('priorites : liste vide', () => {
+    const donnees = { ...contrat('priorites'), lignes: [], garder_n: 0 }
+    monter('priorites', donnees)
+    expect(screen.getByText('Rien à prioriser : tout est gardé ou fait.')).toBeInTheDocument()
+  })
+
+  it('priorites : objectif atteint et mode libre ont leur phrase', () => {
+    const atteint = { ...contrat('priorites'), garder_n: 0 }
+    const { unmount } = monter('priorites', atteint)
+    expect(screen.getByText('Objectif atteint : le reste peut attendre.')).toBeInTheDocument()
+    unmount()
+    const libre = contrat('priorites')
+    libre.objectif.mode = 'libre'
+    monter('priorites', libre)
+    expect(screen.getByText("Dans l'ordre où l'ERP les prendrait")).toBeInTheDocument()
+  })
+
+  it('point : les constats calculés par le serveur, rien d’autre', () => {
+    monter('point', contrat('point'))
+    const carte = screen.getByRole('group', { name: 'Où tu en es' })
+    expect(within(carte).getByText('1 sur 5')).toBeInTheDocument()
+    expect(within(carte).getByText('Essentiel restant : Devis Settat')).toBeInTheDocument()
+    expect(within(carte).getByText('Prochaine : Timbres')).toBeInTheDocument()
+    expect(within(carte).getByText('Encore 3 gardées')).toBeInTheDocument()
+    expect(within(carte).getByText('Temps libre : 3 h')).toBeInTheDocument()
+    expect(within(carte).getByRole('link', { name: "Ouvrir Aujourd'hui" })).toHaveAttribute('href', '/taches/aujourdhui')
+  })
+
+  it('capture_apercu : « Retirer » ôte la ligne, « Tout ajouter » crée les lignes restantes', async () => {
+    monter('capture_apercu', contrat('saisie_apercu'))
+    const carte = screen.getByRole('group', { name: 'Ta liste rangée' })
+    expect(within(carte).getByText('Nouveau projet : SiteWeb')).toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ajouter (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    const [url, corps] = api.post.mock.calls[0]
+    expect(url).toBe('/taches/saisie-rapide/')
+    expect(corps.apercu).toBe(false)
+    expect(corps.lignes[0]).toMatchObject({ titre: 'Appeler Karim', jour_prevu: '2026-11-18' })
+    expect(await within(carte).findByText(/1 ajoutée/)).toBeInTheDocument()
+  })
+
+  it('capture_apercu : retirer la dernière ligne vide la carte', async () => {
+    monter('capture_apercu', contrat('saisie_apercu'))
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }))
+    expect(screen.getByText('Rien à ajouter.')).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('rythme : la proposition et ses boutons répondent par la route des propositions', async () => {
+    monter('rythme', contrat('rythme'))
+    const carte = screen.getByRole('group', { name: 'Ton rythme' })
+    expect(within(carte).getByText('objectif 5')).toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Monter à 6' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/taches/rythme/propositions/41/repondre/', { reponse: 'oui' },
+    ))
+  })
+
+  it('rythme : « Retirer » une préférence appelle sa route', async () => {
+    monter('rythme', contrat('rythme'))
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/taches/preferences/heure_limite/'))
+  })
+
+  it('rythme : la réponse d’une proposition (rythme imbriqué) se rend aussi', () => {
+    monter('rythme', contrat('proposition_repondue'))
+    expect(screen.getByRole('group', { name: 'Ton rythme' })).toBeInTheDocument()
+  })
+
+  it('plan_projet : les étapes et leurs tâches, « Retirer » ôte une tâche localement', async () => {
+    monter('plan_projet', contrat('planification_apercu'))
+    const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
+    expect(within(carte).getByText('Visite')).toBeInTheDocument()
+    await userEvent.click(within(carte).getAllByRole('button', { name: 'Retirer' })[0])
+    expect(within(carte).queryByText('Visite')).not.toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('projet : avancement, prochaine action, Ouvrir', () => {
+    monter('projet', contrat('projet_vue'))
+    const carte = screen.getByRole('group', { name: 'Ventes' })
+    expect(within(carte).getByText('12 sur 20')).toBeInTheDocument()
+    expect(within(carte).getByText('Rien de fait depuis 10 jours travaillés.')).toBeInTheDocument()
+    expect(within(carte).getByRole('link', { name: 'Ouvrir' })).toHaveAttribute('href', '/taches/projets/3')
+  })
+
+  it('revue_semaine : le bilan de la semaine et « Ouvrir la revue »', () => {
+    monter('revue_semaine', contrat('revue_projets'))
+    const carte = screen.getByRole('group', { name: 'Revue de la semaine' })
+    expect(within(carte).getByText(/Du lun. 16 au ven. 20/)).toBeInTheDocument()
+    expect(within(carte).getByRole('link', { name: 'Ouvrir la revue' })).toHaveAttribute('href', '/taches/revue')
+  })
+})

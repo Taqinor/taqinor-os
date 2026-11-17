@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import CaseRonde from '../ui/CaseRonde'
-import { accord, jourNomme } from '../lib/textes'
+import { accord, duree, heure, jourNomme } from '../lib/textes'
 
 /* ============================================================================
-   TCH117 — Les cartes « Tâches » du Copilote, rendues DIRECTEMENT (sans passer par
-   `CarteResultat`) : `ma_journee`, `plan_propose`, `liste_taches`, `tache` (écho ou écriture) ; la suite est TCH165.
+   TCH117 + TCH165 — Les cartes « Tâches » du Copilote, rendues DIRECTEMENT (sans passer par
+   `CarteResultat`) : `ma_journee`, `plan_propose`, `liste_taches`, `tache` (écho ou écriture),
+   `capture_apercu`, `rythme`, `plan_projet`, `projet`, `revue_semaine`, `priorites`, `point`.
    `carte.donnees` = le corps JSON de la route qui l'a servie (`contract_samples/*.json`) : rien
    n'est recalculé ici, un constat affiché vient du serveur ou n'est pas affiché.
    Maquette : docs/taches/maquettes/copilote.html. Textes : reference/textes.md §5.2-§5.7.
@@ -203,6 +204,42 @@ function CarteListeTaches({ donnees }) {
   )
 }
 
+function CarteProjet({ donnees }) {
+  const { projet, avancement, prochaine_action: prochaine } = donnees
+  return (
+    <div role="group" aria-label={projet.nom}>
+      <Tete titre={projet.nom} chiffres={avancement ? `${avancement.faites} sur ${avancement.total}` : ''} />
+      {projet.objectif ? <p className="section-sous">{projet.objectif}</p> : null}
+      {(projet.sante ?? []).map((s) => <p key={s.code} className="section-sous">{s.phrase}</p>)}
+      {prochaine ? <div className="liste" role="list"><LigneCarte item={prochaine} /></div> : null}
+      <div className="propose-actions">
+        <Link className="bouton second" to={`/taches/projets/${projet.id}`}>Ouvrir</Link>
+      </div>
+    </div>
+  )
+}
+
+function CarteRevueSemaine({ donnees }) {
+  const cartes = donnees.cartes ?? []
+  return (
+    <div role="group" aria-label="Revue de la semaine">
+      <Tete titre="Revue de la semaine" />
+      {donnees.bilan_semaine?.texte ? <p className="section-sous">{donnees.bilan_semaine.texte}</p> : null}
+      <div className="liste" role="list">
+        {cartes.map((c) => (
+          <div key={c.projet.id} className="ligne" role="listitem">
+            <div className="ligne-corps">
+              <div className="titre"><Projet projet={c.projet} /></div>
+              {(c.projet.sante ?? []).map((s) => <div key={s.code} className="meta"><span>{s.phrase}</span></div>)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="propose-actions"><Link className="bouton second" to="/taches/revue">Ouvrir la revue</Link></div>
+    </div>
+  )
+}
+
 // ── tache : écho ou écriture ──────────────────────────────────────────────────
 
 const ECHOS = {
@@ -248,11 +285,234 @@ function CarteTache({ donnees }) {
   )
 }
 
+// ── capture_apercu, plan_projet ───────────────────────────────────────────────
+
+function CarteCaptureApercu({ donnees }) {
+  const geste = useGeste()
+  const [retirees, setRetirees] = useState([])
+  const lignes = (donnees.lignes ?? []).filter((l) => !retirees.includes(l.index))
+  const ajouter = () => geste.lancer(() => client.saisieRapide({
+    lignes: lignes.map((l) => ({ index: l.index, collage: l.collage, client_id: `copilote:${l.collage}:${l.index}`, titre: l.titre, ...l.champs })),
+    apercu: false,
+  }), accord(lignes.length, 'ajoutée'))
+  return (
+    <div role="group" aria-label="Ta liste rangée">
+      <Tete titre="Ta liste rangée" chiffres={String(lignes.length)} />
+      {lignes.length === 0 ? <p className="section-sous">Rien à ajouter.</p> : (
+        <div className="liste" role="list">
+          {lignes.map((l) => (
+            <div key={l.index} className="ligne" role="listitem">
+              <div className="ligne-corps">
+                <div className="titre">{l.titre}</div>
+                <div className="meta">
+                  {l.champs?.nouveau_projet ? <span>{`Nouveau projet : ${l.champs.nouveau_projet.nom}`}</span> : <span>Pas de projet évident : choisis-le.</span>}
+                </div>
+              </div>
+              <div className="ligne-fin">
+                <button type="button" className="bouton lien" onClick={() => setRetirees((r) => [...r, l.index])}>Retirer</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {lignes.length > 0 ? (
+        <div className="propose-actions">
+          <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null} onClick={ajouter}>
+            {`Tout ajouter (${lignes.length})`}
+          </button>
+        </div>
+      ) : null}
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
+function CartePlanProjet({ donnees }) {
+  const [retirees, setRetirees] = useState([])
+  const sections = donnees.sections ?? []
+  return (
+    <div role="group" aria-label="Le projet en étapes">
+      <Tete titre="Le projet en étapes" chiffres={String(sections.length)} />
+      {sections.map((s, i) => (
+        <div key={s.nom}>
+          <p className="section-sous">{s.nom}</p>
+          <div className="liste" role="list">
+            {(s.taches ?? []).filter((t) => !retirees.includes(`${i}:${t.titre}`)).map((t) => (
+              <div key={t.titre} className="ligne" role="listitem">
+                <div className="ligne-corps">
+                  <div className="titre">{t.titre}</div>
+                  {(t.sous_taches ?? []).length > 0 ? <div className="meta"><span>{t.sous_taches.join(' · ')}</span></div> : null}
+                </div>
+                <div className="ligne-fin">
+                  <button type="button" className="bouton lien" onClick={() => setRetirees((r) => [...r, `${i}:${t.titre}`])}>Retirer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── rythme ────────────────────────────────────────────────────────────────────
+
+const LIBELLES_MODE = { pousser: 'En faire plus', tenir: 'Garder ce rythme', libre: 'Sans objectif' }
+
+function BoutonsReponse({ proposition }) {
+  const geste = useGeste()
+  if (!proposition) return null
+  return (
+    <div>
+      <p className="section-sous">{proposition.texte}</p>
+      {geste.fait ? null : (
+        <div className="propose-actions">
+          {(proposition.boutons ?? []).map((b) => (
+            <button key={b.reponse} type="button" className="bouton second" disabled={geste.occupe}
+              onClick={() => geste.lancer(() => client.repondreProposition(proposition.id, { reponse: b.reponse }), b.libelle)}>
+              {b.libelle}
+            </button>
+          ))}
+        </div>
+      )}
+      <Retour geste={{ ...geste, fait: geste.fait ? { message: geste.fait.message, geste: null } : null }} />
+    </div>
+  )
+}
+
+function Preference({ preference }) {
+  const geste = useGeste()
+  if (geste.fait) return <p className="section-sous" role="status">{`${preference.cle} retirée`}</p>
+  return (
+    <div className="ligne" role="listitem">
+      <div className="ligne-corps"><div className="titre">{`${preference.cle} : ${preference.valeur}`}</div></div>
+      <div className="ligne-fin">
+        <button type="button" className="bouton lien" disabled={geste.occupe}
+          onClick={() => geste.lancer(() => client.retirerPreference(preference.cle), 'Retirée')}>Retirer</button>
+        {geste.erreur ? <span className="alerte" role="alert">{geste.erreur}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function CarteRythme({ donnees }) {
+  const d = donnees.rythme ?? donnees
+  const objectif = d.objectif
+  const chiffres = objectif?.nb ? `objectif ${objectif.nb}` : ''
+  return (
+    <div role="group" aria-label="Ton rythme">
+      <Tete titre="Ton rythme" chiffres={chiffres} />
+      <p className="section-sous">{LIBELLES_MODE[d.mode] ?? ''}{d.trace ? ` · ${d.trace}` : ''}</p>
+      <BoutonsReponse proposition={d.proposition} />
+      {(d.constats ?? []).map((c) => <BoutonsReponse key={c.id} proposition={c} />)}
+      {(d.preferences ?? []).length > 0 ? (
+        <div className="liste" role="list">{d.preferences.map((p) => <Preference key={p.cle} preference={p} />)}</div>
+      ) : null}
+    </div>
+  )
+}
+
+// ── priorites ─────────────────────────────────────────────────────────────────
+
+function sousTitrePriorites(d) {
+  if (d.objectif?.mode === LIBRE || !d.objectif?.nb) return "Dans l'ordre où l'ERP les prendrait"
+  if (d.garder_n === 0) return 'Objectif atteint : le reste peut attendre.'
+  return `${d.garder_n} pour atteindre ton objectif de ${d.objectif.nb}`
+}
+
+function GestesPriorite({ item, jour, plusTard }) {
+  const geste = useGeste()
+  const ecrire = (appel, message) => geste.lancer(appel, message)
+  const ligne = [{ type: item.type, id: item.id }]
+  return (
+    <div className="actions-priorite">
+      <button type="button" className="bouton discret" disabled={geste.occupe}
+        onClick={() => ecrire(() => client.marquerEssentiel({ tache_id: item.id, essentielle: true }), 'Essentielle')}>Essentiel</button>
+      <button type="button" className="bouton discret" disabled={geste.occupe}
+        onClick={() => ecrire(() => client.garderJournee({ jour, mode: 'express', lignes: ligne, essentielles: [], triage: [] }), 'Mise à aujourd\'hui')}>
+        Aujourd&apos;hui
+      </button>
+      {plusTard ? (
+        <button type="button" className="bouton discret" disabled={geste.occupe}
+          onClick={() => ecrire(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Prévue ${jourNomme(plusTard, jour)}`)}>
+          {`Plus tard dans la semaine (→ ${jourNomme(plusTard, jour)})`}
+        </button>
+      ) : null}
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
+function CartePriorites({ donnees }) {
+  const geste = useGeste()
+  const [toutes, setToutes] = useState(false)
+  const lignes = donnees.lignes ?? []
+  if (lignes.length === 0) {
+    return <div role="group" aria-label="Tes priorités"><Tete titre="Tes priorités" /><p className="section-sous">Rien à prioriser : tout est gardé ou fait.</p></div>
+  }
+  const n = donnees.garder_n ?? 0
+  const visibles = toutes ? lignes : lignes.slice(0, Math.max(n, 1))
+  const aGarder = lignes.slice(0, n).map((l) => l.item)
+  return (
+    <div role="group" aria-label="Tes priorités">
+      <Tete titre="Tes priorités" />
+      <p className="section-sous">{sousTitrePriorites(donnees)}</p>
+      <div className="liste" role="list">
+        {visibles.map((l) => (
+          <LigneCarte key={cleItem(l.item)} item={l.item} rang={l.rang}
+            bas={<GestesPriorite item={l.item} jour={donnees.jour} plusTard={donnees.plus_tard} />} />
+        ))}
+      </div>
+      {!toutes && lignes.length > visibles.length ? (
+        <button type="button" className="lien-plus" onClick={() => setToutes(true)}>{`Voir les ${lignes.length - visibles.length} suivantes`}</button>
+      ) : null}
+      {n > 0 ? <div className="propose-actions"><BoutonGarder lignes={aGarder} jour={donnees.jour} geste={geste} /></div> : null}
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
+// ── point ─────────────────────────────────────────────────────────────────────
+
+function lignesDuPoint(d) {
+  const p = d.progression ?? {}
+  const objectif = d.objectif
+  const lignes = [objectif?.mode === LIBRE || !objectif?.nb ? `${p.faites} faites` : `${p.faites} sur ${objectif.nb}`]
+  const essentiel = d.essentiel_restant ?? []
+  if (essentiel.length > 0) lignes.push(`Essentiel restant : ${essentiel.map((t) => t.titre).join(', ')}`)
+  else if (p.essentiel_prevues > 0) lignes.push('Essentiel fait')
+  if (d.prochaine) lignes.push(`Prochaine : ${d.prochaine.titre}${d.prochaine.heure_debut ? ` · ${heure(d.prochaine.heure_debut)}` : ''}`)
+  if (d.restes_nb > 0) lignes.push(`Encore ${accord(d.restes_nb, 'gardée')}`)
+  const rdv = d.rendez_vous_restants ?? []
+  if (rdv.length > 0) lignes.push(`Rendez-vous restants : ${rdv.map((r) => `${heure(r.debut?.slice(11, 16))} ${r.titre}`).join(' · ')}`)
+  if (p.disponible_minutes > 0) lignes.push(`Temps libre : ${duree(p.disponible_minutes)}`)
+  return lignes
+}
+
+function CartePoint({ donnees }) {
+  return (
+    <div role="group" aria-label="Où tu en es">
+      <Tete titre="Où tu en es" />
+      <ul className="m-0 list-none p-0">
+        {lignesDuPoint(donnees).map((t) => <li key={t} className="section-sous">{t}</li>)}
+      </ul>
+      <div className="propose-actions"><Link className="bouton second" to="/taches/aujourdhui">Ouvrir Aujourd&apos;hui</Link></div>
+    </div>
+  )
+}
+
 const COMPOSANTS = {
   ma_journee: CarteMaJournee,
   plan_propose: CartePlanPropose,
   liste_taches: CarteListeTaches,
   tache: CarteTache,
+  capture_apercu: CarteCaptureApercu,
+  rythme: CarteRythme,
+  plan_projet: CartePlanProjet,
+  projet: CarteProjet,
+  revue_semaine: CarteRevueSemaine,
+  priorites: CartePriorites,
+  point: CartePoint,
 }
 
 /** Une carte `taches` du Copilote : `carte` = `{ carte: '<clé>', donnees: <corps de la route> }`. */
