@@ -38,7 +38,6 @@
     --tch-chiffre: 0.75rem;
     --tch-gouttiere: 24px;
     --tch-ligne-h: 44px;
-    --tch-heure-h: 56px;
   }
 }
 
@@ -765,6 +764,9 @@
   .tch .feuille.dialogue-bureau {
     left: 50%; right: auto; bottom: auto; top: 16vh; width: 560px; height: auto;
     transform: translateX(-50%); border-radius: var(--tch-rayon-carte); padding: 20px 20px 16px;
+    /* bornée à la fenêtre : sans plafond le dialogue dépasse le bas de l'écran (Coller encore, Fait hors d'atteinte) ;
+       c'est alors `.feuille-corps` qui défile et le pied collant reste visible */
+    max-height: calc(100vh - 16vh - 16px);
   }
   .tch .feuille.dialogue-bureau .poignee {
     display: none;
@@ -772,6 +774,7 @@
   .tch .feuille.popover-bureau {
     right: auto; bottom: auto; top: 136px; left: calc(50% - 520px); width: 380px; height: auto;
     border-radius: var(--tch-rayon-carte); padding: 8px 16px 12px; box-shadow: var(--shadow-lg), 0 0 0 1px var(--tch-trait);
+    max-height: calc(100vh - 136px - 16px);
   }
   .tch .feuille.popover-bureau .poignee {
     display: none;
