@@ -1,12 +1,20 @@
 """Mes données (reference/api.md §3.4, §4) : export JSON et « Tout effacer ».
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
-schéma OpenAPI est celui de leur échantillon de `contract_samples/`.
+Le compte et la société sont ceux de la requête, jamais lus du corps ; « Tout effacer » n'a pas de
+geste (api.md §4 « Sans `geste_id` »).
 """
+from collections.abc import Mapping
+
 from drf_spectacular.utils import extend_schema
+from rest_framework import serializers
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.views.base import PERMISSIONS, PasEncore, corps, forme_echantillon, reponses
+from apps.taches.services.donnees import exporter, tout_effacer
+from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
+
+CONFIRMATION = 'EFFACER'
+MESSAGE_CONFIRMATION = 'Tape EFFACER pour confirmer.'
 
 
 class MesDonneesVue(APIView):
@@ -16,7 +24,9 @@ class MesDonneesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('mes_donnees')))
     def get(self, request):
-        raise PasEncore()
+        reponse = Response(exporter(request.user))
+        reponse['Cache-Control'] = 'no-store'
+        return reponse
 
 
 class ToutEffacerVue(APIView):
@@ -27,4 +37,7 @@ class ToutEffacerVue(APIView):
     @extend_schema(request=corps('ToutEffacer', {'confirmation': 'EFFACER'}, requis=('confirmation',)),
                    responses=reponses(forme_echantillon('tout_effacer'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = request.data if isinstance(request.data, Mapping) else {}
+        if str(donnees.get('confirmation') or '').strip() != CONFIRMATION:
+            raise serializers.ValidationError({'confirmation': [MESSAGE_CONFIRMATION]})
+        return Response(tout_effacer(request.user))
