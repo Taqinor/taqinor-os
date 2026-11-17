@@ -282,8 +282,9 @@ sortie(dict(id=v.id, date=v.date_prevue.isoformat()))`)
     const carte = panneau.getByTestId('carte-matin').last()
     await expect(carte, 'carte matin affichée').toBeVisible({ timeout: 30_000 })
     await expect(carte, 'bloc Visites (total)').toContainText(/Visites \(\d+\)/)
-    // Le lead neuf a aussi sa première touche dans le bloc « Relances » : la rangée de VISITE porte « prévue le ».
-    const rangee = carte.locator('li').filter({ hasText: nom }).filter({ hasText: 'prévue le' })
+    // Le lead neuf a aussi sa première touche dans le bloc « Relances » : la rangée est cherchée dans le bloc VISITES.
+    const blocVisites = carte.getByText(/^Visites \(\d+\)/).locator('xpath=following-sibling::ul[1]')
+    const rangee = blocVisites.locator('li').filter({ hasText: nom })
     await expect(rangee, 'une rangée pour la visite du jour (lead)').toHaveCount(1)
     await expect(rangee, 'date prévue de la rangée').toContainText('prévue le')
     await expect(rangee, 'ville de la rangée').toContainText('Kénitra')

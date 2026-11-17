@@ -196,13 +196,18 @@ jobs:
             echo "Attente Django ($i)"; sleep 2
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
-          ( cd ../fastapi_ia && /tmp/venv-ia/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 1 > /tmp/uvicorn.log 2>&1 & )
+          # RUN_DB_DDL=1 : le service IA pose son schema (ia_ocr_document) comme sur une pile deployee ; sans la table,
+          # toute question dont les tables pertinentes la citent echoue (« include_tables {'ia_ocr_document'} not found »).
+          ( cd ../fastapi_ia && RUN_DB_DDL=1 /tmp/venv-ia/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 1 > /tmp/uvicorn.log 2>&1 & )
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8100/health || true)
             if [ "$code" = "200" ]; then echo "Service IA pret"; break; fi
             echo "Attente service IA ($i)"; sleep 2
             if [ "$i" = "60" ]; then echo "Service IA indisponible"; tail -n 60 /tmp/uvicorn.log; exit 1; fi
           done
+          # GRANT de sql_agent_ro rejoue (rls_roles.sql, idempotent) maintenant que ia_ocr_document existe.
+          { sed -n '/^-- 4) AANA30/,$p' ../../backend/db/rls_roles.sql; } | /usr/lib/postgresql/16/bin/psql -h localhost -U erp_user -d erp_db -v ON_ERROR_STOP=1 -q
+          /usr/lib/postgresql/16/bin/psql -h localhost -U erp_user -d erp_db -tAc "SELECT to_regclass('public.ia_ocr_document') IS NOT NULL AS table_ocr, has_table_privilege('sql_agent_ro', 'public.ia_ocr_document', 'SELECT') AS grant_ocr" || true
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
           npx playwright test --project=acceptation e2e/acceptation/amsg8.spec.js e2e/acceptation/aic.spec.js e2e/acceptation/alec6.spec.js e2e/acceptation/aana7.spec.js
