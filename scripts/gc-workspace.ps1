@@ -52,15 +52,21 @@ foreach ($it in (Get-ChildItem "$repo/.claude/worktrees" -Directory -ErrorAction
 }
 if ($WhatIf) { git worktree prune --dry-run -v } else { git worktree prune }
 
-# 2) Branches locales fusionnées dans main, motif agent-*/claude/* → suppr.
+# 2) Branches locales fusionnées dans origin/main (repli main), motif agent-*/claude/* → suppr.
 #    Non-mergées → listées, jamais supprimées.
 $mergedDeleted = 0; $unmergedKept = @()
 # Une branche extraite dans un worktree ne peut PAS être supprimée (git refuse
 # et, sous $ErrorActionPreference='Stop', PS 5.1 promeut le stderr natif en
 # erreur terminale qui tuait la boucle). On les exclut donc en amont.
 $checkedOut = @(git worktree list --porcelain | Select-String '^branch refs/heads/' | ForEach-Object { $_.ToString().Substring(18) })
+# ADCG118 : juger contre origin/main après un fetch — la main LOCALE du checkout principal peut être figée
+# (14/10 sur le poste du fondateur : 0 branche listée sur 290 fusionnées) ; sans remote joignable, repli main.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+git fetch origin --quiet 2>$null | Out-Null; $ok = ($LASTEXITCODE -eq 0); git rev-parse --verify --quiet origin/main 2>$null | Out-Null
+$base = if ($ok -and $LASTEXITCODE -eq 0) { 'origin/main' } else { 'main' }; $ErrorActionPreference = $eap
+Write-Host $(if ($base -eq 'main') { '  remote origin injoignable : branches jugées contre la main LOCALE' } else { '  branches jugées contre origin/main (fetch fait)' })
 $motif = '^(agent-|worktree-agent-|claude/|wow-)'  # ADCG21 : worktree-agent-* = outil de worktree des agents
-$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match $motif) -and ($_ -notin $checkedOut) }
+$merged = (git branch --merged $base --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match $motif) -and ($_ -notin $checkedOut) }
 foreach ($b in $merged) {
   Write-Host "  ${act}delete merged branch $b"
   if (-not $WhatIf) {
@@ -70,7 +76,7 @@ foreach ($b in $merged) {
     $mergedDeleted++
   }
 }
-$unmergedKept = (git branch --no-merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match $motif) }
+$unmergedKept = (git branch --no-merged $base --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match $motif) }
 if ($unmergedKept) { Write-Host "  KEEP (non fusionnées, à vérifier à la main) :"; $unmergedKept | ForEach-Object { Write-Host "    - $_" } }
 
 # 3) Docker : cache de build + images pendantes.
