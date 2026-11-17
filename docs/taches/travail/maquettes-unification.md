@@ -41,6 +41,11 @@ cible sous le bouton flottant ou les onglets, lexique interdit. Premier passage 
 | Mon iPhone | mon-iphone | 8 |
 | Mon rythme, 1er jour | premier-usage-4-rythme | 8 |
 
+## Passe après le tour 4
+Recherche « devis » : 3 ouvertes (dont les 2 d'À trier) et 3 faites ; Chronologie du bureau : une rangée par étape, Matériel dès lun. 23, Pose sans date listée à part ; Agenda : titre à x 297, surtitre sur iPhone, À placer à 420 px ; vues du projet au même x (1162) ; Semaine : trait visible au-dessus du fond des blocs.
+`verifier.cjs` contrôle aussi le TEXTE et les icônes porteuses de sens sous le bouton flottant (chevrons décoratifs exclus) : matin (espace avant Proposé), hors ligne (état dans la ligne du dessus, « échéance mer. 25 » rétablie), étapes du projet ; 81 × 4 vues, 0 échec.
+Reste : à 15 h et hors ligne, le chevron des relances (même x partout) passe sous le bouton flottant au repos ; Semaine à 420 px coupe deux titres en cascade.
+
 ## Ce qui me déplaît encore
 - Semaine : le trait « maintenant » passe sous le devis de 2 h, il n'en reste qu'un point.
 - Matin iPhone : le bouton flottant mord le drapeau du fournisseur ; « 09:00 » met la méta du devis sur deux lignes.

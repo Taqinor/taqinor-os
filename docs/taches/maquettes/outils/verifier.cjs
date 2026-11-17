@@ -130,6 +130,28 @@ function analyser(args) {
     if (fab.some((f) => f.contains(hit) && !f.contains(e) && !e.contains(f))) out.push(['recouvert', 'bouton flottant sur ' + nom(e)]);
     if (ong.some((o) => o.contains(hit) && !o.contains(e)) && surcouche(e)) out.push(['recouvert', 'onglets sur ' + nom(e)]);
   });
+  // 4 bis. TEXTE et icônes de contenu sous le bouton flottant (au repos, rien ne doit passer dessous)
+  const sousFab = (r, quoi) => fab.forEach((f) => {
+    const b = f.getBoundingClientRect();
+    const x1 = Math.max(r.left, b.left + 2), x2 = Math.min(r.right, b.right - 2);
+    const y1 = Math.max(r.top, b.top + 2), y2 = Math.min(r.bottom, b.bottom - 2);
+    if (x2 <= x1 || y2 <= y1) return;
+    const h = document.elementFromPoint((x1 + x2) / 2, (y1 + y2) / 2);
+    if (h && f.contains(h)) out.push(['recouvert', 'bouton flottant sur ' + quoi]);
+  });
+  if (fab.length) {
+    const mt = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let t = mt.nextNode(); t; t = mt.nextNode()) {
+      const e = t.parentElement; if (!t.nodeValue.trim() || !e || cache2Get(e) || fab.some((f) => f.contains(e))) continue;
+      if (!visible(e)) continue;
+      const rg = document.createRange(); rg.selectNodeContents(t);
+      [...rg.getClientRects()].forEach((r) => sousFab(r, 'texte « ' + t.nodeValue.trim().slice(0, 40) + ' »'));
+    }
+    // les chevrons sont décoratifs (la ligne entière se touche) : seules les icônes qui disent quelque chose comptent
+    document.querySelectorAll('svg.i').forEach((s) => { if (cache2Get(s) || fab.some((f) => f.contains(s)) || !visible(s)) return;
+      if (/#i-chevron-/.test((s.querySelector('use') || { getAttribute: () => '' }).getAttribute('href') || '')) return;
+      sousFab(s.getBoundingClientRect(), 'icône ' + ((s.querySelector('use') || {}).getAttribute ? s.querySelector('use').getAttribute('href') : '')); });
+  }
   const h1 = [...document.querySelectorAll('h1')].find(visible);
   return { defauts: out, titre: h1 ? Math.round(h1.getBoundingClientRect().bottom) : null };
 }

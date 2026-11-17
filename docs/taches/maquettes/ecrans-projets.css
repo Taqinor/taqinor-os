@@ -556,10 +556,9 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
   .ep-projet-col .ep-tete .ep-titre { margin: 0; }
   .ep-projet-col .ep-projet-nom .point { margin-top: 11px; }
   .ep-projet-col .ep-entre { position: absolute; top: 26px; left: 0; z-index: 2; display: flex; justify-content: flex-end;
-    width: min(100%, 860px); height: 52px; padding: 0 8px 0 24px; }
-  .ep-projet-col.ep-vue-large .ep-entre { width: 100%; max-width: none; }
+    width: 100%; height: 52px; padding: 0 8px 0 24px; }   /* même place en Liste, Tableau, Chronologie */
   .ep-projet-col .ep-reserve { visibility: hidden; }
-  .ep-menu { left: calc(min(100%, 860px) - 288px); }
+  .ep-menu { left: calc(100% - 288px); }
   /* panneau droit de la liste des projets : trop étroit pour vues + titre côte à côte, les vues passent au-dessus */
   .ep-panneau-projet .ep-projet-col .ep-entre { position: static; width: auto; height: 44px; padding: 0; }
   .ep-panneau-projet .ep-projet-col .ep-tete { padding-top: 0; }
@@ -575,3 +574,8 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 /* Tuile : « Visite technique à Témara · Toute la journée » tient entier */
 .ep-tuile.grande .ep-t-liste li { font-size: 0.875rem; column-gap: 8px; }
 .ep-tuile.grande .ep-t-liste li .h { font-size: 0.75rem; }
+
+/* iPhone : étapes plus séparées ; au repos, le bouton flottant tombe entre deux étapes, pas sur un compte */
+@media (max-width: 767px) { .ep-etape { margin-top: 32px; } }
+@media (min-width: 768px) { .page.trois.deux .col-liste.ep-projet-col > .ep-entre { max-width: none; } }
+@media (min-width: 768px) { .ep-fh-sous { z-index: 3; background: var(--tch-surface); padding-right: 6px; } }
