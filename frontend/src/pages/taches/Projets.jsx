@@ -190,7 +190,7 @@ export default function Projets() {
     setActifs((l) => l.filter((p) => p.id !== projet.id))
     setEnPause((l) => l.filter((p) => p.id !== projet.id))
     proposerAnnuler({
-      message: `« ${projet.nom} » supprimé`,
+      message: `« ${projet.nom} » et ses ${accord((projet.compteurs?.ouvertes ?? 0) + (projet.compteurs?.faites ?? 0), 'tâche')} supprimés`,
       onAnnuler: async () => {
         const { data } = await restaurerProjet(projet.id)
         const rendu = { ...projet, ...(data?.projet ?? {}) }

@@ -156,7 +156,7 @@ describe('TCH92 — Projets : Supprimer depuis la ligne', () => {
     await user.click(within(dialogue).getByRole('button', { name: 'Supprimer' }))
     expect(api.supprimerProjet).toHaveBeenCalledWith(3)
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Ventes' })).toBeNull())
-    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » supprimé')
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent(/^« Ventes » et ses \d+ tâches? supprimés/) // textes.md §2.15
   })
 })
 

@@ -129,7 +129,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       })
     } catch (err) {
       remettre()
-      setErreur(classerErreur(err).code === 'reseau' ? 'Pas de réseau : la tâche est restée dans la liste.' : frenchError(err))
+      setErreur(classerErreur(err).code === 'reseau' ? 'Possible une fois connecté' : frenchError(err))
     }
   }, [lignes])
 
@@ -197,8 +197,9 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     try {
       const { data } = await traiterLot({ ids, action: 'deplacer', valeurs: { par_tache: parTache } })
       setPropositions(null)
+      const n = data?.appliquees?.length ?? ids.length
       proposerAnnuler({
-        message: `${accord(data?.appliquees?.length ?? ids.length, 'tâche')} rangée${ids.length > 1 ? 's' : ''}`,
+        message: n >= 2 ? `${n} tâches rangées` : `${n} tâche rangée`, // accord sur le même nombre que l'affiché
         onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); await lire(vue) } : undefined,
       })
     } catch (err) {

@@ -238,7 +238,7 @@ export default function Projet() {
     const { id: projetId, nom } = vue.projet
     setDialogue(null)
     proposerAnnuler({
-      message: `« ${nom} » supprimé`,
+      message: `« ${nom} » et ses ${accord((vue.projet.compteurs?.ouvertes ?? 0) + (vue.projet.compteurs?.faites ?? 0), 'tâche')} supprimés`,
       onAnnuler: async () => { await restaurerProjet(projetId); navigate(`/taches/projets/${projetId}`) },
     })
     navigate('/taches/projets')

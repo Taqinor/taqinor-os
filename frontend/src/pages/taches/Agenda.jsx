@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
-import { annulerGeste, lireAgenda, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
 import PlanifierSemaine from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
@@ -392,11 +393,12 @@ function VueAVenir({ jours, aujourdhui, gestes }) {
   ))
 }
 
-function BandeauPasAJour({ maj, message, onReessayer }) {
+/** Raccord F2 — aucun agenda externe ajouté : l'invitation de textes.md §2.8 (lue une fois, jamais devinée). */
+function InvitationAgendas({ onOuvrir }) {
   return (
-    <div className="pas-a-jour" role="alert">
-      <span>{maj ? `Pas à jour · ${maj}` : 'Pas à jour'}{message ? ` — ${message}` : ''}</span>
-      <button type="button" className="bouton discret" onClick={onReessayer}>Réessayer</button>
+    <div className="bandeau" role="region" aria-label="Mes agendas">
+      <span className="bandeau-texte">Ajoute ton agenda pour voir tes rendez-vous ici.</span>
+      <button type="button" className="bouton discret" onClick={onOuvrir}>Mes agendas</button>
     </div>
   )
 }
@@ -572,6 +574,17 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const gestes = useGestes(setDonnees)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
+  const navigate = useNavigate()
+  // Mes agendas (§2.20) : rangés dans Réglages → Avancé en attendant « Mon iPhone » (F3) ; lus une fois
+  const [agendas, setAgendas] = useState(null)
+  useEffect(() => {
+    let vivant = true
+    listerAgendasExternes()
+      .then((r) => { if (vivant) setAgendas(Array.isArray(r?.data?.results) ? r.data.results : null) })
+      .catch(() => { if (vivant) setAgendas(null) }) // illisible : pas d'invitation plutôt qu'une fausse
+    return () => { vivant = false }
+  }, [])
+  const ouvrirMesAgendas = useCallback(() => navigate('/taches/reglages/avance'), [navigate])
   // Raccord F2 — le gestionnaire commun des actions de ligne (menu ⋯) ; prévue un autre jour, la ligne part
   const actions = useActionsLigne({
     aujourdhui,
@@ -598,8 +611,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       setDonnees(reponse.data)
       setEchec(null)
       setMaj(heureMaj())
-    }).catch((err) => {
-      if (rang === derniere.current) setEchec(frenchError(err, "L'agenda n'a pas pu être lu."))
+    }).catch(() => {
+      if (rang === derniere.current) setEchec(true)
     })
   }, [periode.du, periode.au, vueLue, projet, relire])
 
@@ -633,9 +646,11 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     />
   )
 
+  // Raccord F2 — l'état « Pas à jour · {HH:MM} » [Réessayer] de la référence (textes.md §2.2, spec-7 « Partout ») :
+  // au premier échec, sans heure de mise à jour, il dit « Pas à jour » seul — jamais une phrase de plus.
   const etats = (
     <>
-      {echec ? <BandeauPasAJour maj={maj} message={echec} onReessayer={() => setRelire((n) => n + 1)} /> : null}
+      {echec ? <BandeauPasAJour derniere={maj} onReessayer={() => setRelire((n) => n + 1)} /> : null}
       {erreurGeste ? <p className="ag-erreur" role="alert">{erreurGeste}</p> : null}
       {!donnees && !echec ? <p className="ag-chargement" role="status">Chargement</p> : null}
     </>
@@ -664,6 +679,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
 
   return (
     <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
+      actionsEcran={[{ libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
       contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
       <div className="ag-vues">
@@ -680,20 +696,23 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         onAujourdhui={() => changer({ jour: null })}
       />
       {etats}
-      {vue === 'jour' ? (
+      {agendas && agendas.length === 0 && (vue === 'jour' || vue === 'semaine')
+        ? <InvitationAgendas onOuvrir={ouvrirMesAgendas} /> : null}
+      {/* rien de lu : ni grille vide ni « Rien ce jour-là » (ce serait un constat inventé) */}
+      {donnees && vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
           placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet}
           onChoisir={(iso) => changer({ jour: iso })} />
       ) : null}
-      {vue === 'jour' && placement.posee ? (
+      {donnees && vue === 'jour' && placement.posee ? (
         <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
       ) : null}
-      {vue === 'semaine' ? (
+      {donnees && vue === 'semaine' ? (
         <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
           onChoisir={choisirJour} />
       ) : null}
-      {vue === 'mois' ? (
+      {donnees && vue === 'mois' ? (
         <>
           <VueMois du={periode.du} au={periode.au} mois={jour.slice(0, 7)} jours={donnees?.jours}
             aujourdhui={aujourdhui} jourChoisi={jour} onChoisir={(iso) => changer({ jour: iso })} />
@@ -704,7 +723,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
           </section>
         </>
       ) : null}
-      {vue === 'a-venir' ? <VueAVenir jours={jours} aujourdhui={aujourdhui} gestes={gestesEcran} /> : null}
+      {donnees && vue === 'a-venir' ? <VueAVenir jours={jours} aujourdhui={aujourdhui} gestes={gestesEcran} /> : null}
     </CoquilleTaches>
   )
 }

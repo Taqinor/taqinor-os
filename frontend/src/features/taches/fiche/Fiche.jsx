@@ -36,7 +36,7 @@ const CHAMP_DE_ERREUR = {
   echeance: 'echeance', echeance_heure: 'echeance', titre: 'titre', notes: 'notes', priorite: 'priorite',
   projet_id: 'projet', essentielle: 'essentielle', essentielles: 'essentielle', libelle: 'checklist',
 }
-const PRIORITES = [['Basse', 1], ['Moyenne', 2], ['Haute', 3]]
+const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de textes.md §2.3 / §2.6 : Haute · Moyenne · Basse
 
 /** `{champ: [messages]}` d'un 400 → `{ champDeLaFiche: premier message }` (le reste : `general`). */
 function erreursParChamp(champs) {

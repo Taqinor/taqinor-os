@@ -102,7 +102,7 @@ describe('TCH86 — écran À trier', () => {
     monter()
     await screen.findByText('Appeler Karim')
     await user.click(within(lignes()[0]).getByRole('button', { name: 'Aujourd\'hui' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Pas de réseau : la tâche est restée dans la liste.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Possible une fois connecté') // Raccord F2 : la phrase de textes.md §2.1
     expect(lignes()).toHaveLength(3)
   })
 

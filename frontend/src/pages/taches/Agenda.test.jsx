@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../test/fixtures/contractSamples'
-import { lireAgenda, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { lireAgenda, listerAgendasExternes, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import Agenda from './Agenda'
 
 vi.mock('../../api/tachesApi', async (importOriginal) => ({
@@ -12,6 +12,7 @@ vi.mock('../../api/tachesApi', async (importOriginal) => ({
   terminerTache: vi.fn(),
   rouvrirTache: vi.fn(),
   planifierTache: vi.fn(),
+  listerAgendasExternes: vi.fn(),
 }))
 
 /* TCH104 — l'écran Agenda rend `agenda.json` (contrat partagé) : vues Jour / Semaine / Mois /
@@ -32,6 +33,7 @@ function monter(url = '/taches/agenda') {
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/taches/agenda" element={<><Agenda aujourdhui={AUJOURDHUI} maintenant={MAINTENANT} /><Adresse /></>} />
+        <Route path="/taches/reglages/avance" element={<p>Réglages Avancé</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -44,6 +46,7 @@ beforeEach(() => {
   lireAgenda.mockResolvedValue({ data: agenda() })
   terminerTache.mockResolvedValue({ data: {} })
   rouvrirTache.mockResolvedValue({ data: {} })
+  listerAgendasExternes.mockResolvedValue({ data: exempleContrat('taches', 'agendas_externes') })
 })
 afterEach(() => { vi.clearAllMocks() })
 
@@ -179,5 +182,35 @@ describe('TCH104 — une lecture en échec ne vide rien', () => {
     lireAgenda.mockResolvedValue({ data: agenda() })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Réessayer' })) })
     await waitFor(() => expect(screen.queryByText(/^Pas à jour/)).toBeNull())
+  })
+
+  it('Raccord F2 — premier échec : « Pas à jour » seul et Réessayer, sans grille vide ni « Rien ce jour-là »', async () => {
+    lireAgenda.mockRejectedValueOnce({ response: { status: 503, data: {} } })
+    const { container } = monter()
+    expect(await screen.findByText('Pas à jour')).toBeInTheDocument()
+    expect(screen.queryByText(/n'a pas pu être lu/)).toBeNull()
+    expect(screen.queryByText('Rien ce jour-là')).toBeNull()
+    expect(grille(container)).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Réessayer' })) })
+    expect(await screen.findByRole('button', { name: /Devis Settat/ })).toBeInTheDocument()
+  })
+})
+
+describe('Raccord F2 — Mes agendas', () => {
+  it('aucun agenda externe : « Ajoute ton agenda pour voir tes rendez-vous ici. » [Mes agendas] mène aux réglages', async () => {
+    listerAgendasExternes.mockResolvedValue({ data: { results: [] } })
+    monter()
+    const invitation = await screen.findByRole('region', { name: 'Mes agendas' })
+    expect(invitation).toHaveTextContent('Ajoute ton agenda pour voir tes rendez-vous ici.')
+    fireEvent.click(within(invitation).getByRole('button', { name: 'Mes agendas' }))
+    expect(await screen.findByText('Réglages Avancé')).toBeInTheDocument()
+  })
+
+  it('un agenda déjà ajouté : pas d\'invitation', async () => {
+    listerAgendasExternes.mockResolvedValue({ data: exempleContrat('taches', 'agendas_externes') })
+    monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    await waitFor(() => expect(listerAgendasExternes).toHaveBeenCalled())
+    expect(screen.queryByRole('region', { name: 'Mes agendas' })).toBeNull()
   })
 })

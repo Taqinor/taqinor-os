@@ -22,7 +22,7 @@ import { annoncer, proposerAnnuler } from '../lib/gestes'
 const FAMILLES = [
   ['chantiers', 'Chantiers'],
   ['tickets', 'Tickets'],
-  ['da_a_commander', 'DA à commander'],
+  ['da_a_commander', "Demandes d'achat à commander"], // « DA » = sigle interne : en clair (textes.md §0, sans jargon)
   ['leads_chauds', 'Leads chauds'],
   ['rappels', 'Rappels'],
   ['devis_expirant', 'Devis expirant'],
