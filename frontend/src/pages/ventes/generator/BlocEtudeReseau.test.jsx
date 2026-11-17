@@ -12,6 +12,8 @@ import BlocEtudeReseau, {
   MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture, CarteProfilCi,
 } from './BlocEtudeReseau'
 import CarteResultatCi from './CarteResultatCi'
+import ControleBatteriesDepart from './ControleBatteriesDepart'
+import { withKeys } from '../../../features/ventes/quote/ligneFabrique'
 import PanneauIndustriel from './PanneauIndustriel'
 import PanneauCommercial from './PanneauCommercial'
 import {
@@ -432,5 +434,67 @@ describe('D 17/11/2026 — carte résultat : option avec batterie + pointeur ver
     expect(p).toHaveLength(1)
     expect(p[0]).toHaveTextContent('À compléter sur la fiche : Équipements hors horaires')
     expect(screen.getByTestId('ci-alertes')).not.toHaveTextContent('colonne_inconnue')
+  })
+})
+
+describe('Batteries au départ — ajout possible sur la carte + contrôle de quantité', () => {
+  const ECO = exempleContrat('ventes', 'economie_ci')
+  const AVEC = {
+    kwc: 12.5, cout_vente_ht: 200000, economie_annuelle_mad: 31000, retour_simple_ans: 7.3,
+    batterie: { nom: 'Dyness 10', quantite: 2, capacite_utile_kwh: 18, quantite_recommandee: 6, ajout_possible: 4 },
+  }
+  const avec = (batterie) => ({ ...EXEMPLE, economie_ci: ECO, option_avec: { ...AVEC, batterie } })
+
+  it('ajout_possible > 0 : « + N batteries possibles plus tard » ; null / 0 / absent : rien', () => {
+    const { rerender } = render(<CarteResultatCi donnees={avec(AVEC.batterie)} />)
+    expect(screen.getByTestId('ci-avec-ajout')).toHaveTextContent('+ 4 batteries possibles plus tard')
+    rerender(<CarteResultatCi donnees={avec({ ...AVEC.batterie, ajout_possible: 1 })} />)
+    expect(screen.getByTestId('ci-avec-ajout')).toHaveTextContent('+ 1 batterie possible plus tard')
+    for (const v of [0, null, undefined]) {
+      rerender(<CarteResultatCi donnees={avec({ ...AVEC.batterie, ajout_possible: v })} />)
+      expect(screen.queryByTestId('ci-avec-ajout')).toBeNull()
+    }
+  })
+
+  const LIGNES = () => withKeys([
+    { produit: '1', designation: 'Panneau 550 Wc', quantite: 20, prix_unit_ttc: 1000, variante: '' },
+    { produit: '7', designation: 'Batterie Dyness 10 kWh', quantite: 6, prix_unit_ttc: 9000, variante: 'avec', role_devis: 'batterie' },
+  ])
+  function HarnaisBatteries({ initial = LIGNES(), banque = { produit: 7, nom: 'Dyness 10', quantite: 6 }, apercu = null }) {
+    const [lines, setLines] = useState(initial)
+    return (
+      <ControleBatteriesDepart lines={lines} produits={[]} banque={banque} apercuBatterie={apercu}
+        onQuantiteChange={(key, q) => setLines(ls => ls.map(l => (l._key === key ? { ...l, quantite: q } : l)))} />
+    )
+  }
+
+  it('saisie libre ; « N à ajouter plus tard » sous la recommandation ; au-delà : note neutre', () => {
+    render(<HarnaisBatteries />)
+    const champ = screen.getByTestId('gen-batteries-depart')
+    expect(champ).toHaveValue(6)
+    expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('Recommandé : 6')
+    expect(screen.getByTestId('gen-batteries-depart-reco')).not.toHaveTextContent('à ajouter')
+    fireEvent.change(champ, { target: { value: '2' } })
+    expect(screen.getByTestId('gen-batteries-depart-reco'))
+      .toHaveTextContent('Recommandé : 6 — 4 à ajouter plus tard (panneaux et onduleur déjà dimensionnés pour 6)')
+    fireEvent.change(champ, { target: { value: '9' } })
+    expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('au-delà de la recommandation (6)')
+    fireEvent.change(champ, { target: { value: '' } })
+    expect(champ).toHaveValue(null)
+  })
+
+  it('recommandation inconnue ou autre produit : pas de texte ; repli sur l’aperçu ; 2 batteries ou aucune : rien', () => {
+    const { rerender } = render(<HarnaisBatteries banque={null} />)
+    expect(screen.getByTestId('gen-batteries-depart')).toBeInTheDocument()
+    expect(screen.queryByTestId('gen-batteries-depart-reco')).toBeNull()
+    rerender(<HarnaisBatteries banque={{ produit: 99, quantite: 6 }} />)
+    expect(screen.queryByTestId('gen-batteries-depart-reco')).toBeNull()
+    rerender(<HarnaisBatteries banque={null} apercu={{ quantite_recommandee: 5 }} />)
+    expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('Recommandé : 5')
+    const deux = [...LIGNES(), ...withKeys([{ produit: '8', designation: 'Batterie Deye', quantite: 1, prix_unit_ttc: 1, variante: 'avec', role_devis: 'batterie' }])]
+    rerender(<HarnaisBatteries key="deux" initial={deux} />)
+    expect(screen.queryByTestId('gen-batteries-depart')).toBeNull()
+    rerender(<HarnaisBatteries key="aucune" initial={LIGNES().slice(0, 1)} />)
+    expect(screen.queryByTestId('gen-batteries-depart')).toBeNull()
   })
 })

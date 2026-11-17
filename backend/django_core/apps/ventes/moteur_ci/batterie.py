@@ -303,6 +303,41 @@ def _combinaison_tenue(onduleurs, ps_kva):
     return ps_kva is None or _puissance_ac(onduleurs) <= ps_kva + 1e-9
 
 
+#: Fondateur 17/11/2026 (lead « CPE Go Plus », D1) — « un seul 20 kW suffit,
+#: pas deux onduleurs » : un panneau de plus quand il évite un hybride.
+SOURCE_PANNEAU_CABLAGE = 'décision fondateur du 17/11/2026'
+
+
+def _unites(onduleurs):
+    return sum(int(x.get('quantite') or 0) for x in (onduleurs or {}).get('combinaison') or [])
+
+
+def _n_cablable(m, n_haut, pmax_wc, combiner, ps_kva):
+    """``(n, onduleurs, ajout)`` : ``m`` panneaux et leur combinaison, sauf
+    quand ``m + 1`` (sous ``n_haut``, combinaison tenue) se câble sur MOINS
+    d'hybrides — un nombre de modules que les chaînes ne découpent pas sur
+    l'appareil le moins nombreux (49 × 715 Wc sur 2 entrées × 2 chaînes
+    égales). Un seul panneau, vers le haut seulement (la banque reste
+    remplie) ; ``ajout`` = ``(m, m + 1, unités à m, unités à m + 1)``."""
+    onduleurs = combiner(_kwc(m, pmax_wc)) or {}
+    if m + 1 > n_haut or not _combinaison_tenue(onduleurs, ps_kva):
+        return m, onduleurs, None
+    suivant = combiner(_kwc(m + 1, pmax_wc)) or {}
+    if _combinaison_tenue(suivant, ps_kva) and _unites(suivant) < _unites(onduleurs):
+        return m + 1, suivant, (m, m + 1, _unites(onduleurs), _unites(suivant))
+    return m, onduleurs, None
+
+
+def _hypothese_cablage(ajout):
+    """La phrase claire du panneau ajouté pour le câblage."""
+    avant, apres, u_avant, u_apres = ajout
+    nombre = 'un seul onduleur hybride câblable' if u_apres == 1 \
+        else '%d onduleurs hybrides câblables' % u_apres
+    return {'cle': 'panneau_ajoute_cablage', 'valeur': apres, 'statut': 'source',
+            'source': '1 panneau ajouté (%d → %d) : %s au lieu de %d — %s' % (
+                avant, apres, nombre, u_avant, SOURCE_PANNEAU_CABLAGE)}
+
+
 def _borne_parallele_mord(combiner, n_haut, pmax_wc):
     """CMP3 — la limite d'appareils en parallèle empêche le champ maximal."""
     res = combiner(_kwc(n_haut, pmax_wc)) or {}
@@ -657,14 +692,21 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     n_haut = max(n_bas, int(math.floor(kwc_max * 1000.0 / pmax_wc + 1e-9)))
 
     def evaluer(m, banque):
-        kwc, onduleurs = _kwc(m, pmax_wc), combiner(_kwc(m, pmax_wc)) or {}
+        # Fondateur 17/11/2026 — chaque candidat est évalué à son nombre
+        # CÂBLABLE (+1 panneau s'il évite un hybride) : coût, économie et
+        # composition de la règle marginale sont ceux du champ retenu.
+        m, onduleurs, ajout = _n_cablable(m, n_haut, pmax_wc, combiner, ps_kva)
+        kwc = _kwc(m, pmax_wc)
         if not _combinaison_tenue(onduleurs, ps_kva):
             return None
-        return dict(evaluer_option_avec(
+        e = dict(evaluer_option_avec(
             kwc, onduleurs, _composer_avec(composer, kwc, onduleurs, banque), banque,
             charge=charge, production=prod(kwc), tension=tension,
             revente_choisie=revente_choisie, valoriser=valoriser, simuler=simuler,
             hybrides=hybrides, taux_tva_pct=taux_tva_pct), n=m)
+        if ajout:
+            e['ajout_cablage'] = ajout
+        return e
 
     montee = _monter_banque(modele, n_bas=n_bas, n_haut=n_haut, pmax_wc=pmax_wc,
                             bilan_de=bilan_de, combiner=combiner, ps_kva=ps_kva,
@@ -683,6 +725,10 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
         '%d hybrides en parallèle (%s).' % (evaluation['kwc'], MAX_HYBRIDES_PARALLELE,
                                             SOURCE_PARALLELE)))] if mord else []
     n_final = evaluation.pop('n')
+    # La montée des panneaux ré-évalue le départ à son nombre DÉJÀ câblable :
+    # le panneau ajouté reste celui du départ quand le champ n'a pas bougé.
+    ajout = evaluation.pop('ajout_cablage', None) or depart.get('ajout_cablage')
+    ajout = ajout if ajout and ajout[1] == n_final else None
     evaluation['batterie'].update(besoin_nocturne_kwh=round(besoin, 2), reduite=reduite,
                                   panneaux_ajoutes=max(0, n_final - n_bas),
                                   panneaux_retires=max(0, n_bas - n_final))
@@ -696,4 +742,5 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
                             'statut': 'source',
                             'source': '%s ; %s ; %s ; %s' % (
                                 SOURCE_DECISION, SOURCE_BANQUE, SOURCE_REMPLISSAGE,
-                                SOURCE_HORIZON_AVEC)}]}
+                                SOURCE_HORIZON_AVEC)}] + (
+                                    [_hypothese_cablage(ajout)] if ajout else [])}

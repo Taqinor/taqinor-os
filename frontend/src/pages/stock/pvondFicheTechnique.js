@@ -211,6 +211,9 @@ const CHAMPS_PAR_TYPE = {
     'ond_bat_v_min', 'ond_bat_v_max',
     // CALX355 — bloc « rendement onduleur » (la courbe : COURBES_PAR_TYPE).
     'ond_rendement_max_pct', 'ond_rendement_cec_pct',
+    // Fondateur 17/11/2026 — puissance PV maximale raccordable (kWc) : la
+    // borne « panneaux » d'un onduleur hybride (« Max. PV access power »).
+    'ond_dc_max_kwc',
   ],
   module: [
     'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
@@ -490,6 +493,7 @@ export const LIBELLES_FICHE = {
   // CALX355 — rendement onduleur
   ond_rendement_max_pct: 'Rendement maximal (%)',
   ond_rendement_cec_pct: 'Rendement CEC (%)',
+  ond_dc_max_kwc: 'Puissance PV maximale raccordable (kWc)',
   ond_courbe_rendement: COURBES_FICHE.ond_courbe_rendement.libelle,
   // Module
   pmax_wc: 'Puissance crête (Wc)',

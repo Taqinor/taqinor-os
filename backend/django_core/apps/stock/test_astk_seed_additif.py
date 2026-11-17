@@ -306,3 +306,101 @@ class DescriptionHybridesDeyeTests(TestCase):
         mig.retablir(registre, None)
         self.assertEqual(_p('OND-R-HUA-50T').garantie, ancienne_g)
         self.assertEqual(_p('VEI-SI22-AFF').description, ancienne_d)
+
+
+class FichesOnduleursFondateur1711Tests(TestCase):
+    """Fondateur 17/11/2026 — borne panneaux des onduleurs (fiches
+    constructeur) et Deye 15/20 kW à la révision courante : le seed et la
+    migration de données 0182."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Fiches 1711', slug='fiches-1711')
+
+    def test_dc_max_kwc_des_onduleurs_seedes_17_11_2026(self):
+        """Fondateur 17/11/2026 — borne panneaux = « Max. PV access power »
+        (Deye) / « Recommended max. PV power » (Huawei) de la fiche
+        constructeur, jamais une puissance nominale."""
+        from apps.stock.models import FicheTechnique
+        _seed(self.company)
+        attendu = {
+            'OND-H-DEY-10T': '20.0', 'OND-H-DEY-15T': '30.0',
+            'OND-H-DEY-20T': '40.0',
+            'OND-R-HUA-5M': '7.5', 'OND-R-HUA-10T': '15.0',
+            'OND-R-HUA-15T': '22.5', 'OND-R-HUA-20T': '30.0',
+            'OND-R-HUA-25T': '37.5',
+        }
+        for sku, kwc in attendu.items():
+            fiche = FicheTechnique.objects.get(
+                produit__company=self.company, produit__sku=sku)
+            self.assertEqual(fiche.ond_dc_max_kwc, Decimal(kwc), sku)
+        for sku in ('OND-H-DEY-10T', 'OND-H-DEY-15T', 'OND-H-DEY-20T'):
+            self.assertEqual(FicheTechnique.objects.get(
+                produit__company=self.company,
+                produit__sku=sku).ond_chaines_max_par_mppt, 2, sku)
+        # Une fiche non sourcée reste vide (jamais inventé).
+        self.assertIsNone(FicheTechnique.objects.get(
+            produit__company=self.company,
+            produit__sku='OND-R-HUA-50T').ond_dc_max_kwc)
+
+    def test_migration_0182_corrige_15_20kw_et_comble_sans_ecraser(self):
+        """0182 : 20 -> 36 A et 30 -> 54 A seulement sur l'ANCIENNE valeur,
+        comble le vide, jamais une saisie ; réversible."""
+        from importlib import import_module
+
+        from django.apps import apps as registre
+
+        from apps.stock.models import FicheTechnique
+        mig = import_module(
+            'apps.stock.migrations.0182_fiche_onduleur_dc_max_et_mppt_15_20kw')
+        _seed(self.company)
+
+        def _f(sku):
+            return FicheTechnique.objects.get(
+                produit__company=self.company, produit__sku=sku)
+
+        def _maj(skus, **champs):
+            FicheTechnique.objects.filter(
+                produit__company=self.company,
+                produit__sku__in=skus).update(**champs)
+        # État « production d'avant » : anciennes valeurs, champs vides.
+        _maj(('OND-H-DEY-15T', 'OND-H-DEY-20T'),
+             ond_i_max_mppt_a=Decimal('20.0'),
+             ond_isc_max_mppt_a=Decimal('30.0'))
+        _maj(tuple(mig._A_COMBLER),
+             ond_dc_max_kwc=None, ond_chaines_max_par_mppt=None)
+        # Saisie divergente : intacte ; champ déjà rempli : intact.
+        _maj(('OND-H-DEY-20T',), ond_i_max_mppt_a=Decimal('25.0'))
+        _maj(('OND-R-HUA-5M',), ond_dc_max_kwc=Decimal('8.0'))
+
+        mig.appliquer(registre, None)
+
+        self.assertEqual(_f('OND-H-DEY-15T').ond_i_max_mppt_a, Decimal('36.0'))
+        self.assertEqual(_f('OND-H-DEY-15T').ond_isc_max_mppt_a,
+                         Decimal('54.0'))
+        self.assertEqual(_f('OND-H-DEY-20T').ond_i_max_mppt_a, Decimal('25.0'))
+        self.assertEqual(_f('OND-H-DEY-20T').ond_isc_max_mppt_a,
+                         Decimal('54.0'))
+        self.assertEqual(_f('OND-H-DEY-10T').ond_dc_max_kwc, Decimal('20.0'))
+        self.assertEqual(_f('OND-H-DEY-10T').ond_chaines_max_par_mppt, 2)
+        self.assertEqual(_f('OND-H-DEY-15T').ond_dc_max_kwc, Decimal('30.0'))
+        self.assertEqual(_f('OND-R-HUA-25T').ond_dc_max_kwc, Decimal('37.5'))
+        self.assertEqual(_f('OND-R-HUA-5M').ond_dc_max_kwc, Decimal('8.0'))
+
+        mig.retablir(registre, None)
+
+        self.assertEqual(_f('OND-H-DEY-15T').ond_i_max_mppt_a, Decimal('20.0'))
+        self.assertEqual(_f('OND-H-DEY-15T').ond_isc_max_mppt_a,
+                         Decimal('30.0'))
+        self.assertEqual(_f('OND-H-DEY-20T').ond_i_max_mppt_a, Decimal('25.0'))
+        self.assertIsNone(_f('OND-H-DEY-10T').ond_dc_max_kwc)
+        self.assertIsNone(_f('OND-H-DEY-10T').ond_chaines_max_par_mppt)
+        self.assertEqual(_f('OND-R-HUA-5M').ond_dc_max_kwc, Decimal('8.0'))
+
+    def test_migration_0182_sans_aucun_sku_ne_fait_rien(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module(
+            'apps.stock.migrations.0182_fiche_onduleur_dc_max_et_mppt_15_20kw')
+        mig.appliquer(registre, None)   # base sans fiche : aucune exception
+        mig.retablir(registre, None)
