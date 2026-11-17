@@ -9,7 +9,9 @@ import unittest
 from datetime import date, datetime, time
 
 from apps.taches.saisie.analyseur import analyser, classer_capture
+from apps.taches.saisie.collage import decouper_collage, erreurs_limites
 from apps.taches.saisie.grammaire import ProjetConnu
+from apps.taches.saisie.plan import decouper_plan, erreurs_limites_plan
 
 MARDI = (date(2026, 11, 17), time(10, 0))
 PROJETS = (ProjetConnu(3, 'Polydesign', 'actif', 1), ProjetConnu(5, 'Maison', 'actif', 2))
@@ -383,6 +385,206 @@ class SortieEtOptionsTests(unittest.TestCase):
         a = lire('Appeler !! p1')
         self.assertEqual((a.titre, a.champs['priorite'], a.alertes),
                          ('Appeler p1', 2, ('deux_priorite',)))
+
+
+def coller(textes, **kw):
+    """`decouper_collage` au repère mardi 17/11/2026 10:00 avec les projets du repère."""
+    kw.setdefault('projets', PROJETS)
+    return decouper_collage(textes, MARDI[0], MARDI[1], **kw)
+
+
+def titres(apercu):
+    return [ligne['titre'] for ligne in apercu['lignes']]
+
+
+class CollageTests(unittest.TestCase):
+    """TCH40 — `decouper_collage` : regles.md §1.10."""
+
+    def test_quatre_notes_apple_un_projet_par_collage(self):
+        apercu = coller([
+            'Courses\nLait\nPain',
+            'Chantier Settat\nCommander câbles\nAppeler le client',
+            'Maison\nPeindre le salon\nChanger l’ampoule',
+            'Idées\nBlog solaire\nVidéo pose'])
+        communs = apercu['projets_communs']
+        self.assertEqual([c['collage'] for c in communs], [0, 1, 2, 3])
+        self.assertEqual([c['nom'] for c in communs],
+                         ['Courses', 'Chantier Settat', 'Maison', 'Idées'])
+        self.assertEqual([c['nouveau'] for c in communs], [True, True, False, True])
+        self.assertEqual(communs[2]['id'], 5)
+        self.assertEqual({c['source'] for c in communs}, {'premiere_ligne'})
+        self.assertEqual([c['priorite'] for c in communs if c['nouveau']], [2, 2, 2])
+        self.assertEqual(len(apercu['lignes']), 8)
+        self.assertEqual([ligne['collage'] for ligne in apercu['lignes']],
+                         [0, 0, 1, 1, 2, 2, 3, 3])
+        self.assertEqual([ligne['index'] for ligne in apercu['lignes']], list(range(8)))
+        self.assertEqual(apercu['lignes'][0]['champs'],
+                         {'priorite': 0, 'nouveau_projet': {'nom': 'Courses', 'priorite': 2}})
+        self.assertEqual(apercu['lignes'][4]['champs'], {'priorite': 0, 'projet_id': 5})
+        self.assertEqual(apercu['projets_nouveaux'],
+                         [{'nom': n, 'priorite': 2} for n in ('Courses', 'Chantier Settat', 'Idées')])
+
+    def test_dix_collages_et_le_onzieme_est_refuse(self):
+        dix = [f'Liste {i}\nUne\nDeux' for i in range(10)]
+        self.assertEqual(erreurs_limites(dix), {})
+        apercu = coller(dix)
+        self.assertEqual(len(apercu['projets_communs']), 10)
+        self.assertEqual(len(apercu['lignes']), 20)
+        self.assertEqual(erreurs_limites(dix + ['Onze\nUne\nDeux']),
+                         {'texte': ['10 collages au plus par aperçu.']})
+
+    def test_deux_cents_lignes_et_la_deux_cent_unieme_est_refusee(self):
+        texte = '\n'.join(f'Tâche numéro {i}' for i in range(200))
+        self.assertEqual(erreurs_limites(texte), {})
+        apercu = coller(texte, projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual(len(apercu['lignes']), 200)
+        self.assertEqual(
+            erreurs_limites(texte + '\nEn trop'),
+            {'texte': ['Liste trop longue : 200 lignes au plus (ici 201). Colle-la en deux fois.']})
+        self.assertEqual(erreurs_limites('x' * 20001),
+                         {'texte': ['20 000 caractères au plus.']})
+
+    def test_dix_nouveaux_projets_limite_exposee_par_projets_nouveaux(self):
+        apercu = coller([f'Projet {i}\nUne\nDeux' for i in range(3)])
+        self.assertEqual(len(apercu['projets_nouveaux']), 3)
+
+    def test_puces_cases_et_deja_faite(self):
+        apercu = coller('- [x] Payer loyer\n- [ ] Appeler Karim demain\n1. Envoyer devis\n'
+                        '• Réserver\n☑ Imprimer\n☐ Relire\n3.5 kWc à commander',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual(titres(apercu), ['Payer loyer', 'Appeler Karim', 'Envoyer devis',
+                                          'Réserver', 'Imprimer', 'Relire',
+                                          '3.5 kWc à commander'])
+        self.assertEqual([ligne['deja_faite'] for ligne in apercu['lignes']],
+                         [True, False, False, False, True, False, False])
+        self.assertEqual([ligne['cochee'] for ligne in apercu['lignes']],
+                         [False, True, True, True, False, True, True])
+        self.assertEqual(apercu['lignes'][1]['champs']['jour_prevu'], '2026-11-18')
+
+    def test_lignes_vides_et_ponctuation_seule_retirees(self):
+        apercu = coller('---\n\n***\n  \nPremière tâche\n…\n- \nSeconde tâche',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual(titres(apercu), ['Première tâche', 'Seconde tâche'])
+        self.assertEqual(coller('')['lignes'], [])
+        self.assertEqual(coller('\n \n---\n')['lignes'], [])
+
+    def test_titre_de_groupe_donne_son_projet_aux_lignes_suivantes(self):
+        apercu = coller('Maison :\nPeindre\nPoncer #Polydesign\nBricolage:\nVisser')
+        champs = [ligne['champs'] for ligne in apercu['lignes']]
+        self.assertEqual(titres(apercu), ['Peindre', 'Poncer', 'Visser'])
+        self.assertEqual(champs[0]['projet_id'], 5)
+        self.assertEqual(champs[1]['projet_id'], 3)
+        self.assertEqual(champs[2]['nouveau_projet'], {'nom': 'Bricolage', 'priorite': 2})
+        self.assertEqual(apercu['projets_communs'], [])
+        self.assertEqual(apercu['projets_nouveaux'], [{'nom': 'Bricolage', 'priorite': 2}])
+
+    def test_derniere_ligne_avec_deux_points_reste_une_tache(self):
+        apercu = coller('Une chose\nUne autre\nPenser à :',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual(titres(apercu), ['Une chose', 'Une autre', 'Penser à :'])
+
+    def test_premiere_ligne_pas_un_projet_si_une_condition_manque(self):
+        cas = {
+            'puce': '- Courses\nLait\nPain',
+            'jeton reconnu': 'Appeler demain\nLait\nPain',
+            'trop longue': 'C' * 61 + '\nLait\nPain',
+            'une seule ligne derrière': 'Courses\nLait',
+            'titre de groupe': 'Courses :\nLait\nPain',
+        }
+        for nom, texte in cas.items():
+            with self.subTest(nom):
+                self.assertEqual(coller(texte)['projets_communs'], [])
+
+    def test_premiere_ligne_de_60_caracteres_reste_un_projet(self):
+        apercu = coller('C' * 60 + '\nLait\nPain')
+        self.assertEqual(len(apercu['projets_communs']), 1)
+
+    def test_points_de_check_list_par_retrait(self):
+        apercu = coller('Acheter\n    lait\n    pain\nAppeler\n\tKarim\n    suivant',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual([ligne['etape_de'] for ligne in apercu['lignes']],
+                         [None, 0, 0, None, 3, 3])
+
+    def test_retrait_d_un_espace_ne_suffit_pas(self):
+        apercu = coller('Acheter\n lait',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual([ligne['etape_de'] for ligne in apercu['lignes']], [None, None])
+
+    def test_doublons_avec_une_tache_ouverte_et_dans_la_liste(self):
+        apercu = coller('Appeler Karim\nappeler  KARIM\nPayer\npayer',
+                        taches_ouvertes=[(11, 'Payer')],
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        lignes = apercu['lignes']
+        self.assertEqual([ligne['doublon_de'] for ligne in lignes], [None, None, 11, 11])
+        self.assertEqual([ligne['doublon_de_ligne'] for ligne in lignes], [None, 0, None, None])
+        self.assertEqual([ligne['cochee'] for ligne in lignes], [True, False, False, False])
+
+    def test_projet_suggere_sans_ia(self):
+        texte = 'Tâche demain\nPeindre la maison\nAppeler Polydesign et la Maison\nRien'
+        sans = decouper_collage(texte, MARDI[0], MARDI[1], projets=PROJETS)
+        suggeres = [ligne['projet_suggere'] for ligne in sans['lignes']]
+        self.assertEqual(suggeres, [None, {'id': 5, 'nom': 'Maison'}, None, None])
+        # Un projet déjà posé (ici imposé) supprime toute suggestion.
+        pose = decouper_collage(texte, MARDI[0], MARDI[1], projets=PROJETS,
+                                projet_impose={'id': 9, 'nom': 'Autre', 'nouveau': False})
+        self.assertTrue(all(ligne['projet_suggere'] is None for ligne in pose['lignes']))
+
+    def test_ligne_avec_son_projet_garde_le_sien(self):
+        apercu = coller('Courses\nLait #Maison\nPain')
+        self.assertEqual(apercu['lignes'][0]['champs']['projet_id'], 5)
+        self.assertEqual(apercu['lignes'][1]['champs']['nouveau_projet']['nom'], 'Courses')
+
+    def test_une_ligne_sans_titre_est_decochee_avec_son_erreur(self):
+        apercu = coller('demain\nPain\nLait',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        premiere = apercu['lignes'][0]
+        self.assertEqual((premiere['titre'], premiere['cochee']), ('', False))
+        self.assertIn('titre', premiere['erreurs'])
+
+    def test_jetons_et_alertes_de_chaque_ligne(self):
+        apercu = coller('Appeler Karim demain #SiteWeb\nPayer facture le 31/11',
+                        projet_impose={'id': 5, 'nom': 'Maison', 'nouveau': False})
+        self.assertEqual([j_['type'] for j_ in apercu['lignes'][0]['jetons']], ['jour', 'projet'])
+        self.assertEqual(apercu['lignes'][1]['alertes'], ['date_invalide'])
+        self.assertEqual(apercu['lignes'][0]['champs']['nouveau_projet']['priorite'], 2)
+
+    def test_un_seul_texte_ou_une_liste_de_textes(self):
+        self.assertEqual(coller('Courses\nLait\nPain')['projets_communs'][0]['collage'], 0)
+
+
+class PlanCollePlanTests(unittest.TestCase):
+    """TCH40 — `decouper_plan` : liste collée de « Planifier le projet » (spec-4 §B)."""
+
+    def test_exemple_de_l_api(self):
+        plan = decouper_plan('Études :\nVisite\n- photos\n◆ Mise en service')
+        self.assertEqual(plan, {'sections': [{'nom': 'Études', 'taches': [
+            {'titre': 'Visite', 'jalon': False, 'sous_taches': ['photos']},
+            {'titre': 'Mise en service', 'jalon': True, 'sous_taches': []}]}]})
+
+    def test_jalon_par_mot_et_etoile_comme_tiret(self):
+        plan = decouper_plan('Pose:\nJalon: Réception\nCâbler\n* test 1\n* test 2\n\n  \nFinir')
+        taches = plan['sections'][0]['taches']
+        self.assertEqual([t['titre'] for t in taches], ['Réception', 'Câbler', 'Finir'])
+        self.assertEqual([t['jalon'] for t in taches], [True, False, False])
+        self.assertEqual(taches[1]['sous_taches'], ['test 1', 'test 2'])
+
+    def test_plusieurs_etapes_et_taches_avant_la_premiere(self):
+        plan = decouper_plan('Réserver le stand\nÉtudes:\nVisite\nMontage :\nPoser')
+        self.assertEqual([s['nom'] for s in plan['sections']], [None, 'Études', 'Montage'])
+        self.assertEqual(plan['sections'][0]['taches'][0]['titre'], 'Réserver le stand')
+
+    def test_rien_n_est_analyse_en_dates(self):
+        plan = decouper_plan('Étape:\nAppeler demain à 15h #Maison')
+        self.assertEqual(plan['sections'][0]['taches'][0]['titre'], 'Appeler demain à 15h #Maison')
+
+    def test_vide_et_limite_de_200_lignes(self):
+        self.assertEqual(decouper_plan(''), {'sections': []})
+        texte = '\n'.join(f'Tâche {i}' for i in range(200))
+        self.assertEqual(erreurs_limites_plan(texte), {})
+        self.assertEqual(len(decouper_plan(texte)['sections'][0]['taches']), 200)
+        self.assertEqual(
+            erreurs_limites_plan(texte + '\nde trop'),
+            {'texte': ['Liste trop longue : 200 lignes au plus (ici 201). Colle-la en deux fois.']})
 
 
 if __name__ == '__main__':
