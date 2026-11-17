@@ -57,6 +57,40 @@ class StructureModelesTests(SimpleTestCase):
         self.assertEqual(str(Projet(pk=7, nom='Secret')), 'projet #7')
         self.assertEqual(str(Tache(pk=3, titre='Appeler le notaire')), 'tâche #3')
 
+    def test_vingt_et_un_modeles(self):
+        self.assertEqual(len(_modeles()), 21)
+
+    def test_defauts_json_appelables(self):
+        for modele in _modeles():
+            for champ in modele._meta.concrete_fields:
+                if isinstance(champ, models.JSONField) and champ.has_default():
+                    with self.subTest(champ=f'{modele.__name__}.{champ.name}'):
+                        self.assertTrue(callable(champ.default))
+
+    def test_familles_suggestions_par_defaut(self):
+        ReglagesRythme = apps.get_model('taches', 'ReglagesRythme')
+        un, deux = ReglagesRythme(), ReglagesRythme()
+        self.assertEqual(un.familles_suggestions, ['devis_accepte', 'chantier_receptionne', 'chantier_annule'])
+        un.familles_suggestions.append('visite_validee')
+        self.assertEqual(len(deux.familles_suggestions), 3)
+
+    def test_onze_cles_de_preference(self):
+        Preference = apps.get_model('taches', 'Preference')
+        self.assertEqual(len(Preference._meta.get_field('cle').choices), 11)
+
+    def test_types_d_incitation_push_et_ecran(self):
+        IncitationCoach = apps.get_model('taches', 'IncitationCoach')
+        valeurs = [v for v, _ in IncitationCoach._meta.get_field('type').choices]
+        self.assertEqual(len(valeurs), 11)
+        self.assertIn('plan_matin', valeurs)
+        self.assertIn('revelation', valeurs)
+
+    def test_hote_seul_montre_de_l_agenda(self):
+        from apps.taches.models.agenda import hote_de
+        self.assertEqual(hote_de('https://Outlook.Office365.com/owa/calendar/x/reachcalendar.ics'),
+                         'outlook.office365.com')
+        self.assertEqual(hote_de('pas une adresse'), '')
+
 
 class ContraintesEnBaseTests(TestCase):
     """Base requise : jouée par la CI."""
@@ -177,3 +211,76 @@ class ContraintesEnBaseTests(TestCase):
         RevueProjet.objects.create(projet=self._projet(nom='A'), **commun)
         with self.assertRaises(IntegrityError), transaction.atomic():
             RevueProjet.objects.create(projet=self._projet(nom='B'), **commun)
+
+    def test_un_plan_par_jour_et_une_cible_par_ligne(self):
+        PlanJour = apps.get_model('taches', 'PlanJour')
+        LignePlanJour = apps.get_model('taches', 'LignePlanJour')
+        jour = datetime.date(2026, 11, 17)
+        plan = PlanJour.objects.create(company=self.societe, proprietaire=self.compte, jour=jour)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            PlanJour.objects.create(company=self.societe, proprietaire=self.compte, jour=jour)
+        tache = self._tache()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LignePlanJour.objects.create(
+                company=self.societe, plan=plan, tache=tache, activite_id=4, prevue_au_plan=True)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LignePlanJour.objects.create(company=self.societe, plan=plan, prevue_au_plan=True)
+        LignePlanJour.objects.create(company=self.societe, plan=plan, tache=tache, prevue_au_plan=True)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LignePlanJour.objects.create(company=self.societe, plan=plan, tache=tache, prevue_au_plan=False)
+
+    def test_un_seul_reglage_de_rythme_et_de_preference_par_cle(self):
+        ReglagesRythme = apps.get_model('taches', 'ReglagesRythme')
+        Preference = apps.get_model('taches', 'Preference')
+        reglages = ReglagesRythme.objects.create(company=self.societe, proprietaire=self.compte)
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.mode, 'pousser')
+        self.assertEqual(reglages.familles_suggestions, ['devis_accepte', 'chantier_receptionne', 'chantier_annule'])
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ReglagesRythme.objects.create(company=self.societe, proprietaire=self.compte)
+        Preference.objects.create(company=self.societe, proprietaire=self.compte, cle='heure_matin', valeur='08:30')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Preference.objects.create(company=self.societe, proprietaire=self.compte, cle='heure_matin', valeur='off')
+
+    def test_un_jeton_actif_par_usage(self):
+        JetonAcces = apps.get_model('taches', 'JetonAcces')
+        commun = {'company': self.societe, 'proprietaire': self.compte, 'usage': 'flux', 'prefixe': 'tqf_ab12'}
+        premier = JetonAcces.objects.create(jeton_hash='a' * 64, **commun)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            JetonAcces.objects.create(jeton_hash='b' * 64, **commun)
+        premier.revoque_le = datetime.datetime(2026, 11, 17, tzinfo=datetime.timezone.utc)
+        premier.save(update_fields=['revoque_le'])
+        self.assertIsNotNone(JetonAcces.objects.create(jeton_hash='c' * 64, **commun).pk)
+
+    def test_agenda_externe_unique_par_url_et_hote_calcule(self):
+        AgendaExterne = apps.get_model('taches', 'AgendaExterne')
+        url = 'https://agenda.example/a.ics'
+        agenda = AgendaExterne.objects.create(company=self.societe, proprietaire=self.compte, url=url)
+        self.assertEqual(agenda.hote, 'agenda.example')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            AgendaExterne.objects.create(company=self.societe, proprietaire=self.compte, url=url)
+        agenda.url = 'https://calendar.example/b.ics'
+        agenda.save(update_fields=['url'])
+        agenda.refresh_from_db()
+        self.assertEqual(agenda.hote, 'calendar.example')
+
+    def test_un_coupe_circuit_par_societe(self):
+        ReglagesSociete = apps.get_model('taches', 'ReglagesSociete')
+        reglage = ReglagesSociete.objects.create(company=self.societe)
+        self.assertTrue(reglage.balayage_actif)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ReglagesSociete.objects.create(company=self.societe, balayage_actif=False)
+        self.assertIsNotNone(ReglagesSociete.objects.create(company=self.autre_societe).pk)
+
+    def test_suggestion_et_sollicitation_dedoublonnees(self):
+        SuggestionTache = apps.get_model('taches', 'SuggestionTache')
+        IncitationCoach = apps.get_model('taches', 'IncitationCoach')
+        commun = {'company': self.societe, 'proprietaire': self.compte}
+        SuggestionTache.objects.create(famille='devis_accepte', cle='devis_accepte:1', titre_propose='T', **commun)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            SuggestionTache.objects.create(
+                famille='devis_accepte', cle='devis_accepte:1', titre_propose='T', **commun)
+        jour = datetime.date(2026, 11, 17)
+        IncitationCoach.objects.create(jour=jour, type='plan_matin', canal='push', **commun)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            IncitationCoach.objects.create(jour=jour, type='plan_matin', canal='push', **commun)
