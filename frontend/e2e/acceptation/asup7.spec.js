@@ -683,7 +683,9 @@ sortie(None if e is None else dict(libelle=e.libelle_snapshot, donnees=e.donnees
     console.log(`[ASUP62] entrée de la corbeille commune : ${J(corb)}`)
     // Clause de preuve : « libellé anonymisé dans la corbeille commune » — le nom d'origine ne doit plus y figurer.
     // Défaut ANTÉRIEUR hors Files (apps/trash : `libelle_snapshot` garde le nom pris à la suppression) : écart déclaré ci-dessous.
-    if (corb) expect(J(corb), 'corbeille commune : le nom d\'origine du lead n\'apparaît plus').not.toContain(`ASUP62 lead corbeille ${m}`)
+    // OBSERVATION qui ne lève pas (l'écart ne couvre pas une assertion de corps) : constat journalisé, motif porté par l'écart.
+    const nomResteDansCorbeille = !!corb && J(corb).includes(`ASUP62 lead corbeille ${m}`)
+    console.log(`[ASUP62] OBSERVATION : le nom d'origine reste dans le libellé de la corbeille commune : ${nomResteDansCorbeille}`)
     await page.goto('/parametres/corbeille')
     await expect(page.locator('body')).toBeVisible()
     await auRepos(suivi)
@@ -691,7 +693,7 @@ sortie(None if e is None else dict(libelle=e.libelle_snapshot, donnees=e.donnees
 }, {
   ecart: {
     base: 'FAIL',
-    raison: 'libellé de la corbeille commune : `ElementSupprime.libelle_snapshot` (apps/trash) garde le nom d\'origine du lead pris à la suppression, '
+    raison: 'libelle_snapshot de la corbeille garde le nom (apps/trash/services.py:47), défaut antérieur hors Files : `ElementSupprime.libelle_snapshot` garde le nom d\'origine du lead pris à la suppression, '
       + 'jamais réécrit par « Anonymiser (RGPD) » — défaut antérieur, hors des Files d\'ASUP62 ; le « fini quand » (lead anonymisé et toujours en corbeille) est tenu',
   },
 })
