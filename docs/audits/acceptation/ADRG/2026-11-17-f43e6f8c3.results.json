@@ -1,0 +1,452 @@
+{
+  "sha": "f43e6f8c332e96609e2110251ac117c0eddb5dc7",
+  "date": "2026-11-17",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG11",
+    "ADRG12",
+    "ADRG13",
+    "ADRG15",
+    "ADRG38",
+    "ADRG41",
+    "ADRG43",
+    "ADRG46",
+    "ADRG69",
+    "ADRG70",
+    "ADRG4",
+    "ADRG5",
+    "ADRG20",
+    "ADRG21",
+    "ADRG22",
+    "ADRG37",
+    "ADRG40",
+    "ADRG47",
+    "ADRG63"
+  ],
+  "couvre_avec_ecart": [
+    "ADRG41",
+    "ADRG70",
+    "ADRG63"
+  ],
+  "etapes": [
+    {
+      "id": "PF4.4-ADRG11-variante-gammes",
+      "taches": [
+        "ADRG11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG11-variante-gammes.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG12-parametres-devis",
+      "taches": [
+        "ADRG12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG12-parametres-devis.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG13-gammes-marques",
+      "taches": [
+        "ADRG13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG13-gammes-marques.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG15-regle-equipe",
+      "taches": [
+        "ADRG15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG15-regle-equipe.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG38-negoce",
+      "taches": [
+        "ADRG38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG38-negoce.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG41-referentiels",
+      "taches": [
+        "ADRG41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG41-referentiels.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : /atelier/kits est réservé au palier responsable/admin (frontend/src/features/installations/module.config.jsx:107, depuis 2db39a7c2 du 08/08/2026, PACT61) : le Technicien (palier normal) est renvoyé sur /403, l'écran « Paramétrage des kits sans boutons d'écriture » de la clause n'est donc pas rendu pour lui. Garde de route antérieure à ADRG41 et hors de ses Files ; l'étape affirme la redirection sans aucun bouton, les 11 routes (Technicien 403 qui nomme stock_modifier) et le témoin Technicien responsable."
+    },
+    {
+      "id": "PF4.2-ADRG43-comptage",
+      "taches": [
+        "ADRG43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG43-comptage.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG46-sla-supervision",
+      "taches": [
+        "ADRG46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG46-sla-supervision.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG69-journal",
+      "taches": [
+        "ADRG69"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.3-ADRG69-journal.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG70-rapports",
+      "taches": [
+        "ADRG70"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.3-ADRG70-rapports.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : /reporting est réservé au palier responsable/admin (frontend/src/features/reporting/module.config.jsx:142, roles RESPONSABLE_ADMIN, depuis ee7df19b4 du 10/07/2026) : le Technicien y est renvoyé sur /403, l'écran « /reporting sans donnée de vente » de la clause n'est donc pas rendu pour lui. Garde de route antérieure à ADRG70 et hors de ses Files (backend reporting seul) ; l'étape affirme la redirection, l'accueil sans aucune lecture ventes/CRM et les 11 routes (Technicien 403, Commercial 200)."
+    },
+    {
+      "id": "PF4.1-ADRG4-suppressions",
+      "taches": [
+        "ADRG4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.1-ADRG4-suppressions.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.1-ADRG5-listes-prix",
+      "taches": [
+        "ADRG5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.1-ADRG5-listes-prix.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG20-leads",
+      "taches": [
+        "ADRG20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG20-leads.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG21-chantier",
+      "taches": [
+        "ADRG21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG21-chantier.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG22-tickets",
+      "taches": [
+        "ADRG22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG22-tickets.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG37-conditionnements",
+      "taches": [
+        "ADRG37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG37-conditionnements.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.2-ADRG40-tournee",
+      "taches": [
+        "ADRG40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.2-ADRG40-tournee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.4-ADRG47-supervision",
+      "taches": [
+        "ADRG47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.4-ADRG47-supervision.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4.3-ADRG63-apercu-import",
+      "taches": [
+        "ADRG63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ADRG-PF4.3-ADRG63-apercu-import.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : « Importer » de /stock est gardé par stock_modifier (frontend/src/pages/stock/StockList.jsx, canWrite = useHasPermission('stock_modifier'), depuis 41c6ab405 du 10/07/2026, ARC47) : le Commercial responsable de la clause (stock_creer, sans stock_modifier) n'atteint pas l'aperçu à l'écran. Garde antérieure à ADRG63 et hors de ses Files (backend dataimport seul) ; l'étape affirme le dry-run de ce compte (ni champ ni valeur prix_achat), l'absence d'« Importer », et l'aperçu à l'écran joué par le Responsable (stock_modifier, sans prix_achat_voir)."
+    }
+  ]
+}
