@@ -4,13 +4,15 @@ Deux familles : `StructureModelesTests` (sans base : lit les `Meta`) et `Contrai
 (base de test de la CI : prouve que Postgres refuse ce que la référence interdit).
 """
 import datetime
+import hashlib
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, models, transaction
 from django.test import SimpleTestCase, TestCase
 
-from authentication.models import Company
+from apps.taches.tests import fabriques
+from core.feature_flags import module_actif
 
 NOM_MAX = 30
 
@@ -97,20 +99,16 @@ class ContraintesEnBaseTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.societe = Company.objects.create(nom='Tâches A', slug='taches-modeles-a')
-        cls.autre_societe = Company.objects.create(nom='Tâches B', slug='taches-modeles-b')
-        utilisateurs = get_user_model().objects
-        cls.compte = utilisateurs.create_user(username='taches_modeles_u1', password='x', company=cls.societe)
-        cls.autre = utilisateurs.create_user(username='taches_modeles_u2', password='x', company=cls.autre_societe)
+        cls.societe = fabriques.societe('a')
+        cls.autre_societe = fabriques.societe('b')
+        cls.compte = fabriques.compte(cls.societe, nom='u1')
+        cls.autre = fabriques.compte(cls.autre_societe, nom='u2')
 
-    def _projet(self, nom='Maison', compte=None, societe=None):
-        Projet = apps.get_model('taches', 'Projet')
-        return Projet.objects.create(
-            company=societe or self.societe, proprietaire=compte or self.compte, nom=nom, couleur='terre')
+    def _projet(self, nom='Maison', compte=None):
+        return fabriques.projet(compte or self.compte, nom=nom)
 
     def _tache(self, **champs):
-        Tache = apps.get_model('taches', 'Tache')
-        return Tache.objects.create(company=self.societe, proprietaire=self.compte, titre='T', **champs)
+        return fabriques.tache(self.compte, **champs)
 
     def test_nom_cle_calcule_par_save(self):
         projet = self._projet(nom='  Rénovation-Maison ')
@@ -129,7 +127,7 @@ class ContraintesEnBaseTests(TestCase):
 
     def test_meme_nom_permis_dans_une_autre_societe(self):
         self._projet(nom='Maison')
-        self._projet(nom='Maison', compte=self.autre, societe=self.autre_societe)
+        self._projet(nom='Maison', compte=self.autre)
         Projet = apps.get_model('taches', 'Projet')
         self.assertEqual(Projet.objects.filter(nom_cle='maison').count(), 2)
 
@@ -284,3 +282,64 @@ class ContraintesEnBaseTests(TestCase):
         IncitationCoach.objects.create(jour=jour, type='plan_matin', canal='push', **commun)
         with self.assertRaises(IntegrityError), transaction.atomic():
             IncitationCoach.objects.create(jour=jour, type='plan_matin', canal='push', **commun)
+
+
+class FabriquesPartageesTests(TestCase):
+    """Les fabriques de `fabriques.py` rendent ce que leur contrat annonce (donnees.md §5)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.a, cls.b = fabriques.societe('a'), fabriques.societe('b')
+
+    def test_deux_societes_distinctes_au_module_actif(self):
+        self.assertNotEqual(self.a.pk, self.b.pk)
+        self.assertTrue(module_actif(self.a, 'taches'))
+
+    def test_comptes_et_droits(self):
+        voit = fabriques.compte(self.a)
+        aveugle = fabriques.compte(self.a, voir=False, nom='u2')
+        admin = fabriques.compte(self.a, admin=True, nom='u3')
+        meme_nom_ailleurs = fabriques.compte(self.b)
+        self.assertTrue(voit.has_erp_permission('taches_voir'))
+        self.assertFalse(voit.is_admin_role)
+        self.assertFalse(aveugle.has_erp_permission('taches_voir'))
+        self.assertIsNotNone(aveugle.role_id)
+        self.assertTrue(admin.is_admin_role)
+        self.assertTrue(admin.has_erp_permission('taches_voir'))
+        self.assertEqual(meme_nom_ailleurs.company_id, self.b.pk)
+        self.assertTrue(voit.is_active)
+        self.assertEqual(voit.portee, get_user_model().PORTEE_INTERNE)
+
+    def test_projet_section_tache(self):
+        compte = fabriques.compte(self.a)
+        projet = fabriques.projet(compte)
+        self.assertTrue(projet.nom.startswith('Projet '))
+        self.assertEqual(projet.priorite, 0)
+        self.assertEqual(fabriques.section(projet).company_id, self.a.pk)
+        a_trier = fabriques.tache(compte)
+        self.assertIsNone(a_trier.triee_le)
+        premiere = fabriques.tache(compte, projet=projet)
+        seconde = fabriques.tache(compte, projet=projet)
+        self.assertIsNotNone(premiere.triee_le)
+        self.assertEqual((premiere.rang_projet, seconde.rang_projet), (1024, 2048))
+        self.assertEqual(a_trier.rang_projet, 1024)
+        datee = fabriques.tache(compte, jour_prevu=datetime.date(2026, 11, 17))
+        self.assertIsNotNone(datee.triee_le)
+
+    def test_jeton_hache_et_prefixe(self):
+        compte = fabriques.compte(self.a)
+        objet, clair = fabriques.jeton(compte, 'capture')
+        self.assertTrue(clair.startswith('tqc_'))
+        self.assertEqual(objet.prefixe, clair[:8])
+        self.assertEqual(objet.jeton_hash, hashlib.sha256(clair.encode('utf-8')).hexdigest())
+        self.assertNotIn(clair, str(objet.__dict__))
+
+    def test_reglages_plan_activite_agenda(self):
+        compte = fabriques.compte(self.a)
+        self.assertEqual(fabriques.reglages(compte, palier=5).palier, 5)
+        jour = datetime.date(2026, 11, 17)
+        self.assertEqual(fabriques.plan(compte, jour).jour, jour)
+        activite = fabriques.activite(compte)
+        self.assertEqual((activite.assigned_to_id, activite.done), (compte.pk, False))
+        agenda = fabriques.agenda_externe(compte)
+        self.assertEqual((agenda.url, agenda.hote), ('https://agenda.example/a.ics', 'agenda.example'))
