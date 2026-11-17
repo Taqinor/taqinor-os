@@ -858,6 +858,14 @@ class MessageTemplate(models.Model):
         APPEL_PLANIFIER_VISITE = (
             'appel_planifier_visite',
             "Visite — script d'appel pour planifier la visite")
+        # 17/11/2026 — deux textes qui existaient déjà (ACVI51) mais que
+        # Paramètres → Messages ne listait pas : la société ne pouvait pas les voir.
+        PASSATION = (
+            'passation',
+            "Passation — le dossier change de conseiller (message au client)")
+        APPEL_APRES_REPONSE = (
+            'appel_apres_reponse',
+            "Après l'appel — script de l'appel quand le client a répondu au message")
 
     company = models.ForeignKey(
         'authentication.Company',
