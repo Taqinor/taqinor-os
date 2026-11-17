@@ -168,6 +168,18 @@ class TouchePassationTests(_Base):
         self.assertEqual(
             lead.relance_etapes.filter(libelle=PASSATION_LIBELLE).count(), 1)
 
+    def test_passation_faite_sur_un_jamais_joint_pose_decider_la_suite(self):
+        """Fondateur, 17/11/2026 — le filet ne réclame jamais le devis d'un
+        client qui n'a jamais répondu."""
+        from apps.crm.cadence_config import CLE_DECIDER_SUITE
+        from apps.crm.cadence_touche import marquer_etape_relance
+        lead = self._lead()
+        passation = reattribuer_lead(lead, self.acteur, self.nouveau)
+        self.assertEqual(passation.libelle, PASSATION_LIBELLE)
+        marquer_etape_relance(passation, self.acteur, RelanceEtape.Statut.FAIT)
+        [suite] = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(suite.cle, CLE_DECIDER_SUITE)
+
     def test_un_lead_signe_ne_recoit_pas_de_passation(self):
         lead = self._lead(stage=stages.SIGNED)
         self.assertIsNone(reattribuer_lead(lead, self.acteur, self.nouveau))

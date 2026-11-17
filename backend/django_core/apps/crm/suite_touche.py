@@ -890,6 +890,29 @@ class LecteurParcage:
         self._exiges = {}
         self._cycles = {}
         self._pieces = {}
+        self._historique = {}
+
+    def historique(self, lead):
+        """``cadence_filet.client_a_deja_repondu``, en lot. Un lead non
+        enregistré (contrôles purs) garde le cas général : vrai."""
+        from apps.ventes.selectors import leads_ayant_recu_un_devis
+
+        from .cadence_plan import ISSUES_CLIENT_JOINT
+        from .cadence_reperes import q_visite
+        from .models import LeadActivity, RelanceEtape
+
+        if lead is None or lead.pk is None:
+            return True
+        if lead.pk not in self._historique:
+            ids = {t.lead_id for t in (self.touches or ())} | {lead.pk}
+            vus = set(LeadActivity.objects.filter(
+                lead_id__in=ids, outcome__in=ISSUES_CLIENT_JOINT,
+            ).values_list('lead_id', flat=True))
+            vus |= leads_ayant_recu_un_devis(lead.company_id, list(ids))
+            vus |= set(RelanceEtape.objects.filter(lead_id__in=ids).filter(
+                q_visite()).values_list('lead_id', flat=True))
+            self._historique.update({i: i in vus for i in ids})
+        return self._historique[lead.pk]
 
     def pieces(self, lead):
         """``etat_pieces_ci`` (CADV29), en lot ; un lead non enregistré (contrôles
@@ -1021,6 +1044,25 @@ _PIECES_A_LA_PLACE_DU_DEVIS = {
 }
 
 
+#: Fondateur, 17/11/2026 — les réponses où le client PARLE : leur étape devis reste.
+_CLES_CLIENT_REPOND = ('joint', 'interesse', 'joint_telephone', 'visite_acceptee')
+_CODES_DEVIS_DEMAIN = (ETAPE_DEVIS_DEMAIN, ETAPE_DEVIS_DEMAIN_SAUF_SUIVI)
+
+
+def _decider_si_jamais_repondu(etape, cle, codes, lecteur):
+    """Fondateur, 17/11/2026 — la promesse dit ce que le filet fait
+    (``assurer_prochaine_etape_apres_succes``) : sans réponse, le devis d'un
+    client jamais joint ni chiffré devient « Décider la suite »."""
+    from .cadence_config import CLE_DECIDER_SUITE, cle_de
+
+    if (cle in _CLES_CLIENT_REPOND or not set(codes) & set(_CODES_DEVIS_DEMAIN)
+            or cle_de(etape) == CLE_DECIDER_SUITE
+            or lecteur.historique(getattr(etape, 'lead', None))):
+        return codes
+    return [ETAPE_DECIDER_SUITE if code in _CODES_DEVIS_DEMAIN else code
+            for code in codes]
+
+
 def _pieces_avant_devis(etape, codes, lecteur):
     """CADV29 — la promesse dit ce que le moteur fera (``pieces_ci_dues``). La
     lecture n'a lieu que pour un lead pro à qui le devis serait promis."""
@@ -1108,7 +1150,8 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None,
         if cle in conditions and (DERNIERE_FROID_REVEILS in codes
                                   or ETAPE_APPEL_TRIMESTRIEL in codes):
             codes = [ETAPE_APPEL_AVANT_FROID]
-        promesses[cle] = _pieces_avant_devis(etape, codes, lecteur)
+        promesses[cle] = _decider_si_jamais_repondu(
+            etape, cle, _pieces_avant_devis(etape, codes, lecteur), lecteur)
     return promesses
 
 
