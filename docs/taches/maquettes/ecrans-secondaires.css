@@ -247,7 +247,7 @@
 .meta .es-file-txt { color: var(--tch-texte); font-weight: 500; }
 .meta .es-file-txt svg { color: var(--tch-texte-doux); }
 /* Conflit entre deux appareils : bandeau en tête de fiche, saisie gardée */
-.es-conflit { margin: 10px 0 0; padding: 12px 12px 10px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-accent-doux); }
+.es-conflit { margin: 10px 0 16px; padding: 12px 12px 10px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-accent-doux); }
 .es-conflit p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 600; }
 .es-conflit p svg { color: var(--tch-accent); }
 .es-conflit .carte-actions { margin-top: 10px; }
