@@ -198,9 +198,15 @@ function ciblesTropPetites() {
       const boite = (natif ? cible.closest('label') : null) ?? cible
       const r = boite.getBoundingClientRect()
       if (r.width === 0 && r.height === 0) continue
-      if (r.width < SEUIL || r.height < SEUIL) {
+      // la zone cliquable compte, pas seulement la boîte dessinée : le design étend la cible par un `::after`
+      // absolu (puces, copilote, segments, interrupteur, « Garder », ligne entière) — c'est elle qui reçoit le doigt
+      const apres = getComputedStyle(boite, '::after')
+      const etendue = apres.content !== 'none' && apres.position === 'absolute'
+      const largeur = Math.max(r.width, etendue ? parseFloat(apres.width) || 0 : 0)
+      const hauteur = Math.max(r.height, etendue ? parseFloat(apres.height) || 0 : 0)
+      if (largeur < SEUIL || hauteur < SEUIL) {
         const nom = cible.getAttribute('aria-label') || cible.textContent.trim().slice(0, 40) || cible.getAttribute('placeholder') || ''
-        fautives.push(`${cible.tagName.toLowerCase()}.${String(cible.className).trim().split(/\s+/).join('.')} « ${nom} » ${Math.round(r.width)}×${Math.round(r.height)}`)
+        fautives.push(`${cible.tagName.toLowerCase()}.${String(cible.className).trim().split(/\s+/).join('.')} « ${nom} » ${Math.round(largeur)}×${Math.round(hauteur)}`)
       }
     }
   }

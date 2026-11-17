@@ -207,11 +207,11 @@ function BandeJours({ dates, parJour, jour, aujourdhui, onChoisir }) {
             className={[repos ? 'repos' : '', garni ? 'marque' : ''].filter(Boolean).join(' ') || undefined}
             aria-selected={iso === jour}
             aria-current={iso === aujourdhui ? 'date' : undefined}
-            aria-label={jourLong(iso)}
             onClick={() => onChoisir(iso)}
           >
-            <small>{ABR_JOURS[new Date(versUtc(iso)).getUTCDay()]}</small>
-            <b>{Number(iso.slice(8, 10))}</b>
+            <small aria-hidden="true">{ABR_JOURS[new Date(versUtc(iso)).getUTCDay()]}</small>
+            <b aria-hidden="true">{Number(iso.slice(8, 10))}</b>
+            <span className="sr">{jourLong(iso)}</span>
           </button>
         )
       })}

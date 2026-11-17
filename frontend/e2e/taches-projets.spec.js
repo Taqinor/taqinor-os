@@ -178,7 +178,8 @@ test.describe('Tâches — réglages', () => {
     await expect(page.getByRole('heading', { name: 'Mes agendas' })).toBeVisible()
     await champ.fill('http://exemple.invalid/mon-agenda.ics')
     await page.getByRole('button', { name: 'Ajouter', exact: true }).click()
-    await expect(page.getByRole('alert').filter({ hasText: 'Adresse https publique attendue.' })).toBeVisible()
+    // deux `role=alert` portent la phrase (le message sous le champ + la voix sr-only) : on vise celui du champ
+    await expect(page.locator('p.es-erreur[role="alert"]').filter({ hasText: 'Adresse https publique attendue.' })).toBeVisible()
     await expect(champ).toHaveAttribute('aria-invalid', 'true')
 
     // une adresse qui mène à ce serveur lui-même : refusée aussi, aucun agenda n'est créé
