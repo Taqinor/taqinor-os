@@ -1,0 +1,339 @@
+{
+  "sha": "aab11dade61570610d7521da40da3f8349b984e3",
+  "date": "2026-11-17",
+  "groupe": "AMSG",
+  "verdict": "PASS",
+  "couvre": [
+    "AMSG3",
+    "AMSG30",
+    "AMSG57",
+    "AMSG62",
+    "AMSG68",
+    "AMSG84",
+    "AMSG89",
+    "AMSG92",
+    "AMSG93",
+    "AMSG94",
+    "AMSG95",
+    "AMSG96",
+    "AMSG56"
+  ],
+  "couvre_avec_ecart": [
+    "AMSG3",
+    "AMSG96",
+    "AMSG56"
+  ],
+  "etapes": [
+    {
+      "id": "PF8.2-AMSG3",
+      "taches": [
+        "AMSG3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.2-AMSG3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : clause « sonde rejouée ⇒ repro False » non jouable : docs/audits/sondes/AMSG/C-AMSG-003.py ne charge plus (ImportError `activity` dans leads_doublons.py, import ajouté par 3c5d382fc) — défaut de la sonde, hors Files: ; l'étape rejoue le scénario de la sonde sur le vrai code (vraie route STOP) et affirme la base et l'écran"
+    },
+    {
+      "id": "PF8.3-AMSG30",
+      "taches": [
+        "AMSG30"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.3-AMSG30.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.5-AMSG57",
+      "taches": [
+        "AMSG57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.5-AMSG57.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.5-AMSG95",
+      "taches": [
+        "AMSG95"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.5-AMSG95.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.4-AMSG62",
+      "taches": [
+        "AMSG62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.4-AMSG62.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.4-AMSG68",
+      "taches": [
+        "AMSG68"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.4-AMSG68.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.4-AMSG94",
+      "taches": [
+        "AMSG94",
+        "AMSG68"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.4-AMSG94.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.4-AMSG84",
+      "taches": [
+        "AMSG84"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.4-AMSG84.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.4-AMSG84-ecran",
+      "taches": [
+        "AMSG84"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.4-AMSG84-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.4-AMSG89",
+      "taches": [
+        "AMSG89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.4-AMSG89.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.5-AMSG92",
+      "taches": [
+        "AMSG92"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.5-AMSG92.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.5-AMSG93",
+      "taches": [
+        "AMSG93"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.5-AMSG93.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF8.5-AMSG96",
+      "taches": [
+        "AMSG96",
+        "AMSG56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.5-AMSG96.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : aucun écran de livraison (décision produit, hors Files) ; tâche montrée dans /activites ; lien wa.me non affiché (défaut antérieur, hors Files : MesActivitesPage.jsx targetLink sans entrée livraison/intervention, get_target_phone None hors crm, note wa.me jamais montrée)"
+    },
+    {
+      "id": "PF8.5-AMSG96-ecran",
+      "taches": [
+        "AMSG96",
+        "AMSG56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AMSG-PF8.5-AMSG96-ecran.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : aucun écran de livraison (décision produit, hors Files) ; tâche montrée dans /activites ; lien wa.me non affiché (défaut antérieur, hors Files : MesActivitesPage.jsx targetLink sans entrée livraison/intervention, get_target_phone None hors crm, note wa.me jamais montrée)"
+    }
+  ]
+}
