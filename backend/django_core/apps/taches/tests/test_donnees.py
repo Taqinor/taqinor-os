@@ -1,27 +1,47 @@
 """TCH74 — données personnelles : les deux portes d'effacement 09-08, « Mes données », « Tout effacer ».
+TCH75 — la nuit : purges par dates (donnees.md §8) et revérification des liens des tâches ouvertes.
 
 Base requise (`TestCase`) : joué par la CI. Deux sociétés réelles (`'a'`, `'b'`), deux comptes dans A.
 Aucun modèle d'une autre app n'est lu ici : un lead ou un client lié est un couple (ContentType,
 identifiant), la résolution d'un sujet par `crm` est remplacée par un double de
-`crm.selectors.cibles_du_sujet` (sa propre preuve vit dans `crm/tests_acrm_dsr_copies_brutes.py`).
+`crm.selectors.cibles_du_sujet` (sa propre preuve vit dans `crm/tests_acrm_dsr_copies_brutes.py`) ;
+la présence d'un objet lié (`records.serializers.resolve_target`) et sa visibilité (la porte de
+`selectors/liens.py`) sont doublées quand l'objet devrait exister. Jour et instant injectés.
 """
 import datetime
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches import dsr
-from apps.taches.choix import CibleLiable, FamilleSuggestion, LienEtat, UsageJeton
+from apps.taches.choix import (
+    CanalIncitation,
+    CibleLiable,
+    FamilleSuggestion,
+    LienEtat,
+    StatutRappel,
+    StatutTache,
+    TypeIncitationEcran,
+    UsageJeton,
+)
 from apps.taches.models.erp import SuggestionTache
-from apps.taches.models.taches import Tache
+from apps.taches.models.journee import LignePlanJour, PlanJour
+from apps.taches.models.rythme import IncitationCoach
+from apps.taches.models.taches import Rappel, Tache
 from apps.taches.serializers.formes import LIBELLE_LEAD_EFFACE, lien_de_tache
 from apps.taches.services.donnees import MODELES, exporter, lignes_du_compte
+from apps.taches.services.erp import reverifier_liens
+from apps.taches.services.gestes import enregistrer_geste
+from apps.taches.services.purge import purger
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
 from core import dsr as registre_dsr
 from core.events import lead_erased
+from core.models import DeletionRecord
 
 PREFIXE = '/api/django/taches/'
 MES_DONNEES = PREFIXE + 'mes-donnees/'
@@ -198,3 +218,123 @@ class ToutEffacerTests(_Base):
         self.assertEqual(set(Tache.all_objects.values_list('pk', flat=True)), {du_voisin.pk, d_ailleurs.pk})
         activite.refresh_from_db()  # l'activité de l'ERP n'appartient pas à `taches` : intacte
         self.assertFalse(activite.done)
+
+
+def _il_y_a(jours, heure=12):
+    """Instant (heure murale de la société) du jour `JOUR` − `jours`."""
+    jour = JOUR - datetime.timedelta(days=jours)
+    return timezone.make_aware(datetime.datetime.combine(jour, datetime.time(heure)))
+
+
+def _jour(jours):
+    return JOUR - datetime.timedelta(days=jours)
+
+
+class PurgeTests(_Base):
+    def _supprimee(self, objet, jours):
+        objet.soft_delete(self.u1, record=False)
+        type(objet).all_objects.filter(pk=objet.pk).update(deleted_at=_il_y_a(jours))
+        return objet
+
+    def _cree_il_y_a(self, objet, jours):
+        type(objet).objects.filter(pk=objet.pk).update(created_at=_il_y_a(jours))
+        return objet
+
+    def _rappel(self, tache, jours, statut):
+        return Rappel.objects.create(company=self.a, proprietaire=self.u1, tache=tache, jour=_jour(jours),
+                                     heure=datetime.time(9, 0), statut=statut)
+
+    def _incitation(self, jours):
+        return IncitationCoach.objects.create(company=self.a, proprietaire=self.u1, jour=_jour(jours),
+                                              type=TypeIncitationEcran.CONSTAT, canal=CanalIncitation.ECRAN)
+
+    def test_retentions_par_dates_puis_rejeu_idempotent(self):
+        tache = fabriques.tache(self.u1)
+        plan_91, plan_90 = fabriques.plan(self.u1, _jour(91)), fabriques.plan(self.u1, _jour(90))
+        lignes = [LignePlanJour.objects.create(company=self.a, plan=plan, tache=tache, prevue_au_plan=True)
+                  for plan in (plan_91, plan_90)]
+        purges = [
+            fabriques.plan(self.u1, _jour(401)), lignes[0], self._incitation(91),
+            self._rappel(tache, 31, StatutRappel.ENVOYE), self._rappel(tache, 31, StatutRappel.ANNULE),
+            self._cree_il_y_a(enregistrer_geste(self.u1, 'creation', 'vieux', []), 8),
+            self._cree_il_y_a(_suggestion(self.u1, LEAD, 'devis_accepte:1'), 31),
+            self._supprimee(fabriques.tache(self.u1), 31), self._supprimee(fabriques.projet(self.u1), 31),
+        ]
+        gardes = [
+            fabriques.plan(self.u1, _jour(400)), plan_91, plan_90, lignes[1], self._incitation(90),
+            self._rappel(tache, 31, StatutRappel.EN_ATTENTE), self._rappel(tache, 30, StatutRappel.ENVOYE),
+            self._cree_il_y_a(enregistrer_geste(self.u1, 'creation', 'récent', []), 6),
+            self._cree_il_y_a(_suggestion(self.u1, LEAD, 'devis_accepte:2'), 29),
+            self._supprimee(fabriques.tache(self.u1), 29), tache, fabriques.plan(self.ailleurs, _jour(401)),
+        ]
+        projet_habite = fabriques.projet(self.u1)
+        restauree = fabriques.tache(self.u1, projet=projet_habite)
+        self._supprimee(projet_habite, 31)
+        gardes += [projet_habite, restauree]
+
+        premier = purger(self.a.pk, JOUR)
+
+        for objet in purges:
+            with self.subTest(purge=f'{type(objet).__name__} {objet.pk}'):
+                self.assertFalse(type(objet)._base_manager.filter(pk=objet.pk).exists())
+        for objet in gardes:
+            with self.subTest(garde=f'{type(objet).__name__} {objet.pk}'):
+                self.assertTrue(type(objet)._base_manager.filter(pk=objet.pk).exists())
+        self.assertEqual((premier['taches_supprimees'], premier['projets_supprimes']), (1, 1))
+        self.assertFalse(DeletionRecord.objects.filter(content_type__app_label='taches').exists())  # inv. 26
+        self.assertEqual(set(purger(self.a.pk, JOUR).values()), {0})
+
+    def test_la_nuit_appelle_les_vraies_etapes(self):
+        from apps.taches import nocturne
+        vieux = fabriques.plan(self.u1, _jour(401))
+        self.assertTrue(all(nocturne.executer(self.a.pk, JOUR).values()))
+        self.assertFalse(PlanJour.objects.filter(pk=vieux.pk).exists())
+
+
+class ReverificationTests(_Base):
+    MAINTENANT = datetime.datetime(2026, 11, 17, 2, 0, tzinfo=datetime.timezone.utc)
+
+    def _reverifier(self):
+        return reverifier_liens(self.a.pk, JOUR, maintenant=self.MAINTENANT)
+
+    def test_lien_introuvable(self):
+        tache = _liee(self.u1, CibleLiable.CLIENT, 999999)
+        self.assertEqual(self._reverifier(), 1)
+        tache.refresh_from_db()
+        self.assertEqual((tache.lien_etat, tache.lien_libelle, tache.lien_verifie_le),
+                         (LienEtat.INTROUVABLE, '', self.MAINTENANT))
+        self.assertEqual(tache.lock_version, 0)  # écrit sans conflit pour une fiche ouverte
+        self.assertEqual(tache.content_type_id, _type(CibleLiable.CLIENT).pk)  # tâche et lien gardés
+
+    def test_ok_inaccessible_et_archive_vus_par_le_proprietaire(self):
+        objets = {CLIENT: SimpleNamespace(is_archived=False), AUTRE_CLIENT: SimpleNamespace(is_archived=True)}
+
+        def presence(cible, object_id, company, **_options):
+            self.assertEqual(company, self.a)
+            return _type(cible), objets[object_id]
+
+        def porte(user, app, cle, pk):
+            return {cle: 'Benali Karim'} if user.pk == self.u1.pk else {}
+        a_moi = _liee(self.u1, CibleLiable.CLIENT, CLIENT, libelle='Ancien libellé')
+        au_voisin = _liee(self.u2, CibleLiable.CLIENT, CLIENT)
+        archivee = _liee(self.u1, CibleLiable.CLIENT, AUTRE_CLIENT)
+        with mock.patch('apps.records.serializers.resolve_target', side_effect=presence), \
+                mock.patch('apps.taches.selectors.liens._par_la_porte', side_effect=porte):
+            self.assertEqual(self._reverifier(), 3)
+        attendus = ((a_moi, LienEtat.OK, 'Benali Karim'), (au_voisin, LienEtat.INACCESSIBLE, ''),
+                    (archivee, LienEtat.ARCHIVE, ''))
+        for tache, etat, libelle in attendus:
+            tache.refresh_from_db()
+            self.assertEqual((tache.lien_etat, tache.lien_libelle), (etat, libelle))
+
+    def test_ni_fermees_ni_effacees_ni_autre_societe(self):
+        faite = _liee(self.u1, CibleLiable.CLIENT, 999999, statut=StatutTache.FAIT, fait_le=self.MAINTENANT)
+        effacee = fabriques.tache(self.u1, content_type=_type(CibleLiable.LEAD), object_id=LEAD,
+                                  lien_etat=LienEtat.EFFACE)
+        ailleurs = _liee(self.ailleurs, CibleLiable.CLIENT, 999999)
+        sans_lien = fabriques.tache(self.u1)
+        self.assertEqual(self._reverifier(), 0)
+        for tache, etat in ((faite, LienEtat.OK), (effacee, LienEtat.EFFACE), (ailleurs, LienEtat.OK),
+                            (sans_lien, '')):
+            tache.refresh_from_db()
+            self.assertEqual((tache.lien_etat, tache.lien_verifie_le), (etat, None))

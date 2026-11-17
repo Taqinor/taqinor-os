@@ -6,8 +6,10 @@
 - `convertir_activites` : ses à-faire personnels deviennent des tâches, la source est close par
   `records.services.cloturer_a_faire_personnel` ; 200 partiel, une raison par refus ; UN geste.
 
-Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py`). Étape de nuit
-`reverifier_liens` appelée par `nocturne.executer` (TCH37), remplie par TCH75 ; les suggestions
+- `reverifier_liens` (TCH75) : étape de nuit appelée par `nocturne.executer` (TCH37) : l'état et le
+  libellé du lien de chaque tâche ouverte, tels que son propriétaire les voit.
+
+Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py`) ; les suggestions
 arrivent avec TCH71-TCH72.
 """
 import datetime
@@ -16,10 +18,11 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404
+from django.utils import timezone
 
 from apps.records.selectors import a_faire_personnels_de, activites_ouvertes_pour
 from apps.records.services import cloturer_a_faire_personnel
-from apps.taches.choix import CibleLiable, Source
+from apps.taches.choix import CibleLiable, LienEtat, Source, StatutTache
 from apps.taches.models.taches import Tache
 from apps.taches.selectors.base import gestes_de
 from apps.taches.selectors.liens import libelle_de_cible
@@ -37,6 +40,8 @@ PLAFOND_CONVERSION = 200
 #: Titre d'un à-faire sans résumé ni note (le nom que l'ERP lui donne, textes.md « Bandeau »).
 TITRE_A_FAIRE = 'À-faire personnel'
 LONGUEUR_TITRE = 280
+#: Tâches dont la nuit revérifie le lien (invariant 23 : « les tâches ouvertes »).
+OUVERTES = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 
 
 # --- Lier une tâche à une activité ------------------------------------------------------------
@@ -162,7 +167,44 @@ def convertir_activites(user, *, ids=(), toutes=False):
 
 # --- Nuit -------------------------------------------------------------------------------------
 
-def reverifier_liens(company_id, jour):
-    """Nuit du `jour` : revérifie le lien ERP des tâches ouvertes de la société (`lien_etat`,
-    `lien_libelle`, `lien_verifie_le` ; invariant 23). Livrée vide par TCH37, remplie par TCH75."""
-    return None
+def _verdict(user, cible, object_id):
+    """(`lien_etat`, libellé) d'un lien vu par son propriétaire `user` (spec-6a §3.2) : objet absent
+    de la société → `introuvable` ; archivé ou supprimé → `archive` ; présent mais hors de la
+    portée de `user` → `inaccessible` ; sinon `ok` et le libellé du moment. Libellé vide hors `ok`."""
+    from apps.records.serializers import resolve_target
+
+    if cible not in CibleLiable.values or getattr(user, 'company', None) is None:
+        return LienEtat.INTROUVABLE, ''
+    try:
+        _type, objet = resolve_target(cible, object_id, user.company)
+    except ValueError:  # `CibleIntrouvable` en est une sous-classe
+        return LienEtat.INTROUVABLE, ''
+    if getattr(objet, 'is_archived', False) or getattr(objet, 'is_deleted', False):
+        return LienEtat.ARCHIVE, ''
+    libelle = libelle_de_cible(user, cible, object_id)
+    if libelle is None:
+        return LienEtat.INACCESSIBLE, ''
+    return LienEtat.OK, libelle
+
+
+def reverifier_liens(company_id, jour, *, maintenant=None):
+    """Nuit du `jour` : revérifie le lien ERP des tâches OUVERTES de la société (`lien_etat`,
+    `lien_libelle`, `lien_verifie_le` ; invariant 23). Un lien `efface` (lead effacé) le reste. Écrit
+    sans toucher `lock_version` ni `updated_at` (aucun conflit pour une fiche ouverte) → nombre de
+    tâches revérifiées."""
+    maintenant = maintenant or timezone.now()
+    taches = list(
+        Tache.objects.filter(company_id=company_id, statut__in=OUVERTES, content_type__isnull=False,
+                             object_id__isnull=False)
+        .exclude(lien_etat=LienEtat.EFFACE)
+        .select_related('content_type', 'proprietaire', 'proprietaire__company'))
+    verdicts = {}
+    for tache in taches:
+        cle = (tache.proprietaire_id, tache.content_type_id, tache.object_id)
+        if cle not in verdicts:
+            cible = f'{tache.content_type.app_label}.{tache.content_type.model}'
+            verdicts[cle] = _verdict(tache.proprietaire, cible, tache.object_id)
+        tache.lien_etat, tache.lien_libelle = verdicts[cle]
+        tache.lien_verifie_le = maintenant
+    Tache.objects.bulk_update(taches, ['lien_etat', 'lien_libelle', 'lien_verifie_le'], batch_size=500)
+    return len(taches)
