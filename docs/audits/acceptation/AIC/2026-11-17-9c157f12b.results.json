@@ -1,0 +1,35 @@
+{
+  "sha": "9c157f12bab27d858f69e30e3f007f5960a3fabe",
+  "date": "2026-11-17",
+  "groupe": "AIC",
+  "verdict": "PASS",
+  "couvre": [
+    "AIC98"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P4.1-AIC98-baisse-de-ligne",
+      "taches": [
+        "AIC98"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P4.1-AIC98-baisse-de-ligne.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

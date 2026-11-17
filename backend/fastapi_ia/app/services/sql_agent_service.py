@@ -1142,48 +1142,35 @@ def _validate_and_secure(sql: str, company_id: int,
 # ── NTPLT4 — GUC tenant sur la connexion du SQL-agent (defense en profondeur) ─
 
 
-def _rls_enabled() -> bool:
-    """True si POSTGRES_RLS_ENABLED=1 (defaut OFF)."""
-    import os
-    return os.environ.get("POSTGRES_RLS_ENABLED", "0") == "1"
+def _apply_tenant_guc(cible, company_id: int) -> None:
+    """NTPLT4 / ALEC52 — pose app.current_company a CHAQUE transaction du moteur
+    du SQL-agent (``cible`` : le moteur ou une SQLDatabase).
 
-
-def _apply_tenant_guc(db, company_id: int) -> None:
-    """NTPLT4 — pose app.current_company sur les connexions du moteur du SQL-agent.
-
-    Meme une requete SQL ECRITE PAR LE LLM ne peut alors PHYSIQUEMENT pas lire
-    un autre tenant : les policies RLS Postgres (NTPLT2) filtrent sur ce GUC.
-    C'est une defense en profondeur qui s'AJOUTE a l'injection company_id
-    applicative existante (_inject_company_filter), jamais un remplacement.
-
-    Sur : le moteur ``SQLDatabase.from_uri`` est CREE A CHAQUE requete de
-    l'agent et n'est scope qu'a UNE seule societe (company_id). On enregistre
-    donc un listener ``connect`` qui pose le GUC des l'ouverture de chaque
-    connexion physique de CE moteur — jamais partage entre societes. Le SQL-agent
-    est en LECTURE SEULE (role dedie ERR3), donc un SET de session est acceptable
-    ici (moteur mono-societe, ephemere) ; on reste conservateur en repoussant
-    le GUC a chaque connexion neuve.
-
-    No-op total quand RLS est desactive (defaut) OU sans company_id : aucun SET
-    n'est emis, comportement byte-identique a aujourd'hui.
+    Les policies RLS (AUD422, FORCE sur ventes_devis/facture/paiement) filtrent
+    sur ce GUC et s'appliquent au role ``sql_agent_ro`` quel que soit
+    POSTGRES_RLS_ENABLED (reglage Django, eteint en prod) : sans GUC, 0 ligne.
+    La valeur est la societe de l'APPELANT (JWT, ``require_company_id``), jamais
+    une entree du modele (``set_config`` hors liste blanche, AANA3). Listener
+    ``begin`` pose AVANT toute connexion (l'inspection de ``_base_sql`` en ouvre
+    une) ; ``set_config(..., true)`` = local a la transaction : rien ne survit
+    au commit/rollback d'une connexion rendue au pool. Hors Postgres : no-op.
     """
-    if not _rls_enabled() or not company_id:
+    engine = getattr(cible, "_engine", cible)
+    if engine is None or not company_id:
         return
-    engine = getattr(db, "_engine", None)
-    if engine is None:
+    if getattr(getattr(engine, "dialect", None), "name", "") != "postgresql":
         return
     from sqlalchemy import event
 
     cid = int(company_id)
 
-    @event.listens_for(engine, "connect")
-    def _set_current_company(dbapi_connection, connection_record):  # noqa: ANN001 — exception documentée (D-ENF22)
-        # set_config(..., false) == SET de session sur CETTE connexion physique ;
-        # le moteur etant mono-societe et ephemere, aucune fuite inter-tenant.
-        cursor = dbapi_connection.cursor()
+    @event.listens_for(engine, "begin")
+    def _set_current_company(conn):  # noqa: ANN001 — exception documentée (D-ENF22)
+        # Curseur brut : executer via `conn` relancerait l'auto-begin.
+        cursor = conn.connection.dbapi_connection.cursor()
         try:
             cursor.execute(
-                "SELECT set_config('app.current_company', %s, false)",
+                "SELECT set_config('app.current_company', %s, true)",
                 (str(cid),),
             )
         finally:
@@ -1537,12 +1524,12 @@ class SQLAgentService:
         sample_rows_in_table_info=0 : aucune ligne reelle dans le contexte du
         LLM (sinon fuite incidente inter-tenant). ERR3 — connexion DEDIEE
         LECTURE SEULE ; AANA5 — moteur de app.core.database (statement_timeout
-        15 s). NTPLT4 — pose app.current_company sur les connexions de CE
-        moteur quand RLS est actif (no-op sans POSTGRES_RLS_ENABLED)."""
+        15 s). ALEC52 — GUC societe pose sur CE moteur avant sa 1re connexion."""
         from langchain_community.utilities import SQLDatabase
         from sqlalchemy import inspect as sa_inspect
         from app.core import database as _database
         engine = _database.create_sql_agent_engine()
+        _apply_tenant_guc(engine, company_id)
         permises = list(_ALLOWED_TABLES)
         try:  # AIC102 — table absente (base neuve sans RUN_DB_DDL) : retiree
             presentes = set(sa_inspect(engine).get_table_names())
@@ -1555,7 +1542,6 @@ class SQLAgentService:
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )
-        _apply_tenant_guc(db, company_id)
         return db
 
     @staticmethod
