@@ -13,7 +13,8 @@ counts: {paths: 5166, operations: 7998, components: 4113}
 securitySchemes:
 - bearerJWT
 - cookieJWT
-- jetonTaches
+- jetonCapture
+- jetonTuile
 - publicApiKey
 - publicApiOAuth2
 - publicApiQueryToken
