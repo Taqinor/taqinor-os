@@ -120,6 +120,17 @@ presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous 
   l'étape 2) et TCH110 (script Scriptable de la grande tuile) pliées et cochées. Reste de TCH109 : brancher la
   révélation `mon_iphone` (J+3) dans `services/revelations.py` (serveur). Le script suit le contrat `tuile.json`
   (`faites`, `essentiel.prevues`), pas l'annexe A de la spec ; vrai Scriptable jamais essayé.
+- **POINT À 138 TÂCHES SUR 174 (dernier pli)** : sur `dev-taches-f3` sont pliées et cochées en plus TCH97 (flux
+  d'agenda et tuile par jeton) et TOUTE la lane assistant (TCH161, 112, 111, 164, 113, 114, 163, 115, 162, 116 : le
+  Copilote). Restes déclarés par la lane assistant, à traiter : personne n'applique encore « au plus 3 écritures par
+  tour » dans le relais ; la conversion « contenu non fiable → carte écho » (arbitrage A5) n'existe pas ; la carte
+  écho n'a pas de bouton « Modifier » ; le bloc de consignes Tâches part à TOUS les comptes qui ont le copilote
+  (≈ 280 mots de plus, à rendre conditionnel dans `sql_agent_service._contenu_systeme`) ; `CopilotPanel.jsx`
+  n'appelle toujours pas `lancerDemandePrete` / `estEcranTaches` ; plafonds de `journee/priorites` et
+  `journee/point` non mesurés (`enforced: false`) ; 12 conversations d'évaluation sur les 18 de textes.md §5.8.
+  Plafonds tuile 14 / flux 10 = estimations, à poser à la mesure de la CI. Reste de la fusion 3 : TCH155, TCH98,
+  TCH174 (fin de la présence), TCH160, TCH127, TCH135, acceptations TCH141, TCH171, TCH143. `dev-taches-f3` n'a
+  JAMAIS vu la CI : ouvrir sa PR après le merge de la fusion 2 et prévoir plusieurs tours de corrections.
 - **RELECTURE ADVERSE DU CODE DE LA FUSION 2 : `docs/taches/travail/revue-code-f2.md` — 0 bloquant, 4 MAJEURS à corriger
   AVANT d'activer pour un vrai utilisateur** : annuler le geste du plan du jour supprime tout le plan (bilan compris) ;
   la journée en cache et le brouillon restent dans le navigateur après déconnexion hors `/taches/*` ; le délai de
