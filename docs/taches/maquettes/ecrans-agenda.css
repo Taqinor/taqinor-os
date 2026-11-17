@@ -378,3 +378,114 @@
   .ag-avliste .ag-av-vide { padding-inline: 24px; }
   .ag .toast-place { right: 32px; bottom: 28px; left: auto; width: 360px; }
 }
+
+/* ── Ajouts du tour 1 (Semaine) ──────────────────────────────────────────── */
+.ag-semnav { display: flex; align-items: center; justify-content: space-between; margin: 4px 4px 0; }
+.ag-semnav b { font-size: 1rem; font-weight: 650; }
+.ag-tiroir-sem { justify-content: space-between; padding-right: var(--tch-gouttiere); }
+.ag-planifier { height: 44px; }
+.ag-planifier svg { color: var(--tch-accent); }
+.ag-tj-plus { font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); padding: 2px 6px; }
+.ag-groupe-replie { width: 100%; text-align: left; min-height: 44px; }
+.ag-groupe-replie svg { color: var(--tch-texte-doux); }
+.ag-aside-action { padding: 8px 20px; }
+.ag-aside-action .bouton { width: 100%; }
+.ag-aside-action .bouton svg { color: var(--tch-accent); }
+.ag-heures .ag-h-maintenant { color: var(--tch-accent); font-weight: 700; background: var(--tch-surface); padding: 2px 0; }
+.ag-sj-l .point { flex: none; }
+@media (min-width: 768px) {
+  .ag-semcol .bloc.h1 small { display: none; }
+  .ag-semcol .bloc.court { align-items: center; }
+  .ag-semcol .bloc.court b { font-size: 0.75rem; }
+  .ag-semtj .ag-tj-item svg { flex: none; }
+}
+
+/* ── Ajouts : Planifier ma semaine ───────────────────────────────────────── */
+.ag-terminer { margin-right: -8px; font-weight: 650; }
+.ag-volet { height: 336px; }
+.ag-toast-haut.toast { background: var(--tch-inverse-fond); color: var(--tch-inverse-texte); padding: 0 4px 0 16px; box-shadow: var(--shadow-lg); }
+.ag-toast-haut.toast button { color: var(--tch-inverse-accent); }
+.ag-jc-ajout { font-weight: 600; }
+.ag-mj .pts.ferie { height: 14px; font-size: 0.75rem; line-height: 14px; font-weight: 500; color: var(--tch-texte-doux); }
+.ag-sousgroupe { font-weight: 600; color: var(--tch-texte); min-height: 30px; padding-top: 6px; }
+@media (min-width: 768px) {
+  .ag-pcol-plus { font-size: 0.75rem; color: var(--tch-texte-doux); padding: 0 6px; }
+  .ag-pcol.passe .ag-pcol-tete b { color: var(--tch-texte-doux); }
+  .ag-bmain { position: relative; }
+  .ag-curseur { position: absolute; right: -10px; bottom: -12px; width: 20px; height: 20px; color: var(--tch-texte); fill: var(--tch-surface); stroke-width: 1.5; }
+  .ag-terminer-b { margin-left: 12px; }
+  .ag-btete .raccourci kbd { background: var(--tch-panneau); }
+}
+
+/* ── Ajouts : placer à une heure ─────────────────────────────────────────── */
+.ag-consigne-bas { position: absolute; left: 0; right: 0; z-index: 4; margin: 0 var(--tch-gouttiere);
+  bottom: calc(var(--tch-onglets-h) + var(--tch-zone-sure-bas) + var(--ag-tiroir-h) + 8px); box-shadow: var(--shadow-md); }
+.ag-duree-choix { grid-template-columns: repeat(3, 1fr) !important; }
+.ag-poignee.active { width: 44px; margin-left: -22px; }
+.ag .bloc .ag-poignee { position: absolute; }
+@media (min-width: 768px) {
+  .ag-curseur-bloc { right: auto; left: 180px; bottom: auto; top: 18px; }
+  .ag-pcols { flex: 1; align-items: stretch; }
+}
+
+/* ── Tour 2 ──────────────────────────────────────────────────────────────── */
+/* Mois : cellules de 44 px, bandes de repos arrondies par colonne */
+.ag-mj { height: 44px; padding-top: 2px; gap: 1px; }
+.ag-mj b { width: 32px; height: 32px; }
+.ag-mois .r1, .ag-mois .rN { border-radius: 0; }
+.ag-mois .r1.g { border-top-left-radius: 10px; } .ag-mois .r1.d { border-top-right-radius: 10px; }
+.ag-mois .rN.g { border-bottom-left-radius: 10px; } .ag-mois .rN.d { border-bottom-right-radius: 10px; }
+.ag-mj.seul { border-radius: 10px; }
+.ag-mj .pts.ferie { height: 12px; line-height: 12px; }
+
+/* Planifier : consigne en tête du volet, cibles calmes, charge projetée */
+.ag-consigne-volet { margin: 4px 12px 2px; }
+.ag-jc-poser { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--tch-accent-doux); color: var(--tch-accent); }
+.ag-jc.repos .ag-jc-poser { background: transparent; }
+.ag-jc-info em { font-style: normal; }
+.ag-jc-info .surcharge { font-weight: 600; }
+.ag-charge i.fantome { background: color-mix(in srgb, var(--tch-accent) 55%, transparent); }
+.ag-charge i.fantome.plus { background: var(--tch-surveiller); }
+.ag-cibles .ag-charge { width: 64px; }
+.ag-revoir { padding-top: 2px; min-height: 40px; }
+.ag-mesprojets { padding-top: 2px; min-height: 28px; color: var(--tch-texte-doux); }
+.ag-mesprojets .projet-nom { color: var(--tch-texte-doux); }
+.ag-volet .ag-groupe .projet-nom { font-weight: 650; }
+
+/* Placer : créneaux en aplat léger, sans trait (pas de tableur) */
+.ag-creneau { box-shadow: none; background: color-mix(in srgb, var(--tch-accent) 7%, var(--tch-surface)); font-weight: 600; }
+
+@media (min-width: 768px) {
+  .ag-carte .m { white-space: nowrap; min-width: 0; }
+  .ag-carte .m .n { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .ag-carte .m .h { flex: none; }
+  .ag-pcols { grid-template-rows: 1fr; }
+  .ag-curseur-bloc { left: 64px; top: 16px; }
+}
+.ag-page { justify-content: flex-start; }
+.ag-sup { font-size: 0.65em; line-height: 0; margin-left: 1px; }
+.ag-cibles.actives .ag-jc { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tch-accent) 75%, transparent); }
+.ag-volet { height: 372px; }
+@media (min-width: 768px) {
+  .ag-mgrille { grid-template-rows: 32px repeat(6, minmax(0, 1fr)); grid-auto-rows: auto; }
+  .ag-mc-l.faite span:last-child { text-decoration: none; }
+  .ag-mc-l.faite .point { opacity: 0.6; }
+}
+
+/* ── Tour 3 : mesures (contraste, cibles) ────────────────────────────────── */
+/* La surcharge se dit en mots, en couleur de texte ; l'ambre reste sur la barre */
+.surcharge, .ag-sj-tete .surcharge, .ag-jc-info .surcharge, .ag-jour-tete .surcharge { color: var(--tch-texte) !important; font-weight: 650; }
+.ag-mj.hors b { opacity: 1; color: var(--tch-texte-doux); font-weight: 400; }
+.ag-sj.repos { min-height: 44px; }
+.ag-consigne .bouton { width: 44px; height: 44px; padding: 0; margin-right: -2px; }
+.ag-revoir { min-height: 44px; }
+.ag-creneau::after { content: ""; position: absolute; left: 0; right: 0; top: -2px; bottom: -2px; }
+.ag-creneau { right: auto; width: 116px; gap: 6px; padding-left: 10px; border-radius: 999px; }
+.ag-creneau svg { stroke-width: 2.25; }
+.ag-lp-vide { margin: 0 8px 4px; height: 44px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--tch-trait); background: transparent; }
+@media (min-width: 768px) {
+  .ag-bc::after { width: 44px; height: 44px; }
+  .ag-tj-item::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+  .ag-lp-vide { border: 1.5px dashed var(--tch-trait); box-shadow: none; }
+}

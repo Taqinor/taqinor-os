@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Réglages, Mon iPhone</title>
+<link rel="stylesheet" href="taches.css">
+<link rel="stylesheet" href="ecrans-projets.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol><symbol id="i-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol></svg><!-- sprite:fin -->
+<div class="ep-ecran">
+  <div class="ep-colonne ep-defile">
+    <div class="ep-barre">
+      <button class="ep-retour"><svg class="i"><use href="#i-chevron-left"/></svg>Réglages</button>
+    </div>
+    <div class="ep-tete"><h1 class="ep-titre">Mon iPhone</h1></div>
+    <p class="ep-intro">Cinq réglages pour retrouver tes tâches partout sur l'iPhone. Chacun se défait ici, à tout moment.</p>
+    <div class="ep-progres-etapes chiffres"><span>2 sur 5</span><div class="ep-barre-avance" role="img" aria-label="2 étapes sur 5 faites"><i style="--avance:.4"></i></div></div>
+
+    <ol class="ep-etapes">
+      <li><button class="ep-etape-i fait" style="width:100%;text-align:left" aria-expanded="false">
+        <span class="num"><svg class="i" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+        <span><b>Notifications</b><span class="etat">Activées · test reçu à 09:12</span></span>
+        <span class="chevron"><svg class="i i-16"><use href="#i-chevron-down"/></svg></span></button></li>
+      <li><button class="ep-etape-i fait" style="width:100%;text-align:left" aria-expanded="false">
+        <span class="num"><svg class="i" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+        <span><b>Calendrier de l'iPhone</b><span class="etat">Abonné · lu à 08:40</span></span>
+        <span class="chevron"><svg class="i i-16"><use href="#i-chevron-down"/></svg></span></button></li>
+      <li><button class="ep-etape-i encours" style="width:100%;text-align:left" aria-expanded="true">
+        <span class="num chiffres">3</span>
+        <span><b>Ajouter par Siri</b><span class="etat">À faire · 2 minutes</span></span>
+        <span class="chevron"><svg class="i i-16" style="transform:rotate(180deg)"><use href="#i-chevron-down"/></svg></span></button>
+        <div class="ep-etape-ouverte">
+          <ol>
+            <li>Copie l'adresse, puis ton jeton.</li>
+            <li>Dans Raccourcis : <b>+</b> → « Obtenir le contenu de l'URL ».</li>
+            <li>Colle l'adresse ; colle le jeton dans l'en-tête.</li>
+            <li>Nomme-le « Ajoute une tâche ».</li>
+          </ol>
+          <div class="boutons">
+            <button class="bouton second"><svg class="i i-16"><use href="#i-copy"/></svg>Copier l'adresse</button>
+            <button class="bouton second"><svg class="i i-16"><use href="#i-key-round"/></svg>Copier mon jeton</button>
+          </div>
+          <p class="rassure">Ce jeton ne sait qu'ajouter une tâche pour toi. Perdu ? Tu le régénères ici.</p>
+        </div></li>
+      <li><button class="ep-etape-i" style="width:100%;text-align:left" aria-expanded="false">
+        <span class="num chiffres">4</span>
+        <span><b>La tuile sur l'écran d'accueil</b><span class="etat">À faire · 5 minutes, avec Scriptable</span></span>
+        <span class="chevron"><svg class="i i-16"><use href="#i-chevron-down"/></svg></span></button></li>
+      <li><button class="ep-etape-i" style="width:100%;text-align:left" aria-expanded="false">
+        <span class="num chiffres">5</span>
+        <span><b>Ouvrir sur Aujourd'hui</b><span class="etat">À faire · un toucher : En faire mon accueil</span></span>
+        <span class="chevron"><svg class="i i-16"><use href="#i-chevron-down"/></svg></span></button></li>
+    </ol>
+
+    <section class="section">
+      <h2 class="section-titre"><span>Ce qui est visible</span></h2>
+      <div class="ep-interrupteurs">
+        <div class="ep-inter"><span>Titres dans le calendrier</span><button class="ep-switch" role="switch" aria-checked="true" aria-label="Titres dans le calendrier"></button></div>
+        <div class="ep-inter"><span>Titres sur la tuile</span><button class="ep-switch" role="switch" aria-checked="true" aria-label="Titres sur la tuile"></button></div>
+        <div class="ep-inter"><span>Titres dans les notifications<small>Sinon, l'écran verrouillé ne montre que des nombres.</small></span><button class="ep-switch" role="switch" aria-checked="false" aria-label="Titres dans les notifications"></button></div>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

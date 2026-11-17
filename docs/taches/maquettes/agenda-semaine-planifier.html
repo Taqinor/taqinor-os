@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Planifier ma semaine</title>
+<link rel="stylesheet" href="taches.css">
+<link rel="stylesheet" href="ecrans-agenda.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol><symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></symbol><symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-pointer" viewBox="0 0 24 24"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/></symbol><symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></symbol><symbol id="i-calendar-check" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></symbol></svg><!-- sprite:fin -->
+<div class="ecran ag">
+
+  <!-- ═════════════ iPhone : tâche touchée, jours en cibles ═════════════ -->
+  <div class="page ag-page mobile-seul">
+    <header class="entete ag-entete">
+      <div class="entete-haut">
+        <div><div class="entete-date chiffres">23 – 29 novembre</div><h1 class="entete-titre">Planifier ma semaine</h1></div>
+        <button class="bouton lien ag-terminer">Terminer</button>
+      </div>
+    </header>
+    <!--ETAT1-->
+        <div class="ag-cibles actives chiffres" role="list" aria-label="Jours de la semaine">
+      <div class="ag-jc inerte" role="listitem"><span class="ag-jc-j">lun. 23</span><span class="ag-jc-info">passé · 3 tâches</span><span></span></div>
+      <button class="ag-jc auj"><span class="ag-jc-j">mar. 24</span><span class="ag-jc-info">6 tâches · 4 h<span class="ag-charge"><i style="--c:100%"></i></span></span><span class="ag-jc-poser" aria-hidden="true"><svg class="i i-16"><use href="#i-plus"/></svg></span></button>
+      <button class="ag-jc"><span class="ag-jc-j">mer. 25</span><span class="ag-jc-info">3 tâches · 2 h 30<span class="ag-charge"><i style="--c:63%"></i><i class="fantome" style="--c:37%"></i></span></span><span class="ag-jc-poser" aria-hidden="true"><svg class="i i-16"><use href="#i-plus"/></svg></span></button>
+      <button class="ag-jc"><span class="ag-jc-j">jeu. 26</span><span class="ag-jc-info"><span>3 tâches · 3 h 15 <em class="surcharge">→ 5 h 15</em></span><span class="ag-charge"><i style="--c:81%"></i><i class="fantome plus" style="--c:19%"></i></span></span><span class="ag-jc-poser" aria-hidden="true"><svg class="i i-16"><use href="#i-plus"/></svg></span></button>
+      <button class="ag-jc"><span class="ag-jc-j">ven. 27</span><span class="ag-jc-info">3 tâches · 2 h<span class="ag-charge"><i style="--c:50%"></i><i class="fantome" style="--c:50%"></i></span></span><span class="ag-jc-poser" aria-hidden="true"><svg class="i i-16"><use href="#i-plus"/></svg></span></button>
+      <button class="ag-jc repos"><span class="ag-jc-j">sam. 28</span><span class="ag-jc-info">non travaillé</span><span class="ag-jc-poser" aria-hidden="true"><svg class="i i-16"><use href="#i-plus"/></svg></span></button>
+      <button class="ag-jc repos"><span class="ag-jc-j">dim. 29</span><span class="ag-jc-info">non travaillé</span><span class="ag-jc-poser" aria-hidden="true"><svg class="i i-16"><use href="#i-plus"/></svg></span></button>
+    </div>
+    <!--/ETAT1-->
+
+    <section class="ag-volet" aria-label="À placer">
+      <div class="poignee" aria-hidden="true"></div>
+      <div class="ag-consigne ag-consigne-volet" role="status"><svg class="i i-16"><use href="#i-arrow-up"/></svg><span>Touche un jour pour placer <b>Comparer les offres d'onduleurs</b></span><button class="bouton" aria-label="Annuler la sélection"><svg class="i i-16"><use href="#i-x"/></svg></button></div>
+      <div class="ag-volet-corps chiffres">
+        <button class="ag-groupe ag-groupe-replie ag-revoir"><span class="projet-nom">À revoir</span><span class="compte">2</span><svg class="i i-16"><use href="#i-chevron-down"/></svg></button>
+        <div class="ag-groupe ag-mesprojets"><span class="projet-nom">Mes projets</span></div>
+        <div class="ag-groupe" data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span><span class="compte">3</span></div>
+        <!--SEL--><button class="ag-lp" aria-pressed="true"><span class="t">Comparer les offres d'onduleurs<small>échéance ven. 27</small></span><span class="d">2 h</span></button><!--/SEL-->
+        <button class="ag-lp" aria-pressed="false"><span class="t">Commander les câbles DC</span><span class="d">30 min</span></button>
+        <button class="ag-lp" aria-pressed="false"><span class="t">Préparer le dossier de raccordement</span><span class="d">1 h</span></button>
+        <div class="ag-groupe" data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span><span class="compte">2</span></div>
+        <button class="ag-lp" aria-pressed="false"><span class="t">Réserver l'hôtel du salon</span><span class="d">30 min</span></button>
+        <button class="ag-lp" aria-pressed="false"><span class="t">Préparer les fiches produits</span><span class="d">1 h 30</span></button>
+        <div class="ag-groupe" data-p="menthe"><i class="point"></i><span class="projet-nom">Recrutement technicien</span><span class="compte">1</span></div>
+        <button class="ag-lp" aria-pressed="false"><span class="t">Trier les CV</span><span class="d">1 h</span></button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═════════════ Bureau : glisser vers un jour ═════════════ -->
+  <div class="ag-bureau bureau-seul">
+    <header class="ag-btete">
+      <div class="ag-btete-g">
+        <h1 class="entete-titre">Planifier ma semaine</h1>
+        <div class="ag-periode chiffres">23 – 29 novembre <span>2026</span></div>
+      </div>
+      <div class="ag-btete-d">
+        <span class="raccourci">Glisse une tâche sur un jour · ou <kbd>Entrée</kbd> puis <kbd>←</kbd> <kbd>→</kbd></span>
+        <button class="bouton plein ag-terminer-b">Terminer</button>
+      </div>
+    </header>
+    <div class="ag-bcorps">
+      <div class="ag-bmain">
+        <div class="ag-pcols chiffres">
+          <div class="ag-pcol passe">
+            <div class="ag-pcol-tete"><b>lun. <span>23</span></b><span class="ag-charge"><i style="--c:88%"></i></span><small>3 tâches · 3 h 30</small></div>
+            <div class="ag-carte faite" data-p="ambre"><span>Envoyer le devis révisé</span><span class="m"><i class="point"></i><span class="n">Chantier Benali</span><span class="h">09:00</span></span></div>
+            <div class="ag-carte faite" data-p="menthe"><span>Rédiger la fiche de poste</span><span class="m"><i class="point"></i><span class="n">Recrutement</span><span class="h">11:00</span></span></div>
+            <div class="ag-carte faite" data-p="indigo"><span>Appeler l'organisateur du salon</span><span class="m"><i class="point"></i><span class="n">Salon</span><span class="h">14:00</span></span></div>
+          </div>
+          <div class="ag-pcol auj">
+            <div class="ag-pcol-tete"><b>mar. <span>24</span></b><span class="ag-charge"><i style="--c:100%"></i></span><small>6 tâches · 4 h</small></div>
+            <div class="ag-carte erp"><span>Visite technique — Bouskoura</span><span class="m"><svg class="i i-14"><use href="#i-map-pin"/></svg>Activité ERP</span></div>
+            <div class="ag-carte erp"><span>Pose — Benali</span><span class="m"><svg class="i i-14"><use href="#i-wrench"/></svg>Activité ERP</span></div>
+            <div class="ag-carte" data-p="ambre"><span>Appeler le fournisseur de rails</span><span class="m"><i class="point"></i><span class="n">Chantier Benali</span><span class="h">10:30</span></span></div>
+            <div class="ag-carte" data-p="indigo"><span>Réserver le stand</span><span class="m"><i class="point"></i><span class="n">Salon</span><span class="h">11:00</span></span></div>
+            <div class="ag-pcol-plus">+ 3</div>
+          </div>
+          <div class="ag-pcol">
+            <div class="ag-pcol-tete"><b>mer. <span>25</span></b><span class="ag-charge"><i style="--c:63%"></i><i class="fantome" style="--c:37%"></i></span><small>3 tâches · 2 h 30</small></div>
+            <div class="ag-carte" data-p="indigo"><span>Préparer la démo onduleur</span><span class="m"><i class="point"></i><span class="n">Salon</span><span class="h">09:00</span></span></div>
+            <div class="ag-carte" data-p="menthe"><span>Publier l'annonce</span><span class="m"><i class="point"></i><span class="n">Recrutement</span><span class="h">14:00</span></span></div>
+            <div class="ag-carte" data-p="prune"><span>Classer les factures fournisseurs</span><span class="m"><i class="point"></i><span class="n">Administratif</span></span></div>
+          </div>
+          <!--JEU--><div class="ag-pcol vise">
+            <div class="ag-pcol-tete"><b>jeu. <span>26</span></b><span class="ag-charge"><i style="--c:81%"></i><i class="plus" style="--c:19%"></i></span><small class="surcharge">avec elle : 5 h 15 pour 4 h</small></div>
+            <div class="ag-carte" data-p="indigo"><span>Imprimer les kakémonos</span><span class="m"><i class="point"></i><span class="n">Salon</span><span class="h">09:00</span></span></div>
+            <div class="ag-carte" data-p="menthe"><span>Préparer l'entretien</span><span class="m"><i class="point"></i><span class="n">Recrutement</span><span class="h">14:00</span></span></div>
+            <div class="ag-carte" data-p="prune"><span>Relire le contrat de maintenance</span><span class="m"><i class="point"></i><span class="n">Administratif</span><span class="h">16:00</span></span></div>
+            <div class="ag-depot">Déposer ici</div>
+          </div><!--/JEU-->
+          <div class="ag-pcol">
+            <div class="ag-pcol-tete"><b>ven. <span>27</span></b><span class="ag-charge"><i style="--c:50%"></i><i class="fantome" style="--c:50%"></i></span><small>3 tâches · 2 h</small></div>
+            <div class="ag-carte" data-p="ambre"><span>Vérifier le PV de réception</span><span class="m"><i class="point"></i><span class="n">Chantier Benali</span><span class="h">10:00</span></span></div>
+            <div class="ag-carte" data-p="indigo"><span>Confirmer le transport du matériel</span><span class="m"><i class="point"></i><span class="n">Salon</span><span class="h">15:00</span></span></div>
+            <div class="ag-carte" data-p="prune"><span>Payer l'assurance du camion</span><span class="m"><i class="point"></i><span class="n">échéance ven. 27</span></span></div>
+          </div>
+          <div class="ag-pcol repos">
+            <div class="ag-pcol-tete"><b>sam. <span>28</span></b><small>non travaillé</small></div>
+          </div>
+          <div class="ag-pcol repos">
+            <div class="ag-pcol-tete"><b>dim. <span>29</span></b><small>non travaillé</small></div>
+          </div>
+        </div>
+        <!--FANTOME--><div class="ag-carte fantome" data-p="ambre" style="left:494px;top:318px"><span>Comparer les offres d'onduleurs</span><span class="m"><i class="point"></i><span class="n">Chantier Benali</span><span class="h">2 h</span></span><svg class="i ag-curseur"><use href="#i-pointer"/></svg></div><!--/FANTOME-->
+      </div>
+      <aside class="ag-aside" aria-label="À placer">
+        <div class="ag-aside-tete"><h2>À placer</h2><span class="chiffres">9</span></div>
+        <div class="ag-groupe"><span class="projet-nom">À revoir</span><span class="compte chiffres">2</span></div>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Mettre à jour le planning des poses<small>jour passé · lun. 23</small></span><span class="d chiffres">30 min</span></button>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Rappeler le bureau de contrôle<small>jour passé · lun. 23</small></span><span class="d chiffres">30 min</span></button>
+        <div class="ag-groupe"><span class="projet-nom">Mes projets</span><span class="compte chiffres">7</span></div>
+        <div class="ag-groupe ag-sousgroupe" data-p="ambre"><i class="point"></i><span>Chantier Benali 9 kWc</span></div>
+        <!--ORIG--><div class="ag-lp-vide" aria-hidden="true"></div><!--/ORIG-->
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Commander les câbles DC</span><span class="d chiffres">30 min</span></button>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Préparer le dossier de raccordement</span><span class="d chiffres">1 h</span></button>
+        <div class="ag-groupe ag-sousgroupe" data-p="indigo"><i class="point"></i><span>Salon Solaire Expo</span></div>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Réserver l'hôtel du salon</span><span class="d chiffres">30 min</span></button>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Préparer les fiches produits</span><span class="d chiffres">1 h 30</span></button>
+        <div class="ag-groupe ag-sousgroupe" data-p="menthe"><i class="point"></i><span>Recrutement technicien</span></div>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Trier les CV</span><span class="d chiffres">1 h</span></button>
+        <div class="ag-groupe ag-sousgroupe" data-p="prune"><i class="point"></i><span>Administratif</span></div>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Archiver les factures d'octobre</span><span class="d chiffres">1 h</span></button>
+      </aside>
+    </div>
+  </div>
+  <!--TOAST-->
+</div>
+</body>
+</html>

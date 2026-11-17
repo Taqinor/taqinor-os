@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Tuile de l'écran d'accueil (Scriptable)</title>
+<link rel="stylesheet" href="taches.css">
+<link rel="stylesheet" href="ecrans-projets.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-battery-full" viewBox="0 0 24 24"><path d="M10 10v4"/><path d="M14 10v4"/><path d="M22 14v-4"/><path d="M6 10v4"/><rect x="2" y="6" width="16" height="12" rx="2"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></symbol><symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/></symbol><symbol id="i-message-circle" viewBox="0 0 24 24"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></symbol><symbol id="i-phone" viewBox="0 0 24 24"><path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"/></symbol><symbol id="i-signal" viewBox="0 0 24 24"><path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/></symbol><symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></symbol><symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></symbol></svg><!-- sprite:fin -->
+<div class="ep-banc">
+  <div class="ep-legende-tuile">
+    <h2>La tuile</h2>
+    <p><b>Moyenne</b> 329 × 155 : le compte du jour, 3 prochaines tâches, la prochaine échéance.</p>
+    <p><b>Grande</b> 329 × 345 : le compte, l'essentiel, 5 à 6 tâches dans l'ordre d'Aujourd'hui.</p>
+    <p>Toujours l'heure de mise à jour : iOS rafraîchit quand il veut. Jamais de notes. Toucher ouvre Aujourd'hui.</p>
+  </div>
+  <div class="ep-telephone">
+    <div class="ep-accueil">
+      <div class="ep-statut chiffres"><span>9:52</span><span class="icones"><svg class="i"><use href="#i-signal"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-battery-full"/></svg></span></div>
+      <div class="ep-tuiles">
+        <div><div class="ep-tuile moyenne" role="img" aria-label="Tuile moyenne : 2 sur 5 aujourd'hui, 3 prochaines tâches, prochaine échéance vendredi 27, mise à jour 09:41">
+        <div class="ep-t-entete">
+          <div class="ep-t-gros chiffres"><b>2</b><span>sur 5</span></div>
+          <div class="ep-t-milieu"><div class="ep-t-jour">Aujourd'hui</div><div class="ep-t-barre" aria-hidden="true"><i class="f"></i><i class="f"></i><i class=""></i><i class=""></i><i class=""></i></div></div>
+          <div class="ep-t-maj chiffres">maj 09:41</div>
+        </div>
+        <ul class="ep-t-liste"><li><span class="o"></span><span class="t">Confirmer la réservation du stand</span><span class="h st"><svg class="i"><use href="#i-star"/></svg></span></li><li><span class="o"></span><span class="t">Visite technique à Témara</span><span class="h chiffres">14:00</span></li><li><span class="o"></span><span class="t">Commander les rails de fixation</span><span></span></li></ul>
+        <div class="ep-t-ech"><svg class="i i-14"><use href="#i-flag"/></svg>Échéance <span class="chiffres">ven. 27</span> · <span class="t">Déposer le dossier du salon</span></div>
+      </div><div class="ep-t-nom">Tâches</div></div>
+        <div><div class="ep-tuile grande" role="img" aria-label="Grande tuile : 2 sur 5 aujourd'hui, essentiel 1 sur 2, 6 tâches, prochaine échéance vendredi 27, mise à jour 09:41">
+        <div class="ep-t-haut">
+          <div><div class="ep-t-jour">Aujourd'hui · ven. 20</div>
+            <div class="ep-t-gros chiffres"><b>2</b><span>sur 5</span></div></div>
+          <div class="ep-t-sous chiffres" style="text-align:right;margin-top:2px">essentiel 1 sur 2<br>6 à faire</div>
+        </div><div class="ep-t-barre" aria-hidden="true"><i class="f"></i><i class="f"></i><i class=""></i><i class=""></i><i class=""></i></div>
+        <ul class="ep-t-liste"><li><span class="o"></span><span class="t">Confirmer la réservation du stand</span><span class="h st"><svg class="i"><use href="#i-star"/></svg></span></li><li><span class="o"></span><span class="t">Visite technique à Témara</span><span class="h chiffres">14:00</span></li><li><span class="o"></span><span class="t">Commander les rails de fixation</span><span></span></li><li><span class="o"></span><span class="t">Rédiger la fiche de poste</span><span></span></li><li><span class="o"></span><span class="t">Relire le contrat de maintenance</span><span class="h chiffres">soir</span></li><li><span class="o"></span><span class="t">Payer la CNSS de novembre</span><span></span></li></ul>
+        <div class="ep-t-pied">
+          <div class="ep-t-ech"><svg class="i i-14"><use href="#i-flag"/></svg>Échéance <span class="chiffres">ven. 27</span> · <span class="t">Déposer le dossier du salon</span></div>
+          <div class="ep-t-maj chiffres">maj 09:41</div>
+        </div>
+      </div><div class="ep-t-nom">Tâches</div></div>
+      </div>
+      <div class="ep-points-page" aria-hidden="true"><i class="actif"></i><i></i></div>
+      <div class="ep-dock" aria-hidden="true">
+        <span class="ep-appli" data-p="vert"><svg class="i"><use href="#i-phone"/></svg></span>
+        <span class="ep-appli" data-p="menthe"><svg class="i"><use href="#i-message-circle"/></svg></span>
+        <span class="ep-appli" data-p="rose"><svg class="i"><use href="#i-calendar"/></svg></span>
+        <span class="ep-appli" data-p="bleu"><svg class="i"><use href="#i-camera"/></svg></span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

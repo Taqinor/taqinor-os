@@ -570,3 +570,77 @@
 .ep-details-texte b { font-weight: 600; color: var(--tch-texte-doux); }
 .ep-details svg { color: var(--tch-texte-doux); }
 svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
+
+/* Tour 2 : vues avancées */
+@media (min-width: 768px) {
+  .ep-deux.large { grid-template-columns: 300px minmax(0, 1100px); }
+  .ep-col .meta > span { white-space: normal; }
+  svg.i.ep-fh-losange { color: var(--tch-point); fill: var(--tch-point); }
+  .ep-fh-piste { background-size: 33.3333% 100%; }
+  .ep-fh-semaines { grid-template-columns: repeat(3, 1fr); }
+  .ep-fh-corps { padding-top: 34px; }
+  .ep-fh-traits { top: 0; }
+  .ep-fh-trait span { top: 6px; }
+  .ep-fh-etiquette { top: 22px; transform: translateX(calc(-100% - 16px)); }
+}
+.ep-f-item { padding-bottom: 16px; }
+.ep-sante-puce { position: relative; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px 0 8px; border-radius: 999px;
+  background: var(--tch-panneau); font-size: 0.8125rem; font-weight: 600; }
+.ep-sante-puce::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.ep-f-sante { display: flex; gap: 6px; align-items: flex-start; color: var(--tch-texte); }
+.ep-f-sante svg { color: var(--tch-surveiller); margin-top: 3px; flex: none; }
+@media (min-width: 768px) { .ep-deux.large { grid-template-columns: 330px minmax(0, 1080px); } }
+
+/* Tour 2 : Planifier le projet */
+.ep-feuille { z-index: 4; }
+.ep-rangee-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.ep-rangee-actions .ep-ajout-ligne { padding-right: 8px; flex: none; }
+.ep-rangee-actions .ep-copilote-bouton { flex: 1; width: auto; margin-top: 0; min-height: 44px; }
+.ep-copilote-bouton.enfonce { background: var(--tch-accent-doux); color: var(--tch-accent); }
+.ep-carte-ia .liste .ligne { min-height: 44px; padding-block: 10px; }
+.ep-carte-ia .liste .ligne:has(.meta) { padding-block: 8px; }
+
+/* Tour 2 : Mon rythme */
+.ep-graph-zone .ep-b small { position: relative; z-index: 1; padding: 0 3px; border-radius: 4px; background: var(--tch-surface); }
+.ep-graph-objectif { z-index: 0; }
+@media (min-width: 768px) {
+  .ep-colonne.large { max-width: 1040px; }
+  .ep-grille-rythme { column-gap: 56px; }
+}
+
+/* Tour 2 : Revue */
+.ep-cp-ligne .ep-sante { display: inline-flex; align-items: center; gap: 4px; }
+.ep-cp-ligne { flex-wrap: wrap; }
+
+/* Copilote : la carte garde la ligne de l'écran, raison sur une ligne */
+.ep-ia .ep-carte-ia .meta { flex-wrap: nowrap; overflow: hidden; }
+.ep-ia .ep-carte-ia .meta > span:last-child { min-width: 0; overflow: hidden; }
+.ep-ia .ep-carte-ia-tete { color: var(--tch-texte); font-size: 0.9375rem; padding-bottom: 2px; }
+.ep-ia .ep-carte-ia-tete .chiffres { font-size: 0.8125rem; font-weight: 500; color: var(--tch-texte-doux); }
+@media (max-width: 767px) { .ep-fond-voile.bureau-seul { display: none; } }
+
+/* Tour 2 : Mon iPhone */
+.ep-etape-i, .ep-etape-i * { text-align: left; }
+.ep-etape-ouverte .boutons .bouton { flex: 1 1 100%; justify-content: flex-start; }
+
+/* Tour 2 : tuile moyenne en bandeau + 3 lignes pleine largeur */
+.ep-tuile.moyenne { display: flex; flex-direction: column; padding: 12px 16px 11px; }
+.ep-t-entete { display: flex; align-items: center; gap: 12px; }
+.ep-t-entete .ep-t-gros { margin: 0; }
+.ep-t-entete .ep-t-gros b { font-size: 2.125rem; }
+.ep-t-milieu { flex: 1; min-width: 0; }
+.ep-t-milieu .ep-t-barre { margin-top: 5px; }
+.ep-t-entete .ep-t-maj { align-self: flex-start; margin-top: 2px; }
+.ep-tuile.moyenne .ep-t-liste { margin-top: 7px; }
+.ep-tuile.moyenne .ep-t-liste li { min-height: 23px; }
+.ep-tuile.moyenne .ep-t-ech { margin-top: auto; }
+.ep-tuile.grande .ep-t-liste li { min-height: 32px; }
+@media (min-width: 768px) { .ep-banc .ep-telephone { box-shadow: var(--shadow-lg), 0 0 0 9px var(--color-nuit); } }
+.ep-cc-note { font-size: var(--tch-meta); color: var(--tch-texte-doux); padding-right: 10px; }
+.ep-cc-tete .bouton-icone { color: var(--tch-texte-doux); }
+
+/* Tour 3 : contrastes et cibles mesurés */
+.ep-sante-puce { background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait); color: var(--tch-texte); }
+.ep-sante-puce svg { color: var(--tch-surveiller); }
+.ep-cp-bloc li .changer::after { inset: -14px -8px; }
+.ep-t-maj { font-size: 0.75rem; }

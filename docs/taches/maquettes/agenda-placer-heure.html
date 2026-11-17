@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Placer une tâche à une heure</title>
+<link rel="stylesheet" href="taches.css">
+<link rel="stylesheet" href="ecrans-agenda.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol><symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></symbol><symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-pointer" viewBox="0 0 24 24"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/></symbol><symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></symbol><symbol id="i-calendar-check" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></symbol></svg><!-- sprite:fin -->
+<div class="ecran ag">
+
+  <!-- ═════════════ iPhone : tâche touchée, créneaux proposés ═════════════ -->
+  <div class="page ag-page mobile-seul">
+    <header class="entete ag-entete">
+      <div class="entete-haut">
+        <div><div class="entete-date">Mardi 24 novembre</div><h1 class="entete-titre">Agenda</h1></div>
+        <div class="entete-actions">
+          <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+          <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+          <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+        </div>
+      </div>
+    </header>
+    <div class="ag-vues">
+      <div class="segmente" role="radiogroup" aria-label="Vue">
+        <button role="radio" aria-checked="true">Jour</button><button role="radio" aria-checked="false">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
+      </div>
+      <button class="bouton lien">Aujourd'hui</button>
+    </div>
+    <div class="ag-bande">
+      <button class="ag-fleche" aria-label="Semaine précédente"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+      <div class="bande-jours chiffres" role="tablist" aria-label="Jours de la semaine">
+        <button class="marque" role="tab"><small>lun.</small><b>23</b></button>
+        <button role="tab" aria-current="date" aria-selected="true"><small>mar.</small><b>24</b></button>
+        <button class="marque" role="tab"><small>mer.</small><b>25</b></button>
+        <button class="marque" role="tab"><small>jeu.</small><b>26</b></button>
+        <button class="marque" role="tab"><small>ven.</small><b>27</b></button>
+        <button class="repos" role="tab"><small>sam.</small><b>28</b></button>
+        <button class="repos" role="tab"><small>dim.</small><b>29</b></button>
+      </div>
+      <button class="ag-fleche" aria-label="Semaine suivante"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+    </div>
+    <div class="ag-tj">
+      <div class="ag-tj-label">Toute la journée</div>
+      <div class="ag-tj-items">
+        <button class="ag-tj-item erp"><svg class="i i-16"><use href="#i-map-pin"/></svg><span>Visite technique — Bouskoura</span></button>
+        <button class="ag-tj-item erp"><svg class="i i-16"><use href="#i-wrench"/></svg><span>Pose — Benali</span></button>
+        <button class="ag-tj-item" data-p="prune"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Relancer la banque"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><span>Relancer la banque</span></button>
+        <button class="ag-tj-item" data-p="ambre"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Envoyer les photos au client"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><span>Envoyer les photos au client</span></button>
+      </div>
+    </div>
+    <div class="ag-fenetre" style="--ag-depart:4.0">
+      <div class="ag-grille chiffres">
+        <div class="ag-heures"><span style="--t:11">11:00</span><span style="--t:12">12:00</span><span style="--t:13">13:00</span><span style="--t:14">14:00</span><span style="--t:15">15:00</span><span style="--t:16">16:00</span><span style="--t:17">17:00</span><span style="--t:18">18:00</span><span style="--t:19">19:00</span></div>
+        <div class="ag-col">
+          <div class="bloc g1" data-p="indigo" style="--t:11;--l:1"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Réserver le stand"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Réserver le stand</b><small>11:00 – 12:00</small></div></div>
+          <div class="bloc g2 court etroit" data-p="menthe" style="--t:11.5;--l:.5"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Appeler un candidat"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Appeler un candidat</b></div></div>
+          <!--GRILLE-->
+          <button class="ag-creneau" style="--t:12" aria-label="Placer à 12:00"><svg class="i i-16"><use href="#i-plus"/></svg>12:00</button>
+          <button class="ag-creneau" style="--t:12.5" aria-label="Placer à 12:30"><svg class="i i-16"><use href="#i-plus"/></svg>12:30</button>
+          <button class="ag-creneau" style="--t:13" aria-label="Placer à 13:00"><svg class="i i-16"><use href="#i-plus"/></svg>13:00</button>
+          <button class="ag-creneau" style="--t:13.5" aria-label="Placer à 13:30"><svg class="i i-16"><use href="#i-plus"/></svg>13:30</button>
+          <button class="ag-creneau" style="--t:14" aria-label="Placer à 14:00"><svg class="i i-16"><use href="#i-plus"/></svg>14:00</button>
+          <button class="ag-creneau" style="--t:14.5" aria-label="Placer à 14:30"><svg class="i i-16"><use href="#i-plus"/></svg>14:30</button>
+          <button class="ag-creneau" style="--t:15" aria-label="Placer à 15:00"><svg class="i i-16"><use href="#i-plus"/></svg>15:00</button>
+          <button class="ag-creneau" style="--t:15.5" aria-label="Placer à 15:30"><svg class="i i-16"><use href="#i-plus"/></svg>15:30</button>
+          <button class="ag-creneau" style="--t:16" aria-label="Placer à 16:00"><svg class="i i-16"><use href="#i-plus"/></svg>16:00</button>
+          <button class="ag-creneau" style="--t:16.5" aria-label="Placer à 16:30"><svg class="i i-16"><use href="#i-plus"/></svg>16:30</button>
+          <!--/GRILLE-->
+        </div>
+      </div>
+    </div>
+
+    <div class="ag-consigne ag-consigne-bas" role="status"><svg class="i i-16"><use href="#i-arrow-up"/></svg><span>Touche un créneau pour <b>Trier les CV</b></span><button class="bouton" aria-label="Annuler la sélection"><svg class="i i-16"><use href="#i-x"/></svg></button></div>
+    <!--TIROIR--><div class="ag-tiroir">
+      <div class="ag-tiroir-titre">À placer<span class="chiffres">9</span></div>
+      <div class="ag-tiroir-puces">
+        <button class="ag-puce" data-p="menthe" aria-pressed="true"><i class="point"></i>Trier les CV<span class="doux chiffres">1 h</span></button>
+        <button class="ag-puce" data-p="ambre" aria-pressed="false"><i class="point"></i>Rappeler le bureau de contrôle<span class="doux chiffres">30 min</span></button>
+        <button class="ag-puce" data-p="ambre" aria-pressed="false"><i class="point"></i>Comparer les offres d'onduleurs<span class="doux chiffres">2 h</span></button>
+      </div>
+    </div><!--/TIROIR-->
+  </div>
+
+  <!-- ═════════════ Bureau : glisser, avec la poignée de durée ═════════════ -->
+  <div class="ag-bureau bureau-seul">
+    <header class="ag-btete">
+      <div class="ag-btete-g">
+        <h1 class="entete-titre">Agenda</h1>
+        <button class="bouton-icone" aria-label="Jour précédent"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+        <button class="bouton discret">Aujourd'hui</button>
+        <button class="bouton-icone" aria-label="Jour suivant"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+        <div class="ag-periode">Mardi 24 novembre <span>2026</span></div>
+      </div>
+      <div class="ag-btete-d">
+        <div class="segmente" role="radiogroup" aria-label="Vue">
+          <button role="radio" aria-checked="true">Jour</button><button role="radio" aria-checked="false">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
+        </div>
+        <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+        <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+        <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+      </div>
+    </header>
+    <div class="ag-bcorps">
+      <div class="ag-bmain">
+        <div class="ag-tj">
+          <div class="ag-tj-label">Toute la journée</div>
+          <div class="ag-tj-items">
+            <button class="ag-tj-item erp"><svg class="i i-16"><use href="#i-map-pin"/></svg><span>Visite technique — Bouskoura</span></button>
+            <button class="ag-tj-item erp"><svg class="i i-16"><use href="#i-wrench"/></svg><span>Pose — Benali</span></button>
+            <button class="ag-tj-item" data-p="prune"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Relancer la banque"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><span>Relancer la banque</span></button>
+            <button class="ag-tj-item" data-p="ambre"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Envoyer les photos au client"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><span>Envoyer les photos au client</span></button>
+          </div>
+        </div>
+        <div class="ag-fenetre">
+          <div class="ag-grille chiffres">
+            <div class="ag-heures"><span style="--t:7">07:00</span><span style="--t:8">08:00</span><span style="--t:9">09:00</span><span class="cache" style="--t:10">10:00</span><span style="--t:11">11:00</span><span style="--t:12">12:00</span><span style="--t:13">13:00</span><span style="--t:14">14:00</span><span style="--t:15">15:00</span><span style="--t:16">16:00</span><span style="--t:17">17:00</span><span style="--t:18">18:00</span><span style="--t:19">19:00</span><span style="--t:20">20:00</span></div>
+            <div class="ag-col">
+              <div class="bloc fait-bloc" data-p="ambre" style="--t:8;--l:2"><span class="ag-bc" role="checkbox" aria-checked="true" aria-label="Fait : Préparer la liste de matériel"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Préparer la liste de matériel</b><small>08:00 – 10:00 · Chantier Benali 9 kWc</small></div></div>
+              <div class="bloc court" data-p="ambre" style="--t:10.5;--l:.5"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Appeler le fournisseur de rails"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Appeler le fournisseur de rails</b><small>10:30</small></div></div>
+              <div class="bloc g1" data-p="indigo" style="--t:11;--l:1"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Réserver le stand"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Réserver le stand</b><small>11:00 – 12:00 · Salon Solaire Expo</small></div></div>
+              <div class="bloc g2 court" data-p="menthe" style="--t:11.5;--l:.5"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Appeler un candidat"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Appeler un candidat</b><small>11:30</small></div></div>
+              <div class="maintenant" style="--t:10.083"><span class="maintenant-heure">10:05</span></div>
+              <!--BUREAU-->
+              <div class="ag-cible" style="--t:14;--l:1"></div>
+              <div class="bloc souleve" data-p="menthe" style="--t:13.85;--l:1;left:60px;right:auto;width:420px"><span class="ag-bc" role="checkbox" aria-checked="false" aria-label="Fait : Trier les CV"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><div class="ag-bt"><b>Trier les CV</b><small>14:00 – 15:00 · Recrutement technicien</small></div><span class="ag-poignee" aria-label="Changer la durée"></span><svg class="i ag-curseur ag-curseur-bloc"><use href="#i-pointer"/></svg></div>
+              <span class="ag-bulle chiffres" style="left:492px;top:calc(7 * var(--ag-h) - 8px)">14:00 – 15:00</span>
+              <!--/BUREAU-->
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="ag-aside" aria-label="À placer">
+        <div class="ag-aside-tete"><h2>À placer</h2><span class="chiffres">9</span></div>
+        <div class="ag-groupe"><span class="projet-nom">À revoir</span><span class="compte chiffres">2</span></div>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Mettre à jour le planning des poses<small>jour passé · lun. 23</small></span><span class="d chiffres">30 min</span></button>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Rappeler le bureau de contrôle<small>jour passé · lun. 23</small></span><span class="d chiffres">30 min</span></button>
+        <div class="ag-groupe"><span class="projet-nom">Mes projets</span><span class="compte chiffres">7</span></div>
+        <div class="ag-groupe ag-sousgroupe" data-p="menthe"><i class="point"></i><span>Recrutement technicien</span></div>
+        <!--ORIG--><div class="ag-lp-vide" aria-hidden="true"></div><!--/ORIG-->
+        <div class="ag-groupe ag-sousgroupe" data-p="ambre"><i class="point"></i><span>Chantier Benali 9 kWc</span></div>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Comparer les offres d'onduleurs<small>échéance ven. 27</small></span><span class="d chiffres">2 h</span></button>
+        <button class="ag-lp"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Commander les câbles DC</span><span class="d chiffres">30 min</span></button>
+        <p class="ag-aside-pied">Glisse une tâche sur une heure, ou <kbd>h</kbd> pour lui en donner une. Tire le bas d'un bloc pour sa durée ; <kbd>Maj</kbd>+<kbd>↓</kbd> ajoute 15 min.</p>
+      </aside>
+    </div>
+  </div>
+  <!--FIN-->
+  <nav class="onglets mobile-seul" aria-label="Tâches">
+    <a class="onglet"><svg class="i"><use href="#i-sun"/></svg>Aujourd'hui</a>
+    <a class="onglet"><svg class="i"><use href="#i-inbox"/></svg>À trier<span class="pastille chiffres">3</span></a>
+    <a class="onglet"><svg class="i"><use href="#i-folder"/></svg>Projets</a>
+    <a class="onglet" aria-current="page"><svg class="i"><use href="#i-calendar"/></svg>Agenda</a>
+    <a class="onglet"><svg class="i"><use href="#i-layout-grid"/></svg>Apps</a>
+  </nav>
+</div>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Agenda, À venir</title>
+<link rel="stylesheet" href="taches.css">
+<link rel="stylesheet" href="ecrans-agenda.css">
+</head>
+<body>
+<!-- sprite:debut --><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol><symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></symbol><symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-pointer" viewBox="0 0 24 24"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/></symbol><symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></symbol><symbol id="i-calendar-check" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></symbol></svg><!-- sprite:fin -->
+<div class="ecran ag">
+  <div class="page ag-page ag-av">
+    <!-- en-tête iPhone -->
+    <header class="entete ag-entete mobile-seul">
+      <div class="entete-haut">
+        <div><div class="entete-date">Mardi 24 novembre</div><h1 class="entete-titre">Agenda</h1></div>
+        <div class="entete-actions">
+          <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+          <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+          <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+        </div>
+      </div>
+    </header>
+    <div class="ag-vues mobile-seul">
+      <div class="segmente" role="radiogroup" aria-label="Vue">
+        <button role="radio" aria-checked="false">Jour</button><button role="radio" aria-checked="false">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="true">À venir</button>
+      </div>
+    </div>
+    <!-- en-tête bureau -->
+    <header class="ag-btete bureau-seul">
+      <div class="ag-btete-g">
+        <h1 class="entete-titre">Agenda</h1>
+        <div class="ag-periode">À venir <span>· 14 prochains jours</span></div>
+      </div>
+      <div class="ag-btete-d">
+        <div class="segmente" role="radiogroup" aria-label="Vue">
+          <button role="radio" aria-checked="false">Jour</button><button role="radio" aria-checked="false">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="true">À venir</button>
+        </div>
+        <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+        <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+        <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+      </div>
+    </header>
+
+    <div class="ag-avliste">
+      <section>
+        <h2 class="ag-av-tete chiffres">Demain <span class="doux">· mer. 25</span><span class="compte">3</span></h2>
+        <div class="liste" role="list">
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Préparer la démo onduleur"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Préparer la démo onduleur</div>
+              <div class="meta"><span data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">09:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Publier l'annonce"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Publier l'annonce</div>
+              <div class="meta"><span data-p="menthe"><i class="point"></i><span class="projet-nom">Recrutement technicien</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">14:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Classer les factures fournisseurs"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Classer les factures fournisseurs</div>
+              <div class="meta"><span data-p="prune"><i class="point"></i><span class="projet-nom">Administratif</span></span></div></div>
+            <div class="ligne-fin"></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="ag-av-tete chiffres">jeu. 26<span class="compte">3</span></h2>
+        <div class="liste" role="list">
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Imprimer les kakémonos"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Imprimer les kakémonos</div>
+              <div class="meta"><span data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">09:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Préparer l'entretien"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Préparer l'entretien</div>
+              <div class="meta"><span data-p="menthe"><i class="point"></i><span class="projet-nom">Recrutement technicien</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">14:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Relire le contrat de maintenance"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Relire le contrat de maintenance</div>
+              <div class="meta"><span data-p="prune"><i class="point"></i><span class="projet-nom">Administratif</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">16:00</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="ag-av-tete chiffres">ven. 27<span class="compte">4</span></h2>
+        <div class="liste" role="list">
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Vérifier le PV de réception"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Vérifier le PV de réception</div>
+              <div class="meta"><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">10:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Confirmer le transport du matériel"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Confirmer le transport du matériel</div>
+              <div class="meta"><span data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">15:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Payer l'assurance du camion"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Payer l'assurance du camion</div>
+              <div class="meta"><span class="echeance">échéance ven. 27</span><span data-p="prune"><i class="point"></i><span class="projet-nom">Administratif</span></span></div></div>
+            <div class="ligne-fin"></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Comparer les offres d'onduleurs"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Comparer les offres d'onduleurs</div>
+              <div class="meta"><span class="echeance">échéance ven. 27</span><span>sans jour</span><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+            <div class="ligne-fin"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="ag-av-vide chiffres">sam. 28 – dim. 29 · jours non travaillés</div>
+
+      <section>
+        <h2 class="ag-av-tete chiffres">lun. 30<span class="compte">2</span></h2>
+        <div class="liste" role="list">
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Préparer le dossier de raccordement"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Préparer le dossier de raccordement</div>
+              <div class="meta"><span data-p="ambre"><i class="point"></i><span class="projet-nom">Chantier Benali 9 kWc</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">10:00</span></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Relancer les candidats retenus"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Relancer les candidats retenus</div>
+              <div class="meta"><span data-p="menthe"><i class="point"></i><span class="projet-nom">Recrutement technicien</span></span></div></div>
+            <div class="ligne-fin"></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="ag-av-tete chiffres">mar. 1<sup class="ag-sup">er</sup>&nbsp;déc.<span class="compte">2</span></h2>
+        <div class="liste" role="list">
+          <div class="ligne" role="listitem">
+            <span class="case vide"><span class="pastille-erp"><svg class="i"><use href="#i-map-pin"/></svg></span></span>
+            <div class="ligne-corps"><div class="titre">Visite technique — Dar Bouazza</div>
+              <div class="meta"><span>Activité ERP</span><span>Toute la journée</span></div></div>
+            <div class="ligne-fin"></div>
+          </div>
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Expédier le matériel du stand"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Expédier le matériel du stand</div>
+              <div class="meta"><span data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span></span></div></div>
+            <div class="ligne-fin"><span class="heure chiffres">08:30</span></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="ag-av-vide chiffres">Rien du mer. 2 au ven. 4</div>
+      <div class="ag-av-vide chiffres">sam. 5 – dim. 6 · jours non travaillés</div>
+
+      <section>
+        <h2 class="ag-av-tete chiffres">lun. 7<span class="compte">1</span></h2>
+        <div class="liste" role="list">
+          <div class="ligne" role="listitem">
+            <button class="case" role="checkbox" aria-checked="false" aria-label="Fait : Faire le bilan du salon"><span class="rond"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+            <div class="ligne-corps"><div class="titre">Faire le point sur les contacts du salon</div>
+              <div class="meta"><span data-p="indigo"><i class="point"></i><span class="projet-nom">Salon Solaire Expo</span></span></div></div>
+            <div class="ligne-fin"></div>
+          </div>
+        </div>
+      </section>
+      <div class="ag-av-vide chiffres">Rien le mar. 8</div>
+    </div>
+  </div>
+
+  <button class="fab mobile-seul" aria-label="Ajouter une tâche"><svg class="i"><use href="#i-plus"/></svg></button>
+  <nav class="onglets mobile-seul" aria-label="Tâches">
+    <a class="onglet"><svg class="i"><use href="#i-sun"/></svg>Aujourd'hui</a>
+    <a class="onglet"><svg class="i"><use href="#i-inbox"/></svg>À trier<span class="pastille chiffres">3</span></a>
+    <a class="onglet"><svg class="i"><use href="#i-folder"/></svg>Projets</a>
+    <a class="onglet" aria-current="page"><svg class="i"><use href="#i-calendar"/></svg>Agenda</a>
+    <a class="onglet"><svg class="i"><use href="#i-layout-grid"/></svg>Apps</a>
+  </nav>
+</div>
+</body>
+</html>

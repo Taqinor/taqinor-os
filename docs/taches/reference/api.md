@@ -1,102 +1,127 @@
-# Référence de l'API — `apps/taches`
+# Référence de l'API — `apps/taches` (révision 2)
 
-Référence UNIQUE des routes, corps et contrats. Noms de champs et de valeurs : `donnees.md`. Primauté : socle §0/§8
-→ A1-A14 → spec-7 (mots, routes du front) → vérifications → specs → design-s1.
+Référence UNIQUE des routes, corps et contrats. Noms des champs et des valeurs : `donnees.md` ; algorithmes :
+`regles.md` ; mots : `textes.md`. Primauté : socle §0/§8 → A1-A17 → spec-7 révision 3 (mots, routes du front) →
+`verif-reference.md` et les autres vérifications → specs → design-s1.
 
-## 0. Conventions (règle l'objection C26)
+## 0. Conventions
 
-- **Préfixe unique** : toutes les routes de l'app sont montées par `path('taches/', include('apps.taches.urls'))`
-  dans `_APP_URLS` (`erp_agentique/urls.py:28`, monté sous `api/django/`). Chaque chemin ci-dessous est écrit EN ENTIER.
-  Les actions d'une tâche vivent sous le viewset : `/api/django/taches/taches/{id}/…`. Deux routes étrangères
-  existantes sont consommées telles quelles : `POST /api/django/records/activities/{id}/done/` et
-  `POST /api/django/auth/mobile-home-route/` (`authentication/urls.py:52`).
-- **Authentification** : « session » = authentification par défaut de l'ERP (cookie JWT) + droit `taches_voir`
-  (`read_permission = write_permission = 'taches_voir'`, viewsets `CompanyScopedModelViewSet`). « jeton X » =
-  `JetonAccesAuthentication(X)` SEULE, permission `IsAuthenticatedInterne` (`authentication/permissions.py:4`), et à
-  chaque usage : jeton non révoqué, compte actif et interne, `taches_voir`, module actif (`core.feature_flags.module_actif`)
-  ; sinon 401 neutre (404 pour le flux). Société = `jeton.company`.
-- **Verrou 409** : sur les routes marquées « oui », `lock_version` est OBLIGATOIRE (absent → 400
-  `{"lock_version":["Requis."]}`) ; périmé → 409 `{"detail":"…","code":"conflit_version","lock_version":5,"actuel":TACHE}`.
-  Les services partagés (lot, rituels, alléger, retour, assistant sans version) verrouillent par `select_for_update()`.
-- **Idempotence** : `client_id` (par tâche, `:<n>` ajouté par ligne d'un texte multi-lignes), `Idempotency-Key`
-  (`core/idempotency.py`, `_avec_idempotence`), ou « naturelle » (rejouer ne change rien).
-- **Toute écriture rend `geste_id`** (annulable par `gestes/{id}/annuler/`, A7), sauf jetons, `vu/`, `tout-effacer/`.
-- **Erreurs** (une seule forme, le champ fautif nommé) : 400 `{"<champ>":["message"]}` ; imbriquée par ligne ou par id
-  : `{"lignes":{"3":{"titre":["…"]}}}`, `{"triage":{"41":["Choix manquant."]}}` (C36) ; 404/401/429
-  `{"detail":"…"}` ; 409 forme du verrou ci-dessus. L'id d'un autre propriétaire répond comme un id inconnu.
-- **En-tête `X-Taqinor-Assistant: 1`** (posé par `internal_headers()` du relais) : titres et noms passés par
-  `nom_pour(…, 'assistant')`, `notes` jamais servies, 403 sur `reglages/`, `jetons/`, `mes-donnees/`, `tout-effacer/`
-  et sur `planification/apercu/` d'un projet confidentiel.
-- **OpenAPI** : chaque vue porte `@extend_schema(request=, responses=, parameters=)` (sérialiseur réel ou
-  `inline_serializer`) ; chaque paramètre de requête (`jour`, `du`, `au`, `q`, `vue`, `cible`…) est déclaré
-  (verif-specs-2-3 M8).
+- **Préfixe unique** (C26) : `path('taches/', include('apps.taches.urls'))` dans `_APP_URLS` (`erp_agentique/urls.py:28`,
+  monté sous `api/django/`). Chaque chemin est écrit EN ENTIER ; les actions d'une tâche vivent sous le viewset
+  (`/api/django/taches/taches/{id}/…`). Routes étrangères consommées telles quelles : `POST
+  /api/django/records/activities/{id}/done/` et `POST /api/django/auth/mobile-home-route/` (`authentication/urls.py:52`).
+- **Authentification** : « S » = authentification par défaut (cookie JWT) + `taches_voir` (`read_permission =
+  write_permission = 'taches_voir'`, accordé à AUCUN rôle avant la dernière vague, `donnees.md` inv. 28). « J:x » =
+  `JetonAccesAuthentication(x)` SEULE + `IsAuthenticatedInterne` (`authentication/permissions.py:4`) : jeton actif de
+  cet usage, compte actif interne, `user_can_operate(user, jeton.company_id)` (`authentication/active_company.py:76`),
+  `taches_voir`, module actif, puis `user.company = jeton.company` en mémoire (MAJ-4). Échec : 401 neutre (404 pour
+  le flux), corps `text/plain` lisible si `?reponse=texte` (`textes.md` §7). Débits : `throttles.py` (capture 60/h et
+  200/j, flux 60/h, tuile 120/h ; 429).
+- **Verrou 409** (colonne « 409 » = oui) : `lock_version` obligatoire (absent → 400 `{"lock_version":["Requis."]}`) ;
+  périmé → 409 `{"detail":"…","code":"conflit_version","lock_version":5,"actuel":TACHE}`. Routes d'action : comparaison
+  `version_envoyee()` sous `select_for_update()` dans `planifier(version=…)`. Le front garde la saisie en cours et
+  propose « Garder la mienne » (renvoi avec `actuel.lock_version`) ou « Prendre l'autre » (A16-N8). Services partagés
+  (lot, rituels, alléger, retour) : `select_for_update()` sans version.
+- **Autres 409** (toujours un `code`) : `nom_pris` (projet), `proposition_expiree`, `autre_compte` (hors ligne),
+  `deja_lie` (activité déjà liée).
+- **Idempotence** : `client_id` (par tâche, `:<n>` par ligne d'un texte multi-lignes) ; `Idempotency-Key` par
+  `_avec_idempotence(request, creer, suffixe=f'u{user.pk}')` (`core/idempotency.py:234`) sur TOUTE route `taches` qui la
+  porte, sinon deux collègues rejoueraient la réponse de l'autre ; « N » = naturelle.
+- **`geste_id`** rendu par toute écriture SAUF : jetons, `vu/`, `tout-effacer/`, `PATCH reglages/`, `agenda-externe/`,
+  `reordonner/`, `projets/trier-par-priorite/`.
+- **Erreurs** (une forme, tutoiement, A17) : 400 `{"<champ>":["message"]}` ; par ligne ou id
+  `{"lignes":{"3":{"titre":["…"]}}}`, `{"choix":{"53":["…"]}}` ; 401/404/429 `{"detail":"…"}`. L'id d'un autre
+  propriétaire répond comme un id inconnu. Textes : `textes.md` §2.16.
+- **`X-Taqinor-Assistant: 1`** (posé par `internal_headers()` du relais) : titres par `nom_pour(…,'assistant')`, `notes`
+  jamais servies, `filtrer_q(assistant=True)`, 403 sur `reglages/`, `jetons/`, `mes-donnees/`, `tout-effacer/`,
+  `agenda-externe/` et sur `planification/apercu/` d'un projet confidentiel.
+- **OpenAPI** : `@extend_schema(request=, responses=, parameters=)` partout ; paramètres de requête déclarés ; types
+  `text/calendar` (flux) et `text/plain` (capture) déclarés.
+- **Pagination** (MAJ-8) : `StandardPagination` (50, enveloppe `{"count","next","previous","results"}`, le front lit
+  avec `fetchAllPages`) pour `taches/`, `projets/`, `etiquettes/`, `modeles/` ; `pagination_class = None` + plafond pour
+  `suggestions/` (≤ 20), `vues/` (≤ 30), `gestes/` (7 jours, ≤ 200 plus récents), `jetons/` (≤ 20 plus récents).
+  L'enveloppe figure dans chaque échantillon.
 
 ## 1. Formes partagées (une seule chacune)
 
-**ITEM** — une ligne de liste (journée, proposition, recherche, vue de projet, agenda). Une activité ERP a la même
-forme (`type:"activite"`, champs sans objet à `null`/`false`, `lock_version:null`).
+**ITEM** — une ligne de liste ; une activité ERP a la même forme (`type:"activite"`, champs sans objet nuls/faux,
+`lock_version:null`).
 ```json
 {"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire",
- "projet":{"id":3,"nom":"Ventes","couleur":"vert"},"section":{"id":8,"nom":"Relances"},"parent_id":null,
+ "projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":{"id":8,"nom":"Relances"},"parent_id":null,
  "priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19",
- "echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"motif":null,
+ "echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":2048,"motif":null,
  "explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
  "rappel":{"jour":"2026-11-17","heure":"09:45"},
  "lien":{"cible":"ventes.devis","id":512,"libelle":"DEV-2026-11-0042","url":"/ventes/devis?devis=512","etat":"ok"},
  "checklist":{"faits":1,"total":3},"sous_taches":{"faites":0,"total":2},"recurrente":false,"routine":false,
  "jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,
- "confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}
+ "confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":4}
 ```
+`rang` = `rang_jour` dans une section du jour, `rang_projet` dans un projet (ordre : `donnees.md` inv. 32) ;
+`confidentiel` = drapeau propre (écrit par PATCH), `confidentielle` = effectif hérité (min-9) ; `bloquee_par`
+`{"id","titre"}` (titre par `nom_pour`).
 
-**TACHE** — la fiche (`GET taches/{id}/`) = ITEM + :
+**TACHE** — la fiche = ITEM + :
 ```json
-{"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"gris"}],
+{"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],
  "elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[ITEM],
  "recurrence":{"id":9,"frequence":"hebdo","intervalle":1,"jours_semaine":"1000000","jour_du_mois":null,
    "rang_dans_mois":null,"mode":"calendrier","date_debut":"2026-11-17","date_fin":null,"actif":true,"libelle":"chaque lundi"},
  "rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],
  "triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,
  "duree_reelle_minutes":null,"fait_le":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":null,
- "lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00"}
+ "lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00",
+ "updated_at":"2026-11-17T10:42:00+01:00"}
 ```
+`updated_at` sert le bandeau de conflit (« Modifiée sur ton autre appareil à 10:42 »).
 
 **TACHE_ECRITE** — réponse de toute écriture sur une tâche (carte `tache`) :
 ```json
-{"tache":TACHE,"suivante":null,"projet_cree":null,"rappel":null,
+{"tache":TACHE,"suivante":null,"projet_cree":null,"rappel":null,"question_titres":false,
  "avertissements":[{"code":"prevue_apres_echeance","message":"Prévue après l'échéance."}],
  "progression":null,"geste_id":77}
 ```
-`suivante` = occurrence née (terminer, sauter) ; `progression` posée par terminer/rouvrir ; codes d'avertissement :
-`prevue_apres_echeance`, `jour_non_travaille`, `hors_fenetre`.
+`suivante` : occurrence née (terminer, sauter ; toast « Fait · prochaine jeu. 19 ») ; `progression` : terminer,
+rouvrir ; `question_titres` : `true` au premier rappel posé tant que `titres_notifications_demande_le` est nul
+(A17-T4 ; réponse par `PATCH reglages/`) ; avertissements : `prevue_apres_echeance`, `jour_non_travaille`, `hors_fenetre`.
 
 **PROJET**
 ```json
 {"id":3,"nom":"Ventes","objectif":"Fini quand les 4 devis sont signés","icone":"","couleur":"vert","priorite":3,
- "statut":"actif","domaine":"","date_debut":null,"echeance":"2026-12-15","rang":2048,"confidentiel":false,
+ "statut":"actif","statut_depuis":"2026-10-01T09:00:00+01:00","domaine":"","date_debut":null,"echeance":"2026-12-15",
+ "termine_le":null,"issue":"","bilan":"","planification_le":"2026-10-01T09:05:00+01:00","rang":2048,
+ "confidentiel":false,"affichage":{"vue":"liste","tri":"manuel","groupe":"section","montrer_faites":false},
  "a_planifier":false,"compteurs":{"ouvertes":8,"faites":12},
  "sante":[{"code":"a_l_arret","phrase":"Rien de fait depuis 10 jours travaillés.","donnees":{"jours":10,"depuis":"2026-11-03"}}],
- "focus_semaine":false,"lock_version":4}
+ "focus_semaine":false,"updated_at":"2026-11-16T18:00:00+01:00","lock_version":4}
 ```
-Codes de `sante` : `sans_prochaine_action`, `a_l_arret`, `echeance_menacee`, `neglige`, `tout_fait`.
 
-**PROPOSITION** — toute carte à réponse (palier, tenir, taille, constat, pause, retour, révélation) :
+**PROPOSITION** — toute carte à réponse :
 ```json
 {"id":41,"type":"proposition_palier","cle":"monter",
  "texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
- "donnees":{"de":5,"a":6,"tenus":7,"sur":10},
+ "donnees":{"N":5,"N1":6,"tenus":7},
  "boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],
  "expire_le":"2026-11-24"}
 ```
-
-**OBJECTIF** `{"nb":5,"source":"accepte","mode":"pousser"}` (`nb:null` en `libre`).
-**PROGRESSION** (C8, A14-M2 : l'écran montre « faites sur objectif », le reste est replié) :
+**CARTE_DU_MOMENT** — une seule, choisie par le serveur (ordre `donnees.md` §1 `CarteDuMoment` ; le navigateur insère
+le brouillon devant et l'astuce derrière) :
 ```json
-{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":5,
- "essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,
- "sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","activites_closes":0,"activites":1}
+{"type":"garder","proposition":null,"donnees":{"n":5,"objectif":5}}
 ```
-**LIEN** `{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"}` (libellé
-vide hors `ok`, « Lead effacé » si `efface`).
+`retour`, `rythme`, `revelation` portent une PROPOSITION ; `bilan_hier` `{"jour"}` ; `garder` `{"n","objectif"}` ;
+`alleger` `{"faites","prevues"}` ; `faire_bilan` `{}`.
+**OBJECTIF** `{"nb":5,"source":"accepte","mode":"pousser","zone":null}` (`zone` `[4,6]` en `tenir` ; `nb:null` en `libre`).
+**PROGRESSION**
+```json
+{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,
+ "essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,
+ "sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","activites_closes":0,"activites":1,"reprise":false}
+```
+L'écran montre « faites sur OBJECTIF » ; « gardées faites » (`plan_tenues`/`plan_lignes`) est une seconde donnée ;
+`reprise` vrai le jour d'une carte `retour` (« Reprise » au lieu de « 0 sur 5 »).
+**LIEN** `{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"}`.
 **RYTHME**
 ```json
 {"mode":"pousser","comprendre_mon_rythme":true,"objectif":OBJECTIF,"trace":"5 faites ou plus 7 jours sur 10",
@@ -107,114 +132,107 @@ vide hors `ok`, « Lead effacé » si `efface`).
  "preferences":[{"cle":"heure_limite","valeur":"19:00","source":"copilote","dite_le":"2026-11-17T09:00:00+01:00"}],
  "geste_id":null}
 ```
-`tenir` (mode `tenir`) : `{"reference":5.2,"zone":[4,6],"fixee_le":"2026-11-03"}`.
 
-## 2. `GET /api/django/taches/aujourdhui/?jour=` — LE contrat de la journée (verif-specs-4-6 B1)
+## 2. `GET /api/django/taches/aujourdhui/?jour=` — LE contrat de la journée
 
-Clés dans l'ORDRE VERTICAL de l'écran (A14-M1, spec-7 r2 §4) : `progression` (« 1 sur 5 · essentiel 0/2 », faites sur
-OBJECTIF) ; `cartes_coach` (la carte du moment, une au plus) ; `essentiel` ; `journee` (montré « Prévu » : heures fixes
-en tête, `obligations` mêlées par le front) ; `ce_soir` ; `propose` (★ par ligne, bouton unique « Garder ces N » = le
-plan du jour) ; repliés `a_decider` (« À revoir », lot « Tout en réserve »), `en_attente`, `faites`, « Ailleurs dans
-l'ERP » (route paresseuse). `jour` défaut J. Plafond 200 lignes (`tronque`).
+Clés dans l'ORDRE VERTICAL (spec-7 r3 §4) : `progression` ; `carte_du_moment` ; `essentiel` ; `obligations` (bande
+« Toute la journée » : visites, poses, interventions, sans heure) puis `journee` (« Prévu » : blocs à leur heure,
+tâches et activités ERP, ligne « Suivi des relances ») ; `ce_soir` ; `propose` ; repliés `a_decider` (« À revoir »),
+`en_attente`, `faites`, « Ailleurs dans l'ERP » (route paresseuse). `jour` défaut J ; plafond 200 lignes (`tronque`).
 ```json
 {"jour":"2026-11-17","maintenant":"2026-11-17T09:12:00+01:00","jour_ouvre":true,
- "prochain_jour_ouvre":"2026-11-19","objectif":{"nb":5,"source":"accepte","mode":"pousser"},
+ "prochain_jour_ouvre":"2026-11-19","objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},
  "progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},
-   "prevues":5,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,
-   "sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","activites_closes":0,"activites":1},
- "plan":{"planifie_le":"2026-11-17T08:40:00+01:00","cloture_le":null},
- "essentiel":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert"},
+   "prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,
+   "sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","activites_closes":0,"activites":1,"reprise":false},
+ "plan":{"planifie_le":"2026-11-17T08:40:00+01:00","cloture_le":null,"allege_le":null},
+ "carte_du_moment":{"type":"rythme","proposition":{"id":41,"type":"proposition_palier","cle":"monter",
+   "texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},
+   "boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],
+   "expire_le":"2026-11-24"},"donnees":{}},
+ "essentiel":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},
    "section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00",
-   "echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"motif":null,
-   "explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,
+   "echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,
+   "motif":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,
    "checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,
-   "en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentielle":false,"source":"rapide",
-   "peut_cloturer":true,"lock_version":4}],
+   "en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,
+   "source":"rapide","peut_cloturer":true,"lock_version":4}],
+ "obligations":[{"famille":"visite","id":88,"titre":"Visite — Karim Benali","jour":"2026-11-17","url":"/visites"},
+  {"famille":"pose","id":42,"titre":"Pose — INS-0042","jour":"2026-11-17","url":"/chantiers?id=42"},
+  {"famille":"touches","nb":5,"en_retard":2,"url":"/crm/relances"}],
  "journee":[{"type":"tache","id":42,"titre":"Timbres","statut":"a_faire","projet":null,"section":null,"parent_id":null,
    "priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,
-   "quelque_jour":false,"estimation_minutes":15,"reports":0,"motif":null,"explication":"prévue aujourd'hui",
+   "quelque_jour":false,"estimation_minutes":15,"reports":0,"rang":null,"motif":null,"explication":"prévue aujourd'hui",
    "rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,
-   "bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentielle":false,
-   "source":"manuel","peut_cloturer":true,"lock_version":1},
+   "bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,
+   "confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":1},
   {"type":"activite","id":101,"titre":"Rappeler Benali","statut":"a_faire","projet":null,"section":null,"parent_id":null,
    "priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,
-   "quelque_jour":false,"estimation_minutes":null,"reports":0,"motif":null,"explication":"activité ERP du jour",
+   "quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,"explication":"activité ERP du jour",
    "rappel":null,"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},
    "checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,
-   "en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentielle":false,"source":null,
-   "peut_cloturer":false,"lock_version":null}],
- "ce_soir":[{"type":"tache","id":60,"titre":"Préparer offre","statut":"a_faire","projet":{"id":5,"nom":"Maison","couleur":"orange"},
+   "en_attente_de":"","essentielle":false,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,
+   "source":null,"peut_cloturer":false,"lock_version":null}],
+ "ce_soir":[{"type":"tache","id":60,"titre":"Préparer offre","statut":"a_faire","projet":{"id":5,"nom":"Maison","couleur":"ambre","priorite":2},
    "section":null,"parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"soir","heure_debut":null,
-   "echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"motif":null,
-   "explication":"prévue ce soir","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,
-   "routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,
-   "confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],
- "propose":{"pour_objectif":[{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire",
-   "projet":{"id":7,"nom":"Équipe","couleur":"bleu"},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,
+   "echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,
+   "motif":null,"explication":"prévue ce soir","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
+   "recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,
+   "prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":0}],
+ "propose":{"replie":false,"pour_objectif":[{"type":"tache","id":30,"titre":"Préparer formation","statut":"a_faire",
+   "projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"section":null,"parent_id":null,"priorite":0,"jour_prevu":null,
    "moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":45,
-   "reports":0,"motif":null,"explication":"projet prioritaire Équipe","rappel":null,"lien":null,"checklist":null,
-   "sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"",
-   "essentielle":false,"prevue_au_plan":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,
-   "lock_version":2}],"reste_nb":6},
- "a_decider":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"cyan"},
+   "reports":0,"rang":null,"motif":null,"explication":"projet prioritaire Équipe","rappel":null,"lien":null,
+   "checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,
+   "en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,
+   "source":"manuel","peut_cloturer":true,"lock_version":2}],"reste_nb":6,
+   "charge":{"minutes_estimees":120,"capacite_minutes":240,"surcharge":false}},
+ "a_decider":[{"type":"tache","id":50,"titre":"Site web","statut":"a_faire","projet":{"id":9,"nom":"SiteWeb","couleur":"indigo","priorite":2},
    "section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-13","moment":"","heure_debut":null,
-   "echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,
+   "echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":3,"rang":null,
    "motif":"reportee_3_fois","explication":"reportée 3 fois","rappel":null,"lien":null,"checklist":null,
    "sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"",
-   "essentielle":false,"prevue_au_plan":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,
-   "lock_version":6}],
+   "essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide",
+   "peut_cloturer":true,"lock_version":6}],
  "en_attente":[{"type":"tache","id":51,"titre":"Retour Lydec","statut":"en_attente","projet":null,"section":null,
    "parent_id":null,"priorite":0,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,"echeance":null,
-   "echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"motif":null,
+   "echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":null,"motif":null,
    "explication":"en attente de : Lydec","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
    "recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"Lydec","essentielle":false,
-   "prevue_au_plan":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3}],
- "faites":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"violet"},
+   "prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"manuel","peut_cloturer":true,"lock_version":3}],
+ "faites":[{"type":"tache","id":12,"titre":"Dossier subvention","statut":"fait","projet":{"id":4,"nom":"Admin","couleur":"prune","priorite":1},
    "section":null,"parent_id":null,"priorite":1,"jour_prevu":"2026-11-17","moment":"","heure_debut":null,
-   "echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"motif":null,
-   "explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
+   "echeance":"2026-11-17","echeance_heure":null,"quelque_jour":false,"estimation_minutes":30,"reports":0,"rang":null,
+   "motif":null,"explication":"échéance aujourd'hui","rappel":null,"lien":null,"checklist":null,"sous_taches":null,
    "recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,
-   "prevue_au_plan":true,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],
- "obligations":[{"famille":"visite","id":88,"titre":"Visite — Karim Benali","jour":"2026-11-17","heure":"10:30","url":"/visites"},
-  {"famille":"intervention","id":42,"titre":"Intervention — INS-0042","jour":"2026-11-17","heure":null,"urgence":"today","url":"/chantiers?id=42"},
-  {"famille":"touches","nb":5,"en_retard":2,"url":"/crm/relances"}],
+   "prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"lock_version":5}],
  "a_trier":{"boite_reception":3,"bloquees":1,"suggestions":2,"a_convertir":7},
- "cartes_coach":[{"id":41,"type":"proposition_palier","cle":"monter",
-   "texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
-   "donnees":{"de":5,"a":6,"tenus":7,"sur":10},
-   "boutons":[{"reponse":"oui","libelle":"Oui, 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],
-   "expire_le":"2026-11-24"}],
  "tronque":false}
 ```
-Règles : placement = invariants 2, 3, 10 de `donnees.md` (premier cas vrai : faites, en_attente, reportée, du jour →
-essentiel / ce_soir / journee, À revoir) ; activités ERP (si `erp_dans_journee`) : due J → `journee`, due < J →
-`a_decider` ; `obligations` = visites, interventions, touches par les sélecteurs de leur app, chacune une seule fois
-(C5), famille en échec = absente ; `propose.pour_objectif` = `proposer_plan()` (pool : `a_faire`, `jour_prevu` nul,
-hors En réserve, en attente, bloquées, projets non actifs, À trier, sous-tâches, À revoir ; jusqu'à l'objectif, 5 sans
-objectif, capacité × 1,10) ; `reste_nb` = le reste du pool, déplié par `journee/proposition/?tout=1` (A11) ; `cartes_coach` : au
-plus une carte (retour > proposition de rythme > pause > révélation) ; pastille (`badge/`) = ouverts d'`essentiel` +
-`journee` + `ce_soir` + lignes de `propose.pour_objectif` (ici 4 + 1 = 5, spec-7 r2 §2).
+Placement : `donnees.md` inv. 2, 3, 10 et `regles.md` §4.2. `propose` (A11, `regles.md` §3.4) : ce qu'il faut pour
+atteindre l'objectif ; `replie:true` et `pour_objectif:[]` le jour où `plan.allege_le` est posé (A16-N6) ; « Voir tout »
+= `journee/proposition/?tout=1`. **Pastille** (`badge/`) = ouverts GARDÉS d'`essentiel` + `journee` + `ce_soir`
+(ici 3), jamais Proposé (A16-N5). Ici `prevues` = 1 faite + 3 ouverts gardés = 4.
 
 ## 3. Toutes les routes
 
-Colonnes : Auth (S = session, J:x = jeton x) · 409 · Idem. (C = `client_id`, K = `Idempotency-Key`, N = naturelle) ·
-Consommateur (écran spec-7 / carte) · Origine.
+Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K `Idempotency-Key`, N naturelle.
 
-### 3.1 Journée, rituels, présence
+### 3.1 Journée, rituels, agenda
 
 | Méthode | Chemin | But | Auth | 409 | Idem. | Consommateur | Origine |
 |---|---|---|---|---|---|---|---|
-| GET | `/api/django/taches/aujourdhui/?jour=` | §2 | S | — | — | Aujourd'hui, carte cockpit, carte `ma_journee`, cache hors ligne | socle §4, s3, A11, A14 |
-| GET | `/api/django/taches/aujourdhui/ailleurs/` | compteurs « Ailleurs dans l'ERP » | S | — | — | repli Aujourd'hui | s6a §3.5, T13 |
-| GET | `/api/django/taches/badge/` | `{"n":5,"jour":"2026-11-17"}` | S | — | — | pastille (`useBadgeTaches`) | s6b §2 |
-| POST | `/api/django/taches/vu/` | trace d'ouverture ; carte de retour | S | — | N | toute page Tâches | T12, A14-B1 (I5) |
-| GET | `/api/django/taches/journee/proposition/?jour=&exclure=&inclure=&tout=` | plan proposé, sans écriture | S | — | — | Plan du jour, Proposé déplié, carte `plan_propose` | s3, C37, A11 |
-| POST | `/api/django/taches/journee/planifier/` | valider le plan : `express` = « Garder ces N » (le plan du jour) ; `complet` = « Adopter ce plan » de la carte | S | — | K | Proposé, carte `plan_propose` | s3, A11, A14-M1, s7 r2 |
-| POST | `/api/django/taches/journee/essentiel/` | marquer / démarquer essentielle | S | — | N | appui long, Plan | s3 |
-| POST | `/api/django/taches/journee/alleger/` | garder les cochées, le reste → Proposé sans report | S | — | K | Aujourd'hui ⋯ « Alléger ma journée » | A14-M7 |
-| GET | `/api/django/taches/journee/cloture/?jour=` | contenu du bilan | S | — | — | Bilan du soir | s3, A14-M4 |
-| POST | `/api/django/taches/journee/cloturer/` | clore la journée | S | — | K | Bilan du soir | s3, s7 |
-| GET | `/api/django/taches/agenda/?du=&au=&projet=` | jours de l'agenda (≤ 42 j) | S | — | — | Agenda (4 vues) | s3 §5, s4, A14-M8 |
+| GET | `/api/django/taches/aujourdhui/?jour=` | §2 | S | — | — | Aujourd'hui, carte cockpit, carte `ma_journee`, cache hors ligne | socle, A11, A14, spec-7 r3 |
+| GET | `/api/django/taches/aujourdhui/ailleurs/` | compteurs « Ailleurs dans l'ERP » | S | — | — | repli | s6a, T13 |
+| GET | `/api/django/taches/badge/` | `{"n":3,"jour":"2026-11-17"}` | S | — | — | pastille | s6b, A16-N5 |
+| POST | `/api/django/taches/vu/` | ouverture du jour ; carte de retour | S | — | N | toute page Tâches | T12, A14-B1 |
+| GET | `/api/django/taches/journee/proposition/?jour=&exclure=&inclure=&tout=` | proposition, sans écriture | S | — | — | « Voir tout », carte `plan_propose` | s3, C37, A11 |
+| POST | `/api/django/taches/journee/planifier/` | « Garder ces N » (seul mode : `express`) | S | — | K | Proposé, carte du moment, carte `plan_propose` | A11, A14-M1, A17-T2 |
+| POST | `/api/django/taches/journee/essentiel/` | ★ | S | — | N | ★, appui long | s3 |
+| POST | `/api/django/taches/journee/alleger/` | garder k, le reste aux projets sans report | S | — | K | carte de 15 h, ⋯ | A14-M7, A16-N6 |
+| GET | `/api/django/taches/journee/cloture/?jour=` | contenu du bilan (J, ou J−1 jusqu'à 12 h) | S | — | — | Bilan du soir | s3, A14-M4 |
+| POST | `/api/django/taches/journee/cloturer/` | clore la journée | S | — | K | Bilan du soir | s3, spec-7 r3 |
+| GET | `/api/django/taches/agenda/?du=&au=&vue=&projet=` | jours (≤ 42), À placer, Mes projets | S | — | — | Agenda, Planifier ma semaine | s3, s4, A16-N3/N4 |
 | GET | `/api/django/taches/recherche/?q=&limite=` | projets + tâches par mots | S | — | — | Recherche, palette, carte `liste_taches` | s5b, C22, A14-M11 |
 
 ### 3.2 Saisie, À trier, tâches
@@ -222,174 +240,219 @@ Consommateur (écran spec-7 / carte) · Origine.
 | Méthode | Chemin | But | Auth | 409 | Idem. | Consommateur | Origine |
 |---|---|---|---|---|---|---|---|
 | POST | `/api/django/taches/saisie-rapide/` | analyse, aperçu (`apercu:true`) ou création | S | — | C, K | Saisie, Coller mes listes, carte `capture_apercu`, file hors ligne | s2, C11 |
-| POST | `/api/django/taches/capture/` | créer depuis Siri / partage | J:capture | — | C | Raccourci Siri | s6b §5, A1 |
-| GET | `/api/django/taches/taches/?vue=&q=&projet=&section=&etiquette=&priorite_min=&statut=&periode=&tri=&groupe=&inclure_faites=&cible=&cible_id=&ouvertes=` | listes (paginé) | S | — | — | À trier (`vue=boite`), En réserve (`vue=quelque_jour`), Supprimées (`vue=supprimees`), filtres, ✓+ des fiches ERP | s2, s6a |
-| POST | `/api/django/taches/taches/` | une tâche structurée (LIGNE) | S | — | C, K | fiche, Copilote `tache.creer` | socle §4 |
-| GET | `/api/django/taches/taches/{id}/` | TACHE ; revérifie le lien | S | — | — | Fiche (`?tache=`) | s6a §3.2 |
-| PATCH | `/api/django/taches/taches/{id}/` | éditer (hors jour/heure/moment/statut) | S | oui | — | Fiche, Renommer | s2, s4 |
-| DELETE | `/api/django/taches/taches/{id}/` | supprimer (`record=False`) | S | — | N | Fiche, menu | socle §2.2 |
-| POST | `/api/django/taches/taches/{id}/planifier/` | seul chemin du jour / heure / moment | S | oui | — | Reporter, Quand, Agenda, Copilote | socle §4, s3 |
-| POST | `/api/django/taches/taches/{id}/terminer/` · `…/rouvrir/` | cocher / décocher | S | — | N | case, Copilote | s3 |
-| POST | `/api/django/taches/taches/{id}/trancher/` | décision `aujourdhui`/`jour`/`un_jour`/`abandonner` | S | — | N | À revoir, Abandonner, carte `tache` | s3 |
+| POST | `/api/django/taches/capture/` | Siri / partage | J:capture | — | C | raccourci Siri | s6b, A1 |
+| GET | `/api/django/taches/taches/?vue=&q=&projet=&section=&etiquette=&priorite_min=&statut=&periode=&tri=&groupe=&inclure_faites=&cible=&cible_id=&ouvertes=` | listes paginées | S | — | — | À trier (`vue=boite`), En réserve (`vue=quelque_jour`), filtres, ✓+ des fiches ERP (`count`) | s2, s6a |
+| POST | `/api/django/taches/taches/` | une tâche (LIGNE) | S | — | C, K | fiche, agenda (créneau vide), Copilote | socle §4 |
+| GET | `/api/django/taches/taches/{id}/` | TACHE ; revérifie le lien | S | — | — | Fiche | s6a |
+| PATCH | `/api/django/taches/taches/{id}/` | éditer | S | oui | — | Fiche, Renommer | s2, s4 |
+| DELETE | `/api/django/taches/taches/{id}/` | supprimer (+ sous-tâches) | S | — | N | Fiche, menu | socle §2.2, min-20 |
+| POST | `/api/django/taches/taches/{id}/planifier/` | seul chemin du jour, de l'heure, du moment ; pose sur un jour | S | oui | — | Reporter, Quand, Agenda, Planifier ma semaine, file hors ligne | socle §4, A16-N3 |
+| POST | `/api/django/taches/taches/{id}/terminer/` | cocher | S | — | N | case, file hors ligne | s3, A16-N11 |
+| POST | `/api/django/taches/taches/{id}/rouvrir/` | décocher | S | — | N | case | s3 |
+| POST | `/api/django/taches/taches/{id}/trancher/` | `aujourdhui`/`garder`/`jour`/`un_jour`/`abandonner` | S | — | N | À revoir, Abandonner | s3, MAJ-5 |
 | POST | `/api/django/taches/taches/{id}/sauter/` | sauter une occurrence | S | — | N | fiche récurrente | s2 |
-| POST | `/api/django/taches/taches/{id}/attendre/` · `…/recu/` | En attente de… / reçu | S | — | N | appui long, fiche | s2 |
-| POST | `/api/django/taches/taches/{id}/reordonner/` | `{"liste":"jour"\|"projet","avant_id","apres_id"}` | S | — | N | glisser, `Alt+↑/↓` | s3, verif-specs-2-3 M13 |
+| POST | `/api/django/taches/taches/{id}/attendre/` | En attente de… | S | — | N | appui long | s2 |
+| POST | `/api/django/taches/taches/{id}/recu/` | reçu | S | — | N | fiche | s2 |
+| POST | `/api/django/taches/taches/{id}/reordonner/` | `{"liste","avant_id","apres_id"}` | S | — | N | Réorganiser, `Alt+↑/↓` | s3, M13 |
 | POST | `/api/django/taches/taches/{id}/restaurer/` | restaurer | S | — | N | Supprimées récemment | s2 |
-| POST | `/api/django/taches/taches/{id}/rappels/` | poser un rappel | S | — | — | Quand → Rappel, Copilote | s3 |
+| POST | `/api/django/taches/taches/{id}/rappels/` | poser un rappel | S | — | — | Quand → Rappel, Copilote | s3, A17-T4 |
 | POST | `/api/django/taches/taches/{id}/changement/apercu/` | écho renommer/abandonner/supprimer | S | — | N | carte `tache` | s5b |
-| POST | `/api/django/taches/taches/lot/` | `deplacer`, `planifier`, `prioriser`, `etiqueter`, `terminer`, `supprimer`, `garder_sans_projet` (≤ 200 ids) | S | — | K | sélection, À trier, « Tout en réserve », « Tout au prochain jour ouvré », « Tout ranger » | s2, C11, C32, A14-B1 |
-| GET · POST | `/api/django/taches/convertir-activite/` | compter / convertir `{activite_ids}` ou `{toutes}` (200 partiel) | S | — | N | bandeau d'À trier | s2, s6a, C20 |
+| POST | `/api/django/taches/taches/lot/` | `deplacer` · `planifier` · `prioriser` · `etiqueter` · `terminer` · `supprimer` · `garder_sans_projet` (≤ 200) | S | — | K | sélection, « Tout en réserve », « Tout ranger » | s2, C11, C32 |
+| POST | `/api/django/taches/taches/lier-activite/` | lier une tâche à une activité ERP (non close) | S | — | K | appui long sur l'activité | A17 |
+| POST | `/api/django/taches/convertir-activite/` | convertir `{activite_ids}` ou `{toutes}` (200 partiel) | S | — | N | bandeau d'À trier | s2, s6a, C20 |
 | DELETE | `/api/django/taches/rappels/{id}/` | retirer | S | — | N | fiche | s3 |
-| POST | `/api/django/taches/rappels/{id}/repeter/` | `{"dans_minutes":10\|60}` ou `{"jour","heure"}` | S | — | — | fiche ouverte par le rappel | s3 |
-| GET · PATCH | `/api/django/taches/recurrences/{id}/` | lire / modifier (+ `appliquer_a_l_ouverte`, `actif:false` = arrêter) | S | — | — | fiche → Répéter | s2 |
-| GET · POST · PATCH · DELETE | `/api/django/taches/checklist/[{id}/]` + `POST …/{id}/reordonner/` | points de check-list | S | — | — | Fiche | T10 |
-| GET · POST · PATCH · DELETE | `/api/django/taches/etiquettes/[{id}/]` | étiquettes privées | S | — | — | Fiche → Plus, filtres | s2 |
-| GET · POST · PATCH · DELETE | `/api/django/taches/vues/[{id}/]` | vues enregistrées (≤ 30) | S | — | — | Recherche → Enregistrer | s2 |
+| POST | `/api/django/taches/rappels/{id}/repeter/` | « Encore 10 min · 1 h · Demain 9 h » | S | — | — | fiche ouverte par le rappel | s3, A17 |
+| PATCH | `/api/django/taches/recurrences/{id}/` | modifier (+ `appliquer_a_l_ouverte`), arrêter (`actif:false`) | S | — | — | fiche → Répéter | s2 |
+| POST | `/api/django/taches/checklist/` | ajouter un point `{"tache_id","libelle"}` | S | — | — | Fiche | T10 |
+| PATCH | `/api/django/taches/checklist/{id}/` | `{"libelle"?,"fait"?}` | S | — | — | Fiche | T10 |
+| DELETE | `/api/django/taches/checklist/{id}/` | retirer | S | — | N | Fiche | T10 |
+| POST | `/api/django/taches/checklist/{id}/reordonner/` | ordre | S | — | N | Fiche | T10 |
+| GET | `/api/django/taches/etiquettes/` | liste paginée | S | — | — | Fiche → Plus, filtres | s2 |
+| POST | `/api/django/taches/etiquettes/` | `{"nom","couleur"}` | S | — | — | idem | s2 |
+| PATCH | `/api/django/taches/etiquettes/{id}/` | renommer, couleur | S | — | — | idem | s2 |
+| DELETE | `/api/django/taches/etiquettes/{id}/` | supprimer | S | — | N | idem | s2 |
+| GET | `/api/django/taches/vues/` | vues (≤ 30, non paginé) | S | — | — | Recherche | s2 |
+| POST | `/api/django/taches/vues/` | `{"nom","filtres","rang"}` | S | — | — | Recherche → Enregistrer | s2 |
+| PATCH | `/api/django/taches/vues/{id}/` | `{"nom"?,"filtres"?,"rang"?}` | S | — | — | Recherche | s2 |
+| DELETE | `/api/django/taches/vues/{id}/` | supprimer | S | — | N | Recherche | s2 |
+| GET | `/api/django/taches/supprimees/` | Supprimées récemment (un projet = une ligne) | S | — | — | Supprimées récemment | s2, A16-N7 |
 | GET | `/api/django/taches/gestes/` | Derniers gestes (7 j) | S | — | — | Supprimées récemment | s2 |
-| POST | `/api/django/taches/gestes/{id}/annuler/` | Annuler (200 partiel `conflits`) | S | — | N | toast, cartes | A7, C2 |
+| POST | `/api/django/taches/gestes/{id}/annuler/` | Annuler (200 partiel) | S | — | N | toast, cartes | A7, C2 |
 | GET | `/api/django/taches/suggestions/` | ≤ 20 proposées (< 7 j) | S | — | — | À trier « Suggéré par l'ERP » | s6a, A4 |
-| POST | `/api/django/taches/suggestions/{id}/accepter/` · `…/refuser/` | Ajouter / Pas utile | S | — | N | À trier | s6a |
+| POST | `/api/django/taches/suggestions/{id}/accepter/` | Ajouter | S | — | N | À trier | s6a |
+| POST | `/api/django/taches/suggestions/{id}/refuser/` | Pas utile | S | — | N | À trier | s6a |
 
 ### 3.3 Projets, revue, modèles
 
 | Méthode | Chemin | But | Auth | 409 | Idem. | Consommateur | Origine |
 |---|---|---|---|---|---|---|---|
-| GET | `/api/django/taches/projets/?statut=actif\|en_pause\|archive&vue=supprimees` | liste + `constat` | S | — | — | Projets, Archive, sélecteur | s4 |
-| POST | `/api/django/taches/projets/` | créer (`nom`, `priorite`…) | S | — | K | Nouveau projet, Copilote | s4, C44 |
-| GET · PATCH · DELETE | `/api/django/taches/projets/{id}/` | lire / éditer (statut ∈ actif, en_pause, archive) / supprimer avec ses tâches | S | PATCH oui | — | Un projet | s4 |
-| POST | `/api/django/taches/projets/{id}/reordonner/` | ordre manuel | S | — | N | Projets | T10 |
-| POST | `/api/django/taches/projets/trier-par-priorite/` | ordre par priorité, une fois | S | — | N | Projets ⋯ | s4 §2, A14-M3 |
-| GET | `/api/django/taches/projets/{id}/vue/?vue=liste\|tableau\|chronologie` | sections + ITEM, avancement, santé, jalon, burn-up | S | — | — | Un projet, carte `projet` | s4 |
-| POST | `/api/django/taches/projets/{id}/planification/apercu/` | lire une liste collée, rien écrit | S | — | N | Planifier le projet, carte `plan_projet` | s4 |
+| GET | `/api/django/taches/projets/?statut=actif\|en_pause\|archive` | liste paginée + `constat` | S | — | — | Projets, Archive, sélecteur | s4 |
+| POST | `/api/django/taches/projets/` | créer | S | — | K | Nouveau projet, Copilote | s4, C44 |
+| GET | `/api/django/taches/projets/{id}/` | PROJET | S | — | — | Un projet (en-tête) | s4 |
+| PATCH | `/api/django/taches/projets/{id}/` | éditer | S | oui | — | Un projet, puce de priorité | s4, min-10 |
+| DELETE | `/api/django/taches/projets/{id}/` | supprimer avec ses tâches (un geste) | S | — | N | Un projet ⋯ | s4, A16-N7 |
+| POST | `/api/django/taches/projets/{id}/reordonner/` | ordre manuel, « Mettre en haut » | S | — | N | Projets | T10, s4 |
+| POST | `/api/django/taches/projets/trier-par-priorite/` | ordre par priorité, une fois | S | — | N | Projets ⋯ | s4, A14-M3 |
+| GET | `/api/django/taches/projets/{id}/vue/?vue=liste\|tableau\|chronologie` | sections, ITEM, avancement, santé, jalon, burn-up | S | — | — | Un projet, carte `projet` | s4 |
+| POST | `/api/django/taches/projets/{id}/planification/apercu/` | lire une liste, rien écrit | S | — | N | Planifier le projet, carte `plan_projet` | s4 |
 | POST | `/api/django/taches/projets/{id}/planification/` | tout créer, priorité comprise | S | oui | K | Planifier le projet | s4, A14-M3 |
 | POST | `/api/django/taches/projets/{id}/decaler/` | `{"delta_jours","apercu"}` | S | — | K | Décaler les dates | s4 |
-| POST | `/api/django/taches/projets/{id}/terminer/` · `…/rouvrir/` · `…/restaurer/` | clôture / réouverture / restauration | S | — | N | Un projet ⋯, Archive, Supprimées | s4, verif-specs-2-3 m9 |
-| POST | `/api/django/taches/projets/{id}/dupliquer/` · `…/enregistrer-modele/` | `{"nom","date_debut","apercu"}` / `{"nom","inclure_notes"}` | S | — | K | Un projet ⋯ | s4 §G |
-| GET · POST · PATCH · DELETE | `/api/django/taches/sections/[{id}/]` + `POST …/{id}/reordonner/` | étapes | S | — | — | Un projet | T10 |
-| GET · PATCH · DELETE | `/api/django/taches/modeles/[{id}/]` | modèles | S | — | — | Modèles | s4 |
+| POST | `/api/django/taches/projets/{id}/terminer/` | clôture | S | — | N | Un projet ⋯, Revue | s4 |
+| POST | `/api/django/taches/projets/{id}/rouvrir/` | réouverture | S | — | N | Archive | s4 |
+| POST | `/api/django/taches/projets/{id}/restaurer/` | projet + tâches supprimées avec lui | S | — | N | Supprimées récemment | verif-2-3 m9, A16-N7 |
+| POST | `/api/django/taches/projets/{id}/dupliquer/` | `{"nom","date_debut","apercu"}` | S | — | K | Un projet ⋯ | s4 §G |
+| POST | `/api/django/taches/projets/{id}/enregistrer-modele/` | `{"nom","inclure_notes"}` | S | — | K | Un projet ⋯ | s4 §G |
+| POST | `/api/django/taches/sections/` | `{"projet_id","nom","date_debut"?,"date_fin"?}` | S | — | — | Un projet | T10 |
+| PATCH | `/api/django/taches/sections/{id}/` | renommer, dates | S | — | — | Un projet | T10 |
+| DELETE | `/api/django/taches/sections/{id}/` | supprimer (tâches « Sans étape ») | S | — | N | Un projet | T10 |
+| POST | `/api/django/taches/sections/{id}/reordonner/` | ordre | S | — | N | Un projet | T10 |
+| GET | `/api/django/taches/modeles/` | liste paginée | S | — | — | Modèles | s4 |
+| GET | `/api/django/taches/modeles/{id}/` | `{"id","nom","contenu","created_at"}` | S | — | — | Modèles | s4 |
+| PATCH | `/api/django/taches/modeles/{id}/` | `{"nom"}` | S | — | — | Modèles | s4 |
+| DELETE | `/api/django/taches/modeles/{id}/` | supprimer | S | — | N | Modèles | s4 |
 | POST | `/api/django/taches/modeles/{id}/instancier/` | `{"nom","date_lancement","apercu"}` | S | — | K | Nouveau projet → Depuis un modèle | s4 |
-| GET | `/api/django/taches/revue/projets/?semaine=` | bilan de semaine + cartes par projet | S | — | — | Revue de la semaine, carte `revue_semaine` | s4, s5a, C19 |
-| PUT | `/api/django/taches/revue/projets/{projet_id}/` | décision de la carte | S | — | N | Revue | s4 |
+| GET | `/api/django/taches/revue/projets/?semaine=` | bilan de semaine (ou Semaine courte) + cartes | S | — | — | Revue, carte `revue_semaine` | s4, C19, A16-N9 |
+| PUT | `/api/django/taches/revue/projets/{projet_id}/` | décision d'une carte | S | — | N | Revue | s4 |
 
 ### 3.4 Rythme, réglages, iPhone, données
 
 | Méthode | Chemin | But | Auth | 409 | Idem. | Consommateur | Origine |
 |---|---|---|---|---|---|---|---|
 | GET | `/api/django/taches/rythme/` | RYTHME | S | — | — | Mon rythme, carte `rythme` | s5a, C13 |
-| POST | `/api/django/taches/rythme/` | `{"mode","objectif"?,"sens"?}` | S | — | N | Mon rythme, Copilote | s5a, A2.1 |
-| POST | `/api/django/taches/rythme/propositions/{id}/repondre/` | `{"reponse"}` toute carte | S | — | N | cartes du jour, Mon rythme, bilan | s5a, C13, A14-B1 |
-| GET · POST | `/api/django/taches/preferences/` | lister / poser `{"cle","valeur"}` → RYTHME | S | — | N | Mes jours, Notifications, Copilote | s5b, C4, T1 |
+| POST | `/api/django/taches/rythme/` | `{"mode","objectif"?,"sens"?}` (seul chemin du mode) | S | — | N | Mon rythme, Copilote | s5a, A2.1, MAJ-6 |
+| POST | `/api/django/taches/rythme/propositions/{id}/repondre/` | `{"reponse"}` toute carte | S | — | N | carte du moment, Mon rythme, bilan | s5a, C13 |
+| POST | `/api/django/taches/preferences/` | poser `{"cle","valeur"}` → RYTHME | S | — | N | Mes jours, Notifications, Copilote | s5b, C4 |
 | DELETE | `/api/django/taches/preferences/{cle}/` | retirer → RYTHME | S | — | N | carte `rythme` « Retirer » | T1 |
-| GET · PATCH | `/api/django/taches/reglages/` | réglages typés | S | — | — | Réglages | design-s1, T1, A14-M5 |
-| GET · POST | `/api/django/taches/jetons/` | lister / créer `{usage}` (clair rendu UNE fois ; révoque l'ancien) | S | — | — | Mon iPhone | s6b §1 |
+| GET | `/api/django/taches/reglages/` | réglages | S | — | — | Réglages, Mon iPhone | T1, A14-M5 |
+| PATCH | `/api/django/taches/reglages/` | liste blanche | S | — | — | Réglages, question du 1er rappel | MAJ-6, A17-T4 |
+| GET | `/api/django/taches/jetons/` | lister (sans empreinte) | S | — | — | Mon iPhone | s6b §1 |
+| POST | `/api/django/taches/jetons/` | créer `{usage}` (clair rendu UNE fois ; révoque l'ancien) | S | — | — | Mon iPhone | s6b |
 | POST | `/api/django/taches/jetons/{id}/revoquer/` | révoquer | S | — | N | Mon iPhone | s6b |
-| POST | `/api/django/taches/mon-iphone/test-notification/` | un push `TACHES_RAPPEL`, hors plafond | S | — | — | Mon iPhone étape 1 | s6b §9, C43 |
-| GET | `/api/django/taches/tuile/` | la tuile Scriptable | J:tuile | — | — | Scriptable | s6b §6 |
-| GET | `/api/django/taches/flux/{jeton}.ics` | calendrier abonné (`Cache-Control: no-store`) | J:flux (dans l'URL) | — | — | Calendrier d'Apple | s6b §4 |
-| GET | `/api/django/taches/coach/entete/` | 2 lignes ≤ 300 car. pour le relais | S | — | — | relais du Copilote | s5b §5 |
+| POST | `/api/django/taches/mon-iphone/test-notification/` | push `TACHES_RAPPEL`, hors plafond | S | — | — | Mon iPhone étape 1 | s6b §9, C43 |
+| GET | `/api/django/taches/tuile/` | tuile Scriptable | J:tuile | — | — | Scriptable | s6b §6 |
+| GET | `/api/django/taches/flux/{jeton}.ics` | calendrier abonné (`text/calendar`, `no-store`) | J:flux (URL) | — | — | Calendrier d'Apple | s6b §4 |
+| GET | `/api/django/taches/coach/entete/` | 2 lignes ≤ 300 car. | S | — | — | relais du Copilote | s5b §5 |
 | GET | `/api/django/taches/mes-donnees/` | export JSON des 20 modèles | S | — | — | Réglages → Mes données | s6a, socle §8 |
 | POST | `/api/django/taches/tout-effacer/` | `{"confirmation":"EFFACER"}` suppression DURE | S | — | N | Réglages → Mes données | s6a |
-| GET · POST · DELETE | `/api/django/taches/agenda-externe/` | adresse ICS personnelle (AVANCÉ, dernière vague) | S | — | N | Réglages → Avancé | A14-M8 |
+| GET | `/api/django/taches/agenda-externe/` | `{"hote","libelle","actif","dernier_etat"}` ou 404 | S | — | — | Réglages → Avancé | A14-M8 |
+| POST | `/api/django/taches/agenda-externe/` | poser l'adresse ICS | S | — | N | idem | A14-M8 |
+| DELETE | `/api/django/taches/agenda-externe/` | retirer | S | — | N | idem | A14-M8 |
 
-Total : 102 couples méthode × chemin propres à `taches` (CRUD comptés par méthode : liste, création, modification,
-suppression), + 2 routes étrangères consommées.
+Comptés par script (lignes `| … `/api/django/…` |` de ce §3, méthodes séparées par « · ») : **100** couples
+méthode × chemin propres à `taches`, tous distincts, + 2 routes étrangères consommées ; les 16 actions du §8 existent
+toutes ici avec la même méthode.
 
-## 4. Corps et réponses des routes consommées
+## 4. Corps et réponses
 
-**`POST saisie-rapide/`** — `{"texte"|"textes":[…≤10 collages],"client_id","projet_id","lien","parent_id","ignorer":[{"type","source"}],"apercu":true}`
-OU `{"lignes":[LIGNE],"apercu":false}`, jamais les deux ; plafonds 200 lignes, 20 000 car. (2 000 via le Copilote,
-C29). `ids:[…]` (aperçu seul) propose un projet pour des tâches existantes (lignes à `tache_id`, appliquées par `lot/`
-`deplacer` `valeurs.par_tache`).
-LIGNE = `{"index","client_id","titre","projet_id"|"nouveau_projet":{"nom"},"section_id"|"nouvelle_section":{"nom"},
-"priorite","jour_prevu","moment","heure_debut","echeance","echeance_heure","quelque_jour","estimation_minutes",
-"etiquettes":[2,{"nom":"magasin"}],"recurrence":{…§1 TACHE.recurrence sans id},"rappel":{"jour","heure"}|{"ancre","decalage_jours","heure"},
-"notes","checklist":["…"],"lien":{"cible","id"}}`. Venant de l'assistant, `titre` est ignoré : il vient de la ligne
-source analysée (s2 crit. 13).
+**`saisie-rapide/`** — `{"textes":["…","…"](≤ 10 collages)|"texte","client_id","projet_id","lien","parent_id",
+"proprietaire_attendu","ignorer":[{"type","source"}],"apercu":true}` OU `{"lignes":[LIGNE],"proprietaire_attendu",
+"apercu":false}` ; plafonds 200 lignes, 20 000 car. (2 000 via le Copilote). `ids:[…]` (aperçu) propose un projet
+pour des tâches existantes, appliqué par `lot/` `deplacer` `valeurs.par_tache`.
+LIGNE = `{"index","collage","client_id","titre","projet_id"|"nouveau_projet":{"nom","priorite"},"section_id"|
+"nouvelle_section":{"nom"},"priorite","jour_prevu","moment","heure_debut","echeance","echeance_heure","quelque_jour",
+"estimation_minutes","etiquettes":[2,{"nom":"magasin"}],"recurrence":{…sans id},"rappel":{"jour","heure"}|{"ancre",
+"decalage_jours","heure"},"notes","checklist":["…"],"lien":{"cible","id"}}`. Venant de l'assistant, `titre` est
+ignoré (ligne source analysée).
 Aperçu (200, rien d'écrit) :
 ```json
-{"projet_commun":{"id":null,"nom":"Courses","nouveau":true,"source":"premiere_ligne"},
- "lignes":[{"index":0,"titre":"Appeler Karim","cochee":true,"doublon_de":null,"etape_de":null,"alertes":[],
+{"projets_communs":[{"collage":0,"id":null,"nom":"Courses","nouveau":true,"priorite":2,"source":"premiere_ligne"}],
+ "lignes":[{"index":0,"collage":0,"titre":"Appeler Karim","cochee":true,"doublon_de":null,"etape_de":null,"alertes":[],
    "jetons":[{"type":"jour","source":"demain","debut":14,"fin":20,"valeur":"2026-11-18","libelle":"mer. 18 nov."},
-             {"type":"projet","source":"#SiteWeb","debut":21,"fin":29,"valeur":{"id":null,"nom":"SiteWeb","nouveau":true},"libelle":"Nouveau projet : SiteWeb"}],
-   "champs":{"jour_prevu":"2026-11-18","nouveau_projet":{"nom":"SiteWeb"},"priorite":0}}],
- "projets_nouveaux":["SiteWeb"]}
+             {"type":"projet","source":"#SiteWeb","debut":21,"fin":29,"valeur":{"id":null,"nom":"SiteWeb","nouveau":true,"priorite":2},"libelle":"Nouveau projet : SiteWeb"}],
+   "champs":{"jour_prevu":"2026-11-18","nouveau_projet":{"nom":"SiteWeb","priorite":2},"priorite":0}}],
+ "projets_nouveaux":[{"nom":"SiteWeb","priorite":2}]}
 ```
-Types de jeton : `jour`, `heure`, `moment`, `echeance`, `quelque_jour`, `projet`, `section`, `priorite`, `etiquette`,
-`duree`, `recurrence`, `rappel`. Alertes : `deux_<type>`, `date_passee`, `heure_passee`, `plusieurs_projets`,
-`projet_archive`. Création (201, tout ou rien) : `{"creees":[TACHE],"projets_crees":[{"id":9,"nom":"SiteWeb","couleur":"vert"}],
-"deja_creees":["c1f4…:0"],"geste_id":77}`. Erreurs : `{"lignes":{"3":{"titre":["Le titre est vide une fois la date et le
-projet retirés."]}}}` · `{"texte":["Liste trop longue : 200 lignes au plus (ici 340). Colle-la en deux fois."]}` ·
-`{"projet_id":["Projet inexistant."]}` · `{"lien":["Élément introuvable ou hors de votre portée."]}` ·
-`{"lien":["Ce type d'élément ne peut pas être lié à une tâche."]}`.
+Chaque « Nouveau projet » porte sa puce de priorité, Moyenne (2) par défaut (A17-M3). Création (201, tout ou rien) :
+`{"creees":[TACHE],"projets_crees":[{"id":9,"nom":"SiteWeb","couleur":"menthe","priorite":2}],"deja_creees":["c1f4…:0"],"geste_id":77}`.
+Erreurs : `{"lignes":{"3":{"titre":["Le titre est vide une fois la date et le projet retirés."]}}}` ·
+`{"texte":["Liste trop longue : 200 lignes au plus (ici 340). Colle-la en deux fois."]}` ·
+`{"projet_id":["Projet inexistant."]}` · `{"lien":["Élément introuvable ou hors de ta portée."]}` ·
+`{"lien":["Ce type d'élément ne peut pas être lié à une tâche."]}` · 409 `{"detail":"…","code":"autre_compte"}`.
 
-**`POST capture/`** (Bearer `tqc_…`) — `{"titre":"appeler le fournisseur demain 10 h","notes":"","client_id":"…"}` (titre
-≤ 280, notes ≤ 2 000, client_id ≤ 64). 201 `{"id":42,"dans":"journee","message":"Ajouté pour demain 10 h : appeler le
-fournisseur","deja":false}` (`dans` ∈ `journee`, `projet`, `a_trier`) ; rejeu 200 `"deja":true` ; `?reponse=texte` →
-`text/plain` du message. 400 `{"titre":["Dis-moi quoi noter."]}`. 429 au-delà de 60/h ou 200/jour.
+**`capture/`** (Bearer `tqc_…`) — `{"titre":"appeler le fournisseur demain 10 h","notes":"","client_id":"…"}` (titre ≤
+280, notes ≤ 2 000, client_id ≤ 64) → 201 `{"id":42,"dans":"journee","message":"Ajouté pour demain 10 h : appeler le
+fournisseur","deja":false}` ; `dans` ∈ `journee` (un jour posé, quel qu'il soit), `projet` (projet sans jour),
+`a_trier` (rien, ou une échéance seule) ; rejeu 200 `"deja":true` ; `?reponse=texte` → `text/plain` (message, ou texte
+d'erreur 400/401/429 de `textes.md` §7). 400 `{"titre":["Dis-moi quoi noter."]}`.
 
-**`POST taches/`** — une LIGNE (+ `parent_id`) → 201 TACHE_ECRITE (`projet_cree` si `nouveau_projet`).
-**`PATCH taches/{id}/`** — `{"titre","notes","priorite","echeance","echeance_heure","estimation_minutes","duree_reelle_minutes",
-"projet_id","section_id","jalon","bloquee_par_id","confidentiel","etiquettes":[ids],"recurrence":{…}|null,"lien":{…}|null,
-"lock_version":5}` → TACHE_ECRITE. 400 `{"bloquee_par_id":["Boucle : « B » attend déjà « T »."]}` (titres via
-`nom_pour`), `{"jour_prevu":["Passe par « Quand »."]}`.
-**`POST taches/{id}/planifier/`** — `{"jour_prevu":"2026-11-19","moment":"","heure_debut":"10:00","quelque_jour":false,"lock_version":4}`
-→ TACHE_ECRITE ; 400 `{"heure_debut":["Une heure demande un jour prévu."]}`.
-**`POST taches/{id}/terminer/`** → TACHE_ECRITE avec `progression` (et `suivante` si récurrente). **`trancher/`**
-`{"choix":"jour","jour":"2026-11-19"}`. **`attendre/`** `{"en_attente_de":"Lydec"}` (400 `{"en_attente_de":["Dis de qui
-ou de quoi tu attends."]}`). **`rappels/`** `{"jour":"2026-11-17","heure":"15:00"}` ou `{"ancre":"echeance",
-"decalage_jours":-1,"heure":"18:00"}` → TACHE_ECRITE avec `"rappel":{"id":31,"jour":"2026-11-19","heure":"18:00","hors_fenetre":true}`.
+**`taches/`** POST — une LIGNE (+ `parent_id`) → 201 TACHE_ECRITE.
+**`taches/{id}/`** PATCH — `{"titre","notes","priorite","echeance","echeance_heure","estimation_minutes",
+"duree_reelle_minutes","projet_id","section_id","jalon","bloquee_par_id","confidentiel","etiquettes":[ids],
+"recurrence":{…}|null,"lien":{…}|null,"lock_version":5}` → TACHE_ECRITE ; 400 `{"bloquee_par_id":["Boucle : « B »
+attend déjà « T »."]}`, `{"jour_prevu":["Passe par « Quand »."]}`.
+**`planifier/`** `{"jour_prevu":"2026-11-19","moment":"","heure_debut":"10:00","quelque_jour":false,"lock_version":4,
+"proprietaire_attendu":7}` → TACHE_ECRITE ; 400 `{"heure_debut":["Une heure demande un jour prévu."]}`.
+**`terminer/`** (corps facultatif `{"proprietaire_attendu"}`) → TACHE_ECRITE avec `progression` (+ `suivante`).
+**`trancher/`** `{"choix":"garder"}` · `{"choix":"jour","jour":"2026-11-19"}`.
+**`attendre/`** `{"en_attente_de":"Lydec"}` (400 `{"en_attente_de":["Dis de qui ou de quoi tu attends."]}`) ; le
+second choix de la même entrée « En attente de… » (« une tâche », spec-7 r3) passe par `PATCH taches/{id}/`
+`{"bloquee_par_id":43}` (le statut reste `a_faire`).
+**`rappels/`** `{"jour","heure"}` ou `{"ancre":"echeance","decalage_jours":-1,"heure":"18:00"}` → TACHE_ECRITE avec
+`"rappel":{"id":31,"jour":"2026-11-19","heure":"18:00","hors_fenetre":true}` et `question_titres`.
+**`rappels/{id}/repeter/`** `{"dans_minutes":10|60}` ou `{"jour","heure"}` → `{"rappel":{…},"geste_id":90}`.
 **`changement/apercu/`** `{"geste":"renommer","titre":"Appeler Karim"}` → `{"tache":ITEM,"proposition":{"geste":"renommer","avant":"Appeler K.","apres":"Appeler Karim"}}`.
-**`taches/lot/`** `{"ids":[41,42],"action":"planifier","valeurs":{"jour_prevu":"2026-11-19"}}` (`deplacer` :
-`{"projet_id","section_id"}` ou `{"par_tache":{"41":{"projet_id":3}}}` ; `planifier` : `{"jour_prevu"}` ou
+**`lot/`** `{"ids":[41,42],"action":"planifier","valeurs":{"jour_prevu":"2026-11-19"}}` (`deplacer`
+`{"projet_id","section_id"}` ou `{"par_tache":{"41":{"projet_id":3}}}` ; `planifier` `{"jour_prevu"}` ou
 `{"quelque_jour":true}` ; `prioriser` `{"priorite"}` ; `etiqueter` `{"ajouter":[],"retirer":[]}`) →
 `{"appliquees":[41],"refusees":[{"id":42,"raison":"introuvable"}],"geste_id":78}`.
-**`gestes/{id}/annuler/`** → `{"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false}`.
-**`convertir-activite/`** GET `{"a_convertir":7}` ; POST `{"activite_ids":[41,44]}` ou `{"toutes":true}` →
-`{"converties":[{"activite_id":41,"tache_id":90}],"refusees":[{"activite_id":44,"raison":"assignee_a_un_collegue"}],"geste_id":79}`
-(raisons : `introuvable`, `assignee_a_un_collegue`, `deja_convertie`, `close`).
-**`suggestions/`** → `{"results":[{"id":5,"famille":"devis_accepte","titre":"Préparer le chantier du devis accepté","lien":LIEN,"created_at":"…"}]}` ;
+**`lier-activite/`** `{"activite_id":101,"titre"?,"jour_prevu"?}` (activité vérifiée par `activites_ouvertes_pour`) →
+201 TACHE_ECRITE (`activite_origine_id:101`, `lien` = cible de l'activité si liable, `source:"activite"`) ; 409
+`{"code":"deja_lie"}`.
+**`convertir-activite/`** `{"activite_ids":[41,44]}` ou `{"toutes":true}` → `{"converties":[{"activite_id":41,
+"tache_id":90}],"refusees":[{"activite_id":44,"raison":"assignee_a_un_collegue"}],"geste_id":79}` (raisons
+`introuvable`, `assignee_a_un_collegue`, `deja_convertie`, `close` ; source close par
+`records.services.cloturer_a_faire_personnel`). Le compte est `a_trier.a_convertir`.
+**`supprimees/`** → `{"projets":[{"projet":PROJET,"taches_nb":25,"deleted_at":"…"}],"taches":[{"item":ITEM,"deleted_at":"…"}]}`
+(tâches supprimées avec leur projet : dans la ligne du projet seulement).
+**`gestes/`** → `[{"id","type","message","created_at","annule_le","annulable"}]` ; **`annuler/`** →
+`{"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false}`.
+**`suggestions/`** → `[{"id":5,"famille":"devis_accepte","titre":"Préparer le chantier du devis accepté","lien":LIEN,"created_at":"…"}]` ;
 `accepter/` `{"titre"?,"jour_prevu"?}` → 201 TACHE_ECRITE ; `refuser/` → `{"id":5,"statut":"refusee","geste_id":80}`.
 **`aujourdhui/ailleurs/`** → `{"chantiers":1,"tickets":0,"da_a_commander":0,"leads_chauds":3,"rappels":0,"devis_expirant":1,"relances":2,"approbations":2,"mentions":1,"lien":"/activites"}`.
-**`vu/`** `{"ecran":"aujourdhui"}` → 200 `{"cartes_coach":[PROPOSITION]}` (carte `retour` si fin de congé ou ≥ 3 jours travaillés
-sans ouverture, une fois ; elle figure aussi dans `aujourdhui.cartes_coach`).
+**`vu/`** `{"ecran":"aujourdhui"}` → 200 `{"carte_du_moment":CARTE_DU_MOMENT|null}` : pose `PlanJour.app_ouverte_le`,
+`ouvert_le` des push du jour, crée la carte `retour` (fin de congé ou ≥ 3 jours travaillés sans ouverture) ; rien du
+tout si le compte n'a jamais créé de tâche.
 
 **`journee/proposition/`** →
 ```json
 {"jour":"2026-11-17","objectif":OBJECTIF,"capacite":{"minutes":240,"source":"defaut"},"a_decider":[ITEM],
  "proposition":[{"item":ITEM,"deja_prevue":false,"cochee":true}],
- "charge":{"minutes_estimees":190,"sans_estimation":2,"surcharge":false,"non_calculable":false,"phrase":"3 h 10 estimées + 2 sans estimation"},
- "rythme":PROPOSITION,"suite_par_projet":[{"projet":{"id":7,"nom":"Équipe","couleur":"bleu"},"items":[ITEM]}]}
+ "charge":{"minutes_estimees":190,"sans_estimation":2,"surcharge":false,"non_calculable":false},
+ "rythme":PROPOSITION,"suite_par_projet":[{"projet":{"id":7,"nom":"Équipe","couleur":"bleu","priorite":3},"items":[ITEM]}]}
 ```
-(`suite_par_projet` seulement avec `tout=1` ; `exclure`/`inclure` = ids.)
-**`journee/planifier/`** `{"jour":"2026-11-17","mode":"complet"|"express","triage":[{"id":41,"choix":"jour","jour":"2026-11-19"}],
-"lignes":[{"type":"tache","id":20},{"type":"activite","id":101}],"essentielles":[20]}` → `{"aujourdhui":AUJOURDHUI,"geste_id":81}` ;
-400 `{"essentielles":["3 au plus."]}`, `{"triage":{"41":["Choix manquant."]}}` (en `express` le triage n'est pas exigé).
-**`journee/essentiel/`** `{"tache_id":20,"essentielle":true}` → TACHE_ECRITE (400 `{"essentielle":["3 au plus."]}`).
-**`journee/alleger/`** `{"jour":"2026-11-17","garder":[20,42]}` → `{"renvoyees":[60],"aujourdhui":AUJOURDHUI,"geste_id":82}` :
-les autres tâches à `jour_prevu` = J et sans échéance ≤ J reviennent à `jour_prevu` nul (Proposé) par `planifier(…,
-compter_report=False)`, leurs lignes de plan sont retirées ; activités et obligations intactes.
+(`suite_par_projet` avec `tout=1` ; un id étranger dans `exclure`/`inclure` est ignoré.)
+**`journee/planifier/`** `{"jour":"2026-11-17","mode":"express","lignes":[{"type":"tache","id":30},{"type":"activite","id":101}],
+"essentielles":[20],"triage":[{"id":41,"choix":"jour","jour":"2026-11-19"}]}` (`triage` facultatif, jamais exigé,
+A17-T2) → `{"aujourdhui":AUJOURDHUI,"geste_id":81}` ; 400 `{"essentielles":["3 au plus."]}`.
+**`journee/essentiel/`** `{"tache_id":20,"essentielle":true}` → TACHE_ECRITE ; 400 `{"essentielle":["3 au plus."]}`.
+**`journee/alleger/`** `{"jour":"2026-11-17","garder":[20,42]}` → `{"renvoyees":[60],"aujourdhui":AUJOURDHUI,"geste_id":82}`
+(pose `allege_le`, `compter_report=False`, lignes retirées ; activités, obligations, échéances ≤ J intactes).
 **`journee/cloture/`** →
 ```json
-{"jour":"2026-11-17","faites":[ITEM],"restes":[ITEM],"prochain_jour_ouvre":"2026-11-19",
- "bilan":{"faites":4,"objectif":5,"objectif_atteint":false,"essentiel_faites":1,"essentiel_prevues":2,"plan_tenues":3,"plan_lignes":5,"texte":"4 faites (objectif 5) · essentiel 1 sur 2 · plan tenu 3 sur 5."},
+{"jour":"2026-11-17","faites":[ITEM],"restes":[ITEM],"a_trancher":[ITEM],"prochain_jour_ouvre":"2026-11-19",
+ "bilan":{"faites":4,"objectif":5,"objectif_atteint":false,"essentiel_faites":1,"essentiel_prevues":2,"plan_tenues":4,"plan_lignes":5,"texte":"Aujourd'hui : 4 faites (objectif 5) · essentiel 1 sur 2 · plan tenu 4 sur 5."},
  "constat":PROPOSITION,"activites_a_clore":[ITEM],"possible_jusqua":"2026-11-18T12:00:00+01:00"}
 ```
-(`constat` : UN au plus, `null` sinon, A14-M4.) **`journee/cloturer/`** `{"jour","choix":[{"id":52,"choix":"demain"}],"le_reste":true,"reflexion":""}`
-(`choix` ∈ `demain`, `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` envoie les restes non nommés au
-prochain jour travaillé, sauf les reportées 3 fois qui doivent être nommées) → `{"plan":{"cloture_le":"…"},"geste_id":83}` ;
-400 `{"choix":{"53":["Choisis : demain, un autre jour, en réserve ou abandonner."]}}`.
+`constat` : un au plus (A14-M4), sinon `null` ; `a_trancher` = restes `reportee_3_fois` (marqués, jamais refusés).
+**`journee/cloturer/`** `{"jour","choix":[{"id":52,"choix":"jour","jour":"2026-11-23"}],"le_reste":true,"reflexion":""}`
+(`choix` ∈ `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter » au prochain jour
+travaillé ; les `a_trancher` non nommés restent en place) → `{"plan":{"cloture_le":"…"},"geste_id":83}`.
 **`agenda/`** →
 ```json
-{"du":"2026-11-16","au":"2026-11-22","jours":[{"jour":"2026-11-18","ouvre":false,"ferie":true,"sans_heure":[ITEM],"blocs":[ITEM],
- "echeances":[ITEM],"erp":[{"famille":"visite","titre":"Visite — Karim Benali","jour":"2026-11-18","heure":"10:00","url":"/visites"}],
- "externes":[]}],"a_placer":[ITEM]}
+{"du":"2026-11-16","au":"2026-11-22","jours":[{"jour":"2026-11-18","ouvre":false,"ferie":true,"toute_la_journee":[
+ {"famille":"visite","titre":"Visite — Karim Benali","url":"/visites"}],"sans_heure":[ITEM],"blocs":[ITEM],"echeances":[ITEM],
+ "externes":[]}],"a_placer":[ITEM],"mes_projets":[{"projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"items":[ITEM]}]}
 ```
-400 `{"au":["42 jours au plus."]}` ; `erp[].heure` posée quand l'ERP la connaît (A14-M8) ; `externes` vide tant que
-l'agenda externe n'est pas construit.
+400 `{"au":["42 jours au plus."]}` ; `mes_projets` seulement pour `vue=semaine` (pool de Proposé, même classement,
+A16-N3) ; poser une tâche sur un jour = `taches/{id}/planifier/` (un seul chemin, socle §4) ; `externes` vide tant que
+l'agenda externe n'est pas construit ; `projet` filtre (même propriétaire).
+**`recherche/`** → `{"projets":[{"id","nom","couleur","statut","priorite"}],"taches":[ITEM]}` ; 400 `{"q":["Requis."]}`.
 
 **`projets/`** → `{"count":7,"next":null,"previous":null,"results":[PROJET],"constat":{"actifs":7,"avances_7j":3}}` ;
-`POST` doublon → 400 `{"nom":["Un projet « Chantier X » existe déjà."]}` ; `PATCH statut=termine` → 400
-`{"statut":["Passe par « Terminer »."]}`.
+POST `{"nom","priorite"?,"couleur"?,"icone"?,"objectif"?,"domaine"?}` ; doublon → 400 `{"nom":["Un projet « Chantier X »
+existe déjà."]}`. **PATCH** `{"nom","objectif","icone","couleur","priorite","statut"∈actif|en_pause|archive,
+"date_debut","echeance","domaine","confidentiel","affichage","risque","lock_version"}` ; `statut=termine` → 400
+`{"statut":["Passe par « Terminer »."]}`. **DELETE** → `{"supprimees":25,"geste_id":84}`.
 **`projets/{id}/vue/`** → `{"projet":PROJET,"avancement":{"faites":12,"total":20,"derniere_faite_le":"2026-11-03"},
 "prochain_jalon":ITEM,"sections":[{"id":8,"nom":"Études","rang":1024,"date_debut":null,"date_fin":"2026-11-30","taches":[ITEM]}],
 "sans_section":[ITEM],"faites_nb":12,"burnup":[{"semaine":"2026-11-09","total":18,"faites":10}],
@@ -397,200 +460,227 @@ l'agenda externe n'est pas construit.
 **`planification/apercu/`** `{"texte":"Études :\nVisite\n- photos\n◆ Mise en service"}` → `{"sections":[{"nom":"Études",
 "taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]},{"titre":"Mise en service","jalon":true,"sous_taches":[]}]}]}`.
 **`planification/`** `{"priorite":3,"objectif":"…","echeance":"2026-12-29","risque":"","sections":[…],"actions":[{"titre":"Réserver le stand","quand":"aujourdhui"}],"lock_version":4}`
-→ `{"projet":PROJET,"creees":[TACHE],"geste_id":84}` (`quand` ∈ `aujourdhui`, `demain`, `''`).
+→ `{"projet":PROJET,"creees":[TACHE],"geste_id":85}` (`quand` ∈ `aujourdhui`, `demain`, `''`).
 **`decaler/`** `{"delta_jours":7,"apercu":true}` → `{"changements":[{"objet":"tache","id":41,"champ":"jour_prevu","avant":"2026-11-20","apres":"2026-11-27"}]}`
 (`apercu:false` : + `geste_id`) ; 400 `{"delta_jours":["2 tâches passeraient avant aujourd'hui."]}`.
 **`terminer/`** (projet) `{"issue":"atteint","bilan":"","taches_ouvertes":"boite"|"annuler"|"deplacer","projet_cible_id":null}`
-→ `{"projet":PROJET,"deplacees":3,"geste_id":85}` ; 400 `{"issue":["Atteint ou abandonné ?"]}`. **`restaurer/`** 409
-`{"nom":["Un projet actif porte déjà ce nom."]}`.
+→ `{"projet":PROJET,"deplacees":3,"geste_id":86}` ; 400 `{"issue":["Atteint ou abandonné ?"]}`.
+**`restaurer/`** (projet) → `{"projet":PROJET,"restaurees":25,"geste_id":87}` ; nom repris → `atomic()` + 409
+`{"detail":"…","code":"nom_pris","nom":["Un projet actif porte déjà ce nom."]}`.
 **`modeles/{id}/instancier/`** `{"nom","date_lancement":"2026-11-23","apercu":true}` → `{"projet":{"nom":"Salon"},"sections":[…],
-"taches":[{"titre":"…","jour_prevu":"2026-11-30","echeance":null}]}` ; `apercu:false` → 201 `{"projet":PROJET,"geste_id":86}`.
+"taches":[{"titre":"…","jour_prevu":"2026-11-30","echeance":null}]}` ; `apercu:false` → 201 `{"projet":PROJET,"geste_id":88}`.
 **`revue/projets/`** →
 ```json
-{"semaine":"2026-11-16","bilan_semaine":{"texte":"Du 16 au 20/11 : 26 tâches en 5 jours (précédente : 23). …","donnees":{"faites":26,"jours":5,"precedente":23}},
+{"semaine":"2026-11-16","semaine_courte":false,
+ "bilan_semaine":{"texte":"Du 16 au 20/11 : 26 tâches en 5 jours (précédente : 23). …","donnees":{"faites":26,"jours":5,"prec":23}},
  "focus_projet_id":3,"cartes":[{"projet":PROJET,"faites_semaine":[{"id":12,"titre":"Dossier subvention"}],"faites_nb":4,
  "bloquees":[{"id":44,"titre":"Pose","attend":{"id":43,"titre":"Livraison"}}],"prochaine_action":ITEM,
  "revue":{"intention":"","decision":"","focus":false}}]}
 ```
+`semaine_courte` (≥ 3 jours `sans_donnees`) : `bilan_semaine:null` (« Semaine courte, on reprend lundi »).
 **`PUT revue/projets/{projet_id}/`** `{"semaine","intention","prochaine_action_id","decision","focus","issue"?}` →
-`{"revue":{…},"projet":PROJET,"geste_id":87}` (`pause` met le projet en pause ; `terminer` exige `issue` et range les
-ouvertes dans À trier) ; 400 `{"focus":["Déjà « A » cette semaine."]}`.
+`{"revue":{…},"projet":PROJET,"geste_id":89}` (`pause` : en pause ; `terminer` exige `issue`, même service que
+`projets/{id}/terminer/` avec `boite`) ; 400 `{"focus":["Déjà « A » cette semaine."]}`.
 **`rythme/`** POST `{"mode":"pousser","objectif":7}` ou `{"mode":"pousser","sens":"plus"}` → RYTHME + `geste_id` ;
-400 `{"mode":["Valeur inconnue."]}`. **`propositions/{id}/repondre/`** `{"reponse":"oui"}` → `{"proposition":PROPOSITION,
-"rythme":RYTHME,"geste_id":88}` ; 409 `{"reponse":["Proposition expirée."]}` ; réponse hors liste de la carte → 400.
-`remettre_dans_propose` (carte `retour`) : les tâches non faites prévues pendant l'absence reviennent à `jour_prevu`
-nul, sans report.
-**`preferences/`** POST `{"cle":"heure_limite","valeur":"19:00"}` → RYTHME + `geste_id` ; 400 `{"valeur":["Heure attendue
+400 `{"mode":["Valeur inconnue."]}`, `{"objectif":["Entre 1 et 12."]}`.
+**`propositions/{id}/repondre/`** `{"reponse":"oui"}` → `{"proposition":PROPOSITION,"rythme":RYTHME,"geste_id":91}` ;
+409 `{"detail":"…","code":"proposition_expiree"}` ; réponse hors liste → 400 `{"reponse":["Réponse inconnue."]}`.
+**`preferences/`** `{"cle":"heure_limite","valeur":"19:00"}` → RYTHME + `geste_id` ; 400 `{"valeur":["Heure attendue
 (HH:MM)."]}`, `{"cle":["Clé inconnue."]}`.
-**`reglages/`** →
+**`reglages/`** GET →
 ```json
-{"titres_notifications":false,"titres_calendrier":true,"titres_tuile":true,"rappel_avant_bloc_min":null,
- "projet_arret_jours":10,"familles_suggestions":["devis_accepte","chantier_receptionne","chantier_annule"],
- "suggestions_societe":false,"erp_dans_journee":true,"comprendre_mon_rythme":true,"pauses_sollicitations":[],
+{"titres_notifications":false,"titres_notifications_demande":false,"titres_calendrier":true,"titres_tuile":true,
+ "messages_sans_delai":false,"rappel_avant_bloc_min":null,"projet_arret_jours":10,
+ "familles_suggestions":["devis_accepte","chantier_receptionne","chantier_annule"],"suggestions_societe":false,
+ "erp_dans_journee":true,"comprendre_mon_rythme":true,"pauses_sollicitations":[{"type":"plan_matin","ignorees":14}],
  "sollicitations":{"heure_matin":"08:30","relance_jour":"15:00","heure_soir":"18:00","heure_limite":"20:00","revue_semaine":"auto"},
  "fenetre_societe":{"debut":"08:30","fin":"19:00"},"raccourci_siri_url":null,"est_admin":false}
 ```
-`raccourci_siri_url` = `settings.TACHES_RACCOURCI_SIRI_URL` (facultatif ; vide → `null`, étapes guidées, A14-M5).
-PATCH n'accepte que les champs de `ReglagesRythme` (les heures passent par `preferences/`).
+PATCH, liste blanche seule (MAJ-6) : `titres_notifications` (pose aussi `titres_notifications_demande_le`),
+`titres_calendrier`, `titres_tuile`, `messages_sans_delai`, `rappel_avant_bloc_min`, `projet_arret_jours`,
+`familles_suggestions`, `suggestions_societe` (admin), `erp_dans_journee`, `comprendre_mon_rythme`,
+`pauses_sollicitations` (liste de types, retirer = réactiver) ; tout autre champ → 400 `{"<champ>":["Non modifiable
+ici."]}`. `raccourci_siri_url` = `settings.TACHES_RACCOURCI_SIRI_URL` (vide → `null`).
 **`jetons/`** POST `{"usage":"flux"}` → 201 `{"id":3,"usage":"flux","prefixe":"tqf_Ab12","libelle":"","created_at":"…",
-"dernier_usage_le":null,"revoque_le":null,"jeton":"tqf_…","url":"https://<hôte>/api/django/taches/flux/tqf_….ics","webcal":"webcal://<hôte>/…"}`
-(`jeton`, `url`, `webcal` jamais relus ; `jeton_hash` jamais servi).
-**`tuile/`** → `{"jour":"2026-11-17","maj":"2026-11-17T09:41:00+01:00","faites":1,"prevues":5,"objectif":5,
+"dernier_usage_le":null,"revoque_le":null,"jeton":"tqf_…","url":"https://<hôte>/api/django/taches/flux/tqf_….ics","webcal":"webcal://<hôte>/…"}`.
+**`tuile/`** → `{"jour":"2026-11-17","maj":"2026-11-17T09:41:00+01:00","faites":1,"prevues":4,"objectif":5,
 "essentiel":{"faites":0,"prevues":1},"top":[{"id":20,"titre":"Devis Settat","heure":"10:00","priorite":2}],"reste":1,
-"prochaine_echeance":{"titre":"Devis Settat","jour":"2026-11-19","heure":null},"lien":"https://<hôte>/taches/aujourdhui"}`
-(C35 ; `top` ≤ 6 dans l'ordre de l'écran ; titres par `nom_pour(…, 'tuile')`).
+"prochaine_echeance":{"titre":"Devis Settat","jour":"2026-11-19","heure":null},"lien":"https://<hôte>/taches/aujourdhui"}`.
 **`coach/entete/`** → `{"lignes":["Rythme : mode pousser · objectif 5 (accepté) · 1 faite sur 5","Préférences dites : sollicitations jusqu'à 19:00 · jour court : vendredi"]}`.
-**`tout-effacer/`** 400 `{"confirmation":["Tapez EFFACER pour confirmer."]}` ; 200 `{"effacees":{"tache":40,"projet":3,…}}`.
-**`agenda-externe/`** POST `{"url":"https://…/basic.ics","libelle":"Perso"}` → `{"hote":"calendar.example","libelle":"Perso","actif":true,"dernier_etat":""}` ;
-400 `{"url":["Adresse https publique attendue."]}`.
+**`tout-effacer/`** 400 `{"confirmation":["Tape EFFACER pour confirmer."]}` ; 200 `{"effacees":{"tache":40,"projet":3}}`.
+**`agenda-externe/`** POST `{"url":"https://…/basic.ics","libelle":"Perso"}` → `{"hote":"calendar.example","libelle":"Perso",
+"actif":true,"dernier_etat":""}` ; 400 `{"url":["Adresse https publique attendue."]}`.
 
-## 5. Contrats d'abord (`apps/taches/contract_samples/*.json`, une forme partagée chacun, exportés dans `frontend/src/test/fixtures/contractSamples.js`)
+## 5. Hors ligne (A16-N11 ; MAJ-9)
 
-| Fichier | Route | Consommateurs |
+`features/taches/captureQueue.js` = `Outbox` du module (`lib/offlineOutbox.js:304`, `createModuleOutboxStore('taches')`),
+`OFFLINE_MODULES` et `offlinesync` intacts. Trois ops : ajouter (`saisie-rapide/`, `client_id`), cocher
+(`terminer/`), reporter (`planifier/`, `lock_version` du cache). Chaque op porte `(company_id, user_id)` ;
+`proprietaire_attendu` envoyé ; 409 `autre_compte` → op jetée ; 409 `conflit_version` → bandeau de conflit. Cache de
+lecture `taches:aujourdhui:<user>:<jour>` ; tout vidé sur `taqinor:auth-logout` (`providers/session-bridge.js:74`).
+
+## 6. Contrats d'abord (`apps/taches/contract_samples/*.json`, exportés dans `contractSamples.js`)
+
+| Fichier | Route / forme | Consommateurs |
 |---|---|---|
-| `aujourdhui.json` | `aujourdhui/` | Aujourd'hui, carte cockpit, carte `ma_journee`, cache hors ligne, test de `compter_journee` |
-| `ailleurs.json` | `aujourdhui/ailleurs/` | repli Aujourd'hui |
-| `badge.json` | `badge/` | `useBadgeTaches` |
-| `item.json` · `tache.json` · `tache_ecrite.json` | ITEM · fiche · écritures | toutes les listes · Fiche · carte `tache`, toasts |
-| `tache_changement.json` | `changement/apercu/` | carte `tache` (écho) |
-| `saisie_apercu.json` · `saisie_rapide.json` | aperçu · création | Saisie, Coller mes listes, carte `capture_apercu`, file hors ligne |
-| `capture.json` | `capture/` | raccourci Siri, recette Mon iPhone |
-| `lot.json` · `geste_annuler.json` · `gestes.json` | lot · annuler · liste | sélection, À trier · toast · Derniers gestes |
-| `journee_proposition.json` · `journee_cloture.json` | plan · bilan | Plan du jour, Proposé déplié, carte `plan_propose` · Bilan du soir |
-| `agenda.json` | `agenda/` | Agenda |
-| `recherche.json` | `recherche/` | Recherche, palette, carte `liste_taches` |
-| `projets_liste.json` · `projet_vue.json` | projets · vue | Projets, sélecteur · Un projet, carte `projet` |
-| `planification_apercu.json` · `decalage.json` · `modele_instancier.json` · `revue_projets.json` | s4 | Planifier le projet, carte `plan_projet` · Décaler · Modèles · Revue, carte `revue_semaine` |
-| `rythme.json` · `proposition.json` | `rythme/` · PROPOSITION | Mon rythme, carte `rythme` · cartes du jour, bilan, plan |
-| `reglages.json` · `jeton.json` · `tuile.json` | réglages · jetons · tuile | Réglages · Mon iPhone · `scriptTuile.js` |
-| `suggestions.json` · `convertir_activite.json` | ERP | À trier |
-| `coach_entete.json` | `coach/entete/` | relais FastAPI |
-| `liens_cibles.json` | (carte des URL `{cible: gabarit}`) | `selectors.url_de_cible`, `cibleEcran.js`, test contre `entityRoutes` |
-| `erreurs.json` | formes 400 / imbriquée / 409 | client API du front |
+| `aujourdhui.json` · `carte_du_moment.json` | `aujourdhui/` · CARTE_DU_MOMENT | Aujourd'hui, cockpit, carte `ma_journee`, cache hors ligne · Aujourd'hui, `vu/` |
+| `ailleurs.json` · `badge.json` · `vu.json` | idem | repli · pastille · Aujourd'hui |
+| `item.json` · `tache.json` · `tache_ecrite.json` · `tache_changement.json` | formes | toutes les listes · Fiche · carte `tache`, toasts, conflit · écho |
+| `saisie_apercu.json` · `saisie_rapide.json` · `capture.json` | saisie | Saisie, collage, carte `capture_apercu`, file · Siri |
+| `lot.json` · `lier_activite.json` · `geste_annuler.json` · `gestes.json` · `supprimees.json` | gestes | sélection, À trier · appui long · toast · Derniers gestes · Supprimées |
+| `journee_proposition.json` · `journee_cloture.json` | plan · bilan | « Voir tout », carte `plan_propose` · Bilan |
+| `agenda.json` · `recherche.json` | idem | Agenda, Planifier ma semaine · Recherche, palette, `liste_taches` |
+| `projets_liste.json` · `projet_vue.json` · `supprimees.json` | projets | Projets · Un projet, carte `projet` |
+| `planification_apercu.json` · `decalage.json` · `modele_instancier.json` · `revue_projets.json` | s4 | Planifier · Décaler · Modèles · Revue, `revue_semaine` |
+| `rythme.json` · `proposition.json` | rythme | Mon rythme, carte `rythme` · cartes, bilan, plan |
+| `reglages.json` · `jeton.json` · `tuile.json` | réglages | Réglages, Mon iPhone · `scriptTuile.js` |
+| `suggestions.json` · `convertir_activite.json` · `coach_entete.json` · `liens_cibles.json` · `erreurs.json` | divers | À trier · relais · `url_de_cible`, `cibleEcran.js` · client API |
 
-## 6. Routes du FRONT (une seule table — spec-7 §2, C7, A13, A14)
+## 7. Routes du FRONT (une seule table — spec-7 r3 §2)
 
 | Route | Écran | Paramètres |
 |---|---|---|
-| `/taches` | redirige vers `/taches/aujourdhui` | — |
-| `/taches/aujourdhui` | Aujourd'hui (ACCUEIL : `MOBILE_HOME_ALLOWED_ROUTES` + `setLandingModule('taches')`, `nav.items[0]`) | `ouvrir=bilan\|alleger`, `tache=<id>` |
-| `/taches/a-trier` | À trier (pastille = `a_trier.boite_reception`, masquée à 0) | `tache` |
-| `/taches/projets` · `/taches/projets/:id` | Projets · Un projet | `vue=liste\|tableau\|chronologie`, `planifier=1`, `tache` |
+| `/taches` | mène à `/taches/aujourdhui` | — |
+| `/taches/aujourdhui` | Aujourd'hui (accueil : `MOBILE_HOME_ALLOWED_ROUTES` + `setLandingModule('taches')`) | `tache=<id>` |
+| `/taches/a-trier` | À trier (pastille d'onglet = `a_trier.boite_reception`) | `tache` |
+| `/taches/projets` · `/taches/projets/:id` | Projets · Un projet | `vue`, `planifier=1`, `tache` |
 | `/taches/projets/archive` · `/taches/projets/modeles` | Archive · Modèles | — |
-| `/taches/agenda` | Agenda | `vue=jour\|semaine\|mois\|a-venir`, `jour=`, `projet=` |
-| `/taches/revue` | Revue de la semaine | `semaine=` |
-| `/taches/rythme` | Mon rythme | — |
-| `/taches/recherche` | Recherche | `q=` (ligne « Chercher dans mes tâches » de la palette, A14-M11) |
-| `/taches/supprimees` | Supprimées récemment + Derniers gestes | — |
-| `/taches/reglages` · `/taches/reglages/:rubrique` | Réglages | rubrique ∈ `notifications`, `iphone`, `vie-privee`, `suggestions`, `donnees`, `avance` |
+| `/taches/agenda` | Agenda | `vue=jour\|semaine\|mois\|a-venir`, `jour`, `projet`, `placer=1` (volet À placer ouvert, fin de Revue) |
+| `/taches/revue` · `/taches/rythme` · `/taches/recherche` · `/taches/supprimees` | Revue · Mon rythme · Recherche (`q`) · Supprimées | — |
+| `/taches/reglages[/:rubrique]` | Réglages | `notifications`, `iphone`, `vie-privee`, `suggestions`, `donnees`, `avance` |
 
-Fiche partout par `?tache=<id>` (+ `detail.tache_id` pour le Copilote). Liens profonds des notifications :
-`plan_matin` → `/taches/aujourdhui` (Proposé + « Garder ces N » y sont le plan) · `bilan_soir` →
-`/taches/aujourdhui?ouvrir=bilan` · `revue_semaine` → `/taches/revue` · `relance` (Message de 15 h) →
-`/taches/aujourdhui?ouvrir=alleger` (parcours 15 de spec-7 r2) · rappel → `/taches/aujourdhui?tache=<id>` · test →
-`/taches/reglages/iphone`. Raccourcis : `g j` (Aujourd'hui, `shortcut:'j'` du module), `c t` → événement
-`taqinor:taches:saisir` (hôte `TachesPresence`).
+Notifications (A15, spec-7 r3 §2) : `plan_matin`, `bilan_soir`, `relance` → `/taches/aujourdhui` (la carte du moment
+porte Garder, Alléger ou le bilan) · `revue_semaine` → `/taches/revue` · rappel → `/taches/aujourdhui?tache=<id>`
+(« Encore 10 min · 1 h · Demain 9 h ») · test → `/taches/reglages/iphone`. Touches `g j`, `c t` →
+`taqinor:taches:saisir`. Navigation et `appSku` : dernière vague seulement.
 
-## 7. Actions de l'assistant (`apps/taches/agent_actions.py` ; toutes `required_permission='taches_voir'`, `RISK_INTERNAL`, lot `copilote`)
+## 8. Actions de l'assistant (`agent_actions.py` ; `taches_voir`, `RISK_INTERNAL`, lot `copilote`)
 
 | Clé | Méthode + route | Carte | Note |
 |---|---|---|---|
-| `taches.journee.lire` | GET `/api/django/taches/aujourdhui/` | `ma_journee` | « Tout au prochain jour ouvré » → `taches/lot/` `planifier` (C32) |
-| `taches.plan.proposer` | GET `/api/django/taches/journee/proposition/` | `plan_propose` | « Adopter ce plan » → `journee/planifier/` au doigt |
-| `taches.tache.chercher` | GET `/api/django/taches/recherche/` | `liste_taches` | |
+| `taches.journee.lire` | GET `/api/django/taches/aujourdhui/` | `ma_journee` | « Tout au prochain jour travaillé » → `taches/lot/` |
+| `taches.plan.proposer` | GET `/api/django/taches/journee/proposition/` | `plan_propose` | « Adopter » = « Garder ces N » → `journee/planifier/` express (A17-T2) |
+| `taches.tache.chercher` | GET `/api/django/taches/recherche/` | `liste_taches` | `filtrer_q(assistant=True)` |
 | `taches.profil.lire` | GET `/api/django/taches/rythme/` | `rythme` | `note_libre` sous enveloppe non fiable |
-| `taches.projet.lire` | GET `/api/django/taches/projets/{id}/vue/` | `projet` | bouton « Ouvrir » seulement (C38) ; masquage confidentiel (M8) |
+| `taches.projet.lire` | GET `/api/django/taches/projets/{id}/vue/` | `projet` | « Ouvrir » seulement |
 | `taches.revue.semaine` | GET `/api/django/taches/revue/projets/` | `revue_semaine` | |
-| `taches.tache.creer` ✎ | POST `/api/django/taches/taches/` | `tache` | `lien` depuis le contexte d'écran ; `source='assistant'` |
+| `taches.tache.creer` ✎ | POST `/api/django/taches/taches/` | `tache` | `lien` du contexte ; `source='assistant'` |
 | `taches.tache.terminer` ✎ | POST `/api/django/taches/taches/{id}/terminer/` | `tache` | |
 | `taches.tache.planifier` ✎ | POST `/api/django/taches/taches/{id}/planifier/` | `tache` | `lock_version` requis |
-| `taches.rappel.poser` ✎ | POST `/api/django/taches/taches/{id}/rappels/` | `tache` | hors fenêtre → carte-écho (verif-securite m9) |
-| `taches.projet.creer` ✎ | POST `/api/django/taches/projets/` | `tache` | `priorite` admise (C44) |
-| `taches.rythme.regler` ✎ | POST `/api/django/taches/rythme/` | `rythme` | `mode`, `objectif` (le nombre qu'IL a dit), `sens` ; `accepter_palier` RETIRÉ (C13) |
-| `taches.preference.noter` ✎ | POST `/api/django/taches/preferences/` | `rythme` | clés `Preference` seulement (aucun réglage de vie privée) |
-| `taches.liste.ranger` ⟲ | POST `/api/django/taches/saisie-rapide/` `apercu:true` | `capture_apercu` | RECÂBLÉE : `saisie-rapide/apercu/` n'existe pas (C11) |
+| `taches.rappel.poser` ✎ | POST `/api/django/taches/taches/{id}/rappels/` | `tache` | hors fenêtre → carte-écho |
+| `taches.projet.creer` ✎ | POST `/api/django/taches/projets/` | `tache` | `priorite` admise |
+| `taches.rythme.regler` ✎ | POST `/api/django/taches/rythme/` | `rythme` | `mode`, `objectif` (le nombre qu'IL a dit), `sens` |
+| `taches.preference.noter` ✎ | POST `/api/django/taches/preferences/` | `rythme` | clés `Preference` seulement |
+| `taches.liste.ranger` ⟲ | POST `/api/django/taches/saisie-rapide/` `apercu:true` | `capture_apercu` | |
 | `taches.projet.planifier_apercu` ⟲ | POST `/api/django/taches/projets/{id}/planification/apercu/` | `plan_projet` | 403 si confidentiel |
-| `taches.tache.proposer_changement` ⟲ | POST `/api/django/taches/taches/{id}/changement/apercu/` | `tache` | Renommer → PATCH ; Abandonner → `trancher/` ; Supprimer → DELETE ; Annuler → `gestes/{id}/annuler/` (RECÂBLÉ, `annulations/` n'existe pas) |
+| `taches.tache.proposer_changement` ⟲ | POST `/api/django/taches/taches/{id}/changement/apercu/` | `tache` | Renommer → PATCH ; Abandonner → `trancher/` ; Supprimer → DELETE ; Annuler → `gestes/{id}/annuler/` |
 
-✎ écrit, ⟲ écho. Retirées : `taches.suggestions.lister` (C12), `taches.capturer` / `taches.tache.capturer` (→
-`tache.creer`, C12). Règles : ≤ 3 écritures par tour ; dès qu'un contenu non fiable est entré dans le tour, toute ✎
-devient une carte-écho portant le corps, envoyé au doigt à la même route (A5) ; carte `rythme` « Retirer » →
-`DELETE preferences/{cle}/` (trou T1 comblé) ; « Passer à N » / « Garder N » → `rythme/propositions/{id}/repondre/`.
-Sous Groq, écran `/taches` : 5 actions (journee.lire, plan.proposer, tache.creer, tache.terminer, liste.ranger).
+✎ écrit, ⟲ écho. ≤ 3 écritures par tour ; contenu non fiable dans le tour → toute ✎ devient une carte-écho portant
+le corps (A5). Carte `rythme` : « Retirer » → `DELETE preferences/{cle}/` ; « Passer à N » / « Garder N » →
+`rythme/propositions/{id}/repondre/`. Sous Groq, écran `/taches` : journee.lire, plan.proposer, tache.creer,
+tache.terminer, liste.ranger. Retirées : `taches.suggestions.lister`, `taches.capturer`, `taches.tache.capturer` (C12).
 
-## 8. Tâches planifiées (`apps/taches/sweeps.py`, autodécouvert ; file `scheduled`)
+## 9. Tâches planifiées (`sweeps.py`, file `scheduled`) et événements
 
 | Nom | Cadence | Fait | Idempotence |
 |---|---|---|---|
-| `taches.balayer` | chaque minute (`crontab(minute='*')`, `_expire_dans(60)`) | pour `active_company_ids()` à module actif, comptes actifs : (1) rappels dus (`jour < J` ou `jour = J` ∧ `heure ≤` maintenant local) → `TACHES_RAPPEL`, groupés par minute ; retard > 2 h → `manque` ; tâche close → `annule` ; (2) sollicitations dues dans [heure, heure + 15 min) (`plan_matin` si aucun plan validé, `bilan_soir` si plan validé ou ≥ 1 faite, `revue_semaine` à sa place le jour de revue, `relance` par `choisir_relance`) si fenêtre société ouverte, avant `heure_limite`, jour travaillé, hors congé, type ni `off` ni en pause, plafond 3 non atteint ; `notify(…, badge=compter_journee())` | rappel pris par `UPDATE … WHERE statut='en_attente'` (1 ligne = à moi) puis `notify` dans la même transaction ; sollicitation : `get_or_create` du marqueur `IncitationCoach` (unicité `taches_incit_uniq`) + `notify` dans la même transaction |
-| `taches.nocturne` | 03:00 `Africa/Casablanca` (`_expire_dans(3600)`) | clôt `PlanJour` de la veille (statut du jour, compte, compteurs) ; si « comprendre mon rythme » : bloc, palier, tenir, taille, constats (≤ 8, silence 28 j) → cartes ; expire les cartes > 7 j ; marque `ignoree` les push non ouverts en 3 h ; pause après 14 ignorées de suite (+ carte `pause`) ; purges `donnees.md` §9 | recalcul déterministe ; cartes par la même contrainte unique ; purges = suppressions par date |
+| `taches.balayer` | chaque minute, `_expire_dans(60)` | `active_company_ids()` à module actif, comptes actifs ayant une `ReglagesRythme` : rappels dus → `TACHES_RAPPEL` groupés par minute (retard > 2 h → `manque`) ; sollicitations dues dans [heure, heure + 15 min) selon `regles.md` §7 ; `notify(…, badge=compter_journee())` | rappel pris par `UPDATE … WHERE statut='en_attente'` puis `notify` dans la même transaction ; sollicitation : `get_or_create` du marqueur `IncitationCoach` + `notify` dans la même transaction |
+| `taches.nocturne` | 03:00 `Africa/Casablanca`, `_expire_dans(3600)` | clôt `PlanJour` d'hier ; rythme, cartes, constats (si « comprendre mon rythme ») ; révélation `revue` ; expire les cartes ; `ignoree` sur les push non ouverts en 3 h ; pauses ; revérifie les liens des tâches ouvertes ; purges `donnees.md` §8 | recalcul déterministe ; contrainte unique des cartes ; purges par date |
 
-Types d'événement (UN nom chacun, ajoutés en fin d'énum `notifications/types_evenements.py`, `module_map` /
-`module_gating` → `taches`, push + in-app seulement) : `TACHES_PLAN_DU_JOUR`, `TACHES_BILAN_SOIR` (bilan et revue),
-`TACHES_RELANCE`, `TACHES_RAPPEL` (rappel posé, push de test). Rappels : `respect_quiet_hours=False` par
-`NOTIFICATIONS_TOUJOURS_IMMEDIATES` (verif-specs-2-3 m2) ; sollicitations : sautées hors fenêtre, jamais différées.
+Types (fin d'énum `notifications/types_evenements.py`, `module_map`/`module_gating` → `taches`, push + in-app seuls) :
+`TACHES_PLAN_DU_JOUR`, `TACHES_BILAN_SOIR`, `TACHES_RELANCE`, `TACHES_RAPPEL`. Rappels immédiats : `taches_rappel`
+ajouté au défaut de `NOTIFICATIONS_TOUJOURS_IMMEDIATES` (`settings/base.py`, édition comptée, A8) ET vérification du
+`.env` de prod qui peut le remplacer (geste de Reda, min-22).
 
-## 9. Plafonds de requêtes visés (`docs/query-budgets.yml`, constants en nombre de lignes, valeur mesurée inscrite)
+## 10. Plafonds de requêtes visés (A15 : cibles, remplacées par la mesure)
 
-`aujourdhui/` ≤ 18 sans familles ERP, ≤ 28 avec les quatre (C47, à mesurer) · `badge/` ≤ 6 · `tuile/` ≤ 8 ·
-`flux/` ≤ 6 · `journee/proposition/` ≤ 18 · `agenda/` ≤ 14 · `taches/` (liste) ≤ 12 · `projets/` ≤ 12 (agrégats
-annotés, `jours_ouvres_entre` 2 requêtes) · `projets/{id}/vue/` ≤ 15 · `saisie-rapide/` aperçu ≤ 10, constant en lignes
-(verif-specs-2-3 m10) · `rythme/` ≤ 10 · `recherche/` ≤ 8 · `suggestions/` ≤ 6.
+`aujourdhui/` ≤ 23 sans familles ERP, ≤ 29 avec (un seul jeu de tâches partitionné en Python) · `badge/` ≤ 10 · `tuile/`
+≤ 10 · `flux/` ≤ 8 · `journee/proposition/` ≤ 20 · `agenda/` ≤ 16 · `taches/` ≤ 12 · `projets/` ≤ 12 ·
+`projets/{id}/vue/` ≤ 15 · `saisie-rapide/` aperçu ≤ 10 (constant en lignes) · `rythme/` ≤ 10 · `recherche/` ≤ 8 ·
+`suggestions/` ≤ 6.
+
+## 11. Fichiers d'un autre propriétaire (une tâche chacun, A8 ; la dernière vague pour l'octroi)
+
+`erp_agentique/urls.py`, `settings/base.py` (`INSTALLED_APPS`, deux beats, `TACHES_RACCOURCI_SIRI_URL`,
+`NOTIFICATIONS_TOUJOURS_IMMEDIATES`), `celery.py` · `apps/roles/permissions_registre.py` (droit déclaré ; octroi en
+dernière vague) · `frontend/src/lib/apps/appSkus.js` (dernière vague) · `apps/notifications/*` (types, migration 0079,
+`badge` de `notify`) · `apps/records/selectors.py` + `services.py` · `authentication/selectors.py`
+(`MOBILE_HOME_ALLOWED_ROUTES`), `authentication/views.py` (traces) · `seed_registre_traitements.py` · `apps/agent/registry.py`
++ `assistant_reponse.json` · `backend/fastapi_ia/*` · `frontend/src/features/ia/cartes/*` · `Layout.jsx`, `Header.jsx`,
+`BottomTabBar.jsx`, `sw.js`, `shortcuts.js`, `commandActions.js`, `entityRoutes.js`, `focusedRecordShortcuts.jsx` ·
+`docs/query-budgets.yml` · régénérés une fois par l'orchestrateur : `docs/openapi-schema.yml`,
+`docs/rbac-endpoint-inventory.md`, `contractSamples.js`, `docs/CODEMAP.md`.
 
 ## Décisions de l'intégrateur
 
-- **R1** Préfixe : chemins complets, viewset `taches/` pour les actions d'une tâche (C26) ; un seul `include`.
-- **R2** `a-venir/` (design-s1) retiré : doublon de `agenda/?du=&au=` (la vue « À venir » est un rendu).
-- **R3** « Ailleurs » en route paresseuse : le coût de ses sources ne pèse pas sur la lecture chaude (s6a §2, T13).
-- **R4** Une énum `Decision` pour trancher, triage et bilan (sous-ensembles par route) au lieu de trois vocabulaires.
-- **R5** Écritures de journée (`planifier`, `alleger`) rendent l'AUJOURDHUI complet : la carte et l'écran n'ont pas à
-  relire ; `cloturer` ne rend que le plan.
-- **R6** Le plan du jour = `journee/planifier/` `mode:"express"` (« Garder ces N », A14-M1, spec-7 r2 : plus de
-  dialogue) ; `mode:"complet"` ne sert plus qu'à la carte `plan_propose` du Copilote ; pas de route de plus.
-- **R16** Pastille = section du jour + Proposé montré (spec-7 r2 §2, postérieure à C16 et à spec-6b §2) : `badge/`
-  calcule donc la proposition ; budget ≤ 6 à confirmer par la mesure.
-- **R7** « Alléger » : route dédiée (A14-M7), car `planifier/` compte les reports et la revalidation n'ajoute que des lignes.
-- **R8** Carte de retour (A14-B1) créée par `POST vu/` (seul moment où le retour est connu) et répondue par la route
-  commune des propositions.
-- **R9** Toutes les cartes à réponse partagent `rythme/propositions/{id}/repondre/` (une forme PROPOSITION).
-- **R10** `preferences/` en POST d'upsert (s5b) + DELETE par clé ; heures de sollicitation dans `preferences/`, le reste
-  dans `PATCH reglages/`.
-- **R11** `capture/` lit le champ `titre` avec l'analyseur (A1) ; la réponse dit où la tâche est rangée (A14-M6).
-- **R12** Saisie : `textes[]` accepte plusieurs collages dans un aperçu (verif-spec-7 M9) ; `projet_commun` porte la
-  première ligne proposée comme projet.
-- **R13** Budgets de requêtes : valeurs visées par l'intégrateur, à remplacer par la mesure du test de budget.
-- **R14** `TACHE.rappel` = `{jour, heure}` (et non « 15:00 ») : un rappel d'un autre jour reste lisible.
-- **R15** Restauration d'un projet sous `projets/{id}/restaurer/` (manquait, verif-specs-2-3 m9) ; tri par priorité
-  sous `projets/trier-par-priorite/` (fonction s4 sans route).
+- **R1** Chemins complets, un seul `include`. **R2** `a-venir/` retiré (doublon d'`agenda/`).
+- **R3** « Ailleurs » en route paresseuse. **R4** Une énum `Decision`, sous-ensembles par route.
+- **R5** `journee/planifier` et `alleger` rendent l'AUJOURDHUI complet.
+- **R6** (rév. 2) `journee/planifier` n'a plus qu'un mode, `express` ; le triage est facultatif partout (A17-T2).
+- **R7** « Alléger » route dédiée (pas de report, `allege_le`). **R8** Carte de retour créée par `vu/`.
+- **R9** Toutes les cartes à réponse partagent `rythme/propositions/{id}/repondre/`.
+- **R10** `preferences/` POST + DELETE ; heures par `preferences/`, interrupteurs par `PATCH reglages/` (liste blanche).
+- **R11** `capture/` analyse `titre` (A1). **R12** `textes[]` et `projets_communs[]` : un projet par collage.
+- **R13** Budgets = cibles (A15). **R14** `TACHE.rappel` = `{jour, heure}`.
+- **R15** `projets/{id}/restaurer/` et `projets/trier-par-priorite/` ajoutés.
+- **R16** (rév. 2) `carte_du_moment` (objet unique, choisi par le serveur) remplace `cartes_coach`.
+- **R17** (rév. 2) GET redondants retirés (verif-reference §4) : `convertir-activite/` (compte dans `a_trier`),
+  `recurrences/{id}/` (dans TACHE), `preferences/` (dans RYTHME), `checklist/` (dans TACHE), `sections/[{id}/]` (dans la
+  vue) ; `vue=supprimees` remplacé par `GET supprimees/` (un projet = une ligne).
+- **R18** (rév. 2) « Planifier ma semaine » sans route nouvelle : `agenda/?vue=semaine` sert `mes_projets`, la pose
+  passe par `planifier/`.
+- **R19** (rév. 2) `lier-activite/` : seule route nouvelle demandée (A17) ; une tâche par activité
+  (`taches_tache_act_uniq`).
+- **R20** (rév. 2) Liens de notification : tous vers Aujourd'hui sauf revue et rappel (A15) ; paramètre `ouvrir` retiré.
 
 ## Ce que les specs demandaient et que je n'ai PAS repris
 
-- `POST saisie-rapide/apercu/` (s5b) → drapeau `apercu` (C11) ; `GET a-venir/` (R2) ; `POST projets/{id}/decaler/annuler/`
-  (s4) et `POST annulations/{id}/appliquer/` (s5b) → `gestes/{id}/annuler/` (C2, A7, verif-securite M4).
-- `accepter_palier` de `POST rythme/` (s5b) → tap de carte (C13) ; `texte_dit` (non stocké).
-- `taches.suggestions.lister`, `taches.capturer`, `taches.tache.capturer` (C12).
-- Clé `agenda` de `aujourdhui/` (s3) → `obligations` (C5) ; sections `a_trancher`, `en_retard`, `echeances_proches`
-  (s3) → une section `a_decider` montrée « À revoir » (s7, A14-M10) ; `incitations` (design-s1) → `cartes_coach` (C24) ;
-  `ailleurs` en ligne (R3) ; `suggestions{nb}` et `a_convertir{nb}` au premier niveau (s6a) → `a_trier` (C39).
-- Réponse `capture/` `{"ok","id","message"}` et erreur `{"champ","detail"}` (s6b) → forme commune (C3) ; capture « sans
-  analyse » (s6b, s2 crit. 9) → A1.
-- Rejeu `200 deja` sur `saisie-rapide/` (s6b) → `201 deja_creees` (C9) ; capture garde `deja`.
-- Liens profonds `?du=matin`, `/taches/bilan`, `?rituel=`, `/taches/boite`, `/taches?tache=`, `/taches/taches/<id>`,
-  `?coach=1` (s3, s5b, s6b, C7) et `?ouvrir=plan` (spec-7 r1, retiré par r2) → table §6.
-- Écran « Plan du jour » en dialogue avec triage obligatoire (s3 §3.10) → Proposé + « Garder ces N » ; le triage
-  d'À revoir n'est plus exigé (lot « Tout en réserve »).
-- Accueil `'/taches'` (s6a) → `/taches/aujourdhui` (C7, verif-specs-4-6 M1) ; raccourci de manifeste « Mes tâches » →
-  « Tâches » (s7).
-- Beat `taches.balayer` toutes les 5 min (s6b) et `taches.calculer_rythme` séparé (s5a) → minute + nocturne (C15) ;
-  `TACHE_RAPPEL` (s3) → `TACHES_RAPPEL` (C14).
-- Tuile `fait` / `essentiel.total` (s6b) → `faites` / `essentiel.prevues` (C35) : `scriptTuile.js` suit ces noms.
-- Cartes de 5b nommées « coach » et boutons « … avec le coach » → « Copilote » (s7) ; boutons pré-remplis par
-  notification (`?coach=1`) non repris (A12 place les quatre demandes dans le panneau).
-- Liens vers facture, chantier, ticket et les 9 autres cibles (s6a, s7 §8) : non liables tant que leur app n'a pas de
-  sélecteur de visibilité (A3).
-- `GET coach/`, `POST coach/{id}/reponse/` (design-s1) → `rythme/propositions/` ; contrat `journee.json` (design-s1)
-  → `journee_proposition.json` + `journee_cloture.json` ; contrats `saisie_rapide_apercu`, `profil_rythme`, `annulation`
-  → `saisie_apercu`, `rythme`, `geste_annuler` (C25).
-- Fichiers étrangers (registry de l'agent, cartes du front, consignes FastAPI, `notifications`, `celery.py`,
-  `base.py` pour `TACHES_RACCOURCI_SIRI_URL`, `authentication/selectors.py`, `records/selectors.py`) : leurs éditions
-  sont des tâches séparées chez leur propriétaire (A8) — décrites ici seulement par la route ou le nom qu'elles consomment.
+- `saisie-rapide/apercu/`, `a-venir/`, `decaler/annuler/`, `annulations/{id}/appliquer/`, `accepter_palier`,
+  `texte_dit`, `taches.suggestions.lister`, `taches.capturer`, `taches.tache.capturer` (C2, C11, C12, C13, A7, R2).
+- Clé `agenda` de `aujourdhui/` → `obligations` (C5) ; `a_trancher`, `en_retard`, `echeances_proches` → `a_decider` ;
+  `incitations`, `cartes_coach` → `carte_du_moment` ; `suggestions{nb}`, `a_convertir{nb}` → `a_trier` (C39).
+- Réponse capture `{"ok"}`, erreur `{"champ","detail"}` (s6b) → forme commune (C3) ; rejeu `200 deja` sur
+  `saisie-rapide/` → `201 deja_creees` (C9).
+- Liens `?du=matin`, `/taches/bilan`, `?rituel=`, `/taches/boite`, `/taches/taches/<id>`, `?coach=1`, `?ouvrir=plan|bilan|alleger`.
+- Accueil `'/taches'` (s6a) → `/taches/aujourdhui` ; raccourci de manifeste « Mes tâches » → « Tâches ».
+- Beat toutes les 5 min (s6b), `taches.calculer_rythme` séparé (s5a) → minute + nocturne (C15) ; `TACHE_RAPPEL` (C14).
+- Tuile `fait`, `essentiel.total` → `faites`, `essentiel.prevues` (C35).
+- Pastille avec Proposé (spec-7 r2, ma rév. 1) → gardées seules (A16-N5) ; visites « à leur heure » → Toute la journée.
+- `mode:"complet"` de `journee/planifier` et triage obligatoire (s3 §3.10) → express seul (A17-T2).
+- Choix `demain` au bilan (s3, ma rév. 1) → « Reporter à lun. 23 » (spec-7 r3) ; 400 sur les reportées 3 fois → marquées.
+- Liens facture, chantier, ticket et 9 autres cibles (A3) ; `{"activite_id"}` singulier de `convertir-activite` (s6a) →
+  `activite_ids` (C20) ; valeur `corbeille` → `supprimer`.
+- Messages en « vous » (s6a) → tutoiement (A17).
+
+## Écarts avec regles.md / textes.md à corriger là-bas
+
+- `regles.md` §4.1, §4.9 et `textes.md` §2.17 : `cartes_coach` → `carte_du_moment` (ordre spec-7 r3 §4) ; pastille sans
+  Proposé (A16-N5).
+- `regles.md` §4.4 : `journee/planifier` n'a qu'un mode ; triage facultatif.
+- `regles.md` §4.6 : choix `demain` retiré ; les `reportee_3_fois` ne provoquent plus de 400 (rendues dans
+  `a_trancher`).
+- `regles.md` manque 15 : `capture.dans` = `a_trier` pour une échéance seule.
+- `regles.md` §1.10 : `projet_commun` (un seul) → `projets_communs[]` (un par collage, champ `collage` sur chaque ligne).
+- `textes.md` §7 / §2.16 : textes `text/plain` de 401 et 429 de `capture/` attendus par cette référence.
+- `textes.md` §2.15 : toast 8 s et réglage « Messages sans délai » (`messages_sans_delai`).
+
+## Révision 2 : ce qui a changé
+
+1. Primauté A1-A17, spec-7 r3 ; renvoi aux mots de `textes.md` et aux règles de `regles.md`.
+2. Pastille : gardées ouvertes seules ; exemple recalculé (3).
+3. `carte_du_moment` remplace `cartes_coach` ; `progression.reprise` ; `OBJECTIF.zone`.
+4. Proposé `replie` après Alléger ; `journee/planifier` express seul, triage facultatif (T2).
+5. Obligations sans heure (`visite`, `pose`, `intervention`, `touches`), bande « Toute la journée ».
+6. Agenda `vue=semaine` + `mes_projets` (Planifier ma semaine) ; pose par `planifier/`.
+7. `lier-activite/`, `supprimees/` ; DELETE projet en un geste, restauration en une ligne.
+8. Jetons : société du jeton après `user_can_operate` ; débits flux et tuile.
+9. 409 à codes ; `Idempotency-Key` suffixée par utilisateur ; `geste_id` : exceptions listées.
+10. Hors ligne : ajouter, cocher, reporter ; `proprietaire_attendu` ; cache par utilisateur, purge à la déconnexion.
+11. `PATCH reglages/` en liste blanche ; `mode` par `rythme/` seul ; question du 1er rappel (`question_titres`).
+12. ITEM : `rang`, `confidentiel` + `confidentielle` ; TACHE et PROJET : `updated_at`, champs de projet servis.
+13. Bilan : `a_trancher`, `constat`, « Tout reporter » ; décision `garder` ; objectif hors 1-12 → 400.
+14. GET redondants retirés ; pagination fixée par liste ; tutoiement des erreurs.
+15. Collage : `projets_communs[]`, priorité Moyenne par défaut des projets nouveaux.
+16. Module invisible jusqu'à la dernière vague ; fichiers étrangers listés ; budgets révisés.
+17. Comptes recalculés par script : 100 routes (la rév. 1 en avait 107 au compte de `verif-reference.md` ; écart
+    = GET redondants retirés, `lier-activite/` et `supprimees/` ajoutés), 16 actions.
