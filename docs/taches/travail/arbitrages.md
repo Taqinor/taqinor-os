@@ -158,3 +158,32 @@ Les corrections N1 à N12 et le placement des 11 fonctions orphelines sont ADOPT
 - **M2 (suite)** : le bilan du soir dit aussi « N sur OBJECTIF » ; le « plan tenu » est une seconde ligne.
 - **M3 (suite)** : un projet créé à la volée par `#` reçoit la priorité « Moyenne » par défaut, montrée et modifiable
   d'un toucher dans la liste des projets.
+
+## A17 — Troisième essai des écrans (`verif-spec-7-tour3.md` : 15/20, 0 bloquant, 4 majeurs nouveaux) + vérification de la référence (`verif-reference.md` : 0 bloquant, 10 majeurs) + manques relevés par le second intégrateur (fin de `reference/regles.md`)
+Tout est ADOPTÉ. Le troisième évaluateur juge l'architecture « presque prête » et ne demande pas de quatrième tour :
+il reste à réaligner la référence, puis à la vérifier une dernière fois.
+- **T1** : `reference/donnees.md` et `reference/api.md` sont réalignés sur A15, A16, A17 et la révision 3 de la spec 7.
+- **T2** : la carte « plan proposé » du Copilote adopte en mode express (« Garder ces N ») : jamais de choix obligé
+  par tâche à revoir avant de pouvoir valider.
+- **T3** : la carte « Mon iPhone » vit 3 jours au plus sur Aujourd'hui, puis seulement dans Réglages ; elle ne
+  bloque pas les autres révélations.
+- **T4** : à la pose du premier rappel, une question unique « Montrer le titre sur l'écran verrouillé ? » règle la
+  préférence (socle §2.8 respecté : sans réponse, les notifications restent sans titre).
+- **M1 (fin)** : le matin, « Garder ces N » est porté par la carte du moment, en haut d'Aujourd'hui.
+- **M2 (fin)** : partout « N sur OBJECTIF » ; le plan tenu est une seconde donnée.
+- **M3 (fin)** : chaque « Nouveau projet » d'un aperçu de collage porte une puce de priorité (Moyenne par défaut).
+- « Encore 10 min · 1 h · Demain 9 h » à l'ouverture d'un rappel : placé sur la fiche ouverte par le rappel.
+- « Lier une tâche à une activité ERP » : une route le pose (la tâche garde `activite_origine`, l'activité n'est pas close).
+- **Référence — corrections de `verif-reference.md`** : palette à 10 clés ; `PlanJour` gardé 400 jours ; les réglages
+  du rythme ne naissent qu'à la première tâche créée (jamais par `vu/`) ; routes à jeton : société prise du jeton après
+  vérification que l'utilisateur peut y opérer ; décision « garder » ajoutée ; `PATCH reglages/` par liste blanche,
+  le mode ne change que par la route du rythme ; fournisseur d'effacement `taches` ; pagination fixée par liste ;
+  `proprietaire_attendu` sur les envois hors ligne ; ordre d'affichage d'une section écrit ; orphelins repris.
+- **Manques relevés par le second intégrateur** : `PlanJour.allege_le` ; la zone de l'objectif en mode « Garder ce
+  rythme » ; créneau et ordre gardés sur les lignes de plan ; motif « À revoir » pour une activité ERP en retard ; un
+  projet commun PAR collage ; erreur pour un objectif hors 1-12.
+- **Mise en production sans demi-état (majeur 10 de `verif-reference.md`)** : tant que tout n'est pas construit, le
+  module reste invisible : droit déclaré mais accordé à aucun rôle, aucune entrée de navigation. L'octroi du droit et
+  la navigation arrivent dans la DERNIÈRE vague.
+- **Tutoiement** : l'app Tâches et le Copilote disent « tu » (espace personnel, ton du coach) ; les composants
+  partagés de l'ERP gardent leurs textes.

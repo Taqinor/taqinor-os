@@ -42,7 +42,7 @@
 /* ── Bande « Toute la journée » ──────────────────────────────────────────── */
 .ag-tj { display: grid; grid-template-columns: var(--ag-gout) 1fr; align-items: start;
   padding: 8px var(--tch-gouttiere) 10px 0; box-shadow: inset 0 -1px 0 var(--tch-trait); }
-.ag-tj-label { padding: 4px 8px 0 4px; text-align: right; font-size: 0.75rem; line-height: 0.9375rem; font-weight: 600;
+.ag-tj-label { padding: 5px 7px 0 0; text-align: right; font-size: 0.75rem; line-height: 0.9375rem; font-weight: 600;
   color: var(--tch-texte-doux); }
 .ag-tj-items { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
 .ag-tj-item { position: relative; display: flex; align-items: center; gap: 7px; min-height: 44px; min-width: 0; padding: 4px 8px 4px 10px;
@@ -75,13 +75,21 @@
 .ag .bloc.court .ag-bt { display: flex; align-items: baseline; gap: 8px; }
 .ag .bloc.court b { -webkit-line-clamp: 1; display: block; white-space: nowrap; text-overflow: ellipsis; flex: 0 1 auto; }
 .ag .bloc.court small { flex: none; margin: 0; }
+/* Bloc étroit (chevauchement) de 30 min : pas de case, titre sur 2 lignes en 13 px */
+.ag .bloc.etroit.court { align-items: center; padding: 3px 8px 3px 10px; }
+.ag .bloc.etroit.court .ag-bc { display: none; }
 .ag .bloc.etroit.court .ag-bt { display: block; }
+.ag .bloc.etroit.court b { white-space: normal; -webkit-line-clamp: 2; display: -webkit-box; font-size: 0.8125rem; line-height: 1rem; }
 .ag .bloc.etroit.court small { display: none; }
+.ag-heures span.cache { visibility: hidden; }
 .ag .bloc.g1 { left: 4px; right: calc(50% + 2px); }
 .ag .bloc.g2 { left: calc(50% + 2px); right: 4px; }
 .ag .bloc.non-estime { box-shadow: inset 3px 0 0 var(--tch-point), inset 0 0 0 1px var(--tch-point); background-image: none; }
 .ag .bloc.fait-bloc b { text-decoration: line-through; text-decoration-thickness: 1px; }
-.ag .bloc.fait-bloc { --tch-bloc-texte: var(--tch-texte-doux); }
+/* Fait : le bloc s'efface vers la surface, le filet reste */
+.ag .bloc.fait-bloc { --tch-bloc-texte: var(--tch-texte-doux);
+  background: color-mix(in srgb, var(--tch-bloc-fond) 40%, var(--tch-surface)); }
+.ag .bloc.fait-bloc .ag-bc[aria-checked="true"] { background: var(--tch-fait); }
 
 /* Case ronde dans un bloc (cible 44 px étendue) */
 .ag-bc { position: relative; flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 999px;
@@ -100,9 +108,8 @@
 /* ── Tiroir « À placer » (iPhone) ────────────────────────────────────────── */
 .ag-tiroir { position: absolute; left: 0; right: 0; bottom: calc(var(--tch-onglets-h) + var(--tch-zone-sure-bas));
   height: var(--ag-tiroir-h); display: flex; align-items: center; gap: 8px; padding: 0 0 0 var(--tch-gouttiere);
-  background: var(--tch-barre-fond); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  box-shadow: inset 0 0.5px 0 var(--tch-trait); overflow: hidden; z-index: 3; }
-.ag-tiroir-titre { flex: none; display: flex; flex-direction: column; font-size: 0.8125rem; line-height: 1rem; font-weight: 650; }
+  background: var(--tch-surface); box-shadow: inset 0 1px 0 var(--tch-trait); overflow: hidden; z-index: 3; }
+.ag-tiroir-titre { flex: none; display: flex; flex-direction: column; font-size: 0.8125rem; line-height: 1.0625rem; font-weight: 650; }
 .ag-tiroir-titre span { font-weight: 500; color: var(--tch-texte-doux); }
 .ag-tiroir-puces { display: flex; gap: 8px; overflow: hidden; padding-right: var(--tch-gouttiere); }
 .ag-puce { position: relative; flex: none; display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 14px 0 12px;
@@ -285,7 +292,8 @@
   .ag-aside .ag-lp { margin: 0 8px; min-height: 44px; padding: 5px 10px; background: var(--tch-surface); margin-bottom: 4px; width: calc(100% - 16px); }
   .ag-aside .ag-lp .t { font-size: 0.9375rem; line-height: 1.25rem; }
   .ag-aside .ag-lp .pt { width: 16px; color: var(--tch-texte-doux); }
-  .ag-aside-pied { padding: 10px 20px; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+  .ag-aside-pied { padding: 10px 20px; font-size: 0.8125rem; line-height: 1.25rem; color: var(--tch-texte-doux); }
+  .ag-aside-pied kbd { font: inherit; font-weight: 650; padding: 1px 6px; border-radius: 6px; background: var(--tch-surface); color: var(--tch-texte); }
   .ag .bloc { padding: 5px 8px 4px 10px; gap: 7px; }
   .ag .bloc b { font-size: 0.8125rem; line-height: 1.125rem; }
   .ag .bloc small { font-size: 0.75rem; line-height: 1rem; }
