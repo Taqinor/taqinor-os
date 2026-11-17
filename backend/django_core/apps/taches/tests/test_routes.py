@@ -6,6 +6,7 @@ permission STRICTE ; `est_assistant`, la permission et le bouchon des routes à 
 Avec base (TestCase, CI) : 403 sans `taches_voir` pour tout compte (y compris un compte hérité
 « responsable » sans rôle fin), 501 avec, 401 neutre sur capture, flux et tuile.
 """
+import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -215,6 +216,86 @@ class RoutesSansBaseTests(SimpleTestCase):
     def test_pas_encore_rend_501(self):
         self.assertEqual(PasEncore.status_code, 501)
         self.assertEqual(PasEncore().get_codes(), 'pas_encore')
+
+
+#: Modules de vues dont chaque opération porte son schéma complet (TCH145-TCH147).
+MODULES_SCHEMATISES = ('journee', 'agenda', 'saisie', 'taches', 'erp')
+#: Échantillons qui ne sont la réponse ENTIÈRE d'aucune route : sous-objet d'une autre réponse
+#: (ITEM d'une liste paginée, carte du moment, rendez-vous, proposition), formes d'erreur, ou
+#: carte de fichier (gabarits des liens).
+ECHANTILLONS_PARTIELS = {'item', 'carte_du_moment', 'rendez_vous', 'proposition', 'erreurs', 'liens_cibles'}
+ECHANTILLONS = Path(__file__).resolve().parents[1] / 'contract_samples'
+
+
+def generer_schema():
+    """(schéma OpenAPI des seules routes `taches`, messages du générateur) — sans base."""
+    from django.urls import include, path
+    from drf_spectacular.drainage import GENERATOR_STATS
+    from drf_spectacular.generators import SchemaGenerator
+
+    with GENERATOR_STATS.silence():
+        GENERATOR_STATS.reset()
+        generateur = SchemaGenerator(patterns=[path('api/django/taches/', include('apps.taches.urls'))])
+        schema = generateur.get_schema(request=None, public=True)
+        messages = [*GENERATOR_STATS._warn_cache, *GENERATOR_STATS._error_cache]
+        GENERATOR_STATS.reset()
+    return schema, messages
+
+
+def module_de(chemin):
+    return resolve(concret(chemin)).func.view_class.__module__.rsplit('.', 1)[-1]
+
+
+class SchemaTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.schema, cls.messages = generer_schema()
+        cls.couverts = [(m, c) for m, c in ROUTES if module_de(c) in MODULES_SCHEMATISES]
+
+    def _operation(self, methode, chemin):
+        return self.schema['paths'][PREFIXE + chemin][methode.lower()]
+
+    def _proprietes(self, contenu):
+        schema = (contenu or {}).get('schema', {})
+        if '$ref' in schema:
+            schema = self.schema['components']['schemas'][schema['$ref'].rsplit('/', 1)[-1]]
+        return set(schema.get('properties', {}))
+
+    def test_106_operations_generees(self):
+        operations = {(m.upper(), p.removeprefix(PREFIXE)) for p, item in self.schema['paths'].items()
+                      for m in item if m in METHODES_HTTP}
+        self.assertEqual(operations, set(ROUTES))
+
+    def test_aucun_avertissement_sur_les_routes_schematisees(self):
+        for methode, chemin in self.couverts:
+            nom = module_de(chemin)
+            fichiers = (f'views/{nom}.py', f'views\\{nom}.py')  # chemin POSIX (CI) ou Windows
+            for message in self.messages:
+                with self.subTest(chemin=chemin, message=message[:160]):
+                    self.assertFalse(any(f in message for f in fichiers))
+                    self.assertNotIn(f"'{PREFIXE}{chemin}'", message)
+
+    def test_chaque_operation_a_une_reponse_de_succes(self):
+        for methode, chemin in self.couverts:
+            with self.subTest(methode=methode, chemin=chemin):
+                succes = [c for c in self._operation(methode, chemin)['responses'] if c.startswith('2')]
+                self.assertTrue(succes)
+
+    def test_chaque_echantillon_est_la_forme_de_sa_route(self):
+        for fichier in sorted(ECHANTILLONS.glob('*.json')):
+            if fichier.stem in ECHANTILLONS_PARTIELS:
+                continue
+            document = json.loads(fichier.read_text(encoding='utf-8'))
+            methode, _, chemin = document['endpoint'].partition(' ')
+            couple = (methode, chemin.removeprefix(PREFIXE))
+            if couple not in self.couverts:
+                continue
+            reponses = self._operation(*couple)['responses']
+            formes = [self._proprietes(contenu) for code, r in reponses.items() if code.startswith('2')
+                      for contenu in r.get('content', {}).values()]
+            with self.subTest(echantillon=fichier.stem):
+                self.assertIn(set(document['exemple']), formes)
 
 
 class PermissionSansBaseTests(SimpleTestCase):
