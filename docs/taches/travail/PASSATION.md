@@ -104,13 +104,20 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `7c50012ee` (8 tours de corrections CI pliés ; tout est vert SAUF `e2e-shard (2)` : au run d'avant 55 specs Tâches passées sur 58, les 3 dernières traitées au tour 8 — lire le run de `7c50012ee`)` : 43 specs passées, 15 échouées, toutes traitées au tour 6 — résultat à lire sur le run de `e90a5167e`). **63 des 64 tâches de la fusion 2 sont
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `7c50012ee` — **CI ENTIÈREMENT VERTE : 36 contrôles sur 36** (8 tours de corrections ; les 58 specs de bout en bout Tâches passent)` : au run d'avant 55 specs Tâches passées sur 58, les 3 dernières traitées au tour 8 — lire le run de `7c50012ee`)` : 43 specs passées, 15 échouées, toutes traitées au tour 6 — résultat à lire sur le run de `e90a5167e`). **63 des 64 tâches de la fusion 2 sont
   pliées et cochées** (115 tâches cochées sur 174 au total). Tout le code de la fusion 2 y est : serveur, écrans,
   raccords des deux côtés, semis, sécurité, plafonds, activation Administrateur seul, bout en bout Playwright.
 - Aucune lane en cours, aucune branche de lane non pliée. Rien d'important ne vit seulement sur le portable.
 
+**Fusion 3 commencée en avance** : branche `dev-taches-f3` (poussée, partie de `dev-taches-f2`, plan dé-gelé pour la
+fusion 3). Les lanes F3 pliées y sont cochées dans SON plan ; à la reprise, après le merge de la fusion 2, fusionner
+`origin/main` dans `dev-taches-f3` et ouvrir sa PR. Lanes F3 (`plan_lanes.py … --group "Fusion F3"`) : assistant (10,
+opus), presence (8, opus), cartes (3), ecran-iphone (3), etranger-coquille-F3 (1), etranger-deploy-F3 (1),
+presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous pour celles qui sont faites.
+
 **Ce qui reste pour la fusion 2, dans l'ordre**
-1. **CI verte sur la tête.** Deux tours de rouges ont été corrigés ; le tour sur la version complète (raccords
+0. (FAIT) CI verte sur `7c50012ee`. Si `main` a avancé : fusionner `origin/main`, régénérer OpenAPI + empreinte.
+1. **(historique) CI verte sur la tête.** Deux tours de rouges ont été corrigés ; le tour sur la version complète (raccords
    écrans, défauts connus, bout en bout) n'a pas été lu. `gh pr checks 1454 --repo Taqinor/taqinor-os`, puis une
    lane sonnet par tour (prompt modèle : « corrige le test s'il est faux, le code sinon, jamais d'assertion
    élargie ni de test sauté ; plafond de requêtes sans N+1 = poser la mesure »). À surveiller en premier :
