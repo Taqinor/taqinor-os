@@ -109,6 +109,12 @@ class ArrondiEtPlafondTests(unittest.TestCase):
             with self.subTest(x=entree):
                 self.assertEqual(rythme.arrondir(entree), attendu)
 
+    def test_une_seule_definition_de_arrondir(self):
+        from apps.taches.moteur import classement, gabarits, nombres
+        self.assertIs(rythme.arrondir, nombres.arrondir)
+        self.assertIs(gabarits.arrondir, nombres.arrondir)
+        self.assertIs(classement.arrondir, nombres.arrondir)
+
     def test_ex56_plafonner_jours(self):
         # Ex. 56 : 13 × 5 + 30 -> le 30 devient 11.
         sortie = rythme.plafonner_jours([5] * 13 + [30])

@@ -4,13 +4,13 @@ Aucune base, aucun ORM, aucune horloge : le jour `J` et l'ensemble des jours
 travaillés `travailles` sont toujours des paramètres. Les seules valeurs
 techniques viennent de `apps.taches.choix` (source unique des énumérations).
 """
-import math
 import statistics
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 from apps.taches.choix import (
     CapaciteSource, MotifRevoir, Moment, RaisonPropose, SectionJournee, StatutTache)
+from apps.taches.moteur.nombres import arrondir
 
 TACHE = 'tache'
 ACTIVITE = 'activite'
@@ -534,11 +534,6 @@ def explication(item, J, travailles=frozenset()):
 
 
 # --- Capacité et temps disponible (regles.md §3.6, inv. 35) -----------------
-
-def arrondir(x):
-    """« Au plus proche, la demie vers le bas » : ceil(x − 0,5) (regles.md §0)."""
-    return math.ceil(x - 0.5)
-
 
 def capacite(reglage, minutes_9j, jours_28, comprendre=True):
     """(minutes, source) : réglage, sinon médiane des 9 derniers jours travaillés, sinon 240."""

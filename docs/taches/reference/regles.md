@@ -452,7 +452,7 @@ sans projet triées S1, S2 — 30 tâches. Faites 0, gardées 0 ; N = l'objectif
 | 8 | R1, R2, A1, V1, M2, D3, A2, S1 (tous `prochaine_action`) |
 | 13 | … + V2, M3, D4, A3, S2 (`action_suivante`) |
 
-À revoir : R3 (`retard_ancien`), R4 (`reportee_3_fois`). Absentes : Salon (en pause), D1 (en réserve), D2 (bloquée), M1
+À revoir : R4 (`reportee_3_fois`), R3 (`retard_ancien`). Absentes : Salon (en pause), D1 (en réserve), D2 (bloquée), M1
 (prévue plus tard ; visible dans la suite dépliée). **Monopole** : avec l'ancien `cle_tri`, les 5 places du tour vont à
 V1…V5 (Ventes est en bande 2) ; avec le tour : V1, M2, D3, A2, S1 — Ventes n'a sa 2e place (V2) qu'au tour 2.
 
@@ -1053,8 +1053,8 @@ gardées aujourd'hui, dans l'ordre de Proposé étendu à tout le pool (ce qui p
 limite N), puis celles d'À revoir (motif dit) ; `garder_n` = N de §3.4 ; chaque ligne porte sa `raison` (ou son
 `motif`). Gestes par ligne : Essentiel → `journee/essentiel/` (après `planifier(J)`), Aujourd'hui → `planifier(J)`, Plus
 tard dans la semaine → `planifier(plus_tard)` ; « Garder ces N » → `journee/planifier/` avec les `garder_n` premières.
-Jeu de §3.4 (N = 5) : R1, R2, A1, V1, M2, D3, A2, S1, V2, M3, D4, A3, S2, V3…V12, puis R3 (`retard_ancien`), R4
-(`reportee_3_fois`) ; `garder_n` = 5 (recalculé par `integ2/propose.py`).
+Jeu de §3.4 (N = 5) : R1, R2, A1, V1, M2, D3, A2, S1, V2, M3, D4, A3, S2, V3…V12, puis R4 (`reportee_3_fois`), R3
+(`retard_ancien`) — l'ordre d'À revoir est `cle_tri` : R4, dans Ventes (priorité haute), passe avant R3, dans Admin (basse) ; `garder_n` = 5 (recalculé par `integ2/propose.py`).
 
 **`plus_tard`** = le prochain jour travaillé APRÈS J dans la même semaine (lundi-dimanche), sinon le premier jour
 travaillé de la semaine suivante. Mar. 17/11 (18 férié) → jeu. 19 ; ven. 20 → lun. 23 ; jeu. 19 → ven. 20.
