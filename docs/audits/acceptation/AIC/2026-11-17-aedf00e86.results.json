@@ -1,0 +1,56 @@
+{
+  "sha": "aedf00e86fc6aa13f45205c3d9641e37b2c01ef9",
+  "date": "2026-11-17",
+  "groupe": "AIC",
+  "verdict": "PASS",
+  "couvre": [
+    "AIC94"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P8.1-AIC94-touche-hors-fenetre",
+      "taches": [
+        "AIC94"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P8.1-AIC94-touche-hors-fenetre.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P8.2-AIC94-matin-visite",
+      "taches": [
+        "AIC94"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AIC-P8.2-AIC94-matin-visite.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

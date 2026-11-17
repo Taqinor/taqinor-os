@@ -210,7 +210,7 @@ jobs:
           /usr/lib/postgresql/16/bin/psql -h localhost -U erp_user -d erp_db -tAc "SELECT to_regclass('public.ia_ocr_document') IS NOT NULL AS table_ocr, has_table_privilege('sql_agent_ro', 'public.ia_ocr_document', 'SELECT') AS grant_ocr" || true
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
-          npx playwright test --project=acceptation e2e/acceptation/amsg8.spec.js e2e/acceptation/aic.spec.js e2e/acceptation/alec6.spec.js e2e/acceptation/aana7.spec.js
+          npx playwright test --project=acceptation e2e/acceptation/aic2.spec.js e2e/acceptation/alec7.spec.js
       - name: Queue des journaux gunicorn (diagnostic)
         if: ${{ !cancelled() }}
         run: |
