@@ -1216,3 +1216,58 @@ class Enf11NotificationsSchemaTests(SimpleTestCase):
             if p['name'] == 'date')
         self.assertIn({'type': 'string', 'maxLength': 0},
                       parametre['schema']['anyOf'])
+
+
+# ── TCH20 — les quatre événements du gestionnaire de tâches personnel ──────
+TYPES_TACHES = (
+    EventType.TACHES_PLAN_DU_JOUR, EventType.TACHES_BILAN_SOIR,
+    EventType.TACHES_RELANCE, EventType.TACHES_RAPPEL)
+
+
+class TypesTachesTests(TestCase):
+    """Fin d'énum, push + in-app seuls par défaut, gatés par le module
+    ``taches`` (``module_gating`` ET ``module_map``)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='TCH20', slug='tch20-n')
+        self.user = _make_user(self.company, username='tch20')
+
+    def test_quatre_types_en_fin_d_enum(self):
+        self.assertEqual(
+            [x.value for x in list(EventType)[-4:]],
+            ['taches_plan_du_jour', 'taches_bilan_soir', 'taches_relance',
+             'taches_rappel'])
+
+    def test_push_et_in_app_seuls_par_defaut(self):
+        from .services import default_prefs_for
+        for event_type in TYPES_TACHES:
+            with self.subTest(event_type=event_type):
+                self.assertEqual(default_prefs_for(event_type), {
+                    'in_app': True, 'push': True, 'email': False,
+                    'whatsapp': False})
+
+    def test_module_actif_notifie(self):
+        for event_type in TYPES_TACHES:
+            with self.subTest(event_type=event_type):
+                self.assertIsNotNone(notify(
+                    self.user, event_type, 'Titre', company=self.company,
+                    respect_quiet_hours=False))
+
+    def test_module_eteint_ne_notifie_ni_ne_propose(self):
+        from core.models import ModuleToggle
+
+        from .module_gating import EVENT_MODULE
+        from .module_map import EVENT_TYPE_MODULE, event_types_masques
+        ModuleToggle.objects.create(
+            company=self.company, module='taches', actif=False)
+        masques = event_types_masques(self.company)
+        for event_type in TYPES_TACHES:
+            with self.subTest(event_type=event_type):
+                self.assertEqual(EVENT_MODULE[event_type], 'taches')
+                self.assertEqual(EVENT_TYPE_MODULE[event_type.value], 'taches')
+                self.assertIn(event_type.value, masques)
+                self.assertIsNone(notify(
+                    self.user, event_type, 'Titre', company=self.company,
+                    respect_quiet_hours=False))
+        self.assertFalse(Notification.objects.filter(
+            event_type__startswith='taches_').exists())
