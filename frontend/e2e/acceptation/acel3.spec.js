@@ -111,6 +111,7 @@ passer(lundi, passages)
 res = dict(passages=passages, lundi={k: heures(x, lundi) for k, x in zip('abcd', tous)})
 passer(mardi, [h for h in passages if h != 8])
 res['mardi'] = {k: heures(x, mardi) for k, x in zip('abcd', tous)}
+res['a_lundi_utc'] = sorted(e.envoye_le.astimezone(datetime.timezone.utc).hour for e in EnvoiRapport.objects.filter(saved_report=a) if e.envoye_le.astimezone(TZ).date() == lundi)
 res['total'] = EnvoiRapport.objects.filter(saved_report__in=tous).count()
 passer(mardi, passages)
 res['total_apres_rejeu'] = EnvoiRapport.objects.filter(saved_report__in=tous).count()
@@ -135,9 +136,14 @@ sortie(res)`)
   await expect(page.getByText('Vide : 6 h ; de 0 à 5 h, part à 6 h.'), "aide du champ « Heure d'envoi »").toBeVisible({ timeout: 30_000 })
   // Table « Historique des envois », lue en heure de Casablanca : la ligne « non configuré » de A à 08:00 (lundi), puis 09:00 (mardi).
   const u = testInfo.project.use
+  // Fuseau d'affichage = celui qui rend « heure de Casablanca » pour CE serveur (l'ICU de Chromium et le tzdata du serveur
+  // peuvent différer sur le Maroc) : décalage = 8 h locales − heure UTC de la ligne de A du lundi.
+  const decalage = 8 - r.a_lundi_utc[0]
+  expect([0, 1], `décalage Casablanca/UTC du serveur (UTC de la ligne de A : ${J(r.a_lundi_utc)})`).toContain(decalage)
+  const fuseau = decalage === 0 ? 'UTC' : 'Etc/GMT-1'
   const ctx = await page.context().browser().newContext({
     baseURL: u.baseURL, storageState: await page.context().storageState(), serviceWorkers: 'block',
-    timezoneId: 'Africa/Casablanca', ...(u.locale ? { locale: u.locale } : {}), ...(u.viewport ? { viewport: u.viewport } : {}),
+    timezoneId: fuseau, ...(u.locale ? { locale: u.locale } : {}), ...(u.viewport ? { viewport: u.viewport } : {}),
   })
   apres.push(() => ctx.close())
   await page.close()
@@ -149,6 +155,8 @@ sortie(res)`)
   await p2.goto('/reporting/envois-programmes')
   const histo = p2.getByRole('table', { name: 'Historique des envois' })
   await expect(histo, 'table « Historique des envois »').toBeVisible({ timeout: 60_000 })
+  await expect(histo.getByRole('row').filter({ hasText: noms.a }), 'historique : 2 lignes de A').toHaveCount(2, { timeout: 60_000 })
+  console.log(`[ACEL31] lignes de A à l'écran (fuseau ${fuseau}) : ${J(await histo.getByRole('row').filter({ hasText: noms.a }).allInnerTexts())}`)
   const ligneA8 = histo.getByRole('row').filter({ hasText: noms.a }).filter({ hasText: /\b08:00\b/ })
   await expect(ligneA8, 'historique : la ligne de A à 08:00').toHaveCount(1, { timeout: 60_000 })
   await expect(ligneA8, "cette ligne est « non configuré » (aucune clé d'envoi sur le runner)").toContainText(/non configur/i)
