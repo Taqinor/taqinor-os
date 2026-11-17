@@ -20,7 +20,12 @@ class AilleursVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('ailleurs')))
     def get(self, request):
-        raise PasEncore()
+        # TCH56 (lane journee) : le service vit dans services/journee.py ; imports locaux pour ne
+        # toucher que ce corps de méthode (le reste du module appartient à la lane erp).
+        from rest_framework.response import Response
+
+        from apps.taches.services.journee import ailleurs
+        return Response(ailleurs(request.user))
 
 
 class LierActiviteVue(IdempotentCreateMixin, APIView):

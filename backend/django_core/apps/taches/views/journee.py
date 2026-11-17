@@ -1,18 +1,52 @@
 """Journée, rituels et pastille (reference/api.md §2, §3.1, §4).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
-schéma OpenAPI est celui de leur échantillon de `contract_samples/` (`forme_echantillon`).
+Routes déclarées : une vue pas encore construite lève `PasEncore` (501) ; le schéma OpenAPI de
+chaque route est celui de son échantillon de `contract_samples/` (`forme_echantillon`). Les vues
+construites lisent le jour (`?jour=`, défaut : aujourd'hui) et l'heure murale, puis délèguent tout à
+`services/journee.py`.
 """
+import datetime
+
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.taches.serializers.formes import TacheEcriteSerializer
-from apps.taches.views.base import PERMISSIONS, PasEncore, corps, forme_echantillon, parametre, reponses
+from apps.taches.services import journee as services
+from apps.taches.views.base import (
+    PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, parametre, reponses)
 from core.idempotency import IdempotentCreateMixin
 
 JOUR = parametre('jour', OpenApiTypes.DATE, 'Jour (AAAA-MM-JJ) ; défaut : aujourd\'hui.')
 TOUT = parametre('tout', OpenApiTypes.BOOL, '1 : « Voir toutes les tâches de mes projets ».')
+MESSAGE_DATE = 'Date attendue (AAAA-MM-JJ).'
+VRAI = ('1', 'true', 'oui')
+
+
+def date_de(valeur, champ):
+    """Une date AAAA-MM-JJ, ou 400 au champ nommé."""
+    try:
+        return datetime.date.fromisoformat(str(valeur))
+    except (TypeError, ValueError):
+        raise ValidationError({champ: [MESSAGE_DATE]})
+
+
+def jour_de(request, champ='jour'):
+    """`?jour=` (défaut : aujourd'hui, fuseau de la société)."""
+    texte = request.query_params.get(champ)
+    return date_de(texte, champ) if texte else timezone.localdate()
+
+
+def maintenant():
+    """Heure murale de la société."""
+    return timezone.localtime()
+
+
+def drapeau(request, champ):
+    return (request.query_params.get(champ) or '').lower() in VRAI
 
 
 class AujourdhuiVue(APIView):
@@ -22,7 +56,8 @@ class AujourdhuiVue(APIView):
 
     @extend_schema(parameters=[JOUR, TOUT], responses=reponses(forme_echantillon('aujourdhui'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        return Response(services.aujourdhui(request.user, jour_de(request), maintenant(),
+                                            tout=drapeau(request, 'tout'), assistant=est_assistant(request)))
 
 
 class BadgeVue(APIView):
@@ -32,7 +67,7 @@ class BadgeVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('badge')))
     def get(self, request):
-        raise PasEncore()
+        return Response(services.badge(request.user, timezone.localdate()))
 
 
 class VuVue(APIView):
@@ -43,7 +78,8 @@ class VuVue(APIView):
     @extend_schema(request=corps('Vu', {'ecran': 'aujourdhui'}),
                    responses=reponses(forme_echantillon('vu'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        heure = maintenant()
+        return Response(services.vu(request.user, heure.date(), heure))
 
 
 class PropositionJourneeVue(APIView):

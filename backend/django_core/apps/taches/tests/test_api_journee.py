@@ -346,3 +346,230 @@ class ObligationsTests(TestCase):
     def test_compte_sans_societe_rien(self):
         from types import SimpleNamespace
         self.assertEqual(sel.obligations_du_jour(SimpleNamespace(company_id=None, pk=1), J), sel.Obligations())
+
+
+# --- TCH56 : aujourdhui/, badge/, aujourdhui/ailleurs/, vu/ --------------------------------------
+
+def exemple(nom):
+    import json
+    from pathlib import Path
+    chemin = Path(__file__).resolve().parents[1] / 'contract_samples' / f'{nom}.json'
+    return json.loads(chemin.read_text(encoding='utf-8'))['exemple']
+
+
+CLES_ITEM = set(exemple('item'))
+
+
+def client_de(compte, **entetes):
+    from rest_framework.test import APIClient
+    client = APIClient(**entetes)
+    client.force_authenticate(compte)
+    return client
+
+
+def maintenant_a(heure, minute=0):
+    return timezone.localtime(a(J, heure, minute))
+
+
+class AujourdhuiTests(_Base):
+    """GET aujourdhui/ : la forme d'`aujourdhui.json`, la carte du moment, Proposé replié, 200 lignes."""
+
+    def scenario(self):
+        essentielle = self.tache(jour_prevu=J, estimation_minutes=60)
+        self.tache(jour_prevu=J)
+        self.tache(jour_prevu=J, moment='soir')
+        self.tache(jour_prevu=jours(-1))  # Proposé : retard
+        self.tache()  # Proposé : prochaine action
+        self.tache(jour_prevu=jours(-4), reports=3)  # À revoir
+        self.tache(jour_prevu=J, statut=StatutTache.EN_ATTENTE, en_attente_de='Lydec')
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 8))
+        ligne(fabriques.plan(self.u, J, planifie_le=a(J, 8, 40)), tache=essentielle, essentielle=True)
+
+    def get(self, **params):
+        params.setdefault('jour', J.isoformat())
+        reponse = client_de(self.u).get('/api/django/taches/aujourdhui/', params)
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.json()
+
+    def test_reponse_a_la_forme_de_l_echantillon(self):
+        self.scenario()
+        modele, rendu = exemple('aujourdhui'), self.get(tout='1')
+        self.assertEqual(list(rendu), list(modele))
+        for cle in ('objectif', 'progression', 'plan', 'propose', 'a_trier'):
+            self.assertEqual(set(rendu[cle]), set(modele[cle]), cle)
+        self.assertEqual(set(rendu['progression']['detail']), set(modele['progression']['detail']))
+        self.assertEqual(set(rendu['propose']['charge']), set(modele['propose']['charge']))
+        for section in ('essentiel', 'journee', 'ce_soir', 'a_decider', 'en_attente', 'faites'):
+            self.assertTrue(rendu[section], section)
+            for item in rendu[section]:
+                self.assertEqual(set(item), CLES_ITEM, section)
+        for item in rendu['propose']['pour_objectif']:
+            self.assertEqual(set(item), CLES_ITEM)
+            self.assertEqual(set(item['raison']), {'code', 'texte'})
+        groupe = rendu['propose']['suite_par_projet'][0]
+        self.assertEqual(set(groupe), set(modele['propose']['suite_par_projet'][0]))
+
+    def test_sections_et_mots(self):
+        self.scenario()
+        rendu = self.get()
+        self.assertTrue(rendu['essentiel'][0]['essentielle'])
+        self.assertTrue(rendu['essentiel'][0]['prevue_au_plan'])
+        self.assertEqual(rendu['a_decider'][0]['motif'], 'reportee_3_fois')
+        # N = 5 − 1 faite − 3 gardées ouvertes = 1 : ce qui presse (le retard) prend la place ;
+        # la prochaine action du projet attend dans la suite dépliée.
+        pour_objectif = rendu['propose']['pour_objectif']
+        self.assertEqual([item['raison'] for item in pour_objectif], [{'code': 'retard', 'texte': 'prévue hier'}])
+        self.assertIsNone(rendu['propose']['suite_par_projet'])
+        suite = self.get(tout='1')['propose']['suite_par_projet']
+        self.assertEqual(suite[0]['projet']['id'], self.projet.pk)
+        self.assertEqual(suite[0]['items'][0]['raison'],
+                         {'code': 'prochaine_action', 'texte': f'prochaine action de {self.projet.nom}'})
+        self.assertEqual(rendu['progression']['faites'], 1)
+        self.assertEqual(rendu['plan']['planifie_le'], timezone.localtime(a(J, 8, 40)).isoformat())
+
+    def test_jour_illisible_400_au_champ(self):
+        reponse = client_de(self.u).get('/api/django/taches/aujourdhui/', {'jour': '17/11/2026'})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('jour', reponse.json())
+
+    def test_propose_replie_apres_alleger(self):
+        self.tache()
+        fabriques.plan(self.u, J, planifie_le=a(J, 8), allege_le=a(J, 15))
+        propose = self.get()['propose']
+        self.assertTrue(propose['replie'])
+        self.assertEqual(propose['pour_objectif'], [])
+
+    def test_rendez_vous_vides_avant_les_agendas(self):
+        self.assertEqual(self.get()['rendez_vous'], [])
+
+    def test_200_lignes_au_plus(self):
+        for _ in range(205):
+            self.tache(jour_prevu=J)
+        rendu = self.get()
+        self.assertTrue(rendu['tronque'])
+        self.assertEqual(len(rendu['journee']), 200)
+
+    def test_requetes_constantes_en_nombre_de_taches(self):
+        """Une forme servie depuis des objets préchargés : pas une requête de plus par ligne."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self.tache(jour_prevu=J)
+        with CaptureQueriesContext(connection) as peu:
+            self.get()
+        for _ in range(12):
+            self.tache(jour_prevu=J, estimation_minutes=30)
+            self.tache()
+        with CaptureQueriesContext(connection) as beaucoup:
+            self.get()
+        self.assertEqual(len(beaucoup), len(peu))
+
+    def test_assistant_ne_lit_aucun_nom_confidentiel(self):
+        secret = fabriques.projet(self.u, nom='Rachat Dupont', confidentiel=True)
+        self.tache(projet=secret, jour_prevu=J, titre='Signer la promesse')
+        reponse = client_de(self.u).get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()},
+                                        HTTP_X_TAQINOR_ASSISTANT='1')
+        corps = reponse.content.decode('utf-8')
+        self.assertNotIn('Rachat Dupont', corps)
+        self.assertNotIn('Signer la promesse', corps)
+
+
+class CarteDuMomentTests(_Base):
+    """regles.md « La carte du moment » : une carte, la première vraie dans l'ordre."""
+
+    def carte(self, heure=9, minute=12):
+        from apps.taches.services import journee as services
+        return services.aujourdhui(self.u, J, maintenant_a(heure, minute))['carte_du_moment']
+
+    def test_garder_tant_que_rien_n_est_garde(self):
+        self.tache()
+        self.assertEqual(self.carte(), {'type': 'garder', 'proposition': None, 'donnees': {'n': 1, 'objectif': 5}})
+
+    def test_rythme_a_la_forme_de_l_echantillon(self):
+        from apps.taches.models.rythme import IncitationCoach
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=J, type='proposition_palier',
+                                       cle='monter', canal='ecran', donnees={'N': 5, 'N1': 6, 'tenus': 7},
+                                       expire_le=jours(7))
+        carte, modele = self.carte(), exemple('carte_du_moment')
+        self.assertEqual(set(carte), set(modele))
+        self.assertEqual(set(carte['proposition']), set(modele['proposition']))
+        self.assertEqual(carte['proposition']['texte'], modele['proposition']['texte'])
+        self.assertEqual(carte['proposition']['boutons'], modele['proposition']['boutons'])
+
+    def test_faire_bilan_le_soir(self):
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+
+    def test_bilan_d_hier_avant_midi_seulement(self):
+        self.tache(jour_prevu=jours(-1))
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.assertEqual(self.carte(9)['donnees'], {'jour': jours(-1).isoformat()})
+        self.assertIsNone(self.carte(12, 5))
+
+    def test_alleger_l_apres_midi(self):
+        self.tache(jour_prevu=J)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.assertEqual(self.carte(15, 30), {'type': 'alleger', 'proposition': None,
+                                              'donnees': {'faites': 0, 'prevues': 1}})
+
+
+class BadgeEtVuTests(_Base):
+    def test_badge(self):
+        self.tache(jour_prevu=timezone.localdate())
+        rendu = client_de(self.u).get('/api/django/taches/badge/').json()
+        self.assertEqual(set(rendu), set(exemple('badge')))
+        self.assertEqual(rendu, {'n': 1, 'jour': timezone.localdate().isoformat()})
+
+    def test_vu_sans_reglages_n_ecrit_rien(self):
+        from apps.taches.models.journee import PlanJour
+        reponse = client_de(self.u).post('/api/django/taches/vu/', {'ecran': 'aujourdhui'}, format='json')
+        self.assertEqual(reponse.json(), {'carte_du_moment': None})
+        self.assertFalse(PlanJour.objects.filter(proprietaire=self.u).exists())
+
+    def test_vu_pose_l_ouverture(self):
+        from apps.taches.models.journee import PlanJour
+        fabriques.reglages(self.u)
+        client_de(self.u).post('/api/django/taches/vu/', {'ecran': 'aujourdhui'}, format='json')
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=timezone.localdate())
+        self.assertIsNotNone(plan.app_ouverte_le)
+
+    def test_carte_de_retour(self):
+        from apps.taches.services import journee as services
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, jours(-10), app_ouverte_le=a(jours(-10), 9))
+        self.tache(jour_prevu=jours(-5))
+        self.tache(jour_prevu=jours(-2))
+        carte = services.vu(self.u, J, maintenant_a(9))['carte_du_moment']
+        modele = exemple('vu')['carte_du_moment']
+        self.assertEqual(set(carte), set(modele))
+        self.assertEqual(set(carte['proposition']), set(modele['proposition']))
+        self.assertEqual(carte['proposition']['texte'], 'Tu reviens après 10 jours : 2 tâches attendaient.')
+        self.assertEqual(carte['proposition']['boutons'], modele['proposition']['boutons'])
+        # une fois par retour : rejouer vu/ ne crée rien de plus
+        services.vu(self.u, J, maintenant_a(10))
+        from apps.taches.models.rythme import IncitationCoach
+        self.assertEqual(IncitationCoach.objects.filter(proprietaire=self.u, type='retour').count(), 1)
+        self.assertTrue(services.aujourdhui(self.u, J, maintenant_a(10))['progression']['reprise'])
+
+    def test_pas_de_retour_apres_un_jour(self):
+        from apps.taches.services import journee as services
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, jours(-1), app_ouverte_le=a(jours(-1), 9))
+        self.tache(jour_prevu=jours(-1))
+        self.assertIsNone(services.vu(self.u, J, maintenant_a(9))['carte_du_moment'])
+
+
+class AilleursTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.societe = fabriques.societe('a')
+        cls.u = compte_erp(cls.societe, 'tech', [])
+
+    def test_forme_et_chantier_assigne(self):
+        from apps.installations.models import Installation
+        Installation.objects.create(company=self.societe, reference='INS-T-0001', technicien_responsable=self.u)
+        rendu = client_de(self.u).get('/api/django/taches/aujourdhui/ailleurs/').json()
+        self.assertEqual(set(rendu), set(exemple('ailleurs')))
+        self.assertEqual(rendu['chantiers'], 1)
+        self.assertEqual(rendu['lien'], '/activites')
