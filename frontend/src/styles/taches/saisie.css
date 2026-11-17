@@ -1,3 +1,23 @@
 /* Tâches — zone « saisie » (TCH41) : Feuille de saisie, aperçu d'une liste collée, fiche d'une tâche (TCH82-TCH85).
    Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
    couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+
+/* TCH82 — champ de saisie : un <textarea> natif (iPhone), 16 px mini pour que Safari ne zoome pas */
+.tch .champ-saisie { display: flex; flex-direction: column; gap: 10px; }
+.tch .saisie-champ {
+  display: block; width: 100%; min-height: 56px; padding: 4px 0; border: 0; border-radius: 0; resize: none;
+  background: transparent; color: var(--tch-texte); font: inherit; font-size: 1.0625rem; line-height: 1.6;
+  caret-color: var(--tch-accent); outline: none;
+}
+.tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
+.tch .puces.saisie { margin-top: 2px; }
+.tch .erreur-champ { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
+.tch .alertes-saisie {
+  margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
+  font-size: 0.8125rem; color: var(--tch-texte-doux);
+}
+.tch .feuille-saisie { display: flex; flex-direction: column; gap: 12px; }
+.tch .champ-etiquette { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.tch .champ-etiquette > span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .aide-champ { margin: 4px 0 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .selecteur-quand { margin-top: 4px; }

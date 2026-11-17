@@ -1,0 +1,159 @@
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { ReactReduxContext } from 'react-redux'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { reinitialiserGestes } from '../lib/gestes'
+import { ZoneAnnonces } from '../coquille/CoquilleTaches'
+import FeuilleSaisie, { cleBrouillon, lireBrouillon, messageChamps } from './FeuilleSaisie'
+
+const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn() }))
+vi.mock('../../../api/tachesApi', async (importOriginal) => ({
+  ...(await importOriginal()),
+  saisieRapide: mocks.saisieRapide,
+  annulerGeste: mocks.annulerGeste,
+}))
+
+/* TCH82 — Feuille de saisie : puces lues (retirables), « Nouveau projet » et sa priorité, Entrée
+   envoie, erreur SOUS le champ, brouillon rouvert identique et vidé à la déconnexion. Le client
+   répond avec les échantillons du contrat (`saisie_apercu.json`, `saisie_rapide.json`,
+   `erreurs.json`). */
+
+const apercu = exempleContrat('taches', 'saisie_apercu')
+const creation = exempleContrat('taches', 'saisie_rapide')
+const erreurs = exempleContrat('taches', 'erreurs')
+const CLE = cleBrouillon(7, 42)
+const PHRASE = 'Appeler Karim demain #SiteWeb'
+
+const store = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+const monter = (props = {}) => {
+  const onFermer = vi.fn()
+  const rendu = render(
+    <ReactReduxContext.Provider value={{ store }}>
+      <div className="tch"><FeuilleSaisie ouverte onFermer={onFermer} {...props} /><ZoneAnnonces /></div>
+    </ReactReduxContext.Provider>,
+  )
+  const rouvrir = (ouverte) => rendu.rerender(
+    <ReactReduxContext.Provider value={{ store }}>
+      <div className="tch"><FeuilleSaisie ouverte={ouverte} onFermer={onFermer} /></div>
+    </ReactReduxContext.Provider>,
+  )
+  return { onFermer, rouvrir, ...rendu }
+}
+
+const champ = () => screen.getByRole('textbox', { name: 'Ajouter une tâche' })
+const erreurHttp = (data, status = 400) => Object.assign(new Error('http'), { response: { status, data } })
+
+beforeEach(() => {
+  window.localStorage.clear()
+  mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? apercu : creation }))
+  mocks.annulerGeste.mockResolvedValue({ data: {} })
+})
+afterEach(() => {
+  vi.clearAllMocks()
+  reinitialiserGestes()
+})
+
+describe('TCH82 — feuille de saisie', () => {
+  it('donne le focus au champ et lit la phrase en puces, chacune retirable (le mot reste dans le titre)', async () => {
+    const user = userEvent.setup()
+    monter()
+    await waitFor(() => expect(champ()).toHaveFocus())
+    expect(champ()).toHaveAttribute('placeholder', 'Ajouter une tâche… demain, 10 h, #projet, !!')
+    await user.type(champ(), PHRASE)
+    expect(champ()).toHaveValue(PHRASE)
+    expect(await screen.findByText('mer. 18 nov.', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText('Nouveau projet : SiteWeb')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Moyenne' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Retirer mer. 18 nov.' }))
+    await waitFor(() => {
+      const dernier = mocks.saisieRapide.mock.calls.at(-1)[0]
+      expect(dernier.ignorer).toEqual([{ type: 'jour', source: 'demain' }])
+    })
+    expect(champ()).toHaveValue(PHRASE)
+  })
+
+  it('« Ajouter » envoie la ligne lue (Entrée aussi, voir plus bas), avec la priorité choisie du nouveau projet, puis ferme et vide', async () => {
+    const user = userEvent.setup()
+    const { onFermer } = monter()
+    await user.type(champ(), PHRASE)
+    await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
+    await user.click(screen.getByRole('radio', { name: 'Haute' }))
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+
+    const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
+    expect(envoi.lignes).toHaveLength(1)
+    expect(envoi.lignes[0]).toMatchObject({
+      index: 0, titre: 'Appeler Karim', jour_prevu: '2026-11-18', nouveau_projet: { nom: 'SiteWeb', priorite: 3 },
+    })
+    expect(envoi.lignes[0].client_id).toMatch(/:0$/)
+    // la phrase est partie : plus de brouillon, toast « Ajoutée · Annuler »
+    expect(lireBrouillon(7, 42)).toBeNull()
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent('Ajoutée')
+    expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+  })
+
+  it('une erreur du serveur s\'affiche SOUS le champ, et ce qui est tapé reste intact', async () => {
+    const user = userEvent.setup()
+    mocks.saisieRapide.mockImplementation((corps) => (corps.apercu
+      ? Promise.resolve({ data: apercu })
+      : Promise.reject(erreurHttp(erreurs.par_ligne))))
+    const { onFermer } = monter()
+    await user.type(champ(), PHRASE)
+    await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
+    await user.keyboard('{Enter}')
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('Le titre est vide une fois la date et le projet retirés.')
+    expect(champ()).toHaveAttribute('aria-invalid', 'true')
+    expect(champ().getAttribute('aria-describedby')).toBe(alerte.id)
+    expect(champ()).toHaveValue(PHRASE)
+    expect(onFermer).not.toHaveBeenCalled()
+    expect(lireBrouillon(7, 42).texte).toBe(PHRASE)
+  })
+
+  it('brouillon : fermée puis rouverte, la phrase est identique ; une nouvelle feuille la relit', async () => {
+    const user = userEvent.setup()
+    const { rouvrir, unmount } = monter()
+    await user.type(champ(), 'Relancer l\'imprimeur jeudi')
+    rouvrir(false)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.localStorage.getItem(CLE)).toContain('Relancer l\'imprimeur jeudi')
+    rouvrir(true)
+    expect(champ()).toHaveValue('Relancer l\'imprimeur jeudi')
+    unmount()
+    monter()
+    expect(champ()).toHaveValue('Relancer l\'imprimeur jeudi')
+  })
+
+  it('la déconnexion vide le brouillon, à l\'écran et dans le stockage', async () => {
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Appeler le fournisseur')
+    expect(window.localStorage.getItem(CLE)).not.toBeNull()
+    act(() => { window.dispatchEvent(new Event('taqinor:auth-logout')) })
+    expect(champ()).toHaveValue('')
+    expect(window.localStorage.getItem(CLE)).toBeNull()
+  })
+
+  it('« Quand » : une tuile pose le jour, la puce le dit et le jour part avec la ligne', async () => {
+    const user = userEvent.setup()
+    const { onFermer } = monter()
+    await user.type(champ(), 'Appeler Karim')
+    await user.click(screen.getByRole('button', { name: 'Quand' }))
+    await user.click(screen.getByRole('radio', { name: 'En réserve' }))
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+    const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
+    expect(envoi.lignes[0]).toMatchObject({ quelque_jour: true, jour_prevu: null })
+  })
+
+  it('messageChamps lit le champ fautif, par ligne ou non', () => {
+    expect(messageChamps(erreurs.champ)).toBe('Projet inexistant.')
+    expect(messageChamps(erreurs.par_ligne)).toBe('Le titre est vide une fois la date et le projet retirés.')
+    expect(messageChamps(null)).toBe('')
+  })
+})
