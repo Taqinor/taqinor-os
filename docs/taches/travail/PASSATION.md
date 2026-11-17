@@ -104,7 +104,7 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `d51181d5e` (4 tours de corrections CI pliés ; tout est vert SAUF `e2e-shard (2)`). **63 des 64 tâches de la fusion 2 sont
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `56e527e7b` (5 tours de corrections CI pliés ; tout est vert SAUF `e2e-shard (2)`, en cours de correction). **63 des 64 tâches de la fusion 2 sont
   pliées et cochées** (115 tâches cochées sur 174 au total). Tout le code de la fusion 2 y est : serveur, écrans,
   raccords des deux côtés, semis, sécurité, plafonds, activation Administrateur seul, bout en bout Playwright.
 - Aucune lane en cours, aucune branche de lane non pliée. Rien d'important ne vit seulement sur le portable.
@@ -139,6 +139,22 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
   **N+1 probable à corriger**, lots répétés tâche + rappel + check-list), `projets/{id}/vue/` 20, `recherche/` 10.
 
 **Défauts connus à reprendre (aucun n'est en production)**
+- **Activation en production — établi par lecture du code (17/11)** : le module est ACTIF par défaut pour toute
+  société (pas de `ModuleToggle` à poser) ; `auto-deploy.sh` lance `init_roles`, qui réaligne le rôle système
+  « Administrateur » EXISTANT (donc `taches_voir` arrive seul au deploy) ; un compte portant ce rôle voit le module ;
+  un superutilisateur ou un compte hérité SANS rôle fin ne le voit pas (l'écran lit `role.permissions`). Seul geste
+  possible pour Reda : se donner le rôle « Administrateur » si son compte n'en a pas.
+- **À vérifier avant le merge** : `taches.nocturne` (03:00) parcourt TOUTES les sociétés actives où le module est
+  actif, donc toutes dès le premier soir ; s'assurer qu'elle n'écrit RIEN (ni `PlanJour`, ni carte, ni
+  `ReglagesRythme`) pour un compte qui n'a jamais utilisé le module (test à ajouter dans `tests/test_nocturne.py`).
+- **E2E restant rouge après le tour 5** (58 tests ; les écrans se montent) : (1) `taches-journee.spec.js` : « Garder
+  ces 4 » et « 0 sur 5 faites » introuvables — hypothèse : le compte `demo_admin` a déjà des activités ERP closes
+  du jour qui comptent dans « faites » (`selectors/journee.py`, `compte_faites`) et `tout-effacer` ne les touche
+  pas → rendre les specs indépendantes du compteur initial (lire N dans `aujourdhui/`) ; (2) `taches-saisie` :
+  « Coller encore » et « Fait » de la fiche « outside of the viewport » (feuille à faire défiler) ; (3) a11y :
+  `PlanifierSemaine.jsx` `.ag-pj` (`label-content-name-mismatch`), `recherche` à 390 px non examiné. La spec a11y
+  mesure désormais une cible par `max(boîte, ::after)` (zone étendue du design), seuil 44 px inchangé : à relire
+  lors de la relecture ergonomie (L3 n° 11).
 - **À VÉRIFIER AVANT DE DIRE À REDA « c'est activé » : son propre compte.** `taches_voir` est donné au RÔLE
   Administrateur ; un compte « hérité » (palier admin SANS rôle fin) ne l'a pas — c'est voulu (jamais de repli), et
   c'est ce qui a fait échouer les 57 specs e2e (`demo_admin` de `seed_demo` est un compte hérité → 403). Regarder en
