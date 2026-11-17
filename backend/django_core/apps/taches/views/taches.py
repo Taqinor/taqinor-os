@@ -12,7 +12,7 @@ from rest_framework import serializers
 from rest_framework.views import APIView
 
 from apps.taches.serializers.formes import (
-    EtiquetteCourteSerializer, ItemSerializer, TacheEcriteSerializer, TacheSerializer,
+    ItemSerializer, TacheEcriteSerializer, TacheSerializer,
 )
 from apps.taches.views.base import (
     ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, forme_echantillon, page_de, parametre,
@@ -40,9 +40,14 @@ REORDONNER = inline_serializer('TachesCorpsReordonner', {
 PROPRIETAIRE_ATTENDU = corps('ProprietaireAttendu', {'proprietaire_attendu': 7})
 ECRITE = reponses(TacheEcriteSerializer, erreurs=(400, 404))
 ECRITE_AVEC_COMPTE = reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=ERREUR_CODE)
+#: Toute écriture rend son `geste_id` (api.md §0), une étiquette ou une vue enregistrée comprise.
 VUE_ENREGISTREE = inline_serializer('TachesVueEnregistree', {
     'id': serializers.IntegerField(), 'nom': serializers.CharField(), 'rang': serializers.IntegerField(),
-    'filtres': serializers.DictField(),
+    'filtres': serializers.DictField(), 'geste_id': serializers.IntegerField(allow_null=True),
+})
+ETIQUETTE_ECRITE = inline_serializer('TachesEtiquetteEcrite', {
+    'id': serializers.IntegerField(), 'nom': serializers.CharField(), 'couleur': serializers.CharField(),
+    'geste_id': serializers.IntegerField(allow_null=True),
 })
 
 FILTRES_LISTE = [
@@ -362,7 +367,7 @@ class EtiquettesVue(APIView):
         raise PasEncore()
 
     @extend_schema(request=corps('Etiquette', {'nom': 'magasin', 'couleur': 'ciel'}, requis=('nom',)),
-                   responses=reponses(EtiquetteCourteSerializer, statut=201, erreurs=(400,)))
+                   responses=reponses(ETIQUETTE_ECRITE, statut=201, erreurs=(400,)))
     def post(self, request):
         raise PasEncore()
 
@@ -373,7 +378,7 @@ class EtiquetteVue(APIView):
     permission_classes = PERMISSIONS
 
     @extend_schema(request=corps('EtiquettePatch', {'nom': 'magasin', 'couleur': 'ciel'}),
-                   responses=reponses(EtiquetteCourteSerializer, erreurs=(400, 404)))
+                   responses=reponses(ETIQUETTE_ECRITE, erreurs=(400, 404)))
     def patch(self, request, id):
         raise PasEncore()
 
