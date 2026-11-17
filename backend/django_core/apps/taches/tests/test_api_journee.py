@@ -249,3 +249,100 @@ class ObjectifEtCapaciteTests(_Base):
 
     def test_capacite_par_defaut(self):
         self.assertEqual(sel.capacite_du_jour(self.u, J, None, {}, frozenset()), (240, 'defaut'))
+
+
+# --- TCH55 : obligations du jour, sur de vraies lignes des apps ERP ------------------------------
+
+def compte_erp(societe, nom, permissions):
+    """Fabrique locale : un compte interne dont le rôle de test porte `permissions` (+ taches_voir)."""
+    from django.contrib.auth import get_user_model
+
+    from apps.roles.models import Role
+    role = Role.objects.create(company=societe, nom=f'Test ERP {nom}', permissions=['taches_voir', *permissions])
+    return get_user_model().objects.create_user(
+        username=f'{nom}@{societe.slug}', password=None, company=societe, role=role, first_name=nom)
+
+
+def lead(societe, owner, nom='Benali', prenom='Karim'):
+    from apps.crm.models import Lead
+    return Lead.objects.create(company=societe, nom=nom, prenom=prenom, owner=owner)
+
+
+def touche(societe, lead_, jour):
+    from apps.crm.models import RelanceEtape
+    return RelanceEtape.objects.create(company=societe, lead=lead_, cadence='contact', ordre=1,
+                                       canal=RelanceEtape.Canal.APPEL, libelle='Appeler', due_date=jour)
+
+
+class ObligationsTests(TestCase):
+    """donnees.md §5 `obligations_du_jour` : visites, interventions, touches ; famille en échec =
+    absente ; `peut_cloturer` fourni à ITEM."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.societe = fabriques.societe('a')
+        cls.admin = compte_erp(cls.societe, 'admin', ['crm_voir', 'visites_voir', 'roles_gerer'])
+        cls.collegue = compte_erp(cls.societe, 'collegue', ['crm_voir'])
+
+    def familles(self, obligations):
+        return [ligne['famille'] for ligne in obligations.lignes]
+
+    def test_admin_a_4_touches_dont_1_a_lui(self):
+        for owner in (self.admin, self.collegue, self.collegue, self.collegue):
+            touche(self.societe, lead(self.societe, owner), J)
+        obligations = sel.obligations_du_jour(self.admin, J)
+        touches = [ligne for ligne in obligations.lignes if ligne['famille'] == 'touches']
+        self.assertEqual(len(touches), 1)
+        self.assertEqual(touches[0]['nb'], 1)
+        self.assertEqual(touches[0]['url'], '/crm/relances')
+        self.assertEqual(touches[0]['titre'], 'Suivi des relances')
+
+    def test_aucune_touche_aucune_ligne(self):
+        self.assertNotIn('touches', self.familles(sel.obligations_du_jour(self.admin, J)))
+
+    def test_touches_sans_crm_voir_absentes(self):
+        seul = compte_erp(self.societe, 'seul', [])
+        touche(self.societe, lead(self.societe, seul), J)
+        self.assertEqual(sel.obligations_du_jour(seul, J).lignes, ())
+
+    def test_visite_du_jour_seulement(self):
+        from apps.visites.models import VisiteTerrain
+        du_jour = VisiteTerrain.objects.create(company=self.societe, lead=lead(self.societe, self.admin),
+                                               commercial=self.admin, date_prevue=J)
+        VisiteTerrain.objects.create(company=self.societe, lead=lead(self.societe, self.admin, nom='Alaoui'),
+                                     commercial=self.admin, date_prevue=jours(3))
+        visites = [ligne for ligne in sel.obligations_du_jour(self.admin, J).lignes if ligne['famille'] == 'visite']
+        self.assertEqual(visites, [{'famille': 'visite', 'id': du_jour.pk, 'titre': 'Visite — Karim Benali',
+                                    'jour': J.isoformat(), 'url': '/visites'}])
+
+    def test_visite_d_un_collegue_absente(self):
+        from apps.visites.models import VisiteTerrain
+        VisiteTerrain.objects.create(company=self.societe, lead=lead(self.societe, self.collegue),
+                                     commercial=self.collegue, date_prevue=J)
+        self.assertNotIn('visite', self.familles(sel.obligations_du_jour(self.admin, J)))
+
+    def test_intervention_du_jour(self):
+        from apps.installations.models import Installation, Intervention
+        chantier = Installation.objects.create(company=self.societe, reference='INS-T-0042')
+        Intervention.objects.create(company=self.societe, installation=chantier, type_intervention='pose',
+                                    technicien=self.admin, date_prevue=timezone.localdate())
+        interventions = [ligne for ligne in sel.obligations_du_jour(self.admin, J).lignes
+                         if ligne['famille'] == 'intervention']
+        self.assertEqual(len(interventions), 1)
+        self.assertEqual(interventions[0]['url'], f'/chantiers?id={chantier.pk}')
+
+    def test_famille_en_echec_absente_les_autres_servies(self):
+        from unittest import mock
+        touche(self.societe, lead(self.societe, self.admin), J)
+        with mock.patch('apps.crm.selectors.relance_etapes_dues', side_effect=RuntimeError('panne')):
+            obligations = sel.obligations_du_jour(self.admin, J)
+        self.assertEqual(obligations.echecs, ('touches',))
+        self.assertNotIn('touches', self.familles(obligations))
+
+    def test_peut_cloturer_est_la_regle_de_records(self):
+        from apps.records.selectors import peut_cloturer_activites
+        self.assertEqual(sel.obligations_du_jour(self.admin, J).peut_cloturer, peut_cloturer_activites(self.admin))
+
+    def test_compte_sans_societe_rien(self):
+        from types import SimpleNamespace
+        self.assertEqual(sel.obligations_du_jour(SimpleNamespace(company_id=None, pk=1), J), sel.Obligations())

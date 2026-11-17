@@ -14,12 +14,14 @@ aucune règle n'est réécrite ici :
 Heure murale (invariant 14) : `fait_le` et `created_at` sont lus à l'heure locale de la société.
 """
 import datetime
+import logging
 from dataclasses import dataclass, field
 
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.taches.choix import ClePreference, Moment, SectionJournee, StatutProjet, StatutTache
+from apps.taches.choix import (
+    ClePreference, FamilleObligation, Moment, SectionJournee, StatutProjet, StatutTache)
 from apps.taches.confidentialite import est_confidentielle
 from apps.taches.models.journee import PlanJour
 from apps.taches.models.projets import RevueProjet
@@ -28,6 +30,8 @@ from apps.taches.moteur import classement
 from apps.taches.moteur.rythme import EtatRythme, compte_du_jour, objectif_affiche
 from apps.taches.serializers.formes import FREQUENCES_ROUTINE
 from apps.taches.selectors.base import jours_travailles_de, taches_de
+
+logger = logging.getLogger(__name__)
 
 TACHE = classement.TACHE
 ACTIVITE = classement.ACTIVITE
@@ -377,3 +381,91 @@ def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minute
         'activites_closes': detail.get('activites_closes', 0), 'activites': len(activites),
         'reprise': bool(reprise),
     }
+
+
+# --- Les obligations du jour (donnees.md §5 `obligations_du_jour`, TCH55) ------------------------
+
+#: Adresse de chaque famille quand la source n'en donne pas (spec-6a §3.5 ; textes.md §2.2).
+URL_VISITES = '/visites'
+URL_RELANCES = '/crm/relances'
+TITRE_TOUCHES = 'Suivi des relances'
+#: Familles servies, dans leur ordre d'affichage. `pose` (`reporting.calendar.evenements_assignes`)
+#: n'existe pas encore dans le dépôt : la famille est absente tant qu'il manque (dit au rapport).
+FAMILLES_LUES = (FamilleObligation.VISITE, FamilleObligation.INTERVENTION, FamilleObligation.TOUCHES)
+KIND_INTERVENTION = 'intervention_du_jour'
+
+
+@dataclass(frozen=True)
+class Obligations:
+    """Les obligations ERP du jour : lignes (forme d'`aujourdhui.json` « obligations »), familles en
+    échec (absentes, jamais une erreur à l'écran) et `peut_cloturer` des activités ERP."""
+    lignes: tuple = ()
+    echecs: tuple = ()
+    peut_cloturer: bool = False
+
+
+def _obligation(famille, id, titre, jour, url, **extra):
+    return {'famille': str(famille), 'id': id, 'titre': titre, 'jour': jour.isoformat(), 'url': url, **extra}
+
+
+def _visites(user, jour):
+    """Visites DU JOUR dont `user` est le commercial (`visites.selectors`), si `visites_voir`."""
+    if not user.has_erp_permission('visites_voir'):
+        return []
+    from apps.visites.selectors import ma_journee_du_commercial
+    journee = ma_journee_du_commercial(user.company, user, aujourdhui=jour)
+    return [_obligation(FamilleObligation.VISITE, v['id'], f"Visite — {v['lead_nom']}", jour, URL_VISITES)
+            for v in journee['visites'] if v['date_prevue'] == jour.isoformat()]
+
+
+def _interventions(user, jour):
+    """Interventions du jour (ou en retard) de `user` (`installations.selectors.affectations_pour`) ;
+    le titre est celui que l'ERP donne à la ligne."""
+    from apps.installations.selectors import affectations_pour
+    return [_obligation(FamilleObligation.INTERVENTION, None, item['title'], jour, item.get('link'))
+            for item in affectations_pour(user) if item.get('kind') == KIND_INTERVENTION]
+
+
+def _touches(user, jour):
+    """« Suivi des relances : n » — touches dues aujourd'hui + en retard dont `user` est le
+    responsable (`owner=user` : un admin ne compte pas l'équipe), si `crm_voir`."""
+    if not user.has_erp_permission('crm_voir'):
+        return []
+    from apps.crm.selectors import relance_etapes_dues
+    du_jour = relance_etapes_dues(user.company, user, scope='today', owner=user, today=jour).count()
+    en_retard = relance_etapes_dues(user.company, user, scope='overdue', owner=user, today=jour).count()
+    if du_jour + en_retard == 0:
+        return []
+    return [_obligation(FamilleObligation.TOUCHES, None, TITRE_TOUCHES, jour, URL_RELANCES,
+                        nb=du_jour + en_retard, en_retard=en_retard)]
+
+
+_LECTEURS = {
+    FamilleObligation.VISITE: _visites,
+    FamilleObligation.INTERVENTION: _interventions,
+    FamilleObligation.TOUCHES: _touches,
+}
+
+
+def _peut_cloturer(user):
+    from apps.records.selectors import peut_cloturer_activites
+    try:
+        return bool(peut_cloturer_activites(user))
+    except Exception:  # noqa: BLE001 — une source ERP en échec ne casse jamais la journée
+        logger.warning('taches : peut_cloturer illisible pour le compte %s', user.pk, exc_info=True)
+        return False
+
+
+def obligations_du_jour(user, jour):
+    """Obligations ERP du jour de `user` (lecture seule, par les seules portes publiques des apps) ;
+    une famille dont la source lève est ABSENTE et nommée dans `echecs`."""
+    if getattr(user, 'company_id', None) is None:
+        return Obligations()
+    lignes, echecs = [], []
+    for famille in FAMILLES_LUES:
+        try:
+            lignes.extend(_LECTEURS[famille](user, jour))
+        except Exception:  # noqa: BLE001 — famille en échec = absente (spec-6a §3.5)
+            logger.warning('taches : famille %s illisible pour le compte %s', famille, user.pk, exc_info=True)
+            echecs.append(str(famille))
+    return Obligations(lignes=tuple(lignes), echecs=tuple(echecs), peut_cloturer=_peut_cloturer(user))
