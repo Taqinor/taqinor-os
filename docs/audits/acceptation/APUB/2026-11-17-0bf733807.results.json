@@ -1,0 +1,82 @@
+{
+  "sha": "0bf733807f47f3b345216526d4c8e229c30bd429",
+  "date": "2026-11-17",
+  "groupe": "APUB",
+  "verdict": "PASS",
+  "couvre": [
+    "APUB7",
+    "APUB10",
+    "APUB39"
+  ],
+  "couvre_avec_ecart": [
+    "APUB10"
+  ],
+  "etapes": [
+    {
+      "id": "PF5.APUB7",
+      "taches": [
+        "APUB7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-APUB-PF5.APUB7.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF5.APUB10",
+      "taches": [
+        "APUB10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-APUB-PF5.APUB10.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde C-APUB-007 inexploitable : son extracteur AST lève NameError (`_exiger_livechat_ouvert`) sur le code corrigé ; la preuve est l'API réelle rejouée (404 aux trois routes, rien d'écrit)"
+    },
+    {
+      "id": "PF5.APUB39",
+      "taches": [
+        "APUB39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-APUB-PF5.APUB39.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

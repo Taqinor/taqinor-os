@@ -160,7 +160,7 @@ jobs:
           done
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
-          npx playwright test --project=acceptation e2e/acceptation/aerr10.spec.js e2e/acceptation/apub3.spec.js e2e/acceptation/atst2.spec.js
+          npx playwright test --project=acceptation e2e/acceptation/aerr11.spec.js
       - name: Queue des journaux gunicorn (diagnostic)
         if: ${{ !cancelled() }}
         run: |
