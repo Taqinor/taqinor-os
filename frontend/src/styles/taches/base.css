@@ -180,7 +180,8 @@
 @media (min-width: 768px) {
   .tch .ligne {
     margin: 0 8px; border-radius: 10px;
-    padding: 11px 16px 11px calc(16px - (var(--tch-cible) - var(--tch-case)) / 2);
+    /* à droite : la place du bouton « Actions » (au survol, il se pose sur le bord) — l'étoile ne passe jamais dessous */
+    padding: 11px calc(var(--tch-cible) + 16px) 11px calc(16px - (var(--tch-cible) - var(--tch-case)) / 2);
   }
   .tch .ligne:has(.meta) {
     padding-block: 8px;

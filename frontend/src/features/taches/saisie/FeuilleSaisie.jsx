@@ -269,6 +269,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
       setErreur(frenchError(err))
       return
     }
+    ecrireBrouillon(cle, null)
     remettreAZero()
     onFermer?.()
     proposerAnnuler({ message: TOAST_EN_FILE, annonce: ANNONCE_EN_FILE })
@@ -283,6 +284,8 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
       const { data } = await saisieRapide({ lignes, apercu: false }, { cle: cid })
       const n = data?.creees?.length ?? lignes.length
       const geste = data?.geste_id
+      // le brouillon part AVANT les événements : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas le revoir
+      ecrireBrouillon(cle, null)
       remettreAZero()
       onFermer?.()
       window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
