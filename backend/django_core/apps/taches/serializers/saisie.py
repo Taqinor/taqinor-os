@@ -26,6 +26,7 @@ from apps.taches.saisie.grammaire import ProjetConnu
 from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, projets_de, sections_de, taches_de,
 )
+from apps.taches.selectors.journee import progression_courante
 from apps.taches.serializers.formes import (
     ItemSerializer, ProjetSerializer, TacheEcriteSerializer, TacheSerializer, charger_taches, contexte,
     projet_court, tache_ecrite,
@@ -460,13 +461,15 @@ class ReordonnerElementEntreeSerializer(serializers.Serializer):
 def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, projet_cree=None,
                    rappel=None, question_titres=False, avertissements=()):
     """La TACHE_ECRITE d'une écriture : `tache` relue et chargée (aucune requête par ligne), + `suivante`
-    (occurrence née), `rappel` posé, `geste_id`."""
+    (occurrence née), `rappel` posé, `progression` du jour (`selectors.journee.progression_courante`),
+    `geste_id`."""
     pks = [tache.pk] + ([suivante.pk] if suivante is not None else [])
     chargees = {t.pk: t for t in taches_chargees(user, pks)}
     instance = tache_ecrite(
         chargees[tache.pk], suivante=chargees.get(suivante.pk) if suivante is not None else None,
         projet_cree=projet_cree, rappel=rappel, question_titres=question_titres,
-        avertissements=avertissements, geste_id=geste.pk if geste is not None else None)
+        avertissements=avertissements, progression=progression_courante(user, timezone.localdate()),
+        geste_id=geste.pk if geste is not None else None)
     return TacheEcriteSerializer(instance, context=contexte(assistant=assistant)).data
 
 

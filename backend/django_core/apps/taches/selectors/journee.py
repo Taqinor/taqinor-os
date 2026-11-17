@@ -21,11 +21,12 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.taches.choix import (
-    ClePreference, FamilleObligation, Moment, SectionJournee, StatutProjet, StatutTache)
+    CanalIncitation, ClePreference, FamilleObligation, Moment, SectionJournee, StatutProjet, StatutTache,
+    TypeIncitationEcran)
 from apps.taches.confidentialite import est_confidentielle
-from apps.taches.models.journee import PlanJour
+from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.projets import RevueProjet
-from apps.taches.models.rythme import Preference, ReglagesRythme
+from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import classement
 from apps.taches.moteur.rythme import EtatRythme, compte_du_jour, objectif_affiche
 from apps.taches.serializers.formes import FREQUENCES_ROUTINE
@@ -192,6 +193,16 @@ def plan_du_jour(user, jour):
 def lignes_du_plan(plan):
     """Les lignes d'un plan (une requête ; aucune sans plan)."""
     return list(plan.ligneplanjour_set.all()) if plan is not None else []
+
+
+def lignes_de_taches_du_jour(user, jour):
+    """`{tache_id: LignePlanJour}` du plan de `user` au `jour` — UNE requête, plan absent = vide. Sert
+    `essentielle` / `prevue_au_plan` d'un ITEM rendu hors de la journée (projet, revue)."""
+    if getattr(user, 'company_id', None) is None or getattr(user, 'pk', None) is None:
+        return {}
+    lignes = LignePlanJour.objects.filter(company_id=user.company_id, plan__proprietaire=user, plan__jour=jour,
+                                          tache__isnull=False)
+    return {ligne.tache_id: ligne for ligne in lignes}
 
 
 def lundi_de(jour):
@@ -381,6 +392,31 @@ def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minute
         'activites_closes': detail.get('activites_closes', 0), 'activites': len(activites),
         'reprise': bool(reprise),
     }
+
+
+def reprise_du_jour(user, jour):
+    """Le jour `jour` est-il une « Reprise » (carte `retour` du jour, répondue ou non, encore vivante) ?
+    Même lecture que la carte du moment d'`aujourdhui/` (une requête)."""
+    vivante = Q(expire_le__isnull=True) | Q(expire_le__gte=jour)
+    return (_du_compte(IncitationCoach, user).filter(canal=CanalIncitation.ECRAN, jour=jour,
+                                                     type=TypeIncitationEcran.RETOUR)
+            .filter(vivante).exists())
+
+
+def progression_courante(user, jour):
+    """La PROGRESSION de `user` au `jour` telle qu'`aujourdhui/` la rendrait — servie par toute
+    TACHE_ECRITE (cocher, reporter, planifier, créer…) pour que l'écran recale sa ligne sans relire la
+    journée. Même calcul (`progression_du_jour` sur la journée lue, `compte_faites`, `capacite_du_jour`,
+    rendez-vous, reprise) ; un nombre CONSTANT de requêtes, quel que soit le nombre de tâches."""
+    reglages = reglages_de(user)
+    travailles = travailles_autour(user, jour)
+    journee = lire_journee(user, jour, reglages=reglages, travailles=travailles)
+    compte, detail = compte_faites(user, jour)
+    capacite = capacite_du_jour(user, jour, reglages, preferences_de(user), travailles)
+    rendez_vous, _libelles = rendez_vous_pour(user, jour, jour)
+    return progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite,
+                               rendez_vous_minutes=minutes_de_rendez_vous(user, jour, rendez_vous),
+                               reprise=reprise_du_jour(user, jour))
 
 
 # --- Les obligations du jour (donnees.md §5 `obligations_du_jour`, TCH55) ------------------------

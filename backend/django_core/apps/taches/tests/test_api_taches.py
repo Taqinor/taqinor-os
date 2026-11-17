@@ -561,6 +561,31 @@ class TerminerTests(BaseApi):
         self.assertIsNone(reponse.json()['suivante'])
         self.assertEqual(GesteAnnulable.objects.get(pk=reponse.json()['geste_id']).message, 'Faite')
 
+    def test_cocher_rend_la_progression_du_jour(self):
+        """La TACHE_ECRITE porte la PROGRESSION d'`aujourdhui/` (plus jamais `null`)."""
+        projet = fabriques.projet(self.u1)
+        tache = fabriques.tache(self.u1, projet=projet, jour_prevu=_j())
+        fabriques.tache(self.u1, projet=projet, jour_prevu=_j())
+        progression = self._terminer(tache).json()['progression']
+        self.assertEqual(list(progression), list(exemple('tache_ecrite')['progression']))
+        self.assertEqual((progression['faites'], progression['prevues']), (1, 2))
+        self.assertFalse(progression['reprise'])
+
+    def test_la_progression_ne_coute_pas_une_requete_par_tache(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        projet = fabriques.projet(self.u1)
+        premiere, deuxieme, troisieme = (fabriques.tache(self.u1, projet=projet, jour_prevu=_j()) for _ in range(3))
+        self._terminer(premiere)  # chauffe les caches (agendas externes, fenêtre de travail)
+        with CaptureQueriesContext(connection) as peu:
+            self._terminer(deuxieme)
+        autre = fabriques.projet(self.u1)
+        for _ in range(10):
+            fabriques.tache(self.u1, projet=autre, jour_prevu=_j(), estimation_minutes=30)
+        with CaptureQueriesContext(connection) as beaucoup:
+            self._terminer(troisieme)
+        self.assertEqual(len(beaucoup), len(peu))
+
     def test_cocher_deux_fois_ne_change_rien(self):
         tache = fabriques.tache(self.u1)
         premier = self._terminer(tache).json()

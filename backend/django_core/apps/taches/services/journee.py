@@ -648,7 +648,8 @@ def marquer_essentielle(user, tache_id, essentielle, maintenant):
                          prevue_au_plan=plan.planifie_le is None)
         geste = enregistrer_geste(user, 'essentiel', 'Essentielle', ops) if ops else None
     tache = charger_taches(taches_de(user).filter(pk=tache.pk)).get()
-    return tache_ecrite(tache, geste_id=geste.pk if geste else None)
+    return tache_ecrite(tache, progression=sel.progression_courante(user, jour),
+                        geste_id=geste.pk if geste else None)
 
 
 # --- « Alléger ma journée » (regles.md « Alléger ma journée », TCH58) ------------------------------
