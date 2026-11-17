@@ -72,3 +72,34 @@ les écarts qu'elles ont DÉCLARÉS dans leurs rapports. Elle sert de consigne �
 - Rendu réel iPhone 390 px clair/sombre contre les maquettes ; cibles 44 px ; clavier virtuel ; axe-core.
 - Tous les tests à base (la CI est leur première exécution).
 - IndexedDB réel pour la file hors ligne (tests en repli mémoire).
+
+## G. Ajouts après les lanes projets et rythme
+
+- `RYTHME.tenir` : l'échantillon ne montre que `null` ; le serveur rend `{reference, provisoire, fixee_le,
+  silence_jusquau}`. Compléter `contract_samples` et vérifier l'écran Mon rythme (TCH107) contre cette forme.
+- En-tête du Copilote : première ligne « Rythme : En faire plus · … » (textes.md) alors que `coach_entete.json`
+  dit « mode pousser » : aligner l'échantillon.
+- `bilan_semaine` : texte servi « Du lun. 9 au ven. 13 » (gabarit) différent de la phrase de l'échantillon : aligner.
+- Carte `retour` : « Remettre dans Proposé » lit `donnees.ids` : la journée (TCH56) doit stocker ces ids.
+- La nuit du rythme lit `statut_jour` et `compte_rythme` posés par `clore_jour_precedent` (TCH58) : vérifier l'ordre
+  d'appel dans `nocturne.executer`.
+- `ITEM.explication / essentielle / prevue_au_plan` dans vue/ et revue/ des projets : défauts tant que le calculateur
+  de la journée n'y est pas branché.
+- Faites du jour de l'en-tête : les activités ERP closes ne sont pas comptées (aucun sélecteur `records`).
+- PATCH `pauses_sollicitations` ne peut que retirer une pause : vérifier contre l'écran Réglages.
+- Sans `ReglagesRythme`, POST `rythme/` et PATCH `reglages/` répondent 404 : vérifier que le premier accès la crée
+  (sinon un compte neuf ne peut pas dire son objectif).
+- `GET projets/` sans `?statut` = actifs + en pause ; `statut=archive` = terminés ET archivés.
+- `decaler` sans `apercu` = aperçu ; « Tout effacer » réussi ferme et retourne à Aujourd'hui sans texte.
+- Réglages : agendas externes rangés dans Avancé en attendant « Mon iPhone » (fusion 3).
+- Coupe-circuit : `taches.nocturne` saute une société où `balayage_actif` est faux → ni purge de rétention ni
+  revérification des liens pour elle (la référence ne lie `balayage_actif` qu'au balayage des sollicitations) :
+  DÉCISION orchestrateur = séparer : la purge et la revérification tournent toujours pour une société où le module
+  est activé ; seul l'envoi de sollicitations obéit à `balayage_actif`.
+- Constats : pas de nouvelle carte tant que la dernière du même constat est ouverte ou répondue depuis < 28 jours.
+- Palette de commandes (TCH119) : seuls « Aujourd'hui » (g j) et « Créer une tâche » (c t) ; « Chercher dans mes
+  tâches », « Nouveau projet », « Faire le bilan » et les autres onglets restent à ajouter (`CommandPalette.jsx`).
+- Libellés sans source : « Valeur inconnue. », « Une étape « X » existe déjà. », « Ce projet est confidentiel :
+  l'assistant ne lit pas sa liste. », « Requis. », libellés des préférences (`ClePreference`).
+- Noms privés du moteur appelés par le service du rythme (`_apres_decision`, `_maj`, `_moyenne_plafonnee`,
+  `_essentiels_classes`) : à rendre publics.
