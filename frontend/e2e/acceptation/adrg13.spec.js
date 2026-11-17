@@ -6,7 +6,8 @@
 // Comptes d'essai aux rôles SYSTÈME du registre (`init_roles`, relus par leur nom dans la société démo), plus deux
 // rôles PERSONNALISÉS nommés par la preuve qu'ils rendent discriminante : « Responsable + prix_achat_voir » (ADRG142 :
 // « rejouée avec un rôle porteur du code et de stock_modifier » — aucun rôle système non administrateur ne porte
-// `prix_achat_voir`) et « Admin RH + ventes_voir » (ADRG73 : tableau chargé, seul le code d'export manque). Connexion
+// `prix_achat_voir`) et « Admin RH + ventes_voir + crm_voir » (ADRG73 : tableau chargé — ses cartes lisent ventes et pipeline
+// CRM —, seul le code d'export manque). Connexion
 // par la vraie route `/token/` dans un navigateur à part ; chaque réponse de l'API est relevée (« onglet réseau ») et
 // chaque `console.error` de la page : les clauses « aucun appel X », « sans 403 », « console propre » sont affirmées
 // sur ces relevés, en plus des oracles. Données propres (API de demo_admin ou shell Django), retirées en fin d'étape ;
@@ -358,20 +359,20 @@ etape('PF4.3-ADRG73-export', ['ADRG73'], async ({ page, suivi, testInfo }) => {
   const co = await compteDe('Commercial', 'adrg73co')
   const cr = await compteDe('Commercial responsable', 'adrg73cr')
   const rh = await compteDe('Admin RH', 'adrg73rh')
-  const pePk = await rolePersonnalise('Admin RH', ['ventes_voir'], `Admin RH + ventes_voir ADRG73 ${m}`)
-  const pe = await compteDe('Admin RH + ventes_voir', 'adrg73pe', pePk)
+  const pePk = await rolePersonnalise('Admin RH', ['ventes_voir', 'crm_voir'], `Admin RH + ventes_voir + crm_voir ADRG73 ${m}`)
+  const pe = await compteDe('Admin RH + lecture ventes/crm', 'adrg73pe', pePk)
   expect(co.codes.includes('reporting_export'), 'Given : Commercial sans reporting_export').toBe(false)
   expect(cr.codes.includes('reporting_export'), 'Given : Commercial responsable avec reporting_export').toBe(true)
-  expect([rh.codes.includes('reporting_export'), pe.codes.includes('reporting_export'), pe.codes.includes('ventes_voir')],
-    'Given : Admin RH et Admin RH + ventes_voir sans reporting_export').toEqual([false, false, true])
+  expect([rh.codes.includes('reporting_export'), pe.codes.includes('reporting_export'), pe.codes.includes('ventes_voir'), pe.codes.includes('crm_voir')],
+    'Given : Admin RH et Admin RH + lecture ventes/crm sans reporting_export (le second lit ventes et CRM)').toEqual([false, false, true, true])
   // Route : Commercial 403 `droit_manquant` nommant reporting_export sur l'export, 200 sur le JSON.
   const aco = await apiDe(testInfo, co)
   await refusNomme(await aco.get(`${API}/reporting/dashboard/?export=xlsx`, T), 'reporting_export', 'Commercial export xlsx')
   expect((await aco.get(`${API}/reporting/dashboard/`, T)).status(), 'Commercial : JSON 200').toBe(200)
   // Même refus pour le rôle qui lit les ventes sans le code d'export (tableau 200).
   const ape = await apiDe(testInfo, pe)
-  await refusNomme(await ape.get(`${API}/reporting/dashboard/?export=xlsx`, T), 'reporting_export', 'Admin RH + ventes_voir export xlsx')
-  expect((await ape.get(`${API}/reporting/dashboard/`, T)).status(), 'Admin RH + ventes_voir : JSON 200').toBe(200)
+  await refusNomme(await ape.get(`${API}/reporting/dashboard/?export=xlsx`, T), 'reporting_export', 'Admin RH + lecture ventes/crm export xlsx')
+  expect((await ape.get(`${API}/reporting/dashboard/`, T)).status(), 'Admin RH + lecture ventes/crm : JSON 200').toBe(200)
   // Commercial responsable : un classeur PK….
   const acr = await apiDe(testInfo, cr)
   const x = await acr.get(`${API}/reporting/dashboard/?export=xlsx`, T)
@@ -387,18 +388,18 @@ etape('PF4.3-ADRG73-export', ['ADRG73'], async ({ page, suivi, testInfo }) => {
     console.log(`[ADRG73] ${passe}Admin RH /reporting : ${J(s.reseau)}`)
     expect(refus(s.reseau), `${passe}Admin RH : aucune réponse refusée (aucune 403)`).toEqual([])
   }
-  // Écran /reporting, tableau CHARGÉ mais sans reporting_export (Admin RH + ventes_voir) : seul le code d'export
+  // Écran /reporting, tableau CHARGÉ mais sans reporting_export (Admin RH + lecture ventes/crm) : seul le code d'export
   // décide du bouton.
   const t = await ecranDe(page, suivi, testInfo, pe)
   for (const passe of PASSES) {
     const tableau = reponse(t.p, DASHBOARD)
     await charger(t, '/reporting', passe)
-    expect((await tableau).status(), `${passe}Admin RH + ventes_voir : tableau de bord servi`).toBe(200)
-    await expect(bouton(t.p, /Actualiser/).first(), `${passe}Admin RH + ventes_voir : tableau rendu`).toBeVisible(V)
-    await expect(exporter(t.p), `${passe}Admin RH + ventes_voir : aucun bouton « Exporter Excel »`).toHaveCount(0)
-    console.log(`[ADRG73] ${passe}Admin RH + ventes_voir /reporting : ${J(t.reseau)}`)
-    expect(appels(t.reseau, DASHBOARD).filter((l) => l.includes('export=')), `${passe}Admin RH + ventes_voir : aucun export demandé`).toEqual([])
-    expect(refus(t.reseau), `${passe}Admin RH + ventes_voir : aucune réponse refusée`).toEqual([])
+    expect((await tableau).status(), `${passe}Admin RH + lecture ventes/crm : tableau de bord servi`).toBe(200)
+    await expect(bouton(t.p, /Actualiser/).first(), `${passe}Admin RH + lecture ventes/crm : tableau rendu`).toBeVisible(V)
+    await expect(exporter(t.p), `${passe}Admin RH + lecture ventes/crm : aucun bouton « Exporter Excel »`).toHaveCount(0)
+    console.log(`[ADRG73] ${passe}Admin RH + lecture ventes/crm /reporting : ${J(t.reseau)}`)
+    expect(appels(t.reseau, DASHBOARD).filter((l) => l.includes('export=')), `${passe}Admin RH + lecture ventes/crm : aucun export demandé`).toEqual([])
+    expect(refus(t.reseau), `${passe}Admin RH + lecture ventes/crm : aucune réponse refusée`).toEqual([])
   }
   // Commercial responsable : bouton présent, et il télécharge le classeur (GET ?export=xlsx → 200).
   const r = await ecranDe(page, suivi, testInfo, cr)
