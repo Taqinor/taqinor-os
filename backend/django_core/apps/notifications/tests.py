@@ -1271,3 +1271,40 @@ class TypesTachesTests(TestCase):
                     respect_quiet_hours=False))
         self.assertFalse(Notification.objects.filter(
             event_type__startswith='taches_').exists())
+
+
+# ── TCH21 — ``notify(badge=…)`` porte la pastille dans la charge push ───────
+@override_settings(
+    VAPID_PUBLIC_KEY='pub', VAPID_PRIVATE_KEY='priv',
+    VAPID_ADMIN_EMAIL='admin@x.com')
+class BadgePushTests(TestCase):
+
+    def setUp(self):
+        from .models import PushSubscription
+        self.company = Company.objects.create(nom='TCH21', slug='tch21-n')
+        self.user = _make_user(self.company, username='tch21')
+        PushSubscription.objects.create(
+            company=self.company, user=self.user,
+            endpoint='https://push.example/tch21', p256dh='p', auth='a')
+
+    def _charge(self, **kwargs):
+        import json as json_module
+        capture = {}
+
+        def faux_webpush(subscription_info, data, vapid_private_key, vapid_claims):
+            capture['data'] = json_module.loads(data)
+
+        with mock.patch('pywebpush.webpush', side_effect=faux_webpush):
+            with self.captureOnCommitCallbacks(execute=True):
+                notify(self.user, EventType.TACHES_RAPPEL, 'Rappel',
+                       company=self.company, respect_quiet_hours=False, **kwargs)
+        return capture['data']
+
+    def test_badge_porte_dans_la_charge(self):
+        self.assertEqual(self._charge(badge=3)['badge'], 3)
+
+    def test_badge_zero_porte(self):
+        self.assertEqual(self._charge(badge=0)['badge'], 0)
+
+    def test_sans_badge_aucun_champ(self):
+        self.assertNotIn('badge', self._charge())
