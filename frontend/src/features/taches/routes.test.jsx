@@ -6,7 +6,9 @@ import { Suspense } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { moduleNavSections } from '../../router/moduleRoutes'
+import { MANIFESTES } from '../../lib/apps/appSkus'
+import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
+import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
 import config from './module.config'
 import { useEnLigne } from './lib/enLigne'
 
@@ -66,6 +68,12 @@ describe('TCH43 — routes du module', () => {
     expect(config.key).toBe('taches')
     expect(config.nav).toBeUndefined()
     expect(moduleNavSections.some((s) => s.key === 'taches')).toBe(false)
+  })
+
+  it('reste invisible malgré sa ligne du miroir des manifestes (non installable, aucune tuile)', () => {
+    expect(MANIFESTES.taches).toMatchObject({ sku: 'generic', installable: false })
+    const apps = buildInstalledApps(moduleConfigs, { role: 'admin' })
+    expect(apps.some((a) => a.key === 'taches')).toBe(false)
   })
 
   it('chaque route porte son marqueur « contextuelle » (garde écran sans nav)', () => {
