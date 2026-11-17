@@ -305,9 +305,9 @@
           "motif": null,
           "raison": {
             "code": "echeance_proche",
-            "texte": "échéance jeudi"
+            "texte": "échéance jeu. 19"
           },
-          "explication": "échéance jeudi",
+          "explication": "",
           "rappel": null,
           "lien": null,
           "checklist": null,
@@ -348,7 +348,7 @@
             "code": "retard",
             "texte": "prévue hier"
           },
-          "explication": "prévue hier",
+          "explication": "",
           "rappel": null,
           "lien": null,
           "checklist": null,
@@ -394,7 +394,7 @@
             "code": "prochaine_action",
             "texte": "prochaine action de Équipe"
           },
-          "explication": "prochaine action de Équipe",
+          "explication": "",
           "rappel": null,
           "lien": null,
           "checklist": null,
@@ -454,9 +454,9 @@
               "motif": null,
               "raison": {
                 "code": "action_suivante",
-                "texte": "puis dans Équipe"
+                "texte": "suite de Équipe"
               },
-              "explication": "puis dans Équipe",
+              "explication": "",
               "rappel": null,
               "lien": null,
               "checklist": null,
