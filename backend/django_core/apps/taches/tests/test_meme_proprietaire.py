@@ -331,6 +331,8 @@ SANS_ID = {
     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
     ('GET', 'jetons/'): lambda m: ('jetons/', None),
     ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
+    ('GET', 'journee/priorites/'): lambda m: ('journee/priorites/', None),
+    ('GET', 'journee/point/'): lambda m: ('journee/point/', None),
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
