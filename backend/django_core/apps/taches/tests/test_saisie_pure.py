@@ -6,9 +6,9 @@ Repère §0 : mardi 17/11/2026 10:00 ; projets Polydesign (id 3, actif) et Maiso
 actif, étape Achats id 8) ; aucun férié, aucune étiquette existante.
 """
 import unittest
-from datetime import date, time
+from datetime import date, datetime, time
 
-from apps.taches.saisie.analyseur import analyser
+from apps.taches.saisie.analyseur import analyser, classer_capture
 from apps.taches.saisie.grammaire import ProjetConnu
 
 MARDI = (date(2026, 11, 17), time(10, 0))
@@ -27,8 +27,8 @@ def rec(frequence, n=1, masque='0000000', jour_du_mois=None, rang=None,
             'date_debut': '2026-11-17'}
 
 
-# (identifiant, saisie, titre attendu, champs attendus hors priorite 0, alertes, repère, porte)
-# Repère par défaut : MARDI. Porte par défaut : rapide.
+# (identifiant, saisie, titre attendu, champs attendus hors priorite 0, alertes, repère, porte,
+# `dans` de la capture). Repère par défaut : MARDI. Porte par défaut : rapide.
 LIGNES = [
     ('A1', 'Appeler Karim demain', 'Appeler Karim', {'jour_prevu': j(18)}),
     ('A2', 'Call Karim tomorrow', 'Call Karim', {'jour_prevu': j(18)}),
@@ -175,36 +175,21 @@ LIGNES = [
      'a_trier'),
 ]
 
-# TCH38 : les 32 lignes obligatoires ; les autres restent en `expectedFailure` jusqu'à TCH39.
-OBLIGATOIRES_TCH38 = frozenset(
-    'A1 A2 A4 A5 A6 A7 A8 A10 A11 A12 A13 A14 A15 A16 A17 A18 A19 A20 A30 A32 A34 A36 A38 A39 '
-    'E2 E3 E5 E8 E9 E10 E12 E13'.split())
-A_VENIR_TCH39 = frozenset(
-    'A3 A21 A22 A23 A24 A25 A26 A27 A28 A29 A33 A37 C1 C5 E1 E4 E7 E11 E14 E15 E16'.split())
-
-
-class PartageTch38Tests(unittest.TestCase):
-    def test_les_32_lignes_obligatoires_passent_sans_expected_failure(self):
-        self.assertEqual(len(OBLIGATOIRES_TCH38), 32)
-        self.assertFalse(OBLIGATOIRES_TCH38 & A_VENIR_TCH39)
-        identifiants = {ligne[0] for ligne in LIGNES}
-        self.assertLessEqual(OBLIGATOIRES_TCH38 | A_VENIR_TCH39, identifiants)
-        self.assertEqual(len(identifiants), 86)
-
 
 def _rendre(ligne):
     ident, saisie, titre, champs = ligne[:4]
     alertes = ligne[4] if len(ligne) > 4 else ()
     repere = (ligne[5] if len(ligne) > 5 else None) or MARDI
     porte = ligne[6] if len(ligne) > 6 else 'rapide'
-    return ident, saisie, titre, champs, alertes, repere, porte
+    dans = ligne[7] if len(ligne) > 7 else None
+    return ident, saisie, titre, champs, alertes, repere, porte, dans
 
 
 class TableDeTestTests(unittest.TestCase):
     """Une méthode par ligne de la table (`test_<identifiant>`)."""
 
     def verifier(self, ligne):
-        ident, saisie, titre, champs, alertes, repere, porte = _rendre(ligne)
+        ident, saisie, titre, champs, alertes, repere, porte, dans = _rendre(ligne)
         analyse = analyser(saisie, repere[0], repere[1], projets=PROJETS,
                            sections=SECTIONS, porte=porte)
         self.assertEqual(analyse.titre, titre, ident)
@@ -212,6 +197,8 @@ class TableDeTestTests(unittest.TestCase):
         self.assertEqual(set(analyse.alertes), set(alertes), ident)
         self.assertEqual(analyse.erreurs, {}, ident)
         self.verifier_positions(saisie, analyse)
+        if dans is not None:
+            self.assertEqual(classer_capture(analyse), dans, ident)
 
     def verifier_positions(self, saisie, analyse):
         """Chaque jeton dit OÙ il a été lu : `debut`/`fin` redonnent `source`, sans chevauchement."""
@@ -227,13 +214,175 @@ def _fabriquer(ligne):
         self.verifier(ligne)
     cas.__name__ = f'test_{ligne[0]}'
     cas.__doc__ = f'{ligne[0]} — {ligne[1]}'
-    if ligne[0] in A_VENIR_TCH39:
-        return unittest.expectedFailure(cas)
     return cas
 
 
 for _ligne in LIGNES:
     setattr(TableDeTestTests, f'test_{_ligne[0]}', _fabriquer(_ligne))
+
+
+def lire(saisie, repere=MARDI, **kw):
+    """`analyser` au repère mardi 17/11/2026 10:00 avec les projets du repère."""
+    kw.setdefault('projets', PROJETS)
+    kw.setdefault('sections', SECTIONS)
+    return analyser(saisie, repere[0], repere[1], **kw)
+
+
+class SortieEtOptionsTests(unittest.TestCase):
+    """Ce que la table ne dit pas : jetons, ignorer, existants, rappel, portes, bornes."""
+
+    def test_jetons_disent_ou_et_quoi(self):
+        a = lire('Appeler Karim demain #SiteWeb')
+        jour, projet = a.jetons
+        self.assertEqual((jour['type'], jour['source'], jour['debut'], jour['fin']),
+                         ('jour', 'demain', 14, 20))
+        self.assertEqual((jour['valeur'], jour['libelle']), ('2026-11-18', 'mer. 18 nov.'))
+        self.assertEqual((projet['type'], projet['debut'], projet['fin']), ('projet', 21, 29))
+        self.assertEqual(projet['libelle'], 'Nouveau projet : SiteWeb')
+        self.assertEqual(projet['valeur']['priorite'], 2)
+
+    def test_ignorer_remet_le_jeton_dans_le_titre(self):
+        a = lire('Appeler Karim demain', ignorer=[{'type': 'jour', 'source': 'demain'}])
+        self.assertEqual((a.titre, a.champs, a.jetons),
+                         ('Appeler Karim demain', {'priorite': 0}, ()))
+
+    def test_etiquette_existante_par_cle_nom(self):
+        a = lire('Acheter %Ma-Gasin %neuve', etiquettes=((2, 'magasin'),))
+        self.assertEqual(a.champs['etiquettes'], [2, {'nom': 'neuve'}])
+        self.assertEqual(a.titre, 'Acheter')
+
+    def test_plusieurs_projets_le_premier_par_rang(self):
+        projets = (ProjetConnu(7, 'Maison', 'actif', 9), ProjetConnu(5, 'Maison', 'actif', 2))
+        a = lire('Lait #maison', projets=projets)
+        self.assertEqual(a.champs['projet_id'], 5)
+        self.assertEqual(a.alertes, ('plusieurs_projets',))
+
+    def test_projet_archive_reste_a_trier(self):
+        projets = (ProjetConnu(9, 'Vieux', 'archive', 1),)
+        a = lire('Ranger #Vieux', projets=projets)
+        self.assertNotIn('projet_id', a.champs)
+        self.assertNotIn('nouveau_projet', a.champs)
+        self.assertEqual(a.alertes, ('projet_archive',))
+        self.assertEqual(a.jetons[0]['libelle'], 'Projet archivé : Vieux')
+        self.assertEqual(a.titre, 'Ranger')
+
+    def test_projet_en_pause_est_un_projet_ouvert(self):
+        a = lire('Lait #Pause', projets=(ProjetConnu(4, 'Pause', 'en_pause', 1),))
+        self.assertEqual(a.champs['projet_id'], 4)
+
+    def test_etape_inconnue_est_creee(self):
+        a = lire('Acheter #Maison /Nouvelle')
+        self.assertEqual(a.champs['nouvelle_section'], {'nom': 'Nouvelle'})
+        self.assertEqual(a.champs['projet_id'], 5)
+
+    def test_etape_sans_projet_reste_du_texte(self):
+        a = lire('Acheter /Achats')
+        self.assertEqual((a.titre, a.jetons), ('Acheter /Achats', ()))
+
+    def test_titre_vide_est_une_erreur_pas_une_exception(self):
+        a = lire('demain')
+        self.assertEqual(a.titre, '')
+        self.assertEqual(
+            a.erreurs, {'titre': ['Le titre est vide une fois la date et le projet retirés.']})
+
+    def test_rappel_avec_sa_propre_date_est_absolu(self):
+        a = lire('Appeler Karim rappel demain 9h')
+        self.assertEqual(a.champs['rappel'], {'jour': j(18), 'heure': '09:00'})
+        self.assertNotIn('jour_prevu', a.champs)
+        self.assertEqual(a.titre, 'Appeler Karim')
+
+    def test_rappel_sans_jour_pose_le_jour_prevu(self):
+        a = lire('Appeler rappel 9h')
+        self.assertEqual(a.champs['rappel'], {'jour': j(18), 'heure': '09:00'})
+        self.assertEqual(a.champs['jour_prevu'], j(18))
+        b = lire('Appeler rappel 15h')
+        self.assertEqual(b.champs['rappel'], {'jour': j(17), 'heure': '15:00'})
+        self.assertEqual(b.champs['jour_prevu'], j(17))
+
+    def test_recurrence_prime_sur_le_jour(self):
+        a = lire('Appeler demain chaque lundi')
+        self.assertEqual(a.champs['jour_prevu'], j(23))
+        self.assertEqual(a.titre, 'Appeler demain')
+        self.assertEqual(a.alertes, ('deux_jour',))
+        self.assertEqual([t['type'] for t in a.jetons], ['recurrence'])
+
+    def test_recurrence_jours_ouvres_lit_est_ouvre_injecte(self):
+        def ferie_aujourdhui(d):
+            return d.weekday() < 5 and d != date(2026, 11, 17)
+        a = lire('Check bank every weekday', est_ouvre=ferie_aujourdhui)
+        self.assertEqual(a.champs['jour_prevu'], j(18))
+
+    def test_recurrence_plusieurs_jours_et_libelle(self):
+        a = lire('Gym tous les lundis et jeudis')
+        self.assertEqual(a.champs['recurrence']['jours_semaine'], '1001000')
+        self.assertEqual(a.jetons[0]['libelle'], 'chaque lundi et jeudi')
+        self.assertEqual(a.champs['jour_prevu'], j(19))
+
+    def test_recurrence_rang_dans_le_mois(self):
+        a = lire('Revue chaque dernier vendredi')
+        self.assertEqual(a.champs['recurrence']['rang_dans_mois'], -1)
+        self.assertEqual(a.champs['recurrence']['jours_semaine'], '0000100')
+        self.assertEqual(a.champs['jour_prevu'], j(27))
+
+    def test_recurrence_intervalle_hors_1_99_non_lu(self):
+        a = lire('Payer tous les 100 jours')
+        self.assertEqual((a.titre, a.champs), ('Payer tous les 100 jours', {'priorite': 0}))
+
+    def test_capture_ne_lit_ni_recurrence_ni_etape_ni_nouveau_projet(self):
+        a = lire('Payer tous les 2 jours #Maison /Achats #Inconnu', porte='capture')
+        self.assertEqual(a.titre, 'Payer tous les 2 jours /Achats #Inconnu')
+        self.assertEqual(a.champs, {'priorite': 0, 'projet_id': 5})
+
+    def test_capture_projet_en_tete_prend_le_plus_long_nom(self):
+        projets = PROJETS + (ProjetConnu(6, 'Maison de campagne', 'actif', 3),)
+        a = lire('projet Maison de campagne peindre', projets=projets, porte='capture')
+        self.assertEqual((a.titre, a.champs['projet_id']), ('peindre', 6))
+        self.assertEqual(a.jetons[0]['source'], 'projet Maison de campagne')
+
+    def test_capture_projet_en_tete_inconnu_reste_du_texte(self):
+        a = lire('projet Lune acheter du lait', porte='capture')
+        self.assertEqual((a.titre, a.champs), ('projet Lune acheter du lait', {'priorite': 0}))
+
+    def test_rien_n_est_lu_entre_guillemets(self):
+        for saisie in ('Lire "demain" tard', 'Lire «demain» tard', 'Lire “demain” tard'):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie)
+                self.assertEqual((a.titre, a.champs, a.jetons), (saisie, {'priorite': 0}, ()))
+
+    def test_une_phrase_incomprise_ne_leve_jamais(self):
+        for saisie in ('', ' ', '!!!!', '#', '%', '/', '«', '"demain', '31/02', 'p12 p0',
+                       '10%', '#12', '25h', '99:99', 'à 24h', 'x' * 400, 'İ ẞ œ æ demain'):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie)
+                for jeton in a.jetons:
+                    self.assertEqual(saisie[jeton['debut']:jeton['fin']], jeton['source'])
+
+    def test_aujourdhui_et_maintenant_sont_des_parametres(self):
+        a = analyser('Appeler demain à 9h', date(2030, 5, 3), time(23, 0))
+        self.assertEqual(a.champs['jour_prevu'], '2030-05-04')
+        self.assertEqual(a.alertes, ())
+
+    def test_maintenant_accepte_un_datetime(self):
+        a = analyser('Appel 9h', date(2026, 11, 17), datetime(2026, 11, 17, 10, 0))
+        self.assertEqual((a.champs['jour_prevu'], a.alertes), (j(18), ('heure_passee',)))
+
+    def test_date_avec_annee_passee_garde_la_date_et_alerte(self):
+        a = lire('Archiver 05/06/2025')
+        self.assertEqual(a.champs['jour_prevu'], '2025-06-05')
+        self.assertEqual(a.alertes, ('date_passee',))
+
+    def test_heure_passee_aujourdhui_garde_le_jour(self):
+        a = lire("Appeler aujourd'hui à 9h")
+        self.assertEqual((a.champs['jour_prevu'], a.alertes), (j(17), ('heure_passee',)))
+
+    def test_duree_hors_bornes_pendant_20h(self):
+        a = lire('Route pendant 20h')
+        self.assertEqual((a.titre, a.alertes), ('Route pendant 20h', ('duree_hors_bornes',)))
+
+    def test_deux_priorites_la_seconde_reste_du_texte(self):
+        a = lire('Appeler !! p1')
+        self.assertEqual((a.titre, a.champs['priorite'], a.alertes),
+                         ('Appeler p1', 2, ('deux_priorite',)))
 
 
 if __name__ == '__main__':
