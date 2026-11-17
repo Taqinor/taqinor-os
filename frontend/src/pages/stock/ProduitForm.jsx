@@ -26,6 +26,7 @@ import { isDirty } from '../../ui/form-utils'
 import { compressImage, validateFile } from '../../ui/file-utils'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+import ChampsRendementEtPvMaxOnduleur from './ChampsRendementEtPvMaxOnduleur'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
 import { classifyProduct, isPompe } from '../../features/ventes/calc/classification.js'
@@ -1755,24 +1756,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                   <p className="sm:col-span-2 border-t border-border pt-3 text-xs uppercase tracking-wide text-muted-foreground">
                     Rendement onduleur
                   </p>
-                  <FormField label="Rendement maximal (%)" htmlFor="pf-ft-rendmax"
-                             hint="Optionnel — « peak efficiency » publié.">
-                    <Input id="pf-ft-rendmax" type="number" step="any" inputMode="decimal"
-                           value={ficheFields.ond_rendement_max_pct}
-                           onChange={e => setFicheField('ond_rendement_max_pct', e.target.value)} />
-                  </FormField>
-                  <FormField label="Rendement CEC (%)" htmlFor="pf-ft-rendcec"
-                             hint="Optionnel — rendement pondéré CEC publié.">
-                    <Input id="pf-ft-rendcec" type="number" step="any" inputMode="decimal"
-                           value={ficheFields.ond_rendement_cec_pct}
-                           onChange={e => setFicheField('ond_rendement_cec_pct', e.target.value)} />
-                  </FormField>
-                  <FormField label="Puissance PV maximale raccordable (kWc)" htmlFor="pf-ft-dcmax"
-                             hint={'Fiche constructeur : "Max. PV access power" (hybride) ou "Recommended max. PV power"'}>
-                    <Input id="pf-ft-dcmax" type="number" min="0" step="any" inputMode="decimal"
-                           value={ficheFields.ond_dc_max_kwc}
-                           onChange={e => setFicheField('ond_dc_max_kwc', e.target.value)} />
-                  </FormField>
+                  <ChampsRendementEtPvMaxOnduleur ficheFields={ficheFields} setFicheField={setFicheField} />
                   <EditeurCourbeFiche {...propsCourbe('ond_courbe_rendement')} />
                 </>
               )}
