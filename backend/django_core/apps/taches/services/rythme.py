@@ -235,17 +235,25 @@ def _nouvel_etat(etat, mode, objectif, sens, jour):
     return moteur.basculer(etat, mode, jour)
 
 
+def reglages_a_ecrire(user):
+    """La `ReglagesRythme` de `user`, VERROUILLÉE, créée au premier geste qui l'ÉCRIT (`POST rythme/`,
+    `PATCH reglages/`) : un compte neuf dit son objectif ou règle ses interrupteurs avant sa première
+    tâche. Une LECTURE n'en crée jamais (`reglages_ou_defauts`). Dans une transaction de l'appelant ;
+    la clé (société, propriétaire) est celle de `taches_reglages_uniq`."""
+    ReglagesRythme.objects.get_or_create(company_id=user.company_id, proprietaire=user)
+    return reglages_de(user, verrou=True)
+
+
 def regler_rythme(user, donnees, jour):
     """`POST rythme/` `{"mode","objectif"?,"sens"?}` → (réglages relus, geste ou `None`).
 
     Le nombre dit (1-12) ou « plus »/« moins » passe par `moteur.objectif_dit` (le mode devient
-    `pousser`) ; un autre mode par `moteur.basculer`. Lève `ErreursRythme` (400), `SansReglages` (404).
+    `pousser`) ; un autre mode par `moteur.basculer`. Lève `ErreursRythme` (400). Un compte sans
+    réglages les reçoit ici (`reglages_a_ecrire`).
     """
     mode, objectif, sens = _lire_corps(donnees)
     with transaction.atomic():
-        reglages = reglages_de(user, verrou=True)
-        if reglages is None:
-            raise SansReglages()
+        reglages = reglages_a_ecrire(user)
         etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
         neuf = _nouvel_etat(etat, mode, objectif, sens, jour)
         operations = ecrire_etat(reglages, neuf)
@@ -738,13 +746,12 @@ def effacer_profil(user, reglages):
 def modifier_reglages(user, donnees, *, est_admin):
     """`PATCH reglages/` (liste blanche, sans geste) → réglages relus. `titres_notifications` pose
     `titres_notifications_demande_le` (question du 1er rappel, A17-T4). Lève `ErreursRythme` (400),
-    `ReserveAdministrateur` (403), `SansReglages` (404)."""
+    `ReserveAdministrateur` (403). Un compte sans réglages les reçoit ici (`reglages_a_ecrire`) ; un
+    corps refusé lève dans la transaction, qui défait la création."""
     if not hasattr(donnees, 'items'):
         raise ErreursRythme({'non_field_errors': [VALEUR_INCONNUE]})
     with transaction.atomic():
-        reglages = reglages_de(user, verrou=True)
-        if reglages is None:
-            raise SansReglages()
+        reglages = reglages_a_ecrire(user)
         valeurs = _valeurs_reglages(dict(donnees.items()), reglages, est_admin)
         coupe = reglages.comprendre_mon_rythme and valeurs.get('comprendre_mon_rythme') is False
         for champ, valeur in valeurs.items():

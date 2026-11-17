@@ -197,9 +197,26 @@ class RythmeEcritureTests(BaseRythme):
         self.assertEqual(reglages.mode, ModeRythme.LIBRE)
         self.assertIsNone(self.api.get(URL).json()['objectif']['nb'])
 
-    def test_sans_reglages_404_et_rien_cree(self):
+    def test_compte_neuf_dit_son_objectif_avant_sa_premiere_tache(self):
+        """Parcours « compte neuf → aujourdhui/ → dire son objectif → première tâche » : la lecture ne
+        crée rien, le geste crée les réglages, la première tâche les retrouve (une seule ligne)."""
+        aujourdhui = '/api/django/taches/aujourdhui/'
+        self.assertEqual(self.api.get(aujourdhui, {'jour': J.isoformat()}).status_code, 200)
+        self.assertFalse(ReglagesRythme.objects.exists())
         reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 6}, format='json')
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json()['objectif']['nb'], 6)
+        reglages = ReglagesRythme.objects.get(company=self.a, proprietaire=self.u1)
+        self.assertEqual((reglages.palier, reglages.palier_source), (6, SourceObjectif.DIT))
+        lignes = [{'index': 0, 'titre': 'Appeler Karim', 'jour_prevu': J.isoformat()}]
+        cree = self.api.post('/api/django/taches/saisie-rapide/', {'lignes': lignes}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.content[:300])
+        self.assertEqual(ReglagesRythme.objects.filter(proprietaire=self.u1).count(), 1)
+        self.assertEqual(self.api.get(aujourdhui, {'jour': J.isoformat()}).json()['objectif']['nb'], 6)
+
+    def test_corps_refuse_ne_cree_pas_les_reglages(self):
+        reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 40}, format='json')
+        self.assertEqual(reponse.status_code, 400)
         self.assertFalse(ReglagesRythme.objects.exists())
 
 
