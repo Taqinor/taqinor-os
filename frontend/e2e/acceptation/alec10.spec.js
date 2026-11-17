@@ -101,6 +101,14 @@ function gucDesLectures(entrees, table, societe) {
   const gucs = [...new Set(entrees.map((e) => GUC.exec(e.sql)?.[1]).filter(Boolean))]
   return { lectures, gucs, fautes }
 }
+/** Affiche dans `page` (capturée en fin d'étape) les faits que l'étape vient d'affirmer : [[titre, valeur], …]. */
+async function tracer(page, titre, blocs) {
+  const echapper = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const texte = (v) => (typeof v === 'string' ? v : J(v, null, 1))
+  await page.setContent(`<html><body style="font:13px monospace;padding:16px"><h3>${echapper(titre)}</h3>`
+    + blocs.map(([t, v]) => `<h4>${echapper(t)}</h4><pre style="white-space:pre-wrap">${echapper(texte(v)).slice(0, 3000)}</pre>`).join('')
+    + '</body></html>')
+}
 const sansEspace = (t) => String(t || '').replace(/[\s\u00a0\u202f]/g, '')
 const AUCUNE = /aucune facture|pas de facture|0 facture|n['’]avez (encore )?(aucune|pas)/i
 
@@ -212,7 +220,7 @@ const formesMontant = (ttc) => {
 }
 
 // ═══ PF6 — ALEC52 : préconditions du défaut (RLS FORCE, rôle sans BYPASSRLS, POSTGRES_RLS_ENABLED absent) ═══
-etape('PF6-ALEC52-preconditions-rls', ['ALEC52'], async () => {
+etape('PF6-ALEC52-preconditions-rls', ['ALEC52'], async ({ page }) => {
   const base = await py(`import os
 from django.db import connection
 with connection.cursor() as c:
@@ -244,6 +252,14 @@ sortie(dict(rls=rls, role=role, politique=pol, django_rls=os.environ.get('POSTGR
   expect(svc.rls.filter((x) => x !== 'POSTGRES_RLS_ENABLED='), 'service IA : POSTGRES_RLS_ENABLED absent ou vide (comme en prod)').toEqual([])
   expect(svc.user, 'service IA : agent sous sql_agent_ro').toEqual(['SQL_AGENT_DB_USER=sql_agent_ro'])
   expect(base.django_rls || '', 'Django : POSTGRES_RLS_ENABLED absent ou vide').not.toBe('1')
+  // Trace lisible : ce que l'étape vient d'affirmer est affiché dans la page capturée (plus de page blanche).
+  await tracer(page, 'ALEC52 — préconditions du défaut (base relue sous erp_user, environnement du service IA)', [
+    ['pg_class (relrowsecurity, relforcerowsecurity) — ventes_devis / ventes_facture / ventes_paiement', base.rls],
+    ['pg_roles sql_agent_ro (rolsuper, rolbypassrls)', base.role],
+    ['pg_policy de ventes_facture', base.politique],
+    [`processus uvicorn ${svc.pid} : ${svc.cmd}`, { POSTGRES_RLS_ENABLED: svc.rls.length ? svc.rls : 'absent', SQL_AGENT_DB_USER: svc.user }],
+    ['Django : POSTGRES_RLS_ENABLED', base.django_rls ?? 'absent'],
+  ])
 })
 
 // ═══ PF6 — ALEC52 : le Directeur crée une facture puis « liste mes factures » ⇒ elle est citée ; GUC de SA société
@@ -299,7 +315,7 @@ sortie(dict(sans=sans, avec=avec, apres=apres))`)
 })
 
 // ═══ PF6 — ALEC52 : témoin d'isolement — le Directeur d'une AUTRE société ne voit pas la facture de A ═══
-etape('PF6-ALEC52-isolement-autre-societe', ['ALEC52'], async ({ context, suivi, testInfo }) => {
+etape('PF6-ALEC52-isolement-autre-societe', ['ALEC52'], async ({ page, context, suivi, testInfo }) => {
   suivi.verifie(9)
   const m = marque()
   const societeA = await py(`sortie(${SOC})`)
@@ -336,4 +352,10 @@ sortie(dict(societe=co.pk, username=u.username, reference=f.reference, facture=f
   expect(g.lectures.length, 'Directeur B : la lecture de ventes_facture par l\'agent est exécutée').toBeGreaterThan(0)
   expect(g.fautes, `Directeur B : chaque lecture sous set_config('app.current_company', '${b.societe}', true)`).toEqual([])
   expect(g.gucs, 'Directeur B : seul le GUC de SA société, jamais celui de A').toEqual([String(b.societe)])
+  // Trace lisible : réponse servie à B et lignes GUC / lectures de ventes_facture du journal Postgres du tour.
+  await tracer(page, `ALEC52 — témoin d'isolement : Directeur de la société B (${b.societe}) ; facture de A = ${fa.reference}`, [
+    [`Question de B : « ${QUESTION} » — réponse de l'assistant`, reponse],
+    ['Journal Postgres du tour (sql_agent_ro) : set_config app.current_company', t.entrees.filter((e) => GUC.test(e.sql)).map((e) => `[${e.pid}] ${e.sql}`)],
+    ['Lectures de ventes_facture par l\'agent et GUC posé dans leur transaction', g.lectures],
+  ])
 })
