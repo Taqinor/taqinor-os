@@ -347,9 +347,9 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'appel_ouverture':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على "
         "الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
-    'repondeur':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة "
-        "الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
+    # 17/11/2026 — `repondeur` n'a plus de darija : son français dit « je vous ai
+    # envoyé un message WhatsApp », l'ancienne darija « je vais vous envoyer »
+    # (voir `CLES_FR_SEULEMENT`) ; l'ancien texte reste dans le guide source.
     'valeur_j1':
         "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة "
         "ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف "
@@ -1655,10 +1655,13 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. حاولت نعيط ليكم ولكن ما لقيتكمش. شمن وقت يناسبكم "
         "باش نعيط ليكم خمس دقايق؟",
 })
-#: 17/11/2026 — les deux clés dont la darija reste à formuler par un locuteur
+#: 17/11/2026 — les trois clés dont la darija reste à formuler par un locuteur
 #: natif : `get_corps(..., 'darija')` retombe sur le FR (jamais une traduction
 #: automatique) — seconde exception, avec `CLES_REACTIVATION`, à « darija COMPLÈTE ».
-CLES_FR_SEULEMENT = ('appel_rappel_convenu', 'appel_planifier_visite')
+#: `repondeur` : son français (« je vous ai envoyé ») contredisait sa darija
+#: (« je vais vous envoyer »), retirée jusqu'à une nouvelle formulation.
+CLES_FR_SEULEMENT = ('appel_rappel_convenu', 'appel_planifier_visite',
+                     'repondeur')
 
 #: 17/11/2026 — l'appel d'ouverture SUIT l'origine du lead exactement comme
 #: `identite` (CAD127) : clé d'identité choisie → clé d'appel correspondante.

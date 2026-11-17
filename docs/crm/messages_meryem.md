@@ -104,9 +104,9 @@ FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel c
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
 
 ### repondeur — appels 2 et 4, message sur répondeur (R1)
-17/11/2026 — approuvé par le fondateur : « Je vous envoie un message WhatsApp » devient « Je vous ai envoyé un message WhatsApp » (FR). Darija inchangée, à reformuler par un locuteur natif.
+17/11/2026 — approuvé par le fondateur : « Je vous envoie un message WhatsApp » devient « Je vous ai envoyé un message WhatsApp » (FR). Darija RETIRÉE le 17/11/2026 (elle disait « je vais vous envoyer », le FR dit « je vous ai envoyé ») : le français sert jusqu'à ce qu'un locuteur natif la reformule (`CLES_FR_SEULEMENT`). L'ancienne darija est gardée ci-dessous, hors du parseur.
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de votre demande solaire. Je vous ai envoyé un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
-DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
+DARIJA RETIRÉE (17/11/2026, à reformuler) : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
 
 ### appel_relance — Appel 3, J1 10 h 30, troisième tentative (CAD67, 21/09/2026)
 Avant CAD67, `repondeur` partait aussi ici (ordre 4), à ~20 h du premier envoi (ordre 3) — contraire au document

@@ -253,17 +253,15 @@ class TextesCorrigesDu1711Tests(SimpleTestCase):
         self.assertNotIn('ديال البارح', da['appel_relance'])
         self.assertIn('الطلب ديالكم — عندكم', da['appel_relance'])
 
-    def test_repondeur_passe_au_passe_compose_et_la_darija_ne_bouge_pas(self):
+    def test_repondeur_passe_au_passe_compose_et_sa_darija_est_retiree(self):
         self.assertIn('Je vous ai envoyé un message WhatsApp, répondez-y '
                       'quand vous voulez.',
                       MESSAGE_TEMPLATE_DEFAULTS['repondeur'])
         self.assertNotIn('Je vous envoie un message',
                          MESSAGE_TEMPLATE_DEFAULTS['repondeur'])
-        self.assertEqual(
-            MESSAGE_TEMPLATE_DEFAULTS_DARIJA['repondeur'],
-            SALUTATION_DARIJA + ' كنعيط ليكم بخصوص الطلب ديالكم على الطاقة '
-            'الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما '
-            'بغيتو. نهاركم مبروك.')
+        # La darija disait « je vais vous envoyer » : retirée, le français sert.
+        self.assertNotIn('repondeur', MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+        self.assertIn('repondeur', CLES_FR_SEULEMENT)
 
     def test_garanties_et_dernier_message_gagnent_la_salutation_standard(self):
         fr, da = MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA
