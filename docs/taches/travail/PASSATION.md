@@ -120,6 +120,15 @@ presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous 
   l'étape 2) et TCH110 (script Scriptable de la grande tuile) pliées et cochées. Reste de TCH109 : brancher la
   révélation `mon_iphone` (J+3) dans `services/revelations.py` (serveur). Le script suit le contrat `tuile.json`
   (`faites`, `essentiel.prevues`), pas l'annexe A de la spec ; vrai Scriptable jamais essayé.
+- **SI LA SESSION A ÉTÉ COUPÉE NET (quota à 100 %)** : quatre lanes tournaient sur la fusion 3, chacune committant tâche
+  par tâche sur une branche LOCALE du portable (pas encore sur GitHub) : `lane/f3-tch96` (capture Siri),
+  `lane/f3-tch97` (flux d'agenda et tuile), `lane/f3-assistant` (Copilote : TCH161, TCH111, TCH164, TCH112, TCH113…),
+  `lane/f3-restes` (révélation `mon_iphone`, garde du brouillon, tests « ne grandit pas », pastille en une requête).
+  Sur le portable : `git branch --list "lane/f3-*"` puis `git log origin/dev-taches-f3..lane/f3-<nom>` montre ce qui
+  est committé ; `git push origin lane/f3-<nom>` les met sur GitHub ; plier dans `dev-taches-f3` celles dont les
+  commits sont complets (TCH96 et TCH97 touchent toutes deux `tests/test_routes.py` et
+  `tests/test_meme_proprietaire.py` : garder les lignes des deux), cocher les tâches, régénérer OpenAPI + empreinte.
+  Toute lane absente de la liste des branches pliées ci-dessous est à relancer.
 - **MISE À JOUR (dernière action de la session) : TCH95 est FINIE, pliée et cochée sur `dev-taches-f3`** (11 tâches F3,
   126 cochées sur 174). Cause des 7 échecs : un seul nom de schéma de sécurité OpenAPI pour trois classes de jeton
   (corrigé : `jetonCapture`, `jetonTuile`, `jetonFlux`). À faire à la reprise sur `dev-taches-f3` : régénérer
