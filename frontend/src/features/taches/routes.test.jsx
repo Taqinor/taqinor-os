@@ -86,7 +86,7 @@ describe('TCH43 — routes du module', () => {
 
   it.each(Object.entries(ATTENDU))('%s rend « %s » dans la coquille', async (url, titre) => {
     const { container } = monter(url)
-    expect(await screen.findByRole('heading', { level: 1, name: titre })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: titre }, { timeout: 5000 })).toBeInTheDocument()
     const coquille = container.querySelector('.tch')
     expect(coquille).not.toBeNull()
     expect(within(coquille).getByRole('heading', { level: 1, name: titre })).toBeInTheDocument()

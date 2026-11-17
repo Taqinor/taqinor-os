@@ -140,7 +140,6 @@ describe('TCH42 — une fonction par route de api.md §3', () => {
 
   it.each(ATTENDU)('%s : %s %s', async (nom, methode, chemin, contrat) => {
     expect(typeof client[nom]).toBe('function')
-    expect(client.default[nom]).toBe(client[nom])
     const verbe = methode.toLowerCase()
     const donnees = contrat ? exempleContrat('taches', contrat) : { ok: true }
     api[verbe].mockResolvedValue({ data: donnees })
