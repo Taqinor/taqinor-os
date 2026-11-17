@@ -76,7 +76,9 @@ async function enTechnicien(context, testInfo, nom) {
   return ctx
 }
 const mesTaches = async (ctx) => Object.values(await lireJson(await ctx.get(`${API}/records/activities/mine/`, T), 'mes activités')).flat()
-const ligne = (page, texte) => page.getByRole('row').filter({ hasText: texte })
+// Les seuls tableaux de tâches de l'écran (En retard / Aujourd'hui / À venir) : « Ma file » les redouble pour un Directeur.
+const TABLEAUX = "table[aria-label='En retard'], table[aria-label=\"Aujourd'hui\"], table[aria-label='À venir']"
+const ligne = (page, texte) => page.locator(TABLEAUX).getByRole('row').filter({ hasText: texte })
 
 /** Chantier du technicien T + livraison expédiée par la VRAIE route + rappel J-1 sur une intervention du lendemain. */
 async function livraisonEtRappel(page, m, nomT) {
@@ -90,11 +92,14 @@ sortie(dict(t=t.id, client=c.id, inst=i.id, liv=liv.id))`)
   const rep = await lireJson(await page.request.post(`${API}/installations/livraisons/${d.liv}/expedier/`, { ...T, data: {} }), 'expédier')
   expect(rep.statut, 'livraison en transit').toBe('en_transit')
   if ('email_sent' in rep) expect(rep.email_sent, 'sans clé d’envoi : email_sent faux').toBe(false)
+  // Jours figés (`jours_cibles`) : le chemin de la reprise à l'ouverture de la fenêtre des messages (AMSG72), seul jouable
+  // quand le runner tourne avant 08 h 30 à Casablanca ; même code de remise du brouillon que le balayage du beat.
   const sw = await pyAvec(`from apps.installations.tasks import rappel_rdv_j1, casablanca_today
 a = Installation.objects.get(pk=${d.inst})
+demain = casablanca_today() + dt.timedelta(days=1)
 iv = Intervention.objects.create(company_id=a.company_id, installation=a, type_intervention='pose', created_by=ADMIN,
-    date_prevue=casablanca_today() + dt.timedelta(days=1), rdv_confirme=False)
-res = rappel_rdv_j1()
+    date_prevue=demain, rdv_confirme=False)
+res = rappel_rdv_j1(company_id=a.company_id, jours_cibles=[demain])
 sortie(dict(interv=iv.id, emails=res['emails_envoyes']))`)
   ids.intervs.push(sw.interv)
   expect(sw.emails, 'sans clé d’envoi : emails_envoyes 0').toBe(0)
