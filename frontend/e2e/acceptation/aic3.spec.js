@@ -311,7 +311,8 @@ etape('P9.1-AIC90-plafond-du-jour', ['AIC90'], async ({ page, context, suivi, te
 const SONDE_TABLES = `
 import json, os, sys
 sys.path.insert(0, os.getcwd())
-from app.services.sql_agent_service import sql_agent_service as s
+from app.services import sql_agent_service as m
+s = m.sql_agent_service
 from langchain_community.utilities import SQLDatabase
 from app.core import database as d
 a = json.loads(sys.argv[1])
@@ -319,7 +320,7 @@ res = {}
 for q in a['questions']:
     c = {'candidates': s._get_relevant_tables(q)}
     try:
-        SQLDatabase(d.create_sql_agent_engine(), include_tables=[t for t in c['candidates'] if t in s._ALLOWED_TABLES] or list(s._ALLOWED_TABLES), sample_rows_in_table_info=0)
+        SQLDatabase(d.create_sql_agent_engine(), include_tables=[t for t in c['candidates'] if t in m._ALLOWED_TABLES] or list(m._ALLOWED_TABLES), sample_rows_in_table_info=0)
         c['sans_filtre'] = 'ok'
     except Exception as e:
         c['sans_filtre'] = str(e)[:300]
