@@ -19,8 +19,21 @@ import { useContext, useEffect, useState } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import { estResponsable } from '../../hooks/useHasPermission'
 import reportingApi from '../../api/reportingApi'
+import { useBadgeTaches } from '../../features/taches/useBadgeTaches'
 
 const TTL_MS = 60_000
+
+/**
+ * TCH124 — badge PERSONNEL d'une app : un compte qui ne dépend que de l'utilisateur (jamais
+ * agrégé par le serveur fédéré). Aujourd'hui : « taches » = les tâches GARDÉES encore ouvertes
+ * (A16-N5, `n` de `GET taches/badge/`) ; 0 ou inconnu → `null` (pas de pastille).
+ */
+export function badgePersonnel(cleApp, { n } = {}) {
+  if (cleApp === 'taches' && Number.isInteger(n) && n > 0) {
+    return { valeur: n, label: 'Tâches du jour', unite: 'tâches' }
+  }
+  return null
+}
 
 // Cache module (par onglet) : { expire, badges } + la requête en vol, pour que
 // deux montages rapprochés partagent le MÊME appel.
@@ -82,7 +95,11 @@ export function useAppBadges() {
     return () => { vivant = false }
   }, [autorise])
 
-  return badges
+  // TCH124 — le badge personnel de Tâches : seulement avec le droit `taches_voir` (sinon le
+  // serveur répondrait 403 à chaque arrivée sur l'accueil) ; il s'ajoute au fédéré sans l'écraser.
+  const { n: tachesN } = useBadgeTaches({ actif: codes.includes('taches_voir') })
+  const taches = badgePersonnel('taches', { n: tachesN })
+  return taches ? { ...badges, taches } : badges
 }
 
 export default useAppBadges

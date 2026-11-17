@@ -13,6 +13,7 @@ import {
   CarteWaMessage, CarteWaDevis, CarteDocument, CarteVisite,
 } from './CartesWhatsApp'
 import CarteDiagnostic from './CarteDiagnostic'
+import CartesTaches from '../../taches/cartes/CartesTaches'
 
 /* COP-F1 — le rendu des cartes d'un message agent, dans l'ordre du serveur.
    Une carte ne vient JAMAIS du texte du modèle : seul `msg.cartes` est lu.
@@ -71,6 +72,18 @@ const COMPOSANTS = {
   document: CarteDocument,
   visite: CarteVisite,
   diagnostic: CarteDiagnostic,
+  // Tâches (TCH118) : une même vue, la clé de la carte choisit son rendu.
+  ma_journee: CartesTaches,
+  plan_propose: CartesTaches,
+  liste_taches: CartesTaches,
+  tache: CartesTaches,
+  capture_apercu: CartesTaches,
+  rythme: CartesTaches,
+  plan_projet: CartesTaches,
+  projet: CartesTaches,
+  revue_semaine: CartesTaches,
+  priorites: CartesTaches,
+  point: CartesTaches,
 }
 
 // Aiguille une carte « résultat » par sa clé `carte`.

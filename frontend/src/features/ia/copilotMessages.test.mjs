@@ -4,6 +4,7 @@
 // d'envoi partagée par le bouton / Entrée / les suggestions.
 
 import test from 'node:test'
+import { exempleContrat } from '../../test/fixtures/contractSamples.js'
 import assert from 'node:assert/strict'
 import {
   CONFIG_MISSING_FR,
@@ -18,6 +19,11 @@ import {
   NOTE_NEGATIVE,
   NOTE_POSITIVE,
   COMMENTAIRE_MAX,
+  DEMANDES_PRETES_TACHES,
+  PHRASE_PLAN_PROPOSE,
+  demandePreteTaches,
+  estEcranTaches,
+  lancerDemandePrete,
 } from './copilotMessages.js'
 
 test('isConfigMissing reconnaît une réponse « clé API manquante »', () => {
@@ -114,4 +120,56 @@ test('ditUnePanne reconnaît une panne dite en français courant, pas une questi
   for (const phrase of ['Combien de leads aujourd\'hui ?', 'Prépare ma prochaine relance', '', null]) {
     assert.equal(ditUnePanne(phrase), false, String(phrase))
   }
+})
+
+// TCH118 — les quatre demandes prêtes de /taches : route déterministe, carte rendue, aucun modèle.
+const client = () => {
+  const appels = []
+  const rep = (nom, charge) => (...args) => { appels.push([nom, ...args]); return Promise.resolve({ data: charge }) }
+  return {
+    appels,
+    proposerJournee: rep('proposerJournee', exempleContrat('taches', 'journee_proposition')),
+    lirePriorites: rep('lirePriorites', exempleContrat('taches', 'priorites')),
+    lirePoint: rep('lirePoint', exempleContrat('taches', 'point')),
+    saisieRapide: rep('saisieRapide', exempleContrat('taches', 'saisie_apercu')),
+  }
+}
+
+test('les quatre demandes prêtes sont exactement celles de textes.md §5.2', () => {
+  assert.deepEqual(DEMANDES_PRETES_TACHES.map((d) => d.question),
+    ['Planifie ma journée', 'Aide-moi à prioriser', 'Range ma liste', 'Où j\'en suis ?'])
+  assert.deepEqual(DEMANDES_PRETES_TACHES.map((d) => d.carte), ['plan_propose', 'priorites', 'capture_apercu', 'point'])
+  assert.equal(demandePreteTaches('  Où j\'en suis ?  ').carte, 'point')
+  assert.equal(demandePreteTaches('Combien de leads ?'), null)
+  assert.equal(estEcranTaches('/taches/aujourdhui'), true)
+  assert.equal(estEcranTaches('/taches'), true)
+  assert.equal(estEcranTaches('/tachesx'), false)
+  assert.equal(estEcranTaches('/crm/leads'), false)
+})
+
+test('sans clé d\'IA, chaque demande prête appelle SA route et rend SA carte (aucun appel à l\'assistant)', async () => {
+  const c = client()
+  for (const [question, appel, carte, donnees] of [
+    ['Planifie ma journée', 'proposerJournee', 'plan_propose', 'journee_proposition'],
+    ['Aide-moi à prioriser', 'lirePriorites', 'priorites', 'priorites'],
+    ['Où j\'en suis ?', 'lirePoint', 'point', 'point'],
+    ['Range ma liste', 'saisieRapide', 'capture_apercu', 'saisie_apercu'],
+  ]) {
+    const msg = await lancerDemandePrete(question, { client: c, ids: [41, 42] })
+    assert.equal(msg.role, 'agent', question)
+    assert.equal(msg.cartes.length, 1, question)
+    assert.equal(msg.cartes[0].type, 'resultat')
+    assert.equal(msg.cartes[0].carte, carte)
+    assert.deepEqual(msg.cartes[0].donnees, exempleContrat('taches', donnees))
+    assert.equal(c.appels.at(-1)[0], appel)
+  }
+  assert.deepEqual(c.appels.at(-1).slice(1), [{ ids: [41, 42], apercu: true }])
+  assert.equal((await lancerDemandePrete('Planifie ma journée', { client: c })).content, PHRASE_PLAN_PROPOSE)
+})
+
+test('« Range ma liste » sans tâche À trier, ou une question libre : rien n\'est appelé', async () => {
+  const c = client()
+  assert.equal(await lancerDemandePrete('Range ma liste', { client: c, ids: [] }), null)
+  assert.equal(await lancerDemandePrete('Dis-moi bonjour', { client: c }), null)
+  assert.equal(c.appels.length, 0)
 })
