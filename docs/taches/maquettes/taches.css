@@ -70,7 +70,7 @@
   --tch-ease-sortie: cubic-bezier(0.3, 0, 0.8, 0.15);   /* accélérée */
 
   /* Palette de projet : L et C fixes par rôle, seule la teinte varie */
-  --tch-point-l: 64%;  --tch-point-c: 0.105;
+  --tch-point-l: 61%;  --tch-point-c: 0.105;
   --tch-fond-l: 95.5%; --tch-fond-c: 0.02;
   --tch-texte-l: 46%;  --tch-texte-c: 0.08;
   --tch-teinte-terre: 55;  --tch-teinte-ambre: 85;   --tch-teinte-olive: 115;

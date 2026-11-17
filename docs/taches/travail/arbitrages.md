@@ -125,3 +125,14 @@ Toutes les corrections du rapport sont ADOPTÉES. Précisions de l'orchestrateur
   « À planifier » sont gardés.
 - **M11** : la palette de commandes a une ligne « Chercher dans mes tâches » (la recherche globale de l'ERP ne les
   indexe pas, par vie privée).
+
+## A15 — Points laissés à l'orchestrateur par l'intégrateur de la référence
+- Palette de projet : 10 couleurs, celles de `spec-8-langage-visuel.md` (clés et valeurs) — la référence s'aligne.
+- Conservation : compteurs du jour (`PlanJour`, sans aucun titre) 400 jours (le rythme et les constats ont besoin
+  de recul) ; lignes de plan 90 jours ; journal des sollicitations 90 jours ; rappels clos 30 jours ; gestes
+  annulables 7 jours ; tâches et projets supprimés 30 jours.
+- Aucune sollicitation pour un compte qui n'a jamais créé de tâche (le module est allumé pour toute la société :
+  personne ne doit recevoir un « plan du matin » sans avoir jamais ouvert l'app).
+- La notification de mi-journée ouvre l'écran Aujourd'hui (pas directement « Alléger »).
+- Les astuces de geste vues/non vues restent dans le navigateur. Les plafonds de requêtes sont des cibles, à
+  remplacer par la mesure à la construction. « En réserve » n'est pas lu par la capture Siri.
