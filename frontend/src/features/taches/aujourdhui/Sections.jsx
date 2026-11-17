@@ -190,49 +190,8 @@ export function Prevu({ donnees, contexte, geste }) {
   )
 }
 
-/** Un en-tête replié (« À revoir 2 ») : un bouton qui déplie ses lignes. */
-export function Replie({ titre, compte, indice = '', children }) {
-  const [ouvert, setOuvert] = useState(false)
-  return (
-    <>
-      <button type="button" className="replie" aria-expanded={ouvert} onClick={() => setOuvert((v) => !v)}>
-        <span>{titre}</span>
-        <span className="compte chiffres">{compte}</span>
-        {indice ? <span className="indice">{indice}</span> : null}
-        <ChevronDown className="i i-16" aria-hidden="true" />
-      </button>
-      {ouvert ? <div className="liste" role="list">{children}</div> : null}
-    </>
-  )
-}
-
-/** Les sections repliées : À revoir, En attente, Faites. */
-export function Repliees({ donnees, contexte, geste }) {
-  const aDecider = donnees.a_decider ?? []
-  const enAttente = donnees.en_attente ?? []
-  const faites = donnees.faites ?? []
-  const bloquees = donnees.a_trier?.bloquees ?? 0
-  if (aDecider.length + enAttente.length + faites.length === 0) return null
-  const lignes = (items) => items.map((item) => <Ligne key={`${item.type}:${item.id}`} item={item} contexte={contexte} geste={geste} />)
-  return (
-    <div className="replies">
-      {aDecider.length > 0 ? <Replie titre="À revoir" compte={aDecider.length}>{lignes(aDecider)}</Replie> : null}
-      {enAttente.length > 0 ? (
-        <Replie
-          titre="En attente"
-          compte={enAttente.length}
-          indice={bloquees > 0 ? `· ${bloquees} en attente d'une autre tâche` : ''}
-        >
-          {lignes(enAttente)}
-        </Replie>
-      ) : null}
-      {faites.length > 0 ? <Replie titre="Faites" compte={faites.length}>{lignes(faites)}</Replie> : null}
-    </div>
-  )
-}
-
 /** Les sections ouvertes d'Aujourd'hui dans l'ordre vertical (Proposé s'y insère par `propose`). */
-export default function Sections({ donnees, contexte, geste, propose = null }) {
+export default function Sections({ donnees, contexte, geste, propose = null, repliees = null }) {
   const lignes = (items) => items.map((item) => <Ligne key={`${item.type}:${item.id}`} item={item} contexte={contexte} geste={geste} reorg />)
   const essentiel = donnees.essentiel ?? []
   const ceSoir = donnees.ce_soir ?? []
@@ -250,7 +209,7 @@ export default function Sections({ donnees, contexte, geste, propose = null }) {
       <Prevu donnees={donnees} contexte={contexte} geste={geste} />
       {ceSoir.length > 0 ? <Section titre="Ce soir">{lignes(ceSoir)}</Section> : null}
       {propose}
-      <Repliees donnees={donnees} contexte={contexte} geste={geste} />
+      {repliees}
       {donnees.tronque ? <p className="section-sous">Plus de 200 lignes : affine avec la recherche.</p> : null}
     </>
   )

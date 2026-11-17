@@ -4,6 +4,8 @@ import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
 } from '../../features/taches/aujourdhui/Sections'
+import { FeuilleLier, useLierActivite } from '../../features/taches/aujourdhui/LignesErp'
+import Replies, { useARevoir } from '../../features/taches/aujourdhui/Replies'
 import FeuilleBilan from '../../features/taches/aujourdhui/FeuilleBilan'
 import FeuilleAlleger from '../../features/taches/aujourdhui/FeuilleAlleger'
 import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
@@ -352,6 +354,8 @@ export default function Aujourdhui() {
   }, [garde, donnees, setDonnees, charger])
 
   const modes = useModesJournee({ donnees, setDonnees, garde, setEstampilles })
+  const revoir = useARevoir({ donnees, setDonnees, garde, charger })
+  const lier = useLierActivite({ donnees, setDonnees, garde, charger })
 
   const ouvrirFiche = useCallback((id) => {
     setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(id)); return suite })
@@ -366,6 +370,7 @@ export default function Aujourdhui() {
       if (code === 'essentiel') basculerEssentiel(item, !item.essentielle)
       else if (code === 'choisir_jour') setFeuille({ type: 'jour', item })
       else if (code === 'supprimer') setFeuille({ type: 'supprimer', item })
+      else if (code === 'lier') setFeuille({ type: 'lier', item })
       else ouvrirFiche(item.id)
     },
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
@@ -472,6 +477,13 @@ export default function Aujourdhui() {
       onFermer: () => setFeuille(null),
       children: <FeuilleAlleger donnees={donnees} enLigne={enLigne} onGarder={alleger} />,
     }
+  } else if (feuille?.type === 'lier') {
+    laFeuille = {
+      ouverte: true,
+      titre: 'Lier une tâche',
+      onFermer: () => setFeuille(null),
+      children: <FeuilleLier item={feuille.item} onLier={(titre) => { setFeuille(null); lier(feuille.item, titre) }} />,
+    }
   } else if (feuille?.type === 'jour_lot') {
     laFeuille = {
       ouverte: true,
@@ -559,6 +571,7 @@ export default function Aujourdhui() {
           donnees={donnees}
           contexte={contexte}
           geste={geste}
+          repliees={<Replies donnees={donnees} contexte={contexte} geste={geste} revoir={revoir} enLigne={enLigne} />}
           propose={(
             <Propose
               donnees={donnees}

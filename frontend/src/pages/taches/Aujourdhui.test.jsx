@@ -53,7 +53,7 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
     expect(reperes[0]).toBe('Essentiel')
     expect(reperes.slice(1, 3).every((t) => t.endsWith('Toute la journée'))).toBe(true)
     expect(reperes.slice(3)).toEqual([
-      'Prévu', 'Ce soir', "Proposé pour aujourd'hui", 'À revoir1', "En attente1· 1 en attente d'une autre tâche", 'Faites1',
+      'Prévu', 'Ce soir', "Proposé pour aujourd'hui", 'À revoir1', "En attente1· 1 en attente d'une autre tâche", 'Faites1', "Ailleurs dans l'ERP",
     ])
   })
 

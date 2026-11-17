@@ -66,6 +66,14 @@
 .tch .demo-balayage span { position: absolute; inset: 0 auto 0 0; width: calc(100% - 92px); display: flex; align-items: center; gap: 8px;
   padding: 0 10px; white-space: nowrap; overflow: hidden; background: var(--tch-surface); color: var(--tch-texte); font-size: 0.875rem; font-weight: 400; }
 .tch .demo-balayage span i { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); flex: none; }
+/* ── TCH81 · Repliés : actions d'une ligne d'À revoir, lignes « Ailleurs dans l'ERP » ──────────── */
+.tch .revoir-actions { margin-top: 0; padding: 0 var(--tch-gouttiere) 12px calc(var(--tch-gouttiere) + var(--tch-cible) - 4px); background: var(--tch-surface); }
+.tch .revoir-actions .champ-date { height: 44px; padding: 0 10px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
+.tch .replies .propose-actions { padding-top: 4px; }
+.tch .replies .ligne-repli { align-items: center; }
+.tch .replies .ligne-repli .ligne-fin { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-texte-doux); }
+
 /* ── TCH80 · Bilan du soir (port de ecrans-coeur.css « Bilan du soir » + tour 2) ──────────────── */
 .tch .bilan-tete { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; }
 .tch .bilan-tete .bilan-compte { grid-column: 1 / -1; font-size: 1.375rem; font-weight: 700; line-height: 1.2; }

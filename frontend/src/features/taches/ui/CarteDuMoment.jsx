@@ -46,8 +46,9 @@ function noterAstuce(cle, jour) {
   const { vues } = lireAstuces()
   try {
     window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify({ vues: [...new Set([...vues, cle])], jour }))
+    return true
   } catch {
-    // stockage indisponible (navigation privée) : l'astuce ne sera pas retenue, rien d'autre
+    return false // stockage indisponible (navigation privée) : l'astuce ne sera pas retenue, rien d'autre
   }
 }
 
