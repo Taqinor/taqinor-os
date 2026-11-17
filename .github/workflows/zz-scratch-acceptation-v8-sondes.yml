@@ -41,14 +41,16 @@ jobs:
           path: |
             /tmp/testdb.dump
             /tmp/testdb.manifest
-          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
           restore-keys: |
+            v8sondes-db-
             testdb-v1-
       - name: Demarrer db puis y restaurer le dump (accelerateur, hors preuve)
         run: |
           set -euo pipefail
           docker compose up -d db
           for i in $(seq 1 30); do docker compose exec -T db pg_isready -U erp_user && break; sleep 2; done
+          docker compose exec -T db psql -U erp_user -d erp_db -c "ALTER SYSTEM SET fsync=off" -c "ALTER SYSTEM SET synchronous_commit=off" -c "ALTER SYSTEM SET full_page_writes=off" -c "SELECT pg_reload_conf()"
           if [ -f /tmp/testdb.dump ]; then
             id=$(docker compose ps -q db)
             docker cp /tmp/testdb.dump "$id":/tmp/testdb.dump
@@ -67,11 +69,20 @@ jobs:
           for i in $(seq 1 60); do docker exec "$C" python manage.py check >/dev/null 2>&1 && break; sleep 3; done
           docker exec "$C" python manage.py migrate --noinput > /tmp/migrate.log 2>&1 || { tail -n 60 /tmp/migrate.log; exit 1; }
           tail -n 3 /tmp/migrate.log
-          docker exec "$C" python manage.py seed_catalogue > /tmp/seed1.log 2>&1 || tail -n 20 /tmp/seed1.log
           docker exec "$C" python manage.py seed_demo > /tmp/seed2.log 2>&1 || tail -n 20 /tmp/seed2.log
+          docker exec "$C" python manage.py seed_catalogue > /tmp/seed1.log 2>&1 || tail -n 20 /tmp/seed1.log
           echo "$C" > /tmp/conteneur.txt
+          docker compose exec -T db pg_dump -U erp_user -Fc erp_db -f /tmp/v8.dump && docker cp "$(docker compose ps -q db)":/tmp/v8.dump /tmp/testdb.dump && echo "dump ecrit" || echo "dump KO"
+      - name: Sauver la base migree (accelerateur des essais suivants)
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
       - name: Rejouer les sondes comme les clauses le disent
         run: |
+          set +e
           set -uo pipefail
           C=$(cat /tmp/conteneur.txt)
           D="$(date -u +%F)"
