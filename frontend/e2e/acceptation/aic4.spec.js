@@ -87,8 +87,9 @@ sortie(str(profondeur_remise_effective(Devis.objects.get(pk=${id}))))`)
     const refusGlobale = await envoyer(f.globale.id)
     const corpsGlobale = await refusGlobale.text()
     expect(refusGlobale.status(), `remise globale 10 % refusée (${corpsGlobale.slice(0, 300)})`).toBe(400)
-    const nombres = (s) => (s.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(',', '.')))
-    expect(nombres(corpsRefus), 'même message (mêmes pourcentages) pour la baisse de ligne et pour la remise globale').toEqual(nombres(corpsGlobale))
+    const phrase = (s) => (s.match(/Remise de [\d.,]+ % supérieure au seuil de [\d.,]+ %/) || [''])[0]
+    expect(phrase(corpsRefus), 'la phrase de refus nomme la remise et le seuil').not.toBe('')
+    expect(phrase(corpsRefus), 'même phrase de refus pour la baisse de ligne et pour la remise globale de 10 %').toBe(phrase(corpsGlobale))
     // Persistance : relu par l'API et en base ⇒ brouillon tant que l'accord manque ; prix de ligne inchangé à 9 000.
     for (const id of [f.baisse.id, f.globale.id]) {
       expect((await lire(id)).statut, `devis ${id} relu : brouillon`).toBe('brouillon')
