@@ -1,10 +1,10 @@
 # Spec 5b — Conversation du coach (`apps/taches` + assistant)
 
-Base : socle, design-s3, verif-v1/v2, critique-1, specs 3 §5 et 4 §5. Django relatif à `backend/django_core/`, FastAPI à `backend/fastapi_ia/`. Jetons mesurés par AST et l'estimateur du code (`len // 4`, `sql_agent_service.py:428-429`). Aucun test lancé.
+Base : socle, design-s3, verifs, critique-1, specs 3-4. Django relatif à `backend/django_core/`, FastAPI à `backend/fastapi_ia/`. Jetons mesurés par AST et l'estimateur du code (`len // 4`, `sql_agent_service.py:428-429`). Aucun test lancé.
 
 ## 1. Actions `taches.*`
 
-`apps/taches/agent_actions.py` (`register_actions()`, clés littérales) + `'agent_actions_module'` dans `apps/taches/platform.py`. Toutes : `required_permission='taches_voir'`, `risk=RISK_INTERNAL`, `lot=LOT_COPILOTE` (`apps/agent/registry.py:49-54`) ; aucune dans `OBJETS` (`registry.py:62`). Routes préfixées `/api/django/taches/`. Description = texte exact servi au modèle (16 à 33 mots).
+`apps/taches/agent_actions.py` (`register_actions()`, clés littérales) + `'agent_actions_module'` dans `platform.py`. Toutes : `required_permission='taches_voir'`, `risk=RISK_INTERNAL`, `lot=LOT_COPILOTE` (`registry.py:49-54`), hors `OBJETS` (`:62`). Préfixe `/api/django/taches/`. Description = texte exact (16 à 33 mots).
 
 | clé | route | entrées (* requis) | carte | description |
 |---|---|---|---|---|
@@ -14,7 +14,7 @@ Base : socle, design-s3, verif-v1/v2, critique-1, specs 3 §5 et 4 §5. Django r
 | `taches.profil.lire` | GET `rythme/` | — | `rythme` | Sert à : lire son rythme (mode, objectif, trace, palier proposé), ses habitudes observées et ses préférences dites. Chiffres à citer tels quels. |
 | `taches.projet.lire` | GET `projets/{id}/vue/` | `id`* | `projet` | Sert à : lire l'avancement, la santé et le prochain jalon d'un projet, calculés par l'ERP. |
 | `taches.revue.semaine` | GET `revue/projets/` | `semaine` | `revue_semaine` | Sert à : préparer la revue de la semaine, projet par projet ; les décisions se prennent sur l'écran Revue. |
-| `taches.tache.creer` ✎ | POST `taches/` | `titre`*, `projet_id`, `nouveau_projet`, `jour_prevu`, `moment`, `heure_debut`, `echeance`, `echeance_heure`, `estimation_minutes`, `priorite` 0-3 | `tache` | Sert à : ajouter UNE tâche dite clairement, trois par tour au plus, dates absolues. Pas pour une liste collée (taches.liste.ranger). Résultat : tâche et annulation. |
+| `taches.tache.creer` ✎ | POST `taches/` | `titre`*, `projet_id`/`nouveau_projet`, `jour_prevu`, `moment`, `heure_debut`, `echeance(_heure)`, `estimation_minutes`, `priorite` | `tache` | Sert à : ajouter UNE tâche dite clairement, trois par tour au plus, dates absolues. Pas pour une liste collée (taches.liste.ranger). Résultat : tâche et annulation. |
 | `taches.tache.terminer` ✎ | POST `taches/{id}/terminer/` | `id`* | `tache` | Sert à : marquer faite UNE tâche qu'il dit finie, id rendu par un outil. Résultat : tâche, compteurs et annulation. |
 | `taches.tache.planifier` ✎ | POST `taches/{id}/planifier/` | `id`*, `lock_version`*, `jour_prevu`, `moment`, `heure_debut`, `quelque_jour` | `tache` | Sert à : donner à UNE tâche, sur sa demande, un jour absolu, un moment ou une heure ; l'ERP compte le report. Plusieurs tâches : bouton de la carte. |
 | `taches.rappel.poser` ✎ | POST `taches/{id}/rappels/` | `id`*, `jour`, `heure`* | `tache` | Sert à : poser le rappel qu'il demande sur une tâche, date et heure absolues. hors_fenetre dit s'il sonnera hors des heures de travail. |
@@ -25,45 +25,44 @@ Base : socle, design-s3, verif-v1/v2, critique-1, specs 3 §5 et 4 §5. Django r
 | `taches.projet.planifier_apercu` ⟲ | POST `projets/{id}/planification/apercu/` | `id`*, `texte`, `lignes[]` | `plan_projet` | Sert à : proposer les étapes et premières tâches d'un projet. N'écrit RIEN : il valide sur la carte. |
 | `taches.tache.proposer_changement` ⟲ | POST `taches/{id}/changement/apercu/` | `id`*, `geste`* `renommer`/`abandonner`/`supprimer`, `titre` | `tache` | Sert à : afficher la carte d'un renommage, d'un abandon ou d'une suppression demandés, une tâche à la fois. N'enregistre RIEN : son doigt confirme. |
 
-✎ écrit · ⟲ carte-écho (n'écrit rien). Classes : AVANCÉ = projet.lire, revue.semaine, rappel.poser, projet.creer ; ESSENTIEL = le reste.
+✎ écrit · ⟲ écho (n'écrit rien). AVANCÉ : projet.lire, revue.semaine, rappel.poser, projet.creer ; le reste ESSENTIEL.
 
 **Sans tap.** Les 16 sont `internal`, exécutées sans proposition (`action_tools.py:804-832`) ; **7 écrivent sans tap**. Sans danger : effet privé interne (`registry.py:23`) ; une tâche par appel, dates absolues ; POST donc clé d'idempotence du tour (`action_tools.py:662-673`) ; annulation gardée par le serveur (§4) ; **3 écritures `taches.*` par tour au plus** : `_ECRITURES_TACHES` près de `_CLE_DANS_LE_CORPS` (`action_tools.py:749-756`), contrôle avant `:831`, refus « au-delà de trois écritures par tour, propose taches.liste.ranger ». Renommer, abandonner, supprimer, ranger ou reporter plusieurs tâches, adopter un plan : boutons de carte seulement.
 
-**Confidentiel.** Le relais ajoute `X-Taqinor-Assistant: 1` à tout appel Django (`action_tools.py:173-178`) ; `taches` rend alors « Tâche privée » / « Projet privé » pour un objet `confidentiel`, jamais `notes`, et 403 sur `planification/apercu/` d'un projet confidentiel. Usurper l'en-tête ne masque que davantage.
+**Confidentiel.** Le relais ajoute `X-Taqinor-Assistant: 1` à tout appel Django (`action_tools.py:173-178`) ; `taches` rend alors « Tâche privée » / « Projet privé » pour un objet `confidentiel`, jamais `notes`, et 403 sur `planification/apercu/` d'un projet confidentiel. L'usurper ne fait que masquer.
 
 ## 2. Cartes
 
-Composants dans `frontend/src/features/taches/cartes/` (`index.js`). `donnees` = corps de la route, sans remise en forme.
+Composants : `frontend/src/features/taches/cartes/`. `donnees` = corps de la route tel quel.
 
 | carte | corps de | boutons (Django direct, zéro modèle) |
 |---|---|---|
-| `ma_journee` | `GET aujourdhui/` | cocher, ouvrir ; replié « ⋯ » : « Tout au prochain jour ouvré (n) » (boucle `planifier/` + `lock_version`, toast Annuler) |
-| `plan_propose` | `GET journee/proposition/` | décocher, essentiel ≤ 3, puce de triage par retard ; « Adopter ce plan » → `POST journee/planifier/`, inactif tant qu'un triage manque |
+| `ma_journee` | `GET aujourdhui/` | cocher, ouvrir ; replié : « Tout au prochain jour ouvré (n) » (boucle `planifier/`, toast Annuler) |
+| `plan_propose` | `GET journee/proposition/` | décocher, essentiel ≤ 3, triage par retard ; « Adopter ce plan » → `POST journee/planifier/` (inactif tant qu'un triage manque) |
 | `liste_taches` | `GET recherche/` | ouvrir |
-| `tache` | écriture `{tache\|projet\|rappel, avertissements[], annulation}` ou écho `{tache, proposition{geste, avant, apres, effet}}` | « Annuler » ; écho : « Renommer » (`PATCH taches/{id}/` + `lock_version`), « Abandonner » (`trancher/`), « Supprimer » (`DELETE`, `record=False`), « Laisser » |
+| `tache` | écriture `{tache\|projet\|rappel, avertissements[], annulation}` ou écho `{tache, proposition{geste, avant, apres}}` | « Annuler » ; écho : « Renommer » (`PATCH` + `lock_version`), « Abandonner » (`trancher/`), « Supprimer » (`DELETE`, `record=False`), « Laisser » |
 | `capture_apercu` | `POST saisie-rapide/apercu/` | changer de projet, retirer, « Tout ajouter (n) » → `POST saisie-rapide/` `{lignes}` + `Idempotency-Key` |
 | `rythme` | `GET rythme/` (et réponses `rythme/`, `preferences/`) | « Passer à N », « Garder N », « Retirer » par préférence, « Annuler » |
 | `plan_projet` | `POST projets/{id}/planification/apercu/` | retirer, changer de section, « Tout ajouter » → `planification/` |
 | `projet` | `GET projets/{id}/vue/` | ouvrir |
 | `revue_semaine` | `GET revue/projets/` | ouvrir la revue |
 
-Échantillon `apps/taches/contract_samples/rythme.json` (palier et silence de 28 jours : moteur de rythme, socle §6) :
+Échantillon `rythme.json` (règle de palier : moteur de rythme, socle §6) :
 ```json
 {"mode":"pousser","suivi_actif":true,
- "objectif":{"nb":5,"source":"historique","trace":"5 faites ou plus 4 jours sur les 5 derniers jours travaillés"},
+ "objectif":{"nb":5,"source":"historique","trace":"5 faites ou plus 4 jours sur 5"},
  "palier_propose":{"de":5,"a":6,"raison":"tu as tenu 5 tâches 4 jours sur 5"},
  "serie":[{"jour":"2026-11-16","faites":5,"prevues":6,"essentiel_faites":2,"jour_off":false}],
- "profil":[{"cle":"jours_forts","phrase":"Le mardi est ton jour le plus fourni.","n":7,"periode":"8 semaines"}],
- "preferences":[{"cle":"heure_limite_rappels","valeur":"19:00","libelle":"Pas de rappel après 19:00","dite_le":"2026-11-17"}],
- "annulation":null}
+ "profil":[{"cle":"jours_forts","phrase":"Le mardi est ton jour le plus fourni.","n":7}],
+ "preferences":[{"cle":"heure_limite_rappels","valeur":"19:00","dite_le":"2026-11-17"}],"annulation":null}
 ```
 
 Listes fermées (ajouts en fin) :
 - `apps/agent/registry.py:35-47` `CARTES` : + 9.
-- `frontend/src/features/ia/cartes/cartes.js:31-34` `CARTES_CONNUES` : + 9 ; `:170-173` : retirer aussi `proposition` d'une carte `tache` rechargée de l'historique.
-- `frontend/src/features/ia/cartes/CartesDuMessage.jsx:62-74` `COMPOSANTS` : + 9, une ligne d'import après `:15`.
-- `apps/agent/contract_samples/assistant_reponse.json:31-43` `cartes_donnees` : + 9 chemins `apps/taches/contract_samples/{aujourdhui, journee_proposition, recherche, tache_ecrite + tache_changement, saisie_apercu, rythme, planification_apercu, projet_vue, revue_projets}.json` ; `:44-52` : `tache_id`, `projet_id` à null.
-- `frontend/src/test/fixtures/contractSamples.js` : un export par échantillon (`docs/ownership.yml:1000`).
+- `features/ia/cartes/cartes.js:31-34` `CARTES_CONNUES` : + 9 ; `:170-173` : retirer aussi `proposition` d'une carte `tache` rechargée.
+- `features/ia/cartes/CartesDuMessage.jsx:62-74` `COMPOSANTS` : + 9, import après `:15`.
+- `apps/agent/contract_samples/assistant_reponse.json:31-43` : + 9 chemins `apps/taches/contract_samples/{aujourdhui, journee_proposition, recherche, tache_ecrite + tache_changement, saisie_apercu, rythme, planification_apercu, projet_vue, revue_projets}.json` ; `:44-52` : `tache_id`, `projet_id` à null.
+- `frontend/src/test/fixtures/contractSamples.js` : un export par échantillon.
 - Tests (Nouveau fichier car : nouveau module) : `frontend/src/features/taches/cartes/CartesTaches.test.jsx` rend chaque échantillon via `CarteResultat` (`CartesDuMessage.jsx:85`) ; `apps/taches/tests/test_agent_actions.py` : carte ∈ `CARTES` et citée dans `cartes.js` (aucune parité aujourd'hui, `verif-v1-code.md:99`), méthode et permission = route, échos sans écriture, masquage.
 
 ## 3. Consignes du coach
@@ -95,7 +94,7 @@ Ton
 Parle de ce qui a avancé, faits à l'appui. Jamais de reproche, de culpabilité, de comparaison, de points, de séries ni de récompenses. Pour dire ce que tu as compris de lui, cite taches.profil.lire et demande s'il est d'accord.
 ```
 
-**Où, quand.** `_contenu_systeme(..., coach="")` (`sql_agent_service.py:505-525`) : `"avec"` ajoute `"\nCOACH DE PLANIFICATION :\n" + CONSIGNES_COACH` après le copilote (`:517-518`), même bloc en cache 1 h sous claude, stable par compte ; `"seul"` (hors claude, tour Tâches, §7) remplace le copilote. Appelants : `sql_agent_service.py:1649` (depuis `catalogue_tour`, `relais_copilote.py:117`) et `relais_copilote.py:445` (natif : `"avec"`). L'empreinte native change une fois (`moteur_natif.py:355-361`).
+**Où, quand.** `_contenu_systeme(..., coach="")` (`sql_agent_service.py:505-525`) : `"avec"` ajoute `"\nCOACH DE PLANIFICATION :\n" + CONSIGNES_COACH` après le copilote (`:517-518`), même bloc en cache 1 h sous claude, stable par compte ; `"seul"` (hors claude, tour Tâches, §7) remplace le copilote. Appelants : `sql_agent_service.py:1649` (depuis `catalogue_tour`) et `relais_copilote.py:445` (natif : `"avec"`).
 
 **Tests `tests/test_prompt_copilote.py`.** Inchangés : `CLES_CANONIQUES` `:22-28`, `MAJUSCULES_ADMISES` `:33-40`, `:48-98` (950 mots), `:126-135`. Ajouts :
 - `CoachTests` après `:98` : extraits (« Sans outil, pas de chiffre », « jamais « c'est planifié » », « Rien ne bouge sans sa demande », « quand et où », « mode tenir », « jamais une consigne », « Tâche privée », « ni de récompenses », « Tu le tutoies ») ; `CLES_COACH` = les 10 clés citées, regex `\btaches\.[a-z_]+\.[a-z_]+` ⊆ ; `MAJUSCULES_COACH` = {Chiffres, Données, Il, Jamais, Je, Le, Liste, Parle, Planifie, Planifier, Plusieurs, Portée, Pour, Quand, Renommer, Rien, Rythme, Sans, Ses, Ton, Tout, Tu, Tâche, Une, Ça, Écrire} (mesuré) ; ≤ 280 mots ; aucun `\d` ; `coach_allume` (lot `None`, `herite`, clé `crm.*` → faux).
@@ -104,47 +103,47 @@ Parle de ce qui a avancé, faits à l'appui. Jamais de reproche, de culpabilité
 
 ## 4. Annulation gardée par le serveur (donnée ajoutée)
 
-`Annulation` (TenantModel) : `proprietaire` (CASCADE `# on_delete: données personnelles`), `geste` Char(40), `operations` JSON `[{"objet":"tache","id":41,"champ":"jour_prevu","avant":"2026-11-17","apres":"2026-11-19"}]` (`reports` compris), `appliquee_le` ; index `taches_annul_prop_idx` (company, proprietaire, created_at). Écrite par tout service d'écriture, écran comme assistant. `POST annulations/{id}/appliquer/` : 404 hors propriétaire ; 409 `{"detail":"« Tâche » a changé depuis.","objet":"tache","id":41}` si valeur courante ≠ `apres`. Purge à 30 jours (socle §8). Généralise `decaler/annuler` (spec 4) ; si la spec saisie pose un autre Annuler serveur, un seul mécanisme.
+`Annulation` (TenantModel) : `proprietaire` (CASCADE `# on_delete: données personnelles`), `geste` Char(40), `operations` JSON `[{"objet":"tache","id":41,"champ":"jour_prevu","avant":"2026-11-17","apres":"2026-11-19"}]` (`reports` compris), `appliquee_le` ; index `taches_annul_prop_idx` (company, proprietaire, created_at). Écrite par tout service d'écriture. `POST annulations/{id}/appliquer/` : 404 hors propriétaire, 409 `{"detail":"« Tâche » a changé depuis.","objet":"tache","id":41}` si valeur ≠ `apres`. Purge à 30 jours. Généralise `decaler/annuler` (spec 4) ; un seul mécanisme avec la spec saisie.
 
 ## 5. Mémoire
 
-- **En-tête de tour** (message utilisateur, jamais le bloc système, `relais_copilote.py:198-215`) : si `coach_allume` ET écran `/taches…`, le relais lit `GET coach/entete/` (2 s, omis sur échec) → `{"lignes":["Rythme : mode tenir · objectif 5 (ton réglage) · aujourd'hui 2 faites sur 6","Préférences dites : rappels jusqu'à 19:00 · vendredi 120 min"]}`. Deux lignes, 300 caractères au total (≈ 75 jetons), formées par Django depuis champs et clés fermées : jamais un titre, une note, un nom de projet ni `note_libre`. `entete_tour(..., coach=lignes)` les nettoie comme `_ecran_nettoye` (`prompt_copilote.py:161-171`).
-- **Par outil** : `taches.profil.lire` (série, profil, préférences, `note_libre` sous l'enveloppe non fiable, `sql_agent_service.py:557-560`).
-- **Ce qu'il a dit** : `Preference` (clé fermée, valeur, `dite_le`, source `assistant`/`ecran` ; prime sur l'inférence). Clés écrites par le coach : `heure_limite_rappels`, `heure_plan_matin`, `heure_bilan_soir` (HH:MM), `rappel_journee` (oui/non), `jours_off`, `jours_courts` (« vendredi=120 »), `capacite_jour_min` (30-720), `conges` (« 2026-12-20/2027-01-03 »), `semaine_revue`, `note_libre` (≤ 200 caractères, 10 au plus). Écran seul : `titres_notifications`, `rappel_avant_bloc_min` (spec 3), `projet_arret_jours` (spec 4). Erreur : 400 `{"valeur":["Heure attendue (HH:MM)."]}`. Le mode vit dans `ReglagesRythme`.
-- **Conversation** : LangChain garde 2 échanges + « Références » ; `_refs_noeud` (`relais_copilote.py:218-238`) apprend `{"type":"tache","id":N}` → « tâche N », `{"type":"projet","id":N}` → « projet N ». Natif : 12 questions / 48 h, clé société:utilisateur (`moteur_natif.py:58-69`).
+- **En-tête de tour** (message utilisateur, jamais le système, `relais_copilote.py:198-215`) : si `coach_allume` ET écran `/taches…`, le relais lit `GET coach/entete/` (2 s, omis sur échec) → `{"lignes":["Rythme : mode tenir · objectif 5 (ton réglage) · 2 faites sur 6","Préférences dites : rappels jusqu'à 19:00 · vendredi 120 min"]}`. Deux lignes, 300 caractères (≈ 75 jetons), formées par Django depuis des clés fermées : jamais titre, note, projet ni `note_libre`. `entete_tour(..., coach=lignes)` les nettoie comme `_ecran_nettoye` (`prompt_copilote.py:161-171`).
+- **Par outil** : `taches.profil.lire` (`note_libre` sous l'enveloppe non fiable, `sql_agent_service.py:557-560`).
+- **Ce qu'il a dit** : `Preference` (clé fermée, valeur, `dite_le`, source ; prime sur l'inférence). Clés du coach : `heure_limite_rappels`, `heure_plan_matin`, `heure_bilan_soir` (HH:MM), `rappel_journee`, `jours_off`, `jours_courts` (« vendredi=120 »), `capacite_jour_min` (30-720), `conges` (« 2026-12-20/2027-01-03 »), `semaine_revue`, `note_libre` (≤ 200 caractères, 10 au plus). Écran seul : `titres_notifications`, `rappel_avant_bloc_min`, `projet_arret_jours`. Erreur : 400 `{"valeur":["Heure attendue (HH:MM)."]}`. Le mode vit dans `ReglagesRythme`.
+- **Conversation** : LangChain = 2 échanges + « Références » ; `_refs_noeud` (`relais_copilote.py:218-238`) apprend `{"type":"tache"|"projet","id":N}`. Natif : 12 questions / 48 h par utilisateur (`moteur_natif.py:58-69`).
 
 ## 6. Contexte d'écran
 
-- `frontend/src/features/ia/copilotMessages.js:75-99` : `RE_TACHE = /^\/taches\/taches\/(\d+)(?:\/|$)/`, `RE_PROJET = /^\/taches\/projets\/(\d+)(?:\/|$)/` ; `detail.tache_id ?? RE_TACHE`, idem projet, en clés CONDITIONNELLES : `copilotMessages.test.mjs:84-101` et `CopilotPanel.test.jsx:44` restent verts. La route vient de `pathname` (`store/iaSlice.js:53-55`) : une fiche ouverte par `?tache=` passe son id dans `detail`.
+- `features/ia/copilotMessages.js:75-99` : `detail.tache_id ?? /^\/taches\/taches\/(\d+)/`, idem `projet_id` avec `/taches/projets/`, en clés CONDITIONNELLES (`copilotMessages.test.mjs:84-101`, `CopilotPanel.test.jsx:44` restent verts). La route vient de `pathname` (`store/iaSlice.js:53-55`) : une fiche `?tache=` passe son id dans `detail`.
 - `app/api/endpoints/sql_agent.py:49-53` : `tache_id`, `projet_id: int | None = Field(None, ge=1)`.
-- `relais_copilote.py:213-214` : deux clés au tuple ; `prompt_copilote.py:199-203` : `("tache_id","Tâche ouverte"), ("projet_id","Projet ouvert")` en fin.
+- `relais_copilote.py:213-214` (tuple) ; `prompt_copilote.py:199-203` : `("tache_id","Tâche ouverte"), ("projet_id","Projet ouvert")` en fin.
 
-Boutons (`taqinor:assistant:ouvrir`, `copilotMessages.js:62-66`), affichés si `getAgentActions()` (`frontend/src/api/iaApi.js:206-207`) rend une clé `taches.` :
+Boutons (`taqinor:assistant:ouvrir`, `copilotMessages.js:62-66`), affichés si `getAgentActions()` (`api/iaApi.js:206-207`) rend une clé `taches.` :
 
-| écran · bouton | question | contexte | envoyer |
-|---|---|---|---|
-| Ma journée · « Planifier avec le coach » | Planifie ma journée | ecran | oui |
-| À décider · « Trancher avec le coach » | Aide-moi à décider quoi faire de mes tâches en retard | ecran | oui |
-| Fiche tâche · « Découper avec le coach » | Découpe cette tâche en étapes | `tache_id` | oui |
-| Projet non confidentiel · « Planifier avec le coach » | Découpe ce projet en étapes | `projet_id` | oui |
-| Boîte de réception · « Ranger avec le coach » | Range ma boîte de réception dans mes projets | ecran | oui |
-| Réglages rythme · « Parler de mon rythme » | Qu'as-tu compris de mon rythme ? | ecran | oui |
-| Notification (`?coach=1`) | Planifie ma journée | ecran | **non** |
+| écran · bouton | question (`envoyer: true` sauf mention) |
+|---|---|
+| Ma journée · « Planifier avec le coach » | Planifie ma journée |
+| À décider · « Trancher avec le coach » | Aide-moi à décider quoi faire de mes tâches en retard |
+| Fiche tâche · « Découper avec le coach » (+ `tache_id`) | Découpe cette tâche en étapes |
+| Projet non confidentiel · « Planifier avec le coach » (+ `projet_id`) | Découpe ce projet en étapes |
+| Boîte de réception · « Ranger avec le coach » | Range ma boîte de réception dans mes projets |
+| Réglages rythme · « Parler de mon rythme » | Qu'as-tu compris de mon rythme ? |
+| Notification ouverte (`?coach=1`) | Planifie ma journée — `envoyer: false` |
 
 ## 7. Fonctionnement dégradé
 
-- **Sans clé d'IA** : tout l'écran marche (socle §1). Boutons selon le catalogue Django ; réponse `MESSAGE_CONFIGURATION` (`relais_copilote.py:44-46`, levée `sql_agent_service.py:1418-1419`, prise `:1851-1852`). Réglages : « Le coach demande l'assistant IA ; sans lui, tout le reste marche. »
-- **Collage long** : question ≤ 2 000 caractères (`sql_agent.py:23`, 422) ; au-delà, « Coller une liste » à l'écran, aperçu sans modèle.
+- **Sans clé d'IA** : tout l'écran marche. Boutons selon le catalogue ; réponse `MESSAGE_CONFIGURATION` (`relais_copilote.py:44-46`, `sql_agent_service.py:1418-1419`, `:1851-1852`). Réglages : « Le coach demande l'assistant IA ; sans lui, tout le reste marche. »
+- **Collage long** : question ≤ 2 000 caractères (`sql_agent.py:23`) ; au-delà, « Coller une liste » à l'écran.
 - **Groq** (estimations) : catalogue actuel d'un administrateur copilote = 42 actions, **≥ 7 248 jetons** (8 schémas non littéraux comptés vides) + système allégé 3 134 : un appel dépasse déjà 8 000 jetons/minute (`sql_agent_service.py:466-469`), non vérifié en production. Les 16 actions `taches` = 1 700 jetons. Règle : hors claude ET écran `/taches`, **5 actions** (journee.lire, plan.proposer, tache.creer, tache.terminer, liste.ranger : 593 jetons) + `report_gap`, ni CRM ni SQL, `coach="seul"` (≈ 2 325 : préfixe 1 142 + politique 220 + coach 437 + manifeste ≈ 520), sortie d'outil bornée à 2 000 caractères (6 000, `action_tools.py:852`). Deux appels ≈ 3 540 + 4 090 ≈ 7 630 : de justesse ; un troisième dépasse (message `sql_agent_service.py:1859-1868`). Mesurer dans `AssistantEvent.tokens` ; au besoin retirer terminer (−75). Hors `/taches` sous Groq : aucune action `taches`. `catalogue_pour_tour(catalogue, fournisseur, contexte)` dans `relais_copilote.py`, appelée dans `_query` (`sql_agent_service.py:1822-1835`).
-- **Moteurs** : `natif` = claude + copilote (`relais_copilote.py:361-367`), 16 actions, mémoire complète ; `langchain` (défaut) : 16 sous claude, 5 sous Groq.
+- **Moteurs** : `natif` = claude + copilote (`relais_copilote.py:361-367`), 16 actions ; `langchain` (défaut) : 16 sous claude, 5 sous Groq.
 
 ## 8. Journal
 
-`SQLAgentService._journaliser` (`sql_agent_service.py:1782-1803`), seul point d'écriture des deux moteurs et de la reprise (`relais_copilote.py:586-588`), AVANT la preuve HMAC : tour privé ⇔ une clé `taches.*` dans `outils_appeles` OU `ecran` commence par `/taches` (tour sans outil compris). Alors `question="[tâches — privé]"`, `resume_reponse=""`, `erreur.message=""` (statut, outil, relevé gardés), `ecran="/taches"`. L'administrateur voit date, intention, outils appelés, modèle, repli, jetons, coût, codes d'erreur. Limite dite dans Réglages : le commentaire d'une note 👎 reste lisible. Tests : `tests/test_sql_agent_endpoint.py` après `:748` (outil `taches.*` ; sans outil sur `/taches/aujourdhui` ; tour CRM intact) ; `tests/test_action_tools.py` après `:947` (preuve sur le corps masqué).
+`SQLAgentService._journaliser` (`sql_agent_service.py:1782-1803`), seul point d'écriture des deux moteurs et de la reprise (`relais_copilote.py:586-588`), AVANT la preuve HMAC : tour privé ⇔ une clé `taches.*` dans `outils_appeles` OU `ecran` commence par `/taches` (tour sans outil compris). Alors `question="[tâches — privé]"`, `resume_reponse=""`, `erreur.message=""`, `ecran="/taches"`. L'administrateur voit date, intention, outils, modèle, repli, jetons, coût, codes d'erreur. Dit dans Réglages : le commentaire d'une note 👎 reste lisible. Tests : `test_sql_agent_endpoint.py` après `:748` (avec outil ; sans outil sur `/taches/aujourdhui` ; tour CRM intact) ; `test_action_tools.py` après `:947` (preuve sur le corps masqué).
 
 ## 9. Manuel
 
-`backend/fastapi_ia/assistant/` régénéré par le skill `assistant-manuel` après le merge (`capacites.yml:1`) : `fait` (`:2`) 16 entrées ; `ne_fait_pas` (`:57`) : « Réorganiser ou reporter tes tâches sans ton geste », « Donner des points, séries ou récompenses », « Lire ou citer une tâche privée » (≈ 60 jetons de plus sous Groq, `sql_agent_service.py:465-474`) ; `suggestions` (`:88`) pour `/taches`, `/taches/projets`, `/taches/reglages` ; section « Tâches et projets ». Avant : descriptions + bloc coach suffisent ; Groq ne lit pas le manuel (`:519-520`) ; les écrans posent leurs questions (§6).
+`backend/fastapi_ia/assistant/`, régénéré par le skill `assistant-manuel` après le merge (`capacites.yml:1`) : `fait` (`:2`) 16 entrées ; `ne_fait_pas` (`:57`) : « Réorganiser ou reporter tes tâches sans ton geste », « Donner des points, séries ou récompenses », « Lire ou citer une tâche privée » (≈ 60 jetons de plus sous Groq, `sql_agent_service.py:465-474`) ; `suggestions` (`:88`) `/taches`, `/taches/projets`, `/taches/reglages` ; section « Tâches et projets ». Avant : descriptions + bloc coach suffisent, Groq ne lit pas le manuel (`:519-520`), les écrans posent leurs questions.
 
 ## 10. Fichiers, dans l'ordre
 
@@ -158,20 +157,18 @@ Boutons (`taqinor:assistant:ouvrir`, `copilotMessages.js:62-66`), affichés si `
 8. `frontend/src/test/fixtures/contractSamples.js` — surface en ajout (`:1000`).
 9. `fastapi_ia/assistant/{capacites.yml, manuel.md}` — skill, après merge.
 
-Rien dans `apps/crm` ni `erp_agentique`. 4-9 : plan transverse ; 4 attend la libération de `agent`.
+Rien dans `crm` ni `erp_agentique`. 4-9 au plan transverse ; 4 attend `agent`.
 
 ## Choix par défaut
 
-1. Seize actions (specs 3 et 4 comprises) ; Groq en voit 5.
-2. `recherche/` rend tâches ET projets : un outil de moins.
-3. Écho en POST : un titre en chaîne de requête irait aux journaux d'accès (verif-v2 M3) ; `recherche/?q=` reste GET comme l'écran (accepté).
-4. Palier accepté par booléen : le modèle ne choisit jamais le nombre.
-5. En-tête coach sur écran Tâches seulement.
-6. Masquage dans le relais ; renfort dans `apps/agent` laissé à son propriétaire.
+1. `recherche/` rend tâches ET projets : un outil de moins.
+2. Écho en POST : un titre en chaîne de requête irait aux journaux d'accès (verif-v2 M3) ; `recherche/?q=` reste GET comme l'écran (accepté).
+3. Palier accepté par booléen : le modèle ne choisit jamais le nombre.
+4. Masquage dans le relais ; renfort dans `apps/agent` laissé à son propriétaire.
 
 ## Objections au socle
 
-Aucune. Modes `pousser`/`tenir`/`libre` et routes `saisie-rapide/apercu/`, `rythme/`, `preferences/` repris de `design-s3` : si la spec rythme ou saisie les nomme autrement, la sienne prime.
+Aucune. Modes et routes `saisie-rapide/apercu/`, `rythme/`, `preferences/` repris de design-s3 : la spec rythme ou saisie prime si elle diffère.
 
 ---
 
