@@ -240,7 +240,8 @@ Calepinage.objects.filter(pk=${cal.id}).delete()`))
     const pts = [[0.35, 0.35], [0.65, 0.35], [0.65, 0.65], [0.35, 0.65]]
     for (const [fx, fy] of pts) await page.mouse.click(bb.x + bb.width * fx, bb.y + bb.height * fy)
     await page.mouse.click(bb.x + bb.width * pts[0][0], bb.y + bb.height * pts[0][1])
-    await page.waitForTimeout(1500)
+    // Toit fermé ⇒ le bloc « Obstacles » est montré : on l'attend (borné) ; s'il ne vient pas, le clic qui suit juge.
+    await page.locator('#rp9-obstacle').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined)
   }
   console.log(`[AERR114] bloc Obstacles visible : ${await page.locator('#rp9-obstacle').isVisible()}`)
   // Dessin d'un obstacle : mode obstacle puis glisser sur la carte ⇒ l'obstacle est sélectionné.
@@ -262,7 +263,9 @@ Calepinage.objects.filter(pk=${cal.id}).delete()`))
   await page.evaluate(() => { document.activeElement?.blur?.(); document.querySelector('[role="dialog"][aria-label="Palette de commandes"]')?.focus() })
   await page.keyboard.press('Delete')
   await page.keyboard.press('Backspace')
-  await page.waitForTimeout(1000)
+  // Le raccourci de l'atelier agit de façon SYNCHRONE dans l'écouteur `keydown` (état React, aucun appel réseau) :
+  // deux images peintes après les frappes ⇒ une suppression éventuelle est déjà rendue.
+  await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
   await expect(supprimerObs, '« Suppr » sous la boîte : l\'obstacle reste sélectionné (aucune action appelée)').toBeVisible()
   // Témoin : boîte fermée, « Suppr » agit.
   await page.keyboard.press('Escape')

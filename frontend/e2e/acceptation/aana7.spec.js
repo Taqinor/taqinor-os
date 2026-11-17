@@ -63,6 +63,19 @@ function instructions(debut) {
     .filter(Boolean)
     .map((x) => ({ role: x[1], sql: x[2].replace(/\s+/g, ' ').trim() }))
 }
+/** Le journal Postgres est écrit par un AUTRE processus : relit le journal jusqu'à y voir les requêtes de l'agent du
+ *  tour (au moins une) et un journal qui ne bouge plus entre deux relectures. Au-delà de 15 s, rien n'est affirmé ici :
+ *  les assertions de l'étape jugent ce qui a été écrit. */
+async function journalDuTourEcrit(debut) {
+  let avant = null
+  await expect.poll(() => {
+    const n = instructions(debut).filter((x) => x.role === 'sql_agent_ro').length
+    const etat = `${n}:${tailleDe(PG)}`
+    const stable = n > 0 && etat === avant
+    avant = etat
+    return stable
+  }, { timeout: 15_000, intervals: [500] }).toBe(true).catch(() => undefined)
+}
 
 // ═══ AANA81 : « montant du devis X » à l'agent sous sql_agent_ro ⇒ aucune somme des lignes ═══
 etape('PA4-AANA81-montant-devis', ['AANA81'], async ({ page }) => {
@@ -101,7 +114,7 @@ etape('PA4-AANA81-montant-devis', ['AANA81'], async ({ page }) => {
     const premiere = (corps.answer || '').split('\n').map((l) => l.trim()).find((l) => l.length > 0) || ''
     expect(premiere, 'réponse non vide').toBeTruthy()
     await expect(panneau, 'réponse affichée à l\'écran').toContainText(premiere.slice(0, 40))
-    await new Promise((res) => setTimeout(res, 1500)) // journal Postgres écrit par un autre processus
+    await journalDuTourEcrit(debut)
     const tour = instructions(debut)
     const agent = tour.filter((x) => x.role === 'sql_agent_ro').map((x) => x.sql)
     console.log(`[AANA81] « ${question} » → réponse=${J(corps.answer || '')} ; requêtes sql_agent_ro (${agent.length}) : ${J(agent.slice(0, 15))}`)
