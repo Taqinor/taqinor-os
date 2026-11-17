@@ -647,6 +647,9 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     # (`selectors.provenance_site`) : RETRIEVE SEULEMENT, même porte que
     # `conception` (une requête par lead — jamais sur une liste).
     provenance_site = serializers.SerializerMethodField()
+    # 17/11/2026 (décision fondateur) — les réponses BRUTES du formulaire
+    # Meta, gardées à vie (`crm.reponses_meta`) : RETRIEVE SEULEMENT.
+    reponses_meta = serializers.SerializerMethodField()
     # AGR404 (contrat AGR1 ``lead_pompage.json``) — les entrées du
     # dimensionnement agricole lues sur le lead, avec leur provenance :
     # RETRIEVE SEULEMENT (une requête d'historique), même porte.
@@ -1428,6 +1431,7 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # CAD150 — la provenance « saisie sur le site » coûte une requête
             # par lead : détail seulement, même porte.
             fields.pop('provenance_site', None)
+            fields.pop('reponses_meta', None)
             # AGR404 — `entrees_pompage` : détail seulement, même porte.
             fields.pop('entrees_pompage', None)
             # CIQ402 — `identite_entreprise` : détail seulement, même porte.
@@ -1594,6 +1598,13 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         captés par le site (contrat ``lead_provenance_site``)."""
         from .selectors import provenance_site
         return provenance_site(obj)
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_reponses_meta(self, obj):
+        """``{reponses: [{question, reponse}], recues_le}`` ou ``null`` ;
+        coordonnées masquées sans ``client_pii_voir`` (même règle que PII)."""
+        from .reponses_meta import reponses_meta_du_lead
+        return reponses_meta_du_lead(obj, masquer_pii=self._pii_masked())
 
     def get_chatter_recent(self, obj):
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord
