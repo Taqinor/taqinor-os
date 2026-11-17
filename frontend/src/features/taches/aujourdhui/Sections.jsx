@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, ClipboardPaste, CalendarDays, MapPin, Mic, Phone, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, ClipboardPaste, CalendarDays, MapPin, Mic, Phone, RefreshCw } from 'lucide-react'
 import LigneTache from '../ui/LigneTache'
 import { accord, heure, jourNomme } from '../lib/textes'
 
@@ -27,15 +27,20 @@ export function Section({ titre, sous = null, premiere = false, children, ...res
 }
 
 /** Une ligne de tâche ou d'activité ERP : toutes les sections passent par ici (geste = ce que la page sait faire). */
-export function Ligne({ item, contexte, geste, extra = {} }) {
-  const { donnees, estampilles, nbEssentielles } = contexte
-  return (
+export function Ligne({ item, contexte, geste, extra = {}, reorg = false }) {
+  const { donnees, estampilles, nbEssentielles, selection, reorganiser } = contexte
+  const cle = `${item.type}:${item.id}`
+  const choix = selection?.actif && item.type === 'tache'
+    ? { actif: true, selectionnee: selection.ids.has(cle), onBasculer: () => geste.selectionner(item) }
+    : null
+  const ligne = (
     <LigneTache
       item={item}
       aujourdhui={donnees.jour}
       reporterLibelle={jourNomme(donnees.prochain_jour_ouvre, donnees.jour)}
-      estampille={estampilles[`${item.type}:${item.id}`] ?? ''}
+      estampille={estampilles[cle] ?? ''}
       nbEssentielles={nbEssentielles}
+      selection={choix}
       onTerminer={geste.terminer}
       onReporter={geste.reporter}
       onChoisirJour={geste.choisirJour}
@@ -45,6 +50,20 @@ export function Ligne({ item, contexte, geste, extra = {} }) {
       onRefusEssentiel={geste.refusEssentiel}
       {...extra}
     />
+  )
+  if (!reorganiser || !reorg || item.type !== 'tache') return ligne
+  return (
+    <div className="ligne-reorg" role="presentation">
+      {ligne}
+      <div className="reorg-controles">
+        <button type="button" className="bouton-icone" aria-label={`Monter « ${item.titre} »`} onClick={() => geste.deplacer(item, -1)}>
+          <ChevronUp className="i i-16" aria-hidden="true" />
+        </button>
+        <button type="button" className="bouton-icone" aria-label={`Descendre « ${item.titre} »`} onClick={() => geste.deplacer(item, 1)}>
+          <ChevronDown className="i i-16" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -145,7 +164,7 @@ export function Prevu({ donnees, contexte, geste }) {
   const rendre = (e) => (e.rdv
     ? <LigneRendezVous key={e.cle} rdv={e.rdv} />
     : (
-      <Ligne key={e.cle} item={e.item} contexte={contexte} geste={geste}
+      <Ligne key={e.cle} item={e.item} contexte={contexte} geste={geste} reorg
         extra={contexte.gardee && e.item.type === 'tache' ? { onEssentiel: geste.essentiel } : {}} />
     ))
   return (
@@ -214,7 +233,7 @@ export function Repliees({ donnees, contexte, geste }) {
 
 /** Les sections ouvertes d'Aujourd'hui dans l'ordre vertical (Proposé s'y insère par `propose`). */
 export default function Sections({ donnees, contexte, geste, propose = null }) {
-  const lignes = (items) => items.map((item) => <Ligne key={`${item.type}:${item.id}`} item={item} contexte={contexte} geste={geste} />)
+  const lignes = (items) => items.map((item) => <Ligne key={`${item.type}:${item.id}`} item={item} contexte={contexte} geste={geste} reorg />)
   const essentiel = donnees.essentiel ?? []
   const ceSoir = donnees.ce_soir ?? []
   return (
@@ -222,7 +241,7 @@ export default function Sections({ donnees, contexte, geste, propose = null }) {
       {essentiel.length > 0 ? (
         <Section titre="Essentiel" premiere>
           {essentiel.map((item) => (
-            <Ligne key={`${item.type}:${item.id}`} item={item} contexte={contexte} geste={geste}
+            <Ligne key={`${item.type}:${item.id}`} item={item} contexte={contexte} geste={geste} reorg
               extra={{ onEssentiel: geste.essentiel }} />
           ))}
         </Section>

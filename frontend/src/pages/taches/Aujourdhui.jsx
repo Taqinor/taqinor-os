@@ -4,10 +4,13 @@ import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
 } from '../../features/taches/aujourdhui/Sections'
+import FeuilleAlleger from '../../features/taches/aujourdhui/FeuilleAlleger'
+import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
 import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
-import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { useEnLigne } from '../../features/taches/lib/enLigne'
 import { accord, aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
@@ -106,6 +109,13 @@ function useAujourdhui(tout) {
   }, [charger])
 
   return { donnees, setDonnees, erreur, derniere, squelette: squelette && !donnees, enLigne, charger }
+}
+
+/** L'item de la journée portant cette clé (`tache:20`), dans n'importe quelle section. */
+function chercher(donnees, cle) {
+  let trouve = null
+  mapItems(donnees, (it) => { if (cleDe(it) === cle && !trouve) trouve = it; return it })
+  return trouve
 }
 
 /** Retire un item de sa liste ; rend la journée amputée et de quoi le remettre (Annuler). */
@@ -324,6 +334,24 @@ export default function Aujourdhui() {
     }
   }, [garde, setDonnees, charger])
 
+  const alleger = useCallback(async (ids) => {
+    try { garde() } catch { return }
+    try {
+      const { data } = await client.alleger({ jour: donnees.jour, garder: ids })
+      setDonnees(data.aujourdhui)
+      setFeuille(null)
+      const n = data.renvoyees?.length ?? 0
+      proposerAnnuler({
+        message: `${n} ${n >= 2 ? 'retournées' : 'retournée'} aux projets`,
+        onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
+      })
+    } catch (err) {
+      annoncer(frenchError(err))
+    }
+  }, [garde, donnees, setDonnees, charger])
+
+  const modes = useModesJournee({ donnees, setDonnees, garde, setEstampilles })
+
   const ouvrirFiche = useCallback((id) => {
     setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(id)); return suite })
   }, [setParams])
@@ -340,6 +368,8 @@ export default function Aujourdhui() {
       else ouvrirFiche(item.id)
     },
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
+    deplacer: modes.deplacer,
+    selectionner: modes.selectionner,
     garder,
     voirTout: (ouvert) => setParams((actuels) => {
       const suite = new URLSearchParams(actuels)
@@ -353,7 +383,7 @@ export default function Aujourdhui() {
     refusEssentiel: () => annoncer('3 au plus.'),
     annoncer,
     naviguer: (url) => navigate(url),
-  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams])
+  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner])
 
   const contexte = useMemo(() => ({
     donnees,
@@ -362,7 +392,23 @@ export default function Aujourdhui() {
     gardee: Boolean(donnees?.plan?.planifie_le),
     invite,
     focusPrevu,
-  }), [donnees, estampilles, invite, focusPrevu])
+    reorganiser: modes.reorganiser,
+    selection: modes.selection,
+  }), [donnees, estampilles, invite, focusPrevu, modes.reorganiser, modes.selection])
+
+  // Clavier (spec-7 §5) : j/k, Espace, * … ; jamais une touche seule qui fait disparaître une ligne
+  const racine = useClavierListe((action, { cle }) => {
+    const item = cle ? chercher(donnees, cle) : null
+    if (action === 'annuler') annulerToast()
+    else if (!item) return
+    else if (action === 'terminer') terminer(item, item.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
+    else if (action === 'essentiel' && item.type === 'tache') basculerEssentiel(item, !item.essentielle)
+    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item })
+    else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
+    else if (action === 'monter') modes.deplacer(item, -1)
+    else if (action === 'descendre') modes.deplacer(item, 1)
+    else if (item.type === 'tache' && ['renommer', 'deplacer', 'heure'].includes(action)) ouvrirFiche(item.id)
+  }, { actif: !feuille })
 
   const ouvrirSaisie = useCallback((detail) => {
     window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail }))
@@ -383,6 +429,27 @@ export default function Aujourdhui() {
         />
       ),
     }
+  } else if (feuille?.type === 'alleger' && donnees) {
+    laFeuille = {
+      ouverte: true,
+      titre: 'Alléger ma journée',
+      cranInitial: '85',
+      onFermer: () => setFeuille(null),
+      children: <FeuilleAlleger donnees={donnees} enLigne={enLigne} onGarder={alleger} />,
+    }
+  } else if (feuille?.type === 'jour_lot') {
+    laFeuille = {
+      ouverte: true,
+      titre: 'Quand',
+      onFermer: () => setFeuille(null),
+      children: (
+        <ChoisirJour
+          item={{ titre: accord(modes.selection.ids.size, 'tâche sélectionnée', 'tâches sélectionnées') }}
+          minimum={jourFeuille}
+          onChoisir={(jour) => { setFeuille(null); modes.lot('planifier', { jour_prevu: jour }) }}
+        />
+      ),
+    }
   } else if (feuille?.type === 'supprimer') {
     laFeuille = {
       ouverte: true,
@@ -394,6 +461,18 @@ export default function Aujourdhui() {
 
   const sousTitre = donnees && donnees.jour_ouvre === false ? 'Jour non travaillé' : jourLong(donnees?.jour)
   const ouvrirFeuille = (type, parametres = {}) => setFeuille({ type, ...parametres })
+  const actionsEcran = actionsJournee({
+    enLigne,
+    onAlleger: () => ouvrirFeuille('alleger'),
+    onReorganiser: () => modes.setReorganiser((v) => !v),
+    onSelectionner: modes.basculerSelection,
+  })
+  const barreSelection = modes.selection.actif ? {
+    n: modes.selection.ids.size,
+    actions: [{ code: 'planifier', libelle: 'Quand' }, { code: 'terminer', libelle: 'Terminer' }],
+    onAction: (code) => (code === 'planifier' ? setFeuille({ type: 'jour_lot' }) : modes.lot(code)),
+    onFermer: modes.quitterSelection,
+  } : null
   const bandeau = erreur ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
 
   return (
@@ -404,7 +483,15 @@ export default function Aujourdhui() {
       derniereSynchro={derniere}
       conflit={conflit}
       feuille={laFeuille}
+      actionsEcran={actionsEcran}
+      selection={barreSelection}
     >
+      {modes.reorganiser || modes.selection.actif ? (
+        <div className="mode-ecran" role="status">
+          <span>{modes.reorganiser ? 'Réorganiser' : 'Sélectionner'}</span>
+          <button type="button" className="bouton lien" onClick={() => { modes.setReorganiser(false); modes.quitterSelection() }}>OK</button>
+        </div>
+      ) : null}
       {squelette ? <Squelette /> : null}
       {donnees && !journeeVide(donnees) ? <Progression donnees={donnees} onRythme={() => navigate('/taches/rythme')} /> : null}
       {bandeau}
@@ -432,6 +519,7 @@ export default function Aujourdhui() {
         />
       ) : null}
       {donnees && !journeeVide(donnees) ? (
+        <div ref={racine}>
         <Sections
           donnees={donnees}
           contexte={contexte}
@@ -447,6 +535,7 @@ export default function Aujourdhui() {
             />
           )}
         />
+        </div>
       ) : null}
     </CoquilleTaches>
   )
