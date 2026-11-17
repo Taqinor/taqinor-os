@@ -238,6 +238,20 @@ unites:
                 _, texte = sortie(ar.cmd_du)
                 self.assertEqual(attendu in texte, present, texte)
 
+    def test_du_contre_visite_attend_une_coche_nouvelle(self):
+        """ACEL101 — compte rendu à `faits: 20` et écart restant hors de tout bloc :
+        tu à 20 cochées, annoncé dès la 21ᵉ ; marqueur sans `faits:` ⇒ inchangé."""
+        attendu = "contre-visite des correctifs (écarts S1-S2 du 2026-02-01 tous cochés)"
+        bloc = "\n### ZZTST — ÉCARTS vérifie 2026-01-15 · format v3\n- [x] ZZTST20 — x. Files: `a.py`\n"
+        for marqueur, etat21, present in (
+                ("| faits: 20 ", " ", False), ("| faits: 20 ", "x", True), ("", " ", True)):
+            with self.subTest(marqueur=marqueur, etat21=etat21):
+                self.depot.verifie(f"<!-- verifie | groupe: ZZTST | pct: 95 | ecarts_s1_s2: 1 {marqueur}-->\n")
+                self.depot.plan(taches(19, 0) + f"- [{etat21}] ZZTST21 — x. Files: `a.py`\n" + bloc)
+                _, texte = sortie(ar.cmd_du)
+                self.assertEqual(attendu in texte, present, texte)
+                self.assertEqual("ZZTST" in texte, present, texte)
+
     def test_sans_dossier_a_auditer(self):
         (self.depot.racine / "docs/audits/2026-01-01-truc.md").unlink()
         self.depot.plan(taches(1, 1))
