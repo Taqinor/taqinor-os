@@ -6,21 +6,49 @@ Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche d
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon une forme partagée
 (`serializers/formes.py`) ; `GESTE`, `CONFLIT_TACHE` et `REORDONNER` sont déclarés ici une fois.
 """
+from django.db import transaction
+from django.http import Http404
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.taches.choix import Source
+from apps.taches.confidentialite import ASSISTANT, ECRAN
+from apps.taches.selectors.base import taches_de
 from apps.taches.serializers.formes import (
-    ItemSerializer, TacheEcriteSerializer, TacheSerializer,
+    ItemSerializer, RappelEcritSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
+)
+from apps.taches.serializers.saisie import (
+    AttendreEntreeSerializer, ChangementEntreeSerializer, ChecklistEntreeSerializer,
+    ElementChecklistEntreeSerializer, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
+    ProprietaireEntreeSerializer, RappelEntreeSerializer, RecurrenceEntreeSerializer,
+    ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, reponse_ecrite,
+    reponse_gestes, reponse_recherche, reponse_supprimees, TacheCreationSerializer, taches_chargees,
+    TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
+)
+from apps.taches.services.creation import creer_taches
+from apps.taches.services.gestes import annuler_geste
+from apps.taches.services.planification import planifier
+from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
+from apps.taches.services.taches import (
+    ajouter_element, apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour,
+    derniers_gestes, liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache,
+    rappel_a_la_creation, recevoir_tache, rechercher, reordonner_element, reordonner_tache, restaurer_tache,
+    retirer_element, reverifier_lien, rouvrir_tache, sauter_occurrence, supprimees_recentes, supprimer_tache,
+    tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, forme_echantillon, page_de, parametre,
-    reponses,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, page_de,
+    parametre, reponses,
 )
 from apps.taches.views.saisie import CHAMPS_LIGNE
 from core.idempotency import IdempotentCreateMixin
 from core.openapi_operations import mots_operation
+from core.pagination import StandardPagination
+from core.verrou_optimiste import ConflitVersion
 
 #: Réponse d'une écriture qui ne rend que son geste annulable (`{"geste_id"}`).
 GESTE = inline_serializer('TachesGeste', {'geste_id': serializers.IntegerField(allow_null=True)})
@@ -50,6 +78,21 @@ ETIQUETTE_ECRITE = inline_serializer('TachesEtiquetteEcrite', {
     'geste_id': serializers.IntegerField(allow_null=True),
 })
 
+
+def _reponse(request, resultat):
+    """La TACHE_ECRITE d'une action (`tache`, `suivante`, `geste_id`, avertissements)."""
+    return Response(reponse_ecrite(
+        request.user, resultat.tache, assistant=est_assistant(request), geste=resultat.geste,
+        suivante=getattr(resultat, 'suivante', None), avertissements=resultat.avertissements))
+
+
+def _conflit_complet(request, exc, pk):
+    """409 `conflit_version` : `actuel` devient la forme TACHE COMPLÈTE (le bandeau de conflit la lit)."""
+    exc.detail['actuel'] = TacheSerializer(
+        taches_chargees(request.user, [pk])[0], context=contexte(assistant=est_assistant(request))).data
+    return exc
+
+
 FILTRES_LISTE = [
     parametre('vue', OpenApiTypes.STR, 'boite (À trier), quelque_jour (En réserve)…'),
     parametre('q', OpenApiTypes.STR, 'Mots, sans accents.'),
@@ -78,7 +121,9 @@ class RechercheVue(APIView):
                                parametre('limite', OpenApiTypes.INT)],
                    responses=reponses(forme_echantillon('recherche'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        assistant = est_assistant(request)
+        projets, taches = rechercher(request.user, request.query_params, assistant=assistant)
+        return Response(reponse_recherche(projets, taches, assistant=assistant))
 
 
 class TachesVue(IdempotentCreateMixin, APIView):
@@ -89,7 +134,13 @@ class TachesVue(IdempotentCreateMixin, APIView):
 
     @extend_schema(parameters=FILTRES_LISTE, responses=reponses(page_de('Items', ItemSerializer()), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        assistant = est_assistant(request)
+        paginateur = StandardPagination()
+        page = paginateur.paginate_queryset(
+            charger_items(liste_taches(request.user, request.query_params, assistant=assistant)),
+            request, view=self)
+        donnees = ItemSerializer(page, many=True, context=contexte(assistant=assistant)).data
+        return paginateur.get_paginated_response(donnees)
 
     @extend_schema(request=inline_serializer('TachesCorpsTache', {
         **CHAMPS_LIGNE,
@@ -97,7 +148,34 @@ class TachesVue(IdempotentCreateMixin, APIView):
         'proprietaire_attendu': serializers.IntegerField(required=False),
     }), responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400,), conflit=ERREUR_CODE))
     def post(self, request):
-        raise PasEncore()
+        entree = TacheCreationSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        donnees = dict(entree.validated_data)
+        verifier_proprietaire(request.user, donnees.pop('proprietaire_attendu', None))
+        parent_id = donnees.pop('parent_id', None)
+        return self._avec_idempotence(
+            request, lambda: self._creer(request, donnees, parent_id), suffixe=f'u{request.user.pk}')
+
+    def _creer(self, request, ligne, parent_id):
+        """Une LIGNE → 201 `tache_ecrite.json` ; un rejeu du même `client_id` rend la tâche déjà créée (200)."""
+        user, assistant = request.user, est_assistant(request)
+        with transaction.atomic():
+            resultat = creer_taches(
+                user, [ligne], source=Source.ASSISTANT if assistant else Source.MANUEL,
+                porte='assistant' if assistant else 'ecran', parent=parent_id)
+        if not resultat.creees:
+            existante = taches_de(user).filter(client_id=ligne.get('client_id')).first()
+            if existante is None:
+                raise Http404('Introuvable.')
+            return Response(reponse_ecrite(user, existante, assistant=assistant))
+        tache = resultat.creees[0]
+        rappel, question = rappel_a_la_creation(user, tache)
+        donnees = reponse_ecrite(
+            user, tache, assistant=assistant, geste=resultat.geste,
+            projet_cree=resultat.projets_crees[0] if resultat.projets_crees else None,
+            rappel=rappel, question_titres=question,
+            avertissements=avertissements_du_jour(user, tache, timezone.localdate()))
+        return Response(donnees, status=201)
 
 
 class TacheVue(APIView):
@@ -107,7 +185,11 @@ class TacheVue(APIView):
 
     @extend_schema(responses=reponses(TacheSerializer, erreurs=(404,)))
     def get(self, request, id):
-        raise PasEncore()
+        trouvees = taches_chargees(request.user, [id])
+        if not trouvees:
+            raise Http404('Introuvable.')
+        tache = reverifier_lien(request.user, trouvees[0])
+        return Response(TacheSerializer(tache, context=contexte(assistant=est_assistant(request))).data)
 
     @extend_schema(request=inline_serializer('TachesCorpsTachePatch', {
         'titre': serializers.CharField(required=False, max_length=280),
@@ -128,11 +210,20 @@ class TacheVue(APIView):
         'lock_version': serializers.IntegerField(),
     }), responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = valider_patch(request.data)
+        assistant = est_assistant(request)
+        version = donnees.pop('lock_version')
+        try:
+            resultat = modifier_tache(request.user, id, donnees, version=version,
+                                      usage=ASSISTANT if assistant else ECRAN)
+        except ConflitVersion as exc:
+            raise _conflit_complet(request, exc, id)
+        return _reponse(request, resultat)
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        geste = supprimer_tache(request.user, id)
+        return Response({'geste_id': geste.pk})
 
 
 class TachePlanifierVue(APIView):
@@ -149,7 +240,16 @@ class TachePlanifierVue(APIView):
         'proprietaire_attendu': serializers.IntegerField(required=False),
     }), responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(PlanifierEntreeSerializer, request.data)
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        try:
+            resultat = planifier(
+                id, acteur=request.user, jour_prevu=donnees.get('jour_prevu'), moment=donnees.get('moment', ''),
+                heure_debut=donnees.get('heure_debut'), quelque_jour=donnees.get('quelque_jour', False),
+                version=donnees['lock_version'])
+        except ConflitVersion as exc:
+            raise _conflit_complet(request, exc, id)
+        return _reponse(request, resultat)
 
 
 class TacheTerminerVue(APIView):
@@ -159,7 +259,9 @@ class TacheTerminerVue(APIView):
 
     @extend_schema(request=PROPRIETAIRE_ATTENDU, responses=ECRITE_AVEC_COMPTE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ProprietaireEntreeSerializer, request.data)
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        return _reponse(request, terminer_tache(request.user, id))
 
 
 class TacheRouvrirVue(APIView):
@@ -169,7 +271,9 @@ class TacheRouvrirVue(APIView):
 
     @extend_schema(request=PROPRIETAIRE_ATTENDU, responses=ECRITE_AVEC_COMPTE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ProprietaireEntreeSerializer, request.data)
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        return _reponse(request, rouvrir_tache(request.user, id))
 
 
 class TacheTrancherVue(APIView):
@@ -182,7 +286,8 @@ class TacheTrancherVue(APIView):
         'jour': serializers.DateField(required=False, allow_null=True),
     }), responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(TrancherEntreeSerializer, request.data)
+        return _reponse(request, trancher_tache(request.user, id, donnees['choix'], donnees.get('jour')))
 
 
 class TacheSauterVue(APIView):
@@ -192,7 +297,7 @@ class TacheSauterVue(APIView):
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        return _reponse(request, sauter_occurrence(request.user, id))
 
 
 class TacheAttendreVue(APIView):
@@ -203,7 +308,8 @@ class TacheAttendreVue(APIView):
     @extend_schema(request=corps('TacheAttendre', {'en_attente_de': 'Lydec'}, requis=('en_attente_de',)),
                    responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(AttendreEntreeSerializer, request.data)
+        return _reponse(request, attendre_tache(request.user, id, donnees['en_attente_de']))
 
 
 class TacheRecuVue(APIView):
@@ -213,7 +319,7 @@ class TacheRecuVue(APIView):
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        return _reponse(request, recevoir_tache(request.user, id))
 
 
 class TacheReordonnerVue(APIView):
@@ -223,7 +329,9 @@ class TacheReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=reponses(None, statut=204, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ReordonnerEntreeSerializer, request.data)
+        reordonner_tache(request.user, id, donnees['liste'], donnees.get('avant_id'), donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class TacheRestaurerVue(APIView):
@@ -233,7 +341,7 @@ class TacheRestaurerVue(APIView):
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        return _reponse(request, restaurer_tache(request.user, id))
 
 
 class TacheRappelsVue(APIView):
@@ -248,7 +356,15 @@ class TacheRappelsVue(APIView):
         'decalage_jours': serializers.IntegerField(required=False),
     }), responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(RappelEntreeSerializer, request.data)
+        resultat = poser_rappel(
+            id, acteur=request.user, heure=donnees['heure'], jour=donnees.get('jour'),
+            ancre=donnees.get('ancre', ''), decalage_jours=donnees.get('decalage_jours', 0))
+        resultat.rappel.hors_fenetre = resultat.hors_fenetre
+        tache = tache_du_compte(request.user, id)
+        return Response(reponse_ecrite(
+            request.user, tache, assistant=est_assistant(request), geste=resultat.geste, rappel=resultat.rappel,
+            question_titres=resultat.question_titres, avertissements=avertissement_hors_fenetre(resultat)))
 
 
 class TacheChangementApercuVue(APIView):
@@ -260,7 +376,13 @@ class TacheChangementApercuVue(APIView):
                                  requis=('geste',)),
                    responses=reponses(forme_echantillon('tache_changement'), erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ChangementEntreeSerializer, request.data)
+        assistant = est_assistant(request)
+        tache, proposition = apercu_changement(request.user, id, donnees['geste'], donnees.get('titre'),
+                                               usage=ASSISTANT if assistant else ECRAN)
+        item = charger_items(taches_de(request.user).filter(pk=tache.pk)).get()
+        return Response({'tache': ItemSerializer(item, context=contexte(assistant=assistant)).data,
+                         'proposition': proposition})
 
 
 class LotVue(IdempotentCreateMixin, APIView):
@@ -274,7 +396,11 @@ class LotVue(IdempotentCreateMixin, APIView):
         'valeurs': serializers.DictField(required=False),
     }), responses=reponses(forme_echantillon('lot'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = lire_corps(LotEntreeSerializer, request.data)
+        return self._avec_idempotence(
+            request, lambda: Response(lot_taches(request.user, donnees['ids'], donnees['action'],
+                                                 donnees.get('valeurs'))),
+            suffixe=f'u{request.user.pk}')
 
 
 class RappelVue(APIView):
@@ -284,7 +410,8 @@ class RappelVue(APIView):
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        geste = retirer_rappel(request.user, id)
+        return Response({'geste_id': geste.pk if geste is not None else None})
 
 
 class RappelRepeterVue(APIView):
@@ -298,7 +425,12 @@ class RappelRepeterVue(APIView):
         'heure': serializers.CharField(required=False),
     }), responses=reponses(forme_echantillon('rappel_repeter'), erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(RepeterEntreeSerializer, request.data)
+        resultat = repeter_rappel(request.user, id, dans_minutes=donnees.get('dans_minutes'),
+                                  jour=donnees.get('jour'), heure=donnees.get('heure'))
+        resultat.rappel.hors_fenetre = resultat.hors_fenetre
+        return Response({'rappel': RappelEcritSerializer(resultat.rappel).data,
+                         'geste_id': resultat.geste.pk if resultat.geste is not None else None})
 
 
 class RecurrenceVue(APIView):
@@ -319,7 +451,8 @@ class RecurrenceVue(APIView):
         'appliquer_a_l_ouverte': serializers.BooleanField(required=False),
     }), responses=ECRITE)
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(RecurrenceEntreeSerializer, request.data)
+        return _reponse(request, modifier_regle(request.user, id, donnees))
 
 
 class ChecklistVue(APIView):
@@ -330,7 +463,11 @@ class ChecklistVue(APIView):
     @extend_schema(request=corps('Checklist', {'tache_id': 20, 'libelle': 'Prix'}, requis=('tache_id', 'libelle')),
                    responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404)))
     def post(self, request):
-        raise PasEncore()
+        donnees = lire_corps(ChecklistEntreeSerializer, request.data)
+        resultat = ajouter_element(request.user, donnees['tache_id'], donnees['libelle'])
+        reponse = _reponse(request, resultat)
+        reponse.status_code = 201
+        return reponse
 
 
 class ElementChecklistVue(APIView):
@@ -340,11 +477,12 @@ class ElementChecklistVue(APIView):
 
     @extend_schema(request=corps('ChecklistElement', {'libelle': 'Prix TTC', 'fait': True}), responses=ECRITE)
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ElementChecklistEntreeSerializer, request.data)
+        return _reponse(request, modifier_element(request.user, id, donnees))
 
     @extend_schema(request=None, responses=reponses(TacheEcriteSerializer, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        return _reponse(request, retirer_element(request.user, id))
 
 
 class ElementChecklistReordonnerVue(APIView):
@@ -354,7 +492,9 @@ class ElementChecklistReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=reponses(None, statut=204, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ReordonnerElementEntreeSerializer, request.data)
+        reordonner_element(request.user, id, donnees.get('avant_id'), donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class EtiquettesVue(APIView):
@@ -430,7 +570,8 @@ class SupprimeesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('supprimees')))
     def get(self, request):
-        raise PasEncore()
+        projets, compteurs, taches = supprimees_recentes(request.user)
+        return Response(reponse_supprimees(projets, compteurs, taches, assistant=est_assistant(request)))
 
 
 class GestesVue(APIView):
@@ -440,7 +581,7 @@ class GestesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('gestes')))
     def get(self, request):
-        raise PasEncore()
+        return Response(reponse_gestes(derniers_gestes(request.user)))
 
 
 class GesteAnnulerVue(APIView):
@@ -450,4 +591,4 @@ class GesteAnnulerVue(APIView):
 
     @extend_schema(request=None, responses=reponses(forme_echantillon('geste_annuler'), erreurs=(404,)))
     def post(self, request, id):
-        raise PasEncore()
+        return Response(annuler_geste(request.user, id))

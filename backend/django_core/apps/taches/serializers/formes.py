@@ -20,6 +20,7 @@ from rest_framework import serializers
 from apps.taches.choix import Frequence, LienEtat, StatutRappel, StatutTache
 from apps.taches.confidentialite import ASSISTANT, ECRAN, est_confidentielle, nom_pour
 from apps.taches.models.taches import Tache
+from apps.taches.moteur.recurrence import libelle_regle
 from apps.taches.selectors.liens import url_de_cible
 
 TACHE = 'tache'
@@ -421,9 +422,7 @@ class TacheSerializer(ItemSerializer):
                 'jours_semaine': regle.jours_semaine, 'jour_du_mois': regle.jour_du_mois,
                 'rang_dans_mois': regle.rang_dans_mois, 'mode': regle.mode,
                 'date_debut': _date(regle.date_debut), 'date_fin': _date(regle.date_fin),
-                'actif': regle.actif,
-                # vide jusqu'à TCH51 (`moteur.recurrence.libelle_regle`), qui le passe ici.
-                'libelle': self._du_contexte(obj, 'recurrence_libelle', '')}
+                'actif': regle.actif, 'libelle': libelle_regle(regle)}
 
     @extend_schema_field(RappelSerializer(many=True))
     def get_rappels(self, obj):

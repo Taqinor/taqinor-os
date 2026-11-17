@@ -1,75 +1,51 @@
 """Saisie (reference/api.md §3.2, §4) : saisie rapide et capture (Siri, partage).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; la
-capture est authentifiée par le BOUCHON `JetonPasEncoreLivre` (401 neutre) tant que
-`JetonAccesAuthentication` n'est pas livrée. `LIGNE` (le format d'une ligne à créer, api.md §4)
-est déclarée ICI une fois : `taches/` POST la réutilise.
+`saisie-rapide/` (TCH48) : aperçu, « Range ma liste » (`ids`) et création tout ou rien. La capture
+lève `PasEncore` (501) jusqu'à sa tâche ; elle est authentifiée par le BOUCHON `JetonPasEncoreLivre`
+(401 neutre) tant que `JetonAccesAuthentication` n'est pas livrée. `CHAMPS_LIGNE` (le format d'une
+ligne à créer, api.md §4) est déclaré dans `serializers/saisie.py` : `taches/` POST le réutilise.
 """
+from django.db import transaction
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.taches.choix import Source
+from apps.taches.serializers.saisie import (
+    CHAMPS_LIGNE, SaisieEntreeSerializer, apercu_ids, apercu_saisie, reponse_creation, valider_lignes,
+    verifier_proprietaire,
+)
+from apps.taches.services.creation import creer_taches
+from apps.taches.services.taches import verifier_lien
 from apps.taches.views.base import (
-    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, PasEncore, corps,
+    AUTH_JETON, ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, PasEncore, corps, est_assistant,
     forme_echantillon, parametre, reponses,
 )
 from core.idempotency import IdempotentCreateMixin
 
+MESSAGE_REQUIS = 'Requis.'
 
-def _facultatif(champ, **options):
-    return champ(required=False, **options)
-
-
-#: Une LIGNE à créer (api.md §4) : `projet_id` / `nouveau_projet` et `section_id` /
-#: `nouvelle_section` exclusifs ; `rappel` absolu `{jour, heure}` ou ancré `{ancre,
-#: decalage_jours, heure}` ; `etiquettes` = ids ou `{"nom"}` ; `lien` = `{cible, id}`.
-CHAMPS_LIGNE = {
-    'index': _facultatif(serializers.IntegerField),
-    'collage': _facultatif(serializers.IntegerField),
-    'client_id': _facultatif(serializers.CharField, max_length=64),
-    'titre': _facultatif(serializers.CharField, max_length=280),
-    'projet_id': _facultatif(serializers.IntegerField, allow_null=True),
-    'nouveau_projet': inline_serializer('TachesLigneNouveauProjet', {
-        'nom': serializers.CharField(max_length=120),
-        'priorite': serializers.IntegerField(required=False),
-    }, required=False, allow_null=True),
-    'section_id': _facultatif(serializers.IntegerField, allow_null=True),
-    'nouvelle_section': inline_serializer('TachesLigneNouvelleSection', {
-        'nom': serializers.CharField(max_length=120),
-    }, required=False, allow_null=True),
-    'priorite': _facultatif(serializers.IntegerField),
-    'jour_prevu': _facultatif(serializers.DateField, allow_null=True),
-    'moment': _facultatif(serializers.CharField, allow_blank=True),
-    'heure_debut': _facultatif(serializers.CharField, allow_null=True),
-    'echeance': _facultatif(serializers.DateField, allow_null=True),
-    'echeance_heure': _facultatif(serializers.CharField, allow_null=True),
-    'quelque_jour': _facultatif(serializers.BooleanField),
-    'estimation_minutes': _facultatif(serializers.IntegerField, allow_null=True),
-    'etiquettes': _facultatif(serializers.ListField, child=serializers.JSONField()),
-    'recurrence': _facultatif(serializers.JSONField, allow_null=True),
-    'rappel': _facultatif(serializers.JSONField, allow_null=True),
-    'notes': _facultatif(serializers.CharField, allow_blank=True),
-    'checklist': _facultatif(serializers.ListField, child=serializers.CharField()),
-    'lien': inline_serializer('TachesLigneLien', {
-        'cible': serializers.CharField(), 'id': serializers.IntegerField(),
-    }, required=False, allow_null=True),
-}
-LIGNE = inline_serializer('TachesLigne', CHAMPS_LIGNE)
+LIGNE = inline_serializer('TachesLigne', dict(CHAMPS_LIGNE))
 
 SAISIE_RAPIDE = inline_serializer('TachesCorpsSaisieRapide', {
-    'textes': _facultatif(serializers.ListField, child=serializers.CharField()),
-    'texte': _facultatif(serializers.CharField),
-    'ids': _facultatif(serializers.ListField, child=serializers.IntegerField()),
-    'client_id': _facultatif(serializers.CharField, max_length=64),
-    'projet_id': _facultatif(serializers.IntegerField, allow_null=True),
-    'lien': _facultatif(serializers.JSONField, allow_null=True),
-    'parent_id': _facultatif(serializers.IntegerField, allow_null=True),
-    'proprietaire_attendu': _facultatif(serializers.IntegerField),
-    'ignorer': _facultatif(serializers.ListField, child=serializers.JSONField()),
-    'lignes': _facultatif(serializers.ListField, child=LIGNE),
-    'apercu': _facultatif(serializers.BooleanField),
+    'textes': serializers.ListField(child=serializers.CharField(), required=False),
+    'texte': serializers.CharField(required=False),
+    'ids': serializers.ListField(child=serializers.IntegerField(), required=False),
+    'client_id': serializers.CharField(max_length=64, required=False),
+    'projet_id': serializers.IntegerField(allow_null=True, required=False),
+    'lien': serializers.JSONField(allow_null=True, required=False),
+    'parent_id': serializers.IntegerField(allow_null=True, required=False),
+    'proprietaire_attendu': serializers.IntegerField(required=False),
+    'ignorer': serializers.ListField(child=serializers.JSONField(), required=False),
+    'lignes': serializers.ListField(child=LIGNE, required=False),
+    'apercu': serializers.BooleanField(required=False),
 })
+
+
+def _a_un_texte(donnees):
+    return bool(donnees.get('textes') or donnees.get('texte') or donnees.get('ids'))
 
 
 class SaisieRapideVue(IdempotentCreateMixin, APIView):
@@ -82,7 +58,38 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
         200: forme_echantillon('saisie_apercu'),
     })
     def post(self, request):
-        raise PasEncore()
+        entree = SaisieEntreeSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        donnees = entree.validated_data
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        assistant = est_assistant(request)
+        if donnees.get('ids'):
+            return Response(apercu_ids(request.user, donnees['ids'], assistant=assistant))
+        if donnees.get('apercu') or (_a_un_texte(donnees) and not donnees.get('lignes')):
+            if not _a_un_texte(donnees):
+                raise serializers.ValidationError({'texte': [MESSAGE_REQUIS]})
+            return Response(apercu_saisie(request.user, donnees, assistant=assistant))
+        if not donnees.get('lignes'):
+            raise serializers.ValidationError({'lignes': [MESSAGE_REQUIS]})
+        return self._avec_idempotence(
+            request, lambda: self._creer(request, donnees, assistant), suffixe=f'u{request.user.pk}')
+
+    def _creer(self, request, donnees, assistant):
+        """Création TOUT OU RIEN (`creer_taches`, une transaction) → 201 `saisie_rapide.json`. Venant de
+        l'assistant, le `titre` d'une ligne est IGNORÉ : sans ligne source, la ligne n'a plus de titre
+        et est refusée (échec fermé)."""
+        user = request.user
+        lignes = valider_lignes(donnees['lignes'])
+        if assistant:
+            lignes = [{cle: valeur for cle, valeur in ligne.items() if cle != 'titre'} for ligne in lignes]
+        if donnees.get('lien'):
+            verifier_lien(user, donnees['lien'])
+        with transaction.atomic():
+            resultat = creer_taches(
+                user, lignes, source=Source.ASSISTANT if assistant else Source.RAPIDE,
+                porte='assistant' if assistant else 'saisie', client_id=donnees.get('client_id') or None,
+                lien=donnees.get('lien') or None, parent=donnees.get('parent_id'))
+        return Response(reponse_creation(user, resultat, assistant=assistant), status=201)
 
 
 class CaptureVue(APIView):
