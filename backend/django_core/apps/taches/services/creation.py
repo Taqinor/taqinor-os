@@ -506,10 +506,13 @@ def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, pare
         ctx.parent = _parent_verifie(user, parent)
         ctx.activite = _activite_verifiee(user, activite, len(lignes))
         ctx.lien = _lien_verifie(user, lien) if lien else None
+        if lignes:
+            # AVANT les lignes : le verrou des plafonds de rappels (`services.rappels`) porte sur
+            # cette ligne ; absente, deux premiers envois simultanés dépasseraient 100 rappels.
+            ReglagesRythme.objects.get_or_create(company_id=user.company_id, proprietaire=user)
         for rang, ligne in enumerate(lignes):
             _par_ligne(ctx, rang, ligne, _client_id(ligne, client_id, rang, len(lignes)))
         if ctx.creees:
-            ReglagesRythme.objects.get_or_create(company_id=user.company_id, proprietaire=user)
             revelations.apres_creation(user, ctx.creees, ctx.projets_crees, porte=porte)
         geste = _geste(ctx)
     return ResultatCreation(ctx.creees, ctx.projets_crees, ctx.deja_creees, geste)

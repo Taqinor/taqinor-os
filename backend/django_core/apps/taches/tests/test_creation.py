@@ -167,6 +167,15 @@ class CreationTests(TestCase):
         self.assertEqual(ReglagesRythme.objects.filter(company=self.a, proprietaire=self.u1).count(), 1)
         self.assertFalse(ReglagesRythme.objects.filter(proprietaire=self.voisin).exists())
 
+    def test_reglages_poses_avant_la_premiere_ligne(self):
+        """Le verrou des plafonds de rappels porte sur `ReglagesRythme` : la ligne existe déjà quand
+        la première tâche (et son rappel) s'écrit."""
+        vus = []
+        with mock.patch.object(creation, '_creer_ligne', side_effect=lambda ctx, ligne, cid: vus.append(
+                ReglagesRythme.objects.filter(company=self.a, proprietaire=self.u1).exists())):
+            self._creer(_ligne('un'), _ligne('deux'))
+        self.assertEqual(vus, [True, True])
+
     # --- Invariant 32 : rang dans la liste -----------------------------------------------------
 
     def test_rang_projet_dernier_plus_1024(self):
