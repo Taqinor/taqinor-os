@@ -43,7 +43,8 @@ id, ≥ 1 tâche, verdict, les 10 oracles et une trace (sinon « étape vide »)
 couvre_avec_ecart ⊆ couvre ; dans un enregistrement PASS, une étape FAIL n'est
 admise que si toutes ses tâches sont dans couvre_avec_ecart ET `base_verdict:
 FAIL` (la même étape rejouée sur la base échoue aussi : défaut préexistant, pas
-une régression) et que son corps n'a pas échoué (`corps: FAIL` = run rouge, ASUP65). Seul un PASS couvre (un FAIL reste une trace) ; un rejeu de
+une régression) et que son corps n'a pas échoué (`corps: FAIL` = run rouge, ASUP65).
+Seul un PASS couvre (un FAIL reste une trace) ; un rejeu de
 parcours couvre des ids de tout groupe. Les dossiers dont le nom n'est pas un
 groupe (ex. la capture brute `2026-10-07-adoc171/`) sont ignorés.
 
