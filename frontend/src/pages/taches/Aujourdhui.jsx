@@ -4,12 +4,15 @@ import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
 } from '../../features/taches/aujourdhui/Sections'
+import Progression from '../../features/taches/aujourdhui/Progression'
+import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { useEnLigne } from '../../features/taches/lib/enLigne'
-import { aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
 import recordsApi from '../../api/recordsApi'
 import { frenchError } from '../../lib/frenchError'
+import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 
 /* ============================================================================
    TCH76 — Écran « Aujourd'hui » (route /taches/aujourdhui) : l'écran que le fondateur ouvre
@@ -83,8 +86,9 @@ function useAujourdhui(tout) {
 
   useEffect(() => {
     vivant.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture au montage : l'état n'est posé qu'après la réponse, pas en synchrone (D-ENF22)
-    charger()
+    // « vu » d'abord : il crée la carte `retour` que la lecture suivante porte (api.md §4 `vu/`) ; un échec ne bloque pas la lecture
+    const vu = navigator.onLine === false ? Promise.resolve() : Promise.resolve(client.marquerVu({ ecran: 'aujourdhui' }))
+    vu.then(charger, charger)
     return () => { vivant.current = false }
   }, [charger])
 
@@ -276,6 +280,43 @@ export default function Aujourdhui() {
     }
   }, [garde, donnees, setDonnees])
 
+  const garder = useCallback(async (items) => {
+    try { garde() } catch { return }
+    try {
+      const lignes = items.map((it) => ({ type: it.type, id: it.id }))
+      const { data } = await client.garderJournee({ jour: donnees.jour, mode: 'express', lignes, essentielles: [], triage: [] })
+      setDonnees(data.aujourdhui)
+      proposerAnnuler({
+        message: `${accord(items.length, 'gardée')}`,
+        onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
+      })
+    } catch (err) {
+      annoncer(frenchError(err))
+    }
+  }, [garde, donnees, setDonnees, charger])
+
+  const repondre = useCallback(async (proposition, reponse) => {
+    try { garde() } catch { return }
+    try {
+      const { data } = await client.repondreProposition(proposition.id, { reponse })
+      setDonnees((d) => ({ ...d, carte_du_moment: null, objectif: data.rythme?.objectif ?? d.objectif }))
+      if (proposition.type === 'retour' && reponse === 'remettre_dans_propose') {
+        const n = proposition.donnees?.taches ?? 0
+        proposerAnnuler({
+          message: `${n} ${n >= 2 ? 'remises' : 'remise'} dans Proposé`,
+          onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
+        })
+        await charger()
+      }
+    } catch (err) {
+      if (err?.response?.status === 409 && err.response.data?.code === 'proposition_expiree') {
+        setDonnees((d) => ({ ...d, carte_du_moment: null }))
+        return
+      }
+      annoncer(frenchError(err))
+    }
+  }, [garde, setDonnees, charger])
+
   const ouvrirFiche = useCallback((id) => {
     setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(id)); return suite })
   }, [setParams])
@@ -333,6 +374,7 @@ export default function Aujourdhui() {
   }
 
   const sousTitre = donnees && donnees.jour_ouvre === false ? 'Jour non travaillé' : jourLong(donnees?.jour)
+  const ouvrirFeuille = (type, parametres = {}) => setFeuille({ type, ...parametres })
   const bandeau = erreur ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
 
   return (
@@ -345,7 +387,23 @@ export default function Aujourdhui() {
       feuille={laFeuille}
     >
       {squelette ? <Squelette /> : null}
+      {donnees && !journeeVide(donnees) ? <Progression donnees={donnees} onRythme={() => navigate('/taches/rythme')} /> : null}
       {bandeau}
+      {donnees && !journeeVide(donnees) ? (
+        <CarteDuMoment
+          carte={donnees.carte_du_moment}
+          jour={donnees.jour}
+          maintenant={donnees.maintenant}
+          objectif={donnees.objectif?.nb}
+          enLigne={enLigne}
+          onRepondre={repondre}
+          onGarder={() => garder(donnees.propose?.pour_objectif ?? [])}
+          onAlleger={() => ouvrirFeuille('alleger')}
+          onBilan={(jourBilan) => ouvrirFeuille('bilan', { jour: jourBilan })}
+          onNaviguer={navigate}
+          onCopilote={(question) => window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, { detail: { ecran: '/taches/aujourdhui', question, envoyer: true } }))}
+        />
+      ) : null}
       {donnees && journeeVide(donnees) ? (
         <EtatVide
           donnees={donnees}
