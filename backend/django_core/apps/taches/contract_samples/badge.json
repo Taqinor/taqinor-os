@@ -1,8 +1,9 @@
 {
   "endpoint": "GET /api/django/taches/badge/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET badge/ · consommateurs : pastille ». Source : docs/taches/reference/api.md annexe A (`badge.json`), recopié mot pour mot.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET badge/ · consommateurs : pastille ». Source : docs/taches/reference/api.md annexe A (`badge.json`), recopié mot pour mot ; `a_trier` (F3) = `a_trier.boite_reception` d'aujourdhui.json.",
   "exemple": {
     "n": 3,
-    "jour": "2026-11-17"
+    "jour": "2026-11-17",
+    "a_trier": 3
   }
 }

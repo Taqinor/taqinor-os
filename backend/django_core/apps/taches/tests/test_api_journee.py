@@ -538,7 +538,17 @@ class BadgeEtVuTests(_Base):
         self.tache(jour_prevu=timezone.localdate())
         rendu = client_de(self.u).get('/api/django/taches/badge/').json()
         self.assertEqual(set(rendu), set(exemple('badge')))
-        self.assertEqual(rendu, {'n': 1, 'jour': timezone.localdate().isoformat()})
+        self.assertEqual(rendu, {'n': 1, 'jour': timezone.localdate().isoformat(), 'a_trier': 0})
+
+    def test_badge_porte_le_compte_a_trier_de_aujourdhui(self):
+        self.tache(jour_prevu=timezone.localdate())
+        self.tache(projet=None)
+        self.tache(projet=None)
+        client = client_de(self.u)
+        rendu = client.get('/api/django/taches/badge/').json()
+        journee = client.get('/api/django/taches/aujourdhui/').json()
+        self.assertEqual(rendu['a_trier'], journee['a_trier']['boite_reception'])
+        self.assertEqual(rendu['a_trier'], 2)
 
     def test_vu_sans_reglages_n_ecrit_rien(self):
         from apps.taches.models.journee import PlanJour

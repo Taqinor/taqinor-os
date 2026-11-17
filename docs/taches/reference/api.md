@@ -1270,7 +1270,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 |---|---|---|---|---|---|---|---|
 | GET | `/api/django/taches/aujourdhui/?jour=` | §2 | S | — | — | Aujourd'hui, carte cockpit, carte `ma_journee`, cache hors ligne | socle, A11, A14, spec-7 r3 |
 | GET | `/api/django/taches/aujourdhui/ailleurs/` | compteurs « Ailleurs dans l'ERP » | S | — | — | repli | s6a, T13 |
-| GET | `/api/django/taches/badge/` | `{"n":3,"jour":"2026-11-17"}` | S | — | — | pastille | s6b, A16-N5 |
+| GET | `/api/django/taches/badge/` | `{"n":3,"jour":"2026-11-17","a_trier":3}` (`a_trier` = `a_trier.boite_reception` d'`aujourdhui/`) | S | — | — | pastille | s6b, A16-N5 |
 | POST | `/api/django/taches/vu/` | ouverture du jour ; carte de retour | S | — | N | toute page Tâches | T12, A14-B1 |
 | GET | `/api/django/taches/journee/proposition/?jour=&exclure=&inclure=&tout=` | proposition, sans écriture | S | — | — | « Voir tout », carte `plan_propose` | s3, C37, A11 |
 | GET | `/api/django/taches/journee/priorites/?jour=` | « Aide-moi à prioriser » : toutes les ouvertes classées, raison, gestes | S | — | — | carte `priorites`, Copilote | A18-M3 |
@@ -1726,7 +1726,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`badge.json`** — GET badge/ · consommateurs : pastille
 ```json
-{"n":3,"jour":"2026-11-17"}
+{"n":3,"jour":"2026-11-17","a_trier":3}
 ```
 
 **`capture.json`** — POST capture/ · consommateurs : raccourci Siri

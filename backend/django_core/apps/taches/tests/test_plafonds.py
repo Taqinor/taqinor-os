@@ -200,3 +200,16 @@ class PlafondsConstantsTests(TestCase):
             texte = '\n'.join(f'Appeler le client {rang} demain' for rang in range(lignes))
             return lambda: self.api.post(URL_SAISIE, {'texte': texte}, format='json')
         self.assertEqual(self._compter(apercu(12)), self._compter(apercu(3)))
+
+    def test_la_proposition_du_jour_ne_grandit_pas(self):
+        """Plafond 27 : 4 puis 16 tâches du jour (et autant de candidates sans jour), le même nombre de requêtes."""
+        avant = self._compter(lambda: self.api.get(URL_PROPOSITION))
+        _peupler(self.compte, self.projets, self.etiquette, self.jour, 12, depart=300)
+        self.assertEqual(self._compter(lambda: self.api.get(URL_PROPOSITION)), avant)
+
+    def test_la_vue_d_un_projet_ne_grandit_pas(self):
+        """Plafond 22 : 4 puis 16 tâches du jour dans le projet, le même nombre de requêtes."""
+        url = URL_VUE_PROJET.format(id=self.projets[0].pk)
+        avant = self._compter(lambda: self.api.get(url))
+        _peupler(self.compte, self.projets[:1], self.etiquette, self.jour, 12, depart=400)
+        self.assertEqual(self._compter(lambda: self.api.get(url)), avant)
