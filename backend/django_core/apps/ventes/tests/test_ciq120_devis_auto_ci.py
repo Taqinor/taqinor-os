@@ -58,6 +58,11 @@ class _Base(TestCase):
         cls.structure = Produit.objects.create(
             company=cls.co, nom='Structure bac acier C&I', prix_vente=Decimal('300'),
             prix_achat=Decimal('150'), role_ci='structure_ci', type_pose='bac_acier')
+        # D-SOC-1 (17/11/2026) — toit plat lesté (déclaré ou supposé) : 2 socles
+        # par panneau, l'article « Socles » du résidentiel (aucun rôle C&I).
+        cls.socles = Produit.objects.create(
+            company=cls.co, nom='Socles', sku='SOC-STD', prix_vente=Decimal('67'),
+            prix_achat=Decimal('40'))
         # ADEV79 (D-ACI-6=a) — un poste fixe sans prix fait refuser : le cas
         # « complet » porte ses coffrets, protection, comptage, logger et
         # forfaits de prestations TARIFÉS.
@@ -449,6 +454,29 @@ class DevisAutoCITests(_Base):
         self.assertIn('câble ac', noms)
         etude = devis.etude_params['etude_ci']
         self.assertEqual(etude['composition']['a_chiffrer_visite'], [])
+        # D-SOC-1 — toit inconnu ⇒ toit plat lesté supposé ⇒ 2 socles par
+        # panneau, sur leur propre ligne, en plus de la structure.
+        panneaux = sum(li.quantite for li in devis.lignes.filter(produit=self.panneau))
+        socles = devis.lignes.get(produit=self.socles)
+        self.assertEqual(socles.quantite, 2 * panneaux)
+        self.assertEqual(socles.designation, 'Socles')
+        self.assertEqual(socles.prix_unitaire, Decimal('67'))
+        self.assertNotIn('prix_achat', str(etude['composition']))
+
+    def test_socles_sans_prix_refus_nommant_les_socles(self):
+        # D-SOC-1 — « Socles » sans prix de vente : refus nommé, jamais un 0
+        # ni une omission silencieuse.
+        Produit.objects.filter(pk=self.socles.pk).update(prix_vente=0)
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), type_toiture=None)
+        with self.assertRaises(AutoDevisError) as ctx:
+            self._auto(lead)
+        self.assertIn('Prix à renseigner', ctx.exception.message)
+        self.assertIn('Socles', ctx.exception.message)
+        self.assertEqual(ctx.exception.field, 'composition')
+
+    def test_toit_bac_acier_aucun_socle(self):
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertFalse(devis.lignes.filter(produit=self.socles).exists())
 
     def test_agricole_tunnel_toujours_refuse(self):
         # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le
@@ -658,6 +686,21 @@ class OptionBatterieCITests(_Base):
         apres = devis.etude_params['etude_ci']['option_avec']
         self.assertEqual(apres['inclinaison_retenue_deg'], attendu)
         self.assertEqual(apres['bilan']['production_kwh'], avec['bilan']['production_kwh'])
+
+    def test_socles_de_chaque_option_suivent_ses_panneaux(self):
+        # D-SOC-1 — toit plat lesté déclaré : chaque option porte 2 socles par
+        # panneau DE CETTE OPTION (variante comme la structure, fusionner_kits).
+        Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',
+                               prix_vente=Decimal('450'), prix_achat=Decimal('200'),
+                               role_ci='structure_ci', type_pose='toit_plat_leste')
+        devis = self._auto(self._boulangerie(type_toiture='terrasse_beton'))
+        self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
+        for variante in ('sans', 'avec'):
+            lignes = devis.lignes.filter(variante__in=(variante, ''))
+            panneaux = sum(li.quantite for li in lignes.filter(produit=self.panneau))
+            socles = sum(li.quantite for li in lignes.filter(produit=self.socles))
+            self.assertGreater(panneaux, 0, variante)
+            self.assertEqual(socles, 2 * panneaux, variante)
 
     def test_choix_avec_du_lead_option_avec_seule(self):
         devis = self._auto(self._boulangerie(batterie_souhaitee='avec'))

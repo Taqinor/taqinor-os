@@ -2046,6 +2046,16 @@
           "a_confirmer_visite": true
         },
         {
+          "role": "socle_ci",
+          "produit": 73,
+          "designation": "Socles",
+          "quantite": 200,
+          "unite": "u",
+          "prix_connu": true,
+          "motif": null,
+          "a_confirmer_visite": false
+        },
+        {
           "role": "onduleur_string_tri",
           "produit": 48,
           "designation": "Onduleur réseau Huawei 50kW Triphasé",
@@ -2670,6 +2680,16 @@
           "prix_connu": false,
           "motif": "article C&I créé « prix à renseigner »",
           "a_confirmer_visite": true
+        },
+        {
+          "role": "socle_ci",
+          "produit": 73,
+          "designation": "Socles",
+          "quantite": 200,
+          "unite": "u",
+          "prix_connu": true,
+          "motif": null,
+          "a_confirmer_visite": false
         },
         {
           "role": "onduleur_string_tri",

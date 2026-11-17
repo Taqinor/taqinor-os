@@ -75,8 +75,12 @@ def _candidats_catalogue(company):
 
 def _candidats_options(company):
     """Panneaux, hybrides BT et batteries (aucun rôle C&I : ``etat_ci_complet``
-    — CCAT2, CCAT11). Une requête, catégorie et fiche préchargées."""
+    — CCAT2, CCAT11) et socles (D-SOC-1 : l'article « Socles » du résidentiel,
+    reconnu par le classifieur partagé, comme ``etude_ci_batterie.
+    elements_socle_ci``). Une requête, catégorie et fiche préchargées."""
     from django.db.models import Q
+
+    from apps.ventes.selectors import classer_produit_nom
 
     from .etat_ci import etat_ci_complet
     from .models import Produit
@@ -86,8 +90,12 @@ def _candidats_options(company):
           .filter(Q(company=company) | Q(company__isnull=True),
                   is_archived=False)
           .select_related('categorie', 'fiche_technique'))
-    sortie = {'panneau': [], 'onduleur_hybride': [], 'batterie': []}
+    sortie = {'panneau': [], 'onduleur_hybride': [], 'batterie': [], 'socle': []}
     for p in qs.order_by('nom', 'id'):
+        if classer_produit_nom(p.nom or '') == 'socle':
+            sortie['socle'].append(_candidat(
+                p.id, p.nom, 'socle', True, bool(p.prix_vente and p.prix_vente > 0), None))
+            continue
         etat = etat_ci_complet(p)
         if etat is None:
             continue
@@ -224,6 +232,9 @@ def pret_devis_ci(company):
         _poste('structure_ci:' + TYPE_POSE_DEFAUT,
                'Structure — %s' % LIBELLES_TYPES_POSE[TYPE_POSE_DEFAUT],
                'materiel', True, structures(TYPE_POSE_DEFAUT)),
+        # D-SOC-1 (17/11/2026) — 2 socles par panneau sur la pose par défaut.
+        _poste('socle:' + TYPE_POSE_DEFAUT, 'Socles (toit plat lesté)', 'materiel',
+               True, options['socle'], lien_a_completer=LIEN_STOCK),
     ]
     postes += [
         _poste('structure_ci:' + t, 'Structure — %s' % LIBELLES_TYPES_POSE[t],

@@ -107,6 +107,20 @@ class TailleCITests(unittest.TestCase):
         self.assertGreater(t['retenue_kwc'], 185)
         self.assertNotEqual(t['raison_arret'], 'onduleurs')
 
+    def test_socles_sans_prix_aucune_taille_et_nommes(self):
+        # D-SOC-1 (17/11/2026) — les socles suivent la taille (2 par panneau) :
+        # sans prix, aucune tranche chiffrable, refus qui nomme « Socles ».
+        def composer(kwc, onduleurs):
+            comp = _composer(kwc, onduleurs)
+            n = comp['lignes'][0]['quantite']
+            comp['lignes'].append({'role': 'socle_ci', 'designation': 'Socles',
+                                   'quantite': 2 * n, 'prix_connu': False,
+                                   'a_confirmer_visite': False})
+            return comp
+        r = self._taille('bureau', 6000, composer=composer)
+        self.assertEqual(r['taille']['raison_arret'], 'prix_manquants')
+        self.assertIn('Socles', r['prix_manquants'])
+
     def test_toit_declare_borne(self):
         # CLD9 — toit exprimé en panneaux ENTIERS (43 × 710 Wc = 30,53 kWc) :
         # le palier 30 pose 43 panneaux et tient ; le palier 35 (50 panneaux)
