@@ -1493,6 +1493,11 @@ def refus_piece_recue(etape, type_piece):
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return ('etape', '« Pièce reçue » : cette touche est déjà traitée — '
                 'le geste se fait sur une touche encore à faire.')
+    # Audit des cadences (17/11/2026) — un dossier signé ne repart pas vers le
+    # devis : refus d'ÉTAT (409, comme une touche déjà traitée).
+    if getattr(etape.lead, 'stage', None) == stages.SIGNED:
+        return ('etape', 'Ce dossier est signé : la pièce se range dans ses '
+                'documents, pas ici.')
     if (type_piece or '').strip() not in TYPES_PIECE_RECUE:
         choix = ', '.join(v.lower() for v in TYPES_PIECE_RECUE.values())
         return ('type_piece', f'« Pièce reçue » : choisissez la pièce ({choix}).')
